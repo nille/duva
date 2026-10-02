@@ -5,9 +5,7 @@ Duva itself is MIT-licensed (see `LICENSE`). This repository also vendors agent 
 | Path | Source | License |
 | --- | --- | --- |
 | `.agents/skills/` | [mattpocock/skills](https://github.com/mattpocock/skills), pinned in `skills-lock.json` | MIT |
-| `.opencode/skills/impeccable/`, `.opencode/commands/impeccable.md` | [pbakaus/impeccable](https://github.com/pbakaus/impeccable) | Apache-2.0 |
-| `.opencode/skills/impeccable/scripts/modern-screenshot.umd.js` | [qq15725/modern-screenshot](https://github.com/qq15725/modern-screenshot), bundled by Impeccable | MIT, Copyright (c) 2021-present wxm |
-| Part of `.agents/skills/pr/SKILL.md` | Dex Horthy's `show-me` skill in [humanlayer/humanlayer](https://github.com/humanlayer/humanlayer), credited in `.agents/skills/pr/CREDITS.md` | Apache-2.0, Copyright (c) 2024, humanlayer Authors (license text as below) |
+| Part of `.agents/skills/pr/SKILL.md` | Dex Horthy's `show-me` skill in [humanlayer/humanlayer](https://github.com/humanlayer/humanlayer), credited in `.agents/skills/pr/CREDITS.md` | Apache-2.0 |
 
 ## mattpocock/skills
 
@@ -35,25 +33,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-## pbakaus/impeccable
+## humanlayer/humanlayer
 
-Impeccable's NOTICE file:
-
-```
-# Third-Party Notices
-
-This project includes content derived from third-party work, used under the terms of its original license.
-
-## Platform Design Skills
-
-The `skill/reference/ios.md` and `skill/reference/android.md` platform reference files are distilled from ehmo's `platform-design-skills` (Apple Human Interface Guidelines and Material Design 3 rules), rewritten in Impeccable's voice.
-
-**Original work:** https://github.com/ehmo/platform-design-skills
-**Original license:** MIT
-**Author:** ehmo
-```
-
-Impeccable's license:
+Copyright (c) 2024, humanlayer Authors. Licensed under the Apache License, Version 2.0:
 
 ```
                                  Apache License
@@ -106,17 +88,16 @@ Impeccable's license:
       "Contribution" shall mean any work of authorship, including
       the original version of the Work and any modifications or additions
       to that Work or Derivative Works thereof, that is intentionally
-      submitted to the Licensor for inclusion in the Work by the copyright
-      owner or by an individual or Legal Entity authorized to submit on
-      behalf of the copyright owner. For the purposes of this definition,
-      "submitted" means any form of electronic, verbal, or written
-      communication sent to the Licensor or its representatives, including
-      but not limited to communication on electronic mailing lists, source
-      code control systems, and issue tracking systems that are managed by,
-      or on behalf of, the Licensor for the purpose of discussing and
-      improving the Work, but excluding communication that is conspicuously
-      marked or otherwise designated in writing by the copyright owner as
-      "Not a Contribution."
+      submitted to Licensor for inclusion in the Work by the copyright owner
+      or by an individual or Legal Entity authorized to submit on behalf of
+      the copyright owner. For the purposes of this definition, "submitted"
+      means any form of electronic, verbal, or written communication sent
+      to the Licensor or its representatives, including but not limited to
+      communication on electronic mailing lists, source code control systems,
+      and issue tracking systems that are managed by, or on behalf of, the
+      Licensor for the purpose of discussing and improving the Work, but
+      excluding communication that is conspicuously marked or otherwise
+      designated in writing by the copyright owner as "Not a Contribution."
 
       "Contributor" shall mean Licensor and any individual or Legal Entity
       on behalf of whom a Contribution has been received by Licensor and
@@ -234,7 +215,18 @@ Impeccable's license:
 
    END OF TERMS AND CONDITIONS
 
-   Copyright 2025 Paul Bakaus
+   APPENDIX: How to apply the Apache License to your work.
+
+      To apply the Apache License to your work, attach the following
+      boilerplate notice, with the fields enclosed by brackets "[]"
+      replaced with your own identifying information. (Don't include
+      the brackets!)  The text should be enclosed in the appropriate
+      comment syntax for the file format. We also recommend that a
+      file or class name and description of purpose be included on the
+      same "printed page" as the copyright notice for easier
+      identification within third-party archives.
+
+   Copyright [yyyy] [name of copyright owner]
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.

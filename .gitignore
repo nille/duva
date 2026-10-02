@@ -1,6 +1,8 @@
-# Impeccable engine binary (18 MB, per platform). The launcher in
-# .opencode/skills/impeccable/scripts/ downloads it into ~/.impeccable/bin/ when missing.
-.opencode/skills/impeccable/scripts/bin/
+# Impeccable is installed per machine with `npx impeccable install`, because
+# each agent harness gets its own build. Its outputs (PRODUCT.md, DESIGN.md and
+# the shared .impeccable/ files) are tracked.
+.opencode/skills/impeccable/
+.opencode/commands/impeccable.md
 
 # impeccable-ignore-start
 # Ephemeral output, runtime state, and per-dev overrides.
