@@ -27,12 +27,13 @@ Facts about AWS that shaped Duva's design, each with how it was established. A c
 - **A rule without recipients takes every address on the account's verified domains,** so Duva never writes one. _[ReceiptRule, Recipients](https://docs.aws.amazon.com/ses/latest/APIReference/API_ReceiptRule.html)._
 - **A rule takes at most 500 recipients,** so while Duva has one rule an organization has at most 500 addresses. With 200 rules a rule set could hold 100,000, more than ADR-0004's estimate of roughly 20,000. _[SES quotas](https://docs.aws.amazon.com/ses/latest/dg/quotas.html)._
 - **`ScanEnabled` defaults to off** when CreateReceiptRule doesn't set it, so Duva sets it. _Probed with a throwaway rule set in eu-north-1, 2026-10-03._
+- **SES's scanning marks the standard test strings.** A message with the EICAR test file attached got a virus FAIL and one with the GTUBE string a spam FAIL, while SES still took both with `250` and stored them, so Duva's verdict handling can be checked from outside. _Real run of #8._
 - **A receipt names the sender's DMARC policy only when DMARC fails,** as `dmarcPolicy`: none, quarantine or reject. The guide writes it in lower case and SES's blog in upper case, so Duva ignores case. _[Contents of notifications for SES email receiving](https://docs.aws.amazon.com/ses/latest/dg/receiving-email-notifications-contents.html)._
 - **IAM has no resource type for receipt rules or rule sets.** CreateReceiptRule, DescribeReceiptRule and UpdateReceiptRule need `Resource: "*"`; naming the rule set's ARN is denied. _[Service Authorization Reference for SES](https://docs.aws.amazon.com/service-authorization/latest/reference/list_ses.html); AccessDenied in the real run of #7._
 
 ## S3
 
-- **In a versioned bucket a delete without a version ID only adds a delete marker,** and the earlier versions stay. So erasing dropped mail lists the key's versions and delete markers, which needs `s3:ListBucketVersions`, and deletes each by ID, which needs `s3:DeleteObjectVersion`. _[Deleting object versions](https://docs.aws.amazon.com/AmazonS3/latest/userguide/DeletingObjectVersions.html)._
+- **In a versioned bucket a delete without a version ID only adds a delete marker,** and the earlier versions stay. So erasing dropped mail lists the key's versions and delete markers, which needs `s3:ListBucketVersions`, and deletes each by ID, which needs `s3:DeleteObjectVersion`. _[Deleting object versions](https://docs.aws.amazon.com/AmazonS3/latest/userguide/DeletingObjectVersions.html); in the real run of #8 a dropped message left no version and no delete marker._
 
 ## DynamoDB
 
