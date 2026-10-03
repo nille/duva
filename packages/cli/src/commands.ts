@@ -1,5 +1,6 @@
 import { apiCommands } from "./api-commands.ts";
 import { deploy } from "./deploy.ts";
+import { login } from "./login.ts";
 
 export interface Command {
   /** The words that name the command, as in `duva <words>`. */
@@ -10,4 +11,4 @@ export interface Command {
 }
 
 /** The hand-written commands, then one for each API operation. */
-export const commands: Command[] = [deploy, ...apiCommands];
+export const commands: Command[] = [deploy, login, ...apiCommands];

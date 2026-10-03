@@ -4,6 +4,7 @@ import { S3Client } from "@aws-sdk/client-s3";
 import { createApi } from "./api.ts";
 import { environmentVariables } from "./infrastructure.ts";
 import { s3MailBucket } from "./mail-bucket.ts";
+import { required } from "./environment.ts";
 
 export const handler = createApi({
   version: required(environmentVariables.version),
@@ -12,8 +13,3 @@ export const handler = createApi({
   mailBucket: s3MailBucket(new S3Client({}), required(environmentVariables.mailBucket)),
 });
 
-function required(name: string): string {
-  const value = process.env[name];
-  if (value === undefined) throw new Error(`The environment variable ${name} is not set`);
-  return value;
-}

@@ -4,6 +4,7 @@ import { mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { environmentVariables } from "@duva/api/infrastructure";
+import { operations } from "@duva/openapi";
 import { buildSync } from "esbuild";
 import { expect, test } from "vitest";
 import { duvaApp } from "../src/app.ts";
@@ -20,10 +21,19 @@ interface Resource {
  */
 const payPerUse = new Set([
   "AWS::ApiGatewayV2::Api",
+  "AWS::ApiGatewayV2::Authorizer",
   "AWS::ApiGatewayV2::Integration",
   "AWS::ApiGatewayV2::Route",
   "AWS::ApiGatewayV2::Stage",
+  "AWS::CloudFront::Distribution",
+  "AWS::CloudFront::OriginAccessControl",
+  // The Essentials plan is paid per monthly active human, past a free tier.
+  "AWS::Cognito::ManagedLoginBranding",
+  "AWS::Cognito::UserPool",
+  "AWS::Cognito::UserPoolClient",
+  "AWS::Cognito::UserPoolDomain",
   "AWS::DynamoDB::GlobalTable",
+  "AWS::IAM::Policy",
   "AWS::IAM::Role",
   "AWS::Lambda::Function",
   "AWS::Lambda::Permission",
@@ -152,4 +162,81 @@ test("every send goes through a configuration set with no open or click tracking
 test("receiving starts with an empty rule set, so SES refuses all mail until the first address exists", () => {
   expect(ofType("AWS::SES::ReceiptRuleSet")).toHaveLength(1);
   expect(ofType("AWS::SES::ReceiptRule")).toEqual([]);
+});
+
+test("the domain, the first admin and whether SES has verified the domain are parameters, so deploy names them when it runs", () => {
+  expect(stack.template.Parameters?.Admin?.Type).toBe("String");
+  expect(stack.template.Parameters?.DomainVerified?.AllowedValues).toEqual(["true", "false"]);
+});
+
+const [[, userPool]] = ofType("AWS::Cognito::UserPool") as [[string, Resource]];
+
+test("humans sign in to one user pool on the Essentials plan, with no sign-up of their own", () => {
+  expect(ofType("AWS::Cognito::UserPool")).toHaveLength(1);
+  expect(userPool.Properties?.UserPoolTier).toBe("ESSENTIALS");
+  expect(userPool.Properties?.AdminCreateUserConfig?.AllowAdminCreateUserOnly).toBe(true);
+  expect(userPool.Properties?.UsernameAttributes).toEqual(["email"]);
+});
+
+test("humans sign in with an emailed code, and the password Cognito requires is offered to nobody", () => {
+  expect(userPool.Properties?.Policies?.SignInPolicy?.AllowedFirstAuthFactors).toEqual(["PASSWORD", "EMAIL_OTP"]);
+});
+
+test("sign-in codes go through SES from the domain once SES has verified it, and from Cognito until then", () => {
+  const { EmailConfiguration: email } = userPool.Properties ?? {};
+  const [condition, verified, unverified] = email?.["Fn::If"] ?? [];
+  expect(stack.template.Conditions?.[condition]).toEqual({ "Fn::Equals": [{ Ref: "DomainVerified" }, "true"] });
+  expect(verified).toMatchObject({
+    EmailSendingAccount: "DEVELOPER",
+    From: { "Fn::Join": ["", ["Duva <no-reply@", { Ref: "Domain" }, ">"]] },
+  });
+  expect(JSON.stringify(verified.SourceArn)).toContain('{"Ref":"Domain"}');
+  expect(unverified).toEqual({ EmailSendingAccount: "COGNITO_DEFAULT" });
+});
+
+test("every app client signs in through managed login with PKCE, and gives no hint that an address is unknown", () => {
+  const clients = ofType("AWS::Cognito::UserPoolClient");
+  expect(clients).toHaveLength(2);
+  for (const [id, { Properties }] of clients) {
+    const { GenerateSecret, AllowedOAuthFlows, PreventUserExistenceErrors, ExplicitAuthFlows } = Properties ?? {};
+    expect({ id, secret: GenerateSecret ?? false, AllowedOAuthFlows, PreventUserExistenceErrors, ExplicitAuthFlows }).toEqual({
+      id,
+      secret: false,
+      AllowedOAuthFlows: ["code"],
+      PreventUserExistenceErrors: "ENABLED",
+      ExplicitAuthFlows: ["ALLOW_USER_AUTH", "ALLOW_REFRESH_TOKEN_AUTH"],
+    });
+  }
+  expect(clients.map(([, { Properties }]) => Properties?.CallbackURLs)).toContainEqual(["http://127.0.0.1:8976/callback"]);
+});
+
+test("managed login is the newer one, which offers choice-based sign-in", () => {
+  const [[, domain]] = ofType("AWS::Cognito::UserPoolDomain") as [[string, Resource]];
+  expect(domain.Properties?.ManagedLoginVersion).toBe(2);
+  expect(ofType("AWS::Cognito::ManagedLoginBranding")).toHaveLength(2);
+});
+
+test("every operation that needs sign-in goes through the one Lambda authorizer, which answers 401 to any call it can't resolve", () => {
+  const authorizers = ofType("AWS::ApiGatewayV2::Authorizer");
+  expect(authorizers).toHaveLength(1);
+  const [[authorizerId, { Properties: authorizer }]] = authorizers as [[string, Resource]];
+  // With identity sources, API Gateway would answer 403 to a token the authorizer refuses.
+  expect(authorizer).toMatchObject({ AuthorizerType: "REQUEST", EnableSimpleResponses: true, AuthorizerResultTtlInSeconds: 0 });
+  expect(authorizer?.IdentitySource ?? []).toEqual([]);
+
+  const routes = Object.fromEntries(ofType("AWS::ApiGatewayV2::Route").map(([, { Properties }]) => [Properties?.RouteKey, Properties]));
+  for (const { routeKey, signIn } of operations) {
+    expect({ routeKey, auth: routes[routeKey]?.AuthorizationType, authorizer: routes[routeKey]?.AuthorizerId }).toEqual({
+      routeKey,
+      auth: signIn ? "CUSTOM" : "NONE",
+      authorizer: signIn ? { Ref: authorizerId } : undefined,
+    });
+  }
+});
+
+test("the web app is served through CloudFront from its bucket, which only CloudFront reads", () => {
+  const [[, { Properties: distribution }]] = ofType("AWS::CloudFront::Distribution") as [[string, Resource]];
+  const [origin] = distribution?.DistributionConfig?.Origins ?? [];
+  expect(origin?.OriginAccessControlId).toBeDefined();
+  expect(distribution?.DistributionConfig?.ViewerCertificate).toBeUndefined();
 });

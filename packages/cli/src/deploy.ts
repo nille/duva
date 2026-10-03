@@ -6,9 +6,10 @@ import { configuredRegion, sesReceivingRegions } from "./regions.ts";
 
 export const deploy: Command = {
   words: ["deploy"],
-  summary: "Deploy Duva into the AWS account and region of your AWS configuration, for the organization's first domain.",
+  summary:
+    "Deploy Duva into the AWS account and region of your AWS configuration, for the organization's first domain, with you as its first admin.",
   async run(args) {
-    const { values } = parseArgs({ args, options: { domain: { type: "string" } } });
+    const { values } = parseArgs({ args, options: { domain: { type: "string" }, admin: { type: "string" } } });
     const region = await configuredRegion();
     if (region === undefined) {
       throw new Error("No AWS region is configured. Set AWS_REGION, or a region in your AWS profile.");
@@ -26,8 +27,8 @@ export const deploy: Command = {
       import("./dns.ts"),
     ]);
     try {
-      const deployed = await deployDuva({ aws: realAws(region), dns: realDns, domain: values.domain });
-      await saveConfig({ apiUrl: deployed.apiUrl });
+      const { signIn, ...deployed } = await deployDuva({ aws: realAws(region), dns: realDns, domain: values.domain, admin: values.admin });
+      await saveConfig({ apiUrl: deployed.apiUrl, webUrl: deployed.webUrl, signIn });
       return { version: duva.version, ...deployed };
     } catch (error) {
       if (error instanceof Error && error.name === "CredentialsProviderError") {

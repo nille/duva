@@ -21,7 +21,16 @@ interface OperationObject {
   operationId?: string;
   summary?: string;
   security?: SecurityRequirement[];
+  parameters?: ParameterObject[];
   "x-cli-command"?: string;
+}
+
+interface ParameterObject {
+  name: string;
+  in: string;
+  required?: boolean;
+  description?: string;
+  schema?: { type?: string };
 }
 
 type SecurityRequirement = Record<string, string[]>;
@@ -71,6 +80,7 @@ function operationsOf(document: Document) {
           summary: operation.summary,
           signIn: needsSignIn(operation.security ?? document.security ?? []),
           command: operation["x-cli-command"].split(" "),
+          query: queryOf(where, operation.parameters ?? []),
         },
       ];
     }),
@@ -79,6 +89,16 @@ function operationsOf(document: Document) {
   const repeated = commands.find((command, index) => commands.indexOf(command) !== index);
   if (repeated !== undefined) fail(`Two operations have the x-cli-command "${repeated}".`);
   return operations;
+}
+
+/** The operation's query parameters, which the CLI takes as options. */
+function queryOf(where: string, parameters: ParameterObject[]) {
+  return parameters.map((parameter) => {
+    if (parameter.in !== "query") fail(`${where} has a ${parameter.in} parameter, which the CLI can't pass yet.`);
+    const type = parameter.schema?.type;
+    if (type !== "integer" && type !== "string") fail(`${where} has the parameter ${parameter.name} of type ${type}, which the CLI can't pass yet.`);
+    return { name: parameter.name, type, required: parameter.required ?? false, description: parameter.description ?? "" };
+  });
 }
 
 /** Whether a caller must sign in. An empty requirement ({}) makes sign-in optional. */

@@ -10,6 +10,8 @@ info:
   license:
     name: MIT
     identifier: MIT
+security:
+  - session: []
 paths:
   /status:
     get:
@@ -25,8 +27,173 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Status"
+  /whoami:
+    get:
+      operationId: whoami
+      summary: Show the signed-in actor.
+      x-cli-command: whoami
+      responses:
+        "200":
+          description: The actor the call is attributed to.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Actor"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /organization/changes:
+    get:
+      operationId: listOrganizationChanges
+      summary: List the changes to the organization's setup after a position in its change feed.
+      description: >
+        Lists up to 100 changes, oldest first. To catch up, call again with
+        the position the answer ends at until it lists no more. Only admins
+        can read the organization's change feed.
+      x-cli-command: organization changes
+      parameters:
+        - name: after
+          in: query
+          description: The position to list changes after. 0, the default, lists from the start.
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        "200":
+          description: The changes after the position.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChangePage"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
 components:
+  securitySchemes:
+    session:
+      type: http
+      scheme: bearer
+      description: A human's Cognito access token, from signing in.
+  responses:
+    BadRequest:
+      description: The request is malformed.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Unauthorized:
+      description: The call has no valid credentials.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Forbidden:
+      description: The signed-in actor may not do this.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
   schemas:
+    Error:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+          description: What went wrong.
+    Actor:
+      type: object
+      additionalProperties: false
+      required: [id, kind, email, admin]
+      description: A human or an agent that acts on mail. For now every actor is a human.
+      properties:
+        id:
+          type: string
+          description: The actor's ID, which never changes.
+        kind:
+          type: string
+          enum: [human]
+        email:
+          type: string
+          description: The address the human signs in with.
+          examples: ["ada@example.com"]
+        admin:
+          type: boolean
+          description: Whether the actor may change the organization's setup.
+    ChangePage:
+      type: object
+      additionalProperties: false
+      required: [changes, position]
+      properties:
+        changes:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrganizationChange"
+        position:
+          type: integer
+          description: The position of the last change listed, or the one asked for if none were. Pass it as after to continue.
+    OrganizationChange:
+      description: A change to the organization's setup.
+      oneOf:
+        - $ref: "#/components/schemas/OrganizationAdded"
+        - $ref: "#/components/schemas/DomainAdded"
+        - $ref: "#/components/schemas/ActorAdded"
+      discriminator:
+        propertyName: type
+        mapping:
+          organizationAdded: "#/components/schemas/OrganizationAdded"
+          domainAdded: "#/components/schemas/DomainAdded"
+          actorAdded: "#/components/schemas/ActorAdded"
+    ChangeBase:
+      type: object
+      required: [position, at, actor]
+      properties:
+        position:
+          type: integer
+          description: The change's position in the feed, counting from 1.
+        at:
+          type: string
+          format: date-time
+          description: When the change was made.
+        actor:
+          type: string
+          description: The ID of the actor who made the change.
+    OrganizationAdded:
+      allOf:
+        - $ref: "#/components/schemas/ChangeBase"
+        - type: object
+          required: [type]
+          properties:
+            type:
+              type: string
+              const: organizationAdded
+    DomainAdded:
+      allOf:
+        - $ref: "#/components/schemas/ChangeBase"
+        - type: object
+          required: [type, domain]
+          properties:
+            type:
+              type: string
+              const: domainAdded
+            domain:
+              type: string
+              description: The domain, a standalone domain.
+              examples: ["example.com"]
+    ActorAdded:
+      allOf:
+        - $ref: "#/components/schemas/ChangeBase"
+        - type: object
+          required: [type, added]
+          properties:
+            type:
+              type: string
+              const: actorAdded
+            added:
+              $ref: "#/components/schemas/Actor"
     Status:
       type: object
       additionalProperties: false

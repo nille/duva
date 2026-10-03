@@ -3,10 +3,12 @@
 //   AWS_PROFILE=... AWS_REGION=eu-west-3 node scripts/destroy-test-deployment.ts --yes [--bootstrap]
 //
 // Deactivates Duva's receipt rule set, which SES can't delete while it's active, then deletes
-// the Duva stack, then the table and mail bucket it keeps on deletion, all their data included. With --bootstrap, it also deletes the CDK bootstrap stack and its staging bucket,
-// but only when the same duva deploy created both stacks. For test deployments only.
+// the Duva stack, then the table, buckets and user pool it keeps on deletion, all their data
+// included, and the SES identity deploy made for the first admin's address. With --bootstrap, it
+// also deletes the CDK bootstrap stack and its staging bucket, but only when the same duva deploy
+// created both stacks. For test deployments only.
 import { parseArgs } from "node:util";
-import { stackName, stackOutputs } from "@duva/infra/outputs";
+import { stackName, stackOutputs, stackParameters } from "@duva/infra/outputs";
 import {
   CloudFormationClient,
   DeleteStackCommand,
@@ -14,9 +16,11 @@ import {
   paginateListStackResources,
   waitUntilStackDeleteComplete,
 } from "@aws-sdk/client-cloudformation";
+import { CognitoIdentityProviderClient, DeleteUserPoolCommand } from "@aws-sdk/client-cognito-identity-provider";
 import { DeleteTableCommand, DynamoDBClient, waitUntilTableNotExists } from "@aws-sdk/client-dynamodb";
 import { DescribeActiveReceiptRuleSetCommand, SESClient, SetActiveReceiptRuleSetCommand } from "@aws-sdk/client-ses";
 import { DeleteBucketCommand, DeleteObjectsCommand, ListObjectVersionsCommand, S3Client } from "@aws-sdk/client-s3";
+import { DeleteEmailIdentityCommand, NotFoundException, SESv2Client } from "@aws-sdk/client-sesv2";
 import { GetCallerIdentityCommand, STSClient } from "@aws-sdk/client-sts";
 
 const { values } = parseArgs({ options: { yes: { type: "boolean" }, bootstrap: { type: "boolean" } } });
@@ -56,6 +60,8 @@ if (duvasRuleSet !== undefined && active === duvasRuleSet) {
   console.log(`Deactivated receipt rule set ${active}`);
 }
 
+const admin = duva?.Parameters?.find(({ ParameterKey }) => ParameterKey === stackParameters.admin)?.ParameterValue;
+
 for (const stack of [duva, bootstrap]) {
   if (stack?.StackId === undefined) continue;
   await cloudformation.send(new DeleteStackCommand({ StackName: stack.StackId }));
@@ -69,6 +75,16 @@ for (const stack of [duva, bootstrap]) {
     }
   }
   console.log(`Deleted stack ${stack.StackName}`);
+}
+
+// Deploy asks SES to verify the first admin's address in the sandbox, outside the stack.
+if (admin !== undefined) {
+  try {
+    await new SESv2Client({ region }).send(new DeleteEmailIdentityCommand({ EmailIdentity: admin }));
+    console.log(`Deleted the SES identity ${admin}`);
+  } catch (error) {
+    if (!(error instanceof NotFoundException)) throw error;
+  }
 }
 
 async function findStack(name: string) {
@@ -85,6 +101,9 @@ async function deleteKept(type: string, id: string) {
     case "AWS::S3::Bucket":
       await emptyBucket(id);
       await s3.send(new DeleteBucketCommand({ Bucket: id }));
+      return;
+    case "AWS::Cognito::UserPool":
+      await new CognitoIdentityProviderClient({ region }).send(new DeleteUserPoolCommand({ UserPoolId: id }));
       return;
     case "AWS::DynamoDB::GlobalTable":
     case "AWS::DynamoDB::Table":

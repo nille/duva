@@ -1,7 +1,20 @@
 import { fileURLToPath } from "node:url";
-import { CfnOutput, CfnParameter, Duration, RemovalPolicy, Stack, type StackProps } from "aws-cdk-lib";
-import { HttpApi, HttpMethod } from "aws-cdk-lib/aws-apigatewayv2";
+import { CfnCondition, CfnOutput, CfnParameter, Duration, Fn, RemovalPolicy, Stack, type StackProps } from "aws-cdk-lib";
+import { CorsHttpMethod, HttpApi, HttpMethod } from "aws-cdk-lib/aws-apigatewayv2";
+import { HttpLambdaAuthorizer, HttpLambdaResponseType } from "aws-cdk-lib/aws-apigatewayv2-authorizers";
 import { HttpLambdaIntegration } from "aws-cdk-lib/aws-apigatewayv2-integrations";
+import { Distribution, ViewerProtocolPolicy } from "aws-cdk-lib/aws-cloudfront";
+import { S3BucketOrigin } from "aws-cdk-lib/aws-cloudfront-origins";
+import {
+  AccountRecovery,
+  CfnManagedLoginBranding,
+  type CfnUserPool,
+  FeaturePlan,
+  ManagedLoginVersion,
+  OAuthScope,
+  UserPool,
+  UserPoolClientIdentityProvider,
+} from "aws-cdk-lib/aws-cognito";
 import { AttributeType, Billing, TableV2 } from "aws-cdk-lib/aws-dynamodb";
 import { Architecture, Runtime } from "aws-cdk-lib/aws-lambda";
 import { NodejsFunction, OutputFormat } from "aws-cdk-lib/aws-lambda-nodejs";
@@ -11,7 +24,7 @@ import { ConfigurationSet, EmailIdentity, Identity, ReceiptRuleSet } from "aws-c
 import type { Construct } from "constructs";
 import { environmentVariables, tableKey } from "@duva/api/infrastructure";
 import { operations } from "@duva/openapi";
-import { stackOutputs, stackParameters } from "./outputs.ts";
+import { cliRedirectUri, signInSender, stackOutputs, stackParameters } from "./outputs.ts";
 
 export interface DuvaStackProps extends StackProps {
   /** The version of Duva the stack deploys. */
@@ -31,6 +44,20 @@ export class DuvaStack extends Stack {
       type: "String",
       description: "The organization's first domain, a standalone domain",
     }).valueAsString;
+    const admin = new CfnParameter(this, stackParameters.admin, {
+      type: "String",
+      description: "The first admin's email address",
+    }).valueAsString;
+    const domainVerified = new CfnCondition(this, "DomainVerifiedCondition", {
+      expression: Fn.conditionEquals(
+        new CfnParameter(this, stackParameters.domainVerified, {
+          type: "String",
+          allowedValues: ["true", "false"],
+          description: "Whether SES has verified the domain",
+        }).valueAsString,
+        "true",
+      ),
+    });
 
     // Every send goes through this configuration set. It publishes no events and turns off
     // engagement metrics, so SES tracks no opens or clicks.
@@ -64,46 +91,149 @@ export class DuvaStack extends Stack {
       removalPolicy: RemovalPolicy.RETAIN_ON_UPDATE_OR_DELETE,
     });
 
-    const handler = new NodejsFunction(this, "ApiHandler", {
-      entry: fileURLToPath(import.meta.resolve("@duva/api/lambda")),
-      runtime: Runtime.NODEJS_24_X,
-      architecture: Architecture.ARM_64,
-      memorySize: 512,
-      timeout: Duration.seconds(10),
-      environment: {
-        [environmentVariables.version]: version,
-        [environmentVariables.tableName]: table.tableName,
-        [environmentVariables.mailBucket]: mail.bucketName,
-        NODE_OPTIONS: "--enable-source-maps",
-      },
-      // The AWS SDK is bundled too, so the deployed code is exactly what this version built.
-      // CommonJS modules in the bundle still require Node's built-ins, so ESM gets a require.
-      bundling: {
-        format: OutputFormat.ESM,
-        target: "node24",
-        mainFields: ["module", "main"],
-        bundleAwsSDK: true,
-        minify: true,
-        sourceMap: true,
-        sourcesContent: false,
-        banner: "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);",
-      },
-      logGroup: new LogGroup(this, "ApiLogs", {
-        retention: RetentionDays.ONE_MONTH,
-        removalPolicy: RemovalPolicy.DESTROY,
-      }),
+    // The web app, a single-page app that deploy uploads, on CloudFront's default domain for now.
+    const web = new Bucket(this, "Web", {
+      encryption: BucketEncryption.S3_MANAGED,
+      blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
+      enforceSSL: true,
+      removalPolicy: RemovalPolicy.RETAIN_ON_UPDATE_OR_DELETE,
+    });
+    const distribution = new Distribution(this, "WebDistribution", {
+      comment: "Duva's web app",
+      defaultBehavior: { origin: S3BucketOrigin.withOriginAccessControl(web), viewerProtocolPolicy: ViewerProtocolPolicy.REDIRECT_TO_HTTPS },
+      defaultRootObject: "index.html",
+    });
+    const webUrl = `https://${distribution.distributionDomainName}`;
+
+    // Humans sign in through managed login with a code emailed to them. Only Duva adds humans, and
+    // without a password. Cognito requires PASSWORD among the first factors, so it is listed, but
+    // nobody has one. Humans are hard to move out of a user pool, so it outlives the stack.
+    const humans = new UserPool(this, "Humans", {
+      featurePlan: FeaturePlan.ESSENTIALS,
+      selfSignUpEnabled: false,
+      signInAliases: { email: true },
+      signInPolicy: { allowedFirstAuthFactors: { password: true, emailOtp: true } },
+      accountRecovery: AccountRecovery.NONE,
+      removalPolicy: RemovalPolicy.RETAIN_ON_UPDATE_OR_DELETE,
+    });
+    // Cognito refuses an SES identity SES hasn't verified, which a new domain's isn't yet. Until it
+    // is, codes come from Cognito's own sender, and deploy switches once SES has verified the domain.
+    humans.node.addDependency(identity);
+    (humans.node.defaultChild as CfnUserPool).addPropertyOverride(
+      "EmailConfiguration",
+      Fn.conditionIf(
+        domainVerified.logicalId,
+        {
+          EmailSendingAccount: "DEVELOPER",
+          SourceArn: this.formatArn({ service: "ses", resource: "identity", resourceName: domain }),
+          From: `Duva <${signInSender(domain)}>`,
+          ConfigurationSet: sending.configurationSetName,
+        },
+        { EmailSendingAccount: "COGNITO_DEFAULT" },
+      ),
+    );
+    // Cognito's prefix domains are unique per region, and a deployment is the only one in its account and region.
+    const signIn = humans.addDomain("SignIn", {
+      cognitoDomain: { domainPrefix: `duva-${this.account}` },
+      managedLoginVersion: ManagedLoginVersion.NEWER_MANAGED_LOGIN,
+    });
+    // Both clients are public: the web app and the CLI keep no secret, so they sign in with PKCE.
+    // An address that isn't a human in the organization gets no code and no hint that it was unknown.
+    const client = (id: string, callbackUrls: string[], logoutUrls: string[]) => {
+      const appClient = humans.addClient(id, {
+        generateSecret: false,
+        authFlows: { user: true },
+        oAuth: { flows: { authorizationCodeGrant: true }, scopes: [OAuthScope.OPENID, OAuthScope.EMAIL], callbackUrls, logoutUrls },
+        preventUserExistenceErrors: true,
+        supportedIdentityProviders: [UserPoolClientIdentityProvider.COGNITO],
+      });
+      new CfnManagedLoginBranding(this, `${id}Branding`, {
+        userPoolId: humans.userPoolId,
+        clientId: appClient.userPoolClientId,
+        useCognitoProvidedValues: true,
+      });
+      return appClient;
+    };
+    const webClient = client("WebClient", [`${webUrl}/`], [`${webUrl}/`]);
+    const cliClient = client("CliClient", [cliRedirectUri], []);
+
+    const lambda = (id: string, entry: string, environment: Record<string, string>) =>
+      new NodejsFunction(this, id, {
+        entry: fileURLToPath(import.meta.resolve(entry)),
+        runtime: Runtime.NODEJS_24_X,
+        architecture: Architecture.ARM_64,
+        memorySize: 512,
+        timeout: Duration.seconds(10),
+        environment: { ...environment, NODE_OPTIONS: "--enable-source-maps" },
+        // The AWS SDK is bundled too, so the deployed code is exactly what this version built.
+        // CommonJS modules in the bundle still require Node's built-ins, so ESM gets a require.
+        bundling: {
+          format: OutputFormat.ESM,
+          target: "node24",
+          mainFields: ["module", "main"],
+          bundleAwsSDK: true,
+          minify: true,
+          sourceMap: true,
+          sourcesContent: false,
+          banner: "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);",
+        },
+        // ApiHandler's logs are ApiLogs, as before there were other Lambdas.
+        logGroup: new LogGroup(this, `${id.replace(/Handler$/, "")}Logs`, {
+          retention: RetentionDays.ONE_MONTH,
+          removalPolicy: RemovalPolicy.DESTROY,
+        }),
+      });
+
+    const handler = lambda("ApiHandler", "@duva/api/lambda", {
+      [environmentVariables.version]: version,
+      [environmentVariables.tableName]: table.tableName,
+      [environmentVariables.mailBucket]: mail.bucketName,
+    });
+    table.grantReadData(handler);
+
+    const authorizerHandler = lambda("AuthorizerHandler", "@duva/api/authorizer-lambda", {
+      [environmentVariables.tableName]: table.tableName,
+      [environmentVariables.userPoolId]: humans.userPoolId,
+      [environmentVariables.userPoolClientIds]: Fn.join(",", [webClient.userPoolClientId, cliClient.userPoolClientId]),
+    });
+    table.grantReadData(authorizerHandler);
+
+    // duva deploy invokes it after each deploy, to set up the organization with its first admin.
+    const setup = lambda("SetupHandler", "@duva/api/setup-lambda", {
+      [environmentVariables.tableName]: table.tableName,
+      [environmentVariables.userPoolId]: humans.userPoolId,
+      [environmentVariables.domain]: domain,
+      [environmentVariables.admin]: admin,
+    });
+    table.grantReadWriteData(setup);
+    humans.grant(setup, "cognito-idp:AdminCreateUser", "cognito-idp:AdminGetUser");
+
+    // With no identity sources, API Gateway runs the authorizer on every call and answers 401
+    // when it fails with "Unauthorized". It caches nothing, so a session ends when its token does.
+    const authorizer = new HttpLambdaAuthorizer("Authorizer", authorizerHandler, {
+      responseTypes: [HttpLambdaResponseType.SIMPLE],
+      identitySource: [],
+      resultsCacheTtl: Duration.seconds(0),
     });
 
     // One route per operation in the OpenAPI document, so the route key names the operation.
-    const api = new HttpApi(this, "Api", { description: "Duva's API" });
+    const api = new HttpApi(this, "Api", {
+      description: "Duva's API",
+      corsPreflight: { allowOrigins: [webUrl], allowHeaders: ["authorization", "content-type"], allowMethods: [CorsHttpMethod.ANY] },
+    });
     const integration = new HttpLambdaIntegration("Handler", handler);
     for (const operation of operations) {
-      if (operation.signIn) throw new Error(`${operation.operationId} needs sign-in, which the API can't check yet.`);
       const method = HttpMethod[operation.method.toUpperCase() as keyof typeof HttpMethod];
-      api.addRoutes({ path: operation.path, methods: [method], integration });
+      api.addRoutes({ path: operation.path, methods: [method], integration, authorizer: operation.signIn ? authorizer : undefined });
     }
 
     new CfnOutput(this, stackOutputs.apiUrl, { value: api.apiEndpoint, description: "The URL of Duva's API" });
+    new CfnOutput(this, stackOutputs.webUrl, { value: webUrl, description: "The URL of Duva's web app" });
+    new CfnOutput(this, stackOutputs.webBucket, { value: web.bucketName, description: "The bucket the web app is served from" });
+    new CfnOutput(this, stackOutputs.signInUrl, { value: signIn.baseUrl(), description: "The URL of managed login" });
+    new CfnOutput(this, stackOutputs.webClientId, { value: webClient.userPoolClientId, description: "The web app's app client" });
+    new CfnOutput(this, stackOutputs.cliClientId, { value: cliClient.userPoolClientId, description: "The CLI's app client" });
+    new CfnOutput(this, stackOutputs.setupFunction, { value: setup.functionName, description: "The function that sets up the organization" });
     new CfnOutput(this, stackOutputs.receiptRuleSet, { value: receiving.receiptRuleSetName, description: "Duva's receipt rule set" });
     ([1, 2, 3] as const).forEach((n, index) => {
       const { name, value } = identity.dkimRecords[index]!;

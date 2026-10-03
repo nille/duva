@@ -5,6 +5,8 @@
   "type": "module",
   "exports": {
     "./lambda": "./src/lambda.ts",
+    "./authorizer-lambda": "./src/authorizer-lambda.ts",
+    "./setup-lambda": "./src/setup-lambda.ts",
     "./infrastructure": "./src/infrastructure.ts",
     "./harness": "./test/harness.ts"
   },
@@ -12,9 +14,12 @@
     "typecheck": "tsc -p ."
   },
   "dependencies": {
+    "@aws-sdk/client-cognito-identity-provider": "^3.1146.0",
     "@aws-sdk/client-dynamodb": "^3.1146.0",
     "@aws-sdk/client-s3": "^3.1146.0",
-    "@duva/openapi": "*"
+    "@aws-sdk/lib-dynamodb": "^3.1146.0",
+    "@duva/openapi": "*",
+    "aws-jwt-verify": "^5.2.1"
   },
   "devDependencies": {
     "@duva/client": "*",

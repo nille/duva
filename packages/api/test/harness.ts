@@ -1,6 +1,6 @@
-// The API test harness: the real handlers in-process, with DynamoDB Local (started by
-// dynamodb-local.ts) for DynamoDB and an in-memory stand-in for the mail bucket. Tests drive it
-// only through the generated client.
+// The API test harness: the real handlers and authorizer in-process, with DynamoDB Local (started
+// by dynamodb-local.ts) for DynamoDB, an in-memory stand-in for the mail bucket, and a test token
+// issuer in place of Cognito. Tests drive it only through the generated client.
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { randomUUID } from "node:crypto";
@@ -8,10 +8,15 @@ import { CreateTableCommand } from "@aws-sdk/client-dynamodb";
 import { createDuvaClient, type DuvaClient } from "@duva/client";
 import { inject } from "vitest";
 import { createApi } from "../src/api.ts";
+import { createAuthorizer } from "../src/authorizer.ts";
+import type { Humans } from "../src/humans.ts";
 import { tableKey } from "../src/infrastructure.ts";
 import type { MailBucket } from "../src/mail-bucket.ts";
+import { setUpOrganization } from "../src/organization.ts";
 import { dynamodbLocal } from "./dynamodb-local.ts";
 import { gateway } from "./gateway.ts";
+import { managedLogin, managedLoginClientId } from "./managed-login.ts";
+import { TestTokenIssuer } from "./token-issuer.ts";
 
 declare module "vitest" {
   export interface ProvidedContext {
@@ -22,21 +27,82 @@ declare module "vitest" {
 export interface DuvaOptions {
   version?: string;
   region?: string;
+  /** The organization's first domain. */
+  domain?: string;
+  /** The first admin's email address. */
+  admin?: string;
+  /** How many seconds the access tokens of human sessions last. */
+  accessTokenLifetime?: number;
 }
 
-/** A Duva deployment running in-process, with its own empty table and mail bucket. */
+/** A Duva deployment running in-process, set up as duva deploy sets one up, with its own table and mail bucket. */
 export interface Duva {
-  /** The generated client, talking to the API in-process. */
+  /** The generated client, talking to the API in-process, signed in as nobody. */
   client: DuvaClient;
-  /** Serves the API on localhost, for clients that need a URL, such as the CLI. */
-  listen(): Promise<{ url: string; close(): Promise<void> }>;
+  /** The generated client, signed in as the human at `email`. */
+  signIn(email: string): DuvaClient;
+  /** A fresh access token for the human at `email`, as Cognito issues one when they sign in. */
+  accessToken(email: string): string;
+  /** Ends every human's session, as when its refresh token expires. */
+  endSessions(): void;
+  /** Sets the organization up again, as a re-run of duva deploy does. */
+  setUp(options: { admin: string }): Promise<void>;
+  /**
+   * Serves the API on localhost, for clients that need a URL, such as the CLI, with a stand-in
+   * for managed login at the same URL.
+   */
+  listen(): Promise<{ url: string; signIn: { url: string; clientId: string }; close(): Promise<void> }>;
 }
 
-export async function startDuva({ version = "0.0.0-test", region = "eu-north-1" }: DuvaOptions = {}): Promise<Duva> {
-  const api = gateway(createApi({ version, region, table: await createTable(), mailBucket: memoryMailBucket() }));
+export async function startDuva({
+  version = "0.0.0-test",
+  region = "eu-north-1",
+  domain = "example.com",
+  admin = "ada@example.com",
+  accessTokenLifetime = 3600,
+}: DuvaOptions = {}): Promise<Duva> {
+  const table = await createTable();
+  const humans = memoryHumans();
+  const issuer = new TestTokenIssuer();
+  const setUp = async (options: { admin: string }) => {
+    await setUpOrganization({ table, humans }, { domain, ...options });
+  };
+  await setUp({ admin });
+
+  const api = gateway(
+    createApi({ version, region, table, mailBucket: memoryMailBucket() }),
+    createAuthorizer({ table, verifyAccessToken: issuer.verify }),
+  );
+  const login = managedLogin({ ids: humans.ids, issuer, accessTokenLifetime });
+  const client = (headers?: Record<string, string>) => createDuvaClient("http://duva.test", { fetch: api, headers });
+  const accessToken = (email: string) => {
+    const id = humans.ids.get(email);
+    if (id === undefined) throw new Error(`${email} isn't a human in the organization`);
+    return issuer.issue(id, accessTokenLifetime);
+  };
   return {
-    client: createDuvaClient("http://duva.test", { fetch: api }),
-    listen: () => listen(api),
+    client: client(),
+    signIn: (email) => client({ authorization: `Bearer ${accessToken(email)}` }),
+    accessToken,
+    endSessions: () => login.endSessions(),
+    setUp,
+    async listen() {
+      const server = await listen(async (request) => (await login.handle(request)) ?? api(request));
+      return { ...server, signIn: { url: server.url, clientId: managedLoginClientId } };
+    },
+  };
+}
+
+/** Humans who can sign in, by email address, with the IDs their sign-ins carry. */
+function memoryHumans(): Humans & { ids: Map<string, string> } {
+  const ids = new Map<string, string>();
+  return {
+    ids,
+    async add(email) {
+      const id = ids.get(email) ?? randomUUID();
+      ids.set(email, id);
+      return id;
+    },
   };
 }
 
