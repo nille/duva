@@ -241,10 +241,30 @@ test("the web app is served through CloudFront from its bucket, which only Cloud
   expect(distribution?.DistributionConfig?.ViewerCertificate).toBeUndefined();
 });
 
-test("every name CloudFront keeps holds the region, since CloudFront names are global to the account and each region can have a deployment", () => {
-  const controls = ofType("AWS::CloudFront::OriginAccessControl");
-  expect(controls).not.toHaveLength(0);
-  for (const [id, { Properties }] of controls) {
-    expect({ id, name: JSON.stringify(Properties?.OriginAccessControlConfig?.Name) }).toEqual({ id, name: expect.stringContaining('{"Ref":"AWS::Region"}') });
-  }
+/**
+ * Where resource types whose names are global to the account, or to all of AWS, keep the name.
+ * CloudFormation makes up a unique name when none is set, but a name the stack sets must hold the
+ * region, since each region of an account can have a deployment. Add a type once you know its
+ * names are global.
+ */
+const globalNames: Record<string, (properties: Record<string, any>) => unknown> = {
+  "AWS::CloudFront::CachePolicy": (p) => p.CachePolicyConfig?.Name,
+  "AWS::CloudFront::Function": (p) => p.Name,
+  "AWS::CloudFront::OriginAccessControl": (p) => p.OriginAccessControlConfig?.Name,
+  "AWS::CloudFront::OriginRequestPolicy": (p) => p.OriginRequestPolicyConfig?.Name,
+  "AWS::CloudFront::ResponseHeadersPolicy": (p) => p.ResponseHeadersPolicyConfig?.Name,
+  "AWS::IAM::InstanceProfile": (p) => p.InstanceProfileName,
+  "AWS::IAM::ManagedPolicy": (p) => p.ManagedPolicyName,
+  "AWS::IAM::Role": (p) => p.RoleName,
+  "AWS::S3::Bucket": (p) => p.BucketName,
+};
+
+test("every name the stack sets in a namespace wider than its region holds the region", () => {
+  const named = resources.flatMap(([id, { Type, Properties }]) => {
+    const name = globalNames[Type]?.(Properties ?? {});
+    return name === undefined ? [] : [{ id, name: JSON.stringify(name) }];
+  });
+  // The web app's origin access control always has a name, so the rule never checks nothing.
+  expect(named.map(({ id }) => id)).toContainEqual(expect.stringMatching(/^WebAccess/));
+  for (const { id, name } of named) expect({ id, name }).toEqual({ id, name: expect.stringContaining('{"Ref":"AWS::Region"}') });
 });

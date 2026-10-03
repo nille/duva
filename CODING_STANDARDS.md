@@ -8,6 +8,7 @@ What a review of a change in Duva checks. `npm run check` already enforces the m
 - `docs/adr/`: the decisions. A change that contradicts an ADR says so and why. It never overrides one silently.
 - `PRODUCT.md`: the copy rules for anything a human or an agent reads, CLI output and error messages included. Plain, direct and short. Prefer a period or a comma over a dash, never a spaced hyphen as a dash, and no "not X but Y" restatement.
 - `.agents/skills/tdd/`: what a good test is, and the anti-patterns.
+- `docs/aws.md`: the AWS behavior Duva's design rests on. A change that undoes a choice made because of one of those facts says why the fact no longer holds.
 
 ## Tests
 
