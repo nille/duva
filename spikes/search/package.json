@@ -12,6 +12,7 @@
     "harness": "node harness/harness.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-bedrock-runtime": "3.1146.0",
     "@lancedb/lancedb": "0.39.0",
     "apache-arrow": "18.1.0"
   },

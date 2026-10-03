@@ -1,7 +1,8 @@
 // A fixture mailbox of hand-written messages. Each group exists for a
 // behavior the suite checks: kayak for ranking and labels, the budget review
 // for phrases against the same words out of order, "out of office" for
-// phrases made of stop words, and invoices for the other filters.
+// phrases made of stop words, invoices for the other filters, and two Swedish
+// messages for Swedish words next to English ones.
 import type { Message } from "../src/search.ts";
 
 const me = "nicklas@ekenstam.example";
@@ -266,5 +267,22 @@ export const fixture: Message[] = [
     date: "2026-09-28T19:00:00Z",
     labels: ["Inbox"],
     text: "We read The Long Ships next. Meet at the library on the last Sunday of October.",
+  }),
+  message({
+    id: "faktura-sv",
+    sender: "ekonomi@bostad.example",
+    subject: "Faktura för oktober",
+    date: "2026-09-26T08:00:00Z",
+    labels: ["Inbox"],
+    hasAttachment: true,
+    text: "Hej! Här kommer fakturan för hyran i oktober. Betala senast den sista oktober, så slipper du påminnelseavgiften.",
+  }),
+  message({
+    id: "mote-sv",
+    sender: "lena@foreningen.example",
+    subject: "Mötet flyttas till torsdag",
+    date: "2026-09-27T18:00:00Z",
+    labels: ["Inbox"],
+    text: "Vi flyttar mötet med styrelsen till torsdag klockan sju. Ta med protokollet från förra mötet.",
   }),
 ];

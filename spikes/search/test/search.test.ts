@@ -144,6 +144,56 @@ describe.each(locations)("Search on %s", (_, engine) => {
     expect(ids(hits).sort()).toEqual(["kayak-club", "kayak-rental", "kayak-return"]);
   });
 
+  test("Swedish words and English words each find their other forms", async () => {
+    expect(ids(await mailbox.search({ words: "fakturor", limit: 10 }))).toEqual(["faktura-sv"]);
+    expect(ids(await mailbox.search({ words: "möten", limit: 10 }))).toEqual(["mote-sv"]);
+    expect(ids(await mailbox.search({ phrase: "förra mötet", limit: 10 }))).toEqual(["mote-sv"]);
+
+    const invoices = await mailbox.search({ words: "invoices", limit: 10 });
+    expect(ids(invoices).sort()).toEqual(["invoice-april", "invoice-march", "invoice-may", "invoice-question"]);
+  });
+
+  test("a search by meaning finds a message that shares none of its words", async () => {
+    const hits = await mailbox.search({ meaning: "when should I see someone about my teeth", limit: 5 });
+    expect(ids(hits)[0]).toBe("dentist");
+    expect(hits[0]!.score).toBeGreaterThan(hits[1]!.score);
+  });
+
+  test("filters narrow a search by meaning before the limit takes the best", async () => {
+    const hits = await mailbox.search({ meaning: "paddling on the sea", filters: { labels: { include: ["Trash"] } }, limit: 1 });
+    expect(ids(hits)).toEqual(["kayak-trash"]);
+  });
+
+  test("a hybrid search finds messages by their words or by their meaning", async () => {
+    const hits = await mailbox.search({ words: "invoice", meaning: "electricity bill", limit: 10 });
+    expect(ids(hits)).toContain("invoice-may");
+    expect(ids(hits)).toContain("electricity");
+  });
+
+  test("filters narrow a hybrid search before the limit takes the best", async () => {
+    const hits = await mailbox.search({
+      words: "kayak",
+      meaning: "renting a boat for the weekend",
+      filters: { labels: { include: ["Trash"] } },
+      limit: 1,
+    });
+    expect(ids(hits)).toEqual(["kayak-trash"]);
+  });
+
+  test("a hybrid search ranks first the message both its words and its meaning rank high", async () => {
+    const words = await mailbox.search({ words: "kayak", filters: notSpamOrTrash, limit: 10 });
+    expect(ids(words)).toEqual(["kayak-rental", "kayak-club"]);
+
+    const hybrid = await mailbox.search({
+      words: "kayak",
+      meaning: "a club newsletter about courses and new members",
+      filters: notSpamOrTrash,
+      limit: 10,
+    });
+    expect(ids(hybrid)[0]).toBe("kayak-club");
+    expect(ids(hybrid)).not.toContain("kayak-spam");
+  });
+
   test("a search finds only its own mailbox's messages", async () => {
     const other = await engine().mailbox(`mailbox-${randomUUID()}`);
     await other.add([{ ...fixture[1]!, id: "elsewhere" }]);

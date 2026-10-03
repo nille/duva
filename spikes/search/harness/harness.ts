@@ -6,6 +6,7 @@
 //   node harness/harness.ts test-s3   run the behavior suite on a table on S3
 //   node harness/harness.ts seed      write the fixture mailbox to the functions' table location
 //   node harness/harness.ts measure   cold and warm invocations of each function, into results/
+//   node harness/harness.ts mailbox   rebuild the 100k-message benchmark mailbox from scratch, into results/
 //   node harness/harness.ts down      empty the bucket and delete the stack
 //
 // Run it with AWS_PROFILE set to the spike's account.
@@ -36,9 +37,12 @@ import {
 import { DeleteObjectsCommand, ListObjectsV2Command, S3Client } from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
 import * as lancedb from "@lancedb/lancedb";
-import { lanceSearch } from "../src/lancedb-search.ts";
+import { lanceSearch, messageLanguage } from "../src/lancedb-search.ts";
 import type { SearchHit, SearchQuery } from "../src/search.ts";
+import { titanEmbedder, titanModelId } from "../src/titan.ts";
 import { fixture } from "../test/fixture.ts";
+import { download } from "./enron.ts";
+import { benchmarkMailbox, labelShares, mailboxSize } from "./mailbox.ts";
 import { packageAll, type Package } from "./package.ts";
 
 const region = "eu-north-1";
@@ -117,11 +121,160 @@ async function measure() {
       invocations,
     });
   }
-  const lancedbVersion = JSON.parse(readFileSync(join(root, "node_modules/@lancedb/lancedb/package.json"), "utf8")).version;
-  const report = { measuredAt: new Date().toISOString(), region, lancedbVersion, query: keywordQuery, results };
+  const report = { measuredAt: new Date().toISOString(), region, lancedbVersion: lancedbVersion(), query: keywordQuery, results };
   mkdirSync(join(root, "results"), { recursive: true });
   writeFileSync(join(root, "results/15-packaging.json"), JSON.stringify(report, null, 2) + "\n");
   return report;
+}
+
+// The benchmark mailbox's table, next to the fixture's.
+const benchmark = "benchmark";
+const corpusFile = join(root, ".data/enron_mail_20150507.tar.gz");
+// On-demand input tokens in eu-north-1, from the AWS Price List on 2026-10-03.
+const titanUsdPer1kTokens = 0.000021;
+
+// Downloads the corpus if it isn't in .data/ yet, drops the benchmark table,
+// and loads every message through the search module, which embeds them and
+// builds the indexes.
+async function rebuildMailbox() {
+  const bucket = await bucketName();
+  const uri = `s3://${bucket}/tables`;
+  Object.assign(process.env, await credentialsEnv());
+  const storageOptions = { region };
+
+  const readStarted = performance.now();
+  await download(corpusFile);
+  const messages = await benchmarkMailbox(corpusFile);
+  const readMs = performance.now() - readStarted;
+
+  const db = await lancedb.connect(uri, { storageOptions });
+  if ((await db.tableNames()).includes(benchmark)) await db.dropTable(benchmark);
+  const titan = titanEmbedder();
+  let embedMs = 0;
+  const embedder = {
+    dimensions: titan.dimensions,
+    async embed(texts: string[]) {
+      const started = performance.now();
+      try {
+        return await titan.embed(texts);
+      } finally {
+        embedMs += performance.now() - started;
+      }
+    },
+  };
+  const loadStarted = performance.now();
+  const mailbox = await lanceSearch({ uri, storageOptions, embedder }).mailbox(benchmark);
+  await mailbox.add(messages);
+  const loadMs = performance.now() - loadStarted;
+  const loadUsage = { ...titan.usage };
+
+  const table = await db.openTable(benchmark);
+  const indexes = [];
+  for (const index of await table.listIndices()) {
+    indexes.push({ ...index, ...(await table.indexStats(index.name)) });
+  }
+  const versions = await table.listVersions();
+  const report = {
+    measuredAt: new Date().toISOString(),
+    region,
+    lancedbVersion: lancedbVersion(),
+    loadedFrom: "this machine, over the internet to S3 in eu-north-1",
+    messages: {
+      total: messages.length,
+      ...mailboxSize,
+      threads: new Set(messages.map((m) => m.thread)).size,
+      writtenInSwedish: messages.filter((m) => messageLanguage(m) === "Swedish").length,
+      withAttachment: messages.filter((m) => m.hasAttachment).length,
+      labelShares,
+      labels: labelCounts(messages.map((m) => m.labels)),
+      from: messages[0]!.date,
+      to: messages.at(-1)!.date,
+    },
+    load: {
+      readCorpusMs: readMs,
+      // Embedding, writing and indexing, which the search module does in add().
+      addMs: loadMs,
+      embedMs,
+      // The harness's peak memory, holding the mailbox while LanceDB builds
+      // the indexes in the same process.
+      peakMemoryMb: process.resourceUsage().maxRSS / 1024,
+      // Each write and each index build is a version, so their timestamps
+      // show when each finished.
+      versions: versions.map((v) => ({ version: v.version, at: new Date(v.timestamp).toISOString() })),
+    },
+    embedding: {
+      model: titanModelId,
+      dimensions: titan.dimensions,
+      ...loadUsage,
+      usdPer1kTokens: titanUsdPer1kTokens,
+      usd: (loadUsage.inputTokens / 1000) * titanUsdPer1kTokens,
+    },
+    table: { stats: await table.stats(), onS3: await sizeOnS3(bucket, `tables/${benchmark}.lance/`), indexes },
+    indexAgainstFlat: await indexAgainstFlat(uri, storageOptions),
+  };
+  mkdirSync(join(root, "results"), { recursive: true });
+  writeFileSync(join(root, "results/16-mailbox.json"), JSON.stringify(report, null, 2) + "\n");
+  return report;
+}
+
+// A first look at what the vector index gives up: each query's top ten by the
+// index and by comparing every vector. The next ticket measures it properly.
+// Its query embeddings are left out of the load's embedding cost.
+async function indexAgainstFlat(uri: string, storageOptions: Record<string, string>) {
+  const queries: SearchQuery[] = [
+    { meaning: "pipeline capacity for natural gas into California", limit: 10 },
+    { meaning: "who is in the fantasy football league this season", limit: 10 },
+    { meaning: "what happens to employees' retirement savings after the bankruptcy", limit: 10 },
+    { meaning: "styrelsen vill gå igenom budgeten", limit: 10 },
+    { meaning: "a reminder to sign the contract", filters: { labels: { include: ["Inbox"] } }, limit: 10 },
+    { meaning: "travel plans for the conference", filters: { hasAttachment: true, labels: { exclude: ["Spam", "Trash"] } }, limit: 10 },
+  ];
+  const indexed = await lanceSearch({ uri, storageOptions }).mailbox(benchmark);
+  const flat = await lanceSearch({ uri, storageOptions, flatVectorSearch: true }).mailbox(benchmark);
+  const results = [];
+  for (const query of queries) {
+    const fromIndex = await indexed.search(query);
+    const fromFlat = await flat.search(query);
+    const exact = new Set(fromFlat.map((h) => h.messageId));
+    results.push({
+      query,
+      recallAt10: fromIndex.filter((h) => exact.has(h.messageId)).length / Math.max(exact.size, 1),
+      index: fromIndex.map((h) => h.messageId),
+      flat: fromFlat.map((h) => h.messageId),
+    });
+  }
+  return results;
+}
+
+// Archived is what is left: neither in the Inbox, nor Spam or Trash.
+function labelCounts(labels: string[][]): Record<string, number> {
+  const counts: Record<string, number> = {};
+  const builtIn = ["Inbox", "Spam", "Trash"];
+  for (const l of labels) {
+    for (const label of builtIn.some((b) => l.includes(b)) ? l : [...l, "archived"]) counts[label] = (counts[label] ?? 0) + 1;
+  }
+  return counts;
+}
+
+async function sizeOnS3(bucket: string, prefix: string) {
+  const bytes: Record<string, number> = {};
+  let objects = 0;
+  let token: string | undefined;
+  do {
+    const page = await s3.send(new ListObjectsV2Command({ Bucket: bucket, Prefix: prefix, ContinuationToken: token }));
+    for (const object of page.Contents ?? []) {
+      const part = object.Key!.slice(prefix.length).split("/")[0]!;
+      const kind = part.includes(".") ? "other" : part;
+      bytes[kind] = (bytes[kind] ?? 0) + object.Size!;
+      objects++;
+    }
+    token = page.NextContinuationToken;
+  } while (token);
+  return { objects, totalBytes: Object.values(bytes).reduce((a, b) => a + b, 0), bytes };
+}
+
+function lancedbVersion(): string {
+  return JSON.parse(readFileSync(join(root, "node_modules/@lancedb/lancedb/package.json"), "utf8")).version;
 }
 
 async function down() {
@@ -272,6 +425,7 @@ const commands: Record<string, () => Promise<unknown>> = {
   "test-s3": testOnS3,
   seed,
   measure,
+  mailbox: rebuildMailbox,
   down,
 };
 

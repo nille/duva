@@ -38,6 +38,9 @@ export async function packageAll(): Promise<Package[]> {
     format: "esm",
     target: "node24",
     external: ["@lancedb/lancedb", "apache-arrow"],
+    // The AWS SDK's CommonJS modules require Node's built-ins, which an ES
+    // module can only do through a require of its own.
+    banner: { js: "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);" },
   });
   return platforms.map(({ name, cpu }) => {
     const dir = join(dist, name);
