@@ -1,0 +1,1814 @@
+{
+  "writtenAt": "2026-10-03T21:51:51.519Z",
+  "writer": "eu.amazon.nova-2-lite-v1:0",
+  "prompt": "Here is an email from someone's mailbox. Write one question that this email answers, the way the mailbox's owner would ask it when searching for this email months later.\n\n- Write the question in the email's language.\n- Use your own words. Don't copy any phrase from the email, and use other words for its key terms wherever you can.\n- Refer to people and companies by their role, not their name.\n- Make it specific enough that this email answers it and most other emails in a busy mailbox don't.\n\nReply with the question alone, without a label or an explanation. If the email has nothing a question could ask about, like a bare list of names or a forward without text, reply SKIP.\n\nThe email:\n\n",
+  "minimumTextLength": 300,
+  "usage": {
+    "requests": 302,
+    "inputTokens": 143755,
+    "outputTokens": 6870,
+    "usd": 0.072738105
+  },
+  "questions": [
+    {
+      "messageId": "enron-1f6d83be03ef148b71ca",
+      "language": "English",
+      "question": "How can an employee stop their recurring payments for the wellness center during the shift to a new financial institution?",
+      "wordOverlap": 0.09090909090909091
+    },
+    {
+      "messageId": "enron-2096416a6a88c3ef5968",
+      "language": "English",
+      "question": "Who will take over handling the updated agreement paper from the bank after I depart?",
+      "wordOverlap": 0.36363636363636365
+    },
+    {
+      "messageId": "enron-080f50eea51ade9270f4",
+      "language": "English",
+      "question": "Do you have the required financial contract ready for Gary at this time?",
+      "wordOverlap": 0.25
+    },
+    {
+      "messageId": "enron-1e11ae1d40c2e775d017",
+      "language": "English",
+      "question": "When will I receive the updated paperwork for the coal sector from the team handling business matters?",
+      "wordOverlap": 0.4166666666666667
+    },
+    {
+      "messageId": "enron-37257b25a9c64c7f9f84",
+      "language": "English",
+      "question": "Will we stick to the usual reward system for the coming financial periods?",
+      "wordOverlap": 0.125
+    },
+    {
+      "messageId": "enron-535d26c0cdb925151df1",
+      "language": "English",
+      "question": "Do you have an opening for someone from Mirant who deals with immediate transactions and wishes to shift to forecasting and long-term commerce?",
+      "wordOverlap": 0.13333333333333333
+    },
+    {
+      "messageId": "enron-10b3ab1def229b0155f8",
+      "language": "English",
+      "question": "Where can I find the trial version of the updated client portal and where should I send my thoughts on it?",
+      "wordOverlap": 0.1
+    },
+    {
+      "messageId": "enron-466d59f2f44c5cea88a4",
+      "language": "English",
+      "question": "Who will deliver the presentation in place of the originally scheduled individual on January 19?",
+      "wordOverlap": 0.625
+    },
+    {
+      "messageId": "enron-59f041be7539ddc3e4c0",
+      "language": "English",
+      "question": "Will I automatically receive digital versions of my salary details starting next month if my funds are directly transferred to my bank account?",
+      "wordOverlap": 0.3333333333333333
+    },
+    {
+      "messageId": "enron-291ad1fbe8f8597129fe",
+      "language": "English",
+      "question": "What type of bread should I buy for Henry's peanut butter sandwiches and do I need to get a specific kind?",
+      "wordOverlap": 0.5454545454545454
+    },
+    {
+      "messageId": "enron-5bf5faa209059695246a",
+      "language": "English",
+      "question": "Did the contact confirm when they would look for their insurance document regarding land rights?",
+      "wordOverlap": 0.16666666666666666
+    },
+    {
+      "messageId": "enron-0252ee8e6402bd947cc0",
+      "language": "English",
+      "question": "What did my financial advisor suggest about purchasing shares of ENE when they were valued at 12.5?",
+      "wordOverlap": 0.2727272727272727
+    },
+    {
+      "messageId": "enron-3f1de8a4d56e232c1679",
+      "language": "English",
+      "question": "What time should I expect the individual from the external legal team's local office to assist with finalizing agreements through the digital connection?",
+      "wordOverlap": 0.16666666666666666
+    },
+    {
+      "messageId": "enron-1421040c807558fb30e8",
+      "language": "English",
+      "question": "How can I adjust the customer input document to swap out one individual's identity with another and specify a particular timeframe for printing multiple copies?",
+      "wordOverlap": 0.06666666666666667
+    },
+    {
+      "messageId": "enron-3ffcff40e30197ec8563",
+      "language": "English",
+      "question": "Have we received a confirmed commitment from the prospective employee regarding their employment start?",
+      "wordOverlap": 0.2727272727272727
+    },
+    {
+      "messageId": "enron-22ab5e54651b4fcb8f77",
+      "language": "English",
+      "question": "What time did the group agree to meet for drinks after finishing work?",
+      "wordOverlap": 0.5555555555555556
+    },
+    {
+      "messageId": "enron-15e32a563dcbd86955e1",
+      "language": "English",
+      "question": "What data does the person from Portland need to retrieve from the shared folder for their trading team?",
+      "wordOverlap": 0.3076923076923077
+    },
+    {
+      "messageId": "enron-30c5521cca85954c5e4d",
+      "language": "English",
+      "question": "Will I be able to join the discussion about financial recovery scheduled for Monday at five-thirty in the evening?",
+      "wordOverlap": 0.08333333333333333
+    },
+    {
+      "messageId": "enron-2818664db25562b10d8a",
+      "language": "English",
+      "question": "What updates were made to the document that the legal advisor shared upon request from the Enron contact?",
+      "wordOverlap": 0.14285714285714285
+    },
+    {
+      "messageId": "enron-2b4c993bad3c318a823f",
+      "language": "English",
+      "question": "What is the desired pricing structure for additional charges related to both energy and support services in the updated contract proposal?",
+      "wordOverlap": 0.35714285714285715
+    },
+    {
+      "messageId": "enron-40bb7d8a69fd92c0b82c",
+      "language": "English",
+      "question": "What dates were set for the gatherings to talk about the effects of online trading on transaction handling and decide on a plan?",
+      "wordOverlap": 0.15384615384615385
+    },
+    {
+      "messageId": "enron-591447686b50d53cc0e9",
+      "language": "English",
+      "question": "What are the two email addresses I should use to reach the chief executive of the consulting firm?",
+      "wordOverlap": 0.1111111111111111
+    },
+    {
+      "messageId": "enron-5f159c15b0762fba962f",
+      "language": "English",
+      "question": "What was described by a writer in an forwarded message about their terrifying experience during a disaster in New York City?",
+      "wordOverlap": 0.3076923076923077
+    },
+    {
+      "messageId": "enron-4caeb16f90099a4ff9f2",
+      "language": "English",
+      "question": "Can the team adjust the system to meet all our needs despite compatibility constraints with the control center?",
+      "wordOverlap": 0.18181818181818182
+    },
+    {
+      "messageId": "enron-4af0393482fec7738294",
+      "language": "English",
+      "question": "Did the recipient’s organization use expert facilitators or guidance from experienced colleagues for skill development programs?",
+      "wordOverlap": 0.09090909090909091
+    },
+    {
+      "messageId": "enron-04adcb0175af2f373f77",
+      "language": "English",
+      "question": "Will the restructuring impact my division of work?",
+      "wordOverlap": 0.2
+    },
+    {
+      "messageId": "enron-468770152fd0ed98dc0f",
+      "language": "English",
+      "question": "Did credit approve us to sell the options for the Trifinery Petroleum trades numbered Q27888 and Q27916?",
+      "wordOverlap": 0.5
+    },
+    {
+      "messageId": "enron-114eaffe58b24002b864",
+      "language": "English",
+      "question": "Where can I find the ultimate version of the company's regional division standing summary released on November sixteenth of last year?",
+      "wordOverlap": 0
+    },
+    {
+      "messageId": "enron-1071a153826c7f5db65a",
+      "language": "English",
+      "question": "What's the best time and date for the draft if someone can't make it on Labor Day weekend?",
+      "wordOverlap": 0.6666666666666666
+    },
+    {
+      "messageId": "enron-158a96b350930c192501",
+      "language": "English",
+      "question": "When is the get-together about the two insurance plans and who will join in?",
+      "wordOverlap": 0
+    },
+    {
+      "messageId": "enron-5721500a225a5ebcc421",
+      "language": "English",
+      "question": "Am I required to express interest and propose any modifications to the guidelines before the initial selection event occurs next summer?",
+      "wordOverlap": 0
+    },
+    {
+      "messageId": "enron-33f6e73b85b189c35252",
+      "language": "English",
+      "question": "Did the publishing head confirm they would reach out to the person in charge of the project about including additional Enron papers?",
+      "wordOverlap": 0.42857142857142855
+    },
+    {
+      "messageId": "enron-550630d673ca58df2819",
+      "language": "English",
+      "question": "How much money has been collected so far from investments in coal, and what are the expected future earnings from these ventures?",
+      "wordOverlap": 0.38461538461538464
+    },
+    {
+      "messageId": "enron-3bb432a72be488e3ab97",
+      "language": "English",
+      "question": "What type of burger is referred to as \"boca\" in the conversation about Henry's order?",
+      "wordOverlap": 0.4444444444444444
+    },
+    {
+      "messageId": "enron-0cd405d7c6c88724d031",
+      "language": "English",
+      "question": "What were the replies to the inquiries I submitted?",
+      "wordOverlap": 0
+    },
+    {
+      "messageId": "enron-4c9c835ccd27082fb0d9",
+      "language": "English",
+      "question": "Did the legal representative send documentation to my company for the energy supply deal set for April 2000?",
+      "wordOverlap": 0.3
+    },
+    {
+      "messageId": "enron-36041827e24a85d9b5f4",
+      "language": "English",
+      "question": "How can I determine the current capacity of my digital message storage and what steps should I follow to increase available space?",
+      "wordOverlap": 0.23076923076923078
+    },
+    {
+      "messageId": "enron-17b6c85edcd08cf7cdbd",
+      "language": "English",
+      "question": "What were the discounted round-trip prices for flights from Newark to Orlando this week?",
+      "wordOverlap": 0.5833333333333334
+    },
+    {
+      "messageId": "enron-48fc7f893edad398ca3a",
+      "language": "English",
+      "question": "What resources were available for beginners to learn about investing that week?",
+      "wordOverlap": 0.3
+    },
+    {
+      "messageId": "enron-60f22c6a93cbefac34e8",
+      "language": "English",
+      "question": "How has the situation in the European paper fiber industry evolved during the summer break period, specifically regarding stock levels and buyer confidence?",
+      "wordOverlap": 0.3125
+    },
+    {
+      "messageId": "enron-30893ca2435da090a83b",
+      "language": "English",
+      "question": "When is the next orientation session for those who missed the previous one?",
+      "wordOverlap": 0.42857142857142855
+    },
+    {
+      "messageId": "enron-404f862040a8c4fbb6e3",
+      "language": "English",
+      "question": "What considerations did we propose for the motion regarding entities not joining a major grid operator?",
+      "wordOverlap": 0.1
+    },
+    {
+      "messageId": "enron-25d30140321d670493ed",
+      "language": "English",
+      "question": "When can the group meet with the team leads on Thursday to review our project display?",
+      "wordOverlap": 0.3
+    },
+    {
+      "messageId": "enron-28c2260672a272cde0b9",
+      "language": "English",
+      "question": "Has authorization been granted to establish the new commodity classification, and who needs to confirm it by a specific daytime?",
+      "wordOverlap": 0
+    },
+    {
+      "messageId": "enron-0377950267956fcb0408",
+      "language": "English",
+      "question": "When is the main decision-making group gathering being moved to, and who should I get in touch with if I need more info?",
+      "wordOverlap": 0
+    },
+    {
+      "messageId": "enron-1ae2830164c98845da17",
+      "language": "English",
+      "question": "When is it best to set up the relocation for the staff member moving from the higher level to the vacant spot?",
+      "wordOverlap": 0.2727272727272727
+    },
+    {
+      "messageId": "enron-38b4bbeeefd0efce2c40",
+      "language": "English",
+      "question": "What updates did I receive regarding my graduate program enrollment status and the assessments I need to complete?",
+      "wordOverlap": 0
+    },
+    {
+      "messageId": "enron-5f01ede47d490514f45f",
+      "language": "English",
+      "question": "What updates should be applied to the upcoming schedule predictions for the three customers with timed measurements in PECO?",
+      "wordOverlap": 0.23076923076923078
+    },
+    {
+      "messageId": "enron-549aa9ea5bb36a814f3e",
+      "language": "English",
+      "question": "What was the scheduled time and the group of essential attendees for the conference call concerning the opposition by a regional environmental agency to transferring asset rights for a development project?",
+      "wordOverlap": 0.2222222222222222
+    },
+    {
+      "messageId": "enron-451571d52f688d9ec4aa",
+      "language": "English",
+      "question": "How can we decide between the two potential building sites based on budget constraints?",
+      "wordOverlap": 0.25
+    },
+    {
+      "messageId": "enron-3a93b6208dd8dffc20b4",
+      "language": "English",
+      "question": "What are the ongoing concerns about the speed of handling financial approvals and the discussions involving a specific analyst and a senior colleague?",
+      "wordOverlap": 0.14285714285714285
+    },
+    {
+      "messageId": "enron-5394301b4088f5f847b5",
+      "language": "English",
+      "question": "What was the subject of the message forwarded by the colleague on March 26, 2002?",
+      "wordOverlap": 0.5714285714285714
+    },
+    {
+      "messageId": "enron-17e44f21b685473ef923",
+      "language": "English",
+      "question": "What discussions and expert guests are planned for the upcoming video newscast regarding energy legislation and company outcomes?",
+      "wordOverlap": 0.5384615384615384
+    },
+    {
+      "messageId": "enron-0628238964aa01d857d7",
+      "language": "English",
+      "question": "What regulatory submissions were made in mid-June 2000 regarding changes to operational structures and cost allocations for various utility companies?",
+      "wordOverlap": 0.25
+    },
+    {
+      "messageId": "enron-01f03f13746c3aa0654e",
+      "language": "English",
+      "question": "Can the legal representative receive a preliminary contract document for financial transactions following the credit evaluation completion?",
+      "wordOverlap": 0.25
+    },
+    {
+      "messageId": "enron-60fe5d77896bd033ba6b",
+      "language": "English",
+      "question": "How can I stop receiving updates from the commodity trading platform?",
+      "wordOverlap": 0.14285714285714285
+    },
+    {
+      "messageId": "enron-0a92b1efe595c65694ba",
+      "language": "English",
+      "question": "Did the contact from the industrial equipment firm indicate why we haven’t received a reply to the proposal we sent last November?",
+      "wordOverlap": 0.07692307692307693
+    },
+    {
+      "messageId": "enron-20468f07863489ecc207",
+      "language": "English",
+      "question": "What was the source and nature of the $6 million agreement involving the restructuring of the Independence facility?",
+      "wordOverlap": 0.2222222222222222
+    },
+    {
+      "messageId": "enron-33c3a832b829e56812e3",
+      "language": "English",
+      "question": "What advice was given about how to handle being called a fan of that publication?",
+      "wordOverlap": 0.2222222222222222
+    },
+    {
+      "messageId": "enron-189825b2cd011e7853aa",
+      "language": "English",
+      "question": "How should we organize the staff for the Doorstep project regarding the involvement of Rick Carson’s team and the goals of training them in trading?",
+      "wordOverlap": 0.7142857142857143
+    },
+    {
+      "messageId": "enron-09e8f0b18cf5d834ef96",
+      "language": "English",
+      "question": "Will you be able to depart slightly ahead of schedule due to my requirement to be at a spot in our area by six-thirty?",
+      "wordOverlap": 0.1
+    },
+    {
+      "messageId": "enron-32c674f70720a37868a6",
+      "language": "English",
+      "question": "When is the colleague planning to relocate to the northern city and confirm the written proposal?",
+      "wordOverlap": 0
+    },
+    {
+      "messageId": "enron-341af9ae82933b64215a",
+      "language": "English",
+      "question": "What is the proper way to respond if someone from a firm we are examining asks if we are assessing their organization?",
+      "wordOverlap": 0.09090909090909091
+    },
+    {
+      "messageId": "enron-512e3e477e445a051210",
+      "language": "English",
+      "question": "What discount codes can I use for footwear purchases before the end of November this year?",
+      "wordOverlap": 0.3333333333333333
+    },
+    {
+      "messageId": "enron-168222098499430f3a19",
+      "language": "English",
+      "question": "Did the team conduct a trial run and include a disclaimer regarding sensitive content in the follow-up note?",
+      "wordOverlap": 0
+    },
+    {
+      "messageId": "enron-4ed611c67411c5d4ffe5",
+      "language": "English",
+      "question": "What were the expected average gasoline margins compared to WTI for the first quarter of the following year according to the December 15, 2000 CERA Alert?",
+      "wordOverlap": 0.625
+    },
+    {
+      "messageId": "enron-020aeff125392651ea52",
+      "language": "English",
+      "question": "Where can I find the outlines of the suggested format for our division's publication that were supposed to be brought to the afternoon gathering yesterday?",
+      "wordOverlap": 0.07142857142857142
+    },
+    {
+      "messageId": "enron-53324b97a609c068ee13",
+      "language": "English",
+      "question": "What are the pickup and drop-off details and location for my car rental booked through a travel booking service?",
+      "wordOverlap": 0.5454545454545454
+    },
+    {
+      "messageId": "enron-16045e59ad5ea6f81f49",
+      "language": "English",
+      "question": "What were the total physical index contract amounts and daily mmbtu values for each location in December of 2001?",
+      "wordOverlap": 0.42857142857142855
+    },
+    {
+      "messageId": "enron-5c9f680b97765f80443b",
+      "language": "English",
+      "question": "What were the exact date, time, and strength of the slight seismic activity near the southern area of Tres Pinos last July?",
+      "wordOverlap": 0.25
+    },
+    {
+      "messageId": "enron-0e65586f8d0e61431389",
+      "language": "English",
+      "question": "Did someone from the team ask the IT security team leader to help get old messages back for a project review?",
+      "wordOverlap": 0.4
+    },
+    {
+      "messageId": "enron-21f67334f8447f4ffb84",
+      "language": "English",
+      "question": "Will the hiring manager keep my application materials for potential future openings?",
+      "wordOverlap": 0
+    },
+    {
+      "messageId": "enron-112daf029a212c672e73",
+      "language": "English",
+      "question": "By when do you expect complete settlement for the sum we discussed regarding the property?",
+      "wordOverlap": 0
+    },
+    {
+      "messageId": "enron-031eef2d5aa8fd60d828",
+      "language": "English",
+      "question": "Why did my colleague feel it was unjust that I claimed to support them?",
+      "wordOverlap": 0.14285714285714285
+    },
+    {
+      "messageId": "enron-57f089fb4584d4d9d4ee",
+      "language": "English",
+      "question": "What number should I use to send the document through the machine that transmits on paper?",
+      "wordOverlap": 0.3
+    },
+    {
+      "messageId": "enron-1641d00ae91068b06143",
+      "language": "English",
+      "question": "Who handled the disputed transaction on behalf of the Texas General Land Office?",
+      "wordOverlap": 0.5
+    },
+    {
+      "messageId": "enron-50054d6e3c14bdbfced3",
+      "language": "English",
+      "question": "What changes were implemented on December 20th regarding the integration of BME prices into real-time pricing due to ECA-B, and where can the official announcement be found?",
+      "wordOverlap": 0.5294117647058824
+    },
+    {
+      "messageId": "enron-47ae2c7e586d50da7846",
+      "language": "English",
+      "question": "Should I share the decline with the instructor we both respect, and who else could represent us instead?",
+      "wordOverlap": 0.36363636363636365
+    },
+    {
+      "messageId": "enron-14ba4424596427cbfe3f",
+      "language": "English",
+      "question": "What are the key statistics regarding the fuel records that the accounting firm provided?",
+      "wordOverlap": 0
+    },
+    {
+      "messageId": "enron-057c40e893a2a41d7f41",
+      "language": "English",
+      "question": "Is there a meeting scheduled for me to discuss the financial details of the utility company's cooling system expansion with the bank and energy corporation representatives?",
+      "wordOverlap": 0.3125
+    },
+    {
+      "messageId": "enron-44592099b8907e1f9802",
+      "language": "English",
+      "question": "What was the plan for the upcoming discussion regarding the fourth facility's installation status and related tasks?",
+      "wordOverlap": 0.09090909090909091
+    },
+    {
+      "messageId": "enron-0a23a4459ca9c7492927",
+      "language": "English",
+      "question": "When is the upcoming discussion planned to address outstanding matters in the draft Retail Gas Quadrant guidelines?",
+      "wordOverlap": 0.36363636363636365
+    },
+    {
+      "messageId": "enron-15bd32c15ba3dbd6194d",
+      "language": "English",
+      "question": "Why was there a discrepancy between the scheduled amount and the actual quantity taken out for the client in January of the prior year, and how can we resolve it?",
+      "wordOverlap": 0.07692307692307693
+    },
+    {
+      "messageId": "enron-40fa44414397c6695355",
+      "language": "English",
+      "question": "What was the message about the possibility of finalizing the deal on Friday, November 2, and when would more information be provided?",
+      "wordOverlap": 0.3076923076923077
+    },
+    {
+      "messageId": "enron-3f28e99606bddcec46e1",
+      "language": "English",
+      "question": "Who had a conversation about potential collaboration regarding encouraging trade on the company's electronic platform?",
+      "wordOverlap": 0.1
+    },
+    {
+      "messageId": "enron-4af7b7e9f0a0abd580f0",
+      "language": "English",
+      "question": "What is the current status of the agreement needed to install the software on our devices, and what actions are we taking to complete the process?",
+      "wordOverlap": 0.25
+    },
+    {
+      "messageId": "enron-4b9e0ee14f43bbe4a7a7",
+      "language": "English",
+      "question": "Does the company have internal guidelines affecting the ability to buy crude from the UN-supervised Iraq initiative?",
+      "wordOverlap": 0.16666666666666666
+    },
+    {
+      "messageId": "enron-262852831fbbeadb665b",
+      "language": "English",
+      "question": "What are the main considerations regarding the possible relocation of the energy division between staying in the current tower with short-term leases or moving to the alternative tower with longer leases?",
+      "wordOverlap": 0.2631578947368421
+    },
+    {
+      "messageId": "enron-2ce071f165ad8729a539",
+      "language": "English",
+      "question": "What agreement was authorized between the energy firm and the American corporation excluding specific product categories?",
+      "wordOverlap": 0.08333333333333333
+    },
+    {
+      "messageId": "enron-3169fc3abf7333692b7e",
+      "language": "English",
+      "question": "What were the key updates and pending actions for our operations in Canada as of June 25th?",
+      "wordOverlap": 0.3333333333333333
+    },
+    {
+      "messageId": "enron-5cd8ac53f8f7e363adb1",
+      "language": "English",
+      "question": "What updates were made to the most recent presentation version, and who should receive the updated copy?",
+      "wordOverlap": 0.25
+    },
+    {
+      "messageId": "enron-415898f205d3c3c559e0",
+      "language": "English",
+      "question": "What deadline was set for submitting the staff feedback forms for the executive evaluation process?",
+      "wordOverlap": 0.4444444444444444
+    },
+    {
+      "messageId": "enron-35632a4dd9a539d1c045",
+      "language": "English",
+      "question": "How have your duties changed since our last conversation?",
+      "wordOverlap": 0.14285714285714285
+    },
+    {
+      "messageId": "enron-098bc16287fff128662d",
+      "language": "English",
+      "question": "What is the anticipated duration for facility study evaluations according to the energy provider’s recent regulatory submission?",
+      "wordOverlap": 0.08333333333333333
+    },
+    {
+      "messageId": "enron-4a7aae62e66c06d1a84c",
+      "language": "English",
+      "question": "Should the top Enron executive contribute the earnings from their stock transactions to aid both affected staff and struggling customers in California?",
+      "wordOverlap": 0.3333333333333333
+    },
+    {
+      "messageId": "enron-3c2e3a97bc708ceffc18",
+      "language": "English",
+      "question": "What are some recent discussions or evaluations involving leaders in various service sector firms?",
+      "wordOverlap": 0.09090909090909091
+    },
+    {
+      "messageId": "enron-0bc4e852894761bf4ce8",
+      "language": "English",
+      "question": "Is the group scheduled for the upcoming evaluation session on the specified date and time confirmed, and should they be included in the communication list for future notifications?",
+      "wordOverlap": 0.125
+    },
+    {
+      "messageId": "enron-484137990236b235214e",
+      "language": "English",
+      "question": "Did the organizer suggest an alternative day and a possible course for our game?",
+      "wordOverlap": 0.16666666666666666
+    },
+    {
+      "messageId": "enron-309a9537eb274c2c7d7a",
+      "language": "English",
+      "question": "Does the recent regulatory agency order imply that the state authority lacks control over bulk electricity transactions, and should we seek advice from specific legal advisors before reacting to the state body's request for data?",
+      "wordOverlap": 0.2222222222222222
+    },
+    {
+      "messageId": "enron-2da37037e81553e25e01",
+      "language": "English",
+      "question": "How many drinks did the individual in the main photo at the London gathering have?",
+      "wordOverlap": 0.375
+    },
+    {
+      "messageId": "enron-32cb10fc7caebff2d362",
+      "language": "English",
+      "question": "To which executive should the correspondence regarding the power plant equipment deal be directed?",
+      "wordOverlap": 0.2
+    },
+    {
+      "messageId": "enron-362af7a508815a91e431",
+      "language": "English",
+      "question": "What immediate steps should I take to support the request for refunds for San Diego consumers regarding the power situation?",
+      "wordOverlap": 0.15384615384615385
+    },
+    {
+      "messageId": "enron-0678c3b6b9fe9a42ad7c",
+      "language": "English",
+      "question": "How can my organization display the recognition badge on its website after being chosen as one of the top entities to monitor for the upcoming year?",
+      "wordOverlap": 0.25
+    },
+    {
+      "messageId": "enron-56d17bc7582ae90281b0",
+      "language": "English",
+      "question": "Do you have the necessary legal representative and end-of-life process contact to assist with contract creation and manage the bidding for our synthetic storage initiative now that the former team member has departed?",
+      "wordOverlap": 0.38095238095238093
+    },
+    {
+      "messageId": "enron-05e23e4609354672b733",
+      "language": "English",
+      "question": "Can you tell me the exact steps I need to follow to give the go-ahead for the paper product intended for the eastern part of the country?",
+      "wordOverlap": 0.15384615384615385
+    },
+    {
+      "messageId": "enron-5f210baf1457e291c7c7",
+      "language": "English",
+      "question": "What opportunities are available to attend the upcoming discussion on Mexican economic conditions and its effect on energy?",
+      "wordOverlap": 0.09090909090909091
+    },
+    {
+      "messageId": "enron-3f8e62d5ac32c6ad9b7c",
+      "language": "English",
+      "question": "What was the interest calculation method that the public utility asked to be included in the deal closing next month?",
+      "wordOverlap": 0.15384615384615385
+    },
+    {
+      "messageId": "enron-28261029a9e180982c14",
+      "language": "English",
+      "question": "What updates are needed regarding the scheduling and execution conditions for the recent agreement with the energy provider before the end of November?",
+      "wordOverlap": 0.2857142857142857
+    },
+    {
+      "messageId": "enron-25a092467ff954d9d447",
+      "language": "English",
+      "question": "What opportunities might arise from Kaiser and BPA regarding energy sales and purchases following their failed agreement?",
+      "wordOverlap": 0.35714285714285715
+    },
+    {
+      "messageId": "enron-00d945e6a3a31ab00dbc",
+      "language": "English",
+      "question": "When can we set up a call to go over the draft agreement with the legal representative and commercial side?",
+      "wordOverlap": 0.5
+    },
+    {
+      "messageId": "enron-0c788d3342f9a4ccde54",
+      "language": "English",
+      "question": "Have the appropriate team leads been collaborating effectively to address the issues with the transfer of data between the two departments?",
+      "wordOverlap": 0.5
+    },
+    {
+      "messageId": "enron-40466110fc904027343c",
+      "language": "English",
+      "question": "What resources or references are available for establishing a payment diversion mechanism similar to the Lockbox structure mentioned in the correspondence?",
+      "wordOverlap": 0.07692307692307693
+    },
+    {
+      "messageId": "enron-15f7b866cbfd7e8a5596",
+      "language": "English",
+      "question": "Did the team receive those visual trick images I forwarded last week?",
+      "wordOverlap": 0
+    },
+    {
+      "messageId": "enron-36fff87579b84ce8a6e4",
+      "language": "English",
+      "question": "What is the document attached to the message about the weekly game plan for our group?",
+      "wordOverlap": 0.1111111111111111
+    },
+    {
+      "messageId": "enron-1401b043a27b169e261b",
+      "language": "English",
+      "question": "What was the final outcome regarding the suggested edits to the agreement document that was discussed between the two corporations?",
+      "wordOverlap": 0.3333333333333333
+    },
+    {
+      "messageId": "enron-15f5f06f8dff4bf0f0f9",
+      "language": "English",
+      "question": "Did the team leader confirm they could relocate the entire department the following weekend and what was needed to organize it?",
+      "wordOverlap": 0.07692307692307693
+    },
+    {
+      "messageId": "enron-5a08089d313cb48e62a0",
+      "language": "English",
+      "question": "How many units were approved for allocation at Cove during the month of June?",
+      "wordOverlap": 0.2222222222222222
+    },
+    {
+      "messageId": "enron-0a613ecc47b1ba7f298b",
+      "language": "English",
+      "question": "What was the utility company's request to the legal system regarding the regulatory body's recent decision on financial methods, and why did they consider it unfavorable?",
+      "wordOverlap": 0.1875
+    },
+    {
+      "messageId": "enron-47b8ba7df7f95172f0e3",
+      "language": "English",
+      "question": "When is the deadline to provide feedback on the updated safety guidelines for power plant fuel cuts?",
+      "wordOverlap": 0
+    },
+    {
+      "messageId": "enron-25abd985859831f6572a",
+      "language": "English",
+      "question": "How can I obtain complimentary details about establishing a payment system for my venture through a business account with no initial charges and inexpensive recurring fees?",
+      "wordOverlap": 0.4117647058823529
+    },
+    {
+      "messageId": "enron-2a041570a9a0005161c9",
+      "language": "English",
+      "question": "Can the image of me be provided in a printed format?",
+      "wordOverlap": 0
+    },
+    {
+      "messageId": "enron-065f48785ac87841cbea",
+      "language": "English",
+      "question": "What was the reported target and timeframe for the possible terrorist attacks mentioned in the FBI warning sent to the company's management team?",
+      "wordOverlap": 0.38461538461538464
+    },
+    {
+      "messageId": "enron-0218dc5ec54ea278dbb2",
+      "language": "English",
+      "question": "Can you assist in matching the recorded HUB transactions in our system with the list provided by the external party while they're unavailable?",
+      "wordOverlap": 0.23076923076923078
+    },
+    {
+      "messageId": "enron-352484a221a338fb762f",
+      "language": "English",
+      "question": "What were the outcomes of the regulatory body's requests regarding the installation requirements and enrollment choices for customers receiving advanced meters, as well as the proposal for a new pricing structure?",
+      "wordOverlap": 0.3157894736842105
+    },
+    {
+      "messageId": "enron-2c94d8905c343838d0a2",
+      "language": "English",
+      "question": "When will the external legal team provide the framework for documenting the agreements, and how should we proceed with collecting the necessary data?",
+      "wordOverlap": 0.2
+    },
+    {
+      "messageId": "enron-575f1d3bb8cd7d926568",
+      "language": "English",
+      "question": "What was the main topic discussed during the recent discussion involving the external contact and how should we reply to it?",
+      "wordOverlap": 0.08333333333333333
+    },
+    {
+      "messageId": "enron-0a8b8e94fc7cd51c2be0",
+      "language": "English",
+      "question": "What are the revised time slots for the bulk transactions that were sent again?",
+      "wordOverlap": 0.2
+    },
+    {
+      "messageId": "enron-4a13166b01896b52895a",
+      "language": "English",
+      "question": "What adjustments will I see in my payments because of the new regulations enacted by the head of state this year?",
+      "wordOverlap": 0.18181818181818182
+    },
+    {
+      "messageId": "enron-13e00ec01e91f6d068bc",
+      "language": "English",
+      "question": "Did anyone send me the unedited footage from a morning news program?",
+      "wordOverlap": 0
+    },
+    {
+      "messageId": "enron-073d89463462c284ae76",
+      "language": "English",
+      "question": "What publications should I submit my work to for potential features?",
+      "wordOverlap": 0
+    },
+    {
+      "messageId": "enron-4cb86b258a6da30fc1c1",
+      "language": "English",
+      "question": "What special web-only footwear additions were featured in the promotional message and where can I view them?",
+      "wordOverlap": 0.25
+    },
+    {
+      "messageId": "enron-0d0e9d93f4f3cd239509",
+      "language": "English",
+      "question": "What were the updated security arrangements and their dates for the trading activities between our firm and the energy trading entities?",
+      "wordOverlap": 0.23076923076923078
+    },
+    {
+      "messageId": "enron-310c906059e524f91283",
+      "language": "English",
+      "question": "What tasks are needed to transfer the work on the customer section (spreadsheets, and similar) of the termination updates to the fellow coworker?",
+      "wordOverlap": 0.07692307692307693
+    },
+    {
+      "messageId": "enron-0fd9da3a633d9e71ad43",
+      "language": "English",
+      "question": "Did the energy firm finish moving our gas deals to the swap partner and ending our original contract on the first day of May last year?",
+      "wordOverlap": 0.07692307692307693
+    },
+    {
+      "messageId": "enron-0e1e35c49bc7c8d3d3c5",
+      "language": "English",
+      "question": "What feedback was provided regarding the accuracy and content of the InternetWeek 100 story about our company?",
+      "wordOverlap": 0.3
+    },
+    {
+      "messageId": "enron-19bedab8610d1c0a49fa",
+      "language": "English",
+      "question": "What special travel deals were available for OnePass members on continental.com in early November 2001?",
+      "wordOverlap": 0.5833333333333334
+    },
+    {
+      "messageId": "enron-2f0104e8885282c9ac9d",
+      "language": "English",
+      "question": "Will we require any communication devices for the live interaction team?",
+      "wordOverlap": 0.14285714285714285
+    },
+    {
+      "messageId": "enron-40f7f8f1b6fda1085513",
+      "language": "English",
+      "question": "What presentations and discussions are scheduled regarding energy forecasts next month?",
+      "wordOverlap": 0.1111111111111111
+    },
+    {
+      "messageId": "enron-065744fe6de4e83d926e",
+      "language": "English",
+      "question": "Who is the contact person at the financial institution that I should reach out to tomorrow, and do we need to be concerned about their connection to Gary Hickerson?",
+      "wordOverlap": 0.3333333333333333
+    },
+    {
+      "messageId": "enron-47065759b39602cb76de",
+      "language": "English",
+      "question": "Did the team leader for trading assistance confirm this message was successfully delivered through Yahoo's service?",
+      "wordOverlap": 0.25
+    },
+    {
+      "messageId": "enron-41be2b09789bb7512368",
+      "language": "English",
+      "question": "What type of interaction is suggested for the upcoming engagement with Erik Fabrikant, and what is the purpose of this meeting?",
+      "wordOverlap": 0.5
+    },
+    {
+      "messageId": "enron-562c38a9ef1c7b2f32b6",
+      "language": "English",
+      "question": "Where can I find the sign-up booths for volunteer work at the cultural walk/run event?",
+      "wordOverlap": 0.5555555555555556
+    },
+    {
+      "messageId": "enron-25b63c6c55e89dbc0145",
+      "language": "English",
+      "question": "How will elevated oil prices affect economic growth and inflation in developed countries over the next year?",
+      "wordOverlap": 0.5833333333333334
+    },
+    {
+      "messageId": "enron-0e82a83431ec68c7bb14",
+      "language": "English",
+      "question": "When will the majority of staff from different divisions start using the new structure, and what are the entry regulations during this period?",
+      "wordOverlap": 0.25
+    },
+    {
+      "messageId": "enron-195868027d422e3f4352",
+      "language": "English",
+      "question": "What is the temporary contact number I can use to reach the colleague working on the financial summary after 11 PM tonight?",
+      "wordOverlap": 0.2727272727272727
+    },
+    {
+      "messageId": "enron-5c89573c8f8ab8de99e4",
+      "language": "English",
+      "question": "What updated organizational units and financial sections should we apply to our current funds starting this month, and where can we verify if a specific unit exists?",
+      "wordOverlap": 0.2222222222222222
+    },
+    {
+      "messageId": "enron-40fcc7e2aec2304fd649",
+      "language": "English",
+      "question": "Who has been designated as the main contact for handling EBS employment contracts?",
+      "wordOverlap": 0.2857142857142857
+    },
+    {
+      "messageId": "enron-0ab99cddca1901abf5ef",
+      "language": "English",
+      "question": "How can I determine the current capacity of my primary communication storage and what steps should I take to increase its available space?",
+      "wordOverlap": 0.15384615384615385
+    },
+    {
+      "messageId": "enron-4064bed5ef640325eb1c",
+      "language": "English",
+      "question": "Can the discussion about the Houston gathering be shifted to a later time on the day, and will there be a device set up for the Portland team to join in?",
+      "wordOverlap": 0.23076923076923078
+    },
+    {
+      "messageId": "enron-5dbbfb85b76a9f1a60f4",
+      "language": "English",
+      "question": "What were your planned activities for the week starting November 13th?",
+      "wordOverlap": 0.4444444444444444
+    },
+    {
+      "messageId": "enron-2e6195c734f3e7459f59",
+      "language": "English",
+      "question": "Is there a scheduled food event where an expert will explain the new journalistic tool on the twenty-seventh?",
+      "wordOverlap": 0.08333333333333333
+    },
+    {
+      "messageId": "enron-0b747c7e79ddb353ec36",
+      "language": "English",
+      "question": "What is the most recent list of contacts for the committee members?",
+      "wordOverlap": 0.42857142857142855
+    },
+    {
+      "messageId": "enron-46843e200777b1d944a0",
+      "language": "English",
+      "question": "Has my superior approved my request to take time off next Friday?",
+      "wordOverlap": 0.2857142857142857
+    },
+    {
+      "messageId": "enron-0ef7ddd6f5328252edb5",
+      "language": "English",
+      "question": "How has the termination of the deal with the corporate partner affected our current funding, digital links, and equipment gifts for the community tech initiative?",
+      "wordOverlap": 0.13333333333333333
+    },
+    {
+      "messageId": "enron-08b56cd09632980d6ab6",
+      "language": "English",
+      "question": "Are you available to meet up this evening?",
+      "wordOverlap": 0.25
+    },
+    {
+      "messageId": "enron-47f5a936208ad259f5c8",
+      "language": "English",
+      "question": "What are the current standard clauses for major adverse changes that I can share with the various trading divisions, and should they also use our guarantee and letter of credit templates?",
+      "wordOverlap": 0.25
+    },
+    {
+      "messageId": "enron-30164f19c96d9f97a035",
+      "language": "English",
+      "question": "What revisions did my colleague make to the shared document, and where can I find the updated version?",
+      "wordOverlap": 0.1
+    },
+    {
+      "messageId": "enron-58003c6e08f2e4496531",
+      "language": "English",
+      "question": "What specific instructions were given for preparing the draft Schedule for the bank involved in Project Cerberus, and who should handle it?",
+      "wordOverlap": 0.5
+    },
+    {
+      "messageId": "enron-2c0aafdaef3093f94cf5",
+      "language": "English",
+      "question": "Did the team receive the spreadsheet for Sunflower regarding the hourly data for the year 2002?",
+      "wordOverlap": 0.3333333333333333
+    },
+    {
+      "messageId": "enron-1f221140d967631dd8cf",
+      "language": "English",
+      "question": "What were the reference numbers the team needed from last year's records for the end-of-November cutoff?",
+      "wordOverlap": 0.08333333333333333
+    },
+    {
+      "messageId": "enron-1e91f33d688263c2b727",
+      "language": "English",
+      "question": "Are you planning to remain for the early morning round scheduled by the colleague?",
+      "wordOverlap": 0.14285714285714285
+    },
+    {
+      "messageId": "enron-5bb101ac25a26ca78825",
+      "language": "English",
+      "question": "What specific revisions did the team member and another colleague make to the document regarding governance issues and the reliability section?",
+      "wordOverlap": 0.5
+    },
+    {
+      "messageId": "enron-40af707bb5458d8d6d85",
+      "language": "English",
+      "question": "What are the main issues raised by a nearby resident regarding the operations of the local energy facility and how it impacts their daily life?",
+      "wordOverlap": 0.13333333333333333
+    },
+    {
+      "messageId": "enron-440071ac632698712aea",
+      "language": "English",
+      "question": "What mark was assigned to the latest cohort of students led by the instructor?",
+      "wordOverlap": 0.14285714285714285
+    },
+    {
+      "messageId": "enron-09419f458bb93b8899e2",
+      "language": "English",
+      "question": "Why was my energy delivery booking denied by the supplier?",
+      "wordOverlap": 0.2
+    },
+    {
+      "messageId": "enron-117da2aaefec4395651c",
+      "language": "English",
+      "question": "Has our firm finalized the required agreement with Georgia Pacific Corporation?",
+      "wordOverlap": 0.5
+    },
+    {
+      "messageId": "enron-4c809fbf746320b2b68e",
+      "language": "English",
+      "question": "Is there a way to obtain the numerical worth for contracts adjusted by price indices in the reporting system?",
+      "wordOverlap": 0.4
+    },
+    {
+      "messageId": "enron-4d8179f13229f73fb21b",
+      "language": "English",
+      "question": "What is the contact information and job title for the natural gas director at the trading platform company?",
+      "wordOverlap": 0.3333333333333333
+    },
+    {
+      "messageId": "enron-528cdbad7281cbe8b008",
+      "language": "English",
+      "question": "How should settlement timing be handled for spread trades according to industry norms and Enron's approach?",
+      "wordOverlap": 0.45454545454545453
+    },
+    {
+      "messageId": "enron-5af24e64d91a85513e74",
+      "language": "English",
+      "question": "Did the legal team send the formal version of the document outlining terms for the energy project with the turbine provider?",
+      "wordOverlap": 0
+    },
+    {
+      "messageId": "enron-5c76c265b71ea83fb0d2",
+      "language": "English",
+      "question": "Did my colleague find and share details about a legal expert in that state through one of our business contacts?",
+      "wordOverlap": 0.25
+    },
+    {
+      "messageId": "enron-4b25e7ee3dfcace3db6b",
+      "language": "English",
+      "question": "Can I obtain a copy of the agreement documents for the transportation company?",
+      "wordOverlap": 0.16666666666666666
+    },
+    {
+      "messageId": "enron-037b25245112b716f5e5",
+      "language": "English",
+      "question": "How can I obtain three thousand magazine tokens for free by taking part in the yearly gridiron contest?",
+      "wordOverlap": 0.18181818181818182
+    },
+    {
+      "messageId": "enron-34abc4ae1474f87452ff",
+      "language": "English",
+      "question": "Will we have dinner together with the third colleague tomorrow at the hotel?",
+      "wordOverlap": 0.5555555555555556
+    },
+    {
+      "messageId": "enron-228938d56d3126b5a2dc",
+      "language": "English",
+      "question": "What recognition did the representative receive from the ambassador after the gathering with the two leaders in New York City?",
+      "wordOverlap": 0.25
+    },
+    {
+      "messageId": "enron-1b08c138bb05eb35082d",
+      "language": "English",
+      "question": "What significant financial milestone did the company specializing in high-volume production of DWDM optical networking products achieve recently, and who was appointed as its new leader?",
+      "wordOverlap": 0.47058823529411764
+    },
+    {
+      "messageId": "enron-33e5827f8d5317f04010",
+      "language": "English",
+      "question": "What are the precise conditions and needs for setting up a climate data collection point in Sacramento?",
+      "wordOverlap": 0.3
+    },
+    {
+      "messageId": "enron-3ab59e5792c39ccc3bb6",
+      "language": "English",
+      "question": "What are the recommended strategies for addressing transmission rights and market structure in wholesale electricity markets?",
+      "wordOverlap": 0.5454545454545454
+    },
+    {
+      "messageId": "enron-44c8b3e36fbf607ed7b1",
+      "language": "English",
+      "question": "What areas and metal types require examination for trading on the commerce stage?",
+      "wordOverlap": 0
+    },
+    {
+      "messageId": "enron-4160e905127300cfd1c6",
+      "language": "English",
+      "question": "What major infrastructure projects were given preliminary authorization by the energy oversight agency recently?",
+      "wordOverlap": 0.08333333333333333
+    },
+    {
+      "messageId": "enron-5ab1b427fe3fcc2e9cb3",
+      "language": "English",
+      "question": "What are some dining spots I’m considering for taking a colleague to lunch next week?",
+      "wordOverlap": 0.4
+    },
+    {
+      "messageId": "enron-49a9cfd14eb871b5a40b",
+      "language": "English",
+      "question": "When is the next general assembly for the international finance association happening and where will it take place?",
+      "wordOverlap": 0.25
+    },
+    {
+      "messageId": "enron-10d6b3cb7995d791a248",
+      "language": "English",
+      "question": "Can the person I dined with join the upcoming event and its dinner and reception, or just the event on Saturday?",
+      "wordOverlap": 0.5
+    },
+    {
+      "messageId": "enron-543ba25f91f231fd3727",
+      "language": "English",
+      "question": "What contact at the energy firm should we get in touch with to set up the meeting scheduled for the fourth of May?",
+      "wordOverlap": 0.5
+    },
+    {
+      "messageId": "enron-4e20fd903f34ea7c603a",
+      "language": "English",
+      "question": "What was the update regarding the energy market for August 17, 2001?",
+      "wordOverlap": 0.14285714285714285
+    },
+    {
+      "messageId": "enron-45ee0b1d9c233b0bd2fc",
+      "language": "English",
+      "question": "What is the schedule for discussing and finalizing the draft statement for the regulatory meeting next week?",
+      "wordOverlap": 0.3
+    },
+    {
+      "messageId": "enron-6071cdb7e26e5ab27cac",
+      "language": "English",
+      "question": "Where should I go and when for the gathering organized by the lead organizer?",
+      "wordOverlap": 0
+    },
+    {
+      "messageId": "enron-0d5a7bf3de53c5dbb035",
+      "language": "English",
+      "question": "What were the specific revisions made to the agreements and figures for the energy firm in the third, ninth, and tenth quarters of the past year?",
+      "wordOverlap": 0
+    },
+    {
+      "messageId": "enron-3317b1ee0db2b2e6618e",
+      "language": "English",
+      "question": "Can a recent team member in the commercial structuring unit, who has past experience with energy contracts in the region, assist with the recently obtained power purchase agreements and arrange a meeting or meal?",
+      "wordOverlap": 0.19047619047619047
+    },
+    {
+      "messageId": "enron-34e6b29214655570f9b4",
+      "language": "English",
+      "question": "Should I confirm the update for my instant messaging profile’s contact details, or send a response to stop it?",
+      "wordOverlap": 0.18181818181818182
+    },
+    {
+      "messageId": "enron-4b0d3af25c67358496a1",
+      "language": "English",
+      "question": "How can the brief summary for the upcoming fuel update be enhanced with a market benchmark code?",
+      "wordOverlap": 0
+    },
+    {
+      "messageId": "enron-044bfa64b1293c6412f5",
+      "language": "English",
+      "question": "What was the reason for the confusion about plans the previous evening among the group?",
+      "wordOverlap": 0.2222222222222222
+    },
+    {
+      "messageId": "enron-27cb9e8dc1fdbced265f",
+      "language": "English",
+      "question": "How can I get access to the event at the convention center tomorrow and what transportation options are available?",
+      "wordOverlap": 0.2222222222222222
+    },
+    {
+      "messageId": "enron-4474732fbce63c666a96",
+      "language": "English",
+      "question": "Has the supplier provided a formal document confirming that the natural resource material sent to the organization originates completely from the state mentioned, and if not, what is the anticipated timeline for receiving it?",
+      "wordOverlap": 0.05
+    },
+    {
+      "messageId": "enron-2f7e44a29092d3bae04f",
+      "language": "English",
+      "question": "How did my counterpart propose to adjust the conditions under which we can assert force majeure regarding buyers who resell to third parties?",
+      "wordOverlap": 0.2857142857142857
+    },
+    {
+      "messageId": "enron-3636ce73668161fd833a",
+      "language": "English",
+      "question": "How does purchasing assets at a premium above their current worth affect the financial strain on creditors in a transaction?",
+      "wordOverlap": 0.23076923076923078
+    },
+    {
+      "messageId": "enron-09bf37d801263efaa8ba",
+      "language": "English",
+      "question": "What date and time was the initial data analysis workshop moved to, and where will it now occur?",
+      "wordOverlap": 0.2727272727272727
+    },
+    {
+      "messageId": "enron-17be51dd02cb1349e651",
+      "language": "English",
+      "question": "Did the finance lead discuss the upcoming deadline with Sony's chief financial officer, and what is the status regarding potential alternative strategies?",
+      "wordOverlap": 0.3125
+    },
+    {
+      "messageId": "enron-37e83cf705fc570f64f9",
+      "language": "English",
+      "question": "How can I ensure that my team's requests regarding program participants are properly submitted and reviewed before reaching the relevant leaders?",
+      "wordOverlap": 0.5
+    },
+    {
+      "messageId": "enron-0887dad887cb6f025030",
+      "language": "English",
+      "question": "When was the latest update for the western grid capacity data released?",
+      "wordOverlap": 0
+    },
+    {
+      "messageId": "enron-5f7abbc55fba5eaba825",
+      "language": "English",
+      "question": "Are there any plans for a gaming evening with Johnny during my visit on the upcoming Thursday or Friday?",
+      "wordOverlap": 0.45454545454545453
+    },
+    {
+      "messageId": "enron-20bc3548bbe634658c4d",
+      "language": "English",
+      "question": "Has legal approved transactions involving this type of financial partner?",
+      "wordOverlap": 0.5
+    },
+    {
+      "messageId": "enron-35b494b67933436b08f9",
+      "language": "English",
+      "question": "How can I sign up and submit payment for the charity running event on the ninth of March?",
+      "wordOverlap": 0.375
+    },
+    {
+      "messageId": "enron-3db2cf128d7e90adef22",
+      "language": "English",
+      "question": "Can the sender send the updated request for help to the legal representative of the state body, and who should be contacted?",
+      "wordOverlap": 0.18181818181818182
+    },
+    {
+      "messageId": "enron-09dfe85306e768e81bcd",
+      "language": "English",
+      "question": "What is the projected quantity we intend to send through the NNG Lamar route for the next day in February 2002?",
+      "wordOverlap": 0.2727272727272727
+    },
+    {
+      "messageId": "enron-1e561a1ef5269a2217ce",
+      "language": "English",
+      "question": "What were the key debates and articles featured by the investment advisory service on May 16, 2001?",
+      "wordOverlap": 0.3333333333333333
+    },
+    {
+      "messageId": "enron-3478c8729136352ee180",
+      "language": "English",
+      "question": "What materials were provided for the board's phone conference this morning?",
+      "wordOverlap": 0.4444444444444444
+    },
+    {
+      "messageId": "enron-43e05b37f9cf980c5a41",
+      "language": "English",
+      "question": "What are the titles and authors of the twenty shortest books listed in that message I received?",
+      "wordOverlap": 0.1
+    },
+    {
+      "messageId": "enron-1d38d376c4b26cb0d4e7",
+      "language": "English",
+      "question": "How many entries were retrieved for the extra Minana file of turbine number thirty-one?",
+      "wordOverlap": 0.4
+    },
+    {
+      "messageId": "enron-2896b74dbac511296295",
+      "language": "English",
+      "question": "How should the confirmation process be adjusted to involve both our organization and the other party for the gas agreements with GTC?",
+      "wordOverlap": 0.2727272727272727
+    },
+    {
+      "messageId": "enron-4c5a3f42346f42714b7a",
+      "language": "English",
+      "question": "What was the password I needed to use when accessing the professional growth tool on the company site?",
+      "wordOverlap": 0.4
+    },
+    {
+      "messageId": "enron-2c4a93e4094fd6dad5f0",
+      "language": "English",
+      "question": "Where should I access historical data for monthly reports instead of the main system?",
+      "wordOverlap": 0.5
+    },
+    {
+      "messageId": "enron-3808e856f5dd29d46d9b",
+      "language": "English",
+      "question": "Did the finance analyst unintentionally send the request for entry to the credit and market risk diagrams?",
+      "wordOverlap": 0.5
+    },
+    {
+      "messageId": "enron-3673f76d31517b41a78b",
+      "language": "English",
+      "question": "What are the specific conditions and terms for the gas purchase deal between the buyer and seller that was finalized on June 25, 2001?",
+      "wordOverlap": 0.23076923076923078
+    },
+    {
+      "messageId": "enron-3afe2c028579ff123f04",
+      "language": "English",
+      "question": "When is the upcoming discussion scheduled for the risk management display with the trading team?",
+      "wordOverlap": 0.1
+    },
+    {
+      "messageId": "enron-032ad786c61d139de17d",
+      "language": "English",
+      "question": "How are the new limits for gas entry set and shown to customers under the updated process?",
+      "wordOverlap": 0.14285714285714285
+    },
+    {
+      "messageId": "enron-53298a0d4e9c5e226194",
+      "language": "English",
+      "question": "Where should we meet to go over the gas curves and related details this afternoon?",
+      "wordOverlap": 0.4444444444444444
+    },
+    {
+      "messageId": "enron-3522f39cc4c5a8928095",
+      "language": "English",
+      "question": "Have you confirmed your interest in joining the instructional program organized by the external provider?",
+      "wordOverlap": 0
+    },
+    {
+      "messageId": "enron-308e2e560245cd70f0a3",
+      "language": "English",
+      "question": "What updates were made to the workout timetable for the next term starting on the sixth of August?",
+      "wordOverlap": 0.09090909090909091
+    },
+    {
+      "messageId": "enron-56f390c7822a3bb7427a",
+      "language": "English",
+      "question": "What positive update did a close friend share about their plans to take me to a scenic location, and who did they recently meet there?",
+      "wordOverlap": 0.125
+    },
+    {
+      "messageId": "enron-1328686c44f49f5f6255",
+      "language": "English",
+      "question": "Did any of our staff recently start working at the marketplace section?",
+      "wordOverlap": 0
+    },
+    {
+      "messageId": "enron-47b57b75da5613d75a69",
+      "language": "English",
+      "question": "Did human resources get back to my spouse after we submitted his application for the leadership role in worldwide trade?",
+      "wordOverlap": 0.2727272727272727
+    },
+    {
+      "messageId": "enron-3bec22b7fcecf5d491dd",
+      "language": "English",
+      "question": "What adjustments should be made to the volume and cost figures for the two agreements with the energy firm, and how should the daily meter data be handled?",
+      "wordOverlap": 0.06666666666666667
+    },
+    {
+      "messageId": "enron-21d404074a0607e730f5",
+      "language": "English",
+      "question": "What assistance was offered if the clip couldn't be played?",
+      "wordOverlap": 0
+    },
+    {
+      "messageId": "enron-1fe025bba4b727cec1aa",
+      "language": "English",
+      "question": "Who is the individual inquiring about for clarification in the correspondence?",
+      "wordOverlap": 0.2
+    },
+    {
+      "messageId": "enron-2a505e9b8f3d31e3af5a",
+      "language": "English",
+      "question": "What are the proposed adjustments and extra options for the renewal of our 400,000 MMBtu daily gas transport agreement, and what are the existing market prices for comparison?",
+      "wordOverlap": 0.2857142857142857
+    },
+    {
+      "messageId": "enron-189de110892face7c730",
+      "language": "English",
+      "question": "Are there any available seats close to the team's area for this evening's basketball contest?",
+      "wordOverlap": 0.1
+    },
+    {
+      "messageId": "enron-2840e4439a6605430bb1",
+      "language": "English",
+      "question": "Do I need to add the follow-up discussion happening next Wednesday at 10 AM in room EB27C2 to my schedule?",
+      "wordOverlap": 0.2222222222222222
+    },
+    {
+      "messageId": "enron-4299d62fbc48a4c2f0e7",
+      "language": "English",
+      "question": "When is the cutoff date for submitting feedback on the suggested pricing plan between the state water authority and the utility oversight body?",
+      "wordOverlap": 0.2
+    },
+    {
+      "messageId": "enron-59ed6fc80569b21a5353",
+      "language": "English",
+      "question": "Has the updated version of the agreement for the fifth stage been examined and confirmed for sending to the energy department?",
+      "wordOverlap": 0.09090909090909091
+    },
+    {
+      "messageId": "enron-26a38843c017e93fdfb1",
+      "language": "English",
+      "question": "Which particular situations did the legal team need clarification on regarding the scope of the confidentiality agreement for the trading initiative?",
+      "wordOverlap": 0.38461538461538464
+    },
+    {
+      "messageId": "enron-5fc15adfcaf969bf466a",
+      "language": "English",
+      "question": "Do we have to create a new record in the global system for the state agency, or is this simply a variation of an existing name?",
+      "wordOverlap": 0.5
+    },
+    {
+      "messageId": "enron-0eaf95d085e958c065de",
+      "language": "English",
+      "question": "Where can I find the daily market summary for pollution permits and mineral fuel from yesterday afternoon?",
+      "wordOverlap": 0.25
+    },
+    {
+      "messageId": "enron-1bb31e9b530d610871f5",
+      "language": "English",
+      "question": "What time and court are we scheduled to meet for our tennis match this Saturday?",
+      "wordOverlap": 0.2222222222222222
+    },
+    {
+      "messageId": "enron-53e0e502cda060b47a02",
+      "language": "English",
+      "question": "Does the updated agreement include a condition for the party to sign a new primary contract promptly, which will then control this and similar deals between us?",
+      "wordOverlap": 0.2222222222222222
+    },
+    {
+      "messageId": "enron-16bc156dbe2cc3bdd602",
+      "language": "English",
+      "question": "What decision did the colleague make regarding their position at the financial institution, and which department will they be returning to?",
+      "wordOverlap": 0.07142857142857142
+    },
+    {
+      "messageId": "enron-5b9bd732158bab62dcdd",
+      "language": "English",
+      "question": "Should I go to the gathering about delivery arrangements for urgent requests that Southern is organizing in Birmingham on February 10th?",
+      "wordOverlap": 0.3076923076923077
+    },
+    {
+      "messageId": "enron-270420b7fb83ce717e0b",
+      "language": "English",
+      "question": "How can I get a large whiteboard for an employee's workspace arranged?",
+      "wordOverlap": 0
+    },
+    {
+      "messageId": "enron-4181aac2d38c80b54e4f",
+      "language": "English",
+      "question": "Can the metals division promote LME agreements to our current American consumers and any potential ones?",
+      "wordOverlap": 0.1111111111111111
+    },
+    {
+      "messageId": "enron-1a9bef300c4d1f089a37",
+      "language": "English",
+      "question": "How can we ensure lasting safety by tackling both the instigators and the underlying issues that fuel extremist actions?",
+      "wordOverlap": 0.08333333333333333
+    },
+    {
+      "messageId": "enron-38c545d5c43ef90ad7b9",
+      "language": "English",
+      "question": "How did the team member manage to cut their exposure level by half on that specific day?",
+      "wordOverlap": 0
+    },
+    {
+      "messageId": "enron-0d0469b6568b9a1bb80f",
+      "language": "English",
+      "question": "What action do I need to take regarding an invoice submitted by the user for processing or approval?",
+      "wordOverlap": 0.6
+    },
+    {
+      "messageId": "enron-5b250ea3382e81de2f7c",
+      "language": "English",
+      "question": "Can functions handling multiple parameters be applied using the aggregation function?",
+      "wordOverlap": 0.375
+    },
+    {
+      "messageId": "enron-2a66046b9e96d2a53c7f",
+      "language": "English",
+      "question": "When is the anticipated Senate vote on the comprehensive energy bill that might be attached to defense funding?",
+      "wordOverlap": 0.5
+    },
+    {
+      "messageId": "enron-1308444d9cb98346a13a",
+      "language": "English",
+      "question": "Can the course coordinator provide the contact details for the participants in the class I'm taking?",
+      "wordOverlap": 0
+    },
+    {
+      "messageId": "enron-474b298c0865f09eb057",
+      "language": "English",
+      "question": "Is it acceptable to employ the forward-forward volatility data from the past 60 working days for calculating risk measures in metal commodities?",
+      "wordOverlap": 0.14285714285714285
+    },
+    {
+      "messageId": "enron-4ba164c2a205b1aaec17",
+      "language": "English",
+      "question": "Do you have the contract or any related files for the partnership with the energy services provider?",
+      "wordOverlap": 0.3333333333333333
+    },
+    {
+      "messageId": "enron-14d03c3f5246615c2322",
+      "language": "English",
+      "question": "How did the appeals court decide to handle the legal pause on the university system's case, and what financial impact does it have for my company?",
+      "wordOverlap": 0.3333333333333333
+    },
+    {
+      "messageId": "enron-4d394c9956f70ca9aea7",
+      "language": "English",
+      "question": "What specific legal wording must be included in all trading agreements to improve our ability to manage financial obligations across different deals and associated firms?",
+      "wordOverlap": 0.2777777777777778
+    },
+    {
+      "messageId": "enron-50ff9c42f7eb68fca3ce",
+      "language": "English",
+      "question": "Will the colleague from environmental services need to share a ride with his vehicle due to recent city air quality rules?",
+      "wordOverlap": 0.2857142857142857
+    },
+    {
+      "messageId": "enron-46f0ffed506a2707fcc5",
+      "language": "English",
+      "question": "How much was collected for catastrophe aid through the joint effort of the Portland and San Francisco divisions, including the corporate matching contribution?",
+      "wordOverlap": 0.15384615384615385
+    },
+    {
+      "messageId": "enron-3adf7ca49b3a132b14af",
+      "language": "English",
+      "question": "What is the updated timing for the supporter celebration gathering originally planned for the second day of May?",
+      "wordOverlap": 0
+    },
+    {
+      "messageId": "enron-09c98dbdc757db3539a7",
+      "language": "English",
+      "question": "What date and time is the planned discussion about worldwide emissions plans and possible business paths scheduled for?",
+      "wordOverlap": 0.46153846153846156
+    },
+    {
+      "messageId": "enron-2fe727b50ab69bb0bed9",
+      "language": "English",
+      "question": "Has the final draft of the primary contract for buying and selling been sent for signing and when should I return the completed copies?",
+      "wordOverlap": 0.21428571428571427
+    },
+    {
+      "messageId": "enron-3b83ef269bdde302f54e",
+      "language": "English",
+      "question": "What options are available for acquiring a new device that produces colored output rapidly and delivering it to our upcoming workspace?",
+      "wordOverlap": 0.3076923076923077
+    },
+    {
+      "messageId": "enron-0d1e0875dd7687d29e8d",
+      "language": "English",
+      "question": "By when must I submit my preferred areas for a storage compartment before the general allocation begins?",
+      "wordOverlap": 0.18181818181818182
+    },
+    {
+      "messageId": "enron-0c470735b04629ef1ec5",
+      "language": "English",
+      "question": "How can I update who gets the regular Canadian credit monitoring report or correct any mistakes in who it's been sent to?",
+      "wordOverlap": 0.45454545454545453
+    },
+    {
+      "messageId": "enron-2fd18d793d5b533ad3b3",
+      "language": "English",
+      "question": "What are the concerns about sharing sensitive details with regulatory authorities?",
+      "wordOverlap": 0.1111111111111111
+    },
+    {
+      "messageId": "enron-451bc040c59b8a054c67",
+      "language": "English",
+      "question": "What is the current confirmed amount allocated for the TBG resolution under the specific classification, and what estimated additions are expected?",
+      "wordOverlap": 0.16666666666666666
+    },
+    {
+      "messageId": "enron-442323abd0c85b9101dd",
+      "language": "English",
+      "question": "What companies are attracting investor interest due to ongoing energy shortages in the US?",
+      "wordOverlap": 0.625
+    },
+    {
+      "messageId": "sv-00479",
+      "language": "Swedish",
+      "question": "Finns det några matallergier som vi måste tänka på för midsommarfesten på stugan på lördag?",
+      "wordOverlap": 0.25
+    },
+    {
+      "messageId": "sv-02232",
+      "language": "Swedish",
+      "question": "När ska jag schemalägga samtalet om barnets framsteg och ska de ta med mat till resan?",
+      "wordOverlap": 0
+    },
+    {
+      "messageId": "sv-01158",
+      "language": "Swedish",
+      "question": "När kan jag förvänta mig att min beställning anländer och hur återgår jag om jag önskar skicka tillbaka den?",
+      "wordOverlap": 0.2857142857142857
+    },
+    {
+      "messageId": "sv-00714",
+      "language": "Swedish",
+      "question": "Hur mycket kostar den billigaste uppskattningen för att måla husets yttervägg?",
+      "wordOverlap": 0.14285714285714285
+    },
+    {
+      "messageId": "sv-00934",
+      "language": "Swedish",
+      "question": "När är företagets sommartid och när måste jag skicka in mina lediga veckor för semestern?",
+      "wordOverlap": 0
+    },
+    {
+      "messageId": "sv-01339",
+      "language": "Swedish",
+      "question": "När landar flyget och har resorna någon annan betalat för dem?",
+      "wordOverlap": 0.5
+    },
+    {
+      "messageId": "sv-01821",
+      "language": "Swedish",
+      "question": "Hur återvänder jag varan efter att ha mottagit den?",
+      "wordOverlap": 0.25
+    },
+    {
+      "messageId": "sv-02641",
+      "language": "Swedish",
+      "question": "När är den planerade sammankomsten för att fira Ellas sjuårsdag?",
+      "wordOverlap": 0
+    },
+    {
+      "messageId": "sv-01552",
+      "language": "Swedish",
+      "question": "När kommer min beställning att ankomma efter att den har skickats ut?",
+      "wordOverlap": 0.2
+    },
+    {
+      "messageId": "sv-02740",
+      "language": "Swedish",
+      "question": "När kommer sammankomsten att hållas nu efter att flera deltagare blivit sjuk?",
+      "wordOverlap": 0.125
+    },
+    {
+      "messageId": "sv-01171",
+      "language": "Swedish",
+      "question": "Vad är den nya hyran enligt det uppdaterade avtalet som skickades?",
+      "wordOverlap": 0.6
+    },
+    {
+      "messageId": "sv-02746",
+      "language": "Swedish",
+      "question": "När är nästa föräldramöte planerat att hållas och var?",
+      "wordOverlap": 0
+    },
+    {
+      "messageId": "sv-01990",
+      "language": "Swedish",
+      "question": "Är vi planerade att äta middag på måndag för att fira midsommar?",
+      "wordOverlap": 0.6
+    },
+    {
+      "messageId": "sv-00727",
+      "language": "Swedish",
+      "question": "När är skolan stängd på grund av lärarnas studiedag?",
+      "wordOverlap": 0.6
+    },
+    {
+      "messageId": "sv-01777",
+      "language": "Swedish",
+      "question": "När ska jag rapportera problemet med den defekta maskinen i tvättområdet?",
+      "wordOverlap": 0
+    },
+    {
+      "messageId": "sv-01769",
+      "language": "Swedish",
+      "question": "När kan jag få tag på min beställning och var måste jag gå för att hämta den?",
+      "wordOverlap": 0
+    },
+    {
+      "messageId": "sv-02883",
+      "language": "Swedish",
+      "question": "När kommer frukosten serveras och har resan blivit flyttad till ett annat tåg?",
+      "wordOverlap": 0.25
+    },
+    {
+      "messageId": "sv-01665",
+      "language": "Swedish",
+      "question": "När kommer min köpning att nå mig enligt det senaste uppdateringen?",
+      "wordOverlap": 0.2
+    },
+    {
+      "messageId": "sv-02100",
+      "language": "Swedish",
+      "question": "När ska jag rapportera det läckande vattnet från maskinen i tvättstugan?",
+      "wordOverlap": 0.16666666666666666
+    },
+    {
+      "messageId": "sv-00975",
+      "language": "Swedish",
+      "question": "Hur betalar jag för resorna och var ska jag bevara kvitterna?",
+      "wordOverlap": 0.25
+    },
+    {
+      "messageId": "sv-01292",
+      "language": "Swedish",
+      "question": "När får jag pengarna tillbaka om jag skickar tillbaka varan?",
+      "wordOverlap": 1
+    },
+    {
+      "messageId": "sv-02082",
+      "language": "Swedish",
+      "question": "När återvänder jag varan och när får jag pengarna tillbaka?",
+      "wordOverlap": 0.75
+    },
+    {
+      "messageId": "sv-01550",
+      "language": "Swedish",
+      "question": "När är middagsfesten för att fira sommarens helg och vilka är de önskade livsmedlen att ta med?",
+      "wordOverlap": 0
+    },
+    {
+      "messageId": "sv-02496",
+      "language": "Swedish",
+      "question": "Kan min överordnade bekräfta terminerna medan jag är borta på ledighet?",
+      "wordOverlap": 0.16666666666666666
+    },
+    {
+      "messageId": "sv-01831",
+      "language": "Swedish",
+      "question": "Vad är frukosttiderna på hotellet jag bokat i Luleå?",
+      "wordOverlap": 0.75
+    },
+    {
+      "messageId": "sv-01113",
+      "language": "Swedish",
+      "question": "Kommer vi att ha middagsfest på min adress nästa torsdag för att fira sommarens fest?",
+      "wordOverlap": 0.125
+    },
+    {
+      "messageId": "sv-00671",
+      "language": "Swedish",
+      "question": "När går tåget till Umeå och vart har ni bokat hotell?",
+      "wordOverlap": 0.6666666666666666
+    },
+    {
+      "messageId": "sv-00607",
+      "language": "Swedish",
+      "question": "När är nästa sammankomst och vad är tiden för den?",
+      "wordOverlap": 0
+    },
+    {
+      "messageId": "sv-01781",
+      "language": "Swedish",
+      "question": "Hur mycket kostar en uppdaterad uppskattning för målning av fasaden med fler fönster?",
+      "wordOverlap": 0.625
+    },
+    {
+      "messageId": "sv-00672",
+      "language": "Swedish",
+      "question": "När är förfallodagen för den senaste avräkningen som skickades i februari?",
+      "wordOverlap": 0.4
+    },
+    {
+      "messageId": "sv-02690",
+      "language": "Swedish",
+      "question": "När är frukosten serverad på hotellet jag bokade för två nätter?",
+      "wordOverlap": 0.4
+    },
+    {
+      "messageId": "sv-01249",
+      "language": "Swedish",
+      "question": "När kommer hissen att repareras och vem kommer att fixa det?",
+      "wordOverlap": 0.5
+    },
+    {
+      "messageId": "sv-02178",
+      "language": "Swedish",
+      "question": "När kommer min beställning att anlända?",
+      "wordOverlap": 0.3333333333333333
+    },
+    {
+      "messageId": "sv-01451",
+      "language": "Swedish",
+      "question": "När måste de två avtalen signeras enligt meddelandet?",
+      "wordOverlap": 0.4
+    },
+    {
+      "messageId": "sv-01510",
+      "language": "Swedish",
+      "question": "När är sommarstängningen och kan någon ta över mina uppgifter under den tiden?",
+      "wordOverlap": 0.2857142857142857
+    },
+    {
+      "messageId": "sv-02799",
+      "language": "Swedish",
+      "question": "När kommer resan till Visby att äga rum efter ombokningen?",
+      "wordOverlap": 0.3333333333333333
+    },
+    {
+      "messageId": "sv-00152",
+      "language": "Swedish",
+      "question": "När återbetalas beloppet om en försening av varan?",
+      "wordOverlap": 0
+    },
+    {
+      "messageId": "sv-02239",
+      "language": "Swedish",
+      "question": "När är den sista dagen för att betala den fortfarande obetalda fakturan?",
+      "wordOverlap": 0.16666666666666666
+    },
+    {
+      "messageId": "sv-00395",
+      "language": "Swedish",
+      "question": "När är nästa sammankomst planerad och vilken sal används?",
+      "wordOverlap": 0
+    },
+    {
+      "messageId": "sv-02326",
+      "language": "Swedish",
+      "question": "När kommer hyran att ökas och med hur mycket enligt det uppdaterade avtalet?",
+      "wordOverlap": 0.42857142857142855
+    }
+  ]
+}

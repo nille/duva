@@ -1,0 +1,70 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Search spike, #19: one Lambda that embeds search queries with Titan Text
+  Embeddings V2, to measure query-embedding latency from Lambda in eu-north-1.
+  Throwaway. `node harness/models.ts down` deletes it.
+
+Resources:
+  Role:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: duva-search-spike-models
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: embed
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                # The log group's Arn ends in :*, which covers its streams.
+                Resource: !GetAtt Logs.Arn
+              - Effect: Allow
+                Action: bedrock:InvokeModel
+                Resource: !Sub "arn:aws:bedrock:${AWS::Region}::foundation-model/amazon.titan-embed-text-v2:0"
+
+  Logs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/lambda/duva-search-spike-models
+      RetentionInDays: 1
+
+  # It embeds each query in turn and times each request: what the search
+  # module does before a vector or hybrid search.
+  Function:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: duva-search-spike-models
+      Runtime: nodejs24.x
+      Architectures: [x86_64]
+      MemorySize: 1769
+      Timeout: 120
+      Role: !GetAtt Role.Arn
+      Handler: index.handler
+      LoggingConfig:
+        LogGroup: !Ref Logs
+      Code:
+        ZipFile: |
+          const { BedrockRuntimeClient, InvokeModelCommand } = require("@aws-sdk/client-bedrock-runtime");
+          const client = new BedrockRuntimeClient({ region: process.env.AWS_REGION });
+          exports.handler = async ({ dimensions, queries }) => {
+            const ms = [];
+            for (const query of queries) {
+              const started = performance.now();
+              const body = JSON.stringify({ inputText: query, dimensions, normalize: true });
+              const response = await client.send(new InvokeModelCommand({ modelId: "amazon.titan-embed-text-v2:0", contentType: "application/json", accept: "application/json", body }));
+              const vector = JSON.parse(Buffer.from(response.body).toString("utf8")).embedding;
+              if (vector.length !== dimensions) throw new Error(`Got ${vector.length} dimensions.`);
+              ms.push(performance.now() - started);
+            }
+            return { ms };
+          };
+
+Outputs:
+  Function:
+    Value: !Ref Function

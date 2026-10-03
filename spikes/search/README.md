@@ -28,6 +28,17 @@ node harness/harness.ts latency   # every query type's cold and warm latency on 
 node harness/harness.ts down      # empty the bucket and delete the stack
 ```
 
+#19 has a harness of its own, `harness/models.ts`, with its own stack, `duva-search-spike-models`. It reads the benchmark mailbox and never writes to it:
+
+```sh
+node harness/models.ts export     # the mailbox's embedded text and Titan vectors, into .data/models/
+node harness/models.ts questions  # rewrite harness/questions.json (the committed one is what results/ used)
+node harness/models.ts quality    # recall at 10 and MRR per dimension, into results/
+node harness/models.ts up         # the Lambda that embeds queries
+node harness/models.ts latency    # query-embedding latency from it, into results/
+node harness/models.ts down       # delete the stack
+```
+
 `up` builds the arm64 image in CodeBuild on an ARM host, so it needs no local Docker.
 
 ## #15: LanceDB in Lambda
@@ -260,3 +271,30 @@ A removed message's text stays in its data file until compaction rewrites that f
 - **Run it after about 20 writes, or a few minutes after the last write, whichever comes first.** Below 20 small fragments, the keyword search without Spam and Trash stays under about 150 ms. At 150 it reaches 374 ms, past the 300 ms keyword target. Label changes count as writes.
 - **At 1,769 MB and a 15-minute timeout,** a run takes 20 to 60 s and under 1.2 GB, for about $0.0005 to $0.002. That is at most one run per quiet spell, and even 50 runs a day cost under $0.10.
 - **Keep old versions for a few minutes, not 7 days.** A search still reading the version before maintenance may then still find its files. That's a precaution: this ticket pruned every old version and saw no failed search, but didn't search during pruning. Spam and Trash erasure can't rely on maintenance alone (see Erasure), so that needs a decision before search ships.
+
+## #19: the embedding model
+
+Titan Text Embeddings V2 at 1,024 dimensions, the size the module already uses. Raw numbers in `results/19-quality.json` and `results/19-latency.json`.
+
+Cohere Embed v4 (`eu.cohere.embed-v4:0`), the ticket's quality reference, is unmeasured. In account 925039213717 every AWS Marketplace agreement is terminated 10 to 20 seconds after it's accepted: 40 since February 2026, and Cohere's offer (offer-ptn4ciwufhvds) every 6 minutes or so from 21:14 UTC on 2026-10-03. So Bedrock refuses every Marketplace model, Claude included, with "Your AWS Marketplace subscription for this model cannot be completed at this time". Nicklas chose Titan without the reference, so the ticket's rule for a small Cohere lead doesn't apply.
+
+How it measures:
+
+- 300 questions in `harness/questions.json`: 260 on English Enron messages of at least 300 characters, and 40 on the generated Swedish mail. Amazon Nova 2 Lite wrote one question per message, told to use its own words and to name people by role. On average 25% of a question's words of four letters or more also appear in its message.
+- Each question's target is ranked against all 100,000 messages by exact cosine similarity, with no vector index, so the numbers measure the model alone. Recall at 10 is the share of targets in the top ten, and MRR averages one over each target's rank.
+- At 256 and 512 dimensions Titan returns the first components of its 1,024 vector, renormalized. So the harness cuts the benchmark table's vectors down instead of embedding again. Direct requests at each size agree to a cosine of 1.0, and so do the table's vectors against a fresh embedding.
+
+Titan V2, eu-north-1, on 2026-10-04:
+
+| Dimensions | Recall at 10 | MRR | MRR, English | MRR, Swedish | MRR against 1,024 (95% interval) | Vectors per 100k messages |
+| --- | --- | --- | --- | --- | --- | --- |
+| 256 | 0.453 | 0.284 | 0.312 | 0.101 | -0.060 (-0.087 to -0.034) | 102 MB |
+| 512 | 0.490 | 0.326 | 0.355 | 0.133 | -0.018 (-0.035 to -0.003) | 205 MB |
+| 1,024 | 0.500 | 0.344 | 0.376 | 0.134 | | 410 MB |
+
+- The pick: 1,024. 512 ranks measurably worse, with an MRR 0.018 lower whose interval stays below zero, though its recall at 10 is within noise (-0.010, from -0.037 to +0.013). It would save 205 MB per 100k messages, about half a cent a month at S3 Standard's $0.023 per GB in eu-north-1. 256 is clearly worse. A table at 1,024 can still be cut to 512 later without embedding again, if #17 finds the vector index's size or speed needs it.
+- Embedding costs the same at every size: 261 tokens a message, $0.0000055 a message, $0.55 per 100k.
+- What #19 spent: $0.15 writing the questions (two runs of Nova 2 Lite), under $0.01 embedding questions and checks with Titan, and about $0.05 of S3 egress reading the table once. It reused the table's Titan vectors, so the whole spike stands at about $1.50 of its $25.
+- Query embedding from Lambda (`nodejs24.x`, x64, 1,769 MB), timed in the handler, 300 questions per size: warm p50 54 to 63 ms and p95 111 to 121 ms. The first request in a new environment, 10 per size: p50 160 to 168 ms. Size makes no difference.
+
+Open risk for #20: Swedish MRR is far below English, 0.13 against 0.38. The Swedish mail is generated from a few sentences per topic, so many messages answer each Swedish question about equally well, and it's unclear whether the gap is Titan's or the data's. Real Swedish mail would settle it.
