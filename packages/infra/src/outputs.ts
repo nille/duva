@@ -17,6 +17,7 @@ export const stackOutputs = {
   cliClientId: "CliClientId",
   setupFunction: "SetupFunction",
   receiptRuleSet: "ReceiptRuleSet",
+  inboundFailures: "InboundFailuresUrl",
   dkimName: (n: 1 | 2 | 3) => `DkimName${n}`,
   dkimValue: (n: 1 | 2 | 3) => `DkimValue${n}`,
 } as const;

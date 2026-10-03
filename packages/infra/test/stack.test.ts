@@ -35,6 +35,7 @@ const payPerUse = new Set([
   "AWS::DynamoDB::GlobalTable",
   "AWS::IAM::Policy",
   "AWS::IAM::Role",
+  "AWS::Lambda::EventInvokeConfig",
   "AWS::Lambda::Function",
   "AWS::Lambda::Permission",
   "AWS::Logs::LogGroup",
@@ -43,6 +44,8 @@ const payPerUse = new Set([
   "AWS::SES::ConfigurationSet",
   "AWS::SES::EmailIdentity",
   "AWS::SES::ReceiptRuleSet",
+  "AWS::SQS::Queue",
+  "AWS::SQS::QueuePolicy",
 ]);
 
 const outdir = mkdtempSync(join(tmpdir(), "duva-assembly-"));
@@ -132,22 +135,84 @@ test("the mail bucket keeps every version of raw mail", () => {
   }
 });
 
-/** The DynamoDB actions the IAM policies let the Lambda whose ID starts with `prefix` take. */
-function tableActions(prefix: string): string[] {
-  const [[, lambda]] = resources.filter(([id, { Type }]) => Type === "AWS::Lambda::Function" && id.startsWith(prefix)) as [[string, Resource]];
-  const role = JSON.stringify(lambda.Properties?.Role?.["Fn::GetAtt"]?.[0]);
+/** The ID and resource of the one Lambda whose ID starts with `prefix`. */
+function lambda(prefix: string): [string, Resource] {
+  const [found, ...others] = resources.filter(([id, { Type }]) => Type === "AWS::Lambda::Function" && id.startsWith(prefix));
+  if (found === undefined || others.length > 0) throw new Error(`There isn't exactly one Lambda whose ID starts with ${prefix}`);
+  return found;
+}
+
+/** The statements of the IAM policies on the role of the Lambda whose ID starts with `prefix`. */
+function statements(prefix: string): { Action: string | string[]; Resource: unknown }[] {
+  const role = JSON.stringify(lambda(prefix)[1].Properties?.Role?.["Fn::GetAtt"]?.[0]);
   return ofType("AWS::IAM::Policy")
     .filter(([, { Properties }]) => (Properties?.Roles ?? []).some((ref: unknown) => JSON.stringify((ref as { Ref?: string }).Ref) === role))
-    .flatMap(([, { Properties }]) => Properties?.PolicyDocument?.Statement ?? [])
-    .flatMap(({ Action }: { Action: string | string[] }) => [Action].flat())
-    .filter((action) => action.startsWith("dynamodb:"));
+    .flatMap(([, { Properties }]) => Properties?.PolicyDocument?.Statement ?? []);
 }
+
+/** The actions of the service the IAM policies let the Lambda whose ID starts with `prefix` take. */
+function actions(prefix: string, service: string): string[] {
+  return statements(prefix)
+    .flatMap(({ Action }) => [Action].flat())
+    .filter((action) => action.startsWith(`${service}:`));
+}
+
+const tableActions = (prefix: string) => actions(prefix, "dynamodb");
 
 test("the API can write the table, and the authorizer can only read it", () => {
   expect(tableActions("ApiHandler")).toEqual(expect.arrayContaining(["dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:DeleteItem", "dynamodb:ConditionCheckItem"]));
   const authorizer = tableActions("AuthorizerHandler");
   expect(authorizer).toContain("dynamodb:GetItem");
   expect(authorizer.filter((action) => /Put|Update|Delete|Write/.test(action))).toEqual([]);
+});
+
+test("the inbound Lambda can write the table and read raw mail, and the API can read raw mail too", () => {
+  expect(tableActions("InboundHandler")).toEqual(expect.arrayContaining(["dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:ConditionCheckItem"]));
+  expect(actions("InboundHandler", "s3")).toContain("s3:GetObject*");
+  expect(actions("ApiHandler", "s3")).toContain("s3:GetObject*");
+});
+
+const [ruleSetId] = ofType("AWS::SES::ReceiptRuleSet")[0]!;
+
+test("SES may invoke the inbound Lambda, only for Duva's receipt rule in this account", () => {
+  const [inboundId] = lambda("InboundHandler");
+  const permissions = ofType("AWS::Lambda::Permission").filter(([, { Properties }]) => Properties?.Principal === "ses.amazonaws.com");
+  expect(permissions).toHaveLength(1);
+  const [[, { Properties: permission }]] = permissions as [[string, Resource]];
+  expect(permission).toMatchObject({ Action: "lambda:InvokeFunction", FunctionName: { "Fn::GetAtt": [inboundId, "Arn"] }, SourceAccount: { Ref: "AWS::AccountId" } });
+  expect(JSON.stringify(permission?.SourceArn)).toContain(`{"Ref":"${ruleSetId}"},":receipt-rule/Addresses"`);
+});
+
+test("SES may store raw mail in the mail bucket, only under the inbound prefix and for Duva's receipt rule", () => {
+  const sesStatements = ofType("AWS::S3::BucketPolicy")
+    .flatMap(([, { Properties }]) => Properties?.PolicyDocument?.Statement ?? [])
+    .filter(({ Principal }: { Principal?: { Service?: string } }) => Principal?.Service === "ses.amazonaws.com");
+  expect(sesStatements).toHaveLength(1);
+  const [statement] = sesStatements;
+  expect(statement).toMatchObject({ Effect: "Allow", Action: "s3:PutObject", Condition: { StringEquals: { "aws:SourceAccount": { Ref: "AWS::AccountId" } } } });
+  expect(JSON.stringify(statement.Resource)).toContain('"/inbound/*"');
+  expect(JSON.stringify(statement.Condition.ArnLike["aws:SourceArn"])).toContain(`{"Ref":"${ruleSetId}"},":receipt-rule/Addresses"`);
+});
+
+test("the inbound Lambda retries a failed event, then leaves it in a queue for replay", () => {
+  const [inboundId] = lambda("InboundHandler");
+  const configs = ofType("AWS::Lambda::EventInvokeConfig").filter(([, { Properties }]) => Properties?.FunctionName?.Ref === inboundId);
+  expect(configs).toHaveLength(1);
+  const [[, { Properties: config }]] = configs as [[string, Resource]];
+  expect(config?.MaximumRetryAttempts).toBe(2);
+  const queueId = config?.DestinationConfig?.OnFailure?.Destination?.["Fn::GetAtt"]?.[0];
+  const queue = stack.template.Resources[queueId];
+  expect(queue?.Type).toBe("AWS::SQS::Queue");
+  expect(queue?.Properties?.MessageRetentionPeriod).toBe(14 * 24 * 3600);
+});
+
+test("the API manages Duva's receipt rule, and only in Duva's rule set", () => {
+  const ses = statements("ApiHandler").filter(({ Action }) => [Action].flat().some((action) => action.startsWith("ses:")));
+  expect(ses.flatMap(({ Action }) => [Action].flat()).sort()).toEqual(["ses:CreateReceiptRule", "ses:DescribeReceiptRule", "ses:UpdateReceiptRule"]);
+  for (const { Resource } of ses) expect(JSON.stringify(Resource)).toContain(`{"Ref":"${ruleSetId}"}`);
+  const variables = lambda("ApiHandler")[1].Properties?.Environment?.Variables;
+  expect(variables?.[environmentVariables.receiptRuleSet]).toEqual({ Ref: ruleSetId });
+  expect(variables?.[environmentVariables.inboundFunction]).toEqual({ "Fn::GetAtt": [lambda("InboundHandler")[0], "Arn"] });
 });
 
 test("the domain is a parameter, so deploy names it when it runs", () => {

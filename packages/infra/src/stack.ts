@@ -16,13 +16,16 @@ import {
   UserPoolClientIdentityProvider,
 } from "aws-cdk-lib/aws-cognito";
 import { AttributeType, Billing, TableV2 } from "aws-cdk-lib/aws-dynamodb";
+import { PolicyStatement, ServicePrincipal } from "aws-cdk-lib/aws-iam";
 import { Architecture, Runtime } from "aws-cdk-lib/aws-lambda";
+import { SqsDestination } from "aws-cdk-lib/aws-lambda-destinations";
 import { NodejsFunction, OutputFormat } from "aws-cdk-lib/aws-lambda-nodejs";
 import { LogGroup, RetentionDays } from "aws-cdk-lib/aws-logs";
 import { BlockPublicAccess, Bucket, BucketEncryption } from "aws-cdk-lib/aws-s3";
 import { ConfigurationSet, EmailIdentity, Identity, ReceiptRuleSet } from "aws-cdk-lib/aws-ses";
+import { Queue, QueueEncryption } from "aws-cdk-lib/aws-sqs";
 import type { Construct } from "constructs";
-import { environmentVariables, tableKey } from "@duva/api/infrastructure";
+import { environmentVariables, inboundPrefix, receiptRuleName, tableKey } from "@duva/api/infrastructure";
 import { operations } from "@duva/openapi";
 import { cliRedirectUri, signInSender, stackOutputs, stackParameters } from "./outputs.ts";
 
@@ -162,13 +165,13 @@ export class DuvaStack extends Stack {
     const webClient = client("WebClient", [`${webUrl}/`], [`${webUrl}/`]);
     const cliClient = client("CliClient", [cliRedirectUri], []);
 
-    const lambda = (id: string, entry: string, environment: Record<string, string>) =>
+    const lambda = (id: string, entry: string, environment: Record<string, string>, { memorySize = 512, timeout = Duration.seconds(10) } = {}) =>
       new NodejsFunction(this, id, {
         entry: fileURLToPath(import.meta.resolve(entry)),
         runtime: Runtime.NODEJS_24_X,
         architecture: Architecture.ARM_64,
-        memorySize: 512,
-        timeout: Duration.seconds(10),
+        memorySize,
+        timeout,
         environment: { ...environment, NODE_OPTIONS: "--enable-source-maps" },
         // The AWS SDK is bundled too, so the deployed code is exactly what this version built.
         // CommonJS modules in the bundle still require Node's built-ins, so ESM gets a require.
@@ -189,12 +192,54 @@ export class DuvaStack extends Stack {
         }),
       });
 
+    // SES stores each message it accepts in the mail bucket, then invokes the inbound Lambda without
+    // waiting. Lambda retries a failed event twice, then leaves it in the failure queue for replay.
+    const inboundFailures = new Queue(this, "InboundFailures", {
+      encryption: QueueEncryption.SQS_MANAGED,
+      enforceSSL: true,
+      retentionPeriod: Duration.days(14),
+    });
+    // A message can be up to 40 MB, and is parsed whole.
+    const inbound = lambda(
+      "InboundHandler",
+      "@duva/api/inbound-lambda",
+      { [environmentVariables.tableName]: table.tableName, [environmentVariables.mailBucket]: mail.bucketName },
+      { memorySize: 1024, timeout: Duration.seconds(60) },
+    );
+    inbound.configureAsyncInvoke({ retryAttempts: 2, onFailure: new SqsDestination(inboundFailures) });
+    table.grantReadWriteData(inbound);
+    mail.grantRead(inbound);
+
+    // Duva creates its receipt rule with the first address, so only it may use the bucket and the Lambda.
+    const ruleArn = this.formatArn({ service: "ses", resource: "receipt-rule-set", resourceName: `${receiving.receiptRuleSetName}:receipt-rule/${receiptRuleName}` });
+    const ses = new ServicePrincipal("ses.amazonaws.com");
+    inbound.addPermission("SesInvoke", { principal: ses, sourceAccount: this.account, sourceArn: ruleArn });
+    mail.addToResourcePolicy(
+      new PolicyStatement({
+        principals: [ses],
+        actions: ["s3:PutObject"],
+        resources: [mail.arnForObjects(`${inboundPrefix}*`)],
+        conditions: { StringEquals: { "aws:SourceAccount": this.account }, ArnLike: { "aws:SourceArn": ruleArn } },
+      }),
+    );
+
     const handler = lambda("ApiHandler", "@duva/api/lambda", {
       [environmentVariables.version]: version,
       [environmentVariables.tableName]: table.tableName,
       [environmentVariables.mailBucket]: mail.bucketName,
+      [environmentVariables.receiptRuleSet]: receiving.receiptRuleSetName,
+      [environmentVariables.inboundFunction]: inbound.functionArn,
     });
     table.grantReadWriteData(handler);
+    // Message bodies are read from the raw mail.
+    mail.grantRead(handler);
+    // Creating an address adds it to the receipt rule's recipients.
+    handler.addToRolePolicy(
+      new PolicyStatement({
+        actions: ["ses:DescribeReceiptRule", "ses:CreateReceiptRule", "ses:UpdateReceiptRule"],
+        resources: [this.formatArn({ service: "ses", resource: "receipt-rule-set", resourceName: receiving.receiptRuleSetName }), ruleArn],
+      }),
+    );
 
     const authorizerHandler = lambda("AuthorizerHandler", "@duva/api/authorizer-lambda", {
       [environmentVariables.tableName]: table.tableName,
@@ -240,6 +285,7 @@ export class DuvaStack extends Stack {
     new CfnOutput(this, stackOutputs.cliClientId, { value: cliClient.userPoolClientId, description: "The CLI's app client" });
     new CfnOutput(this, stackOutputs.setupFunction, { value: setup.functionName, description: "The function that sets up the organization" });
     new CfnOutput(this, stackOutputs.receiptRuleSet, { value: receiving.receiptRuleSetName, description: "Duva's receipt rule set" });
+    new CfnOutput(this, stackOutputs.inboundFailures, { value: inboundFailures.queueUrl, description: "The queue of received mail that failed processing" });
     ([1, 2, 3] as const).forEach((n, index) => {
       const { name, value } = identity.dkimRecords[index]!;
       new CfnOutput(this, stackOutputs.dkimName(n), { value: name, description: "A DKIM CNAME record's name" });

@@ -15,14 +15,14 @@ interface Document {
   info: { version: string };
   security?: SecurityRequirement[];
   paths: Record<string, Partial<Record<(typeof methods)[number], OperationObject>>>;
-  components?: { schemas?: Record<string, SchemaObject> };
+  components?: { schemas?: Record<string, SchemaObject>; parameters?: Record<string, ParameterObject> };
 }
 
 interface OperationObject {
   operationId?: string;
   summary?: string;
   security?: SecurityRequirement[];
-  parameters?: ParameterObject[];
+  parameters?: (ParameterObject | { $ref: string })[];
   requestBody?: { required?: boolean; content?: Record<string, { schema?: SchemaObject }> };
   "x-cli-command"?: string;
 }
@@ -101,8 +101,10 @@ function operationsOf(document: Document) {
 }
 
 /** The operation's query and path parameters, which the CLI takes as options. */
-function parametersOf(where: string, parameters: ParameterObject[]) {
-  return parameters.map((parameter) => {
+function parametersOf(where: string, parameters: NonNullable<OperationObject["parameters"]>) {
+  return parameters.map((given) => {
+    const parameter = "$ref" in given ? document.components?.parameters?.[given.$ref.replace("#/components/parameters/", "")] : given;
+    if (parameter === undefined) fail(`${where} refers to a parameter the document doesn't have.`);
     if (parameter.in !== "query" && parameter.in !== "path") fail(`${where} has a ${parameter.in} parameter, which the CLI can't pass yet.`);
     return option(where, parameter.in, parameter.name, parameter.schema?.type, parameter.required ?? false, parameter.description);
   });

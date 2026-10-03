@@ -1,21 +1,26 @@
-// The API test harness: the real handlers and authorizer in-process, with DynamoDB Local (started
-// by dynamodb-local.ts) for DynamoDB, an in-memory stand-in for the mail bucket, and a test token
-// issuer in place of Cognito. Tests drive it only through the generated client.
+// The API test harness: the real handlers, authorizer and inbound handler in-process, with DynamoDB
+// Local (started by dynamodb-local.ts) for DynamoDB, an in-memory stand-in for the mail bucket, a
+// stand-in for SES receiving, and a test token issuer in place of Cognito. Tests drive the API only
+// through the generated client, and hand mail to SES as a sender's server does.
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { randomUUID } from "node:crypto";
 import { CreateTableCommand } from "@aws-sdk/client-dynamodb";
+import type { ReceiptRule } from "@aws-sdk/client-ses";
+import PostalMime from "postal-mime";
 import { createDuvaClient, type DuvaClient } from "@duva/client";
 import { inject } from "vitest";
 import { createApi } from "../src/api.ts";
 import { createAuthorizer } from "../src/authorizer.ts";
 import type { Humans } from "../src/humans.ts";
+import { createInbound } from "../src/inbound.ts";
 import { tableKey } from "../src/infrastructure.ts";
 import type { MailBucket } from "../src/mail-bucket.ts";
 import { addHuman, setUpOrganization } from "../src/organization.ts";
 import { dynamodbLocal } from "./dynamodb-local.ts";
 import { gateway } from "./gateway.ts";
 import { managedLogin, managedLoginClientId } from "./managed-login.ts";
+import { type Envelope, sesReceiving } from "./ses.ts";
 import { TestTokenIssuer } from "./token-issuer.ts";
 
 declare module "vitest" {
@@ -49,6 +54,14 @@ export interface Duva {
   accessToken(email: string): string;
   /** Ends every human's session, as when its refresh token expires. */
   endSessions(): void;
+  /**
+   * Hands the raw message to SES, as the sender's mail server does, and waits until Duva has
+   * processed it. Returns the recipients SES refused during delivery. The envelope sender defaults
+   * to the message's From. With `invocations`, Lambda runs the inbound handler that many times.
+   */
+  receive(raw: string | Uint8Array, envelope: Partial<Envelope> & Pick<Envelope, "to">, options?: { invocations?: number }): Promise<{ refused: string[] }>;
+  /** The receipt rules in Duva's rule set, as SES describes them. */
+  receiptRules(): ReceiptRule[];
   /** Sets the organization up again, as a re-run of duva deploy does. */
   setUp(options: { admin: string }): Promise<void>;
   /**
@@ -73,8 +86,14 @@ export async function startDuva({
   const firstAdmin = await setUp({ admin });
   for (const email of others) await addHuman({ table, humans }, { email, by: firstAdmin.id });
 
+  const mailBucket = memoryMailBucket();
+  const ses = sesReceiving({
+    buckets: new Map([[mailBucketName, mailBucket]]),
+    functions: new Map([[inboundFunction, createInbound({ table, mailBucket })]]),
+  });
+  const receiving = { rules: ses.rules, bucket: mailBucketName, inboundFunction };
   const api = gateway(
-    createApi({ version, region, table, mailBucket: memoryMailBucket() }),
+    createApi({ version, region, table, mailBucket, receiving }),
     createAuthorizer({ table, verifyAccessToken: issuer.verify }),
   );
   const login = managedLogin({ ids: humans.ids, issuer, accessTokenLifetime });
@@ -90,6 +109,8 @@ export async function startDuva({
     withKey: (key) => client({ authorization: `Bearer ${key}` }),
     accessToken,
     endSessions: () => login.endSessions(),
+    receive: async (raw, { from, to }, options) => ses.receive(raw, { from: from ?? (await senderOf(raw)), to }, options),
+    receiptRules: () => ses.describeRules(),
     setUp: async (options) => {
       await setUp(options);
     },
@@ -98,6 +119,16 @@ export async function startDuva({
       return { ...server, signIn: { url: server.url, clientId: managedLoginClientId } };
     },
   };
+}
+
+// What SES knows the deployment's mail bucket and inbound Lambda by.
+const mailBucketName = "duva-mail";
+const inboundFunction = "arn:aws:lambda:eu-north-1:000000000000:function:DuvaInbound";
+
+async function senderOf(raw: string | Uint8Array): Promise<string> {
+  const { from } = await PostalMime.parse(raw);
+  if (from?.address === undefined) throw new Error("The message has no From, so give the envelope sender.");
+  return from.address;
 }
 
 /** Humans who can sign in, by email address, with the IDs their sign-ins carry. */

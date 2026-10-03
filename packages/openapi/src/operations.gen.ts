@@ -100,5 +100,130 @@ export const operations = [
         "description": "The agent's ID."
       }
     ]
+  },
+  {
+    "operationId": "listMailboxes",
+    "method": "get",
+    "path": "/mailboxes",
+    "routeKey": "GET /mailboxes",
+    "summary": "List the mailboxes you can read, your own and those of the agents you sponsor.",
+    "signIn": true,
+    "command": [
+      "mailboxes",
+      "list"
+    ],
+    "options": []
+  },
+  {
+    "operationId": "createMailbox",
+    "method": "post",
+    "path": "/mailboxes",
+    "routeKey": "POST /mailboxes",
+    "summary": "Create a personal mailbox for an agent, with an address on the organization's domain.",
+    "signIn": true,
+    "command": [
+      "mailboxes",
+      "create"
+    ],
+    "options": [
+      {
+        "name": "owner",
+        "in": "body",
+        "type": "string",
+        "required": true,
+        "description": "The ID of the agent that owns the mailbox."
+      },
+      {
+        "name": "address",
+        "in": "body",
+        "type": "string",
+        "required": true,
+        "description": "The mailbox's address, on the organization's domain, without a plus tag."
+      }
+    ]
+  },
+  {
+    "operationId": "listMailboxChanges",
+    "method": "get",
+    "path": "/mailboxes/{mailbox}/changes",
+    "routeKey": "GET /mailboxes/{mailbox}/changes",
+    "summary": "List the changes in a mailbox after a position in its change feed.",
+    "signIn": true,
+    "command": [
+      "mailboxes",
+      "changes"
+    ],
+    "options": [
+      {
+        "name": "mailbox",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The mailbox's ID."
+      },
+      {
+        "name": "after",
+        "in": "query",
+        "type": "integer",
+        "required": false,
+        "description": "The position to list changes after. 0, the default, lists from the start."
+      }
+    ]
+  },
+  {
+    "operationId": "listThreads",
+    "method": "get",
+    "path": "/mailboxes/{mailbox}/threads",
+    "routeKey": "GET /mailboxes/{mailbox}/threads",
+    "summary": "List the threads in a mailbox with a label, newest first.",
+    "signIn": true,
+    "command": [
+      "threads",
+      "list"
+    ],
+    "options": [
+      {
+        "name": "mailbox",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The mailbox's ID."
+      },
+      {
+        "name": "label",
+        "in": "query",
+        "type": "string",
+        "required": false,
+        "description": "The label the threads carry. inbox, the default, lists the Inbox."
+      }
+    ]
+  },
+  {
+    "operationId": "getThread",
+    "method": "get",
+    "path": "/mailboxes/{mailbox}/threads/{thread}",
+    "routeKey": "GET /mailboxes/{mailbox}/threads/{thread}",
+    "summary": "Read a thread, with each of its messages, oldest first.",
+    "signIn": true,
+    "command": [
+      "threads",
+      "get"
+    ],
+    "options": [
+      {
+        "name": "mailbox",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The mailbox's ID."
+      },
+      {
+        "name": "thread",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The thread's ID."
+      }
+    ]
   }
 ] as const;

@@ -1,5 +1,6 @@
 import type { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import type { MailBucket } from "./mail-bucket.ts";
+import type { Receiving } from "./receiving.ts";
 
 /** Duva's one DynamoDB table. */
 export interface Table {
@@ -15,4 +16,5 @@ export interface Deployment {
   region: string;
   table: Table;
   mailBucket: MailBucket;
+  receiving: Receiving;
 }

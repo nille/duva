@@ -4,8 +4,12 @@
 //
 // Runs the checks of a real run that need no human: the API answers, refuses calls without valid
 // credentials, and lets the web app call it; the web app is served with the config deploy
-// published. Signing in stays with a human. Exits 1 if any check fails.
+// published; once an address exists, SES's receipt rule lists it, and no received mail waits in
+// the failure queue. Signing in stays with a human. Exits 1 if any check fails.
 import { CloudFormationClient, DescribeStacksCommand } from "@aws-sdk/client-cloudformation";
+import { DescribeReceiptRuleSetCommand, SESClient } from "@aws-sdk/client-ses";
+import { GetQueueAttributesCommand, SQSClient } from "@aws-sdk/client-sqs";
+import { inboundPrefix, receiptRuleName } from "@duva/api/infrastructure";
 import { stackName, stackOutputs } from "@duva/infra/outputs";
 
 const region = process.env.AWS_REGION;
@@ -51,6 +55,32 @@ await check("whoami with an agent key Duva didn't give out answers 401", async (
 await check("creating an agent without credentials answers 401", async () =>
   expectStatus(await fetch(`${apiUrl}/agents`, { method: "POST", headers: { "content-type": "application/json" }, body: '{"name":"Check"}' }), 401),
 );
+await check("listing mailboxes without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/mailboxes`), 401));
+await check("the receipt rule set holds only Duva's rule, with explicit recipients, scanning, then S3 and the inbound Lambda", async () => {
+  const { Rules = [] } = await new SESClient({ region }).send(new DescribeReceiptRuleSetCommand({ RuleSetName: output(stackOutputs.receiptRuleSet) }));
+  // Until an admin creates the first address there is no rule, and SES refuses all mail.
+  if (Rules.length === 0) return undefined;
+  const [rule, ...others] = Rules;
+  const [s3, invoke, ...more] = rule?.Actions ?? [];
+  const fine =
+    others.length === 0 &&
+    rule?.Name === receiptRuleName &&
+    rule.Enabled === true &&
+    rule.ScanEnabled === true &&
+    (rule.Recipients?.length ?? 0) > 0 &&
+    rule.Recipients!.every((recipient) => recipient.includes("@")) &&
+    s3?.S3Action?.ObjectKeyPrefix === inboundPrefix &&
+    invoke?.LambdaAction?.InvocationType === "Event" &&
+    more.length === 0;
+  return fine ? undefined : `is ${JSON.stringify(Rules)}`;
+});
+await check("no received mail waits in the failure queue", async () => {
+  const { Attributes } = await new SQSClient({ region }).send(
+    new GetQueueAttributesCommand({ QueueUrl: output(stackOutputs.inboundFailures), AttributeNames: ["ApproximateNumberOfMessages"] }),
+  );
+  const waiting = Number(Attributes?.ApproximateNumberOfMessages ?? 0);
+  return waiting === 0 ? undefined : `${waiting} events wait there. Fix what failed, then replay them.`;
+});
 await check("the web app is served", async () => {
   const response = await fetch(`${webUrl}/`);
   return response.ok && response.headers.get("content-type")?.startsWith("text/html") ? undefined : `answered ${response.status}`;

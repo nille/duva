@@ -3,6 +3,7 @@ import { type Operation, operations, type OperationId } from "@duva/openapi";
 import { createAgent, listAgents, rotateAgentKey } from "./agents.ts";
 import type { AuthorizerContext } from "./authorizer.ts";
 import { listOrganizationChanges } from "./changes.ts";
+import { createMailbox, getThread, listMailboxChanges, listMailboxes, listThreads } from "./mailboxes.ts";
 import type { Deployment } from "./deployment.ts";
 import { type Actor, actorOf } from "./organization.ts";
 import { getStatus } from "./status.ts";
@@ -18,7 +19,19 @@ export type OperationHandler = (
   actor: Actor | undefined,
 ) => Promise<{ statusCode: number; body: unknown }>;
 
-const handlers: Record<OperationId, OperationHandler> = { getStatus, whoami, listOrganizationChanges, createAgent, listAgents, rotateAgentKey };
+const handlers: Record<OperationId, OperationHandler> = {
+  getStatus,
+  whoami,
+  listOrganizationChanges,
+  createAgent,
+  listAgents,
+  rotateAgentKey,
+  createMailbox,
+  listMailboxes,
+  listMailboxChanges,
+  listThreads,
+  getThread,
+};
 
 const operationByRouteKey = new Map<string, Operation>(operations.map((operation) => [operation.routeKey, operation]));
 
@@ -34,6 +47,16 @@ export function createApi(deployment: Deployment) {
     const { statusCode, body } = await handlers[operation.operationId](event, deployment, actor);
     return { statusCode, headers: { "content-type": "application/json" }, body: JSON.stringify(body) };
   };
+}
+
+/** The call's JSON body, or undefined if it has none that parses. */
+export function jsonBody(event: APIGatewayProxyEventV2): Record<string, unknown> | undefined {
+  try {
+    const parsed: unknown = JSON.parse(event.isBase64Encoded ? Buffer.from(event.body ?? "", "base64").toString() : (event.body ?? ""));
+    return typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** An answer that the call can't be done, with what to do about it. */

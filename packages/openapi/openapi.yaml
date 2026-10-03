@@ -143,7 +143,145 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+  /mailboxes:
+    post:
+      operationId: createMailbox
+      summary: Create a personal mailbox for an agent, with an address on the organization's domain.
+      description: >
+        Only admins can create mailboxes. The address becomes the mailbox's
+        default address, and mail to it is accepted from then on. Creating the
+        mailbox and its address are changes to the organization's setup,
+        recorded in its change feed.
+      x-cli-command: mailboxes create
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NewMailbox"
+      responses:
+        "201":
+          description: The mailbox.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Mailbox"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+    get:
+      operationId: listMailboxes
+      summary: List the mailboxes you can read, your own and those of the agents you sponsor.
+      x-cli-command: mailboxes list
+      responses:
+        "200":
+          description: The mailboxes the signed-in actor can read.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MailboxList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /mailboxes/{mailbox}/changes:
+    get:
+      operationId: listMailboxChanges
+      summary: List the changes in a mailbox after a position in its change feed.
+      description: >
+        Lists up to 100 changes, oldest first. To catch up, call again with
+        the position the answer ends at until it lists no more. Only the
+        mailbox's owner and, for an agent's mailbox, its sponsor can read it.
+      x-cli-command: mailboxes changes
+      parameters:
+        - $ref: "#/components/parameters/Mailbox"
+        - name: after
+          in: query
+          description: The position to list changes after. 0, the default, lists from the start.
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        "200":
+          description: The changes after the position.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MailboxChangePage"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /mailboxes/{mailbox}/threads:
+    get:
+      operationId: listThreads
+      summary: List the threads in a mailbox with a label, newest first.
+      description: Lists the 100 newest threads with the label.
+      x-cli-command: threads list
+      parameters:
+        - $ref: "#/components/parameters/Mailbox"
+        - name: label
+          in: query
+          description: The label the threads carry. inbox, the default, lists the Inbox.
+          schema:
+            type: string
+            default: inbox
+      responses:
+        "200":
+          description: The threads with the label.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ThreadList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /mailboxes/{mailbox}/threads/{thread}:
+    get:
+      operationId: getThread
+      summary: Read a thread, with each of its messages, oldest first.
+      x-cli-command: threads get
+      parameters:
+        - $ref: "#/components/parameters/Mailbox"
+        - name: thread
+          in: path
+          required: true
+          description: The thread's ID.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The thread and its messages.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Thread"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
 components:
+  parameters:
+    Mailbox:
+      name: mailbox
+      in: path
+      required: true
+      description: The mailbox's ID.
+      schema:
+        type: string
   securitySchemes:
     session:
       type: http
@@ -274,6 +412,220 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Agent"
+    NewMailbox:
+      type: object
+      additionalProperties: false
+      required: [owner, address]
+      properties:
+        owner:
+          type: string
+          description: The ID of the agent that owns the mailbox.
+        address:
+          type: string
+          description: The mailbox's address, on the organization's domain, without a plus tag.
+          examples: ["hermes@example.com"]
+    Mailbox:
+      type: object
+      additionalProperties: false
+      required: [id, kind, owner, defaultAddress]
+      description: A store of received and sent mail, reached through its addresses.
+      properties:
+        id:
+          type: string
+          description: The mailbox's ID, which never changes.
+        kind:
+          type: string
+          const: personal
+          description: Personal mailboxes are owned by one actor.
+        owner:
+          type: string
+          description: The ID of the actor that owns the mailbox.
+        defaultAddress:
+          type: string
+          description: The address the mailbox sends new messages from.
+          examples: ["hermes@example.com"]
+    MailboxList:
+      type: object
+      additionalProperties: false
+      required: [mailboxes]
+      properties:
+        mailboxes:
+          type: array
+          items:
+            $ref: "#/components/schemas/Mailbox"
+    MailboxChangePage:
+      type: object
+      additionalProperties: false
+      required: [changes, position]
+      properties:
+        changes:
+          type: array
+          items:
+            $ref: "#/components/schemas/MailboxChange"
+        position:
+          type: integer
+          description: The position of the last change listed, or the one asked for if none were. Pass it as after to continue.
+    MailboxChange:
+      description: A change in a mailbox.
+      oneOf:
+        - $ref: "#/components/schemas/MessageReceived"
+      discriminator:
+        propertyName: type
+        mapping:
+          messageReceived: "#/components/schemas/MessageReceived"
+    MessageReceived:
+      type: object
+      additionalProperties: false
+      required: [position, at, type, thread, message]
+      description: Mail arrived. No actor made this change, so it names none.
+      properties:
+        position:
+          type: integer
+          description: The change's position in the mailbox's feed, counting from 1.
+        at:
+          type: string
+          format: date-time
+          description: When the mail arrived.
+        type:
+          type: string
+          const: messageReceived
+        thread:
+          type: string
+          description: The ID of the thread the message is in.
+        message:
+          type: string
+          description: The message's ID.
+    ThreadList:
+      type: object
+      additionalProperties: false
+      required: [threads]
+      properties:
+        threads:
+          type: array
+          items:
+            $ref: "#/components/schemas/ThreadSummary"
+    ThreadSummary:
+      type: object
+      additionalProperties: false
+      required: [id, subject, from, labels, latestAt, messages]
+      properties:
+        id:
+          type: string
+          description: The thread's ID.
+        subject:
+          type: string
+          description: The subject of the thread's first message.
+        from:
+          $ref: "#/components/schemas/EmailAddress"
+        labels:
+          type: array
+          items:
+            type: string
+          description: The thread's labels.
+          examples: [["inbox"]]
+        latestAt:
+          type: string
+          format: date-time
+          description: When the thread's newest message arrived.
+        messages:
+          type: integer
+          description: How many messages the thread has.
+    Thread:
+      type: object
+      additionalProperties: false
+      required: [id, subject, labels, messages]
+      properties:
+        id:
+          type: string
+          description: The thread's ID.
+        subject:
+          type: string
+          description: The subject of the thread's first message.
+        labels:
+          type: array
+          items:
+            type: string
+          description: The thread's labels.
+          examples: [["inbox"]]
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/Message"
+    Message:
+      type: object
+      additionalProperties: false
+      required: [id, from, to, cc, recipient, subject, date, receivedAt, text, attachments]
+      properties:
+        id:
+          type: string
+          description: The message's ID in Duva.
+        messageId:
+          type: string
+          description: The Message-ID header the sender gave it, if any.
+          examples: ["<CAF1234@mail.example.org>"]
+        from:
+          $ref: "#/components/schemas/EmailAddress"
+        to:
+          type: array
+          items:
+            $ref: "#/components/schemas/EmailAddress"
+        cc:
+          type: array
+          items:
+            $ref: "#/components/schemas/EmailAddress"
+        recipient:
+          type: string
+          description: The mailbox's address the message was delivered to, with its plus tag.
+          examples: ["hermes+news@example.com"]
+        plusTag:
+          type: string
+          description: The plus tag of the address the message was delivered to, if it had one.
+          examples: ["news"]
+        subject:
+          type: string
+        date:
+          type: string
+          format: date-time
+          description: When the sender says it was sent, or when it arrived if the sender doesn't say.
+        receivedAt:
+          type: string
+          format: date-time
+          description: When the message arrived.
+        text:
+          type: string
+          description: The plain-text body. Mail with only HTML is turned into text.
+        attachments:
+          type: array
+          items:
+            $ref: "#/components/schemas/Attachment"
+    EmailAddress:
+      type: object
+      additionalProperties: false
+      required: [address]
+      properties:
+        name:
+          type: string
+          description: The display name, if the message gives one.
+          examples: ["Grace Hopper"]
+        address:
+          type: string
+          examples: ["grace@example.org"]
+    Attachment:
+      type: object
+      additionalProperties: false
+      required: [type, size]
+      properties:
+        name:
+          type: string
+          description: The attachment's file name, if the message gives one.
+          examples: ["report.pdf"]
+        type:
+          type: string
+          description: The attachment's media type.
+          examples: ["application/pdf"]
+        size:
+          type: integer
+          description: The attachment's size in bytes, decoded.
     ChangePage:
       type: object
       additionalProperties: false
@@ -293,6 +645,8 @@ components:
         - $ref: "#/components/schemas/DomainAdded"
         - $ref: "#/components/schemas/ActorAdded"
         - $ref: "#/components/schemas/AgentKeyRotated"
+        - $ref: "#/components/schemas/MailboxAdded"
+        - $ref: "#/components/schemas/AddressAdded"
       discriminator:
         propertyName: type
         mapping:
@@ -300,6 +654,8 @@ components:
           domainAdded: "#/components/schemas/DomainAdded"
           actorAdded: "#/components/schemas/ActorAdded"
           agentKeyRotated: "#/components/schemas/AgentKeyRotated"
+          mailboxAdded: "#/components/schemas/MailboxAdded"
+          addressAdded: "#/components/schemas/AddressAdded"
     ChangeBase:
       type: object
       required: [position, at, actor]
@@ -359,6 +715,33 @@ components:
             agent:
               type: string
               description: The ID of the agent whose key was rotated.
+    MailboxAdded:
+      allOf:
+        - $ref: "#/components/schemas/ChangeBase"
+        - type: object
+          required: [type, mailbox]
+          properties:
+            type:
+              type: string
+              const: mailboxAdded
+            mailbox:
+              $ref: "#/components/schemas/Mailbox"
+    AddressAdded:
+      allOf:
+        - $ref: "#/components/schemas/ChangeBase"
+        - type: object
+          required: [type, address, mailbox]
+          properties:
+            type:
+              type: string
+              const: addressAdded
+            address:
+              type: string
+              description: The address.
+              examples: ["hermes@example.com"]
+            mailbox:
+              type: string
+              description: The ID of the mailbox it delivers to.
     Status:
       type: object
       additionalProperties: false

@@ -224,6 +224,55 @@ test("login refuses to sign in while an agent key is set", async () => {
   expect(errorIn(result.stderr)).toMatch(/DUVA_AGENT_KEY/);
 });
 
+test("an admin gives an agent a mailbox, and the agent catches up on it, lists its Inbox and reads the mail", async () => {
+  const machine = await newMachine();
+  const duva = await startDuva({ domain: "example.com", admin: "ada@example.org" });
+  const server = await duva.listen();
+  onTestFinished(() => server.close());
+  await machine.saveDeployment(server);
+  await machine.duva("login", { browserSignsIn: "ada@example.org" });
+  const { agent, key } = JSON.parse((await machine.duva("agents", "create", "--name", "Hermes")).stdout) as { agent: { id: string }; key: string };
+
+  const created = await machine.duva("mailboxes", "create", "--owner", agent.id, "--address", "hermes@example.com");
+  const mailbox = JSON.parse(created.stdout) as { id: string };
+  await duva.receive(
+    "From: Grace <grace@example.org>\r\nTo: hermes+cli@example.com\r\nSubject: Hello\r\nDate: Sat, 03 Oct 2026 10:00:00 +0000\r\n\r\nHi Hermes.\r\n",
+    { to: ["hermes+cli@example.com"] },
+  );
+  const asAgent = { env: { DUVA_AGENT_KEY: key } };
+  const mailboxes = await machine.duva("mailboxes", "list", asAgent);
+  const changes = await machine.duva("mailboxes", "changes", "--mailbox", mailbox.id, "--after", "0", asAgent);
+  const threads = await machine.duva("threads", "list", "--mailbox", mailbox.id, asAgent);
+  const { thread } = (JSON.parse(changes.stdout) as { changes: { thread: string }[] }).changes[0]!;
+  const read = await machine.duva("threads", "get", "--mailbox", mailbox.id, "--thread", thread, asAgent);
+
+  expect(created.exitCode).toBe(0);
+  expect(mailbox).toEqual({ id: expect.any(String), kind: "personal", owner: agent.id, defaultAddress: "hermes@example.com" });
+  expect(JSON.parse(mailboxes.stdout)).toEqual({ mailboxes: [mailbox] });
+  expect(JSON.parse(changes.stdout)).toEqual({ changes: [{ position: 1, at: expect.any(String), type: "messageReceived", thread, message: expect.any(String) }], position: 1 });
+  expect(JSON.parse(threads.stdout)).toMatchObject({ threads: [{ id: thread, subject: "Hello", labels: ["inbox"] }] });
+  expect(read.exitCode).toBe(0);
+  expect(JSON.parse(read.stdout)).toMatchObject({
+    id: thread,
+    messages: [{ from: { name: "Grace", address: "grace@example.org" }, recipient: "hermes+cli@example.com", plusTag: "cli", text: "Hi Hermes." }],
+  });
+});
+
+test("mailboxes create says why an address is refused", async () => {
+  const machine = await newMachine();
+  const server = await (await startDuva({ domain: "example.com", admin: "ada@example.org" })).listen();
+  onTestFinished(() => server.close());
+  await machine.saveDeployment(server);
+  await machine.duva("login", { browserSignsIn: "ada@example.org" });
+  const { agent } = JSON.parse((await machine.duva("agents", "create", "--name", "Hermes")).stdout) as { agent: { id: string } };
+
+  const result = await machine.duva("mailboxes", "create", "--owner", agent.id, "--address", "hermes@example.net");
+
+  expect(result.exitCode).toBe(1);
+  expect(result.stdout).toBe("");
+  expect(errorIn(result.stderr)).toMatch(/400.*isn't an address on example.com/);
+});
+
 /**
  * A machine with nothing configured: no AWS settings and no Duva config. Like the environment,
  * its home directory is input at this seam. The CLI's config file there is part of the CLI's

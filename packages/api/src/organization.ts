@@ -1,37 +1,41 @@
-// The organization, its actors and its change feed, in Duva's one table. Each change to the
-// setup is written in one transaction with its change-feed entry.
+// The organization, its actors, mailboxes and addresses, and its change feed, in Duva's one table.
+// Each change to the setup is written in one transaction with its change-feed entry.
 import { randomUUID } from "node:crypto";
 import { TransactionCanceledException } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient, GetCommand, QueryCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, QueryCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import type { components } from "@duva/openapi";
 import { agentKeyHash, newAgentKey } from "./agent-keys.ts";
 import type { Humans } from "./humans.ts";
-import { tableKey } from "./infrastructure.ts";
 import type { Table } from "./deployment.ts";
+import { changesAfter, entryKey, type Feed, recordChanges } from "./feed.ts";
+import { documents, isNew, pk, sk, type TransactItem } from "./table.ts";
 
 export type Actor = components["schemas"]["Actor"];
 export type Human = components["schemas"]["Human"];
 export type Agent = components["schemas"]["Agent"];
+export type Mailbox = components["schemas"]["Mailbox"];
 export type OrganizationChange = components["schemas"]["OrganizationChange"];
 /** A change as its maker describes it, before the feed gives it a position, a time and its actor. */
 type ChangeDetails = OrganizationChange extends infer Change ? (Change extends unknown ? Omit<Change, "position" | "at" | "actor"> : never) : never;
 
-const { partitionKey: pk, sortKey: sk } = tableKey;
 const organizationKey = { [pk]: "organization", [sk]: "organization" };
 const actorKey = (id: string) => ({ [pk]: `actor#${id}`, [sk]: "actor" });
 // Each agent is listed in its sponsor's partition, so a human's agents are one query away.
 const sponsoredKey = (sponsor: string, agent: string) => ({ [pk]: `actor#${sponsor}`, [sk]: `agent#${agent}` });
 // Only a hash of an agent's key is stored. It points at the agent, so the authorizer finds it in one read.
 const agentKeyKey = (hash: string) => ({ [pk]: `key#${hash}`, [sk]: "key" });
-const changesPartition = "organization#changes";
-// Positions are zero-padded in the sort key, so the feed sorts in position order.
-const changeKey = (position: number) => ({ [pk]: changesPartition, [sk]: `change#${String(position).padStart(12, "0")}` });
-
-// A put with this condition only adds an item, and fails if it is already there.
-const isNew = { ConditionExpression: `attribute_not_exists(${pk})` };
-
-/** How many changes one read of the change feed lists at most. */
-export const changesPerPage = 100;
+// A mailbox's own partition also holds its mail and the position of its change feed.
+export const mailboxKey = (id: string) => ({ [pk]: `mailbox#${id}`, [sk]: "mailbox" });
+// Each mailbox is listed in its owner's partition, so an actor's mailboxes are one query away.
+const ownedKey = (owner: string, mailbox: string) => ({ [pk]: `actor#${owner}`, [sk]: `mailbox#${mailbox}` });
+// Every address is in one partition, so the receipt rule's recipients are one query away.
+const addressesPartition = "organization#addresses";
+const addressKey = (address: string) => ({ [pk]: addressesPartition, [sk]: `address#${address}` });
+const organizationFeed: Feed = {
+  counter: organizationKey,
+  partition: "organization#changes",
+  missing: "The organization isn't set up. Run duva deploy.",
+};
 
 /**
  * Sets up the organization for its first domain, with the human at `admin` as its first admin.
@@ -63,7 +67,11 @@ export async function setUpOrganization(
           { Put: { TableName: table.name, Item: { ...organizationKey, domain, firstAdmin: actor.id, position: changes.length }, ...isNew } },
           { Put: { TableName: table.name, Item: { ...actorKey(actor.id), ...actor }, ...isNew } },
           ...changes.map((change, index) => ({
-            Put: { TableName: table.name, Item: { ...changeKey(index + 1), ...change, position: index + 1, at, actor: actor.id }, ...isNew },
+            Put: {
+              TableName: table.name,
+              Item: { ...entryKey(organizationFeed, index + 1), ...change, position: index + 1, at, actor: actor.id },
+              ...isNew,
+            },
           })),
         ],
       }),
@@ -171,6 +179,90 @@ export async function sponsoredAgents(table: Table, sponsor: string): Promise<Ag
   return agents.filter((agent): agent is Agent => agent?.kind === "agent");
 }
 
+/** The organization's domain, which every address is on. */
+export async function organizationDomain(table: Table): Promise<string> {
+  const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: organizationKey }));
+  if (Item === undefined) throw new Error(organizationFeed.missing);
+  return Item.domain as string;
+}
+
+/**
+ * Adds a personal mailbox owned by the actor `owner`, with the address as its default address, on
+ * behalf of the actor `by`. Throws AddressTaken if another mailbox has the address.
+ */
+export async function addMailbox(table: Table, { owner, address, by }: { owner: string; address: string; by: string }): Promise<Mailbox> {
+  const mailbox: Mailbox = { id: randomUUID(), kind: "personal", owner, defaultAddress: address };
+  await recordChanges(table, organizationFeed, {
+    by,
+    changes: [
+      { type: "mailboxAdded", mailbox },
+      { type: "addressAdded", address, mailbox: mailbox.id },
+    ] satisfies ChangeDetails[],
+    items: [
+      // The mailbox's feed starts at 0.
+      { Put: { TableName: table.name, Item: { ...mailboxKey(mailbox.id), ...mailbox, position: 0 }, ...isNew } },
+      { Put: { TableName: table.name, Item: { ...ownedKey(owner, mailbox.id) }, ...isNew } },
+      { Put: { TableName: table.name, Item: { ...addressKey(address), address, mailbox: mailbox.id }, ...isNew } },
+    ],
+  }).catch((error: unknown) => {
+    const taken = error instanceof TransactionCanceledException && error.CancellationReasons?.[5]?.Code === "ConditionalCheckFailed";
+    throw taken ? new AddressTaken() : error;
+  });
+  return mailbox;
+}
+
+/** Another mailbox has the address. */
+export class AddressTaken extends Error {}
+
+/** The mailbox with the ID, or undefined if the organization has none. */
+export async function findMailbox(table: Table, id: string): Promise<Mailbox | undefined> {
+  const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: mailboxKey(id), ConsistentRead: true }));
+  return Item === undefined ? undefined : mailboxOf(Item as Mailbox);
+}
+
+/** The mailboxes the actor owns. */
+export async function ownedMailboxes(table: Table, owner: string): Promise<Mailbox[]> {
+  const { [pk]: partition, [sk]: prefix } = ownedKey(owner, "");
+  const { Items = [] } = await documents(table).send(
+    new QueryCommand({
+      TableName: table.name,
+      KeyConditionExpression: `${pk} = :owner AND begins_with(${sk}, :mailbox)`,
+      ExpressionAttributeValues: { ":owner": partition, ":mailbox": prefix },
+    }),
+  );
+  const mailboxes = await Promise.all(Items.map((item) => findMailbox(table, (item[sk] as string).slice(prefix.length))));
+  return mailboxes.filter((mailbox) => mailbox !== undefined);
+}
+
+/** The mailbox the address delivers to, or undefined if the organization has no such address. */
+export async function mailboxAt(table: Table, address: string): Promise<string | undefined> {
+  const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: addressKey(address), ConsistentRead: true }));
+  return Item?.mailbox as string | undefined;
+}
+
+/** Every address in the organization. */
+export async function allAddresses(table: Table): Promise<string[]> {
+  const addresses: string[] = [];
+  let start: Record<string, unknown> | undefined;
+  do {
+    const page = await documents(table).send(
+      new QueryCommand({
+        TableName: table.name,
+        KeyConditionExpression: `${pk} = :addresses`,
+        ExpressionAttributeValues: { ":addresses": addressesPartition },
+        ConsistentRead: true,
+        ExclusiveStartKey: start,
+      }),
+    );
+    for (const item of page.Items ?? []) addresses.push(item.address as string);
+    start = page.LastEvaluatedKey;
+  } while (start !== undefined);
+  return addresses;
+}
+
+/** The mailbox an item stores, in the order the contract lists its fields. */
+const mailboxOf = ({ id, kind, owner, defaultAddress }: Mailbox): Mailbox => ({ id, kind, owner, defaultAddress });
+
 /** The actor with the ID, or undefined if the organization has none. */
 export async function findActor(table: Table, id: string): Promise<Actor | undefined> {
   const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: actorKey(id), ConsistentRead: true }));
@@ -187,69 +279,17 @@ export function actorOf(item: Record<string, unknown>): Actor {
   return { id: actor.id, kind: actor.kind, email: actor.email, admin: actor.admin };
 }
 
-type TransactItem = NonNullable<ConstructorParameters<typeof TransactWriteCommand>[0]["TransactItems"]>[number];
-
-/**
- * Writes the items with the change's entry in the change feed, in one transaction, attributed to
- * the actor `by`. The organization item holds the feed's last position, and each change claims
- * the next one, so concurrent changes retry until each has its own.
- */
-async function recordChange(table: Table, by: string, change: ChangeDetails, items: TransactItem[]): Promise<void> {
-  for (let attempt = 1; ; attempt++) {
-    const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: organizationKey, ConsistentRead: true }));
-    if (Item === undefined) throw new Error("The organization isn't set up. Run duva deploy.");
-    const position = (Item.position as number) + 1;
-    try {
-      await documents(table).send(
-        new TransactWriteCommand({
-          TransactItems: [
-            {
-              Update: {
-                TableName: table.name,
-                Key: organizationKey,
-                UpdateExpression: "SET #position = :next",
-                ConditionExpression: "#position = :current",
-                ExpressionAttributeNames: { "#position": "position" },
-                ExpressionAttributeValues: { ":next": position, ":current": position - 1 },
-              },
-            },
-            {
-              Put: {
-                TableName: table.name,
-                Item: { ...changeKey(position), ...change, position, at: new Date().toISOString(), actor: by },
-                ...isNew,
-              },
-            },
-            ...items,
-          ],
-        }),
-      );
-      return;
-    } catch (error) {
-      // Only a change that lost the race for the position tries again.
-      const lost = error instanceof TransactionCanceledException && error.CancellationReasons?.[0]?.Code === "ConditionalCheckFailed";
-      if (!lost || attempt === 10) throw error;
-    }
-  }
+/** Records one change to the setup in the organization's change feed, with the items it writes. */
+function recordChange(table: Table, by: string, change: ChangeDetails, items: TransactItem[]): Promise<void> {
+  return recordChanges(table, organizationFeed, { by, changes: [change], items });
 }
 
 /** The organization's changes after the position, oldest first, at most changesPerPage of them. */
 export async function organizationChanges(table: Table, after: number): Promise<OrganizationChange[]> {
-  const { Items = [] } = await documents(table).send(
-    new QueryCommand({
-      TableName: table.name,
-      KeyConditionExpression: `${pk} = :feed AND ${sk} > :after`,
-      ExpressionAttributeValues: { ":feed": changesPartition, ":after": changeKey(after)[sk] },
-      Limit: changesPerPage,
-    }),
-  );
-  // DynamoDB keeps no attribute order, so each change is rebuilt in the order the contract lists.
-  return Items.map(({ [pk]: _pk, [sk]: _sk, position, at, actor, type, ...details }) => {
-    if (details.added !== undefined) details.added = actorOf(details.added);
-    return { position, at, actor, type, ...details } as OrganizationChange;
-  });
-}
-
-function documents(table: Table) {
-  return DynamoDBDocumentClient.from(table.client);
+  const changes = await changesAfter(table, organizationFeed, after);
+  for (const change of changes) {
+    if (change.added !== undefined) change.added = actorOf(change.added as Record<string, unknown>);
+    if (change.mailbox !== undefined && typeof change.mailbox === "object") change.mailbox = mailboxOf(change.mailbox as Mailbox);
+  }
+  return changes as OrganizationChange[];
 }

@@ -1,0 +1,25 @@
+From: Grace Hopper <grace@example.org>
+To: hermes@example.com
+Subject: The report
+Date: Sat, 03 Oct 2026 10:15:00 +0000
+Message-ID: <report-7@example.org>
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="part"
+
+--part
+Content-Type: text/plain; charset=utf-8
+
+The report and its data are attached.
+--part
+Content-Type: application/pdf; name="report.pdf"
+Content-Disposition: attachment; filename="report.pdf"
+Content-Transfer-Encoding: base64
+
+SGVsbG8sIFBERiE=
+--part
+Content-Type: text/csv
+Content-Disposition: attachment
+Content-Transfer-Encoding: base64
+
+YSxiCjEsMgo=
+--part--

@@ -19,4 +19,14 @@ export const environmentVariables = {
   domain: "DOMAIN",
   /** The first admin's email address. */
   admin: "ADMIN",
+  /** Duva's receipt rule set. */
+  receiptRuleSet: "RECEIPT_RULE_SET",
+  /** The ARN of the Lambda SES invokes for each message it receives. */
+  inboundFunction: "INBOUND_FUNCTION",
 } as const;
+
+/** Where in the mail bucket SES stores each message it receives, followed by SES's message ID. */
+export const inboundPrefix = "inbound/";
+
+/** The name of Duva's receipt rule, which lists its addresses. */
+export const receiptRuleName = "Addresses";

@@ -99,6 +99,84 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/mailboxes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the mailboxes you can read, your own and those of the agents you sponsor. */
+        get: operations["listMailboxes"];
+        put?: never;
+        /**
+         * Create a personal mailbox for an agent, with an address on the organization's domain.
+         * @description Only admins can create mailboxes. The address becomes the mailbox's default address, and mail to it is accepted from then on. Creating the mailbox and its address are changes to the organization's setup, recorded in its change feed.
+         */
+        post: operations["createMailbox"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mailboxes/{mailbox}/changes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the changes in a mailbox after a position in its change feed.
+         * @description Lists up to 100 changes, oldest first. To catch up, call again with the position the answer ends at until it lists no more. Only the mailbox's owner and, for an agent's mailbox, its sponsor can read it.
+         */
+        get: operations["listMailboxChanges"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mailboxes/{mailbox}/threads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the threads in a mailbox with a label, newest first.
+         * @description Lists the 100 newest threads with the label.
+         */
+        get: operations["listThreads"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mailboxes/{mailbox}/threads/{thread}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read a thread, with each of its messages, oldest first. */
+        get: operations["getThread"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -163,13 +241,165 @@ export interface components {
         AgentList: {
             agents: components["schemas"]["Agent"][];
         };
+        NewMailbox: {
+            /** @description The ID of the agent that owns the mailbox. */
+            owner: string;
+            /**
+             * @description The mailbox's address, on the organization's domain, without a plus tag.
+             * @example hermes@example.com
+             */
+            address: string;
+        };
+        /** @description A store of received and sent mail, reached through its addresses. */
+        Mailbox: {
+            /** @description The mailbox's ID, which never changes. */
+            id: string;
+            /**
+             * @description Personal mailboxes are owned by one actor.
+             * @constant
+             */
+            kind: "personal";
+            /** @description The ID of the actor that owns the mailbox. */
+            owner: string;
+            /**
+             * @description The address the mailbox sends new messages from.
+             * @example hermes@example.com
+             */
+            defaultAddress: string;
+        };
+        MailboxList: {
+            mailboxes: components["schemas"]["Mailbox"][];
+        };
+        MailboxChangePage: {
+            changes: components["schemas"]["MailboxChange"][];
+            /** @description The position of the last change listed, or the one asked for if none were. Pass it as after to continue. */
+            position: number;
+        };
+        /** @description A change in a mailbox. */
+        MailboxChange: components["schemas"]["MessageReceived"];
+        /** @description Mail arrived. No actor made this change, so it names none. */
+        MessageReceived: {
+            /** @description The change's position in the mailbox's feed, counting from 1. */
+            position: number;
+            /**
+             * Format: date-time
+             * @description When the mail arrived.
+             */
+            at: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "messageReceived";
+            /** @description The ID of the thread the message is in. */
+            thread: string;
+            /** @description The message's ID. */
+            message: string;
+        };
+        ThreadList: {
+            threads: components["schemas"]["ThreadSummary"][];
+        };
+        ThreadSummary: {
+            /** @description The thread's ID. */
+            id: string;
+            /** @description The subject of the thread's first message. */
+            subject: string;
+            from: components["schemas"]["EmailAddress"];
+            /**
+             * @description The thread's labels.
+             * @example [
+             *       "inbox"
+             *     ]
+             */
+            labels: string[];
+            /**
+             * Format: date-time
+             * @description When the thread's newest message arrived.
+             */
+            latestAt: string;
+            /** @description How many messages the thread has. */
+            messages: number;
+        };
+        Thread: {
+            /** @description The thread's ID. */
+            id: string;
+            /** @description The subject of the thread's first message. */
+            subject: string;
+            /**
+             * @description The thread's labels.
+             * @example [
+             *       "inbox"
+             *     ]
+             */
+            labels: string[];
+            messages: components["schemas"]["Message"][];
+        };
+        Message: {
+            /** @description The message's ID in Duva. */
+            id: string;
+            /**
+             * @description The Message-ID header the sender gave it, if any.
+             * @example <CAF1234@mail.example.org>
+             */
+            messageId?: string;
+            from: components["schemas"]["EmailAddress"];
+            to: components["schemas"]["EmailAddress"][];
+            cc: components["schemas"]["EmailAddress"][];
+            /**
+             * @description The mailbox's address the message was delivered to, with its plus tag.
+             * @example hermes+news@example.com
+             */
+            recipient: string;
+            /**
+             * @description The plus tag of the address the message was delivered to, if it had one.
+             * @example news
+             */
+            plusTag?: string;
+            subject: string;
+            /**
+             * Format: date-time
+             * @description When the sender says it was sent, or when it arrived if the sender doesn't say.
+             */
+            date: string;
+            /**
+             * Format: date-time
+             * @description When the message arrived.
+             */
+            receivedAt: string;
+            /** @description The plain-text body. Mail with only HTML is turned into text. */
+            text: string;
+            attachments: components["schemas"]["Attachment"][];
+        };
+        EmailAddress: {
+            /**
+             * @description The display name, if the message gives one.
+             * @example Grace Hopper
+             */
+            name?: string;
+            /** @example grace@example.org */
+            address: string;
+        };
+        Attachment: {
+            /**
+             * @description The attachment's file name, if the message gives one.
+             * @example report.pdf
+             */
+            name?: string;
+            /**
+             * @description The attachment's media type.
+             * @example application/pdf
+             */
+            type: string;
+            /** @description The attachment's size in bytes, decoded. */
+            size: number;
+        };
         ChangePage: {
             changes: components["schemas"]["OrganizationChange"][];
             /** @description The position of the last change listed, or the one asked for if none were. Pass it as after to continue. */
             position: number;
         };
         /** @description A change to the organization's setup. */
-        OrganizationChange: components["schemas"]["OrganizationAdded"] | components["schemas"]["DomainAdded"] | components["schemas"]["ActorAdded"] | components["schemas"]["AgentKeyRotated"];
+        OrganizationChange: components["schemas"]["OrganizationAdded"] | components["schemas"]["DomainAdded"] | components["schemas"]["ActorAdded"] | components["schemas"]["AgentKeyRotated"] | components["schemas"]["MailboxAdded"] | components["schemas"]["AddressAdded"];
         ChangeBase: {
             /** @description The change's position in the feed, counting from 1. */
             position: number;
@@ -228,6 +458,34 @@ export interface components {
              * @enum {string}
              */
             type: "agentKeyRotated";
+        };
+        MailboxAdded: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "mailboxAdded";
+            mailbox: components["schemas"]["Mailbox"];
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "mailboxAdded";
+        };
+        AddressAdded: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "addressAdded";
+            /**
+             * @description The address.
+             * @example hermes@example.com
+             */
+            address: string;
+            /** @description The ID of the mailbox it delivers to. */
+            mailbox: string;
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "addressAdded";
         };
         Status: {
             /**
@@ -289,7 +547,10 @@ export interface components {
             };
         };
     };
-    parameters: never;
+    parameters: {
+        /** @description The mailbox's ID. */
+        Mailbox: string;
+    };
     requestBodies: never;
     headers: never;
     pathItems: never;
@@ -436,6 +697,142 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    listMailboxes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The mailboxes the signed-in actor can read. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MailboxList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    createMailbox: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewMailbox"];
+            };
+        };
+        responses: {
+            /** @description The mailbox. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Mailbox"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listMailboxChanges: {
+        parameters: {
+            query?: {
+                /** @description The position to list changes after. 0, the default, lists from the start. */
+                after?: number;
+            };
+            header?: never;
+            path: {
+                /** @description The mailbox's ID. */
+                mailbox: components["parameters"]["Mailbox"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The changes after the position. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MailboxChangePage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listThreads: {
+        parameters: {
+            query?: {
+                /** @description The label the threads carry. inbox, the default, lists the Inbox. */
+                label?: string;
+            };
+            header?: never;
+            path: {
+                /** @description The mailbox's ID. */
+                mailbox: components["parameters"]["Mailbox"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The threads with the label. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThreadList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getThread: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The mailbox's ID. */
+                mailbox: components["parameters"]["Mailbox"];
+                /** @description The thread's ID. */
+                thread: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The thread and its messages. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Thread"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
 }

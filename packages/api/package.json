@@ -7,6 +7,7 @@
     "./lambda": "./src/lambda.ts",
     "./authorizer-lambda": "./src/authorizer-lambda.ts",
     "./setup-lambda": "./src/setup-lambda.ts",
+    "./inbound-lambda": "./src/inbound-lambda.ts",
     "./infrastructure": "./src/infrastructure.ts",
     "./harness": "./test/harness.ts"
   },
@@ -17,13 +18,17 @@
     "@aws-sdk/client-cognito-identity-provider": "^3.1146.0",
     "@aws-sdk/client-dynamodb": "^3.1146.0",
     "@aws-sdk/client-s3": "^3.1146.0",
+    "@aws-sdk/client-ses": "^3.1146.0",
     "@aws-sdk/lib-dynamodb": "^3.1146.0",
     "@duva/openapi": "*",
-    "aws-jwt-verify": "^5.2.1"
+    "aws-jwt-verify": "^5.2.1",
+    "html-to-text": "^10.0.1",
+    "postal-mime": "^4.0.2"
   },
   "devDependencies": {
     "@duva/client": "*",
     "@types/aws-lambda": "^8.10.164",
+    "@types/html-to-text": "^9.0.4",
     "dynamo-db-local": "^11.1.0"
   }
 }
