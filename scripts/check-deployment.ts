@@ -45,6 +45,12 @@ await check("whoami without credentials answers 401", async () => expectStatus(a
 await check("whoami with a forged token answers 401", async () =>
   expectStatus(await fetch(`${apiUrl}/whoami`, { headers: { authorization: "Bearer eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ4In0.forged" } }), 401),
 );
+await check("whoami with an agent key Duva didn't give out answers 401", async () =>
+  expectStatus(await fetch(`${apiUrl}/whoami`, { headers: { authorization: `Bearer duva_agent_${"A".repeat(43)}` } }), 401),
+);
+await check("creating an agent without credentials answers 401", async () =>
+  expectStatus(await fetch(`${apiUrl}/agents`, { method: "POST", headers: { "content-type": "application/json" }, body: '{"name":"Check"}' }), 401),
+);
 await check("the web app is served", async () => {
   const response = await fetch(`${webUrl}/`);
   return response.ok && response.headers.get("content-type")?.startsWith("text/html") ? undefined : `answered ${response.status}`;

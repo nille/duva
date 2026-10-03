@@ -9,7 +9,7 @@ import { strings } from "./strings.ts";
 type State =
   | { status: "loading" }
   | { status: "signedOut"; config: Config }
-  | { status: "signedIn"; config: Config; actor: components["schemas"]["Actor"] }
+  | { status: "signedIn"; config: Config; actor: components["schemas"]["Human"] }
   | { status: "failed"; message: string };
 
 function App() {
@@ -20,7 +20,8 @@ function App() {
       const config = await loadConfig();
       const client = await signedInClient(config);
       const { data: actor } = client ? await client.GET("/whoami") : {};
-      setState(actor ? { status: "signedIn", config, actor } : { status: "signedOut", config });
+      // Only humans sign in to the web app. Agents call the API with their keys.
+      setState(actor?.kind === "human" ? { status: "signedIn", config, actor } : { status: "signedOut", config });
     })().catch((error: unknown) => setState({ status: "failed", message: error instanceof Error ? error.message : String(error) }));
   }, []);
 

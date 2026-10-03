@@ -15,6 +15,7 @@ interface Document {
   info: { version: string };
   security?: SecurityRequirement[];
   paths: Record<string, Partial<Record<(typeof methods)[number], OperationObject>>>;
+  components?: { schemas?: Record<string, SchemaObject> };
 }
 
 interface OperationObject {
@@ -22,7 +23,15 @@ interface OperationObject {
   summary?: string;
   security?: SecurityRequirement[];
   parameters?: ParameterObject[];
+  requestBody?: { required?: boolean; content?: Record<string, { schema?: SchemaObject }> };
   "x-cli-command"?: string;
+}
+
+interface SchemaObject {
+  $ref?: string;
+  type?: string;
+  required?: string[];
+  properties?: Record<string, SchemaObject & { description?: string }>;
 }
 
 interface ParameterObject {
@@ -80,7 +89,7 @@ function operationsOf(document: Document) {
           summary: operation.summary,
           signIn: needsSignIn(operation.security ?? document.security ?? []),
           command: operation["x-cli-command"].split(" "),
-          query: queryOf(where, operation.parameters ?? []),
+          options: [...parametersOf(where, operation.parameters ?? []), ...bodyOf(where, operation.requestBody)],
         },
       ];
     }),
@@ -91,14 +100,32 @@ function operationsOf(document: Document) {
   return operations;
 }
 
-/** The operation's query parameters, which the CLI takes as options. */
-function queryOf(where: string, parameters: ParameterObject[]) {
+/** The operation's query and path parameters, which the CLI takes as options. */
+function parametersOf(where: string, parameters: ParameterObject[]) {
   return parameters.map((parameter) => {
-    if (parameter.in !== "query") fail(`${where} has a ${parameter.in} parameter, which the CLI can't pass yet.`);
-    const type = parameter.schema?.type;
-    if (type !== "integer" && type !== "string") fail(`${where} has the parameter ${parameter.name} of type ${type}, which the CLI can't pass yet.`);
-    return { name: parameter.name, type, required: parameter.required ?? false, description: parameter.description ?? "" };
+    if (parameter.in !== "query" && parameter.in !== "path") fail(`${where} has a ${parameter.in} parameter, which the CLI can't pass yet.`);
+    return option(where, parameter.in, parameter.name, parameter.schema?.type, parameter.required ?? false, parameter.description);
   });
+}
+
+/** The properties of the operation's JSON body, which the CLI takes as options too. */
+function bodyOf(where: string, body: OperationObject["requestBody"]) {
+  if (body === undefined) return [];
+  const schema = resolve(body.content?.["application/json"]?.schema);
+  if (schema?.type !== "object") fail(`${where} has a body that isn't a JSON object, which the CLI can't pass yet.`);
+  return Object.entries(schema.properties ?? {}).map(([name, property]) =>
+    option(where, "body", name, property.type, schema.required?.includes(name) ?? false, property.description),
+  );
+}
+
+function option(where: string, place: "query" | "path" | "body", name: string, type: string | undefined, required: boolean, description = "") {
+  if (type !== "integer" && type !== "string") fail(`${where} has the parameter ${name} of type ${type}, which the CLI can't pass yet.`);
+  return { name, in: place, type, required, description };
+}
+
+function resolve(schema: SchemaObject | undefined): SchemaObject | undefined {
+  const name = schema?.$ref?.replace("#/components/schemas/", "");
+  return name === undefined ? schema : document.components?.schemas?.[name];
 }
 
 /** Whether a caller must sign in. An empty requirement ({}) makes sign-in optional. */

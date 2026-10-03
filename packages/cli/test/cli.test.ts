@@ -148,6 +148,82 @@ test("organization changes refuses a position that isn't a number", async () => 
   expect(errorIn(result.stderr)).toMatch(/"first" isn't a whole number. Give --after/);
 });
 
+test("a human creates an agent, and the agent calls Duva with its key from the environment", async () => {
+  const machine = await newMachine();
+  const server = await (await startDuva({ admin: "ada@example.com" })).listen();
+  onTestFinished(() => server.close());
+  await machine.saveDeployment(server);
+  await machine.duva("login", { browserSignsIn: "ada@example.com" });
+  const ada = JSON.parse((await machine.duva("whoami")).stdout) as { id: string };
+
+  const created = await machine.duva("agents", "create", "--name", "Hermes");
+  const { agent, key } = JSON.parse(created.stdout) as { agent: { id: string }; key: string };
+  // The agent's own machine has the deployment's config, but nobody has signed in there.
+  const agentMachine = await newMachine();
+  await agentMachine.saveDeployment(server);
+  const whoami = await agentMachine.duva("whoami", { env: { DUVA_AGENT_KEY: key } });
+
+  expect(created.exitCode).toBe(0);
+  expect(JSON.parse(created.stdout)).toEqual({
+    agent: { id: expect.any(String), kind: "agent", name: "Hermes", sponsor: ada.id, admin: false },
+    key: expect.stringMatching(/^duva_agent_/),
+  });
+  expect(whoami.exitCode).toBe(0);
+  expect(JSON.parse(whoami.stdout)).toEqual({ id: agent.id, kind: "agent", name: "Hermes", sponsor: ada.id, admin: false });
+});
+
+test("the sponsor rotates an agent's key, and the agent's old key is refused", async () => {
+  const machine = await newMachine();
+  const server = await (await startDuva({ admin: "ada@example.com" })).listen();
+  onTestFinished(() => server.close());
+  await machine.saveDeployment(server);
+  await machine.duva("login", { browserSignsIn: "ada@example.com" });
+  const { agent, key } = JSON.parse((await machine.duva("agents", "create", "--name", "Hermes")).stdout) as { agent: { id: string }; key: string };
+
+  const rotated = await machine.duva("agents", "rotate-key", "--agent", agent.id);
+  const whoami = await machine.duva("whoami", { env: { DUVA_AGENT_KEY: key } });
+
+  expect(rotated.exitCode).toBe(0);
+  expect(JSON.parse(rotated.stdout)).toEqual({ agent, key: expect.stringMatching(/^duva_agent_/) });
+  expect(whoami.exitCode).toBe(1);
+  expect(errorIn(whoami.stderr)).toMatch(/DUVA_AGENT_KEY.*sponsor/);
+});
+
+test("agents list shows the agents the signed-in human sponsors", async () => {
+  const machine = await newMachine();
+  const server = await (await startDuva({ admin: "ada@example.com" })).listen();
+  onTestFinished(() => server.close());
+  await machine.saveDeployment(server);
+  await machine.duva("login", { browserSignsIn: "ada@example.com" });
+  const { agent } = JSON.parse((await machine.duva("agents", "create", "--name", "Hermes")).stdout) as { agent: unknown };
+
+  const result = await machine.duva("agents", "list");
+
+  expect(result.exitCode).toBe(0);
+  expect(JSON.parse(result.stdout)).toEqual({ agents: [agent] });
+});
+
+test("agents create asks for the name when it's missing", async () => {
+  const machine = await newMachine();
+
+  const result = await machine.duva("agents", "create");
+
+  expect(result.exitCode).toBe(1);
+  expect(errorIn(result.stderr)).toMatch(/--name/);
+});
+
+test("login refuses to sign in while an agent key is set", async () => {
+  const machine = await newMachine();
+  const server = await (await startDuva()).listen();
+  onTestFinished(() => server.close());
+  await machine.saveDeployment(server);
+
+  const result = await machine.duva("login", { env: { DUVA_AGENT_KEY: "duva_agent_x" } });
+
+  expect(result.exitCode).toBe(1);
+  expect(errorIn(result.stderr)).toMatch(/DUVA_AGENT_KEY/);
+});
+
 /**
  * A machine with nothing configured: no AWS settings and no Duva config. Like the environment,
  * its home directory is input at this seam. The CLI's config file there is part of the CLI's
@@ -160,15 +236,18 @@ async function newMachine() {
   return {
     home,
     /**
-     * Runs duva. With browserSignsIn, the browser login opens signs in as that human. With
-     * browserOpens, it opens the URL the function makes from the loopback redirect instead.
+     * Runs duva, with the variables in env added to the environment. With browserSignsIn, the
+     * browser login opens signs in as that human. With browserOpens, it opens the URL the function
+     * makes from the loopback redirect instead.
      */
-    async duva(...args: [...string[], Browser] | string[]) {
+    async duva(...args: [...string[], Options] | string[]) {
       const last = args.at(-1);
-      const browser = typeof last === "object" ? last : undefined;
-      const words = (browser ? args.slice(0, -1) : args) as string[];
-      const env: Record<string, string> = { PATH: process.env.PATH ?? "", HOME: home };
-      if (browser !== undefined) env.BROWSER = await browserScript(home, browser, redirectUri);
+      const options = typeof last === "object" ? last : undefined;
+      const words = (options ? args.slice(0, -1) : args) as string[];
+      const env: Record<string, string> = { PATH: process.env.PATH ?? "", HOME: home, ...options?.env };
+      if (options !== undefined && ("browserSignsIn" in options || "browserOpens" in options)) {
+        env.BROWSER = await browserScript(home, options as Browser, redirectUri);
+      }
       return run(words, env);
     },
     /**
@@ -187,6 +266,7 @@ async function newMachine() {
 }
 
 type Browser = { browserSignsIn: string } | { browserOpens: (redirectUri: string) => string };
+type Options = (Browser | {}) & { env?: Record<string, string> };
 
 const browserJs = fileURLToPath(new URL("browser.ts", import.meta.url));
 

@@ -29,7 +29,7 @@ export interface Aws {
    * Runs the stack's setup function, which sets up the organization with the stack's domain and
    * first admin, and returns that admin. Setting up again with the same admin changes nothing.
    */
-  setUpOrganization(functionName: string): Promise<components["schemas"]["Actor"]>;
+  setUpOrganization(functionName: string): Promise<components["schemas"]["Human"]>;
   /** Uploads the web app this CLI version bundles to the bucket, with its config. */
   publishWebApp(webApp: { bucket: string; config: WebAppConfig }): Promise<void>;
   /** The name of the region's active receipt rule set, or undefined if none is active. */

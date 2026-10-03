@@ -194,7 +194,7 @@ export class DuvaStack extends Stack {
       [environmentVariables.tableName]: table.tableName,
       [environmentVariables.mailBucket]: mail.bucketName,
     });
-    table.grantReadData(handler);
+    table.grantReadWriteData(handler);
 
     const authorizerHandler = lambda("AuthorizerHandler", "@duva/api/authorizer-lambda", {
       [environmentVariables.tableName]: table.tableName,

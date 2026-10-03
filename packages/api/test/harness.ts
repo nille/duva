@@ -12,7 +12,7 @@ import { createAuthorizer } from "../src/authorizer.ts";
 import type { Humans } from "../src/humans.ts";
 import { tableKey } from "../src/infrastructure.ts";
 import type { MailBucket } from "../src/mail-bucket.ts";
-import { setUpOrganization } from "../src/organization.ts";
+import { addHuman, setUpOrganization } from "../src/organization.ts";
 import { dynamodbLocal } from "./dynamodb-local.ts";
 import { gateway } from "./gateway.ts";
 import { managedLogin, managedLoginClientId } from "./managed-login.ts";
@@ -31,6 +31,8 @@ export interface DuvaOptions {
   domain?: string;
   /** The first admin's email address. */
   admin?: string;
+  /** The email addresses of other humans in the organization, who aren't admins. The first admin added them. */
+  humans?: string[];
   /** How many seconds the access tokens of human sessions last. */
   accessTokenLifetime?: number;
 }
@@ -41,6 +43,8 @@ export interface Duva {
   client: DuvaClient;
   /** The generated client, signed in as the human at `email`. */
   signIn(email: string): DuvaClient;
+  /** The generated client, calling with the agent key, as an agent does. */
+  withKey(key: string): DuvaClient;
   /** A fresh access token for the human at `email`, as Cognito issues one when they sign in. */
   accessToken(email: string): string;
   /** Ends every human's session, as when its refresh token expires. */
@@ -59,15 +63,15 @@ export async function startDuva({
   region = "eu-north-1",
   domain = "example.com",
   admin = "ada@example.com",
+  humans: others = [],
   accessTokenLifetime = 3600,
 }: DuvaOptions = {}): Promise<Duva> {
   const table = await createTable();
   const humans = memoryHumans();
   const issuer = new TestTokenIssuer();
-  const setUp = async (options: { admin: string }) => {
-    await setUpOrganization({ table, humans }, { domain, ...options });
-  };
-  await setUp({ admin });
+  const setUp = (options: { admin: string }) => setUpOrganization({ table, humans }, { domain, ...options });
+  const firstAdmin = await setUp({ admin });
+  for (const email of others) await addHuman({ table, humans }, { email, by: firstAdmin.id });
 
   const api = gateway(
     createApi({ version, region, table, mailBucket: memoryMailBucket() }),
@@ -83,9 +87,12 @@ export async function startDuva({
   return {
     client: client(),
     signIn: (email) => client({ authorization: `Bearer ${accessToken(email)}` }),
+    withKey: (key) => client({ authorization: `Bearer ${key}` }),
     accessToken,
     endSessions: () => login.endSessions(),
-    setUp,
+    setUp: async (options) => {
+      await setUp(options);
+    },
     async listen() {
       const server = await listen(async (request) => (await login.handle(request)) ?? api(request));
       return { ...server, signIn: { url: server.url, clientId: managedLoginClientId } };

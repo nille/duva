@@ -11,7 +11,7 @@ export const operations = [
     "command": [
       "status"
     ],
-    "query": []
+    "options": []
   },
   {
     "operationId": "whoami",
@@ -23,7 +23,7 @@ export const operations = [
     "command": [
       "whoami"
     ],
-    "query": []
+    "options": []
   },
   {
     "operationId": "listOrganizationChanges",
@@ -36,12 +36,68 @@ export const operations = [
       "organization",
       "changes"
     ],
-    "query": [
+    "options": [
       {
         "name": "after",
+        "in": "query",
         "type": "integer",
         "required": false,
         "description": "The position to list changes after. 0, the default, lists from the start."
+      }
+    ]
+  },
+  {
+    "operationId": "listAgents",
+    "method": "get",
+    "path": "/agents",
+    "routeKey": "GET /agents",
+    "summary": "List the agents you sponsor.",
+    "signIn": true,
+    "command": [
+      "agents",
+      "list"
+    ],
+    "options": []
+  },
+  {
+    "operationId": "createAgent",
+    "method": "post",
+    "path": "/agents",
+    "routeKey": "POST /agents",
+    "summary": "Create an agent, with you as its sponsor, and show its key once.",
+    "signIn": true,
+    "command": [
+      "agents",
+      "create"
+    ],
+    "options": [
+      {
+        "name": "name",
+        "in": "body",
+        "type": "string",
+        "required": true,
+        "description": "The agent's name."
+      }
+    ]
+  },
+  {
+    "operationId": "rotateAgentKey",
+    "method": "post",
+    "path": "/agents/{agent}/key",
+    "routeKey": "POST /agents/{agent}/key",
+    "summary": "Give an agent you sponsor a new key, show it once, and refuse the old one from now on.",
+    "signIn": true,
+    "command": [
+      "agents",
+      "rotate-key"
+    ],
+    "options": [
+      {
+        "name": "agent",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The agent's ID."
       }
     ]
   }

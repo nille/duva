@@ -132,6 +132,24 @@ test("the mail bucket keeps every version of raw mail", () => {
   }
 });
 
+/** The DynamoDB actions the IAM policies let the Lambda whose ID starts with `prefix` take. */
+function tableActions(prefix: string): string[] {
+  const [[, lambda]] = resources.filter(([id, { Type }]) => Type === "AWS::Lambda::Function" && id.startsWith(prefix)) as [[string, Resource]];
+  const role = JSON.stringify(lambda.Properties?.Role?.["Fn::GetAtt"]?.[0]);
+  return ofType("AWS::IAM::Policy")
+    .filter(([, { Properties }]) => (Properties?.Roles ?? []).some((ref: unknown) => JSON.stringify((ref as { Ref?: string }).Ref) === role))
+    .flatMap(([, { Properties }]) => Properties?.PolicyDocument?.Statement ?? [])
+    .flatMap(({ Action }: { Action: string | string[] }) => [Action].flat())
+    .filter((action) => action.startsWith("dynamodb:"));
+}
+
+test("the API can write the table, and the authorizer can only read it", () => {
+  expect(tableActions("ApiHandler")).toEqual(expect.arrayContaining(["dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:DeleteItem", "dynamodb:ConditionCheckItem"]));
+  const authorizer = tableActions("AuthorizerHandler");
+  expect(authorizer).toContain("dynamodb:GetItem");
+  expect(authorizer.filter((action) => /Put|Update|Delete|Write/.test(action))).toEqual([]);
+});
+
 test("the domain is a parameter, so deploy names it when it runs", () => {
   expect(stack.template.Parameters?.Domain?.Type).toBe("String");
 });

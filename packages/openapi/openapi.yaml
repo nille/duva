@@ -12,6 +12,7 @@ info:
     identifier: MIT
 security:
   - session: []
+  - agentKey: []
 paths:
   /status:
     get:
@@ -71,12 +72,87 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
+  /agents:
+    post:
+      operationId: createAgent
+      summary: Create an agent, with you as its sponsor, and show its key once.
+      description: >
+        Only humans can create agents. The answer is the only time Duva shows
+        the agent's key: it keeps only a hash. Creating an agent is a change
+        to the organization's setup, recorded in its change feed.
+      x-cli-command: agents create
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NewAgent"
+      responses:
+        "201":
+          description: The agent and its key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentWithKey"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    get:
+      operationId: listAgents
+      summary: List the agents you sponsor.
+      x-cli-command: agents list
+      responses:
+        "200":
+          description: The agents the signed-in actor sponsors.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /agents/{agent}/key:
+    post:
+      operationId: rotateAgentKey
+      summary: Give an agent you sponsor a new key, show it once, and refuse the old one from now on.
+      description: >
+        Only the agent's sponsor can rotate its key. Rotating is a change to
+        the organization's setup, recorded in its change feed.
+      x-cli-command: agents rotate-key
+      parameters:
+        - name: agent
+          in: path
+          required: true
+          description: The agent's ID.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The agent and its new key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentWithKey"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
 components:
   securitySchemes:
     session:
       type: http
       scheme: bearer
       description: A human's Cognito access token, from signing in.
+    agentKey:
+      type: http
+      scheme: bearer
+      description: An agent's key, which starts with duva_agent_.
   responses:
     BadRequest:
       description: The request is malformed.
@@ -96,6 +172,18 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
+    Conflict:
+      description: Another call changed the same thing at the same time. Try again.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    NotFound:
+      description: Nothing has the ID the call names.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
   schemas:
     Error:
       type: object
@@ -105,24 +193,87 @@ components:
           type: string
           description: What went wrong.
     Actor:
+      description: A human or an agent that acts on mail.
+      oneOf:
+        - $ref: "#/components/schemas/Human"
+        - $ref: "#/components/schemas/Agent"
+      discriminator:
+        propertyName: kind
+        mapping:
+          human: "#/components/schemas/Human"
+          agent: "#/components/schemas/Agent"
+    Human:
       type: object
       additionalProperties: false
       required: [id, kind, email, admin]
-      description: A human or an agent that acts on mail. For now every actor is a human.
+      description: An actor that is a person.
       properties:
         id:
           type: string
           description: The actor's ID, which never changes.
         kind:
           type: string
-          enum: [human]
+          const: human
         email:
           type: string
           description: The address the human signs in with.
           examples: ["ada@example.com"]
         admin:
           type: boolean
-          description: Whether the actor may change the organization's setup.
+          description: Whether the human may change the organization's setup.
+    Agent:
+      type: object
+      additionalProperties: false
+      required: [id, kind, name, sponsor, admin]
+      description: An actor that is software, which calls Duva with its key.
+      properties:
+        id:
+          type: string
+          description: The actor's ID, which never changes.
+        kind:
+          type: string
+          const: agent
+        name:
+          type: string
+          description: The agent's name.
+          examples: ["Hermes"]
+        sponsor:
+          type: string
+          description: The ID of the human who answers for the agent.
+        admin:
+          type: boolean
+          description: Whether the agent may change the organization's setup.
+    NewAgent:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: The agent's name.
+          examples: ["Hermes"]
+    AgentWithKey:
+      type: object
+      additionalProperties: false
+      required: [agent, key]
+      properties:
+        agent:
+          $ref: "#/components/schemas/Agent"
+        key:
+          type: string
+          description: The agent's key. Duva shows it only here, so keep it now. The agent sends it as a bearer token, or the CLI reads it from DUVA_AGENT_KEY.
+          examples: ["duva_agent_3q2-7wF0nJvZb1yKcY9mXo8aT5rL4sUeHgQdPiWjNkM"]
+    AgentList:
+      type: object
+      additionalProperties: false
+      required: [agents]
+      properties:
+        agents:
+          type: array
+          items:
+            $ref: "#/components/schemas/Agent"
     ChangePage:
       type: object
       additionalProperties: false
@@ -141,12 +292,14 @@ components:
         - $ref: "#/components/schemas/OrganizationAdded"
         - $ref: "#/components/schemas/DomainAdded"
         - $ref: "#/components/schemas/ActorAdded"
+        - $ref: "#/components/schemas/AgentKeyRotated"
       discriminator:
         propertyName: type
         mapping:
           organizationAdded: "#/components/schemas/OrganizationAdded"
           domainAdded: "#/components/schemas/DomainAdded"
           actorAdded: "#/components/schemas/ActorAdded"
+          agentKeyRotated: "#/components/schemas/AgentKeyRotated"
     ChangeBase:
       type: object
       required: [position, at, actor]
@@ -194,6 +347,18 @@ components:
               const: actorAdded
             added:
               $ref: "#/components/schemas/Actor"
+    AgentKeyRotated:
+      allOf:
+        - $ref: "#/components/schemas/ChangeBase"
+        - type: object
+          required: [type, agent]
+          properties:
+            type:
+              type: string
+              const: agentKeyRotated
+            agent:
+              type: string
+              description: The ID of the agent whose key was rotated.
     Status:
       type: object
       additionalProperties: false

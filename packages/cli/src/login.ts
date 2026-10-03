@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { parseArgs } from "node:util";
 import { finishSignIn, type Session, type SignInConfig, startSignIn } from "@duva/client/sign-in";
-import { callApi } from "./api-commands.ts";
+import { agentKeyVariable, callApi } from "./api-commands.ts";
 import type { Command } from "./commands.ts";
 import { readConfig, saveSession } from "./config.ts";
 
@@ -14,6 +14,9 @@ export const login: Command = {
   summary: "Sign in as a human through the browser.",
   async run(args) {
     parseArgs({ args, options: {} });
+    if (process.env[agentKeyVariable]) {
+      throw new Error(`${agentKeyVariable} is set, so the CLI calls Duva as that agent, and an agent never signs in. Unset it to sign in as a human.`);
+    }
     const { signIn } = await readConfig();
     if (signIn === undefined) throw new Error("No Duva deployment is configured. Run duva deploy first.");
     await saveSession(await signInThroughBrowser(signIn));

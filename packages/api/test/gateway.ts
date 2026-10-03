@@ -20,8 +20,11 @@ export type AuthorizerHandler = (event: APIGatewayRequestAuthorizerEventV2) => P
 export function gateway(handler: ApiHandler, authorizer: AuthorizerHandler): (request: Request) => Promise<Response> {
   return async (request) => {
     const url = new URL(request.url);
-    const operation = operations.find(({ routeKey }) => routeKey === `${request.method} ${url.pathname}`);
-    if (operation === undefined) return Response.json({ message: "Not Found" }, { status: 404 });
+    const route = operations
+      .map((operation) => ({ operation, pathParameters: match(operation, request.method, url.pathname) }))
+      .find(({ pathParameters }) => pathParameters !== undefined);
+    if (route === undefined) return Response.json({ message: "Not Found" }, { status: 404 });
+    const { operation, pathParameters } = route;
 
     const { routeKey } = operation;
     const body = await request.text();
@@ -60,6 +63,7 @@ export function gateway(handler: ApiHandler, authorizer: AuthorizerHandler): (re
       rawQueryString: url.search.slice(1),
       headers,
       queryStringParameters,
+      pathParameters: Object.keys(pathParameters!).length > 0 ? pathParameters : undefined,
       // What the authorizer resolved reaches the API in the request context, as in API Gateway.
       requestContext: { ...requestContext, authorizer: authorizerContext && { lambda: authorizerContext } } as APIGatewayEventRequestContextV2,
       body: body === "" ? undefined : body,
@@ -70,6 +74,21 @@ export function gateway(handler: ApiHandler, authorizer: AuthorizerHandler): (re
     for (const [name, value] of Object.entries(result.headers ?? {})) responseHeaders.set(name, String(value));
     return new Response(result.body ?? null, { status: result.statusCode ?? 200, headers: responseHeaders });
   };
+}
+
+/** The path parameters, if the request is for the operation's route, where each {name} matches one path segment. */
+function match(operation: (typeof operations)[number], method: string, path: string): Record<string, string> | undefined {
+  const route = operation.path.split("/");
+  const segments = path.split("/");
+  if (operation.method.toUpperCase() !== method || route.length !== segments.length) return undefined;
+  const parameters: Record<string, string> = {};
+  for (const [index, part] of route.entries()) {
+    const segment = segments[index]!;
+    const name = /^\{(\w+)\}$/.exec(part)?.[1];
+    if (name !== undefined && segment !== "") parameters[name] = decodeURIComponent(segment);
+    else if (part !== segment) return undefined;
+  }
+  return parameters;
 }
 
 function context(request: Request, url: URL, routeKey: string): APIGatewayEventRequestContextV2 {

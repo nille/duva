@@ -1,5 +1,6 @@
 import type { APIGatewayProxyEventV2, APIGatewayProxyStructuredResultV2 } from "aws-lambda";
 import { type Operation, operations, type OperationId } from "@duva/openapi";
+import { createAgent, listAgents, rotateAgentKey } from "./agents.ts";
 import type { AuthorizerContext } from "./authorizer.ts";
 import { listOrganizationChanges } from "./changes.ts";
 import type { Deployment } from "./deployment.ts";
@@ -17,7 +18,7 @@ export type OperationHandler = (
   actor: Actor | undefined,
 ) => Promise<{ statusCode: number; body: unknown }>;
 
-const handlers: Record<OperationId, OperationHandler> = { getStatus, whoami, listOrganizationChanges };
+const handlers: Record<OperationId, OperationHandler> = { getStatus, whoami, listOrganizationChanges, createAgent, listAgents, rotateAgentKey };
 
 const operationByRouteKey = new Map<string, Operation>(operations.map((operation) => [operation.routeKey, operation]));
 
