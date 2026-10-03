@@ -233,12 +233,10 @@ export class DuvaStack extends Stack {
     table.grantReadWriteData(handler);
     // Message bodies are read from the raw mail.
     mail.grantRead(handler);
-    // Creating an address adds it to the receipt rule's recipients.
+    // Creating an address adds it to the receipt rule's recipients. IAM has no resource type for
+    // receipt rules, so these actions can't be limited to Duva's rule set.
     handler.addToRolePolicy(
-      new PolicyStatement({
-        actions: ["ses:DescribeReceiptRule", "ses:CreateReceiptRule", "ses:UpdateReceiptRule"],
-        resources: [this.formatArn({ service: "ses", resource: "receipt-rule-set", resourceName: receiving.receiptRuleSetName }), ruleArn],
-      }),
+      new PolicyStatement({ actions: ["ses:DescribeReceiptRule", "ses:CreateReceiptRule", "ses:UpdateReceiptRule"], resources: ["*"] }),
     );
 
     const authorizerHandler = lambda("AuthorizerHandler", "@duva/api/authorizer-lambda", {

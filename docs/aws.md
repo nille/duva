@@ -22,7 +22,13 @@ Facts about AWS that shaped Duva's design, each with how it was established. A c
 ## SES
 
 - **An active receipt rule set with no rules refuses all mail** with `550 5.1.1`. _Real run of #4._
+- **SES answers each recipient on its own.** In one SMTP transaction, an address no rule lists gets `550 5.1.1` at RCPT TO while a listed one gets `250`, and the message goes to the listed one only. So Duva never bounces. _Probed over SMTP to inbound-smtp.eu-north-1, real run of #7._
+- **A rule's address also takes its plus-tagged addresses, in any case.** With `realrun7@duva.nille.xyz` listed, SES took `RealRun7+Probe@duva.nille.xyz`, and the receipt's recipient keeps the case it was sent in. _Real run of #7._
+- **A rule without recipients takes every address on the account's verified domains,** so Duva never writes one. _[ReceiptRule, Recipients](https://docs.aws.amazon.com/ses/latest/APIReference/API_ReceiptRule.html)._
+- **A rule takes at most 500 recipients,** so while Duva has one rule an organization has at most 500 addresses. With 200 rules a rule set could hold 100,000, more than ADR-0004's estimate of roughly 20,000. _[SES quotas](https://docs.aws.amazon.com/ses/latest/dg/quotas.html)._
+- **`ScanEnabled` defaults to off** when CreateReceiptRule doesn't set it, so Duva sets it. _Probed with a throwaway rule set in eu-north-1, 2026-10-03._
+- **IAM has no resource type for receipt rules or rule sets.** CreateReceiptRule, DescribeReceiptRule and UpdateReceiptRule need `Resource: "*"`; naming the rule set's ARN is denied. _[Service Authorization Reference for SES](https://docs.aws.amazon.com/service-authorization/latest/reference/list_ses.html); AccessDenied in the real run of #7._
 
-## Still open
+## DynamoDB
 
-- Whether SES refuses an unknown recipient with a 5xx when the same message also goes to a known one, and how `ScanEnabled` defaults. See spec #1, Further Notes.
+- **Two transactions on the same item at once can cancel one with `TransactionConflict`,** not `ConditionalCheckFailed`. Two messages arriving together in one mailbox both claimed its feed's next position, and one was cancelled that way, so a feed write retries on both. _Real run of #7._

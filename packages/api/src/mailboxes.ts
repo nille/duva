@@ -6,7 +6,7 @@ import { inbox, mailboxChanges, readThread, threadsWithLabel } from "./mail.ts";
 import { syncRecipients } from "./receiving.ts";
 
 /** How many addresses the organization can have: SES's limit on one receipt rule's recipients. */
-const maxAddresses = 100;
+const maxAddresses = 500;
 
 export const createMailbox: OperationHandler = async (event, deployment, actor) => {
   if (!actor?.admin) return refusal(403, "Only admins can create mailboxes. Ask an admin to create one.");
@@ -32,7 +32,7 @@ export const createMailbox: OperationHandler = async (event, deployment, actor) 
     return refusal(400, `${JSON.stringify(given)} isn't an address Duva can create. Use letters, digits, dots, hyphens and underscores before the @.`);
   }
 
-  // SES takes at most 100 recipients in a receipt rule, and Duva has one rule for now.
+  // SES takes at most 500 recipients in a receipt rule, and Duva has one rule for now.
   if ((await allAddresses(deployment.table)).length >= maxAddresses) {
     return refusal(409, `The organization has ${maxAddresses} addresses, as many as Duva can receive mail for yet.`);
   }

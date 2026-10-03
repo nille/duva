@@ -206,10 +206,9 @@ test("the inbound Lambda retries a failed event, then leaves it in a queue for r
   expect(queue?.Properties?.MessageRetentionPeriod).toBe(14 * 24 * 3600);
 });
 
-test("the API manages Duva's receipt rule, and only in Duva's rule set", () => {
-  const ses = statements("ApiHandler").filter(({ Action }) => [Action].flat().some((action) => action.startsWith("ses:")));
-  expect(ses.flatMap(({ Action }) => [Action].flat()).sort()).toEqual(["ses:CreateReceiptRule", "ses:DescribeReceiptRule", "ses:UpdateReceiptRule"]);
-  for (const { Resource } of ses) expect(JSON.stringify(Resource)).toContain(`{"Ref":"${ruleSetId}"}`);
+test("the API manages receipt rules in Duva's rule set, and may take no other SES action", () => {
+  // IAM has no resource type for receipt rules, so the rule set is named only in the environment.
+  expect(actions("ApiHandler", "ses").sort()).toEqual(["ses:CreateReceiptRule", "ses:DescribeReceiptRule", "ses:UpdateReceiptRule"]);
   const variables = lambda("ApiHandler")[1].Properties?.Environment?.Variables;
   expect(variables?.[environmentVariables.receiptRuleSet]).toEqual({ Ref: ruleSetId });
   expect(variables?.[environmentVariables.inboundFunction]).toEqual({ "Fn::GetAtt": [lambda("InboundHandler")[0], "Arn"] });

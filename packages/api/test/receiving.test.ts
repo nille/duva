@@ -184,6 +184,16 @@ test("a message processed twice shows up once", async () => {
   expect((await hermes.GET("/mailboxes/{mailbox}/changes", { params })).data?.changes).toHaveLength(1);
 });
 
+test("messages arriving at the same time each get their own place in the mailbox's change feed", async () => {
+  const { duva, hermes, params } = await withMailbox();
+
+  await Promise.all(["plain", "html-only", "attachment", "plus-tagged"].map(async (name) => duva.receive(await mail(name), { to: ["hermes+x@example.com"] })));
+
+  const { data } = await hermes.GET("/mailboxes/{mailbox}/changes", { params });
+  expect(data?.changes.map(({ position }) => position)).toEqual([1, 2, 3, 4]);
+  expect((await hermes.GET("/mailboxes/{mailbox}/threads", { params })).data?.threads).toHaveLength(4);
+});
+
 test("one message to two mailboxes lands in each", async () => {
   const { duva, ada, hermes, params } = await withMailbox();
   const { data: iris } = await ada.POST("/agents", { body: { name: "Iris" } });

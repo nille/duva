@@ -64,9 +64,12 @@ export async function recordChanges(
       );
       return;
     } catch (error) {
-      // Only a change that lost the race for the position tries again.
-      const lost = error instanceof TransactionCanceledException && error.CancellationReasons?.[0]?.Code === "ConditionalCheckFailed";
-      if (!lost || attempt === 10) throw error;
+      // Only a change that lost the race for the position tries again. One that ran into another
+      // transaction on the same items is cancelled with TransactionConflict instead, and waits a little.
+      const reasons = error instanceof TransactionCanceledException ? (error.CancellationReasons ?? []) : [];
+      const conflict = reasons.some(({ Code }) => Code === "TransactionConflict");
+      if (!(conflict || reasons[0]?.Code === "ConditionalCheckFailed") || attempt === 10) throw error;
+      if (conflict) await new Promise((resolve) => setTimeout(resolve, Math.random() * 50 * attempt));
     }
   }
 }
