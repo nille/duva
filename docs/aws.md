@@ -32,3 +32,4 @@ Facts about AWS that shaped Duva's design, each with how it was established. A c
 ## DynamoDB
 
 - **Two transactions on the same item at once can cancel one with `TransactionConflict`,** not `ConditionalCheckFailed`. Two messages arriving together in one mailbox both claimed its feed's next position, and one was cancelled that way, so a feed write retries on both. _Real run of #7._
+- **A transaction can't include two operations on the same item.** DynamoDB refuses it with a ValidationException. So a reply that leaves its thread's place unchanged overwrites the thread's label entries, and deletes only those that move. _[TransactWriteItems](https://docs.aws.amazon.com/amazondynamodb/latest/APIReference/API_TransactWriteItems.html)._

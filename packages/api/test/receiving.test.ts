@@ -294,3 +294,132 @@ test("reading a mailbox or thread that doesn't exist answers 404", async () => {
 
   expect([mailbox.response.status, thread.response.status]).toEqual([404, 404]);
 });
+
+/** The mailbox's Inbox, and each of its threads as the agent reads it, in the Inbox's order. */
+async function inboxOf(hermes: Awaited<ReturnType<typeof withMailbox>>["hermes"], mailbox: string) {
+  const { data } = await hermes.GET("/mailboxes/{mailbox}/threads", { params: { path: { mailbox } } });
+  const threads = await Promise.all(
+    data!.threads.map(async ({ id }) => (await hermes.GET("/mailboxes/{mailbox}/threads/{thread}", { params: { path: { mailbox, thread: id } } })).data!),
+  );
+  return { summaries: data!.threads, threads };
+}
+
+test("a reply whose In-Reply-To names a message in the mailbox joins that message's thread", async () => {
+  const { duva, hermes, mailbox } = await withMailbox();
+  await duva.receive(await mail("plain"), { to: ["hermes@example.com"] });
+
+  await duva.receive(await mail("reply"), { to: ["hermes@example.com"] });
+
+  const { summaries, threads } = await inboxOf(hermes, mailbox.id);
+  expect(summaries).toEqual([
+    {
+      id: expect.any(String),
+      subject: "Compiler notes",
+      from: { name: "Grace Hopper", address: "grace@example.org" },
+      labels: ["inbox"],
+      latestAt: threads[0]!.messages[1]!.receivedAt,
+      messages: 2,
+    },
+  ]);
+  expect(threads[0]!.messages.map(({ messageId, subject }) => ({ messageId, subject }))).toEqual([
+    { messageId: "<notes-1@example.org>", subject: "Compiler notes" },
+    { messageId: "<notes-2@example.org>", subject: "Re: Compiler notes" },
+  ]);
+});
+
+test("a reply joins its thread through References alone, even when the message it answers never arrived", async () => {
+  const { duva, hermes, mailbox } = await withMailbox();
+  await duva.receive(await mail("plain"), { to: ["hermes@example.com"] });
+
+  // It answers notes-2, Ada's reply, which the mailbox never got, and also names notes-1 in References.
+  await duva.receive(await mail("references-only"), { to: ["hermes@example.com"] });
+
+  const { threads } = await inboxOf(hermes, mailbox.id);
+  expect(threads.map(({ messages }) => messages.map(({ messageId }) => messageId))).toEqual([["<notes-1@example.org>", "<notes-3@example.org>"]]);
+});
+
+test("a message that answers nothing in the mailbox starts a new thread, even with an existing thread's subject", async () => {
+  const { duva, hermes, mailbox } = await withMailbox();
+  await duva.receive(await mail("plain"), { to: ["hermes@example.com"] });
+
+  await duva.receive(await mail("same-subject"), { to: ["hermes@example.com"] });
+
+  const { summaries } = await inboxOf(hermes, mailbox.id);
+  expect(summaries.map(({ subject, messages }) => ({ subject, messages }))).toEqual([
+    { subject: "Compiler notes", messages: 1 },
+    { subject: "Compiler notes", messages: 1 },
+  ]);
+});
+
+test("a reply to a message in another mailbox starts a new thread", async () => {
+  const { duva, ada, hermes, mailbox } = await withMailbox();
+  const { data: iris } = await ada.POST("/agents", { body: { name: "Iris" } });
+  await ada.POST("/mailboxes", { body: { owner: iris!.agent.id, address: "iris@example.com" } });
+  await duva.receive(await mail("plain"), { to: ["iris@example.com"] });
+
+  await duva.receive(await mail("reply"), { to: ["hermes@example.com"] });
+
+  const { summaries } = await inboxOf(hermes, mailbox.id);
+  expect(summaries.map(({ subject, messages }) => ({ subject, messages }))).toEqual([{ subject: "Re: Compiler notes", messages: 1 }]);
+});
+
+test("a reply that arrives before the message it answers starts its own thread, and the two stay apart", async () => {
+  const { duva, hermes, mailbox } = await withMailbox();
+  await duva.receive(await mail("reply"), { to: ["hermes@example.com"] });
+
+  await duva.receive(await mail("plain"), { to: ["hermes@example.com"] });
+
+  const { threads } = await inboxOf(hermes, mailbox.id);
+  expect(threads.map(({ messages }) => messages.map(({ messageId }) => messageId))).toEqual([["<notes-1@example.org>"], ["<notes-2@example.org>"]]);
+});
+
+test("a thread with a new reply moves to the top of the Inbox", async () => {
+  const { duva, hermes, mailbox } = await withMailbox();
+  await duva.receive(await mail("plain"), { to: ["hermes@example.com"] });
+  await duva.receive(await mail("attachment"), { to: ["hermes@example.com"] });
+
+  await duva.receive(await mail("reply"), { to: ["hermes@example.com"] });
+
+  const { summaries } = await inboxOf(hermes, mailbox.id);
+  expect(summaries.map(({ subject, messages }) => ({ subject, messages }))).toEqual([
+    { subject: "Compiler notes", messages: 2 },
+    { subject: "The report", messages: 1 },
+  ]);
+});
+
+test("the change feed records a reply's arrival in the thread it joined", async () => {
+  const { duva, hermes, mailbox, params } = await withMailbox();
+  await duva.receive(await mail("plain"), { to: ["hermes@example.com"] });
+
+  await duva.receive(await mail("reply"), { to: ["hermes@example.com"] });
+
+  const { threads } = await inboxOf(hermes, mailbox.id);
+  const [first, reply] = threads[0]!.messages;
+  const { data } = await hermes.GET("/mailboxes/{mailbox}/changes", { params });
+  expect(data?.changes.map(({ type, thread, message }) => ({ type, thread, message }))).toEqual([
+    { type: "messageReceived", thread: threads[0]!.id, message: first!.id },
+    { type: "messageReceived", thread: threads[0]!.id, message: reply!.id },
+  ]);
+});
+
+test("a reply processed twice joins its thread once", async () => {
+  const { duva, hermes, mailbox } = await withMailbox();
+  await duva.receive(await mail("plain"), { to: ["hermes@example.com"] });
+
+  await duva.receive(await mail("reply"), { to: ["hermes@example.com"] }, { invocations: 2 });
+
+  const { summaries, threads } = await inboxOf(hermes, mailbox.id);
+  expect(summaries.map(({ messages }) => messages)).toEqual([2]);
+  expect(threads[0]!.messages).toHaveLength(2);
+});
+
+test("replies arriving at the same time all join the thread", async () => {
+  const { duva, hermes, mailbox } = await withMailbox();
+  await duva.receive(await mail("plain"), { to: ["hermes@example.com"] });
+
+  await Promise.all(["reply", "references-only", "reply", "references-only"].map(async (name) => duva.receive(await mail(name), { to: ["hermes@example.com"] })));
+
+  const { summaries, threads } = await inboxOf(hermes, mailbox.id);
+  expect(summaries.map(({ messages }) => messages)).toEqual([5]);
+  expect(threads[0]!.messages).toHaveLength(5);
+});

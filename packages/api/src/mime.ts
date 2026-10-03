@@ -8,6 +8,8 @@ type EmailAddress = components["schemas"]["EmailAddress"];
 /** What Duva reads from a raw message. */
 export interface ParsedMail {
   messageId?: string;
+  /** The Message-IDs of the messages it answers: In-Reply-To's first, then References' from the newest. */
+  answers: string[];
   from?: EmailAddress;
   to: EmailAddress[];
   cc: EmailAddress[];
@@ -25,6 +27,7 @@ export async function parseMail(raw: Uint8Array): Promise<ParsedMail> {
   const text = email.text ?? (email.html === undefined ? "" : htmlToText(email.html));
   return {
     messageId: email.messageId,
+    answers: [...new Set([...messageIds(email.inReplyTo), ...messageIds(email.references).reverse()])],
     from: email.from && addresses([email.from])[0],
     to: addresses(email.to),
     cc: addresses(email.cc),
@@ -38,6 +41,9 @@ export async function parseMail(raw: Uint8Array): Promise<ParsedMail> {
     })),
   };
 }
+
+/** The Message-IDs a header lists, each in its angle brackets, leaving out any comments between them. */
+const messageIds = (header: string | undefined) => header?.match(/<[^<>\s]+>/g) ?? [];
 
 /** The addresses in the header, with those of any RFC 5322 address group, each with its display name only if it has one. */
 function addresses(list: Address[] | undefined): EmailAddress[] {

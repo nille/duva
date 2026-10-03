@@ -1,0 +1,14 @@
+From: Grace Hopper <grace@example.org>
+To: Hermes <hermes@example.com>
+Subject: Re: Compiler notes
+Date: Fri, 02 Oct 2026 11:00:00 +0200
+Message-ID: <notes-3@example.org>
+References: <notes-1@example.org>
+ <notes-2@example.org>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: 8bit
+
+Ett tillägg om länkaren.
+
+Grace
