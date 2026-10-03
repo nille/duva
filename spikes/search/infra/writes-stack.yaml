@@ -1,0 +1,94 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Throwaway functions for the search spike's writes measurement (#18): a writer
+  that adds, relabels and removes messages and runs maintenance, and a reader
+  that searches. Both work on writes-* tables in the duva-search-spike stack's
+  bucket. `node harness/writes.ts down` deletes those tables and this stack.
+
+Parameters:
+  Bucket:
+    Type: String
+    Description: The duva-search-spike stack's bucket, which holds the tables and the code.
+  ZipKey:
+    Type: String
+    Description: The x64 zip's key in the bucket, with both handlers.
+
+Resources:
+  FunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub duva-search-spike-writes-${AWS::Region}
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: tables
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/duva-search-spike-writes-*
+              # Only the writes-* copies: the benchmark table is #17's.
+              - Effect: Allow
+                Action: [s3:GetObject, s3:PutObject, s3:DeleteObject, s3:AbortMultipartUpload]
+                Resource: !Sub arn:${AWS::Partition}:s3:::${Bucket}/tables/writes-*
+              - Effect: Allow
+                Action: s3:ListBucket
+                Resource: !Sub arn:${AWS::Partition}:s3:::${Bucket}
+              - Effect: Allow
+                Action: bedrock:InvokeModel
+                Resource: !Sub arn:${AWS::Partition}:bedrock:${AWS::Region}::foundation-model/amazon.titan-embed-text-v2:0
+
+  WriterLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/lambda/duva-search-spike-writes-writer
+      RetentionInDays: 1
+
+  # Maintenance runs here too, so it gets Lambda's longest timeout and room
+  # on local disk for anything LanceDB spills while building indexes. The
+  # harness changes its memory size between maintenance runs.
+  Writer:
+    Type: AWS::Lambda::Function
+    DependsOn: WriterLogs
+    Properties:
+      FunctionName: duva-search-spike-writes-writer
+      Role: !GetAtt FunctionRole.Arn
+      Runtime: nodejs24.x
+      Architectures: [x86_64]
+      Handler: writes.handler
+      Code: { S3Bucket: !Ref Bucket, S3Key: !Ref ZipKey }
+      MemorySize: 1769
+      Timeout: 900
+      EphemeralStorage: { Size: 4096 }
+      Environment:
+        Variables:
+          SEARCH_URI: !Sub s3://${Bucket}/tables
+
+  ReaderLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/lambda/duva-search-spike-writes-reader
+      RetentionInDays: 1
+
+  # The search function's own handler, so a warm reader of the writes-*
+  # tables doesn't share environments with #17's measurements.
+  Reader:
+    Type: AWS::Lambda::Function
+    DependsOn: ReaderLogs
+    Properties:
+      FunctionName: duva-search-spike-writes-reader
+      Role: !GetAtt FunctionRole.Arn
+      Runtime: nodejs24.x
+      Architectures: [x86_64]
+      Handler: index.handler
+      Code: { S3Bucket: !Ref Bucket, S3Key: !Ref ZipKey }
+      MemorySize: 1769
+      Timeout: 60
+      Environment:
+        Variables:
+          SEARCH_URI: !Sub s3://${Bucket}/tables
