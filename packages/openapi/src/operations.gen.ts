@@ -236,5 +236,228 @@ export const operations = [
         "description": "The thread's ID."
       }
     ]
+  },
+  {
+    "operationId": "listDrafts",
+    "method": "get",
+    "path": "/mailboxes/{mailbox}/drafts",
+    "routeKey": "GET /mailboxes/{mailbox}/drafts",
+    "summary": "List the drafts in a mailbox, newest first, with where each send stands.",
+    "description": "Only the mailbox's owner and, for an agent's mailbox, its sponsor can list them.",
+    "signIn": true,
+    "command": [
+      "drafts",
+      "list"
+    ],
+    "options": [
+      {
+        "name": "mailbox",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The mailbox's ID."
+      }
+    ]
+  },
+  {
+    "operationId": "createDraft",
+    "method": "post",
+    "path": "/mailboxes/{mailbox}/drafts",
+    "routeKey": "POST /mailboxes/{mailbox}/drafts",
+    "summary": "Draft a reply to a message in a mailbox, or a new message.",
+    "description": "A reply goes from the address the original was sent to, plus tag kept, to the original's Reply-To or, without one, its From, with the subject carrying a single \"Re: \" prefix. A new message goes from the mailbox's default address, and needs to and subject. Only the mailbox's owner can draft in it. Writing a draft is recorded in the mailbox's change feed.",
+    "signIn": true,
+    "command": [
+      "drafts",
+      "create"
+    ],
+    "options": [
+      {
+        "name": "mailbox",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The mailbox's ID."
+      },
+      {
+        "name": "answers",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "The ID of the message the draft replies to. Without it, the draft is a new message."
+      },
+      {
+        "name": "to",
+        "in": "body",
+        "type": "strings",
+        "required": false,
+        "description": "The recipients' addresses. A reply goes to the original's Reply-To or From unless you give them."
+      },
+      {
+        "name": "subject",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "The subject. A reply's is the original's with \"Re: \" unless you give one."
+      },
+      {
+        "name": "text",
+        "in": "body",
+        "type": "string",
+        "required": true,
+        "description": "The plain-text body."
+      }
+    ]
+  },
+  {
+    "operationId": "getDraft",
+    "method": "get",
+    "path": "/mailboxes/{mailbox}/drafts/{draft}",
+    "routeKey": "GET /mailboxes/{mailbox}/drafts/{draft}",
+    "summary": "Read a draft, with where its send stands.",
+    "description": "Only the mailbox's owner and, for an agent's mailbox, its sponsor can read it.",
+    "signIn": true,
+    "command": [
+      "drafts",
+      "get"
+    ],
+    "options": [
+      {
+        "name": "mailbox",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The mailbox's ID."
+      },
+      {
+        "name": "draft",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The draft's ID."
+      }
+    ]
+  },
+  {
+    "operationId": "editDraft",
+    "method": "patch",
+    "path": "/mailboxes/{mailbox}/drafts/{draft}",
+    "routeKey": "PATCH /mailboxes/{mailbox}/drafts/{draft}",
+    "summary": "Change a draft's recipients, subject or text.",
+    "description": "Changing a draft that waits for approval withdraws the request, so an approver never approves text they didn't see. Ask to send it again once it is ready. Only the mailbox's owner can edit its drafts. The change, and any withdrawal, is recorded in the mailbox's change feed.",
+    "signIn": true,
+    "command": [
+      "drafts",
+      "edit"
+    ],
+    "options": [
+      {
+        "name": "mailbox",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The mailbox's ID."
+      },
+      {
+        "name": "draft",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The draft's ID."
+      },
+      {
+        "name": "to",
+        "in": "body",
+        "type": "strings",
+        "required": false,
+        "description": "The recipients' addresses, in place of the draft's."
+      },
+      {
+        "name": "subject",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "The subject, in place of the draft's."
+      },
+      {
+        "name": "text",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "The plain-text body."
+      }
+    ]
+  },
+  {
+    "operationId": "sendDraft",
+    "method": "post",
+    "path": "/mailboxes/{mailbox}/drafts/{draft}/send",
+    "routeKey": "POST /mailboxes/{mailbox}/drafts/{draft}/send",
+    "summary": "Ask for a draft to be sent.",
+    "description": "An agent's send from its own mailbox needs its sponsor's approval, so the draft waits for them. Its send shows where it stands. Only the mailbox's owner can ask, and a draft waits for one approval at a time. Asking is recorded in the mailbox's change feed.",
+    "signIn": true,
+    "command": [
+      "drafts",
+      "send"
+    ],
+    "options": [
+      {
+        "name": "mailbox",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The mailbox's ID."
+      },
+      {
+        "name": "draft",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The draft's ID."
+      }
+    ]
+  },
+  {
+    "operationId": "listApprovals",
+    "method": "get",
+    "path": "/approvals",
+    "routeKey": "GET /approvals",
+    "summary": "List the approvals waiting for you, newest first, each with its draft and the message it answers.",
+    "description": "An agent's sends from its own mailbox wait for its sponsor, so a sponsor sees those of every agent they sponsor.",
+    "signIn": true,
+    "command": [
+      "approvals",
+      "list"
+    ],
+    "options": []
+  },
+  {
+    "operationId": "rejectApproval",
+    "method": "post",
+    "path": "/approvals/{approval}/reject",
+    "routeKey": "POST /approvals/{approval}/reject",
+    "summary": "Reject a draft waiting for your approval, with a note the agent sees.",
+    "description": "The draft goes back to the agent with the note, and the agent can revise it and ask again. Only the approver can decide an approval, never an agent, and only once: of two decisions at the same time, one is refused. The decision is recorded in the mailbox's change feed.",
+    "signIn": true,
+    "command": [
+      "approvals",
+      "reject"
+    ],
+    "options": [
+      {
+        "name": "approval",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The approval's ID."
+      },
+      {
+        "name": "note",
+        "in": "body",
+        "type": "string",
+        "required": true,
+        "description": "What the agent should change."
+      }
+    ]
   }
 ] as const;

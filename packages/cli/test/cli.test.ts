@@ -316,6 +316,63 @@ test("skill install again replaces the old copy", async () => {
   expect(await readdir(skill)).toEqual(["SKILL.md"]);
 });
 
+test("the agent drafts a reply and asks to send it, and the sponsor lists it and rejects it with a note", async () => {
+  const machine = await newMachine();
+  const duva = await startDuva({ domain: "example.com", admin: "ada@example.org" });
+  const server = await duva.listen();
+  onTestFinished(() => server.close());
+  await machine.saveDeployment(server);
+  await machine.duva("login", { browserSignsIn: "ada@example.org" });
+  const { agent, key } = JSON.parse((await machine.duva("agents", "create", "--name", "Hermes")).stdout) as { agent: { id: string }; key: string };
+  const mailbox = JSON.parse((await machine.duva("mailboxes", "create", "--owner", agent.id, "--address", "hermes@example.com")).stdout) as { id: string };
+  await duva.receive("From: Grace <grace@example.org>\r\nTo: hermes@example.com\r\nSubject: Meeting\r\n\r\nMonday?\r\n", { to: ["hermes@example.com"] });
+  const asAgent = { env: { DUVA_AGENT_KEY: key } };
+  const changes = JSON.parse((await machine.duva("mailboxes", "changes", "--mailbox", mailbox.id, asAgent)).stdout) as { changes: { message: string }[] };
+
+  const drafted = await machine.duva("drafts", "create", "--mailbox", mailbox.id, "--answers", changes.changes[0]!.message, "--text", "Monday works.", asAgent);
+  const draft = JSON.parse(drafted.stdout) as { id: string };
+  const asked = await machine.duva("drafts", "send", "--mailbox", mailbox.id, "--draft", draft.id, asAgent);
+  const listed = await machine.duva("approvals", "list");
+  const { approvals } = JSON.parse(listed.stdout) as { approvals: { id: string }[] };
+  const rejected = await machine.duva("approvals", "reject", "--approval", approvals[0]!.id, "--note", "Say Tuesday.");
+  const read = await machine.duva("drafts", "get", "--mailbox", mailbox.id, "--draft", draft.id, asAgent);
+
+  expect(drafted.exitCode).toBe(0);
+  expect(draft).toMatchObject({ from: "hermes@example.com", to: [{ name: "Grace", address: "grace@example.org" }], subject: "Re: Meeting", text: "Monday works." });
+  expect(JSON.parse(asked.stdout)).toMatchObject({ send: { state: "waiting" } });
+  expect(approvals).toMatchObject([{ state: "pending", draft: { id: draft.id, text: "Monday works." }, original: { subject: "Meeting", text: "Monday?" } }]);
+  expect(rejected.exitCode).toBe(0);
+  expect(JSON.parse(read.stdout)).toMatchObject({ send: { approval: approvals[0]!.id, state: "rejected", note: "Say Tuesday." } });
+});
+
+test("drafts create takes a new message's recipients as --to, once for each", async () => {
+  const machine = await newMachine();
+  const duva = await startDuva({ domain: "example.com", admin: "ada@example.org" });
+  const server = await duva.listen();
+  onTestFinished(() => server.close());
+  await machine.saveDeployment(server);
+  await machine.duva("login", { browserSignsIn: "ada@example.org" });
+  const { agent, key } = JSON.parse((await machine.duva("agents", "create", "--name", "Hermes")).stdout) as { agent: { id: string }; key: string };
+  const mailbox = JSON.parse((await machine.duva("mailboxes", "create", "--owner", agent.id, "--address", "hermes@example.com")).stdout) as { id: string };
+
+  const result = await machine.duva(
+    "drafts", "create", "--mailbox", mailbox.id, "--to", "grace@example.org", "--to", "ada@example.org", "--subject", "Hello", "--text", "Hej.",
+    { env: { DUVA_AGENT_KEY: key } },
+  );
+
+  expect(result.exitCode).toBe(0);
+  expect(JSON.parse(result.stdout)).toMatchObject({ from: "hermes@example.com", to: [{ address: "grace@example.org" }, { address: "ada@example.org" }] });
+});
+
+test("approvals reject asks for the note when it's missing", async () => {
+  const machine = await newMachine();
+
+  const result = await machine.duva("approvals", "reject", "--approval", "x");
+
+  expect(result.exitCode).toBe(1);
+  expect(errorIn(result.stderr)).toMatch(/--note/);
+});
+
 /**
  * A machine with nothing configured: no AWS settings and no Duva config. Like the environment,
  * its home directory is input at this seam. The CLI's config file there is part of the CLI's

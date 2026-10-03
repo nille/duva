@@ -13,7 +13,8 @@ export const deploy: Command = {
     { name: "admin", required: false, description: "Your email address, as the first admin. Needed only the first time." },
   ],
   async run(args) {
-    const values = optionValues(deploy, args);
+    // Neither of deploy's options is a list.
+    const values = optionValues(deploy, args) as Record<string, string | undefined>;
     const region = await configuredRegion();
     if (region === undefined) {
       throw new Error("No AWS region is configured. Set AWS_REGION, or a region in your AWS profile.");

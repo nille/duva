@@ -20,13 +20,18 @@ export interface CommandOption {
   name: string;
   required: boolean;
   description: string;
+  /** "strings" for a list, which is given as the option once for each of its items. */
+  type?: string;
 }
 
 /** The hand-written commands, then one for each API operation. */
 export const commands: Command[] = [deploy, login, skillInstall, ...apiCommands];
 
-/** The values of the command's options in its arguments. Every option takes a value. */
-export function optionValues(command: Command, args: string[]): Record<string, string | undefined> {
-  const { values } = parseArgs({ args, options: Object.fromEntries(command.options.map(({ name }) => [name, { type: "string" as const }])) });
-  return values as Record<string, string | undefined>;
+/** The values of the command's options in its arguments. Every option takes a value, and a list's takes one for each item. */
+export function optionValues(command: Command, args: string[]): Record<string, string | string[] | undefined> {
+  const { values } = parseArgs({
+    args,
+    options: Object.fromEntries(command.options.map(({ name, type }) => [name, { type: "string" as const, multiple: type === "strings" }])),
+  });
+  return values as Record<string, string | string[] | undefined>;
 }

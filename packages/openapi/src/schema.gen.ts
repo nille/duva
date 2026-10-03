@@ -177,6 +177,114 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/mailboxes/{mailbox}/drafts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the drafts in a mailbox, newest first, with where each send stands.
+         * @description Only the mailbox's owner and, for an agent's mailbox, its sponsor can list them.
+         */
+        get: operations["listDrafts"];
+        put?: never;
+        /**
+         * Draft a reply to a message in a mailbox, or a new message.
+         * @description A reply goes from the address the original was sent to, plus tag kept, to the original's Reply-To or, without one, its From, with the subject carrying a single "Re: " prefix. A new message goes from the mailbox's default address, and needs to and subject. Only the mailbox's owner can draft in it. Writing a draft is recorded in the mailbox's change feed.
+         */
+        post: operations["createDraft"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mailboxes/{mailbox}/drafts/{draft}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read a draft, with where its send stands.
+         * @description Only the mailbox's owner and, for an agent's mailbox, its sponsor can read it.
+         */
+        get: operations["getDraft"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Change a draft's recipients, subject or text.
+         * @description Changing a draft that waits for approval withdraws the request, so an approver never approves text they didn't see. Ask to send it again once it is ready. Only the mailbox's owner can edit its drafts. The change, and any withdrawal, is recorded in the mailbox's change feed.
+         */
+        patch: operations["editDraft"];
+        trace?: never;
+    };
+    "/mailboxes/{mailbox}/drafts/{draft}/send": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask for a draft to be sent.
+         * @description An agent's send from its own mailbox needs its sponsor's approval, so the draft waits for them. Its send shows where it stands. Only the mailbox's owner can ask, and a draft waits for one approval at a time. Asking is recorded in the mailbox's change feed.
+         */
+        post: operations["sendDraft"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/approvals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the approvals waiting for you, newest first, each with its draft and the message it answers.
+         * @description An agent's sends from its own mailbox wait for its sponsor, so a sponsor sees those of every agent they sponsor.
+         */
+        get: operations["listApprovals"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/approvals/{approval}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reject a draft waiting for your approval, with a note the agent sees.
+         * @description The draft goes back to the agent with the note, and the agent can revise it and ask again. Only the approver can decide an approval, never an agent, and only once: of two decisions at the same time, one is refused. The decision is recorded in the mailbox's change feed.
+         */
+        post: operations["rejectApproval"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -276,7 +384,7 @@ export interface components {
             position: number;
         };
         /** @description A change in a mailbox. */
-        MailboxChange: components["schemas"]["MessageReceived"];
+        MailboxChange: components["schemas"]["MessageReceived"] | components["schemas"]["DraftWritten"] | components["schemas"]["DraftChanged"] | components["schemas"]["ApprovalAsked"] | components["schemas"]["ApprovalWithdrawn"] | components["schemas"]["ApprovalDecided"];
         /** @description Mail arrived. No actor made this change, so it names none. */
         MessageReceived: {
             /** @description The change's position in the mailbox's feed, counting from 1. */
@@ -295,6 +403,183 @@ export interface components {
             thread: string;
             /** @description The message's ID. */
             message: string;
+        };
+        DraftWritten: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "draftWritten";
+            /** @description The draft's ID. */
+            draft: string;
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "draftWritten";
+        };
+        DraftChanged: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "draftChanged";
+            /** @description The draft's ID. */
+            draft: string;
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "draftChanged";
+        };
+        ApprovalAsked: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "approvalAsked";
+            /** @description The ID of the draft to send. */
+            draft: string;
+            /** @description The ID of the approval it waits for. */
+            approval: string;
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "approvalAsked";
+        };
+        ApprovalWithdrawn: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "approvalWithdrawn";
+            /** @description The draft's ID. */
+            draft: string;
+            /** @description The ID of the approval withdrawn. */
+            approval: string;
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "approvalWithdrawn";
+        };
+        ApprovalDecided: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "approvalDecided";
+            /** @description The draft's ID. */
+            draft: string;
+            /** @description The approval's ID. */
+            approval: string;
+            /** @enum {string} */
+            decision: "rejected";
+            /** @description The approver's note, with a rejection. */
+            note?: string;
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "approvalDecided";
+        };
+        NewDraft: {
+            /** @description The ID of the message the draft replies to. Without it, the draft is a new message. */
+            answers?: string;
+            /**
+             * @description The recipients' addresses. A reply goes to the original's Reply-To or From unless you give them.
+             * @example [
+             *       "grace@example.org"
+             *     ]
+             */
+            to?: string[];
+            /** @description The subject. A reply's is the original's with "Re: " unless you give one. */
+            subject?: string;
+            /** @description The plain-text body. */
+            text: string;
+        };
+        DraftChanges: {
+            /** @description The recipients' addresses, in place of the draft's. */
+            to?: string[];
+            /** @description The subject, in place of the draft's. */
+            subject?: string;
+            /** @description The plain-text body. */
+            text?: string;
+        };
+        /** @description A message a mailbox's owner is writing. */
+        Draft: {
+            /** @description The draft's ID. */
+            id: string;
+            /** @description The ID of the message the draft replies to, if it is a reply. */
+            answers?: string;
+            /** @description The ID of the thread of the message it replies to, if it is a reply. */
+            thread?: string;
+            /**
+             * @description The address it goes from.
+             * @example hermes+news@example.com
+             */
+            from: string;
+            to: components["schemas"]["EmailAddress"][];
+            subject: string;
+            /** @description The plain-text body. */
+            text: string;
+            /**
+             * Format: date-time
+             * @description When the draft was written or last changed.
+             */
+            updatedAt: string;
+            send?: components["schemas"]["SendStatus"];
+        };
+        /** @description Where the draft's latest request to send stands. A draft never asked to send has none. */
+        SendStatus: {
+            /** @description The ID of the approval the request needs. */
+            approval: string;
+            /**
+             * @description waiting for approval; withdrawn because the draft changed while it waited; or rejected, with the approver's note.
+             * @enum {string}
+             */
+            state: "waiting" | "withdrawn" | "rejected";
+            /** @description The approver's note, if they rejected it. */
+            note?: string;
+        };
+        DraftList: {
+            drafts: components["schemas"]["Draft"][];
+        };
+        /** @description A request to send a draft, waiting for or decided by its approver. */
+        Approval: {
+            /** @description The approval's ID. */
+            id: string;
+            /** @enum {string} */
+            state: "pending" | "withdrawn" | "rejected";
+            /** @description The ID of the mailbox the draft is in. */
+            mailbox: string;
+            /** @description The ID of the agent that asked. */
+            agent: string;
+            /** @description The ID of the human who decides, the agent's sponsor. */
+            approver: string;
+            draft: components["schemas"]["ApprovalDraft"];
+            /** @description The message the draft replies to, if it is a reply. */
+            original?: components["schemas"]["Message"];
+            /** Format: date-time */
+            askedAt: string;
+            /** Format: date-time */
+            decidedAt?: string;
+            /** @description The approver's note, if they rejected it. */
+            note?: string;
+        };
+        /** @description The draft as it was when the agent asked, which is what the approver decides on. */
+        ApprovalDraft: {
+            /** @description The draft's ID. */
+            id: string;
+            /** @description The ID of the message the draft replies to, if it is a reply. */
+            answers?: string;
+            /** @description The ID of that message's thread. */
+            thread?: string;
+            from: string;
+            to: components["schemas"]["EmailAddress"][];
+            subject: string;
+            text: string;
+        };
+        ApprovalList: {
+            approvals: components["schemas"]["Approval"][];
+        };
+        Rejection: {
+            /**
+             * @description What the agent should change.
+             * @example Say we can meet on Tuesday, not Monday.
+             */
+            note: string;
         };
         ThreadList: {
             threads: components["schemas"]["ThreadSummary"][];
@@ -550,6 +835,8 @@ export interface components {
     parameters: {
         /** @description The mailbox's ID. */
         Mailbox: string;
+        /** @description The draft's ID. */
+        Draft: string;
     };
     requestBodies: never;
     headers: never;
@@ -833,6 +1120,207 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    listDrafts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The mailbox's ID. */
+                mailbox: components["parameters"]["Mailbox"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The mailbox's drafts. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    createDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The mailbox's ID. */
+                mailbox: components["parameters"]["Mailbox"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewDraft"];
+            };
+        };
+        responses: {
+            /** @description The draft. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Draft"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The mailbox's ID. */
+                mailbox: components["parameters"]["Mailbox"];
+                /** @description The draft's ID. */
+                draft: components["parameters"]["Draft"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The draft. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Draft"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    editDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The mailbox's ID. */
+                mailbox: components["parameters"]["Mailbox"];
+                /** @description The draft's ID. */
+                draft: components["parameters"]["Draft"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DraftChanges"];
+            };
+        };
+        responses: {
+            /** @description The changed draft. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Draft"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    sendDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The mailbox's ID. */
+                mailbox: components["parameters"]["Mailbox"];
+                /** @description The draft's ID. */
+                draft: components["parameters"]["Draft"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The draft, waiting for approval. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Draft"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listApprovals: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The approvals waiting for the signed-in actor. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    rejectApproval: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The approval's ID. */
+                approval: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Rejection"];
+            };
+        };
+        responses: {
+            /** @description The approval, rejected. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Approval"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
 }

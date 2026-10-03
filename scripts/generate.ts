@@ -31,6 +31,7 @@ interface OperationObject {
 interface SchemaObject {
   $ref?: string;
   type?: string;
+  items?: SchemaObject;
   required?: string[];
   properties?: Record<string, SchemaObject & { description?: string }>;
 }
@@ -112,18 +113,18 @@ function parametersOf(where: string, parameters: NonNullable<OperationObject["pa
   });
 }
 
-/** The properties of the operation's JSON body, which the CLI takes as options too. */
+/** The properties of the operation's JSON body, which the CLI takes as options too. A list of strings is an option given once per item. */
 function bodyOf(where: string, body: OperationObject["requestBody"]) {
   if (body === undefined) return [];
   const schema = resolve(body.content?.["application/json"]?.schema);
   if (schema?.type !== "object") fail(`${where} has a body that isn't a JSON object, which the CLI can't pass yet.`);
   return Object.entries(schema.properties ?? {}).map(([name, property]) =>
-    option(where, "body", name, property.type, schema.required?.includes(name) ?? false, property.description),
+    option(where, "body", name, property.type === "array" && property.items?.type === "string" ? "strings" : property.type, schema.required?.includes(name) ?? false, property.description),
   );
 }
 
 function option(where: string, place: "query" | "path" | "body", name: string, type: string | undefined, required: boolean, description = "") {
-  if (type !== "integer" && type !== "string") fail(`${where} has the parameter ${name} of type ${type}, which the CLI can't pass yet.`);
+  if (type !== "integer" && type !== "string" && type !== "strings") fail(`${where} has the parameter ${name} of type ${type}, which the CLI can't pass yet.`);
   return { name, in: place, type, required, description };
 }
 

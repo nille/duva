@@ -3,6 +3,7 @@ import { type Operation, operations, type OperationId } from "@duva/openapi";
 import { createAgent, listAgents, rotateAgentKey } from "./agents.ts";
 import type { AuthorizerContext } from "./authorizer.ts";
 import { listOrganizationChanges } from "./changes.ts";
+import { createDraft, editDraft, getDraft, listApprovals, listDrafts, rejectApproval, sendDraft } from "./drafts.ts";
 import { createMailbox, getThread, listMailboxChanges, listMailboxes, listThreads } from "./mailboxes.ts";
 import type { Deployment } from "./deployment.ts";
 import { type Actor, actorOf } from "./organization.ts";
@@ -31,6 +32,13 @@ const handlers: Record<OperationId, OperationHandler> = {
   listMailboxChanges,
   listThreads,
   getThread,
+  createDraft,
+  listDrafts,
+  getDraft,
+  editDraft,
+  sendDraft,
+  listApprovals,
+  rejectApproval,
 };
 
 const operationByRouteKey = new Map<string, Operation>(operations.map((operation) => [operation.routeKey, operation]));

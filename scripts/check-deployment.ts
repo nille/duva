@@ -56,6 +56,10 @@ await check("creating an agent without credentials answers 401", async () =>
   expectStatus(await fetch(`${apiUrl}/agents`, { method: "POST", headers: { "content-type": "application/json" }, body: '{"name":"Check"}' }), 401),
 );
 await check("listing mailboxes without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/mailboxes`), 401));
+await check("listing approvals without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/approvals`), 401));
+await check("rejecting an approval without credentials answers 401", async () =>
+  expectStatus(await fetch(`${apiUrl}/approvals/x/reject`, { method: "POST", headers: { "content-type": "application/json" }, body: '{"note":"Check"}' }), 401),
+);
 await check("the receipt rule set holds only Duva's rule, with explicit recipients, scanning, then S3 and the inbound Lambda", async () => {
   const { Rules = [] } = await new SESClient({ region }).send(new DescribeReceiptRuleSetCommand({ RuleSetName: output(stackOutputs.receiptRuleSet) }));
   // Until an admin creates the first address there is no rule, and SES refuses all mail.

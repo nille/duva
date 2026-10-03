@@ -273,6 +273,201 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+  /mailboxes/{mailbox}/drafts:
+    post:
+      operationId: createDraft
+      summary: Draft a reply to a message in a mailbox, or a new message.
+      description: >
+        A reply goes from the address the original was sent to, plus tag
+        kept, to the original's Reply-To or, without one, its From, with the
+        subject carrying a single "Re: " prefix. A new message goes from the
+        mailbox's default address, and needs to and subject. Only the
+        mailbox's owner can draft in it. Writing a draft is recorded in the
+        mailbox's change feed.
+      x-cli-command: drafts create
+      parameters:
+        - $ref: "#/components/parameters/Mailbox"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NewDraft"
+      responses:
+        "201":
+          description: The draft.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Draft"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    get:
+      operationId: listDrafts
+      summary: List the drafts in a mailbox, newest first, with where each send stands.
+      description: Only the mailbox's owner and, for an agent's mailbox, its sponsor can list them.
+      x-cli-command: drafts list
+      parameters:
+        - $ref: "#/components/parameters/Mailbox"
+      responses:
+        "200":
+          description: The mailbox's drafts.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DraftList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /mailboxes/{mailbox}/drafts/{draft}:
+    get:
+      operationId: getDraft
+      summary: Read a draft, with where its send stands.
+      description: Only the mailbox's owner and, for an agent's mailbox, its sponsor can read it.
+      x-cli-command: drafts get
+      parameters:
+        - $ref: "#/components/parameters/Mailbox"
+        - $ref: "#/components/parameters/Draft"
+      responses:
+        "200":
+          description: The draft.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Draft"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: editDraft
+      summary: Change a draft's recipients, subject or text.
+      description: >
+        Changing a draft that waits for approval withdraws the request, so an
+        approver never approves text they didn't see. Ask to send it again
+        once it is ready. Only the mailbox's owner can edit its drafts. The
+        change, and any withdrawal, is recorded in the mailbox's change feed.
+      x-cli-command: drafts edit
+      parameters:
+        - $ref: "#/components/parameters/Mailbox"
+        - $ref: "#/components/parameters/Draft"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DraftChanges"
+      responses:
+        "200":
+          description: The changed draft.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Draft"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /mailboxes/{mailbox}/drafts/{draft}/send:
+    post:
+      operationId: sendDraft
+      summary: Ask for a draft to be sent.
+      description: >
+        An agent's send from its own mailbox needs its sponsor's approval, so
+        the draft waits for them. Its send shows where it stands. Only the
+        mailbox's owner can ask, and a draft waits for one approval at a
+        time. Asking is recorded in the mailbox's change feed.
+      x-cli-command: drafts send
+      parameters:
+        - $ref: "#/components/parameters/Mailbox"
+        - $ref: "#/components/parameters/Draft"
+      responses:
+        "202":
+          description: The draft, waiting for approval.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Draft"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /approvals:
+    get:
+      operationId: listApprovals
+      summary: List the approvals waiting for you, newest first, each with its draft and the message it answers.
+      description: An agent's sends from its own mailbox wait for its sponsor, so a sponsor sees those of every agent they sponsor.
+      x-cli-command: approvals list
+      responses:
+        "200":
+          description: The approvals waiting for the signed-in actor.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApprovalList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /approvals/{approval}/reject:
+    post:
+      operationId: rejectApproval
+      summary: Reject a draft waiting for your approval, with a note the agent sees.
+      description: >
+        The draft goes back to the agent with the note, and the agent can
+        revise it and ask again. Only the approver can decide an approval,
+        never an agent, and only once: of two decisions at the same time, one
+        is refused. The decision is recorded in the mailbox's change feed.
+      x-cli-command: approvals reject
+      parameters:
+        - name: approval
+          in: path
+          required: true
+          description: The approval's ID.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Rejection"
+      responses:
+        "200":
+          description: The approval, rejected.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Approval"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
 components:
   parameters:
     Mailbox:
@@ -280,6 +475,13 @@ components:
       in: path
       required: true
       description: The mailbox's ID.
+      schema:
+        type: string
+    Draft:
+      name: draft
+      in: path
+      required: true
+      description: The draft's ID.
       schema:
         type: string
   securitySchemes:
@@ -469,10 +671,20 @@ components:
       description: A change in a mailbox.
       oneOf:
         - $ref: "#/components/schemas/MessageReceived"
+        - $ref: "#/components/schemas/DraftWritten"
+        - $ref: "#/components/schemas/DraftChanged"
+        - $ref: "#/components/schemas/ApprovalAsked"
+        - $ref: "#/components/schemas/ApprovalWithdrawn"
+        - $ref: "#/components/schemas/ApprovalDecided"
       discriminator:
         propertyName: type
         mapping:
           messageReceived: "#/components/schemas/MessageReceived"
+          draftWritten: "#/components/schemas/DraftWritten"
+          draftChanged: "#/components/schemas/DraftChanged"
+          approvalAsked: "#/components/schemas/ApprovalAsked"
+          approvalWithdrawn: "#/components/schemas/ApprovalWithdrawn"
+          approvalDecided: "#/components/schemas/ApprovalDecided"
     MessageReceived:
       type: object
       additionalProperties: false
@@ -495,6 +707,263 @@ components:
         message:
           type: string
           description: The message's ID.
+    DraftWritten:
+      allOf:
+        - $ref: "#/components/schemas/ChangeBase"
+        - type: object
+          required: [type, draft]
+          properties:
+            type:
+              type: string
+              const: draftWritten
+            draft:
+              type: string
+              description: The draft's ID.
+    DraftChanged:
+      allOf:
+        - $ref: "#/components/schemas/ChangeBase"
+        - type: object
+          required: [type, draft]
+          properties:
+            type:
+              type: string
+              const: draftChanged
+            draft:
+              type: string
+              description: The draft's ID.
+    ApprovalAsked:
+      allOf:
+        - $ref: "#/components/schemas/ChangeBase"
+        - type: object
+          required: [type, draft, approval]
+          properties:
+            type:
+              type: string
+              const: approvalAsked
+            draft:
+              type: string
+              description: The ID of the draft to send.
+            approval:
+              type: string
+              description: The ID of the approval it waits for.
+    ApprovalWithdrawn:
+      allOf:
+        - $ref: "#/components/schemas/ChangeBase"
+        - type: object
+          required: [type, draft, approval]
+          description: The draft changed while it waited, so the request was withdrawn.
+          properties:
+            type:
+              type: string
+              const: approvalWithdrawn
+            draft:
+              type: string
+              description: The draft's ID.
+            approval:
+              type: string
+              description: The ID of the approval withdrawn.
+    ApprovalDecided:
+      allOf:
+        - $ref: "#/components/schemas/ChangeBase"
+        - type: object
+          required: [type, draft, approval, decision]
+          properties:
+            type:
+              type: string
+              const: approvalDecided
+            draft:
+              type: string
+              description: The draft's ID.
+            approval:
+              type: string
+              description: The approval's ID.
+            decision:
+              type: string
+              enum: [rejected]
+            note:
+              type: string
+              description: The approver's note, with a rejection.
+    NewDraft:
+      type: object
+      additionalProperties: false
+      required: [text]
+      properties:
+        answers:
+          type: string
+          description: The ID of the message the draft replies to. Without it, the draft is a new message.
+        to:
+          type: array
+          items:
+            type: string
+          description: The recipients' addresses. A reply goes to the original's Reply-To or From unless you give them.
+          examples: [["grace@example.org"]]
+        subject:
+          type: string
+          maxLength: 998
+          description: 'The subject. A reply''s is the original''s with "Re: " unless you give one.'
+        text:
+          type: string
+          maxLength: 50000
+          description: The plain-text body.
+    DraftChanges:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        to:
+          type: array
+          items:
+            type: string
+          description: The recipients' addresses, in place of the draft's.
+        subject:
+          type: string
+          maxLength: 998
+          description: The subject, in place of the draft's.
+        text:
+          type: string
+          maxLength: 50000
+          description: The plain-text body.
+    Draft:
+      type: object
+      additionalProperties: false
+      required: [id, from, to, subject, text, updatedAt]
+      description: A message a mailbox's owner is writing.
+      properties:
+        id:
+          type: string
+          description: The draft's ID.
+        answers:
+          type: string
+          description: The ID of the message the draft replies to, if it is a reply.
+        thread:
+          type: string
+          description: The ID of the thread of the message it replies to, if it is a reply.
+        from:
+          type: string
+          description: The address it goes from.
+          examples: ["hermes+news@example.com"]
+        to:
+          type: array
+          items:
+            $ref: "#/components/schemas/EmailAddress"
+        subject:
+          type: string
+        text:
+          type: string
+          description: The plain-text body.
+        updatedAt:
+          type: string
+          format: date-time
+          description: When the draft was written or last changed.
+        send:
+          $ref: "#/components/schemas/SendStatus"
+    SendStatus:
+      type: object
+      additionalProperties: false
+      required: [approval, state]
+      description: Where the draft's latest request to send stands. A draft never asked to send has none.
+      properties:
+        approval:
+          type: string
+          description: The ID of the approval the request needs.
+        state:
+          type: string
+          enum: [waiting, withdrawn, rejected]
+          description: >
+            waiting for approval; withdrawn because the draft changed while
+            it waited; or rejected, with the approver's note.
+        note:
+          type: string
+          description: The approver's note, if they rejected it.
+    DraftList:
+      type: object
+      additionalProperties: false
+      required: [drafts]
+      properties:
+        drafts:
+          type: array
+          items:
+            $ref: "#/components/schemas/Draft"
+    Approval:
+      type: object
+      additionalProperties: false
+      required: [id, state, mailbox, agent, approver, draft, askedAt]
+      description: A request to send a draft, waiting for or decided by its approver.
+      properties:
+        id:
+          type: string
+          description: The approval's ID.
+        state:
+          type: string
+          enum: [pending, withdrawn, rejected]
+        mailbox:
+          type: string
+          description: The ID of the mailbox the draft is in.
+        agent:
+          type: string
+          description: The ID of the agent that asked.
+        approver:
+          type: string
+          description: The ID of the human who decides, the agent's sponsor.
+        draft:
+          $ref: "#/components/schemas/ApprovalDraft"
+        original:
+          $ref: "#/components/schemas/Message"
+          description: The message the draft replies to, if it is a reply.
+        askedAt:
+          type: string
+          format: date-time
+        decidedAt:
+          type: string
+          format: date-time
+        note:
+          type: string
+          description: The approver's note, if they rejected it.
+    ApprovalDraft:
+      type: object
+      additionalProperties: false
+      required: [id, from, to, subject, text]
+      description: The draft as it was when the agent asked, which is what the approver decides on.
+      properties:
+        id:
+          type: string
+          description: The draft's ID.
+        answers:
+          type: string
+          description: The ID of the message the draft replies to, if it is a reply.
+        thread:
+          type: string
+          description: The ID of that message's thread.
+        from:
+          type: string
+        to:
+          type: array
+          items:
+            $ref: "#/components/schemas/EmailAddress"
+        subject:
+          type: string
+        text:
+          type: string
+    ApprovalList:
+      type: object
+      additionalProperties: false
+      required: [approvals]
+      properties:
+        approvals:
+          type: array
+          items:
+            $ref: "#/components/schemas/Approval"
+    Rejection:
+      type: object
+      additionalProperties: false
+      required: [note]
+      properties:
+        note:
+          type: string
+          minLength: 1
+          maxLength: 2000
+          description: What the agent should change.
+          examples: ["Say we can meet on Tuesday, not Monday."]
     ThreadList:
       type: object
       additionalProperties: false

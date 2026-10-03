@@ -38,10 +38,12 @@ const labelKey = (mailbox: string, label: string, latestAt: string, thread: stri
 });
 // Each Message-ID points at its message, so a reply can find the thread it belongs in.
 const messageIdKey = (mailbox: string, messageId: string) => ({ [pk]: partition(mailbox), [sk]: `message-id#${messageId}` });
+// Each message in Duva points at its thread and its place there, so a reply can find what it answers.
+const messageRefKey = (mailbox: string, message: string) => ({ [pk]: partition(mailbox), [sk]: `message#${message}` });
 // Each SES message is stored once per mailbox, however often SES's event is processed.
 const receivedKey = (mailbox: string, sesMessageId: string) => ({ [pk]: partition(mailbox), [sk]: `received#${sesMessageId}` });
 
-const mailboxFeed = (mailbox: string): Feed => ({
+export const mailboxFeed = (mailbox: string): Feed => ({
   counter: mailboxKey(mailbox),
   partition: `${partition(mailbox)}#changes`,
   missing: `The mailbox ${mailbox} is missing.`,
@@ -125,6 +127,7 @@ export async function receiveMessage(table: Table, arrival: Arrival): Promise<bo
           ...moved.map((label) => ({ Delete: { TableName: table.name, Key: labelKey(mailbox, label, joined!.latestAt, thread) } })),
           ...summary.labels.map((label) => put({ ...labelKey(mailbox, label, summary.latestAt, thread), ...summary })),
           ...(parsed.messageId === undefined ? [] : [put({ ...messageIdKey(mailbox, parsed.messageId), thread, message })]),
+          put({ ...messageRefKey(mailbox, message), thread, receivedAt }),
         ],
       });
       return true;
@@ -184,8 +187,28 @@ export async function readThread(table: Table, mailBucket: MailBucket, mailbox: 
   const thread = items.find((item) => item[sk] === threadKey(mailbox, id)[sk]);
   if (thread === undefined) return undefined;
   const stored = items.filter((item) => item !== thread);
-  const messages = await Promise.all(stored.map((item) => messageOf(mailBucket, item as Message & { rawKey: string })));
+  const messages = await Promise.all(stored.map(async (item) => (await readMessage(mailBucket, item as Message & { rawKey: string })).message));
   return { id, subject: thread.subject, labels: thread.labels, messages };
+}
+
+/**
+ * The message with the ID in the mailbox, read from its raw message, with its thread and the
+ * Reply-To it gives, or undefined if the mailbox has no such message.
+ */
+export async function findMessage(
+  table: Table,
+  mailBucket: MailBucket,
+  mailbox: string,
+  id: string,
+): Promise<{ message: Message; thread: string; replyTo: components["schemas"]["EmailAddress"][] } | undefined> {
+  const db = documents(table);
+  const { Item: ref } = await db.send(new GetCommand({ TableName: table.name, Key: messageRefKey(mailbox, id), ConsistentRead: true }));
+  if (ref === undefined) return undefined;
+  const thread = ref.thread as string;
+  const { Item } = await db.send(new GetCommand({ TableName: table.name, Key: messageKey(mailbox, thread, ref.receivedAt as string, id), ConsistentRead: true }));
+  if (Item === undefined) return undefined;
+  const { message, parsed } = await readMessage(mailBucket, Item as Message & { rawKey: string });
+  return { message, thread, replyTo: parsed.replyTo };
 }
 
 /** The mailbox's changes after the position, oldest first. */
@@ -193,13 +216,18 @@ export async function mailboxChanges(table: Table, mailbox: string, after: numbe
   return (await changesAfter(table, mailboxFeed(mailbox), after)) as MailboxChange[];
 }
 
-/** The message with its body and attachments from the raw message, in the order the contract lists its fields. */
-async function messageOf(mailBucket: MailBucket, stored: Message & { rawKey: string }): Promise<Message> {
+/**
+ * The message with its body and attachments from the raw message, in the order the contract lists
+ * its fields, and the raw message parsed.
+ */
+async function readMessage(mailBucket: MailBucket, stored: Message & { rawKey: string }): Promise<{ message: Message; parsed: ParsedMail }> {
   const raw = await mailBucket.get(stored.rawKey);
   if (raw === undefined) throw new Error(`The raw message ${stored.rawKey} is missing from the mail bucket.`);
-  const { text, attachments } = await parseMail(raw);
+  const parsed = await parseMail(raw);
+  const { text, attachments } = parsed;
   const { id, messageId, from, to, cc, recipient, plusTag, subject, date, receivedAt } = stored;
-  return { id, messageId, from: addressOf(from), to: to.map(addressOf), cc: cc.map(addressOf), recipient, plusTag, subject, date, receivedAt, text, attachments };
+  const message = { id, messageId, from: addressOf(from), to: to.map(addressOf), cc: cc.map(addressOf), recipient, plusTag, subject, date, receivedAt, text, attachments };
+  return { message, parsed };
 }
 
 const summaryOf = ({ id, subject, from, labels, latestAt, messages }: ThreadSummary): ThreadSummary => ({

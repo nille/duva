@@ -11,12 +11,13 @@ export const agentKeyVariable = "DUVA_AGENT_KEY";
 interface Call {
   query?: Record<string, string | number>;
   path?: Record<string, string | number>;
-  body?: Record<string, string | number>;
+  body?: Record<string, string | number | string[]>;
 }
 
 /**
  * One command for each operation in the OpenAPI document, named by its x-cli-command. Query and
- * path parameters and the properties of a JSON body are options.
+ * path parameters and the properties of a JSON body are options, and a list is an option given
+ * once for each of its items.
  */
 export const apiCommands: Command[] = operations.map((operation) => {
   const command: Command = {
@@ -29,10 +30,14 @@ export const apiCommands: Command[] = operations.map((operation) => {
   return command;
 });
 
-function callOf(operation: Operation, values: Record<string, string | undefined>): Call {
+function callOf(operation: Operation, values: Record<string, string | string[] | undefined>): Call {
   const call: Required<Call> = { query: {}, path: {}, body: {} };
   for (const { name, in: place, type, required } of operation.options) {
     const value = values[name];
+    if (type === "strings" && Array.isArray(value)) {
+      call[place][name] = value;
+      continue;
+    }
     if (typeof value !== "string") {
       if (required) throw new Error(`Give --${name}.`);
       continue;

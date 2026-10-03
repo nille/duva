@@ -57,6 +57,9 @@ By default, an agent's send from its own mailbox waits for its sponsor's approva
 `;
 
 function section(command: Command): string {
-  const options = command.options.map(({ name, required, description }) => `- \`--${name}\`${required ? " (required)" : ""}: ${description}\n`);
+  const options = command.options.map(
+    ({ name, required, type, description }) =>
+      `- \`--${name}\`${required ? " (required)" : ""}${type === "strings" ? " (once for each)" : ""}: ${description}\n`,
+  );
   return [`## duva ${command.words.join(" ")}\n`, `${command.summary}\n`, ...(command.description ? [`${command.description}\n`] : []), ...(options.length > 0 ? [options.join("")] : [])].join("\n");
 }

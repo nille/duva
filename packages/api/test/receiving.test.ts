@@ -396,7 +396,7 @@ test("the change feed records a reply's arrival in the thread it joined", async 
   const { threads } = await inboxOf(hermes, mailbox.id);
   const [first, reply] = threads[0]!.messages;
   const { data } = await hermes.GET("/mailboxes/{mailbox}/changes", { params });
-  expect(data?.changes.map(({ type, thread, message }) => ({ type, thread, message }))).toEqual([
+  expect(data?.changes).toMatchObject([
     { type: "messageReceived", thread: threads[0]!.id, message: first!.id },
     { type: "messageReceived", thread: threads[0]!.id, message: reply!.id },
   ]);

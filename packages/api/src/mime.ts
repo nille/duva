@@ -13,6 +13,8 @@ export interface ParsedMail {
   from?: EmailAddress;
   to: EmailAddress[];
   cc: EmailAddress[];
+  /** Where the sender wants replies, if the message says. */
+  replyTo: EmailAddress[];
   subject: string;
   /** When the sender says it was sent, as an ISO 8601 time, if the Date header gives one. */
   date?: string;
@@ -31,6 +33,7 @@ export async function parseMail(raw: Uint8Array): Promise<ParsedMail> {
     from: email.from && addresses([email.from])[0],
     to: addresses(email.to),
     cc: addresses(email.cc),
+    replyTo: addresses(email.replyTo),
     subject: email.subject ?? "",
     date: date === undefined || Number.isNaN(date.getTime()) ? undefined : date.toISOString(),
     text: text.replace(/\r\n?/g, "\n").replace(/\n+$/, ""),
