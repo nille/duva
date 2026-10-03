@@ -5,9 +5,12 @@ Duva is a self-hosted mailbox platform on Amazon SES where humans and agents are
 ## Development
 
 - Tests run DynamoDB Local on Java, so they need Java 17 or newer on the PATH.
-- `packages/openapi/src/*.gen.ts` is generated from `packages/openapi/openapi.yaml`. Edit the document, then run `npm run generate`. `npm run build` fails while generated code is stale.
-- API tests start the API in-process with `startDuva()` from `packages/api/test/harness.ts` and drive it through the generated client. CLI tests run `duva` as a process under Bun.
-- `duva deploy` deploys the cloud assembly embedded in the binary, so changes to the CDK app reach it only through `npm run build`. The CDK app can't be synthesized inside the compiled binary.
+- The API contract is `packages/openapi/openapi.yaml`. Run `npm run generate` after editing it.
+- Tests sit at three seams agreed with Nicklas:
+  - the API, driven through the generated client from `startDuva()` in `packages/api/test/harness.ts`;
+  - the `duva` CLI as a process: args, environment and home directory in (the config file `duva deploy` writes there is CLI behavior), stdout JSON, stderr and exit code out;
+  - the cloud assembly the CDK app synthesizes, in `packages/infra/test/`.
+- The build synthesizes the CDK app and embeds the result in the `duva` binary, which can't synthesize it. So `duva deploy` ships only what `npm run build` built. Anything deploy learns when it runs, like the domain or the admin's address, reaches the stack as a CloudFormation parameter or is set up by the CLI through the AWS SDK.
 
 ## Agent skills
 

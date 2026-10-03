@@ -14,12 +14,19 @@
   "scripts": {
     "generate": "node scripts/generate.ts",
     "check:generated": "node scripts/generate.ts --check",
-    "typecheck": "tsc -p . && npm run typecheck --workspaces --if-present",
+    "check:text": "node scripts/check-text.ts",
+    "pretest": "npm run check:generated && npm run check:text",
     "test": "vitest run",
+    "typecheck": "tsc -p . && npm run typecheck --workspaces --if-present",
+    "check": "npm test && npm run typecheck",
     "synth": "npm run synth -w @duva/infra",
-    "build": "npm run check:generated && npm run typecheck && npm run synth && npm run build -w @duva/cli"
+    "build": "npm run check && npm run synth && npm run build -w @duva/cli"
   },
   "devDependencies": {
+    "@aws-sdk/client-cloudformation": "^3.1146.0",
+    "@aws-sdk/client-dynamodb": "^3.1146.0",
+    "@aws-sdk/client-s3": "^3.1146.0",
+    "@aws-sdk/client-sts": "^3.1146.0",
     "@types/node": "^24.19.1",
     "openapi-typescript": "^7.13.0",
     "typescript": "^5.9.3",
