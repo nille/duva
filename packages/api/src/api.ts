@@ -4,7 +4,7 @@ import { createAgent, listAgents, rotateAgentKey } from "./agents.ts";
 import type { AuthorizerContext } from "./authorizer.ts";
 import { listOrganizationChanges } from "./changes.ts";
 import type { Deployment } from "./deployment.ts";
-import type { Actor } from "./organization.ts";
+import { type Actor, actorOf } from "./organization.ts";
 import { getStatus } from "./status.ts";
 import { whoami } from "./whoami.ts";
 
@@ -27,7 +27,8 @@ export function createApi(deployment: Deployment) {
   return async (event: APIGatewayProxyEventV2): Promise<APIGatewayProxyStructuredResultV2> => {
     const operation = operationByRouteKey.get(event.routeKey);
     if (operation === undefined) throw new Error(`No operation has the route ${event.routeKey}`);
-    const actor = (event.requestContext as { authorizer?: { lambda?: Partial<AuthorizerContext> } }).authorizer?.lambda?.actor;
+    const passed = (event.requestContext as { authorizer?: { lambda?: Partial<AuthorizerContext> } }).authorizer?.lambda?.actor;
+    const actor = passed && actorOf(passed);
     // The authorizer guards every route that needs sign-in, so a call without an actor here is a deployment bug.
     if (operation.signIn && actor === undefined) throw new Error(`${operation.operationId} was called without an actor`);
     const { statusCode, body } = await handlers[operation.operationId](event, deployment, actor);

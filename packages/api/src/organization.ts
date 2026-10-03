@@ -177,8 +177,11 @@ export async function findActor(table: Table, id: string): Promise<Actor | undef
   return Item === undefined ? undefined : actorOf(Item);
 }
 
-/** The actor an actor item stores, without what only Duva may see, such as an agent's key hash. */
-function actorOf(item: Record<string, unknown>): Actor {
+/**
+ * The actor an item stores, without what only Duva may see, such as an agent's key hash, and in
+ * the order the contract lists its fields, which neither DynamoDB nor API Gateway keeps.
+ */
+export function actorOf(item: Record<string, unknown>): Actor {
   const actor = item as Actor;
   if (actor.kind === "agent") return { id: actor.id, kind: actor.kind, name: actor.name, sponsor: actor.sponsor, admin: actor.admin };
   return { id: actor.id, kind: actor.kind, email: actor.email, admin: actor.admin };
@@ -241,7 +244,10 @@ export async function organizationChanges(table: Table, after: number): Promise<
     }),
   );
   // DynamoDB keeps no attribute order, so each change is rebuilt in the order the contract lists.
-  return Items.map(({ [pk]: _pk, [sk]: _sk, position, at, actor, type, ...details }) => ({ position, at, actor, type, ...details }) as OrganizationChange);
+  return Items.map(({ [pk]: _pk, [sk]: _sk, position, at, actor, type, ...details }) => {
+    if (details.added !== undefined) details.added = actorOf(details.added);
+    return { position, at, actor, type, ...details } as OrganizationChange;
+  });
 }
 
 function documents(table: Table) {
