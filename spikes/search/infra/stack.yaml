@@ -1,0 +1,191 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Throwaway resources for Duva's search spike (#2). The harness creates the
+  stack in two passes: first the bucket, the image repository and the image
+  build, then the functions once their code is uploaded. `node harness/harness.ts
+  down` deletes all of it.
+
+Parameters:
+  ZipKey:
+    Type: String
+    Default: ""
+    Description: The x64 zip's key in the bucket. Empty leaves the zip function out.
+  ImageTag:
+    Type: String
+    Default: ""
+    Description: The arm64 image's tag in the repository. Empty leaves the image function out.
+  MemorySize:
+    Type: Number
+    Default: 1769
+
+Conditions:
+  HasZip: !Not [!Equals [!Ref ZipKey, ""]]
+  HasImage: !Not [!Equals [!Ref ImageTag, ""]]
+
+Resources:
+  Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub duva-search-spike-${AWS::AccountId}-${AWS::Region}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  Repository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: duva-search-spike
+      EmptyOnDelete: true
+
+  # The arm64 image is built on an ARM build host, so building it needs no
+  # local Docker and no emulation.
+  ImageBuildLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/codebuild/duva-search-spike-image
+      RetentionInDays: 1
+
+  ImageBuildRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub duva-search-spike-image-build-${AWS::Region}
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: codebuild.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: build
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !Sub ${ImageBuildLogs.Arn}
+              - Effect: Allow
+                Action: [s3:GetObject, s3:GetObjectVersion]
+                Resource: !Sub ${Bucket.Arn}/artifacts/*
+              - Effect: Allow
+                Action: [s3:GetBucketAcl, s3:GetBucketLocation]
+                Resource: !GetAtt Bucket.Arn
+              - Effect: Allow
+                Action: ecr:GetAuthorizationToken
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:CompleteLayerUpload
+                  - ecr:InitiateLayerUpload
+                  - ecr:PutImage
+                  - ecr:UploadLayerPart
+                  - ecr:BatchGetImage
+                Resource: !GetAtt Repository.Arn
+
+  ImageBuild:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: duva-search-spike-image
+      ServiceRole: !GetAtt ImageBuildRole.Arn
+      Artifacts: { Type: NO_ARTIFACTS }
+      LogsConfig:
+        CloudWatchLogs: { Status: ENABLED, GroupName: !Ref ImageBuildLogs }
+      Environment:
+        Type: ARM_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/amazonlinux-aarch64-standard:3.0
+        PrivilegedMode: true
+        EnvironmentVariables:
+          - { Name: REPOSITORY_URI, Value: !GetAtt Repository.RepositoryUri }
+          - { Name: REGISTRY, Value: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com" }
+      Source:
+        Type: S3
+        Location: !Sub ${Bucket}/artifacts/image-context.zip
+        BuildSpec: |
+          version: 0.2
+          phases:
+            build:
+              commands:
+                - aws ecr get-login-password | docker login --username AWS --password-stdin "$REGISTRY"
+                - docker build -t "$REPOSITORY_URI:$IMAGE_TAG" .
+                - docker push "$REPOSITORY_URI:$IMAGE_TAG"
+
+  FunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub duva-search-spike-function-${AWS::Region}
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: tables
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/duva-search-spike-*
+              - Effect: Allow
+                Action: [s3:GetObject, s3:PutObject, s3:DeleteObject]
+                Resource: !Sub ${Bucket.Arn}/tables/*
+              - Effect: Allow
+                Action: s3:ListBucket
+                Resource: !GetAtt Bucket.Arn
+
+  ZipFunctionLogs:
+    Type: AWS::Logs::LogGroup
+    Condition: HasZip
+    Properties:
+      LogGroupName: /aws/lambda/duva-search-spike-x64-zip
+      RetentionInDays: 1
+
+  ZipFunction:
+    Type: AWS::Lambda::Function
+    Condition: HasZip
+    DependsOn: ZipFunctionLogs
+    Properties:
+      FunctionName: duva-search-spike-x64-zip
+      Role: !GetAtt FunctionRole.Arn
+      Runtime: nodejs24.x
+      Architectures: [x86_64]
+      Handler: index.handler
+      Code: { S3Bucket: !Ref Bucket, S3Key: !Ref ZipKey }
+      MemorySize: !Ref MemorySize
+      Timeout: 60
+      Environment:
+        Variables:
+          SEARCH_URI: !Sub s3://${Bucket}/tables
+
+  ImageFunctionLogs:
+    Type: AWS::Logs::LogGroup
+    Condition: HasImage
+    Properties:
+      LogGroupName: /aws/lambda/duva-search-spike-arm64-image
+      RetentionInDays: 1
+
+  ImageFunction:
+    Type: AWS::Lambda::Function
+    Condition: HasImage
+    DependsOn: ImageFunctionLogs
+    Properties:
+      FunctionName: duva-search-spike-arm64-image
+      Role: !GetAtt FunctionRole.Arn
+      PackageType: Image
+      Architectures: [arm64]
+      Code: { ImageUri: !Sub "${Repository.RepositoryUri}:${ImageTag}" }
+      MemorySize: !Ref MemorySize
+      Timeout: 60
+      Environment:
+        Variables:
+          SEARCH_URI: !Sub s3://${Bucket}/tables
+
+Outputs:
+  Bucket:
+    Value: !Ref Bucket
+  RepositoryUri:
+    Value: !GetAtt Repository.RepositoryUri

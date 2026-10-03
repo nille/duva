@@ -4,7 +4,7 @@ import { spawnSync } from "node:child_process";
 const emDash = "\u2014";
 const grep = spawnSync(
   "git",
-  ["grep", "--untracked", "-n", "-I", "-F", emDash, "--", ".", ":!.agents", ":!package-lock.json"],
+  ["grep", "--untracked", "-n", "-I", "-F", emDash, "--", ".", ":!.agents", ":!*package-lock.json"],
   { encoding: "utf8" },
 );
 if (grep.status === 0) {

@@ -1,0 +1,32 @@
+{
+  "name": "duva-search-spike",
+  "description": "The search spike (#2): the search module's interface, LanceDB behind it, and its measurement in Lambda.",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p .",
+    "harness": "node harness/harness.ts"
+  },
+  "dependencies": {
+    "@lancedb/lancedb": "0.39.0",
+    "apache-arrow": "18.1.0"
+  },
+  "devDependencies": {
+    "@aws-sdk/client-cloudformation": "3.1146.0",
+    "@aws-sdk/client-cloudwatch-logs": "3.1146.0",
+    "@aws-sdk/client-codebuild": "3.1146.0",
+    "@aws-sdk/client-ecr": "3.1146.0",
+    "@aws-sdk/client-lambda": "3.1146.0",
+    "@aws-sdk/client-s3": "3.1146.0",
+    "@aws-sdk/client-sts": "3.1146.0",
+    "@aws-sdk/lib-storage": "3.1146.0",
+    "@types/node": "24.19.1",
+    "esbuild": "0.28.2",
+    "typescript": "5.9.3",
+    "vitest": "5.0.3"
+  }
+}

@@ -1,0 +1,382 @@
+{
+  "measuredAt": "2026-10-03T19:53:47.396Z",
+  "region": "eu-north-1",
+  "lancedbVersion": "0.39.0",
+  "query": {
+    "words": "kayak",
+    "filters": {
+      "labels": {
+        "exclude": [
+          "Spam",
+          "Trash"
+        ]
+      }
+    },
+    "limit": 10
+  },
+  "results": [
+    {
+      "package": "x64-zip",
+      "functionName": "duva-search-spike-x64-zip",
+      "memoryMb": 1769,
+      "size": {
+        "zipBytes": 75295319
+      },
+      "answered": true,
+      "invocations": [
+        {
+          "cold": true,
+          "hits": [
+            "kayak-rental",
+            "kayak-club"
+          ],
+          "searchMs": 1184.813427,
+          "durationMs": 1196.74,
+          "initMs": 681.22,
+          "maxMemoryMb": 214,
+          "roundTripMs": 2484.897128
+        },
+        {
+          "cold": false,
+          "hits": [
+            "kayak-rental",
+            "kayak-club"
+          ],
+          "searchMs": 43.978787999999895,
+          "durationMs": 45.79,
+          "maxMemoryMb": 214,
+          "roundTripMs": 93.60045200000059
+        },
+        {
+          "cold": false,
+          "hits": [
+            "kayak-rental",
+            "kayak-club"
+          ],
+          "searchMs": 46.30678400000011,
+          "durationMs": 48.02,
+          "maxMemoryMb": 215,
+          "roundTripMs": 84.41730600000028
+        },
+        {
+          "cold": false,
+          "hits": [
+            "kayak-rental",
+            "kayak-club"
+          ],
+          "searchMs": 42.919862000000194,
+          "durationMs": 44.42,
+          "maxMemoryMb": 215,
+          "roundTripMs": 80.9689699999999
+        },
+        {
+          "cold": false,
+          "hits": [
+            "kayak-rental",
+            "kayak-club"
+          ],
+          "searchMs": 38.96749600000021,
+          "durationMs": 40.41,
+          "maxMemoryMb": 215,
+          "roundTripMs": 75.83496399999967
+        },
+        {
+          "cold": false,
+          "hits": [
+            "kayak-rental",
+            "kayak-club"
+          ],
+          "searchMs": 41.14307199999985,
+          "durationMs": 42.61,
+          "maxMemoryMb": 215,
+          "roundTripMs": 80.14050199999929
+        },
+        {
+          "cold": false,
+          "hits": [
+            "kayak-rental",
+            "kayak-club"
+          ],
+          "searchMs": 39.05777900000021,
+          "durationMs": 40.51,
+          "maxMemoryMb": 215,
+          "roundTripMs": 76.50500999999986
+        },
+        {
+          "cold": false,
+          "hits": [
+            "kayak-rental",
+            "kayak-club"
+          ],
+          "searchMs": 45.10972700000002,
+          "durationMs": 46.63,
+          "maxMemoryMb": 215,
+          "roundTripMs": 95.6795860000002
+        },
+        {
+          "cold": false,
+          "hits": [
+            "kayak-rental",
+            "kayak-club"
+          ],
+          "searchMs": 43.77834299999995,
+          "durationMs": 45.42,
+          "maxMemoryMb": 215,
+          "roundTripMs": 79.93450899999971
+        },
+        {
+          "cold": false,
+          "hits": [
+            "kayak-rental",
+            "kayak-club"
+          ],
+          "searchMs": 42.03488900000002,
+          "durationMs": 43.68,
+          "maxMemoryMb": 215,
+          "roundTripMs": 79.59719399999994
+        },
+        {
+          "cold": false,
+          "hits": [
+            "kayak-rental",
+            "kayak-club"
+          ],
+          "searchMs": 46.145638999999846,
+          "durationMs": 47.55,
+          "maxMemoryMb": 215,
+          "roundTripMs": 83.77430999999979
+        },
+        {
+          "cold": true,
+          "hits": [
+            "kayak-rental",
+            "kayak-club"
+          ],
+          "searchMs": 1183.9014980000002,
+          "durationMs": 1217.69,
+          "initMs": 675.88,
+          "maxMemoryMb": 215,
+          "roundTripMs": 2472.45669
+        },
+        {
+          "cold": true,
+          "hits": [
+            "kayak-rental",
+            "kayak-club"
+          ],
+          "searchMs": 1179.20751,
+          "durationMs": 1197.4,
+          "initMs": 664.02,
+          "maxMemoryMb": 214,
+          "roundTripMs": 2462.8432460000004
+        },
+        {
+          "cold": true,
+          "hits": [
+            "kayak-rental",
+            "kayak-club"
+          ],
+          "searchMs": 1431.329213,
+          "durationMs": 1452.87,
+          "initMs": 572.38,
+          "maxMemoryMb": 214,
+          "roundTripMs": 2659.515538999998
+        },
+        {
+          "cold": true,
+          "hits": [
+            "kayak-rental",
+            "kayak-club"
+          ],
+          "searchMs": 1160.436536,
+          "durationMs": 1180.17,
+          "initMs": 696.42,
+          "maxMemoryMb": 214,
+          "roundTripMs": 2455.2896390000024
+        }
+      ]
+    },
+    {
+      "package": "arm64-image",
+      "functionName": "duva-search-spike-arm64-image",
+      "memoryMb": 1769,
+      "size": {
+        "imageBytesCompressed": 258743996,
+        "codeSha256": "bf3b2a4f6602c6e21330f058ad342b644739f8583d7a6c368150fd6133a34811"
+      },
+      "answered": true,
+      "invocations": [
+        {
+          "cold": true,
+          "hits": [
+            "kayak-rental",
+            "kayak-club"
+          ],
+          "searchMs": 1048.6234559999998,
+          "durationMs": 1058.08,
+          "initMs": 839.1,
+          "maxMemoryMb": 242,
+          "roundTripMs": 2121.6691189999983
+        },
+        {
+          "cold": false,
+          "hits": [
+            "kayak-rental",
+            "kayak-club"
+          ],
+          "searchMs": 49.297015999999985,
+          "durationMs": 51.16,
+          "maxMemoryMb": 242,
+          "roundTripMs": 90.49417799999719
+        },
+        {
+          "cold": false,
+          "hits": [
+            "kayak-rental",
+            "kayak-club"
+          ],
+          "searchMs": 42.76473699999997,
+          "durationMs": 44.55,
+          "maxMemoryMb": 243,
+          "roundTripMs": 73.31389200000194
+        },
+        {
+          "cold": false,
+          "hits": [
+            "kayak-rental",
+            "kayak-club"
+          ],
+          "searchMs": 48.684531000000106,
+          "durationMs": 50.18,
+          "maxMemoryMb": 243,
+          "roundTripMs": 79.7538650000024
+        },
+        {
+          "cold": false,
+          "hits": [
+            "kayak-rental",
+            "kayak-club"
+          ],
+          "searchMs": 49.97437600000012,
+          "durationMs": 51.54,
+          "maxMemoryMb": 243,
+          "roundTripMs": 81.1401990000013
+        },
+        {
+          "cold": false,
+          "hits": [
+            "kayak-rental",
+            "kayak-club"
+          ],
+          "searchMs": 45.88963599999988,
+          "durationMs": 48.39,
+          "maxMemoryMb": 243,
+          "roundTripMs": 78.05332399999679
+        },
+        {
+          "cold": false,
+          "hits": [
+            "kayak-rental",
+            "kayak-club"
+          ],
+          "searchMs": 40.21162499999991,
+          "durationMs": 41.78,
+          "maxMemoryMb": 243,
+          "roundTripMs": 71.31163700000252
+        },
+        {
+          "cold": false,
+          "hits": [
+            "kayak-rental",
+            "kayak-club"
+          ],
+          "searchMs": 46.661384,
+          "durationMs": 48.17,
+          "maxMemoryMb": 243,
+          "roundTripMs": 78.02948200000174
+        },
+        {
+          "cold": false,
+          "hits": [
+            "kayak-rental",
+            "kayak-club"
+          ],
+          "searchMs": 44.96877399999994,
+          "durationMs": 46.5,
+          "maxMemoryMb": 243,
+          "roundTripMs": 76.70328800000061
+        },
+        {
+          "cold": false,
+          "hits": [
+            "kayak-rental",
+            "kayak-club"
+          ],
+          "searchMs": 50.06318300000021,
+          "durationMs": 51.8,
+          "maxMemoryMb": 243,
+          "roundTripMs": 83.58779899999718
+        },
+        {
+          "cold": false,
+          "hits": [
+            "kayak-rental",
+            "kayak-club"
+          ],
+          "searchMs": 50.94596499999989,
+          "durationMs": 53.15,
+          "maxMemoryMb": 243,
+          "roundTripMs": 87.46765500000038
+        },
+        {
+          "cold": true,
+          "hits": [
+            "kayak-rental",
+            "kayak-club"
+          ],
+          "searchMs": 648.4963569999999,
+          "durationMs": 656.7,
+          "initMs": 554.38,
+          "maxMemoryMb": 242,
+          "roundTripMs": 1373.018901000003
+        },
+        {
+          "cold": true,
+          "hits": [
+            "kayak-rental",
+            "kayak-club"
+          ],
+          "searchMs": 679.81259,
+          "durationMs": 704.94,
+          "initMs": 514.74,
+          "maxMemoryMb": 242,
+          "roundTripMs": 1459.999125000002
+        },
+        {
+          "cold": true,
+          "hits": [
+            "kayak-rental",
+            "kayak-club"
+          ],
+          "searchMs": 643.443824,
+          "durationMs": 669.4,
+          "initMs": 495.95,
+          "maxMemoryMb": 242,
+          "roundTripMs": 1364.7602000000043
+        },
+        {
+          "cold": true,
+          "hits": [
+            "kayak-rental",
+            "kayak-club"
+          ],
+          "searchMs": 879.57665,
+          "durationMs": 890.79,
+          "initMs": 527.01,
+          "maxMemoryMb": 242,
+          "roundTripMs": 1717.7580980000057
+        }
+      ]
+    }
+  ]
+}
