@@ -72,6 +72,10 @@ async function step<T>(name: string, perform: () => Promise<T>, { needed = true 
 const check = (name: string, perform: () => Promise<void>) => step(name, perform, { needed: false });
 
 // The deployment, re-deployed with this build.
+const s3 = new S3Client({ region });
+let mailBucket: Promise<string> | undefined;
+const stored = new Map<string, MailHeaders>();
+
 const duvaStack = async () => {
   const { Stacks = [] } = await new CloudFormationClient({ region }).send(new DescribeStacksCommand({ StackName: stackName }));
   return Stacks[0];
@@ -246,7 +250,9 @@ async function duva(key: string | undefined, args: string[]): Promise<unknown> {
 }
 
 /** Runs the duva command as the agent, in its mailbox. */
-const asAgent = (agent: Agent, command: string[], args: string[]) => duva(agent.key, [...command, "--mailbox", agent.mailbox, ...args]);
+function asAgent(agent: Agent, command: string[], args: string[]) {
+  return duva(agent.key, [...command, "--mailbox", agent.mailbox, ...args]);
+}
 
 function runProcess(command: string, args: string[], env = process.env) {
   return new Promise<{ exitCode: number | null; stdout: string; stderr: string }>((resolve, reject) => {
@@ -260,7 +266,9 @@ function runProcess(command: string, args: string[], env = process.env) {
   });
 }
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 /** Throws unless the text of a message the agent sent ends with the line saying so. */
 function checkDisclosureLine(message: Schemas["Message"], agentName: string) {
@@ -335,8 +343,6 @@ async function sendApproved(agent: Agent, draft: Schemas["Draft"]) {
   return send as Required<Pick<Schemas["SendStatus"], "thread" | "message" | "messageId">>;
 }
 
-const s3 = new S3Client({ region });
-let mailBucket: Promise<string> | undefined;
 /** The mail bucket, which SES's receipt rule stores mail in. */
 function bucket(): Promise<string> {
   mailBucket ??= (async () => {
@@ -356,7 +362,6 @@ async function mailObject(key: string): Promise<string> {
 }
 
 /** The headers of the copies SES stored during this run, by key, read once each. */
-const stored = new Map<string, MailHeaders>();
 /** The headers of the copy SES stored of the message it received with the Message-ID during this run. */
 async function rawCopy(messageId: string): Promise<MailHeaders> {
   const keys: string[] = [];
@@ -389,7 +394,9 @@ function headersOf(raw: string): MailHeaders {
 }
 
 /** The Authentication-Results SES wrote into the copy it stored. */
-const sesResults = (headers: MailHeaders) => headers.get("authentication-results")?.find((value) => value.startsWith("amazonses.com"));
+function sesResults(headers: MailHeaders) {
+  return headers.get("authentication-results")?.find((value) => value.startsWith("amazonses.com"));
+}
 
 /** SES's verdicts, as it writes them into the copy it stores. */
 function verdicts(headers: MailHeaders): string {
