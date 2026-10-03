@@ -24,6 +24,15 @@ Where a ticket's real run happens, and what the agent may do there.
 
 After every deploy, run `AWS_REGION=<region> node scripts/check-deployment.ts`. It runs the checks that need no human. Add a check there for each behavior a ticket makes visible from outside.
 
+## The end-to-end run
+
+`AWS_REGION=eu-north-1 npm run end-to-end` builds, re-deploys the standing deployment with the `duva` binary, then runs the first slice through real SES: a second agent mails the first, the first replies, both through the binary with their own keys, and the sponsor approves each send through the API. It reports each step as passed or failed, then what it found about SES. Run it on demand, never on every commit.
+
+- It runs on the standing deployment. Nicklas chose that over a throwaway subdomain, since `duva.nille.xyz` already has its DNS, SES's verification and production access.
+- The sponsor is whoever is signed in to the CLI's config, `n@nille.dev`. When the session has expired, Nicklas runs `duva login`.
+- The agents `End-to-end first` and `End-to-end second`, with mailboxes `end-to-end-first@` and `end-to-end-second@` on the domain, are made on the first run and reused, each with a new key every run.
+- It reads SES's verdicts and the headers recipients saw from the copies in the mail bucket, and hands SES one message over SMTP on port 25, so this machine needs to reach `inbound-smtp.eu-north-1.amazonaws.com:25`.
+
 ## What only Nicklas can do
 
 Entering a sign-in code in managed login, opening an SES verification link, and checking the web app in a browser. Run everything else, then ask for these with the URLs and what to report back.

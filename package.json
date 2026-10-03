@@ -20,7 +20,8 @@
     "typecheck": "tsc -p . && npm run typecheck --workspaces --if-present",
     "check": "npm test && npm run typecheck",
     "synth": "npm run synth -w @duva/infra",
-    "build": "npm run check && npm run synth && npm run build -w @duva/web && npm run build -w @duva/cli"
+    "build": "npm run check && npm run synth && npm run build -w @duva/web && npm run build -w @duva/cli",
+    "end-to-end": "npm run build && node scripts/end-to-end.ts"
   },
   "devDependencies": {
     "@aws-sdk/client-cloudformation": "^3.1146.0",
