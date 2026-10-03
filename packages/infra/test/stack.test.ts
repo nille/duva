@@ -242,8 +242,11 @@ test("the sender retries a failed record, then records it in a queue for replay"
 });
 
 test("the sender sends through SES under Duva's configuration set, and stores what it sent only under the sent prefix", () => {
-  expect(actions("SenderHandler", "ses").sort()).toEqual(["ses:SendEmail", "ses:SendEmail", "ses:SendRawEmail"]);
+  expect([...new Set(actions("SenderHandler", "ses"))].sort()).toEqual(["ses:SendEmail", "ses:SendRawEmail"]);
   const [[setId]] = ofType("AWS::SES::ConfigurationSet") as [[string, Resource]];
+  // SESv2 SendEmail with raw content is authorized as ses:SendRawEmail, on the configuration set too.
+  const onSet = statements("SenderHandler").filter(({ Resource }) => JSON.stringify(Resource).includes(`configuration-set/",{"Ref":"${setId}"}`));
+  expect(onSet.flatMap(({ Action }) => [Action].flat())).toContain("ses:SendRawEmail");
   expect(lambda("SenderHandler")[1].Properties?.Environment?.Variables?.[environmentVariables.configurationSet]).toEqual({ Ref: setId });
   const sesResources = JSON.stringify(statements("SenderHandler").filter(({ Action }) => [Action].flat().some((action) => action.startsWith("ses:"))).map(({ Resource }) => Resource));
   expect(sesResources).toContain(`configuration-set/",{"Ref":"${setId}"}`);

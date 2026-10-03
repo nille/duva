@@ -16,10 +16,10 @@ import { findActor, organizationDomain } from "./organization.ts";
 /** SES's sending, or a stand-in in tests. */
 export interface Outbound {
   /**
-   * Hands SES the raw message. Throws Refused with SES's reason if SES refused it. Any other error
-   * leaves it unclear whether SES accepted it.
+   * Hands SES the raw message and returns the ID SES gave it. Throws Refused with SES's reason if
+   * SES refused it. Any other error leaves it unclear whether SES accepted it.
    */
-  send(raw: Uint8Array): Promise<void>;
+  send(raw: Uint8Array): Promise<string>;
 }
 
 /** SES refused the message, so it wasn't sent. */
@@ -41,8 +41,9 @@ export function sesOutbound(ses: SESv2Client, configurationSet: string): Outboun
     async send(raw) {
       for (let attempt = 1; ; attempt++) {
         try {
-          await ses.send(new SendEmailCommand({ Content: { Raw: { Data: raw } }, ConfigurationSetName: configurationSet }));
-          return;
+          const { MessageId } = await ses.send(new SendEmailCommand({ Content: { Raw: { Data: raw } }, ConfigurationSetName: configurationSet }));
+          if (MessageId === undefined) throw new Error("SES accepted the message without giving it an ID.");
+          return MessageId;
         } catch (error) {
           if (!(error instanceof SESv2ServiceException) || error.$fault !== "client") throw error;
           if (error.name !== "TooManyRequestsException" || attempt === 3) throw new Refused(error.message);
@@ -58,6 +59,8 @@ interface Sender {
   table: Table;
   mailBucket: MailBucket;
   outbound: Outbound;
+  /** The region SES sends from, which names the Message-ID it gives each message. */
+  region: string;
 }
 
 export function createSender(sender: Sender) {
@@ -71,14 +74,14 @@ export function createSender(sender: Sender) {
 }
 
 /** Sends the draft if it is approved. One left sending by an earlier run that stopped is marked unclear, never sent again. */
-async function send({ table, mailBucket, outbound }: Sender, { mailbox, draft: id }: { mailbox: string; draft: string }) {
+async function send({ table, mailBucket, outbound, region }: Sender, { mailbox, draft: id }: { mailbox: string; draft: string }) {
   const draft = await findDraft(table, mailbox, id);
   const status = draft?.send;
   if (draft === undefined || status === undefined) return;
   const approval = await findApproval(table, status.approval);
   if (approval === undefined) throw new Error(`The approval ${status.approval} that draft ${id} was sent with is missing.`);
   if (status.state === "sending") {
-    await markUnclear(table, { mailbox, draft: id, approval: approval.id, message: status.message!, messageId: status.messageId!, agent: approval.agent });
+    await markUnclear(table, { mailbox, draft: id, approval: approval.id, message: status.message!, agent: approval.agent });
     return;
   }
   if (status.state !== "approved") return;
@@ -91,13 +94,14 @@ async function send({ table, mailBucket, outbound }: Sender, { mailbox, draft: i
 
   // Everything is ready before the draft moves to sending, so only SES's answer can leave it unclear.
   const message = randomUUID();
-  const sending: Sending = { mailbox, draft: id, approval: approval.id, message, messageId: `<${message}@${await organizationDomain(table)}>`, agent: agent.id };
+  const sending: Sending = { mailbox, draft: id, approval: approval.id, message, agent: agent.id };
   const date = new Date();
   const from = { name: agent.name, address: draft.from };
   const disclosure = `${agent.name} for ${sponsor.email}`;
   const parent = original?.message.messageId;
   const raw = buildMail({
-    messageId: sending.messageId,
+    // SES replaces it with one of its own, which is the one recorded (docs/aws.md).
+    messageId: `<${message}@${await organizationDomain(table)}>`,
     from,
     to: draft.to,
     subject: draft.subject,
@@ -111,8 +115,9 @@ async function send({ table, mailBucket, outbound }: Sender, { mailbox, draft: i
   await mailBucket.put(rawKey, raw);
   if (!(await startSending(table, sending))) return;
 
+  let sesMessageId: string;
   try {
-    await outbound.send(raw);
+    sesMessageId = await outbound.send(raw);
   } catch (error) {
     if (error instanceof Refused) await markFailed(table, sending, error.message);
     else await markUnclear(table, sending);
@@ -121,6 +126,7 @@ async function send({ table, mailBucket, outbound }: Sender, { mailbox, draft: i
   const sentAt = date.toISOString();
   await markSent(table, sending, {
     thread: draft.thread,
+    messageId: `<${sesMessageId}@${region}.amazonses.com>`,
     stored: { from, to: draft.to, cc: [], recipient: draft.from, subject: draft.subject, date: sentAt, receivedAt: sentAt, rawKey },
   });
 }

@@ -158,10 +158,11 @@ function matches(rule: ReceiptRule, recipient: string): boolean {
 }
 
 /**
- * Stands in for SES sending in one region, recording each raw message it accepts. The domain is
- * verified, and in the sandbox SES refuses a message to anyone not on it, with SES's reason. With
- * `answersLost`, SES accepts each message but its answer never arrives, as when the connection
- * drops.
+ * Stands in for SES sending in one region, recording each raw message it accepts as its recipients
+ * get it. Like SES, it gives each message an ID, answers with it, and replaces the message's
+ * Message-ID with <ID@region.amazonses.com>. The domain is verified, and in the sandbox SES refuses
+ * a message to anyone not on it, with SES's reason. With `answersLost`, SES accepts each message
+ * but its answer never arrives, as when the connection drops.
  */
 export function sesSending({ region, domain, sandbox, answersLost }: { region: string; domain: string; sandbox: boolean; answersLost: boolean }) {
   const accepted: string[] = [];
@@ -174,13 +175,17 @@ export function sesSending({ region, domain, sandbox, answersLost }: { region: s
       if (unverified.length > 0) {
         throw new Refused(`Email address is not verified. The following identities failed the check in region ${region.toUpperCase()}: ${unverified.join(", ")}`);
       }
-      accepted.push(new TextDecoder().decode(raw));
+      const messageId = `0110019${randomUUID().replaceAll("-", "").slice(0, 9)}-${randomUUID()}-000000`;
+      const [head = "", ...body] = new TextDecoder().decode(raw).split("\r\n\r\n");
+      const fields = head.split(/\r\n(?![ \t])/).filter((field) => !/^message-id:/i.test(field));
+      accepted.push([[...fields, `Message-ID: <${messageId}@${region}.amazonses.com>`].join("\r\n"), ...body].join("\r\n\r\n"));
       if (answersLost) throw new Error("socket hang up");
+      return messageId;
     },
   };
   return {
     outbound,
-    /** The raw messages SES accepted, oldest first. */
+    /** The raw messages SES accepted, as their recipients get them, oldest first. */
     sent: () => [...accepted],
   };
 }

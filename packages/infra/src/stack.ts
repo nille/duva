@@ -278,11 +278,12 @@ export class DuvaStack extends Stack {
     // The sender reads the message it answers and stores the raw MIME it sends.
     mail.grantRead(sender);
     mail.grantPut(sender, `${sentPrefix}*`);
-    // SES checks both the identity and the configuration set a send uses.
+    // SES checks both the identity and the configuration set a send uses. SESv2 SendEmail with raw
+    // content is authorized as ses:SendRawEmail (see docs/aws.md).
     identity.grantSendEmail(sender);
     sender.addToRolePolicy(
       new PolicyStatement({
-        actions: ["ses:SendEmail"],
+        actions: ["ses:SendEmail", "ses:SendRawEmail"],
         resources: [this.formatArn({ service: "ses", resource: "configuration-set", resourceName: sending.configurationSetName })],
       }),
     );

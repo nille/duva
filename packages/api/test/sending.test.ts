@@ -59,7 +59,8 @@ test("the sponsor sends the reply as is, and it goes out as a reply in the threa
   expect(mail.from).toEqual({ name: "Hermes", address: "hermes+meetings@example.com" });
   expect(mail.to).toEqual([{ name: "Grace Hopper", address: "grace@example.org" }]);
   expect(mail.subject).toBe("Re: Meeting");
-  expect(mail.messageId).toMatch(/^<[^@<>]+@example\.com>$/);
+  // SES gives the message its own Message-ID in place of Duva's.
+  expect(mail.messageId).toMatch(/^<[\w-]+@eu-north-1\.amazonses\.com>$/);
   expect(mail.inReplyTo).toBe("<meet-2@example.org>");
   expect(mail.references).toBe("<meet-0@example.org> <meet-1@example.org> <meet-2@example.org>");
 });
@@ -111,7 +112,7 @@ test("the sponsor edits the draft and sends their version, which still carries t
   expect(draft).toMatchObject({ subject: "Re: Meeting on Tuesday", text: "Tuesday works better." });
 });
 
-test("the agent sees its send as sent, with the Message-ID the recipient sees", async () => {
+test("the agent sees its send as sent, with the Message-ID SES gave it, which the recipient sees", async () => {
   const { duva, ada, hermes, thread, draftParams, approval } = await withReplyAsked();
 
   await ada.POST("/approvals/{approval}/send", { params: { path: { approval } } });
@@ -173,7 +174,8 @@ test("names and subjects outside ASCII go out as encoded words", async () => {
 
   const raw = duva.sent()[0]!;
   expect(raw).toMatch(/^[\x00-\x7f]*$/);
-  expect(raw.split("\r\n").every((line) => line.length <= 78)).toBe(true);
+  // SES writes the Message-ID line, longer than that, itself.
+  expect(raw.split("\r\n").filter((line) => !line.startsWith("Message-ID: ")).every((line) => line.length <= 78)).toBe(true);
   const mail = await parse(raw);
   expect(mail.subject).toBe("Möte på måndag, om du har tid för en längre pratstund om allt som hänt");
   // A base64 body keeps the CRLF line breaks of text's canonical form.
@@ -231,7 +233,7 @@ test("when SES's answer is lost, the send is marked for a human to check and nev
   await ada.POST("/approvals/{approval}/send", { params: { path: { approval } } });
 
   expect(duva.sent()).toHaveLength(1);
-  expect((await hermes.GET("/mailboxes/{mailbox}/drafts/{draft}", { params: draftParams })).data?.send).toEqual({ approval, state: "unclear", messageId: (await parse(duva.sent()[0]!)).messageId });
+  expect((await hermes.GET("/mailboxes/{mailbox}/drafts/{draft}", { params: draftParams })).data?.send).toEqual({ approval, state: "unclear" });
 });
 
 test("an approved draft can't change or be asked to send again", async () => {

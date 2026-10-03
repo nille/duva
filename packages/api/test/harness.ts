@@ -113,7 +113,7 @@ export async function startDuva({
   const receiving = { rules: ses.rules, bucket: mailBucketName, inboundFunction };
   const sending = sesSending({ region, domain, sandbox, answersLost: sesAnswersLost });
   const stream = tableStream(inject("dynamodbEndpoint"), streamArn, [
-    { filter: senderFilter, handler: createSender({ table, mailBucket, outbound: sending.outbound }), retries: senderRetries, invocations: senderInvocations },
+    { filter: senderFilter, handler: createSender({ table, mailBucket, outbound: sending.outbound, region }), retries: senderRetries, invocations: senderInvocations },
   ]);
   const gatewayed = gateway(
     createApi({ version, region, table, mailBucket, receiving }),

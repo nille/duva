@@ -617,7 +617,7 @@ export interface components {
             /** @description The ID of the approval the request needs. */
             approval: string;
             /**
-             * @description waiting for approval; withdrawn because the draft changed while it waited; rejected, with the approver's note; approved, and about to be sent; sending; sent, as the message in its thread; failed, with SES's reason; or unclear, when sending stopped before SES answered, so a human checks whether it went out. Duva never sends an unclear draft again. An approved draft can't change, but a rejected or failed one can be revised and asked again.
+             * @description waiting for approval; withdrawn because the draft changed while it waited; rejected, with the approver's note; approved, and about to be sent; sending; sent, as the message in its thread; failed, with SES's reason; or unclear, when sending stopped before SES answered, so a human checks whether it went out, by its recipients and subject, since only SES's answer gives its Message-ID. Duva never sends an unclear draft again. An approved draft can't change, but a rejected or failed one can be revised and asked again.
              * @enum {string}
              */
             state: "waiting" | "withdrawn" | "rejected" | "approved" | "sending" | "sent" | "failed" | "unclear";
@@ -633,8 +633,8 @@ export interface components {
             /** @description The sent message's ID in Duva, once sending starts. */
             message?: string;
             /**
-             * @description The Message-ID header the recipients see, once sending starts. For an unclear send, look for it in the recipients' mail.
-             * @example <0b1f7c2e-5d4a-4f0e-9a51-3c6e2d8b7f10@example.com>
+             * @description The Message-ID header the recipients see, which SES gave the message, once sent.
+             * @example <011001a10373c801-a8e8167e-887a-40a0-a0f7-62c78ecf7270-000000@eu-north-1.amazonses.com>
              */
             messageId?: string;
         };

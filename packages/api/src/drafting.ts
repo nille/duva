@@ -361,10 +361,10 @@ export function draftAt(keys: Record<string, string>): { mailbox: string; draft:
 }
 
 /**
- * Moves the approved draft to sending, as the message with the IDs, on condition that it is still
- * approved for the approval. Returns false if it no longer is.
+ * Moves the approved draft to sending, as the message with the ID in Duva, on condition that it is
+ * still approved for the approval. Returns false if it no longer is.
  */
-export async function startSending(table: Table, { mailbox, draft, approval, message, messageId }: Sending): Promise<boolean> {
+export async function startSending(table: Table, { mailbox, draft, approval, message }: Sending): Promise<boolean> {
   return conditionally(
     documents(table).send(
       new UpdateCommand({
@@ -373,7 +373,7 @@ export async function startSending(table: Table, { mailbox, draft, approval, mes
         UpdateExpression: "SET #send = :sending, version = version + :one",
         ConditionExpression: "#send.approval = :approval AND #send.#state = :approved",
         ExpressionAttributeNames: { "#send": "send", "#state": "state" },
-        ExpressionAttributeValues: { ":sending": { approval, state: "sending", message, messageId }, ":one": 1, ":approval": approval, ":approved": "approved" },
+        ExpressionAttributeValues: { ":sending": { approval, state: "sending", message }, ":one": 1, ":approval": approval, ":approved": "approved" },
       }),
     ),
   );
@@ -393,28 +393,28 @@ function sendingSettles(table: Table, { mailbox, draft, approval, message }: Sen
   };
 }
 
-/** A draft the sender is sending, on behalf of the agent, as the message with the ID in Duva and the Message-ID. */
+/** A draft the sender is sending, on behalf of the agent, as the message with the ID in Duva. */
 export interface Sending {
   mailbox: string;
   draft: string;
   approval: string;
   message: string;
-  messageId: string;
   agent: string;
 }
 
 /**
- * Marks the draft sent as the message, which SES accepted, and stores the message in the draft's
- * thread, or in a new one if it isn't a reply. Returns false if the draft was no longer sending it.
+ * Marks the draft sent as the message, which SES accepted and gave the Message-ID its recipients
+ * see, and stores the message in the draft's thread, or in a new one if it isn't a reply, where
+ * that Message-ID points at it. Returns false if the draft was no longer sending it.
  */
 export function markSent(
   table: Table,
   sending: Sending,
-  { thread, stored }: { thread: string | undefined; stored: Omit<StoredMessage, "id" | "messageId" | "sentBy"> },
+  { thread, messageId, stored }: { thread: string | undefined; messageId: string; stored: Omit<StoredMessage, "id" | "messageId" | "sentBy"> },
 ): Promise<boolean> {
   const { mailbox, draft, approval, message, agent } = sending;
-  const once = (sentThread: string) => sendingSettles(table, sending, { approval, state: "sent", thread: sentThread, message, messageId: sending.messageId });
-  return storeSentMessage(table, { mailbox, message: { ...stored, id: message, messageId: sending.messageId, sentBy: agent }, thread, draft, once });
+  const once = (sentThread: string) => sendingSettles(table, sending, { approval, state: "sent", thread: sentThread, message, messageId });
+  return storeSentMessage(table, { mailbox, message: { ...stored, id: message, messageId, sentBy: agent }, thread, draft, once });
 }
 
 /** Marks the draft failed with SES's reason, which the agent and its sponsor see. Returns false if it was no longer sending. */
@@ -431,15 +431,16 @@ export function markFailed(table: Table, sending: Sending, reason: string): Prom
 
 /**
  * Marks the draft unclear: sending it stopped before SES answered, so a human checks whether it
- * went out, by its Message-ID, and Duva never sends it again. Returns false if it was no longer sending.
+ * went out, and Duva never sends it again. Without SES's answer, the Message-ID its recipients see
+ * is unknown. Returns false if it was no longer sending.
  */
 export function markUnclear(table: Table, sending: Sending): Promise<boolean> {
-  const { mailbox, draft, approval, messageId, agent } = sending;
+  const { mailbox, draft, approval, agent } = sending;
   return conditionally(
     recordChanges(table, mailboxFeed(mailbox), {
       by: agent,
       changes: [{ type: "sendUnclear", draft, approval }],
-      items: [sendingSettles(table, sending, { approval, state: "unclear", messageId })],
+      items: [sendingSettles(table, sending, { approval, state: "unclear" })],
     }),
   );
 }
