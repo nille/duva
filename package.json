@@ -12,8 +12,8 @@
     "node": ">=24"
   },
   "scripts": {
-    "generate": "node scripts/generate.ts",
-    "check:generated": "node scripts/generate.ts --check",
+    "generate": "node scripts/generate.ts && node packages/cli/scripts/skill.ts",
+    "check:generated": "node scripts/generate.ts --check && node packages/cli/scripts/skill.ts --check",
     "check:text": "node scripts/check-text.ts",
     "pretest": "npm run check:generated && npm run check:text",
     "test": "vitest run",

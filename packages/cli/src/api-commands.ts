@@ -1,7 +1,6 @@
-import { parseArgs } from "node:util";
 import { createDuvaClient } from "@duva/client";
 import { operations, type Operation, type OperationId } from "@duva/openapi";
-import type { Command } from "./commands.ts";
+import { type Command, optionValues } from "./commands.ts";
 import { readConfig } from "./config.ts";
 import { accessToken } from "./session.ts";
 
@@ -19,17 +18,18 @@ interface Call {
  * One command for each operation in the OpenAPI document, named by its x-cli-command. Query and
  * path parameters and the properties of a JSON body are options.
  */
-export const apiCommands: Command[] = operations.map((operation) => ({
-  words: operation.command,
-  summary: operation.summary,
-  run: (args) => callApi(operation.operationId, callOf(operation, args)),
-}));
+export const apiCommands: Command[] = operations.map((operation) => {
+  const command: Command = {
+    words: operation.command,
+    summary: operation.summary,
+    description: operation.description,
+    options: operation.options,
+    run: (args) => callApi(operation.operationId, callOf(operation, optionValues(command, args))),
+  };
+  return command;
+});
 
-function callOf(operation: Operation, args: string[]): Call {
-  const { values } = parseArgs({
-    args,
-    options: Object.fromEntries(operation.options.map(({ name }) => [name, { type: "string" as const }])),
-  });
+function callOf(operation: Operation, values: Record<string, string | undefined>): Call {
   const call: Required<Call> = { query: {}, path: {}, body: {} };
   for (const { name, in: place, type, required } of operation.options) {
     const value = values[name];

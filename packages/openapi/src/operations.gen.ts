@@ -7,6 +7,7 @@ export const operations = [
     "path": "/status",
     "routeKey": "GET /status",
     "summary": "Show Duva's version and the deployment's region.",
+    "description": "Answers without sign-in, so any client can check that it reaches the deployment.",
     "signIn": false,
     "command": [
       "status"
@@ -19,6 +20,7 @@ export const operations = [
     "path": "/whoami",
     "routeKey": "GET /whoami",
     "summary": "Show the signed-in actor.",
+    "description": "",
     "signIn": true,
     "command": [
       "whoami"
@@ -31,6 +33,7 @@ export const operations = [
     "path": "/organization/changes",
     "routeKey": "GET /organization/changes",
     "summary": "List the changes to the organization's setup after a position in its change feed.",
+    "description": "Lists up to 100 changes, oldest first. To catch up, call again with the position the answer ends at until it lists no more. Only admins can read the organization's change feed.",
     "signIn": true,
     "command": [
       "organization",
@@ -52,6 +55,7 @@ export const operations = [
     "path": "/agents",
     "routeKey": "GET /agents",
     "summary": "List the agents you sponsor.",
+    "description": "",
     "signIn": true,
     "command": [
       "agents",
@@ -65,6 +69,7 @@ export const operations = [
     "path": "/agents",
     "routeKey": "POST /agents",
     "summary": "Create an agent, with you as its sponsor, and show its key once.",
+    "description": "Only humans can create agents. The answer is the only time Duva shows the agent's key: it keeps only a hash. Creating an agent is a change to the organization's setup, recorded in its change feed.",
     "signIn": true,
     "command": [
       "agents",
@@ -86,6 +91,7 @@ export const operations = [
     "path": "/agents/{agent}/key",
     "routeKey": "POST /agents/{agent}/key",
     "summary": "Give an agent you sponsor a new key, show it once, and refuse the old one from now on.",
+    "description": "Only the agent's sponsor can rotate its key. Rotating is a change to the organization's setup, recorded in its change feed.",
     "signIn": true,
     "command": [
       "agents",
@@ -107,6 +113,7 @@ export const operations = [
     "path": "/mailboxes",
     "routeKey": "GET /mailboxes",
     "summary": "List the mailboxes you can read, your own and those of the agents you sponsor.",
+    "description": "",
     "signIn": true,
     "command": [
       "mailboxes",
@@ -120,6 +127,7 @@ export const operations = [
     "path": "/mailboxes",
     "routeKey": "POST /mailboxes",
     "summary": "Create a personal mailbox for an agent, with an address on the organization's domain.",
+    "description": "Only admins can create mailboxes. The address becomes the mailbox's default address, and mail to it is accepted from then on. Creating the mailbox and its address are changes to the organization's setup, recorded in its change feed.",
     "signIn": true,
     "command": [
       "mailboxes",
@@ -148,6 +156,7 @@ export const operations = [
     "path": "/mailboxes/{mailbox}/changes",
     "routeKey": "GET /mailboxes/{mailbox}/changes",
     "summary": "List the changes in a mailbox after a position in its change feed.",
+    "description": "Lists up to 100 changes, oldest first. To catch up, call again with the position the answer ends at until it lists no more. Only the mailbox's owner and, for an agent's mailbox, its sponsor can read it.",
     "signIn": true,
     "command": [
       "mailboxes",
@@ -176,6 +185,7 @@ export const operations = [
     "path": "/mailboxes/{mailbox}/threads",
     "routeKey": "GET /mailboxes/{mailbox}/threads",
     "summary": "List the threads in a mailbox with a label, newest first.",
+    "description": "Lists the 100 newest threads with the label.",
     "signIn": true,
     "command": [
       "threads",
@@ -204,6 +214,7 @@ export const operations = [
     "path": "/mailboxes/{mailbox}/threads/{thread}",
     "routeKey": "GET /mailboxes/{mailbox}/threads/{thread}",
     "summary": "Read a thread, with each of its messages, oldest first.",
+    "description": "",
     "signIn": true,
     "command": [
       "threads",

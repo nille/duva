@@ -21,6 +21,7 @@ interface Document {
 interface OperationObject {
   operationId?: string;
   summary?: string;
+  description?: string;
   security?: SecurityRequirement[];
   parameters?: (ParameterObject | { $ref: string })[];
   requestBody?: { required?: boolean; content?: Record<string, { schema?: SchemaObject }> };
@@ -87,6 +88,7 @@ function operationsOf(document: Document) {
           path,
           routeKey: `${method.toUpperCase()} ${path}`,
           summary: operation.summary,
+          description: operation.description?.trim() ?? "",
           signIn: needsSignIn(operation.security ?? document.security ?? []),
           command: operation["x-cli-command"].split(" "),
           options: [...parametersOf(where, operation.parameters ?? []), ...bodyOf(where, operation.requestBody)],

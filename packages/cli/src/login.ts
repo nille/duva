@@ -1,9 +1,8 @@
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
-import { parseArgs } from "node:util";
 import { finishSignIn, type Session, type SignInConfig, startSignIn } from "@duva/client/sign-in";
 import { agentKeyVariable, callApi } from "./api-commands.ts";
-import type { Command } from "./commands.ts";
+import { type Command, optionValues } from "./commands.ts";
 import { readConfig, saveSession } from "./config.ts";
 
 /** How long login waits for the browser to come back. */
@@ -12,8 +11,9 @@ const timeout = 5 * 60_000;
 export const login: Command = {
   words: ["login"],
   summary: "Sign in as a human through the browser.",
+  options: [],
   async run(args) {
-    parseArgs({ args, options: {} });
+    optionValues(login, args);
     if (process.env[agentKeyVariable]) {
       throw new Error(`${agentKeyVariable} is set, so the CLI calls Duva as that agent, and an agent never signs in. Unset it to sign in as a human.`);
     }

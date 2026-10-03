@@ -1,6 +1,5 @@
-import { parseArgs } from "node:util";
 import duva from "../../../package.json" with { type: "json" };
-import type { Command } from "./commands.ts";
+import { type Command, optionValues } from "./commands.ts";
 import { saveConfig } from "./config.ts";
 import { configuredRegion, sesReceivingRegions } from "./regions.ts";
 
@@ -8,8 +7,13 @@ export const deploy: Command = {
   words: ["deploy"],
   summary:
     "Deploy Duva into the AWS account and region of your AWS configuration, for the organization's first domain, with you as its first admin.",
+  description: "Running it again updates the deployment to this CLI's version.",
+  options: [
+    { name: "domain", required: false, description: "The organization's first domain. Needed only the first time." },
+    { name: "admin", required: false, description: "Your email address, as the first admin. Needed only the first time." },
+  ],
   async run(args) {
-    const { values } = parseArgs({ args, options: { domain: { type: "string" }, admin: { type: "string" } } });
+    const values = optionValues(deploy, args);
     const region = await configuredRegion();
     if (region === undefined) {
       throw new Error("No AWS region is configured. Set AWS_REGION, or a region in your AWS profile.");

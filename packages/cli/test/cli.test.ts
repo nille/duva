@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { chmod, mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -271,6 +271,49 @@ test("mailboxes create says why an address is refused", async () => {
   expect(result.exitCode).toBe(1);
   expect(result.stdout).toBe("");
   expect(errorIn(result.stderr)).toMatch(/400.*isn't an address on example.com/);
+});
+
+test("skill install writes the skill where agents look for skills, and says where", async () => {
+  const machine = await newMachine();
+
+  const result = await machine.duva("skill", "install");
+
+  expect(result.exitCode).toBe(0);
+  const skills = [join(machine.home, ".agents", "skills", "duva", "SKILL.md"), join(machine.home, ".claude", "skills", "duva", "SKILL.md")];
+  expect(JSON.parse(result.stdout)).toEqual({ installed: skills });
+  for (const skill of skills) {
+    const text = await readFile(skill, "utf8");
+    expect(text).toMatch(/^---\nname: duva\ndescription: .+\n---\n/);
+    expect(text).toContain("DUVA_AGENT_KEY");
+    expect(text).toContain("## duva agents create\n\nCreate an agent, with you as its sponsor, and show its key once.");
+    expect(text).toContain("`--name` (required): The agent's name.");
+  }
+});
+
+test("the skill describes every command the CLI has, and no other", async () => {
+  const machine = await newMachine();
+  const commands = errorIn((await machine.duva("no-such-command")).stderr).replace(/.*The commands are: /, "").replace(/\.$/, "").split(", ");
+
+  await machine.duva("skill", "install");
+
+  const skill = await readFile(join(machine.home, ".agents", "skills", "duva", "SKILL.md"), "utf8");
+  const described = [...skill.matchAll(/^## duva (.+)$/gm)].map(([, words]) => words);
+  expect(described).toEqual(commands);
+  expect(commands).toContain("skill install");
+});
+
+test("skill install again replaces the old copy", async () => {
+  const machine = await newMachine();
+  const skill = join(machine.home, ".agents", "skills", "duva");
+  await mkdir(skill, { recursive: true });
+  await writeFile(join(skill, "SKILL.md"), "An old skill.\n");
+  await writeFile(join(skill, "old-command.md"), "An old command.\n");
+
+  const result = await machine.duva("skill", "install");
+
+  expect(result.exitCode).toBe(0);
+  expect(await readFile(join(skill, "SKILL.md"), "utf8")).toMatch(/^---\nname: duva\n/);
+  expect(await readdir(skill)).toEqual(["SKILL.md"]);
 });
 
 /**
