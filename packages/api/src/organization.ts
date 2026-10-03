@@ -94,7 +94,8 @@ export async function organizationChanges(table: Table, after: number): Promise<
       Limit: changesPerPage,
     }),
   );
-  return Items.map(({ [pk]: _pk, [sk]: _sk, ...change }) => change as OrganizationChange);
+  // DynamoDB keeps no attribute order, so each change is rebuilt in the order the contract lists.
+  return Items.map(({ [pk]: _pk, [sk]: _sk, position, at, actor, type, ...details }) => ({ position, at, actor, type, ...details }) as OrganizationChange);
 }
 
 function documents(table: Table) {

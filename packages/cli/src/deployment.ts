@@ -153,10 +153,12 @@ export async function deployDuva({ aws, dns, ...given }: { aws: Aws; dns: Dns; d
   // In the sandbox SES sends only to verified addresses, sign-in codes included.
   const adminVerified = sendingReport.sandbox ? await aws.emailAddressVerified(firstAdmin.email) : undefined;
   if (sendingReport.sandbox && adminVerified === undefined) await aws.verifyEmailAddress(firstAdmin.email);
+  // Cognito's own sender isn't in the sandbox, so the link only matters once codes come from the domain.
   if (sendingReport.sandbox && !adminVerified) {
     signIn.push(
-      ` In the SES sandbox codes reach only addresses SES has verified, so SES sent ${firstAdmin.email} a link to verify it. ` +
-        "Open it before you sign in.",
+      domainVerified
+        ? ` In the SES sandbox codes reach only addresses SES has verified, so SES sent ${firstAdmin.email} a link to verify it. Open it before you sign in.`
+        : ` SES also sent ${firstAdmin.email} a link to verify it, which codes from ${signInSender(domain)} will need while the account is in the SES sandbox.`,
     );
   }
 

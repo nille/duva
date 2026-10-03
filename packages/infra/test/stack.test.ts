@@ -240,3 +240,11 @@ test("the web app is served through CloudFront from its bucket, which only Cloud
   expect(origin?.OriginAccessControlId).toBeDefined();
   expect(distribution?.DistributionConfig?.ViewerCertificate).toBeUndefined();
 });
+
+test("every name CloudFront keeps holds the region, since CloudFront names are global to the account and each region can have a deployment", () => {
+  const controls = ofType("AWS::CloudFront::OriginAccessControl");
+  expect(controls).not.toHaveLength(0);
+  for (const [id, { Properties }] of controls) {
+    expect({ id, name: JSON.stringify(Properties?.OriginAccessControlConfig?.Name) }).toEqual({ id, name: expect.stringContaining('{"Ref":"AWS::Region"}') });
+  }
+});

@@ -295,11 +295,21 @@ test("deploy gives the CLI how it signs in, through a loopback redirect", async 
 
 test("in the SES sandbox, deploy asks SES to verify the admin's address and says to confirm it", async () => {
   const world = newWorld();
+  await deployDuva({ ...world, domain: "duva.example.com", admin: "ada@example.org" });
+  world.aws.identities.set("duva.example.com", { dkim: "SUCCESS", mailFrom: "SUCCESS", verified: true });
 
-  const report = await deployDuva({ ...world, domain: "duva.example.com", admin: "ada@example.org" });
+  const report = await deployDuva(world);
 
   expect(world.aws.changes).toContain("asked SES to verify ada@example.org");
   expect(report.admin.signIn).toMatch(/SES sent ada@example\.org a link.*open it/i);
+});
+
+test("while codes come from Cognito, deploy doesn't ask the admin to verify their address before signing in, since Cognito's sender isn't in the sandbox", async () => {
+  const world = newWorld();
+
+  const report = await deployDuva({ ...world, domain: "duva.example.com", admin: "ada@example.org" });
+
+  expect(report.admin.signIn).not.toMatch(/before you sign in/);
 });
 
 test("a re-run in the sandbox doesn't ask SES to verify the admin's address again", async () => {

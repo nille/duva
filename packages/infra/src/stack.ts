@@ -3,7 +3,7 @@ import { CfnCondition, CfnOutput, CfnParameter, Duration, Fn, RemovalPolicy, Sta
 import { CorsHttpMethod, HttpApi, HttpMethod } from "aws-cdk-lib/aws-apigatewayv2";
 import { HttpLambdaAuthorizer, HttpLambdaResponseType } from "aws-cdk-lib/aws-apigatewayv2-authorizers";
 import { HttpLambdaIntegration } from "aws-cdk-lib/aws-apigatewayv2-integrations";
-import { Distribution, ViewerProtocolPolicy } from "aws-cdk-lib/aws-cloudfront";
+import { Distribution, S3OriginAccessControl, ViewerProtocolPolicy } from "aws-cdk-lib/aws-cloudfront";
 import { S3BucketOrigin } from "aws-cdk-lib/aws-cloudfront-origins";
 import {
   AccountRecovery,
@@ -98,9 +98,14 @@ export class DuvaStack extends Stack {
       enforceSSL: true,
       removalPolicy: RemovalPolicy.RETAIN_ON_UPDATE_OR_DELETE,
     });
+    // CloudFront names are global to the account, and each region can have a deployment.
+    const webAccess = new S3OriginAccessControl(this, "WebAccess", { originAccessControlName: `Duva-Web-${this.region}` });
     const distribution = new Distribution(this, "WebDistribution", {
       comment: "Duva's web app",
-      defaultBehavior: { origin: S3BucketOrigin.withOriginAccessControl(web), viewerProtocolPolicy: ViewerProtocolPolicy.REDIRECT_TO_HTTPS },
+      defaultBehavior: {
+        origin: S3BucketOrigin.withOriginAccessControl(web, { originAccessControl: webAccess }),
+        viewerProtocolPolicy: ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+      },
       defaultRootObject: "index.html",
     });
     const webUrl = `https://${distribution.distributionDomainName}`;
