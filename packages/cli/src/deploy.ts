@@ -13,7 +13,7 @@ export const deploy: Command = {
     { name: "admin", required: false, description: "Your email address, as the first admin. Needed only the first time." },
   ],
   async run(args) {
-    // Neither of deploy's options is a list.
+    // deploy has no flags or lists, so each option it was given is a string.
     const values = optionValues(deploy, args) as Record<string, string | undefined>;
     const region = await configuredRegion();
     if (region === undefined) {

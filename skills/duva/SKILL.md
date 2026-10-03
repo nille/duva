@@ -93,10 +93,11 @@ Only admins can create mailboxes. The address becomes the mailbox's default addr
 
 List the changes in a mailbox after a position in its change feed.
 
-Lists up to 100 changes, oldest first. To catch up, call again with the position the answer ends at until it lists no more. Only the mailbox's owner and, for an agent's mailbox, its sponsor can read it.
+Lists up to 100 changes, oldest first, leaving out the arrivals of mail judged to be spam unless asked for them. To catch up, call again with the position the answer ends at until it lists no more. Only the mailbox's owner and, for an agent's mailbox, its sponsor can read it.
 
 - `--mailbox` (required): The mailbox's ID.
 - `--after`: The position to list changes after. 0, the default, lists from the start.
+- `--spam`: Lists the arrivals of mail judged to be spam too.
 
 ## duva threads list
 

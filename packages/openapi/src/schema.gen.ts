@@ -129,7 +129,7 @@ export interface paths {
         };
         /**
          * List the changes in a mailbox after a position in its change feed.
-         * @description Lists up to 100 changes, oldest first. To catch up, call again with the position the answer ends at until it lists no more. Only the mailbox's owner and, for an agent's mailbox, its sponsor can read it.
+         * @description Lists up to 100 changes, oldest first, leaving out the arrivals of mail judged to be spam unless asked for them. To catch up, call again with the position the answer ends at until it lists no more. Only the mailbox's owner and, for an agent's mailbox, its sponsor can read it.
          */
         get: operations["listMailboxChanges"];
         put?: never;
@@ -380,7 +380,7 @@ export interface components {
         };
         MailboxChangePage: {
             changes: components["schemas"]["MailboxChange"][];
-            /** @description The position of the last change listed, or the one asked for if none were. Pass it as after to continue. */
+            /** @description The position of the last change read, listed or left out, or the one asked for if there were none. Pass it as after to continue. */
             position: number;
         };
         /** @description A change in a mailbox. */
@@ -403,6 +403,11 @@ export interface components {
             thread: string;
             /** @description The message's ID. */
             message: string;
+            /**
+             * @description Present when the mail was judged to be spam, so its thread has the Spam label instead of Inbox.
+             * @constant
+             */
+            spam?: true;
         };
         DraftWritten: components["schemas"]["ChangeBase"] & {
             /** @constant */
@@ -1040,6 +1045,8 @@ export interface operations {
             query?: {
                 /** @description The position to list changes after. 0, the default, lists from the start. */
                 after?: number;
+                /** @description Lists the arrivals of mail judged to be spam too. */
+                spam?: boolean;
             };
             header?: never;
             path: {

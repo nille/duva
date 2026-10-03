@@ -6,7 +6,7 @@ import { TransactionCanceledException } from "@aws-sdk/client-dynamodb";
 import { GetCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
 import type { components } from "@duva/openapi";
 import type { Table } from "./deployment.ts";
-import { changesAfter, type Feed, recordChanges } from "./feed.ts";
+import { changesAfter, changesPerPage, type Feed, recordChanges } from "./feed.ts";
 import type { MailBucket } from "./mail-bucket.ts";
 import { type ParsedMail, parseMail } from "./mime.ts";
 import { mailboxKey } from "./organization.ts";
@@ -16,9 +16,12 @@ export type ThreadSummary = components["schemas"]["ThreadSummary"];
 export type Thread = components["schemas"]["Thread"];
 export type Message = components["schemas"]["Message"];
 export type MailboxChange = components["schemas"]["MailboxChange"];
+export type MailboxChangePage = components["schemas"]["MailboxChangePage"];
 
 /** The label new mail gets. */
 export const inbox = "inbox";
+/** The label mail SES judged to be spam gets instead. */
+export const spam = "spam";
 
 /** How many threads one listing gives at most. */
 const threadsPerPage = 100;
@@ -63,6 +66,8 @@ export interface Arrival {
   sender: string;
   receivedAt: string;
   parsed: ParsedMail;
+  /** Whether SES judged the message to be spam. */
+  spam: boolean;
 }
 
 /** How many of the messages a reply names are looked up, newest first, to find its thread. */
@@ -70,11 +75,14 @@ const answersLookedUp = 100;
 
 /**
  * Stores the message in the thread of the first message it answers that the mailbox has, in the
- * order of ParsedMail's answers, or as a new thread, and gives the thread the Inbox label. Records its arrival in the mailbox's change
- * feed, naming no actor. Returns false if the mailbox already has it.
+ * order of ParsedMail's answers, or as a new thread, and gives the thread the Inbox label. Spam is
+ * kept apart instead: it starts its own thread with the Spam label, and no reply joins that thread.
+ * Records its arrival in the mailbox's change feed, naming no actor. Returns false if the mailbox
+ * already has it.
  */
 export async function receiveMessage(table: Table, arrival: Arrival): Promise<boolean> {
   const { mailbox, sesMessageId, rawKey, recipient, plusTag, sender, receivedAt, parsed } = arrival;
+  const label = arrival.spam ? spam : inbox;
   const { Item: received } = await documents(table).send(new GetCommand({ TableName: table.name, Key: receivedKey(mailbox, sesMessageId), ConsistentRead: true }));
   if (received !== undefined) return false;
 
@@ -97,14 +105,14 @@ export async function receiveMessage(table: Table, arrival: Arrival): Promise<bo
   const [receivedReason, threadReason] = [2, 3];
   const put = (Item: Record<string, unknown>, condition = {}) => ({ Put: { TableName: table.name, Item, ...condition } });
   for (let attempt = 1; ; attempt++) {
-    const joined = await threadAnswered(table, mailbox, parsed.answers);
+    const joined = arrival.spam ? undefined : await threadAnswered(table, mailbox, parsed.answers);
     const thread = joined?.id ?? randomUUID();
     const summary: ThreadSummary =
       joined === undefined
-        ? { id: thread, subject: parsed.subject, from, labels: [inbox], latestAt: receivedAt, messages: 1 }
+        ? { id: thread, subject: parsed.subject, from, labels: [label], latestAt: receivedAt, messages: 1 }
         : {
             ...joined,
-            labels: joined.labels.includes(inbox) ? joined.labels : [...joined.labels, inbox],
+            labels: joined.labels.includes(label) ? joined.labels : [...joined.labels, label],
             latestAt: receivedAt > joined.latestAt ? receivedAt : joined.latestAt,
             messages: joined.messages + 1,
           };
@@ -119,14 +127,14 @@ export async function receiveMessage(table: Table, arrival: Arrival): Promise<bo
     try {
       await recordChanges(table, mailboxFeed(mailbox), {
         by: undefined,
-        changes: [{ type: "messageReceived", thread, message }],
+        changes: [{ type: "messageReceived", thread, message, ...(arrival.spam ? { spam: true } : {}) }],
         items: [
           put(receivedKey(mailbox, sesMessageId), isNew),
           put({ ...threadKey(mailbox, thread), ...summary }, asRead),
           put({ ...messageKey(mailbox, thread, receivedAt, message), ...stored, thread }),
           ...moved.map((label) => ({ Delete: { TableName: table.name, Key: labelKey(mailbox, label, joined!.latestAt, thread) } })),
           ...summary.labels.map((label) => put({ ...labelKey(mailbox, label, summary.latestAt, thread), ...summary })),
-          ...(parsed.messageId === undefined ? [] : [put({ ...messageIdKey(mailbox, parsed.messageId), thread, message })]),
+          ...(parsed.messageId === undefined || arrival.spam ? [] : [put({ ...messageIdKey(mailbox, parsed.messageId), thread, message })]),
           put({ ...messageRefKey(mailbox, message), thread, receivedAt }),
         ],
       });
@@ -211,9 +219,19 @@ export async function findMessage(
   return { message, thread, replyTo: parsed.replyTo };
 }
 
-/** The mailbox's changes after the position, oldest first. */
-export async function mailboxChanges(table: Table, mailbox: string, after: number): Promise<MailboxChange[]> {
-  return (await changesAfter(table, mailboxFeed(mailbox), after)) as MailboxChange[];
+/**
+ * The mailbox's changes after the position, oldest first, without spam arrivals unless `withSpam`.
+ * The page ends at the last change read. A run of spam is read past until a change is listed or
+ * the feed ends, so a page that lists nothing means the caller has caught up.
+ */
+export async function mailboxChanges(table: Table, mailbox: string, after: number, withSpam: boolean): Promise<MailboxChangePage> {
+  let position = after;
+  for (;;) {
+    const read = (await changesAfter(table, mailboxFeed(mailbox), position)) as MailboxChange[];
+    position = read.at(-1)?.position ?? position;
+    const changes = read.filter((change) => withSpam || !(change.type === "messageReceived" && change.spam === true));
+    if (changes.length > 0 || read.length < changesPerPage) return { changes, position };
+  }
 }
 
 /**

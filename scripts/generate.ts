@@ -124,7 +124,8 @@ function bodyOf(where: string, body: OperationObject["requestBody"]) {
 }
 
 function option(where: string, place: "query" | "path" | "body", name: string, type: string | undefined, required: boolean, description = "") {
-  if (type !== "integer" && type !== "string" && type !== "strings") fail(`${where} has the parameter ${name} of type ${type}, which the CLI can't pass yet.`);
+  if (type === "boolean" && place !== "query") fail(`${where} has the ${place} parameter ${name} of type boolean, which the CLI can't pass yet.`);
+  if (type !== "integer" && type !== "string" && type !== "boolean" && type !== "strings") fail(`${where} has the parameter ${name} of type ${type}, which the CLI can't pass yet.`);
   return { name, in: place, type, required, description };
 }
 

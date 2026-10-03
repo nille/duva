@@ -1,7 +1,8 @@
 // The inbound handler, which SES invokes, without waiting, for each message it accepts. By then SES
 // has stored the raw message in the mail bucket. A failure makes Lambda retry the event, then
 // leaves it in the failure queue for replay, so processing is idempotent per SES message ID.
-import type { SESEvent } from "aws-lambda";
+// Only FAIL verdicts act. GRAY and PROCESSING_FAILED count as passes.
+import type { SESEvent, SESReceipt } from "aws-lambda";
 import type { Table } from "./deployment.ts";
 import { inboundPrefix } from "./infrastructure.ts";
 import type { MailBucket } from "./mail-bucket.ts";
@@ -13,6 +14,12 @@ export function createInbound({ table, mailBucket }: { table: Table; mailBucket:
   return async (event: SESEvent): Promise<void> => {
     for (const { ses } of event.Records) {
       const rawKey = `${inboundPrefix}${ses.mail.messageId}`;
+      // SES has already accepted the message, so dropping it sends no bounce, and leaves no trace.
+      if (dropped(ses.receipt)) {
+        await mailBucket.erase(rawKey);
+        continue;
+      }
+      const spam = ses.receipt.spamVerdict.status === "FAIL";
       const raw = await mailBucket.get(rawKey);
       if (raw === undefined) throw new Error(`SES stored no message at ${rawKey}.`);
       const parsed = await parseMail(raw);
@@ -24,10 +31,15 @@ export function createInbound({ table, mailBucket }: { table: Table; mailBucket:
         if (mailbox !== undefined && !delivered.has(mailbox)) delivered.set(mailbox, { recipient, plusTag });
       }
       for (const [mailbox, to] of delivered) {
-        await receiveMessage(table, { mailbox, sesMessageId: ses.mail.messageId, rawKey, ...to, sender: ses.mail.source, receivedAt: ses.mail.timestamp, parsed });
+        await receiveMessage(table, { mailbox, sesMessageId: ses.mail.messageId, rawKey, ...to, sender: ses.mail.source, receivedAt: ses.mail.timestamp, parsed, spam });
       }
     }
   };
+}
+
+/** Whether the message carries a virus, or fails DMARC from a domain whose policy is reject, in any case (see docs/aws.md). */
+function dropped({ virusVerdict, dmarcVerdict, dmarcPolicy }: SESReceipt): boolean {
+  return virusVerdict.status === "FAIL" || (dmarcVerdict.status === "FAIL" && dmarcPolicy?.toLowerCase() === "reject");
 }
 
 /**

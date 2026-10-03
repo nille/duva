@@ -9,15 +9,15 @@ export const agentKeyVariable = "DUVA_AGENT_KEY";
 
 /** What a call passes, from the command's options: its query, its path parameters and its JSON body. */
 interface Call {
-  query?: Record<string, string | number>;
+  query?: Record<string, string | number | boolean>;
   path?: Record<string, string | number>;
   body?: Record<string, string | number | string[]>;
 }
 
 /**
  * One command for each operation in the OpenAPI document, named by its x-cli-command. Query and
- * path parameters and the properties of a JSON body are options, and a list is an option given
- * once for each of its items.
+ * path parameters and the properties of a JSON body are options, a list is an option given
+ * once for each of its items, and a boolean query parameter is a flag.
  */
 export const apiCommands: Command[] = operations.map((operation) => {
   const command: Command = {
@@ -30,10 +30,14 @@ export const apiCommands: Command[] = operations.map((operation) => {
   return command;
 });
 
-function callOf(operation: Operation, values: Record<string, string | string[] | undefined>): Call {
+function callOf(operation: Operation, values: Record<string, string | string[] | boolean | undefined>): Call {
   const call: Required<Call> = { query: {}, path: {}, body: {} };
   for (const { name, in: place, type, required } of operation.options) {
     const value = values[name];
+    if (typeof value === "boolean") {
+      call.query[name] = value;
+      continue;
+    }
     if (type === "strings" && Array.isArray(value)) {
       call[place][name] = value;
       continue;

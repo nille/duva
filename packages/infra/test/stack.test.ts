@@ -172,6 +172,15 @@ test("the inbound Lambda can write the table and read raw mail, and the API can 
   expect(actions("ApiHandler", "s3")).toContain("s3:GetObject*");
 });
 
+test("the inbound Lambda can erase raw mail for good, every version of it, and only under the inbound prefix", () => {
+  const erasing = statements("InboundHandler").filter(({ Action }) => [Action].flat().some((action) => /s3:(DeleteObjectVersion|ListBucketVersions)/.test(action)));
+  expect(erasing.flatMap(({ Action }) => [Action].flat()).sort()).toEqual(["s3:DeleteObjectVersion", "s3:ListBucketVersions"]);
+  const scoped = JSON.stringify(erasing);
+  expect(scoped).toContain('"/inbound/*"');
+  expect(scoped).toContain('{"StringLike":{"s3:prefix":"inbound/*"}}');
+  expect(actions("ApiHandler", "s3").filter((action) => /Delete/.test(action))).toEqual([]);
+});
+
 const [ruleSetId] = ofType("AWS::SES::ReceiptRuleSet")[0]!;
 
 test("SES may invoke the inbound Lambda, only for Duva's receipt rule in this account", () => {

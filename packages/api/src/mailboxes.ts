@@ -79,12 +79,9 @@ export const listMailboxChanges: OperationHandler = async (event, deployment, ac
   if ("statusCode" in mailbox) return mailbox;
   const given = event.queryStringParameters?.after ?? "0";
   if (!/^\d+$/.test(given)) return refusal(400, `${JSON.stringify(given)} isn't a position. Give after as a whole number from 0.`);
-  const after = Number(given);
-  const changes = await mailboxChanges(deployment.table, mailbox.id, after);
-  return {
-    statusCode: 200,
-    body: { changes, position: changes.at(-1)?.position ?? after } satisfies components["schemas"]["MailboxChangePage"],
-  };
+  const withSpam = event.queryStringParameters?.spam ?? "false";
+  if (withSpam !== "true" && withSpam !== "false") return refusal(400, `${JSON.stringify(withSpam)} isn't true or false. Give spam as true to list spam arrivals too.`);
+  return { statusCode: 200, body: await mailboxChanges(deployment.table, mailbox.id, Number(given), withSpam === "true") };
 };
 
 export const listThreads: OperationHandler = async (event, deployment, actor) => {

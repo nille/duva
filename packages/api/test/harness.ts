@@ -20,7 +20,7 @@ import { addHuman, setUpOrganization } from "../src/organization.ts";
 import { dynamodbLocal } from "./dynamodb-local.ts";
 import { gateway } from "./gateway.ts";
 import { managedLogin, managedLoginClientId } from "./managed-login.ts";
-import { type Envelope, sesReceiving } from "./ses.ts";
+import { type Envelope, type ReceiveOptions, sesReceiving } from "./ses.ts";
 import { TestTokenIssuer } from "./token-issuer.ts";
 
 declare module "vitest" {
@@ -58,8 +58,13 @@ export interface Duva {
    * Hands the raw message to SES, as the sender's mail server does, and waits until Duva has
    * processed it. Returns the recipients SES refused during delivery. The envelope sender defaults
    * to the message's From. With `invocations`, Lambda runs the inbound handler that many times.
+   * SES judges the message by `verdicts`, which pass unless given.
    */
-  receive(raw: string | Uint8Array, envelope: Partial<Envelope> & Pick<Envelope, "to">, options?: { invocations?: number }): Promise<{ refused: string[] }>;
+  receive(
+    raw: string | Uint8Array,
+    envelope: Partial<Envelope> & Pick<Envelope, "to">,
+    options?: ReceiveOptions,
+  ): Promise<{ refused: string[] }>;
   /** The receipt rules in Duva's rule set, as SES describes them. */
   receiptRules(): ReceiptRule[];
   /** Sets the organization up again, as a re-run of duva deploy does. */
@@ -172,6 +177,9 @@ function memoryMailBucket(): MailBucket {
     },
     async get(key) {
       return objects.get(key);
+    },
+    async erase(key) {
+      objects.delete(key);
     },
   };
 }

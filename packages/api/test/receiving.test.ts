@@ -241,6 +241,17 @@ test("the mailbox's change feed refuses a position that isn't one", async () => 
   expect(error?.message).toMatch(/isn't a position/);
 });
 
+test("the mailbox's change feed refuses a spam value that isn't true or false", async () => {
+  const { hermes, params } = await withMailbox();
+
+  const { response, error } = await hermes.GET("/mailboxes/{mailbox}/changes", {
+    params: { ...params, query: { spam: "yes" as unknown as boolean } },
+  });
+
+  expect(response.status).toBe(400);
+  expect(error?.message).toMatch(/isn't true or false/);
+});
+
 test("the sponsor catches up on, lists and reads the agent's mailbox the same way", async () => {
   const { duva, ada, hermes, params } = await withMailbox();
   await duva.receive(await mail("plain"), { to: ["hermes@example.com"] });
@@ -422,4 +433,152 @@ test("replies arriving at the same time all join the thread", async () => {
   const { summaries, threads } = await inboxOf(hermes, mailbox.id);
   expect(summaries.map(({ messages }) => messages)).toEqual([5]);
   expect(threads[0]!.messages).toHaveLength(5);
+});
+
+/** What the agent can see of its mailbox: its Inbox, its Spam and its change feed, spam arrivals included. */
+async function everythingIn(hermes: Awaited<ReturnType<typeof withMailbox>>["hermes"], mailbox: string) {
+  const params = { path: { mailbox } };
+  const inbox = (await hermes.GET("/mailboxes/{mailbox}/threads", { params })).data!.threads;
+  const spam = (await hermes.GET("/mailboxes/{mailbox}/threads", { params: { ...params, query: { label: "spam" } } })).data!.threads;
+  const changes = (await hermes.GET("/mailboxes/{mailbox}/changes", { params: { ...params, query: { spam: true } } })).data!.changes;
+  return { inbox, spam, changes };
+}
+
+test("mail carrying a virus is accepted, then dropped, and nothing of it reaches the mailbox or its change feed", async () => {
+  const { duva, hermes, mailbox } = await withMailbox();
+
+  const { refused } = await duva.receive(await mail("plain"), { to: ["hermes@example.com"] }, { verdicts: { virus: "FAIL" } });
+
+  expect(refused).toEqual([]);
+  expect(await everythingIn(hermes, mailbox.id)).toEqual({ inbox: [], spam: [], changes: [] });
+});
+
+test("mail that fails DMARC from a domain whose policy is reject is dropped", async () => {
+  const { duva, hermes, mailbox } = await withMailbox();
+
+  const { refused } = await duva.receive(await mail("plain"), { to: ["hermes@example.com"] }, { verdicts: { dmarc: "FAIL", dmarcPolicy: "reject" } });
+
+  expect(refused).toEqual([]);
+  expect(await everythingIn(hermes, mailbox.id)).toEqual({ inbox: [], spam: [], changes: [] });
+});
+
+test("Duva never bounces dropped mail: its only actions store the message and hand it to the inbound Lambda", async () => {
+  const { duva } = await withMailbox();
+
+  await duva.receive(await mail("plain"), { to: ["hermes@example.com"] }, { verdicts: { virus: "FAIL", dmarc: "FAIL", dmarcPolicy: "reject" } });
+
+  expect(duva.receiptRules().flatMap(({ Actions = [] }) => Actions.flatMap((action) => Object.keys(action)))).toEqual(["S3Action", "LambdaAction"]);
+});
+
+test("dropped mail processed twice is still dropped, and the second time doesn't fail", async () => {
+  const { duva, hermes, mailbox } = await withMailbox();
+
+  await duva.receive(await mail("plain"), { to: ["hermes@example.com"] }, { invocations: 2, verdicts: { virus: "FAIL" } });
+  await duva.receive(await mail("attachment"), { to: ["hermes@example.com"] });
+
+  const { inbox, changes } = await everythingIn(hermes, mailbox.id);
+  expect(inbox.map(({ subject }) => subject)).toEqual(["The report"]);
+  expect(changes.map(({ position }) => position)).toEqual([1]);
+});
+
+test.each(["quarantine", "none"] as const)("mail that fails DMARC from a domain whose policy is %s lands in the Inbox as usual", async (dmarcPolicy) => {
+  const { duva, hermes, mailbox } = await withMailbox();
+
+  await duva.receive(await mail("plain"), { to: ["hermes@example.com"] }, { verdicts: { dmarc: "FAIL", dmarcPolicy } });
+
+  const { inbox, spam } = await everythingIn(hermes, mailbox.id);
+  expect(inbox.map(({ subject, labels }) => ({ subject, labels }))).toEqual([{ subject: "Compiler notes", labels: ["inbox"] }]);
+  expect(spam).toEqual([]);
+});
+
+test.each([
+  ["spam", "GRAY"],
+  ["spam", "PROCESSING_FAILED"],
+  ["virus", "GRAY"],
+  ["virus", "PROCESSING_FAILED"],
+  ["dmarc", "GRAY"],
+  ["dmarc", "PROCESSING_FAILED"],
+] as const)("a %s verdict of %s counts as a pass, and the mail lands in the Inbox", async (verdict, status) => {
+  const { duva, hermes, mailbox } = await withMailbox();
+
+  await duva.receive(await mail("plain"), { to: ["hermes@example.com"] }, { verdicts: { [verdict]: status } });
+
+  const { inbox, spam } = await everythingIn(hermes, mailbox.id);
+  expect(inbox.map(({ subject }) => subject)).toEqual(["Compiler notes"]);
+  expect(spam).toEqual([]);
+});
+
+test("mail judged to be spam is kept under the Spam label, out of the Inbox, and can still be read", async () => {
+  const { duva, hermes, mailbox } = await withMailbox();
+
+  await duva.receive(await mail("plain"), { to: ["hermes@example.com"] }, { verdicts: { spam: "FAIL" } });
+
+  const { inbox, spam } = await everythingIn(hermes, mailbox.id);
+  expect(inbox).toEqual([]);
+  expect(spam).toEqual([{ id: expect.any(String), subject: "Compiler notes", from: { name: "Grace Hopper", address: "grace@example.org" }, labels: ["spam"], latestAt: expect.any(String), messages: 1 }]);
+  const { data: thread } = await hermes.GET("/mailboxes/{mailbox}/threads/{thread}", { params: { path: { mailbox: mailbox.id, thread: spam[0]!.id } } });
+  expect(thread).toMatchObject({ labels: ["spam"], messages: [{ messageId: "<notes-1@example.org>", text: expect.stringContaining("Hej Hermes") }] });
+});
+
+test("catching up on the change feed leaves spam arrivals out, and passes them, unless the caller asks for them", async () => {
+  const { duva, hermes, mailbox, params } = await withMailbox();
+  await duva.receive(await mail("plain"), { to: ["hermes@example.com"] }, { verdicts: { spam: "FAIL" } });
+  await duva.receive(await mail("attachment"), { to: ["hermes@example.com"] });
+  await duva.receive(await mail("html-only"), { to: ["hermes@example.com"] }, { verdicts: { spam: "FAIL" } });
+
+  const { data: withoutSpam } = await hermes.GET("/mailboxes/{mailbox}/changes", { params });
+  const { data: withSpam } = await hermes.GET("/mailboxes/{mailbox}/changes", { params: { ...params, query: { spam: true } } });
+
+  const { inbox, spam } = await everythingIn(hermes, mailbox.id);
+  const [html, notes] = spam;
+  expect(withoutSpam).toEqual({ changes: [{ position: 2, at: expect.any(String), type: "messageReceived", thread: inbox[0]!.id, message: expect.any(String) }], position: 3 });
+  expect(withSpam?.changes).toEqual([
+    { position: 1, at: expect.any(String), type: "messageReceived", thread: notes!.id, message: expect.any(String), spam: true },
+    { position: 2, at: expect.any(String), type: "messageReceived", thread: inbox[0]!.id, message: expect.any(String) },
+    { position: 3, at: expect.any(String), type: "messageReceived", thread: html!.id, message: expect.any(String), spam: true },
+  ]);
+  expect(withSpam?.position).toBe(3);
+});
+
+test("catching up reads past a run of spam longer than a page, so the mail after it isn't missed", async () => {
+  const { duva, hermes, params } = await withMailbox();
+  for (let sent = 0; sent < 101; sent++) await duva.receive(await mail("plain"), { to: ["hermes@example.com"] }, { verdicts: { spam: "FAIL" } });
+  await duva.receive(await mail("attachment"), { to: ["hermes@example.com"] });
+
+  const { data: page } = await hermes.GET("/mailboxes/{mailbox}/changes", { params });
+  const { data: after } = await hermes.GET("/mailboxes/{mailbox}/changes", { params: { ...params, query: { after: page!.position } } });
+
+  expect(page?.changes.map(({ position }) => position)).toEqual([102]);
+  expect(page?.position).toBe(102);
+  expect(after).toEqual({ changes: [], position: 102 });
+}, 60_000);
+
+test("spam that replies to a thread in the Inbox starts its own thread under Spam, and the Inbox thread is unchanged", async () => {
+  const { duva, hermes, mailbox } = await withMailbox();
+  await duva.receive(await mail("plain"), { to: ["hermes@example.com"] });
+
+  await duva.receive(await mail("reply"), { to: ["hermes@example.com"] }, { verdicts: { spam: "FAIL" } });
+
+  const { inbox, spam } = await everythingIn(hermes, mailbox.id);
+  expect(inbox.map(({ subject, labels, messages }) => ({ subject, labels, messages }))).toEqual([{ subject: "Compiler notes", labels: ["inbox"], messages: 1 }]);
+  expect(spam.map(({ subject, labels, messages }) => ({ subject, labels, messages }))).toEqual([{ subject: "Re: Compiler notes", labels: ["spam"], messages: 1 }]);
+});
+
+test("a reply to spam starts its own thread in the Inbox, so the spam stays apart", async () => {
+  const { duva, hermes, mailbox } = await withMailbox();
+  await duva.receive(await mail("plain"), { to: ["hermes@example.com"] }, { verdicts: { spam: "FAIL" } });
+
+  await duva.receive(await mail("reply"), { to: ["hermes@example.com"] });
+
+  const { inbox, spam } = await everythingIn(hermes, mailbox.id);
+  expect(inbox.map(({ subject, labels, messages }) => ({ subject, labels, messages }))).toEqual([{ subject: "Re: Compiler notes", labels: ["inbox"], messages: 1 }]);
+  expect(spam.map(({ subject, labels, messages }) => ({ subject, labels, messages }))).toEqual([{ subject: "Compiler notes", labels: ["spam"], messages: 1 }]);
+});
+
+test("virus and DMARC verdicts are acted on before spam: spam carrying a virus is dropped", async () => {
+  const { duva, hermes, mailbox } = await withMailbox();
+
+  await duva.receive(await mail("plain"), { to: ["hermes@example.com"] }, { verdicts: { spam: "FAIL", virus: "FAIL" } });
+
+  expect(await everythingIn(hermes, mailbox.id)).toEqual({ inbox: [], spam: [], changes: [] });
 });

@@ -209,6 +209,11 @@ export class DuvaStack extends Stack {
     inbound.configureAsyncInvoke({ retryAttempts: 2, onFailure: new SqsDestination(inboundFailures) });
     table.grantReadWriteData(inbound);
     mail.grantRead(inbound);
+    // It erases dropped mail for good, which in a versioned bucket means deleting each version.
+    inbound.addToRolePolicy(new PolicyStatement({ actions: ["s3:DeleteObjectVersion"], resources: [mail.arnForObjects(`${inboundPrefix}*`)] }));
+    inbound.addToRolePolicy(
+      new PolicyStatement({ actions: ["s3:ListBucketVersions"], resources: [mail.bucketArn], conditions: { StringLike: { "s3:prefix": `${inboundPrefix}*` } } }),
+    );
 
     // Duva creates its receipt rule with the first address, so only it may use the bucket and the Lambda.
     const ruleArn = this.formatArn({ service: "ses", resource: "receipt-rule-set", resourceName: `${receiving.receiptRuleSetName}:receipt-rule/${receiptRuleName}` });

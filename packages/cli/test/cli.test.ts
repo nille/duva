@@ -258,6 +258,25 @@ test("an admin gives an agent a mailbox, and the agent catches up on it, lists i
   });
 });
 
+test("mailboxes changes leaves spam arrivals out unless it's given --spam", async () => {
+  const machine = await newMachine();
+  const duva = await startDuva({ domain: "example.com", admin: "ada@example.org" });
+  const server = await duva.listen();
+  onTestFinished(() => server.close());
+  await machine.saveDeployment(server);
+  await machine.duva("login", { browserSignsIn: "ada@example.org" });
+  const { agent, key } = JSON.parse((await machine.duva("agents", "create", "--name", "Hermes")).stdout) as { agent: { id: string }; key: string };
+  const mailbox = JSON.parse((await machine.duva("mailboxes", "create", "--owner", agent.id, "--address", "hermes@example.com")).stdout) as { id: string };
+  await duva.receive("From: Mallory <mallory@example.net>\r\nTo: hermes@example.com\r\nSubject: Prize\r\n\r\nYou won.\r\n", { to: ["hermes@example.com"] }, { verdicts: { spam: "FAIL" } });
+  const asAgent = { env: { DUVA_AGENT_KEY: key } };
+
+  const without = await machine.duva("mailboxes", "changes", "--mailbox", mailbox.id, asAgent);
+  const withSpam = await machine.duva("mailboxes", "changes", "--mailbox", mailbox.id, "--spam", asAgent);
+
+  expect(JSON.parse(without.stdout)).toEqual({ changes: [], position: 1 });
+  expect(JSON.parse(withSpam.stdout)).toMatchObject({ changes: [{ position: 1, type: "messageReceived", spam: true }], position: 1 });
+});
+
 test("mailboxes create says why an address is refused", async () => {
   const machine = await newMachine();
   const server = await (await startDuva({ domain: "example.com", admin: "ada@example.org" })).listen();

@@ -14,6 +14,23 @@ export interface Envelope {
 }
 
 /**
+ * SES's verdicts on a message. While the rule scans, each is PASS unless given. SES names the
+ * sender's DMARC policy only with a DMARC FAIL.
+ */
+export interface Verdicts {
+  spam?: SESReceiptStatus["status"];
+  virus?: SESReceiptStatus["status"];
+  dmarc?: SESReceiptStatus["status"];
+  dmarcPolicy?: "none" | "quarantine" | "reject";
+}
+
+/** How SES receives a message: how often Lambda runs its event, and what SES judged it to be. */
+export interface ReceiveOptions {
+  invocations?: number;
+  verdicts?: Verdicts;
+}
+
+/**
  * Stands in for SES receiving in one region: an active rule set, which Duva manages through
  * ReceiptRules, and the mail servers that apply it. Like SES, it checks when a rule is created that
  * it can write to the rule's bucket and invoke its Lambda, which here means the harness has them.
@@ -54,9 +71,13 @@ export function sesReceiving({ buckets, functions }: { buckets: Map<string, Mail
      * Receives the raw message over SMTP. SES refuses each recipient no enabled rule matches,
      * during delivery. For the others, it applies the first matching rule's actions in order. A
      * Lambda action invokes the function `invocations` times, as Lambda's retries of an
-     * asynchronous invocation can, and here waits for it.
+     * asynchronous invocation can, and here waits for it. The receipt carries the verdicts.
      */
-    async receive(raw: string | Uint8Array, envelope: Envelope, { invocations = 1 } = {}): Promise<{ refused: string[] }> {
+    async receive(
+      raw: string | Uint8Array,
+      envelope: Envelope,
+      { invocations = 1, verdicts = {} }: ReceiveOptions = {},
+    ): Promise<{ refused: string[] }> {
       const matching = (recipient: string) => rules.find((rule) => rule.Enabled && matches(rule, recipient));
       const refused = envelope.to.filter((recipient) => matching(recipient) === undefined);
       const accepted = envelope.to.filter((recipient) => matching(recipient) !== undefined);
@@ -67,7 +88,7 @@ export function sesReceiving({ buckets, functions }: { buckets: Map<string, Mail
       const recipients = accepted.filter((recipient) => matching(recipient) === rule);
       const messageId = randomUUID().replaceAll("-", "");
       const timestamp = new Date().toISOString();
-      const verdict: SESReceiptStatus = { status: rule.ScanEnabled ? "PASS" : "DISABLED" };
+      const verdict = (given: SESReceiptStatus["status"] | undefined): SESReceiptStatus => ({ status: rule.ScanEnabled ? (given ?? "PASS") : "DISABLED" });
       const parsed = await PostalMime.parse(bytes);
       for (const { S3Action, LambdaAction } of rule.Actions ?? []) {
         if (S3Action) await buckets.get(S3Action.BucketName!)!.put(`${S3Action.ObjectKeyPrefix ?? ""}${messageId}`, bytes);
@@ -98,11 +119,12 @@ export function sesReceiving({ buckets, functions }: { buckets: Map<string, Mail
                     timestamp,
                     processingTimeMillis: 1,
                     recipients,
-                    spamVerdict: verdict,
-                    virusVerdict: verdict,
-                    spfVerdict: verdict,
-                    dkimVerdict: verdict,
-                    dmarcVerdict: verdict,
+                    spamVerdict: verdict(verdicts.spam),
+                    virusVerdict: verdict(verdicts.virus),
+                    spfVerdict: verdict(undefined),
+                    dkimVerdict: verdict(undefined),
+                    dmarcVerdict: verdict(verdicts.dmarc),
+                    ...(rule.ScanEnabled && verdicts.dmarc === "FAIL" ? { dmarcPolicy: verdicts.dmarcPolicy } : {}),
                     action: { type: "Lambda", functionArn: LambdaAction.FunctionArn!, invocationType: LambdaAction.InvocationType ?? "Event" },
                   },
                 },

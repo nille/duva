@@ -192,7 +192,8 @@ paths:
       operationId: listMailboxChanges
       summary: List the changes in a mailbox after a position in its change feed.
       description: >
-        Lists up to 100 changes, oldest first. To catch up, call again with
+        Lists up to 100 changes, oldest first, leaving out the arrivals of
+        mail judged to be spam unless asked for them. To catch up, call again with
         the position the answer ends at until it lists no more. Only the
         mailbox's owner and, for an agent's mailbox, its sponsor can read it.
       x-cli-command: mailboxes changes
@@ -205,6 +206,12 @@ paths:
             type: integer
             minimum: 0
             default: 0
+        - name: spam
+          in: query
+          description: Lists the arrivals of mail judged to be spam too.
+          schema:
+            type: boolean
+            default: false
       responses:
         "200":
           description: The changes after the position.
@@ -666,7 +673,7 @@ components:
             $ref: "#/components/schemas/MailboxChange"
         position:
           type: integer
-          description: The position of the last change listed, or the one asked for if none were. Pass it as after to continue.
+          description: The position of the last change read, listed or left out, or the one asked for if there were none. Pass it as after to continue.
     MailboxChange:
       description: A change in a mailbox.
       oneOf:
@@ -707,6 +714,10 @@ components:
         message:
           type: string
           description: The message's ID.
+        spam:
+          type: boolean
+          const: true
+          description: Present when the mail was judged to be spam, so its thread has the Spam label instead of Inbox.
     DraftWritten:
       allOf:
         - $ref: "#/components/schemas/ChangeBase"

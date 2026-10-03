@@ -10,7 +10,7 @@ export interface Command {
   summary: string;
   /** More on what the command does, if its summary isn't enough. */
   description?: string;
-  /** The options the command takes, as in `--<name> <value>`. */
+  /** The options the command takes, as in `--<name> <value>`, or `--<name>` alone for a flag. */
   options: readonly CommandOption[];
   /** Runs the command with the arguments after its words. Returns what to print as JSON. */
   run(args: string[]): Promise<unknown>;
@@ -20,18 +20,23 @@ export interface CommandOption {
   name: string;
   required: boolean;
   description: string;
-  /** "strings" for a list, which is given as the option once for each of its items. */
+  /** "strings" for a list, given as the option once for each of its items, and "boolean" for a flag, which takes no value. */
   type?: string;
 }
 
 /** The hand-written commands, then one for each API operation. */
 export const commands: Command[] = [deploy, login, skillInstall, ...apiCommands];
 
-/** The values of the command's options in its arguments. Every option takes a value, and a list's takes one for each item. */
-export function optionValues(command: Command, args: string[]): Record<string, string | string[] | undefined> {
+/**
+ * The values of the command's options in its arguments. A flag is true when given, a list's option
+ * takes a value once for each item, and every other option takes a value.
+ */
+export function optionValues(command: Command, args: string[]): Record<string, string | string[] | boolean | undefined> {
   const { values } = parseArgs({
     args,
-    options: Object.fromEntries(command.options.map(({ name, type }) => [name, { type: "string" as const, multiple: type === "strings" }])),
+    options: Object.fromEntries(
+      command.options.map(({ name, type }) => [name, type === "boolean" ? { type: "boolean" as const } : { type: "string" as const, multiple: type === "strings" }]),
+    ),
   });
-  return values as Record<string, string | string[] | undefined>;
+  return values as Record<string, string | string[] | boolean | undefined>;
 }
