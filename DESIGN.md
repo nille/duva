@@ -1,0 +1,295 @@
+---
+name: Duva
+description: Proofs on a dove-grey desk. Mail in a book face on white paper, the interface in the system sans, one blue pencil for actions.
+colors:
+  desk: "#e3e6e9"
+  paper: "#ffffff"
+  paper-source: "#f5f6f7"
+  ink: "#1b2129"
+  ink-2: "#525b66"
+  rule: "#d9dde1"
+  rule-strong: "#8a929c"
+  pencil: "#2b4fc0"
+  pencil-deep: "#203c96"
+  pencil-wash: "#e8edfb"
+  sent: "#1e6a43"
+  alert: "#b42318"
+  alert-wash: "#fdecea"
+typography:
+  display:
+    fontFamily: "Source Serif 4 Variable, Georgia, serif"
+    fontSize: "1.625rem"
+    fontWeight: 500
+    lineHeight: 1.25
+    letterSpacing: "-0.01em"
+  wordmark:
+    fontFamily: "Source Serif 4 Variable, Georgia, serif"
+    fontSize: "1.25rem"
+    fontWeight: 600
+    lineHeight: 1
+    letterSpacing: "-0.01em"
+  headline:
+    fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif"
+    fontSize: "1.625rem"
+    fontWeight: 650
+    lineHeight: 1.2
+    letterSpacing: "-0.015em"
+  title:
+    fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif"
+    fontSize: "1rem"
+    fontWeight: 650
+    lineHeight: 1.5
+  subject:
+    fontFamily: "Source Serif 4 Variable, Georgia, serif"
+    fontSize: "1rem"
+    fontWeight: 400
+    lineHeight: 1.4
+  proof:
+    fontFamily: "Source Serif 4 Variable, Georgia, serif"
+    fontSize: "1.0625rem"
+    fontWeight: 400
+    lineHeight: 1.6
+  body:
+    fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif"
+    fontSize: "1rem"
+    fontWeight: 400
+    lineHeight: 1.5
+    fontFeature: "tnum"
+  small:
+    fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif"
+    fontSize: "0.875rem"
+    fontWeight: 400
+    lineHeight: 1.5
+  label:
+    fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif"
+    fontSize: "0.8125rem"
+    fontWeight: 650
+    lineHeight: 1.5
+rounded:
+  sheet: "2px"
+  field: "4px"
+  control: "6px"
+  pill: "999px"
+spacing:
+  space-1: "0.25rem"
+  space-2: "0.5rem"
+  space-3: "0.75rem"
+  space-4: "1rem"
+  space-5: "1.5rem"
+  space-6: "2rem"
+  space-7: "3rem"
+components:
+  button-primary:
+    backgroundColor: "{colors.pencil}"
+    textColor: "{colors.paper}"
+    typography: "{typography.label}"
+    rounded: "{rounded.control}"
+    padding: "0 1.5rem"
+    height: "2.5rem"
+  button-primary-hover:
+    backgroundColor: "{colors.pencil-deep}"
+    textColor: "{colors.paper}"
+  button:
+    backgroundColor: "{colors.paper}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.control}"
+    padding: "0 1rem"
+    height: "2.5rem"
+  button-hover:
+    backgroundColor: "{colors.paper-source}"
+    textColor: "{colors.ink}"
+  button-reject:
+    backgroundColor: "{colors.ink}"
+    textColor: "{colors.paper}"
+    rounded: "{rounded.control}"
+    padding: "0 1rem"
+    height: "2.5rem"
+  button-quiet:
+    textColor: "{colors.ink}"
+    rounded: "{rounded.control}"
+    padding: "0 1rem"
+    height: "2.5rem"
+  button-small:
+    rounded: "{rounded.control}"
+    padding: "0 0.75rem"
+    height: "2rem"
+  text-field:
+    backgroundColor: "{colors.paper}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.field}"
+    padding: "0.5rem 0.75rem"
+  mark-new:
+    backgroundColor: "{colors.pencil}"
+    textColor: "{colors.paper}"
+    typography: "{typography.label}"
+    rounded: "{rounded.pill}"
+    padding: "0.125rem 0.5rem"
+  galley:
+    backgroundColor: "{colors.paper}"
+    rounded: "{rounded.sheet}"
+  galley-original:
+    backgroundColor: "{colors.paper-source}"
+    padding: "1.5rem"
+  galley-proof:
+    backgroundColor: "{colors.paper}"
+    padding: "1.5rem"
+  slip:
+    backgroundColor: "{colors.paper}"
+    rounded: "{rounded.sheet}"
+    padding: "1rem 1.5rem"
+  slip-failed:
+    backgroundColor: "{colors.alert-wash}"
+    textColor: "{colors.alert}"
+  notice-alert:
+    backgroundColor: "{colors.alert-wash}"
+    textColor: "{colors.alert}"
+    rounded: "{rounded.field}"
+    padding: "0.75rem 1rem"
+---
+
+# Design System: Duva
+
+## Overview
+
+**Creative North Star: "The Galley Proof"**
+
+Duva's web app is an editor's desk. The desk is dove grey. Each piece of mail lies on it as a white sheet, set in a book face, and everything Duva itself says sits around the sheet in the system sans. There is one color with intent, the editor's blue pencil. It marks what can be done, where focus is, and what is new. The rest is ink on paper.
+
+The first surface, Approvals, sets a galley proof: the agent's draft beside the message it answers, on shared rows, with the decision under it. A decided proof folds into a slip that says how the send went. Density is moderate and calm. Sheets have generous padding (1.5rem), and the text column stops at 68ch.
+
+The system is built in code, with no comps and no rasters. Styling is plain CSS with custom properties in one stylesheet (`packages/web/src/styles.css`), with no component library. PRODUCT.md lists the styling approach as undecided, so this is what the first surface chose, not a settled decision. The app is light only for now (`color-scheme: light`). Every interface string lives in `packages/web/src/strings.ts`.
+
+**Key Characteristics:**
+- Dove-grey desk, white sheets, one blue pencil.
+- Mail in Source Serif 4, the interface in the system sans.
+- Paper lifts off the desk. Controls stay flat.
+- Original and draft share rows, so the eye compares line by line.
+- Light only. Code-led, no rasters ship.
+
+## Colors
+
+A cool, near-neutral paper palette with a single saturated blue and two status inks.
+
+### Primary
+- **Editor's Blue Pencil** (`pencil`): the primary button, links, the "New" mark, focus rings, the text caret, the active nav underline, the "changes made" line and the pending slip icon. Also the native `accent-color`.
+- **Pressed Pencil** (`pencil-deep`): hover on the primary button. Nowhere else.
+- **Pencil Wash** (`pencil-wash`): text selection background.
+
+### Neutral
+- **Dove Desk** (`desk`): the page background and scrollbar track. Everything else lies on it.
+- **Proof Paper** (`paper`): galleys, slips, the draft column, buttons and fields.
+- **Source Paper** (`paper-source`): the original message column and the note that stands in for it, a shade off white so the draft reads as the live sheet. Also the default button hover.
+- **Ink** (`ink`): body text and headings. Also the reject button, which is the one dark control.
+- **Second Ink** (`ink-2`): field names, meta, hints, subjects beside a title, and the rejected slip icon.
+- **Hairline** (`rule`): dividers inside a sheet, and skeleton lines.
+- **Strong Rule** (`rule-strong`): button and field borders, and the scrollbar thumb.
+
+### Status
+- **Sent Green** (`sent`): the sent slip icon only.
+- **Alert Red** (`alert`) on **Alert Wash** (`alert-wash`): failed slips, error notices, and the "can't be reached" connection line.
+
+### Named Rules
+**The One Pencil Rule.** Blue means "you can act here" or "this is new". It is never decoration, never a background area, never a heading color.
+
+**The Status Ink Rule.** Green and red speak only about how a send went or whether Duva can be reached. They never style a control.
+
+## Typography
+
+**Mail Font:** Source Serif 4 Variable (with Georgia, serif), self-hosted from `@fontsource-variable/source-serif-4` with its optical size axis (OFL-1.1, noted in THIRD_PARTY_NOTICES.md).
+**Interface Font:** the system sans stack (`system-ui`, then platform faces, then Arial).
+
+**Character:** the serif is the written word, so mail reads like a printed proof. The sans is Duva's own voice, plain and close to the platform. Numbers are tabular across the app.
+
+### Hierarchy
+- **Display** (serif 500, 1.625rem, 1.25, -0.01em): the title of an empty desk. The sign-in door sets the same face larger (2rem, 1.2).
+- **Wordmark** (serif 600, 1.25rem, 1, -0.01em): "Duva" in the bar and at the door.
+- **Headline** (sans 650, 1.625rem, 1.2, -0.015em): the page heading, such as "Approvals".
+- **Title** (sans 650, 1rem): who asks, at the head of a galley or slip.
+- **Subject** (serif 400, 1rem, 1.4, in Second Ink): the mail subject set beside the title.
+- **Proof** (serif 400, 1.0625rem, 1.6, max 68ch): message bodies, the disclosure line, and the edit body.
+- **Body** (sans 400, 1rem, 1.5): default interface text.
+- **Small** (sans 400, 0.875rem): header fields, meta, buttons, notices, changes.
+- **Label** (sans 650, 0.8125rem): column labels and the "New" mark. Sentence case, no tracking.
+
+### Named Rules
+**The Two Hands Rule.** Text that is or becomes mail is set in the serif: bodies, subjects, the disclosure line, the editable text. What Duva says about the mail is set in the sans. The wordmark and the door and empty titles are the only serif outside the mail.
+
+**The Sentence Case Rule.** Labels stay in sentence case at normal tracking. No uppercase, no letterspaced captions.
+
+## Layout
+
+The desk is centered at an 80rem maximum, padded 1rem top and 1.5rem at the sides, with 3rem at the foot. The bar above it shares the same width. Galleys stack in a single column with 1.5rem between them.
+
+A galley is a two-column grid of equal halves. Each column is a subgrid over six shared rows (label, four header fields, body), so From sits level with From and both texts start on the same line. When there is no original, a narrow note column (at least 12rem) takes one part and the draft three. Header fields use a 4.5rem name column. A long original folds at 12 lines behind a soft fade, with a link to show the whole message.
+
+Spacing is a seven-step scale from 0.25rem to 3rem, used directly. Sheet padding is 1.5rem; the slug and decision rows are 1rem by 1.5rem.
+
+At 48rem and below, the columns stack with the original first and the draft under it, padding drops to 1rem, the signed-in address hides, buttons grow to 2.75rem, and the primary action takes a full row. An original folds at 8 lines.
+
+### Named Rules
+**The Shared Rows Rule.** When two versions of a message are compared, they share grid rows. Never let one column's header push the other's text out of line.
+
+## Elevation & Depth
+
+Depth is paper on a desk. Sheets lift; nothing else does. A galley carries the full sheet shadow, a slip a lighter one, since a decided item has been set down. Inside a sheet, depth is tonal: the original sits on Source Paper, the draft on white. Controls, fields and notices are flat.
+
+### Shadow Vocabulary
+- **Sheet** (`box-shadow: 0 1px 2px rgb(27 33 41 / 0.08), 0 8px 24px -12px rgb(27 33 41 / 0.22)`): galleys, the live proofs.
+- **Slip** (`box-shadow: 0 1px 2px rgb(27 33 41 / 0.08)`): decided approvals.
+
+### Named Rules
+**The Paper on Desk Rule.** Only sheets cast a shadow, and the shadow is soft and ink-tinted. A control that needs emphasis gets the pencil, not a shadow.
+
+## Shapes
+
+Corners grow softer as things get smaller and more touchable. Sheets are almost square (2px), fields and notices slightly rounded (4px), buttons a little more (6px). Only the "New" mark is a full pill. Dividers inside a sheet are 1px hairlines. The disclosure line sits under a 1px dashed rule, like a note pencilled under the proof. Icons are inline SVG on a 16 unit grid with a 1.6 round stroke in `currentColor`. Slip icons sit in a 1.4 stroke ring.
+
+## Components
+
+### Buttons
+Plain, confident and flat, with the label in the sans at 600.
+- **Shape:** gently rounded (6px), 2.5rem tall, 2.75rem on phones.
+- **Primary:** pencil fill, white text, wider padding (0 1.5rem). One per decision row: Send, or Send your version.
+- **Default:** white with a Strong Rule border, ink text. Hover shifts to Source Paper with a Second Ink border.
+- **Reject:** ink fill, white text. Used only to confirm a rejection.
+- **Quiet:** no border or fill until hover, which lays a 6% ink tint. Used for Cancel, Reject (the first step) and Sign out.
+- **Small:** 2rem tall, for the bar.
+- **States:** colors ease over 150ms; pressing nudges the button down 1px; disabled drops to 60% opacity. Focus is the global 2px pencil outline at 2px offset.
+
+### Text Fields
+- **Style:** white, 1px Strong Rule border, 4px corners, 0.5rem by 0.75rem padding, inheriting the surrounding font. The edit body switches to the proof serif and resizes vertically.
+- **Focus:** the border and a 2px outline both turn pencil, with no offset.
+- **Hints:** Label size in Second Ink, under the field.
+
+### Navigation
+The bar holds the wordmark, the nav and who is signed in. Nav links are ink, sans 600 at Small size, with no underline. The current page carries a 2px pencil underline.
+
+### Galley (signature)
+One approval as a proof. A slug row on top (who asks, the subject in serif, the time, a "New" pill if it arrived while the page was open), then the sheet with original and draft side by side, then the decision row. Editing marks up the draft column in place. A new galley arrives by sliding down 0.75rem from 40% opacity over 600ms.
+
+### Slip (signature)
+A decided approval folded small: an outcome icon, the title and subject, the result, and any detail or note. Pending is pencil, sent is green, rejected is Second Ink, failed turns the whole slip Alert Wash. The galley folds into its slip through a 260ms view transition.
+
+### Notices
+Alert notices are Alert Wash with Alert Red text at weight 500, 4px corners, Small size. The connection line in the desk head is Label size in Second Ink, turning Alert Red and bold when Duva can't be reached.
+
+### Loading
+A skeleton galley of Hairline bars with 2px corners that breathe to 45% opacity over 1.6s.
+
+## Do's and Don'ts
+
+### Do:
+- **Do** take every color, size and space from the custom properties in `styles.css`.
+- **Do** set mail text in Source Serif 4 at the proof size (1.0625rem, 1.6) and keep it under 68ch.
+- **Do** keep the pencil for actions, focus, links and new marks, and keep one primary button per decision.
+- **Do** put new interface strings in `strings.ts`, in plain, short sentences with no em dash.
+- **Do** honor reduced motion: every animation and transition is turned off under `prefers-reduced-motion`.
+- **Do** draw icons as inline SVG strokes in `currentColor`.
+
+### Don't:
+- **Don't** add a second accent color or use the pencil as a fill for areas, headings or decoration.
+- **Don't** give controls, fields or notices a shadow; only sheets lift off the desk.
+- **Don't** set Duva's own interface text in the serif, or mail in the sans.
+- **Don't** use uppercase or letterspaced labels.
+- **Don't** add a dark scheme piecemeal. The app is light only until a dark palette is designed as a whole.
+- **Don't** ship comps or rasters for interface elements; the build is code-led.

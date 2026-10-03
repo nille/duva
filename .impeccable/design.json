@@ -1,0 +1,438 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-03T21:34:19.448Z",
+  "title": "Design System: Duva",
+  "extensions": {
+    "colorMeta": {
+      "desk": {
+        "role": "neutral",
+        "displayName": "Dove Desk",
+        "canonical": "#e3e6e9",
+        "tonalRamp": [
+          "oklch(15.0% 0.005 248)",
+          "oklch(25.0% 0.005 248)",
+          "oklch(35.0% 0.005 248)",
+          "oklch(45.0% 0.005 248)",
+          "oklch(55.0% 0.005 248)",
+          "oklch(65.0% 0.005 248)",
+          "oklch(80.0% 0.005 248)",
+          "oklch(95.0% 0.005 248)"
+        ]
+      },
+      "paper": {
+        "role": "neutral",
+        "displayName": "Proof Paper",
+        "canonical": "#ffffff",
+        "tonalRamp": [
+          "oklch(15.0% 0.000 0)",
+          "oklch(25.0% 0.000 0)",
+          "oklch(35.0% 0.000 0)",
+          "oklch(45.0% 0.000 0)",
+          "oklch(55.0% 0.000 0)",
+          "oklch(65.0% 0.000 0)",
+          "oklch(80.0% 0.000 0)",
+          "oklch(95.0% 0.000 0)"
+        ]
+      },
+      "paper-source": {
+        "role": "neutral",
+        "displayName": "Source Paper",
+        "canonical": "#f5f6f7",
+        "tonalRamp": [
+          "oklch(15.0% 0.002 0)",
+          "oklch(25.0% 0.002 0)",
+          "oklch(35.0% 0.002 0)",
+          "oklch(45.0% 0.002 0)",
+          "oklch(55.0% 0.002 0)",
+          "oklch(65.0% 0.002 0)",
+          "oklch(80.0% 0.002 0)",
+          "oklch(95.0% 0.002 0)"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "#1b2129",
+        "tonalRamp": [
+          "oklch(15.0% 0.018 256)",
+          "oklch(25.0% 0.018 256)",
+          "oklch(35.0% 0.018 256)",
+          "oklch(45.0% 0.018 256)",
+          "oklch(55.0% 0.018 256)",
+          "oklch(65.0% 0.018 256)",
+          "oklch(80.0% 0.018 256)",
+          "oklch(95.0% 0.018 256)"
+        ]
+      },
+      "ink-2": {
+        "role": "neutral",
+        "displayName": "Second Ink",
+        "canonical": "#525b66",
+        "tonalRamp": [
+          "oklch(15.0% 0.021 253)",
+          "oklch(25.0% 0.021 253)",
+          "oklch(35.0% 0.021 253)",
+          "oklch(45.0% 0.021 253)",
+          "oklch(55.0% 0.021 253)",
+          "oklch(65.0% 0.021 253)",
+          "oklch(80.0% 0.021 253)",
+          "oklch(95.0% 0.021 253)"
+        ]
+      },
+      "rule": {
+        "role": "neutral",
+        "displayName": "Hairline",
+        "canonical": "#d9dde1",
+        "tonalRamp": [
+          "oklch(15.0% 0.007 248)",
+          "oklch(25.0% 0.007 248)",
+          "oklch(35.0% 0.007 248)",
+          "oklch(45.0% 0.007 248)",
+          "oklch(55.0% 0.007 248)",
+          "oklch(65.0% 0.007 248)",
+          "oklch(80.0% 0.007 248)",
+          "oklch(95.0% 0.007 248)"
+        ]
+      },
+      "rule-strong": {
+        "role": "neutral",
+        "displayName": "Strong Rule",
+        "canonical": "#8a929c",
+        "tonalRamp": [
+          "oklch(15.0% 0.018 254)",
+          "oklch(25.0% 0.018 254)",
+          "oklch(35.0% 0.018 254)",
+          "oklch(45.0% 0.018 254)",
+          "oklch(55.0% 0.018 254)",
+          "oklch(65.0% 0.018 254)",
+          "oklch(80.0% 0.018 254)",
+          "oklch(95.0% 0.018 254)"
+        ]
+      },
+      "pencil": {
+        "role": "primary",
+        "displayName": "Editor's Blue Pencil",
+        "canonical": "#2b4fc0",
+        "tonalRamp": [
+          "oklch(15.0% 0.182 266)",
+          "oklch(25.0% 0.182 266)",
+          "oklch(35.0% 0.182 266)",
+          "oklch(45.0% 0.182 266)",
+          "oklch(55.0% 0.182 266)",
+          "oklch(65.0% 0.182 266)",
+          "oklch(80.0% 0.182 266)",
+          "oklch(95.0% 0.182 266)"
+        ]
+      },
+      "pencil-deep": {
+        "role": "primary",
+        "displayName": "Pressed Pencil",
+        "canonical": "#203c96",
+        "tonalRamp": [
+          "oklch(15.0% 0.152 266)",
+          "oklch(25.0% 0.152 266)",
+          "oklch(35.0% 0.152 266)",
+          "oklch(45.0% 0.152 266)",
+          "oklch(55.0% 0.152 266)",
+          "oklch(65.0% 0.152 266)",
+          "oklch(80.0% 0.152 266)",
+          "oklch(95.0% 0.152 266)"
+        ]
+      },
+      "pencil-wash": {
+        "role": "primary",
+        "displayName": "Pencil Wash",
+        "canonical": "#e8edfb",
+        "tonalRamp": [
+          "oklch(15.0% 0.020 270)",
+          "oklch(25.0% 0.020 270)",
+          "oklch(35.0% 0.020 270)",
+          "oklch(45.0% 0.020 270)",
+          "oklch(55.0% 0.020 270)",
+          "oklch(65.0% 0.020 270)",
+          "oklch(80.0% 0.020 270)",
+          "oklch(95.0% 0.020 270)"
+        ]
+      },
+      "sent": {
+        "role": "status",
+        "displayName": "Sent Green",
+        "canonical": "#1e6a43",
+        "tonalRamp": [
+          "oklch(15.0% 0.097 157)",
+          "oklch(25.0% 0.097 157)",
+          "oklch(35.0% 0.097 157)",
+          "oklch(45.0% 0.097 157)",
+          "oklch(55.0% 0.097 157)",
+          "oklch(65.0% 0.097 157)",
+          "oklch(80.0% 0.097 157)",
+          "oklch(95.0% 0.097 157)"
+        ]
+      },
+      "alert": {
+        "role": "status",
+        "displayName": "Alert Red",
+        "canonical": "#b42318",
+        "tonalRamp": [
+          "oklch(15.0% 0.182 30)",
+          "oklch(25.0% 0.182 30)",
+          "oklch(35.0% 0.182 30)",
+          "oklch(45.0% 0.182 30)",
+          "oklch(55.0% 0.182 30)",
+          "oklch(65.0% 0.182 30)",
+          "oklch(80.0% 0.182 30)",
+          "oklch(95.0% 0.182 30)"
+        ]
+      },
+      "alert-wash": {
+        "role": "status",
+        "displayName": "Alert Wash",
+        "canonical": "#fdecea",
+        "tonalRamp": [
+          "oklch(15.0% 0.019 26)",
+          "oklch(25.0% 0.019 26)",
+          "oklch(35.0% 0.019 26)",
+          "oklch(45.0% 0.019 26)",
+          "oklch(55.0% 0.019 26)",
+          "oklch(65.0% 0.019 26)",
+          "oklch(80.0% 0.019 26)",
+          "oklch(95.0% 0.019 26)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Empty desk title; the sign-in door sets it at 2rem."
+      },
+      "wordmark": {
+        "displayName": "Wordmark",
+        "purpose": "Duva in the bar and at the door."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Page heading, in the interface sans."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Who asks, at the head of a galley or slip."
+      },
+      "subject": {
+        "displayName": "Subject",
+        "purpose": "Mail subject beside the title, in Second Ink."
+      },
+      "proof": {
+        "displayName": "Proof",
+        "purpose": "Message bodies, the disclosure line and the edit body, max 68ch."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Default interface text, tabular numbers."
+      },
+      "small": {
+        "displayName": "Small",
+        "purpose": "Header fields, meta, buttons, notices."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Column labels and the New mark, sentence case."
+      }
+    },
+    "shadows": [
+      {
+        "name": "sheet",
+        "value": "0 1px 2px rgb(27 33 41 / 0.08), 0 8px 24px -12px rgb(27 33 41 / 0.22)",
+        "purpose": "Galleys, the live proofs lying on the desk."
+      },
+      {
+        "name": "slip",
+        "value": "0 1px 2px rgb(27 33 41 / 0.08)",
+        "purpose": "Decided approvals, set down flatter."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-out",
+        "value": "cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "The one easing curve, for every transition and animation."
+      },
+      {
+        "name": "control",
+        "value": "150ms",
+        "purpose": "Button background and border changes."
+      },
+      {
+        "name": "fold",
+        "value": "260ms",
+        "purpose": "View transition as a galley folds into its slip."
+      },
+      {
+        "name": "arrive",
+        "value": "600ms",
+        "purpose": "A new galley slides down 0.75rem from 40% opacity."
+      },
+      {
+        "name": "breathe",
+        "value": "1.6s ease-in-out infinite alternate",
+        "purpose": "Skeleton lines fade to 45% opacity while loading."
+      },
+      {
+        "name": "reduced",
+        "value": "prefers-reduced-motion: reduce",
+        "purpose": "Turns every animation and transition off."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "phone",
+        "value": "48rem",
+        "purpose": "Columns stack, original first; padding drops; buttons grow to 2.75rem."
+      }
+    ],
+    "focus": {
+      "value": "outline: 2px solid var(--pencil); outline-offset: 2px",
+      "purpose": "Global focus ring; fields use offset 0 and a pencil border."
+    }
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one main action of a decision row: Send, or Send your version.",
+      "html": "<button class=\"ds-btn ds-btn-primary\">Send</button>",
+      "css": ".ds-btn { display:inline-flex; align-items:center; justify-content:center; gap:var(--space-2,0.5rem); min-height:2.5rem; padding:0 var(--space-4,1rem); border:1px solid var(--rule-strong,#8a929c); border-radius:var(--radius,6px); background:var(--paper,#fff); color:var(--ink,#1b2129); font:600 0.875rem/1 system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif; cursor:pointer; transition:background-color 150ms cubic-bezier(0.16,1,0.3,1), border-color 150ms cubic-bezier(0.16,1,0.3,1); } .ds-btn:focus-visible { outline:2px solid var(--pencil,#2b4fc0); outline-offset:2px; } .ds-btn:active { transform:translateY(1px); } .ds-btn-primary { background:var(--pencil,#2b4fc0); border-color:var(--pencil,#2b4fc0); color:var(--paper,#fff); padding:0 var(--space-5,1.5rem); } .ds-btn-primary:hover { background:var(--pencil-deep,#203c96); border-color:var(--pencil-deep,#203c96); }"
+    },
+    {
+      "name": "Default Button",
+      "kind": "button",
+      "refersTo": "button",
+      "description": "Secondary actions such as Edit.",
+      "html": "<button class=\"ds-btn-default\">Edit</button>",
+      "css": ".ds-btn-default { display:inline-flex; align-items:center; min-height:2.5rem; padding:0 1rem; border:1px solid var(--rule-strong,#8a929c); border-radius:var(--radius,6px); background:var(--paper,#fff); color:var(--ink,#1b2129); font:600 0.875rem/1 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif; cursor:pointer; transition:background-color 150ms cubic-bezier(0.16,1,0.3,1), border-color 150ms cubic-bezier(0.16,1,0.3,1); } .ds-btn-default:hover { background:var(--paper-source,#f5f6f7); border-color:var(--ink-2,#525b66); } .ds-btn-default:focus-visible { outline:2px solid var(--pencil,#2b4fc0); outline-offset:2px; } .ds-btn-default:active { transform:translateY(1px); }"
+    },
+    {
+      "name": "Reject Button",
+      "kind": "button",
+      "refersTo": "button-reject",
+      "description": "Confirms a rejection with a note. The one dark control.",
+      "html": "<button class=\"ds-btn-reject\">Reject with note</button>",
+      "css": ".ds-btn-reject { display:inline-flex; align-items:center; min-height:2.5rem; padding:0 1rem; border:1px solid var(--ink,#1b2129); border-radius:var(--radius,6px); background:var(--ink,#1b2129); color:var(--paper,#fff); font:600 0.875rem/1 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif; cursor:pointer; } .ds-btn-reject:focus-visible { outline:2px solid var(--pencil,#2b4fc0); outline-offset:2px; } .ds-btn-reject:active { transform:translateY(1px); }"
+    },
+    {
+      "name": "Quiet Button",
+      "kind": "button",
+      "refersTo": "button-quiet",
+      "description": "Cancel, the first Reject step, and Sign out.",
+      "html": "<button class=\"ds-btn-quiet\">Cancel</button>",
+      "css": ".ds-btn-quiet { display:inline-flex; align-items:center; min-height:2.5rem; padding:0 1rem; border:1px solid transparent; border-radius:var(--radius,6px); background:transparent; color:var(--ink,#1b2129); font:600 0.875rem/1 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif; cursor:pointer; transition:background-color 150ms cubic-bezier(0.16,1,0.3,1); } .ds-btn-quiet:hover { background:rgb(27 33 41 / 0.06); } .ds-btn-quiet:focus-visible { outline:2px solid var(--pencil,#2b4fc0); outline-offset:2px; }"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "refersTo": "text-field",
+      "description": "Recipients, subject and the note; the edit body uses the proof serif.",
+      "html": "<label class=\"ds-field\"><span>Note for Hermes</span><input class=\"ds-input\" type=\"text\" value=\"Shorter, please.\"></label>",
+      "css": ".ds-field { display:grid; gap:0.5rem; font:600 0.875rem/1.5 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif; color:var(--ink,#1b2129); } .ds-input { width:100%; border:1px solid var(--rule-strong,#8a929c); border-radius:4px; background:var(--paper,#fff); color:var(--ink,#1b2129); font:400 1rem/1.5 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif; padding:0.5rem 0.75rem; } .ds-input:focus-visible { outline:2px solid var(--pencil,#2b4fc0); outline-offset:0; border-color:var(--pencil,#2b4fc0); }"
+    },
+    {
+      "name": "Bar",
+      "kind": "nav",
+      "refersTo": "nav",
+      "description": "Wordmark, nav and who is signed in, across the desk.",
+      "html": "<header class=\"ds-bar\"><p class=\"ds-wordmark\">Duva</p><nav><a href=\"#\" aria-current=\"page\">Approvals</a></nav><span class=\"ds-who\">nicklas@example.com</span></header>",
+      "css": ".ds-bar { display:flex; align-items:center; gap:1.5rem; padding:1rem 1.5rem; background:var(--desk,#e3e6e9); color:var(--ink,#1b2129); font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif; } .ds-wordmark { margin:0; font:600 1.25rem/1 'Source Serif 4 Variable',Georgia,serif; letter-spacing:-0.01em; } .ds-bar nav a { color:var(--ink,#1b2129); font-weight:600; font-size:0.875rem; text-decoration:none; padding:0.25rem 0; border-bottom:2px solid transparent; } .ds-bar nav a[aria-current=page] { border-bottom-color:var(--pencil,#2b4fc0); } .ds-bar nav a:focus-visible { outline:2px solid var(--pencil,#2b4fc0); outline-offset:2px; } .ds-who { margin-left:auto; font-size:0.875rem; color:var(--ink-2,#525b66); }"
+    },
+    {
+      "name": "New Mark",
+      "kind": "chip",
+      "refersTo": "mark-new",
+      "description": "Marks a galley that arrived while the page was open.",
+      "html": "<span class=\"ds-mark-new\">New</span>",
+      "css": ".ds-mark-new { display:inline-block; padding:0.125rem 0.5rem; border-radius:999px; background:var(--pencil,#2b4fc0); color:var(--paper,#fff); font:650 0.8125rem/1.5 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif; }"
+    },
+    {
+      "name": "Galley",
+      "kind": "card",
+      "refersTo": "galley",
+      "description": "One approval as a proof: original and draft on shared rows, decision under them.",
+      "html": "<article class=\"ds-galley\"><header class=\"ds-slug\"><h2>Hermes asks to send <span class=\"ds-subject\">Re: Dinner on Friday</span></h2><span class=\"ds-meta\"><span class=\"ds-mark-new\">New</span> Asked 09:14</span></header><div class=\"ds-sheet\"><section class=\"ds-copy ds-original\"><h3 class=\"ds-label\">The message it answers</h3><p class=\"ds-body\">Hej! Are we still on for Friday?</p></section><section class=\"ds-copy ds-proof\"><h3 class=\"ds-label ds-label-ink\">Draft by Hermes</h3><p class=\"ds-body\">Yes, Friday at seven works.</p><p class=\"ds-disclosure\">Sent by Hermes for Nicklas</p></section></div><footer class=\"ds-decision\"><button class=\"ds-send\">Send</button></footer></article>",
+      "css": ".ds-galley { background:var(--paper,#fff); border-radius:2px; box-shadow:0 1px 2px rgb(27 33 41 / 0.08), 0 8px 24px -12px rgb(27 33 41 / 0.22); color:var(--ink,#1b2129); font:400 1rem/1.5 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif; } .ds-slug { display:flex; flex-wrap:wrap; align-items:baseline; gap:0.5rem 1rem; padding:1rem 1.5rem; border-bottom:1px solid var(--rule,#d9dde1); } .ds-slug h2 { margin:0; font-size:1rem; font-weight:650; display:flex; gap:0 0.75rem; flex-wrap:wrap; } .ds-subject { font:400 1rem/1.4 'Source Serif 4 Variable',Georgia,serif; color:var(--ink-2,#525b66); } .ds-meta { margin-left:auto; display:flex; gap:0.75rem; align-items:center; font-size:0.875rem; color:var(--ink-2,#525b66); } .ds-mark-new { padding:0.125rem 0.5rem; border-radius:999px; background:var(--pencil,#2b4fc0); color:var(--paper,#fff); font-size:0.8125rem; font-weight:650; } .ds-sheet { display:grid; grid-template-columns:1fr 1fr; } .ds-copy { padding:1.5rem; min-width:0; } .ds-original { background:var(--paper-source,#f5f6f7); } .ds-proof { border-left:1px solid var(--rule,#d9dde1); } .ds-label { margin:0; padding-bottom:0.75rem; font-size:0.8125rem; font-weight:650; color:var(--ink-2,#525b66); } .ds-label-ink { color:var(--ink,#1b2129); } .ds-body { margin:0; font:400 1.0625rem/1.6 'Source Serif 4 Variable',Georgia,serif; max-width:68ch; } .ds-disclosure { margin:1.5rem 0 0; padding-top:0.75rem; border-top:1px dashed var(--rule,#d9dde1); font:400 1.0625rem/1.6 'Source Serif 4 Variable',Georgia,serif; } .ds-decision { padding:1rem 1.5rem; border-top:1px solid var(--rule,#d9dde1); } .ds-send { min-height:2.5rem; padding:0 1.5rem; border:1px solid var(--pencil,#2b4fc0); border-radius:6px; background:var(--pencil,#2b4fc0); color:#fff; font:600 0.875rem/1 system-ui,sans-serif; cursor:pointer; } .ds-send:hover { background:var(--pencil-deep,#203c96); border-color:var(--pencil-deep,#203c96); } .ds-send:focus-visible { outline:2px solid var(--pencil,#2b4fc0); outline-offset:2px; }"
+    },
+    {
+      "name": "Slip",
+      "kind": "card",
+      "refersTo": "slip",
+      "description": "A decided approval folded small, with how the send went.",
+      "html": "<article class=\"ds-slip\"><svg class=\"ds-slip-icon\" viewBox=\"0 0 16 16\" aria-hidden=\"true\"><circle cx=\"8\" cy=\"8\" r=\"6.5\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.4\"/><path d=\"m5 8.2 2 2 4-4.4\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg><div><h2 class=\"ds-slip-head\">Hermes asks to send <span class=\"ds-slip-subject\">Re: Dinner on Friday</span></h2><p class=\"ds-slip-result\">You approved it as written. Sent.</p></div></article>",
+      "css": ".ds-slip { display:flex; gap:0.75rem; padding:1rem 1.5rem; background:var(--paper,#fff); border-radius:2px; box-shadow:0 1px 2px rgb(27 33 41 / 0.08); color:var(--ink,#1b2129); font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif; } .ds-slip-icon { width:1.25rem; height:1.25rem; flex:none; margin-top:0.0625rem; color:var(--sent,#1e6a43); } .ds-slip-head { margin:0; display:flex; flex-wrap:wrap; gap:0 0.75rem; font-size:1rem; font-weight:650; } .ds-slip-subject { font:400 1rem/1.4 'Source Serif 4 Variable',Georgia,serif; color:var(--ink-2,#525b66); } .ds-slip-result { margin:0.25rem 0 0; font-size:0.875rem; }"
+    },
+    {
+      "name": "Alert Notice",
+      "kind": "custom",
+      "refersTo": "notice-alert",
+      "description": "An error the human should act on.",
+      "html": "<p class=\"ds-notice-alert\" role=\"alert\">Duva couldn't be reached, so nothing was decided. Try again.</p>",
+      "css": ".ds-notice-alert { margin:0; padding:0.75rem 1rem; border-radius:4px; background:var(--alert-wash,#fdecea); color:var(--alert,#b42318); font:500 0.875rem/1.5 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Galley Proof",
+    "overview": "Duva's web app is an editor's desk. The desk is dove grey. Each piece of mail lies on it as a white sheet, set in a book face, and everything Duva itself says sits around the sheet in the system sans. There is one color with intent, the editor's blue pencil. It marks what can be done, where focus is, and what is new. The rest is ink on paper.\n\nThe first surface, Approvals, sets a galley proof: the agent's draft beside the message it answers, on shared rows, with the decision under it. A decided proof folds into a slip that says how the send went. Density is moderate and calm. Sheets have generous padding (1.5rem), and the text column stops at 68ch.\n\nThe system is built in code, with no comps and no rasters. Styling is plain CSS with custom properties in one stylesheet (`packages/web/src/styles.css`), with no component library. PRODUCT.md lists the styling approach as undecided, so this is what the first surface chose, not a settled decision. The app is light only for now (`color-scheme: light`). Every interface string lives in `packages/web/src/strings.ts`.",
+    "keyCharacteristics": [
+      "Dove-grey desk, white sheets, one blue pencil.",
+      "Mail in Source Serif 4, the interface in the system sans.",
+      "Paper lifts off the desk. Controls stay flat.",
+      "Original and draft share rows, so the eye compares line by line.",
+      "Light only. Code-led, no rasters ship."
+    ],
+    "rules": [
+      {
+        "name": "The One Pencil Rule",
+        "body": "Blue means \"you can act here\" or \"this is new\". It is never decoration, never a background area, never a heading color.",
+        "section": "colors"
+      },
+      {
+        "name": "The Status Ink Rule",
+        "body": "Green and red speak only about how a send went or whether Duva can be reached. They never style a control.",
+        "section": "colors"
+      },
+      {
+        "name": "The Two Hands Rule",
+        "body": "Text that is or becomes mail is set in the serif: bodies, subjects, the disclosure line, the editable text. What Duva says about the mail is set in the sans. The wordmark and the door and empty titles are the only serif outside the mail.",
+        "section": "typography"
+      },
+      {
+        "name": "The Sentence Case Rule",
+        "body": "Labels stay in sentence case at normal tracking. No uppercase, no letterspaced captions.",
+        "section": "typography"
+      },
+      {
+        "name": "The Shared Rows Rule",
+        "body": "When two versions of a message are compared, they share grid rows. Never let one column's header push the other's text out of line.",
+        "section": "layout"
+      },
+      {
+        "name": "The Paper on Desk Rule",
+        "body": "Only sheets cast a shadow, and the shadow is soft and ink-tinted. A control that needs emphasis gets the pencil, not a shadow.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do take every color, size and space from the custom properties in `styles.css`.",
+      "Do set mail text in Source Serif 4 at the proof size (1.0625rem, 1.6) and keep it under 68ch.",
+      "Do keep the pencil for actions, focus, links and new marks, and keep one primary button per decision.",
+      "Do put new interface strings in `strings.ts`, in plain, short sentences with no em dash.",
+      "Do honor reduced motion: every animation and transition is turned off under `prefers-reduced-motion`.",
+      "Do draw icons as inline SVG strokes in `currentColor`."
+    ],
+    "donts": [
+      "Don't add a second accent color or use the pencil as a fill for areas, headings or decoration.",
+      "Don't give controls, fields or notices a shadow; only sheets lift off the desk.",
+      "Don't set Duva's own interface text in the serif, or mail in the sans.",
+      "Don't use uppercase or letterspaced labels.",
+      "Don't add a dark scheme piecemeal. The app is light only until a dark palette is designed as a whole.",
+      "Don't ship comps or rasters for interface elements; the build is code-led."
+    ]
+  }
+}
