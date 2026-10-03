@@ -30,6 +30,9 @@ const payPerUse = new Set([
   "AWS::Logs::LogGroup",
   "AWS::S3::Bucket",
   "AWS::S3::BucketPolicy",
+  "AWS::SES::ConfigurationSet",
+  "AWS::SES::EmailIdentity",
+  "AWS::SES::ReceiptRuleSet",
 ]);
 
 const outdir = mkdtempSync(join(tmpdir(), "duva-assembly-"));
@@ -117,4 +120,36 @@ test("the mail bucket keeps every version of raw mail", () => {
   for (const id of mailBuckets) {
     expect(stack.template.Resources[id].Properties.VersioningConfiguration).toEqual({ Status: "Enabled" });
   }
+});
+
+test("the domain is a parameter, so deploy names it when it runs", () => {
+  expect(stack.template.Parameters?.Domain?.Type).toBe("String");
+});
+
+test("the domain's identity signs with Easy DKIM and sends from a custom MAIL FROM subdomain", () => {
+  const identities = ofType("AWS::SES::EmailIdentity");
+  expect(identities).toHaveLength(1);
+  for (const [, { Properties }] of identities) {
+    expect(Properties?.EmailIdentity).toEqual({ Ref: "Domain" });
+    expect(Properties?.DkimAttributes?.SigningEnabled ?? true).toBe(true);
+    expect(Properties?.DkimSigningAttributes).toBeUndefined();
+    expect(Properties?.MailFromAttributes?.MailFromDomain).toEqual({ "Fn::Join": ["", ["mail.", { Ref: "Domain" }]] });
+  }
+});
+
+test("every send goes through a configuration set with no open or click tracking", () => {
+  const sets = ofType("AWS::SES::ConfigurationSet");
+  expect(sets).toHaveLength(1);
+  const [[id, { Properties }]] = sets as [[string, Resource]];
+  expect(Properties?.TrackingOptions).toBeUndefined();
+  expect(Properties?.VdmOptions?.DashboardOptions).toEqual({ EngagementMetrics: "DISABLED" });
+  expect(ofType("AWS::SES::ConfigurationSetEventDestination")).toEqual([]);
+  for (const [, identity] of ofType("AWS::SES::EmailIdentity")) {
+    expect(identity.Properties?.ConfigurationSetAttributes).toEqual({ ConfigurationSetName: { Ref: id } });
+  }
+});
+
+test("receiving starts with an empty rule set, so SES refuses all mail until the first address exists", () => {
+  expect(ofType("AWS::SES::ReceiptRuleSet")).toHaveLength(1);
+  expect(ofType("AWS::SES::ReceiptRule")).toEqual([]);
 });

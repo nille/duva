@@ -2,10 +2,11 @@
 //
 //   AWS_PROFILE=... AWS_REGION=eu-west-3 node scripts/destroy-test-deployment.ts --yes [--bootstrap]
 //
-// Deletes the Duva stack, then the table and mail bucket it keeps on deletion, all their data
-// included. With --bootstrap, it also deletes the CDK bootstrap stack and its staging bucket,
+// Deactivates Duva's receipt rule set, which SES can't delete while it's active, then deletes
+// the Duva stack, then the table and mail bucket it keeps on deletion, all their data included. With --bootstrap, it also deletes the CDK bootstrap stack and its staging bucket,
 // but only when the same duva deploy created both stacks. For test deployments only.
 import { parseArgs } from "node:util";
+import { stackName, stackOutputs } from "@duva/infra/outputs";
 import {
   CloudFormationClient,
   DeleteStackCommand,
@@ -14,6 +15,7 @@ import {
   waitUntilStackDeleteComplete,
 } from "@aws-sdk/client-cloudformation";
 import { DeleteTableCommand, DynamoDBClient, waitUntilTableNotExists } from "@aws-sdk/client-dynamodb";
+import { DescribeActiveReceiptRuleSetCommand, SESClient, SetActiveReceiptRuleSetCommand } from "@aws-sdk/client-ses";
 import { DeleteBucketCommand, DeleteObjectsCommand, ListObjectVersionsCommand, S3Client } from "@aws-sdk/client-s3";
 import { GetCallerIdentityCommand, STSClient } from "@aws-sdk/client-sts";
 
@@ -24,9 +26,10 @@ if (!region) throw new Error("Set AWS_REGION to the region to tear down.");
 const cloudformation = new CloudFormationClient({ region });
 const s3 = new S3Client({ region });
 const dynamodb = new DynamoDBClient({ region });
+const ses = new SESClient({ region });
 const { Account: account } = await new STSClient({ region }).send(new GetCallerIdentityCommand({}));
 
-const duva = await findStack("Duva");
+const duva = await findStack(stackName);
 const bootstrap = values.bootstrap ? await findStack("CDKToolkit") : undefined;
 // duva deploy creates the bootstrap stack moments before the Duva stack. One created at any other
 // time was already there, so something else may use it.
@@ -43,6 +46,14 @@ if (doomed.length === 0) {
 if (!values.yes) {
   console.log(`Would delete ${doomed.join(" and ")} in ${account} ${region}, with all their data. Pass --yes to do it.`);
   process.exit(1);
+}
+
+const duvasRuleSet = duva?.Outputs?.find(({ OutputKey }) => OutputKey === stackOutputs.receiptRuleSet)?.OutputValue;
+const active = (await ses.send(new DescribeActiveReceiptRuleSetCommand({}))).Metadata?.Name;
+if (duvasRuleSet !== undefined && active === duvasRuleSet) {
+  // Without a name, SetActiveReceiptRuleSet leaves no rule set active.
+  await ses.send(new SetActiveReceiptRuleSetCommand({}));
+  console.log(`Deactivated receipt rule set ${active}`);
 }
 
 for (const stack of [duva, bootstrap]) {

@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./outputs": "./src/outputs.ts"
   },
   "scripts": {
     "synth": "node src/synth.ts",

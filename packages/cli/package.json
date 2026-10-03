@@ -9,6 +9,9 @@
   },
   "dependencies": {
     "@aws-cdk/toolkit-lib": "^1.42.1",
+    "@aws-sdk/client-cloudformation": "^3.1146.0",
+    "@aws-sdk/client-ses": "^3.1146.0",
+    "@aws-sdk/client-sesv2": "^3.1146.0",
     "@aws-sdk/client-ssm": "^3.1146.0",
     "@duva/client": "*",
     "@duva/openapi": "*",

@@ -1,5 +1,5 @@
 import { fileURLToPath } from "node:url";
-import { CfnOutput, Duration, RemovalPolicy, Stack, type StackProps } from "aws-cdk-lib";
+import { CfnOutput, CfnParameter, Duration, RemovalPolicy, Stack, type StackProps } from "aws-cdk-lib";
 import { HttpApi, HttpMethod } from "aws-cdk-lib/aws-apigatewayv2";
 import { HttpLambdaIntegration } from "aws-cdk-lib/aws-apigatewayv2-integrations";
 import { AttributeType, Billing, TableV2 } from "aws-cdk-lib/aws-dynamodb";
@@ -7,9 +7,11 @@ import { Architecture, Runtime } from "aws-cdk-lib/aws-lambda";
 import { NodejsFunction, OutputFormat } from "aws-cdk-lib/aws-lambda-nodejs";
 import { LogGroup, RetentionDays } from "aws-cdk-lib/aws-logs";
 import { BlockPublicAccess, Bucket, BucketEncryption } from "aws-cdk-lib/aws-s3";
+import { ConfigurationSet, EmailIdentity, Identity, ReceiptRuleSet } from "aws-cdk-lib/aws-ses";
 import type { Construct } from "constructs";
 import { environmentVariables, tableKey } from "@duva/api/infrastructure";
 import { operations } from "@duva/openapi";
+import { stackOutputs, stackParameters } from "./outputs.ts";
 
 export interface DuvaStackProps extends StackProps {
   /** The version of Duva the stack deploys. */
@@ -23,6 +25,26 @@ export interface DuvaStackProps extends StackProps {
 export class DuvaStack extends Stack {
   constructor(scope: Construct, id: string, { version, ...props }: DuvaStackProps) {
     super(scope, id, props);
+
+    // duva deploy names the organization's first domain when it runs, so it reaches the stack as a parameter.
+    const domain = new CfnParameter(this, stackParameters.domain, {
+      type: "String",
+      description: "The organization's first domain, a standalone domain",
+    }).valueAsString;
+
+    // Every send goes through this configuration set. It publishes no events and turns off
+    // engagement metrics, so SES tracks no opens or clicks.
+    const sending = new ConfigurationSet(this, "Sending", { vdmOptions: { engagementMetrics: false } });
+    const identity = new EmailIdentity(this, "DomainIdentity", {
+      identity: Identity.domain(domain),
+      configurationSet: sending,
+      mailFromDomain: `mail.${domain}`,
+    });
+
+    // Rules arrive with the first address, and Duva manages them at run time, so a stack update
+    // never reverts their recipients. Until then the rule set is empty and SES refuses all mail.
+    // CloudFormation can't make a rule set active: duva deploy does that.
+    const receiving = new ReceiptRuleSet(this, "Receiving");
 
     // Mail and its metadata outlive the stack. They are deleted only when the stack's
     // first creation fails, so a retried deploy starts clean.
@@ -81,6 +103,12 @@ export class DuvaStack extends Stack {
       api.addRoutes({ path: operation.path, methods: [method], integration });
     }
 
-    new CfnOutput(this, "ApiUrl", { value: api.apiEndpoint, description: "The URL of Duva's API" });
+    new CfnOutput(this, stackOutputs.apiUrl, { value: api.apiEndpoint, description: "The URL of Duva's API" });
+    new CfnOutput(this, stackOutputs.receiptRuleSet, { value: receiving.receiptRuleSetName, description: "Duva's receipt rule set" });
+    ([1, 2, 3] as const).forEach((n, index) => {
+      const { name, value } = identity.dkimRecords[index]!;
+      new CfnOutput(this, stackOutputs.dkimName(n), { value: name, description: "A DKIM CNAME record's name" });
+      new CfnOutput(this, stackOutputs.dkimValue(n), { value, description: "A DKIM CNAME record's value" });
+    });
   }
 }
