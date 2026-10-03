@@ -15,17 +15,18 @@ import {
   UserPool,
   UserPoolClientIdentityProvider,
 } from "aws-cdk-lib/aws-cognito";
-import { AttributeType, Billing, TableV2 } from "aws-cdk-lib/aws-dynamodb";
+import { AttributeType, Billing, StreamViewType, TableV2 } from "aws-cdk-lib/aws-dynamodb";
 import { PolicyStatement, ServicePrincipal } from "aws-cdk-lib/aws-iam";
-import { Architecture, Runtime } from "aws-cdk-lib/aws-lambda";
+import { Architecture, FilterCriteria, Runtime, StartingPosition } from "aws-cdk-lib/aws-lambda";
 import { SqsDestination } from "aws-cdk-lib/aws-lambda-destinations";
+import { DynamoEventSource, SqsDlq } from "aws-cdk-lib/aws-lambda-event-sources";
 import { NodejsFunction, OutputFormat } from "aws-cdk-lib/aws-lambda-nodejs";
 import { LogGroup, RetentionDays } from "aws-cdk-lib/aws-logs";
 import { BlockPublicAccess, Bucket, BucketEncryption } from "aws-cdk-lib/aws-s3";
 import { ConfigurationSet, EmailIdentity, Identity, ReceiptRuleSet } from "aws-cdk-lib/aws-ses";
 import { Queue, QueueEncryption } from "aws-cdk-lib/aws-sqs";
 import type { Construct } from "constructs";
-import { environmentVariables, inboundPrefix, receiptRuleName, tableKey } from "@duva/api/infrastructure";
+import { environmentVariables, inboundPrefix, receiptRuleName, senderFilter, senderRetries, sentPrefix, tableKey, tableStreamView } from "@duva/api/infrastructure";
 import { operations } from "@duva/openapi";
 import { cliRedirectUri, signInSender, stackOutputs, stackParameters } from "./outputs.ts";
 
@@ -77,10 +78,11 @@ export class DuvaStack extends Stack {
     const receiving = new ReceiptRuleSet(this, "Receiving");
 
     // Mail and its metadata outlive the stack. They are deleted only when the stack's
-    // first creation fails, so a retried deploy starts clean.
+    // first creation fails, so a retried deploy starts clean. The table's stream starts each send.
     const table = new TableV2(this, "Table", {
       partitionKey: { name: tableKey.partitionKey, type: AttributeType.STRING },
       sortKey: { name: tableKey.sortKey, type: AttributeType.STRING },
+      dynamoStream: StreamViewType[tableStreamView],
       billing: Billing.onDemand(),
       pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
       removalPolicy: RemovalPolicy.RETAIN_ON_UPDATE_OR_DELETE,
@@ -244,6 +246,47 @@ export class DuvaStack extends Stack {
       new PolicyStatement({ actions: ["ses:DescribeReceiptRule", "ses:CreateReceiptRule", "ses:UpdateReceiptRule"], resources: ["*"] }),
     );
 
+    // Sending starts from the recorded decision: the table's stream invokes the sender for each draft
+    // a decision approved, in order, one at a time. Lambda retries a failed record, then records it
+    // in the failure queue, while the stream keeps it for 24 hours. The sender's steps are
+    // conditional, so a retried record never sends twice.
+    const sendFailures = new Queue(this, "SendFailures", {
+      encryption: QueueEncryption.SQS_MANAGED,
+      enforceSSL: true,
+      retentionPeriod: Duration.days(14),
+    });
+    const sender = lambda(
+      "SenderHandler",
+      "@duva/api/sender-lambda",
+      {
+        [environmentVariables.tableName]: table.tableName,
+        [environmentVariables.mailBucket]: mail.bucketName,
+        [environmentVariables.configurationSet]: sending.configurationSetName,
+      },
+      { timeout: Duration.seconds(30) },
+    );
+    sender.addEventSource(
+      new DynamoEventSource(table, {
+        startingPosition: StartingPosition.TRIM_HORIZON,
+        batchSize: 1,
+        retryAttempts: senderRetries,
+        onFailure: new SqsDlq(sendFailures),
+        filters: [FilterCriteria.filter(senderFilter)],
+      }),
+    );
+    table.grantReadWriteData(sender);
+    // The sender reads the message it answers and stores the raw MIME it sends.
+    mail.grantRead(sender);
+    mail.grantPut(sender, `${sentPrefix}*`);
+    // SES checks both the identity and the configuration set a send uses.
+    identity.grantSendEmail(sender);
+    sender.addToRolePolicy(
+      new PolicyStatement({
+        actions: ["ses:SendEmail"],
+        resources: [this.formatArn({ service: "ses", resource: "configuration-set", resourceName: sending.configurationSetName })],
+      }),
+    );
+
     const authorizerHandler = lambda("AuthorizerHandler", "@duva/api/authorizer-lambda", {
       [environmentVariables.tableName]: table.tableName,
       [environmentVariables.userPoolId]: humans.userPoolId,
@@ -288,6 +331,7 @@ export class DuvaStack extends Stack {
     new CfnOutput(this, stackOutputs.cliClientId, { value: cliClient.userPoolClientId, description: "The CLI's app client" });
     new CfnOutput(this, stackOutputs.setupFunction, { value: setup.functionName, description: "The function that sets up the organization" });
     new CfnOutput(this, stackOutputs.receiptRuleSet, { value: receiving.receiptRuleSetName, description: "Duva's receipt rule set" });
+    new CfnOutput(this, stackOutputs.sendFailures, { value: sendFailures.queueUrl, description: "The queue of approved sends that failed processing" });
     new CfnOutput(this, stackOutputs.inboundFailures, { value: inboundFailures.queueUrl, description: "The queue of received mail that failed processing" });
     ([1, 2, 3] as const).forEach((n, index) => {
       const { name, value } = identity.dkimRecords[index]!;

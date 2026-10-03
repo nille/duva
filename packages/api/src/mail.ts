@@ -10,13 +10,14 @@ import { changesAfter, changesPerPage, type Feed, recordChanges } from "./feed.t
 import type { MailBucket } from "./mail-bucket.ts";
 import { type ParsedMail, parseMail } from "./mime.ts";
 import { mailboxKey } from "./organization.ts";
-import { documents, isNew, pk, sk } from "./table.ts";
+import { documents, isNew, pk, sk, type TransactItem } from "./table.ts";
 
 export type ThreadSummary = components["schemas"]["ThreadSummary"];
 export type Thread = components["schemas"]["Thread"];
 export type Message = components["schemas"]["Message"];
 export type MailboxChange = components["schemas"]["MailboxChange"];
 export type MailboxChangePage = components["schemas"]["MailboxChangePage"];
+export type { StoredMessage };
 
 /** The label new mail gets. */
 export const inbox = "inbox";
@@ -73,6 +74,23 @@ export interface Arrival {
 /** How many of the messages a reply names are looked up, newest first, to find its thread. */
 const answersLookedUp = 100;
 
+/** A message as the mailbox stores it. Its body stays in the raw message. */
+interface StoredMessage {
+  id: string;
+  messageId?: string;
+  from: components["schemas"]["EmailAddress"];
+  to: components["schemas"]["EmailAddress"][];
+  cc: components["schemas"]["EmailAddress"][];
+  recipient: string;
+  plusTag?: string;
+  subject: string;
+  date: string;
+  receivedAt: string;
+  sentBy?: string;
+  /** Where the raw message is in the mail bucket. */
+  rawKey: string;
+}
+
 /**
  * Stores the message in the thread of the first message it answers that the mailbox has, in the
  * order of ParsedMail's answers, or as a new thread, and gives the thread the Inbox label. Spam is
@@ -86,12 +104,10 @@ export async function receiveMessage(table: Table, arrival: Arrival): Promise<bo
   const { Item: received } = await documents(table).send(new GetCommand({ TableName: table.name, Key: receivedKey(mailbox, sesMessageId), ConsistentRead: true }));
   if (received !== undefined) return false;
 
-  const message = randomUUID();
-  const from = parsed.from ?? { address: sender };
-  const stored = {
-    id: message,
+  const message: StoredMessage = {
+    id: randomUUID(),
     messageId: parsed.messageId,
-    from,
+    from: parsed.from ?? { address: sender },
     to: parsed.to,
     cc: parsed.cc,
     recipient,
@@ -101,22 +117,75 @@ export async function receiveMessage(table: Table, arrival: Arrival): Promise<bo
     receivedAt,
     rawKey,
   };
+  return storeMessage(table, {
+    mailbox,
+    message,
+    thread: async () => (arrival.spam ? undefined : threadAnswered(table, mailbox, parsed.answers)),
+    label,
+    findable: !arrival.spam,
+    by: undefined,
+    change: (thread) => ({ type: "messageReceived", thread, message: message.id, ...(arrival.spam ? { spam: true } : {}) }),
+    once: () => ({ Put: { TableName: table.name, Item: receivedKey(mailbox, sesMessageId), ...isNew } }),
+  });
+}
+
+/**
+ * Stores the message the actor `sentBy` sent from the mailbox, which SES accepted, in the thread
+ * of the message it answers, or as a new thread without labels. `once` gives the write that marks
+ * the draft sent in the thread, on condition that it is still sending, so the message is stored once. Records the
+ * send in the mailbox's change feed, naming the sender. Returns false if `once`'s condition failed.
+ */
+export async function storeSentMessage(
+  table: Table,
+  { mailbox, message, thread, draft, once }: { mailbox: string; message: StoredMessage & { sentBy: string }; thread: string | undefined; draft: string; once: (thread: string) => TransactItem },
+): Promise<boolean> {
+  return storeMessage(table, {
+    mailbox,
+    message,
+    thread: async () => (thread === undefined ? undefined : threadSummary(table, mailbox, thread)),
+    findable: true,
+    by: message.sentBy,
+    change: (id) => ({ type: "messageSent", draft, thread: id, message: message.id }),
+    once,
+  });
+}
+
+/**
+ * Stores the message in the thread `thread` finds, or else in a new one, with the label if given,
+ * in one transaction with the write `once` gives for the thread and the change in the mailbox's
+ * change feed. If `findable`, its Message-ID points at it, so replies to it join its thread.
+ * Returns false if that write's condition failed, since then the message is already stored.
+ */
+async function storeMessage(
+  table: Table,
+  { mailbox, message, thread: find, label, findable, by, change, once }: {
+    mailbox: string;
+    message: StoredMessage;
+    thread: () => Promise<ThreadSummary | undefined>;
+    label?: string;
+    findable: boolean;
+    by: string | undefined;
+    change: (thread: string) => object;
+    once: (thread: string) => TransactItem;
+  },
+): Promise<boolean> {
+  const { id, receivedAt } = message;
   // recordChanges gives the items' cancellation reasons after the counter's and the one change's.
-  const [receivedReason, threadReason] = [2, 3];
+  const [onceReason, threadReason] = [2, 3];
   const put = (Item: Record<string, unknown>, condition = {}) => ({ Put: { TableName: table.name, Item, ...condition } });
   for (let attempt = 1; ; attempt++) {
-    const joined = arrival.spam ? undefined : await threadAnswered(table, mailbox, parsed.answers);
+    const joined = await find();
     const thread = joined?.id ?? randomUUID();
     const summary: ThreadSummary =
       joined === undefined
-        ? { id: thread, subject: parsed.subject, from, labels: [label], latestAt: receivedAt, messages: 1 }
+        ? { id: thread, subject: message.subject, from: message.from, labels: label === undefined ? [] : [label], latestAt: receivedAt, messages: 1 }
         : {
             ...joined,
-            labels: joined.labels.includes(label) ? joined.labels : [...joined.labels, label],
+            labels: label === undefined || joined.labels.includes(label) ? joined.labels : [...joined.labels, label],
             latestAt: receivedAt > joined.latestAt ? receivedAt : joined.latestAt,
             messages: joined.messages + 1,
           };
-    // A thread is written only if it is as it was read, so replies arriving together each count.
+    // A thread is written only if it is as it was read, so messages stored together each count.
     const asRead =
       joined === undefined
         ? isNew
@@ -126,27 +195,33 @@ export async function receiveMessage(table: Table, arrival: Arrival): Promise<bo
     const moved = joined !== undefined && joined.latestAt !== summary.latestAt ? joined.labels : [];
     try {
       await recordChanges(table, mailboxFeed(mailbox), {
-        by: undefined,
-        changes: [{ type: "messageReceived", thread, message, ...(arrival.spam ? { spam: true } : {}) }],
+        by,
+        changes: [change(thread)],
         items: [
-          put(receivedKey(mailbox, sesMessageId), isNew),
+          once(thread),
           put({ ...threadKey(mailbox, thread), ...summary }, asRead),
-          put({ ...messageKey(mailbox, thread, receivedAt, message), ...stored, thread }),
-          ...moved.map((label) => ({ Delete: { TableName: table.name, Key: labelKey(mailbox, label, joined!.latestAt, thread) } })),
-          ...summary.labels.map((label) => put({ ...labelKey(mailbox, label, summary.latestAt, thread), ...summary })),
-          ...(parsed.messageId === undefined || arrival.spam ? [] : [put({ ...messageIdKey(mailbox, parsed.messageId), thread, message })]),
-          put({ ...messageRefKey(mailbox, message), thread, receivedAt }),
+          put({ ...messageKey(mailbox, thread, receivedAt, id), ...message, thread }),
+          ...moved.map((moving) => ({ Delete: { TableName: table.name, Key: labelKey(mailbox, moving, joined!.latestAt, thread) } })),
+          ...summary.labels.map((kept) => put({ ...labelKey(mailbox, kept, summary.latestAt, thread), ...summary })),
+          ...(message.messageId === undefined || !findable ? [] : [put({ ...messageIdKey(mailbox, message.messageId), thread, message: id })]),
+          put({ ...messageRefKey(mailbox, id), thread, receivedAt }),
         ],
       });
       return true;
     } catch (error) {
       const reasons = error instanceof TransactionCanceledException ? (error.CancellationReasons ?? []) : [];
       // Another processing of the same event stored it first.
-      if (reasons[receivedReason]?.Code === "ConditionalCheckFailed") return false;
+      if (reasons[onceReason]?.Code === "ConditionalCheckFailed") return false;
       // Another message changed the thread since it was read, so it is read again.
       if (reasons[threadReason]?.Code !== "ConditionalCheckFailed" || attempt === 10) throw error;
     }
   }
+}
+
+/** The thread's summary, or undefined if the mailbox has no such thread. */
+async function threadSummary(table: Table, mailbox: string, thread: string): Promise<ThreadSummary | undefined> {
+  const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: threadKey(mailbox, thread), ConsistentRead: true }));
+  return Item === undefined ? undefined : summaryOf(Item as ThreadSummary);
 }
 
 /** The thread of the first of the messages that the mailbox has, if it has any. */
@@ -157,9 +232,7 @@ async function threadAnswered(table: Table, mailbox: string, messageIds: string[
       .map(async (messageId) => (await documents(table).send(new GetCommand({ TableName: table.name, Key: messageIdKey(mailbox, messageId), ConsistentRead: true }))).Item),
   );
   const thread = found.find((item) => item !== undefined)?.thread as string | undefined;
-  if (thread === undefined) return undefined;
-  const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: threadKey(mailbox, thread), ConsistentRead: true }));
-  return Item === undefined ? undefined : summaryOf(Item as ThreadSummary);
+  return thread === undefined ? undefined : threadSummary(table, mailbox, thread);
 }
 
 /** The newest threads with the label, newest first. */
@@ -195,28 +268,28 @@ export async function readThread(table: Table, mailBucket: MailBucket, mailbox: 
   const thread = items.find((item) => item[sk] === threadKey(mailbox, id)[sk]);
   if (thread === undefined) return undefined;
   const stored = items.filter((item) => item !== thread);
-  const messages = await Promise.all(stored.map(async (item) => (await readMessage(mailBucket, item as Message & { rawKey: string })).message));
+  const messages = await Promise.all(stored.map(async (item) => (await readMessage(mailBucket, item as StoredMessage)).message));
   return { id, subject: thread.subject, labels: thread.labels, messages };
 }
 
 /**
  * The message with the ID in the mailbox, read from its raw message, with its thread and the
- * Reply-To it gives, or undefined if the mailbox has no such message.
+ * Reply-To and References it gives, or undefined if the mailbox has no such message.
  */
 export async function findMessage(
   table: Table,
   mailBucket: MailBucket,
   mailbox: string,
   id: string,
-): Promise<{ message: Message; thread: string; replyTo: components["schemas"]["EmailAddress"][] } | undefined> {
+): Promise<{ message: Message; thread: string; replyTo: components["schemas"]["EmailAddress"][]; references: string[] } | undefined> {
   const db = documents(table);
   const { Item: ref } = await db.send(new GetCommand({ TableName: table.name, Key: messageRefKey(mailbox, id), ConsistentRead: true }));
   if (ref === undefined) return undefined;
   const thread = ref.thread as string;
   const { Item } = await db.send(new GetCommand({ TableName: table.name, Key: messageKey(mailbox, thread, ref.receivedAt as string, id), ConsistentRead: true }));
   if (Item === undefined) return undefined;
-  const { message, parsed } = await readMessage(mailBucket, Item as Message & { rawKey: string });
-  return { message, thread, replyTo: parsed.replyTo };
+  const { message, parsed } = await readMessage(mailBucket, Item as StoredMessage);
+  return { message, thread, replyTo: parsed.replyTo, references: parsed.references };
 }
 
 /**
@@ -238,13 +311,27 @@ export async function mailboxChanges(table: Table, mailbox: string, after: numbe
  * The message with its body and attachments from the raw message, in the order the contract lists
  * its fields, and the raw message parsed.
  */
-async function readMessage(mailBucket: MailBucket, stored: Message & { rawKey: string }): Promise<{ message: Message; parsed: ParsedMail }> {
+async function readMessage(mailBucket: MailBucket, stored: StoredMessage): Promise<{ message: Message; parsed: ParsedMail }> {
   const raw = await mailBucket.get(stored.rawKey);
   if (raw === undefined) throw new Error(`The raw message ${stored.rawKey} is missing from the mail bucket.`);
   const parsed = await parseMail(raw);
   const { text, attachments } = parsed;
-  const { id, messageId, from, to, cc, recipient, plusTag, subject, date, receivedAt } = stored;
-  const message = { id, messageId, from: addressOf(from), to: to.map(addressOf), cc: cc.map(addressOf), recipient, plusTag, subject, date, receivedAt, text, attachments };
+  const { id, messageId, from, to, cc, recipient, plusTag, subject, date, receivedAt, sentBy } = stored;
+  const message = {
+    id,
+    messageId,
+    from: addressOf(from),
+    to: to.map(addressOf),
+    cc: cc.map(addressOf),
+    recipient,
+    plusTag,
+    subject,
+    date,
+    receivedAt,
+    ...(sentBy !== undefined && { sentBy }),
+    text,
+    attachments,
+  };
   return { message, parsed };
 }
 

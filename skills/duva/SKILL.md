@@ -171,6 +171,17 @@ List the approvals waiting for you, newest first, each with its draft and the me
 
 An agent's sends from its own mailbox wait for its sponsor, so a sponsor sees those of every agent they sponsor.
 
+## duva approvals send
+
+Send a draft waiting for your approval, as is or with your changes.
+
+Give recipients, a subject or text to send your version instead of the agent's. Duva then sends it through SES from the draft's address, as a reply in the thread if it is one. Every message an agent sends carries the Duva-Agent header, naming the agent and the human it acts for, and a line that says so after the text, also when you changed it. The draft's send shows sending, then sent or failed with SES's reason. Only the approver can decide an approval, never an agent, and only once: of two decisions at the same time, one is refused. The decision, with any edits, is recorded in the mailbox's change feed under you, and the send under the agent.
+
+- `--approval` (required): The approval's ID.
+- `--to` (once for each): The recipients' addresses, in place of the draft's.
+- `--subject`: The subject, in place of the draft's.
+- `--text`: The plain-text body, in place of the draft's.
+
 ## duva approvals reject
 
 Reject a draft waiting for your approval, with a note the agent sees.

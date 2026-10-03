@@ -4,6 +4,7 @@ import type { SESEvent, SESReceiptStatus } from "aws-lambda";
 import PostalMime from "postal-mime";
 import type { MailBucket } from "../src/mail-bucket.ts";
 import type { ReceiptRules } from "../src/receiving.ts";
+import { type Outbound, Refused } from "../src/sending.ts";
 
 /** The envelope SES receives a message with. */
 export interface Envelope {
@@ -154,4 +155,32 @@ function matches(rule: ReceiptRule, recipient: string): boolean {
     const wanted = listed.toLowerCase();
     return wanted.includes("@") ? wanted === address || wanted === untagged : wanted === domain;
   });
+}
+
+/**
+ * Stands in for SES sending in one region, recording each raw message it accepts. The domain is
+ * verified, and in the sandbox SES refuses a message to anyone not on it, with SES's reason. With
+ * `answersLost`, SES accepts each message but its answer never arrives, as when the connection
+ * drops.
+ */
+export function sesSending({ region, domain, sandbox, answersLost }: { region: string; domain: string; sandbox: boolean; answersLost: boolean }) {
+  const accepted: string[] = [];
+  const outbound: Outbound = {
+    async send(raw) {
+      const parsed = await PostalMime.parse(raw);
+      const from = parsed.from?.address ?? "";
+      const recipients = [...(parsed.to ?? []), ...(parsed.cc ?? [])].map(({ address }) => String(address));
+      const unverified = [from, ...(sandbox ? recipients : [])].filter((address) => address.split("@")[1]?.toLowerCase() !== domain);
+      if (unverified.length > 0) {
+        throw new Refused(`Email address is not verified. The following identities failed the check in region ${region.toUpperCase()}: ${unverified.join(", ")}`);
+      }
+      accepted.push(new TextDecoder().decode(raw));
+      if (answersLost) throw new Error("socket hang up");
+    },
+  };
+  return {
+    outbound,
+    /** The raw messages SES accepted, oldest first. */
+    sent: () => [...accepted],
+  };
 }

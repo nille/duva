@@ -364,6 +364,35 @@ test("the agent drafts a reply and asks to send it, and the sponsor lists it and
   expect(JSON.parse(read.stdout)).toMatchObject({ send: { approval: approvals[0]!.id, state: "rejected", note: "Say Tuesday." } });
 });
 
+test("the sponsor sends a pending draft from the CLI, as is or with their own text, and the agent sees it sent", async () => {
+  const machine = await newMachine();
+  const duva = await startDuva({ domain: "example.com", admin: "ada@example.org" });
+  const server = await duva.listen();
+  onTestFinished(() => server.close());
+  await machine.saveDeployment(server);
+  await machine.duva("login", { browserSignsIn: "ada@example.org" });
+  const { agent, key } = JSON.parse((await machine.duva("agents", "create", "--name", "Hermes")).stdout) as { agent: { id: string }; key: string };
+  const mailbox = JSON.parse((await machine.duva("mailboxes", "create", "--owner", agent.id, "--address", "hermes@example.com")).stdout) as { id: string };
+  const asAgent = { env: { DUVA_AGENT_KEY: key } };
+  const ask = async (text: string) => {
+    const draft = JSON.parse((await machine.duva("drafts", "create", "--mailbox", mailbox.id, "--to", "grace@example.org", "--subject", "Hello", "--text", text, asAgent)).stdout) as { id: string };
+    const asked = JSON.parse((await machine.duva("drafts", "send", "--mailbox", mailbox.id, "--draft", draft.id, asAgent)).stdout) as { send: { approval: string } };
+    return { draft: draft.id, approval: asked.send.approval };
+  };
+  const first = await ask("Hej Grace.");
+  const second = await ask("Hej.");
+
+  const asIs = await machine.duva("approvals", "send", "--approval", first.approval);
+  const edited = await machine.duva("approvals", "send", "--approval", second.approval, "--text", "Hej Grace, hur mår du?");
+  const read = await machine.duva("drafts", "get", "--mailbox", mailbox.id, "--draft", first.draft, asAgent);
+
+  expect([asIs.exitCode, edited.exitCode]).toEqual([0, 0]);
+  expect(JSON.parse(asIs.stdout)).toMatchObject({ id: first.approval, state: "approved" });
+  expect(JSON.parse(edited.stdout)).toMatchObject({ id: second.approval, state: "approved", edits: { text: "Hej Grace, hur mår du?" } });
+  expect(JSON.parse(read.stdout)).toMatchObject({ send: { approval: first.approval, state: "sent" } });
+  expect(duva.sent()).toHaveLength(2);
+});
+
 test("drafts create takes a new message's recipients as --to, once for each", async () => {
   const machine = await newMachine();
   const duva = await startDuva({ domain: "example.com", admin: "ada@example.org" });

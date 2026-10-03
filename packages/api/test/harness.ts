@@ -1,7 +1,8 @@
-// The API test harness: the real handlers, authorizer and inbound handler in-process, with DynamoDB
-// Local (started by dynamodb-local.ts) for DynamoDB, an in-memory stand-in for the mail bucket, a
-// stand-in for SES receiving, and a test token issuer in place of Cognito. Tests drive the API only
-// through the generated client, and hand mail to SES as a sender's server does.
+// The API test harness: the real handlers, authorizer, inbound handler and sender in-process, with
+// DynamoDB Local (started by dynamodb-local.ts) for DynamoDB and its stream, an in-memory stand-in
+// for the mail bucket, stand-ins for SES receiving and sending, and a test token issuer in place of
+// Cognito. Tests drive the API only through the generated client, hand mail to SES as a sender's
+// server does, and read what SES sent.
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { randomUUID } from "node:crypto";
@@ -14,13 +15,15 @@ import { createApi } from "../src/api.ts";
 import { createAuthorizer } from "../src/authorizer.ts";
 import type { Humans } from "../src/humans.ts";
 import { createInbound } from "../src/inbound.ts";
-import { tableKey } from "../src/infrastructure.ts";
+import { senderFilter, senderRetries, tableKey, tableStreamView } from "../src/infrastructure.ts";
 import type { MailBucket } from "../src/mail-bucket.ts";
 import { addHuman, setUpOrganization } from "../src/organization.ts";
+import { createSender } from "../src/sending.ts";
 import { dynamodbLocal } from "./dynamodb-local.ts";
 import { gateway } from "./gateway.ts";
 import { managedLogin, managedLoginClientId } from "./managed-login.ts";
-import { type Envelope, type ReceiveOptions, sesReceiving } from "./ses.ts";
+import { type Envelope, type ReceiveOptions, sesReceiving, sesSending } from "./ses.ts";
+import { tableStream } from "./streams.ts";
 import { TestTokenIssuer } from "./token-issuer.ts";
 
 declare module "vitest" {
@@ -40,6 +43,12 @@ export interface DuvaOptions {
   humans?: string[];
   /** How many seconds the access tokens of human sessions last. */
   accessTokenLifetime?: number;
+  /** Whether the account is in the SES sandbox, where SES refuses mail to anyone not on the domain. */
+  sandbox?: boolean;
+  /** Whether SES's answers to sends get lost, though SES accepted the messages. */
+  sesAnswersLost?: boolean;
+  /** How many times Lambda runs the sender for each stream record, as a retried batch can. */
+  senderInvocations?: number;
 }
 
 /** A Duva deployment running in-process, set up as duva deploy sets one up, with its own table and mail bucket. */
@@ -67,6 +76,8 @@ export interface Duva {
   ): Promise<{ refused: string[] }>;
   /** The receipt rules in Duva's rule set, as SES describes them. */
   receiptRules(): ReceiptRule[];
+  /** The raw messages SES accepted for sending, oldest first. Each API call returns once the sends it led to are done. */
+  sent(): string[];
   /** Sets the organization up again, as a re-run of duva deploy does. */
   setUp(options: { admin: string }): Promise<void>;
   /**
@@ -83,8 +94,11 @@ export async function startDuva({
   admin = "ada@example.com",
   humans: others = [],
   accessTokenLifetime = 3600,
+  sandbox = false,
+  sesAnswersLost = false,
+  senderInvocations = 1,
 }: DuvaOptions = {}): Promise<Duva> {
-  const table = await createTable();
+  const { table, streamArn } = await createTable();
   const humans = memoryHumans();
   const issuer = new TestTokenIssuer();
   const setUp = (options: { admin: string }) => setUpOrganization({ table, humans }, { domain, ...options });
@@ -97,10 +111,20 @@ export async function startDuva({
     functions: new Map([[inboundFunction, createInbound({ table, mailBucket })]]),
   });
   const receiving = { rules: ses.rules, bucket: mailBucketName, inboundFunction };
-  const api = gateway(
+  const sending = sesSending({ region, domain, sandbox, answersLost: sesAnswersLost });
+  const stream = tableStream(inject("dynamodbEndpoint"), streamArn, [
+    { filter: senderFilter, handler: createSender({ table, mailBucket, outbound: sending.outbound }), retries: senderRetries, invocations: senderInvocations },
+  ]);
+  const gatewayed = gateway(
     createApi({ version, region, table, mailBucket, receiving }),
     createAuthorizer({ table, verifyAccessToken: issuer.verify }),
   );
+  // A call returns once the stream has handed what it wrote to the sender, so tests see the outcome.
+  const api = async (request: Request) => {
+    const response = await gatewayed(request);
+    await stream.deliver();
+    return response;
+  };
   const login = managedLogin({ ids: humans.ids, issuer, accessTokenLifetime });
   const client = (headers?: Record<string, string>) => createDuvaClient("http://duva.test", { fetch: api, headers });
   const accessToken = (email: string) => {
@@ -116,6 +140,7 @@ export async function startDuva({
     endSessions: () => login.endSessions(),
     receive: async (raw, { from, to }, options) => ses.receive(raw, { from: from ?? (await senderOf(raw)), to }, options),
     receiptRules: () => ses.describeRules(),
+    sent: () => sending.sent(),
     setUp: async (options) => {
       await setUp(options);
     },
@@ -152,9 +177,10 @@ function memoryHumans(): Humans & { ids: Map<string, string> } {
 async function createTable() {
   const client = dynamodbLocal(inject("dynamodbEndpoint"));
   const name = `duva-${randomUUID()}`;
-  await client.send(
+  const { TableDescription } = await client.send(
     new CreateTableCommand({
       TableName: name,
+      StreamSpecification: { StreamEnabled: true, StreamViewType: tableStreamView },
       BillingMode: "PAY_PER_REQUEST",
       AttributeDefinitions: [
         { AttributeName: tableKey.partitionKey, AttributeType: "S" },
@@ -166,7 +192,7 @@ async function createTable() {
       ],
     }),
   );
-  return { client, name };
+  return { table: { client, name }, streamArn: TableDescription!.LatestStreamArn! };
 }
 
 function memoryMailBucket(): MailBucket {

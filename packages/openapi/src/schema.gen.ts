@@ -265,6 +265,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/approvals/{approval}/send": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send a draft waiting for your approval, as is or with your changes.
+         * @description Give recipients, a subject or text to send your version instead of the agent's. Duva then sends it through SES from the draft's address, as a reply in the thread if it is one. Every message an agent sends carries the Duva-Agent header, naming the agent and the human it acts for, and a line that says so after the text, also when you changed it. The draft's send shows sending, then sent or failed with SES's reason. Only the approver can decide an approval, never an agent, and only once: of two decisions at the same time, one is refused. The decision, with any edits, is recorded in the mailbox's change feed under you, and the send under the agent.
+         */
+        post: operations["sendApproval"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/approvals/{approval}/reject": {
         parameters: {
             query?: never;
@@ -384,7 +404,7 @@ export interface components {
             position: number;
         };
         /** @description A change in a mailbox. */
-        MailboxChange: components["schemas"]["MessageReceived"] | components["schemas"]["DraftWritten"] | components["schemas"]["DraftChanged"] | components["schemas"]["ApprovalAsked"] | components["schemas"]["ApprovalWithdrawn"] | components["schemas"]["ApprovalDecided"];
+        MailboxChange: components["schemas"]["MessageReceived"] | components["schemas"]["DraftWritten"] | components["schemas"]["DraftChanged"] | components["schemas"]["ApprovalAsked"] | components["schemas"]["ApprovalWithdrawn"] | components["schemas"]["ApprovalDecided"] | components["schemas"]["MessageSent"] | components["schemas"]["SendFailed"] | components["schemas"]["SendUnclear"];
         /** @description Mail arrived. No actor made this change, so it names none. */
         MessageReceived: {
             /** @description The change's position in the mailbox's feed, counting from 1. */
@@ -469,7 +489,8 @@ export interface components {
             /** @description The approval's ID. */
             approval: string;
             /** @enum {string} */
-            decision: "rejected";
+            decision: "approved" | "rejected";
+            edits?: components["schemas"]["Edits"];
             /** @description The approver's note, with a rejection. */
             note?: string;
         } & {
@@ -478,6 +499,52 @@ export interface components {
              * @enum {string}
              */
             type: "approvalDecided";
+        };
+        MessageSent: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "messageSent";
+            /** @description The draft's ID. */
+            draft: string;
+            /** @description The ID of the thread the sent message is in. */
+            thread: string;
+            /** @description The sent message's ID. */
+            message: string;
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "messageSent";
+        };
+        SendFailed: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "sendFailed";
+            /** @description The draft's ID. */
+            draft: string;
+            /** @description The ID of the approval that let it go. */
+            approval: string;
+            /** @description SES's reason. */
+            reason: string;
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "sendFailed";
+        };
+        SendUnclear: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "sendUnclear";
+            /** @description The draft's ID. */
+            draft: string;
+            /** @description The ID of the approval that let it go. */
+            approval: string;
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "sendUnclear";
         };
         NewDraft: {
             /** @description The ID of the message the draft replies to. Without it, the draft is a new message. */
@@ -500,6 +567,25 @@ export interface components {
             /** @description The subject, in place of the draft's. */
             subject?: string;
             /** @description The plain-text body. */
+            text?: string;
+        };
+        ApproverEdits: {
+            /**
+             * @description The recipients' addresses, in place of the draft's.
+             * @example [
+             *       "grace@example.org"
+             *     ]
+             */
+            to?: string[];
+            /** @description The subject, in place of the draft's. */
+            subject?: string;
+            /** @description The plain-text body, in place of the draft's. */
+            text?: string;
+        };
+        /** @description What the approver changed before sending. */
+        Edits: {
+            to?: components["schemas"]["EmailAddress"][];
+            subject?: string;
             text?: string;
         };
         /** @description A message a mailbox's owner is writing. */
@@ -531,12 +617,26 @@ export interface components {
             /** @description The ID of the approval the request needs. */
             approval: string;
             /**
-             * @description waiting for approval; withdrawn because the draft changed while it waited; or rejected, with the approver's note.
+             * @description waiting for approval; withdrawn because the draft changed while it waited; rejected, with the approver's note; approved, and about to be sent; sending; sent, as the message in its thread; failed, with SES's reason; or unclear, when sending stopped before SES answered, so a human checks whether it went out. Duva never sends an unclear draft again. An approved draft can't change, but a rejected or failed one can be revised and asked again.
              * @enum {string}
              */
-            state: "waiting" | "withdrawn" | "rejected";
+            state: "waiting" | "withdrawn" | "rejected" | "approved" | "sending" | "sent" | "failed" | "unclear";
             /** @description The approver's note, if they rejected it. */
             note?: string;
+            /**
+             * @description SES's reason, if it refused the message.
+             * @example Email address is not verified.
+             */
+            reason?: string;
+            /** @description The ID of the thread the sent message is in, once sent. */
+            thread?: string;
+            /** @description The sent message's ID in Duva, once sending starts. */
+            message?: string;
+            /**
+             * @description The Message-ID header the recipients see, once sending starts. For an unclear send, look for it in the recipients' mail.
+             * @example <0b1f7c2e-5d4a-4f0e-9a51-3c6e2d8b7f10@example.com>
+             */
+            messageId?: string;
         };
         DraftList: {
             drafts: components["schemas"]["Draft"][];
@@ -546,7 +646,7 @@ export interface components {
             /** @description The approval's ID. */
             id: string;
             /** @enum {string} */
-            state: "pending" | "withdrawn" | "rejected";
+            state: "pending" | "withdrawn" | "rejected" | "approved";
             /** @description The ID of the mailbox the draft is in. */
             mailbox: string;
             /** @description The ID of the agent that asked. */
@@ -560,6 +660,7 @@ export interface components {
             askedAt: string;
             /** Format: date-time */
             decidedAt?: string;
+            edits?: components["schemas"]["Edits"];
             /** @description The approver's note, if they rejected it. */
             note?: string;
         };
@@ -636,7 +737,7 @@ export interface components {
             to: components["schemas"]["EmailAddress"][];
             cc: components["schemas"]["EmailAddress"][];
             /**
-             * @description The mailbox's address the message was delivered to, with its plus tag.
+             * @description The mailbox's address the message was delivered to, or sent from, with its plus tag.
              * @example hermes+news@example.com
              */
             recipient: string;
@@ -653,9 +754,11 @@ export interface components {
             date: string;
             /**
              * Format: date-time
-             * @description When the message arrived.
+             * @description When the message arrived, or when SES accepted it for sending.
              */
             receivedAt: string;
+            /** @description The ID of the actor who sent the message from the mailbox, if it did. */
+            sentBy?: string;
             /** @description The plain-text body. Mail with only HTML is turned into text. */
             text: string;
             attachments: components["schemas"]["Attachment"][];
@@ -842,6 +945,8 @@ export interface components {
         Mailbox: string;
         /** @description The draft's ID. */
         Draft: string;
+        /** @description The approval's ID. */
+        Approval: string;
     };
     requestBodies: never;
     headers: never;
@@ -1298,13 +1403,45 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
         };
     };
+    sendApproval: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The approval's ID. */
+                approval: components["parameters"]["Approval"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ApproverEdits"];
+            };
+        };
+        responses: {
+            /** @description The approval, approved. Duva sends the draft next. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Approval"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
     rejectApproval: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 /** @description The approval's ID. */
-                approval: string;
+                approval: components["parameters"]["Approval"];
             };
             cookie?: never;
         };

@@ -435,6 +435,47 @@ paths:
                 $ref: "#/components/schemas/ApprovalList"
         "401":
           $ref: "#/components/responses/Unauthorized"
+  /approvals/{approval}/send:
+    post:
+      operationId: sendApproval
+      summary: Send a draft waiting for your approval, as is or with your changes.
+      description: >
+        Give recipients, a subject or text to send your version instead of
+        the agent's. Duva then sends it through SES from the draft's address,
+        as a reply in the thread if it is one. Every message an
+        agent sends carries the Duva-Agent header, naming the agent and the
+        human it acts for, and a line that says so after the text, also when
+        you changed it. The draft's send shows sending, then sent or failed
+        with SES's reason. Only the approver can decide an approval, never an
+        agent, and only once: of two decisions at the same time, one is
+        refused. The decision, with any edits, is recorded in the mailbox's
+        change feed under you, and the send under the agent.
+      x-cli-command: approvals send
+      parameters:
+        - $ref: "#/components/parameters/Approval"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApproverEdits"
+      responses:
+        "202":
+          description: The approval, approved. Duva sends the draft next.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Approval"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
   /approvals/{approval}/reject:
     post:
       operationId: rejectApproval
@@ -446,12 +487,7 @@ paths:
         is refused. The decision is recorded in the mailbox's change feed.
       x-cli-command: approvals reject
       parameters:
-        - name: approval
-          in: path
-          required: true
-          description: The approval's ID.
-          schema:
-            type: string
+        - $ref: "#/components/parameters/Approval"
       requestBody:
         required: true
         content:
@@ -489,6 +525,13 @@ components:
       in: path
       required: true
       description: The draft's ID.
+      schema:
+        type: string
+    Approval:
+      name: approval
+      in: path
+      required: true
+      description: The approval's ID.
       schema:
         type: string
   securitySchemes:
@@ -683,6 +726,9 @@ components:
         - $ref: "#/components/schemas/ApprovalAsked"
         - $ref: "#/components/schemas/ApprovalWithdrawn"
         - $ref: "#/components/schemas/ApprovalDecided"
+        - $ref: "#/components/schemas/MessageSent"
+        - $ref: "#/components/schemas/SendFailed"
+        - $ref: "#/components/schemas/SendUnclear"
       discriminator:
         propertyName: type
         mapping:
@@ -692,6 +738,9 @@ components:
           approvalAsked: "#/components/schemas/ApprovalAsked"
           approvalWithdrawn: "#/components/schemas/ApprovalWithdrawn"
           approvalDecided: "#/components/schemas/ApprovalDecided"
+          messageSent: "#/components/schemas/MessageSent"
+          sendFailed: "#/components/schemas/SendFailed"
+          sendUnclear: "#/components/schemas/SendUnclear"
     MessageReceived:
       type: object
       additionalProperties: false
@@ -790,10 +839,69 @@ components:
               description: The approval's ID.
             decision:
               type: string
-              enum: [rejected]
+              enum: [approved, rejected]
+            edits:
+              $ref: "#/components/schemas/Edits"
             note:
               type: string
               description: The approver's note, with a rejection.
+    MessageSent:
+      allOf:
+        - $ref: "#/components/schemas/ChangeBase"
+        - type: object
+          required: [type, draft, thread, message]
+          description: SES accepted an approved draft. The agent sent it, so it names the agent.
+          properties:
+            type:
+              type: string
+              const: messageSent
+            draft:
+              type: string
+              description: The draft's ID.
+            thread:
+              type: string
+              description: The ID of the thread the sent message is in.
+            message:
+              type: string
+              description: The sent message's ID.
+    SendFailed:
+      allOf:
+        - $ref: "#/components/schemas/ChangeBase"
+        - type: object
+          required: [type, draft, approval, reason]
+          description: SES refused an approved draft, so it wasn't sent.
+          properties:
+            type:
+              type: string
+              const: sendFailed
+            draft:
+              type: string
+              description: The draft's ID.
+            approval:
+              type: string
+              description: The ID of the approval that let it go.
+            reason:
+              type: string
+              description: SES's reason.
+    SendUnclear:
+      allOf:
+        - $ref: "#/components/schemas/ChangeBase"
+        - type: object
+          required: [type, draft, approval]
+          description: >
+            Sending an approved draft stopped before SES answered, so it is
+            unclear whether SES accepted it. Duva doesn't send it again, and a
+            human checks.
+          properties:
+            type:
+              type: string
+              const: sendUnclear
+            draft:
+              type: string
+              description: The draft's ID.
+            approval:
+              type: string
+              description: The ID of the approval that let it go.
     NewDraft:
       type: object
       additionalProperties: false
@@ -834,6 +942,37 @@ components:
           type: string
           maxLength: 50000
           description: The plain-text body.
+    ApproverEdits:
+      type: object
+      additionalProperties: false
+      properties:
+        to:
+          type: array
+          items:
+            type: string
+          description: The recipients' addresses, in place of the draft's.
+          examples: [["grace@example.org"]]
+        subject:
+          type: string
+          maxLength: 998
+          description: The subject, in place of the draft's.
+        text:
+          type: string
+          maxLength: 50000
+          description: The plain-text body, in place of the draft's.
+    Edits:
+      type: object
+      additionalProperties: false
+      description: What the approver changed before sending.
+      properties:
+        to:
+          type: array
+          items:
+            $ref: "#/components/schemas/EmailAddress"
+        subject:
+          type: string
+        text:
+          type: string
     Draft:
       type: object
       additionalProperties: false
@@ -879,13 +1018,32 @@ components:
           description: The ID of the approval the request needs.
         state:
           type: string
-          enum: [waiting, withdrawn, rejected]
+          enum: [waiting, withdrawn, rejected, approved, sending, sent, failed, unclear]
           description: >
             waiting for approval; withdrawn because the draft changed while
-            it waited; or rejected, with the approver's note.
+            it waited; rejected, with the approver's note; approved, and
+            about to be sent; sending; sent, as the message in its thread;
+            failed, with SES's reason; or unclear, when sending stopped before
+            SES answered, so a human checks whether it went out. Duva never
+            sends an unclear draft again. An approved draft can't change,
+            but a rejected or failed one can be revised and asked again.
         note:
           type: string
           description: The approver's note, if they rejected it.
+        reason:
+          type: string
+          description: SES's reason, if it refused the message.
+          examples: ["Email address is not verified."]
+        thread:
+          type: string
+          description: The ID of the thread the sent message is in, once sent.
+        message:
+          type: string
+          description: The sent message's ID in Duva, once sending starts.
+        messageId:
+          type: string
+          description: The Message-ID header the recipients see, once sending starts. For an unclear send, look for it in the recipients' mail.
+          examples: ["<0b1f7c2e-5d4a-4f0e-9a51-3c6e2d8b7f10@example.com>"]
     DraftList:
       type: object
       additionalProperties: false
@@ -906,7 +1064,7 @@ components:
           description: The approval's ID.
         state:
           type: string
-          enum: [pending, withdrawn, rejected]
+          enum: [pending, withdrawn, rejected, approved]
         mailbox:
           type: string
           description: The ID of the mailbox the draft is in.
@@ -927,6 +1085,8 @@ components:
         decidedAt:
           type: string
           format: date-time
+        edits:
+          $ref: "#/components/schemas/Edits"
         note:
           type: string
           description: The approver's note, if they rejected it.
@@ -1055,7 +1215,7 @@ components:
             $ref: "#/components/schemas/EmailAddress"
         recipient:
           type: string
-          description: The mailbox's address the message was delivered to, with its plus tag.
+          description: The mailbox's address the message was delivered to, or sent from, with its plus tag.
           examples: ["hermes+news@example.com"]
         plusTag:
           type: string
@@ -1070,7 +1230,10 @@ components:
         receivedAt:
           type: string
           format: date-time
-          description: When the message arrived.
+          description: When the message arrived, or when SES accepted it for sending.
+        sentBy:
+          type: string
+          description: The ID of the actor who sent the message from the mailbox, if it did.
         text:
           type: string
           description: The plain-text body. Mail with only HTML is turned into text.

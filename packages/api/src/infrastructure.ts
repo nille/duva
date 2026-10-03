@@ -23,10 +23,27 @@ export const environmentVariables = {
   receiptRuleSet: "RECEIPT_RULE_SET",
   /** The ARN of the Lambda SES invokes for each message it receives. */
   inboundFunction: "INBOUND_FUNCTION",
+  /** The SES configuration set every send goes through. */
+  configurationSet: "CONFIGURATION_SET",
 } as const;
+
+/** What the table's stream shows of each changed item. The sender reads the item itself, so only its new image. */
+export const tableStreamView = "NEW_IMAGE";
+
+/**
+ * Which of the table stream's records Lambda hands the sender: the writes that leave a draft
+ * approved for sending, which only a decision does. The pattern is a Lambda filter on DynamoDB JSON.
+ */
+export const senderFilter = { dynamodb: { NewImage: { send: { M: { state: { S: ["approved"] } } } } } };
+
+/** How often Lambda retries a stream record the sender failed on, before it gives up and records it in the failure queue. */
+export const senderRetries = 2;
 
 /** Where in the mail bucket SES stores each message it receives, followed by SES's message ID. */
 export const inboundPrefix = "inbound/";
+
+/** Where in the mail bucket Duva stores the raw MIME of each message it sends, followed by the message's ID in Duva. */
+export const sentPrefix = "sent/";
 
 /** The name of Duva's receipt rule, which lists its addresses. */
 export const receiptRuleName = "Addresses";

@@ -4,8 +4,8 @@
 //
 // Runs the checks of a real run that need no human: the API answers, refuses calls without valid
 // credentials, and lets the web app call it; the web app is served with the config deploy
-// published; once an address exists, SES's receipt rule lists it, and no received mail waits in
-// the failure queue. Signing in stays with a human. Exits 1 if any check fails.
+// published; once an address exists, SES's receipt rule lists it; and no received mail and no
+// approved send waits in a failure queue. Signing in stays with a human. Exits 1 if any check fails.
 import { CloudFormationClient, DescribeStacksCommand } from "@aws-sdk/client-cloudformation";
 import { DescribeReceiptRuleSetCommand, SESClient } from "@aws-sdk/client-ses";
 import { GetQueueAttributesCommand, SQSClient } from "@aws-sdk/client-sqs";
@@ -60,6 +60,9 @@ await check("listing approvals without credentials answers 401", async () => exp
 await check("rejecting an approval without credentials answers 401", async () =>
   expectStatus(await fetch(`${apiUrl}/approvals/x/reject`, { method: "POST", headers: { "content-type": "application/json" }, body: '{"note":"Check"}' }), 401),
 );
+await check("sending an approval without credentials answers 401", async () =>
+  expectStatus(await fetch(`${apiUrl}/approvals/x/send`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }), 401),
+);
 await check("the receipt rule set holds only Duva's rule, with explicit recipients, scanning, then S3 and the inbound Lambda", async () => {
   const { Rules = [] } = await new SESClient({ region }).send(new DescribeReceiptRuleSetCommand({ RuleSetName: output(stackOutputs.receiptRuleSet) }));
   // Until an admin creates the first address there is no rule, and SES refuses all mail.
@@ -78,12 +81,17 @@ await check("the receipt rule set holds only Duva's rule, with explicit recipien
     more.length === 0;
   return fine ? undefined : `is ${JSON.stringify(Rules)}`;
 });
+const waitingIn = async (queue: string) => {
+  const { Attributes } = await new SQSClient({ region }).send(new GetQueueAttributesCommand({ QueueUrl: output(queue), AttributeNames: ["ApproximateNumberOfMessages"] }));
+  return Number(Attributes?.ApproximateNumberOfMessages ?? 0);
+};
 await check("no received mail waits in the failure queue", async () => {
-  const { Attributes } = await new SQSClient({ region }).send(
-    new GetQueueAttributesCommand({ QueueUrl: output(stackOutputs.inboundFailures), AttributeNames: ["ApproximateNumberOfMessages"] }),
-  );
-  const waiting = Number(Attributes?.ApproximateNumberOfMessages ?? 0);
+  const waiting = await waitingIn(stackOutputs.inboundFailures);
   return waiting === 0 ? undefined : `${waiting} events wait there. Fix what failed, then replay them.`;
+});
+await check("no approved send waits in the failure queue", async () => {
+  const waiting = await waitingIn(stackOutputs.sendFailures);
+  return waiting === 0 ? undefined : `${waiting} stream records failed. Fix what failed, then read them from the stream again within 24 hours of the decision.`;
 });
 await check("the web app is served", async () => {
   const response = await fetch(`${webUrl}/`);

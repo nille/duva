@@ -18,6 +18,7 @@ export const stackOutputs = {
   setupFunction: "SetupFunction",
   receiptRuleSet: "ReceiptRuleSet",
   inboundFailures: "InboundFailuresUrl",
+  sendFailures: "SendFailuresUrl",
   dkimName: (n: 1 | 2 | 3) => `DkimName${n}`,
   dkimValue: (n: 1 | 2 | 3) => `DkimValue${n}`,
 } as const;

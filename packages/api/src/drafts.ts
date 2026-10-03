@@ -1,7 +1,22 @@
 import type { components } from "@duva/openapi";
 import { jsonBody, type OperationHandler, refusal } from "./api.ts";
 import type { Deployment } from "./deployment.ts";
-import { addDraft, AlreadyDecided, AlreadyWaiting, type Approval, askToSend, changeDraft, draftsIn, approvalOf, findApproval, findDraft, pendingApprovals, reject } from "./drafting.ts";
+import {
+  addDraft,
+  AlreadyApproved,
+  AlreadyDecided,
+  AlreadyWaiting,
+  type Approval,
+  approvalOf,
+  approve,
+  askToSend,
+  changeDraft,
+  draftsIn,
+  findApproval,
+  findDraft,
+  pendingApprovals,
+  reject,
+} from "./drafting.ts";
 import { findMessage } from "./mail.ts";
 import { readableMailbox } from "./mailboxes.ts";
 import type { Actor, Mailbox } from "./organization.ts";
@@ -87,9 +102,14 @@ export const editDraft: OperationHandler = async (event, deployment, actor) => {
   const changes = fieldsIn(jsonBody(event) ?? {});
   if ("statusCode" in changes) return changes;
   if (Object.values(changes).every((value) => value === undefined)) return refusal(400, "Give the draft's new recipients, subject or text.");
-  const draft = await changeDraft(deployment.table, { mailbox: mailbox.id, id: event.pathParameters?.draft ?? "", by: actor!.id, changes });
-  if (draft === undefined) return noDraft(event);
-  return { statusCode: 200, body: draft satisfies components["schemas"]["Draft"] };
+  try {
+    const draft = await changeDraft(deployment.table, { mailbox: mailbox.id, id: event.pathParameters?.draft ?? "", by: actor!.id, changes });
+    if (draft === undefined) return noDraft(event);
+    return { statusCode: 200, body: draft satisfies components["schemas"]["Draft"] };
+  } catch (error) {
+    if (error instanceof AlreadyApproved) return approvedRefusal(error);
+    throw error;
+  }
 };
 
 export const sendDraft: OperationHandler = async (event, deployment, actor) => {
@@ -103,6 +123,7 @@ export const sendDraft: OperationHandler = async (event, deployment, actor) => {
     return { statusCode: 202, body: draft satisfies components["schemas"]["Draft"] };
   } catch (error) {
     if (error instanceof AlreadyWaiting) return refusal(409, "The draft already waits for approval. Change it to withdraw the request, or wait for the decision.");
+    if (error instanceof AlreadyApproved) return approvedRefusal(error);
     throw error;
   }
 };
@@ -115,23 +136,54 @@ export const listApprovals: OperationHandler = async (_event, deployment, actor)
   };
 };
 
+const approvedRefusal = (error: AlreadyApproved) =>
+  refusal(409, `The draft was approved and ${approvedOutcomes[error.state]}, so it can't change or be sent again. Write a new draft instead.`);
+
+// What became of an approved draft, by its send's state.
+const approvedOutcomes: Partial<Record<AlreadyApproved["state"], string>> = {
+  approved: "is about to be sent",
+  sending: "is being sent",
+  sent: "sent",
+  unclear: "may have been sent, which a human checks",
+};
+
+export const sendApproval: OperationHandler = async (event, deployment, actor) => {
+  const approval = await decidable(event, deployment, actor!);
+  if ("statusCode" in approval) return approval;
+  const edits = fieldsIn(jsonBody(event) ?? {});
+  if ("statusCode" in edits) return edits;
+  const edited = Object.values(edits).some((value) => value !== undefined);
+  return decided(deployment, () => approve(deployment.table, { approval, by: actor!.id, edits: edited ? edits : undefined }), 202);
+};
+
 export const rejectApproval: OperationHandler = async (event, deployment, actor) => {
-  const id = event.pathParameters?.approval ?? "";
-  const approval = await findApproval(deployment.table, id);
-  if (approval === undefined) return refusal(404, `There is no approval ${JSON.stringify(id)}. List the approvals waiting for you to find its ID.`);
-  if (actor!.kind === "agent") return refusal(403, "Agents can't decide approvals, their own included. The agent's sponsor decides.");
-  if (approval.approver !== actor!.id) return refusal(403, "Only the approver can decide this approval. The agent's sponsor is its approver.");
+  const approval = await decidable(event, deployment, actor!);
+  if ("statusCode" in approval) return approval;
   const given = jsonBody(event)?.note;
   const note = typeof given === "string" ? given.trim() : "";
   if (note === "" || note.length > maxNote) return refusal(400, `Give a note of 1 to ${maxNote} characters that says what the agent should change.`);
+  return decided(deployment, () => reject(deployment.table, { approval, by: actor!.id, note }), 200);
+};
+
+/** The approval with the ID in the call's path, if the actor is its approver, since only they decide it. */
+async function decidable(event: Parameters<OperationHandler>[0], deployment: Deployment, actor: Actor): Promise<Approval | ReturnType<typeof refusal>> {
+  const id = event.pathParameters?.approval ?? "";
+  const approval = await findApproval(deployment.table, id);
+  if (approval === undefined) return refusal(404, `There is no approval ${JSON.stringify(id)}. List the approvals waiting for you to find its ID.`);
+  if (actor.kind === "agent") return refusal(403, "Agents can't decide approvals, their own included. The agent's sponsor decides.");
+  if (approval.approver !== actor.id) return refusal(403, "Only the approver can decide this approval. The agent's sponsor is its approver.");
+  return approval;
+}
+
+/** The answer to a decision: the approval as decided, or 409 if another decision came first. */
+async function decided(deployment: Deployment, decide: () => Promise<Approval>, statusCode: number) {
   try {
-    const rejected = await reject(deployment.table, { approval, by: actor!.id, note });
-    return { statusCode: 200, body: (await withOriginal(deployment, rejected)) satisfies components["schemas"]["Approval"] };
+    return { statusCode, body: (await withOriginal(deployment, await decide())) satisfies components["schemas"]["Approval"] };
   } catch (error) {
     if (error instanceof AlreadyDecided) return refusal(409, `The approval was already ${error.approval.state}, so it can't be decided again.`);
     throw error;
   }
-};
+}
 
 /** The approval with the message its draft replies to, if it is a reply and the mailbox still has it. */
 async function withOriginal(deployment: Deployment, approval: Approval): Promise<Approval> {

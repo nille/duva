@@ -3,7 +3,7 @@
 import { mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { environmentVariables } from "@duva/api/infrastructure";
+import { environmentVariables, senderFilter, senderRetries } from "@duva/api/infrastructure";
 import { operations } from "@duva/openapi";
 import { buildSync } from "esbuild";
 import { expect, test } from "vitest";
@@ -36,6 +36,8 @@ const payPerUse = new Set([
   "AWS::IAM::Policy",
   "AWS::IAM::Role",
   "AWS::Lambda::EventInvokeConfig",
+  // Lambda reads a DynamoDB stream at no charge, so a mapping costs only the invocations it makes.
+  "AWS::Lambda::EventSourceMapping",
   "AWS::Lambda::Function",
   "AWS::Lambda::Permission",
   "AWS::Logs::LogGroup",
@@ -213,6 +215,43 @@ test("the inbound Lambda retries a failed event, then leaves it in a queue for r
   const queue = stack.template.Resources[queueId];
   expect(queue?.Type).toBe("AWS::SQS::Queue");
   expect(queue?.Properties?.MessageRetentionPeriod).toBe(14 * 24 * 3600);
+});
+
+test("the table's stream invokes the sender for each draft a decision approved, one record at a time, from the oldest", () => {
+  const [[tableId, { Properties: table }]] = ofType("AWS::DynamoDB::GlobalTable") as [[string, Resource]];
+  expect(table?.StreamSpecification).toEqual({ StreamViewType: "NEW_IMAGE" });
+  const mappings = ofType("AWS::Lambda::EventSourceMapping");
+  expect(mappings).toHaveLength(1);
+  const [[, { Properties: mapping }]] = mappings as [[string, Resource]];
+  expect(mapping).toMatchObject({
+    FunctionName: { Ref: lambda("SenderHandler")[0] },
+    EventSourceArn: { "Fn::GetAtt": [tableId, "StreamArn"] },
+    StartingPosition: "TRIM_HORIZON",
+    BatchSize: 1,
+    FilterCriteria: { Filters: [{ Pattern: JSON.stringify(senderFilter) }] },
+  });
+});
+
+test("the sender retries a failed record, then records it in a queue for replay", () => {
+  const [[, { Properties: mapping }]] = ofType("AWS::Lambda::EventSourceMapping") as [[string, Resource]];
+  expect(mapping?.MaximumRetryAttempts).toBe(senderRetries);
+  const queueId = mapping?.DestinationConfig?.OnFailure?.Destination?.["Fn::GetAtt"]?.[0];
+  const queue = stack.template.Resources[queueId];
+  expect(queue?.Type).toBe("AWS::SQS::Queue");
+  expect(queue?.Properties?.MessageRetentionPeriod).toBe(14 * 24 * 3600);
+});
+
+test("the sender sends through SES under Duva's configuration set, and stores what it sent only under the sent prefix", () => {
+  expect(actions("SenderHandler", "ses").sort()).toEqual(["ses:SendEmail", "ses:SendEmail", "ses:SendRawEmail"]);
+  const [[setId]] = ofType("AWS::SES::ConfigurationSet") as [[string, Resource]];
+  expect(lambda("SenderHandler")[1].Properties?.Environment?.Variables?.[environmentVariables.configurationSet]).toEqual({ Ref: setId });
+  const sesResources = JSON.stringify(statements("SenderHandler").filter(({ Action }) => [Action].flat().some((action) => action.startsWith("ses:"))).map(({ Resource }) => Resource));
+  expect(sesResources).toContain(`configuration-set/",{"Ref":"${setId}"}`);
+  const [[identityId]] = ofType("AWS::SES::EmailIdentity") as [[string, Resource]];
+  expect(sesResources).toContain(`identity/",{"Ref":"${identityId}"}`);
+  const puts = statements("SenderHandler").filter(({ Action }) => [Action].flat().some((action) => action.startsWith("s3:PutObject")));
+  expect(puts).toHaveLength(1);
+  expect(JSON.stringify(puts[0]!.Resource)).toContain('"/sent/*"');
 });
 
 test("the API manages receipt rules in Duva's rule set, and may take no other SES action", () => {
