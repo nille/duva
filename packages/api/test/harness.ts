@@ -1,15 +1,16 @@
 // The API test harness: the real handlers in-process, with DynamoDB Local (started by
-// dynamodb-local.ts) for DynamoDB and an in-memory stand-in for S3. Tests drive it only
-// through the generated client.
+// dynamodb-local.ts) for DynamoDB and an in-memory stand-in for the mail bucket. Tests drive it
+// only through the generated client.
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { randomUUID } from "node:crypto";
-import { CreateTableCommand, DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { CreateTableCommand } from "@aws-sdk/client-dynamodb";
 import { createDuvaClient, type DuvaClient } from "@duva/client";
 import { inject } from "vitest";
 import { createApi } from "../src/api.ts";
-import type { MailStore } from "../src/mail-store.ts";
-import { tableKey } from "../src/table.ts";
+import { tableKey } from "../src/infrastructure.ts";
+import type { MailBucket } from "../src/mail-bucket.ts";
+import { dynamodbLocal } from "./dynamodb-local.ts";
 import { gateway } from "./gateway.ts";
 
 declare module "vitest" {
@@ -23,7 +24,7 @@ export interface DuvaOptions {
   region?: string;
 }
 
-/** A Duva deployment running in-process, with its own empty table and mail store. */
+/** A Duva deployment running in-process, with its own empty table and mail bucket. */
 export interface Duva {
   /** The generated client, talking to the API in-process. */
   client: DuvaClient;
@@ -32,7 +33,7 @@ export interface Duva {
 }
 
 export async function startDuva({ version = "0.0.0-test", region = "eu-north-1" }: DuvaOptions = {}): Promise<Duva> {
-  const api = gateway(createApi({ version, region, table: await createTable(), mail: memoryMailStore() }));
+  const api = gateway(createApi({ version, region, table: await createTable(), mailBucket: memoryMailBucket() }));
   return {
     client: createDuvaClient("http://duva.test", { fetch: api }),
     listen: () => listen(api),
@@ -40,11 +41,7 @@ export async function startDuva({ version = "0.0.0-test", region = "eu-north-1" 
 }
 
 async function createTable() {
-  const client = new DynamoDBClient({
-    endpoint: inject("dynamodbEndpoint"),
-    region: "eu-north-1",
-    credentials: { accessKeyId: "local", secretAccessKey: "local" },
-  });
+  const client = dynamodbLocal(inject("dynamodbEndpoint"));
   const name = `duva-${randomUUID()}`;
   await client.send(
     new CreateTableCommand({
@@ -63,7 +60,7 @@ async function createTable() {
   return { client, name };
 }
 
-function memoryMailStore(): MailStore {
+function memoryMailBucket(): MailBucket {
   const objects = new Map<string, Uint8Array>();
   return {
     async put(key, body) {

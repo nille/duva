@@ -15,20 +15,24 @@ export default async function setup(project: TestProject) {
   dynamodb.once("exit", (code) => (failure ??= new Error(`DynamoDB Local exited with code ${code}:\n${output}`)));
 
   const endpoint = `http://127.0.0.1:${port}`;
-  await untilReady(endpoint, () => failure);
+  await untilReady(dynamodbLocal(endpoint, 1), () => failure);
   project.provide("dynamodbEndpoint", endpoint);
   return () => {
     dynamodb.kill();
   };
 }
 
-async function untilReady(endpoint: string, failure: () => Error | undefined) {
-  const client = new DynamoDBClient({
+/** A client for DynamoDB Local at `endpoint`, which takes any credentials. */
+export function dynamodbLocal(endpoint: string, maxAttempts?: number): DynamoDBClient {
+  return new DynamoDBClient({
     endpoint,
     region: "eu-north-1",
     credentials: { accessKeyId: "local", secretAccessKey: "local" },
-    maxAttempts: 1,
+    maxAttempts,
   });
+}
+
+async function untilReady(client: DynamoDBClient, failure: () => Error | undefined) {
   const deadline = Date.now() + 30_000;
   for (;;) {
     try {
@@ -37,7 +41,7 @@ async function untilReady(endpoint: string, failure: () => Error | undefined) {
     } catch (error) {
       const failed = failure();
       if (failed !== undefined) throw failed;
-      if (Date.now() > deadline) throw new Error(`DynamoDB Local did not start at ${endpoint}`, { cause: error });
+      if (Date.now() > deadline) throw new Error("DynamoDB Local did not start", { cause: error });
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
   }

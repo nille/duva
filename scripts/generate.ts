@@ -67,6 +67,7 @@ function operationsOf(document: Document) {
           operationId: operation.operationId,
           method,
           path,
+          routeKey: `${method.toUpperCase()} ${path}`,
           summary: operation.summary,
           signIn: needsSignIn(operation.security ?? document.security ?? []),
           command: operation["x-cli-command"].split(" "),

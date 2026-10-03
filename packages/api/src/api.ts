@@ -11,7 +11,7 @@ export type OperationHandler = (
 const handlers: Record<OperationId, OperationHandler> = { getStatus };
 
 const operationIdByRouteKey = new Map<string, OperationId>(
-  operations.map((operation) => [`${operation.method.toUpperCase()} ${operation.path}`, operation.operationId]),
+  operations.map((operation) => [operation.routeKey, operation.operationId]),
 );
 
 /** The API's Lambda handler. API Gateway has one route per operation, so the route key names the operation. */

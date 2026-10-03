@@ -1,5 +1,5 @@
 import type { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import type { MailStore } from "./mail-store.ts";
+import type { MailBucket } from "./mail-bucket.ts";
 
 /** What the API knows about the deployment it runs in. */
 export interface Deployment {
@@ -9,6 +9,5 @@ export interface Deployment {
   region: string;
   /** Duva's one DynamoDB table. */
   table: { client: DynamoDBClient; name: string };
-  /** Raw received and sent mail. */
-  mail: MailStore;
+  mailBucket: MailBucket;
 }

@@ -5,6 +5,7 @@ export const operations = [
     "operationId": "getStatus",
     "method": "get",
     "path": "/status",
+    "routeKey": "GET /status",
     "summary": "Show Duva's version and the deployment's region.",
     "signIn": false,
     "command": [

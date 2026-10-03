@@ -8,7 +8,7 @@ import { NodejsFunction, OutputFormat } from "aws-cdk-lib/aws-lambda-nodejs";
 import { LogGroup, RetentionDays } from "aws-cdk-lib/aws-logs";
 import { BlockPublicAccess, Bucket, BucketEncryption } from "aws-cdk-lib/aws-s3";
 import type { Construct } from "constructs";
-import { tableKey } from "@duva/api/table";
+import { environmentVariables, tableKey } from "@duva/api/infrastructure";
 import { operations } from "@duva/openapi";
 
 export interface DuvaStackProps extends StackProps {
@@ -48,8 +48,24 @@ export class DuvaStack extends Stack {
       architecture: Architecture.ARM_64,
       memorySize: 512,
       timeout: Duration.seconds(10),
-      environment: { DUVA_VERSION: version, TABLE_NAME: table.tableName, MAIL_BUCKET: mail.bucketName },
-      bundling: { format: OutputFormat.ESM, target: "node24" },
+      environment: {
+        [environmentVariables.version]: version,
+        [environmentVariables.tableName]: table.tableName,
+        [environmentVariables.mailBucket]: mail.bucketName,
+        NODE_OPTIONS: "--enable-source-maps",
+      },
+      // The AWS SDK is bundled too, so the deployed code is exactly what this version built.
+      // CommonJS modules in the bundle still require Node's built-ins, so ESM gets a require.
+      bundling: {
+        format: OutputFormat.ESM,
+        target: "node24",
+        mainFields: ["module", "main"],
+        bundleAwsSDK: true,
+        minify: true,
+        sourceMap: true,
+        sourcesContent: false,
+        banner: "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);",
+      },
       logGroup: new LogGroup(this, "ApiLogs", {
         retention: RetentionDays.ONE_MONTH,
         removalPolicy: RemovalPolicy.DESTROY,

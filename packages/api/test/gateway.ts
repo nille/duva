@@ -11,12 +11,10 @@ export type ApiHandler = (event: APIGatewayProxyEventV2) => Promise<APIGatewayPr
 export function gateway(handler: ApiHandler): (request: Request) => Promise<Response> {
   return async (request) => {
     const url = new URL(request.url);
-    const operation = operations.find(
-      (candidate) => candidate.method.toUpperCase() === request.method && candidate.path === url.pathname,
-    );
+    const operation = operations.find(({ routeKey }) => routeKey === `${request.method} ${url.pathname}`);
     if (operation === undefined) return Response.json({ message: "Not Found" }, { status: 404 });
 
-    const routeKey = `${request.method} ${operation.path}`;
+    const { routeKey } = operation;
     const body = await request.text();
     const result = await handler({
       version: "2.0",

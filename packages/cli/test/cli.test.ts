@@ -27,7 +27,7 @@ test("deploy asks for a region when the AWS configuration names none", async () 
   expect(errorIn(result.stderr)).toMatch(/No AWS region.*AWS_REGION/);
 });
 
-test("status prints the version and region of the deployment that deploy saved", async () => {
+test("status reaches the deployment saved in the CLI's config", async () => {
   const machine = await newMachine();
   const server = await (await startDuva({ version: "2.3.4", region: "eu-west-1" })).listen();
   onTestFinished(() => server.close());
@@ -49,14 +49,18 @@ test("status says to run deploy first when no deployment is saved", async () => 
   expect(errorIn(result.stderr)).toMatch(/duva deploy/);
 });
 
-/** A machine with nothing configured: no AWS settings and no Duva config. */
+/**
+ * A machine with nothing configured: no AWS settings and no Duva config. Like the environment,
+ * its home directory is input at this seam. The CLI's config file there is part of the CLI's
+ * behavior: duva deploy writes it and the API commands read it.
+ */
 async function newMachine() {
   const home = await mkdtemp(join(tmpdir(), "duva-cli-"));
   await mkdir(join(home, ".aws"));
   return {
     home,
     duva: (...args: string[]) => run(args, { PATH: process.env.PATH ?? "", HOME: home }),
-    /** Saves the deployment's API URL in the CLI's config, as duva deploy does. */
+    /** Saves a deployment's API URL in the CLI's config, as duva deploy does. */
     async saveDeployment(apiUrl: string) {
       await mkdir(join(home, ".config", "duva"), { recursive: true });
       await writeFile(join(home, ".config", "duva", "config.json"), JSON.stringify({ apiUrl }));

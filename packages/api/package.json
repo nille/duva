@@ -5,7 +5,7 @@
   "type": "module",
   "exports": {
     "./lambda": "./src/lambda.ts",
-    "./table": "./src/table.ts",
+    "./infrastructure": "./src/infrastructure.ts",
     "./harness": "./test/harness.ts"
   },
   "scripts": {
