@@ -1,0 +1,16 @@
+{
+  "name": "@duva/client",
+  "description": "The TypeScript client for Duva's API, typed from the OpenAPI document.",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@duva/openapi": "*",
+    "openapi-fetch": "^0.17.0"
+  }
+}

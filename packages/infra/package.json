@@ -1,0 +1,20 @@
+{
+  "name": "@duva/infra",
+  "description": "Duva's infrastructure: one CDK app, synthesized at build time into the cloud assembly that duva deploy ships.",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "synth": "node src/synth.ts",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@duva/api": "*",
+    "@duva/openapi": "*",
+    "aws-cdk-lib": "^2.272.0",
+    "constructs": "^10.8.1",
+    "esbuild": "^0.28.2"
+  }
+}

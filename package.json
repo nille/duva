@@ -1,0 +1,33 @@
+{
+  "name": "duva",
+  "version": "0.1.0",
+  "description": "A self-hosted mailbox platform on Amazon SES where humans and agents are both actors.",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "generate": "node scripts/generate.ts",
+    "check:generated": "node scripts/generate.ts --check",
+    "typecheck": "tsc -p . && npm run typecheck --workspaces --if-present",
+    "test": "vitest run",
+    "synth": "npm run synth -w @duva/infra",
+    "build": "npm run check:generated && npm run typecheck && npm run synth && npm run build -w @duva/cli"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.1",
+    "openapi-typescript": "^7.13.0",
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.3",
+    "yaml": "^2.9.1"
+  },
+  "allowScripts": {
+    "bun": true,
+    "esbuild": true
+  }
+}

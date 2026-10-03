@@ -1,3 +1,8 @@
+# Dependencies and build output: the synthesized cloud assembly, the packed
+# deploy archive and the duva binary.
+node_modules/
+dist/
+
 # Impeccable is installed per machine with `npx impeccable install`, because
 # each agent harness gets its own build. Its outputs (PRODUCT.md, DESIGN.md and
 # the shared .impeccable/ files) are tracked.

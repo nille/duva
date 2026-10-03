@@ -1,0 +1,42 @@
+openapi: 3.1.0
+info:
+  title: Duva
+  summary: A self-hosted mailbox platform on Amazon SES where humans and agents are both actors.
+  description: >
+    The only source of Duva's API contract. The TypeScript client and the CLI's
+    API commands are generated from this document. Each operation's
+    x-cli-command names the CLI command that calls it.
+  version: 0.1.0
+  license:
+    name: MIT
+    identifier: MIT
+paths:
+  /status:
+    get:
+      operationId: getStatus
+      summary: Show Duva's version and the deployment's region.
+      description: Answers without sign-in, so any client can check that it reaches the deployment.
+      x-cli-command: status
+      security: []
+      responses:
+        "200":
+          description: The deployment's status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Status"
+components:
+  schemas:
+    Status:
+      type: object
+      additionalProperties: false
+      required: [version, region]
+      properties:
+        version:
+          type: string
+          description: The version of Duva the deployment runs.
+          examples: ["0.1.0"]
+        region:
+          type: string
+          description: The AWS region the deployment runs in.
+          examples: ["eu-north-1"]

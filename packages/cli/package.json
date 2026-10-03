@@ -1,0 +1,23 @@
+{
+  "name": "@duva/cli",
+  "description": "duva, the command-line interface for Duva. One binary built with Bun.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun scripts/pack.ts && bun build --compile --bytecode --format=esm src/main.ts --outfile dist/duva",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@aws-cdk/toolkit-lib": "^1.42.1",
+    "@aws-sdk/client-ssm": "^3.1146.0",
+    "@duva/client": "*",
+    "@duva/openapi": "*",
+    "@smithy/shared-ini-file-loader": "^4.7.2"
+  },
+  "devDependencies": {
+    "@duva/api": "*",
+    "@duva/infra": "*",
+    "@types/bun": "^1.4.2",
+    "bun": "^1.4.2"
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "@duva/web",
+  "description": "Duva's web app, a React single-page app. Empty until sign-in arrives.",
+  "private": true,
+  "type": "module"
+}

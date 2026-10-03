@@ -1,0 +1,12 @@
+{
+  "name": "@duva/openapi",
+  "description": "Duva's OpenAPI document, the only source of its API contract, and the code generated from it.",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p ."
+  }
+}
