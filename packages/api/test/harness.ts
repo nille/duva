@@ -1,6 +1,6 @@
 // The API test harness: the real handlers, authorizer, inbound handler and sender in-process, with
 // DynamoDB Local (started by dynamodb-local.ts) for DynamoDB and its stream, an in-memory stand-in
-// for the mail bucket, stand-ins for SES receiving and sending, and a test token issuer in place of
+// for the mail bucket and for the inbound Lambda's log, stand-ins for SES receiving and sending, and a test token issuer in place of
 // Cognito. Tests drive the API only through the generated client, hand mail to SES as a sender's
 // server does, and read what SES sent.
 import { createServer } from "node:http";
@@ -67,13 +67,16 @@ export interface Duva {
    * Hands the raw message to SES, as the sender's mail server does, and waits until Duva has
    * processed it. Returns the recipients SES refused during delivery. The envelope sender defaults
    * to the message's From. With `invocations`, Lambda runs the inbound handler that many times.
-   * SES judges the message by `verdicts`, which pass unless given.
+   * SES judges the message by `verdicts`, which pass unless given. Also returns the ID SES gave
+   * the message, unless it refused every recipient.
    */
   receive(
     raw: string | Uint8Array,
     envelope: Partial<Envelope> & Pick<Envelope, "to">,
     options?: ReceiveOptions,
-  ): Promise<{ refused: string[] }>;
+  ): Promise<{ refused: string[]; messageId?: string }>;
+  /** The lines the inbound Lambda wrote to its log, oldest first, as CloudWatch Logs keeps them. */
+  inboundLog(): string[];
   /** The receipt rules in Duva's rule set, as SES describes them. */
   receiptRules(): ReceiptRule[];
   /** The raw messages SES accepted for sending, oldest first. Each API call returns once the sends it led to are done. */
@@ -111,9 +114,10 @@ export async function startDuva({
   for (const email of others) await addHumanToOrganization({ table, humans }, { email, by: firstAdmin.id });
 
   const mailBucket = memoryMailBucket();
+  const inboundLog: string[] = [];
   const ses = sesReceiving({
     buckets: new Map([[mailBucketName, mailBucket]]),
-    functions: new Map([[inboundFunction, createInbound({ table, mailBucket })]]),
+    functions: new Map([[inboundFunction, createInbound({ table, mailBucket, log: (line) => inboundLog.push(line) })]]),
   });
   const receiving = { rules: ses.rules, bucket: mailBucketName, inboundFunction };
   const sending = sesSending({ region, domain, sandbox, answersLost: sesAnswersLost });
@@ -149,6 +153,7 @@ export async function startDuva({
       login.endSessions();
     },
     receive: async (raw, { from, to }, options) => ses.receive(raw, { from: from ?? (await senderOf(raw)), to }, options),
+    inboundLog: () => [...inboundLog],
     receiptRules: () => ses.describeRules(),
     sent: () => sending.sent(),
     setUp: async (options) => {
@@ -231,7 +236,7 @@ function memoryMailBucket(): MailBucket {
       return objects.get(key);
     },
     async erase(key) {
-      objects.delete(key);
+      return objects.delete(key);
     },
   };
 }

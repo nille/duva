@@ -72,13 +72,14 @@ export function sesReceiving({ buckets, functions }: { buckets: Map<string, Mail
      * Receives the raw message over SMTP. SES refuses each recipient no enabled rule matches,
      * during delivery. For the others, it applies the first matching rule's actions in order. A
      * Lambda action invokes the function `invocations` times, as Lambda's retries of an
-     * asynchronous invocation can, and here waits for it. The receipt carries the verdicts.
+     * asynchronous invocation can, and here waits for it. The receipt carries the verdicts. Returns
+     * the ID SES gave the message, if it accepted any recipient.
      */
     async receive(
       raw: string | Uint8Array,
       envelope: Envelope,
       { invocations = 1, verdicts = {} }: ReceiveOptions = {},
-    ): Promise<{ refused: string[] }> {
+    ): Promise<{ refused: string[]; messageId?: string }> {
       const matching = (recipient: string) => rules.find((rule) => rule.Enabled && matches(rule, recipient));
       const refused = envelope.to.filter((recipient) => matching(recipient) === undefined);
       const accepted = envelope.to.filter((recipient) => matching(recipient) !== undefined);
@@ -109,7 +110,8 @@ export function sesReceiving({ buckets, functions }: { buckets: Map<string, Mail
                     headers: parsed.headers.map(({ originalKey, value }) => ({ name: originalKey, value })),
                     commonHeaders: {
                       returnPath: envelope.from,
-                      from: parsed.from ? [String(parsed.from.address)] : undefined,
+                      // As written, display name included.
+                      from: parsed.headers.filter(({ key }) => key === "from").map(({ value }) => value),
                       date: parsed.date ?? "",
                       to: parsed.to?.map(({ address }) => String(address)),
                       messageId: parsed.messageId ?? "",
@@ -136,7 +138,7 @@ export function sesReceiving({ buckets, functions }: { buckets: Map<string, Mail
           for (let invocation = 0; invocation < invocations; invocation++) await invoke(structuredClone(event));
         }
       }
-      return { refused };
+      return { refused, messageId };
     },
   };
 }

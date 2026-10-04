@@ -9,4 +9,6 @@ import { s3MailBucket } from "./mail-bucket.ts";
 export const handler = createInbound({
   table: { client: new DynamoDBClient({}), name: required(environmentVariables.tableName) },
   mailBucket: s3MailBucket(new S3Client({}), required(environmentVariables.mailBucket)),
+  // Straight to stdout, without the prefix console.log adds, so CloudWatch reads each line's embedded metrics.
+  log: (line) => process.stdout.write(`${line}\n`),
 });

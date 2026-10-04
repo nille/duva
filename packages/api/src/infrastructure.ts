@@ -47,3 +47,12 @@ export const sentPrefix = "sent/";
 
 /** The name of Duva's receipt rule, which lists its addresses. */
 export const receiptRuleName = "Addresses";
+
+/**
+ * The CloudWatch metric counting the messages Duva drops on arrival, by reason. The inbound Lambda
+ * writes it to its log in embedded metric format, so it costs nothing while no mail is dropped.
+ */
+export const dropMetric = { namespace: "Duva", name: "DroppedMessages", dimension: "Reason" } as const;
+
+/** Why Duva drops a message on arrival, as the drop metric's dimension names it. */
+export const dropReasons = ["virus", "dmarcReject"] as const;

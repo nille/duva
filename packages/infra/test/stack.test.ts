@@ -424,3 +424,18 @@ test("every name the stack sets in a namespace wider than its region holds the r
   expect(named.map(({ id }) => id)).toContainEqual(expect.stringMatching(/^WebAccess/));
   for (const { id, name } of named) expect({ id, name }).toEqual({ id, name: expect.stringContaining('{"Ref":"AWS::Region"}') });
 });
+
+test("every Lambda keeps its log a month, so nothing it logs, a drop's record included, outlives that", () => {
+  for (const [id, { Properties }] of ofType("AWS::Lambda::Function")) {
+    const logGroup = Properties?.LoggingConfig?.LogGroup?.Ref;
+    expect({ id, retention: stack.template.Resources[logGroup]?.Properties?.RetentionInDays }).toEqual({ id, retention: 30 });
+  }
+});
+
+test("the inbound Lambda may publish the drop metric: its role may write its log, which is kept as text, as the metric's lines are written", () => {
+  const [, { Properties }] = lambda("InboundHandler");
+  // Real runs check the metric with the text log format, where each line reaches CloudWatch as written.
+  expect(Properties?.LoggingConfig?.LogFormat ?? "Text").toBe("Text");
+  const roleId = Properties?.Role?.["Fn::GetAtt"]?.[0];
+  expect(JSON.stringify(stack.template.Resources[roleId]?.Properties?.ManagedPolicyArns)).toContain("service-role/AWSLambdaBasicExecutionRole");
+});

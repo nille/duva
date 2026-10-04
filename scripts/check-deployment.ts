@@ -6,12 +6,14 @@
 // credentials, and lets the web app call it; the web app is served with the config deploy
 // published; the user pool takes sign-in names in any case, and no pool the stack retired is left;
 // once an address exists, SES's receipt rule lists it; and no received mail and no approved send
-// waits in a failure queue. Signing in stays with a human. Exits 1 if any check fails.
+// waits in a failure queue. Signing in stays with a human. Then prints how many messages Duva
+// dropped on arrival each day of the last 7, by reason. Exits 1 if any check fails.
 import { CloudFormationClient, DescribeStacksCommand } from "@aws-sdk/client-cloudformation";
+import { CloudWatchClient, GetMetricDataCommand } from "@aws-sdk/client-cloudwatch";
 import { CognitoIdentityProviderClient, DescribeUserPoolCommand, paginateListUserPools } from "@aws-sdk/client-cognito-identity-provider";
 import { DescribeReceiptRuleSetCommand, SESClient } from "@aws-sdk/client-ses";
 import { GetQueueAttributesCommand, SQSClient } from "@aws-sdk/client-sqs";
-import { inboundPrefix, receiptRuleName } from "@duva/api/infrastructure";
+import { dropMetric, dropReasons, inboundPrefix, receiptRuleName } from "@duva/api/infrastructure";
 import { stackName, stackOutputs } from "@duva/infra/outputs";
 
 const region = process.env.AWS_REGION;
@@ -135,5 +137,42 @@ await check("the API lets the web app call it with a session", async () => {
   const headers = response.headers.get("access-control-allow-headers") ?? "";
   return origin === webUrl && headers.includes("authorization") ? undefined : `allows origin ${origin} and headers ${headers}`;
 });
+// The CloudWatch console shows the same metric for any period.
+const days = 7;
+const day = 86_400_000;
+const dayOf = (time: Date) => time.toISOString().slice(0, 10);
+const reasonNames: Record<(typeof dropReasons)[number], string> = { virus: "virus", dmarcReject: "DMARC reject" };
+const drops = new Map<string, Record<string, number>>();
+await check(`CloudWatch counts the drops on arrival of the last ${days} days`, async () => {
+  const today = new Date(dayOf(new Date()));
+  const start = new Date(today.getTime() - (days - 1) * day);
+  for (let index = 0; index < days; index++) drops.set(dayOf(new Date(start.getTime() + index * day)), {});
+  const { MetricDataResults = [] } = await new CloudWatchClient({ region }).send(
+    new GetMetricDataCommand({
+      StartTime: start,
+      EndTime: new Date(today.getTime() + day),
+      MetricDataQueries: dropReasons.map((reason) => ({
+        Id: reason.toLowerCase(),
+        Label: reason,
+        MetricStat: {
+          Metric: { Namespace: dropMetric.namespace, MetricName: dropMetric.name, Dimensions: [{ Name: dropMetric.dimension, Value: reason }] },
+          Period: day / 1000,
+          Stat: "Sum",
+        },
+      })),
+    }),
+  );
+  for (const { Label, Timestamps = [], Values = [] } of MetricDataResults) {
+    Timestamps.forEach((timestamp, index) => {
+      const counts = drops.get(dayOf(timestamp));
+      if (counts !== undefined) counts[Label!] = Values[index] ?? 0;
+    });
+  }
+  return undefined;
+});
+console.log(`\nMessages dropped on arrival, by day (UTC) and reason:`);
+for (const [date, counts] of drops) {
+  console.log(`  ${date}  ${dropReasons.map((reason) => `${reasonNames[reason]} ${counts[reason] ?? 0}`).join(", ")}`);
+}
 
 process.exitCode = failed ? 1 : 0;

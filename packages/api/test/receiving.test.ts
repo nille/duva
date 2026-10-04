@@ -481,6 +481,67 @@ test("dropped mail processed twice is still dropped, and the second time doesn't
   expect(changes.map(({ position }) => position)).toEqual([1]);
 });
 
+/** The drops the inbound Lambda logged, as CloudWatch reads them. */
+const drops = (duva: Awaited<ReturnType<typeof startDuva>>) =>
+  duva.inboundLog().map((line) => JSON.parse(line) as Record<string, unknown>).filter((entry) => "Reason" in entry);
+
+test.each([
+  ["virus", { virus: "FAIL" }],
+  ["dmarcReject", { dmarc: "FAIL", dmarcPolicy: "reject" }],
+] as const)("a dropped message is counted in Duva's metric by its reason, %s", async (reason, verdicts) => {
+  const { duva } = await withMailbox();
+
+  await duva.receive(await mail("plain"), { to: ["hermes@example.com"] }, { verdicts });
+
+  expect(drops(duva)).toEqual([
+    expect.objectContaining({
+      _aws: { Timestamp: expect.any(Number), CloudWatchMetrics: [{ Namespace: "Duva", Dimensions: [["Reason"]], Metrics: [{ Name: "DroppedMessages", Unit: "Count" }] }] },
+      Reason: reason,
+      DroppedMessages: 1,
+    }),
+  ]);
+});
+
+test("a drop records SES's message ID, the receiving mailbox, the sender's domains, the DMARC policy and SES's verdicts", async () => {
+  const { duva, mailbox } = await withMailbox();
+
+  const { messageId } = await duva.receive(await mail("plain"), { from: "bounces@lists.example.net", to: ["hermes@example.com"] }, {
+    verdicts: { spam: "GRAY", dmarc: "FAIL", dmarcPolicy: "reject" },
+  });
+
+  expect(drops(duva)).toEqual([
+    expect.objectContaining({
+      sesMessageId: messageId,
+      mailboxes: [mailbox.id],
+      envelopeDomain: "lists.example.net",
+      fromDomains: ["example.org"],
+      dmarcPolicy: "reject",
+      verdicts: { spf: "PASS", dkim: "PASS", dmarc: "FAIL", spam: "GRAY", virus: "PASS" },
+    }),
+  ]);
+});
+
+test("a drop's record carries nothing of the message: no subject, body or attachment, and no address's local part", async () => {
+  const { duva } = await withMailbox();
+
+  await duva.receive(await mail("attachment"), { to: ["hermes@example.com", "Hermes+Reports@example.com"] }, { verdicts: { virus: "FAIL" } });
+
+  const [line, ...others] = duva.inboundLog();
+  expect(others).toEqual([]);
+  // The fixture's sender, recipients, subject, body and attachments, in any case.
+  for (const part of ["grace", "hopper", "hermes", "reports", "the report", "attached", "report.pdf", "SGVsbG8", "YSxiCjEsMgo"]) {
+    expect(line!.toLowerCase()).not.toContain(part.toLowerCase());
+  }
+});
+
+test("dropped mail processed twice is counted once", async () => {
+  const { duva } = await withMailbox();
+
+  await duva.receive(await mail("plain"), { to: ["hermes@example.com"] }, { invocations: 2, verdicts: { virus: "FAIL" } });
+
+  expect(drops(duva)).toHaveLength(1);
+});
+
 test.each(["quarantine", "none"] as const)("mail that fails DMARC from a domain whose policy is %s lands in the Inbox as usual", async (dmarcPolicy) => {
   const { duva, hermes, mailbox } = await withMailbox();
 
@@ -489,6 +550,7 @@ test.each(["quarantine", "none"] as const)("mail that fails DMARC from a domain 
   const { inbox, spam } = await everythingIn(hermes, mailbox.id);
   expect(inbox.map(({ subject, labels }) => ({ subject, labels }))).toEqual([{ subject: "Compiler notes", labels: ["inbox"] }]);
   expect(spam).toEqual([]);
+  expect(drops(duva)).toEqual([]);
 });
 
 test.each([
