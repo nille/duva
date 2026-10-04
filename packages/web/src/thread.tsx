@@ -60,7 +60,7 @@ export function ThreadView({
   // The attachment on its way, by its message and place, or whether getting one failed.
   const [downloading, setDownloading] = useState<{ message: string; index: number } | "failed">();
   const leaving = useRef(false);
-  // The latest request to mark the thread read, which marking it unread waits for, so it lands last.
+  // Every request to mark the thread read still on its way, which marking it unread waits for, so the human's choice lands last.
   const markingRead = useRef<Promise<unknown>>(Promise.resolve());
   const readingRef = useRef(reading);
   readingRef.current = reading;
@@ -85,7 +85,7 @@ export function ThreadView({
     // Reading the thread on screen marks it read, also when a reply arrives while it's open, until the human marks it unread.
     if (data.unread && !leaving.current) {
       const read = client.POST("/mailboxes/{mailbox}/threads/read", { params: { path: { mailbox: mailbox.id } }, body: { threads: [id] } }).catch(() => ({ response: undefined }));
-      markingRead.current = read;
+      markingRead.current = Promise.all([markingRead.current, read]);
       const { response: marked } = await read;
       if (marked?.status === 401) return onSignedOut();
       setMarking(marked?.ok ? "idle" : "readFailed");

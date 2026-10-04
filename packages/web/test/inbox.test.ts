@@ -114,6 +114,36 @@ test("long quoted text is folded until the human asks for it", budget, async () 
   await expect.poll(() => page.getByText("Gammal rad 8").isVisible(), wait).toBe(true);
 });
 
+test("a thread the human marks unread stays unread, however late the mark-reads from reading it reach Duva", budget, async () => {
+  const { page, signIn, receive, duva } = await withPersonalMailbox();
+  await receive(await mail("plain"));
+  await signIn("grace@example.org");
+  // The first request to mark the thread read reaches Duva only after a while, as on a slow
+  // connection, and the next ones at once.
+  let reads = 0;
+  await page.route("**/threads/read", async (route) => {
+    if (++reads === 1) await new Promise((resolve) => setTimeout(resolve, 3000));
+    await route.continue().catch(() => undefined);
+  });
+  await page.getByRole("link", { name: /Compiler notes/ }).click();
+  // A reply arrives while the thread is open, which makes it unread again, so reading it marks it read once more.
+  await receive(
+    ["From: Ada <ada@example.org>", "To: grace@example.com", "Subject: Re: Compiler notes", "Message-ID: <notes-2@example.org>", "In-Reply-To: <notes-1@example.org>", "", "Tack."].join("\r\n"),
+  );
+  await expect.poll(() => reads, wait).toBeGreaterThanOrEqual(2);
+
+  await page.getByRole("button", { name: "Mark unread" }).click();
+
+  await expect.poll(() => page.getByRole("heading", { level: 1 }).textContent(), wait).toBe("Inbox");
+  // By now every request to mark it read has reached Duva.
+  await new Promise((resolve) => setTimeout(resolve, 3500));
+  const grace = duva.signIn("grace@example.org");
+  const { data: mailboxes } = await grace.GET("/mailboxes");
+  const { data: inbox } = await grace.GET("/mailboxes/{mailbox}/threads", { params: { path: { mailbox: mailboxes!.mailboxes[0]!.id } } });
+  expect(inbox!.threads.map(({ unread }) => unread)).toEqual([true]);
+  await expect.poll(() => page.getByRole("link", { name: /^Unread.*Compiler notes/ }).count(), wait).toBe(1);
+});
+
 test("the human marks a thread unread again, and the Inbox lists it unread", budget, async () => {
   const { page, signIn, receive } = await withPersonalMailbox();
   await receive(await mail("plain"));
