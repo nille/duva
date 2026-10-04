@@ -41,7 +41,7 @@ Facts about AWS that shaped Duva's design, each with how it was established. A c
 
 ## S3
 
-- **In a versioned bucket a delete without a version ID only adds a delete marker,** and the earlier versions stay. So erasing dropped mail lists the key's versions and delete markers, which needs `s3:ListBucketVersions`, and deletes each by ID, which needs `s3:DeleteObjectVersion`. _[Deleting object versions](https://docs.aws.amazon.com/AmazonS3/latest/userguide/DeletingObjectVersions.html); in the real run of #8 a dropped message left no version and no delete marker._
+- **In a versioned bucket a delete without a version ID only adds a delete marker,** and the earlier versions stay. So erasing dropped mail lists the key's versions and delete markers, which needs `s3:ListBucketVersions`, and deletes each by ID, which needs `s3:DeleteObjectVersion`. _[Deleting object versions](https://docs.aws.amazon.com/AmazonS3/latest/userguide/DeletingObjectVersions.html); in the real run of #8 a dropped message left no version and no delete marker, and in the real run of #28 the eraser did the same for a received copy under `inbound/` and a sent one under `sent/`, with `s3:ListBucketVersions` conditioned on each prefix._
 
 ## DynamoDB
 
