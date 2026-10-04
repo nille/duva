@@ -1,17 +1,16 @@
----
-status: proposed
----
-
 # Search with LanceDB on S3
 
-Keyword, vector and hybrid search run in an embedded LanceDB table per mailbox, stored in the organization's S3 bucket, so idle cost is S3 storage. OpenSearch Serverless was the managed alternative, but a steady trickle of mail keeps it awake at about $190-370 a month per organization. LanceDB is pre-1.0, so a spike (#2) measured it first on a 100k-message mailbox, from Lambda in eu-north-1 (`spikes/search/REPORT.md`). With LanceDB 0.39.0 and its vector index, every target holds at 10,240 MB, in an x64 zip and in an arm64 image, though the zip's caller sees cold starts of 3.1 to 3.3 s. At 1,769 and 3,538 MB every target holds except cold p95, which reaches 3.1 to 3.5 s against 3 s. The ticket's rules would accept it at 10,240 MB, but which size and package the targets are meant at is a judgment call, so this stays proposed until #20 settles it.
+Keyword, vector and hybrid search run in an embedded LanceDB table per mailbox, stored in the organization's S3 bucket, so idle cost is S3 storage. OpenSearch Serverless was the managed alternative, but a steady trickle of mail keeps it awake at about $190-370 a month per organization. LanceDB is pre-1.0, so a spike (#2) measured it first on a 100k-message mailbox, from Lambda in eu-north-1 (`spikes/search/REPORT.md`). With LanceDB 0.39.0 and its vector index, every target holds at 10,240 MB, in an x64 zip and in an arm64 image. At 1,769 and 3,538 MB every target holds except cold p95, which reaches 3.1 to 3.5 s against 3 s. So search runs in a Lambda with 10,240 MB, packaged as an x64 zip, which `duva deploy` ships as it ships every other Lambda. The arm64 image starts faster when cold, at 2.0 to 2.2 s, but deploy would have to build and push an image to ECR in every organization's account. Nicklas chose the zip on 2026-10-04.
 
 ## Consequences
 
 - Search sits behind one module, so the engine can be swapped, and the spike's behavior suite is the contract any engine passes.
 - Mail is embedded with Titan Text Embeddings V2 at 1,024 dimensions, which runs in eu-north-1, so mail need not leave the region. It costs $0.55 per 100k messages.
 - LanceDB's x64 native module takes about 214 MB with Apache Arrow, which fits a zip with about 47 MB to spare. Its arm64 module is 389 MB, so arm64 needs a container image.
+- The zip's cold p95 is 2.7 s against the 3 s target, and its caller sees cold starts of 3.1 to 3.3 s. The margin is thin, so the cold target is measured again whenever the vector index's tuning, LanceDB's version or the package changes, with `node harness/harness.ts benchmark <version>`. If it fails, the arm64 image is the next step, then a search warm-up when someone opens the app.
+- At 10,240 MB a search costs two to three times what it does at 1,769 MB, about $2.20 a month for 1,000 searches a day with one in ten cold, against $0.80.
 - Semantic search needs the vector index: a flat scan takes about 5 s. At LanceDB's defaults the index finds 0.59 of a flat scan's top 20, so it gets tuned before semantic search ships.
 - Each mailbox has one writer, which batches what has arrived, retries, and runs maintenance itself between writes. Readers check for new versions on every search, so new mail is searchable on the next one.
 - A removed message's text stays in its S3 data file until compaction rewrites the fragment, which LanceDB does only past 10% of its rows deleted. So erasing Spam and Trash needs a design of its own.
+- Swedish mail is found less well by meaning than English: MRR 0.13 against 0.38 on the spike's templated Swedish mail. Real Swedish mail settles whether that is Titan's or the data's.
 - Fallback: per-mailbox SQLite FTS5 files in S3 for keywords, plus S3 Vectors for semantic search, merged in our code.

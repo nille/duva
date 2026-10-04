@@ -2,7 +2,7 @@
 
 The spike in #2 asked one question: does LanceDB on S3 meet Duva's search targets on a 100k-message mailbox, queried from Lambda in eu-north-1? This brings together every number from #15 to #19 and compares each with spec #2's targets. The README has each ticket's method and detail, and `results/` the raw data.
 
-**The answer.** With the vector index, every target holds at 10,240 MB, in both packages. At 1,769 and 3,538 MB every target holds except cold p95, which misses 3 s by 0.1 to 0.5 s. Read literally, the ticket's rules then accept ADR-0007 at 10,240 MB. But that rests on judgment calls the spike shouldn't make, so ADR-0007 stays proposed until Nicklas decides (see [The decision](#the-decision)).
+**The answer.** With the vector index, every target holds at 10,240 MB, in both packages. At 1,769 and 3,538 MB every target holds except cold p95, which misses 3 s by 0.1 to 0.5 s. Read literally, the ticket's rules then accept ADR-0007 at 10,240 MB. That rested on judgment calls the spike shouldn't make, so it went to Nicklas, who accepted ADR-0007 at 10,240 MB with the x64 zip on 2026-10-04 (see [The decision](#the-decision)).
 
 ## What was measured
 
@@ -191,7 +191,7 @@ Read literally, the rules point to accepting ADR-0007 at 10,240 MB, the cheapest
 - Which package. The zip fits how `duva deploy` ships today but passes cold by 0.31 s, and its caller sees 3.1 to 3.3 s. The image passes from the caller too, but deploy would have to build it and push it to ECR in each organization's account.
 - What 10,240 MB costs: two to three times as much per search, about $2 a month at 1,000 searches a day.
 
-So ADR-0007 stays proposed. Its text is updated with the spike's findings, and records Titan V2 at 1,024 dimensions.
+**Nicklas's decision, 2026-10-04:** accept ADR-0007 at 10,240 MB with the x64 zip, since it needs no new deploy machinery, its cost is about $2 a month, and agents get the target too, not only the web app. Because it passes cold by only 0.31 s, the cold target is measured again whenever the vector index's tuning, LanceDB's version or the package changes. If it fails, the arm64 image is the next step, then a warm-up. ADR-0007 records this, with Titan V2 at 1,024 dimensions.
 
 ## What the spike cost
 
