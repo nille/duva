@@ -342,6 +342,26 @@ export async function allAddresses(table: Table): Promise<string[]> {
   return addresses;
 }
 
+/** The IDs of every mailbox in the organization, each reached through at least one address. */
+export async function allMailboxes(table: Table): Promise<string[]> {
+  const mailboxes = new Set<string>();
+  let start: Record<string, unknown> | undefined;
+  do {
+    const page = await documents(table).send(
+      new QueryCommand({
+        TableName: table.name,
+        KeyConditionExpression: `${pk} = :addresses`,
+        ExpressionAttributeValues: { ":addresses": addressesPartition },
+        ConsistentRead: true,
+        ExclusiveStartKey: start,
+      }),
+    );
+    for (const item of page.Items ?? []) mailboxes.add(item.mailbox as string);
+    start = page.LastEvaluatedKey;
+  } while (start !== undefined);
+  return [...mailboxes];
+}
+
 /** The mailbox an item stores, in the order the contract lists its fields. */
 const mailboxOf = ({ id, kind, owner, defaultAddress }: Mailbox): Mailbox => ({ id, kind, owner, defaultAddress });
 

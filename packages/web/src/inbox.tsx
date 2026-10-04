@@ -190,6 +190,19 @@ export function ThreadIndex({
           <LabelHead client={client} mailbox={mailbox} base={base} label={ownLabel} onDone={onDone} onSignedOut={onSignedOut} />
         )}
         {listing.status === "listed" && unread > 0 && <p className="count">{strings.inbox.unread(unread, listing.next !== undefined)}</p>}
+        {label === "trash" && threads.length > 0 && (
+          <EmptyTrash
+            client={client}
+            mailbox={mailbox}
+            onEmptied={() => {
+              // The eraser erases them right after Duva answers, and the change feed says when each is gone.
+              setSelected(new Set());
+              setListing({ status: "listed", threads: [], pages: 1, fresh: new Set() });
+              onDone({ message: strings.trash.emptied });
+            }}
+            onSignedOut={onSignedOut}
+          />
+        )}
         <p className="mailbox-address">{mailbox.defaultAddress}</p>
         <Connection state={connection} unreachable={strings.connection.mailUnreachable} />
       </div>
@@ -287,6 +300,45 @@ function Empty({ view, mailbox, agent }: { view: View; mailbox: Mailbox; agent?:
       <h2 id="empty-title">{copy.title}</h2>
       <p>{copy.lead}</p>
     </section>
+  );
+}
+
+/** Emptying Trash, which erases its threads for good, once the human confirms it in place. */
+function EmptyTrash({ client, mailbox, onEmptied, onSignedOut }: { client: DuvaClient; mailbox: Mailbox; onEmptied: () => void; onSignedOut: () => void }) {
+  const [state, setState] = useState<{ status: "shown" | "confirming" | "busy" } | { status: "failed"; message: string }>({ status: "shown" });
+
+  const empty = async () => {
+    setState({ status: "busy" });
+    const { data, response } = await client.POST("/mailboxes/{mailbox}/trash/empty", { params: { path: { mailbox: mailbox.id } } }).catch(() => ({ data: undefined, response: undefined }));
+    if (response?.status === 401) return onSignedOut();
+    if (data === undefined) return setState({ status: "failed", message: response === undefined ? strings.trash.unreachable : strings.trash.failed(response.status) });
+    setState({ status: "shown" });
+    onEmptied();
+  };
+
+  return (
+    <div className="label-tools">
+      {state.status === "shown" ? (
+        <button type="button" className="button button-small button-quiet" onClick={() => setState({ status: "confirming" })}>
+          {strings.trash.empty}
+        </button>
+      ) : (
+        <div className="confirm" role="group" aria-label={strings.trash.empty}>
+          <p>{strings.trash.confirm}</p>
+          <button type="button" className="button button-small button-reject" disabled={state.status === "busy"} onClick={() => void empty()}>
+            {state.status === "busy" ? strings.trash.erasing : strings.trash.erase}
+          </button>
+          <button type="button" className="button button-small button-quiet" onClick={() => setState({ status: "shown" })}>
+            {strings.trash.cancel}
+          </button>
+        </div>
+      )}
+      {state.status === "failed" && (
+        <p className="field-error" role="alert">
+          {state.message}
+        </p>
+      )}
+    </div>
   );
 }
 

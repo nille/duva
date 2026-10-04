@@ -9,6 +9,7 @@
     "./setup-lambda": "./src/setup-lambda.ts",
     "./inbound-lambda": "./src/inbound-lambda.ts",
     "./sender-lambda": "./src/sender-lambda.ts",
+    "./eraser-lambda": "./src/eraser-lambda.ts",
     "./infrastructure": "./src/infrastructure.ts",
     "./harness": "./test/harness.ts"
   },
@@ -18,6 +19,7 @@
   "dependencies": {
     "@aws-sdk/client-cognito-identity-provider": "^3.1146.0",
     "@aws-sdk/client-dynamodb": "^3.1146.0",
+    "@aws-sdk/client-lambda": "^3.1146.0",
     "@aws-sdk/client-s3": "^3.1146.0",
     "@aws-sdk/client-ses": "^3.1146.0",
     "@aws-sdk/client-sesv2": "^3.1146.0",

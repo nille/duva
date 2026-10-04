@@ -33,6 +33,8 @@ const payPerUse = new Set([
   "AWS::Cognito::UserPoolClient",
   "AWS::Cognito::UserPoolDomain",
   "AWS::DynamoDB::GlobalTable",
+  // A scheduled rule on the default event bus costs nothing; only the invocations it makes do.
+  "AWS::Events::Rule",
   "AWS::IAM::Policy",
   "AWS::IAM::Role",
   "AWS::Lambda::EventInvokeConfig",
@@ -181,6 +183,39 @@ test("the inbound Lambda can erase raw mail for good, every version of it, and o
   expect(scoped).toContain('"/inbound/*"');
   expect(scoped).toContain('{"StringLike":{"s3:prefix":"inbound/*"}}');
   expect(actions("ApiHandler", "s3").filter((action) => /Delete/.test(action))).toEqual([]);
+});
+
+test("the eraser runs once a day, and has 15 minutes for a run", () => {
+  const [eraserId, { Properties: eraser }] = lambda("EraserHandler");
+  const rules = ofType("AWS::Events::Rule");
+  expect(rules).toHaveLength(1);
+  const [[ruleId, { Properties: rule }]] = rules as [[string, Resource]];
+  expect(rule).toMatchObject({ ScheduleExpression: "rate(1 day)", State: "ENABLED", Targets: [{ Arn: { "Fn::GetAtt": [eraserId, "Arn"] } }] });
+  const permissions = ofType("AWS::Lambda::Permission").filter(([, { Properties }]) => Properties?.Principal === "events.amazonaws.com");
+  expect(permissions.map(([, { Properties }]) => Properties)).toEqual([
+    expect.objectContaining({ Action: "lambda:InvokeFunction", FunctionName: { "Fn::GetAtt": [eraserId, "Arn"] }, SourceArn: { "Fn::GetAtt": [ruleId, "Arn"] } }),
+  ]);
+  expect(eraser?.Timeout).toBe(15 * 60);
+});
+
+test("the eraser can write the table and erase raw mail for good, every version of it, under the inbound and sent prefixes only", () => {
+  expect(tableActions("EraserHandler")).toEqual(expect.arrayContaining(["dynamodb:PutItem", "dynamodb:DeleteItem", "dynamodb:Query", "dynamodb:BatchGetItem"]));
+  const erasing = statements("EraserHandler").filter(({ Action }) => [Action].flat().some((action) => action.startsWith("s3:")));
+  expect([...new Set(erasing.flatMap(({ Action }) => [Action].flat()))].sort()).toEqual(["s3:DeleteObjectVersion", "s3:ListBucketVersions"]);
+  const scoped = JSON.stringify(erasing);
+  for (const prefix of ["inbound", "sent"]) {
+    expect(scoped).toContain(`"/${prefix}/*"`);
+    expect(scoped).toContain(`{"StringLike":{"s3:prefix":"${prefix}/*"}}`);
+  }
+  expect(scoped).not.toMatch(/"\/\*"|"s3:prefix":"\*"/);
+});
+
+test("the API invokes the eraser to empty a Trash, and may invoke no other Lambda", () => {
+  const [eraserId] = lambda("EraserHandler");
+  const invoking = statements("ApiHandler").filter(({ Action }) => [Action].flat().some((action) => action.startsWith("lambda:")));
+  expect(JSON.stringify(invoking.map(({ Resource }) => Resource))).toContain(`{"Fn::GetAtt":["${eraserId}","Arn"]}`);
+  expect(JSON.stringify(invoking.map(({ Resource }) => Resource)).match(/Fn::GetAtt":\["(\w+)"/g)?.every((ref) => ref.includes(eraserId))).toBe(true);
+  expect(lambda("ApiHandler")[1].Properties?.Environment?.Variables?.[environmentVariables.eraserFunction]).toEqual({ "Fn::GetAtt": [eraserId, "Arn"] });
 });
 
 const [ruleSetId] = ofType("AWS::SES::ReceiptRuleSet")[0]!;

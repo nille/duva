@@ -127,8 +127,8 @@ export const strings = {
     unread: (count: number) => `, ${count} unread`,
     empty: {
       all: { title: "No mail yet", lead: "Every thread is listed here, archived ones too, except those in Spam and Trash." },
-      spam: { title: "No spam", lead: "Mail judged to be spam when it arrived, and threads you mark as spam, are listed here, out of your Inbox." },
-      trash: { title: "Trash is empty", lead: "Threads you move to Trash are listed here until you restore them." },
+      spam: { title: "No spam", lead: "Mail judged to be spam when it arrived, and threads you mark as spam, are listed here, out of your Inbox. Each is erased for good after 30 days here." },
+      trash: { title: "Trash is empty", lead: "Threads you move to Trash are listed here until you restore them. Each is erased for good after 30 days here." },
       label: { title: "No threads have this label", lead: "Pick threads in any view, then add the label to them with Labels." },
     },
   },
@@ -160,6 +160,17 @@ export const strings = {
     undone: "Undone.",
     undoFailed: "Duva couldn't undo that. Change the threads back by hand.",
     failed: "Duva couldn't change the threads. Try again.",
+  },
+
+  trash: {
+    empty: "Empty Trash",
+    confirm: "Erase every thread in Trash for good? This can't be undone.",
+    erase: "Erase for good",
+    erasing: "Erasing…",
+    cancel: "Cancel",
+    emptied: "Emptied Trash. Its threads are erased for good.",
+    failed: (status: number) => `Duva couldn't empty Trash (error ${status}). Try again in a moment.`,
+    unreachable: "Duva couldn't be reached, so Trash wasn't emptied. Check your connection and try again.",
   },
 
   labelForm: {

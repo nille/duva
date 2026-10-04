@@ -669,6 +669,35 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+  /mailboxes/{mailbox}/trash/empty:
+    post:
+      operationId: emptyTrash
+      summary: Empty a mailbox's Trash, erasing every thread in it for good.
+      description: >
+        Erases each thread that is in Trash when you call, with its messages
+        and their raw copies, every stored version included. Erasing can't be
+        undone. Each erased thread gets a threadErased change in the mailbox's
+        change feed, naming you, with none of its content. Duva erases the
+        threads right after answering, and finishes on its next daily run if
+        that fails. Only the mailbox's owner can empty its Trash, and an agent's
+        sponsor its agent's. Without emptying, Trash and Spam are erased 30
+        days after a thread got the label.
+      x-cli-command: threads empty-trash
+      parameters:
+        - $ref: "#/components/parameters/Mailbox"
+      responses:
+        "202":
+          description: Duva is erasing the threads.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrashEmptying"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /mailboxes/{mailbox}/drafts:
     post:
       operationId: createDraft
@@ -1211,6 +1240,7 @@ components:
         - $ref: "#/components/schemas/LabelCreated"
         - $ref: "#/components/schemas/LabelRenamed"
         - $ref: "#/components/schemas/LabelDeleted"
+        - $ref: "#/components/schemas/ThreadErased"
       discriminator:
         propertyName: type
         mapping:
@@ -1231,6 +1261,7 @@ components:
           labelCreated: "#/components/schemas/LabelCreated"
           labelRenamed: "#/components/schemas/LabelRenamed"
           labelDeleted: "#/components/schemas/LabelDeleted"
+          threadErased: "#/components/schemas/ThreadErased"
     MessageReceived:
       type: object
       additionalProperties: false
@@ -1507,6 +1538,40 @@ components:
             label:
               type: string
               description: The ID of the label deleted.
+    ThreadErased:
+      type: object
+      additionalProperties: false
+      required: [position, at, type, thread]
+      description: >
+        A thread was erased for good, with its messages. The change keeps none
+        of their content. Emptying Trash names the actor who emptied it.
+        Erasing Trash and Spam after the retention period names none.
+      properties:
+        position:
+          type: integer
+          description: The change's position in the mailbox's feed, counting from 1.
+        at:
+          type: string
+          format: date-time
+          description: When the thread was erased.
+        actor:
+          type: string
+          description: The ID of the actor who emptied Trash, if one did.
+        type:
+          type: string
+          const: threadErased
+        thread:
+          type: string
+          description: The ID of the thread erased.
+    TrashEmptying:
+      type: object
+      additionalProperties: false
+      required: [emptiedAt]
+      properties:
+        emptiedAt:
+          type: string
+          format: date-time
+          description: When Trash was emptied. Every thread in Trash then is being erased.
     NewDraft:
       type: object
       additionalProperties: false

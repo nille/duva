@@ -224,6 +224,14 @@ Gives the label a name no other label in the mailbox has, in any case. Its threa
 - `--label` (required): The label's ID.
 - `--name` (required): The label's name.
 
+## duva threads empty-trash
+
+Empty a mailbox's Trash, erasing every thread in it for good.
+
+Erases each thread that is in Trash when you call, with its messages and their raw copies, every stored version included. Erasing can't be undone. Each erased thread gets a threadErased change in the mailbox's change feed, naming you, with none of its content. Duva erases the threads right after answering, and finishes on its next daily run if that fails. Only the mailbox's owner can empty its Trash, and an agent's sponsor its agent's. Without emptying, Trash and Spam are erased 30 days after a thread got the label.
+
+- `--mailbox` (required): The mailbox's ID.
+
 ## duva drafts list
 
 List the drafts in a mailbox, newest first, with where each send stands.

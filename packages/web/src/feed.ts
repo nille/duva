@@ -15,14 +15,14 @@ export interface MailboxChange {
 /** The changes that alter what the Approvals view shows: a request, its decision, or how its send went. */
 export const approvalChanges = new Set<Change["type"]>(["approvalAsked", "approvalWithdrawn", "approvalDecided", "messageSent", "sendFailed", "sendUnclear"]);
 
-/** The changes that alter what a mailbox's threads show: mail in or out, read state and labels. */
-export const mailChanges = new Set<Change["type"]>(["messageReceived", "messageSent", "threadRead", "threadUnread", "threadLabelsChanged"]);
+/** The changes that alter what a mailbox's threads show: mail in or out, read state, labels and erasure. */
+export const mailChanges = new Set<Change["type"]>(["messageReceived", "messageSent", "threadRead", "threadUnread", "threadLabelsChanged", "threadErased"]);
 
 /** The changes to a mailbox's own labels. */
 export const labelChanges = new Set<Change["type"]>(["labelCreated", "labelRenamed", "labelDeleted"]);
 
-/** The changes that alter a mailbox's drafts: writing, deleting and sending them. */
-export const draftChanges = new Set<Change["type"]>(["draftWritten", "draftChanged", "draftDeleted", "sendAsked", "approvalAsked", "approvalDecided", "sendFailed", "sendUnclear"]);
+/** The changes that alter a mailbox's drafts: writing, deleting and sending them, and erasing the threads they sent in. */
+export const draftChanges = new Set<Change["type"]>(["draftWritten", "draftChanged", "draftDeleted", "sendAsked", "approvalAsked", "approvalDecided", "sendFailed", "sendUnclear", "threadErased"]);
 
 /** How often the signed-in app reads the change feeds while its tab is visible, unless config.json says otherwise. */
 export const defaultPollInterval = 5_000;

@@ -47,6 +47,7 @@ Facts about AWS that shaped Duva's design, each with how it was established. A c
 
 - **Two transactions on the same item at once can cancel one with `TransactionConflict`,** not `ConditionalCheckFailed`. Two messages arriving together in one mailbox both claimed its feed's next position, and one was cancelled that way, so a feed write retries on both. _Real run of #7._
 - **A transaction can't include two operations on the same item.** DynamoDB refuses it with a ValidationException. So a reply that leaves its thread's place unchanged overwrites the thread's label entries, and deletes only those that move. _[TransactWriteItems](https://docs.aws.amazon.com/amazondynamodb/latest/APIReference/API_TransactWriteItems.html)._
+- **Point-in-time recovery keeps the table's continuous backups for 35 days by default,** and they can't be edited. So a thread Duva erases, with its messages' metadata (subjects, addresses, snippets) and its change feed's entries, can be restored from them for up to 35 days after it was erased, though its raw mail in S3 is gone. _[Point-in-time recovery for DynamoDB](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/PointInTimeRecovery_Howitworks.html)._
 - **A condition can compare a list attribute with `=`.** A thread is written only if its `labels` list equals the one read, and real DynamoDB evaluates that as DynamoDB Local does: five replies sent at once all joined their thread. _Real run of #9._
 
 ## Lambda

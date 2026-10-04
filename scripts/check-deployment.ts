@@ -88,6 +88,7 @@ await check("renaming a label without credentials answers 401", async () =>
   expectStatus(await fetch(`${apiUrl}/mailboxes/x/labels/x`, { method: "PATCH", headers: { "content-type": "application/json" }, body: '{"name":"Check"}' }), 401),
 );
 await check("deleting a label without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/mailboxes/x/labels/x`, { method: "DELETE" }), 401));
+await check("emptying Trash without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/mailboxes/x/trash/empty`, { method: "POST" }), 401));
 await check("sending an approval without credentials answers 401", async () =>
   expectStatus(await fetch(`${apiUrl}/approvals/x/send`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }), 401),
 );

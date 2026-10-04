@@ -23,6 +23,8 @@ export const environmentVariables = {
   receiptRuleSet: "RECEIPT_RULE_SET",
   /** The ARN of the Lambda SES invokes for each message it receives. */
   inboundFunction: "INBOUND_FUNCTION",
+  /** The eraser Lambda, which the API invokes for each Trash emptied. */
+  eraserFunction: "ERASER_FUNCTION",
   /** The SES configuration set every send goes through. */
   configurationSet: "CONFIGURATION_SET",
 } as const;

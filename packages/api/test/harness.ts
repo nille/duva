@@ -1,4 +1,4 @@
-// The API test harness: the real handlers, authorizer, inbound handler and sender in-process, with
+// The API test harness: the real handlers, authorizer, inbound handler, sender and eraser in-process, with
 // DynamoDB Local (started by dynamodb-local.ts) for DynamoDB and its stream, an in-memory stand-in
 // for the mail bucket and for the inbound Lambda's log, stand-ins for SES receiving and sending, and a test token issuer in place of
 // Cognito. Tests drive the API only through the generated client, hand mail to SES as a sender's
@@ -14,9 +14,11 @@ import { inject } from "vitest";
 import { createApi } from "../src/api.ts";
 import { createAuthorizer } from "../src/authorizer.ts";
 import type { Humans } from "../src/user-pool.ts";
+import { createEraser, type TrashEmptied } from "../src/erasure.ts";
 import { createInbound } from "../src/inbound.ts";
 import { senderFilter, senderRetries, tableKey, tableStreamView } from "../src/infrastructure.ts";
 import type { MailBucket } from "../src/mail-bucket.ts";
+import { timeEarlierLabels } from "../src/mail.ts";
 import { addHumanToOrganization, setUpOrganization } from "../src/organization.ts";
 import { createSender } from "../src/sending.ts";
 import { dynamodbLocal } from "./dynamodb-local.ts";
@@ -49,6 +51,8 @@ export interface DuvaOptions {
   sesAnswersLost?: boolean;
   /** How many times Lambda runs the sender for each stream record, as a retried batch can. */
   senderInvocations?: number;
+  /** Whether the eraser's runs for each Trash emptied are lost, as when every one of Lambda's attempts fails. */
+  emptyingLost?: boolean;
 }
 
 /** A Duva deployment running in-process, set up as duva deploy sets one up, with its own table and mail bucket. */
@@ -83,6 +87,13 @@ export interface Duva {
   sent(): string[];
   /** The recipients SES delivered each message in sent() to, in the same order, Bcc recipients included. */
   sentTo(): string[][];
+  /** The raw messages the mail bucket keeps, received and sent, every version of each. */
+  stored(): string[];
+  /**
+   * Runs the eraser as its daily schedule does, at the time. With `s3DeletesFail`, S3 refuses to
+   * delete anything during the run, which then fails, as a run that stops partway does.
+   */
+  erase(at: Date, options?: { s3DeletesFail?: boolean }): Promise<void>;
   /**
    * Moves Duva to a new user pool, as the deploy of #30 did. No human can sign in there, and every
    * session ends, until setUp() moves the humans.
@@ -107,6 +118,7 @@ export async function startDuva({
   sandbox = false,
   sesAnswersLost = false,
   senderInvocations = 1,
+  emptyingLost = false,
 }: DuvaOptions = {}): Promise<Duva> {
   const { table, streamArn } = await createTable();
   const humans = memoryHumans();
@@ -116,6 +128,9 @@ export async function startDuva({
   for (const email of others) await addHumanToOrganization({ table, humans }, { email, by: firstAdmin.id });
 
   const mailBucket = memoryMailBucket();
+  const eraser = createEraser({ table, mailBucket });
+  // Trash emptied in a call, which the eraser erases once the call is answered.
+  const emptied: TrashEmptied[] = [];
   const inboundLog: string[] = [];
   const ses = sesReceiving({
     buckets: new Map([[mailBucketName, mailBucket]]),
@@ -127,13 +142,15 @@ export async function startDuva({
     { filter: senderFilter, handler: createSender({ table, mailBucket, outbound: sending.outbound, region }), retries: senderRetries, invocations: senderInvocations },
   ]);
   const gatewayed = gateway(
-    createApi({ version, region, table, humans, mailBucket, receiving }),
+    createApi({ version, region, table, humans, mailBucket, receiving, eraser: { emptyTrash: async (each) => void emptied.push(each) } }),
     createAuthorizer({ table, verifyAccessToken: issuer.verify }),
   );
-  // A call returns once the stream has handed what it wrote to the sender, so tests see the outcome.
+  // A call returns once the stream has handed what it wrote to the sender, and the eraser has
+  // erased the Trash it emptied, so tests see the outcome.
   const api = async (request: Request) => {
     const response = await gatewayed(request);
     await stream.deliver();
+    for (let each = emptied.shift(); each !== undefined; each = emptied.shift()) if (!emptyingLost) await eraser({ emptyTrash: each });
     return response;
   };
   const login = managedLogin({ ids: humans.ids, issuer, accessTokenLifetime });
@@ -159,8 +176,18 @@ export async function startDuva({
     receiptRules: () => ses.describeRules(),
     sent: () => sending.sent(),
     sentTo: () => sending.sentTo(),
+    stored: () => mailBucket.stored(),
+    async erase(at, { s3DeletesFail = false } = {}) {
+      mailBucket.deletesFail = s3DeletesFail;
+      try {
+        await eraser({ time: at.toISOString() });
+      } finally {
+        mailBucket.deletesFail = false;
+      }
+    },
     setUp: async (options) => {
       await setUp(options);
+      await timeEarlierLabels(table);
     },
     async listen() {
       const server = await listen(async (request) => (await login.handle(request)) ?? api(request));
@@ -229,9 +256,11 @@ async function createTable() {
   return { table: { client, name }, streamArn: TableDescription!.LatestStreamArn! };
 }
 
-function memoryMailBucket(): MailBucket {
+/** The mail bucket, which keeps one version of each object, and refuses deletes while `deletesFail`. */
+function memoryMailBucket(): MailBucket & { stored(): string[]; deletesFail: boolean } {
   const objects = new Map<string, Uint8Array>();
   return {
+    deletesFail: false,
     async put(key, body) {
       objects.set(key, body);
     },
@@ -239,8 +268,10 @@ function memoryMailBucket(): MailBucket {
       return objects.get(key);
     },
     async erase(key) {
+      if (this.deletesFail) throw new Error("Access Denied");
       return objects.delete(key);
     },
+    stored: () => [...objects.values()].map((raw) => new TextDecoder().decode(raw)),
   };
 }
 

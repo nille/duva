@@ -3,13 +3,13 @@
 // mail bucket, and is read from there.
 import { randomUUID } from "node:crypto";
 import { TransactionCanceledException } from "@aws-sdk/client-dynamodb";
-import { GetCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, QueryCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import type { components } from "@duva/openapi";
 import type { Table } from "./deployment.ts";
 import { changesAfter, changesPerPage, type Feed, recordChanges } from "./feed.ts";
 import type { MailBucket } from "./mail-bucket.ts";
 import { type ParsedMail, parseMail } from "./mime.ts";
-import { mailboxKey } from "./organization.ts";
+import { allMailboxes, mailboxKey } from "./organization.ts";
 import { documents, isNew, pk, sk, type TransactItem } from "./table.ts";
 
 export type ThreadSummary = components["schemas"]["ThreadSummary"];
@@ -58,6 +58,11 @@ const messageIdKey = (mailbox: string, messageId: string) => ({ [pk]: partition(
 const messageRefKey = (mailbox: string, message: string) => ({ [pk]: partition(mailbox), [sk]: `message#${message}` });
 // Each SES message is stored once per mailbox, however often SES's event is processed.
 const receivedKey = (mailbox: string, sesMessageId: string) => ({ [pk]: partition(mailbox), [sk]: `received#${sesMessageId}` });
+// Each thread in Spam or Trash is listed, across mailboxes, by when it got the label, so the eraser finds those past the retention period.
+const labelledKey = (labelledAt: string, mailbox: string, thread: string, label: ErasedLabel) => ({ [pk]: "erasure#labelled", [sk]: `${labelledAt}#${mailbox}#${thread}#${label}` });
+
+/** What erasure.ts needs of how a mailbox's mail is stored. */
+export const keys = { partition, threadPrefix, threadKey, messageIdKey, messageRefKey, receivedKey, labelledKey, listingKey };
 
 export const mailboxFeed = (mailbox: string): Feed => ({
   counter: mailboxKey(mailbox),
@@ -83,8 +88,16 @@ export interface Arrival {
   spam: boolean;
 }
 
-/** A thread's summary as stored, with whether the mailbox sent in it. Threads stored before Sent existed don't say. */
-type StoredSummary = ThreadSummary & { sent?: boolean };
+/** The labels whose threads are erased once they have had them for the retention period. */
+export type ErasedLabel = typeof spam | typeof trash;
+const erasedLabels: ErasedLabel[] = [spam, trash];
+
+/**
+ * A thread's summary as stored, with whether the mailbox sent in it, and when it got Spam and
+ * Trash if it has them. Threads stored before Sent existed don't say, and those that got Spam or
+ * Trash before erasure existed have no time for it.
+ */
+export type StoredSummary = ThreadSummary & { sent?: boolean; labelledAt?: Partial<Record<ErasedLabel, string>> };
 
 /** How many of the messages a reply names are looked up, newest first, to find its thread. */
 const answersLookedUp = 100;
@@ -236,6 +249,7 @@ async function storeMessage(
             messages: joined.messages + 1,
             ...((sent || joined.sent) && { sent: true }),
           };
+    timeErasedLabels(joined, summary);
     try {
       await recordChanges(table, mailboxFeed(mailbox), {
         by,
@@ -245,6 +259,7 @@ async function storeMessage(
           put({ ...threadKey(mailbox, thread), ...summary }, joined === undefined ? isNew : asRead(joined)),
           put({ ...messageKey(mailbox, thread, receivedAt, id), ...message, thread }),
           ...listingWrites(table, mailbox, joined, summary),
+          ...labelledWrites(table, mailbox, joined, summary),
           ...(message.messageId === undefined || !findable ? [] : [put({ ...messageIdKey(mailbox, message.messageId), thread, message: id })]),
           put({ ...messageRefKey(mailbox, id), thread, receivedAt }),
         ],
@@ -264,7 +279,7 @@ async function storeMessage(
  * The condition that a thread is as it was read, so changes made together each count. Threads
  * stored before read state existed have none, and are read.
  */
-function asRead({ messages, labels, unread }: ThreadSummary) {
+export function asRead({ messages, labels, unread }: ThreadSummary) {
   return {
     ConditionExpression: `messages = :messages AND labels = :labels AND ${unread ? "unread = :unread" : "(unread = :unread OR attribute_not_exists(unread))"}`,
     ExpressionAttributeValues: { ":messages": messages, ":labels": labels, ":unread": unread },
@@ -334,6 +349,7 @@ async function changeThreads(
     for (let attempt = 1; ; attempt++) {
       const next = change(current!);
       if (next === undefined) break;
+      timeErasedLabels(current, next.summary);
       try {
         await recordChanges(table, mailboxFeed(mailbox), {
           by,
@@ -341,6 +357,7 @@ async function changeThreads(
           items: [
             { Put: { TableName: table.name, Item: { ...threadKey(mailbox, current!.id), ...next.summary }, ...asRead(current!) } },
             ...listingWrites(table, mailbox, current, next.summary),
+            ...labelledWrites(table, mailbox, current, next.summary),
           ],
         });
         current = next.summary;
@@ -349,10 +366,12 @@ async function changeThreads(
         // Mail joined the thread since its summary was fetched, or it was changed, so it is fetched again.
         const reasons = error instanceof TransactionCanceledException ? (error.CancellationReasons ?? []) : [];
         if (reasons[threadReason]?.Code !== "ConditionalCheckFailed" || attempt === 10) throw error;
-        current = (await threadSummary(table, mailbox, threads[index]!))!;
+        current = await threadSummary(table, mailbox, threads[index]!);
+        // The thread was erased meanwhile, so it is left out.
+        if (current === undefined) break;
       }
     }
-    changed.push(current!);
+    if (current !== undefined) changed.push(current);
   }
   return { threads: changed.map(summaryOf) };
 }
@@ -364,7 +383,7 @@ type Listing = `label#${string}` | "sent" | "all";
 const hidden = ({ labels }: ThreadSummary) => labels.includes(spam) || labels.includes(trash);
 
 /** The listings the thread is in: each of its labels, Sent if the mailbox sent in it, and All mail unless it is in Spam or Trash. */
-const listingsOf = (summary: StoredSummary): Listing[] => [
+export const listingsOf = (summary: StoredSummary): Listing[] => [
   ...summary.labels.map((label) => `label#${label}` as const),
   ...(summary.sent ? (["sent"] as const) : []),
   ...(hidden(summary) ? [] : (["all"] as const)),
@@ -384,10 +403,84 @@ function listingWrites(table: Table, mailbox: string, was: StoredSummary | undef
   ];
 }
 
-/** The thread's summary as stored, or undefined if the mailbox has no such thread. */
-async function threadSummary(table: Table, mailbox: string, thread: string): Promise<StoredSummary | undefined> {
+/**
+ * Gives the summary the time it got Spam and Trash, if it has them: the time it had before, or
+ * now if it just got the label.
+ */
+function timeErasedLabels(was: StoredSummary | undefined, is: StoredSummary) {
+  const now = new Date().toISOString();
+  const labelledAt = Object.fromEntries(
+    erasedLabels.filter((label) => is.labels.includes(label)).flatMap((label) => {
+      const at = was?.labels.includes(label) ? was.labelledAt?.[label] : now;
+      return at === undefined ? [] : [[label, at]];
+    }),
+  );
+  if (Object.keys(labelledAt).length > 0) is.labelledAt = labelledAt;
+  else delete is.labelledAt;
+}
+
+/** The writes that move the thread's entries among those listed by when they got Spam or Trash, from how it was to how it is. */
+function labelledWrites(table: Table, mailbox: string, was: StoredSummary | undefined, is: StoredSummary): TransactItem[] {
+  return erasedLabels.flatMap((label) => {
+    const [before, after] = [was?.labelledAt?.[label], is.labelledAt?.[label]];
+    if (before === after) return [];
+    return [
+      ...(before === undefined ? [] : [{ Delete: { TableName: table.name, Key: labelledKey(before, mailbox, is.id, label) } }]),
+      ...(after === undefined ? [] : [{ Put: { TableName: table.name, Item: { ...labelledKey(after, mailbox, is.id, label), mailbox, thread: is.id, label, labelledAt: after } } }]),
+    ];
+  });
+}
+
+/**
+ * Gives each thread that got Spam or Trash before erasure existed, and so has no time for it, the
+ * time now, from which the retention period counts. Records no change, since nothing a reader
+ * sees changes. A thread changed meanwhile keeps none, until this runs again on the next setup.
+ */
+export async function timeEarlierLabels(table: Table): Promise<void> {
+  const now = new Date().toISOString();
+  for (const mailbox of await allMailboxes(table)) {
+    for (const label of erasedLabels) {
+      let start: Record<string, unknown> | undefined;
+      do {
+        const page = await documents(table).send(
+          new QueryCommand({
+            TableName: table.name,
+            KeyConditionExpression: `${pk} = :listing`,
+            FilterExpression: "attribute_not_exists(labelledAt.#label)",
+            ExpressionAttributeNames: { "#label": label },
+            ExpressionAttributeValues: { ":listing": listingKey(mailbox, `label#${label}`, "", "")[pk] },
+            ExclusiveStartKey: start,
+          }),
+        );
+        for (const { id } of (page.Items ?? []) as ThreadSummary[]) {
+          const current = await threadSummary(table, mailbox, id);
+          if (current === undefined || current.labelledAt?.[label] !== undefined) continue;
+          const next: StoredSummary = { ...current, labelledAt: { ...current.labelledAt, [label]: now } };
+          try {
+            await documents(table).send(
+              new TransactWriteCommand({
+                TransactItems: [
+                  { Put: { TableName: table.name, Item: { ...threadKey(mailbox, id), ...next }, ...asRead(current) } },
+                  ...listingWrites(table, mailbox, current, next),
+                  ...labelledWrites(table, mailbox, current, next),
+                ],
+              }),
+            );
+          } catch (error) {
+            if (!(error instanceof TransactionCanceledException)) throw error;
+          }
+        }
+        start = page.LastEvaluatedKey;
+      } while (start !== undefined);
+    }
+  }
+}
+
+/** The thread's summary as stored, or undefined if the mailbox has no such thread, or it is being erased. */
+export async function threadSummary(table: Table, mailbox: string, thread: string): Promise<StoredSummary | undefined> {
   const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: threadKey(mailbox, thread), ConsistentRead: true }));
-  return Item === undefined ? undefined : { ...summaryOf(Item as ThreadSummary), ...(Item.sent === true && { sent: true }) };
+  if (Item === undefined || Item.erasing === true) return undefined;
+  return { ...summaryOf(Item as ThreadSummary), ...(Item.sent === true && { sent: true }), ...(Item.labelledAt !== undefined && { labelledAt: Item.labelledAt }) };
 }
 
 /** The thread of the first of the messages that the mailbox has, if it has any. */
@@ -503,7 +596,7 @@ export async function readThread(table: Table, mailBucket: MailBucket, mailbox: 
     start = page.LastEvaluatedKey;
   } while (start !== undefined);
   const thread = items.find((item) => item[sk] === threadKey(mailbox, id)[sk]);
-  if (thread === undefined) return undefined;
+  if (thread === undefined || thread.erasing === true) return undefined;
   const stored = items.filter((item) => item !== thread);
   const messages = await Promise.all(stored.map(async (item) => (await readMessage(mailBucket, item as StoredMessage)).message));
   return { id, subject: thread.subject, labels: thread.labels, unread: thread.unread ?? false, messages };

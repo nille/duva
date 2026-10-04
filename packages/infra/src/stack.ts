@@ -16,6 +16,8 @@ import {
   UserPoolClientIdentityProvider,
 } from "aws-cdk-lib/aws-cognito";
 import { AttributeType, Billing, StreamViewType, TableV2 } from "aws-cdk-lib/aws-dynamodb";
+import { Rule, Schedule } from "aws-cdk-lib/aws-events";
+import { LambdaFunction } from "aws-cdk-lib/aws-events-targets";
 import { PolicyStatement, ServicePrincipal } from "aws-cdk-lib/aws-iam";
 import { Architecture, FilterCriteria, Runtime, StartingPosition } from "aws-cdk-lib/aws-lambda";
 import { SqsDestination } from "aws-cdk-lib/aws-lambda-destinations";
@@ -234,6 +236,25 @@ export class DuvaStack extends Stack {
       }),
     );
 
+    // The eraser erases threads for good: once a day those that have had Trash or Spam for the
+    // retention period, and each Trash emptied when the API invokes it. Lambda retries a failed
+    // run, which finishes what it left.
+    const eraser = lambda(
+      "EraserHandler",
+      "@duva/api/eraser-lambda",
+      { [environmentVariables.tableName]: table.tableName, [environmentVariables.mailBucket]: mail.bucketName },
+      { timeout: Duration.minutes(15) },
+    );
+    table.grantReadWriteData(eraser);
+    // It erases raw mail, received and sent, which in a versioned bucket means deleting each version.
+    for (const prefix of [inboundPrefix, sentPrefix]) {
+      eraser.addToRolePolicy(new PolicyStatement({ actions: ["s3:DeleteObjectVersion"], resources: [mail.arnForObjects(`${prefix}*`)] }));
+      eraser.addToRolePolicy(
+        new PolicyStatement({ actions: ["s3:ListBucketVersions"], resources: [mail.bucketArn], conditions: { StringLike: { "s3:prefix": `${prefix}*` } } }),
+      );
+    }
+    new Rule(this, "EraserSchedule", { description: "Erases Trash and Spam past the retention period", schedule: Schedule.rate(Duration.days(1)), targets: [new LambdaFunction(eraser)] });
+
     const handler = lambda("ApiHandler", "@duva/api/lambda", {
       [environmentVariables.version]: version,
       [environmentVariables.tableName]: table.tableName,
@@ -241,10 +262,13 @@ export class DuvaStack extends Stack {
       [environmentVariables.userPoolId]: humans.userPoolId,
       [environmentVariables.receiptRuleSet]: receiving.receiptRuleSetName,
       [environmentVariables.inboundFunction]: inbound.functionArn,
+      [environmentVariables.eraserFunction]: eraser.functionArn,
     });
     table.grantReadWriteData(handler);
     // Message bodies are read from the raw mail.
     mail.grantRead(handler);
+    // Emptying Trash hands the eraser the threads, without waiting.
+    eraser.grantInvoke(handler);
     // Admins add humans, who can then sign in.
     humans.grant(handler, "cognito-idp:AdminCreateUser", "cognito-idp:AdminGetUser");
     // Creating an address adds it to the receipt rule's recipients. IAM has no resource type for

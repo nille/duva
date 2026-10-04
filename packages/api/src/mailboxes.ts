@@ -4,6 +4,7 @@ import type { Deployment } from "./deployment.ts";
 import { type Actor, AddressTaken, addMailbox, allAddresses, findActor, findMailbox, type Mailbox, organizationDomain, ownedMailboxes, sponsoredAgents } from "./organization.ts";
 import { builtInLabels, createLabel, deleteLabel, hasLabel, listLabels, NameTaken, renameLabel } from "./labels.ts";
 import { allMail, type Cursor, cursorOf, inbox, labelThreads, mailboxChanges, markThreads, readThread, spam, threadsMarkedAtOnce, threadsPerPage, sentThreads, threadsWithLabel, trash, unreadWithLabel } from "./mail.ts";
+import { recordEmptying } from "./erasure.ts";
 import { syncRecipients } from "./receiving.ts";
 
 /** How many addresses the organization can have: SES's limit on one receipt rule's recipients. */
@@ -245,4 +246,14 @@ export const deleteMailboxLabel: OperationHandler = async (event, deployment, ac
   if (typeof label !== "string") return label;
   const deleted = await deleteLabel(deployment.table, { mailbox: mailbox.id, label, by: actor!.id });
   return deleted === undefined ? noLabel(label) : { statusCode: 200, body: deleted satisfies components["schemas"]["Label"] };
+};
+
+export const emptyMailboxTrash: OperationHandler = async (event, deployment, actor) => {
+  const mailbox = await readableMailbox(event, deployment, actor!);
+  if ("statusCode" in mailbox) return mailbox;
+  const emptiedAt = new Date().toISOString();
+  const emptied = { mailbox: mailbox.id, before: emptiedAt, by: actor!.id };
+  await recordEmptying(deployment.table, emptied);
+  await deployment.eraser.emptyTrash(emptied);
+  return { statusCode: 202, body: { emptiedAt } satisfies components["schemas"]["TrashEmptying"] };
 };
