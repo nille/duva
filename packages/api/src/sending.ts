@@ -114,6 +114,8 @@ async function send({ table, mailBucket, outbound, region }: Sender, { mailbox, 
     disclosure = `${actor.name} for ${sponsor.email}`;
   }
   const original = draft.answers === undefined ? undefined : await findMessage(table, mailBucket, mailbox, draft.answers);
+  // A forward carries the forwarded message's attachments, taken from it as it is now.
+  const forwarded = draft.forwards === undefined ? undefined : await findMessage(table, mailBucket, mailbox, draft.forwards);
 
   // Everything is ready before the draft moves to sending, so only SES's answer can leave it unclear.
   const message = randomUUID();
@@ -134,10 +136,17 @@ async function send({ table, mailBucket, outbound, region }: Sender, { mailbox, 
     references: parent === undefined ? [] : [...(original?.references ?? []).filter((reference) => reference !== parent), parent],
     headers: disclosure === undefined ? [] : [[disclosureHeader, disclosure]],
     text,
+    attachments: forwarded?.parts ?? [],
   });
   const rawKey = `${sentPrefix}${message}`;
-  await mailBucket.put(rawKey, raw);
+  // Without the message it forwards, a forward can't carry its attachments, so it fails before anything is stored.
+  const missing = (draft.attachments ?? []).length > 0 && forwarded === undefined;
+  if (!missing) await mailBucket.put(rawKey, raw);
   if (!(await startSending(table, sending))) return;
+  if (missing) {
+    await markFailed(table, sending, "The message it forwards is no longer in the mailbox, so its attachments can't go with it. Write a new message instead.");
+    return;
+  }
 
   let sesMessageId: string;
   const addresses = (list: { address: string }[]) => list.map(({ address }) => address);

@@ -1152,15 +1152,15 @@ a.thread:focus-visible {
   gap: var(--space-2);
 }
 
+/* The clip beside the name and its type, which wrap together on a narrow screen. */
 .letter-attachments li {
-  display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 0 var(--space-2);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-2);
 }
 
 .letter-attachments .icon {
-  align-self: center;
+  margin-top: 0.15em;
   color: var(--ink-2);
 }
 
@@ -1171,6 +1171,19 @@ a.thread:focus-visible {
 
 .attachment-meta {
   color: var(--ink-2);
+}
+
+/* An attachment's name, as the button that downloads it. */
+.letter-attachments .link {
+  margin: 0;
+  padding: 0;
+  font-size: inherit;
+  text-align: start;
+}
+
+.letter-attachments .link:disabled {
+  color: var(--ink-2);
+  cursor: progress;
 }
 
 /* A letter's replies, at its foot. */

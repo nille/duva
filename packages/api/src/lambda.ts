@@ -5,6 +5,7 @@ import { LambdaClient } from "@aws-sdk/client-lambda";
 import { S3Client } from "@aws-sdk/client-s3";
 import { SESClient } from "@aws-sdk/client-ses";
 import { createApi } from "./api.ts";
+import { downloadLinkLifetime } from "./attachments.ts";
 import { cognitoHumans } from "./user-pool.ts";
 import { environmentVariables } from "./infrastructure.ts";
 import { s3MailBucket } from "./mail-bucket.ts";
@@ -26,4 +27,5 @@ export const handler = createApi({
     inboundFunction: required(environmentVariables.inboundFunction),
   },
   eraser: lambdaEraser(new LambdaClient({}), required(environmentVariables.eraserFunction)),
+  downloads: { url: required(environmentVariables.downloadUrl), lifetime: downloadLinkLifetime },
 });

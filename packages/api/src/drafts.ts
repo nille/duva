@@ -27,6 +27,7 @@ import { readableMailbox } from "./mailboxes.ts";
 import type { Actor, Mailbox } from "./organization.ts";
 
 type EmailAddress = components["schemas"]["EmailAddress"];
+type Message = components["schemas"]["Message"];
 
 const maxText = 50000;
 const maxSubject = 998;
@@ -41,9 +42,28 @@ export const createDraft: OperationHandler = async (event, deployment, actor) =>
   if (body.replyAll !== undefined && (typeof body.replyAll !== "boolean" || typeof body.answers !== "string")) {
     return refusal(400, "Give replyAll as true or false, with the ID of the message to reply to as answers.");
   }
+  if (body.forwards !== undefined && (typeof body.forwards !== "string" || body.answers !== undefined)) {
+    return refusal(400, "Give forwards as the ID of the message to forward, without answers. A draft replies or forwards, not both.");
+  }
 
   let content;
-  if (typeof body.answers === "string") {
+  if (typeof body.forwards === "string") {
+    const original = await findMessage(deployment.table, deployment.mailBucket, mailbox.id, body.forwards);
+    if (original === undefined) return refusal(404, `The mailbox has no message ${JSON.stringify(body.forwards)}. Read its threads to find the message to forward.`);
+    const { message, thread } = original;
+    content = {
+      forwards: message.id,
+      thread,
+      // A forward goes from the address the original was sent to, as a reply does.
+      from: message.recipient,
+      to: given.to ?? [],
+      cc: given.cc ?? [],
+      bcc: given.bcc ?? [],
+      subject: given.subject ?? `Fwd: ${message.subject.replace(/^(\s*fwd?\s*:\s*)+/i, "")}`,
+      text: given.text ?? forwardedText(message),
+      attachments: message.attachments,
+    };
+  } else if (typeof body.answers === "string") {
     const original = await findMessage(deployment.table, deployment.mailBucket, mailbox.id, body.answers);
     if (original === undefined) return refusal(404, `The mailbox has no message ${JSON.stringify(body.answers)}. Read its threads to find the message to reply to.`);
     const { message, thread, replyTo } = original;
@@ -68,6 +88,24 @@ export const createDraft: OperationHandler = async (event, deployment, actor) =>
   }
   return { statusCode: 201, body: (await addDraft(deployment.table, { mailbox: mailbox.id, by: actor!.id, content })) satisfies components["schemas"]["Draft"] };
 };
+
+/** The text a forward starts with: room to write, then the original's header fields and its text, quoted. */
+function forwardedText(message: Message): string {
+  const list = (addresses: EmailAddress[]) => addresses.map(({ name, address }) => (name ? `${name} <${address}>` : address)).join(", ");
+  const quoted = message.text === "" ? [] : message.text.split("\n").map((line) => (line === "" ? ">" : `> ${line}`));
+  return [
+    "",
+    "",
+    "Forwarded message",
+    `From: ${list([message.from])}`,
+    `Date: ${new Date(message.date).toUTCString()}`,
+    `Subject: ${message.subject}`,
+    ...(message.to.length > 0 ? [`To: ${list(message.to)}`] : []),
+    ...(message.cc.length > 0 ? [`Cc: ${list(message.cc)}`] : []),
+    "",
+    ...quoted,
+  ].join("\n");
+}
 
 /** Whether two addresses are the same, ignoring case. */
 const sameAddress = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();

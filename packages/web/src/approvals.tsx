@@ -5,7 +5,7 @@ import { flushSync } from "react-dom";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
 import { approvalChanges, type Connection as ConnectionState, type Follow, SignedOut } from "./feed.ts";
-import { Addresses, clock, Connection, Field, Time } from "./mail-parts.tsx";
+import { Addresses, Attachments, clock, Connection, Field, Time } from "./mail-parts.tsx";
 import { strings } from "./strings.ts";
 
 type Approval = components["schemas"]["Approval"];
@@ -297,7 +297,7 @@ function Galley({ entry, agent, sponsor, outcome, client, onDecided, onSeen, onS
         {original !== undefined ? (
           <Original message={original} />
         ) : (
-          <p className="copy copy-note">{draft.answers === undefined ? strings.galley.noOriginal : strings.galley.originalGone}</p>
+          <p className="copy copy-note">{draft.forwards !== undefined ? strings.galley.forward : draft.answers === undefined ? strings.galley.noOriginal : strings.galley.originalGone}</p>
         )}
 
         <section className={editing ? "copy proof proof-editing" : "copy proof"} aria-labelledby={`${titleId}-proof`}>
@@ -329,6 +329,7 @@ function Galley({ entry, agent, sponsor, outcome, client, onDecided, onSeen, onS
                   {draft.text}
                 </div>
                 <Disclosure agent={agent} sponsor={sponsor} />
+                {draft.attachments !== undefined && draft.attachments.length > 0 && <Attachments list={draft.attachments} />}
               </div>
             </>
           )}

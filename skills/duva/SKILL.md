@@ -38,6 +38,17 @@ Sign in as a human through the browser.
 
 Install the skill that teaches agents this CLI, replacing any older copy.
 
+## duva attachments download
+
+Download one of a message's attachments to a file, and say where it went.
+
+Without --file, the attachment goes in the working directory under its own name. An existing file is never overwritten. Only those who can read the mailbox can download from it: its owner and, for an agent's mailbox, its sponsor.
+
+- `--mailbox` (required): The mailbox's ID.
+- `--message` (required): The message's ID.
+- `--attachment` (required): The attachment's place among the message's attachments, from 0.
+- `--file`: Where to save it. Without it, the working directory, under the attachment's name.
+
 ## duva status
 
 Show Duva's version and the deployment's region.
@@ -232,6 +243,16 @@ Erases each thread that is in Trash when you call, with its messages and their r
 
 - `--mailbox` (required): The mailbox's ID.
 
+## duva attachments link
+
+Get a short-lived link that downloads one of a message's attachments.
+
+Duva takes the attachment from the stored message when the link is followed, so nothing is stored twice. The link works for 5 minutes, for whoever follows it, so keep it to yourself. Only those who can read the mailbox get one: its owner and, for an agent's mailbox, its sponsor.
+
+- `--mailbox` (required): The mailbox's ID.
+- `--message` (required): The message's ID.
+- `--attachment` (required): The attachment's place among the message's attachments, from 0.
+
 ## duva drafts list
 
 List the drafts in a mailbox, newest first, with where each send stands.
@@ -242,12 +263,13 @@ Only the mailbox's owner and, for an agent's mailbox, its sponsor can list them.
 
 ## duva drafts create
 
-Draft a reply to a message in a mailbox, a reply to all, or a new message.
+Draft a reply to a message in a mailbox, a reply to all, a forward, or a new message.
 
-A reply goes from the address the original was sent to, plus tag kept, to the original's Reply-To or, without one, its From, with the subject carrying a single "Re: " prefix. A reply to your own message goes to its recipients instead. A reply to all also goes to every other recipient of the original, except the mailbox's own addresses. A new message goes from the mailbox's default address. A draft can be saved before it has recipients, a subject or text, but it needs a recipient in To to be sent. Only the mailbox's owner can draft in it. Writing a draft is recorded in the mailbox's change feed.
+A reply goes from the address the original was sent to, plus tag kept, to the original's Reply-To or, without one, its From, with the subject carrying a single "Re: " prefix. A reply to your own message goes to its recipients instead. A reply to all also goes to every other recipient of the original, except the mailbox's own addresses. A forward goes from the address the original was sent to, to whoever you give, with the subject carrying a single "Fwd: " prefix, the original's text quoted and its attachments. A new message goes from the mailbox's default address. A draft can be saved before it has recipients, a subject or text, but it needs a recipient in To to be sent. Only the mailbox's owner can draft in it. Writing a draft is recorded in the mailbox's change feed.
 
 - `--mailbox` (required): The mailbox's ID.
-- `--answers`: The ID of the message the draft replies to. Without it, the draft is a new message.
+- `--answers`: The ID of the message the draft replies to. Without it or forwards, the draft is a new message.
+- `--forwards`: The ID of the message the draft forwards, with its text and attachments. Give answers or forwards, not both.
 - `--replyAll`: With answers, replies to all, so every other recipient of the original gets it too, except the mailbox's own addresses.
 - `--to` (once for each): The recipients' addresses. A reply goes to the original's Reply-To or From unless you give them.
 - `--cc` (once for each): The Cc recipients' addresses. A reply to all copies the original's Cc recipients unless you give them.

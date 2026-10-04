@@ -1,16 +1,20 @@
 // A thread, read: each message a sheet on the desk, oldest first, set in the proof face. Opening
-// the thread marks it read, for everyone who reads the mailbox. Each message can be replied to.
+// the thread marks it read, for everyone who reads the mailbox. Each message can be replied to or
+// forwarded, and its attachments downloaded.
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
 import { startDraft } from "./compose.tsx";
-import { Addresses, Field, nameOf, Time } from "./mail-parts.tsx";
+import { Addresses, Attachments, Field, nameOf, Time } from "./mail-parts.tsx";
 import { type Done, type Label, OrganizeActions, ownLabelsOf } from "./organize.tsx";
-import { size, strings } from "./strings.ts";
+import { strings } from "./strings.ts";
 
 type Thread = components["schemas"]["Thread"];
 type Message = components["schemas"]["Message"];
 type Mailbox = components["schemas"]["Mailbox"];
+
+/** What a letter's foot starts: a reply, a reply to all, or a forward. */
+type Start = "reply" | "replyAll" | "forward";
 
 type Reading = { status: "loading" } | { status: "failed"; message: string; gone?: boolean } | { status: "read"; thread: Thread; fresh: Set<string> };
 
@@ -51,8 +55,10 @@ export function ThreadView({
 }) {
   const [reading, setReading] = useState<Reading>({ status: "loading" });
   const [marking, setMarking] = useState<"idle" | "busy" | "failed" | "readFailed">("idle");
-  // The reply being started, by its message and whether it goes to all, or whether starting one failed.
-  const [replying, setReplying] = useState<{ message: string; all: boolean } | "failed">();
+  // The draft being started, by its message and what it is, or whether starting one failed.
+  const [replying, setReplying] = useState<{ message: string; start: Start } | "failed">();
+  // The attachment on its way, by its message and place, or whether getting one failed.
+  const [downloading, setDownloading] = useState<{ message: string; index: number } | "failed">();
   const leaving = useRef(false);
   // The latest request to mark the thread read, which marking it unread waits for, so it lands last.
   const markingRead = useRef<Promise<unknown>>(Promise.resolve());
@@ -126,10 +132,25 @@ export function ThreadView({
     }
   };
 
-  const reply = async (message: Message, all: boolean) => {
-    setReplying({ message: message.id, all });
-    const started = await startDraft(client, mailbox.id, { answers: message.id, ...(all && { replyAll: true }) }, onSignedOut);
+  const reply = async (message: Message, start: Start) => {
+    setReplying({ message: message.id, start });
+    const body = start === "forward" ? { forwards: message.id } : { answers: message.id, ...(start === "replyAll" && { replyAll: true }) };
+    const started = await startDraft(client, mailbox.id, body, onSignedOut);
     if (!started) setReplying("failed");
+  };
+
+  // Duva gives a link that works for a few minutes, and the browser saves what it leads to.
+  const download = async (message: Message, index: number) => {
+    setDownloading({ message: message.id, index });
+    const { data, response } = await client
+      .GET("/mailboxes/{mailbox}/messages/{message}/attachments/{attachment}", { params: { path: { mailbox: mailbox.id, message: message.id, attachment: index } } })
+      .catch(() => ({ data: undefined, response: undefined }));
+    if (response?.status === 401) return onSignedOut();
+    if (data === undefined) return setDownloading("failed");
+    setDownloading(undefined);
+    const link = document.createElement("a");
+    link.href = data.url;
+    link.click();
   };
 
   return (
@@ -179,6 +200,11 @@ export function ThreadView({
               {strings.compose.startFailed}
             </p>
           )}
+          {downloading === "failed" && (
+            <p className="notice notice-alert" role="alert">
+              {strings.thread.downloadFailed}
+            </p>
+          )}
           <ol className="letters" aria-label={strings.thread.messages}>
             {reading.thread.messages.map((message) => (
               <li key={message.id}>
@@ -187,9 +213,11 @@ export function ThreadView({
                   me={me}
                   agent={agent}
                   fresh={reading.fresh.has(message.id)}
-                  starting={typeof replying === "object" && replying.message === message.id ? replying.all : undefined}
+                  starting={typeof replying === "object" && replying.message === message.id ? replying.start : undefined}
                   busy={typeof replying === "object"}
-                  onReply={agent === undefined ? (all) => void reply(message, all) : undefined}
+                  onReply={agent === undefined ? (start) => void reply(message, start) : undefined}
+                  downloading={typeof downloading === "object" && downloading.message === message.id ? downloading.index : undefined}
+                  onDownload={(index) => void download(message, index)}
                 />
               </li>
             ))}
@@ -220,8 +248,9 @@ function ThreadLabels({ thread, labels }: { thread: Thread; labels: Label[] }) {
 }
 
 /**
- * A message as a sheet. `starting` says which reply to it is being started, if one is: to all or
- * not. Without `onReply`, as in an agent's mailbox, where only the agent drafts, it has no replies.
+ * A message as a sheet. `starting` says which draft from it is being started, if one is. Without
+ * `onReply`, as in an agent's mailbox, where only the agent drafts, it has no replies or forward.
+ * `downloading` says which of its attachments is on its way, if one is.
  */
 function Letter({
   message,
@@ -231,14 +260,18 @@ function Letter({
   starting,
   busy,
   onReply,
+  downloading,
+  onDownload,
 }: {
   message: Message;
   me: string;
   agent?: string;
   fresh: boolean;
-  starting?: boolean;
+  starting?: Start;
   busy: boolean;
-  onReply?: (all: boolean) => void;
+  onReply?: (start: Start) => void;
+  downloading?: number;
+  onDownload: (index: number) => void;
 }) {
   const titleId = useId();
   const sent =
@@ -277,32 +310,24 @@ function Letter({
       {message.approval !== undefined && <p className="letter-note">{approvalNote(message.approval, me)}</p>}
       {message.plusTag !== undefined && <p className="letter-note">{strings.thread.plusTag(message.recipient, message.plusTag)}</p>}
       <Body text={message.text} />
-      {message.attachments.length > 0 && (
-        <section className="letter-attachments" aria-label={strings.thread.attachments}>
-          <ul>
-            {message.attachments.map((attachment, index) => (
-              <li key={index}>
-                <ClipIcon />
-                <span className="attachment-name">{attachment.name ?? strings.thread.unnamed}</span>{" "}
-                <span className="attachment-meta">{strings.thread.attachment(attachment.type, size(attachment.size))}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+      {message.attachments.length > 0 && <Attachments list={message.attachments} onDownload={onDownload} downloading={downloading} />}
       {onReply !== undefined && (
-      <div className="letter-actions">
-        <button type="button" className="button button-small" disabled={busy} onClick={() => onReply(false)}>
-          <ReplyIcon />
-          {starting === false ? strings.thread.starting : strings.thread.reply}
-        </button>
-        {message.to.length + message.cc.length > 1 && (
-          <button type="button" className="button button-small" disabled={busy} onClick={() => onReply(true)}>
-            <ReplyAllIcon />
-            {starting === true ? strings.thread.starting : strings.thread.replyAll}
+        <div className="letter-actions">
+          <button type="button" className="button button-small" disabled={busy} onClick={() => onReply("reply")}>
+            <ReplyIcon />
+            {starting === "reply" ? strings.thread.starting : strings.thread.reply}
           </button>
-        )}
-      </div>
+          {message.to.length + message.cc.length > 1 && (
+            <button type="button" className="button button-small" disabled={busy} onClick={() => onReply("replyAll")}>
+              <ReplyAllIcon />
+              {starting === "replyAll" ? strings.thread.starting : strings.thread.replyAll}
+            </button>
+          )}
+          <button type="button" className="button button-small" disabled={busy} onClick={() => onReply("forward")}>
+            <ForwardIcon />
+            {starting === "forward" ? strings.thread.starting : strings.thread.forward}
+          </button>
+        </div>
       )}
     </article>
   );
@@ -324,6 +349,12 @@ const ReplyIcon = () => (
 const ReplyAllIcon = () => (
   <svg className="icon" viewBox="0 0 16 16" aria-hidden="true">
     <path d="M8 4 4 8l4 4M4.5 4 .8 8l3.7 4M4 8h5.5a4.5 4.5 0 0 1 4.5 4.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+const ForwardIcon = () => (
+  <svg className="icon" viewBox="0 0 16 16" aria-hidden="true">
+    <path d="M9.5 4 13.5 8l-4 4M13.5 8H7a4.5 4.5 0 0 0-4.5 4.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 );
 
@@ -371,18 +402,5 @@ function FoldedQuote({ text }: { text: string }) {
 const BackIcon = () => (
   <svg className="icon" viewBox="0 0 16 16" aria-hidden="true">
     <path d="M10 3.5 5.5 8l4.5 4.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-  </svg>
-);
-
-const ClipIcon = () => (
-  <svg className="icon" viewBox="0 0 16 16" aria-hidden="true">
-    <path
-      d="M10.5 5.5 6.2 9.8a1.2 1.2 0 0 0 1.7 1.7l4.6-4.6a2.6 2.6 0 0 0-3.7-3.7L4.2 7.8a4 4 0 0 0 5.7 5.7l3.6-3.6"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.6"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
   </svg>
 );

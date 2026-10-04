@@ -1,5 +1,6 @@
 import type { APIGatewayProxyEventV2, APIGatewayProxyStructuredResultV2 } from "aws-lambda";
 import { type Operation, operations, type OperationId } from "@duva/openapi";
+import { getAttachment } from "./attachments.ts";
 import { createAgent, listAgents, rotateAgentKey } from "./agents.ts";
 import type { AuthorizerContext } from "./authorizer.ts";
 import { listOrganizationChanges } from "./changes.ts";
@@ -63,6 +64,7 @@ const handlers: Record<OperationId, OperationHandler> = {
   renameLabel: renameMailboxLabel,
   deleteLabel: deleteMailboxLabel,
   emptyTrash: emptyMailboxTrash,
+  getAttachment,
   createDraft,
   listDrafts,
   getDraft,

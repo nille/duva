@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
-import { clock } from "./mail-parts.tsx";
+import { Attachments, clock } from "./mail-parts.tsx";
 import { strings } from "./strings.ts";
 
 type Draft = components["schemas"]["Draft"];
@@ -194,8 +194,8 @@ export function Composer({ client, mailbox, id: given, version, onSignedOut }: {
     location.hash = "#/drafts";
   };
 
-  const reply = draft?.answers !== undefined;
-  const title = reply ? strings.compose.reply : given === undefined ? strings.compose.newMessage : strings.compose.draft;
+  const title =
+    draft?.answers !== undefined ? strings.compose.reply : draft?.forwards !== undefined ? strings.compose.forward : given === undefined ? strings.compose.newMessage : strings.compose.draft;
   useEffect(() => {
     document.title = strings.title(title);
   }, [title]);
@@ -309,6 +309,7 @@ export function Composer({ client, mailbox, id: given, version, onSignedOut }: {
           {strings.compose.message}
         </label>
         <textarea id={`${formId}-text`} className="compose-body" rows={12} value={fields.text} readOnly={locked} onChange={change("text")} onBlur={() => void save()} lang="" />
+        {draft?.attachments !== undefined && draft.attachments.length > 0 && <Attachments list={draft.attachments} />}
 
         {problem !== undefined && (
           <p className="notice notice-alert" role="alert" id={problemId}>

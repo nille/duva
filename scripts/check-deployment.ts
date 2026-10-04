@@ -75,6 +75,12 @@ for (const read of ["read", "unread"]) {
   );
 }
 await check("listing a mailbox's Sent without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/mailboxes/x/sent`), 401));
+await check("getting an attachment's link without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/mailboxes/x/messages/x/attachments/0`), 401));
+await check("a download link Duva never gave answers 404, from a function URL that needs no credentials", async () => {
+  const response = await fetch(`${output(stackOutputs.downloadUrl)}${"A".repeat(43)}`);
+  const text = await response.text();
+  return response.status === 404 && /expired/.test(text) ? undefined : `answered ${response.status}: ${text.slice(0, 200)}`;
+});
 await check("deleting a draft without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/mailboxes/x/drafts/x`, { method: "DELETE" }), 401));
 await check("labelling threads without credentials answers 401", async () =>
   expectStatus(await fetch(`${apiUrl}/mailboxes/x/threads/labels`, { method: "POST", headers: { "content-type": "application/json" }, body: '{"threads":["x"],"add":["trash"]}' }), 401),

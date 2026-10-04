@@ -10,6 +10,7 @@
     "./inbound-lambda": "./src/inbound-lambda.ts",
     "./sender-lambda": "./src/sender-lambda.ts",
     "./eraser-lambda": "./src/eraser-lambda.ts",
+    "./download-lambda": "./src/download-lambda.ts",
     "./infrastructure": "./src/infrastructure.ts",
     "./harness": "./test/harness.ts"
   },

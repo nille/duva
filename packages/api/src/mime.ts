@@ -1,5 +1,7 @@
 // Reading and writing raw messages. PostalMime parses the MIME, and html-to-text turns HTML-only
-// mail into text. Duva writes the MIME of the mail it sends itself, with a text part only.
+// mail into text. Duva writes the MIME of the mail it sends itself: a text part, followed by any
+// attachments a forward carries.
+import { randomUUID } from "node:crypto";
 import { convert } from "html-to-text";
 import PostalMime, { type Address } from "postal-mime";
 import type { components } from "@duva/openapi";
@@ -27,12 +29,26 @@ export interface ParsedMail {
   /** The plain-text body, from the HTML if the message has no text, with \n line endings and none at the end. */
   text: string;
   attachments: components["schemas"]["Attachment"][];
+  /** The attachments' contents, decoded, in the same order. */
+  parts: Part[];
+}
+
+/** An attachment with its content. */
+export interface Part {
+  name?: string;
+  type: string;
+  content: Uint8Array<ArrayBuffer>;
 }
 
 export async function parseMail(raw: Uint8Array): Promise<ParsedMail> {
   const email = await PostalMime.parse(raw, { attachmentEncoding: "arraybuffer" });
   const date = email.date === undefined ? undefined : new Date(email.date);
   const text = email.text ?? (email.html === undefined ? "" : htmlToText(email.html));
+  const parts = email.attachments.map(({ filename, mimeType, content }) => ({
+    ...(filename !== null && { name: filename }),
+    type: mimeType,
+    content: typeof content === "string" ? new TextEncoder().encode(content) : new Uint8Array(content),
+  }));
   return {
     messageId: email.messageId,
     answers: [...new Set([...messageIds(email.inReplyTo), ...messageIds(email.references).reverse()])],
@@ -44,11 +60,8 @@ export async function parseMail(raw: Uint8Array): Promise<ParsedMail> {
     subject: email.subject ?? "",
     date: date === undefined || Number.isNaN(date.getTime()) ? undefined : date.toISOString(),
     text: text.replace(/\r\n?/g, "\n").replace(/\n+$/, ""),
-    attachments: email.attachments.map(({ filename, mimeType, content }) => ({
-      ...(filename !== null && { name: filename }),
-      type: mimeType,
-      size: typeof content === "string" ? new TextEncoder().encode(content).length : content.byteLength,
-    })),
+    attachments: parts.map(({ name, type, content }) => ({ ...(name !== undefined && { name }), type, size: content.byteLength })),
+    parts,
   };
 }
 
@@ -86,15 +99,34 @@ export interface OutgoingMail {
   /** More header fields, each unstructured text. */
   headers: [name: string, value: string][];
   text: string;
+  /** The attachments it carries, after the text. */
+  attachments: Part[];
 }
 
 /**
  * The raw MIME of the message, with CRLF line endings. Text outside ASCII, and any subject too long
- * for one line, is written as encoded words. The body is 7bit when it can be and base64 otherwise.
+ * for one line, is written as encoded words. The text is 7bit when it can be and base64 otherwise.
+ * With attachments, the message is multipart/mixed, the text first, and each attachment is base64.
  */
-export function buildMail({ messageId, from, to, cc, subject, date, inReplyTo, references, headers, text }: OutgoingMail): Uint8Array {
+export function buildMail({ messageId, from, to, cc, subject, date, inReplyTo, references, headers, text, attachments }: OutgoingMail): Uint8Array {
   const body = text.replace(/\r\n?/g, "\n").split("\n").join("\r\n");
   const plain = isAscii(body) && body.split("\r\n").every((line) => line.length <= 998);
+  const textPart = [
+    "Content-Type: text/plain; charset=utf-8",
+    `Content-Transfer-Encoding: ${plain ? "7bit" : "base64"}`,
+    "",
+    plain ? body : base64Lines(Buffer.from(body)),
+  ];
+  const boundary = `duva-${randomUUID()}`;
+  const content =
+    attachments.length === 0
+      ? textPart
+      : [
+          `Content-Type: multipart/mixed;\r\n boundary="${boundary}"`,
+          "",
+          ...[textPart, ...attachments.map(attachmentPart)].flatMap((part) => [`--${boundary}`, ...part]),
+          `--${boundary}--`,
+        ];
   const lines = [
     `From: ${addressField(from)}`,
     `To: ${to.map(addressField).join(",\r\n ")}`,
@@ -106,12 +138,49 @@ export function buildMail({ messageId, from, to, cc, subject, date, inReplyTo, r
     ...(references.length === 0 ? [] : [`References: ${references.join("\r\n ")}`]),
     ...headers.map(([name, value]) => `${name}: ${unstructured(name, value)}`),
     "MIME-Version: 1.0",
-    "Content-Type: text/plain; charset=utf-8",
-    `Content-Transfer-Encoding: ${plain ? "7bit" : "base64"}`,
-    "",
-    plain ? body : (Buffer.from(body).toString("base64").match(/.{1,76}/g) ?? []).join("\r\n"),
+    ...content,
   ];
   return new TextEncoder().encode(`${lines.join("\r\n")}\r\n`);
+}
+
+const base64Lines = (bytes: Uint8Array) => (Buffer.from(bytes).toString("base64").match(/.{1,76}/g) ?? []).join("\r\n");
+
+/** The media type as given if it is one, or else application/octet-stream, so a sender's text never reaches a header as it is. */
+export const mediaTypeOf = (type: string) => (/^[\w.+-]+\/[\w.+-]+$/.test(type) ? type : "application/octet-stream");
+
+/**
+ * An attachment's part. Its name is given twice, as clients read one or the other: in
+ * Content-Type's name, as encoded words in quotes, which RFC 2047 doesn't allow but older clients
+ * read, and in Content-Disposition's filename as RFC 2231 parameter values, split into lines that
+ * fit. A line break in the sender's name becomes a space, so it can't add header fields.
+ */
+function attachmentPart({ name: given, type, content }: Part): string[] {
+  const name = given?.replace(/[\x00-\x1f\x7f]+/g, " ").trim();
+  const named = name !== undefined && name !== "";
+  const media = mediaTypeOf(type);
+  return [
+    named ? `Content-Type: ${media};\r\n name="${isAscii(name) && !/["\\]/.test(name) && name.length <= 60 ? name : encodedWords(name)}"` : `Content-Type: ${media}`,
+    named ? `Content-Disposition: attachment;\r\n ${rfc2231("filename", name)}` : "Content-Disposition: attachment",
+    "Content-Transfer-Encoding: base64",
+    "",
+    base64Lines(content),
+  ];
+}
+
+/** The parameter as RFC 2231 extended values in UTF-8, continued over as many lines as it takes to keep each within 78 characters. */
+function rfc2231(parameter: string, value: string): string {
+  const encoded = [...value].map((character) => (/[A-Za-z0-9.\-_~!$&+^`|#]/.test(character) ? character : [...Buffer.from(character)].map((byte) => `%${byte.toString(16).toUpperCase().padStart(2, "0")}`).join("")));
+  const chunks: string[] = [];
+  let chunk = "UTF-8''";
+  for (const piece of encoded) {
+    if (chunk.length + piece.length > 60) {
+      chunks.push(chunk);
+      chunk = "";
+    }
+    chunk += piece;
+  }
+  chunks.push(chunk);
+  return chunks.length === 1 ? `${parameter}*=${chunks[0]}` : chunks.map((each, index) => `${parameter}*${index}*=${each}`).join(";\r\n ");
 }
 
 const isAscii = (text: string) => /^[\x20-\x7e\t\r\n]*$/.test(text);

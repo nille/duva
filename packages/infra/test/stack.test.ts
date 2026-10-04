@@ -3,7 +3,7 @@
 import { mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { environmentVariables, senderFilter, senderRetries } from "@duva/api/infrastructure";
+import { environmentVariables, senderFilter, senderRetries, timeToLiveAttribute } from "@duva/api/infrastructure";
 import { operations } from "@duva/openapi";
 import { buildSync } from "esbuild";
 import { expect, test } from "vitest";
@@ -42,6 +42,8 @@ const payPerUse = new Set([
   "AWS::Lambda::EventSourceMapping",
   "AWS::Lambda::Function",
   "AWS::Lambda::Permission",
+  // A function URL costs nothing of its own, only the invocations it makes.
+  "AWS::Lambda::Url",
   "AWS::Logs::LogGroup",
   "AWS::S3::Bucket",
   "AWS::S3::BucketPolicy",
@@ -473,4 +475,28 @@ test("the inbound Lambda may publish the drop metric: its role may write its log
   expect(Properties?.LoggingConfig?.LogFormat ?? "Text").toBe("Text");
   const roleId = Properties?.Role?.["Fn::GetAtt"]?.[0];
   expect(JSON.stringify(stack.template.Resources[roleId]?.Properties?.ManagedPolicyArns)).toContain("service-role/AWSLambdaBasicExecutionRole");
+});
+
+test("download links lead to the download Lambda's function URL, which streams its answer to anyone who has a link", () => {
+  const [downloadId] = lambda("DownloadHandler");
+  const urls = ofType("AWS::Lambda::Url");
+  expect(urls).toHaveLength(1);
+  const [[urlId, { Properties: url }]] = urls as [[string, Resource]];
+  expect(url).toMatchObject({ TargetFunctionArn: { "Fn::GetAtt": [downloadId, "Arn"] }, AuthType: "NONE", InvokeMode: "RESPONSE_STREAM" });
+  expect(lambda("ApiHandler")[1].Properties?.Environment?.Variables?.[environmentVariables.downloadUrl]).toEqual({ "Fn::GetAtt": [urlId, "FunctionUrl"] });
+  const invoking = ofType("AWS::Lambda::Permission").filter(([, { Properties }]) => Properties?.Principal === "*");
+  expect(invoking.map(([, { Properties }]) => Properties?.FunctionName)).toEqual(invoking.map(() => ({ "Fn::GetAtt": [downloadId, "Arn"] })));
+  expect(invoking.map(([, { Properties }]) => Properties?.Action).sort()).toEqual(["lambda:InvokeFunction", "lambda:InvokeFunctionUrl"]);
+});
+
+test("the download Lambda only reads: the table and raw mail", () => {
+  expect(tableActions("DownloadHandler")).toContain("dynamodb:GetItem");
+  expect(tableActions("DownloadHandler").filter((action) => /Put|Update|Delete|Write/.test(action))).toEqual([]);
+  expect(actions("DownloadHandler", "s3")).toContain("s3:GetObject*");
+  expect(actions("DownloadHandler", "s3").filter((action) => /Put|Delete/.test(action))).toEqual([]);
+});
+
+test("the table deletes download links' tickets once they expire, by its time to live", () => {
+  const [[, { Properties }]] = ofType("AWS::DynamoDB::GlobalTable") as [[string, Resource]];
+  expect(Properties?.TimeToLiveSpecification).toEqual({ AttributeName: timeToLiveAttribute, Enabled: true });
 });

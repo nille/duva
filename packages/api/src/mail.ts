@@ -8,7 +8,7 @@ import type { components } from "@duva/openapi";
 import type { Table } from "./deployment.ts";
 import { changesAfter, changesPerPage, type Feed, recordChanges } from "./feed.ts";
 import type { MailBucket } from "./mail-bucket.ts";
-import { type ParsedMail, parseMail } from "./mime.ts";
+import { type ParsedMail, type Part, parseMail } from "./mime.ts";
 import { allMailboxes, mailboxKey } from "./organization.ts";
 import { documents, isNew, pk, sk, type TransactItem } from "./table.ts";
 
@@ -611,15 +611,20 @@ export async function findMessage(
   mailBucket: MailBucket,
   mailbox: string,
   id: string,
-): Promise<{ message: Message; thread: string; replyTo: components["schemas"]["EmailAddress"][]; references: string[] } | undefined> {
+): Promise<{ message: Message; thread: string; replyTo: components["schemas"]["EmailAddress"][]; references: string[]; parts: Part[] } | undefined> {
+  const stored = await storedMessage(table, mailbox, id);
+  if (stored === undefined) return undefined;
+  const { message, parsed } = await readMessage(mailBucket, stored);
+  return { message, thread: stored.thread, replyTo: parsed.replyTo, references: parsed.references, parts: parsed.parts };
+}
+
+/** The message with the ID in the mailbox as stored, with its thread, or undefined if the mailbox has no such message. */
+async function storedMessage(table: Table, mailbox: string, id: string): Promise<(StoredMessage & { thread: string }) | undefined> {
   const db = documents(table);
   const { Item: ref } = await db.send(new GetCommand({ TableName: table.name, Key: messageRefKey(mailbox, id), ConsistentRead: true }));
   if (ref === undefined) return undefined;
-  const thread = ref.thread as string;
-  const { Item } = await db.send(new GetCommand({ TableName: table.name, Key: messageKey(mailbox, thread, ref.receivedAt as string, id), ConsistentRead: true }));
-  if (Item === undefined) return undefined;
-  const { message, parsed } = await readMessage(mailBucket, Item as StoredMessage);
-  return { message, thread, replyTo: parsed.replyTo, references: parsed.references };
+  const { Item } = await db.send(new GetCommand({ TableName: table.name, Key: messageKey(mailbox, ref.thread as string, ref.receivedAt as string, id), ConsistentRead: true }));
+  return Item as (StoredMessage & { thread: string }) | undefined;
 }
 
 /**

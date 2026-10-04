@@ -698,19 +698,61 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+  /mailboxes/{mailbox}/messages/{message}/attachments/{attachment}:
+    get:
+      operationId: getAttachment
+      summary: Get a short-lived link that downloads one of a message's attachments.
+      description: >
+        Duva takes the attachment from the stored message when the link is
+        followed, so nothing is stored twice. The link works for 5 minutes,
+        for whoever follows it, so keep it to yourself. Only those who can read
+        the mailbox get one: its owner and, for an agent's mailbox, its sponsor.
+      x-cli-command: attachments link
+      parameters:
+        - $ref: "#/components/parameters/Mailbox"
+        - name: message
+          in: path
+          required: true
+          description: The message's ID.
+          schema:
+            type: string
+        - name: attachment
+          in: path
+          required: true
+          description: The attachment's place among the message's attachments, from 0.
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: The attachment, with the link that downloads it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AttachmentLink"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /mailboxes/{mailbox}/drafts:
     post:
       operationId: createDraft
-      summary: Draft a reply to a message in a mailbox, a reply to all, or a new message.
+      summary: Draft a reply to a message in a mailbox, a reply to all, a forward, or a new message.
       description: >
         A reply goes from the address the original was sent to, plus tag
         kept, to the original's Reply-To or, without one, its From, with the
         subject carrying a single "Re: " prefix. A reply to your own message
         goes to its recipients instead. A reply to all also goes to every
         other recipient of the original, except the mailbox's own addresses.
-        A new message goes from the mailbox's default address. A draft can
-        be saved before it has recipients, a subject or text, but it needs a
-        recipient in To to be sent. Only the mailbox's owner can draft in it.
+        A forward goes from the address the original was sent to, to whoever
+        you give, with the subject carrying a single "Fwd: " prefix, the
+        original's text quoted and its attachments. A new message goes from
+        the mailbox's default address. A draft can be saved before it has
+        recipients, a subject or text, but it needs a recipient in To to be
+        sent. Only the mailbox's owner can draft in it.
         Writing a draft is recorded in the mailbox's change feed.
       x-cli-command: drafts create
       parameters:
@@ -1578,7 +1620,10 @@ components:
       properties:
         answers:
           type: string
-          description: The ID of the message the draft replies to. Without it, the draft is a new message.
+          description: The ID of the message the draft replies to. Without it or forwards, the draft is a new message.
+        forwards:
+          type: string
+          description: The ID of the message the draft forwards, with its text and attachments. Give answers or forwards, not both.
         replyAll:
           type: boolean
           description: With answers, replies to all, so every other recipient of the original gets it too, except the mailbox's own addresses.
@@ -1677,9 +1722,12 @@ components:
         answers:
           type: string
           description: The ID of the message the draft replies to, if it is a reply.
+        forwards:
+          type: string
+          description: The ID of the message the draft forwards, if it is a forward.
         thread:
           type: string
-          description: The ID of the thread of the message it replies to, if it is a reply.
+          description: The ID of the thread of the message it replies to or forwards, which the sent message joins.
         from:
           type: string
           description: The address it goes from.
@@ -1702,6 +1750,11 @@ components:
         text:
           type: string
           description: The plain-text body.
+        attachments:
+          type: array
+          items:
+            $ref: "#/components/schemas/Attachment"
+          description: The attachments it carries, those of the message it forwards, if it is a forward.
         updatedAt:
           type: string
           format: date-time
@@ -1804,6 +1857,9 @@ components:
         answers:
           type: string
           description: The ID of the message the draft replies to, if it is a reply.
+        forwards:
+          type: string
+          description: The ID of the message the draft forwards, if it is a forward.
         thread:
           type: string
           description: The ID of that message's thread.
@@ -1826,6 +1882,11 @@ components:
           type: string
         text:
           type: string
+        attachments:
+          type: array
+          items:
+            $ref: "#/components/schemas/Attachment"
+          description: The attachments it carries, those of the message it forwards, if it is a forward.
     ApprovalList:
       type: object
       additionalProperties: false
@@ -2094,6 +2155,29 @@ components:
         size:
           type: integer
           description: The attachment's size in bytes, decoded.
+    AttachmentLink:
+      type: object
+      additionalProperties: false
+      required: [type, size, url, expiresAt]
+      properties:
+        name:
+          type: string
+          description: The attachment's file name, if the message gives one.
+          examples: ["report.pdf"]
+        type:
+          type: string
+          description: The attachment's media type.
+          examples: ["application/pdf"]
+        size:
+          type: integer
+          description: The attachment's size in bytes, decoded.
+        url:
+          type: string
+          description: The link that downloads the attachment, for whoever follows it until it expires.
+        expiresAt:
+          type: string
+          format: date-time
+          description: When the link stops working.
     ChangePage:
       type: object
       additionalProperties: false

@@ -19,7 +19,7 @@ import { AttributeType, Billing, StreamViewType, TableV2 } from "aws-cdk-lib/aws
 import { Rule, Schedule } from "aws-cdk-lib/aws-events";
 import { LambdaFunction } from "aws-cdk-lib/aws-events-targets";
 import { PolicyStatement, ServicePrincipal } from "aws-cdk-lib/aws-iam";
-import { Architecture, FilterCriteria, Runtime, StartingPosition } from "aws-cdk-lib/aws-lambda";
+import { Architecture, FilterCriteria, FunctionUrlAuthType, InvokeMode, Runtime, StartingPosition } from "aws-cdk-lib/aws-lambda";
 import { SqsDestination } from "aws-cdk-lib/aws-lambda-destinations";
 import { DynamoEventSource, SqsDlq } from "aws-cdk-lib/aws-lambda-event-sources";
 import { NodejsFunction, OutputFormat } from "aws-cdk-lib/aws-lambda-nodejs";
@@ -28,7 +28,17 @@ import { BlockPublicAccess, Bucket, BucketEncryption } from "aws-cdk-lib/aws-s3"
 import { ConfigurationSet, EmailIdentity, Identity, ReceiptRuleSet } from "aws-cdk-lib/aws-ses";
 import { Queue, QueueEncryption } from "aws-cdk-lib/aws-sqs";
 import type { Construct } from "constructs";
-import { environmentVariables, inboundPrefix, receiptRuleName, senderFilter, senderRetries, sentPrefix, tableKey, tableStreamView } from "@duva/api/infrastructure";
+import {
+  environmentVariables,
+  inboundPrefix,
+  receiptRuleName,
+  senderFilter,
+  senderRetries,
+  sentPrefix,
+  tableKey,
+  tableStreamView,
+  timeToLiveAttribute,
+} from "@duva/api/infrastructure";
 import { operations } from "@duva/openapi";
 import { cliRedirectUri, signInSender, stackOutputs, stackParameters } from "./outputs.ts";
 
@@ -81,10 +91,12 @@ export class DuvaStack extends Stack {
 
     // Mail and its metadata outlive the stack. They are deleted only when the stack's
     // first creation fails, so a retried deploy starts clean. The table's stream starts each send.
+    // Its time to live deletes what is kept only for a while, like download links' tickets.
     const table = new TableV2(this, "Table", {
       partitionKey: { name: tableKey.partitionKey, type: AttributeType.STRING },
       sortKey: { name: tableKey.sortKey, type: AttributeType.STRING },
       dynamoStream: StreamViewType[tableStreamView],
+      timeToLiveAttribute,
       billing: Billing.onDemand(),
       pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
       removalPolicy: RemovalPolicy.RETAIN_ON_UPDATE_OR_DELETE,
@@ -254,6 +266,18 @@ export class DuvaStack extends Stack {
       );
     }
     new Rule(this, "EraserSchedule", { description: "Erases Trash and Spam past the retention period", schedule: Schedule.rate(Duration.days(1)), targets: [new LambdaFunction(eraser)] });
+    // Download links lead to a function URL anyone can call, since a browser follows a link without
+    // credentials: the link's ticket is what it checks. It streams its answer, since a buffered
+    // one can't exceed 6 MB, and takes the attachment from the raw message, which is parsed whole.
+    const download = lambda(
+      "DownloadHandler",
+      "@duva/api/download-lambda",
+      { [environmentVariables.tableName]: table.tableName, [environmentVariables.mailBucket]: mail.bucketName },
+      { memorySize: 1024, timeout: Duration.seconds(60) },
+    );
+    table.grantReadData(download);
+    mail.grantRead(download);
+    const downloadUrl = download.addFunctionUrl({ authType: FunctionUrlAuthType.NONE, invokeMode: InvokeMode.RESPONSE_STREAM });
 
     const handler = lambda("ApiHandler", "@duva/api/lambda", {
       [environmentVariables.version]: version,
@@ -263,6 +287,7 @@ export class DuvaStack extends Stack {
       [environmentVariables.receiptRuleSet]: receiving.receiptRuleSetName,
       [environmentVariables.inboundFunction]: inbound.functionArn,
       [environmentVariables.eraserFunction]: eraser.functionArn,
+      [environmentVariables.downloadUrl]: downloadUrl.url,
     });
     table.grantReadWriteData(handler);
     // Message bodies are read from the raw mail.
@@ -306,7 +331,7 @@ export class DuvaStack extends Stack {
       }),
     );
     table.grantReadWriteData(sender);
-    // The sender reads the message it answers and stores the raw MIME it sends.
+    // The sender reads the message it answers or forwards, and stores the raw MIME it sends.
     mail.grantRead(sender);
     mail.grantPut(sender, `${sentPrefix}*`);
     // SES checks both the identity and the configuration set a send uses. SESv2 SendEmail with raw
@@ -371,6 +396,7 @@ export class DuvaStack extends Stack {
     new CfnOutput(this, stackOutputs.setupFunction, { value: setup.functionName, description: "The function that sets up the organization" });
     new CfnOutput(this, stackOutputs.receiptRuleSet, { value: receiving.receiptRuleSetName, description: "Duva's receipt rule set" });
     new CfnOutput(this, stackOutputs.sendFailures, { value: sendFailures.queueUrl, description: "The queue of approved sends that failed processing" });
+    new CfnOutput(this, stackOutputs.downloadUrl, { value: downloadUrl.url, description: "The function URL download links lead to" });
     new CfnOutput(this, stackOutputs.inboundFailures, { value: inboundFailures.queueUrl, description: "The queue of received mail that failed processing" });
     ([1, 2, 3] as const).forEach((n, index) => {
       const { name, value } = identity.dkimRecords[index]!;

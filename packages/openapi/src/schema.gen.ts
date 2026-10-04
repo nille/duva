@@ -389,6 +389,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/mailboxes/{mailbox}/messages/{message}/attachments/{attachment}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a short-lived link that downloads one of a message's attachments.
+         * @description Duva takes the attachment from the stored message when the link is followed, so nothing is stored twice. The link works for 5 minutes, for whoever follows it, so keep it to yourself. Only those who can read the mailbox get one: its owner and, for an agent's mailbox, its sponsor.
+         */
+        get: operations["getAttachment"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/mailboxes/{mailbox}/drafts": {
         parameters: {
             query?: never;
@@ -403,8 +423,8 @@ export interface paths {
         get: operations["listDrafts"];
         put?: never;
         /**
-         * Draft a reply to a message in a mailbox, a reply to all, or a new message.
-         * @description A reply goes from the address the original was sent to, plus tag kept, to the original's Reply-To or, without one, its From, with the subject carrying a single "Re: " prefix. A reply to your own message goes to its recipients instead. A reply to all also goes to every other recipient of the original, except the mailbox's own addresses. A new message goes from the mailbox's default address. A draft can be saved before it has recipients, a subject or text, but it needs a recipient in To to be sent. Only the mailbox's owner can draft in it. Writing a draft is recorded in the mailbox's change feed.
+         * Draft a reply to a message in a mailbox, a reply to all, a forward, or a new message.
+         * @description A reply goes from the address the original was sent to, plus tag kept, to the original's Reply-To or, without one, its From, with the subject carrying a single "Re: " prefix. A reply to your own message goes to its recipients instead. A reply to all also goes to every other recipient of the original, except the mailbox's own addresses. A forward goes from the address the original was sent to, to whoever you give, with the subject carrying a single "Fwd: " prefix, the original's text quoted and its attachments. A new message goes from the mailbox's default address. A draft can be saved before it has recipients, a subject or text, but it needs a recipient in To to be sent. Only the mailbox's owner can draft in it. Writing a draft is recorded in the mailbox's change feed.
          */
         post: operations["createDraft"];
         delete?: never;
@@ -935,8 +955,10 @@ export interface components {
             emptiedAt: string;
         };
         NewDraft: {
-            /** @description The ID of the message the draft replies to. Without it, the draft is a new message. */
+            /** @description The ID of the message the draft replies to. Without it or forwards, the draft is a new message. */
             answers?: string;
+            /** @description The ID of the message the draft forwards, with its text and attachments. Give answers or forwards, not both. */
+            forwards?: string;
             /** @description With answers, replies to all, so every other recipient of the original gets it too, except the mailbox's own addresses. */
             replyAll?: boolean;
             /**
@@ -992,7 +1014,9 @@ export interface components {
             id: string;
             /** @description The ID of the message the draft replies to, if it is a reply. */
             answers?: string;
-            /** @description The ID of the thread of the message it replies to, if it is a reply. */
+            /** @description The ID of the message the draft forwards, if it is a forward. */
+            forwards?: string;
+            /** @description The ID of the thread of the message it replies to or forwards, which the sent message joins. */
             thread?: string;
             /**
              * @description The address it goes from.
@@ -1006,6 +1030,8 @@ export interface components {
             subject: string;
             /** @description The plain-text body. */
             text: string;
+            /** @description The attachments it carries, those of the message it forwards, if it is a forward. */
+            attachments?: components["schemas"]["Attachment"][];
             /**
              * Format: date-time
              * @description When the draft was written or last changed.
@@ -1071,6 +1097,8 @@ export interface components {
             id: string;
             /** @description The ID of the message the draft replies to, if it is a reply. */
             answers?: string;
+            /** @description The ID of the message the draft forwards, if it is a forward. */
+            forwards?: string;
             /** @description The ID of that message's thread. */
             thread?: string;
             from: string;
@@ -1080,6 +1108,8 @@ export interface components {
             bcc: components["schemas"]["EmailAddress"][];
             subject: string;
             text: string;
+            /** @description The attachments it carries, those of the message it forwards, if it is a forward. */
+            attachments?: components["schemas"]["Attachment"][];
         };
         ApprovalList: {
             approvals: components["schemas"]["Approval"][];
@@ -1263,6 +1293,27 @@ export interface components {
             type: string;
             /** @description The attachment's size in bytes, decoded. */
             size: number;
+        };
+        AttachmentLink: {
+            /**
+             * @description The attachment's file name, if the message gives one.
+             * @example report.pdf
+             */
+            name?: string;
+            /**
+             * @description The attachment's media type.
+             * @example application/pdf
+             */
+            type: string;
+            /** @description The attachment's size in bytes, decoded. */
+            size: number;
+            /** @description The link that downloads the attachment, for whoever follows it until it expires. */
+            url: string;
+            /**
+             * Format: date-time
+             * @description When the link stops working.
+             */
+            expiresAt: string;
         };
         ChangePage: {
             changes: components["schemas"]["OrganizationChange"][];
@@ -2094,6 +2145,37 @@ export interface operations {
                     "application/json": components["schemas"]["TrashEmptying"];
                 };
             };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getAttachment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The mailbox's ID. */
+                mailbox: components["parameters"]["Mailbox"];
+                /** @description The message's ID. */
+                message: string;
+                /** @description The attachment's place among the message's attachments, from 0. */
+                attachment: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The attachment, with the link that downloads it. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttachmentLink"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];

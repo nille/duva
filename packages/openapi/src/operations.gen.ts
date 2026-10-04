@@ -628,6 +628,42 @@ export const operations = [
     ]
   },
   {
+    "operationId": "getAttachment",
+    "method": "get",
+    "path": "/mailboxes/{mailbox}/messages/{message}/attachments/{attachment}",
+    "routeKey": "GET /mailboxes/{mailbox}/messages/{message}/attachments/{attachment}",
+    "summary": "Get a short-lived link that downloads one of a message's attachments.",
+    "description": "Duva takes the attachment from the stored message when the link is followed, so nothing is stored twice. The link works for 5 minutes, for whoever follows it, so keep it to yourself. Only those who can read the mailbox get one: its owner and, for an agent's mailbox, its sponsor.",
+    "signIn": true,
+    "command": [
+      "attachments",
+      "link"
+    ],
+    "options": [
+      {
+        "name": "mailbox",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The mailbox's ID."
+      },
+      {
+        "name": "message",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The message's ID."
+      },
+      {
+        "name": "attachment",
+        "in": "path",
+        "type": "integer",
+        "required": true,
+        "description": "The attachment's place among the message's attachments, from 0."
+      }
+    ]
+  },
+  {
     "operationId": "listDrafts",
     "method": "get",
     "path": "/mailboxes/{mailbox}/drafts",
@@ -654,8 +690,8 @@ export const operations = [
     "method": "post",
     "path": "/mailboxes/{mailbox}/drafts",
     "routeKey": "POST /mailboxes/{mailbox}/drafts",
-    "summary": "Draft a reply to a message in a mailbox, a reply to all, or a new message.",
-    "description": "A reply goes from the address the original was sent to, plus tag kept, to the original's Reply-To or, without one, its From, with the subject carrying a single \"Re: \" prefix. A reply to your own message goes to its recipients instead. A reply to all also goes to every other recipient of the original, except the mailbox's own addresses. A new message goes from the mailbox's default address. A draft can be saved before it has recipients, a subject or text, but it needs a recipient in To to be sent. Only the mailbox's owner can draft in it. Writing a draft is recorded in the mailbox's change feed.",
+    "summary": "Draft a reply to a message in a mailbox, a reply to all, a forward, or a new message.",
+    "description": "A reply goes from the address the original was sent to, plus tag kept, to the original's Reply-To or, without one, its From, with the subject carrying a single \"Re: \" prefix. A reply to your own message goes to its recipients instead. A reply to all also goes to every other recipient of the original, except the mailbox's own addresses. A forward goes from the address the original was sent to, to whoever you give, with the subject carrying a single \"Fwd: \" prefix, the original's text quoted and its attachments. A new message goes from the mailbox's default address. A draft can be saved before it has recipients, a subject or text, but it needs a recipient in To to be sent. Only the mailbox's owner can draft in it. Writing a draft is recorded in the mailbox's change feed.",
     "signIn": true,
     "command": [
       "drafts",
@@ -674,7 +710,14 @@ export const operations = [
         "in": "body",
         "type": "string",
         "required": false,
-        "description": "The ID of the message the draft replies to. Without it, the draft is a new message."
+        "description": "The ID of the message the draft replies to. Without it or forwards, the draft is a new message."
+      },
+      {
+        "name": "forwards",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "The ID of the message the draft forwards, with its text and attachments. Give answers or forwards, not both."
       },
       {
         "name": "replyAll",

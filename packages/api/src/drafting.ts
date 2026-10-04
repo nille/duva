@@ -384,29 +384,37 @@ const editsOf = ({ to, subject, text }: Edits): Edits => ({
 });
 
 // Drafts and approvals stored before Cc and Bcc existed have neither.
-const approvalDraftOf = ({ id, answers, thread, from, to, cc = [], bcc = [], subject, text }: Approval["draft"]): Approval["draft"] => ({
+const approvalDraftOf = ({ id, answers, forwards, thread, from, to, cc = [], bcc = [], subject, text, attachments }: Approval["draft"]): Approval["draft"] => ({
   id,
-  ...(answers !== undefined && { answers, thread }),
+  ...(answers !== undefined && { answers }),
+  ...(forwards !== undefined && { forwards }),
+  ...(thread !== undefined && { thread }),
   from,
   to: to.map(addressOf),
   cc: cc.map(addressOf),
   bcc: bcc.map(addressOf),
   subject,
   text,
+  ...(attachments !== undefined && { attachments: attachments.map(attachmentOf) }),
 });
+
+const attachmentOf = ({ name, type, size }: components["schemas"]["Attachment"]) => ({ ...(name !== undefined && { name }), type, size });
 
 const addressOf = ({ name, address }: components["schemas"]["EmailAddress"]) => (name === undefined ? { address } : { name, address });
 
 /** The draft in the order the contract lists its fields, without what only Duva keeps. */
-const draftOf = ({ id, answers, thread, from, to, cc = [], bcc = [], subject, text, updatedAt, send }: Omit<StoredDraft, "version">): Draft => ({
+const draftOf = ({ id, answers, forwards, thread, from, to, cc = [], bcc = [], subject, text, attachments, updatedAt, send }: Omit<StoredDraft, "version">): Draft => ({
   id,
-  ...(answers !== undefined && { answers, thread }),
+  ...(answers !== undefined && { answers }),
+  ...(forwards !== undefined && { forwards }),
+  ...(thread !== undefined && { thread }),
   from,
   to: to.map(addressOf),
   cc: cc.map(addressOf),
   bcc: bcc.map(addressOf),
   subject,
   text,
+  ...(attachments !== undefined && { attachments: attachments.map(attachmentOf) }),
   updatedAt,
   ...(send !== undefined && { send: sendOf(send) }),
 });

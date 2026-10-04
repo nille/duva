@@ -1,5 +1,6 @@
 import { parseArgs } from "node:util";
 import { apiCommands } from "./api-commands.ts";
+import { attachmentsDownload } from "./attachments.ts";
 import { deploy } from "./deploy.ts";
 import { login } from "./login.ts";
 import { skillInstall } from "./skill.ts";
@@ -25,7 +26,7 @@ export interface CommandOption {
 }
 
 /** The hand-written commands, then one for each API operation. */
-export const commands: Command[] = [deploy, login, skillInstall, ...apiCommands];
+export const commands: Command[] = [deploy, login, skillInstall, attachmentsDownload, ...apiCommands];
 
 /**
  * The values of the command's options in its arguments. A flag is true when given, a list's option

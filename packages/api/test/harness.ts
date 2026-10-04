@@ -12,6 +12,7 @@ import PostalMime from "postal-mime";
 import { createDuvaClient, type DuvaClient } from "@duva/client";
 import { inject } from "vitest";
 import { createApi } from "../src/api.ts";
+import { createDownloads, downloadLinkLifetime as linkLifetime } from "../src/attachments.ts";
 import { createAuthorizer } from "../src/authorizer.ts";
 import type { Humans } from "../src/user-pool.ts";
 import { createEraser, type TrashEmptied } from "../src/erasure.ts";
@@ -53,6 +54,8 @@ export interface DuvaOptions {
   senderInvocations?: number;
   /** Whether the eraser's runs for each Trash emptied are lost, as when every one of Lambda's attempts fails. */
   emptyingLost?: boolean;
+  /** How many seconds a download link works. */
+  downloadLinkLifetime?: number;
 }
 
 /** A Duva deployment running in-process, set up as duva deploy sets one up, with its own table and mail bucket. */
@@ -94,6 +97,8 @@ export interface Duva {
    * delete anything during the run, which then fails, as a run that stops partway does.
    */
   erase(at: Date, options?: { s3DeletesFail?: boolean }): Promise<void>;
+  /** Follows a download link, as a browser does, and gives what the download Lambda's function URL answered. */
+  download(url: string): Promise<Response>;
   /**
    * Moves Duva to a new user pool, as the deploy of #30 did. No human can sign in there, and every
    * session ends, until setUp() moves the humans.
@@ -119,6 +124,7 @@ export async function startDuva({
   sesAnswersLost = false,
   senderInvocations = 1,
   emptyingLost = false,
+  downloadLinkLifetime = linkLifetime,
 }: DuvaOptions = {}): Promise<Duva> {
   const { table, streamArn } = await createTable();
   const humans = memoryHumans();
@@ -141,20 +147,34 @@ export async function startDuva({
   const stream = tableStream(inject("dynamodbEndpoint"), streamArn, [
     { filter: senderFilter, handler: createSender({ table, mailBucket, outbound: sending.outbound, region }), retries: senderRetries, invocations: senderInvocations },
   ]);
+  // The download Lambda's function URL is the API's own URL here, under /downloads/, once it listens.
+  let downloadUrl = `${inProcess}/downloads/`;
+  const downloads = {
+    get url() {
+      return downloadUrl;
+    },
+    lifetime: downloadLinkLifetime,
+  };
+  const download = createDownloads({ table, mailBucket });
+  const downloaded = async (request: Request) => {
+    const { statusCode, headers, body } = await download(new URL(request.url).pathname);
+    return new Response(body, { status: statusCode, headers });
+  };
   const gatewayed = gateway(
-    createApi({ version, region, table, humans, mailBucket, receiving, eraser: { emptyTrash: async (each) => void emptied.push(each) } }),
+    createApi({ version, region, table, humans, mailBucket, receiving, downloads, eraser: { emptyTrash: async (each) => void emptied.push(each) } }),
     createAuthorizer({ table, verifyAccessToken: issuer.verify }),
   );
   // A call returns once the stream has handed what it wrote to the sender, and the eraser has
   // erased the Trash it emptied, so tests see the outcome.
   const api = async (request: Request) => {
+    if (new URL(request.url).pathname.startsWith("/downloads/")) return downloaded(request);
     const response = await gatewayed(request);
     await stream.deliver();
     for (let each = emptied.shift(); each !== undefined; each = emptied.shift()) if (!emptyingLost) await eraser({ emptyTrash: each });
     return response;
   };
   const login = managedLogin({ ids: humans.ids, issuer, accessTokenLifetime });
-  const client = (headers?: Record<string, string>) => createDuvaClient("http://duva.test", { fetch: api, headers });
+  const client = (headers?: Record<string, string>) => createDuvaClient(inProcess, { fetch: api, headers });
   const accessToken = (email: string) => {
     const id = humans.ids.get(email);
     if (id === undefined) throw new Error(`${email} isn't a human in the organization`);
@@ -185,16 +205,21 @@ export async function startDuva({
         mailBucket.deletesFail = false;
       }
     },
+    download: (url) => (url.startsWith(inProcess) ? api(new Request(url)) : fetch(url)),
     setUp: async (options) => {
       await setUp(options);
       await timeEarlierLabels(table);
     },
     async listen() {
       const server = await listen(async (request) => (await login.handle(request)) ?? api(request));
+      downloadUrl = `${server.url}/downloads/`;
       return { ...server, signIn: { url: server.url, clientId: managedLoginClientId } };
     },
   };
 }
+
+// Where the API is when called in-process.
+const inProcess = "http://duva.test";
 
 // What SES knows the deployment's mail bucket and inbound Lambda by.
 const mailBucketName = "duva-mail";

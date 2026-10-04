@@ -2,9 +2,55 @@
 import type { ReactNode } from "react";
 import type { components } from "@duva/openapi";
 import type { Connection as ConnectionState } from "./feed.ts";
-import { strings } from "./strings.ts";
+import { size, strings } from "./strings.ts";
 
 type EmailAddress = components["schemas"]["EmailAddress"];
+type Attachment = components["schemas"]["Attachment"];
+
+/**
+ * A message's or a forward's attachments under a hairline, each with the clip icon, its name and
+ * its type and size. With `onDownload`, each name is a button that downloads it, and `downloading`
+ * says which one is on its way.
+ */
+export function Attachments({ list, onDownload, downloading }: { list: Attachment[]; onDownload?: (index: number) => void; downloading?: number }) {
+  return (
+    <section className="letter-attachments" aria-label={strings.thread.attachments}>
+      <ul>
+        {list.map((attachment, index) => {
+          const name = attachment.name ?? strings.thread.unnamed;
+          return (
+            <li key={index}>
+              <ClipIcon />
+              <span>
+                {onDownload === undefined ? (
+                  <span className="attachment-name">{name}</span>
+                ) : (
+                  <button type="button" className="link attachment-name" aria-label={strings.thread.download(name)} disabled={downloading !== undefined} onClick={() => onDownload(index)}>
+                    {name}
+                  </button>
+                )}{" "}
+                <span className="attachment-meta">{downloading === index ? strings.thread.downloading : strings.thread.attachment(attachment.type, size(attachment.size))}</span>
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
+const ClipIcon = () => (
+  <svg className="icon" viewBox="0 0 16 16" aria-hidden="true">
+    <path
+      d="M10.5 5.5 6.2 9.8a1.2 1.2 0 0 0 1.7 1.7l4.6-4.6a2.6 2.6 0 0 0-3.7-3.7L4.2 7.8a4 4 0 0 0 5.7 5.7l3.6-3.6"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
 
 export function Field({ label, children }: { label: string; children: ReactNode }) {
   return (

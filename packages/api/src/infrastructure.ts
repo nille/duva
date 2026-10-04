@@ -6,6 +6,9 @@ export const tableKey = {
   sortKey: "sk",
 } as const;
 
+/** The attribute whose time, in seconds since the epoch, the table's time to live deletes an item after. */
+export const timeToLiveAttribute = "expires";
+
 /** The environment variables the CDK app gives the API's Lambdas. Each Lambda gets those it reads. */
 export const environmentVariables = {
   version: "DUVA_VERSION",
@@ -27,6 +30,8 @@ export const environmentVariables = {
   eraserFunction: "ERASER_FUNCTION",
   /** The SES configuration set every send goes through. */
   configurationSet: "CONFIGURATION_SET",
+  /** The URL of the download Lambda, which download links lead to. */
+  downloadUrl: "DOWNLOAD_URL",
 } as const;
 
 /** What the table's stream shows of each changed item. The sender reads the item itself, so only its new image. */

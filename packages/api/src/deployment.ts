@@ -1,5 +1,6 @@
 import type { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import type { Eraser } from "./erasure.ts";
+import type { Downloads } from "./attachments.ts";
 import type { Humans } from "./user-pool.ts";
 import type { MailBucket } from "./mail-bucket.ts";
 import type { Receiving } from "./receiving.ts";
@@ -22,4 +23,5 @@ export interface Deployment {
   mailBucket: MailBucket;
   receiving: Receiving;
   eraser: Eraser;
+  downloads: Downloads;
 }

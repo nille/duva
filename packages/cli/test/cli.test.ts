@@ -426,6 +426,69 @@ test("drafts create takes a new message's recipients as --to, once for each", as
   expect(JSON.parse(result.stdout)).toMatchObject({ from: "hermes@example.com", to: [{ address: "grace@example.org" }, { address: "ada@example.org" }] });
 });
 
+/** A message to Hermes with one attachment, whose name is in Swedish. */
+const withAttachment = [
+  "From: Grace <grace@example.org>",
+  "To: hermes@example.com",
+  "Subject: Rapporten",
+  "MIME-Version: 1.0",
+  'Content-Type: multipart/mixed; boundary="part"',
+  "",
+  "--part",
+  "Content-Type: text/plain; charset=utf-8",
+  "",
+  "Rapporten bifogas.",
+  "--part",
+  "Content-Type: text/plain; charset=utf-8",
+  "Content-Disposition: attachment; filename*=UTF-8''r%C3%A4kenskaper.txt",
+  "Content-Transfer-Encoding: base64",
+  "",
+  Buffer.from("Siffror.").toString("base64"),
+  "--part--",
+].join("\r\n");
+
+/** A deployment where the agent Hermes, which Ada sponsors, got a message with an attachment. */
+async function withAgentAttachment(machine: Awaited<ReturnType<typeof newMachine>>) {
+  const duva = await startDuva({ domain: "example.com", admin: "ada@example.org" });
+  const server = await duva.listen();
+  onTestFinished(() => server.close());
+  await machine.saveDeployment(server);
+  await machine.duva("login", { browserSignsIn: "ada@example.org" });
+  const { agent, key } = JSON.parse((await machine.duva("agents", "create", "--name", "Hermes")).stdout) as { agent: { id: string }; key: string };
+  const mailbox = JSON.parse((await machine.duva("mailboxes", "create", "--owner", agent.id, "--address", "hermes@example.com")).stdout) as { id: string };
+  await duva.receive(withAttachment, { to: ["hermes@example.com"] });
+  const asAgent = { env: { DUVA_AGENT_KEY: key } };
+  const changes = JSON.parse((await machine.duva("mailboxes", "changes", "--mailbox", mailbox.id, asAgent)).stdout) as { changes: { message: string }[] };
+  return { mailbox: mailbox.id, message: changes.changes[0]!.message, asAgent };
+}
+
+test("attachments download saves an attachment in the working directory under its name, and says where it wrote it", async () => {
+  const machine = await newMachine();
+  const { mailbox, message, asAgent } = await withAgentAttachment(machine);
+
+  const result = await machine.duva("attachments", "download", "--mailbox", mailbox, "--message", message, "--attachment", "0", asAgent);
+
+  expect(result.exitCode).toBe(0);
+  const file = join(machine.home, "räkenskaper.txt");
+  expect(JSON.parse(result.stdout)).toEqual({ file, name: "räkenskaper.txt", type: "text/plain", size: 8 });
+  expect(await readFile(file, "utf8")).toBe("Siffror.");
+});
+
+test("attachments download writes where --file says, and never over a file that's there", async () => {
+  const machine = await newMachine();
+  const { mailbox, message, asAgent } = await withAgentAttachment(machine);
+  const file = join(machine.home, "saved.txt");
+
+  const saved = await machine.duva("attachments", "download", "--mailbox", mailbox, "--message", message, "--attachment", "0", "--file", file, asAgent);
+  const again = await machine.duva("attachments", "download", "--mailbox", mailbox, "--message", message, "--attachment", "0", "--file", file, asAgent);
+
+  expect(saved.exitCode).toBe(0);
+  expect(JSON.parse(saved.stdout)).toMatchObject({ file });
+  expect(again.exitCode).toBe(1);
+  expect(errorIn(again.stderr)).toMatch(/already.*--file/);
+  expect(await readFile(file, "utf8")).toBe("Siffror.");
+});
+
 test("approvals reject asks for the note when it's missing", async () => {
   const machine = await newMachine();
 
@@ -506,7 +569,8 @@ const main = fileURLToPath(new URL("../src/main.ts", import.meta.url));
 
 function run(args: string[], env: Record<string, string>) {
   return new Promise<{ exitCode: number | null; stdout: string; stderr: string }>((resolve, reject) => {
-    const child = spawn(bun, [main, ...args], { env });
+    // The machine's working directory is its home.
+    const child = spawn(bun, [main, ...args], { env, cwd: env.HOME });
     let stdout = "";
     let stderr = "";
     child.stdout.on("data", (chunk) => (stdout += chunk));
