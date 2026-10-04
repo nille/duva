@@ -50,6 +50,7 @@ Facts about AWS that shaped Duva's design, each with how it was established. A c
 
 ## Lambda
 
+- **A line in embedded metric format that a Node 24 Lambda writes to stdout becomes a CloudWatch metric,** with the function's default Text log format. The inbound Lambda's drop line showed up as `Duva/DroppedMessages{Reason=virus}` within a few minutes. The day's count for 2026-10-04 includes that one probe. _Real run of #31._
 - **LanceDB's native module loads in Lambda,** on `nodejs24.x` as an x64 zip and as an arm64 container image, and answers a full-text query from a table on S3 there. _Search spike, #15, 2026-10-03._
 - **Only x64 fits a zip.** A zip's unzipped limit is 262,144,000 bytes. LanceDB 0.39.0 with its x64 native module and Apache Arrow takes 213.8 MB, which leaves about 48 MB for Duva's own code. The arm64 native module alone is 389 MB, so arm64 needs an image. _Search spike, #15, 2026-10-03; [Lambda quotas](https://docs.aws.amazon.com/lambda/latest/dg/gettingstarted-limits.html)._
 - **A cold start costs more than its Init Duration.** Seen by the caller, cold invocations of the 213.8 MB x64 zip took about 620 ms longer than init plus handler time, and of the arm64 image about 160 ms. _Search spike, #17, 2026-10-04, 1,080 cold starts._
