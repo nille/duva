@@ -410,11 +410,11 @@ export interface Sending {
 export function markSent(
   table: Table,
   sending: Sending,
-  { thread, messageId, stored }: { thread: string | undefined; messageId: string; stored: Omit<StoredMessage, "id" | "messageId" | "sentBy"> },
+  { thread, messageId, stored, text }: { thread: string | undefined; messageId: string; stored: Omit<StoredMessage, "id" | "messageId" | "sentBy">; text: string },
 ): Promise<boolean> {
   const { mailbox, draft, approval, message, agent } = sending;
   const once = (sentThread: string) => sendingSettles(table, sending, { approval, state: "sent", thread: sentThread, message, messageId });
-  return storeSentMessage(table, { mailbox, message: { ...stored, id: message, messageId, sentBy: agent }, thread, draft, once });
+  return storeSentMessage(table, { mailbox, message: { ...stored, id: message, messageId, sentBy: agent }, text, thread, draft, once });
 }
 
 /** Marks the draft failed with SES's reason, which the agent and its sponsor see. Returns false if it was no longer sending. */

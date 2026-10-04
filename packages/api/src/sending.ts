@@ -99,6 +99,7 @@ async function send({ table, mailBucket, outbound, region }: Sender, { mailbox, 
   const from = { name: agent.name, address: draft.from };
   const disclosure = `${agent.name} for ${sponsor.email}`;
   const parent = original?.message.messageId;
+  const text = `${draft.text}\n\nSent by ${disclosure}`;
   const raw = buildMail({
     // SES replaces it with one of its own, which is the one recorded (docs/aws.md).
     messageId: `<${message}@${await organizationDomain(table)}>`,
@@ -109,7 +110,7 @@ async function send({ table, mailBucket, outbound, region }: Sender, { mailbox, 
     inReplyTo: parent,
     references: parent === undefined ? [] : [...(original?.references ?? []).filter((reference) => reference !== parent), parent],
     headers: [[disclosureHeader, disclosure]],
-    text: `${draft.text}\n\nSent by ${disclosure}`,
+    text,
   });
   const rawKey = `${sentPrefix}${message}`;
   await mailBucket.put(rawKey, raw);
@@ -125,6 +126,7 @@ async function send({ table, mailBucket, outbound, region }: Sender, { mailbox, 
   }
   const sentAt = date.toISOString();
   await markSent(table, sending, {
+    text,
     thread: draft.thread,
     messageId: `<${sesMessageId}@${region}.amazonses.com>`,
     stored: { from, to: draft.to, cc: [], recipient: draft.from, subject: draft.subject, date: sentAt, receivedAt: sentAt, rawKey },

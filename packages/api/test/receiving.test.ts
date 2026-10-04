@@ -89,7 +89,9 @@ test("mail to the agent's address lands in its Inbox as a new thread", async () 
         id: expect.any(String),
         subject: "Compiler notes",
         from: { name: "Grace Hopper", address: "grace@example.org" },
+        snippet: "Hej Hermes, Här är mina anteckningar om kompilatorn. Grace",
         labels: ["inbox"],
+        unread: true,
         latestAt: expect.any(String),
         messages: 1,
       },
@@ -109,6 +111,7 @@ test("the agent reads a message: sender, recipients, subject, date and plain-tex
     id: thread.id,
     subject: "Compiler notes",
     labels: ["inbox"],
+    unread: true,
     messages: [
       {
         id: expect.any(String),
@@ -327,7 +330,9 @@ test("a reply whose In-Reply-To names a message in the mailbox joins that messag
       id: expect.any(String),
       subject: "Compiler notes",
       from: { name: "Grace Hopper", address: "grace@example.org" },
+      snippet: "Tack, Grace. Jag läser dem i kväll. Ada",
       labels: ["inbox"],
+      unread: true,
       latestAt: threads[0]!.messages[1]!.receivedAt,
       messages: 2,
     },
@@ -577,7 +582,7 @@ test("mail judged to be spam is kept under the Spam label, out of the Inbox, and
 
   const { inbox, spam } = await everythingIn(hermes, mailbox.id);
   expect(inbox).toEqual([]);
-  expect(spam).toEqual([{ id: expect.any(String), subject: "Compiler notes", from: { name: "Grace Hopper", address: "grace@example.org" }, labels: ["spam"], latestAt: expect.any(String), messages: 1 }]);
+  expect(spam).toEqual([{ id: expect.any(String), subject: "Compiler notes", from: { name: "Grace Hopper", address: "grace@example.org" }, snippet: expect.stringContaining("Hej Hermes"), labels: ["spam"], unread: true, latestAt: expect.any(String), messages: 1 }]);
   const { data: thread } = await hermes.GET("/mailboxes/{mailbox}/threads/{thread}", { params: { path: { mailbox: mailbox.id, thread: spam[0]!.id } } });
   expect(thread).toMatchObject({ labels: ["spam"], messages: [{ messageId: "<notes-1@example.org>", text: expect.stringContaining("Hej Hermes") }] });
 });

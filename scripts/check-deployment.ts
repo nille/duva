@@ -68,6 +68,11 @@ await check("listing approvals without credentials answers 401", async () => exp
 await check("rejecting an approval without credentials answers 401", async () =>
   expectStatus(await fetch(`${apiUrl}/approvals/x/reject`, { method: "POST", headers: { "content-type": "application/json" }, body: '{"note":"Check"}' }), 401),
 );
+for (const read of ["read", "unread"]) {
+  await check(`marking threads ${read} without credentials answers 401`, async () =>
+    expectStatus(await fetch(`${apiUrl}/mailboxes/x/threads/${read}`, { method: "POST", headers: { "content-type": "application/json" }, body: '{"threads":["x"]}' }), 401),
+  );
+}
 await check("sending an approval without credentials answers 401", async () =>
   expectStatus(await fetch(`${apiUrl}/approvals/x/send`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }), 401),
 );

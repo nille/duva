@@ -173,11 +173,51 @@ export interface paths {
         };
         /**
          * List the threads in a mailbox with a label, newest first.
-         * @description Lists the 100 newest threads with the label.
+         * @description Lists the threads a page at a time, newest first by their newest message. To read the next page, call again with the answer's next as after, until an answer has no next.
          */
         get: operations["listThreads"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mailboxes/{mailbox}/threads/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark threads in a mailbox read.
+         * @description Marks each thread read. Read state belongs to the mailbox, so it is the same for each actor who reads it. Each thread that was unread gets a change in the mailbox's change feed, naming you. Only those who can read the mailbox can mark its threads.
+         */
+        post: operations["markThreadsRead"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mailboxes/{mailbox}/threads/unread": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark threads in a mailbox unread.
+         * @description Marks each thread unread, so it stands out until it is read again. Each thread that was read gets a change in the mailbox's change feed, naming you. Only those who can read the mailbox can mark its threads.
+         */
+        post: operations["markThreadsUnread"];
         delete?: never;
         options?: never;
         head?: never;
@@ -438,7 +478,7 @@ export interface components {
             position: number;
         };
         /** @description A change in a mailbox. */
-        MailboxChange: components["schemas"]["MessageReceived"] | components["schemas"]["DraftWritten"] | components["schemas"]["DraftChanged"] | components["schemas"]["ApprovalAsked"] | components["schemas"]["ApprovalWithdrawn"] | components["schemas"]["ApprovalDecided"] | components["schemas"]["MessageSent"] | components["schemas"]["SendFailed"] | components["schemas"]["SendUnclear"];
+        MailboxChange: components["schemas"]["MessageReceived"] | components["schemas"]["DraftWritten"] | components["schemas"]["DraftChanged"] | components["schemas"]["ApprovalAsked"] | components["schemas"]["ApprovalWithdrawn"] | components["schemas"]["ApprovalDecided"] | components["schemas"]["MessageSent"] | components["schemas"]["SendFailed"] | components["schemas"]["SendUnclear"] | components["schemas"]["ThreadRead"] | components["schemas"]["ThreadUnread"];
         /** @description Mail arrived. No actor made this change, so it names none. */
         MessageReceived: {
             /** @description The change's position in the mailbox's feed, counting from 1. */
@@ -579,6 +619,30 @@ export interface components {
              * @enum {string}
              */
             type: "sendUnclear";
+        };
+        ThreadRead: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "threadRead";
+            /** @description The ID of the thread marked read. */
+            thread: string;
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "threadRead";
+        };
+        ThreadUnread: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "threadUnread";
+            /** @description The ID of the thread marked unread. */
+            thread: string;
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "threadUnread";
         };
         NewDraft: {
             /** @description The ID of the message the draft replies to. Without it, the draft is a new message. */
@@ -723,13 +787,25 @@ export interface components {
         };
         ThreadList: {
             threads: components["schemas"]["ThreadSummary"][];
+            /** @description Present when more threads follow. Pass it as after to list the next page. */
+            next?: string;
+        };
+        ThreadIds: {
+            /** @description The IDs of the threads. */
+            threads: string[];
         };
         ThreadSummary: {
             /** @description The thread's ID. */
             id: string;
             /** @description The subject of the thread's first message. */
             subject: string;
+            /** @description Who sent the thread's first message. */
             from: components["schemas"]["EmailAddress"];
+            /**
+             * @description The start of the newest message's text, on one line, without quoted lines.
+             * @example Here are my notes on the compiler.
+             */
+            snippet: string;
             /**
              * @description The thread's labels.
              * @example [
@@ -737,6 +813,8 @@ export interface components {
              *     ]
              */
             labels: string[];
+            /** @description Whether any message in the thread is unread. */
+            unread: boolean;
             /**
              * Format: date-time
              * @description When the thread's newest message arrived.
@@ -757,6 +835,8 @@ export interface components {
              *     ]
              */
             labels: string[];
+            /** @description Whether any message in the thread is unread. Reading the thread doesn't change it. Mark the thread read for that. */
+            unread: boolean;
             messages: components["schemas"]["Message"][];
         };
         Message: {
@@ -1266,6 +1346,10 @@ export interface operations {
             query?: {
                 /** @description The label the threads carry. inbox, the default, lists the Inbox. */
                 label?: string;
+                /** @description How many threads a page lists at most. */
+                limit?: number;
+                /** @description Where the page starts, the next of the page before it. Leave it out for the first page. */
+                after?: string;
             };
             header?: never;
             path: {
@@ -1276,7 +1360,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The threads with the label. */
+            /** @description A page of the threads with the label. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1285,6 +1369,69 @@ export interface operations {
                     "application/json": components["schemas"]["ThreadList"];
                 };
             };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    markThreadsRead: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The mailbox's ID. */
+                mailbox: components["parameters"]["Mailbox"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ThreadIds"];
+            };
+        };
+        responses: {
+            /** @description The threads, as they are now. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThreadList"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    markThreadsUnread: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The mailbox's ID. */
+                mailbox: components["parameters"]["Mailbox"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ThreadIds"];
+            };
+        };
+        responses: {
+            /** @description The threads, as they are now. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThreadList"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];

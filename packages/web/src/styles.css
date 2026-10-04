@@ -92,6 +92,15 @@ a {
   color: var(--ink-2);
 }
 
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 /* The bar across the desk: the wordmark, where you are, and who is signed in. */
 
 .bar {
@@ -108,7 +117,15 @@ a {
   letter-spacing: -0.01em;
 }
 
+.bar nav {
+  display: flex;
+  gap: var(--space-5);
+}
+
 .bar nav a {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
   color: var(--ink);
   font-weight: 600;
   font-size: var(--text-sm);
@@ -119,6 +136,12 @@ a {
 
 .bar nav a[aria-current="page"] {
   border-bottom-color: var(--pencil);
+}
+
+/* What waits for the sponsor: something to act on, so it takes the pencil. */
+.nav-count {
+  color: var(--pencil);
+  font-weight: 650;
 }
 
 .who {
@@ -648,6 +671,7 @@ textarea:focus-visible {
   padding: var(--space-6) 0;
 }
 
+.empty h1,
 .empty h2 {
   font: 500 var(--text-xl) / 1.25 var(--serif);
   letter-spacing: -0.01em;
@@ -697,6 +721,366 @@ textarea:focus-visible {
   color: var(--ink-2);
 }
 
+/* The Inbox: one sheet listing the threads, like the index of a bundle of proofs. */
+
+.mailbox-address {
+  font-size: var(--text-sm);
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+
+.view-title:focus {
+  outline: none;
+}
+
+.view-title:focus-visible {
+  outline: 2px solid var(--pencil);
+}
+
+.index {
+  background: var(--paper);
+  border-radius: 2px;
+  box-shadow: var(--sheet-shadow);
+}
+
+.threads {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.thread-row + .thread-row {
+  border-top: 1px solid var(--rule);
+}
+
+.thread-fresh {
+  animation: arrive 600ms var(--ease-out);
+}
+
+.thread {
+  display: grid;
+  grid-template-columns: 0.5rem minmax(8rem, 12rem) minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-5);
+  color: var(--ink);
+  text-decoration: none;
+  transition: background-color 150ms var(--ease-out);
+}
+
+a.thread:hover {
+  background: var(--paper-source);
+}
+
+a.thread:focus-visible {
+  outline-offset: -2px;
+}
+
+.thread-row:first-child .thread {
+  border-radius: 2px 2px 0 0;
+}
+
+/* Unread: the pencil's dot, and the sender and subject in a heavier hand. */
+.thread-mark {
+  align-self: center;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+}
+
+.thread-unread .thread-mark {
+  background: var(--pencil);
+}
+
+.thread-sender {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+  font-size: var(--text-sm);
+}
+
+.thread-sender-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.thread-count {
+  color: var(--ink-2);
+  font-size: var(--text-xs);
+}
+
+.thread-text {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.thread-subject {
+  flex: none;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font: 400 var(--text-md) / 1.4 var(--serif);
+}
+
+.thread-snippet {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font: 400 var(--text-sm) / 1.4 var(--serif);
+  color: var(--ink-2);
+}
+
+.thread-date {
+  font-size: var(--text-sm);
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+.thread-unread .thread-sender-name {
+  font-weight: 650;
+}
+
+.thread-unread .thread-subject {
+  font-weight: 600;
+}
+
+.thread-unread .thread-date {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.index-foot {
+  display: flex;
+  justify-content: center;
+  padding: var(--space-4) var(--space-5);
+  border-top: 1px solid var(--rule);
+}
+
+.index-skeleton .thread {
+  grid-template-columns: minmax(8rem, 12rem) minmax(0, 1fr) auto;
+  padding-block: var(--space-4);
+}
+
+.index-skeleton .thread + .thread {
+  border-top: 1px solid var(--rule);
+}
+
+.index-skeleton .line,
+.letter-skeleton .line {
+  display: block;
+  height: 0.75rem;
+  border-radius: 2px;
+  background: var(--rule);
+  animation: breathe 1.6s ease-in-out infinite alternate;
+}
+
+.letter-skeleton {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.failed-listing {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  max-width: 48rem;
+}
+
+/* A thread, read: its messages as sheets, oldest first, in one column at the proof's measure. */
+
+.desk-reading {
+  max-width: calc(68ch + 2 * var(--space-5) + 2 * var(--space-5));
+}
+
+.back {
+  margin-bottom: var(--space-3);
+  font-size: var(--text-sm);
+}
+
+.back a {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) 0;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.back a:hover {
+  text-decoration: underline;
+}
+
+.reading-head {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-5);
+}
+
+/* The thread's subject is mail, so it is set in the serif. */
+.reading-title {
+  flex: 1 1 20rem;
+  font: 500 var(--text-xl) / 1.25 var(--serif);
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+}
+
+.reading-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.reading-head + .notice {
+  margin-bottom: var(--space-4);
+}
+
+.letters {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-4);
+}
+
+.letter {
+  padding: var(--space-5);
+  background: var(--paper);
+  border-radius: 2px;
+  box-shadow: var(--sheet-shadow);
+}
+
+.letter-fresh {
+  animation: arrive 600ms var(--ease-out);
+}
+
+.letter-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+}
+
+.letter-from {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0 var(--space-2);
+  min-width: 0;
+  font-size: var(--text-md);
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.letter-from .address {
+  font-size: var(--text-sm);
+  font-weight: 400;
+}
+
+.letter-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-left: auto;
+  font-size: var(--text-sm);
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+.letter-sent-mark {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.letter-fields {
+  margin: var(--space-2) 0 0;
+}
+
+.letter-fields .field:nth-child(4) {
+  padding-bottom: var(--space-1);
+  border-bottom: 0;
+  margin-bottom: 0;
+}
+
+.letter-subject {
+  font-family: var(--serif);
+}
+
+.letter-note {
+  margin-top: var(--space-1);
+  font-size: var(--text-sm);
+  color: var(--ink-2);
+}
+
+/* The sheet is the proof's measure wide, so the body can take all of it. */
+.letter-body {
+  max-width: none;
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--rule);
+}
+
+.quote-toggle {
+  margin: 0;
+}
+
+.quote-text {
+  display: block;
+  margin-top: var(--space-2);
+  padding-left: var(--space-3);
+  border-left: 1px solid var(--rule-strong);
+  color: var(--ink-2);
+}
+
+.quote-text[hidden] {
+  display: none;
+}
+
+.letter-attachments {
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--rule);
+  font-size: var(--text-sm);
+}
+
+.letter-attachments ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.letter-attachments li {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0 var(--space-2);
+}
+
+.letter-attachments .icon {
+  align-self: center;
+  color: var(--ink-2);
+}
+
+.attachment-name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.attachment-meta {
+  color: var(--ink-2);
+}
+
 /* The proof folds into its slip when it's decided. */
 ::view-transition-group(*) {
   animation-duration: 260ms;
@@ -720,6 +1104,66 @@ textarea:focus-visible {
 
   .who-email {
     display: none;
+  }
+
+  .bar nav {
+    gap: var(--space-4);
+  }
+
+  /* A thread's row stacks: who and when, then the subject, then the snippet. */
+  .thread {
+    grid-template-columns: 0.5rem minmax(0, 1fr) auto;
+    grid-template-areas:
+      "mark sender date"
+      ". text text";
+    gap: var(--space-1) var(--space-3);
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .thread-mark {
+    grid-area: mark;
+  }
+
+  .thread-sender {
+    grid-area: sender;
+  }
+
+  .thread-date {
+    grid-area: date;
+  }
+
+  .thread-text {
+    grid-area: text;
+    display: grid;
+    gap: 0;
+    white-space: normal;
+  }
+
+  .thread-subject {
+    white-space: nowrap;
+  }
+
+  .thread-snippet {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+  }
+
+  .index-skeleton .thread {
+    grid-template-columns: 1fr;
+  }
+
+  .letter {
+    padding: var(--space-4);
+  }
+
+  .letter-meta {
+    margin-left: 0;
+  }
+
+  .letter-fields .field {
+    grid-template-columns: 3.5rem 1fr;
   }
 
   .desk {

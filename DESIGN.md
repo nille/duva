@@ -270,6 +270,12 @@ One approval as a proof. A slug row on top (who asks, the subject in serif, the 
 ### Slip (signature)
 A decided approval folded small: an outcome icon, the title and subject, the result, and any detail or note. Pending is pencil, sent is green, rejected is Second Ink, failed turns the whole slip Alert Wash. The galley folds into its slip through a 260ms view transition.
 
+### Index (signature)
+The Inbox as one sheet: its threads in rows divided by hairlines, newest first. A row reads as a line of a bundle's index: the pencil's dot when unread, the sender in the sans (with the message count in Second Ink), the subject in the serif followed by the snippet in the serif in Second Ink, and the date. Unread rows set the sender at 650, the subject at 600 and the date in Ink, so the dot is never the only cue. Rows lay a Source Paper tint on hover. Older threads come a page at a time from a default button in the sheet's foot. A thread that arrives while the page is open slides in as a galley does. On phones a row stacks: sender and date, then the subject, then two lines of snippet.
+
+### Letter (signature)
+A thread read: its subject as the page title in the serif, the size of Display, and each message a sheet of its own, oldest first, in one column at the proof's measure. A letter's head holds the sender as a Title, their address in Second Ink and the date; header fields follow on the galley's name column, then a hairline and the body in the proof face. A run of more than three quoted lines folds behind a "Show quoted text" link; opened, it sits behind a 1px Strong Rule in Second Ink. Attachments list under a hairline, each with the clip icon, its name at 600 and its type and size. A message that arrives while the thread is open carries the "New" mark.
+
 ### Notices
 Alert notices are Alert Wash with Alert Red text at weight 500, 4px corners, Small size. The connection line in the desk head is Label size in Second Ink, turning Alert Red and bold when Duva can't be reached.
 

@@ -280,7 +280,10 @@ paths:
     get:
       operationId: listThreads
       summary: List the threads in a mailbox with a label, newest first.
-      description: Lists the 100 newest threads with the label.
+      description: >
+        Lists the threads a page at a time, newest first by their newest
+        message. To read the next page, call again with the answer's next as
+        after, until an answer has no next.
       x-cli-command: threads list
       parameters:
         - $ref: "#/components/parameters/Mailbox"
@@ -290,13 +293,93 @@ paths:
           schema:
             type: string
             default: inbox
+        - name: limit
+          in: query
+          description: How many threads a page lists at most.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 100
+        - name: after
+          in: query
+          description: Where the page starts, the next of the page before it. Leave it out for the first page.
+          schema:
+            type: string
       responses:
         "200":
-          description: The threads with the label.
+          description: A page of the threads with the label.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ThreadList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /mailboxes/{mailbox}/threads/read:
+    post:
+      operationId: markThreadsRead
+      summary: Mark threads in a mailbox read.
+      description: >
+        Marks each thread read. Read state belongs to the mailbox, so it is
+        the same for each actor who reads it. Each thread
+        that was unread gets a change in the mailbox's change feed, naming
+        you. Only those who can read the mailbox can mark its threads.
+      x-cli-command: threads mark-read
+      parameters:
+        - $ref: "#/components/parameters/Mailbox"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ThreadIds"
+      responses:
+        "200":
+          description: The threads, as they are now.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ThreadList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /mailboxes/{mailbox}/threads/unread:
+    post:
+      operationId: markThreadsUnread
+      summary: Mark threads in a mailbox unread.
+      description: >
+        Marks each thread unread, so it stands out until it is read again.
+        Each thread that was read gets a change in the mailbox's change feed,
+        naming you. Only those who can read the mailbox can mark its threads.
+      x-cli-command: threads mark-unread
+      parameters:
+        - $ref: "#/components/parameters/Mailbox"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ThreadIds"
+      responses:
+        "200":
+          description: The threads, as they are now.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ThreadList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -796,6 +879,8 @@ components:
         - $ref: "#/components/schemas/MessageSent"
         - $ref: "#/components/schemas/SendFailed"
         - $ref: "#/components/schemas/SendUnclear"
+        - $ref: "#/components/schemas/ThreadRead"
+        - $ref: "#/components/schemas/ThreadUnread"
       discriminator:
         propertyName: type
         mapping:
@@ -808,6 +893,8 @@ components:
           messageSent: "#/components/schemas/MessageSent"
           sendFailed: "#/components/schemas/SendFailed"
           sendUnclear: "#/components/schemas/SendUnclear"
+          threadRead: "#/components/schemas/ThreadRead"
+          threadUnread: "#/components/schemas/ThreadUnread"
     MessageReceived:
       type: object
       additionalProperties: false
@@ -969,6 +1056,30 @@ components:
             approval:
               type: string
               description: The ID of the approval that let it go.
+    ThreadRead:
+      allOf:
+        - $ref: "#/components/schemas/ChangeBase"
+        - type: object
+          required: [type, thread]
+          properties:
+            type:
+              type: string
+              const: threadRead
+            thread:
+              type: string
+              description: The ID of the thread marked read.
+    ThreadUnread:
+      allOf:
+        - $ref: "#/components/schemas/ChangeBase"
+        - type: object
+          required: [type, thread]
+          properties:
+            type:
+              type: string
+              const: threadUnread
+            thread:
+              type: string
+              description: The ID of the thread marked unread.
     NewDraft:
       type: object
       additionalProperties: false
@@ -1212,10 +1323,25 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ThreadSummary"
+        next:
+          type: string
+          description: Present when more threads follow. Pass it as after to list the next page.
+    ThreadIds:
+      type: object
+      additionalProperties: false
+      required: [threads]
+      properties:
+        threads:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            type: string
+          description: The IDs of the threads.
     ThreadSummary:
       type: object
       additionalProperties: false
-      required: [id, subject, from, labels, latestAt, messages]
+      required: [id, subject, from, snippet, labels, unread, latestAt, messages]
       properties:
         id:
           type: string
@@ -1224,13 +1350,21 @@ components:
           type: string
           description: The subject of the thread's first message.
         from:
+          description: Who sent the thread's first message.
           $ref: "#/components/schemas/EmailAddress"
+        snippet:
+          type: string
+          description: The start of the newest message's text, on one line, without quoted lines.
+          examples: ["Here are my notes on the compiler."]
         labels:
           type: array
           items:
             type: string
           description: The thread's labels.
           examples: [["inbox"]]
+        unread:
+          type: boolean
+          description: Whether any message in the thread is unread.
         latestAt:
           type: string
           format: date-time
@@ -1241,7 +1375,7 @@ components:
     Thread:
       type: object
       additionalProperties: false
-      required: [id, subject, labels, messages]
+      required: [id, subject, labels, unread, messages]
       properties:
         id:
           type: string
@@ -1255,6 +1389,9 @@ components:
             type: string
           description: The thread's labels.
           examples: [["inbox"]]
+        unread:
+          type: boolean
+          description: Whether any message in the thread is unread. Reading the thread doesn't change it. Mark the thread read for that.
         messages:
           type: array
           items:

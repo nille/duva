@@ -4,16 +4,14 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
-import { mailboxFeeds, SignedOut } from "./feed.ts";
+import { approvalChanges, type Connection as ConnectionState, type Follow, SignedOut } from "./feed.ts";
+import { Addresses, clock, Connection, Field, Time } from "./mail-parts.tsx";
 import { strings } from "./strings.ts";
 
 type Approval = components["schemas"]["Approval"];
 type SendStatus = components["schemas"]["SendStatus"];
 type Message = components["schemas"]["Message"];
 type EmailAddress = components["schemas"]["EmailAddress"];
-
-/** How often the view reads the change feeds while its tab is visible. */
-const pollInterval = 10_000;
 
 /** An approval the view shows: waiting, or decided while the page was open. */
 interface Entry {
@@ -32,11 +30,22 @@ type Outcome = SendStatus | "none" | "unknown";
 // A send in these states can still change, so the view keeps checking it.
 const settling = new Set<SendStatus["state"]>(["waiting", "approved", "sending"]);
 
-export function Approvals({ client, sponsor, onSignedOut }: { client: DuvaClient; sponsor: string; onSignedOut: () => void }) {
+export function Approvals({
+  client,
+  sponsor,
+  connection,
+  follow,
+  onSignedOut,
+}: {
+  client: DuvaClient;
+  sponsor: string;
+  connection: ConnectionState;
+  follow: Follow;
+  onSignedOut: () => void;
+}) {
   const [entries, setEntries] = useState<Entry[] | undefined>();
   const [outcomes, setOutcomes] = useState<Record<string, Outcome>>({});
   const [agents, setAgents] = useState<Record<string, string>>({});
-  const [connection, setConnection] = useState<{ ok: true; at: Date } | { ok: false } | undefined>();
   const entriesRef = useRef(entries);
   entriesRef.current = entries;
   const outcomesRef = useRef(outcomes);
@@ -78,53 +87,27 @@ export function Approvals({ client, sponsor, onSignedOut }: { client: DuvaClient
     [client, loadAgents],
   );
 
-  // Follow the change feeds: list the approvals when a request or decision shows up there, and
-  // check the sends of decided ones. Polling stops while the tab is hidden.
+  // List the approvals, then again when a request or decision shows up in the change feeds, and
+  // check the sends of decided ones. A list that couldn't be read is tried again with the next read of the feeds.
   useEffect(() => {
     let stopped = false;
-    let running = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const feeds = mailboxFeeds(client);
-    const tick = async (first: boolean) => {
-      if (running || stopped) return;
-      running = true;
-      clearTimeout(timer);
-      try {
-        const { touched, keep } = await feeds.catchUp();
-        if (stopped) return;
-        if (first || touched) await refresh(first);
-        keep();
-        if (touched) {
-          for (const entry of entriesRef.current ?? []) {
-            const outcome = outcomesRef.current[entry.approval.id];
-            if (entry.decision !== undefined && (typeof outcome !== "object" || settling.has(outcome.state))) void loadOutcome(entry.approval);
-          }
-        }
-        if (!stopped) setConnection({ ok: true, at: new Date() });
-      } catch (error) {
-        if (stopped) return;
-        if (error instanceof SignedOut) {
-          stopped = true;
-          onSignedOut();
-        } else {
-          setConnection({ ok: false });
-        }
-      } finally {
-        running = false;
+    refresh(true).catch((error: unknown) => {
+      if (!stopped && error instanceof SignedOut) onSignedOut();
+    });
+    const unfollow = follow(async (changes) => {
+      const touched = changes.some(({ change }) => approvalChanges.has(change.type));
+      if (entriesRef.current === undefined || touched) await refresh(entriesRef.current === undefined);
+      if (!touched) return;
+      for (const entry of entriesRef.current ?? []) {
+        const outcome = outcomesRef.current[entry.approval.id];
+        if (entry.decision !== undefined && (typeof outcome !== "object" || settling.has(outcome.state))) void loadOutcome(entry.approval);
       }
-      if (!stopped && !document.hidden) timer = setTimeout(() => void tick(false), pollInterval);
-    };
-    const onVisibility = () => {
-      if (!document.hidden) void tick(false);
-    };
-    void tick(true);
-    document.addEventListener("visibilitychange", onVisibility);
+    });
     return () => {
       stopped = true;
-      clearTimeout(timer);
-      document.removeEventListener("visibilitychange", onVisibility);
+      unfollow();
     };
-  }, [client, refresh, loadOutcome, onSignedOut]);
+  }, [follow, refresh, loadOutcome, onSignedOut]);
 
   // A decided approval shows how its send went, so read its draft once it's decided.
   const outcomesRead = useRef(new Set<string>());
@@ -176,15 +159,6 @@ export function Approvals({ client, sponsor, onSignedOut }: { client: DuvaClient
       )}
       {entries !== undefined && entries.length > 0 && waiting === 0 && <p className="all-done">{strings.approvals.noneWaiting}.</p>}
     </main>
-  );
-}
-
-function Connection({ state }: { state: { ok: true; at: Date } | { ok: false } | undefined }) {
-  if (state === undefined) return null;
-  return (
-    <p className={state.ok ? "connection" : "connection connection-down"}>
-      {state.ok ? strings.connection.upToDate(clock(state.at)) : <span role="alert">{strings.connection.unreachable}</span>}
-    </p>
   );
 }
 
@@ -615,53 +589,6 @@ function describe(outcome: Outcome | undefined, approval: Approval, agent: strin
         text: decision.by === "elsewhere" && outcome.note !== undefined ? `${strings.outcome.rejectedElsewhere(agent)} ${strings.outcome.noteFrom(outcome.note)}` : strings.outcome.rejectedElsewhere(agent),
       };
   }
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="field">
-      <dt>{label}</dt>
-      <dd>{children}</dd>
-    </div>
-  );
-}
-
-function Addresses({ list }: { list: EmailAddress[] }) {
-  return (
-    <ul className="addresses">
-      {list.map((address) => (
-        <li key={address.address}>
-          {address.name ? (
-            <>
-              {address.name} <span className="address">{address.address}</span>
-            </>
-          ) : (
-            address.address
-          )}
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-function Time({ at, format = (time) => time }: { at: string; format?: (time: string) => string }) {
-  const date = new Date(at);
-  return <time dateTime={at}>{format(when(date))}</time>;
-}
-
-const clock = (date: Date) => date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
-
-/** The time alone for today, or the day and time otherwise. */
-function when(date: Date): string {
-  const today = new Date();
-  if (date.toDateString() === today.toDateString()) return clock(date);
-  return date.toLocaleString(undefined, {
-    day: "numeric",
-    month: "short",
-    ...(date.getFullYear() !== today.getFullYear() && { year: "numeric" }),
-    hour: "2-digit",
-    minute: "2-digit",
-  });
 }
 
 const SendIcon = () => (

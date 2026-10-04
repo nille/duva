@@ -65,6 +65,16 @@ test("the sponsor sends the reply as is, and it goes out as a reply in the threa
   expect(mail.references).toBe("<meet-0@example.org> <meet-1@example.org> <meet-2@example.org>");
 });
 
+test("a sent reply gives its thread the snippet, as the recipients read it, and leaves the thread's read state as it was", async () => {
+  const { ada, hermes, params, thread, approval } = await withReplyAsked();
+  await hermes.POST("/mailboxes/{mailbox}/threads/read", { params, body: { threads: [thread] } });
+
+  await ada.POST("/approvals/{approval}/send", { params: { path: { approval } } });
+
+  const { data } = await hermes.GET("/mailboxes/{mailbox}/threads", { params });
+  expect(data?.threads).toMatchObject([{ id: thread, messages: 2, snippet: "Monday works. Sent by Hermes for ada@example.org", unread: false }]);
+});
+
 test("a reply to a message with In-Reply-To but no References continues from its In-Reply-To", async () => {
   const { duva, ada, hermes, params, ask } = await withMailbox();
   await duva.receive(

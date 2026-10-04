@@ -117,10 +117,30 @@ Lists up to 100 changes, oldest first, leaving out the arrivals of mail judged t
 
 List the threads in a mailbox with a label, newest first.
 
-Lists the 100 newest threads with the label.
+Lists the threads a page at a time, newest first by their newest message. To read the next page, call again with the answer's next as after, until an answer has no next.
 
 - `--mailbox` (required): The mailbox's ID.
 - `--label`: The label the threads carry. inbox, the default, lists the Inbox.
+- `--limit`: How many threads a page lists at most.
+- `--after`: Where the page starts, the next of the page before it. Leave it out for the first page.
+
+## duva threads mark-read
+
+Mark threads in a mailbox read.
+
+Marks each thread read. Read state belongs to the mailbox, so it is the same for each actor who reads it. Each thread that was unread gets a change in the mailbox's change feed, naming you. Only those who can read the mailbox can mark its threads.
+
+- `--mailbox` (required): The mailbox's ID.
+- `--threads` (required) (once for each): The IDs of the threads.
+
+## duva threads mark-unread
+
+Mark threads in a mailbox unread.
+
+Marks each thread unread, so it stands out until it is read again. Each thread that was read gets a change in the mailbox's change feed, naming you. Only those who can read the mailbox can mark its threads.
+
+- `--mailbox` (required): The mailbox's ID.
+- `--threads` (required) (once for each): The IDs of the threads.
 
 ## duva threads get
 

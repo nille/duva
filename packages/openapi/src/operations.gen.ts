@@ -228,7 +228,7 @@ export const operations = [
     "path": "/mailboxes/{mailbox}/threads",
     "routeKey": "GET /mailboxes/{mailbox}/threads",
     "summary": "List the threads in a mailbox with a label, newest first.",
-    "description": "Lists the 100 newest threads with the label.",
+    "description": "Lists the threads a page at a time, newest first by their newest message. To read the next page, call again with the answer's next as after, until an answer has no next.",
     "signIn": true,
     "command": [
       "threads",
@@ -248,6 +248,78 @@ export const operations = [
         "type": "string",
         "required": false,
         "description": "The label the threads carry. inbox, the default, lists the Inbox."
+      },
+      {
+        "name": "limit",
+        "in": "query",
+        "type": "integer",
+        "required": false,
+        "description": "How many threads a page lists at most."
+      },
+      {
+        "name": "after",
+        "in": "query",
+        "type": "string",
+        "required": false,
+        "description": "Where the page starts, the next of the page before it. Leave it out for the first page."
+      }
+    ]
+  },
+  {
+    "operationId": "markThreadsRead",
+    "method": "post",
+    "path": "/mailboxes/{mailbox}/threads/read",
+    "routeKey": "POST /mailboxes/{mailbox}/threads/read",
+    "summary": "Mark threads in a mailbox read.",
+    "description": "Marks each thread read. Read state belongs to the mailbox, so it is the same for each actor who reads it. Each thread that was unread gets a change in the mailbox's change feed, naming you. Only those who can read the mailbox can mark its threads.",
+    "signIn": true,
+    "command": [
+      "threads",
+      "mark-read"
+    ],
+    "options": [
+      {
+        "name": "mailbox",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The mailbox's ID."
+      },
+      {
+        "name": "threads",
+        "in": "body",
+        "type": "strings",
+        "required": true,
+        "description": "The IDs of the threads."
+      }
+    ]
+  },
+  {
+    "operationId": "markThreadsUnread",
+    "method": "post",
+    "path": "/mailboxes/{mailbox}/threads/unread",
+    "routeKey": "POST /mailboxes/{mailbox}/threads/unread",
+    "summary": "Mark threads in a mailbox unread.",
+    "description": "Marks each thread unread, so it stands out until it is read again. Each thread that was read gets a change in the mailbox's change feed, naming you. Only those who can read the mailbox can mark its threads.",
+    "signIn": true,
+    "command": [
+      "threads",
+      "mark-unread"
+    ],
+    "options": [
+      {
+        "name": "mailbox",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The mailbox's ID."
+      },
+      {
+        "name": "threads",
+        "in": "body",
+        "type": "strings",
+        "required": true,
+        "description": "The IDs of the threads."
       }
     ]
   },

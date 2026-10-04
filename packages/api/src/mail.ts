@@ -13,6 +13,7 @@ import { mailboxKey } from "./organization.ts";
 import { documents, isNew, pk, sk, type TransactItem } from "./table.ts";
 
 export type ThreadSummary = components["schemas"]["ThreadSummary"];
+export type ThreadList = components["schemas"]["ThreadList"];
 export type Thread = components["schemas"]["Thread"];
 export type Message = components["schemas"]["Message"];
 export type MailboxChange = components["schemas"]["MailboxChange"];
@@ -24,8 +25,14 @@ export const inbox = "inbox";
 /** The label mail SES judged to be spam gets instead. */
 export const spam = "spam";
 
-/** How many threads one listing gives at most. */
-const threadsPerPage = 100;
+/** How many threads a page of a listing gives at most. */
+export const threadsPerPage = 100;
+
+/** How many threads one request can mark at once. */
+export const threadsMarkedAtOnce = 100;
+
+/** How long a thread's snippet is at most, before the ellipsis. */
+const snippetLength = 200;
 
 const partition = (mailbox: string) => mailboxKey(mailbox)[pk]!;
 // A thread's messages sort before the thread itself, oldest first, and nothing else starts with its prefix.
@@ -40,6 +47,9 @@ const labelKey = (mailbox: string, label: string, latestAt: string, thread: stri
   [pk]: `${partition(mailbox)}#label#${label}`,
   [sk]: `${latestAt}#${thread}`,
 });
+// A page of a label's threads ends at a label entry, whose sort key is the next page's cursor.
+const labelPosition = /^\d{4}-\d\d-\d\dT[\d:.]+Z#[\w-]+$/;
+const cursorAt = (position: string) => Buffer.from(position).toString("base64url");
 // Each Message-ID points at its message, so a reply can find the thread it belongs in.
 const messageIdKey = (mailbox: string, messageId: string) => ({ [pk]: partition(mailbox), [sk]: `message-id#${messageId}` });
 // Each message in Duva points at its thread and its place there, so a reply can find what it answers.
@@ -120,8 +130,10 @@ export async function receiveMessage(table: Table, arrival: Arrival): Promise<bo
   return storeMessage(table, {
     mailbox,
     message,
+    text: parsed.text,
     thread: async () => (arrival.spam ? undefined : threadAnswered(table, mailbox, parsed.answers)),
     label,
+    unread: true,
     findable: !arrival.spam,
     by: undefined,
     change: (thread) => ({ type: "messageReceived", thread, message: message.id, ...(arrival.spam ? { spam: true } : {}) }),
@@ -131,17 +143,25 @@ export async function receiveMessage(table: Table, arrival: Arrival): Promise<bo
 
 /**
  * Stores the message the actor `sentBy` sent from the mailbox, which SES accepted, in the thread
- * of the message it answers, or as a new thread without labels. `once` gives the write that marks
+ * of the message it answers, whose read state it keeps, or as a new read thread without labels. `once` gives the write that marks
  * the draft sent in the thread, on condition that it is still sending, so the message is stored once. Records the
  * send in the mailbox's change feed, naming the sender. Returns false if `once`'s condition failed.
  */
 export async function storeSentMessage(
   table: Table,
-  { mailbox, message, thread, draft, once }: { mailbox: string; message: StoredMessage & { sentBy: string }; thread: string | undefined; draft: string; once: (thread: string) => TransactItem },
+  {
+    mailbox,
+    message,
+    text,
+    thread,
+    draft,
+    once,
+  }: { mailbox: string; message: StoredMessage & { sentBy: string }; text: string; thread: string | undefined; draft: string; once: (thread: string) => TransactItem },
 ): Promise<boolean> {
   return storeMessage(table, {
     mailbox,
     message,
+    text,
     thread: async () => (thread === undefined ? undefined : threadSummary(table, mailbox, thread)),
     findable: true,
     by: message.sentBy,
@@ -153,16 +173,20 @@ export async function storeSentMessage(
 /**
  * Stores the message in the thread `thread` finds, or else in a new one, with the label if given,
  * in one transaction with the write `once` gives for the thread and the change in the mailbox's
- * change feed. If `findable`, its Message-ID points at it, so replies to it join its thread.
- * Returns false if that write's condition failed, since then the message is already stored.
+ * change feed. If `findable`, its Message-ID points at it, so replies to it join its thread. If
+ * `unread` is given, the thread becomes unread or read. If the message is the thread's newest, its
+ * text gives the thread's snippet. Returns false if that write's condition failed, since then the
+ * message is already stored.
  */
 async function storeMessage(
   table: Table,
-  { mailbox, message, thread: find, label, findable, by, change, once }: {
+  { mailbox, message, text, thread: find, label, unread, findable, by, change, once }: {
     mailbox: string;
     message: StoredMessage;
+    text: string;
     thread: () => Promise<ThreadSummary | undefined>;
     label?: string;
+    unread?: boolean;
     findable: boolean;
     by: string | undefined;
     change: (thread: string) => object;
@@ -176,20 +200,27 @@ async function storeMessage(
   for (let attempt = 1; ; attempt++) {
     const joined = await find();
     const thread = joined?.id ?? randomUUID();
+    const newest = joined === undefined || receivedAt > joined.latestAt;
     const summary: ThreadSummary =
       joined === undefined
-        ? { id: thread, subject: message.subject, from: message.from, labels: label === undefined ? [] : [label], latestAt: receivedAt, messages: 1 }
+        ? {
+            id: thread,
+            subject: message.subject,
+            from: message.from,
+            snippet: snippetOf(text),
+            labels: label === undefined ? [] : [label],
+            unread: unread ?? false,
+            latestAt: receivedAt,
+            messages: 1,
+          }
         : {
             ...joined,
+            snippet: newest ? snippetOf(text) : joined.snippet,
             labels: label === undefined || joined.labels.includes(label) ? joined.labels : [...joined.labels, label],
-            latestAt: receivedAt > joined.latestAt ? receivedAt : joined.latestAt,
+            unread: unread ?? joined.unread,
+            latestAt: newest ? receivedAt : joined.latestAt,
             messages: joined.messages + 1,
           };
-    // A thread is written only if it is as it was read, so messages stored together each count.
-    const asRead =
-      joined === undefined
-        ? isNew
-        : { ConditionExpression: "messages = :messages AND labels = :labels", ExpressionAttributeValues: { ":messages": joined.messages, ":labels": joined.labels } };
     // The labels' entries move to the thread's new place. A delete and a put of the same item can't
     // share a transaction, so a thread that keeps its place has its entries overwritten instead.
     const moved = joined !== undefined && joined.latestAt !== summary.latestAt ? joined.labels : [];
@@ -199,7 +230,7 @@ async function storeMessage(
         changes: [change(thread)],
         items: [
           once(thread),
-          put({ ...threadKey(mailbox, thread), ...summary }, asRead),
+          put({ ...threadKey(mailbox, thread), ...summary }, joined === undefined ? isNew : asRead(joined)),
           put({ ...messageKey(mailbox, thread, receivedAt, id), ...message, thread }),
           ...moved.map((moving) => ({ Delete: { TableName: table.name, Key: labelKey(mailbox, moving, joined!.latestAt, thread) } })),
           ...summary.labels.map((kept) => put({ ...labelKey(mailbox, kept, summary.latestAt, thread), ...summary })),
@@ -216,6 +247,57 @@ async function storeMessage(
       if (reasons[threadReason]?.Code !== "ConditionalCheckFailed" || attempt === 10) throw error;
     }
   }
+}
+
+/**
+ * The condition that a thread is as it was read, so changes made together each count. Threads
+ * stored before read state existed have none, and are read.
+ */
+function asRead({ messages, labels, unread }: ThreadSummary) {
+  return {
+    ConditionExpression: `messages = :messages AND labels = :labels AND ${unread ? "unread = :unread" : "(unread = :unread OR attribute_not_exists(unread))"}`,
+    ExpressionAttributeValues: { ":messages": messages, ":labels": labels, ":unread": unread },
+  };
+}
+
+/**
+ * Marks each thread unread or read, with a change in the mailbox's change feed attributed to the
+ * actor `by` for each that wasn't already, and returns the threads as they are now, in the order
+ * given. Returns the IDs the mailbox has no thread for instead, and marks none, if there are any.
+ */
+export async function markThreads(
+  table: Table,
+  { mailbox, threads, unread, by }: { mailbox: string; threads: string[]; unread: boolean; by: string },
+): Promise<{ threads: ThreadSummary[] } | { missing: string[] }> {
+  const found = await Promise.all(threads.map((thread) => threadSummary(table, mailbox, thread)));
+  const missing = threads.filter((_, index) => found[index] === undefined);
+  if (missing.length > 0) return { missing };
+  // recordChanges gives the items' cancellation reasons after the counter's and the one change's.
+  const threadReason = 2;
+  const marked = [];
+  for (let [index, current] of found.entries()) {
+    for (let attempt = 1; current!.unread !== unread; attempt++) {
+      const summary = { ...current!, unread };
+      try {
+        await recordChanges(table, mailboxFeed(mailbox), {
+          by,
+          changes: [{ type: unread ? "threadUnread" : "threadRead", thread: summary.id }],
+          items: [
+            { Put: { TableName: table.name, Item: { ...threadKey(mailbox, summary.id), ...summary }, ...asRead(current!) } },
+            ...summary.labels.map((label) => ({ Put: { TableName: table.name, Item: { ...labelKey(mailbox, label, summary.latestAt, summary.id), ...summary } } })),
+          ],
+        });
+        current = summary;
+      } catch (error) {
+        // Mail joined the thread since its summary was fetched, so it is fetched again.
+        const reasons = error instanceof TransactionCanceledException ? (error.CancellationReasons ?? []) : [];
+        if (reasons[threadReason]?.Code !== "ConditionalCheckFailed" || attempt === 10) throw error;
+        current = (await threadSummary(table, mailbox, threads[index]!))!;
+      }
+    }
+    marked.push(current!);
+  }
+  return { threads: marked };
 }
 
 /** The thread's summary, or undefined if the mailbox has no such thread. */
@@ -235,18 +317,40 @@ async function threadAnswered(table: Table, mailbox: string, messageIds: string[
   return thread === undefined ? undefined : threadSummary(table, mailbox, thread);
 }
 
-/** The newest threads with the label, newest first. */
-export async function threadsWithLabel(table: Table, mailbox: string, label: string): Promise<ThreadSummary[]> {
+/**
+ * A page of the threads with the label, newest first, at most `limit` of them, after the page that
+ * gave `after` as its next. The page has a next if more threads follow.
+ */
+export async function threadsWithLabel(table: Table, mailbox: string, label: string, { limit, after }: { limit: number; after?: Cursor }): Promise<ThreadList> {
+  const partition = labelKey(mailbox, label, "", "")[pk];
   const { Items = [] } = await documents(table).send(
     new QueryCommand({
       TableName: table.name,
       KeyConditionExpression: `${pk} = :label`,
-      ExpressionAttributeValues: { ":label": labelKey(mailbox, label, "", "")[pk] },
+      ExpressionAttributeValues: { ":label": partition },
       ScanIndexForward: false,
-      Limit: threadsPerPage,
+      // One more than the page, to tell whether another page follows.
+      Limit: limit + 1,
+      ExclusiveStartKey: after === undefined ? undefined : { [pk]: partition, [sk]: after.position },
     }),
   );
-  return Items.map((item) => summaryOf(item as ThreadSummary));
+  const page = Items.slice(0, limit);
+  const last = page.at(-1);
+  return {
+    threads: page.map((item) => summaryOf(item as ThreadSummary)),
+    ...(Items.length > limit && last !== undefined && { next: cursorAt(last[sk] as string) }),
+  };
+}
+
+/** Where a page of threads starts: after the thread at the position in its label. */
+export interface Cursor {
+  position: string;
+}
+
+/** The cursor a page gave as its next, or undefined if no page gives that. */
+export function cursorOf(next: string): Cursor | undefined {
+  const position = Buffer.from(next, "base64url").toString();
+  return labelPosition.test(position) ? { position } : undefined;
 }
 
 /** The thread with its messages, oldest first, each read from its raw message, or undefined if the mailbox has no such thread. */
@@ -269,7 +373,7 @@ export async function readThread(table: Table, mailBucket: MailBucket, mailbox: 
   if (thread === undefined) return undefined;
   const stored = items.filter((item) => item !== thread);
   const messages = await Promise.all(stored.map(async (item) => (await readMessage(mailBucket, item as StoredMessage)).message));
-  return { id, subject: thread.subject, labels: thread.labels, messages };
+  return { id, subject: thread.subject, labels: thread.labels, unread: thread.unread ?? false, messages };
 }
 
 /**
@@ -335,13 +439,27 @@ async function readMessage(mailBucket: MailBucket, stored: StoredMessage): Promi
   return { message, parsed };
 }
 
-const summaryOf = ({ id, subject, from, labels, latestAt, messages }: ThreadSummary): ThreadSummary => ({
+// Threads stored before snippets and read state existed have neither, and are read.
+const summaryOf = ({ id, subject, from, snippet, labels, unread, latestAt, messages }: ThreadSummary): ThreadSummary => ({
   id,
   subject,
   from: addressOf(from),
+  snippet: snippet ?? "",
   labels,
+  unread: unread ?? false,
   latestAt,
   messages,
 });
+
+/** The start of the text on one line, without quoted lines, cut after snippetLength characters. */
+function snippetOf(text: string): string {
+  const line = text
+    .split("\n")
+    .filter((each) => !each.trimStart().startsWith(">"))
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return line.length <= snippetLength ? line : `${line.slice(0, snippetLength).trimEnd()}…`;
+}
 
 const addressOf = ({ name, address }: components["schemas"]["EmailAddress"]) => (name === undefined ? { address } : { name, address });
