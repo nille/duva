@@ -40,3 +40,7 @@ Entering a sign-in code in managed login, opening an SES verification link, and 
 ## Sending mail in
 
 SMTP to `inbound-smtp.eu-north-1.amazonaws.com:25` from this machine works only while its IP isn't on SES's blocklists. When SES answers `550 5.7.1 IP address blacklisted by recipient`, send through Duva instead: an agent drafts the message, its sponsor approves it, and real SES delivers it.
+
+## Nicklas's own mail
+
+`nicklas@duva.nille.xyz` is Nicklas's personal mailbox, and may carry his real mail. An agent never reads its threads, messages or raw copies unless he asks. Real runs use the test mailboxes, and find raw copies in the mail bucket by exact Message-ID or key, never as "the latest".
