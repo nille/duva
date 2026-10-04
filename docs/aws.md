@@ -26,6 +26,7 @@ Facts about AWS that shaped Duva's design, each with how it was established. A c
 ## SES
 
 - **An active receipt rule set with no rules refuses all mail** with `550 5.1.1`. _Real run of #4._
+- **SESv2 SendEmail with raw content delivers to every address in `Destination`,** Bcc included, and leaves the raw headers as they are, so a Bcc recipient gets the mail without any header naming them. Only the Message-ID is replaced. _Real run of #25._
 - **SES receiving refuses mail from IP addresses on its blocklists** with `550 5.7.1 IP address blacklisted by recipient` at RCPT TO, for every recipient. This machine's home IP was listed after its address changed. _Real run of #23._
 - **SES answers each recipient on its own.** In one SMTP transaction, an address no rule lists gets `550 5.1.1` at RCPT TO while a listed one gets `250`, and the message goes to the listed one only. So Duva never bounces. _Probed over SMTP to inbound-smtp.eu-north-1, real run of #7._
 - **A rule's address also takes its plus-tagged addresses, in any case.** With `realrun7@duva.nille.xyz` listed, SES took `RealRun7+Probe@duva.nille.xyz`, and the receipt's recipient keeps the case it was sent in. _Real run of #7._
