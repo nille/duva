@@ -9,6 +9,7 @@ The spike in #2: does LanceDB on S3 meet Duva's search targets, queried from Lam
 - `harness/` builds the Lambda packages, builds the benchmark mailbox, and creates, measures and deletes everything in AWS.
 - `infra/stack.yaml` is the one CloudFormation stack, `duva-search-spike`, that holds all of it.
 - `results/` holds what each measurement recorded.
+- `REPORT.md` is the spike's answer (#20): every number against the targets, the costs, and what's left for ADR-0007.
 
 ## Running it
 
@@ -26,6 +27,12 @@ node harness/harness.ts measure   # cold and warm invocations, into results/
 node harness/harness.ts mailbox   # rebuild the 100k-message benchmark mailbox from scratch, into results/
 node harness/harness.ts latency   # every query type's cold and warm latency on it, into results/ (about 2 hours)
 node harness/harness.ts down      # empty the bucket and delete the stack
+```
+
+To re-run the benchmark on a new LanceDB release, one command pins and installs it, runs `up`, `seed`, `mailbox` and `latency`, and runs `down` even if a step fails. It takes about 2.5 hours and $3, and rewrites `results/16-mailbox.json` and `results/17-latency.json`, so `git diff` shows what changed. A version also pins it in `package.json` and the lockfile. It doesn't re-run the behavior suite (`npm test`) or #18's writes and freshness, which copy the benchmark table, so they need `node harness/writes.ts up`, `all` and `down` before the stack goes. Without a version it re-runs on the installed one.
+
+```sh
+node harness/harness.ts benchmark <version>   # for example 0.40.0
 ```
 
 #19 has a harness of its own, `harness/models.ts`, with its own stack, `duva-search-spike-models`. It reads the benchmark mailbox and never writes to it:

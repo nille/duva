@@ -10,6 +10,8 @@
 //   node harness/harness.ts latency   every query type's cold and warm latency on the benchmark mailbox, into results/
 //   node harness/harness.ts down      empty the bucket and delete the stack
 //
+//   node harness/harness.ts benchmark [version]   up, seed, mailbox, latency and down in one go, on the LanceDB release given
+//
 // Run it with AWS_PROFILE set to the spike's account.
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -296,6 +298,26 @@ async function down() {
   return { deleted: true, stack: stackName, bucket: outputs.Bucket };
 }
 
+// The whole benchmark, on the LanceDB release given (or the one installed): it
+// pins and installs the release, creates the stack, loads the mailbox with it,
+// measures latency into results/, and deletes the stack even when a step fails.
+// About 2.5 hours and $3. Each step runs in a process of its own, so it loads
+// the release just installed.
+async function rerunBenchmark() {
+  const release = process.argv[3];
+  const run = (command: string, args: string[]) => {
+    const { status } = spawnSync(command, args, { cwd: root, stdio: ["ignore", "inherit", "inherit"] });
+    if (status !== 0) throw new Error(`\`${[command, ...args].join(" ")}\` exited with ${status}.`);
+  };
+  if (release) run("npm", ["install", "--save-exact", `@lancedb/lancedb@${release}`]);
+  try {
+    for (const step of ["up", "seed", "mailbox", "latency"]) run("node", ["harness/harness.ts", step]);
+  } finally {
+    run("node", ["harness/harness.ts", "down"]);
+  }
+  return { lancedbVersion: lancedbVersion(), results: ["results/16-mailbox.json", "results/17-latency.json"] };
+}
+
 async function deployStack(parameters: Record<string, string>) {
   const input = {
     StackName: stackName,
@@ -438,6 +460,7 @@ const commands: Record<string, () => Promise<unknown>> = {
   mailbox: rebuildMailbox,
   latency: measureLatency,
   down,
+  benchmark: rerunBenchmark,
 };
 
 const command = commands[process.argv[2] ?? ""];
