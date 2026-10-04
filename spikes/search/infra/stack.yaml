@@ -32,6 +32,13 @@ Resources:
         BlockPublicPolicy: true
         IgnorePublicAcls: true
         RestrictPublicBuckets: true
+      # S3's own count of requests to each copy of the benchmark mailbox the
+      # latency benchmark (#17) reads, for its S3 requests per query.
+      MetricsConfigurations:
+        - Id: latency-x64-zip
+          Prefix: tables/latency-x64-zip.lance/
+        - Id: latency-arm64-image
+          Prefix: tables/latency-arm64-image.lance/
 
   Repository:
     Type: AWS::ECR::Repository
@@ -178,6 +185,56 @@ Resources:
     DependsOn: ImageFunctionLogs
     Properties:
       FunctionName: duva-search-spike-arm64-image
+      Role: !GetAtt FunctionRole.Arn
+      PackageType: Image
+      Architectures: [arm64]
+      Code: { ImageUri: !Sub "${Repository.RepositoryUri}:${ImageTag}" }
+      MemorySize: !Ref MemorySize
+      Timeout: 60
+      Environment:
+        Variables:
+          SEARCH_URI: !Sub s3://${Bucket}/tables
+
+  # The latency benchmark's own copies of the two functions, so it can change
+  # their memory and retire their environments without disturbing anyone
+  # invoking the two above.
+  LatencyZipFunctionLogs:
+    Type: AWS::Logs::LogGroup
+    Condition: HasZip
+    Properties:
+      LogGroupName: /aws/lambda/duva-search-spike-latency-x64-zip
+      RetentionInDays: 1
+
+  LatencyZipFunction:
+    Type: AWS::Lambda::Function
+    Condition: HasZip
+    DependsOn: LatencyZipFunctionLogs
+    Properties:
+      FunctionName: duva-search-spike-latency-x64-zip
+      Role: !GetAtt FunctionRole.Arn
+      Runtime: nodejs24.x
+      Architectures: [x86_64]
+      Handler: index.handler
+      Code: { S3Bucket: !Ref Bucket, S3Key: !Ref ZipKey }
+      MemorySize: !Ref MemorySize
+      Timeout: 60
+      Environment:
+        Variables:
+          SEARCH_URI: !Sub s3://${Bucket}/tables
+
+  LatencyImageFunctionLogs:
+    Type: AWS::Logs::LogGroup
+    Condition: HasImage
+    Properties:
+      LogGroupName: /aws/lambda/duva-search-spike-latency-arm64-image
+      RetentionInDays: 1
+
+  LatencyImageFunction:
+    Type: AWS::Lambda::Function
+    Condition: HasImage
+    DependsOn: LatencyImageFunctionLogs
+    Properties:
+      FunctionName: duva-search-spike-latency-arm64-image
       Role: !GetAtt FunctionRole.Arn
       PackageType: Image
       Architectures: [arm64]

@@ -1,0 +1,5267 @@
+{
+  "note": "Cold at 1,769 MB again, alone in the bucket, to check the run that overlapped #18 (see README).",
+  "lancedbVersion": "0.39.0",
+  "startedAt": "2026-10-04T00:34:45.430Z",
+  "finishedAt": "2026-10-04T00:46:09.870Z",
+  "region": "eu-north-1",
+  "readConsistencyIntervalSeconds": 0,
+  "caches": "index cache a quarter of the function's memory, metadata cache a sixteenth",
+  "querySet": {
+    "keyword": [
+      {
+        "words": "pipeline",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "invoice",
+        "filters": {
+          "labels": {
+            "include": [
+              "Inbox"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "california",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2001-01-01T00:00:00.000Z",
+            "to": "2002-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "turbine",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "hasAttachment": true
+        },
+        "limit": 20
+      },
+      {
+        "words": "derivatives",
+        "filters": {
+          "labels": {
+            "include": [
+              "Finance"
+            ],
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2000-01-01T00:00:00.000Z",
+            "to": "2001-07-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "bankruptcy",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "football",
+        "filters": {
+          "labels": {
+            "include": [
+              "Inbox"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "golf",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2001-01-01T00:00:00.000Z",
+            "to": "2002-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "merger",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "hasAttachment": true
+        },
+        "limit": 20
+      },
+      {
+        "words": "faktura",
+        "filters": {
+          "labels": {
+            "include": [
+              "Finance"
+            ],
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2000-01-01T00:00:00.000Z",
+            "to": "2001-07-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "budget",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "lunch",
+        "filters": {
+          "labels": {
+            "include": [
+              "Inbox"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "weather",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2001-01-01T00:00:00.000Z",
+            "to": "2002-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "isda",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "hasAttachment": true
+        },
+        "limit": 20
+      },
+      {
+        "words": "storage",
+        "filters": {
+          "labels": {
+            "include": [
+              "Finance"
+            ],
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2000-01-01T00:00:00.000Z",
+            "to": "2001-07-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "gas prices",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "credit rating",
+        "filters": {
+          "labels": {
+            "include": [
+              "Inbox"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "power plant",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2001-01-01T00:00:00.000Z",
+            "to": "2002-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "conference call",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "hasAttachment": true
+        },
+        "limit": 20
+      },
+      {
+        "words": "trading floor",
+        "filters": {
+          "labels": {
+            "include": [
+              "Finance"
+            ],
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2000-01-01T00:00:00.000Z",
+            "to": "2001-07-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "price cap",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "board meeting",
+        "filters": {
+          "labels": {
+            "include": [
+              "Inbox"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "employee stock",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2001-01-01T00:00:00.000Z",
+            "to": "2002-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "natural gas",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "hasAttachment": true
+        },
+        "limit": 20
+      },
+      {
+        "words": "interview schedule",
+        "filters": {
+          "labels": {
+            "include": [
+              "Finance"
+            ],
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2000-01-01T00:00:00.000Z",
+            "to": "2001-07-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "legal review",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "rate case",
+        "filters": {
+          "labels": {
+            "include": [
+              "Inbox"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "wine dinner",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2001-01-01T00:00:00.000Z",
+            "to": "2002-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "protokoll mötet",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "hasAttachment": true
+        },
+        "limit": 20
+      },
+      {
+        "words": "transmission capacity",
+        "filters": {
+          "labels": {
+            "include": [
+              "Finance"
+            ],
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2000-01-01T00:00:00.000Z",
+            "to": "2001-07-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "kenneth lay",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "skilling",
+        "filters": {
+          "labels": {
+            "include": [
+              "Inbox"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "fastow",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2001-01-01T00:00:00.000Z",
+            "to": "2002-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "sara shackleton",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "hasAttachment": true
+        },
+        "limit": 20
+      },
+      {
+        "words": "vince kaminski",
+        "filters": {
+          "labels": {
+            "include": [
+              "Finance"
+            ],
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2000-01-01T00:00:00.000Z",
+            "to": "2001-07-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "jeff dasovich",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "louise kitchen",
+        "filters": {
+          "labels": {
+            "include": [
+              "Inbox"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "john arnold",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2001-01-01T00:00:00.000Z",
+            "to": "2002-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "kay mann",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "hasAttachment": true
+        },
+        "limit": 20
+      },
+      {
+        "words": "tana jones",
+        "filters": {
+          "labels": {
+            "include": [
+              "Finance"
+            ],
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2000-01-01T00:00:00.000Z",
+            "to": "2001-07-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "isda master agreement",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "sender": "sara.shackleton@enron.com"
+        },
+        "limit": 20
+      },
+      {
+        "words": "electricity",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "sender": "jeff.dasovich@enron.com",
+          "date": {
+            "from": "2001-01-01T00:00:00.000Z",
+            "to": "2002-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "model",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "sender": "vince.kaminski@enron.com"
+        },
+        "limit": 20
+      },
+      {
+        "words": "spam",
+        "filters": {
+          "labels": {
+            "include": [
+              "Spam"
+            ]
+          }
+        },
+        "limit": 20
+      }
+    ],
+    "phrase": [
+      {
+        "phrase": "wholly owned subsidiary of",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "phrase": "plan to attend the",
+        "filters": {
+          "labels": {
+            "include": [
+              "Inbox"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "phrase": "to discuss this issue",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2001-01-01T00:00:00.000Z",
+            "to": "2002-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "phrase": "office of the chair",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "hasAttachment": true
+        },
+        "limit": 20
+      },
+      {
+        "phrase": "the final draft of",
+        "filters": {
+          "labels": {
+            "include": [
+              "Finance"
+            ],
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2000-01-01T00:00:00.000Z",
+            "to": "2001-07-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "phrase": "the supreme court has",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "phrase": "phase of the project",
+        "filters": {
+          "labels": {
+            "include": [
+              "Inbox"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "phrase": "sent on behalf of",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2001-01-01T00:00:00.000Z",
+            "to": "2002-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "phrase": "due to the lack",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "hasAttachment": true
+        },
+        "limit": 20
+      },
+      {
+        "phrase": "choose their electricity provider",
+        "filters": {
+          "labels": {
+            "include": [
+              "Finance"
+            ],
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2000-01-01T00:00:00.000Z",
+            "to": "2001-07-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "phrase": "some of the best",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "phrase": "was sent to you",
+        "filters": {
+          "labels": {
+            "include": [
+              "Inbox"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "phrase": "orders and instructions please",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2001-01-01T00:00:00.000Z",
+            "to": "2002-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "phrase": "please let me know",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "hasAttachment": true
+        },
+        "limit": 20
+      },
+      {
+        "phrase": "out of the office",
+        "filters": {
+          "labels": {
+            "include": [
+              "Finance"
+            ],
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2000-01-01T00:00:00.000Z",
+            "to": "2001-07-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "phrase": "kan ni skicka",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "phrase": "conference call",
+        "filters": {
+          "labels": {
+            "include": [
+              "Inbox"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "phrase": "the attached file",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2001-01-01T00:00:00.000Z",
+            "to": "2002-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "phrase": "natural gas",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "hasAttachment": true
+        },
+        "limit": 20
+      },
+      {
+        "phrase": "price caps",
+        "filters": {
+          "labels": {
+            "include": [
+              "Finance"
+            ],
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2000-01-01T00:00:00.000Z",
+            "to": "2001-07-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "phrase": "credit support annex",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "sender": "sara.shackleton@enron.com"
+        },
+        "limit": 20
+      },
+      {
+        "phrase": "california public utilities commission",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "sender": "jeff.dasovich@enron.com"
+        },
+        "limit": 20
+      }
+    ],
+    "vector": [
+      {
+        "meaning": "pipeline capacity for natural gas into California",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "who is in the fantasy football league this season",
+        "filters": {
+          "labels": {
+            "include": [
+              "Inbox"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "what happens to employees' retirement savings after the bankruptcy",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2001-01-01T00:00:00.000Z",
+            "to": "2002-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "styrelsen vill gå igenom budgeten",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "hasAttachment": true
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "a reminder to sign the contract",
+        "filters": {
+          "labels": {
+            "include": [
+              "Finance"
+            ],
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2000-01-01T00:00:00.000Z",
+            "to": "2001-07-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "travel plans for the conference",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "complaints about the new expense report system",
+        "filters": {
+          "labels": {
+            "include": [
+              "Inbox"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "hiring a summer intern for the research group",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2001-01-01T00:00:00.000Z",
+            "to": "2002-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "the regulator's decision on electricity rates",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "hasAttachment": true
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "drinks after work on friday",
+        "filters": {
+          "labels": {
+            "include": [
+              "Finance"
+            ],
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2000-01-01T00:00:00.000Z",
+            "to": "2001-07-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "fixing a mistake in yesterday's trades",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "an offer to buy the company",
+        "filters": {
+          "labels": {
+            "include": [
+              "Inbox"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "när kommer fakturan",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2001-01-01T00:00:00.000Z",
+            "to": "2002-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "weather forecast affecting demand",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "hasAttachment": true
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "a request for a legal opinion on a swap",
+        "filters": {
+          "labels": {
+            "include": [
+              "Finance"
+            ],
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2000-01-01T00:00:00.000Z",
+            "to": "2001-07-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "negotiating terms with a counterparty",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "sender": "sara.shackleton@enron.com"
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "rolling blackouts and the state's response",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "sender": "jeff.dasovich@enron.com",
+          "date": {
+            "from": "2001-01-01T00:00:00.000Z",
+            "to": "2002-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "a paper about pricing options",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "sender": "vince.kaminski@enron.com"
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "a schedule for gas deliveries",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "sender": "chris.germany@enron.com",
+          "hasAttachment": true
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "an urgent question from the boss",
+        "filters": {
+          "labels": {
+            "include": [
+              "Inbox"
+            ]
+          },
+          "date": {
+            "from": "2001-01-01T00:00:00.000Z",
+            "to": "2002-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      }
+    ],
+    "vector-flat": [
+      {
+        "meaning": "pipeline capacity for natural gas into California",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "who is in the fantasy football league this season",
+        "filters": {
+          "labels": {
+            "include": [
+              "Inbox"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "what happens to employees' retirement savings after the bankruptcy",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2001-01-01T00:00:00.000Z",
+            "to": "2002-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "styrelsen vill gå igenom budgeten",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "hasAttachment": true
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "a reminder to sign the contract",
+        "filters": {
+          "labels": {
+            "include": [
+              "Finance"
+            ],
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2000-01-01T00:00:00.000Z",
+            "to": "2001-07-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "travel plans for the conference",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "complaints about the new expense report system",
+        "filters": {
+          "labels": {
+            "include": [
+              "Inbox"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "hiring a summer intern for the research group",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2001-01-01T00:00:00.000Z",
+            "to": "2002-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "the regulator's decision on electricity rates",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "hasAttachment": true
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "drinks after work on friday",
+        "filters": {
+          "labels": {
+            "include": [
+              "Finance"
+            ],
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2000-01-01T00:00:00.000Z",
+            "to": "2001-07-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "fixing a mistake in yesterday's trades",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "an offer to buy the company",
+        "filters": {
+          "labels": {
+            "include": [
+              "Inbox"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "när kommer fakturan",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2001-01-01T00:00:00.000Z",
+            "to": "2002-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "weather forecast affecting demand",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "hasAttachment": true
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "a request for a legal opinion on a swap",
+        "filters": {
+          "labels": {
+            "include": [
+              "Finance"
+            ],
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2000-01-01T00:00:00.000Z",
+            "to": "2001-07-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "negotiating terms with a counterparty",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "sender": "sara.shackleton@enron.com"
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "rolling blackouts and the state's response",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "sender": "jeff.dasovich@enron.com",
+          "date": {
+            "from": "2001-01-01T00:00:00.000Z",
+            "to": "2002-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "a paper about pricing options",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "sender": "vince.kaminski@enron.com"
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "a schedule for gas deliveries",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "sender": "chris.germany@enron.com",
+          "hasAttachment": true
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "an urgent question from the boss",
+        "filters": {
+          "labels": {
+            "include": [
+              "Inbox"
+            ]
+          },
+          "date": {
+            "from": "2001-01-01T00:00:00.000Z",
+            "to": "2002-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      }
+    ],
+    "hybrid": [
+      {
+        "words": "california",
+        "meaning": "who is to blame for the power crisis",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "enron",
+        "meaning": "layoffs and severance after the collapse",
+        "filters": {
+          "labels": {
+            "include": [
+              "Inbox"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "gas",
+        "meaning": "a problem with nominations at a delivery point",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2001-01-01T00:00:00.000Z",
+            "to": "2002-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "contract",
+        "meaning": "waiting for the other side's comments",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "hasAttachment": true
+        },
+        "limit": 20
+      },
+      {
+        "words": "meeting",
+        "meaning": "moving the meeting to another day",
+        "filters": {
+          "labels": {
+            "include": [
+              "Finance"
+            ],
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2000-01-01T00:00:00.000Z",
+            "to": "2001-07-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "model",
+        "meaning": "valuing weather derivatives",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "faktura",
+        "meaning": "betalningen är försenad",
+        "filters": {
+          "labels": {
+            "include": [
+              "Inbox"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "golf",
+        "meaning": "a weekend tournament with clients",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2001-01-01T00:00:00.000Z",
+            "to": "2002-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "credit",
+        "meaning": "a counterparty's credit getting worse",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "hasAttachment": true
+        },
+        "limit": 20
+      },
+      {
+        "words": "dinner",
+        "meaning": "celebrating a colleague's promotion",
+        "filters": {
+          "labels": {
+            "include": [
+              "Finance"
+            ],
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2000-01-01T00:00:00.000Z",
+            "to": "2001-07-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "isda",
+        "meaning": "signing a master agreement with a bank",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "power",
+        "meaning": "buying electricity for next summer",
+        "filters": {
+          "labels": {
+            "include": [
+              "Inbox"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "stock",
+        "meaning": "the share price falling",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2001-01-01T00:00:00.000Z",
+            "to": "2002-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "resume",
+        "meaning": "applying for a job in the trading group",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "hasAttachment": true
+        },
+        "limit": 20
+      },
+      {
+        "words": "deal",
+        "meaning": "a mistake in a booked trade",
+        "filters": {
+          "labels": {
+            "include": [
+              "Finance"
+            ],
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2000-01-01T00:00:00.000Z",
+            "to": "2001-07-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "agreement",
+        "meaning": "changes to the collateral terms",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "sender": "sara.shackleton@enron.com"
+        },
+        "limit": 20
+      },
+      {
+        "words": "ferc",
+        "meaning": "price caps across the western states",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "sender": "jeff.dasovich@enron.com",
+          "date": {
+            "from": "2001-01-01T00:00:00.000Z",
+            "to": "2002-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "research",
+        "meaning": "recruiting students from a university",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "sender": "vince.kaminski@enron.com"
+        },
+        "limit": 20
+      },
+      {
+        "words": "deal",
+        "meaning": "the volumes for next month",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "sender": "chris.germany@enron.com",
+          "hasAttachment": true
+        },
+        "limit": 20
+      },
+      {
+        "words": "please",
+        "meaning": "an invitation to a party",
+        "filters": {
+          "labels": {
+            "include": [
+              "Inbox"
+            ]
+          },
+          "date": {
+            "from": "2000-01-01T00:00:00.000Z",
+            "to": "2001-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      }
+    ],
+    "hybrid-flat": [
+      {
+        "words": "california",
+        "meaning": "who is to blame for the power crisis",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "enron",
+        "meaning": "layoffs and severance after the collapse",
+        "filters": {
+          "labels": {
+            "include": [
+              "Inbox"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "gas",
+        "meaning": "a problem with nominations at a delivery point",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2001-01-01T00:00:00.000Z",
+            "to": "2002-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "contract",
+        "meaning": "waiting for the other side's comments",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "hasAttachment": true
+        },
+        "limit": 20
+      },
+      {
+        "words": "meeting",
+        "meaning": "moving the meeting to another day",
+        "filters": {
+          "labels": {
+            "include": [
+              "Finance"
+            ],
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2000-01-01T00:00:00.000Z",
+            "to": "2001-07-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "model",
+        "meaning": "valuing weather derivatives",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "faktura",
+        "meaning": "betalningen är försenad",
+        "filters": {
+          "labels": {
+            "include": [
+              "Inbox"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "golf",
+        "meaning": "a weekend tournament with clients",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2001-01-01T00:00:00.000Z",
+            "to": "2002-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "credit",
+        "meaning": "a counterparty's credit getting worse",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "hasAttachment": true
+        },
+        "limit": 20
+      },
+      {
+        "words": "dinner",
+        "meaning": "celebrating a colleague's promotion",
+        "filters": {
+          "labels": {
+            "include": [
+              "Finance"
+            ],
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2000-01-01T00:00:00.000Z",
+            "to": "2001-07-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "isda",
+        "meaning": "signing a master agreement with a bank",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "power",
+        "meaning": "buying electricity for next summer",
+        "filters": {
+          "labels": {
+            "include": [
+              "Inbox"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "stock",
+        "meaning": "the share price falling",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2001-01-01T00:00:00.000Z",
+            "to": "2002-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "resume",
+        "meaning": "applying for a job in the trading group",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "hasAttachment": true
+        },
+        "limit": 20
+      },
+      {
+        "words": "deal",
+        "meaning": "a mistake in a booked trade",
+        "filters": {
+          "labels": {
+            "include": [
+              "Finance"
+            ],
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2000-01-01T00:00:00.000Z",
+            "to": "2001-07-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "agreement",
+        "meaning": "changes to the collateral terms",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "sender": "sara.shackleton@enron.com"
+        },
+        "limit": 20
+      },
+      {
+        "words": "ferc",
+        "meaning": "price caps across the western states",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "sender": "jeff.dasovich@enron.com",
+          "date": {
+            "from": "2001-01-01T00:00:00.000Z",
+            "to": "2002-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "research",
+        "meaning": "recruiting students from a university",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "sender": "vince.kaminski@enron.com"
+        },
+        "limit": 20
+      },
+      {
+        "words": "deal",
+        "meaning": "the volumes for next month",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "sender": "chris.germany@enron.com",
+          "hasAttachment": true
+        },
+        "limit": 20
+      },
+      {
+        "words": "please",
+        "meaning": "an invitation to a party",
+        "filters": {
+          "labels": {
+            "include": [
+              "Inbox"
+            ]
+          },
+          "date": {
+            "from": "2000-01-01T00:00:00.000Z",
+            "to": "2001-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      }
+    ]
+  },
+  "recall": {
+    "vector": {
+      "meanRecall": 0,
+      "perQuery": []
+    },
+    "hybrid": {
+      "meanRecall": 0,
+      "perQuery": []
+    }
+  },
+  "results": [
+    {
+      "package": "x64-zip",
+      "memoryMb": 1769,
+      "type": "keyword",
+      "condition": "cold",
+      "queries": 30,
+      "excluded": 0,
+      "failed": [],
+      "latencyMs": {
+        "p50": 2777.044006,
+        "p95": 3245.622614,
+        "p99": 3333.205425
+      },
+      "initMs": {
+        "p50": 862.17,
+        "p95": 899.2,
+        "p99": 907.02
+      },
+      "searchMs": {
+        "p50": 1946.2702040000001,
+        "p95": 2357.884879,
+        "p99": 2599.935425
+      },
+      "roundTripMs": {
+        "p50": 3417.380678000016,
+        "p95": 3844.956930000015,
+        "p99": 3932.295019000012
+      },
+      "target": {
+        "p95Ms": 3000,
+        "met": false
+      },
+      "s3RequestsPerQuery": 117.3,
+      "s3Requests": {
+        "AllRequests": 3519,
+        "GetRequests": 3518,
+        "HeadRequests": 1,
+        "ListRequests": 0,
+        "PutRequests": 0
+      },
+      "maxMemoryMb": 262,
+      "cachedMb": 24.447102546691895,
+      "queriesWithoutHits": 0,
+      "window": {
+        "from": "2026-10-04T00:37:00.000Z",
+        "to": "2026-10-04T00:38:00.000Z"
+      },
+      "samples": [
+        {
+          "query": 0,
+          "latencyMs": 2666.7,
+          "initMs": 845.2,
+          "roundTripMs": 3369.2,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 2656.3,
+          "initMs": 858.6,
+          "roundTripMs": 3331.1,
+          "hits": 20
+        },
+        {
+          "query": 2,
+          "latencyMs": 2889.3,
+          "initMs": 717,
+          "roundTripMs": 3618.8,
+          "hits": 20
+        },
+        {
+          "query": 3,
+          "latencyMs": 2675.3,
+          "initMs": 848.7,
+          "roundTripMs": 3327.7,
+          "hits": 20
+        },
+        {
+          "query": 4,
+          "latencyMs": 2783.5,
+          "initMs": 864.7,
+          "roundTripMs": 3412.2,
+          "hits": 20
+        },
+        {
+          "query": 5,
+          "latencyMs": 2735.8,
+          "initMs": 871.4,
+          "roundTripMs": 3362.5,
+          "hits": 20
+        },
+        {
+          "query": 6,
+          "latencyMs": 2671.8,
+          "initMs": 872.9,
+          "roundTripMs": 3375.5,
+          "hits": 20
+        },
+        {
+          "query": 7,
+          "latencyMs": 2828.5,
+          "initMs": 860.9,
+          "roundTripMs": 3464,
+          "hits": 20
+        },
+        {
+          "query": 8,
+          "latencyMs": 2681.8,
+          "initMs": 720.5,
+          "roundTripMs": 3462.1,
+          "hits": 20
+        },
+        {
+          "query": 9,
+          "latencyMs": 2716.2,
+          "initMs": 892.4,
+          "roundTripMs": 3343.9,
+          "hits": 3
+        },
+        {
+          "query": 10,
+          "latencyMs": 2777,
+          "initMs": 740.5,
+          "roundTripMs": 3428.3,
+          "hits": 20
+        },
+        {
+          "query": 11,
+          "latencyMs": 2538.7,
+          "initMs": 862.2,
+          "roundTripMs": 3134.6,
+          "hits": 20
+        },
+        {
+          "query": 12,
+          "latencyMs": 2786,
+          "initMs": 873.1,
+          "roundTripMs": 3481.8,
+          "hits": 20
+        },
+        {
+          "query": 13,
+          "latencyMs": 2708.8,
+          "initMs": 725.3,
+          "roundTripMs": 3378.4,
+          "hits": 20
+        },
+        {
+          "query": 14,
+          "latencyMs": 2724.6,
+          "initMs": 863.9,
+          "roundTripMs": 3321.3,
+          "hits": 20
+        },
+        {
+          "query": 15,
+          "latencyMs": 3048.1,
+          "initMs": 754.9,
+          "roundTripMs": 3663.4,
+          "hits": 20
+        },
+        {
+          "query": 16,
+          "latencyMs": 2701.7,
+          "initMs": 894.4,
+          "roundTripMs": 3276,
+          "hits": 20
+        },
+        {
+          "query": 17,
+          "latencyMs": 3245.6,
+          "initMs": 891,
+          "roundTripMs": 3845,
+          "hits": 20
+        },
+        {
+          "query": 18,
+          "latencyMs": 2983,
+          "initMs": 907,
+          "roundTripMs": 3578.3,
+          "hits": 20
+        },
+        {
+          "query": 19,
+          "latencyMs": 2987.6,
+          "initMs": 871.4,
+          "roundTripMs": 3611.5,
+          "hits": 20
+        },
+        {
+          "query": 20,
+          "latencyMs": 2831.3,
+          "initMs": 885,
+          "roundTripMs": 3417.4,
+          "hits": 20
+        },
+        {
+          "query": 21,
+          "latencyMs": 2691.4,
+          "initMs": 899.2,
+          "roundTripMs": 3310.7,
+          "hits": 20
+        },
+        {
+          "query": 22,
+          "latencyMs": 2969.4,
+          "initMs": 872.6,
+          "roundTripMs": 3567.2,
+          "hits": 20
+        },
+        {
+          "query": 23,
+          "latencyMs": 3072.6,
+          "initMs": 722,
+          "roundTripMs": 3668.5,
+          "hits": 20
+        },
+        {
+          "query": 24,
+          "latencyMs": 2940.2,
+          "initMs": 874.6,
+          "roundTripMs": 3537.7,
+          "hits": 20
+        },
+        {
+          "query": 25,
+          "latencyMs": 2946.5,
+          "initMs": 720.2,
+          "roundTripMs": 3535.1,
+          "hits": 20
+        },
+        {
+          "query": 26,
+          "latencyMs": 2661.1,
+          "initMs": 869,
+          "roundTripMs": 3260.6,
+          "hits": 20
+        },
+        {
+          "query": 27,
+          "latencyMs": 3333.2,
+          "initMs": 733.3,
+          "roundTripMs": 3932.3,
+          "hits": 20
+        },
+        {
+          "query": 28,
+          "latencyMs": 2516.3,
+          "initMs": 738.8,
+          "roundTripMs": 3092.1,
+          "hits": 20
+        },
+        {
+          "query": 29,
+          "latencyMs": 3088,
+          "initMs": 730.1,
+          "roundTripMs": 3693.7,
+          "hits": 20
+        }
+      ]
+    },
+    {
+      "package": "x64-zip",
+      "memoryMb": 1769,
+      "type": "phrase",
+      "condition": "cold",
+      "queries": 30,
+      "excluded": 0,
+      "failed": [],
+      "latencyMs": {
+        "p50": 3082.529944,
+        "p95": 3356.694854,
+        "p99": 3786.4239930000003
+      },
+      "initMs": {
+        "p50": 847.69,
+        "p95": 893.73,
+        "p99": 900.04
+      },
+      "searchMs": {
+        "p50": 2306.543193,
+        "p95": 2578.593404,
+        "p99": 2917.4839930000003
+      },
+      "roundTripMs": {
+        "p50": 3719.840674999985,
+        "p95": 4017.4238590000023,
+        "p99": 4503.893844999984
+      },
+      "target": {
+        "p95Ms": 3000,
+        "met": false
+      },
+      "s3RequestsPerQuery": 209.66666666666666,
+      "s3Requests": {
+        "AllRequests": 6290,
+        "GetRequests": 6290,
+        "HeadRequests": 0,
+        "ListRequests": 0,
+        "PutRequests": 0
+      },
+      "maxMemoryMb": 270,
+      "cachedMb": 29.48445224761963,
+      "queriesWithoutHits": 1,
+      "window": {
+        "from": "2026-10-04T00:38:00.000Z",
+        "to": "2026-10-04T00:39:00.000Z"
+      },
+      "samples": [
+        {
+          "query": 0,
+          "latencyMs": 2674.6,
+          "initMs": 900,
+          "roundTripMs": 3272.1,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 3049.4,
+          "initMs": 742.8,
+          "roundTripMs": 3641,
+          "hits": 7
+        },
+        {
+          "query": 2,
+          "latencyMs": 3300.7,
+          "initMs": 744.6,
+          "roundTripMs": 3877.8,
+          "hits": 14
+        },
+        {
+          "query": 3,
+          "latencyMs": 3134.1,
+          "initMs": 718.4,
+          "roundTripMs": 3805.4,
+          "hits": 6
+        },
+        {
+          "query": 4,
+          "latencyMs": 3246.8,
+          "initMs": 700.9,
+          "roundTripMs": 3886.1,
+          "hits": 3
+        },
+        {
+          "query": 5,
+          "latencyMs": 3006,
+          "initMs": 893.7,
+          "roundTripMs": 3635.4,
+          "hits": 7
+        },
+        {
+          "query": 6,
+          "latencyMs": 2945.1,
+          "initMs": 706.6,
+          "roundTripMs": 3599.4,
+          "hits": 2
+        },
+        {
+          "query": 7,
+          "latencyMs": 3356.7,
+          "initMs": 852.4,
+          "roundTripMs": 4017.4,
+          "hits": 15
+        },
+        {
+          "query": 8,
+          "latencyMs": 3082.5,
+          "initMs": 874.1,
+          "roundTripMs": 3719.8,
+          "hits": 4
+        },
+        {
+          "query": 9,
+          "latencyMs": 2920.2,
+          "initMs": 833.6,
+          "roundTripMs": 3541.2,
+          "hits": 0
+        },
+        {
+          "query": 10,
+          "latencyMs": 3155,
+          "initMs": 873.5,
+          "roundTripMs": 3742.3,
+          "hits": 20
+        },
+        {
+          "query": 11,
+          "latencyMs": 3786.4,
+          "initMs": 868.9,
+          "roundTripMs": 4503.9,
+          "hits": 18
+        },
+        {
+          "query": 12,
+          "latencyMs": 3228.9,
+          "initMs": 841.6,
+          "roundTripMs": 3875,
+          "hits": 20
+        },
+        {
+          "query": 13,
+          "latencyMs": 3068,
+          "initMs": 727.3,
+          "roundTripMs": 3663.9,
+          "hits": 20
+        },
+        {
+          "query": 14,
+          "latencyMs": 3186.3,
+          "initMs": 858.2,
+          "roundTripMs": 3810.6,
+          "hits": 20
+        },
+        {
+          "query": 15,
+          "latencyMs": 2677.2,
+          "initMs": 887.9,
+          "roundTripMs": 3273.2,
+          "hits": 20
+        },
+        {
+          "query": 16,
+          "latencyMs": 3144.5,
+          "initMs": 732.5,
+          "roundTripMs": 3765,
+          "hits": 20
+        },
+        {
+          "query": 17,
+          "latencyMs": 3241.9,
+          "initMs": 887.9,
+          "roundTripMs": 3844.5,
+          "hits": 20
+        },
+        {
+          "query": 18,
+          "latencyMs": 2958.5,
+          "initMs": 887.8,
+          "roundTripMs": 3564.4,
+          "hits": 20
+        },
+        {
+          "query": 19,
+          "latencyMs": 3210.7,
+          "initMs": 862.7,
+          "roundTripMs": 3777.6,
+          "hits": 20
+        },
+        {
+          "query": 20,
+          "latencyMs": 2815.4,
+          "initMs": 812.6,
+          "roundTripMs": 3394.4,
+          "hits": 20
+        },
+        {
+          "query": 21,
+          "latencyMs": 2852.2,
+          "initMs": 824.1,
+          "roundTripMs": 3471.2,
+          "hits": 20
+        },
+        {
+          "query": 0,
+          "latencyMs": 2626.2,
+          "initMs": 884.4,
+          "roundTripMs": 3213.3,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 2924.6,
+          "initMs": 839.6,
+          "roundTripMs": 3542.6,
+          "hits": 7
+        },
+        {
+          "query": 2,
+          "latencyMs": 3278,
+          "initMs": 875,
+          "roundTripMs": 3895.7,
+          "hits": 14
+        },
+        {
+          "query": 3,
+          "latencyMs": 3037.6,
+          "initMs": 856.6,
+          "roundTripMs": 3673.5,
+          "hits": 6
+        },
+        {
+          "query": 4,
+          "latencyMs": 3315.2,
+          "initMs": 736.6,
+          "roundTripMs": 3946.6,
+          "hits": 3
+        },
+        {
+          "query": 5,
+          "latencyMs": 3145.7,
+          "initMs": 727.5,
+          "roundTripMs": 3964.6,
+          "hits": 7
+        },
+        {
+          "query": 6,
+          "latencyMs": 2934.8,
+          "initMs": 847.7,
+          "roundTripMs": 3590.5,
+          "hits": 2
+        },
+        {
+          "query": 7,
+          "latencyMs": 3191,
+          "initMs": 863.5,
+          "roundTripMs": 3854.4,
+          "hits": 15
+        }
+      ]
+    },
+    {
+      "package": "x64-zip",
+      "memoryMb": 1769,
+      "type": "vector",
+      "condition": "cold",
+      "queries": 30,
+      "excluded": 0,
+      "failed": [],
+      "latencyMs": {
+        "p50": 2831.595678,
+        "p95": 3190.13583,
+        "p99": 3203.297546
+      },
+      "initMs": {
+        "p50": 850.68,
+        "p95": 894.88,
+        "p99": 898.42
+      },
+      "searchMs": {
+        "p50": 2092.775678,
+        "p95": 2457.94583,
+        "p99": 2476.787546
+      },
+      "roundTripMs": {
+        "p50": 3454.6246949999477,
+        "p95": 3791.090152000019,
+        "p99": 3814.616266999976
+      },
+      "target": {
+        "p95Ms": 3000,
+        "met": false
+      },
+      "s3RequestsPerQuery": 136.86666666666667,
+      "s3Requests": {
+        "AllRequests": 4106,
+        "GetRequests": 4106,
+        "HeadRequests": 0,
+        "ListRequests": 0,
+        "PutRequests": 0
+      },
+      "maxMemoryMb": 247,
+      "cachedMb": 9.742776870727539,
+      "queriesWithoutHits": 0,
+      "window": {
+        "from": "2026-10-04T00:39:00.000Z",
+        "to": "2026-10-04T00:40:00.000Z"
+      },
+      "samples": [
+        {
+          "query": 0,
+          "latencyMs": 2903,
+          "initMs": 735.3,
+          "roundTripMs": 3511.7,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 2885.6,
+          "initMs": 733.9,
+          "roundTripMs": 3493.5,
+          "hits": 20
+        },
+        {
+          "query": 2,
+          "latencyMs": 3044.9,
+          "initMs": 846.3,
+          "roundTripMs": 3631.8,
+          "hits": 20
+        },
+        {
+          "query": 3,
+          "latencyMs": 2837.8,
+          "initMs": 716.7,
+          "roundTripMs": 3471.3,
+          "hits": 20
+        },
+        {
+          "query": 4,
+          "latencyMs": 2924,
+          "initMs": 865.7,
+          "roundTripMs": 3554.3,
+          "hits": 20
+        },
+        {
+          "query": 5,
+          "latencyMs": 2741.5,
+          "initMs": 868.7,
+          "roundTripMs": 3392.1,
+          "hits": 20
+        },
+        {
+          "query": 6,
+          "latencyMs": 2760.6,
+          "initMs": 894.9,
+          "roundTripMs": 3373.7,
+          "hits": 20
+        },
+        {
+          "query": 7,
+          "latencyMs": 3190.1,
+          "initMs": 732.2,
+          "roundTripMs": 3780.1,
+          "hits": 20
+        },
+        {
+          "query": 8,
+          "latencyMs": 2732.9,
+          "initMs": 860.5,
+          "roundTripMs": 3339.2,
+          "hits": 20
+        },
+        {
+          "query": 9,
+          "latencyMs": 2994.3,
+          "initMs": 883.3,
+          "roundTripMs": 3587,
+          "hits": 20
+        },
+        {
+          "query": 10,
+          "latencyMs": 2764.2,
+          "initMs": 880,
+          "roundTripMs": 3353.5,
+          "hits": 20
+        },
+        {
+          "query": 11,
+          "latencyMs": 2698.4,
+          "initMs": 858.9,
+          "roundTripMs": 3285.6,
+          "hits": 20
+        },
+        {
+          "query": 12,
+          "latencyMs": 2973.5,
+          "initMs": 847,
+          "roundTripMs": 3531.9,
+          "hits": 20
+        },
+        {
+          "query": 13,
+          "latencyMs": 2690.3,
+          "initMs": 847.8,
+          "roundTripMs": 3336.8,
+          "hits": 20
+        },
+        {
+          "query": 14,
+          "latencyMs": 3058.9,
+          "initMs": 898.4,
+          "roundTripMs": 3615.9,
+          "hits": 20
+        },
+        {
+          "query": 15,
+          "latencyMs": 2678.9,
+          "initMs": 872.8,
+          "roundTripMs": 3309.1,
+          "hits": 20
+        },
+        {
+          "query": 16,
+          "latencyMs": 3110.5,
+          "initMs": 724,
+          "roundTripMs": 3755.5,
+          "hits": 20
+        },
+        {
+          "query": 17,
+          "latencyMs": 2776.4,
+          "initMs": 833.3,
+          "roundTripMs": 3383.1,
+          "hits": 20
+        },
+        {
+          "query": 18,
+          "latencyMs": 2798.5,
+          "initMs": 855.4,
+          "roundTripMs": 3384.1,
+          "hits": 20
+        },
+        {
+          "query": 19,
+          "latencyMs": 3126,
+          "initMs": 880.6,
+          "roundTripMs": 3689.8,
+          "hits": 20
+        },
+        {
+          "query": 0,
+          "latencyMs": 2707.1,
+          "initMs": 850.7,
+          "roundTripMs": 3290.6,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 2679,
+          "initMs": 864.4,
+          "roundTripMs": 3226.1,
+          "hits": 20
+        },
+        {
+          "query": 2,
+          "latencyMs": 3027.9,
+          "initMs": 853.7,
+          "roundTripMs": 3600.5,
+          "hits": 20
+        },
+        {
+          "query": 3,
+          "latencyMs": 2710.9,
+          "initMs": 836.2,
+          "roundTripMs": 3336.5,
+          "hits": 20
+        },
+        {
+          "query": 4,
+          "latencyMs": 3142.7,
+          "initMs": 743.8,
+          "roundTripMs": 3814.6,
+          "hits": 20
+        },
+        {
+          "query": 5,
+          "latencyMs": 2630.5,
+          "initMs": 862.1,
+          "roundTripMs": 3293.2,
+          "hits": 20
+        },
+        {
+          "query": 6,
+          "latencyMs": 2831.6,
+          "initMs": 738.8,
+          "roundTripMs": 3449.7,
+          "hits": 20
+        },
+        {
+          "query": 7,
+          "latencyMs": 3106.8,
+          "initMs": 872.3,
+          "roundTripMs": 3683.8,
+          "hits": 20
+        },
+        {
+          "query": 8,
+          "latencyMs": 2815.9,
+          "initMs": 719.8,
+          "roundTripMs": 3454.6,
+          "hits": 20
+        },
+        {
+          "query": 9,
+          "latencyMs": 3203.3,
+          "initMs": 726.5,
+          "roundTripMs": 3791.1,
+          "hits": 20
+        }
+      ]
+    },
+    {
+      "package": "x64-zip",
+      "memoryMb": 1769,
+      "type": "vector-flat",
+      "condition": "cold",
+      "queries": 30,
+      "excluded": 0,
+      "failed": [],
+      "latencyMs": {
+        "p50": 3316.474777,
+        "p95": 5630.870142,
+        "p99": 5865.093244000001
+      },
+      "initMs": {
+        "p50": 849.93,
+        "p95": 898.3,
+        "p99": 903.82
+      },
+      "searchMs": {
+        "p50": 2555.385899,
+        "p95": 4887.820142,
+        "p99": 5123.723244000001
+      },
+      "roundTripMs": {
+        "p50": 4070.9474479999626,
+        "p95": 6249.331435,
+        "p99": 6482.37045799999
+      },
+      "target": {
+        "p95Ms": 3000,
+        "met": false
+      },
+      "s3RequestsPerQuery": 734.6333333333333,
+      "s3Requests": {
+        "AllRequests": 22039,
+        "GetRequests": 22039,
+        "HeadRequests": 0,
+        "ListRequests": 0,
+        "PutRequests": 0
+      },
+      "maxMemoryMb": 633,
+      "cachedMb": 1.908888816833496,
+      "queriesWithoutHits": 0,
+      "window": {
+        "from": "2026-10-04T00:40:00.000Z",
+        "to": "2026-10-04T00:41:00.000Z"
+      },
+      "samples": [
+        {
+          "query": 0,
+          "latencyMs": 5284.5,
+          "initMs": 680.4,
+          "roundTripMs": 5864.7,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 3906.7,
+          "initMs": 847.2,
+          "roundTripMs": 4581.9,
+          "hits": 20
+        },
+        {
+          "query": 2,
+          "latencyMs": 3838.6,
+          "initMs": 726.5,
+          "roundTripMs": 4491.1,
+          "hits": 20
+        },
+        {
+          "query": 3,
+          "latencyMs": 3255.6,
+          "initMs": 864.3,
+          "roundTripMs": 3842.1,
+          "hits": 20
+        },
+        {
+          "query": 4,
+          "latencyMs": 3275.1,
+          "initMs": 719.7,
+          "roundTripMs": 3920.5,
+          "hits": 20
+        },
+        {
+          "query": 5,
+          "latencyMs": 4442.5,
+          "initMs": 854.3,
+          "roundTripMs": 5082.1,
+          "hits": 20
+        },
+        {
+          "query": 6,
+          "latencyMs": 3264,
+          "initMs": 874.2,
+          "roundTripMs": 3893.6,
+          "hits": 20
+        },
+        {
+          "query": 7,
+          "latencyMs": 3316.5,
+          "initMs": 823.5,
+          "roundTripMs": 3986,
+          "hits": 20
+        },
+        {
+          "query": 8,
+          "latencyMs": 3291.4,
+          "initMs": 860.5,
+          "roundTripMs": 3937.2,
+          "hits": 20
+        },
+        {
+          "query": 9,
+          "latencyMs": 3175.2,
+          "initMs": 871.3,
+          "roundTripMs": 3767.3,
+          "hits": 20
+        },
+        {
+          "query": 10,
+          "latencyMs": 5865.1,
+          "initMs": 741.4,
+          "roundTripMs": 6482.4,
+          "hits": 20
+        },
+        {
+          "query": 11,
+          "latencyMs": 3868.3,
+          "initMs": 870.7,
+          "roundTripMs": 4537.5,
+          "hits": 20
+        },
+        {
+          "query": 12,
+          "latencyMs": 3716.7,
+          "initMs": 849.9,
+          "roundTripMs": 4441.6,
+          "hits": 20
+        },
+        {
+          "query": 13,
+          "latencyMs": 3167.1,
+          "initMs": 843.4,
+          "roundTripMs": 4070.9,
+          "hits": 20
+        },
+        {
+          "query": 14,
+          "latencyMs": 3188.7,
+          "initMs": 842.1,
+          "roundTripMs": 3755.5,
+          "hits": 20
+        },
+        {
+          "query": 15,
+          "latencyMs": 2662.9,
+          "initMs": 855.7,
+          "roundTripMs": 3309.6,
+          "hits": 20
+        },
+        {
+          "query": 16,
+          "latencyMs": 3276.4,
+          "initMs": 746.3,
+          "roundTripMs": 3898,
+          "hits": 20
+        },
+        {
+          "query": 17,
+          "latencyMs": 2633,
+          "initMs": 875.6,
+          "roundTripMs": 3246.5,
+          "hits": 20
+        },
+        {
+          "query": 18,
+          "latencyMs": 2487.9,
+          "initMs": 856.4,
+          "roundTripMs": 3085.5,
+          "hits": 20
+        },
+        {
+          "query": 19,
+          "latencyMs": 3298.6,
+          "initMs": 841.1,
+          "roundTripMs": 4018.3,
+          "hits": 20
+        },
+        {
+          "query": 0,
+          "latencyMs": 5382.7,
+          "initMs": 898.3,
+          "roundTripMs": 6010.5,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 4069.4,
+          "initMs": 850.7,
+          "roundTripMs": 4667.5,
+          "hits": 20
+        },
+        {
+          "query": 2,
+          "latencyMs": 3730.9,
+          "initMs": 846.4,
+          "roundTripMs": 4435.2,
+          "hits": 20
+        },
+        {
+          "query": 3,
+          "latencyMs": 3528.9,
+          "initMs": 758.4,
+          "roundTripMs": 4129.8,
+          "hits": 20
+        },
+        {
+          "query": 4,
+          "latencyMs": 3126.2,
+          "initMs": 877.4,
+          "roundTripMs": 3710.7,
+          "hits": 20
+        },
+        {
+          "query": 5,
+          "latencyMs": 5630.9,
+          "initMs": 743.1,
+          "roundTripMs": 6249.3,
+          "hits": 20
+        },
+        {
+          "query": 6,
+          "latencyMs": 3780.6,
+          "initMs": 869.9,
+          "roundTripMs": 4348.1,
+          "hits": 20
+        },
+        {
+          "query": 7,
+          "latencyMs": 3761.9,
+          "initMs": 889.9,
+          "roundTripMs": 4347.4,
+          "hits": 20
+        },
+        {
+          "query": 8,
+          "latencyMs": 3603.9,
+          "initMs": 739.9,
+          "roundTripMs": 4557.5,
+          "hits": 20
+        },
+        {
+          "query": 9,
+          "latencyMs": 3105.1,
+          "initMs": 903.8,
+          "roundTripMs": 3733.8,
+          "hits": 20
+        }
+      ]
+    },
+    {
+      "package": "x64-zip",
+      "memoryMb": 1769,
+      "type": "hybrid",
+      "condition": "cold",
+      "queries": 30,
+      "excluded": 0,
+      "failed": [],
+      "latencyMs": {
+        "p50": 2919.178398,
+        "p95": 3273.1098429999997,
+        "p99": 3954.452245
+      },
+      "initMs": {
+        "p50": 847.11,
+        "p95": 894.15,
+        "p99": 912.68
+      },
+      "searchMs": {
+        "p50": 2139.340287,
+        "p95": 2518.449843,
+        "p99": 3225.272245
+      },
+      "roundTripMs": {
+        "p50": 3566.693456000008,
+        "p95": 3898.2660669999896,
+        "p99": 4612.951582999958
+      },
+      "target": {
+        "p95Ms": 3000,
+        "met": false
+      },
+      "s3RequestsPerQuery": 446.8666666666667,
+      "s3Requests": {
+        "AllRequests": 13406,
+        "GetRequests": 13406,
+        "HeadRequests": 0,
+        "ListRequests": 0,
+        "PutRequests": 0
+      },
+      "maxMemoryMb": 276,
+      "cachedMb": 33.931081771850586,
+      "queriesWithoutHits": 0,
+      "window": {
+        "from": "2026-10-04T00:41:00.000Z",
+        "to": "2026-10-04T00:42:00.000Z"
+      },
+      "samples": [
+        {
+          "query": 0,
+          "latencyMs": 2743.8,
+          "initMs": 868.8,
+          "roundTripMs": 3330.4,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 3085.4,
+          "initMs": 853.3,
+          "roundTripMs": 3746.5,
+          "hits": 20
+        },
+        {
+          "query": 2,
+          "latencyMs": 3063.5,
+          "initMs": 847.1,
+          "roundTripMs": 3658.7,
+          "hits": 20
+        },
+        {
+          "query": 3,
+          "latencyMs": 2899.8,
+          "initMs": 720.9,
+          "roundTripMs": 3523.8,
+          "hits": 20
+        },
+        {
+          "query": 4,
+          "latencyMs": 3134.2,
+          "initMs": 734.5,
+          "roundTripMs": 3765.2,
+          "hits": 20
+        },
+        {
+          "query": 5,
+          "latencyMs": 3029.6,
+          "initMs": 708.7,
+          "roundTripMs": 3701.4,
+          "hits": 20
+        },
+        {
+          "query": 6,
+          "latencyMs": 2696.7,
+          "initMs": 891.3,
+          "roundTripMs": 3317.5,
+          "hits": 20
+        },
+        {
+          "query": 7,
+          "latencyMs": 3225.4,
+          "initMs": 722.5,
+          "roundTripMs": 3840,
+          "hits": 20
+        },
+        {
+          "query": 8,
+          "latencyMs": 2691.7,
+          "initMs": 882.2,
+          "roundTripMs": 3377.1,
+          "hits": 20
+        },
+        {
+          "query": 9,
+          "latencyMs": 3954.5,
+          "initMs": 729.2,
+          "roundTripMs": 4613,
+          "hits": 20
+        },
+        {
+          "query": 10,
+          "latencyMs": 2890.3,
+          "initMs": 750.9,
+          "roundTripMs": 3507.3,
+          "hits": 20
+        },
+        {
+          "query": 11,
+          "latencyMs": 2917.6,
+          "initMs": 716.7,
+          "roundTripMs": 3522.6,
+          "hits": 20
+        },
+        {
+          "query": 12,
+          "latencyMs": 3273.1,
+          "initMs": 754.7,
+          "roundTripMs": 3898.3,
+          "hits": 20
+        },
+        {
+          "query": 13,
+          "latencyMs": 2730.8,
+          "initMs": 894.2,
+          "roundTripMs": 3356.7,
+          "hits": 20
+        },
+        {
+          "query": 14,
+          "latencyMs": 3175.6,
+          "initMs": 715,
+          "roundTripMs": 3786,
+          "hits": 20
+        },
+        {
+          "query": 15,
+          "latencyMs": 2849.8,
+          "initMs": 731.2,
+          "roundTripMs": 3472.1,
+          "hits": 20
+        },
+        {
+          "query": 16,
+          "latencyMs": 3047.4,
+          "initMs": 888.6,
+          "roundTripMs": 3629.9,
+          "hits": 20
+        },
+        {
+          "query": 17,
+          "latencyMs": 2759.9,
+          "initMs": 849.3,
+          "roundTripMs": 3387.7,
+          "hits": 20
+        },
+        {
+          "query": 18,
+          "latencyMs": 2732.2,
+          "initMs": 854.7,
+          "roundTripMs": 3317.6,
+          "hits": 20
+        },
+        {
+          "query": 19,
+          "latencyMs": 3049.2,
+          "initMs": 743.5,
+          "roundTripMs": 3658.2,
+          "hits": 20
+        },
+        {
+          "query": 0,
+          "latencyMs": 2687.6,
+          "initMs": 867.4,
+          "roundTripMs": 3340.9,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 2653.2,
+          "initMs": 857.3,
+          "roundTripMs": 3246.5,
+          "hits": 20
+        },
+        {
+          "query": 2,
+          "latencyMs": 2994.7,
+          "initMs": 867.8,
+          "roundTripMs": 3601.7,
+          "hits": 20
+        },
+        {
+          "query": 3,
+          "latencyMs": 2726.1,
+          "initMs": 851.5,
+          "roundTripMs": 3325.2,
+          "hits": 20
+        },
+        {
+          "query": 4,
+          "latencyMs": 3138.6,
+          "initMs": 735.1,
+          "roundTripMs": 3791.6,
+          "hits": 20
+        },
+        {
+          "query": 5,
+          "latencyMs": 3016.2,
+          "initMs": 912.7,
+          "roundTripMs": 3617.3,
+          "hits": 20
+        },
+        {
+          "query": 6,
+          "latencyMs": 2672.4,
+          "initMs": 858,
+          "roundTripMs": 3236.3,
+          "hits": 20
+        },
+        {
+          "query": 7,
+          "latencyMs": 2919.2,
+          "initMs": 835.2,
+          "roundTripMs": 3593.5,
+          "hits": 20
+        },
+        {
+          "query": 8,
+          "latencyMs": 2924.3,
+          "initMs": 740.1,
+          "roundTripMs": 3566.7,
+          "hits": 20
+        },
+        {
+          "query": 9,
+          "latencyMs": 3052.9,
+          "initMs": 859.6,
+          "roundTripMs": 3667.4,
+          "hits": 20
+        }
+      ]
+    },
+    {
+      "package": "x64-zip",
+      "memoryMb": 1769,
+      "type": "hybrid-flat",
+      "condition": "cold",
+      "queries": 30,
+      "excluded": 0,
+      "failed": [],
+      "latencyMs": {
+        "p50": 3366.6830480000003,
+        "p95": 5745.611728,
+        "p99": 5759.1661220000005
+      },
+      "initMs": {
+        "p50": 847.1,
+        "p95": 898.04,
+        "p99": 928
+      },
+      "searchMs": {
+        "p50": 2490.937871,
+        "p95": 5001.481728,
+        "p99": 5043.336122000001
+      },
+      "roundTripMs": {
+        "p50": 4108.367986000027,
+        "p95": 6375.5619559999905,
+        "p99": 6398.078643999994
+      },
+      "target": {
+        "p95Ms": 3000,
+        "met": false
+      },
+      "s3RequestsPerQuery": 817,
+      "s3Requests": {
+        "AllRequests": 24510,
+        "GetRequests": 24510,
+        "HeadRequests": 0,
+        "ListRequests": 0,
+        "PutRequests": 0
+      },
+      "maxMemoryMb": 675,
+      "cachedMb": 26.04569149017334,
+      "queriesWithoutHits": 0,
+      "window": {
+        "from": "2026-10-04T00:42:00.000Z",
+        "to": "2026-10-04T00:43:00.000Z"
+      },
+      "samples": [
+        {
+          "query": 0,
+          "latencyMs": 5759.2,
+          "initMs": 715.8,
+          "roundTripMs": 6398.1,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 3940,
+          "initMs": 869.7,
+          "roundTripMs": 4535.6,
+          "hits": 20
+        },
+        {
+          "query": 2,
+          "latencyMs": 4018.5,
+          "initMs": 715.4,
+          "roundTripMs": 4645.6,
+          "hits": 20
+        },
+        {
+          "query": 3,
+          "latencyMs": 3341,
+          "initMs": 880.2,
+          "roundTripMs": 3935.7,
+          "hits": 20
+        },
+        {
+          "query": 4,
+          "latencyMs": 3118.1,
+          "initMs": 846.1,
+          "roundTripMs": 3713.5,
+          "hits": 20
+        },
+        {
+          "query": 5,
+          "latencyMs": 5393.6,
+          "initMs": 854.8,
+          "roundTripMs": 6017.4,
+          "hits": 20
+        },
+        {
+          "query": 6,
+          "latencyMs": 3342.9,
+          "initMs": 863.3,
+          "roundTripMs": 3914.8,
+          "hits": 20
+        },
+        {
+          "query": 7,
+          "latencyMs": 4077.4,
+          "initMs": 715.5,
+          "roundTripMs": 4743.9,
+          "hits": 20
+        },
+        {
+          "query": 8,
+          "latencyMs": 3366.7,
+          "initMs": 897.7,
+          "roundTripMs": 4162.2,
+          "hits": 20
+        },
+        {
+          "query": 9,
+          "latencyMs": 3184,
+          "initMs": 829.9,
+          "roundTripMs": 4146.5,
+          "hits": 20
+        },
+        {
+          "query": 10,
+          "latencyMs": 4560.4,
+          "initMs": 861.3,
+          "roundTripMs": 5228.3,
+          "hits": 20
+        },
+        {
+          "query": 11,
+          "latencyMs": 4300.3,
+          "initMs": 720.1,
+          "roundTripMs": 4890.8,
+          "hits": 20
+        },
+        {
+          "query": 12,
+          "latencyMs": 3853.5,
+          "initMs": 896.6,
+          "roundTripMs": 4436.4,
+          "hits": 20
+        },
+        {
+          "query": 13,
+          "latencyMs": 3356.5,
+          "initMs": 884,
+          "roundTripMs": 3988.5,
+          "hits": 20
+        },
+        {
+          "query": 14,
+          "latencyMs": 3177.7,
+          "initMs": 870.8,
+          "roundTripMs": 3809.8,
+          "hits": 20
+        },
+        {
+          "query": 15,
+          "latencyMs": 2966.1,
+          "initMs": 726.9,
+          "roundTripMs": 3638.7,
+          "hits": 20
+        },
+        {
+          "query": 16,
+          "latencyMs": 3082.2,
+          "initMs": 723.2,
+          "roundTripMs": 3716.1,
+          "hits": 20
+        },
+        {
+          "query": 17,
+          "latencyMs": 2653.2,
+          "initMs": 878,
+          "roundTripMs": 3314.1,
+          "hits": 20
+        },
+        {
+          "query": 18,
+          "latencyMs": 2789.3,
+          "initMs": 732.6,
+          "roundTripMs": 3436.4,
+          "hits": 20
+        },
+        {
+          "query": 19,
+          "latencyMs": 3175.9,
+          "initMs": 723,
+          "roundTripMs": 3824.4,
+          "hits": 20
+        },
+        {
+          "query": 0,
+          "latencyMs": 5451.8,
+          "initMs": 898,
+          "roundTripMs": 6066.1,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 3805.6,
+          "initMs": 847.1,
+          "roundTripMs": 4512.5,
+          "hits": 20
+        },
+        {
+          "query": 2,
+          "latencyMs": 3530.9,
+          "initMs": 847,
+          "roundTripMs": 4108.4,
+          "hits": 20
+        },
+        {
+          "query": 3,
+          "latencyMs": 3359.8,
+          "initMs": 868.9,
+          "roundTripMs": 3945.4,
+          "hits": 20
+        },
+        {
+          "query": 4,
+          "latencyMs": 3178.9,
+          "initMs": 887.3,
+          "roundTripMs": 3774.5,
+          "hits": 20
+        },
+        {
+          "query": 5,
+          "latencyMs": 5745.6,
+          "initMs": 744.1,
+          "roundTripMs": 6375.6,
+          "hits": 20
+        },
+        {
+          "query": 6,
+          "latencyMs": 3759.1,
+          "initMs": 846.2,
+          "roundTripMs": 4453.4,
+          "hits": 20
+        },
+        {
+          "query": 7,
+          "latencyMs": 3883.3,
+          "initMs": 881,
+          "roundTripMs": 4527.5,
+          "hits": 20
+        },
+        {
+          "query": 8,
+          "latencyMs": 3431.7,
+          "initMs": 928,
+          "roundTripMs": 3988.2,
+          "hits": 20
+        },
+        {
+          "query": 9,
+          "latencyMs": 3101,
+          "initMs": 843.6,
+          "roundTripMs": 3677,
+          "hits": 20
+        }
+      ]
+    },
+    {
+      "package": "arm64-image",
+      "memoryMb": 1769,
+      "type": "keyword",
+      "condition": "cold",
+      "queries": 30,
+      "excluded": 0,
+      "failed": [],
+      "latencyMs": {
+        "p50": 2164.035506,
+        "p95": 3529.372877,
+        "p99": 3788.0741890000004
+      },
+      "initMs": {
+        "p50": 659.37,
+        "p95": 1103.63,
+        "p99": 1145.72
+      },
+      "searchMs": {
+        "p50": 1401.9901929999999,
+        "p95": 2457.372877,
+        "p99": 2712.1341890000003
+      },
+      "roundTripMs": {
+        "p50": 2379.5042059999832,
+        "p95": 3811.802606000012,
+        "p99": 3960.9510520000185
+      },
+      "target": {
+        "p95Ms": 3000,
+        "met": false
+      },
+      "s3RequestsPerQuery": 88.66666666666667,
+      "s3Requests": {
+        "AllRequests": 2660,
+        "GetRequests": 2660,
+        "HeadRequests": 0,
+        "ListRequests": 0,
+        "PutRequests": 0
+      },
+      "maxMemoryMb": 291,
+      "cachedMb": 24.447102546691895,
+      "queriesWithoutHits": 0,
+      "window": {
+        "from": "2026-10-04T00:38:00.000Z",
+        "to": "2026-10-04T00:39:00.000Z"
+      },
+      "samples": [
+        {
+          "query": 0,
+          "latencyMs": 3164.9,
+          "initMs": 1103.6,
+          "roundTripMs": 3399.7,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 2000,
+          "initMs": 642.6,
+          "roundTripMs": 2231.4,
+          "hits": 20
+        },
+        {
+          "query": 2,
+          "latencyMs": 2173.6,
+          "initMs": 635.5,
+          "roundTripMs": 2431.4,
+          "hits": 20
+        },
+        {
+          "query": 3,
+          "latencyMs": 2049.5,
+          "initMs": 724.6,
+          "roundTripMs": 2339.5,
+          "hits": 20
+        },
+        {
+          "query": 4,
+          "latencyMs": 2371.3,
+          "initMs": 823.7,
+          "roundTripMs": 2632.4,
+          "hits": 20
+        },
+        {
+          "query": 5,
+          "latencyMs": 2123.5,
+          "initMs": 825.6,
+          "roundTripMs": 2421.6,
+          "hits": 20
+        },
+        {
+          "query": 6,
+          "latencyMs": 1975.1,
+          "initMs": 654.8,
+          "roundTripMs": 2219.1,
+          "hits": 20
+        },
+        {
+          "query": 7,
+          "latencyMs": 3529.4,
+          "initMs": 1072,
+          "roundTripMs": 3811.8,
+          "hits": 20
+        },
+        {
+          "query": 8,
+          "latencyMs": 2121.8,
+          "initMs": 822.3,
+          "roundTripMs": 2389.4,
+          "hits": 20
+        },
+        {
+          "query": 9,
+          "latencyMs": 2259,
+          "initMs": 857,
+          "roundTripMs": 2555.2,
+          "hits": 3
+        },
+        {
+          "query": 10,
+          "latencyMs": 2039.5,
+          "initMs": 803.6,
+          "roundTripMs": 2205.1,
+          "hits": 20
+        },
+        {
+          "query": 11,
+          "latencyMs": 2223.9,
+          "initMs": 1145.7,
+          "roundTripMs": 2379.5,
+          "hits": 20
+        },
+        {
+          "query": 12,
+          "latencyMs": 1928.5,
+          "initMs": 615.2,
+          "roundTripMs": 2112.2,
+          "hits": 20
+        },
+        {
+          "query": 13,
+          "latencyMs": 1797.5,
+          "initMs": 620.5,
+          "roundTripMs": 1987.3,
+          "hits": 20
+        },
+        {
+          "query": 14,
+          "latencyMs": 2010.8,
+          "initMs": 633,
+          "roundTripMs": 2213.2,
+          "hits": 20
+        },
+        {
+          "query": 15,
+          "latencyMs": 2191.3,
+          "initMs": 646.8,
+          "roundTripMs": 2379.8,
+          "hits": 20
+        },
+        {
+          "query": 16,
+          "latencyMs": 1901,
+          "initMs": 614.3,
+          "roundTripMs": 2115,
+          "hits": 20
+        },
+        {
+          "query": 17,
+          "latencyMs": 3788.1,
+          "initMs": 1075.9,
+          "roundTripMs": 3961,
+          "hits": 20
+        },
+        {
+          "query": 18,
+          "latencyMs": 2194.1,
+          "initMs": 599,
+          "roundTripMs": 2328,
+          "hits": 20
+        },
+        {
+          "query": 19,
+          "latencyMs": 2342,
+          "initMs": 621.2,
+          "roundTripMs": 2488.8,
+          "hits": 20
+        },
+        {
+          "query": 20,
+          "latencyMs": 2696.1,
+          "initMs": 1016.6,
+          "roundTripMs": 2897.2,
+          "hits": 20
+        },
+        {
+          "query": 21,
+          "latencyMs": 2339.2,
+          "initMs": 765.3,
+          "roundTripMs": 2560.3,
+          "hits": 20
+        },
+        {
+          "query": 22,
+          "latencyMs": 2164,
+          "initMs": 627.6,
+          "roundTripMs": 2306.8,
+          "hits": 20
+        },
+        {
+          "query": 23,
+          "latencyMs": 2153.1,
+          "initMs": 609.7,
+          "roundTripMs": 2373.6,
+          "hits": 20
+        },
+        {
+          "query": 24,
+          "latencyMs": 2400.9,
+          "initMs": 852.3,
+          "roundTripMs": 2591.1,
+          "hits": 20
+        },
+        {
+          "query": 25,
+          "latencyMs": 2108.7,
+          "initMs": 712,
+          "roundTripMs": 2297,
+          "hits": 20
+        },
+        {
+          "query": 26,
+          "latencyMs": 1923.3,
+          "initMs": 622.9,
+          "roundTripMs": 2128.9,
+          "hits": 20
+        },
+        {
+          "query": 27,
+          "latencyMs": 2433,
+          "initMs": 659.4,
+          "roundTripMs": 2600.4,
+          "hits": 20
+        },
+        {
+          "query": 28,
+          "latencyMs": 1706,
+          "initMs": 641,
+          "roundTripMs": 1846.5,
+          "hits": 20
+        },
+        {
+          "query": 29,
+          "latencyMs": 2438.6,
+          "initMs": 789.1,
+          "roundTripMs": 2622,
+          "hits": 20
+        }
+      ]
+    },
+    {
+      "package": "arm64-image",
+      "memoryMb": 1769,
+      "type": "phrase",
+      "condition": "cold",
+      "queries": 30,
+      "excluded": 0,
+      "failed": [],
+      "latencyMs": {
+        "p50": 2420.598336,
+        "p95": 2934.9962310000005,
+        "p99": 4138.74356
+      },
+      "initMs": {
+        "p50": 647.18,
+        "p95": 964.69,
+        "p99": 1105.2
+      },
+      "searchMs": {
+        "p50": 1703.6948889999999,
+        "p95": 1971.6762310000004,
+        "p99": 3176.26356
+      },
+      "roundTripMs": {
+        "p50": 2590.005187999981,
+        "p95": 3127.8818489999976,
+        "p99": 4292.126000999997
+      },
+      "target": {
+        "p95Ms": 3000,
+        "met": true
+      },
+      "s3RequestsPerQuery": 187.6,
+      "s3Requests": {
+        "AllRequests": 5628,
+        "GetRequests": 5628,
+        "HeadRequests": 0,
+        "ListRequests": 0,
+        "PutRequests": 0
+      },
+      "maxMemoryMb": 296,
+      "cachedMb": 29.48445224761963,
+      "queriesWithoutHits": 1,
+      "window": {
+        "from": "2026-10-04T00:39:00.000Z",
+        "to": "2026-10-04T00:40:00.000Z"
+      },
+      "samples": [
+        {
+          "query": 0,
+          "latencyMs": 1885.7,
+          "initMs": 633.9,
+          "roundTripMs": 2043.7,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 2131.9,
+          "initMs": 624.4,
+          "roundTripMs": 2270.3,
+          "hits": 7
+        },
+        {
+          "query": 2,
+          "latencyMs": 2637.5,
+          "initMs": 815.1,
+          "roundTripMs": 2822.5,
+          "hits": 14
+        },
+        {
+          "query": 3,
+          "latencyMs": 2718.7,
+          "initMs": 813,
+          "roundTripMs": 2899.7,
+          "hits": 6
+        },
+        {
+          "query": 4,
+          "latencyMs": 2702.9,
+          "initMs": 825.7,
+          "roundTripMs": 2872.2,
+          "hits": 3
+        },
+        {
+          "query": 5,
+          "latencyMs": 2090.2,
+          "initMs": 612.4,
+          "roundTripMs": 2258.1,
+          "hits": 7
+        },
+        {
+          "query": 6,
+          "latencyMs": 2465.1,
+          "initMs": 841.8,
+          "roundTripMs": 2662.8,
+          "hits": 2
+        },
+        {
+          "query": 7,
+          "latencyMs": 2425.7,
+          "initMs": 649.1,
+          "roundTripMs": 2614.3,
+          "hits": 15
+        },
+        {
+          "query": 8,
+          "latencyMs": 2192.9,
+          "initMs": 605,
+          "roundTripMs": 2339.4,
+          "hits": 4
+        },
+        {
+          "query": 9,
+          "latencyMs": 2486,
+          "initMs": 782.3,
+          "roundTripMs": 2642.2,
+          "hits": 0
+        },
+        {
+          "query": 10,
+          "latencyMs": 2322,
+          "initMs": 606.7,
+          "roundTripMs": 2453.1,
+          "hits": 20
+        },
+        {
+          "query": 11,
+          "latencyMs": 2209.3,
+          "initMs": 607.4,
+          "roundTripMs": 2380.7,
+          "hits": 18
+        },
+        {
+          "query": 12,
+          "latencyMs": 2853.9,
+          "initMs": 1105.2,
+          "roundTripMs": 3015.9,
+          "hits": 20
+        },
+        {
+          "query": 13,
+          "latencyMs": 2420.6,
+          "initMs": 616.8,
+          "roundTripMs": 2579.5,
+          "hits": 20
+        },
+        {
+          "query": 14,
+          "latencyMs": 2494.8,
+          "initMs": 624.3,
+          "roundTripMs": 2644.4,
+          "hits": 20
+        },
+        {
+          "query": 15,
+          "latencyMs": 2218,
+          "initMs": 964.7,
+          "roundTripMs": 2411.2,
+          "hits": 20
+        },
+        {
+          "query": 16,
+          "latencyMs": 2634.9,
+          "initMs": 863.9,
+          "roundTripMs": 2787.7,
+          "hits": 20
+        },
+        {
+          "query": 17,
+          "latencyMs": 2935,
+          "initMs": 963.3,
+          "roundTripMs": 3127.9,
+          "hits": 20
+        },
+        {
+          "query": 18,
+          "latencyMs": 1980.4,
+          "initMs": 444.1,
+          "roundTripMs": 2123,
+          "hits": 20
+        },
+        {
+          "query": 19,
+          "latencyMs": 2622.8,
+          "initMs": 766.5,
+          "roundTripMs": 2789.7,
+          "hits": 20
+        },
+        {
+          "query": 20,
+          "latencyMs": 2383.6,
+          "initMs": 820.8,
+          "roundTripMs": 2590,
+          "hits": 20
+        },
+        {
+          "query": 21,
+          "latencyMs": 2251.4,
+          "initMs": 618.9,
+          "roundTripMs": 2390.8,
+          "hits": 20
+        },
+        {
+          "query": 0,
+          "latencyMs": 1886.9,
+          "initMs": 631.5,
+          "roundTripMs": 2053,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 2043.7,
+          "initMs": 601.3,
+          "roundTripMs": 2193.4,
+          "hits": 7
+        },
+        {
+          "query": 2,
+          "latencyMs": 2574.1,
+          "initMs": 749.6,
+          "roundTripMs": 2725.2,
+          "hits": 14
+        },
+        {
+          "query": 3,
+          "latencyMs": 2164.9,
+          "initMs": 609.5,
+          "roundTripMs": 2302.5,
+          "hits": 6
+        },
+        {
+          "query": 4,
+          "latencyMs": 4138.7,
+          "initMs": 962.5,
+          "roundTripMs": 4292.1,
+          "hits": 3
+        },
+        {
+          "query": 5,
+          "latencyMs": 2192.3,
+          "initMs": 647.2,
+          "roundTripMs": 2353.8,
+          "hits": 7
+        },
+        {
+          "query": 6,
+          "latencyMs": 2592.8,
+          "initMs": 838.3,
+          "roundTripMs": 2779.8,
+          "hits": 2
+        },
+        {
+          "query": 7,
+          "latencyMs": 2443.4,
+          "initMs": 640.2,
+          "roundTripMs": 2598.4,
+          "hits": 15
+        }
+      ]
+    },
+    {
+      "package": "arm64-image",
+      "memoryMb": 1769,
+      "type": "vector",
+      "condition": "cold",
+      "queries": 30,
+      "excluded": 0,
+      "failed": [],
+      "latencyMs": {
+        "p50": 2166.2154339999997,
+        "p95": 2568.0016419999997,
+        "p99": 2801.520297
+      },
+      "initMs": {
+        "p50": 645.26,
+        "p95": 975.24,
+        "p99": 977.15
+      },
+      "searchMs": {
+        "p50": 1503.420246,
+        "p95": 1744.8616419999998,
+        "p99": 1995.5602969999998
+      },
+      "roundTripMs": {
+        "p50": 2314.002875999955,
+        "p95": 2886.8647459999775,
+        "p99": 2971.064132999978
+      },
+      "target": {
+        "p95Ms": 3000,
+        "met": true
+      },
+      "s3RequestsPerQuery": 175.96666666666667,
+      "s3Requests": {
+        "AllRequests": 5279,
+        "GetRequests": 5279,
+        "HeadRequests": 0,
+        "ListRequests": 0,
+        "PutRequests": 0
+      },
+      "maxMemoryMb": 274,
+      "cachedMb": 9.742780685424805,
+      "queriesWithoutHits": 0,
+      "window": {
+        "from": "2026-10-04T00:40:00.000Z",
+        "to": "2026-10-04T00:41:00.000Z"
+      },
+      "samples": [
+        {
+          "query": 0,
+          "latencyMs": 1884.2,
+          "initMs": 605.2,
+          "roundTripMs": 2020.7,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 2047.5,
+          "initMs": 625.3,
+          "roundTripMs": 2211.7,
+          "hits": 20
+        },
+        {
+          "query": 2,
+          "latencyMs": 2478.9,
+          "initMs": 797.5,
+          "roundTripMs": 2647.5,
+          "hits": 20
+        },
+        {
+          "query": 3,
+          "latencyMs": 2495,
+          "initMs": 821.4,
+          "roundTripMs": 2648.1,
+          "hits": 20
+        },
+        {
+          "query": 4,
+          "latencyMs": 2801.5,
+          "initMs": 806,
+          "roundTripMs": 2971.1,
+          "hits": 20
+        },
+        {
+          "query": 5,
+          "latencyMs": 1954.9,
+          "initMs": 625.5,
+          "roundTripMs": 2098.7,
+          "hits": 20
+        },
+        {
+          "query": 6,
+          "latencyMs": 1871.3,
+          "initMs": 609.3,
+          "roundTripMs": 2025.5,
+          "hits": 20
+        },
+        {
+          "query": 7,
+          "latencyMs": 2451.4,
+          "initMs": 813.1,
+          "roundTripMs": 2620,
+          "hits": 20
+        },
+        {
+          "query": 8,
+          "latencyMs": 1974.4,
+          "initMs": 615.6,
+          "roundTripMs": 2107.9,
+          "hits": 20
+        },
+        {
+          "query": 9,
+          "latencyMs": 2177.6,
+          "initMs": 624.8,
+          "roundTripMs": 2313.1,
+          "hits": 20
+        },
+        {
+          "query": 10,
+          "latencyMs": 1912.7,
+          "initMs": 617.2,
+          "roundTripMs": 2073.2,
+          "hits": 20
+        },
+        {
+          "query": 11,
+          "latencyMs": 2518.3,
+          "initMs": 975.2,
+          "roundTripMs": 2713.9,
+          "hits": 20
+        },
+        {
+          "query": 12,
+          "latencyMs": 2166.2,
+          "initMs": 615.4,
+          "roundTripMs": 2314,
+          "hits": 20
+        },
+        {
+          "query": 13,
+          "latencyMs": 2279.9,
+          "initMs": 824.9,
+          "roundTripMs": 2416.5,
+          "hits": 20
+        },
+        {
+          "query": 14,
+          "latencyMs": 2289.9,
+          "initMs": 724.6,
+          "roundTripMs": 2516.7,
+          "hits": 20
+        },
+        {
+          "query": 15,
+          "latencyMs": 2147.5,
+          "initMs": 785.9,
+          "roundTripMs": 2313.2,
+          "hits": 20
+        },
+        {
+          "query": 16,
+          "latencyMs": 2148.7,
+          "initMs": 645.3,
+          "roundTripMs": 2278.5,
+          "hits": 20
+        },
+        {
+          "query": 17,
+          "latencyMs": 2568,
+          "initMs": 823.1,
+          "roundTripMs": 2803.6,
+          "hits": 20
+        },
+        {
+          "query": 18,
+          "latencyMs": 1913.2,
+          "initMs": 646.7,
+          "roundTripMs": 2071.6,
+          "hits": 20
+        },
+        {
+          "query": 19,
+          "latencyMs": 2264.9,
+          "initMs": 618.4,
+          "roundTripMs": 2400.1,
+          "hits": 20
+        },
+        {
+          "query": 0,
+          "latencyMs": 1713.4,
+          "initMs": 458.8,
+          "roundTripMs": 1853.2,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 2104.1,
+          "initMs": 865.7,
+          "roundTripMs": 2269,
+          "hits": 20
+        },
+        {
+          "query": 2,
+          "latencyMs": 2228.7,
+          "initMs": 643,
+          "roundTripMs": 2360.6,
+          "hits": 20
+        },
+        {
+          "query": 3,
+          "latencyMs": 2507,
+          "initMs": 977.2,
+          "roundTripMs": 2886.9,
+          "hits": 20
+        },
+        {
+          "query": 4,
+          "latencyMs": 2190.8,
+          "initMs": 610.4,
+          "roundTripMs": 2327.1,
+          "hits": 20
+        },
+        {
+          "query": 5,
+          "latencyMs": 2049.3,
+          "initMs": 695.9,
+          "roundTripMs": 2227.9,
+          "hits": 20
+        },
+        {
+          "query": 6,
+          "latencyMs": 2217.2,
+          "initMs": 824.6,
+          "roundTripMs": 2391.5,
+          "hits": 20
+        },
+        {
+          "query": 7,
+          "latencyMs": 2489.4,
+          "initMs": 796.6,
+          "roundTripMs": 2647.8,
+          "hits": 20
+        },
+        {
+          "query": 8,
+          "latencyMs": 1922.5,
+          "initMs": 624.5,
+          "roundTripMs": 2057.4,
+          "hits": 20
+        },
+        {
+          "query": 9,
+          "latencyMs": 2125.7,
+          "initMs": 600.4,
+          "roundTripMs": 2390.8,
+          "hits": 20
+        }
+      ]
+    },
+    {
+      "package": "arm64-image",
+      "memoryMb": 1769,
+      "type": "vector-flat",
+      "condition": "cold",
+      "queries": 30,
+      "excluded": 0,
+      "failed": [],
+      "latencyMs": {
+        "p50": 2605.308231,
+        "p95": 4908.233518,
+        "p99": 5016.065904
+      },
+      "initMs": {
+        "p50": 633.34,
+        "p95": 967.92,
+        "p99": 1110.42
+      },
+      "searchMs": {
+        "p50": 1984.598484,
+        "p95": 4060.623518,
+        "p99": 4159.695904
+      },
+      "roundTripMs": {
+        "p50": 2758.3368979999796,
+        "p95": 5091.903457999986,
+        "p99": 5175.42850899999
+      },
+      "target": {
+        "p95Ms": 3000,
+        "met": false
+      },
+      "s3RequestsPerQuery": 573.7333333333333,
+      "s3Requests": {
+        "AllRequests": 17212,
+        "GetRequests": 17212,
+        "HeadRequests": 0,
+        "ListRequests": 0,
+        "PutRequests": 0
+      },
+      "maxMemoryMb": 658,
+      "cachedMb": 1.908888816833496,
+      "queriesWithoutHits": 0,
+      "window": {
+        "from": "2026-10-04T00:41:00.000Z",
+        "to": "2026-10-04T00:42:00.000Z"
+      },
+      "samples": [
+        {
+          "query": 0,
+          "latencyMs": 3653.3,
+          "initMs": 651.5,
+          "roundTripMs": 3794.9,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 4452.6,
+          "initMs": 1110.4,
+          "roundTripMs": 4634.5,
+          "hits": 20
+        },
+        {
+          "query": 2,
+          "latencyMs": 3257.2,
+          "initMs": 967.9,
+          "roundTripMs": 3446.3,
+          "hits": 20
+        },
+        {
+          "query": 3,
+          "latencyMs": 2596,
+          "initMs": 633.3,
+          "roundTripMs": 2743.3,
+          "hits": 20
+        },
+        {
+          "query": 4,
+          "latencyMs": 2316.1,
+          "initMs": 627.9,
+          "roundTripMs": 2457.6,
+          "hits": 20
+        },
+        {
+          "query": 5,
+          "latencyMs": 4908.2,
+          "initMs": 847.6,
+          "roundTripMs": 5091.9,
+          "hits": 20
+        },
+        {
+          "query": 6,
+          "latencyMs": 3128.7,
+          "initMs": 870.1,
+          "roundTripMs": 3295.5,
+          "hits": 20
+        },
+        {
+          "query": 7,
+          "latencyMs": 2682.6,
+          "initMs": 655,
+          "roundTripMs": 2821.1,
+          "hits": 20
+        },
+        {
+          "query": 8,
+          "latencyMs": 2593.7,
+          "initMs": 609.2,
+          "roundTripMs": 2750.5,
+          "hits": 20
+        },
+        {
+          "query": 9,
+          "latencyMs": 2437.5,
+          "initMs": 654.4,
+          "roundTripMs": 2574.6,
+          "hits": 20
+        },
+        {
+          "query": 10,
+          "latencyMs": 4466.2,
+          "initMs": 637.2,
+          "roundTripMs": 4606.6,
+          "hits": 20
+        },
+        {
+          "query": 11,
+          "latencyMs": 2564.6,
+          "initMs": 633.1,
+          "roundTripMs": 2734,
+          "hits": 20
+        },
+        {
+          "query": 12,
+          "latencyMs": 2894.4,
+          "initMs": 613.2,
+          "roundTripMs": 3033,
+          "hits": 20
+        },
+        {
+          "query": 13,
+          "latencyMs": 2605.3,
+          "initMs": 623.4,
+          "roundTripMs": 2758.3,
+          "hits": 20
+        },
+        {
+          "query": 14,
+          "latencyMs": 2480.7,
+          "initMs": 611.8,
+          "roundTripMs": 2653.6,
+          "hits": 20
+        },
+        {
+          "query": 15,
+          "latencyMs": 3528.1,
+          "initMs": 784,
+          "roundTripMs": 3705,
+          "hits": 20
+        },
+        {
+          "query": 16,
+          "latencyMs": 2141.9,
+          "initMs": 585.4,
+          "roundTripMs": 2293.6,
+          "hits": 20
+        },
+        {
+          "query": 17,
+          "latencyMs": 2229.5,
+          "initMs": 791,
+          "roundTripMs": 2367.3,
+          "hits": 20
+        },
+        {
+          "query": 18,
+          "latencyMs": 1999.1,
+          "initMs": 812.1,
+          "roundTripMs": 2178.7,
+          "hits": 20
+        },
+        {
+          "query": 19,
+          "latencyMs": 3091.4,
+          "initMs": 620.6,
+          "roundTripMs": 3234.4,
+          "hits": 20
+        },
+        {
+          "query": 0,
+          "latencyMs": 4101.8,
+          "initMs": 793,
+          "roundTripMs": 4238.9,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 3259.4,
+          "initMs": 648.7,
+          "roundTripMs": 3406.2,
+          "hits": 20
+        },
+        {
+          "query": 2,
+          "latencyMs": 2580.4,
+          "initMs": 637.9,
+          "roundTripMs": 2723.1,
+          "hits": 20
+        },
+        {
+          "query": 3,
+          "latencyMs": 2157.9,
+          "initMs": 476.3,
+          "roundTripMs": 2292.6,
+          "hits": 20
+        },
+        {
+          "query": 4,
+          "latencyMs": 2300.3,
+          "initMs": 609.8,
+          "roundTripMs": 2436.9,
+          "hits": 20
+        },
+        {
+          "query": 5,
+          "latencyMs": 5016.1,
+          "initMs": 856.4,
+          "roundTripMs": 5175.4,
+          "hits": 20
+        },
+        {
+          "query": 6,
+          "latencyMs": 2639.7,
+          "initMs": 632.8,
+          "roundTripMs": 2785,
+          "hits": 20
+        },
+        {
+          "query": 7,
+          "latencyMs": 2581.1,
+          "initMs": 616,
+          "roundTripMs": 2722.2,
+          "hits": 20
+        },
+        {
+          "query": 8,
+          "latencyMs": 2653.5,
+          "initMs": 629.6,
+          "roundTripMs": 2788.9,
+          "hits": 20
+        },
+        {
+          "query": 9,
+          "latencyMs": 2334.4,
+          "initMs": 629.3,
+          "roundTripMs": 2487.5,
+          "hits": 20
+        }
+      ]
+    },
+    {
+      "package": "arm64-image",
+      "memoryMb": 1769,
+      "type": "hybrid",
+      "condition": "cold",
+      "queries": 30,
+      "excluded": 0,
+      "failed": [],
+      "latencyMs": {
+        "p50": 2180.51887,
+        "p95": 2542.706703,
+        "p99": 3859.608064
+      },
+      "initMs": {
+        "p50": 632.49,
+        "p95": 901.76,
+        "p99": 1579.38
+      },
+      "searchMs": {
+        "p50": 1522.478498,
+        "p95": 1863.950128,
+        "p99": 2280.228064
+      },
+      "roundTripMs": {
+        "p50": 2338.105741999985,
+        "p95": 2740.116475000046,
+        "p99": 4030.0461539999815
+      },
+      "target": {
+        "p95Ms": 3000,
+        "met": true
+      },
+      "s3RequestsPerQuery": 576.2333333333333,
+      "s3Requests": {
+        "AllRequests": 17287,
+        "GetRequests": 17287,
+        "HeadRequests": 0,
+        "ListRequests": 0,
+        "PutRequests": 0
+      },
+      "maxMemoryMb": 306,
+      "cachedMb": 33.93108558654785,
+      "queriesWithoutHits": 0,
+      "window": {
+        "from": "2026-10-04T00:42:00.000Z",
+        "to": "2026-10-04T00:43:00.000Z"
+      },
+      "samples": [
+        {
+          "query": 0,
+          "latencyMs": 2182.1,
+          "initMs": 620.9,
+          "roundTripMs": 2328.3,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 1899.4,
+          "initMs": 610.5,
+          "roundTripMs": 2054.3,
+          "hits": 20
+        },
+        {
+          "query": 2,
+          "latencyMs": 2367.1,
+          "initMs": 739.5,
+          "roundTripMs": 2516.4,
+          "hits": 20
+        },
+        {
+          "query": 3,
+          "latencyMs": 2324.2,
+          "initMs": 894,
+          "roundTripMs": 2522.2,
+          "hits": 20
+        },
+        {
+          "query": 4,
+          "latencyMs": 2152.5,
+          "initMs": 630,
+          "roundTripMs": 2290.7,
+          "hits": 20
+        },
+        {
+          "query": 5,
+          "latencyMs": 2489.9,
+          "initMs": 814.8,
+          "roundTripMs": 2644.1,
+          "hits": 20
+        },
+        {
+          "query": 6,
+          "latencyMs": 1812.8,
+          "initMs": 628.7,
+          "roundTripMs": 1959.1,
+          "hits": 20
+        },
+        {
+          "query": 7,
+          "latencyMs": 2542.7,
+          "initMs": 858.7,
+          "roundTripMs": 2740.1,
+          "hits": 20
+        },
+        {
+          "query": 8,
+          "latencyMs": 1896.6,
+          "initMs": 632.5,
+          "roundTripMs": 2046.5,
+          "hits": 20
+        },
+        {
+          "query": 9,
+          "latencyMs": 2158.6,
+          "initMs": 626.9,
+          "roundTripMs": 2310.2,
+          "hits": 20
+        },
+        {
+          "query": 10,
+          "latencyMs": 1908.9,
+          "initMs": 627.2,
+          "roundTripMs": 2079.1,
+          "hits": 20
+        },
+        {
+          "query": 11,
+          "latencyMs": 2180.5,
+          "initMs": 799.8,
+          "roundTripMs": 2338.4,
+          "hits": 20
+        },
+        {
+          "query": 12,
+          "latencyMs": 2483.5,
+          "initMs": 812.2,
+          "roundTripMs": 2646.4,
+          "hits": 20
+        },
+        {
+          "query": 13,
+          "latencyMs": 3859.6,
+          "initMs": 1579.4,
+          "roundTripMs": 4030,
+          "hits": 20
+        },
+        {
+          "query": 14,
+          "latencyMs": 2214.7,
+          "initMs": 645.2,
+          "roundTripMs": 2374.2,
+          "hits": 20
+        },
+        {
+          "query": 15,
+          "latencyMs": 1674.1,
+          "initMs": 482,
+          "roundTripMs": 1795.9,
+          "hits": 20
+        },
+        {
+          "query": 16,
+          "latencyMs": 2209.4,
+          "initMs": 645.9,
+          "roundTripMs": 2355.5,
+          "hits": 20
+        },
+        {
+          "query": 17,
+          "latencyMs": 2164,
+          "initMs": 815.6,
+          "roundTripMs": 2342.8,
+          "hits": 20
+        },
+        {
+          "query": 18,
+          "latencyMs": 2110.2,
+          "initMs": 718,
+          "roundTripMs": 2244.9,
+          "hits": 20
+        },
+        {
+          "query": 19,
+          "latencyMs": 2518.6,
+          "initMs": 901.8,
+          "roundTripMs": 2699,
+          "hits": 20
+        },
+        {
+          "query": 0,
+          "latencyMs": 1932.9,
+          "initMs": 621.8,
+          "roundTripMs": 2092.4,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 1844,
+          "initMs": 625.1,
+          "roundTripMs": 1995.6,
+          "hits": 20
+        },
+        {
+          "query": 2,
+          "latencyMs": 2189.4,
+          "initMs": 625.2,
+          "roundTripMs": 2338.9,
+          "hits": 20
+        },
+        {
+          "query": 3,
+          "latencyMs": 2494.5,
+          "initMs": 630.6,
+          "roundTripMs": 2632.6,
+          "hits": 20
+        },
+        {
+          "query": 4,
+          "latencyMs": 2183.7,
+          "initMs": 631.7,
+          "roundTripMs": 2342.6,
+          "hits": 20
+        },
+        {
+          "query": 5,
+          "latencyMs": 2185.1,
+          "initMs": 815.8,
+          "roundTripMs": 2338.1,
+          "hits": 20
+        },
+        {
+          "query": 6,
+          "latencyMs": 2131.6,
+          "initMs": 817.5,
+          "roundTripMs": 2289.8,
+          "hits": 20
+        },
+        {
+          "query": 7,
+          "latencyMs": 2251.8,
+          "initMs": 653.5,
+          "roundTripMs": 2420.1,
+          "hits": 20
+        },
+        {
+          "query": 8,
+          "latencyMs": 1893.4,
+          "initMs": 609.1,
+          "roundTripMs": 2040.8,
+          "hits": 20
+        },
+        {
+          "query": 9,
+          "latencyMs": 2163.9,
+          "initMs": 616.4,
+          "roundTripMs": 2310.3,
+          "hits": 20
+        }
+      ]
+    },
+    {
+      "package": "arm64-image",
+      "memoryMb": 1769,
+      "type": "hybrid-flat",
+      "condition": "cold",
+      "queries": 30,
+      "excluded": 0,
+      "failed": [],
+      "latencyMs": {
+        "p50": 2960.7095570000006,
+        "p95": 5972.265782999999,
+        "p99": 6394.094255
+      },
+      "initMs": {
+        "p50": 653.59,
+        "p95": 975.44,
+        "p99": 1090.65
+      },
+      "searchMs": {
+        "p50": 2320.2010880000003,
+        "p95": 5237.695782999999,
+        "p99": 5545.464255
+      },
+      "roundTripMs": {
+        "p50": 3097.0606020000414,
+        "p95": 6111.724803999998,
+        "p99": 6545.449615000049
+      },
+      "target": {
+        "p95Ms": 3000,
+        "met": false
+      },
+      "s3RequestsPerQuery": 651.6666666666666,
+      "s3Requests": {
+        "AllRequests": 19550,
+        "GetRequests": 19550,
+        "HeadRequests": 0,
+        "ListRequests": 0,
+        "PutRequests": 0
+      },
+      "maxMemoryMb": 708,
+      "cachedMb": 26.04569149017334,
+      "queriesWithoutHits": 0,
+      "window": {
+        "from": "2026-10-04T00:43:00.000Z",
+        "to": "2026-10-04T00:44:00.000Z"
+      },
+      "samples": [
+        {
+          "query": 0,
+          "latencyMs": 4634.9,
+          "initMs": 615.1,
+          "roundTripMs": 4775.5,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 5026.2,
+          "initMs": 1090.7,
+          "roundTripMs": 5203.9,
+          "hits": 20
+        },
+        {
+          "query": 2,
+          "latencyMs": 3166.1,
+          "initMs": 633.4,
+          "roundTripMs": 3328.2,
+          "hits": 20
+        },
+        {
+          "query": 3,
+          "latencyMs": 2842.2,
+          "initMs": 649.7,
+          "roundTripMs": 2984.4,
+          "hits": 20
+        },
+        {
+          "query": 4,
+          "latencyMs": 2095.9,
+          "initMs": 460.9,
+          "roundTripMs": 2219.4,
+          "hits": 20
+        },
+        {
+          "query": 5,
+          "latencyMs": 4293.6,
+          "initMs": 465.6,
+          "roundTripMs": 4414.2,
+          "hits": 20
+        },
+        {
+          "query": 6,
+          "latencyMs": 3614.6,
+          "initMs": 937.9,
+          "roundTripMs": 3761.7,
+          "hits": 20
+        },
+        {
+          "query": 7,
+          "latencyMs": 2960.7,
+          "initMs": 595.1,
+          "roundTripMs": 3097.1,
+          "hits": 20
+        },
+        {
+          "query": 8,
+          "latencyMs": 2783.3,
+          "initMs": 637.4,
+          "roundTripMs": 2976.9,
+          "hits": 20
+        },
+        {
+          "query": 9,
+          "latencyMs": 2555.9,
+          "initMs": 720.6,
+          "roundTripMs": 2762.2,
+          "hits": 20
+        },
+        {
+          "query": 10,
+          "latencyMs": 6394.1,
+          "initMs": 848.6,
+          "roundTripMs": 6545.4,
+          "hits": 20
+        },
+        {
+          "query": 11,
+          "latencyMs": 3292,
+          "initMs": 665.2,
+          "roundTripMs": 3428.6,
+          "hits": 20
+        },
+        {
+          "query": 12,
+          "latencyMs": 2996.2,
+          "initMs": 653.6,
+          "roundTripMs": 3152.2,
+          "hits": 20
+        },
+        {
+          "query": 13,
+          "latencyMs": 2705.1,
+          "initMs": 634.8,
+          "roundTripMs": 2843.9,
+          "hits": 20
+        },
+        {
+          "query": 14,
+          "latencyMs": 2527.2,
+          "initMs": 679.7,
+          "roundTripMs": 2686.1,
+          "hits": 20
+        },
+        {
+          "query": 15,
+          "latencyMs": 2276.8,
+          "initMs": 719.5,
+          "roundTripMs": 2433,
+          "hits": 20
+        },
+        {
+          "query": 16,
+          "latencyMs": 2272.4,
+          "initMs": 635.6,
+          "roundTripMs": 2439.9,
+          "hits": 20
+        },
+        {
+          "query": 17,
+          "latencyMs": 2246.4,
+          "initMs": 822.9,
+          "roundTripMs": 2397.4,
+          "hits": 20
+        },
+        {
+          "query": 18,
+          "latencyMs": 2009.9,
+          "initMs": 781.5,
+          "roundTripMs": 2178.6,
+          "hits": 20
+        },
+        {
+          "query": 19,
+          "latencyMs": 2613.7,
+          "initMs": 813.6,
+          "roundTripMs": 2781.4,
+          "hits": 20
+        },
+        {
+          "query": 0,
+          "latencyMs": 4695.9,
+          "initMs": 623.7,
+          "roundTripMs": 4842.7,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 3454.7,
+          "initMs": 655.6,
+          "roundTripMs": 3606.3,
+          "hits": 20
+        },
+        {
+          "query": 2,
+          "latencyMs": 3154.7,
+          "initMs": 658.6,
+          "roundTripMs": 3302.3,
+          "hits": 20
+        },
+        {
+          "query": 3,
+          "latencyMs": 3295.6,
+          "initMs": 975.4,
+          "roundTripMs": 3470.1,
+          "hits": 20
+        },
+        {
+          "query": 4,
+          "latencyMs": 2378.7,
+          "initMs": 625.4,
+          "roundTripMs": 2518.4,
+          "hits": 20
+        },
+        {
+          "query": 5,
+          "latencyMs": 5972.3,
+          "initMs": 734.6,
+          "roundTripMs": 6111.7,
+          "hits": 20
+        },
+        {
+          "query": 6,
+          "latencyMs": 3299.9,
+          "initMs": 627.9,
+          "roundTripMs": 3431.7,
+          "hits": 20
+        },
+        {
+          "query": 7,
+          "latencyMs": 3190.3,
+          "initMs": 777.6,
+          "roundTripMs": 3343.6,
+          "hits": 20
+        },
+        {
+          "query": 8,
+          "latencyMs": 2655.8,
+          "initMs": 598.8,
+          "roundTripMs": 2804.4,
+          "hits": 20
+        },
+        {
+          "query": 9,
+          "latencyMs": 2391.2,
+          "initMs": 630.4,
+          "roundTripMs": 2545.2,
+          "hits": 20
+        }
+      ]
+    }
+  ]
+}

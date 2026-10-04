@@ -17,6 +17,9 @@ export interface LanceSearchOptions {
   // Vector queries compare the query with every vector instead of using the
   // vector index, to measure one against the other.
   flatVectorSearch?: boolean;
+  // Holds the index and metadata caches. LanceDB's own defaults are 6 GB and
+  // 1 GB, more than a Lambda has, so a Lambda sizes them to its memory.
+  session?: lancedb.Session;
 }
 
 // A full-text index stems for one language, so each message's subject and
@@ -92,6 +95,7 @@ export function lanceSearch(options: LanceSearchOptions): SearchEngine {
     storageOptions: options.storageOptions,
     // Zero means every read checks for other writers' commits.
     readConsistencyInterval: 0,
+    session: options.session,
   });
   const embedder = options.embedder ?? titanEmbedder();
   return {

@@ -24,6 +24,7 @@ node harness/harness.ts test-s3   # the suite on a table on S3
 node harness/harness.ts seed      # the fixture mailbox, where the functions read it
 node harness/harness.ts measure   # cold and warm invocations, into results/
 node harness/harness.ts mailbox   # rebuild the 100k-message benchmark mailbox from scratch, into results/
+node harness/harness.ts latency   # every query type's cold and warm latency on it, into results/ (about 2 hours)
 node harness/harness.ts down      # empty the bucket and delete the stack
 ```
 
@@ -77,6 +78,94 @@ A full-text index stems for one language. So the module detects each message's l
 - English folds accents, so "cafe" finds "café". Swedish keeps å, ä and ö, which are letters of their own there: "får" (gets) is not "far" (father).
 - Snowball's Swedish stemmer takes "-or", "-orna", "-en" and "-et" off, but not the definite "-an": "fakturan" stays "fakturan", and "faktura" doesn't find it.
 - Short Swedish mail without any common Swedish word is stemmed as English.
+
+## #17: latency
+
+`node harness/harness.ts latency` re-runs it, in about two hours, after `up` if the handler changed. LanceDB 0.39.0, `nodejs24.x`, eu-north-1, 2026-10-03 22:10 to 2026-10-04 00:16 UTC. Raw numbers, the query set and each sample are in `results/17-latency.json`, with p50, p95 and p99 of each combination, and a second cold run at 1,769 MB in `results/17-cold-recheck.json`.
+
+How it measures:
+
+- Each package has a function of its own for this, `duva-search-spike-latency-x64-zip` and `-arm64-image`, which reads its own copy of the benchmark mailbox. S3 counts requests to each copy, so S3 requests per query come from S3 itself, and the two packages run at the same time. S3 counts per minute, so each combination runs in minutes of its own.
+- One fixed query set (`harness/queries.ts`): 44 keyword queries (single words, word pairs and names), 22 phrases taken from the corpus, 20 filtered vector queries and 20 hybrid ones. Filters rotate through label, sender, date and attachment, and nearly every query leaves out Spam and Trash. Every query asks for 20 hits. Vector and hybrid queries run with the IVF_PQ index and as a flat scan.
+- Latency is inside the Lambda, from the handler receiving the query to it returning ranked hits, query embedding included. Cold adds the environment's init duration. Round trip is from this machine, through Lambda's Invoke API.
+- Cold: 30 new environments per query type, started 10 at a time, each answering one query. Warm-first: 100 queries in one warm environment that forgets every mailbox before each, so each query opens the mailbox anew. Warm: 100 queries in that environment once it has the mailbox open, cycling through the set.
+- Readers check for newer commits on every query (`readConsistencyInterval` 0), so a warm reader sees new mail at once. The index cache gets a quarter of the function's memory and the metadata cache a sixteenth.
+
+### p95 against the targets
+
+| Query | Target | x64 zip 1,769 MB | 3,538 MB | 10,240 MB | arm64 image 1,769 MB | 3,538 MB | 10,240 MB |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Warm keyword | 300 ms | 242 | 227 | 177 | 241 | 240 | 190 |
+| Warm phrase | 500 ms | 276 | 267 | 166 | 270 | 276 | 157 |
+| Warm filtered vector | 500 ms | 199 | 191 | 202 | 192 | 208 | 184 |
+| Warm filtered vector, flat | 500 ms | 5,422 ✗ | 5,459 ✗ | 5,201 ✗ | 5,207 ✗ | 5,448 ✗ | 5,439 ✗ |
+| Warm hybrid | 800 ms | 202 | 231 | 193 | 194 | 227 | 194 |
+| Warm hybrid, flat | 800 ms | 5,254 ✗ | 4,892 ✗ | 5,219 ✗ | 5,081 ✗ | 5,070 ✗ | 4,952 ✗ |
+| Cold keyword | 3,000 ms | 3,215 ✗ | 2,986 | 2,534 | 2,641 | 3,517 ✗ | 2,223 |
+| Cold phrase | 3,000 ms | 3,407 ✗ | 3,102 ✗ | 2,567 | 2,763 | 2,634 | 2,139 |
+| Cold filtered vector | 3,000 ms | 3,148 ✗ | 2,882 | 2,403 | 2,594 | 2,413 | 1,962 |
+| Cold filtered vector, flat | 3,000 ms | 5,473 ✗ | 5,189 ✗ | 5,150 ✗ | 4,570 ✗ | 4,696 ✗ | 4,288 ✗ |
+| Cold hybrid | 3,000 ms | 3,131 ✗ | 2,991 | 2,689 | 2,493 | 2,461 | 2,017 |
+| Cold hybrid, flat | 3,000 ms | 5,589 ✗ | 5,145 ✗ | 5,245 ✗ | 5,353 ✗ | 4,424 ✗ | 4,765 ✗ |
+
+### With the vector index, by condition
+
+Ranges over keyword, phrase, filtered vector and hybrid, in milliseconds.
+
+| Package | Memory MB | Init p50 | Cold p95 | Warm-first p95 | Warm p50 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| x64 zip | 1,769 | 751-856 | 3,131-3,407 | 1,333-1,579 | 61-150 |
+| x64 zip | 3,538 | 765-785 | 2,882-3,102 | 1,266-1,567 | 62-149 |
+| x64 zip | 10,240 | 774-788 | 2,403-2,689 | 821-935 | 62-152 |
+| arm64 image | 1,769 | 650-673 | 2,493-2,763 | 1,290-1,575 | 61-147 |
+| arm64 image | 3,538 | 577-605 | 2,413-3,517 | 1,261-1,535 | 62-142 |
+| arm64 image | 10,240 | 585-592 | 1,962-2,223 | 825-955 | 65-153 |
+
+### p99 and round trip
+
+The same ranges. Round trip is what the caller saw, from this machine through Lambda's Invoke API.
+
+| Package | Memory MB | Cold p99 | Warm-first p99 | Warm p99 | Cold round trip p95 | Warm-first round trip p95 | Warm round trip p95 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| x64 zip | 1,769 | 3,184-3,508 | 1,356-1,645 | 251-345 | 3,721-4,026 | 1,367-1,616 | 230-308 |
+| x64 zip | 3,538 | 2,891-3,161 | 1,331-1,637 | 229-1,099 | 3,518-3,721 | 1,297-1,599 | 219-298 |
+| x64 zip | 10,240 | 2,496-2,778 | 852-987 | 186-249 | 3,077-3,320 | 852-968 | 196-237 |
+| arm64 image | 1,769 | 2,533-2,956 | 1,327-1,606 | 226-385 | 2,658-2,926 | 1,323-1,603 | 226-301 |
+| arm64 image | 3,538 | 2,489-4,250 | 1,312-1,587 | 255-358 | 2,569-3,731 | 1,293-1,565 | 240-309 |
+| arm64 image | 10,240 | 2,010-3,276 | 887-1,089 | 169-251 | 2,107-2,429 | 853-982 | 192-225 |
+
+### S3 requests per query
+
+Ranges over both packages and all three memory sizes. All but one of them are GETs.
+
+| Query | Cold | Warm-first | Warm |
+| --- | ---: | ---: | ---: |
+| Keyword | 89-122 | 114-143 | 16-17 |
+| Phrase | 203-220 | 219-265 | 17-18 |
+| Filtered vector | 135-160 | 86-140 | 12-13 |
+| Filtered vector, flat | 553-758 | 955-968 | 837-840 |
+| Hybrid | 427-617 | 187-228 | 25-27 |
+| Hybrid, flat | 692-869 | 1,020-1,050 | 697-832 |
+
+What it shows:
+
+- With the vector index, every warm target holds at every memory size in both packages, with room: the worst warm p95 is 276 ms for phrases against 500, and keyword's is 242 against 300. Most warm queries take 60 to 150 ms.
+- The flat scan misses every target, at about 5 s p95. It reads all 100,000 vectors from S3 on every query, some 840 GETs, and more memory doesn't help, since LanceDB caches only indexes and metadata. So Duva needs the vector index.
+- The index's recall@20 against the flat scan is 0.59 for vector queries (0.30 to 0.90 per query) and 0.80 for hybrid ones, at LanceDB's defaults: no refine and its default number of partitions probed. That needs tuning before semantic search ships.
+- Cold sits at the 3 s line below 10,240 MB. The arm64 image's p95 was 2.5 to 2.8 s at 1,769 MB, but 3.5 s for keyword queries at 3,538 MB, where a few inits took 1.6 s, and 3.5 s again for keyword at 1,769 MB in the second cold run. The x64 zip's was 3.1 to 3.4 s at 1,769 MB in both runs, and 2.9 to 3.1 s at 3,538 MB. At 10,240 MB both pass: the image at 2.0 to 2.2 s, the zip at 2.4 to 2.7 s.
+- Init is 0.6 to 0.9 s of a cold query. Most of the rest is opening the table: the warm-first numbers show that opening it costs about 1 s even in a warm environment, and 0.8 s at 10,240 MB. A search warm-up when someone opens the app would hide it.
+- Seen by the caller, the zip's cold starts took about 620 ms more than init plus the handler, and the image's about 160 ms. A warm round trip from here adds about 30 ms.
+- A cold hybrid query makes 430 to 620 S3 requests, more than twice a warm-first one, though both start with empty caches. The run doesn't show why.
+- 1,769 MB is enough memory. Its environments peaked at 1.25 GB, and the caches held at most 53 MB, so their sizes don't bind.
+- Every warm indexed query makes 12 to 27 GETs, at about $0.0000004 each. The table has 50 fragments, and a compacted one would likely need fewer.
+
+Caveats:
+
+- Warm-first drops the environment's LanceDB session, so it also opens new connections to S3. An environment serving several mailboxes would keep those, so warm-first is somewhat pessimistic.
+- Cold starts came 10 at a time, all reading the same table.
+- #18's writes ran in the same bucket, on tables of their own, until 22:20 UTC, so they overlapped the cold queries at 1,769 MB. The second cold run at 1,769 MB, on 2026-10-04 at 00:34 UTC with nothing else running, gave the zip 3.2 to 3.4 s again, and the image 2.5 to 2.9 s but 3.5 s for keyword.
+- One phrase query has no hits on purpose: its filter leaves out the 4 messages that have it.
+- The run cost about $2.30: $0.94 for Lambda and $1.34 for 3.0 million S3 GETs, mostly from the flat scans.
 
 ## #18: new mail, concurrent writers and maintenance
 

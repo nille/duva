@@ -7,6 +7,7 @@
 //   node harness/harness.ts seed      write the fixture mailbox to the functions' table location
 //   node harness/harness.ts measure   cold and warm invocations of each function, into results/
 //   node harness/harness.ts mailbox   rebuild the 100k-message benchmark mailbox from scratch, into results/
+//   node harness/harness.ts latency   every query type's cold and warm latency on the benchmark mailbox, into results/
 //   node harness/harness.ts down      empty the bucket and delete the stack
 //
 // Run it with AWS_PROFILE set to the spike's account.
@@ -42,6 +43,7 @@ import type { SearchHit, SearchQuery } from "../src/search.ts";
 import { titanEmbedder, titanModelId } from "../src/titan.ts";
 import { fixture } from "../test/fixture.ts";
 import { download } from "./enron.ts";
+import { latency } from "./latency.ts";
 import { benchmarkMailbox, labelShares, mailboxSize } from "./mailbox.ts";
 import { packageAll, type Package } from "./package.ts";
 
@@ -277,6 +279,14 @@ function lancedbVersion(): string {
   return JSON.parse(readFileSync(join(root, "node_modules/@lancedb/lancedb/package.json"), "utf8")).version;
 }
 
+// About two hours. Run `up` first if the handler changed.
+async function measureLatency() {
+  const report = { lancedbVersion: lancedbVersion(), ...(await latency(await bucketName())) };
+  mkdirSync(join(root, "results"), { recursive: true });
+  writeFileSync(join(root, "results/17-latency.json"), JSON.stringify(report, null, 2) + "\n");
+  return report.results.map(({ samples, window, ...summary }) => summary);
+}
+
 async function down() {
   const outputs = await stackOutputs();
   if (!outputs) return { deleted: false, reason: "There is no stack." };
@@ -426,6 +436,7 @@ const commands: Record<string, () => Promise<unknown>> = {
   seed,
   measure,
   mailbox: rebuildMailbox,
+  latency: measureLatency,
   down,
 };
 
