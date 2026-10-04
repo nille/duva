@@ -43,7 +43,7 @@ async function withSponsor(options: Parameters<typeof startWebApp>[0] = {}) {
   const ask = async (body: { answers?: string; to?: string[]; subject?: string; text: string }) => {
     const { data: draft } = await hermes.POST("/mailboxes/{mailbox}/drafts", { params, body });
     const { data: asked } = await hermes.POST("/mailboxes/{mailbox}/drafts/{draft}/send", { params: { path: { ...params.path, draft: draft!.id } } });
-    return asked!.send!.approval;
+    return asked!.send!.approval!;
   };
   return { ...app, ada, hermes, params, receive, ask };
 }
@@ -176,4 +176,25 @@ test("the mailboxes fit a phone's screen", budget, async () => {
   await mailboxes(page).getByRole("link", { name: /^Hermes/ }).click();
   await expect.poll(() => page.getByRole("link", { name: /Till Hermes/ }).isVisible(), wait).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(phone.width);
+});
+
+test("in an agent's mailbox the sponsor reads its Sent and has no replies, and in their own they write", budget, async () => {
+  const { page, signIn, ada, receive, ask } = await withSponsor();
+  await ada.POST("/approvals/{approval}/send", { params: { path: { approval: await ask({ to: ["grace@example.org"], subject: "Från Hermes", text: "Hej Grace." }) } } });
+  await receive(note("hermes@example.com", "Till Hermes"), "hermes@example.com");
+  await signIn("ada@example.org");
+
+  await mailboxes(page).getByRole("link", { name: /^Hermes/ }).click();
+  await page.getByRole("navigation", { name: "Duva" }).getByRole("link", { name: "Sent" }).click();
+  await expect.poll(() => page.getByRole("heading", { level: 1 }).textContent(), wait).toBe("Hermes's Sent");
+  await expect.poll(() => page.getByRole("list", { name: "Threads" }).getByRole("listitem").allInnerTexts(), wait).toEqual([expect.stringContaining("Från Hermes")]);
+  await page.getByRole("link", { name: /Från Hermes/ }).click();
+  await expect.poll(() => page.getByRole("article").count(), wait).toBe(1);
+  expect(await page.getByRole("button", { name: /^Reply/ }).count()).toBe(0);
+
+  await mailboxes(page).getByRole("link", { name: /^Your mailbox/ }).click();
+  await page.getByRole("button", { name: "Write" }).click();
+  await expect.poll(() => page.getByRole("heading", { level: 1 }).textContent(), wait).toBe("New message");
+  expect(await mailboxes(page).getByRole("link", { name: /^Your mailbox/ }).getAttribute("aria-current")).toBe("page");
+  expect(await page.getByText("ada@example.com", { exact: true }).first().isVisible()).toBe(true);
 });

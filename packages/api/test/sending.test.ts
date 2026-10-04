@@ -20,7 +20,7 @@ async function withMailbox(options: DuvaOptions = {}) {
     const { data: draft } = await hermes.POST("/mailboxes/{mailbox}/drafts", { params, body });
     const draftParams = { path: { ...params.path, draft: draft!.id } };
     const { data: asked } = await hermes.POST("/mailboxes/{mailbox}/drafts/{draft}/send", { params: draftParams });
-    return { draft: draft!, draftParams, approval: asked!.send!.approval };
+    return { draft: draft!, draftParams, approval: asked!.send!.approval! };
   };
   return { duva, ada, hermes, agent: created!.agent, sponsor: sponsor!, mailbox: mailbox!, params, ask };
 }
@@ -275,7 +275,7 @@ test("an approved draft can't change or be asked to send again", async () => {
   const ask = await hermes.POST("/mailboxes/{mailbox}/drafts/{draft}/send", { params: draftParams });
 
   expect([change.response.status, ask.response.status]).toEqual([409, 409]);
-  expect(change.error?.message).toMatch(/approved and sent/);
+  expect(change.error?.message).toMatch(/was sent/);
 });
 
 test("of a send and a rejection at the same time, exactly one wins, and the message goes out at most once", async () => {

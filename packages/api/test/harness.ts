@@ -81,6 +81,8 @@ export interface Duva {
   receiptRules(): ReceiptRule[];
   /** The raw messages SES accepted for sending, oldest first. Each API call returns once the sends it led to are done. */
   sent(): string[];
+  /** The recipients SES delivered each message in sent() to, in the same order, Bcc recipients included. */
+  sentTo(): string[][];
   /**
    * Moves Duva to a new user pool, as the deploy of #30 did. No human can sign in there, and every
    * session ends, until setUp() moves the humans.
@@ -156,6 +158,7 @@ export async function startDuva({
     inboundLog: () => [...inboundLog],
     receiptRules: () => ses.describeRules(),
     sent: () => sending.sent(),
+    sentTo: () => sending.sentTo(),
     setUp: async (options) => {
       await setUp(options);
     },

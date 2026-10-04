@@ -3,9 +3,9 @@ import { type Operation, operations, type OperationId } from "@duva/openapi";
 import { createAgent, listAgents, rotateAgentKey } from "./agents.ts";
 import type { AuthorizerContext } from "./authorizer.ts";
 import { listOrganizationChanges } from "./changes.ts";
-import { createDraft, editDraft, getDraft, listApprovals, listDrafts, rejectApproval, sendApproval, sendDraft } from "./drafts.ts";
+import { createDraft, deleteDraft, editDraft, getDraft, listApprovals, listDrafts, rejectApproval, sendApproval, sendDraft } from "./drafts.ts";
 import { addHuman, listHumans } from "./humans.ts";
-import { createMailbox, getMailbox, getThread, listMailboxChanges, listMailboxes, listThreads, markThreadsRead, markThreadsUnread } from "./mailboxes.ts";
+import { createMailbox, getMailbox, getThread, listMailboxChanges, listMailboxes, listSentThreads, listThreads, markThreadsRead, markThreadsUnread } from "./mailboxes.ts";
 import type { Deployment } from "./deployment.ts";
 import { type Actor, actorOf } from "./organization.ts";
 import { getStatus } from "./status.ts";
@@ -35,6 +35,7 @@ const handlers: Record<OperationId, OperationHandler> = {
   getMailbox,
   listMailboxChanges,
   listThreads,
+  listSentThreads,
   markThreadsRead,
   markThreadsUnread,
   getThread,
@@ -42,6 +43,7 @@ const handlers: Record<OperationId, OperationHandler> = {
   listDrafts,
   getDraft,
   editDraft,
+  deleteDraft,
   sendDraft,
   listApprovals,
   sendApproval,

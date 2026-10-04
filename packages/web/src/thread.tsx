@@ -1,8 +1,9 @@
 // A thread, read: each message a sheet on the desk, oldest first, set in the proof face. Opening
-// the thread marks it read, for everyone who reads the mailbox.
+// the thread marks it read, for everyone who reads the mailbox. Each message can be replied to.
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
+import { startDraft } from "./compose.tsx";
 import { Addresses, Field, nameOf, Time } from "./mail-parts.tsx";
 import { size, strings } from "./strings.ts";
 
@@ -41,6 +42,8 @@ export function ThreadView({
 }) {
   const [reading, setReading] = useState<Reading>({ status: "loading" });
   const [marking, setMarking] = useState<"idle" | "busy" | "failed" | "readFailed">("idle");
+  // The reply being started, by its message and whether it goes to all, or whether starting one failed.
+  const [replying, setReplying] = useState<{ message: string; all: boolean } | "failed">();
   const leaving = useRef(false);
   const readingRef = useRef(reading);
   readingRef.current = reading;
@@ -97,6 +100,12 @@ export function ThreadView({
     location.hash = base;
   };
 
+  const reply = async (message: Message, all: boolean) => {
+    setReplying({ message: message.id, all });
+    const started = await startDraft(client, mailbox.id, { answers: message.id, ...(all && { replyAll: true }) }, onSignedOut);
+    if (!started) setReplying("failed");
+  };
+
   return (
     <main className="desk desk-reading" aria-busy={reading.status === "loading"}>
       <p className="back">
@@ -137,10 +146,23 @@ export function ThreadView({
               {marking === "failed" ? strings.thread.markFailed : strings.thread.markReadFailed}
             </p>
           )}
+          {replying === "failed" && (
+            <p className="notice notice-alert" role="alert">
+              {strings.compose.startFailed}
+            </p>
+          )}
           <ol className="letters" aria-label={strings.thread.messages}>
             {reading.thread.messages.map((message) => (
               <li key={message.id}>
-                <Letter message={message} me={me} agent={agent} fresh={reading.fresh.has(message.id)} />
+                <Letter
+                  message={message}
+                  me={me}
+                  agent={agent}
+                  fresh={reading.fresh.has(message.id)}
+                  starting={typeof replying === "object" && replying.message === message.id ? replying.all : undefined}
+                  busy={typeof replying === "object"}
+                  onReply={agent === undefined ? (all) => void reply(message, all) : undefined}
+                />
               </li>
             ))}
           </ol>
@@ -150,7 +172,27 @@ export function ThreadView({
   );
 }
 
-function Letter({ message, me, agent, fresh }: { message: Message; me: string; agent?: string; fresh: boolean }) {
+/**
+ * A message as a sheet. `starting` says which reply to it is being started, if one is: to all or
+ * not. Without `onReply`, as in an agent's mailbox, where only the agent drafts, it has no replies.
+ */
+function Letter({
+  message,
+  me,
+  agent,
+  fresh,
+  starting,
+  busy,
+  onReply,
+}: {
+  message: Message;
+  me: string;
+  agent?: string;
+  fresh: boolean;
+  starting?: boolean;
+  busy: boolean;
+  onReply?: (all: boolean) => void;
+}) {
   const titleId = useId();
   const sent =
     message.sentBy === undefined ? undefined : message.sentBy === me ? strings.thread.sentByYou : agent === undefined ? strings.thread.sentFromMailbox : strings.thread.sentBy(agent);
@@ -176,6 +218,11 @@ function Letter({ message, me, agent, fresh }: { message: Message; me: string; a
             <Addresses list={message.cc} />
           </Field>
         )}
+        {message.bcc !== undefined && (
+          <Field label={strings.thread.bcc}>
+            <Addresses list={message.bcc} />
+          </Field>
+        )}
         <Field label={strings.thread.subject}>
           <span className="letter-subject">{message.subject || strings.thread.noSubject}</span>
         </Field>
@@ -196,6 +243,20 @@ function Letter({ message, me, agent, fresh }: { message: Message; me: string; a
           </ul>
         </section>
       )}
+      {onReply !== undefined && (
+      <div className="letter-actions">
+        <button type="button" className="button button-small" disabled={busy} onClick={() => onReply(false)}>
+          <ReplyIcon />
+          {starting === false ? strings.thread.starting : strings.thread.reply}
+        </button>
+        {message.to.length + message.cc.length > 1 && (
+          <button type="button" className="button button-small" disabled={busy} onClick={() => onReply(true)}>
+            <ReplyAllIcon />
+            {starting === true ? strings.thread.starting : strings.thread.replyAll}
+          </button>
+        )}
+      </div>
+      )}
     </article>
   );
 }
@@ -206,6 +267,18 @@ function approvalNote({ approver, edits }: NonNullable<Message["approval"]>, me:
   const changed = (["to", "subject", "text"] as const).filter((field) => edits?.[field] !== undefined).map((field) => strings.galley.fieldNames[field]);
   return changed.length === 0 ? strings.thread.approvedAsIs : strings.thread.approvedEdited(changed);
 }
+
+const ReplyIcon = () => (
+  <svg className="icon" viewBox="0 0 16 16" aria-hidden="true">
+    <path d="M6.5 4 2.5 8l4 4M2.5 8h6.5a4.5 4.5 0 0 1 4.5 4.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+const ReplyAllIcon = () => (
+  <svg className="icon" viewBox="0 0 16 16" aria-hidden="true">
+    <path d="M8 4 4 8l4 4M4.5 4 .8 8l3.7 4M4 8h5.5a4.5 4.5 0 0 1 4.5 4.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
 
 /** A run of the text: what the sender wrote, or lines they quoted. */
 type Run = { quoted: boolean; lines: string[] };

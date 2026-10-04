@@ -18,6 +18,9 @@ export const approvalChanges = new Set<Change["type"]>(["approvalAsked", "approv
 /** The changes that alter what a mailbox's threads show: mail in or out, and read state. */
 export const mailChanges = new Set<Change["type"]>(["messageReceived", "messageSent", "threadRead", "threadUnread"]);
 
+/** The changes that alter a mailbox's drafts: writing, deleting and sending them. */
+export const draftChanges = new Set<Change["type"]>(["draftWritten", "draftChanged", "draftDeleted", "sendAsked", "approvalAsked", "approvalDecided", "sendFailed", "sendUnclear"]);
+
 /** How often the signed-in app reads the change feeds while its tab is visible, unless config.json says otherwise. */
 export const defaultPollInterval = 5_000;
 

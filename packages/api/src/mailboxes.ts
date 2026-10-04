@@ -2,7 +2,7 @@ import type { components } from "@duva/openapi";
 import { jsonBody, type OperationHandler, refusal } from "./api.ts";
 import type { Deployment } from "./deployment.ts";
 import { type Actor, AddressTaken, addMailbox, allAddresses, findActor, findMailbox, type Mailbox, organizationDomain, ownedMailboxes, sponsoredAgents } from "./organization.ts";
-import { cursorOf, inbox, mailboxChanges, markThreads, readThread, threadsMarkedAtOnce, threadsPerPage, threadsWithLabel, unreadWithLabel } from "./mail.ts";
+import { cursorOf, inbox, listedThreads, type Listing, mailboxChanges, markThreads, readThread, threadsMarkedAtOnce, threadsPerPage, unreadWithLabel } from "./mail.ts";
 import { syncRecipients } from "./receiving.ts";
 
 /** How many addresses the organization can have: SES's limit on one receipt rule's recipients. */
@@ -90,8 +90,13 @@ export const listMailboxChanges: OperationHandler = async (event, deployment, ac
   return { statusCode: 200, body: await mailboxChanges(deployment.table, mailbox.id, Number(given), withSpam === "true") };
 };
 
-export const listThreads: OperationHandler = async (event, deployment, actor) => {
-  const mailbox = await readableMailbox(event, deployment, actor!);
+export const listThreads: OperationHandler = (event, deployment, actor) => listing(event, deployment, actor!, { label: event.queryStringParameters?.label ?? inbox });
+
+export const listSentThreads: OperationHandler = (event, deployment, actor) => listing(event, deployment, actor!, { sent: true });
+
+/** A page of the listing's threads, as the call's limit and after ask, for those who read the mailbox. */
+async function listing(event: Parameters<OperationHandler>[0], deployment: Deployment, actor: Actor, listed: Listing) {
+  const mailbox = await readableMailbox(event, deployment, actor);
   if ("statusCode" in mailbox) return mailbox;
   const query = event.queryStringParameters ?? {};
   const limit = query.limit ?? String(threadsPerPage);
@@ -102,9 +107,9 @@ export const listThreads: OperationHandler = async (event, deployment, actor) =>
   if (query.after !== undefined && after === undefined) {
     return refusal(400, `${JSON.stringify(query.after)} isn't where a page starts. Give after as the next of the page before, or leave it out for the first page.`);
   }
-  const page = await threadsWithLabel(deployment.table, mailbox.id, query.label ?? inbox, { limit: Number(limit), after });
+  const page = await listedThreads(deployment.table, mailbox.id, listed, { limit: Number(limit), after });
   return { statusCode: 200, body: page satisfies components["schemas"]["ThreadList"] };
-};
+}
 
 /** Marks the threads in the call's body unread, or read, as their mailbox's reader asks. */
 const markingThreads =

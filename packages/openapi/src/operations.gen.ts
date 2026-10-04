@@ -288,6 +288,42 @@ export const operations = [
     ]
   },
   {
+    "operationId": "listSentThreads",
+    "method": "get",
+    "path": "/mailboxes/{mailbox}/sent",
+    "routeKey": "GET /mailboxes/{mailbox}/sent",
+    "summary": "List the threads a mailbox has sent mail in, newest first.",
+    "description": "Lists every thread with a message sent from the mailbox, whatever its labels, a page at a time, newest first by its newest message. To read the next page, call again with the answer's next as after, until an answer has no next.",
+    "signIn": true,
+    "command": [
+      "threads",
+      "sent"
+    ],
+    "options": [
+      {
+        "name": "mailbox",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The mailbox's ID."
+      },
+      {
+        "name": "limit",
+        "in": "query",
+        "type": "integer",
+        "required": false,
+        "description": "How many threads a page lists at most."
+      },
+      {
+        "name": "after",
+        "in": "query",
+        "type": "string",
+        "required": false,
+        "description": "Where the page starts, the next of the page before it. Leave it out for the first page."
+      }
+    ]
+  },
+  {
     "operationId": "markThreadsRead",
     "method": "post",
     "path": "/mailboxes/{mailbox}/threads/read",
@@ -401,8 +437,8 @@ export const operations = [
     "method": "post",
     "path": "/mailboxes/{mailbox}/drafts",
     "routeKey": "POST /mailboxes/{mailbox}/drafts",
-    "summary": "Draft a reply to a message in a mailbox, or a new message.",
-    "description": "A reply goes from the address the original was sent to, plus tag kept, to the original's Reply-To or, without one, its From, with the subject carrying a single \"Re: \" prefix. A new message goes from the mailbox's default address, and needs to and subject. Only the mailbox's owner can draft in it. Writing a draft is recorded in the mailbox's change feed.",
+    "summary": "Draft a reply to a message in a mailbox, a reply to all, or a new message.",
+    "description": "A reply goes from the address the original was sent to, plus tag kept, to the original's Reply-To or, without one, its From, with the subject carrying a single \"Re: \" prefix. A reply to your own message goes to its recipients instead. A reply to all also goes to every other recipient of the original, except the mailbox's own addresses. A new message goes from the mailbox's default address. A draft can be saved before it has recipients, a subject or text, but it needs a recipient in To to be sent. Only the mailbox's owner can draft in it. Writing a draft is recorded in the mailbox's change feed.",
     "signIn": true,
     "command": [
       "drafts",
@@ -424,11 +460,32 @@ export const operations = [
         "description": "The ID of the message the draft replies to. Without it, the draft is a new message."
       },
       {
+        "name": "replyAll",
+        "in": "body",
+        "type": "boolean",
+        "required": false,
+        "description": "With answers, replies to all, so every other recipient of the original gets it too, except the mailbox's own addresses."
+      },
+      {
         "name": "to",
         "in": "body",
         "type": "strings",
         "required": false,
         "description": "The recipients' addresses. A reply goes to the original's Reply-To or From unless you give them."
+      },
+      {
+        "name": "cc",
+        "in": "body",
+        "type": "strings",
+        "required": false,
+        "description": "The Cc recipients' addresses. A reply to all copies the original's Cc recipients unless you give them."
+      },
+      {
+        "name": "bcc",
+        "in": "body",
+        "type": "strings",
+        "required": false,
+        "description": "The Bcc recipients' addresses, which get the message but appear in no header."
       },
       {
         "name": "subject",
@@ -441,7 +498,7 @@ export const operations = [
         "name": "text",
         "in": "body",
         "type": "string",
-        "required": true,
+        "required": false,
         "description": "The plain-text body."
       }
     ]
@@ -457,6 +514,35 @@ export const operations = [
     "command": [
       "drafts",
       "get"
+    ],
+    "options": [
+      {
+        "name": "mailbox",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The mailbox's ID."
+      },
+      {
+        "name": "draft",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The draft's ID."
+      }
+    ]
+  },
+  {
+    "operationId": "deleteDraft",
+    "method": "delete",
+    "path": "/mailboxes/{mailbox}/drafts/{draft}",
+    "routeKey": "DELETE /mailboxes/{mailbox}/drafts/{draft}",
+    "summary": "Delete a draft.",
+    "description": "Deleting a draft that waits for approval withdraws the request. A draft being sent can't be deleted until its send is done. Deleting a sent draft leaves the sent message in its thread. Only the mailbox's owner can delete its drafts. The deletion, and any withdrawal, is recorded in the mailbox's change feed.",
+    "signIn": true,
+    "command": [
+      "drafts",
+      "delete"
     ],
     "options": [
       {
@@ -510,6 +596,20 @@ export const operations = [
         "description": "The recipients' addresses, in place of the draft's."
       },
       {
+        "name": "cc",
+        "in": "body",
+        "type": "strings",
+        "required": false,
+        "description": "The Cc recipients' addresses, in place of the draft's."
+      },
+      {
+        "name": "bcc",
+        "in": "body",
+        "type": "strings",
+        "required": false,
+        "description": "The Bcc recipients' addresses, in place of the draft's."
+      },
+      {
         "name": "subject",
         "in": "body",
         "type": "string",
@@ -531,7 +631,7 @@ export const operations = [
     "path": "/mailboxes/{mailbox}/drafts/{draft}/send",
     "routeKey": "POST /mailboxes/{mailbox}/drafts/{draft}/send",
     "summary": "Ask for a draft to be sent.",
-    "description": "An agent's send from its own mailbox needs its sponsor's approval, so the draft waits for them. Its send shows where it stands. Only the mailbox's owner can ask, and a draft waits for one approval at a time. Asking is recorded in the mailbox's change feed.",
+    "description": "A human's send from their own mailbox needs no approval, so Duva sends it at once, with no disclosure. An agent's send from its own mailbox needs its sponsor's approval, so the draft waits for them. Its send shows where it stands. Bcc recipients get the message, but no header names them. Only the mailbox's owner can ask, the draft needs a recipient in To, and a draft waits for one approval at a time. Asking is recorded in the mailbox's change feed.",
     "signIn": true,
     "command": [
       "drafts",

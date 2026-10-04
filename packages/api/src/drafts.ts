@@ -11,12 +11,16 @@ import {
   approvalOf,
   approve,
   askToSend,
+  BeingSent,
   changeDraft,
+  deleteDraft as deleteStoredDraft,
   draftsIn,
   findApproval,
   findDraft,
+  NoRecipient,
   pendingApprovals,
   reject,
+  sendAtOnce,
 } from "./drafting.ts";
 import { findMessage } from "./mail.ts";
 import { readableMailbox } from "./mailboxes.ts";
@@ -34,30 +38,52 @@ export const createDraft: OperationHandler = async (event, deployment, actor) =>
   const body = jsonBody(event) ?? {};
   const given = fieldsIn(body);
   if ("statusCode" in given) return given;
-  if (given.text === undefined) return refusal(400, "Give the draft's text.");
+  if (body.replyAll !== undefined && (typeof body.replyAll !== "boolean" || typeof body.answers !== "string")) {
+    return refusal(400, "Give replyAll as true or false, with the ID of the message to reply to as answers.");
+  }
 
   let content;
   if (typeof body.answers === "string") {
     const original = await findMessage(deployment.table, deployment.mailBucket, mailbox.id, body.answers);
     if (original === undefined) return refusal(404, `The mailbox has no message ${JSON.stringify(body.answers)}. Read its threads to find the message to reply to.`);
     const { message, thread, replyTo } = original;
+    const others = othersThan(mailbox);
+    // A reply goes to the original's sender, unless the mailbox sent it, and then to its recipients.
+    const sender = others(replyTo.length > 0 ? replyTo : [message.from]);
+    const to = others(sender.length > 0 ? [...sender, ...(body.replyAll === true ? message.to : [])] : message.to);
+    const cc = body.replyAll === true ? others(message.cc).filter(({ address }) => !to.some((each) => sameAddress(each.address, address))) : [];
     content = {
       answers: message.id,
       thread,
       // A reply goes from the address the original was sent to, plus tag kept.
       from: message.recipient,
-      to: given.to ?? (replyTo.length > 0 ? replyTo : [message.from]),
+      to: given.to ?? to,
+      cc: given.cc ?? cc,
+      bcc: given.bcc ?? [],
       subject: given.subject ?? `Re: ${message.subject.replace(/^(\s*re\s*:\s*)+/i, "")}`,
-      text: given.text,
+      text: given.text ?? "",
     };
   } else {
-    if (given.to === undefined || given.subject === undefined) {
-      return refusal(400, "A new message needs recipients and a subject. To reply to a message instead, give its ID as answers.");
-    }
-    content = { from: mailbox.defaultAddress, to: given.to, subject: given.subject, text: given.text };
+    content = { from: mailbox.defaultAddress, to: given.to ?? [], cc: given.cc ?? [], bcc: given.bcc ?? [], subject: given.subject ?? "", text: given.text ?? "" };
   }
   return { statusCode: 201, body: (await addDraft(deployment.table, { mailbox: mailbox.id, by: actor!.id, content })) satisfies components["schemas"]["Draft"] };
 };
+
+/** Whether two addresses are the same, ignoring case. */
+const sameAddress = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+
+/** The addresses that aren't the mailbox's own, with or without a plus tag, each once. */
+const othersThan =
+  (mailbox: Mailbox) =>
+  (list: EmailAddress[]): EmailAddress[] => {
+    const untagged = (address: string) => address.replace(/\+[^@]*@/, "@");
+    const kept: EmailAddress[] = [];
+    for (const each of list) {
+      if (sameAddress(untagged(each.address), mailbox.defaultAddress) || kept.some(({ address }) => sameAddress(address, each.address))) continue;
+      kept.push(each);
+    }
+    return kept;
+  };
 
 /** The mailbox with the ID in the call's path, if the actor owns it, since only its owner drafts in it. */
 async function ownMailbox(event: Parameters<OperationHandler>[0], deployment: Deployment, actor: Actor): Promise<Mailbox | ReturnType<typeof refusal>> {
@@ -67,20 +93,25 @@ async function ownMailbox(event: Parameters<OperationHandler>[0], deployment: De
   return mailbox;
 }
 
-/** The recipients, subject and text the body gives, each checked, or why one doesn't fit. */
-function fieldsIn(body: Record<string, unknown>): { to?: EmailAddress[]; subject?: string; text?: string } | ReturnType<typeof refusal> {
-  const { to, subject, text } = body;
+type Fields = { to?: EmailAddress[]; cc?: EmailAddress[]; bcc?: EmailAddress[]; subject?: string; text?: string };
+
+/** The recipients, subject and text the body gives, each checked, or why one doesn't fit. A list of recipients can be empty. */
+function fieldsIn(body: Record<string, unknown>): Fields | ReturnType<typeof refusal> {
+  const { subject, text } = body;
   if (text !== undefined && (typeof text !== "string" || text.length > maxText)) return refusal(400, `Give the text as at most ${maxText} characters.`);
   if (subject !== undefined && (typeof subject !== "string" || subject.length > maxSubject || /[\r\n]/.test(subject))) {
     return refusal(400, `Give the subject as one line of at most ${maxSubject} characters.`);
   }
-  if (to === undefined) return { subject, text };
-  const addresses = Array.isArray(to) ? to.map((address) => (typeof address === "string" ? address.trim() : "")) : [];
-  const wrong = addresses.find((address) => !isEmailAddress(address));
-  if (addresses.length === 0 || wrong !== undefined) {
-    return refusal(400, `${wrong === undefined ? "Give at least one recipient" : `${JSON.stringify(wrong)} isn't an email address`}. Give each recipient's address, like grace@example.org.`);
+  const fields: Fields = { subject, text };
+  for (const name of ["to", "cc", "bcc"] as const) {
+    const list = body[name];
+    if (list === undefined) continue;
+    const addresses = Array.isArray(list) ? list.map((address) => (typeof address === "string" ? address.trim() : "")) : [""];
+    const wrong = addresses.find((address) => !isEmailAddress(address));
+    if (wrong !== undefined) return refusal(400, `${JSON.stringify(wrong)} isn't an email address. Give each recipient's address in ${name}, like grace@example.org.`);
+    fields[name] = addresses.map((address) => ({ address }));
   }
-  return { to: addresses.map((address) => ({ address })), subject, text };
+  return fields;
 }
 
 export const listDrafts: OperationHandler = async (event, deployment, actor) => {
@@ -102,7 +133,7 @@ export const editDraft: OperationHandler = async (event, deployment, actor) => {
   if ("statusCode" in mailbox) return mailbox;
   const changes = fieldsIn(jsonBody(event) ?? {});
   if ("statusCode" in changes) return changes;
-  if (Object.values(changes).every((value) => value === undefined)) return refusal(400, "Give the draft's new recipients, subject or text.");
+  if (Object.values(changes).every((value) => value === undefined)) return refusal(400, "Give the draft's new recipients, Cc, Bcc, subject or text.");
   try {
     const draft = await changeDraft(deployment.table, { mailbox: mailbox.id, id: event.pathParameters?.draft ?? "", by: actor!.id, changes });
     if (draft === undefined) return noDraft(event);
@@ -113,16 +144,33 @@ export const editDraft: OperationHandler = async (event, deployment, actor) => {
   }
 };
 
+export const deleteDraft: OperationHandler = async (event, deployment, actor) => {
+  const mailbox = await ownMailbox(event, deployment, actor!);
+  if ("statusCode" in mailbox) return mailbox;
+  try {
+    const draft = await deleteStoredDraft(deployment.table, { mailbox: mailbox.id, id: event.pathParameters?.draft ?? "", by: actor!.id });
+    if (draft === undefined) return noDraft(event);
+    return { statusCode: 200, body: draft satisfies components["schemas"]["Draft"] };
+  } catch (error) {
+    if (error instanceof BeingSent) return refusal(409, "The draft is being sent, so it can't be deleted yet. Read it again in a moment to see how the send went.");
+    throw error;
+  }
+};
+
 export const sendDraft: OperationHandler = async (event, deployment, actor) => {
   const mailbox = await ownMailbox(event, deployment, actor!);
   if ("statusCode" in mailbox) return mailbox;
-  // An agent's send from its own mailbox needs its sponsor's approval. Humans can't send from theirs yet.
-  if (actor!.kind !== "agent") return refusal(403, "Only agents can ask to send from their mailboxes yet.");
+  const id = event.pathParameters?.draft ?? "";
   try {
-    const draft = await askToSend(deployment.table, { mailbox: mailbox.id, id: event.pathParameters?.draft ?? "", agent: actor! });
+    // An agent's send from its own mailbox needs its sponsor's approval. A human's from theirs needs none.
+    const draft =
+      actor!.kind === "agent"
+        ? await askToSend(deployment.table, { mailbox: mailbox.id, id, agent: actor! })
+        : await sendAtOnce(deployment.table, { mailbox: mailbox.id, id, by: actor!.id });
     if (draft === undefined) return noDraft(event);
     return { statusCode: 202, body: draft satisfies components["schemas"]["Draft"] };
   } catch (error) {
+    if (error instanceof NoRecipient) return refusal(400, "The draft has no recipient in To, so it can't be sent. Give it one, then send it.");
     if (error instanceof AlreadyWaiting) return refusal(409, "The draft already waits for approval. Change it to withdraw the request, or wait for the decision.");
     if (error instanceof AlreadyApproved) return approvedRefusal(error);
     throw error;
@@ -137,22 +185,24 @@ export const listApprovals: OperationHandler = async (_event, deployment, actor)
   };
 };
 
-const approvedRefusal = (error: AlreadyApproved) =>
-  refusal(409, `The draft was approved and ${approvedOutcomes[error.state]}, so it can't change or be sent again. Write a new draft instead.`);
+const approvedRefusal = (error: AlreadyApproved) => refusal(409, `The draft ${approvedOutcomes[error.state]}, so it can't change or be sent again. Write a new draft instead.`);
 
 // What became of an approved draft, by its send's state.
 const approvedOutcomes: Partial<Record<AlreadyApproved["state"], string>> = {
   approved: "is about to be sent",
   sending: "is being sent",
-  sent: "sent",
+  sent: "was sent",
   unclear: "may have been sent, which a human checks",
 };
 
 export const sendApproval: OperationHandler = async (event, deployment, actor) => {
   const approval = await decidable(event, deployment, actor!);
   if ("statusCode" in approval) return approval;
-  const edits = fieldsIn(jsonBody(event) ?? {});
-  if ("statusCode" in edits) return edits;
+  const given = fieldsIn(jsonBody(event) ?? {});
+  if ("statusCode" in given) return given;
+  if (given.to?.length === 0) return refusal(400, "Give at least one recipient. Give each recipient's address, like grace@example.org.");
+  if (given.cc !== undefined || given.bcc !== undefined) return refusal(400, "An approver changes the recipients in To, the subject and the text. Give those, or reject the draft with a note to change its Cc or Bcc.");
+  const edits = { to: given.to, subject: given.subject, text: given.text };
   const edited = Object.values(edits).some((value) => value !== undefined);
   return decided(deployment, () => approve(deployment.table, { approval, by: actor!.id, edits: edited ? edits : undefined }), 202);
 };

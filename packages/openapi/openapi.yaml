@@ -344,6 +344,45 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+  /mailboxes/{mailbox}/sent:
+    get:
+      operationId: listSentThreads
+      summary: List the threads a mailbox has sent mail in, newest first.
+      description: >
+        Lists every thread with a message sent from the mailbox, whatever its
+        labels, a page at a time, newest first by its newest message. To read the next page, call again with the answer's next as
+        after, until an answer has no next.
+      x-cli-command: threads sent
+      parameters:
+        - $ref: "#/components/parameters/Mailbox"
+        - name: limit
+          in: query
+          description: How many threads a page lists at most.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 100
+        - name: after
+          in: query
+          description: Where the page starts, the next of the page before it. Leave it out for the first page.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: A page of the threads the mailbox has sent in.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ThreadList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /mailboxes/{mailbox}/threads/read:
     post:
       operationId: markThreadsRead
@@ -438,14 +477,17 @@ paths:
   /mailboxes/{mailbox}/drafts:
     post:
       operationId: createDraft
-      summary: Draft a reply to a message in a mailbox, or a new message.
+      summary: Draft a reply to a message in a mailbox, a reply to all, or a new message.
       description: >
         A reply goes from the address the original was sent to, plus tag
         kept, to the original's Reply-To or, without one, its From, with the
-        subject carrying a single "Re: " prefix. A new message goes from the
-        mailbox's default address, and needs to and subject. Only the
-        mailbox's owner can draft in it. Writing a draft is recorded in the
-        mailbox's change feed.
+        subject carrying a single "Re: " prefix. A reply to your own message
+        goes to its recipients instead. A reply to all also goes to every
+        other recipient of the original, except the mailbox's own addresses.
+        A new message goes from the mailbox's default address. A draft can
+        be saved before it has recipients, a subject or text, but it needs a
+        recipient in To to be sent. Only the mailbox's owner can draft in it.
+        Writing a draft is recorded in the mailbox's change feed.
       x-cli-command: drafts create
       parameters:
         - $ref: "#/components/parameters/Mailbox"
@@ -547,26 +589,59 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+    delete:
+      operationId: deleteDraft
+      summary: Delete a draft.
+      description: >
+        Deleting a draft that waits for approval withdraws the request. A
+        draft being sent can't be deleted until its send is done. Deleting a
+        sent draft leaves the sent message in its thread. Only the mailbox's
+        owner can delete its drafts. The deletion, and any withdrawal, is
+        recorded in the mailbox's change feed.
+      x-cli-command: drafts delete
+      parameters:
+        - $ref: "#/components/parameters/Mailbox"
+        - $ref: "#/components/parameters/Draft"
+      responses:
+        "200":
+          description: The draft, as it was when it was deleted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Draft"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
   /mailboxes/{mailbox}/drafts/{draft}/send:
     post:
       operationId: sendDraft
       summary: Ask for a draft to be sent.
       description: >
-        An agent's send from its own mailbox needs its sponsor's approval, so
-        the draft waits for them. Its send shows where it stands. Only the
-        mailbox's owner can ask, and a draft waits for one approval at a
-        time. Asking is recorded in the mailbox's change feed.
+        A human's send from their own mailbox needs no approval, so Duva sends
+        it at once, with no disclosure. An agent's send from its own mailbox
+        needs its sponsor's approval, so the draft waits for them. Its send
+        shows where it stands. Bcc recipients get the message, but no header
+        names them. Only the mailbox's owner can ask, the draft needs a
+        recipient in To, and a draft waits for one approval at a time. Asking
+        is recorded in the mailbox's change feed.
       x-cli-command: drafts send
       parameters:
         - $ref: "#/components/parameters/Mailbox"
         - $ref: "#/components/parameters/Draft"
       responses:
         "202":
-          description: The draft, waiting for approval.
+          description: The draft, waiting for approval, or for a human's send, approved and about to be sent.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Draft"
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -920,6 +995,8 @@ components:
         - $ref: "#/components/schemas/MessageReceived"
         - $ref: "#/components/schemas/DraftWritten"
         - $ref: "#/components/schemas/DraftChanged"
+        - $ref: "#/components/schemas/DraftDeleted"
+        - $ref: "#/components/schemas/SendAsked"
         - $ref: "#/components/schemas/ApprovalAsked"
         - $ref: "#/components/schemas/ApprovalWithdrawn"
         - $ref: "#/components/schemas/ApprovalDecided"
@@ -934,6 +1011,8 @@ components:
           messageReceived: "#/components/schemas/MessageReceived"
           draftWritten: "#/components/schemas/DraftWritten"
           draftChanged: "#/components/schemas/DraftChanged"
+          draftDeleted: "#/components/schemas/DraftDeleted"
+          sendAsked: "#/components/schemas/SendAsked"
           approvalAsked: "#/components/schemas/ApprovalAsked"
           approvalWithdrawn: "#/components/schemas/ApprovalWithdrawn"
           approvalDecided: "#/components/schemas/ApprovalDecided"
@@ -989,6 +1068,31 @@ components:
             type:
               type: string
               const: draftChanged
+            draft:
+              type: string
+              description: The draft's ID.
+    DraftDeleted:
+      allOf:
+        - $ref: "#/components/schemas/ChangeBase"
+        - type: object
+          required: [type, draft]
+          properties:
+            type:
+              type: string
+              const: draftDeleted
+            draft:
+              type: string
+              description: The draft's ID.
+    SendAsked:
+      allOf:
+        - $ref: "#/components/schemas/ChangeBase"
+        - type: object
+          required: [type, draft]
+          description: A human asked to send a draft from their own mailbox, which needs no approval, so Duva sends it next.
+          properties:
+            type:
+              type: string
+              const: sendAsked
             draft:
               type: string
               description: The draft's ID.
@@ -1051,7 +1155,7 @@ components:
         - $ref: "#/components/schemas/ChangeBase"
         - type: object
           required: [type, draft, thread, message]
-          description: SES accepted an approved draft. The agent sent it, so it names the agent.
+          description: SES accepted an approved draft. It names who sent it, the agent for an agent's draft.
           properties:
             type:
               type: string
@@ -1069,7 +1173,7 @@ components:
       allOf:
         - $ref: "#/components/schemas/ChangeBase"
         - type: object
-          required: [type, draft, approval, reason]
+          required: [type, draft, reason]
           description: SES refused an approved draft, so it wasn't sent.
           properties:
             type:
@@ -1080,7 +1184,7 @@ components:
               description: The draft's ID.
             approval:
               type: string
-              description: The ID of the approval that let it go.
+              description: The ID of the approval that let it go, if it needed one.
             reason:
               type: string
               description: SES's reason.
@@ -1088,7 +1192,7 @@ components:
       allOf:
         - $ref: "#/components/schemas/ChangeBase"
         - type: object
-          required: [type, draft, approval]
+          required: [type, draft]
           description: >
             Sending an approved draft stopped before SES answered, so it is
             unclear whether SES accepted it. Duva doesn't send it again, and a
@@ -1102,7 +1206,7 @@ components:
               description: The draft's ID.
             approval:
               type: string
-              description: The ID of the approval that let it go.
+              description: The ID of the approval that let it go, if it needed one.
     ThreadRead:
       allOf:
         - $ref: "#/components/schemas/ChangeBase"
@@ -1130,17 +1234,29 @@ components:
     NewDraft:
       type: object
       additionalProperties: false
-      required: [text]
       properties:
         answers:
           type: string
           description: The ID of the message the draft replies to. Without it, the draft is a new message.
+        replyAll:
+          type: boolean
+          description: With answers, replies to all, so every other recipient of the original gets it too, except the mailbox's own addresses.
         to:
           type: array
           items:
             type: string
           description: The recipients' addresses. A reply goes to the original's Reply-To or From unless you give them.
           examples: [["grace@example.org"]]
+        cc:
+          type: array
+          items:
+            type: string
+          description: The Cc recipients' addresses. A reply to all copies the original's Cc recipients unless you give them.
+        bcc:
+          type: array
+          items:
+            type: string
+          description: The Bcc recipients' addresses, which get the message but appear in no header.
         subject:
           type: string
           maxLength: 998
@@ -1159,6 +1275,16 @@ components:
           items:
             type: string
           description: The recipients' addresses, in place of the draft's.
+        cc:
+          type: array
+          items:
+            type: string
+          description: The Cc recipients' addresses, in place of the draft's.
+        bcc:
+          type: array
+          items:
+            type: string
+          description: The Bcc recipients' addresses, in place of the draft's.
         subject:
           type: string
           maxLength: 998
@@ -1201,7 +1327,7 @@ components:
     Draft:
       type: object
       additionalProperties: false
-      required: [id, from, to, subject, text, updatedAt]
+      required: [id, from, to, cc, bcc, subject, text, updatedAt]
       description: A message a mailbox's owner is writing.
       properties:
         id:
@@ -1221,6 +1347,15 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/EmailAddress"
+        cc:
+          type: array
+          items:
+            $ref: "#/components/schemas/EmailAddress"
+        bcc:
+          type: array
+          items:
+            $ref: "#/components/schemas/EmailAddress"
+          description: Recipients who get the message, but appear in no header.
         subject:
           type: string
         text:
@@ -1235,24 +1370,24 @@ components:
     SendStatus:
       type: object
       additionalProperties: false
-      required: [approval, state]
+      required: [state]
       description: Where the draft's latest request to send stands. A draft never asked to send has none.
       properties:
         approval:
           type: string
-          description: The ID of the approval the request needs.
+          description: The ID of the approval the request needs, if it needs one. A human's send from their own mailbox needs none.
         state:
           type: string
           enum: [waiting, withdrawn, rejected, approved, sending, sent, failed, unclear]
           description: >
             waiting for approval; withdrawn because the draft changed while
             it waited; rejected, with the approver's note; approved, and
-            about to be sent; sending; sent, as the message in its thread;
+            about to be sent, which a human's send is at once; sending; sent, as the message in its thread;
             failed, with SES's reason; or unclear, when sending stopped before
             SES answered, so a human checks whether it went out, by its
             recipients and subject, since only SES's answer gives its Message-ID. Duva never
             sends an unclear draft again. An approved draft can't change,
-            but a rejected or failed one can be revised and asked again.
+            but a rejected or failed one can be revised and sent again.
         note:
           type: string
           description: The approver's note, if they rejected it.
@@ -1319,7 +1454,7 @@ components:
     ApprovalDraft:
       type: object
       additionalProperties: false
-      required: [id, from, to, subject, text]
+      required: [id, from, to, cc, bcc, subject, text]
       description: The draft as it was when the agent asked, which is what the approver decides on.
       properties:
         id:
@@ -1337,6 +1472,15 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/EmailAddress"
+        cc:
+          type: array
+          items:
+            $ref: "#/components/schemas/EmailAddress"
+        bcc:
+          type: array
+          items:
+            $ref: "#/components/schemas/EmailAddress"
+          description: Recipients who get the message, but appear in no header.
         subject:
           type: string
         text:
@@ -1465,6 +1609,11 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/EmailAddress"
+        bcc:
+          type: array
+          items:
+            $ref: "#/components/schemas/EmailAddress"
+          description: The Bcc recipients of a message sent from the mailbox, if it had any. No header names them.
         recipient:
           type: string
           description: The mailbox's address the message was delivered to, or sent from, with its plus tag.

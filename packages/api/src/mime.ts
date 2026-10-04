@@ -76,6 +76,7 @@ export interface OutgoingMail {
   messageId: string;
   from: EmailAddress;
   to: EmailAddress[];
+  cc: EmailAddress[];
   subject: string;
   date: Date;
   /** The Message-ID of the message it answers, if it is a reply. */
@@ -91,12 +92,13 @@ export interface OutgoingMail {
  * The raw MIME of the message, with CRLF line endings. Text outside ASCII, and any subject too long
  * for one line, is written as encoded words. The body is 7bit when it can be and base64 otherwise.
  */
-export function buildMail({ messageId, from, to, subject, date, inReplyTo, references, headers, text }: OutgoingMail): Uint8Array {
+export function buildMail({ messageId, from, to, cc, subject, date, inReplyTo, references, headers, text }: OutgoingMail): Uint8Array {
   const body = text.replace(/\r\n?/g, "\n").split("\n").join("\r\n");
   const plain = isAscii(body) && body.split("\r\n").every((line) => line.length <= 998);
   const lines = [
     `From: ${addressField(from)}`,
     `To: ${to.map(addressField).join(",\r\n ")}`,
+    ...(cc.length === 0 ? [] : [`Cc: ${cc.map(addressField).join(",\r\n ")}`]),
     `Subject: ${unstructured("Subject", subject)}`,
     `Date: ${date.toUTCString().replace(/GMT$/, "+0000")}`,
     `Message-ID: ${messageId}`,

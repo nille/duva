@@ -310,6 +310,16 @@ function Galley({ entry, agent, sponsor, outcome, client, onDecided, onSeen, onS
                 <Field label={strings.galley.from}>{draft.from}</Field>
                 <Field label={strings.galley.to}>
                   <Addresses list={draft.to} />
+                  {draft.cc.length > 0 && (
+                    <p className="cc">
+                      {strings.galley.cc} <Addresses list={draft.cc} />
+                    </p>
+                  )}
+                  {draft.bcc.length > 0 && (
+                    <p className="cc">
+                      {strings.galley.bcc} <Addresses list={draft.bcc} />
+                    </p>
+                  )}
                 </Field>
                 <Field label={strings.galley.subject}>{draft.subject || strings.galley.noSubject}</Field>
                 <Field label={strings.galley.date}>{strings.galley.whenSent}</Field>

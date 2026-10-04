@@ -204,6 +204,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/mailboxes/{mailbox}/sent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the threads a mailbox has sent mail in, newest first.
+         * @description Lists every thread with a message sent from the mailbox, whatever its labels, a page at a time, newest first by its newest message. To read the next page, call again with the answer's next as after, until an answer has no next.
+         */
+        get: operations["listSentThreads"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/mailboxes/{mailbox}/threads/read": {
         parameters: {
             query?: never;
@@ -275,8 +295,8 @@ export interface paths {
         get: operations["listDrafts"];
         put?: never;
         /**
-         * Draft a reply to a message in a mailbox, or a new message.
-         * @description A reply goes from the address the original was sent to, plus tag kept, to the original's Reply-To or, without one, its From, with the subject carrying a single "Re: " prefix. A new message goes from the mailbox's default address, and needs to and subject. Only the mailbox's owner can draft in it. Writing a draft is recorded in the mailbox's change feed.
+         * Draft a reply to a message in a mailbox, a reply to all, or a new message.
+         * @description A reply goes from the address the original was sent to, plus tag kept, to the original's Reply-To or, without one, its From, with the subject carrying a single "Re: " prefix. A reply to your own message goes to its recipients instead. A reply to all also goes to every other recipient of the original, except the mailbox's own addresses. A new message goes from the mailbox's default address. A draft can be saved before it has recipients, a subject or text, but it needs a recipient in To to be sent. Only the mailbox's owner can draft in it. Writing a draft is recorded in the mailbox's change feed.
          */
         post: operations["createDraft"];
         delete?: never;
@@ -299,7 +319,11 @@ export interface paths {
         get: operations["getDraft"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete a draft.
+         * @description Deleting a draft that waits for approval withdraws the request. A draft being sent can't be deleted until its send is done. Deleting a sent draft leaves the sent message in its thread. Only the mailbox's owner can delete its drafts. The deletion, and any withdrawal, is recorded in the mailbox's change feed.
+         */
+        delete: operations["deleteDraft"];
         options?: never;
         head?: never;
         /**
@@ -320,7 +344,7 @@ export interface paths {
         put?: never;
         /**
          * Ask for a draft to be sent.
-         * @description An agent's send from its own mailbox needs its sponsor's approval, so the draft waits for them. Its send shows where it stands. Only the mailbox's owner can ask, and a draft waits for one approval at a time. Asking is recorded in the mailbox's change feed.
+         * @description A human's send from their own mailbox needs no approval, so Duva sends it at once, with no disclosure. An agent's send from its own mailbox needs its sponsor's approval, so the draft waits for them. Its send shows where it stands. Bcc recipients get the message, but no header names them. Only the mailbox's owner can ask, the draft needs a recipient in To, and a draft waits for one approval at a time. Asking is recorded in the mailbox's change feed.
          */
         post: operations["sendDraft"];
         delete?: never;
@@ -520,7 +544,7 @@ export interface components {
             position: number;
         };
         /** @description A change in a mailbox. */
-        MailboxChange: components["schemas"]["MessageReceived"] | components["schemas"]["DraftWritten"] | components["schemas"]["DraftChanged"] | components["schemas"]["ApprovalAsked"] | components["schemas"]["ApprovalWithdrawn"] | components["schemas"]["ApprovalDecided"] | components["schemas"]["MessageSent"] | components["schemas"]["SendFailed"] | components["schemas"]["SendUnclear"] | components["schemas"]["ThreadRead"] | components["schemas"]["ThreadUnread"];
+        MailboxChange: components["schemas"]["MessageReceived"] | components["schemas"]["DraftWritten"] | components["schemas"]["DraftChanged"] | components["schemas"]["DraftDeleted"] | components["schemas"]["SendAsked"] | components["schemas"]["ApprovalAsked"] | components["schemas"]["ApprovalWithdrawn"] | components["schemas"]["ApprovalDecided"] | components["schemas"]["MessageSent"] | components["schemas"]["SendFailed"] | components["schemas"]["SendUnclear"] | components["schemas"]["ThreadRead"] | components["schemas"]["ThreadUnread"];
         /** @description Mail arrived. No actor made this change, so it names none. */
         MessageReceived: {
             /** @description The change's position in the mailbox's feed, counting from 1. */
@@ -568,6 +592,30 @@ export interface components {
              * @enum {string}
              */
             type: "draftChanged";
+        };
+        DraftDeleted: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "draftDeleted";
+            /** @description The draft's ID. */
+            draft: string;
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "draftDeleted";
+        };
+        SendAsked: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "sendAsked";
+            /** @description The draft's ID. */
+            draft: string;
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "sendAsked";
         };
         ApprovalAsked: components["schemas"]["ChangeBase"] & {
             /** @constant */
@@ -637,8 +685,8 @@ export interface components {
             type: "sendFailed";
             /** @description The draft's ID. */
             draft: string;
-            /** @description The ID of the approval that let it go. */
-            approval: string;
+            /** @description The ID of the approval that let it go, if it needed one. */
+            approval?: string;
             /** @description SES's reason. */
             reason: string;
         } & {
@@ -653,8 +701,8 @@ export interface components {
             type: "sendUnclear";
             /** @description The draft's ID. */
             draft: string;
-            /** @description The ID of the approval that let it go. */
-            approval: string;
+            /** @description The ID of the approval that let it go, if it needed one. */
+            approval?: string;
         } & {
             /**
              * @description discriminator enum property added by openapi-typescript
@@ -689,6 +737,8 @@ export interface components {
         NewDraft: {
             /** @description The ID of the message the draft replies to. Without it, the draft is a new message. */
             answers?: string;
+            /** @description With answers, replies to all, so every other recipient of the original gets it too, except the mailbox's own addresses. */
+            replyAll?: boolean;
             /**
              * @description The recipients' addresses. A reply goes to the original's Reply-To or From unless you give them.
              * @example [
@@ -696,14 +746,22 @@ export interface components {
              *     ]
              */
             to?: string[];
+            /** @description The Cc recipients' addresses. A reply to all copies the original's Cc recipients unless you give them. */
+            cc?: string[];
+            /** @description The Bcc recipients' addresses, which get the message but appear in no header. */
+            bcc?: string[];
             /** @description The subject. A reply's is the original's with "Re: " unless you give one. */
             subject?: string;
             /** @description The plain-text body. */
-            text: string;
+            text?: string;
         };
         DraftChanges: {
             /** @description The recipients' addresses, in place of the draft's. */
             to?: string[];
+            /** @description The Cc recipients' addresses, in place of the draft's. */
+            cc?: string[];
+            /** @description The Bcc recipients' addresses, in place of the draft's. */
+            bcc?: string[];
             /** @description The subject, in place of the draft's. */
             subject?: string;
             /** @description The plain-text body. */
@@ -742,6 +800,9 @@ export interface components {
              */
             from: string;
             to: components["schemas"]["EmailAddress"][];
+            cc: components["schemas"]["EmailAddress"][];
+            /** @description Recipients who get the message, but appear in no header. */
+            bcc: components["schemas"]["EmailAddress"][];
             subject: string;
             /** @description The plain-text body. */
             text: string;
@@ -754,10 +815,10 @@ export interface components {
         };
         /** @description Where the draft's latest request to send stands. A draft never asked to send has none. */
         SendStatus: {
-            /** @description The ID of the approval the request needs. */
-            approval: string;
+            /** @description The ID of the approval the request needs, if it needs one. A human's send from their own mailbox needs none. */
+            approval?: string;
             /**
-             * @description waiting for approval; withdrawn because the draft changed while it waited; rejected, with the approver's note; approved, and about to be sent; sending; sent, as the message in its thread; failed, with SES's reason; or unclear, when sending stopped before SES answered, so a human checks whether it went out, by its recipients and subject, since only SES's answer gives its Message-ID. Duva never sends an unclear draft again. An approved draft can't change, but a rejected or failed one can be revised and asked again.
+             * @description waiting for approval; withdrawn because the draft changed while it waited; rejected, with the approver's note; approved, and about to be sent, which a human's send is at once; sending; sent, as the message in its thread; failed, with SES's reason; or unclear, when sending stopped before SES answered, so a human checks whether it went out, by its recipients and subject, since only SES's answer gives its Message-ID. Duva never sends an unclear draft again. An approved draft can't change, but a rejected or failed one can be revised and sent again.
              * @enum {string}
              */
             state: "waiting" | "withdrawn" | "rejected" | "approved" | "sending" | "sent" | "failed" | "unclear";
@@ -814,6 +875,9 @@ export interface components {
             thread?: string;
             from: string;
             to: components["schemas"]["EmailAddress"][];
+            cc: components["schemas"]["EmailAddress"][];
+            /** @description Recipients who get the message, but appear in no header. */
+            bcc: components["schemas"]["EmailAddress"][];
             subject: string;
             text: string;
         };
@@ -892,6 +956,8 @@ export interface components {
             from: components["schemas"]["EmailAddress"];
             to: components["schemas"]["EmailAddress"][];
             cc: components["schemas"]["EmailAddress"][];
+            /** @description The Bcc recipients of a message sent from the mailbox, if it had any. No header names them. */
+            bcc?: components["schemas"]["EmailAddress"][];
             /**
              * @description The mailbox's address the message was delivered to, or sent from, with its plus tag.
              * @example hermes+news@example.com
@@ -1455,6 +1521,38 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
+    listSentThreads: {
+        parameters: {
+            query?: {
+                /** @description How many threads a page lists at most. */
+                limit?: number;
+                /** @description Where the page starts, the next of the page before it. Leave it out for the first page. */
+                after?: string;
+            };
+            header?: never;
+            path: {
+                /** @description The mailbox's ID. */
+                mailbox: components["parameters"]["Mailbox"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of the threads the mailbox has sent in. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThreadList"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     markThreadsRead: {
         parameters: {
             query?: never;
@@ -1630,6 +1728,35 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
+    deleteDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The mailbox's ID. */
+                mailbox: components["parameters"]["Mailbox"];
+                /** @description The draft's ID. */
+                draft: components["parameters"]["Draft"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The draft, as it was when it was deleted. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Draft"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
     editDraft: {
         parameters: {
             query?: never;
@@ -1678,7 +1805,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The draft, waiting for approval. */
+            /** @description The draft, waiting for approval, or for a human's send, approved and about to be sent. */
             202: {
                 headers: {
                     [name: string]: unknown;
@@ -1687,6 +1814,7 @@ export interface operations {
                     "application/json": components["schemas"]["Draft"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];

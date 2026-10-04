@@ -4,6 +4,7 @@
 // one query away. Each step is written in one transaction with its entry in the mailbox's change
 // feed. Approving leaves the draft approved, which the table's stream hands the sender, and the
 // sender moves it on to sending and then sent, failed or unclear, each move on condition of the last.
+// A human's send from their own mailbox needs no approval, so asking leaves the draft approved at once.
 import { randomUUID } from "node:crypto";
 import { ConditionalCheckFailedException, TransactionCanceledException } from "@aws-sdk/client-dynamodb";
 import { GetCommand, QueryCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
@@ -19,8 +20,10 @@ export type Approval = components["schemas"]["Approval"];
 export type SendStatus = components["schemas"]["SendStatus"];
 type Edits = components["schemas"]["Edits"];
 type DraftContent = Omit<Draft, "id" | "updatedAt" | "send">;
+/** Where a draft's send stands as stored, with the actor who asked to send it if it needs no approval. */
+type StoredSend = SendStatus & { by?: string };
 /** A draft as stored, with the count of its writes, which each write checks, so of two at once one retries. */
-type StoredDraft = Draft & { version: number };
+type StoredDraft = Omit<Draft, "send"> & { send?: StoredSend; version: number };
 
 const draftKey = (mailbox: string, draft: string) => ({ [pk]: mailboxKey(mailbox)[pk]!, [sk]: `draft#${draft}` });
 const approvalKey = (approval: string) => ({ [pk]: `approval#${approval}`, [sk]: "approval" });
@@ -42,7 +45,7 @@ export class AlreadyApproved extends Error {
 
 // The states a send reaches once its approver approved it, after which the draft never changes.
 const approvedStates: SendStatus["state"][] = ["approved", "sending", "sent", "unclear"];
-const refuseApproved = (draft: Draft) => {
+const refuseApproved = (draft: Pick<Draft, "send">) => {
   if (draft.send !== undefined && approvedStates.includes(draft.send.state)) throw new AlreadyApproved(draft.send.state);
 };
 
@@ -72,6 +75,12 @@ export async function findDraft(table: Table, mailbox: string, id: string): Prom
   return stored && draftOf(stored);
 }
 
+/** The draft as the sender sends it: with the actor who asked to send it, if its send needs no approval. */
+export async function draftToSend(table: Table, mailbox: string, id: string): Promise<(Draft & { send?: StoredSend }) | undefined> {
+  const stored = await storedDraft(table, mailbox, id);
+  return stored && { ...draftOf(stored), ...(stored.send !== undefined && { send: stored.send }) };
+}
+
 async function storedDraft(table: Table, mailbox: string, id: string): Promise<StoredDraft | undefined> {
   const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: draftKey(mailbox, id), ConsistentRead: true }));
   return Item as StoredDraft | undefined;
@@ -90,7 +99,7 @@ export async function draftsIn(table: Table, mailbox: string): Promise<Draft[]> 
         ExclusiveStartKey: start,
       }),
     );
-    for (const item of page.Items ?? []) drafts.push(draftOf(item as Draft));
+    for (const item of page.Items ?? []) drafts.push(draftOf(item as StoredDraft));
     start = page.LastEvaluatedKey;
   } while (start !== undefined);
   return drafts.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
@@ -103,7 +112,7 @@ export async function draftsIn(table: Table, mailbox: string): Promise<Draft[]> 
  */
 export async function changeDraft(
   table: Table,
-  { mailbox, id, by, changes }: { mailbox: string; id: string; by: string; changes: Partial<Pick<Draft, "to" | "subject" | "text">> },
+  { mailbox, id, by, changes }: { mailbox: string; id: string; by: string; changes: Partial<Pick<Draft, "to" | "cc" | "bcc" | "subject" | "text">> },
 ): Promise<Draft | undefined> {
   return retried(async () => {
     const draft = await storedDraft(table, mailbox, id);
@@ -118,17 +127,70 @@ export async function changeDraft(
       version: draft.version + 1,
     };
     const items: TransactItem[] = [{ Put: { TableName: table.name, Item: { ...draftKey(mailbox, id), ...changed }, ...unchanged(draft) } }];
-    if (waiting !== undefined) {
-      const approval = await findApproval(table, waiting.approval);
-      if (approval === undefined) throw new Error(`The approval ${waiting.approval} that draft ${id} waits for is missing.`);
-      items.push(...settle(table, approval, { state: "withdrawn" }));
-    }
+    const withdrawn = await withdrawing(table, id, waiting);
     await recordChanges(table, mailboxFeed(mailbox), {
       by,
-      changes: [{ type: "draftChanged", draft: id }, ...(waiting ? [{ type: "approvalWithdrawn", draft: id, approval: waiting.approval }] : [])],
-      items,
+      changes: [{ type: "draftChanged", draft: id }, ...withdrawn.changes],
+      items: [...items, ...withdrawn.items],
     });
     return draftOf(changed);
+  });
+}
+
+/** The writes that withdraw the pending approval the draft waits for, if it waits for one, and the change that records it. */
+async function withdrawing(table: Table, draft: string, waiting: StoredSend | undefined): Promise<{ items: TransactItem[]; changes: object[] }> {
+  if (waiting?.approval === undefined) return { items: [], changes: [] };
+  const approval = await findApproval(table, waiting.approval);
+  if (approval === undefined) throw new Error(`The approval ${waiting.approval} that draft ${draft} waits for is missing.`);
+  return { items: settle(table, approval, { state: "withdrawn" }), changes: [{ type: "approvalWithdrawn", draft, approval: approval.id }] };
+}
+
+/** The draft is being sent, so it can't be deleted until its send is done. */
+export class BeingSent extends Error {}
+
+/**
+ * Deletes the draft, on behalf of the actor `by`. If it waits for an approval, deleting withdraws
+ * it. Throws BeingSent while it is approved or sending, since the sender still needs it. Returns
+ * the draft as it was, or undefined if the mailbox has no such draft.
+ */
+export async function deleteDraft(table: Table, { mailbox, id, by }: { mailbox: string; id: string; by: string }): Promise<Draft | undefined> {
+  return retried(async () => {
+    const draft = await storedDraft(table, mailbox, id);
+    if (draft === undefined) return undefined;
+    if (draft.send?.state === "approved" || draft.send?.state === "sending") throw new BeingSent();
+    const waiting = draft.send?.state === "waiting" ? draft.send : undefined;
+    const withdrawn = await withdrawing(table, id, waiting);
+    await recordChanges(table, mailboxFeed(mailbox), {
+      by,
+      changes: [{ type: "draftDeleted", draft: id }, ...withdrawn.changes],
+      items: [{ Delete: { TableName: table.name, Key: draftKey(mailbox, id), ...unchanged(draft) } }, ...withdrawn.items],
+    });
+    return draftOf(draft);
+  });
+}
+
+/** The draft has no recipient in To, so it can't be sent. */
+export class NoRecipient extends Error {}
+
+/**
+ * Asks for the draft to be sent, on behalf of the human who owns its mailbox, which needs no
+ * approval, so the draft is approved at once and the sender sends it. A failed draft can be sent
+ * again. Throws NoRecipient without a recipient in To, and AlreadyApproved once it was approved.
+ * Returns undefined if the mailbox has no such draft.
+ */
+export async function sendAtOnce(table: Table, { mailbox, id, by }: { mailbox: string; id: string; by: string }): Promise<Draft | undefined> {
+  return retried(async () => {
+    const draft = await storedDraft(table, mailbox, id);
+    if (draft === undefined) return undefined;
+    refuseApproved(draft);
+    if (draft.to.length === 0) throw new NoRecipient();
+    const asked: StoredDraft = { ...draft, send: { state: "approved", by }, version: draft.version + 1 };
+    await recordChanges(table, mailboxFeed(mailbox), {
+      by,
+      changes: [{ type: "sendAsked", draft: id }],
+      items: [{ Put: { TableName: table.name, Item: { ...draftKey(mailbox, id), ...asked }, ...unchanged(draft) } }],
+    });
+    return draftOf(asked);
   });
 }
 
@@ -143,6 +205,7 @@ export async function askToSend(table: Table, { mailbox, id, agent }: { mailbox:
     if (draft === undefined) return undefined;
     if (draft.send?.state === "waiting") throw new AlreadyWaiting();
     refuseApproved(draft);
+    if (draft.to.length === 0) throw new NoRecipient();
     const approval: Approval = {
       id: randomUUID(),
       state: "pending",
@@ -320,11 +383,14 @@ const editsOf = ({ to, subject, text }: Edits): Edits => ({
   ...(text !== undefined && { text }),
 });
 
-const approvalDraftOf = ({ id, answers, thread, from, to, subject, text }: Approval["draft"]): Approval["draft"] => ({
+// Drafts and approvals stored before Cc and Bcc existed have neither.
+const approvalDraftOf = ({ id, answers, thread, from, to, cc = [], bcc = [], subject, text }: Approval["draft"]): Approval["draft"] => ({
   id,
   ...(answers !== undefined && { answers, thread }),
   from,
   to: to.map(addressOf),
+  cc: cc.map(addressOf),
+  bcc: bcc.map(addressOf),
   subject,
   text,
 });
@@ -332,11 +398,13 @@ const approvalDraftOf = ({ id, answers, thread, from, to, subject, text }: Appro
 const addressOf = ({ name, address }: components["schemas"]["EmailAddress"]) => (name === undefined ? { address } : { name, address });
 
 /** The draft in the order the contract lists its fields, without what only Duva keeps. */
-const draftOf = ({ id, answers, thread, from, to, subject, text, updatedAt, send }: Draft): Draft => ({
+const draftOf = ({ id, answers, thread, from, to, cc = [], bcc = [], subject, text, updatedAt, send }: Omit<StoredDraft, "version">): Draft => ({
   id,
   ...(answers !== undefined && { answers, thread }),
   from,
   to: to.map(addressOf),
+  cc: cc.map(addressOf),
+  bcc: bcc.map(addressOf),
   subject,
   text,
   updatedAt,
@@ -344,7 +412,7 @@ const draftOf = ({ id, answers, thread, from, to, subject, text, updatedAt, send
 });
 
 const sendOf = ({ approval, state, note, reason, thread, message, messageId }: SendStatus): SendStatus => ({
-  approval,
+  ...(approval !== undefined && { approval }),
   state,
   ...(note !== undefined && { note }),
   ...(reason !== undefined && { reason }),
@@ -362,51 +430,67 @@ export function draftAt(keys: Record<string, string>): { mailbox: string; draft:
 
 /**
  * Moves the approved draft to sending, as the message with the ID in Duva, on condition that it is
- * still approved for the approval. Returns false if it no longer is.
+ * still approved for the same request. Returns false if it no longer is.
  */
-export async function startSending(table: Table, { mailbox, draft, approval, message }: Sending): Promise<boolean> {
+export async function startSending(table: Table, sending: Sending): Promise<boolean> {
+  const { mailbox, draft, message } = sending;
+  const request = sameRequest(sending);
   return conditionally(
     documents(table).send(
       new UpdateCommand({
         TableName: table.name,
         Key: draftKey(mailbox, draft),
         UpdateExpression: "SET #send = :sending, version = version + :one",
-        ConditionExpression: "#send.approval = :approval AND #send.#state = :approved",
-        ExpressionAttributeNames: { "#send": "send", "#state": "state" },
-        ExpressionAttributeValues: { ":sending": { approval, state: "sending", message }, ":one": 1, ":approval": approval, ":approved": "approved" },
+        ConditionExpression: `${request.condition} AND #send.#state = :approved`,
+        ExpressionAttributeNames: { "#send": "send", "#state": "state", ...request.names },
+        ExpressionAttributeValues: { ":sending": { ...outcomeOf(sending, "sending"), message }, ":one": 1, ...request.values, ":approved": "approved" },
       }),
     ),
   );
 }
 
 /** The write that moves the draft from sending the message to the outcome, on condition that it is still sending it. */
-function sendingSettles(table: Table, { mailbox, draft, approval, message }: Sending, outcome: SendStatus): TransactItem {
+function sendingSettles(table: Table, sending: Sending, outcome: StoredSend): TransactItem {
+  const { mailbox, draft, message } = sending;
+  const request = sameRequest(sending);
   return {
     Update: {
       TableName: table.name,
       Key: draftKey(mailbox, draft),
       UpdateExpression: "SET #send = :outcome, version = version + :one",
-      ConditionExpression: "#send.approval = :approval AND #send.#state = :sending AND #send.message = :message",
-      ExpressionAttributeNames: { "#send": "send", "#state": "state" },
-      ExpressionAttributeValues: { ":outcome": outcome, ":one": 1, ":approval": approval, ":sending": "sending", ":message": message },
+      ConditionExpression: `${request.condition} AND #send.#state = :sending AND #send.message = :message`,
+      ExpressionAttributeNames: { "#send": "send", "#state": "state", ...request.names },
+      ExpressionAttributeValues: { ":outcome": outcome, ":one": 1, ...request.values, ":sending": "sending", ":message": message },
     },
   };
 }
 
-/** A draft the sender is sending, on behalf of the agent, as the message with the ID in Duva. */
+/** The condition that the draft's send is still the request being sent: the same approval, or the same ask without one. */
+const sameRequest = ({ approval, by }: Sending): { condition: string; names: Record<string, string>; values: Record<string, string> } =>
+  approval === undefined
+    ? { condition: "attribute_not_exists(#send.approval) AND #send.#by = :by", names: { "#by": "by" }, values: { ":by": by } }
+    : { condition: "#send.approval = :approval", names: {}, values: { ":approval": approval } };
+
+/** A send status in the state, for the same request as the sending. */
+const outcomeOf = ({ approval, by }: Sending, state: SendStatus["state"]): StoredSend => (approval === undefined ? { state, by } : { approval, state });
+
+/**
+ * A draft the sender is sending, as the message with the ID in Duva, on behalf of the actor `by`:
+ * the agent whose send the approval let go, or the human who sent it without one.
+ */
 export interface Sending {
   mailbox: string;
   draft: string;
-  approval: string;
+  approval?: string;
   message: string;
-  agent: string;
+  by: string;
 }
 
 /**
  * Marks the draft sent as the message, which SES accepted and gave the Message-ID its recipients
  * see, and stores the message in the draft's thread, or in a new one if it isn't a reply, where
- * that Message-ID points at it, naming the approval it went out with. Returns false if the draft
- * was no longer sending it.
+ * that Message-ID points at it, naming the approval it went out with, if it needed one. A human's
+ * send from their own mailbox needs none. Returns false if the draft was no longer sending it.
  */
 export function markSent(
   table: Table,
@@ -416,24 +500,24 @@ export function markSent(
     messageId,
     stored,
     text,
-    approval: { approver, decidedAt, edits },
-  }: { thread: string | undefined; messageId: string; stored: Omit<StoredMessage, "id" | "messageId" | "sentBy" | "approval">; text: string; approval: Approval },
+    approval,
+  }: { thread: string | undefined; messageId: string; stored: Omit<StoredMessage, "id" | "messageId" | "sentBy" | "approval">; text: string; approval: Approval | undefined },
 ): Promise<boolean> {
-  const { mailbox, draft, approval, message, agent } = sending;
-  const once = (sentThread: string) => sendingSettles(table, sending, { approval, state: "sent", thread: sentThread, message, messageId });
+  const { mailbox, draft, message, by } = sending;
+  const once = (sentThread: string) => sendingSettles(table, sending, { ...outcomeOf(sending, "sent"), thread: sentThread, message, messageId });
   // The sender sends only drafts whose approval was decided, so it has a time.
-  const approved = { id: approval, approver, approvedAt: decidedAt!, ...(edits !== undefined && { edits }) };
-  return storeSentMessage(table, { mailbox, message: { ...stored, id: message, messageId, sentBy: agent, approval: approved }, text, thread, draft, once });
+  const approved = approval && { id: approval.id, approver: approval.approver, approvedAt: approval.decidedAt!, ...(approval.edits !== undefined && { edits: approval.edits }) };
+  return storeSentMessage(table, { mailbox, message: { ...stored, id: message, messageId, sentBy: by, ...(approved !== undefined && { approval: approved }) }, text, thread, draft, once });
 }
 
-/** Marks the draft failed with SES's reason, which the agent and its sponsor see. Returns false if it was no longer sending. */
+/** Marks the draft failed with SES's reason, which those who read the mailbox see. Returns false if it was no longer sending. */
 export function markFailed(table: Table, sending: Sending, reason: string): Promise<boolean> {
-  const { mailbox, draft, approval, agent } = sending;
+  const { mailbox, draft, approval, by } = sending;
   return conditionally(
     recordChanges(table, mailboxFeed(mailbox), {
-      by: agent,
+      by,
       changes: [{ type: "sendFailed", draft, approval, reason }],
-      items: [sendingSettles(table, sending, { approval, state: "failed", reason })],
+      items: [sendingSettles(table, sending, { ...outcomeOf(sending, "failed"), reason })],
     }),
   );
 }
@@ -444,12 +528,12 @@ export function markFailed(table: Table, sending: Sending, reason: string): Prom
  * is unknown. Returns false if it was no longer sending.
  */
 export function markUnclear(table: Table, sending: Sending): Promise<boolean> {
-  const { mailbox, draft, approval, agent } = sending;
+  const { mailbox, draft, approval, by } = sending;
   return conditionally(
     recordChanges(table, mailboxFeed(mailbox), {
-      by: agent,
+      by,
       changes: [{ type: "sendUnclear", draft, approval }],
-      items: [sendingSettles(table, sending, { approval, state: "unclear" })],
+      items: [sendingSettles(table, sending, outcomeOf(sending, "unclear"))],
     }),
   );
 }

@@ -40,6 +40,8 @@ test("the agent drafts a reply, from the address the original was sent to, plus 
     thread: thread.id,
     from: "hermes+meetings@example.com",
     to: [{ name: "Grace Hopper", address: "grace@example.org" }],
+    cc: [],
+    bcc: [],
     subject: "Re: Meeting",
     text: "Monday works.",
     updatedAt: expect.any(String),
@@ -72,6 +74,8 @@ test("the agent drafts a new message, which goes from the mailbox's default addr
     id: expect.any(String),
     from: "hermes@example.com",
     to: [{ address: "grace@example.org" }],
+    cc: [],
+    bcc: [],
     subject: "Hello",
     text: "Hej Grace.",
     updatedAt: expect.any(String),
@@ -79,9 +83,8 @@ test("the agent drafts a new message, which goes from the mailbox's default addr
 });
 
 test.each([
-  ["without recipients", { subject: "Hello", text: "Hej." }, /recipients and a subject/],
   ["to something that isn't an address", { to: ["grace"], subject: "Hello", text: "Hej." }, /"grace" isn't an email address/],
-  ["without text", { to: ["grace@example.org"], subject: "Hello" }, /text/],
+  ["with a Cc that isn't an address", { to: ["grace@example.org"], cc: ["ada"], subject: "Hello", text: "Hej." }, /"ada" isn't an email address/],
   ["with a subject of two lines", { to: ["grace@example.org"], subject: "Hello\r\nBcc: x@example.net", text: "Hej." }, /one line/],
 ])("a draft %s is refused", async (_, body, message) => {
   const { hermes, params } = await withMailbox();
@@ -90,6 +93,17 @@ test.each([
 
   expect(response.status).toBe(400);
   expect(error?.message).toMatch(message);
+});
+
+test("an agent's draft without a recipient in To can't be asked to send", async () => {
+  const { ada, hermes, params } = await withMailbox();
+  const { data: draft } = await hermes.POST("/mailboxes/{mailbox}/drafts", { params, body: { subject: "Hello", text: "Hej." } });
+
+  const { response, error } = await hermes.POST("/mailboxes/{mailbox}/drafts/{draft}/send", { params: { path: { ...params.path, draft: draft!.id } } });
+
+  expect(response.status).toBe(400);
+  expect(error?.message).toMatch(/recipient in To/);
+  expect((await ada.GET("/approvals")).data).toEqual({ approvals: [] });
 });
 
 test("a reply to a message the mailbox doesn't have is refused", async () => {
@@ -128,7 +142,7 @@ async function withAskedReply() {
   const { data: draft } = await hermes.POST("/mailboxes/{mailbox}/drafts", { params, body: { answers: message.id, text: "Monday works." } });
   const draftParams = { path: { ...params.path, draft: draft!.id } };
   const asked = await hermes.POST("/mailboxes/{mailbox}/drafts/{draft}/send", { params: draftParams });
-  return { ...setup, original: message, draft: draft!, draftParams, asked, approval: asked.data!.send!.approval };
+  return { ...setup, original: message, draft: draft!, draftParams, asked, approval: asked.data!.send!.approval! };
 }
 
 test("asking to send a draft waits for the sponsor's approval, showing the draft beside the message it answers", async () => {
@@ -147,7 +161,7 @@ test("asking to send a draft waits for the sponsor's approval, showing the draft
         mailbox: mailbox.id,
         agent: agent.id,
         approver: sponsor!.id,
-        draft: { id: draft.id, answers: original.id, thread: draft.thread, from: "hermes@example.com", to: draft.to, subject: "Re: Meeting", text: "Monday works." },
+        draft: { id: draft.id, answers: original.id, thread: draft.thread, from: "hermes@example.com", to: draft.to, cc: [], bcc: [], subject: "Re: Meeting", text: "Monday works." },
         original,
         askedAt: expect.any(String),
       },
@@ -244,7 +258,7 @@ test("the sponsor rejects with a note, the draft comes back to the agent with it
   expect(revised?.send).toEqual({ approval, state: "rejected", note: "Say Tuesday, not Monday." });
   expect(again.data?.send).toEqual({ approval: expect.not.stringMatching(approval), state: "waiting" });
   const { data: pending } = await ada.GET("/approvals");
-  expect(pending?.approvals.map(({ id, draft }) => ({ id, text: draft.text }))).toEqual([{ id: again.data!.send!.approval, text: "Tuesday works." }]);
+  expect(pending?.approvals.map(({ id, draft }) => ({ id, text: draft.text }))).toEqual([{ id: again.data!.send!.approval!, text: "Tuesday works." }]);
 });
 
 test("a rejection needs a note", async () => {
@@ -299,7 +313,7 @@ test("the mailbox's change feed records each step, naming its actor", async () =
 
   const { data } = await ada.GET("/mailboxes/{mailbox}/changes", { params });
 
-  const second = again!.send!.approval;
+  const second = again!.send!.approval!;
   expect(data?.changes.map(({ position, at, ...change }) => change)).toEqual([
     { type: "messageReceived", thread: draft.thread, message: draft.answers },
     { actor: agent.id, type: "draftWritten", draft: draft.id },

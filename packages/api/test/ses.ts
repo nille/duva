@@ -161,18 +161,19 @@ function matches(rule: ReceiptRule, recipient: string): boolean {
 
 /**
  * Stands in for SES sending in one region, recording each raw message it accepts as its recipients
- * get it. Like SES, it gives each message an ID, answers with it, and replaces the message's
+ * get it, and the recipients it delivers it to: those the call's destination names, Bcc included,
+ * which no header shows. Like SES, it gives each message an ID, answers with it, and replaces the message's
  * Message-ID with <ID@region.amazonses.com>. The domain is verified, and in the sandbox SES refuses
  * a message to anyone not on it, with SES's reason. With `answersLost`, SES accepts each message
  * but its answer never arrives, as when the connection drops.
  */
 export function sesSending({ region, domain, sandbox, answersLost }: { region: string; domain: string; sandbox: boolean; answersLost: boolean }) {
-  const accepted: string[] = [];
+  const accepted: { raw: string; recipients: string[] }[] = [];
   const outbound: Outbound = {
-    async send(raw) {
+    async send(raw, destination) {
       const parsed = await PostalMime.parse(raw);
       const from = parsed.from?.address ?? "";
-      const recipients = [...(parsed.to ?? []), ...(parsed.cc ?? [])].map(({ address }) => String(address));
+      const recipients = [...destination.to, ...destination.cc, ...destination.bcc];
       const unverified = [from, ...(sandbox ? recipients : [])].filter((address) => address.split("@")[1]?.toLowerCase() !== domain);
       if (unverified.length > 0) {
         throw new Refused(`Email address is not verified. The following identities failed the check in region ${region.toUpperCase()}: ${unverified.join(", ")}`);
@@ -180,7 +181,7 @@ export function sesSending({ region, domain, sandbox, answersLost }: { region: s
       const messageId = `0110019${randomUUID().replaceAll("-", "").slice(0, 9)}-${randomUUID()}-000000`;
       const [head = "", ...body] = new TextDecoder().decode(raw).split("\r\n\r\n");
       const fields = head.split(/\r\n(?![ \t])/).filter((field) => !/^message-id:/i.test(field));
-      accepted.push([[...fields, `Message-ID: <${messageId}@${region}.amazonses.com>`].join("\r\n"), ...body].join("\r\n\r\n"));
+      accepted.push({ raw: [[...fields, `Message-ID: <${messageId}@${region}.amazonses.com>`].join("\r\n"), ...body].join("\r\n\r\n"), recipients });
       if (answersLost) throw new Error("socket hang up");
       return messageId;
     },
@@ -188,6 +189,8 @@ export function sesSending({ region, domain, sandbox, answersLost }: { region: s
   return {
     outbound,
     /** The raw messages SES accepted, as their recipients get them, oldest first. */
-    sent: () => [...accepted],
+    sent: () => accepted.map(({ raw }) => raw),
+    /** The recipients SES delivered each message in sent() to, in the same order. */
+    sentTo: () => accepted.map(({ recipients }) => [...recipients]),
   };
 }

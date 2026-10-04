@@ -42,12 +42,12 @@ const messageKey = (mailbox: string, thread: string, receivedAt: string, message
   [pk]: partition(mailbox),
   [sk]: `${threadPrefix(thread)}message#${receivedAt}#${message}`,
 });
-// Each label lists its threads newest first, each with its summary.
-const labelKey = (mailbox: string, label: string, latestAt: string, thread: string) => ({
-  [pk]: `${partition(mailbox)}#label#${label}`,
+// Each listing, a label's or Sent, lists its threads newest first, each with its summary.
+const listingKey = (mailbox: string, listing: Listing, latestAt: string, thread: string) => ({
+  [pk]: `${partition(mailbox)}#${"label" in listing ? `label#${listing.label}` : "sent"}`,
   [sk]: `${latestAt}#${thread}`,
 });
-// A page of a label's threads ends at a label entry, whose sort key is the next page's cursor.
+// A page of a listing's threads ends at an entry, whose sort key is the next page's cursor.
 const labelPosition = /^\d{4}-\d\d-\d\dT[\d:.]+Z#[\w-]+$/;
 const cursorAt = (position: string) => Buffer.from(position).toString("base64url");
 // Each Message-ID points at its message, so a reply can find the thread it belongs in.
@@ -81,6 +81,15 @@ export interface Arrival {
   spam: boolean;
 }
 
+/** What lists threads: a label, or Sent, which lists the threads with a message sent from the mailbox. */
+export type Listing = { label: string } | { sent: true };
+
+/** The listings a thread is in: one per label, and Sent if the mailbox sent in it. */
+const listingsOf = ({ labels, sent }: StoredSummary): Listing[] => [...labels.map((label) => ({ label })), ...(sent ? [{ sent: true as const }] : [])];
+
+/** A thread's summary as stored, with whether the mailbox sent in it. Threads stored before Sent existed don't say. */
+type StoredSummary = ThreadSummary & { sent?: boolean };
+
 /** How many of the messages a reply names are looked up, newest first, to find its thread. */
 const answersLookedUp = 100;
 
@@ -91,6 +100,8 @@ interface StoredMessage {
   from: components["schemas"]["EmailAddress"];
   to: components["schemas"]["EmailAddress"][];
   cc: components["schemas"]["EmailAddress"][];
+  /** The Bcc recipients, of a message sent from the mailbox only. */
+  bcc?: components["schemas"]["EmailAddress"][];
   recipient: string;
   plusTag?: string;
   subject: string;
@@ -145,7 +156,8 @@ export async function receiveMessage(table: Table, arrival: Arrival): Promise<bo
 
 /**
  * Stores the message the actor `sentBy` sent from the mailbox, which SES accepted, in the thread
- * of the message it answers, whose read state it keeps, or as a new read thread without labels. `once` gives the write that marks
+ * of the message it answers, whose read state it keeps, or as a new read thread without labels.
+ * Either way Sent lists the thread. `once` gives the write that marks
  * the draft sent in the thread, on condition that it is still sending, so the message is stored once. Records the
  * send in the mailbox's change feed, naming the sender. Returns false if `once`'s condition failed.
  */
@@ -166,6 +178,7 @@ export async function storeSentMessage(
     text,
     thread: async () => (thread === undefined ? undefined : threadSummary(table, mailbox, thread)),
     findable: true,
+    sent: true,
     by: message.sentBy,
     change: (id) => ({ type: "messageSent", draft, thread: id, message: message.id }),
     once,
@@ -176,20 +189,21 @@ export async function storeSentMessage(
  * Stores the message in the thread `thread` finds, or else in a new one, with the label if given,
  * in one transaction with the write `once` gives for the thread and the change in the mailbox's
  * change feed. If `findable`, its Message-ID points at it, so replies to it join its thread. If
- * `unread` is given, the thread becomes unread or read. If the message is the thread's newest, its
- * text gives the thread's snippet. Returns false if that write's condition failed, since then the
- * message is already stored.
+ * `unread` is given, the thread becomes unread or read. If `sent`, Sent lists the thread from then
+ * on. If the message is the thread's newest, its text gives the thread's snippet. Returns false if
+ * that write's condition failed, since then the message is already stored.
  */
 async function storeMessage(
   table: Table,
-  { mailbox, message, text, thread: find, label, unread, findable, by, change, once }: {
+  { mailbox, message, text, thread: find, label, unread, findable, sent, by, change, once }: {
     mailbox: string;
     message: StoredMessage;
     text: string;
-    thread: () => Promise<ThreadSummary | undefined>;
+    thread: () => Promise<StoredSummary | undefined>;
     label?: string;
     unread?: boolean;
     findable: boolean;
+    sent?: boolean;
     by: string | undefined;
     change: (thread: string) => object;
     once: (thread: string) => TransactItem;
@@ -203,7 +217,7 @@ async function storeMessage(
     const joined = await find();
     const thread = joined?.id ?? randomUUID();
     const newest = joined === undefined || receivedAt > joined.latestAt;
-    const summary: ThreadSummary =
+    const summary: StoredSummary =
       joined === undefined
         ? {
             id: thread,
@@ -214,6 +228,7 @@ async function storeMessage(
             unread: unread ?? false,
             latestAt: receivedAt,
             messages: 1,
+            ...(sent && { sent }),
           }
         : {
             ...joined,
@@ -222,10 +237,11 @@ async function storeMessage(
             unread: unread ?? joined.unread,
             latestAt: newest ? receivedAt : joined.latestAt,
             messages: joined.messages + 1,
+            ...((sent || joined.sent) && { sent: true }),
           };
-    // The labels' entries move to the thread's new place. A delete and a put of the same item can't
+    // The listings' entries move to the thread's new place. A delete and a put of the same item can't
     // share a transaction, so a thread that keeps its place has its entries overwritten instead.
-    const moved = joined !== undefined && joined.latestAt !== summary.latestAt ? joined.labels : [];
+    const moved = joined !== undefined && joined.latestAt !== summary.latestAt ? listingsOf(joined) : [];
     try {
       await recordChanges(table, mailboxFeed(mailbox), {
         by,
@@ -234,8 +250,8 @@ async function storeMessage(
           once(thread),
           put({ ...threadKey(mailbox, thread), ...summary }, joined === undefined ? isNew : asRead(joined)),
           put({ ...messageKey(mailbox, thread, receivedAt, id), ...message, thread }),
-          ...moved.map((moving) => ({ Delete: { TableName: table.name, Key: labelKey(mailbox, moving, joined!.latestAt, thread) } })),
-          ...summary.labels.map((kept) => put({ ...labelKey(mailbox, kept, summary.latestAt, thread), ...summary })),
+          ...moved.map((moving) => ({ Delete: { TableName: table.name, Key: listingKey(mailbox, moving, joined!.latestAt, thread) } })),
+          ...listingsOf(summary).map((kept) => put({ ...listingKey(mailbox, kept, summary.latestAt, thread), ...summary })),
           ...(message.messageId === undefined || !findable ? [] : [put({ ...messageIdKey(mailbox, message.messageId), thread, message: id })]),
           put({ ...messageRefKey(mailbox, id), thread, receivedAt }),
         ],
@@ -286,7 +302,7 @@ export async function markThreads(
           changes: [{ type: unread ? "threadUnread" : "threadRead", thread: summary.id }],
           items: [
             { Put: { TableName: table.name, Item: { ...threadKey(mailbox, summary.id), ...summary }, ...asRead(current!) } },
-            ...summary.labels.map((label) => ({ Put: { TableName: table.name, Item: { ...labelKey(mailbox, label, summary.latestAt, summary.id), ...summary } } })),
+            ...listingsOf(summary).map((listing) => ({ Put: { TableName: table.name, Item: { ...listingKey(mailbox, listing, summary.latestAt, summary.id), ...summary } } })),
           ],
         });
         current = summary;
@@ -299,17 +315,17 @@ export async function markThreads(
     }
     marked.push(current!);
   }
-  return { threads: marked };
+  return { threads: marked.map(summaryOf) };
 }
 
-/** The thread's summary, or undefined if the mailbox has no such thread. */
-async function threadSummary(table: Table, mailbox: string, thread: string): Promise<ThreadSummary | undefined> {
+/** The thread's summary as stored, or undefined if the mailbox has no such thread. */
+async function threadSummary(table: Table, mailbox: string, thread: string): Promise<StoredSummary | undefined> {
   const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: threadKey(mailbox, thread), ConsistentRead: true }));
-  return Item === undefined ? undefined : summaryOf(Item as ThreadSummary);
+  return Item === undefined ? undefined : { ...summaryOf(Item as ThreadSummary), ...(Item.sent === true && { sent: true }) };
 }
 
 /** The thread of the first of the messages that the mailbox has, if it has any. */
-async function threadAnswered(table: Table, mailbox: string, messageIds: string[]): Promise<ThreadSummary | undefined> {
+async function threadAnswered(table: Table, mailbox: string, messageIds: string[]): Promise<StoredSummary | undefined> {
   const found = await Promise.all(
     messageIds
       .slice(0, answersLookedUp)
@@ -320,11 +336,11 @@ async function threadAnswered(table: Table, mailbox: string, messageIds: string[
 }
 
 /**
- * A page of the threads with the label, newest first, at most `limit` of them, after the page that
- * gave `after` as its next. The page has a next if more threads follow.
+ * A page of the threads the listing lists, newest first, at most `limit` of them, after the page
+ * that gave `after` as its next. The page has a next if more threads follow.
  */
-export async function threadsWithLabel(table: Table, mailbox: string, label: string, { limit, after }: { limit: number; after?: Cursor }): Promise<ThreadList> {
-  const partition = labelKey(mailbox, label, "", "")[pk];
+export async function listedThreads(table: Table, mailbox: string, listing: Listing, { limit, after }: { limit: number; after?: Cursor }): Promise<ThreadList> {
+  const partition = listingKey(mailbox, listing, "", "")[pk];
   const { Items = [] } = await documents(table).send(
     new QueryCommand({
       TableName: table.name,
@@ -346,7 +362,7 @@ export async function threadsWithLabel(table: Table, mailbox: string, label: str
 
 /** How many of the threads with the label are unread. */
 export async function unreadWithLabel(table: Table, mailbox: string, label: string): Promise<number> {
-  const partition = labelKey(mailbox, label, "", "")[pk];
+  const partition = listingKey(mailbox, { label }, "", "")[pk];
   let count = 0;
   let start: Record<string, unknown> | undefined;
   do {
@@ -366,7 +382,7 @@ export async function unreadWithLabel(table: Table, mailbox: string, label: stri
   return count;
 }
 
-/** Where a page of threads starts: after the thread at the position in its label. */
+/** Where a page of threads starts: after the thread at the position in its listing. */
 export interface Cursor {
   position: string;
 }
@@ -444,13 +460,14 @@ async function readMessage(mailBucket: MailBucket, stored: StoredMessage): Promi
   if (raw === undefined) throw new Error(`The raw message ${stored.rawKey} is missing from the mail bucket.`);
   const parsed = await parseMail(raw);
   const { text, attachments } = parsed;
-  const { id, messageId, from, to, cc, recipient, plusTag, subject, date, receivedAt, sentBy, approval } = stored;
+  const { id, messageId, from, to, cc, bcc, recipient, plusTag, subject, date, receivedAt, sentBy, approval } = stored;
   const message = {
     id,
     messageId,
     from: addressOf(from),
     to: to.map(addressOf),
     cc: cc.map(addressOf),
+    ...(bcc !== undefined && bcc.length > 0 && { bcc: bcc.map(addressOf) }),
     recipient,
     plusTag,
     subject,

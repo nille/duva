@@ -132,6 +132,16 @@ Lists the threads a page at a time, newest first by their newest message. To rea
 - `--limit`: How many threads a page lists at most.
 - `--after`: Where the page starts, the next of the page before it. Leave it out for the first page.
 
+## duva threads sent
+
+List the threads a mailbox has sent mail in, newest first.
+
+Lists every thread with a message sent from the mailbox, whatever its labels, a page at a time, newest first by its newest message. To read the next page, call again with the answer's next as after, until an answer has no next.
+
+- `--mailbox` (required): The mailbox's ID.
+- `--limit`: How many threads a page lists at most.
+- `--after`: Where the page starts, the next of the page before it. Leave it out for the first page.
+
 ## duva threads mark-read
 
 Mark threads in a mailbox read.
@@ -167,21 +177,33 @@ Only the mailbox's owner and, for an agent's mailbox, its sponsor can list them.
 
 ## duva drafts create
 
-Draft a reply to a message in a mailbox, or a new message.
+Draft a reply to a message in a mailbox, a reply to all, or a new message.
 
-A reply goes from the address the original was sent to, plus tag kept, to the original's Reply-To or, without one, its From, with the subject carrying a single "Re: " prefix. A new message goes from the mailbox's default address, and needs to and subject. Only the mailbox's owner can draft in it. Writing a draft is recorded in the mailbox's change feed.
+A reply goes from the address the original was sent to, plus tag kept, to the original's Reply-To or, without one, its From, with the subject carrying a single "Re: " prefix. A reply to your own message goes to its recipients instead. A reply to all also goes to every other recipient of the original, except the mailbox's own addresses. A new message goes from the mailbox's default address. A draft can be saved before it has recipients, a subject or text, but it needs a recipient in To to be sent. Only the mailbox's owner can draft in it. Writing a draft is recorded in the mailbox's change feed.
 
 - `--mailbox` (required): The mailbox's ID.
 - `--answers`: The ID of the message the draft replies to. Without it, the draft is a new message.
+- `--replyAll`: With answers, replies to all, so every other recipient of the original gets it too, except the mailbox's own addresses.
 - `--to` (once for each): The recipients' addresses. A reply goes to the original's Reply-To or From unless you give them.
+- `--cc` (once for each): The Cc recipients' addresses. A reply to all copies the original's Cc recipients unless you give them.
+- `--bcc` (once for each): The Bcc recipients' addresses, which get the message but appear in no header.
 - `--subject`: The subject. A reply's is the original's with "Re: " unless you give one.
-- `--text` (required): The plain-text body.
+- `--text`: The plain-text body.
 
 ## duva drafts get
 
 Read a draft, with where its send stands.
 
 Only the mailbox's owner and, for an agent's mailbox, its sponsor can read it.
+
+- `--mailbox` (required): The mailbox's ID.
+- `--draft` (required): The draft's ID.
+
+## duva drafts delete
+
+Delete a draft.
+
+Deleting a draft that waits for approval withdraws the request. A draft being sent can't be deleted until its send is done. Deleting a sent draft leaves the sent message in its thread. Only the mailbox's owner can delete its drafts. The deletion, and any withdrawal, is recorded in the mailbox's change feed.
 
 - `--mailbox` (required): The mailbox's ID.
 - `--draft` (required): The draft's ID.
@@ -195,6 +217,8 @@ Changing a draft that waits for approval withdraws the request, so an approver n
 - `--mailbox` (required): The mailbox's ID.
 - `--draft` (required): The draft's ID.
 - `--to` (once for each): The recipients' addresses, in place of the draft's.
+- `--cc` (once for each): The Cc recipients' addresses, in place of the draft's.
+- `--bcc` (once for each): The Bcc recipients' addresses, in place of the draft's.
 - `--subject`: The subject, in place of the draft's.
 - `--text`: The plain-text body.
 
@@ -202,7 +226,7 @@ Changing a draft that waits for approval withdraws the request, so an approver n
 
 Ask for a draft to be sent.
 
-An agent's send from its own mailbox needs its sponsor's approval, so the draft waits for them. Its send shows where it stands. Only the mailbox's owner can ask, and a draft waits for one approval at a time. Asking is recorded in the mailbox's change feed.
+A human's send from their own mailbox needs no approval, so Duva sends it at once, with no disclosure. An agent's send from its own mailbox needs its sponsor's approval, so the draft waits for them. Its send shows where it stands. Bcc recipients get the message, but no header names them. Only the mailbox's owner can ask, the draft needs a recipient in To, and a draft waits for one approval at a time. Asking is recorded in the mailbox's change feed.
 
 - `--mailbox` (required): The mailbox's ID.
 - `--draft` (required): The draft's ID.

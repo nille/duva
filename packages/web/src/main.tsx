@@ -1,6 +1,7 @@
 // Duva's web app. A human signs in and lands on the Inbox of their personal mailbox, where they read
-// their mail. Sponsors also read their agents' mailboxes, listed beside their own, and reach the
-// Approvals view from the bar, where they decide what the agents they sponsor ask to send.
+// their mail, and write and send their own. Sponsors also read their agents' mailboxes, listed
+// beside their own, and reach the Approvals view from the bar, where they decide what the agents
+// they sponsor ask to send.
 import "@fontsource-variable/source-serif-4/opsz.css";
 import "./styles.css";
 import { StrictMode, useCallback, useEffect, useRef, useState } from "react";
@@ -8,8 +9,10 @@ import { createRoot } from "react-dom/client";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
 import { Approvals } from "./approvals.tsx";
-import { approvalChanges, type Connection, type Follow, mailChanges, type MailboxChange, SignedOut, useFeeds } from "./feed.ts";
-import { Inbox } from "./inbox.tsx";
+import { Composer } from "./compose.tsx";
+import { Drafts } from "./drafts.tsx";
+import { approvalChanges, type Connection, draftChanges, type Follow, mailChanges, type MailboxChange, SignedOut, useFeeds } from "./feed.ts";
+import { Threads } from "./inbox.tsx";
 import { type AgentMailbox, MailboxList, mailboxHref } from "./mailboxes.tsx";
 import { type Config, loadConfig, signedInClient, signIn, signOut } from "./session.ts";
 import { strings } from "./strings.ts";
@@ -73,15 +76,27 @@ function App() {
 
 /**
  * Where in the web app the human is, from the address's hash, so links and the back button work
- * without a server. A view without a mailbox is in the human's own.
+ * without a server. A listing or thread without a mailbox is in the human's own, and drafts are
+ * always the human's own, since only a mailbox's owner writes in it.
  */
-type Route = { view: "approvals" } | { view: "inbox"; mailbox?: string } | { view: "thread"; mailbox?: string; id: string };
+type Route =
+  | { view: "approvals" }
+  | { view: "inbox" | "sent"; mailbox?: string }
+  | { view: "thread"; mailbox?: string; id: string }
+  | { view: "drafts" | "write" }
+  | { view: "draft"; id: string };
 
 function routeOf(hash: string): Route {
   if (hash === "#/approvals") return { view: "approvals" };
+  if (hash === "#/drafts") return { view: "drafts" };
+  if (hash === "#/write") return { view: "write" };
+  const draft = /^#\/drafts\/(.+)$/.exec(hash)?.[1];
+  if (draft !== undefined) return { view: "draft", id: decodeURIComponent(draft) };
   const decoded = (mailbox: string | undefined) => (mailbox === undefined ? undefined : decodeURIComponent(mailbox));
   const [, mailbox, thread] = /^#\/(?:mailboxes\/([^/]+)\/)?threads\/(.+)$/.exec(hash) ?? [];
   if (thread !== undefined) return { view: "thread", mailbox: decoded(mailbox), id: decodeURIComponent(thread) };
+  const [sent, sentFrom] = /^#\/(?:mailboxes\/([^/]+)\/)?sent$/.exec(hash) ?? [];
+  if (sent !== undefined) return { view: "sent", mailbox: decoded(sentFrom) };
   return { view: "inbox", mailbox: decoded(/^#\/mailboxes\/([^/]+)\/?$/.exec(hash)?.[1]) };
 }
 
@@ -167,11 +182,12 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
         if (data !== undefined) setWaiting(data.approvals.length);
       }
       // The first read passes mail that may have arrived after the views listed it, so it counts too.
-      const changed = new Set(changes.filter(({ change }) => mailChanges.has(change.type)).map(({ mailbox }) => mailbox));
+      const mail = new Set(changes.filter(({ change }) => mailChanges.has(change.type)).map(({ mailbox }) => mailbox));
+      const changed = new Set([...mail, ...changes.filter(({ change }) => draftChanges.has(change.type)).map(({ mailbox }) => mailbox)]);
       if (changed.size > 0) {
         setVersions((current) => new Map([...current, ...[...changed].map((mailbox) => [mailbox, (current.get(mailbox) ?? 0) + 1] as const)]));
       }
-      if (mailboxes.status === "listed" && mailboxes.agents.length > 0) await countUnread([...changed]);
+      if (mailboxes.status === "listed" && mailboxes.agents.length > 0) await countUnread([...mail]);
     },
     onConnection: setConnection,
     onSignedOut,
@@ -179,7 +195,9 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
 
   // A screen reader follows the human to the view they opened, and the page starts at its top.
   const navigated = useRef(false);
-  const routeKey = route.view === "approvals" ? route.view : `${route.mailbox ?? ""}/${route.view === "thread" ? route.id : ""}`;
+  // The mailbox the route names, if it names one.
+  const named = "mailbox" in route ? route.mailbox : undefined;
+  const routeKey = route.view === "approvals" ? route.view : `${route.view}/${named ?? ""}/${"id" in route ? route.id : ""}`;
   useEffect(() => {
     if (!navigated.current) {
       navigated.current = true;
@@ -199,10 +217,13 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
   const listed = mailboxes.status === "listed" ? mailboxes : undefined;
   const mine = listed?.mine;
   const sponsor = (listed !== undefined && listed.agents.length > 0) || (waiting ?? 0) > 0;
-  // The mailbox the route names, the human's own if it names none.
-  const agent = route.view !== "approvals" && route.mailbox !== undefined ? listed?.agents.find(({ mailbox }) => mailbox.id === route.mailbox) : undefined;
-  const shown = route.view === "approvals" ? undefined : route.mailbox === undefined ? mine : (agent?.mailbox ?? (mine?.id === route.mailbox ? mine : undefined));
+  // The mailbox the route is in, the human's own if it names none.
+  const agent = named !== undefined ? listed?.agents.find(({ mailbox }) => mailbox.id === named) : undefined;
+  const shown = route.view === "approvals" ? undefined : named === undefined ? mine : (agent?.mailbox ?? (mine?.id === named ? mine : undefined));
   const base = shown === undefined ? "#/" : mailboxHref(shown, shown === mine);
+  const version = shown === undefined ? 0 : (versions.get(shown.id) ?? 0);
+  // Which of the bar's places the route is in. A thread or a draft opens from anywhere, so it marks none.
+  const current = (view: Route["view"]) => (route.view === view ? "page" : undefined);
 
   const mail =
     route.view === "approvals" ? undefined : mailboxes.status === "loading" ? (
@@ -219,7 +240,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
     ) : shown === undefined ? (
       <main className="desk">
         <section className="empty" aria-labelledby="empty-title">
-          {route.mailbox === undefined ? (
+          {named === undefined ? (
             <>
               <h1 id="empty-title">{strings.inbox.noMailboxTitle}</h1>
               <p>{strings.inbox.noMailboxLead}</p>
@@ -238,19 +259,23 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
         </section>
       </main>
     ) : route.view === "thread" ? (
-      <ThreadView
-        key={`${shown.id}/${route.id}`}
+      <ThreadView key={`${shown.id}/${route.id}`} client={client} mailbox={shown} base={base} id={route.id} me={actor.id} agent={agent?.agent} version={version} onSignedOut={onSignedOut} />
+    ) : route.view === "draft" || route.view === "write" ? (
+      <Composer key={routeKey} client={client} mailbox={shown} id={route.view === "draft" ? route.id : undefined} version={version} onSignedOut={onSignedOut} />
+    ) : route.view === "drafts" ? (
+      <Drafts client={client} mailbox={shown} version={version} onSignedOut={onSignedOut} />
+    ) : (
+      <Threads
+        key={`${shown.id}/${route.view}`}
         client={client}
         mailbox={shown}
         base={base}
-        id={route.id}
-        me={actor.id}
         agent={agent?.agent}
-        version={versions.get(shown.id) ?? 0}
+        listed={route.view}
+        version={version}
+        connection={connection}
         onSignedOut={onSignedOut}
       />
-    ) : (
-      <Inbox key={shown.id} client={client} mailbox={shown} base={base} agent={agent?.agent} version={versions.get(shown.id) ?? 0} connection={connection} onSignedOut={onSignedOut} />
     );
 
   return (
@@ -258,11 +283,22 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
       <header className="bar">
         <p className="wordmark">{strings.nav.label}</p>
         <nav aria-label={strings.nav.label}>
-          <a href={base} aria-current={route.view === "approvals" ? undefined : "page"}>
+          <a href={base} aria-current={current("inbox")}>
             {strings.nav.inbox}
           </a>
+          {(shown ?? mine) !== undefined && (
+            <a href={`${base}sent`} aria-current={current("sent")}>
+              {strings.nav.sent}
+            </a>
+          )}
+          {/* Only a mailbox's owner writes in it, so drafts are always the human's own. */}
+          {mine !== undefined && (
+            <a href="#/drafts" aria-current={current("drafts")}>
+              {strings.nav.drafts}
+            </a>
+          )}
           {sponsor && (
-            <a href="#/approvals" aria-current={route.view === "approvals" ? "page" : undefined}>
+            <a href="#/approvals" aria-current={current("approvals")}>
               {strings.nav.approvals}
               {waiting !== undefined && waiting > 0 && (
                 <>
@@ -275,6 +311,12 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
             </a>
           )}
         </nav>
+        {mine !== undefined && (
+          <button type="button" className="button button-primary button-small bar-write" onClick={() => (location.hash = "#/write")}>
+            <WriteIcon />
+            {strings.nav.write}
+          </button>
+        )}
         <div className="who">
           <span className="who-email">{strings.signedInAs(actor.email, actor.admin)}</span>
           <button type="button" className="button button-quiet button-small" onClick={() => signOut(config)}>
@@ -285,7 +327,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
       {route.view === "approvals" ? (
         <Approvals client={client} sponsor={actor.email} connection={connection} follow={follow} onSignedOut={onSignedOut} />
       ) : listed !== undefined && listed.agents.length > 0 ? (
-        <div className={route.view === "thread" ? "mail mail-reading" : "mail"}>
+        <div className={route.view === "thread" || route.view === "draft" || route.view === "write" ? "mail mail-reading" : "mail"}>
           <MailboxList mine={mine} agents={listed.agents} unread={unread} current={shown?.id} />
           {mail}
         </div>
@@ -295,6 +337,12 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
     </>
   );
 }
+
+const WriteIcon = () => (
+  <svg className="icon" viewBox="0 0 16 16" aria-hidden="true">
+    <path d="M10.5 2.5 13.5 5.5 6 13H3v-3l7.5-7.5ZM9 4l3 3" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

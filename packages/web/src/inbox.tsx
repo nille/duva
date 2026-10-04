@@ -1,5 +1,6 @@
 // The Inbox: a mailbox's threads with the Inbox label, newest first, a page at a time, laid on one
-// sheet like the index of a bundle of proofs. Unread threads carry the pencil's mark.
+// sheet like the index of a bundle of proofs. Unread threads carry the pencil's mark. Sent is laid
+// the same way, with the threads the mailbox has sent in.
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
@@ -22,15 +23,16 @@ type Listing =
 class ListingFailed extends Error {}
 
 /**
- * The mailbox's Inbox, the human's own or, with the agent's name, an agent's they sponsor, at
- * `base` in the web app. `version` counts the changes to the mailbox the app has seen, so the
- * listing reads its pages again when it grows.
+ * The mailbox's Inbox or its Sent, the human's own or, with the agent's name, an agent's they
+ * sponsor, whose Inbox is at `base` in the web app. `version` counts the changes to the mailbox
+ * the app has seen, so the listing reads its pages again when it grows.
  */
-export function Inbox({
+export function Threads({
   client,
   mailbox,
   base,
   agent,
+  listed = "inbox",
   version,
   connection,
   onSignedOut,
@@ -39,10 +41,21 @@ export function Inbox({
   mailbox: Mailbox;
   base: string;
   agent?: string;
+  listed?: "inbox" | "sent";
   version: number;
   connection: ConnectionState;
   onSignedOut: () => void;
 }) {
+  const copy =
+    listed === "inbox"
+      ? {
+          title: agent === undefined ? strings.inbox.title : strings.inbox.agentTitle(agent),
+          emptyTitle: agent === undefined ? strings.inbox.emptyTitle : strings.inbox.agentEmptyTitle(agent),
+          emptyLead: strings.inbox.emptyLead(mailbox.defaultAddress),
+        }
+      : agent === undefined
+        ? strings.sent
+        : { title: strings.sent.agentTitle(agent), emptyTitle: strings.sent.agentEmptyTitle(agent), emptyLead: strings.sent.agentEmptyLead(agent) };
   const [listing, setListing] = useState<Listing>({ status: "loading" });
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [announcement, setAnnouncement] = useState("");
@@ -51,9 +64,11 @@ export function Inbox({
 
   const page = useCallback(
     async (after?: string) => {
-      const { data, response } = await client
-        .GET("/mailboxes/{mailbox}/threads", { params: { path: { mailbox: mailbox.id }, query: { limit: pageSize, after } } })
-        .catch(() => ({ data: undefined, response: undefined }));
+      const params = { params: { path: { mailbox: mailbox.id }, query: { limit: pageSize, after } } };
+      const { data, response } = await (listed === "inbox" ? client.GET("/mailboxes/{mailbox}/threads", params) : client.GET("/mailboxes/{mailbox}/sent", params)).catch(() => ({
+        data: undefined,
+        response: undefined,
+      }));
       if (response?.status === 401) {
         onSignedOut();
         throw new ListingFailed();
@@ -61,7 +76,7 @@ export function Inbox({
       if (data === undefined) throw new ListingFailed(response === undefined ? strings.inbox.unreachable : strings.inbox.failed(response.status));
       return data;
     },
-    [client, mailbox.id, onSignedOut],
+    [client, mailbox.id, listed, onSignedOut],
   );
 
   // How many pages the human asked to see, and which read is the latest, so an older one that ends later is dropped.
@@ -120,17 +135,17 @@ export function Inbox({
     setLoadingOlder(false);
   };
 
-  const unread = listing.status === "listed" ? listing.threads.filter((thread) => thread.unread).length : 0;
-  const title = agent === undefined ? strings.inbox.title : strings.inbox.agentTitle(agent);
+  // Sent lists what was written from the mailbox, so only the Inbox counts what's unread.
+  const unread = listing.status === "listed" && listed === "inbox" ? listing.threads.filter((thread) => thread.unread).length : 0;
   useEffect(() => {
-    document.title = strings.title(unread > 0 ? `${title} (${unread})` : title);
-  }, [title, unread]);
+    document.title = strings.title(unread > 0 ? `${copy.title} (${unread})` : copy.title);
+  }, [unread, copy.title]);
 
   return (
     <main className="desk" aria-busy={listing.status === "loading"}>
       <div className="desk-head">
         <h1 tabIndex={-1} className="view-title">
-          {title}
+          {copy.title}
         </h1>
         {listing.status === "listed" && unread > 0 && <p className="count">{strings.inbox.unread(unread, listing.next !== undefined)}</p>}
         <p className="mailbox-address">{mailbox.defaultAddress}</p>
@@ -150,8 +165,8 @@ export function Inbox({
         </div>
       ) : listing.threads.length === 0 ? (
         <section className="empty" aria-labelledby="empty-title">
-          <h2 id="empty-title">{agent === undefined ? strings.inbox.emptyTitle : strings.inbox.agentEmptyTitle(agent)}</h2>
-          <p>{strings.inbox.emptyLead(mailbox.defaultAddress)}</p>
+          <h2 id="empty-title">{copy.emptyTitle}</h2>
+          <p>{copy.emptyLead}</p>
         </section>
       ) : (
         <div className="index">
