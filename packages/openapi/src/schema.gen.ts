@@ -58,6 +58,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/humans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the organization's humans.
+         * @description Only admins can list the organization's humans.
+         */
+        get: operations["listHumans"];
+        put?: never;
+        /**
+         * Add a human to the organization by their email address, so they can sign in.
+         * @description Only admins can add humans. The human signs in with a code emailed to the address, and has no mailbox until an admin creates one for them. Adding a human is a change to the organization's setup, recorded in its change feed.
+         */
+        post: operations["addHuman"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/agents": {
         parameters: {
             query?: never;
@@ -110,8 +134,8 @@ export interface paths {
         get: operations["listMailboxes"];
         put?: never;
         /**
-         * Create a personal mailbox for an agent, with an address on the organization's domain.
-         * @description Only admins can create mailboxes. The address becomes the mailbox's default address, and mail to it is accepted from then on. Creating the mailbox and its address are changes to the organization's setup, recorded in its change feed.
+         * Create a personal mailbox for a human or an agent, with an address on the organization's domain.
+         * @description Only admins can create mailboxes. The address becomes the mailbox's default address, and mail to it is accepted from then on. An admin can't read a personal mailbox they don't own, even one they created, unless they sponsor the agent that owns it. Creating the mailbox and its address are changes to the organization's setup, recorded in its change feed.
          */
         post: operations["createMailbox"];
         delete?: never;
@@ -332,6 +356,16 @@ export interface components {
             /** @description Whether the human may change the organization's setup. */
             admin: boolean;
         };
+        NewHuman: {
+            /**
+             * @description The address the human signs in with.
+             * @example grace@example.com
+             */
+            email: string;
+        };
+        HumanList: {
+            humans: components["schemas"]["Human"][];
+        };
         /** @description An actor that is software, which calls Duva with its key. */
         Agent: {
             /** @description The actor's ID, which never changes. */
@@ -370,7 +404,7 @@ export interface components {
             agents: components["schemas"]["Agent"][];
         };
         NewMailbox: {
-            /** @description The ID of the agent that owns the mailbox. */
+            /** @description The ID of the human or agent that owns the mailbox. */
             owner: string;
             /**
              * @description The mailbox's address, on the organization's domain, without a plus tag.
@@ -1019,6 +1053,56 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+        };
+    };
+    listHumans: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The organization's humans. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HumanList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    addHuman: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewHuman"];
+            };
+        };
+        responses: {
+            /** @description The human. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Human"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
         };
     };
     listAgents: {

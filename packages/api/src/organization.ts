@@ -2,10 +2,10 @@
 // Each change to the setup is written in one transaction with its change-feed entry.
 import { randomUUID } from "node:crypto";
 import { TransactionCanceledException } from "@aws-sdk/client-dynamodb";
-import { GetCommand, QueryCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, PutCommand, QueryCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import type { components } from "@duva/openapi";
 import { agentKeyHash, newAgentKey } from "./agent-keys.ts";
-import type { Humans } from "./humans.ts";
+import type { Humans } from "./user-pool.ts";
 import type { Table } from "./deployment.ts";
 import { changesAfter, entryKey, type Feed, recordChanges } from "./feed.ts";
 import { documents, isNew, pk, sk, type TransactItem } from "./table.ts";
@@ -22,6 +22,10 @@ const organizationKey = { [pk]: "organization", [sk]: "organization" };
 const actorKey = (id: string) => ({ [pk]: `actor#${id}`, [sk]: "actor" });
 // Each agent is listed in its sponsor's partition, so a human's agents are one query away.
 const sponsoredKey = (sponsor: string, agent: string) => ({ [pk]: `actor#${sponsor}`, [sk]: `agent#${agent}` });
+// Every human is listed in one partition, so the organization's humans are one query away.
+const humansPartition = "organization#humans";
+const humanListedKey = (id: string) => ({ [pk]: humansPartition, [sk]: `human#${id}` });
+const humanListedPrefix = humanListedKey("")[sk];
 // Only a hash of an agent's key is stored. It points at the agent, so the authorizer finds it in one read.
 const agentKeyKey = (hash: string) => ({ [pk]: `key#${hash}`, [sk]: "key" });
 // A mailbox's own partition also holds its mail and the position of its change feed.
@@ -50,6 +54,8 @@ export async function setUpOrganization(
   const existing = await firstAdmin(table);
   if (existing !== undefined) {
     if (existing.email !== admin) throw new Error(`The organization's first admin is ${existing.email}, so it can't be ${admin}.`);
+    // Organizations set up before humans were listed didn't list their first admin.
+    await db.send(new PutCommand({ TableName: table.name, Item: humanListedKey(existing.id) }));
     return existing;
   }
 
@@ -66,6 +72,7 @@ export async function setUpOrganization(
         TransactItems: [
           { Put: { TableName: table.name, Item: { ...organizationKey, domain, firstAdmin: actor.id, position: changes.length }, ...isNew } },
           { Put: { TableName: table.name, Item: { ...actorKey(actor.id), ...actor }, ...isNew } },
+          { Put: { TableName: table.name, Item: humanListedKey(actor.id) } },
           ...changes.map((change, index) => ({
             Put: {
               TableName: table.name,
@@ -95,15 +102,47 @@ async function firstAdmin(table: Table): Promise<Human | undefined> {
 }
 
 /**
- * Adds the human at `email`, who can then sign in, as an actor added by the actor `by`. Until
- * admins can add humans, only the test harness does.
+ * Adds the human at `email`, who can then sign in, as an actor added by the actor `by`. Throws
+ * HumanExists if the organization already has the human.
  */
-export async function addHuman({ table, humans }: { table: Table; humans: Humans }, { email, by }: { email: string; by: string }) {
+export async function addHumanToOrganization({ table, humans }: { table: Table; humans: Humans }, { email, by }: { email: string; by: string }): Promise<Human> {
+  // Sign-in names are case-sensitive in the user pool, and the first admin's address is kept as
+  // deploy was given it, so an address that differs only in case would give the same person two actors.
+  if ((await allHumans(table)).some((human) => human.email.toLowerCase() === email.toLowerCase())) throw new HumanExists();
+  // The user pool gives a human who can already sign in the ID they had, so their actor is there too.
   const actor: Human = { id: await humans.add(email), kind: "human", email, admin: false };
   await recordChange(table, by, { type: "actorAdded", added: actor }, [
     { Put: { TableName: table.name, Item: { ...actorKey(actor.id), ...actor }, ...isNew } },
-  ]);
+    { Put: { TableName: table.name, Item: humanListedKey(actor.id) } },
+  ]).catch((error: unknown) => {
+    const exists = error instanceof TransactionCanceledException && error.CancellationReasons?.[2]?.Code === "ConditionalCheckFailed";
+    throw exists ? new HumanExists() : error;
+  });
   return actor;
+}
+
+/** The organization already has the human. */
+export class HumanExists extends Error {}
+
+/** The organization's humans. */
+export async function allHumans(table: Table): Promise<Human[]> {
+  const ids: string[] = [];
+  let start: Record<string, unknown> | undefined;
+  do {
+    const page = await documents(table).send(
+      new QueryCommand({
+        TableName: table.name,
+        KeyConditionExpression: `${pk} = :humans`,
+        ExpressionAttributeValues: { ":humans": humansPartition },
+        ConsistentRead: true,
+        ExclusiveStartKey: start,
+      }),
+    );
+    for (const item of page.Items ?? []) ids.push((item[sk] as string).slice(humanListedPrefix.length));
+    start = page.LastEvaluatedKey;
+  } while (start !== undefined);
+  const humans = await Promise.all(ids.map((id) => findActor(table, id)));
+  return humans.filter((human): human is Human => human?.kind === "human");
 }
 
 /** Adds an agent with the human `sponsor` as its sponsor, and returns it with its key, which only its hash outlives. */

@@ -1,5 +1,6 @@
 import type { components } from "@duva/openapi";
 import { jsonBody, type OperationHandler, refusal } from "./api.ts";
+import { isEmailAddress } from "./email-address.ts";
 import type { Deployment } from "./deployment.ts";
 import {
   addDraft,
@@ -75,7 +76,7 @@ function fieldsIn(body: Record<string, unknown>): { to?: EmailAddress[]; subject
   }
   if (to === undefined) return { subject, text };
   const addresses = Array.isArray(to) ? to.map((address) => (typeof address === "string" ? address.trim() : "")) : [];
-  const wrong = addresses.find((address) => !/^[^\s@<>",;]+@[^\s@<>",;]+\.[^\s@<>",;]+$/.test(address));
+  const wrong = addresses.find((address) => !isEmailAddress(address));
   if (addresses.length === 0 || wrong !== undefined) {
     return refusal(400, `${wrong === undefined ? "Give at least one recipient" : `${JSON.stringify(wrong)} isn't an email address`}. Give each recipient's address, like grace@example.org.`);
   }
@@ -115,7 +116,7 @@ export const editDraft: OperationHandler = async (event, deployment, actor) => {
 export const sendDraft: OperationHandler = async (event, deployment, actor) => {
   const mailbox = await ownMailbox(event, deployment, actor!);
   if ("statusCode" in mailbox) return mailbox;
-  // Only agents have mailboxes yet, and an agent's send from its own mailbox needs its sponsor's approval.
+  // An agent's send from its own mailbox needs its sponsor's approval. Humans can't send from theirs yet.
   if (actor!.kind !== "agent") return refusal(403, "Only agents can ask to send from their mailboxes yet.");
   try {
     const draft = await askToSend(deployment.table, { mailbox: mailbox.id, id: event.pathParameters?.draft ?? "", agent: actor! });

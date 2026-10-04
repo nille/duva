@@ -63,16 +63,23 @@ test.each([
   expect(error?.message).toMatch(/address/);
 });
 
-test("a mailbox's owner must be an agent", async () => {
+test("an admin creates a personal mailbox for a human, and its address becomes the default address", async () => {
+  const { duva, ada } = await withAgent({ humans: ["grace@example.org"] });
+  const { data: grace } = await duva.signIn("grace@example.org").GET("/whoami");
+
+  const { response, data } = await ada.POST("/mailboxes", { body: { owner: grace!.id, address: "grace@example.com" } });
+
+  expect(response.status).toBe(201);
+  expect(data).toEqual({ id: expect.any(String), kind: "personal", owner: grace?.id, defaultAddress: "grace@example.com" });
+});
+
+test("a mailbox's owner must be an actor in the organization", async () => {
   const { ada } = await withAgent();
-  const { data: admin } = await ada.GET("/whoami");
 
-  const forHuman = await ada.POST("/mailboxes", { body: { owner: admin!.id, address: "ada@example.com" } });
-  const forNobody = await ada.POST("/mailboxes", { body: { owner: "nobody", address: "nobody@example.com" } });
+  const { response, error } = await ada.POST("/mailboxes", { body: { owner: "nobody", address: "nobody@example.com" } });
 
-  expect(forHuman.response.status).toBe(400);
-  expect(forNobody.response.status).toBe(400);
-  expect(forNobody.error?.message).toMatch(/no agent/);
+  expect(response.status).toBe(400);
+  expect(error?.message).toMatch(/no human or agent/);
 });
 
 test("creating a mailbox and its address are in the change feed, attributed to the admin", async () => {
@@ -98,6 +105,18 @@ test("an agent lists its own mailboxes, and its sponsor lists them too", async (
 
   expect(agents).toEqual({ mailboxes: [mailbox] });
   expect(sponsors).toEqual({ mailboxes: [mailbox] });
+});
+
+test("a human lists their own mailbox", async () => {
+  const { duva, ada } = await withAgent({ humans: ["grace@example.org"] });
+  const grace = duva.signIn("grace@example.org");
+  const { data: me } = await grace.GET("/whoami");
+  const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: me!.id, address: "grace@example.com" } });
+
+  const { data } = await grace.GET("/mailboxes");
+
+  expect(data).toEqual({ mailboxes: [mailbox] });
+  expect((await ada.GET("/mailboxes")).data).toEqual({ mailboxes: [] });
 });
 
 test("an admin who isn't the sponsor doesn't list an agent's mailboxes", async () => {

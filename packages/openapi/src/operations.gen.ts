@@ -50,6 +50,42 @@ export const operations = [
     ]
   },
   {
+    "operationId": "listHumans",
+    "method": "get",
+    "path": "/humans",
+    "routeKey": "GET /humans",
+    "summary": "List the organization's humans.",
+    "description": "Only admins can list the organization's humans.",
+    "signIn": true,
+    "command": [
+      "humans",
+      "list"
+    ],
+    "options": []
+  },
+  {
+    "operationId": "addHuman",
+    "method": "post",
+    "path": "/humans",
+    "routeKey": "POST /humans",
+    "summary": "Add a human to the organization by their email address, so they can sign in.",
+    "description": "Only admins can add humans. The human signs in with a code emailed to the address, and has no mailbox until an admin creates one for them. Adding a human is a change to the organization's setup, recorded in its change feed.",
+    "signIn": true,
+    "command": [
+      "humans",
+      "add"
+    ],
+    "options": [
+      {
+        "name": "email",
+        "in": "body",
+        "type": "string",
+        "required": true,
+        "description": "The address the human signs in with."
+      }
+    ]
+  },
+  {
     "operationId": "listAgents",
     "method": "get",
     "path": "/agents",
@@ -126,8 +162,8 @@ export const operations = [
     "method": "post",
     "path": "/mailboxes",
     "routeKey": "POST /mailboxes",
-    "summary": "Create a personal mailbox for an agent, with an address on the organization's domain.",
-    "description": "Only admins can create mailboxes. The address becomes the mailbox's default address, and mail to it is accepted from then on. Creating the mailbox and its address are changes to the organization's setup, recorded in its change feed.",
+    "summary": "Create a personal mailbox for a human or an agent, with an address on the organization's domain.",
+    "description": "Only admins can create mailboxes. The address becomes the mailbox's default address, and mail to it is accepted from then on. An admin can't read a personal mailbox they don't own, even one they created, unless they sponsor the agent that owns it. Creating the mailbox and its address are changes to the organization's setup, recorded in its change feed.",
     "signIn": true,
     "command": [
       "mailboxes",
@@ -139,7 +175,7 @@ export const operations = [
         "in": "body",
         "type": "string",
         "required": true,
-        "description": "The ID of the agent that owns the mailbox."
+        "description": "The ID of the human or agent that owns the mailbox."
       },
       {
         "name": "address",

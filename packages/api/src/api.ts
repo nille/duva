@@ -4,6 +4,7 @@ import { createAgent, listAgents, rotateAgentKey } from "./agents.ts";
 import type { AuthorizerContext } from "./authorizer.ts";
 import { listOrganizationChanges } from "./changes.ts";
 import { createDraft, editDraft, getDraft, listApprovals, listDrafts, rejectApproval, sendApproval, sendDraft } from "./drafts.ts";
+import { addHuman, listHumans } from "./humans.ts";
 import { createMailbox, getThread, listMailboxChanges, listMailboxes, listThreads } from "./mailboxes.ts";
 import type { Deployment } from "./deployment.ts";
 import { type Actor, actorOf } from "./organization.ts";
@@ -24,6 +25,8 @@ const handlers: Record<OperationId, OperationHandler> = {
   getStatus,
   whoami,
   listOrganizationChanges,
+  addHuman,
+  listHumans,
   createAgent,
   listAgents,
   rotateAgentKey,

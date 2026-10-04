@@ -13,8 +13,7 @@ export const createMailbox: OperationHandler = async (event, deployment, actor) 
   const body = jsonBody(event);
   const ownerId = typeof body?.owner === "string" ? body.owner : "";
   const owner = await findActor(deployment.table, ownerId);
-  if (owner === undefined) return refusal(400, `There is no agent ${JSON.stringify(ownerId)}. Give the ID of the agent that will own the mailbox.`);
-  if (owner.kind !== "agent") return refusal(400, "For now only agents can have mailboxes. Give an agent's ID as the owner.");
+  if (owner === undefined) return refusal(400, `There is no human or agent ${JSON.stringify(ownerId)}. Give the ID of the actor that will own the mailbox.`);
 
   const given = typeof body?.address === "string" ? body.address.trim() : "";
   const domain = await organizationDomain(deployment.table);

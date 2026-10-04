@@ -13,11 +13,11 @@ import { createDuvaClient, type DuvaClient } from "@duva/client";
 import { inject } from "vitest";
 import { createApi } from "../src/api.ts";
 import { createAuthorizer } from "../src/authorizer.ts";
-import type { Humans } from "../src/humans.ts";
+import type { Humans } from "../src/user-pool.ts";
 import { createInbound } from "../src/inbound.ts";
 import { senderFilter, senderRetries, tableKey, tableStreamView } from "../src/infrastructure.ts";
 import type { MailBucket } from "../src/mail-bucket.ts";
-import { addHuman, setUpOrganization } from "../src/organization.ts";
+import { addHumanToOrganization, setUpOrganization } from "../src/organization.ts";
 import { createSender } from "../src/sending.ts";
 import { dynamodbLocal } from "./dynamodb-local.ts";
 import { gateway } from "./gateway.ts";
@@ -103,7 +103,7 @@ export async function startDuva({
   const issuer = new TestTokenIssuer();
   const setUp = (options: { admin: string }) => setUpOrganization({ table, humans }, { domain, ...options });
   const firstAdmin = await setUp({ admin });
-  for (const email of others) await addHuman({ table, humans }, { email, by: firstAdmin.id });
+  for (const email of others) await addHumanToOrganization({ table, humans }, { email, by: firstAdmin.id });
 
   const mailBucket = memoryMailBucket();
   const ses = sesReceiving({
@@ -116,7 +116,7 @@ export async function startDuva({
     { filter: senderFilter, handler: createSender({ table, mailBucket, outbound: sending.outbound, region }), retries: senderRetries, invocations: senderInvocations },
   ]);
   const gatewayed = gateway(
-    createApi({ version, region, table, mailBucket, receiving }),
+    createApi({ version, region, table, humans, mailBucket, receiving }),
     createAuthorizer({ table, verifyAccessToken: issuer.verify }),
   );
   // A call returns once the stream has handed what it wrote to the sender, so tests see the outcome.

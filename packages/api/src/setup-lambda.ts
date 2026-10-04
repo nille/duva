@@ -3,7 +3,7 @@
 import { CognitoIdentityProviderClient } from "@aws-sdk/client-cognito-identity-provider";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { required } from "./environment.ts";
-import { cognitoHumans } from "./humans.ts";
+import { cognitoHumans } from "./user-pool.ts";
 import { environmentVariables } from "./infrastructure.ts";
 import { setUpOrganization } from "./organization.ts";
 

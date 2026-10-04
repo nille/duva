@@ -234,12 +234,15 @@ export class DuvaStack extends Stack {
       [environmentVariables.version]: version,
       [environmentVariables.tableName]: table.tableName,
       [environmentVariables.mailBucket]: mail.bucketName,
+      [environmentVariables.userPoolId]: humans.userPoolId,
       [environmentVariables.receiptRuleSet]: receiving.receiptRuleSetName,
       [environmentVariables.inboundFunction]: inbound.functionArn,
     });
     table.grantReadWriteData(handler);
     // Message bodies are read from the raw mail.
     mail.grantRead(handler);
+    // Admins add humans, who can then sign in.
+    humans.grant(handler, "cognito-idp:AdminCreateUser", "cognito-idp:AdminGetUser");
     // Creating an address adds it to the receipt rule's recipients. IAM has no resource type for
     // receipt rules, so these actions can't be limited to Duva's rule set.
     handler.addToRolePolicy(

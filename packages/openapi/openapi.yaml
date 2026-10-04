@@ -72,6 +72,53 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
+  /humans:
+    post:
+      operationId: addHuman
+      summary: Add a human to the organization by their email address, so they can sign in.
+      description: >
+        Only admins can add humans. The human signs in with a code emailed to
+        the address, and has no mailbox until an admin creates one for them.
+        Adding a human is a change to the organization's setup, recorded in
+        its change feed.
+      x-cli-command: humans add
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NewHuman"
+      responses:
+        "201":
+          description: The human.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Human"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+    get:
+      operationId: listHumans
+      summary: List the organization's humans.
+      description: Only admins can list the organization's humans.
+      x-cli-command: humans list
+      responses:
+        "200":
+          description: The organization's humans.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HumanList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
   /agents:
     post:
       operationId: createAgent
@@ -146,10 +193,12 @@ paths:
   /mailboxes:
     post:
       operationId: createMailbox
-      summary: Create a personal mailbox for an agent, with an address on the organization's domain.
+      summary: Create a personal mailbox for a human or an agent, with an address on the organization's domain.
       description: >
         Only admins can create mailboxes. The address becomes the mailbox's
-        default address, and mail to it is accepted from then on. Creating the
+        default address, and mail to it is accepted from then on. An admin
+        can't read a personal mailbox they don't own, even one they created,
+        unless they sponsor the agent that owns it. Creating the
         mailbox and its address are changes to the organization's setup,
         recorded in its change feed.
       x-cli-command: mailboxes create
@@ -611,6 +660,24 @@ components:
         admin:
           type: boolean
           description: Whether the human may change the organization's setup.
+    NewHuman:
+      type: object
+      additionalProperties: false
+      required: [email]
+      properties:
+        email:
+          type: string
+          description: The address the human signs in with.
+          examples: ["grace@example.com"]
+    HumanList:
+      type: object
+      additionalProperties: false
+      required: [humans]
+      properties:
+        humans:
+          type: array
+          items:
+            $ref: "#/components/schemas/Human"
     Agent:
       type: object
       additionalProperties: false
@@ -671,7 +738,7 @@ components:
       properties:
         owner:
           type: string
-          description: The ID of the agent that owns the mailbox.
+          description: The ID of the human or agent that owns the mailbox.
         address:
           type: string
           description: The mailbox's address, on the organization's domain, without a plus tag.

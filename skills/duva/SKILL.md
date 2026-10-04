@@ -56,6 +56,20 @@ Lists up to 100 changes, oldest first. To catch up, call again with the position
 
 - `--after`: The position to list changes after. 0, the default, lists from the start.
 
+## duva humans list
+
+List the organization's humans.
+
+Only admins can list the organization's humans.
+
+## duva humans add
+
+Add a human to the organization by their email address, so they can sign in.
+
+Only admins can add humans. The human signs in with a code emailed to the address, and has no mailbox until an admin creates one for them. Adding a human is a change to the organization's setup, recorded in its change feed.
+
+- `--email` (required): The address the human signs in with.
+
 ## duva agents list
 
 List the agents you sponsor.
@@ -82,11 +96,11 @@ List the mailboxes you can read, your own and those of the agents you sponsor.
 
 ## duva mailboxes create
 
-Create a personal mailbox for an agent, with an address on the organization's domain.
+Create a personal mailbox for a human or an agent, with an address on the organization's domain.
 
-Only admins can create mailboxes. The address becomes the mailbox's default address, and mail to it is accepted from then on. Creating the mailbox and its address are changes to the organization's setup, recorded in its change feed.
+Only admins can create mailboxes. The address becomes the mailbox's default address, and mail to it is accepted from then on. An admin can't read a personal mailbox they don't own, even one they created, unless they sponsor the agent that owns it. Creating the mailbox and its address are changes to the organization's setup, recorded in its change feed.
 
-- `--owner` (required): The ID of the agent that owns the mailbox.
+- `--owner` (required): The ID of the human or agent that owns the mailbox.
 - `--address` (required): The mailbox's address, on the organization's domain, without a plus tag.
 
 ## duva mailboxes changes

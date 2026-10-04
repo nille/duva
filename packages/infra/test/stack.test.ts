@@ -311,6 +311,13 @@ test("humans sign in to one user pool on the Essentials plan, with no sign-up of
   expect(userPool.Properties?.UsernameAttributes).toEqual(["email"]);
 });
 
+test("the API adds humans to the user pool, and may take no other Cognito action", () => {
+  const [[userPoolId]] = ofType("AWS::Cognito::UserPool") as [[string, Resource]];
+  expect(actions("ApiHandler", "cognito-idp").sort()).toEqual(["cognito-idp:AdminCreateUser", "cognito-idp:AdminGetUser"]);
+  expect(JSON.stringify(statements("ApiHandler").filter(({ Action }) => [Action].flat().some((action) => action.startsWith("cognito-idp:"))))).toContain(userPoolId);
+  expect(lambda("ApiHandler")[1].Properties?.Environment?.Variables?.[environmentVariables.userPoolId]).toEqual({ Ref: userPoolId });
+});
+
 test("humans sign in with an emailed code, and the password Cognito requires is offered to nobody", () => {
   expect(userPool.Properties?.Policies?.SignInPolicy?.AllowedFirstAuthFactors).toEqual(["PASSWORD", "EMAIL_OTP"]);
 });

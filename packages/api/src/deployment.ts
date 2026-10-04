@@ -1,4 +1,5 @@
 import type { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import type { Humans } from "./user-pool.ts";
 import type { MailBucket } from "./mail-bucket.ts";
 import type { Receiving } from "./receiving.ts";
 
@@ -15,6 +16,8 @@ export interface Deployment {
   /** The AWS region the deployment runs in. */
   region: string;
   table: Table;
+  /** Where humans sign in. */
+  humans: Humans;
   mailBucket: MailBucket;
   receiving: Receiving;
 }
