@@ -213,7 +213,7 @@ export interface paths {
         };
         /**
          * List the threads a mailbox has sent mail in, newest first.
-         * @description Lists every thread with a message sent from the mailbox, whatever its labels, a page at a time, newest first by its newest message. To read the next page, call again with the answer's next as after, until an answer has no next.
+         * @description Lists every thread with a message sent from the mailbox, except those in Spam and Trash, a page at a time, newest first by its newest message. To read the next page, call again with the answer's next as after, until an answer has no next.
          */
         get: operations["listSentThreads"];
         put?: never;
@@ -264,6 +264,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/mailboxes/{mailbox}/threads/labels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add labels to threads in a mailbox, and remove them.
+         * @description Adds and removes the labels on each thread. Archiving removes inbox, and adding inbox moves a thread back to the Inbox, out of Spam and Trash. Adding spam or trash takes a thread out of the Inbox. Removing spam (not spam) or trash (restore) puts it back in the Inbox, unless it still has the other or inbox is removed too. Each thread whose labels change gets a change in the mailbox's change feed, naming you. Only those who can read the mailbox can label its threads.
+         */
+        post: operations["labelThreads"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/mailboxes/{mailbox}/threads/{thread}": {
         parameters: {
             query?: never;
@@ -279,6 +299,74 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/mailboxes/{mailbox}/all-mail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List every thread in a mailbox except those in Spam and Trash, newest first.
+         * @description Lists archived threads too, a page at a time, newest first by their newest message. To read the next page, call again with the answer's next as after, until an answer has no next.
+         */
+        get: operations["listAllMail"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mailboxes/{mailbox}/labels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a mailbox's labels, with how many unread threads each has.
+         * @description Lists the built-in labels inbox, spam and trash first, then the mailbox's own labels by name. Only those who can read the mailbox can list its labels.
+         */
+        get: operations["listLabels"];
+        put?: never;
+        /**
+         * Create a label in a mailbox.
+         * @description Creates a label of the mailbox's own, with a name no other label in it has, in any case. Then add it to threads by its ID. Only those who can read the mailbox can create its labels. The change is recorded in the mailbox's change feed.
+         */
+        post: operations["createLabel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mailboxes/{mailbox}/labels/{label}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete one of a mailbox's own labels.
+         * @description Removes the label from each of its threads, each with a change in the mailbox's change feed, and then deletes it. The threads stay. The built-in labels can't be deleted. If deleting stops partway, delete the label again to finish.
+         */
+        delete: operations["deleteLabel"];
+        options?: never;
+        head?: never;
+        /**
+         * Rename one of a mailbox's own labels.
+         * @description Gives the label a name no other label in the mailbox has, in any case. Its threads keep it. The built-in labels can't be renamed. The change is recorded in the mailbox's change feed.
+         */
+        patch: operations["renameLabel"];
         trace?: never;
     };
     "/mailboxes/{mailbox}/drafts": {
@@ -544,7 +632,7 @@ export interface components {
             position: number;
         };
         /** @description A change in a mailbox. */
-        MailboxChange: components["schemas"]["MessageReceived"] | components["schemas"]["DraftWritten"] | components["schemas"]["DraftChanged"] | components["schemas"]["DraftDeleted"] | components["schemas"]["SendAsked"] | components["schemas"]["ApprovalAsked"] | components["schemas"]["ApprovalWithdrawn"] | components["schemas"]["ApprovalDecided"] | components["schemas"]["MessageSent"] | components["schemas"]["SendFailed"] | components["schemas"]["SendUnclear"] | components["schemas"]["ThreadRead"] | components["schemas"]["ThreadUnread"];
+        MailboxChange: components["schemas"]["MessageReceived"] | components["schemas"]["DraftWritten"] | components["schemas"]["DraftChanged"] | components["schemas"]["DraftDeleted"] | components["schemas"]["SendAsked"] | components["schemas"]["ApprovalAsked"] | components["schemas"]["ApprovalWithdrawn"] | components["schemas"]["ApprovalDecided"] | components["schemas"]["MessageSent"] | components["schemas"]["SendFailed"] | components["schemas"]["SendUnclear"] | components["schemas"]["ThreadRead"] | components["schemas"]["ThreadUnread"] | components["schemas"]["ThreadLabelsChanged"] | components["schemas"]["LabelCreated"] | components["schemas"]["LabelRenamed"] | components["schemas"]["LabelDeleted"];
         /** @description Mail arrived. No actor made this change, so it names none. */
         MessageReceived: {
             /** @description The change's position in the mailbox's feed, counting from 1. */
@@ -734,6 +822,72 @@ export interface components {
              */
             type: "threadUnread";
         };
+        ThreadLabelsChanged: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "threadLabelsChanged";
+            /** @description The ID of the thread. */
+            thread: string;
+            /**
+             * @description The IDs of the labels the thread got.
+             * @example [
+             *       "trash"
+             *     ]
+             */
+            added: string[];
+            /**
+             * @description The IDs of the labels the thread lost.
+             * @example [
+             *       "inbox"
+             *     ]
+             */
+            removed: string[];
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "threadLabelsChanged";
+        };
+        LabelCreated: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "labelCreated";
+            /** @description The label's ID. */
+            label: string;
+            /** @description The label's name. */
+            name: string;
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "labelCreated";
+        };
+        LabelRenamed: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "labelRenamed";
+            /** @description The label's ID. */
+            label: string;
+            /** @description The label's new name. */
+            name: string;
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "labelRenamed";
+        };
+        LabelDeleted: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "labelDeleted";
+            /** @description The ID of the label deleted. */
+            label: string;
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "labelDeleted";
+        };
         NewDraft: {
             /** @description The ID of the message the draft replies to. Without it, the draft is a new message. */
             answers?: string;
@@ -900,6 +1054,50 @@ export interface components {
             /** @description The IDs of the threads. */
             threads: string[];
         };
+        ThreadLabels: {
+            /** @description The IDs of the threads. */
+            threads: string[];
+            /**
+             * @description The IDs of the labels to add, such as inbox, spam, trash or one of the mailbox's own.
+             * @example [
+             *       "trash"
+             *     ]
+             */
+            add?: string[];
+            /**
+             * @description The IDs of the labels to remove.
+             * @example [
+             *       "inbox"
+             *     ]
+             */
+            remove?: string[];
+        };
+        Label: {
+            /**
+             * @description The label's ID, which threads list among their labels. The built-in labels' are inbox, spam and trash.
+             * @example inbox
+             */
+            id: string;
+            /**
+             * @description The label's name.
+             * @example Inbox
+             */
+            name: string;
+            /** @description Whether the label is built in, so it can't be renamed or deleted. */
+            builtIn: boolean;
+            /** @description How many of the label's threads are unread, leaving out those in Spam and Trash unless the label is one of those. */
+            unread: number;
+        };
+        LabelList: {
+            labels: components["schemas"]["Label"][];
+        };
+        NewLabel: {
+            /**
+             * @description The label's name.
+             * @example Receipts
+             */
+            name: string;
+        };
         ThreadSummary: {
             /** @description The thread's ID. */
             id: string;
@@ -913,7 +1111,7 @@ export interface components {
              */
             snippet: string;
             /**
-             * @description The thread's labels.
+             * @description The IDs of the thread's labels.
              * @example [
              *       "inbox"
              *     ]
@@ -1179,6 +1377,8 @@ export interface components {
         Mailbox: string;
         /** @description The draft's ID. */
         Draft: string;
+        /** @description The label's ID. */
+        Label: string;
         /** @description The approval's ID. */
         Approval: string;
     };
@@ -1615,6 +1815,37 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
+    labelThreads: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The mailbox's ID. */
+                mailbox: components["parameters"]["Mailbox"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ThreadLabels"];
+            };
+        };
+        responses: {
+            /** @description The threads, as they are now. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThreadList"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     getThread: {
         parameters: {
             query?: never;
@@ -1641,6 +1872,159 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    listAllMail: {
+        parameters: {
+            query?: {
+                /** @description How many threads a page lists at most. */
+                limit?: number;
+                /** @description Where the page starts, the next of the page before it. Leave it out for the first page. */
+                after?: string;
+            };
+            header?: never;
+            path: {
+                /** @description The mailbox's ID. */
+                mailbox: components["parameters"]["Mailbox"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of the threads. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThreadList"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listLabels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The mailbox's ID. */
+                mailbox: components["parameters"]["Mailbox"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The labels. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabelList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    createLabel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The mailbox's ID. */
+                mailbox: components["parameters"]["Mailbox"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewLabel"];
+            };
+        };
+        responses: {
+            /** @description The label. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Label"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    deleteLabel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The mailbox's ID. */
+                mailbox: components["parameters"]["Mailbox"];
+                /** @description The label's ID. */
+                label: components["parameters"]["Label"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The label, as it was before it was deleted. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Label"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    renameLabel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The mailbox's ID. */
+                mailbox: components["parameters"]["Mailbox"];
+                /** @description The label's ID. */
+                label: components["parameters"]["Label"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewLabel"];
+            };
+        };
+        responses: {
+            /** @description The label, renamed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Label"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     listDrafts: {

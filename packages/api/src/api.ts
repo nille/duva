@@ -5,7 +5,23 @@ import type { AuthorizerContext } from "./authorizer.ts";
 import { listOrganizationChanges } from "./changes.ts";
 import { createDraft, deleteDraft, editDraft, getDraft, listApprovals, listDrafts, rejectApproval, sendApproval, sendDraft } from "./drafts.ts";
 import { addHuman, listHumans } from "./humans.ts";
-import { createMailbox, getMailbox, getThread, listMailboxChanges, listMailboxes, listSentThreads, listThreads, markThreadsRead, markThreadsUnread } from "./mailboxes.ts";
+import {
+  createMailbox,
+  createMailboxLabel,
+  deleteMailboxLabel,
+  getMailbox,
+  getThread,
+  labelMailboxThreads,
+  listAllMail,
+  listMailboxChanges,
+  listMailboxes,
+  listMailboxLabels,
+  listSentThreads,
+  listThreads,
+  markThreadsRead,
+  markThreadsUnread,
+  renameMailboxLabel,
+} from "./mailboxes.ts";
 import type { Deployment } from "./deployment.ts";
 import { type Actor, actorOf } from "./organization.ts";
 import { getStatus } from "./status.ts";
@@ -38,7 +54,13 @@ const handlers: Record<OperationId, OperationHandler> = {
   listSentThreads,
   markThreadsRead,
   markThreadsUnread,
+  labelThreads: labelMailboxThreads,
   getThread,
+  listAllMail,
+  listLabels: listMailboxLabels,
+  createLabel: createMailboxLabel,
+  renameLabel: renameMailboxLabel,
+  deleteLabel: deleteMailboxLabel,
   createDraft,
   listDrafts,
   getDraft,

@@ -185,7 +185,7 @@ test("in an agent's mailbox the sponsor reads its Sent and has no replies, and i
   await signIn("ada@example.org");
 
   await mailboxes(page).getByRole("link", { name: /^Hermes/ }).click();
-  await page.getByRole("navigation", { name: "Duva" }).getByRole("link", { name: "Sent" }).click();
+  await page.getByRole("navigation", { name: "Mail" }).getByRole("link", { name: "Sent" }).click();
   await expect.poll(() => page.getByRole("heading", { level: 1 }).textContent(), wait).toBe("Hermes's Sent");
   await expect.poll(() => page.getByRole("list", { name: "Threads" }).getByRole("listitem").allInnerTexts(), wait).toEqual([expect.stringContaining("Från Hermes")]);
   await page.getByRole("link", { name: /Från Hermes/ }).click();

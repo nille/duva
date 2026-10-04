@@ -5,6 +5,7 @@ import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
 import { startDraft } from "./compose.tsx";
 import { Addresses, Field, nameOf, Time } from "./mail-parts.tsx";
+import { type Done, type Label, OrganizeActions, ownLabelsOf } from "./organize.tsx";
 import { size, strings } from "./strings.ts";
 
 type Thread = components["schemas"]["Thread"];
@@ -17,27 +18,35 @@ type Reading = { status: "loading" } | { status: "failed"; message: string; gone
 const quoteShown = 3;
 
 /**
- * The thread with the ID in the mailbox whose Inbox is at `base`, the human's own or, with the
- * agent's name, an agent's they sponsor. `version` counts the changes to the mailbox the app has
+ * The thread with the ID in the mailbox, the human's own or, with the agent's name, an agent's
+ * they sponsor. `version` counts the changes to the mailbox the app has
  * seen, so the thread is read again when it grows, and replies that arrive while it's open show.
+ * `back` is the view it was opened from, named `backTo`, where archiving, Spam, Trash and restoring
+ * return to, telling `onDone` what was done.
  */
 export function ThreadView({
   client,
   mailbox,
-  base,
   id,
   me,
   agent,
+  labels,
+  back,
+  backTo,
   version,
+  onDone,
   onSignedOut,
 }: {
   client: DuvaClient;
   mailbox: Mailbox;
-  base: string;
   id: string;
   me: string;
   agent?: string;
+  labels: Label[];
+  back: string;
+  backTo: string;
   version: number;
+  onDone: (done: Done) => void;
   onSignedOut: () => void;
 }) {
   const [reading, setReading] = useState<Reading>({ status: "loading" });
@@ -45,6 +54,8 @@ export function ThreadView({
   // The reply being started, by its message and whether it goes to all, or whether starting one failed.
   const [replying, setReplying] = useState<{ message: string; all: boolean } | "failed">();
   const leaving = useRef(false);
+  // The latest request to mark the thread read, which marking it unread waits for, so it lands last.
+  const markingRead = useRef<Promise<unknown>>(Promise.resolve());
   const readingRef = useRef(reading);
   readingRef.current = reading;
 
@@ -67,7 +78,9 @@ export function ThreadView({
     setReading({ status: "read", thread: data, fresh: new Set(known === undefined ? [] : data.messages.filter((message) => !known.has(message.id)).map((message) => message.id)) });
     // Reading the thread on screen marks it read, also when a reply arrives while it's open, until the human marks it unread.
     if (data.unread && !leaving.current) {
-      const { response: marked } = await client.POST("/mailboxes/{mailbox}/threads/read", { params: { path: { mailbox: mailbox.id } }, body: { threads: [id] } }).catch(() => ({ response: undefined }));
+      const read = client.POST("/mailboxes/{mailbox}/threads/read", { params: { path: { mailbox: mailbox.id } }, body: { threads: [id] } }).catch(() => ({ response: undefined }));
+      markingRead.current = read;
+      const { response: marked } = await read;
       if (marked?.status === 401) return onSignedOut();
       setMarking(marked?.ok ? "idle" : "readFailed");
     }
@@ -91,13 +104,26 @@ export function ThreadView({
   const markUnread = async () => {
     setMarking("busy");
     leaving.current = true;
+    await markingRead.current;
     const { response } = await client.POST("/mailboxes/{mailbox}/threads/unread", { params: { path: { mailbox: mailbox.id } }, body: { threads: [id] } }).catch(() => ({ response: undefined }));
     if (response?.status === 401) return onSignedOut();
     if (!response?.ok) {
       leaving.current = false;
       return setMarking("failed");
     }
-    location.hash = base;
+    location.hash = back;
+  };
+
+  const organized = (done: Done, moved: boolean) => {
+    if (moved) {
+      leaving.current = true;
+      // What was done is said in the view the human returns to.
+      location.hash = back;
+      onDone(done);
+    } else {
+      onDone(done);
+      void load();
+    }
   };
 
   const reply = async (message: Message, all: boolean) => {
@@ -109,9 +135,9 @@ export function ThreadView({
   return (
     <main className="desk desk-reading" aria-busy={reading.status === "loading"}>
       <p className="back">
-        <a href={base}>
+        <a href={back}>
           <BackIcon />
-          {agent === undefined ? strings.thread.back : strings.inbox.agentTitle(agent)}
+          {backTo}
         </a>
       </p>
       {reading.status === "loading" ? (
@@ -135,12 +161,14 @@ export function ThreadView({
             <h1 ref={titleRef} tabIndex={-1} className="view-title reading-title">
               {subject}
             </h1>
-            <div className="reading-actions">
+            <div className="reading-actions" role="toolbar" aria-label={strings.organize.threadToolbar}>
+              <OrganizeActions client={client} mailbox={mailbox} threads={[reading.thread]} labels={labels} place={{ thread: true }} onDone={organized} onSignedOut={onSignedOut} />
               <button type="button" className="button button-small" disabled={marking === "busy"} onClick={() => void markUnread()}>
                 {marking === "busy" ? strings.thread.markingUnread : strings.thread.markUnread}
               </button>
             </div>
           </div>
+          <ThreadLabels thread={reading.thread} labels={labels} />
           {(marking === "failed" || marking === "readFailed") && (
             <p className="notice notice-alert" role="alert">
               {marking === "failed" ? strings.thread.markFailed : strings.thread.markReadFailed}
@@ -169,6 +197,25 @@ export function ThreadView({
         </>
       )}
     </main>
+  );
+}
+
+/** Where the thread is: Spam or Trash, and the human's own labels on it. */
+function ThreadLabels({ thread, labels }: { thread: Thread; labels: Label[] }) {
+  const names = [
+    ...(thread.labels.includes("spam") ? [strings.views.spam] : []),
+    ...(thread.labels.includes("trash") ? [strings.views.trash] : []),
+    ...ownLabelsOf(thread, labels).map(({ name }) => name),
+  ];
+  if (names.length === 0) return null;
+  return (
+    <ul className="reading-labels" aria-label={strings.thread.labels}>
+      {names.map((name) => (
+        <li key={name} className="label-name">
+          {name}
+        </li>
+      ))}
+    </ul>
   );
 }
 

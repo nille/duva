@@ -76,6 +76,18 @@ for (const read of ["read", "unread"]) {
 }
 await check("listing a mailbox's Sent without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/mailboxes/x/sent`), 401));
 await check("deleting a draft without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/mailboxes/x/drafts/x`, { method: "DELETE" }), 401));
+await check("labelling threads without credentials answers 401", async () =>
+  expectStatus(await fetch(`${apiUrl}/mailboxes/x/threads/labels`, { method: "POST", headers: { "content-type": "application/json" }, body: '{"threads":["x"],"add":["trash"]}' }), 401),
+);
+await check("listing All mail without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/mailboxes/x/all-mail`), 401));
+await check("listing labels without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/mailboxes/x/labels`), 401));
+await check("creating a label without credentials answers 401", async () =>
+  expectStatus(await fetch(`${apiUrl}/mailboxes/x/labels`, { method: "POST", headers: { "content-type": "application/json" }, body: '{"name":"Check"}' }), 401),
+);
+await check("renaming a label without credentials answers 401", async () =>
+  expectStatus(await fetch(`${apiUrl}/mailboxes/x/labels/x`, { method: "PATCH", headers: { "content-type": "application/json" }, body: '{"name":"Check"}' }), 401),
+);
+await check("deleting a label without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/mailboxes/x/labels/x`, { method: "DELETE" }), 401));
 await check("sending an approval without credentials answers 401", async () =>
   expectStatus(await fetch(`${apiUrl}/approvals/x/send`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }), 401),
 );

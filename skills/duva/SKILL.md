@@ -136,7 +136,7 @@ Lists the threads a page at a time, newest first by their newest message. To rea
 
 List the threads a mailbox has sent mail in, newest first.
 
-Lists every thread with a message sent from the mailbox, whatever its labels, a page at a time, newest first by its newest message. To read the next page, call again with the answer's next as after, until an answer has no next.
+Lists every thread with a message sent from the mailbox, except those in Spam and Trash, a page at a time, newest first by its newest message. To read the next page, call again with the answer's next as after, until an answer has no next.
 
 - `--mailbox` (required): The mailbox's ID.
 - `--limit`: How many threads a page lists at most.
@@ -160,12 +160,69 @@ Marks each thread unread, so it stands out until it is read again. Each thread t
 - `--mailbox` (required): The mailbox's ID.
 - `--threads` (required) (once for each): The IDs of the threads.
 
+## duva threads label
+
+Add labels to threads in a mailbox, and remove them.
+
+Adds and removes the labels on each thread. Archiving removes inbox, and adding inbox moves a thread back to the Inbox, out of Spam and Trash. Adding spam or trash takes a thread out of the Inbox. Removing spam (not spam) or trash (restore) puts it back in the Inbox, unless it still has the other or inbox is removed too. Each thread whose labels change gets a change in the mailbox's change feed, naming you. Only those who can read the mailbox can label its threads.
+
+- `--mailbox` (required): The mailbox's ID.
+- `--threads` (required) (once for each): The IDs of the threads.
+- `--add` (once for each): The IDs of the labels to add, such as inbox, spam, trash or one of the mailbox's own.
+- `--remove` (once for each): The IDs of the labels to remove.
+
 ## duva threads get
 
 Read a thread, with each of its messages, oldest first.
 
 - `--mailbox` (required): The mailbox's ID.
 - `--thread` (required): The thread's ID.
+
+## duva threads all-mail
+
+List every thread in a mailbox except those in Spam and Trash, newest first.
+
+Lists archived threads too, a page at a time, newest first by their newest message. To read the next page, call again with the answer's next as after, until an answer has no next.
+
+- `--mailbox` (required): The mailbox's ID.
+- `--limit`: How many threads a page lists at most.
+- `--after`: Where the page starts, the next of the page before it. Leave it out for the first page.
+
+## duva labels list
+
+List a mailbox's labels, with how many unread threads each has.
+
+Lists the built-in labels inbox, spam and trash first, then the mailbox's own labels by name. Only those who can read the mailbox can list its labels.
+
+- `--mailbox` (required): The mailbox's ID.
+
+## duva labels create
+
+Create a label in a mailbox.
+
+Creates a label of the mailbox's own, with a name no other label in it has, in any case. Then add it to threads by its ID. Only those who can read the mailbox can create its labels. The change is recorded in the mailbox's change feed.
+
+- `--mailbox` (required): The mailbox's ID.
+- `--name` (required): The label's name.
+
+## duva labels delete
+
+Delete one of a mailbox's own labels.
+
+Removes the label from each of its threads, each with a change in the mailbox's change feed, and then deletes it. The threads stay. The built-in labels can't be deleted. If deleting stops partway, delete the label again to finish.
+
+- `--mailbox` (required): The mailbox's ID.
+- `--label` (required): The label's ID.
+
+## duva labels rename
+
+Rename one of a mailbox's own labels.
+
+Gives the label a name no other label in the mailbox has, in any case. Its threads keep it. The built-in labels can't be renamed. The change is recorded in the mailbox's change feed.
+
+- `--mailbox` (required): The mailbox's ID.
+- `--label` (required): The label's ID.
+- `--name` (required): The label's name.
 
 ## duva drafts list
 

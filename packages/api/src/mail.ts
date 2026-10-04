@@ -24,6 +24,8 @@ export type { StoredMessage };
 export const inbox = "inbox";
 /** The label mail SES judged to be spam gets instead. */
 export const spam = "spam";
+/** The label deleted threads get. */
+export const trash = "trash";
 
 /** How many threads a page of a listing gives at most. */
 export const threadsPerPage = 100;
@@ -42,9 +44,9 @@ const messageKey = (mailbox: string, thread: string, receivedAt: string, message
   [pk]: partition(mailbox),
   [sk]: `${threadPrefix(thread)}message#${receivedAt}#${message}`,
 });
-// Each listing, a label's or Sent, lists its threads newest first, each with its summary.
+// Each listing lists its threads newest first, each with its summary: each label, Sent and All mail.
 const listingKey = (mailbox: string, listing: Listing, latestAt: string, thread: string) => ({
-  [pk]: `${partition(mailbox)}#${"label" in listing ? `label#${listing.label}` : "sent"}`,
+  [pk]: `${partition(mailbox)}#${listing}`,
   [sk]: `${latestAt}#${thread}`,
 });
 // A page of a listing's threads ends at an entry, whose sort key is the next page's cursor.
@@ -80,12 +82,6 @@ export interface Arrival {
   /** Whether SES judged the message to be spam. */
   spam: boolean;
 }
-
-/** What lists threads: a label, or Sent, which lists the threads with a message sent from the mailbox. */
-export type Listing = { label: string } | { sent: true };
-
-/** The listings a thread is in: one per label, and Sent if the mailbox sent in it. */
-const listingsOf = ({ labels, sent }: StoredSummary): Listing[] => [...labels.map((label) => ({ label })), ...(sent ? [{ sent: true as const }] : [])];
 
 /** A thread's summary as stored, with whether the mailbox sent in it. Threads stored before Sent existed don't say. */
 type StoredSummary = ThreadSummary & { sent?: boolean };
@@ -233,15 +229,13 @@ async function storeMessage(
         : {
             ...joined,
             snippet: newest ? snippetOf(text) : joined.snippet,
-            labels: label === undefined || joined.labels.includes(label) ? joined.labels : [...joined.labels, label],
+            // New mail brings a thread back to the Inbox, unless it is in Spam or Trash.
+            labels: label === undefined || joined.labels.includes(label) || hidden(joined) ? joined.labels : [...joined.labels, label],
             unread: unread ?? joined.unread,
             latestAt: newest ? receivedAt : joined.latestAt,
             messages: joined.messages + 1,
             ...((sent || joined.sent) && { sent: true }),
           };
-    // The listings' entries move to the thread's new place. A delete and a put of the same item can't
-    // share a transaction, so a thread that keeps its place has its entries overwritten instead.
-    const moved = joined !== undefined && joined.latestAt !== summary.latestAt ? listingsOf(joined) : [];
     try {
       await recordChanges(table, mailboxFeed(mailbox), {
         by,
@@ -250,8 +244,7 @@ async function storeMessage(
           once(thread),
           put({ ...threadKey(mailbox, thread), ...summary }, joined === undefined ? isNew : asRead(joined)),
           put({ ...messageKey(mailbox, thread, receivedAt, id), ...message, thread }),
-          ...moved.map((moving) => ({ Delete: { TableName: table.name, Key: listingKey(mailbox, moving, joined!.latestAt, thread) } })),
-          ...listingsOf(summary).map((kept) => put({ ...listingKey(mailbox, kept, summary.latestAt, thread), ...summary })),
+          ...listingWrites(table, mailbox, joined, summary),
           ...(message.messageId === undefined || !findable ? [] : [put({ ...messageIdKey(mailbox, message.messageId), thread, message: id })]),
           put({ ...messageRefKey(mailbox, id), thread, receivedAt }),
         ],
@@ -283,39 +276,112 @@ function asRead({ messages, labels, unread }: ThreadSummary) {
  * actor `by` for each that wasn't already, and returns the threads as they are now, in the order
  * given. Returns the IDs the mailbox has no thread for instead, and marks none, if there are any.
  */
-export async function markThreads(
+export function markThreads(
   table: Table,
   { mailbox, threads, unread, by }: { mailbox: string; threads: string[]; unread: boolean; by: string },
+): Promise<{ threads: ThreadSummary[] } | { missing: string[] }> {
+  return changeThreads(table, { mailbox, threads, by }, (current) =>
+    current.unread === unread ? undefined : { summary: { ...current, unread }, change: { type: unread ? "threadUnread" : "threadRead", thread: current.id } },
+  );
+}
+
+/**
+ * Adds and removes the labels on each thread, with the built-in labels' rules: Spam and Trash
+ * each take a thread out of the Inbox, removing one puts it back unless it has the other or the
+ * Inbox is removed too, and the Inbox takes it out of both. Records a change in the mailbox's change feed attributed to the actor
+ * `by` for each thread whose labels change, and returns the threads as they are now, in the order
+ * given. Returns the IDs the mailbox has no thread for instead, and labels none, if there are any.
+ */
+export function labelThreads(
+  table: Table,
+  { mailbox, threads, add, remove, by }: { mailbox: string; threads: string[]; add: string[]; remove: string[]; by: string },
+): Promise<{ threads: ThreadSummary[] } | { missing: string[] }> {
+  return changeThreads(table, { mailbox, threads, by }, (current) => {
+    const labels = relabelled(current.labels, add, remove);
+    const added = labels.filter((label) => !current.labels.includes(label));
+    const removed = current.labels.filter((label) => !labels.includes(label));
+    if (added.length === 0 && removed.length === 0) return undefined;
+    return { summary: { ...current, labels }, change: { type: "threadLabelsChanged", thread: current.id, added, removed } };
+  });
+}
+
+/** The labels after adding and removing those given, with the built-in labels' rules. */
+function relabelled(labels: string[], add: string[], remove: string[]): string[] {
+  const out = new Set([...remove, ...(add.includes(inbox) ? [spam, trash] : []), ...(add.includes(spam) || add.includes(trash) ? [inbox] : [])]);
+  const next = [...labels.filter((label) => !out.has(label)), ...add.filter((label) => !labels.includes(label))];
+  const restored = labels.some((label) => (label === spam || label === trash) && !next.includes(label));
+  return restored && !remove.includes(inbox) && !next.includes(spam) && !next.includes(trash) && !next.includes(inbox) ? [...next, inbox] : [...new Set(next)];
+}
+
+/**
+ * Changes each thread as `change` says, in its own transaction with the change in the mailbox's
+ * change feed attributed to the actor `by`, and leaves those it answers undefined for as they are.
+ * Returns the threads as they are now, in the order given, or the IDs the mailbox has no thread
+ * for instead, changing none, if there are any.
+ */
+async function changeThreads(
+  table: Table,
+  { mailbox, threads, by }: { mailbox: string; threads: string[]; by: string },
+  change: (current: StoredSummary) => { summary: StoredSummary; change: object } | undefined,
 ): Promise<{ threads: ThreadSummary[] } | { missing: string[] }> {
   const found = await Promise.all(threads.map((thread) => threadSummary(table, mailbox, thread)));
   const missing = threads.filter((_, index) => found[index] === undefined);
   if (missing.length > 0) return { missing };
   // recordChanges gives the items' cancellation reasons after the counter's and the one change's.
   const threadReason = 2;
-  const marked = [];
+  const changed = [];
   for (let [index, current] of found.entries()) {
-    for (let attempt = 1; current!.unread !== unread; attempt++) {
-      const summary = { ...current!, unread };
+    for (let attempt = 1; ; attempt++) {
+      const next = change(current!);
+      if (next === undefined) break;
       try {
         await recordChanges(table, mailboxFeed(mailbox), {
           by,
-          changes: [{ type: unread ? "threadUnread" : "threadRead", thread: summary.id }],
+          changes: [next.change],
           items: [
-            { Put: { TableName: table.name, Item: { ...threadKey(mailbox, summary.id), ...summary }, ...asRead(current!) } },
-            ...listingsOf(summary).map((listing) => ({ Put: { TableName: table.name, Item: { ...listingKey(mailbox, listing, summary.latestAt, summary.id), ...summary } } })),
+            { Put: { TableName: table.name, Item: { ...threadKey(mailbox, current!.id), ...next.summary }, ...asRead(current!) } },
+            ...listingWrites(table, mailbox, current, next.summary),
           ],
         });
-        current = summary;
+        current = next.summary;
+        break;
       } catch (error) {
-        // Mail joined the thread since its summary was fetched, so it is fetched again.
+        // Mail joined the thread since its summary was fetched, or it was changed, so it is fetched again.
         const reasons = error instanceof TransactionCanceledException ? (error.CancellationReasons ?? []) : [];
         if (reasons[threadReason]?.Code !== "ConditionalCheckFailed" || attempt === 10) throw error;
         current = (await threadSummary(table, mailbox, threads[index]!))!;
       }
     }
-    marked.push(current!);
+    changed.push(current!);
   }
-  return { threads: marked.map(summaryOf) };
+  return { threads: changed.map(summaryOf) };
+}
+
+/** A listing a thread can be in: one of its labels, Sent if the mailbox sent in it, or All mail. */
+type Listing = `label#${string}` | "sent" | "all";
+
+/** Whether the thread is in Spam or Trash, which leaves it out of every listing but those. */
+const hidden = ({ labels }: ThreadSummary) => labels.includes(spam) || labels.includes(trash);
+
+/** The listings the thread is in: each of its labels, Sent if the mailbox sent in it, and All mail unless it is in Spam or Trash. */
+const listingsOf = (summary: StoredSummary): Listing[] => [
+  ...summary.labels.map((label) => `label#${label}` as const),
+  ...(summary.sent ? (["sent"] as const) : []),
+  ...(hidden(summary) ? [] : (["all"] as const)),
+];
+
+/**
+ * The writes that move the thread's entries in its listings from how it was to how it is: an entry
+ * in each listing it is in, at its place there, and none where it was and isn't. A delete and a put
+ * of the same item can't share a transaction, so an entry that keeps its place is overwritten.
+ */
+function listingWrites(table: Table, mailbox: string, was: StoredSummary | undefined, is: StoredSummary): TransactItem[] {
+  const listings = listingsOf(is);
+  const left = was === undefined ? [] : listingsOf(was).filter((listing) => was.latestAt !== is.latestAt || !listings.includes(listing));
+  return [
+    ...left.map((listing) => ({ Delete: { TableName: table.name, Key: listingKey(mailbox, listing, was!.latestAt, is.id) } })),
+    ...listings.map((listing) => ({ Put: { TableName: table.name, Item: { ...listingKey(mailbox, listing, is.latestAt, is.id), ...is } } })),
+  ];
 }
 
 /** The thread's summary as stored, or undefined if the mailbox has no such thread. */
@@ -335,49 +401,76 @@ async function threadAnswered(table: Table, mailbox: string, messageIds: string[
   return thread === undefined ? undefined : threadSummary(table, mailbox, thread);
 }
 
+/** A page of the threads with the label, as threadsListed gives it, with those in Spam and Trash if `withHidden`. */
+export const threadsWithLabel = (table: Table, mailbox: string, label: string, page: { limit: number; after?: Cursor; withHidden?: boolean }) =>
+  threadsListed(table, mailbox, `label#${label}`, page);
+
+/** A page of Sent, the threads with a message sent from the mailbox, as threadsListed gives it. */
+export const sentThreads = (table: Table, mailbox: string, page: { limit: number; after?: Cursor }) => threadsListed(table, mailbox, "sent", page);
+
+/** A page of All mail, as threadsListed gives it. */
+export const allMail = (table: Table, mailbox: string, page: { limit: number; after?: Cursor }) => threadsListed(table, mailbox, "all", page);
+
+/** Whether the listing leaves out threads in Spam and Trash, as every listing but theirs does. */
+const leavesOutHidden = (listing: Listing) => listing !== `label#${spam}` && listing !== `label#${trash}`;
+
 /**
- * A page of the threads the listing lists, newest first, at most `limit` of them, after the page
- * that gave `after` as its next. The page has a next if more threads follow.
+ * A page of the threads in the listing, newest first, at most `limit` of them, after the page that
+ * gave `after` as its next, leaving out those in Spam or Trash unless the listing is one of those
+ * or `withHidden`. The page has a next if more threads follow.
  */
-export async function listedThreads(table: Table, mailbox: string, listing: Listing, { limit, after }: { limit: number; after?: Cursor }): Promise<ThreadList> {
+async function threadsListed(
+  table: Table,
+  mailbox: string,
+  listing: Listing,
+  { limit, after, withHidden = false }: { limit: number; after?: Cursor; withHidden?: boolean },
+): Promise<ThreadList> {
   const partition = listingKey(mailbox, listing, "", "")[pk];
-  const { Items = [] } = await documents(table).send(
-    new QueryCommand({
-      TableName: table.name,
-      KeyConditionExpression: `${pk} = :label`,
-      ExpressionAttributeValues: { ":label": partition },
-      ScanIndexForward: false,
-      // One more than the page, to tell whether another page follows.
-      Limit: limit + 1,
-      ExclusiveStartKey: after === undefined ? undefined : { [pk]: partition, [sk]: after.position },
-    }),
-  );
-  const page = Items.slice(0, limit);
+  const shown = withHidden || !leavesOutHidden(listing) ? () => true : (item: ThreadSummary) => !hidden(item);
+  const items: Record<string, unknown>[] = [];
+  let start = after === undefined ? undefined : { [pk]: partition, [sk]: after.position };
+  // One more than the page, to tell whether another page follows. Threads left out don't count.
+  do {
+    const read = await documents(table).send(
+      new QueryCommand({
+        TableName: table.name,
+        KeyConditionExpression: `${pk} = :listing`,
+        ExpressionAttributeValues: { ":listing": partition },
+        ScanIndexForward: false,
+        Limit: limit + 1 - items.length,
+        ExclusiveStartKey: start,
+      }),
+    );
+    items.push(...(read.Items ?? []).filter((item) => shown(item as ThreadSummary)));
+    start = read.LastEvaluatedKey as typeof start;
+  } while (items.length <= limit && start !== undefined);
+  const page = items.slice(0, limit);
   const last = page.at(-1);
   return {
     threads: page.map((item) => summaryOf(item as ThreadSummary)),
-    ...(Items.length > limit && last !== undefined && { next: cursorAt(last[sk] as string) }),
+    ...(items.length > limit && last !== undefined && { next: cursorAt(last[sk] as string) }),
   };
 }
 
-/** How many of the threads with the label are unread. */
+/** How many of the label's threads are unread, leaving out those in Spam or Trash unless the label is one of those. */
 export async function unreadWithLabel(table: Table, mailbox: string, label: string): Promise<number> {
-  const partition = listingKey(mailbox, { label }, "", "")[pk];
+  const listing = `label#${label}` as const;
+  const partition = listingKey(mailbox, listing, "", "")[pk];
   let count = 0;
   let start: Record<string, unknown> | undefined;
   do {
-    const page = await documents(table).send(
+    const read = await documents(table).send(
       new QueryCommand({
         TableName: table.name,
-        KeyConditionExpression: `${pk} = :label`,
-        FilterExpression: "unread = :unread",
-        ExpressionAttributeValues: { ":label": partition, ":unread": true },
+        KeyConditionExpression: `${pk} = :listing`,
+        FilterExpression: leavesOutHidden(listing) ? "unread = :unread AND NOT contains(labels, :spam) AND NOT contains(labels, :trash)" : "unread = :unread",
+        ExpressionAttributeValues: { ":listing": partition, ":unread": true, ...(leavesOutHidden(listing) && { ":spam": spam, ":trash": trash }) },
         Select: "COUNT",
         ExclusiveStartKey: start,
       }),
     );
-    count += page.Count ?? 0;
-    start = page.LastEvaluatedKey;
+    count += read.Count ?? 0;
+    start = read.LastEvaluatedKey;
   } while (start !== undefined);
   return count;
 }

@@ -349,8 +349,8 @@ paths:
       operationId: listSentThreads
       summary: List the threads a mailbox has sent mail in, newest first.
       description: >
-        Lists every thread with a message sent from the mailbox, whatever its
-        labels, a page at a time, newest first by its newest message. To read the next page, call again with the answer's next as
+        Lists every thread with a message sent from the mailbox, except those
+        in Spam and Trash, a page at a time, newest first by its newest message. To read the next page, call again with the answer's next as
         after, until an answer has no next.
       x-cli-command: threads sent
       parameters:
@@ -448,6 +448,42 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+  /mailboxes/{mailbox}/threads/labels:
+    post:
+      operationId: labelThreads
+      summary: Add labels to threads in a mailbox, and remove them.
+      description: >
+        Adds and removes the labels on each thread. Archiving removes inbox,
+        and adding inbox moves a thread back to the Inbox, out of Spam and
+        Trash. Adding spam or trash takes a thread out of the Inbox. Removing
+        spam (not spam) or trash (restore) puts it back in the Inbox, unless
+        it still has the other or inbox is removed too. Each thread whose labels change gets a change
+        in the mailbox's change feed, naming you. Only those who can read the
+        mailbox can label its threads.
+      x-cli-command: threads label
+      parameters:
+        - $ref: "#/components/parameters/Mailbox"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ThreadLabels"
+      responses:
+        "200":
+          description: The threads, as they are now.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ThreadList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /mailboxes/{mailbox}/threads/{thread}:
     get:
       operationId: getThread
@@ -468,6 +504,165 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Thread"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /mailboxes/{mailbox}/all-mail:
+    get:
+      operationId: listAllMail
+      summary: List every thread in a mailbox except those in Spam and Trash, newest first.
+      description: >
+        Lists archived threads too, a page at a time, newest first by their
+        newest message. To read the next page, call again with the answer's
+        next as after, until an answer has no next.
+      x-cli-command: threads all-mail
+      parameters:
+        - $ref: "#/components/parameters/Mailbox"
+        - name: limit
+          in: query
+          description: How many threads a page lists at most.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 100
+        - name: after
+          in: query
+          description: Where the page starts, the next of the page before it. Leave it out for the first page.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: A page of the threads.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ThreadList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /mailboxes/{mailbox}/labels:
+    get:
+      operationId: listLabels
+      summary: List a mailbox's labels, with how many unread threads each has.
+      description: >
+        Lists the built-in labels inbox, spam and trash first, then the
+        mailbox's own labels by name. Only those who can read the mailbox can
+        list its labels.
+      x-cli-command: labels list
+      parameters:
+        - $ref: "#/components/parameters/Mailbox"
+      responses:
+        "200":
+          description: The labels.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LabelList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      operationId: createLabel
+      summary: Create a label in a mailbox.
+      description: >
+        Creates a label of the mailbox's own, with a name no other label in it
+        has, in any case. Then add it to threads by its ID. Only those who can
+        read the mailbox can create its labels. The change is recorded in the
+        mailbox's change feed.
+      x-cli-command: labels create
+      parameters:
+        - $ref: "#/components/parameters/Mailbox"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NewLabel"
+      responses:
+        "201":
+          description: The label.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Label"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /mailboxes/{mailbox}/labels/{label}:
+    patch:
+      operationId: renameLabel
+      summary: Rename one of a mailbox's own labels.
+      description: >
+        Gives the label a name no other label in the mailbox has, in any case.
+        Its threads keep it. The built-in labels can't be renamed. The change
+        is recorded in the mailbox's change feed.
+      x-cli-command: labels rename
+      parameters:
+        - $ref: "#/components/parameters/Mailbox"
+        - $ref: "#/components/parameters/Label"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NewLabel"
+      responses:
+        "200":
+          description: The label, renamed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Label"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+    delete:
+      operationId: deleteLabel
+      summary: Delete one of a mailbox's own labels.
+      description: >
+        Removes the label from each of its threads, each with a change in the
+        mailbox's change feed, and then deletes it. The threads stay. The
+        built-in labels can't be deleted. If deleting stops partway, delete
+        the label again to finish.
+      x-cli-command: labels delete
+      parameters:
+        - $ref: "#/components/parameters/Mailbox"
+        - $ref: "#/components/parameters/Label"
+      responses:
+        "200":
+          description: The label, as it was before it was deleted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Label"
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -757,6 +952,13 @@ components:
       description: The draft's ID.
       schema:
         type: string
+    Label:
+      name: label
+      in: path
+      required: true
+      description: The label's ID.
+      schema:
+        type: string
     Approval:
       name: approval
       in: path
@@ -1005,6 +1207,10 @@ components:
         - $ref: "#/components/schemas/SendUnclear"
         - $ref: "#/components/schemas/ThreadRead"
         - $ref: "#/components/schemas/ThreadUnread"
+        - $ref: "#/components/schemas/ThreadLabelsChanged"
+        - $ref: "#/components/schemas/LabelCreated"
+        - $ref: "#/components/schemas/LabelRenamed"
+        - $ref: "#/components/schemas/LabelDeleted"
       discriminator:
         propertyName: type
         mapping:
@@ -1021,6 +1227,10 @@ components:
           sendUnclear: "#/components/schemas/SendUnclear"
           threadRead: "#/components/schemas/ThreadRead"
           threadUnread: "#/components/schemas/ThreadUnread"
+          threadLabelsChanged: "#/components/schemas/ThreadLabelsChanged"
+          labelCreated: "#/components/schemas/LabelCreated"
+          labelRenamed: "#/components/schemas/LabelRenamed"
+          labelDeleted: "#/components/schemas/LabelDeleted"
     MessageReceived:
       type: object
       additionalProperties: false
@@ -1231,6 +1441,72 @@ components:
             thread:
               type: string
               description: The ID of the thread marked unread.
+    ThreadLabelsChanged:
+      allOf:
+        - $ref: "#/components/schemas/ChangeBase"
+        - type: object
+          required: [type, thread, added, removed]
+          properties:
+            type:
+              type: string
+              const: threadLabelsChanged
+            thread:
+              type: string
+              description: The ID of the thread.
+            added:
+              type: array
+              items:
+                type: string
+              description: The IDs of the labels the thread got.
+              examples: [["trash"]]
+            removed:
+              type: array
+              items:
+                type: string
+              description: The IDs of the labels the thread lost.
+              examples: [["inbox"]]
+    LabelCreated:
+      allOf:
+        - $ref: "#/components/schemas/ChangeBase"
+        - type: object
+          required: [type, label, name]
+          properties:
+            type:
+              type: string
+              const: labelCreated
+            label:
+              type: string
+              description: The label's ID.
+            name:
+              type: string
+              description: The label's name.
+    LabelRenamed:
+      allOf:
+        - $ref: "#/components/schemas/ChangeBase"
+        - type: object
+          required: [type, label, name]
+          properties:
+            type:
+              type: string
+              const: labelRenamed
+            label:
+              type: string
+              description: The label's ID.
+            name:
+              type: string
+              description: The label's new name.
+    LabelDeleted:
+      allOf:
+        - $ref: "#/components/schemas/ChangeBase"
+        - type: object
+          required: [type, label]
+          properties:
+            type:
+              type: string
+              const: labelDeleted
+            label:
+              type: string
+              description: The ID of the label deleted.
     NewDraft:
       type: object
       additionalProperties: false
@@ -1529,6 +1805,69 @@ components:
           items:
             type: string
           description: The IDs of the threads.
+    ThreadLabels:
+      type: object
+      additionalProperties: false
+      required: [threads]
+      properties:
+        threads:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            type: string
+          description: The IDs of the threads.
+        add:
+          type: array
+          items:
+            type: string
+          description: The IDs of the labels to add, such as inbox, spam, trash or one of the mailbox's own.
+          examples: [["trash"]]
+        remove:
+          type: array
+          items:
+            type: string
+          description: The IDs of the labels to remove.
+          examples: [["inbox"]]
+    Label:
+      type: object
+      additionalProperties: false
+      required: [id, name, builtIn, unread]
+      properties:
+        id:
+          type: string
+          description: The label's ID, which threads list among their labels. The built-in labels' are inbox, spam and trash.
+          examples: ["inbox"]
+        name:
+          type: string
+          description: The label's name.
+          examples: ["Inbox"]
+        builtIn:
+          type: boolean
+          description: Whether the label is built in, so it can't be renamed or deleted.
+        unread:
+          type: integer
+          description: How many of the label's threads are unread, leaving out those in Spam and Trash unless the label is one of those.
+    LabelList:
+      type: object
+      additionalProperties: false
+      required: [labels]
+      properties:
+        labels:
+          type: array
+          items:
+            $ref: "#/components/schemas/Label"
+    NewLabel:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: The label's name.
+          examples: ["Receipts"]
     ThreadSummary:
       type: object
       additionalProperties: false
@@ -1551,7 +1890,7 @@ components:
           type: array
           items:
             type: string
-          description: The thread's labels.
+          description: The IDs of the thread's labels.
           examples: [["inbox"]]
         unread:
           type: boolean

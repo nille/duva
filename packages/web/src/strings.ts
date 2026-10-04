@@ -23,7 +23,7 @@ export const strings = {
     unread: (count: number) => `${count} unread`,
   },
 
-  nav: { label: "Duva", inbox: "Inbox", sent: "Sent", drafts: "Drafts", approvals: "Approvals", waiting: (count: number) => `, ${count} waiting`, write: "Write" },
+  nav: { label: "Duva", mail: "Mail", approvals: "Approvals", waiting: (count: number) => `, ${count} waiting`, write: "Write" },
   connection: {
     upToDate: (time: string) => `Up to date at ${time}`,
     unreachable: "Duva couldn't check for new requests. It tries again by itself.",
@@ -37,6 +37,7 @@ export const strings = {
     unread: (count: number, more: boolean) => (more ? `At least ${count} unread` : `${count} unread`),
     unreadMark: "Unread",
     messages: (count: number) => `${count} messages`,
+    labelled: (names: string[]) => `labelled ${list(names)}`,
     older: "Show older threads",
     loadingOlder: "Loading older threads…",
     arrived: (count: number) => (count === 1 ? "1 new thread" : `${count} new threads`),
@@ -112,11 +113,79 @@ export const strings = {
     readOnly: "A sent draft can't change. Write a new message instead.",
   },
 
+  views: {
+    label: "Mail",
+    inbox: "Inbox",
+    sent: "Sent",
+    drafts: "Drafts",
+    allMail: "All mail",
+    spam: "Spam",
+    trash: "Trash",
+    yourLabels: "Your labels",
+    newLabel: "New label",
+    unknownLabel: "Label",
+    unread: (count: number) => `, ${count} unread`,
+    empty: {
+      all: { title: "No mail yet", lead: "Every thread is listed here, archived ones too, except those in Spam and Trash." },
+      spam: { title: "No spam", lead: "Mail judged to be spam when it arrived, and threads you mark as spam, are listed here, out of your Inbox." },
+      trash: { title: "Trash is empty", lead: "Threads you move to Trash are listed here until you restore them." },
+      label: { title: "No threads have this label", lead: "Pick threads in any view, then add the label to them with Labels." },
+    },
+  },
+
+  organize: {
+    toolbar: "Selected threads",
+    threadToolbar: "Thread actions",
+    selectAll: "Select every thread shown",
+    select: (subject: string) => `Select ${subject}`,
+    selected: (count: number) => `${count} selected`,
+    archive: "Archive",
+    moveToInbox: "Move to Inbox",
+    spam: "Mark as spam",
+    notSpam: "Not spam",
+    trash: "Move to Trash",
+    restore: "Restore",
+    labels: "Labels",
+    labelsFor: (count: number) => (count === 1 ? "Labels for this thread" : `Labels for ${count} threads`),
+    noLabels: "You have no labels yet.",
+    archived: (count: number) => `Archived ${threads(count)}.`,
+    inboxed: (count: number) => `Moved ${threads(count)} to the Inbox.`,
+    spammed: (count: number) => `Marked ${threads(count)} as spam.`,
+    notSpammed: (count: number) => `Moved ${threads(count)} from Spam to the Inbox.`,
+    trashed: (count: number) => `Moved ${threads(count)} to Trash.`,
+    restored: (count: number) => `Restored ${threads(count)} from Trash.`,
+    labelled: (name: string) => (count: number) => `Added ${name} to ${threads(count)}.`,
+    unlabelled: (name: string) => (count: number) => `Removed ${name} from ${threads(count)}.`,
+    undo: "Undo",
+    undone: "Undone.",
+    undoFailed: "Duva couldn't undo that. Change the threads back by hand.",
+    failed: "Duva couldn't change the threads. Try again.",
+  },
+
+  labelForm: {
+    newLabel: "New label",
+    create: "Create",
+    createAndAdd: "Create and add",
+    cancel: "Cancel",
+    save: "Save",
+    rename: "Rename",
+    renameLabel: (name: string) => `Rename ${name}`,
+    renamed: (name: string) => `Renamed the label to ${name}.`,
+    deleteLabel: "Delete label",
+    deleting: "Deleting…",
+    confirmDelete: (name: string) => `Delete ${name}? Its threads stay, without the label.`,
+    deleted: (name: string) => `Deleted the label ${name}. Its threads are still in your mail.`,
+    missing: "Give the label a name.",
+    taken: (name: string) => `You have a label named ${name} already, or it's a built-in name. Pick another.`,
+    failed: (status: number) => `Duva couldn't save the label (error ${status}). Try again in a moment.`,
+    unreachable: "Duva couldn't be reached, so the label wasn't saved. Check your connection and try again.",
+  },
+
   thread: {
-    back: "Inbox",
     reply: "Reply",
     replyAll: "Reply all",
     starting: "Starting…",
+    labels: "Labels",
     markUnread: "Mark unread",
     markingUnread: "Marking unread…",
     markFailed: "Duva couldn't mark the thread unread. Try again.",
@@ -229,6 +298,11 @@ export function size(bytes: number): string {
   if (bytes < 1024) return bytes === 1 ? "1 byte" : `${bytes} bytes`;
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+/** "1 thread", "2 threads". */
+function threads(count: number): string {
+  return count === 1 ? "1 thread" : `${count} threads`;
 }
 
 /** "a", "a and b", "a, b and c". */

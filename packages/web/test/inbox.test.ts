@@ -55,7 +55,7 @@ test("after signing in, a human lands on their Inbox, newest thread first, each 
   expect(oldest).toContain("Compiler notes");
   expect(oldest).toContain("Här är mina anteckningar om kompilatorn.");
   expect(await page.getByRole("link", { name: /^Unread/ }).count()).toBe(2);
-  expect(await page.getByText("2 unread").isVisible()).toBe(true);
+  expect(await page.getByText("2 unread", { exact: true }).isVisible()).toBe(true);
 });
 
 test("opening a thread shows its messages oldest first, and the Inbox then lists it read", budget, async () => {

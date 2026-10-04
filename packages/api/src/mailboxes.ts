@@ -2,7 +2,8 @@ import type { components } from "@duva/openapi";
 import { jsonBody, type OperationHandler, refusal } from "./api.ts";
 import type { Deployment } from "./deployment.ts";
 import { type Actor, AddressTaken, addMailbox, allAddresses, findActor, findMailbox, type Mailbox, organizationDomain, ownedMailboxes, sponsoredAgents } from "./organization.ts";
-import { cursorOf, inbox, listedThreads, type Listing, mailboxChanges, markThreads, readThread, threadsMarkedAtOnce, threadsPerPage, unreadWithLabel } from "./mail.ts";
+import { builtInLabels, createLabel, deleteLabel, hasLabel, listLabels, NameTaken, renameLabel } from "./labels.ts";
+import { allMail, type Cursor, cursorOf, inbox, labelThreads, mailboxChanges, markThreads, readThread, spam, threadsMarkedAtOnce, threadsPerPage, sentThreads, threadsWithLabel, trash, unreadWithLabel } from "./mail.ts";
 import { syncRecipients } from "./receiving.ts";
 
 /** How many addresses the organization can have: SES's limit on one receipt rule's recipients. */
@@ -90,14 +91,8 @@ export const listMailboxChanges: OperationHandler = async (event, deployment, ac
   return { statusCode: 200, body: await mailboxChanges(deployment.table, mailbox.id, Number(given), withSpam === "true") };
 };
 
-export const listThreads: OperationHandler = (event, deployment, actor) => listing(event, deployment, actor!, { label: event.queryStringParameters?.label ?? inbox });
-
-export const listSentThreads: OperationHandler = (event, deployment, actor) => listing(event, deployment, actor!, { sent: true });
-
-/** A page of the listing's threads, as the call's limit and after ask, for those who read the mailbox. */
-async function listing(event: Parameters<OperationHandler>[0], deployment: Deployment, actor: Actor, listed: Listing) {
-  const mailbox = await readableMailbox(event, deployment, actor);
-  if ("statusCode" in mailbox) return mailbox;
+/** Where the page the call asks for starts and how long it is, or a refusal if it asks for one no listing gives. */
+function pageAsked(event: Parameters<OperationHandler>[0]): { limit: number; after?: Cursor } | ReturnType<typeof refusal> {
   const query = event.queryStringParameters ?? {};
   const limit = query.limit ?? String(threadsPerPage);
   if (!/^\d+$/.test(limit) || Number(limit) < 1 || Number(limit) > threadsPerPage) {
@@ -107,9 +102,35 @@ async function listing(event: Parameters<OperationHandler>[0], deployment: Deplo
   if (query.after !== undefined && after === undefined) {
     return refusal(400, `${JSON.stringify(query.after)} isn't where a page starts. Give after as the next of the page before, or leave it out for the first page.`);
   }
-  const page = await listedThreads(deployment.table, mailbox.id, listed, { limit: Number(limit), after });
-  return { statusCode: 200, body: page satisfies components["schemas"]["ThreadList"] };
+  return { limit: Number(limit), after };
 }
+
+/** A handler that answers a page of the threads `list` gives, for those who can read the mailbox. */
+const listing =
+  (list: (table: Deployment["table"], mailbox: string, page: { limit: number; after?: Cursor }, event: Parameters<OperationHandler>[0]) => Promise<components["schemas"]["ThreadList"]>): OperationHandler =>
+  async (event, deployment, actor) => {
+    const mailbox = await readableMailbox(event, deployment, actor!);
+    if ("statusCode" in mailbox) return mailbox;
+    const page = pageAsked(event);
+    if ("statusCode" in page) return page;
+    return { statusCode: 200, body: await list(deployment.table, mailbox.id, page, event) };
+  };
+
+export const listThreads = listing((table, mailbox, page, event) => threadsWithLabel(table, mailbox, event.queryStringParameters?.label ?? inbox, page));
+export const listSentThreads = listing(sentThreads);
+export const listAllMail = listing(allMail);
+
+/** The thread IDs in the call's body, without repeats, or a refusal if it doesn't give 1 to threadsMarkedAtOnce of them. */
+function threadsGiven(body: Record<string, unknown> | undefined): string[] | ReturnType<typeof refusal> {
+  const threads = body?.threads;
+  if (!Array.isArray(threads) || threads.length === 0 || threads.length > threadsMarkedAtOnce || !threads.every((thread) => typeof thread === "string")) {
+    return refusal(400, `Give threads as a list of 1 to ${threadsMarkedAtOnce} thread IDs.`);
+  }
+  return [...new Set(threads)];
+}
+
+const noThread = (missing: string[]) =>
+  refusal(404, `The mailbox has no thread ${missing.map((id) => JSON.stringify(id)).join(", ")}, so no thread was changed. List its threads to find their IDs.`);
 
 /** Marks the threads in the call's body unread, or read, as their mailbox's reader asks. */
 const markingThreads =
@@ -117,12 +138,10 @@ const markingThreads =
   async (event, deployment, actor) => {
     const mailbox = await readableMailbox(event, deployment, actor!);
     if ("statusCode" in mailbox) return mailbox;
-    const threads = jsonBody(event)?.threads;
-    if (!Array.isArray(threads) || threads.length === 0 || threads.length > threadsMarkedAtOnce || !threads.every((thread) => typeof thread === "string")) {
-      return refusal(400, `Give threads as a list of 1 to ${threadsMarkedAtOnce} thread IDs.`);
-    }
-    const marked = await markThreads(deployment.table, { mailbox: mailbox.id, threads: [...new Set(threads)], unread, by: actor!.id });
-    if ("missing" in marked) return refusal(404, `The mailbox has no thread ${marked.missing.map((id) => JSON.stringify(id)).join(", ")}, so no thread was marked. List its threads to find their IDs.`);
+    const threads = threadsGiven(jsonBody(event));
+    if ("statusCode" in threads) return threads;
+    const marked = await markThreads(deployment.table, { mailbox: mailbox.id, threads, unread, by: actor!.id });
+    if ("missing" in marked) return noThread(marked.missing);
     return { statusCode: 200, body: marked satisfies components["schemas"]["ThreadList"] };
   };
 
@@ -136,4 +155,94 @@ export const getThread: OperationHandler = async (event, deployment, actor) => {
   const thread = await readThread(deployment.table, deployment.mailBucket, mailbox.id, id);
   if (thread === undefined) return refusal(404, `The mailbox has no thread ${JSON.stringify(id)}. List its threads to find one.`);
   return { statusCode: 200, body: thread satisfies components["schemas"]["Thread"] };
+};
+
+export const labelMailboxThreads: OperationHandler = async (event, deployment, actor) => {
+  const mailbox = await readableMailbox(event, deployment, actor!);
+  if ("statusCode" in mailbox) return mailbox;
+  const body = jsonBody(event);
+  const threads = threadsGiven(body);
+  if ("statusCode" in threads) return threads;
+  const [add, remove] = [body?.add ?? [], body?.remove ?? []];
+  if (!isList(add) || !isList(remove) || add.length + remove.length === 0) {
+    return refusal(400, "Give add, remove or both as lists of label IDs, such as inbox, spam, trash or one of the mailbox's own.");
+  }
+  const both = add.find((label) => remove.includes(label));
+  if (both !== undefined) return refusal(400, `${JSON.stringify(both)} is in both add and remove. Give each label in one of them.`);
+  if (add.includes(inbox) && (add.includes(spam) || add.includes(trash))) {
+    return refusal(400, "Adding inbox takes a thread out of Spam and Trash, so it can't be given with spam or trash in add.");
+  }
+  for (const label of [...add, ...remove]) {
+    if (!(await hasLabel(deployment.table, mailbox.id, label))) return refusal(400, `The mailbox has no label ${JSON.stringify(label)}. List its labels to find their IDs.`);
+  }
+  const labelled = await labelThreads(deployment.table, { mailbox: mailbox.id, threads, add: [...new Set(add)], remove: [...new Set(remove)], by: actor!.id });
+  if ("missing" in labelled) return noThread(labelled.missing);
+  return { statusCode: 200, body: labelled satisfies components["schemas"]["ThreadList"] };
+};
+
+const isList = (value: unknown): value is string[] => Array.isArray(value) && value.every((each) => typeof each === "string");
+
+export const listMailboxLabels: OperationHandler = async (event, deployment, actor) => {
+  const mailbox = await readableMailbox(event, deployment, actor!);
+  if ("statusCode" in mailbox) return mailbox;
+  return { statusCode: 200, body: { labels: await listLabels(deployment.table, mailbox.id) } satisfies components["schemas"]["LabelList"] };
+};
+
+/** The label name in the call's body, trimmed, or a refusal if it gives none Duva takes. */
+function nameGiven(event: Parameters<OperationHandler>[0]): string | ReturnType<typeof refusal> {
+  const given = jsonBody(event)?.name;
+  const name = typeof given === "string" ? given.trim() : "";
+  if (name === "" || name.length > 100) return refusal(400, "Give the label a name of 1 to 100 characters.");
+  return name;
+}
+
+const nameRefused = (name: string) => refusal(409, `The mailbox has a label named ${JSON.stringify(name)} already, or the name is a built-in one. Give another name.`);
+
+export const createMailboxLabel: OperationHandler = async (event, deployment, actor) => {
+  const mailbox = await readableMailbox(event, deployment, actor!);
+  if ("statusCode" in mailbox) return mailbox;
+  const name = nameGiven(event);
+  if (typeof name !== "string") return name;
+  try {
+    return { statusCode: 201, body: (await createLabel(deployment.table, { mailbox: mailbox.id, name, by: actor!.id })) satisfies components["schemas"]["Label"] };
+  } catch (error) {
+    if (error instanceof NameTaken) return nameRefused(name);
+    throw error;
+  }
+};
+
+/** The mailbox's own label the call's path names, or a refusal if it names a built-in label. */
+function ownLabelAsked(event: Parameters<OperationHandler>[0], doing: string): string | ReturnType<typeof refusal> {
+  const label = event.pathParameters?.label ?? "";
+  if (builtInLabels.some(({ id }) => id === label)) {
+    return refusal(400, `${JSON.stringify(label)} is a built-in label, so it can't be ${doing}. Give the ID of one of the mailbox's own labels.`);
+  }
+  return label;
+}
+
+const noLabel = (label: string) => refusal(404, `The mailbox has no label ${JSON.stringify(label)}. List its labels to find their IDs.`);
+
+export const renameMailboxLabel: OperationHandler = async (event, deployment, actor) => {
+  const mailbox = await readableMailbox(event, deployment, actor!);
+  if ("statusCode" in mailbox) return mailbox;
+  const label = ownLabelAsked(event, "renamed");
+  if (typeof label !== "string") return label;
+  const name = nameGiven(event);
+  if (typeof name !== "string") return name;
+  try {
+    const renamed = await renameLabel(deployment.table, { mailbox: mailbox.id, label, name, by: actor!.id });
+    return renamed === undefined ? noLabel(label) : { statusCode: 200, body: renamed satisfies components["schemas"]["Label"] };
+  } catch (error) {
+    if (error instanceof NameTaken) return nameRefused(name);
+    throw error;
+  }
+};
+
+export const deleteMailboxLabel: OperationHandler = async (event, deployment, actor) => {
+  const mailbox = await readableMailbox(event, deployment, actor!);
+  if ("statusCode" in mailbox) return mailbox;
+  const label = ownLabelAsked(event, "deleted");
+  if (typeof label !== "string") return label;
+  const deleted = await deleteLabel(deployment.table, { mailbox: mailbox.id, label, by: actor!.id });
+  return deleted === undefined ? noLabel(label) : { statusCode: 200, body: deleted satisfies components["schemas"]["Label"] };
 };
