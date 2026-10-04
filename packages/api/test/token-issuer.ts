@@ -3,7 +3,12 @@
 import { createSign, createVerify, generateKeyPairSync } from "node:crypto";
 
 export class TestTokenIssuer {
-  readonly #keys = generateKeyPairSync("rsa", { modulusLength: 2048 });
+  #keys = newKeys();
+
+  /** Signs with new keys from now on, as a new user pool does, so tokens issued before are refused. */
+  replaceKeys() {
+    this.#keys = newKeys();
+  }
 
   /** An access token for the human with the ID, valid for `lifetime` seconds. */
   issue(id: string, lifetime: number): string {
@@ -26,4 +31,5 @@ export class TestTokenIssuer {
   };
 }
 
+const newKeys = () => generateKeyPairSync("rsa", { modulusLength: 2048 });
 const encode = (value: object) => Buffer.from(JSON.stringify(value)).toString("base64url");

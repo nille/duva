@@ -1,7 +1,7 @@
 // The organization, its actors, mailboxes and addresses, and its change feed, in Duva's one table.
 // Each change to the setup is written in one transaction with its change-feed entry.
 import { randomUUID } from "node:crypto";
-import { TransactionCanceledException } from "@aws-sdk/client-dynamodb";
+import { ConditionalCheckFailedException, TransactionCanceledException } from "@aws-sdk/client-dynamodb";
 import { GetCommand, PutCommand, QueryCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import type { components } from "@duva/openapi";
 import { agentKeyHash, newAgentKey } from "./agent-keys.ts";
@@ -26,6 +26,10 @@ const sponsoredKey = (sponsor: string, agent: string) => ({ [pk]: `actor#${spons
 const humansPartition = "organization#humans";
 const humanListedKey = (id: string) => ({ [pk]: humansPartition, [sk]: `human#${id}` });
 const humanListedPrefix = humanListedKey("")[sk];
+// The sub of each human's Cognito user points at their actor, so the authorizer finds it in one
+// read. A human keeps their actor when Duva moves to a new user pool, where their sub is new.
+const signInKey = (sub: string) => ({ [pk]: `signIn#${sub}`, [sk]: "signIn" });
+const signInItem = (sub: string, actor: string) => ({ ...signInKey(sub), actor });
 // Only a hash of an agent's key is stored. It points at the agent, so the authorizer finds it in one read.
 const agentKeyKey = (hash: string) => ({ [pk]: `key#${hash}`, [sk]: "key" });
 // A mailbox's own partition also holds its mail and the position of its change feed.
@@ -44,7 +48,8 @@ const organizationFeed: Feed = {
 /**
  * Sets up the organization for its first domain, with the human at `admin` as its first admin.
  * The changes are attributed to that admin, the person running duva deploy, so each has exactly
- * one actor (ADR-0001). Setting up again with the same admin changes nothing.
+ * one actor (ADR-0001). Setting up again with the same admin changes nothing, except that a human
+ * the user pool doesn't have gets a Cognito user there, as after Duva moved to a new user pool.
  */
 export async function setUpOrganization(
   { table, humans }: { table: Table; humans: Humans },
@@ -56,10 +61,12 @@ export async function setUpOrganization(
     if (existing.email !== admin) throw new Error(`The organization's first admin is ${existing.email}, so it can't be ${admin}.`);
     // Organizations set up before humans were listed didn't list their first admin.
     await db.send(new PutCommand({ TableName: table.name, Item: humanListedKey(existing.id) }));
+    await moveHumans({ table, humans });
     return existing;
   }
 
-  const actor: Human = { id: await humans.add(admin), kind: "human", email: admin, admin: true };
+  const sub = await humans.add(admin);
+  const actor: Human = { id: sub, kind: "human", email: admin, admin: true };
   const at = new Date().toISOString();
   const changes: ChangeDetails[] = [
     { type: "organizationAdded" },
@@ -73,6 +80,7 @@ export async function setUpOrganization(
           { Put: { TableName: table.name, Item: { ...organizationKey, domain, firstAdmin: actor.id, position: changes.length }, ...isNew } },
           { Put: { TableName: table.name, Item: { ...actorKey(actor.id), ...actor }, ...isNew } },
           { Put: { TableName: table.name, Item: humanListedKey(actor.id) } },
+          { Put: { TableName: table.name, Item: signInItem(sub, actor.id) } },
           ...changes.map((change, index) => ({
             Put: {
               TableName: table.name,
@@ -102,20 +110,55 @@ async function firstAdmin(table: Table): Promise<Human | undefined> {
 }
 
 /**
+ * Gives every human in the organization a Cognito user in the user pool, and points its sub at
+ * their actor. Their actor, and with it their mailboxes and history, stays theirs. Humans the user
+ * pool already has keep their Cognito user.
+ */
+async function moveHumans({ table, humans }: { table: Table; humans: Humans }): Promise<void> {
+  // One at a time, which keeps well inside Cognito's quotas.
+  for (const human of await allHumans(table)) {
+    const sub = await humans.add(human.email);
+    await documents(table)
+      .send(
+        new PutCommand({
+          TableName: table.name,
+          Item: signInItem(sub, human.id),
+          ConditionExpression: `attribute_not_exists(${pk}) OR actor = :actor`,
+          ExpressionAttributeValues: { ":actor": human.id },
+        }),
+      )
+      .catch((error: unknown) => {
+        if (!(error instanceof ConditionalCheckFailedException)) throw error;
+        throw new Error(`${human.email} and another human differ only in case, which the user pool takes as one address, so setup can't move them.`);
+      });
+  }
+}
+
+/** The human whose Cognito user has the sub, or undefined if it is no human's. */
+export async function findHumanBySignIn(table: Table, sub: string): Promise<Human | undefined> {
+  const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: signInKey(sub), ConsistentRead: true }));
+  const actor = Item === undefined ? undefined : await findActor(table, Item.actor as string);
+  return actor?.kind === "human" ? actor : undefined;
+}
+
+/**
  * Adds the human at `email`, who can then sign in, as an actor added by the actor `by`. Throws
  * HumanExists if the organization already has the human.
  */
 export async function addHumanToOrganization({ table, humans }: { table: Table; humans: Humans }, { email, by }: { email: string; by: string }): Promise<Human> {
-  // Sign-in names are case-sensitive in the user pool, and the first admin's address is kept as
-  // deploy was given it, so an address that differs only in case would give the same person two actors.
+  // The first admin's address is kept as deploy was given it, so an address that differs only in
+  // case would give the same person two actors.
   if ((await allHumans(table)).some((human) => human.email.toLowerCase() === email.toLowerCase())) throw new HumanExists();
-  // The user pool gives a human who can already sign in the ID they had, so their actor is there too.
-  const actor: Human = { id: await humans.add(email), kind: "human", email, admin: false };
+  // The user pool gives a human who can already sign in the sub they had, so their actor is there too.
+  const sub = await humans.add(email);
+  const actor: Human = { id: sub, kind: "human", email, admin: false };
   await recordChange(table, by, { type: "actorAdded", added: actor }, [
+    { Put: { TableName: table.name, Item: signInItem(sub, actor.id), ...isNew } },
     { Put: { TableName: table.name, Item: { ...actorKey(actor.id), ...actor }, ...isNew } },
     { Put: { TableName: table.name, Item: humanListedKey(actor.id) } },
   ]).catch((error: unknown) => {
-    const exists = error instanceof TransactionCanceledException && error.CancellationReasons?.[2]?.Code === "ConditionalCheckFailed";
+    const reasons = error instanceof TransactionCanceledException ? (error.CancellationReasons ?? []) : [];
+    const exists = [reasons[2], reasons[3]].some((reason) => reason?.Code === "ConditionalCheckFailed");
     throw exists ? new HumanExists() : error;
   });
   return actor;

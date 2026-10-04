@@ -30,6 +30,10 @@ export interface Aws {
    * first admin, and returns that admin. Setting up again with the same admin changes nothing.
    */
   setUpOrganization(functionName: string): Promise<components["schemas"]["Human"]>;
+  /** The IDs of the user pools the Duva stack in the region has made, those it no longer has included. */
+  stackUserPools(): Promise<string[]>;
+  /** Deletes the user pool and everything in it, its managed login domain first. */
+  deleteUserPool(id: string): Promise<void>;
   /** Uploads the web app this CLI version bundles to the bucket, with its config. */
   publishWebApp(webApp: { bucket: string; config: WebAppConfig }): Promise<void>;
   /** The name of the region's active receipt rule set, or undefined if none is active. */
@@ -113,7 +117,7 @@ export async function deployDuva({ aws, dns, ...given }: { aws: Aws; dns: Dns; d
   const ruleSet = output(outputs, stackOutputs.receiptRuleSet);
   if (activeRuleSet !== ruleSet) await aws.activateReceiptRuleSet(ruleSet);
 
-  const firstAdmin = await aws.setUpOrganization(output(outputs, stackOutputs.setupFunction));
+  // The web app signs in with the stack's app client as soon as it has one, whatever happens next.
   const apiUrl = output(outputs, stackOutputs.apiUrl);
   const webUrl = output(outputs, stackOutputs.webUrl);
   const signInUrl = output(outputs, stackOutputs.signInUrl);
@@ -121,6 +125,12 @@ export async function deployDuva({ aws, dns, ...given }: { aws: Aws; dns: Dns; d
     bucket: output(outputs, stackOutputs.webBucket),
     config: { apiUrl, signIn: { url: signInUrl, clientId: output(outputs, stackOutputs.webClientId), redirectUri: `${webUrl}/` } },
   });
+
+  const firstAdmin = await aws.setUpOrganization(output(outputs, stackOutputs.setupFunction));
+  // Setup has given every human a Cognito user in the stack's user pool, so a pool the stack
+  // retired holds nobody who still signs in with it (#30).
+  const userPool = output(outputs, stackOutputs.userPoolId);
+  for (const retired of await aws.stackUserPools()) if (retired !== userPool) await aws.deleteUserPool(retired);
 
   const wanted: Wanted[] = [
     { purpose: "receiving", type: "MX", name: domain, value: `10 inbound-smtp.${aws.region}.amazonaws.com` },

@@ -11,6 +11,8 @@ export interface SignInConfig {
 
 /** A signed-in human's session. */
 export interface Session {
+  /** The app client the session was signed in with. A session works only with its own client. */
+  clientId: string;
   accessToken: string;
   refreshToken: string;
   /** When the access token expires, in milliseconds since the epoch. */
@@ -67,18 +69,20 @@ export async function finishSignIn(config: SignInConfig, pending: PendingSignIn,
     code_verifier: pending.verifier,
   });
   if (tokens.refresh_token === undefined) throw new Error("Sign-in gave no refresh token.");
-  return session(tokens, tokens.refresh_token);
+  return session(config, tokens, tokens.refresh_token);
 }
 
 /**
  * The session, renewed with its refresh token if its access token expires within a minute.
- * Throws SessionExpired once the refresh token no longer works.
+ * Throws SessionExpired once the refresh token no longer works, or the session is another app
+ * client's, as after Duva moved to a new user pool.
  */
 export async function renewed(config: SignInConfig, current: Session): Promise<Session> {
+  if (current.clientId !== config.clientId) throw new SessionExpired();
   if (current.expiresAt - Date.now() > 60_000) return current;
   // Managed login keeps the refresh token, so a renewed session has the same one.
   const tokens = await token(config, { grant_type: "refresh_token", refresh_token: current.refreshToken });
-  return session(tokens, tokens.refresh_token ?? current.refreshToken);
+  return session(config, tokens, tokens.refresh_token ?? current.refreshToken);
 }
 
 /** Where to send the human to sign out of managed login, coming back to `returnTo`. */
@@ -108,7 +112,8 @@ async function token(config: SignInConfig, grant: Record<string, string>): Promi
   return body as Tokens;
 }
 
-const session = (tokens: Tokens, refreshToken: string): Session => ({
+const session = (config: SignInConfig, tokens: Tokens, refreshToken: string): Session => ({
+  clientId: config.clientId,
   accessToken: tokens.access_token,
   refreshToken,
   expiresAt: Date.now() + tokens.expires_in * 1000,

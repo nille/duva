@@ -7,7 +7,7 @@ export const addHuman: OperationHandler = async (event, deployment, actor) => {
   if (!actor?.admin) return refusal(403, "Only admins can add humans. Ask an admin to add them.");
   const body = jsonBody(event);
   const given = typeof body?.email === "string" ? body.email.trim() : "";
-  // Sign-in names are case-sensitive in the user pool, so one human never gets two by case alone.
+  // Addresses are kept in lower case, so one human never gets two actors by case alone.
   const email = given.toLowerCase();
   if (!isEmailAddress(email) || email.length > 254) {
     return refusal(400, `${JSON.stringify(given)} isn't an email address. Give the address the human will sign in with, like grace@example.com.`);

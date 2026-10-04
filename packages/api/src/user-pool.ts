@@ -10,12 +10,16 @@ import {
 export interface Humans {
   /**
    * Lets the human at `email` sign in, without a password, and returns the ID their sign-ins
-   * carry, which is also their actor ID. Adding a human who can already sign in returns their ID.
+   * carry. A new human's actor gets the same ID. Adding a human who can already sign in, whatever
+   * the case of the address, returns their ID.
    */
   add(email: string): Promise<string>;
 }
 
-/** The deployment's user pool. Sign-in names are email addresses, and each human's ID is their Cognito sub. */
+/**
+ * The deployment's user pool. Sign-in names are email addresses, in any case, and the ID a human's
+ * sign-ins carry is their Cognito sub.
+ */
 export function cognitoHumans(cognito: CognitoIdentityProviderClient, userPoolId: string): Humans {
   return {
     async add(email) {

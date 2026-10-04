@@ -4,9 +4,11 @@
 //
 // Runs the checks of a real run that need no human: the API answers, refuses calls without valid
 // credentials, and lets the web app call it; the web app is served with the config deploy
-// published; once an address exists, SES's receipt rule lists it; and no received mail and no
-// approved send waits in a failure queue. Signing in stays with a human. Exits 1 if any check fails.
+// published; the user pool takes sign-in names in any case, and no pool the stack retired is left;
+// once an address exists, SES's receipt rule lists it; and no received mail and no approved send
+// waits in a failure queue. Signing in stays with a human. Exits 1 if any check fails.
 import { CloudFormationClient, DescribeStacksCommand } from "@aws-sdk/client-cloudformation";
+import { CognitoIdentityProviderClient, DescribeUserPoolCommand, paginateListUserPools } from "@aws-sdk/client-cognito-identity-provider";
 import { DescribeReceiptRuleSetCommand, SESClient } from "@aws-sdk/client-ses";
 import { GetQueueAttributesCommand, SQSClient } from "@aws-sdk/client-sqs";
 import { inboundPrefix, receiptRuleName } from "@duva/api/infrastructure";
@@ -67,6 +69,21 @@ await check("rejecting an approval without credentials answers 401", async () =>
 await check("sending an approval without credentials answers 401", async () =>
   expectStatus(await fetch(`${apiUrl}/approvals/x/send`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }), 401),
 );
+const cognito = new CognitoIdentityProviderClient({ region });
+await check("the user pool takes sign-in names in any case", async () => {
+  const { UserPool } = await cognito.send(new DescribeUserPoolCommand({ UserPoolId: output(stackOutputs.userPoolId) }));
+  return UserPool?.UsernameConfiguration?.CaseSensitive === false ? undefined : `has ${JSON.stringify(UserPool?.UsernameConfiguration)}`;
+});
+await check("no user pool the stack retired is left", async () => {
+  const retired: string[] = [];
+  for await (const page of paginateListUserPools({ client: cognito }, { MaxResults: 60 })) {
+    for (const { Id } of page.UserPools ?? []) {
+      const { UserPool } = await cognito.send(new DescribeUserPoolCommand({ UserPoolId: Id }));
+      if (UserPool?.UserPoolTags?.["aws:cloudformation:stack-id"] === stack?.StackId && Id !== output(stackOutputs.userPoolId)) retired.push(Id!);
+    }
+  }
+  return retired.length === 0 ? undefined : `left: ${retired.join(", ")}. Run duva deploy again.`;
+});
 await check("the receipt rule set holds only Duva's rule, with explicit recipients, scanning, then S3 and the inbound Lambda", async () => {
   const { Rules = [] } = await new SESClient({ region }).send(new DescribeReceiptRuleSetCommand({ RuleSetName: output(stackOutputs.receiptRuleSet) }));
   // Until an admin creates the first address there is no rule, and SES refuses all mail.

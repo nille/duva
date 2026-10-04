@@ -353,6 +353,29 @@ test("once SES has verified the domain, a re-run sends sign-in codes from it", a
   expect(report.admin.signIn).toMatch(/from no-reply@duva\.example\.com/);
 });
 
+test("a deploy that brings a new user pool gives the CLI and the web app its sign-in, and deletes the old pool once setup has moved the humans", async () => {
+  const world = newWorld();
+  await deployDuva({ ...world, admin, domain: "duva.example.com" });
+  world.aws.shipped = { userPool: "eu-north-1_new", signInUrl: "https://new-sign-in.example", webClientId: "new-web-client", cliClientId: "new-cli-client" };
+
+  const { signIn } = await deployDuva(world);
+
+  expect(signIn).toEqual({ url: "https://new-sign-in.example", clientId: "new-cli-client", redirectUri: "http://127.0.0.1:8976/callback" });
+  expect(world.aws.webApp?.config).toMatchObject({ signIn: { url: "https://new-sign-in.example", clientId: "new-web-client" } });
+  expect([...world.aws.userPools]).toEqual(["eu-north-1_new"]);
+  expect(world.aws.changes.slice(-2)).toEqual(["moved the humans to eu-north-1_new", "deleted the user pool eu-north-1_old"]);
+});
+
+test("while setup fails, deploy keeps the old user pool", async () => {
+  const world = newWorld();
+  await deployDuva({ ...world, admin, domain: "duva.example.com" });
+  world.aws.shipped = { ...world.aws.shipped, userPool: "eu-north-1_new" };
+  world.aws.setupFails = true;
+
+  await expect(deployDuva(world)).rejects.toThrow(/Setting up/);
+  expect([...world.aws.userPools].sort()).toEqual(["eu-north-1_new", "eu-north-1_old"]);
+});
+
 /**
  * An AWS account and region with nothing of Duva's in it, and DNS with no records. SES gives a new
  * domain identity the DKIM tokens tok1, tok2 and tok3.
@@ -392,6 +415,14 @@ class InMemoryAws implements Aws {
   perSecond = 1;
   /** Every change deploy made, in order. */
   changes: string[] = [];
+  /** What the stack this CLI version ships makes of the user pool, by its outputs. */
+  shipped = { userPool: "eu-north-1_old", signInUrl: "https://sign-in.example", webClientId: "web-client", cliClientId: "cli-client" };
+  /** The user pools the stack has made, those it retired included. */
+  userPools = new Set<string>();
+  /** The user pool setup last gave every human a Cognito user in. */
+  humansMovedTo?: string;
+  /** Whether the stack's setup function fails. */
+  setupFails = false;
 
   async duvaStack() {
     return this.stack;
@@ -400,7 +431,13 @@ class InMemoryAws implements Aws {
   async deployStack(parameters: Parameters) {
     const { domain, admin, domainVerified } = parameters;
     if (this.stack?.domain !== domain) this.identities.set(domain, { dkim: "PENDING", mailFrom: "PENDING", verified: false });
-    if (this.stack?.domain !== domain || this.stack.admin !== admin || this.stack.domainVerified !== domainVerified) {
+    const { userPool, signInUrl, webClientId, cliClientId } = this.shipped;
+    if (
+      this.stack?.domain !== domain ||
+      this.stack.admin !== admin ||
+      this.stack.domainVerified !== domainVerified ||
+      this.stack.outputs.UserPoolId !== userPool
+    ) {
       const dkim = Object.fromEntries(
         [1, 2, 3].flatMap((n) => [
           [`DkimName${n}`, `tok${n}._domainkey.${domain}`],
@@ -412,13 +449,15 @@ class InMemoryAws implements Aws {
         ReceiptRuleSet: "Duva-Receiving",
         WebUrl: "https://web.example",
         WebBucket: "duva-web",
-        SignInUrl: "https://sign-in.example",
-        WebClientId: "web-client",
-        CliClientId: "cli-client",
+        UserPoolId: userPool,
+        SignInUrl: signInUrl,
+        WebClientId: webClientId,
+        CliClientId: cliClientId,
         SetupFunction: "duva-setup",
         ...dkim,
       };
       this.stack = { ...parameters, outputs };
+      this.userPools.add(userPool);
       this.changes.push(`deployed the stack with ${JSON.stringify(parameters)}`);
     }
     return { account: this.account, outputs: this.stack.outputs };
@@ -427,12 +466,26 @@ class InMemoryAws implements Aws {
   async setUpOrganization(functionName: string) {
     const { domain, admin } = this.stack ?? {};
     if (functionName !== "duva-setup" || domain === undefined || admin === undefined) throw new Error("No setup function");
+    if (this.setupFails) throw new Error("Setting up the organization failed: Rate exceeded.");
+    if (this.humansMovedTo !== this.shipped.userPool) {
+      this.humansMovedTo = this.shipped.userPool;
+      this.changes.push(`moved the humans to ${this.shipped.userPool}`);
+    }
     if (this.organization === undefined) {
       this.organization = { domain, admin };
       this.changes.push(`set up the organization with ${admin}`);
     }
     if (this.organization.admin !== admin) throw new Error(`The organization's first admin is ${this.organization.admin}`);
     return { id: "ada-id", kind: "human" as const, email: admin, admin: true };
+  }
+
+  async stackUserPools() {
+    return [...this.userPools];
+  }
+
+  async deleteUserPool(id: string) {
+    this.userPools.delete(id);
+    this.changes.push(`deleted the user pool ${id}`);
   }
 
   async publishWebApp(webApp: { bucket: string; config: unknown }) {

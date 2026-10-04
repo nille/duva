@@ -14,6 +14,13 @@ import {
   Toolkit,
 } from "@aws-cdk/toolkit-lib";
 import { CloudFormationClient, DescribeStacksCommand } from "@aws-sdk/client-cloudformation";
+import {
+  CognitoIdentityProviderClient,
+  DeleteUserPoolCommand,
+  DeleteUserPoolDomainCommand,
+  DescribeUserPoolCommand,
+  paginateListUserPools,
+} from "@aws-sdk/client-cognito-identity-provider";
 import { InvokeCommand, LambdaClient } from "@aws-sdk/client-lambda";
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { DescribeActiveReceiptRuleSetCommand, SESClient, SetActiveReceiptRuleSetCommand } from "@aws-sdk/client-ses";
@@ -25,6 +32,7 @@ import type { Aws, StackOutputs, StackParameters as DuvaParameters } from "./dep
 export function realAws(region: string): Aws {
   const ses = new SESClient({ region });
   const sesv2 = new SESv2Client({ region });
+  const cognito = new CognitoIdentityProviderClient({ region });
   return {
     region,
 
@@ -64,6 +72,27 @@ export function realAws(region: string): Aws {
       const result = JSON.parse(new TextDecoder().decode(Payload));
       if (FunctionError !== undefined) throw new Error(`Setting up the organization failed: ${result.errorMessage ?? FunctionError} Fix that and run duva deploy again.`);
       return result;
+    },
+
+    async stackUserPools() {
+      // CloudFormation tags what it makes with the stack's ID, and a pool it kept on removal keeps the tag.
+      const [stack] = (await new CloudFormationClient({ region }).send(new DescribeStacksCommand({ StackName: stackName }))).Stacks ?? [];
+      if (stack?.StackId === undefined) return [];
+      const ids: string[] = [];
+      for await (const page of paginateListUserPools({ client: cognito }, { MaxResults: 60 })) {
+        for (const { Id } of page.UserPools ?? []) {
+          const { UserPool } = await cognito.send(new DescribeUserPoolCommand({ UserPoolId: Id }));
+          if (UserPool?.Id !== undefined && UserPool.UserPoolTags?.["aws:cloudformation:stack-id"] === stack.StackId) ids.push(UserPool.Id);
+        }
+      }
+      return ids;
+    },
+
+    async deleteUserPool(id) {
+      // Cognito refuses to delete a pool that still has a domain.
+      const { UserPool } = await cognito.send(new DescribeUserPoolCommand({ UserPoolId: id }));
+      if (UserPool?.Domain) await cognito.send(new DeleteUserPoolDomainCommand({ UserPoolId: id, Domain: UserPool.Domain }));
+      await cognito.send(new DeleteUserPoolCommand({ UserPoolId: id }));
     },
 
     async publishWebApp({ bucket, config }) {

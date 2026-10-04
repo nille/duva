@@ -108,6 +108,20 @@ test("once the session can't be renewed, whoami says to run login again", async 
   expect(errorIn(result.stderr)).toMatch(/expired.*duva login/);
 });
 
+test("once deploy has saved a new user pool's sign-in, a session from the old one says to run login again", async () => {
+  const machine = await newMachine();
+  const server = await (await startDuva({ admin: "ada@example.com" })).listen();
+  onTestFinished(() => server.close());
+  await machine.saveDeployment(server);
+  await machine.duva("login", { browserSignsIn: "ada@example.com" });
+  await machine.saveDeployment({ ...server, signIn: { ...server.signIn, clientId: "new-pool-cli-client" } });
+
+  const result = await machine.duva("whoami");
+
+  expect(result.exitCode).toBe(1);
+  expect(errorIn(result.stderr)).toMatch(/expired.*duva login/);
+});
+
 test("login fails when the browser comes back from another sign-in", async () => {
   const machine = await newMachine();
   const server = await (await startDuva()).listen();

@@ -78,6 +78,11 @@ export interface Duva {
   receiptRules(): ReceiptRule[];
   /** The raw messages SES accepted for sending, oldest first. Each API call returns once the sends it led to are done. */
   sent(): string[];
+  /**
+   * Moves Duva to a new user pool, as the deploy of #30 did. No human can sign in there, and every
+   * session ends, until setUp() moves the humans.
+   */
+  replaceUserPool(): void;
   /** Sets the organization up again, as a re-run of duva deploy does. */
   setUp(options: { admin: string }): Promise<void>;
   /**
@@ -138,6 +143,11 @@ export async function startDuva({
     withKey: (key) => client({ authorization: `Bearer ${key}` }),
     accessToken,
     endSessions: () => login.endSessions(),
+    replaceUserPool() {
+      humans.ids.clear();
+      issuer.replaceKeys();
+      login.endSessions();
+    },
     receive: async (raw, { from, to }, options) => ses.receive(raw, { from: from ?? (await senderOf(raw)), to }, options),
     receiptRules: () => ses.describeRules(),
     sent: () => sending.sent(),
@@ -161,9 +171,25 @@ async function senderOf(raw: string | Uint8Array): Promise<string> {
   return from.address;
 }
 
-/** Humans who can sign in, by email address, with the IDs their sign-ins carry. */
+/**
+ * Humans who can sign in, by email address, with the IDs their sign-ins carry. As in Duva's user
+ * pool, an address is the same sign-in name in any case.
+ */
 function memoryHumans(): Humans & { ids: Map<string, string> } {
-  const ids = new Map<string, string>();
+  const ids = new (class extends Map<string, string> {
+    override get(email: string) {
+      return super.get(email.toLowerCase());
+    }
+    override set(email: string, id: string) {
+      return super.set(email.toLowerCase(), id);
+    }
+    override has(email: string) {
+      return super.has(email.toLowerCase());
+    }
+    override delete(email: string) {
+      return super.delete(email.toLowerCase());
+    }
+  })();
   return {
     ids,
     async add(email) {

@@ -1,7 +1,7 @@
 import type { APIGatewayRequestAuthorizerEventV2, APIGatewaySimpleAuthorizerWithContextResult } from "aws-lambda";
 import { agentKeyPrefix } from "./agent-keys.ts";
 import type { Table } from "./deployment.ts";
-import { type Actor, findActor, findAgentByKey } from "./organization.ts";
+import { type Actor, findAgentByKey, findHumanBySignIn } from "./organization.ts";
 
 /** What the authorizer passes the API about a call: the one actor it is attributed to. */
 export interface AuthorizerContext {
@@ -9,15 +9,17 @@ export interface AuthorizerContext {
 }
 
 /**
- * Verifies a human's access token and returns the ID it carries. Throws if the token isn't one
- * the deployment trusts. In a deployment that is Cognito's; in tests, a test issuer's.
+ * Verifies a human's access token and returns the sub of the Cognito user it carries.
+ * Throws if the token isn't one the deployment trusts. In a deployment that is Cognito's; in
+ * tests, a test issuer's.
  */
 export type VerifyAccessToken = (token: string) => Promise<string>;
 
 /**
  * The API's one Lambda authorizer. It resolves each call to exactly one actor, or refuses it with
  * 401: API Gateway answers 401 when the authorizer fails with "Unauthorized". An agent's key
- * resolves to that agent, and any other bearer token must be a human's access token.
+ * resolves to that agent, and any other bearer token must be a human's access token, which resolves
+ * through their Cognito user's sub to their actor.
  */
 export function createAuthorizer({ table, verifyAccessToken }: { table: Table; verifyAccessToken: VerifyAccessToken }) {
   return async (event: APIGatewayRequestAuthorizerEventV2): Promise<APIGatewaySimpleAuthorizerWithContextResult<AuthorizerContext>> => {
@@ -28,8 +30,7 @@ export function createAuthorizer({ table, verifyAccessToken }: { table: Table; v
   };
 
   async function human(token: string) {
-    const id = await verifyAccessToken(token).catch(() => undefined);
-    const actor = id === undefined ? undefined : await findActor(table, id);
-    return actor?.kind === "human" ? actor : undefined;
+    const sub = await verifyAccessToken(token).catch(() => undefined);
+    return sub === undefined ? undefined : findHumanBySignIn(table, sub);
   }
 }

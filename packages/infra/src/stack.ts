@@ -117,11 +117,14 @@ export class DuvaStack extends Stack {
 
     // Humans sign in through managed login with a code emailed to them. Only Duva adds humans, and
     // without a password. Cognito requires PASSWORD among the first factors, so it is listed, but
-    // nobody has one. Humans are hard to move out of a user pool, so it outlives the stack.
-    const humans = new UserPool(this, "Humans", {
+    // nobody has one. The pool outlives the stack. It replaced the "Humans" pool, whose sign-in
+    // names were case-sensitive, which a pool can't change (#30). The stack kept that one when it
+    // was removed, and deploy deletes it once setup has moved every human here.
+    const humans = new UserPool(this, "UserPool", {
       featurePlan: FeaturePlan.ESSENTIALS,
       selfSignUpEnabled: false,
       signInAliases: { email: true },
+      signInCaseSensitive: false,
       signInPolicy: { allowedFirstAuthFactors: { password: true, emailOtp: true } },
       accountRecovery: AccountRecovery.NONE,
       removalPolicy: RemovalPolicy.RETAIN_ON_UPDATE_OR_DELETE,
@@ -142,9 +145,10 @@ export class DuvaStack extends Stack {
         { EmailSendingAccount: "COGNITO_DEFAULT" },
       ),
     );
-    // Cognito's prefix domains are unique per region, and a deployment is the only one in its account and region.
+    // Cognito's prefix domains are unique per region, and a deployment is the only one in its account
+    // and region. The retired pool had duva-<account>, which it keeps until deploy deletes it.
     const signIn = humans.addDomain("SignIn", {
-      cognitoDomain: { domainPrefix: `duva-${this.account}` },
+      cognitoDomain: { domainPrefix: `duva-signin-${this.account}` },
       managedLoginVersion: ManagedLoginVersion.NEWER_MANAGED_LOGIN,
     });
     // Both clients are public: the web app and the CLI keep no secret, so they sign in with PKCE.
@@ -298,13 +302,19 @@ export class DuvaStack extends Stack {
     });
     table.grantReadData(authorizerHandler);
 
-    // duva deploy invokes it after each deploy, to set up the organization with its first admin.
-    const setup = lambda("SetupHandler", "@duva/api/setup-lambda", {
-      [environmentVariables.tableName]: table.tableName,
-      [environmentVariables.userPoolId]: humans.userPoolId,
-      [environmentVariables.domain]: domain,
-      [environmentVariables.admin]: admin,
-    });
+    // duva deploy invokes it after each deploy, to set up the organization with its first admin and
+    // give every human a user in the user pool, one at a time.
+    const setup = lambda(
+      "SetupHandler",
+      "@duva/api/setup-lambda",
+      {
+        [environmentVariables.tableName]: table.tableName,
+        [environmentVariables.userPoolId]: humans.userPoolId,
+        [environmentVariables.domain]: domain,
+        [environmentVariables.admin]: admin,
+      },
+      { timeout: Duration.minutes(5) },
+    );
     table.grantReadWriteData(setup);
     humans.grant(setup, "cognito-idp:AdminCreateUser", "cognito-idp:AdminGetUser");
 
@@ -331,6 +341,7 @@ export class DuvaStack extends Stack {
     new CfnOutput(this, stackOutputs.webUrl, { value: webUrl, description: "The URL of Duva's web app" });
     new CfnOutput(this, stackOutputs.webBucket, { value: web.bucketName, description: "The bucket the web app is served from" });
     new CfnOutput(this, stackOutputs.signInUrl, { value: signIn.baseUrl(), description: "The URL of managed login" });
+    new CfnOutput(this, stackOutputs.userPoolId, { value: humans.userPoolId, description: "The user pool humans sign in with" });
     new CfnOutput(this, stackOutputs.webClientId, { value: webClient.userPoolClientId, description: "The web app's app client" });
     new CfnOutput(this, stackOutputs.cliClientId, { value: cliClient.userPoolClientId, description: "The CLI's app client" });
     new CfnOutput(this, stackOutputs.setupFunction, { value: setup.functionName, description: "The function that sets up the organization" });

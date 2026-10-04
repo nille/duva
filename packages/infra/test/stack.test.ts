@@ -311,6 +311,20 @@ test("humans sign in to one user pool on the Essentials plan, with no sign-up of
   expect(userPool.Properties?.UsernameAttributes).toEqual(["email"]);
 });
 
+test("sign-in names are the same in any case, so a human who types capitals in their address gets a code", () => {
+  expect(userPool.Properties?.UsernameConfiguration).toEqual({ CaseSensitive: false });
+});
+
+test("setup adds humans to the user pool, and may take no other Cognito action", () => {
+  const [[userPoolId]] = ofType("AWS::Cognito::UserPool") as [[string, Resource]];
+  expect(actions("SetupHandler", "cognito-idp").sort()).toEqual(["cognito-idp:AdminCreateUser", "cognito-idp:AdminGetUser"]);
+  expect(lambda("SetupHandler")[1].Properties?.Environment?.Variables?.[environmentVariables.userPoolId]).toEqual({ Ref: userPoolId });
+});
+
+test("setup has minutes to move every human to the user pool, one at a time", () => {
+  expect(lambda("SetupHandler")[1].Properties?.Timeout).toBe(300);
+});
+
 test("the API adds humans to the user pool, and may take no other Cognito action", () => {
   const [[userPoolId]] = ofType("AWS::Cognito::UserPool") as [[string, Resource]];
   expect(actions("ApiHandler", "cognito-idp").sort()).toEqual(["cognito-idp:AdminCreateUser", "cognito-idp:AdminGetUser"]);
@@ -353,6 +367,8 @@ test("every app client signs in through managed login with PKCE, and gives no hi
 test("managed login is the newer one, which offers choice-based sign-in", () => {
   const [[, domain]] = ofType("AWS::Cognito::UserPoolDomain") as [[string, Resource]];
   expect(domain.Properties?.ManagedLoginVersion).toBe(2);
+  // Prefix domains are unique per region, and duva-<account> was the retired user pool's.
+  expect(domain.Properties?.Domain).toEqual({ "Fn::Join": ["", ["duva-signin-", { Ref: "AWS::AccountId" }]] });
   expect(ofType("AWS::Cognito::ManagedLoginBranding")).toHaveLength(2);
 });
 

@@ -13,6 +13,7 @@ export const stackOutputs = {
   webUrl: "WebUrl",
   webBucket: "WebBucket",
   signInUrl: "SignInUrl",
+  userPoolId: "UserPoolId",
   webClientId: "WebClientId",
   cliClientId: "CliClientId",
   setupFunction: "SetupFunction",
