@@ -9,6 +9,8 @@ Facts about AWS that shaped Duva's design, each with how it was established. A c
 - **Humans created without a password are confirmed at once,** when a passwordless factor such as email OTP is available, and Cognito can't generate a password for them. PASSWORD must still be listed among the first factors. _[Creating user accounts as administrator](https://docs.aws.amazon.com/cognito/latest/developerguide/how-to-create-user-accounts.html)._
 - **Choice-based and passwordless sign-in exist only in the newer managed login,** never in the classic hosted UI. An app client needs `ALLOW_USER_AUTH`. _[re:Post, passwordless authentication](https://repost.aws/knowledge-center/cognito-passwordless-authentication)._
 - **Callback URLs match exactly, port included.** HTTP is allowed only for `localhost`, `127.0.0.1` and `[::1]`. So `duva login` listens on a fixed port. _[CreateUserPoolClient, CallbackURLs](https://docs.aws.amazon.com/cognito-user-identity-pools/latest/APIReference/API_CreateUserPoolClient.html)._
+- **Duva's user pool is case-sensitive for sign-in names,** since it sets no `UsernameConfiguration` and Cognito then keeps the legacy default. It can't change in place. Sign-in with `RR23Codes@` for a human added as `rr23codes@` started a challenge but sent no code, because user-existence protection hides the unknown name. So Duva stores addresses in lower case, and a human who types capitals at sign-in gets no code. _Real run of #23._
+- **The API can create a human who signs in at once.** AdminCreateUser with no password, `email_verified` and `MessageAction: SUPPRESS` gave a user who signed in through `USER_AUTH` with `EMAIL_OTP`, with the code sent from the organization's domain. _Real run of #23._
 - **Prefix domains are unique per region.** Deployments in eu-north-1 and eu-west-3 of the same account both took `duva-925039213717`. _Real run, 2026-10-03._
 
 ## API Gateway HTTP APIs
@@ -22,6 +24,7 @@ Facts about AWS that shaped Duva's design, each with how it was established. A c
 ## SES
 
 - **An active receipt rule set with no rules refuses all mail** with `550 5.1.1`. _Real run of #4._
+- **SES receiving refuses mail from IP addresses on its blocklists** with `550 5.7.1 IP address blacklisted by recipient` at RCPT TO, for every recipient. This machine's home IP was listed after its address changed. _Real run of #23._
 - **SES answers each recipient on its own.** In one SMTP transaction, an address no rule lists gets `550 5.1.1` at RCPT TO while a listed one gets `250`, and the message goes to the listed one only. So Duva never bounces. _Probed over SMTP to inbound-smtp.eu-north-1, real run of #7._
 - **A rule's address also takes its plus-tagged addresses, in any case.** With `realrun7@duva.nille.xyz` listed, SES took `RealRun7+Probe@duva.nille.xyz`, and the receipt's recipient keeps the case it was sent in. _Real run of #7._
 - **A rule without recipients takes every address on the account's verified domains,** so Duva never writes one. _[ReceiptRule, Recipients](https://docs.aws.amazon.com/ses/latest/APIReference/API_ReceiptRule.html)._

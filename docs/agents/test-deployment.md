@@ -36,3 +36,7 @@ After every deploy, run `AWS_REGION=<region> node scripts/check-deployment.ts`. 
 ## What only Nicklas can do
 
 Entering a sign-in code in managed login, opening an SES verification link, and checking the web app in a browser. Run everything else, then ask for these with the URLs and what to report back.
+
+## Sending mail in
+
+SMTP to `inbound-smtp.eu-north-1.amazonaws.com:25` from this machine works only while its IP isn't on SES's blocklists. When SES answers `550 5.7.1 IP address blacklisted by recipient`, send through Duva instead: an agent drafts the message, its sponsor approves it, and real SES delivers it.
