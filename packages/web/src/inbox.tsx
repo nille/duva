@@ -22,18 +22,23 @@ type Listing =
 class ListingFailed extends Error {}
 
 /**
- * The mailbox's Inbox. `version` counts the changes to the mailbox the app has seen, so the
+ * The mailbox's Inbox, the human's own or, with the agent's name, an agent's they sponsor, at
+ * `base` in the web app. `version` counts the changes to the mailbox the app has seen, so the
  * listing reads its pages again when it grows.
  */
 export function Inbox({
   client,
   mailbox,
+  base,
+  agent,
   version,
   connection,
   onSignedOut,
 }: {
   client: DuvaClient;
   mailbox: Mailbox;
+  base: string;
+  agent?: string;
   version: number;
   connection: ConnectionState;
   onSignedOut: () => void;
@@ -116,15 +121,16 @@ export function Inbox({
   };
 
   const unread = listing.status === "listed" ? listing.threads.filter((thread) => thread.unread).length : 0;
+  const title = agent === undefined ? strings.inbox.title : strings.inbox.agentTitle(agent);
   useEffect(() => {
-    document.title = strings.title(unread > 0 ? `${strings.inbox.title} (${unread})` : strings.inbox.title);
-  }, [unread]);
+    document.title = strings.title(unread > 0 ? `${title} (${unread})` : title);
+  }, [title, unread]);
 
   return (
     <main className="desk" aria-busy={listing.status === "loading"}>
       <div className="desk-head">
         <h1 tabIndex={-1} className="view-title">
-          {strings.inbox.title}
+          {title}
         </h1>
         {listing.status === "listed" && unread > 0 && <p className="count">{strings.inbox.unread(unread, listing.next !== undefined)}</p>}
         <p className="mailbox-address">{mailbox.defaultAddress}</p>
@@ -144,14 +150,14 @@ export function Inbox({
         </div>
       ) : listing.threads.length === 0 ? (
         <section className="empty" aria-labelledby="empty-title">
-          <h2 id="empty-title">{strings.inbox.emptyTitle}</h2>
+          <h2 id="empty-title">{agent === undefined ? strings.inbox.emptyTitle : strings.inbox.agentEmptyTitle(agent)}</h2>
           <p>{strings.inbox.emptyLead(mailbox.defaultAddress)}</p>
         </section>
       ) : (
         <div className="index">
           <ol className="threads" aria-label={strings.inbox.threads}>
             {listing.threads.map((thread) => (
-              <ThreadRow key={thread.id} thread={thread} fresh={listing.fresh.has(thread.id)} />
+              <ThreadRow key={thread.id} thread={thread} href={`${base}threads/${encodeURIComponent(thread.id)}`} fresh={listing.fresh.has(thread.id)} />
             ))}
           </ol>
           {listing.next !== undefined && (
@@ -167,7 +173,7 @@ export function Inbox({
   );
 }
 
-function ThreadRow({ thread, fresh }: { thread: ThreadSummary; fresh: boolean }) {
+function ThreadRow({ thread, href, fresh }: { thread: ThreadSummary; href: string; fresh: boolean }) {
   const snippetId = useId();
   const sender = nameOf(thread.from);
   const subject = thread.subject || strings.thread.noSubject;
@@ -176,7 +182,7 @@ function ThreadRow({ thread, fresh }: { thread: ThreadSummary; fresh: boolean })
     .join(", ");
   return (
     <li className={fresh ? "thread-row thread-fresh" : "thread-row"}>
-      <a className={thread.unread ? "thread thread-unread" : "thread"} href={`#/threads/${encodeURIComponent(thread.id)}`} aria-label={label} aria-describedby={snippetId}>
+      <a className={thread.unread ? "thread thread-unread" : "thread"} href={href} aria-label={label} aria-describedby={snippetId}>
         <span className="thread-mark" aria-hidden="true" />
         <span className="thread-sender">
           <span className="thread-sender-name">{sender}</span>

@@ -2,7 +2,7 @@ import type { components } from "@duva/openapi";
 import { jsonBody, type OperationHandler, refusal } from "./api.ts";
 import type { Deployment } from "./deployment.ts";
 import { type Actor, AddressTaken, addMailbox, allAddresses, findActor, findMailbox, type Mailbox, organizationDomain, ownedMailboxes, sponsoredAgents } from "./organization.ts";
-import { cursorOf, inbox, mailboxChanges, markThreads, readThread, threadsMarkedAtOnce, threadsPerPage, threadsWithLabel } from "./mail.ts";
+import { cursorOf, inbox, mailboxChanges, markThreads, readThread, threadsMarkedAtOnce, threadsPerPage, threadsWithLabel, unreadWithLabel } from "./mail.ts";
 import { syncRecipients } from "./receiving.ts";
 
 /** How many addresses the organization can have: SES's limit on one receipt rule's recipients. */
@@ -72,6 +72,13 @@ export async function readableMailbox(
   if (owner?.kind === "agent" && owner.sponsor === actor.id) return mailbox;
   return refusal(403, "Only the mailbox's owner can read it, and its sponsor if an agent owns it.");
 }
+
+export const getMailbox: OperationHandler = async (event, deployment, actor) => {
+  const mailbox = await readableMailbox(event, deployment, actor!);
+  if ("statusCode" in mailbox) return mailbox;
+  const unread = await unreadWithLabel(deployment.table, mailbox.id, inbox);
+  return { statusCode: 200, body: { ...mailbox, unread } satisfies components["schemas"]["MailboxWithCounts"] };
+};
 
 export const listMailboxChanges: OperationHandler = async (event, deployment, actor) => {
   const mailbox = await readableMailbox(event, deployment, actor!);

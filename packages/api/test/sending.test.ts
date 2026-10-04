@@ -133,7 +133,7 @@ test("the agent sees its send as sent, with the Message-ID SES gave it, which th
 });
 
 test("the sent message joins the agent's thread, and a reply to it joins the thread too", async () => {
-  const { duva, ada, hermes, agent, params, thread, original, draftParams, approval } = await withReplyAsked();
+  const { duva, ada, hermes, agent, sponsor, params, thread, original, draftParams, approval } = await withReplyAsked();
   await ada.POST("/approvals/{approval}/send", { params: { path: { approval } } });
   const { messageId } = await parse(duva.sent()[0]!);
 
@@ -156,10 +156,31 @@ test("the sent message joins the agent's thread, and a reply to it joins the thr
     date: expect.any(String),
     receivedAt: expect.any(String),
     sentBy: agent.id,
+    approval: { id: approval, approver: sponsor.id, approvedAt: expect.any(String) },
     text: "Monday works.\n\nSent by Hermes for ada@example.org",
     attachments: [],
   });
   expect(read?.messages[2]?.text).toBe("See you then.");
+});
+
+test("a sent message names who approved it and when", async () => {
+  const { ada, hermes, sponsor, params, thread, approval } = await withReplyAsked();
+  const { data: decided } = await ada.POST("/approvals/{approval}/send", { params: { path: { approval } } });
+
+  const { data: read } = await hermes.GET("/mailboxes/{mailbox}/threads/{thread}", { params: { path: { ...params.path, thread } } });
+
+  expect(read?.messages[0]).not.toHaveProperty("approval");
+  expect(read?.messages[1]?.approval).toEqual({ id: approval, approver: sponsor.id, approvedAt: decided!.decidedAt });
+});
+
+test("a message the sponsor edited before sending names what they changed", async () => {
+  const { ada, params, thread, approval } = await withReplyAsked();
+  await ada.POST("/approvals/{approval}/send", { params: { path: { approval } }, body: { subject: "Re: Meeting on Tuesday", text: "Tuesday works better." } });
+
+  const { data: read } = await ada.GET("/mailboxes/{mailbox}/threads/{thread}", { params: { path: { ...params.path, thread } } });
+
+  expect(read?.messages[1]?.approval?.edits).toEqual({ subject: "Re: Meeting on Tuesday", text: "Tuesday works better." });
+  expect(read?.messages[1]?.text).toBe("Tuesday works better.\n\nSent by Hermes for ada@example.org");
 });
 
 test("a new message goes out from the default address without threading headers, and starts its own thread", async () => {

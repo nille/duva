@@ -405,16 +405,25 @@ export interface Sending {
 /**
  * Marks the draft sent as the message, which SES accepted and gave the Message-ID its recipients
  * see, and stores the message in the draft's thread, or in a new one if it isn't a reply, where
- * that Message-ID points at it. Returns false if the draft was no longer sending it.
+ * that Message-ID points at it, naming the approval it went out with. Returns false if the draft
+ * was no longer sending it.
  */
 export function markSent(
   table: Table,
   sending: Sending,
-  { thread, messageId, stored, text }: { thread: string | undefined; messageId: string; stored: Omit<StoredMessage, "id" | "messageId" | "sentBy">; text: string },
+  {
+    thread,
+    messageId,
+    stored,
+    text,
+    approval: { approver, decidedAt, edits },
+  }: { thread: string | undefined; messageId: string; stored: Omit<StoredMessage, "id" | "messageId" | "sentBy" | "approval">; text: string; approval: Approval },
 ): Promise<boolean> {
   const { mailbox, draft, approval, message, agent } = sending;
   const once = (sentThread: string) => sendingSettles(table, sending, { approval, state: "sent", thread: sentThread, message, messageId });
-  return storeSentMessage(table, { mailbox, message: { ...stored, id: message, messageId, sentBy: agent }, text, thread, draft, once });
+  // The sender sends only drafts whose approval was decided, so it has a time.
+  const approved = { id: approval, approver, approvedAt: decidedAt!, ...(edits !== undefined && { edits }) };
+  return storeSentMessage(table, { mailbox, message: { ...stored, id: message, messageId, sentBy: agent, approval: approved }, text, thread, draft, once });
 }
 
 /** Marks the draft failed with SES's reason, which the agent and its sponsor see. Returns false if it was no longer sending. */

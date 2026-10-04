@@ -187,6 +187,28 @@ export const operations = [
     ]
   },
   {
+    "operationId": "getMailbox",
+    "method": "get",
+    "path": "/mailboxes/{mailbox}",
+    "routeKey": "GET /mailboxes/{mailbox}",
+    "summary": "Read a mailbox you can read, with how many threads in its Inbox are unread.",
+    "description": "Only the mailbox's owner and, for an agent's mailbox, its sponsor can read it.",
+    "signIn": true,
+    "command": [
+      "mailboxes",
+      "get"
+    ],
+    "options": [
+      {
+        "name": "mailbox",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The mailbox's ID."
+      }
+    ]
+  },
+  {
     "operationId": "listMailboxChanges",
     "method": "get",
     "path": "/mailboxes/{mailbox}/changes",

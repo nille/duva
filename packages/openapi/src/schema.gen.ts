@@ -144,6 +144,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/mailboxes/{mailbox}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read a mailbox you can read, with how many threads in its Inbox are unread.
+         * @description Only the mailbox's owner and, for an agent's mailbox, its sponsor can read it.
+         */
+        get: operations["getMailbox"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/mailboxes/{mailbox}/changes": {
         parameters: {
             query?: never;
@@ -468,6 +488,28 @@ export interface components {
              * @example hermes@example.com
              */
             defaultAddress: string;
+        };
+        /** @description A mailbox, with how many of its threads want attention. */
+        MailboxWithCounts: {
+            /** @description The mailbox's ID, which never changes. */
+            id: string;
+            /**
+             * @description Personal mailboxes are owned by one actor.
+             * @constant
+             */
+            kind: "personal";
+            /** @description The ID of the actor that owns the mailbox. */
+            owner: string;
+            /**
+             * @description The address the mailbox sends new messages from.
+             * @example hermes@example.com
+             */
+            defaultAddress: string;
+            /**
+             * @description How many threads in the Inbox are unread.
+             * @example 3
+             */
+            unread: number;
         };
         MailboxList: {
             mailboxes: components["schemas"]["Mailbox"][];
@@ -873,9 +915,21 @@ export interface components {
             receivedAt: string;
             /** @description The ID of the actor who sent the message from the mailbox, if it did. */
             sentBy?: string;
+            /** @description Who approved the message before it was sent, if an agent sent it. */
+            approval?: components["schemas"]["SentApproval"];
             /** @description The plain-text body. Mail with only HTML is turned into text. */
             text: string;
             attachments: components["schemas"]["Attachment"][];
+        };
+        /** @description The approval a sent message went out with. */
+        SentApproval: {
+            /** @description The approval's ID. */
+            id: string;
+            /** @description The ID of the human who approved it. */
+            approver: string;
+            /** Format: date-time */
+            approvedAt: string;
+            edits?: components["schemas"]["Edits"];
         };
         EmailAddress: {
             /**
@@ -1307,6 +1361,32 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    getMailbox: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The mailbox's ID. */
+                mailbox: components["parameters"]["Mailbox"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The mailbox, with its unread count. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MailboxWithCounts"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     listMailboxChanges: {

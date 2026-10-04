@@ -5,7 +5,7 @@ import type { AuthorizerContext } from "./authorizer.ts";
 import { listOrganizationChanges } from "./changes.ts";
 import { createDraft, editDraft, getDraft, listApprovals, listDrafts, rejectApproval, sendApproval, sendDraft } from "./drafts.ts";
 import { addHuman, listHumans } from "./humans.ts";
-import { createMailbox, getThread, listMailboxChanges, listMailboxes, listThreads, markThreadsRead, markThreadsUnread } from "./mailboxes.ts";
+import { createMailbox, getMailbox, getThread, listMailboxChanges, listMailboxes, listThreads, markThreadsRead, markThreadsUnread } from "./mailboxes.ts";
 import type { Deployment } from "./deployment.ts";
 import { type Actor, actorOf } from "./organization.ts";
 import { getStatus } from "./status.ts";
@@ -32,6 +32,7 @@ const handlers: Record<OperationId, OperationHandler> = {
   rotateAgentKey,
   createMailbox,
   listMailboxes,
+  getMailbox,
   listMailboxChanges,
   listThreads,
   markThreadsRead,

@@ -103,6 +103,14 @@ Only admins can create mailboxes. The address becomes the mailbox's default addr
 - `--owner` (required): The ID of the human or agent that owns the mailbox.
 - `--address` (required): The mailbox's address, on the organization's domain, without a plus tag.
 
+## duva mailboxes get
+
+Read a mailbox you can read, with how many threads in its Inbox are unread.
+
+Only the mailbox's owner and, for an agent's mailbox, its sponsor can read it.
+
+- `--mailbox` (required): The mailbox's ID.
+
 ## duva mailboxes changes
 
 List the changes in a mailbox after a position in its change feed.

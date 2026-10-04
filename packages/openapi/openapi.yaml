@@ -236,6 +236,29 @@ paths:
                 $ref: "#/components/schemas/MailboxList"
         "401":
           $ref: "#/components/responses/Unauthorized"
+  /mailboxes/{mailbox}:
+    get:
+      operationId: getMailbox
+      summary: Read a mailbox you can read, with how many threads in its Inbox are unread.
+      description: >
+        Only the mailbox's owner and, for an agent's mailbox, its sponsor can
+        read it.
+      x-cli-command: mailboxes get
+      parameters:
+        - $ref: "#/components/parameters/Mailbox"
+      responses:
+        "200":
+          description: The mailbox, with its unread count.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MailboxWithCounts"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /mailboxes/{mailbox}/changes:
     get:
       operationId: listMailboxChanges
@@ -846,6 +869,30 @@ components:
           type: string
           description: The address the mailbox sends new messages from.
           examples: ["hermes@example.com"]
+    MailboxWithCounts:
+      type: object
+      additionalProperties: false
+      required: [id, kind, owner, defaultAddress, unread]
+      description: A mailbox, with how many of its threads want attention.
+      properties:
+        id:
+          type: string
+          description: The mailbox's ID, which never changes.
+        kind:
+          type: string
+          const: personal
+          description: Personal mailboxes are owned by one actor.
+        owner:
+          type: string
+          description: The ID of the actor that owns the mailbox.
+        defaultAddress:
+          type: string
+          description: The address the mailbox sends new messages from.
+          examples: ["hermes@example.com"]
+        unread:
+          type: integer
+          description: How many threads in the Inbox are unread.
+          examples: [3]
     MailboxList:
       type: object
       additionalProperties: false
@@ -1439,6 +1486,9 @@ components:
         sentBy:
           type: string
           description: The ID of the actor who sent the message from the mailbox, if it did.
+        approval:
+          $ref: "#/components/schemas/SentApproval"
+          description: Who approved the message before it was sent, if an agent sent it.
         text:
           type: string
           description: The plain-text body. Mail with only HTML is turned into text.
@@ -1446,6 +1496,23 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Attachment"
+    SentApproval:
+      type: object
+      additionalProperties: false
+      required: [id, approver, approvedAt]
+      description: The approval a sent message went out with.
+      properties:
+        id:
+          type: string
+          description: The approval's ID.
+        approver:
+          type: string
+          description: The ID of the human who approved it.
+        approvedAt:
+          type: string
+          format: date-time
+        edits:
+          $ref: "#/components/schemas/Edits"
     EmailAddress:
       type: object
       additionalProperties: false

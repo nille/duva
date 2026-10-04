@@ -1,6 +1,6 @@
 // Duva's web app. A human signs in and lands on the Inbox of their personal mailbox, where they read
-// their mail. Sponsors reach the Approvals view from the bar, where they decide what the agents they
-// sponsor ask to send.
+// their mail. Sponsors also read their agents' mailboxes, listed beside their own, and reach the
+// Approvals view from the bar, where they decide what the agents they sponsor ask to send.
 import "@fontsource-variable/source-serif-4/opsz.css";
 import "./styles.css";
 import { StrictMode, useCallback, useEffect, useRef, useState } from "react";
@@ -10,6 +10,7 @@ import type { components } from "@duva/openapi";
 import { Approvals } from "./approvals.tsx";
 import { approvalChanges, type Connection, type Follow, mailChanges, type MailboxChange, SignedOut, useFeeds } from "./feed.ts";
 import { Inbox } from "./inbox.tsx";
+import { type AgentMailbox, MailboxList, mailboxHref } from "./mailboxes.tsx";
 import { type Config, loadConfig, signedInClient, signIn, signOut } from "./session.ts";
 import { strings } from "./strings.ts";
 import { ThreadView } from "./thread.tsx";
@@ -70,13 +71,18 @@ function App() {
   }
 }
 
-/** Where in the web app the human is, from the address's hash, so links and the back button work without a server. */
-type Route = { view: "inbox" } | { view: "approvals" } | { view: "thread"; id: string };
+/**
+ * Where in the web app the human is, from the address's hash, so links and the back button work
+ * without a server. A view without a mailbox is in the human's own.
+ */
+type Route = { view: "approvals" } | { view: "inbox"; mailbox?: string } | { view: "thread"; mailbox?: string; id: string };
 
 function routeOf(hash: string): Route {
   if (hash === "#/approvals") return { view: "approvals" };
-  const thread = /^#\/threads\/(.+)$/.exec(hash)?.[1];
-  return thread === undefined ? { view: "inbox" } : { view: "thread", id: decodeURIComponent(thread) };
+  const decoded = (mailbox: string | undefined) => (mailbox === undefined ? undefined : decodeURIComponent(mailbox));
+  const [, mailbox, thread] = /^#\/(?:mailboxes\/([^/]+)\/)?threads\/(.+)$/.exec(hash) ?? [];
+  if (thread !== undefined) return { view: "thread", mailbox: decoded(mailbox), id: decodeURIComponent(thread) };
+  return { view: "inbox", mailbox: decoded(/^#\/mailboxes\/([^/]+)\/?$/.exec(hash)?.[1]) };
 }
 
 function useRoute(): Route {
@@ -89,14 +95,16 @@ function useRoute(): Route {
   return routeOf(hash);
 }
 
-type Mailboxes = { status: "loading" } | { status: "failed" } | { status: "listed"; mine?: Mailbox; sponsor: boolean };
+type Mailboxes = { status: "loading" } | { status: "failed" } | { status: "listed"; mine?: Mailbox; agents: AgentMailbox[] };
 
 /** The signed-in app: the bar, and the view the route names, kept current by following the change feeds. */
 function SignedIn({ config, client, actor, onSignedOut }: { config: Config; client: DuvaClient; actor: Human; onSignedOut: () => void }) {
   const route = useRoute();
   const [mailboxes, setMailboxes] = useState<Mailboxes>({ status: "loading" });
   const [waiting, setWaiting] = useState<number>();
-  const [version, setVersion] = useState(0);
+  // How many changes to each mailbox's mail the app has seen, so its views read it again when it grows.
+  const [versions, setVersions] = useState<ReadonlyMap<string, number>>(new Map());
+  const [unread, setUnread] = useState<ReadonlyMap<string, number>>(new Map());
   const [connection, setConnection] = useState<Connection>();
 
   const listMailboxes = useCallback(async () => {
@@ -104,12 +112,43 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
     const { data, response } = await client.GET("/mailboxes").catch(() => ({ data: undefined, response: undefined }));
     if (response?.status === 401) return onSignedOut();
     if (data === undefined) return setMailboxes({ status: "failed" });
-    // The human's own mailbox comes first. Those of agents they sponsor come in #29.
-    setMailboxes({ status: "listed", mine: data.mailboxes.find((mailbox) => mailbox.owner === actor.id), sponsor: data.mailboxes.some((mailbox) => mailbox.owner !== actor.id) });
+    const theirs = data.mailboxes.filter((mailbox) => mailbox.owner !== actor.id);
+    // The other mailboxes a human can read are those of agents they sponsor, which are named for them.
+    const { data: sponsored } = theirs.length === 0 ? { data: { agents: [] } } : await client.GET("/agents").catch(() => ({ data: undefined }));
+    const names = new Map(sponsored?.agents.map((agent) => [agent.id, agent.name]));
+    const agents = theirs.map((mailbox) => ({ mailbox, agent: names.get(mailbox.owner) ?? mailbox.defaultAddress })).sort((a, b) => a.agent.localeCompare(b.agent));
+    setMailboxes({ status: "listed", mine: data.mailboxes.find((mailbox) => mailbox.owner === actor.id), agents });
   }, [client, actor.id, onSignedOut]);
   useEffect(() => {
     void listMailboxes();
   }, [listMailboxes]);
+
+  /**
+   * Reads how many threads in each mailbox's Inbox are unread. A count Duva can't give now stays as
+   * it was until the mailbox's mail changes again.
+   */
+  const countUnread = useCallback(
+    async (ids: string[]) => {
+      if (ids.length === 0) return;
+      const counts = await Promise.all(
+        ids.map(async (mailbox) => {
+          const { data, response } = await client.GET("/mailboxes/{mailbox}", { params: { path: { mailbox } } }).catch(() => ({ data: undefined, response: undefined }));
+          if (response?.status === 401) throw new SignedOut();
+          return [mailbox, data?.unread] as const;
+        }),
+      );
+      setUnread((current) => new Map([...current, ...counts.flatMap(([mailbox, count]) => (count === undefined ? [] : [[mailbox, count] as const]))]));
+    },
+    [client],
+  );
+  // The column lists every mailbox's count once they are listed, and the feeds keep them current.
+  useEffect(() => {
+    if (mailboxes.status !== "listed" || mailboxes.agents.length === 0) return;
+    const ids = [...(mailboxes.mine === undefined ? [] : [mailboxes.mine.id]), ...mailboxes.agents.map(({ mailbox }) => mailbox.id)];
+    countUnread(ids).catch((error: unknown) => {
+      if (error instanceof SignedOut) onSignedOut();
+    });
+  }, [mailboxes, countUnread, onSignedOut]);
 
   // Views that follow the feeds themselves, such as Approvals.
   const followers = useRef(new Set<(changes: MailboxChange[]) => Promise<void>>());
@@ -118,7 +157,6 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
     return () => followers.current.delete(listener);
   }, []);
 
-  const mine = mailboxes.status === "listed" ? mailboxes.mine : undefined;
   useFeeds(client, {
     interval: config.pollInterval,
     async onChanges(changes, first) {
@@ -128,8 +166,12 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
         if (response.status === 401) throw new SignedOut();
         if (data !== undefined) setWaiting(data.approvals.length);
       }
-      // The first read passes mail that may have arrived after the view listed it, so it counts too.
-      if (changes.some(({ mailbox, change }) => mailbox === mine?.id && mailChanges.has(change.type))) setVersion((current) => current + 1);
+      // The first read passes mail that may have arrived after the views listed it, so it counts too.
+      const changed = new Set(changes.filter(({ change }) => mailChanges.has(change.type)).map(({ mailbox }) => mailbox));
+      if (changed.size > 0) {
+        setVersions((current) => new Map([...current, ...[...changed].map((mailbox) => [mailbox, (current.get(mailbox) ?? 0) + 1] as const)]));
+      }
+      if (mailboxes.status === "listed" && mailboxes.agents.length > 0) await countUnread([...changed]);
     },
     onConnection: setConnection,
     onSignedOut,
@@ -137,7 +179,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
 
   // A screen reader follows the human to the view they opened, and the page starts at its top.
   const navigated = useRef(false);
-  const routeKey = route.view === "thread" ? `thread/${route.id}` : route.view;
+  const routeKey = route.view === "approvals" ? route.view : `${route.mailbox ?? ""}/${route.view === "thread" ? route.id : ""}`;
   useEffect(() => {
     if (!navigated.current) {
       navigated.current = true;
@@ -154,13 +196,69 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
     if (route.view === "approvals") document.title = strings.title(strings.approvals.title);
   }, [route.view]);
 
-  const sponsor = (mailboxes.status === "listed" && mailboxes.sponsor) || (waiting ?? 0) > 0;
+  const listed = mailboxes.status === "listed" ? mailboxes : undefined;
+  const mine = listed?.mine;
+  const sponsor = (listed !== undefined && listed.agents.length > 0) || (waiting ?? 0) > 0;
+  // The mailbox the route names, the human's own if it names none.
+  const agent = route.view !== "approvals" && route.mailbox !== undefined ? listed?.agents.find(({ mailbox }) => mailbox.id === route.mailbox) : undefined;
+  const shown = route.view === "approvals" ? undefined : route.mailbox === undefined ? mine : (agent?.mailbox ?? (mine?.id === route.mailbox ? mine : undefined));
+  const base = shown === undefined ? "#/" : mailboxHref(shown, shown === mine);
+
+  const mail =
+    route.view === "approvals" ? undefined : mailboxes.status === "loading" ? (
+      <main className="desk" aria-busy="true" />
+    ) : mailboxes.status === "failed" ? (
+      <main className="desk">
+        <div className="notice notice-alert failed-listing" role="alert">
+          <p>{strings.mailboxesFailed}</p>
+          <button type="button" className="button button-small" onClick={() => void listMailboxes()}>
+            {strings.inbox.retry}
+          </button>
+        </div>
+      </main>
+    ) : shown === undefined ? (
+      <main className="desk">
+        <section className="empty" aria-labelledby="empty-title">
+          {route.mailbox === undefined ? (
+            <>
+              <h1 id="empty-title">{strings.inbox.noMailboxTitle}</h1>
+              <p>{strings.inbox.noMailboxLead}</p>
+              {sponsor && (
+                <p>
+                  <a href="#/approvals">{strings.inbox.noMailboxSponsor}</a>
+                </p>
+              )}
+            </>
+          ) : (
+            <>
+              <h1 id="empty-title">{strings.inbox.unknownMailboxTitle}</h1>
+              <p>{strings.inbox.unknownMailboxLead}</p>
+            </>
+          )}
+        </section>
+      </main>
+    ) : route.view === "thread" ? (
+      <ThreadView
+        key={`${shown.id}/${route.id}`}
+        client={client}
+        mailbox={shown}
+        base={base}
+        id={route.id}
+        me={actor.id}
+        agent={agent?.agent}
+        version={versions.get(shown.id) ?? 0}
+        onSignedOut={onSignedOut}
+      />
+    ) : (
+      <Inbox key={shown.id} client={client} mailbox={shown} base={base} agent={agent?.agent} version={versions.get(shown.id) ?? 0} connection={connection} onSignedOut={onSignedOut} />
+    );
+
   return (
     <>
       <header className="bar">
         <p className="wordmark">{strings.nav.label}</p>
         <nav aria-label={strings.nav.label}>
-          <a href="#/" aria-current={route.view === "approvals" ? undefined : "page"}>
+          <a href={base} aria-current={route.view === "approvals" ? undefined : "page"}>
             {strings.nav.inbox}
           </a>
           {sponsor && (
@@ -186,33 +284,13 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
       </header>
       {route.view === "approvals" ? (
         <Approvals client={client} sponsor={actor.email} connection={connection} follow={follow} onSignedOut={onSignedOut} />
-      ) : mailboxes.status === "loading" ? (
-        <main className="desk" aria-busy="true" />
-      ) : mailboxes.status === "failed" ? (
-        <main className="desk">
-          <div className="notice notice-alert failed-listing" role="alert">
-            <p>{strings.mailboxesFailed}</p>
-            <button type="button" className="button button-small" onClick={() => void listMailboxes()}>
-              {strings.inbox.retry}
-            </button>
-          </div>
-        </main>
-      ) : mine === undefined ? (
-        <main className="desk">
-          <section className="empty" aria-labelledby="empty-title">
-            <h1 id="empty-title">{strings.inbox.noMailboxTitle}</h1>
-            <p>{strings.inbox.noMailboxLead}</p>
-            {sponsor && (
-              <p>
-                <a href="#/approvals">{strings.inbox.noMailboxSponsor}</a>
-              </p>
-            )}
-          </section>
-        </main>
-      ) : route.view === "thread" ? (
-        <ThreadView key={route.id} client={client} mailbox={mine} id={route.id} me={actor.id} version={version} onSignedOut={onSignedOut} />
+      ) : listed !== undefined && listed.agents.length > 0 ? (
+        <div className={route.view === "thread" ? "mail mail-reading" : "mail"}>
+          <MailboxList mine={mine} agents={listed.agents} unread={unread} current={shown?.id} />
+          {mail}
+        </div>
       ) : (
-        <Inbox client={client} mailbox={mine} version={version} connection={connection} onSignedOut={onSignedOut} />
+        mail
       )}
     </>
   );

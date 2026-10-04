@@ -130,5 +130,6 @@ async function send({ table, mailBucket, outbound, region }: Sender, { mailbox, 
     thread: draft.thread,
     messageId: `<${sesMessageId}@${region}.amazonses.com>`,
     stored: { from, to: draft.to, cc: [], recipient: draft.from, subject: draft.subject, date: sentAt, receivedAt: sentAt, rawKey },
+    approval,
   });
 }

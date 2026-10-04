@@ -97,6 +97,8 @@ interface StoredMessage {
   date: string;
   receivedAt: string;
   sentBy?: string;
+  /** The approval an agent's message went out with. */
+  approval?: components["schemas"]["SentApproval"];
   /** Where the raw message is in the mail bucket. */
   rawKey: string;
 }
@@ -342,6 +344,28 @@ export async function threadsWithLabel(table: Table, mailbox: string, label: str
   };
 }
 
+/** How many of the threads with the label are unread. */
+export async function unreadWithLabel(table: Table, mailbox: string, label: string): Promise<number> {
+  const partition = labelKey(mailbox, label, "", "")[pk];
+  let count = 0;
+  let start: Record<string, unknown> | undefined;
+  do {
+    const page = await documents(table).send(
+      new QueryCommand({
+        TableName: table.name,
+        KeyConditionExpression: `${pk} = :label`,
+        FilterExpression: "unread = :unread",
+        ExpressionAttributeValues: { ":label": partition, ":unread": true },
+        Select: "COUNT",
+        ExclusiveStartKey: start,
+      }),
+    );
+    count += page.Count ?? 0;
+    start = page.LastEvaluatedKey;
+  } while (start !== undefined);
+  return count;
+}
+
 /** Where a page of threads starts: after the thread at the position in its label. */
 export interface Cursor {
   position: string;
@@ -420,7 +444,7 @@ async function readMessage(mailBucket: MailBucket, stored: StoredMessage): Promi
   if (raw === undefined) throw new Error(`The raw message ${stored.rawKey} is missing from the mail bucket.`);
   const parsed = await parseMail(raw);
   const { text, attachments } = parsed;
-  const { id, messageId, from, to, cc, recipient, plusTag, subject, date, receivedAt, sentBy } = stored;
+  const { id, messageId, from, to, cc, recipient, plusTag, subject, date, receivedAt, sentBy, approval } = stored;
   const message = {
     id,
     messageId,
@@ -433,6 +457,7 @@ async function readMessage(mailBucket: MailBucket, stored: StoredMessage): Promi
     date,
     receivedAt,
     ...(sentBy !== undefined && { sentBy }),
+    ...(approval !== undefined && { approval }),
     text,
     attachments,
   };

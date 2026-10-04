@@ -129,3 +129,43 @@ test("an admin who isn't the sponsor doesn't list an agent's mailboxes", async (
 
   expect(data).toEqual({ mailboxes: [] });
 });
+
+test("the sponsor reads their agent's mailbox, with how many threads in its Inbox are unread", async () => {
+  const { duva, ada, hermes, key } = await withAgent();
+  const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: hermes.id, address: "hermes@example.com" } });
+  const params = { path: { mailbox: mailbox!.id } };
+  for (const subject of ["One", "Two", "Three"]) {
+    await duva.receive(`From: grace@example.org\r\nTo: hermes@example.com\r\nSubject: ${subject}\r\nMessage-ID: <${subject}@example.org>\r\n\r\nHej.\r\n`, { to: ["hermes@example.com"] });
+  }
+  const { data: list } = await ada.GET("/mailboxes/{mailbox}/threads", { params });
+  await ada.POST("/mailboxes/{mailbox}/threads/read", { params, body: { threads: [list!.threads[0]!.id] } });
+
+  const { data, response } = await ada.GET("/mailboxes/{mailbox}", { params });
+
+  expect(response.status).toBe(200);
+  expect(data).toEqual({ ...mailbox, unread: 2 });
+  expect((await duva.withKey(key).GET("/mailboxes/{mailbox}", { params })).data).toEqual({ ...mailbox, unread: 2 });
+});
+
+test("spam isn't counted among a mailbox's unread threads", async () => {
+  const { duva, ada, hermes } = await withAgent();
+  const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: hermes.id, address: "hermes@example.com" } });
+  await duva.receive("From: grace@example.org\r\nTo: hermes@example.com\r\nSubject: Buy\r\n\r\nBuy now.\r\n", { to: ["hermes@example.com"] }, { verdicts: { spam: "FAIL" } });
+
+  const { data } = await ada.GET("/mailboxes/{mailbox}", { params: { path: { mailbox: mailbox!.id } } });
+
+  expect(data?.unread).toBe(0);
+});
+
+test("only those who can read a mailbox can read its unread count, so not even the admin who created it", async () => {
+  const { duva, ada } = await withAgent({ humans: ["grace@example.org"] });
+  const grace = duva.signIn("grace@example.org");
+  const { data: me } = await grace.GET("/whoami");
+  const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: me!.id, address: "grace@example.com" } });
+
+  const { response } = await ada.GET("/mailboxes/{mailbox}", { params: { path: { mailbox: mailbox!.id } } });
+  const { response: missing } = await grace.GET("/mailboxes/{mailbox}", { params: { path: { mailbox: "nope" } } });
+
+  expect(response.status).toBe(403);
+  expect(missing.status).toBe(404);
+});

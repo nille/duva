@@ -16,6 +16,13 @@ export const strings = {
   title: (view: string) => `${view} · Duva`,
   mailboxesFailed: "Duva couldn't list your mailboxes. Try again in a moment.",
 
+  mailboxes: {
+    label: "Mailboxes",
+    yours: "Your mailbox",
+    agents: "Agents",
+    unread: (count: number) => `${count} unread`,
+  },
+
   nav: { label: "Duva", inbox: "Inbox", approvals: "Approvals", waiting: (count: number) => `, ${count} waiting` },
   connection: {
     upToDate: (time: string) => `Up to date at ${time}`,
@@ -25,6 +32,7 @@ export const strings = {
 
   inbox: {
     title: "Inbox",
+    agentTitle: (agent: string) => `${agent}'s Inbox`,
     threads: "Threads",
     unread: (count: number, more: boolean) => (more ? `At least ${count} unread` : `${count} unread`),
     unreadMark: "Unread",
@@ -33,10 +41,13 @@ export const strings = {
     loadingOlder: "Loading older threads…",
     arrived: (count: number) => (count === 1 ? "1 new thread" : `${count} new threads`),
     emptyTitle: "Your Inbox is empty",
+    agentEmptyTitle: (agent: string) => `${agent}'s Inbox is empty`,
     emptyLead: (address: string) => `Mail to ${address} appears here. This page checks for new mail by itself, so there's no need to reload it.`,
     noMailboxTitle: "You don't have a mailbox yet",
     noMailboxLead: "Ask an admin to give you one. Your mail appears here once you have it.",
     noMailboxSponsor: "You can still decide what your agents ask to send in Approvals.",
+    unknownMailboxTitle: "This mailbox isn't yours to read",
+    unknownMailboxLead: "You can read your own mailbox, and those of the agents you sponsor.",
     failed: (status: number) => `Duva couldn't list your threads (error ${status}). Try again in a moment.`,
     unreachable: "Duva couldn't be reached, so your threads aren't listed. Check your connection and try again.",
     retry: "Try again",
@@ -59,6 +70,10 @@ export const strings = {
     plusTag: (recipient: string, tag: string) => `Sent to ${recipient}, with the plus tag ${tag}`,
     sentByYou: "You sent this",
     sentFromMailbox: "Sent from this mailbox",
+    sentBy: (agent: string) => `Sent by ${agent}`,
+    approvedAsIs: "You approved it as written.",
+    approvedEdited: (fields: string[]) => `You approved your version, changing ${list(fields)}.`,
+    approvedBySponsor: "Its sponsor approved it.",
     attachments: "Attachments",
     unnamed: "Attachment without a name",
     attachment: (type: string, size: string) => `${type}, ${size}`,

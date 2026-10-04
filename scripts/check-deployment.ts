@@ -64,6 +64,7 @@ await check("adding a human without credentials answers 401", async () =>
 );
 await check("listing humans without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/humans`), 401));
 await check("listing mailboxes without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/mailboxes`), 401));
+await check("reading a mailbox without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/mailboxes/x`), 401));
 await check("listing approvals without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/approvals`), 401));
 await check("rejecting an approval without credentials answers 401", async () =>
   expectStatus(await fetch(`${apiUrl}/approvals/x/reject`, { method: "POST", headers: { "content-type": "application/json" }, body: '{"note":"Check"}' }), 401),

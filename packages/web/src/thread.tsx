@@ -16,21 +16,26 @@ type Reading = { status: "loading" } | { status: "failed"; message: string; gone
 const quoteShown = 3;
 
 /**
- * The thread with the ID in the mailbox. `version` counts the changes to the mailbox the app has
+ * The thread with the ID in the mailbox whose Inbox is at `base`, the human's own or, with the
+ * agent's name, an agent's they sponsor. `version` counts the changes to the mailbox the app has
  * seen, so the thread is read again when it grows, and replies that arrive while it's open show.
  */
 export function ThreadView({
   client,
   mailbox,
+  base,
   id,
   me,
+  agent,
   version,
   onSignedOut,
 }: {
   client: DuvaClient;
   mailbox: Mailbox;
+  base: string;
   id: string;
   me: string;
+  agent?: string;
   version: number;
   onSignedOut: () => void;
 }) {
@@ -89,15 +94,15 @@ export function ThreadView({
       leaving.current = false;
       return setMarking("failed");
     }
-    location.hash = "#/";
+    location.hash = base;
   };
 
   return (
     <main className="desk desk-reading" aria-busy={reading.status === "loading"}>
       <p className="back">
-        <a href="#/">
+        <a href={base}>
           <BackIcon />
-          {strings.thread.back}
+          {agent === undefined ? strings.thread.back : strings.inbox.agentTitle(agent)}
         </a>
       </p>
       {reading.status === "loading" ? (
@@ -135,7 +140,7 @@ export function ThreadView({
           <ol className="letters" aria-label={strings.thread.messages}>
             {reading.thread.messages.map((message) => (
               <li key={message.id}>
-                <Letter message={message} me={me} fresh={reading.fresh.has(message.id)} />
+                <Letter message={message} me={me} agent={agent} fresh={reading.fresh.has(message.id)} />
               </li>
             ))}
           </ol>
@@ -145,9 +150,10 @@ export function ThreadView({
   );
 }
 
-function Letter({ message, me, fresh }: { message: Message; me: string; fresh: boolean }) {
+function Letter({ message, me, agent, fresh }: { message: Message; me: string; agent?: string; fresh: boolean }) {
   const titleId = useId();
-  const sent = message.sentBy === undefined ? undefined : message.sentBy === me ? strings.thread.sentByYou : strings.thread.sentFromMailbox;
+  const sent =
+    message.sentBy === undefined ? undefined : message.sentBy === me ? strings.thread.sentByYou : agent === undefined ? strings.thread.sentFromMailbox : strings.thread.sentBy(agent);
   return (
     <article className={fresh ? "letter letter-fresh" : sent ? "letter letter-sent" : "letter"} aria-labelledby={titleId}>
       <header className="letter-head">
@@ -174,6 +180,7 @@ function Letter({ message, me, fresh }: { message: Message; me: string; fresh: b
           <span className="letter-subject">{message.subject || strings.thread.noSubject}</span>
         </Field>
       </dl>
+      {message.approval !== undefined && <p className="letter-note">{approvalNote(message.approval, me)}</p>}
       {message.plusTag !== undefined && <p className="letter-note">{strings.thread.plusTag(message.recipient, message.plusTag)}</p>}
       <Body text={message.text} />
       {message.attachments.length > 0 && (
@@ -191,6 +198,13 @@ function Letter({ message, me, fresh }: { message: Message; me: string; fresh: b
       )}
     </article>
   );
+}
+
+/** Who approved an agent's message before it went out, and what they changed. */
+function approvalNote({ approver, edits }: NonNullable<Message["approval"]>, me: string): string {
+  if (approver !== me) return strings.thread.approvedBySponsor;
+  const changed = (["to", "subject", "text"] as const).filter((field) => edits?.[field] !== undefined).map((field) => strings.galley.fieldNames[field]);
+  return changed.length === 0 ? strings.thread.approvedAsIs : strings.thread.approvedEdited(changed);
 }
 
 /** A run of the text: what the sender wrote, or lines they quoted. */
