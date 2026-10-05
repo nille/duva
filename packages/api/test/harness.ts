@@ -56,6 +56,8 @@ export interface DuvaOptions {
   emptyingLost?: boolean;
   /** How many seconds a download link works. */
   downloadLinkLifetime?: number;
+  /** Whether the sender reads the table's stream only at releaseSends(), as when Lambda falls behind. */
+  sendsHeld?: boolean;
 }
 
 /** A Duva deployment running in-process, set up as duva deploy sets one up, with its own table and mail bucket. */
@@ -88,6 +90,8 @@ export interface Duva {
   receiptRules(): ReceiptRule[];
   /** The raw messages SES accepted for sending, oldest first. Each API call returns once the sends it led to are done. */
   sent(): string[];
+  /** Lets the sender read the table's stream when sendsHeld, and waits until the sends it held are done. */
+  releaseSends(): Promise<void>;
   /** The recipients SES delivered each message in sent() to, in the same order, Bcc recipients included. */
   sentTo(): string[][];
   /** The raw messages the mail bucket keeps, received and sent, every version of each. */
@@ -125,6 +129,7 @@ export async function startDuva({
   senderInvocations = 1,
   emptyingLost = false,
   downloadLinkLifetime = linkLifetime,
+  sendsHeld = false,
 }: DuvaOptions = {}): Promise<Duva> {
   const { table, streamArn, database } = await createTable();
   const humans = memoryHumans();
@@ -165,12 +170,12 @@ export async function startDuva({
     createApi({ version, region, table, humans, mailBucket, receiving, downloads, eraser: { emptyTrash: async (each) => void emptied.push(each) } }),
     createAuthorizer({ table, verifyAccessToken: issuer.verify }),
   );
-  // A call returns once the stream has handed what it wrote to the sender, and the eraser has
-  // erased the Trash it emptied, so tests see the outcome.
+  // A call returns once the stream has handed what it wrote to the sender, unless sends are held,
+  // and the eraser has erased the Trash it emptied, so tests see the outcome.
   const api = async (request: Request) => {
     if (new URL(request.url).pathname.startsWith("/download/")) return downloaded(request);
     const response = await gatewayed(request);
-    await stream.deliver();
+    if (!sendsHeld) await stream.deliver();
     for (let each = emptied.shift(); each !== undefined; each = emptied.shift()) if (!emptyingLost) await eraser({ emptyTrash: each });
     return response;
   };
@@ -197,6 +202,7 @@ export async function startDuva({
     receiptRules: () => ses.describeRules(),
     sent: () => sending.sent(),
     sentTo: () => sending.sentTo(),
+    releaseSends: () => stream.deliver(),
     stored: () => mailBucket.stored(),
     async erase(at, { s3DeletesFail = false } = {}) {
       mailBucket.deletesFail = s3DeletesFail;

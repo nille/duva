@@ -166,7 +166,7 @@ export interface paths {
         head?: never;
         /**
          * Change an agent's sponsor access or its approval and disclosure-line switches.
-         * @description Give only the settings to change. A change works at once. Only the agent's sponsor can change them, so not even an admin can. Each change is recorded under you, with the old and new values, in your personal mailbox's change feed, or if you have none, in the agent's. If neither of you has a mailbox, the change is refused. Read lets the agent read your mailbox. Full also lets it organize it, move threads to Trash and back, and draft there. Sending as you, and the switches, take effect in a later release.
+         * @description Give only the settings to change. A change works at once. Only the agent's sponsor can change them, so not even an admin can. Each change is recorded under you, with the old and new values, in your personal mailbox's change feed, or if you have none, in the agent's. If neither of you has a mailbox, the change is refused. Read lets the agent read your mailbox. Full also lets it organize it, move threads to Trash and back, draft there, and send as you. Lowering access from full, or removing it, withdraws the agent's sends waiting for your approval in your mailbox, recorded in its change feed under you, and fails those approved but not yet gone out. Its drafts and sent messages stay.
          */
         patch: operations["changeAgentSettings"];
         trace?: never;
@@ -523,7 +523,7 @@ export interface paths {
         put?: never;
         /**
          * Ask for a draft to be sent.
-         * @description A human's send from their own mailbox needs no approval, so Duva sends it at once, with no disclosure. An agent's send from its own mailbox needs its sponsor's approval, so the draft waits for them. Its send shows where it stands. Bcc recipients get the message, but no header names them. Only the mailbox's owner can ask, the draft needs a recipient in To, and a draft waits for one approval at a time. Asking is recorded in the mailbox's change feed.
+         * @description A human's send from their own mailbox needs no approval, so Duva sends it at once, with no disclosure, also when their agent wrote the draft. An agent's send waits for its sponsor's approval unless the sponsor switched that off, separately for its own mailbox and for its sponsor's. With full sponsor access, an agent sends as its sponsor from the sponsor's mailbox: from the draft's address, under the sponsor's name. Every message an agent sends carries the Duva-Agent header, and a visible line unless its sponsor switched that off for where it sends from. Its send shows where it stands. Bcc recipients get the message, but no header names them. Only the mailbox's owner, and an agent with full sponsor access to it, can ask. The draft needs a recipient in To, and a draft waits for one approval at a time. A send that needs no approval withdraws the request the draft waits for, if it waits. Asking is recorded in the mailbox's change feed.
          */
         post: operations["sendDraft"];
         delete?: never;
@@ -541,7 +541,7 @@ export interface paths {
         };
         /**
          * List the approvals waiting for you, newest first, each with its draft and the message it answers.
-         * @description An agent's sends from its own mailbox wait for its sponsor, so a sponsor sees those of every agent they sponsor.
+         * @description An agent's sends wait for its sponsor, from its own mailbox and as its sponsor from theirs, so a sponsor sees those of every agent they sponsor. Each approval's mailbox tells which.
          */
         get: operations["listApprovals"];
         put?: never;
@@ -563,7 +563,7 @@ export interface paths {
         put?: never;
         /**
          * Send a draft waiting for your approval, as is or with your changes.
-         * @description Give recipients, a subject or text to send your version instead of the agent's. Duva then sends it through SES from the draft's address, as a reply in the thread if it is one. Every message an agent sends carries the Duva-Agent header, naming the agent and the human it acts for, and a line that says so after the text, also when you changed it. The draft's send shows sending, then sent or failed with SES's reason. Only the approver can decide an approval, never an agent, and only once: of two decisions at the same time, one is refused. The decision, with any edits, is recorded in the mailbox's change feed under you, and the send under the agent.
+         * @description Give recipients, a subject or text to send your version instead of the agent's. Duva then sends it through SES from the draft's address, as a reply in the thread if it is one. Every message an agent sends carries the Duva-Agent header, naming the agent and the human it acts for, also when you changed it, and a line that says so after the text unless you switched that off for the agent. The draft's send shows sending, then sent or failed with the reason. Only the approver can decide an approval, never an agent, and only once: of two decisions at the same time, one is refused. The decision, with any edits, is recorded in the mailbox's change feed under you, and the send under the agent.
          */
         post: operations["sendApproval"];
         delete?: never;
@@ -683,7 +683,7 @@ export interface components {
             disclosureLineAsSponsor?: components["schemas"]["DisclosureLineAsSponsor"];
         };
         /**
-         * @description The agent's access to its sponsor's personal mailbox. None, the default, gives it none. Read lets it read everything there: threads, labels, drafts, the change feed and attachments. Full also lets it organize, move threads to Trash and back, and draft and change any draft there, and will let it send as its sponsor. Only the sponsor empties their Trash.
+         * @description The agent's access to its sponsor's personal mailbox. None, the default, gives it none. Read lets it read everything there: threads, labels, drafts, the change feed and attachments. Full also lets it organize, move threads to Trash and back, draft and change any draft there, and send as its sponsor. Only the sponsor empties their Trash.
          * @enum {string}
          */
         SponsorAccess: "none" | "read" | "full";
@@ -1159,17 +1159,17 @@ export interface components {
         };
         /** @description Where the draft's latest request to send stands. A draft never asked to send has none. */
         SendStatus: {
-            /** @description The ID of the approval the request needs, if it needs one. A human's send from their own mailbox needs none. */
+            /** @description The ID of the approval the request needs, if it needs one. A human's send from their own mailbox needs none, nor does an agent's whose sponsor switched approval off. */
             approval?: string;
             /**
-             * @description waiting for approval; withdrawn because the draft changed while it waited; rejected, with the approver's note; approved, and about to be sent, which a human's send is at once; sending; sent, as the message in its thread; failed, with SES's reason; or unclear, when sending stopped before SES answered, so a human checks whether it went out, by its recipients and subject, since only SES's answer gives its Message-ID. Duva never sends an unclear draft again. An approved draft can't change, but a rejected or failed one can be revised and sent again.
+             * @description waiting for approval; withdrawn because the draft changed while it waited, was sent without approval, or the agent's sponsor access was lowered; rejected, with the approver's note; approved, and about to be sent, which a send without approval is at once; sending; sent, as the message in its thread; failed, with the reason; or unclear, when sending stopped before SES answered, so a human checks whether it went out, by its recipients and subject, since only SES's answer gives its Message-ID. Duva never sends an unclear draft again. An approved draft can't change, but a rejected or failed one can be revised and sent again.
              * @enum {string}
              */
             state: "waiting" | "withdrawn" | "rejected" | "approved" | "sending" | "sent" | "failed" | "unclear";
             /** @description The approver's note, if they rejected it. */
             note?: string;
             /**
-             * @description SES's reason, if it refused the message.
+             * @description Why it failed, SES's reason if SES refused the message.
              * @example Email address is not verified.
              */
             reason?: string;

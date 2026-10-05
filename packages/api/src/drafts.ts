@@ -20,7 +20,7 @@ import {
   NoRecipient,
   pendingApprovals,
   reject,
-  sendAtOnce,
+  SendNotAllowed,
 } from "./drafting.ts";
 import { findMessage } from "./mail.ts";
 import { mailboxFor } from "./access.ts";
@@ -192,14 +192,15 @@ export const sendDraft: OperationHandler = async (event, deployment, actor) => {
   if ("statusCode" in mailbox) return mailbox;
   const id = event.pathParameters?.draft ?? "";
   try {
-    // An agent's send from its own mailbox needs its sponsor's approval. A human's from theirs needs none.
-    const draft =
-      actor!.kind === "agent"
-        ? await askToSend(deployment.table, { mailbox: mailbox.id, id, agent: actor! })
-        : await sendAtOnce(deployment.table, { mailbox: mailbox.id, id, by: actor!.id });
+    const draft = await askToSend(deployment.table, { mailbox, id, actor: actor! });
     if (draft === undefined) return noDraft(event);
     return { statusCode: 202, body: draft satisfies components["schemas"]["Draft"] };
   } catch (error) {
+    // The agent's sponsor lowered its access since it was checked, so it is checked again to say what's missing.
+    if (error instanceof SendNotAllowed) {
+      const refused = await mailboxFor(event, deployment, actor!, "send");
+      return "statusCode" in refused ? refused : refusal(409, "Your sponsor changed your sponsor access while you asked to send. Ask again.");
+    }
     if (error instanceof NoRecipient) return refusal(400, "The draft has no recipient in To, so it can't be sent. Give it one, then send it.");
     if (error instanceof AlreadyWaiting) return refusal(409, "The draft already waits for approval. Change it to withdraw the request, or wait for the decision.");
     if (error instanceof AlreadyApproved) return approvedRefusal(error);

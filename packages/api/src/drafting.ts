@@ -4,7 +4,7 @@
 // one query away. Each step is written in one transaction with its entry in the mailbox's change
 // feed. Approving leaves the draft approved, which the table's stream hands the sender, and the
 // sender moves it on to sending and then sent, failed or unclear, each move on condition of the last.
-// A human's send from their own mailbox needs no approval, so asking leaves the draft approved at once.
+// A send that needs no approval, as a human's from their own mailbox, leaves the draft approved at once.
 import { randomUUID } from "node:crypto";
 import { ConditionalCheckFailedException, TransactionCanceledException } from "@aws-sdk/client-dynamodb";
 import { GetCommand, QueryCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
@@ -12,7 +12,8 @@ import type { components } from "@duva/openapi";
 import type { Table } from "./deployment.ts";
 import { entryKey, recordChanges } from "./feed.ts";
 import { type StoredMessage, storeSentMessage } from "./mail.ts";
-import { type Agent, mailboxFeed, mailboxKey } from "./organization.ts";
+import { sponsorAccessAllows } from "./access.ts";
+import { type Actor, type Agent, agentSettings, agentSettingsUnchanged, type Mailbox, mailboxFeed, mailboxKey, switchesFor } from "./organization.ts";
 import { documents, isNew, pk, sk, type TransactItem } from "./table.ts";
 
 export type Draft = components["schemas"]["Draft"];
@@ -178,66 +179,104 @@ export async function deleteDraft(table: Table, { mailbox, id, by }: { mailbox: 
 /** The draft has no recipient in To, so it can't be sent. */
 export class NoRecipient extends Error {}
 
+/** The agent's sponsor access no longer lets it send from its sponsor's mailbox. */
+export class SendNotAllowed extends Error {}
+
 /**
- * Asks for the draft to be sent, on behalf of the human who owns its mailbox, which needs no
- * approval, so the draft is approved at once and the sender sends it. A failed draft can be sent
- * again. Throws NoRecipient without a recipient in To, and AlreadyApproved once it was approved.
- * Returns undefined if the mailbox has no such draft.
+ * Asks for the draft to be sent, on behalf of the actor. A human's send from their own mailbox
+ * needs no approval. An agent's waits for its sponsor's approval while the switch for where it
+ * sends from is on: its own mailbox, or its sponsor's, as them, which needs full sponsor access.
+ * The ask holds only if the agent's settings are still as read, so a change to them at the same
+ * time either comes first or finds the ask. Throws SendNotAllowed once full access is gone,
+ * NoRecipient without a recipient in To, AlreadyWaiting if an agent's ask that needs approval
+ * already waits for one, and AlreadyApproved once it was approved. Returns undefined if the mailbox
+ * has no such draft.
  */
-export async function sendAtOnce(table: Table, { mailbox, id, by }: { mailbox: string; id: string; by: string }): Promise<Draft | undefined> {
+export async function askToSend(table: Table, { mailbox, id, actor }: { mailbox: Mailbox; id: string; actor: Actor }): Promise<Draft | undefined> {
   return retried(async () => {
-    const draft = await storedDraft(table, mailbox, id);
+    const draft = await storedDraft(table, mailbox.id, id);
     if (draft === undefined) return undefined;
-    refuseApproved(draft);
-    if (draft.to.length === 0) throw new NoRecipient();
-    const asked: StoredDraft = { ...draft, send: { state: "approved", by }, version: draft.version + 1 };
-    await recordChanges(table, mailboxFeed(mailbox), {
-      by,
-      changes: [{ type: "sendAsked", draft: id }],
-      items: [{ Put: { TableName: table.name, Item: { ...draftKey(mailbox, id), ...asked }, ...unchanged(draft) } }],
-    });
-    return draftOf(asked);
+    if (actor.kind !== "agent") return sendAtOnce(table, { mailbox: mailbox.id, draft, by: actor.id, held: [] });
+    const read = await agentSettings(table, actor.id);
+    const asSponsor = mailbox.owner !== actor.id;
+    if (asSponsor && !sponsorAccessAllows(read.settings.sponsorAccess, "send")) throw new SendNotAllowed();
+    const held = [agentSettingsUnchanged(table, actor.id, read)];
+    return switchesFor(read.settings, asSponsor).approval
+      ? waitForApproval(table, { mailbox: mailbox.id, draft, agent: actor, held })
+      : sendAtOnce(table, { mailbox: mailbox.id, draft, by: actor.id, held });
   });
 }
 
 /**
- * Asks for the draft to be sent, on behalf of the agent that owns its mailbox, which needs the
- * agent's sponsor's approval. Throws AlreadyWaiting if it already waits for one, and
- * AlreadyApproved once it was approved. Returns undefined if the mailbox has no such draft.
+ * Approves the draft at once, on behalf of the actor `by`, whose send needs no approval, and the
+ * sender sends it. If it waits for an approval, this withdraws it. A failed draft can be sent again.
  */
-export async function askToSend(table: Table, { mailbox, id, agent }: { mailbox: string; id: string; agent: Agent }): Promise<Draft | undefined> {
-  return retried(async () => {
-    const draft = await storedDraft(table, mailbox, id);
-    if (draft === undefined) return undefined;
-    if (draft.send?.state === "waiting") throw new AlreadyWaiting();
-    refuseApproved(draft);
-    if (draft.to.length === 0) throw new NoRecipient();
-    const approval: Approval = {
-      id: randomUUID(),
-      state: "pending",
-      mailbox,
-      agent: agent.id,
-      approver: agent.sponsor,
-      draft: approvalDraftOf(draft),
-      askedAt: new Date().toISOString(),
-    };
-    const asked: StoredDraft = {
-      ...draft,
-      send: { approval: approval.id, state: "waiting" },
-      version: draft.version + 1,
-      ...(draft.approvals !== undefined && { approvals: [...draft.approvals, approval.id] }),
-    };
-    await recordChanges(table, mailboxFeed(mailbox), {
-      by: agent.id,
-      changes: [{ type: "approvalAsked", draft: id, approval: approval.id }],
-      items: [
-        { Put: { TableName: table.name, Item: { ...draftKey(mailbox, id), ...asked }, ...unchanged(draft) } },
-        { Put: { TableName: table.name, Item: { ...approvalKey(approval.id), ...approval }, ...isNew } },
-        { Put: { TableName: table.name, Item: { ...pendingKey(approval.approver, approval.askedAt, approval.id), ...approval }, ...isNew } },
-      ],
-    });
-    return draftOf(asked);
+async function sendAtOnce(table: Table, { mailbox, draft, by, held }: { mailbox: string; draft: StoredDraft; by: string; held: TransactItem[] }): Promise<Draft> {
+  refuseApproved(draft);
+  if (draft.to.length === 0) throw new NoRecipient();
+  const asked: StoredDraft = { ...draft, send: { state: "approved", by }, version: draft.version + 1 };
+  const withdrawn = await withdrawing(table, draft.id, draft.send?.state === "waiting" ? draft.send : undefined);
+  await recordChanges(table, mailboxFeed(mailbox), {
+    by,
+    changes: [...withdrawn.changes, { type: "sendAsked", draft: draft.id }],
+    items: [{ Put: { TableName: table.name, Item: { ...draftKey(mailbox, draft.id), ...asked }, ...unchanged(draft) } }, ...withdrawn.items, ...held],
   });
+  return draftOf(asked);
+}
+
+/** Asks the agent's sponsor to approve the draft's send, on behalf of the agent. */
+async function waitForApproval(table: Table, { mailbox, draft, agent, held }: { mailbox: string; draft: StoredDraft; agent: Agent; held: TransactItem[] }): Promise<Draft> {
+  if (draft.send?.state === "waiting") throw new AlreadyWaiting();
+  refuseApproved(draft);
+  if (draft.to.length === 0) throw new NoRecipient();
+  const approval: Approval = {
+    id: randomUUID(),
+    state: "pending",
+    mailbox,
+    agent: agent.id,
+    approver: agent.sponsor,
+    draft: approvalDraftOf(draft),
+    askedAt: new Date().toISOString(),
+  };
+  const asked: StoredDraft = {
+    ...draft,
+    send: { approval: approval.id, state: "waiting" },
+    version: draft.version + 1,
+    ...(draft.approvals !== undefined && { approvals: [...draft.approvals, approval.id] }),
+  };
+  await recordChanges(table, mailboxFeed(mailbox), {
+    by: agent.id,
+    changes: [{ type: "approvalAsked", draft: draft.id, approval: approval.id }],
+    items: [
+      { Put: { TableName: table.name, Item: { ...draftKey(mailbox, draft.id), ...asked }, ...unchanged(draft) } },
+      { Put: { TableName: table.name, Item: { ...approvalKey(approval.id), ...approval }, ...isNew } },
+      { Put: { TableName: table.name, Item: { ...pendingKey(approval.approver, approval.askedAt, approval.id), ...approval }, ...isNew } },
+      ...held,
+    ],
+  });
+  return draftOf(asked);
+}
+
+/**
+ * Withdraws the agent's pending approvals in the mailboxes, on behalf of its sponsor, who approves
+ * them, each recorded in its mailbox's change feed. The drafts stay, marked withdrawn.
+ */
+export async function withdrawPendingApprovals(table: Table, { agent, mailboxes }: { agent: Agent; mailboxes: string[] }): Promise<void> {
+  for (const approval of await pendingApprovals(table, agent.sponsor)) {
+    if (approval.agent !== agent.id || !mailboxes.includes(approval.mailbox)) continue;
+    await retried(async () => {
+      const draft = await storedDraft(table, approval.mailbox, approval.draft.id);
+      // A change, a deletion or a decision since the listing settled it already.
+      if (draft?.send?.state !== "waiting" || draft.send.approval !== approval.id) return;
+      const withdrawn = await withdrawing(table, draft.id, draft.send);
+      const changed: StoredDraft = { ...draft, send: { approval: approval.id, state: "withdrawn" }, version: draft.version + 1 };
+      await recordChanges(table, mailboxFeed(approval.mailbox), {
+        by: agent.sponsor,
+        changes: withdrawn.changes,
+        items: [{ Put: { TableName: table.name, Item: { ...draftKey(approval.mailbox, draft.id), ...changed }, ...unchanged(draft) } }, ...withdrawn.items],
+      });
+    });
+  }
 }
 
 /** The approval with the ID, or undefined if there is none. */
@@ -258,6 +297,8 @@ export async function pendingApprovals(table: Table, approver: string): Promise<
         KeyConditionExpression: `${pk} = :approver AND begins_with(${sk}, :approval)`,
         ExpressionAttributeValues: { ":approver": partition, ":approval": pendingPrefix },
         ScanIndexForward: false,
+        // Withdrawing on a lowering of sponsor access finds an approval asked for just before.
+        ConsistentRead: true,
         ExclusiveStartKey: start,
       }),
     );

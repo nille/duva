@@ -1,5 +1,7 @@
 import type { components } from "@duva/openapi";
 import { jsonBody, type OperationHandler, refusal } from "./api.ts";
+import { sponsorAccessAllows } from "./access.ts";
+import { withdrawPendingApprovals } from "./drafting.ts";
 import {
   addAgent,
   type Agent,
@@ -10,6 +12,7 @@ import {
   findActor,
   KeyChanged,
   NowhereToRecord,
+  ownedMailboxes,
   replaceAgentKey,
   sponsoredAgents,
 } from "./organization.ts";
@@ -73,6 +76,12 @@ export const changeAgentSettings: OperationHandler = async (event, deployment, a
   if (notOnOrOff !== undefined) return refusal(400, `Give ${notOnOrOff[0]} as true to turn it on, or false to turn it off.`);
   try {
     const settings = await changeStoredSettings(deployment.table, { agent, changes: body as Partial<AgentSettings> });
+    // Without full access the agent can't send as its sponsor, so what waits for that is withdrawn.
+    // Each change does it, so a change again finishes what one that stopped partway left.
+    if (!sponsorAccessAllows(settings.sponsorAccess, "send")) {
+      const mailboxes = (await ownedMailboxes(deployment.table, agent.sponsor)).map(({ id }) => id);
+      await withdrawPendingApprovals(deployment.table, { agent, mailboxes });
+    }
     return { statusCode: 200, body: settings satisfies components["schemas"]["AgentSettings"] };
   } catch (error) {
     if (error instanceof NowhereToRecord) {

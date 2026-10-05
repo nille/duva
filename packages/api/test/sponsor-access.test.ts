@@ -1,7 +1,9 @@
 import { readFile } from "node:fs/promises";
+import PostalMime from "postal-mime";
 import { expect, test } from "vitest";
 import type { DuvaClient } from "@duva/client";
-import { startDuva } from "./harness.ts";
+import type { components } from "@duva/openapi";
+import { type DuvaOptions, startDuva } from "./harness.ts";
 
 const mail = (name: string) => readFile(new URL(`./mail/${name}.eml`, import.meta.url), "utf8");
 
@@ -10,8 +12,8 @@ const mail = (name: string) => readFile(new URL(`./mail/${name}.eml`, import.met
  * each has a personal mailbox, linus@example.com and hermes@example.com. Grace is another human,
  * with her own at grace@example.com, and sponsors the agent Iris.
  */
-async function withSponsor() {
-  const duva = await startDuva({ domain: "example.com", admin: "ada@example.org", humans: ["linus@example.org", "grace@example.org"] });
+async function withSponsor(options: DuvaOptions = {}) {
+  const duva = await startDuva({ domain: "example.com", admin: "ada@example.org", humans: ["linus@example.org", "grace@example.org"], ...options });
   const ada = duva.signIn("ada@example.org");
   const linus = duva.signIn("linus@example.org");
   const grace = duva.signIn("grace@example.org");
@@ -24,11 +26,13 @@ async function withSponsor() {
   const { data: hermesMailbox } = await ada.POST("/mailboxes", { body: { owner: hermesId, address: "hermes@example.com" } });
   const { data: graceMailbox } = await ada.POST("/mailboxes", { body: { owner: graceActor!.id, address: "grace@example.com" } });
   const settings = { params: { path: { agent: hermesId } } };
-  /** Linus gives Hermes the sponsor access. */
-  const giveAccess = async (sponsorAccess: "none" | "read" | "full") => {
-    const { response } = await linus.PATCH("/agents/{agent}/settings", { ...settings, body: { sponsorAccess } });
+  /** Linus changes Hermes's settings. */
+  const change = async (body: Partial<typeof defaults>) => {
+    const { response } = await linus.PATCH("/agents/{agent}/settings", { ...settings, body });
     expect(response.status).toBe(200);
   };
+  /** Linus gives Hermes the sponsor access. */
+  const giveAccess = (sponsorAccess: SponsorAccess) => change({ sponsorAccess });
   return {
     duva,
     ada,
@@ -43,11 +47,20 @@ async function withSponsor() {
     hermesMailbox: hermesMailbox!,
     graceMailbox: graceMailbox!,
     settings,
+    change,
     giveAccess,
   };
 }
 
-const defaults = { sponsorAccess: "none", approvalForOwnMailbox: true, approvalAsSponsor: true, disclosureLineForOwnMailbox: true, disclosureLineAsSponsor: true };
+type SponsorAccess = components["schemas"]["SponsorAccess"];
+
+const defaults = {
+  sponsorAccess: "none" as SponsorAccess,
+  approvalForOwnMailbox: true,
+  approvalAsSponsor: true,
+  disclosureLineForOwnMailbox: true,
+  disclosureLineAsSponsor: true,
+};
 
 test("an agent starts with no sponsor access and every switch on, which its sponsor and the agent read", async () => {
   const { linus, hermes, settings } = await withSponsor();
@@ -387,19 +400,16 @@ test("an agent with full sponsor access organizes its sponsor's mailbox as its s
   ]);
 });
 
-test("an agent with full sponsor access never empties its sponsor's Trash, and can't send as them yet", async () => {
+test("an agent with full sponsor access never empties its sponsor's Trash", async () => {
   const fixture = await withSponsor();
   const { hermes, giveAccess } = fixture;
-  const { params, draft } = await withMail(fixture);
+  const { params } = await withMail(fixture);
   await giveAccess("full");
 
-  const { response: emptied, error: notEmptied } = await hermes.POST("/mailboxes/{mailbox}/trash/empty", { params });
-  const { response: sent, error: notSent } = await hermes.POST("/mailboxes/{mailbox}/drafts/{draft}/send", { params: { path: { ...params.path, draft } } });
+  const { response, error } = await hermes.POST("/mailboxes/{mailbox}/trash/empty", { params });
 
-  expect(emptied.status).toBe(403);
-  expect(notEmptied).toEqual({ message: "Only your sponsor can empty their Trash. Ask them to." });
-  expect(sent.status).toBe(403);
-  expect(notSent).toEqual({ message: "Full sponsor access doesn't let you send as your sponsor yet. Ask your sponsor to do it." });
+  expect(response.status).toBe(403);
+  expect(error).toEqual({ message: "Only your sponsor can empty their Trash. Ask them to." });
 });
 
 test("an agent with full sponsor access drafts replies, replies to all, forwards and new mail in its sponsor's mailbox, as its sponsor's own drafts are", async () => {
@@ -509,4 +519,267 @@ test("the sponsor still reads their agent's mailbox, but doesn't write drafts th
   expect(error).toEqual({
     message: "Only the mailbox's owner can write drafts in it and ask to send them. For an agent's mailbox, the agent's sponsor decides its sends in approvals.",
   });
+});
+
+const parse = (raw: string) => PostalMime.parse(raw);
+const header = async (raw: string, name: string) => (await parse(raw)).headers.find((field) => field.key === name.toLowerCase())?.value;
+
+/** Hermes's reply in Linus's mailbox to the message there, drafted and asked to send, with what asking answered. */
+async function withReplyAsSponsor(fixture: Awaited<ReturnType<typeof withSponsor>>) {
+  const { hermes } = fixture;
+  const placed = await withMail(fixture);
+  const { data: draft } = await hermes.POST("/mailboxes/{mailbox}/drafts", { params: placed.params, body: { answers: placed.message, text: "Thanks, I'll read it." } });
+  const inDraft = { params: { path: { ...placed.params.path, draft: draft!.id } } };
+  const asked = await hermes.POST("/mailboxes/{mailbox}/drafts/{draft}/send", inDraft);
+  return { ...placed, reply: draft!.id, inDraft, asked };
+}
+
+test("an agent with full sponsor access asks to send in its sponsor's mailbox, which waits for the sponsor's approval", async () => {
+  const fixture = await withSponsor();
+  const { duva, linus, linusId, hermesId, linusMailbox, giveAccess } = fixture;
+  await giveAccess("full");
+
+  const { reply, asked } = await withReplyAsSponsor(fixture);
+
+  expect(asked.response.status).toBe(202);
+  expect(asked.data!.send).toEqual({ approval: expect.any(String), state: "waiting" });
+  expect(duva.sent()).toEqual([]);
+  const { data } = await linus.GET("/approvals");
+  expect(data!.approvals).toEqual([
+    expect.objectContaining({ id: asked.data!.send!.approval, state: "pending", mailbox: linusMailbox.id, agent: hermesId, approver: linusId, draft: expect.objectContaining({ id: reply }) }),
+  ]);
+});
+
+test("a send as the sponsor goes from the sponsor's address, under no name, with the disclosure naming the agent and its sponsor", async () => {
+  const fixture = await withSponsor();
+  const { duva, linus, giveAccess } = fixture;
+  await giveAccess("full");
+  const { asked } = await withReplyAsSponsor(fixture);
+
+  const { response } = await linus.POST("/approvals/{approval}/send", { params: { path: { approval: asked.data!.send!.approval! } } });
+
+  expect(response.status).toBe(202);
+  const [raw, ...more] = duva.sent();
+  expect(more).toEqual([]);
+  const mail = await parse(raw!);
+  expect(mail.from).toEqual({ name: "", address: "linus@example.com" });
+  expect(mail.to).toEqual([{ name: "Grace Hopper", address: "grace@example.org" }]);
+  expect(mail.subject).toBe("Re: The report");
+  expect(await header(raw!, "Duva-Agent")).toBe("Hermes for linus@example.org");
+  expect(mail.text).toBe("Thanks, I'll read it.\n\nSent by Hermes for linus@example.org\n");
+});
+
+test("a message the agent sent as its sponsor, and its feed entries, name the agent", async () => {
+  const fixture = await withSponsor();
+  const { linus, linusId, hermesId, giveAccess } = fixture;
+  await giveAccess("full");
+  const { params, thread, reply, asked } = await withReplyAsSponsor(fixture);
+  const approval = asked.data!.send!.approval!;
+
+  await linus.POST("/approvals/{approval}/send", { params: { path: { approval } } });
+
+  const { data: read } = await linus.GET("/mailboxes/{mailbox}/threads/{thread}", { params: { path: { ...params.path, thread } } });
+  expect(read!.messages[1]).toMatchObject({ from: { address: "linus@example.com" }, sentBy: hermesId, approval: { id: approval, approver: linusId } });
+  const { data: feed } = await linus.GET("/mailboxes/{mailbox}/changes", { params });
+  expect(feed!.changes.filter(({ type }) => ["approvalAsked", "approvalDecided", "messageSent"].includes(type))).toEqual([
+    expect.objectContaining({ type: "approvalAsked", draft: reply, actor: hermesId }),
+    expect.objectContaining({ type: "approvalDecided", draft: reply, actor: linusId }),
+    expect.objectContaining({ type: "messageSent", draft: reply, actor: hermesId }),
+  ]);
+});
+
+test("the sponsor edits a send as them before approving it, or rejects it with a note, as for their agent's own mailbox", async () => {
+  const fixture = await withSponsor();
+  const { duva, linus, hermes, giveAccess } = fixture;
+  await giveAccess("full");
+  const { asked, inDraft } = await withReplyAsSponsor(fixture);
+
+  const { response: rejected } = await linus.POST("/approvals/{approval}/reject", { params: { path: { approval: asked.data!.send!.approval! } }, body: { note: "Säg mer." } });
+  expect(rejected.status).toBe(200);
+  expect((await hermes.GET("/mailboxes/{mailbox}/drafts/{draft}", inDraft)).data!.send).toMatchObject({ state: "rejected", note: "Säg mer." });
+  const { data: again } = await hermes.POST("/mailboxes/{mailbox}/drafts/{draft}/send", inDraft);
+  const { response: approved } = await linus.POST("/approvals/{approval}/send", { params: { path: { approval: again!.send!.approval! } }, body: { text: "Thanks! I'll read it tonight." } });
+
+  expect(approved.status).toBe(202);
+  expect((await parse(duva.sent()[0]!)).text).toBe("Thanks! I'll read it tonight.\n\nSent by Hermes for linus@example.org\n");
+});
+
+test("with approval of its sends as its sponsor off, an agent's send in its sponsor's mailbox goes out at once", async () => {
+  const fixture = await withSponsor();
+  const { duva, linus, hermes, change } = fixture;
+  await change({ sponsorAccess: "full", approvalAsSponsor: false });
+
+  const { asked, inDraft } = await withReplyAsSponsor(fixture);
+
+  expect(asked.response.status).toBe(202);
+  expect(duva.sent()).toHaveLength(1);
+  expect(await header(duva.sent()[0]!, "Duva-Agent")).toBe("Hermes for linus@example.org");
+  expect((await linus.GET("/approvals")).data).toEqual({ approvals: [] });
+  const { data: draft } = await hermes.GET("/mailboxes/{mailbox}/drafts/{draft}", inDraft);
+  expect(draft!.send).toEqual({ state: "sent", thread: expect.any(String), message: expect.any(String), messageId: expect.any(String) });
+});
+
+test("approval of the agent's sends as its sponsor stays on when approval of its sends from its own mailbox is off", async () => {
+  const fixture = await withSponsor();
+  const { duva, change } = fixture;
+  await change({ sponsorAccess: "full", approvalForOwnMailbox: false });
+
+  const { asked } = await withReplyAsSponsor(fixture);
+
+  expect(asked.data!.send!.state).toBe("waiting");
+  expect(duva.sent()).toEqual([]);
+});
+
+/** Hermes drafts a message to Grace in the mailbox and asks to send it, and returns what asking answered. */
+async function sendFrom(hermes: DuvaClient, mailbox: string) {
+  const params = { path: { mailbox } };
+  const { data: draft } = await hermes.POST("/mailboxes/{mailbox}/drafts", { params, body: { to: ["grace@example.org"], subject: "Hej", text: "Hej Grace." } });
+  return hermes.POST("/mailboxes/{mailbox}/drafts/{draft}/send", { params: { path: { mailbox, draft: draft!.id } } });
+}
+
+test("with approval of its sends from its own mailbox off, the agent's send there goes out at once, under its name, with the disclosure", async () => {
+  const { duva, linus, hermes, hermesMailbox, change } = await withSponsor();
+  await change({ approvalForOwnMailbox: false });
+
+  const { response } = await sendFrom(hermes, hermesMailbox.id);
+
+  expect(response.status).toBe(202);
+  const [raw, ...more] = duva.sent();
+  expect(more).toEqual([]);
+  expect((await parse(raw!)).from).toEqual({ name: "Hermes", address: "hermes@example.com" });
+  expect(await header(raw!, "Duva-Agent")).toBe("Hermes for linus@example.org");
+  expect((await parse(raw!)).text).toBe("Hej Grace.\n\nSent by Hermes for linus@example.org\n");
+  expect((await linus.GET("/approvals")).data).toEqual({ approvals: [] });
+});
+
+test.each([
+  ["disclosureLineForOwnMailbox", { own: false, asSponsor: true }],
+  ["disclosureLineAsSponsor", { own: true, asSponsor: false }],
+] as const)("turning %s off drops the visible line there only, and the Duva-Agent header stays", async (name, carriesLine) => {
+  const { duva, hermes, hermesMailbox, linusMailbox, change } = await withSponsor();
+  await change({ sponsorAccess: "full", approvalForOwnMailbox: false, approvalAsSponsor: false, [name]: false });
+
+  await sendFrom(hermes, hermesMailbox.id);
+  await sendFrom(hermes, linusMailbox.id);
+
+  const [own, asSponsor] = duva.sent();
+  for (const [raw, line] of [[own!, carriesLine.own], [asSponsor!, carriesLine.asSponsor]] as const) {
+    expect((await parse(raw)).text).toBe(line ? "Hej Grace.\n\nSent by Hermes for linus@example.org\n" : "Hej Grace.\n");
+    expect(await header(raw, "Duva-Agent")).toBe("Hermes for linus@example.org");
+  }
+});
+
+test("the sponsor sending their agent's draft from their own mailbox sends their own mail, with no approval and no disclosure", async () => {
+  const fixture = await withSponsor();
+  const { duva, linus, linusId, hermes, giveAccess } = fixture;
+  await giveAccess("full");
+  const { params, thread, message } = await withMail(fixture);
+  const { data: draft } = await hermes.POST("/mailboxes/{mailbox}/drafts", { params, body: { answers: message, text: "Tack!" } });
+
+  const { response } = await linus.POST("/mailboxes/{mailbox}/drafts/{draft}/send", { params: { path: { ...params.path, draft: draft!.id } } });
+
+  expect(response.status).toBe(202);
+  const [raw] = duva.sent();
+  expect((await parse(raw!)).from).toEqual({ name: "", address: "linus@example.com" });
+  expect(await header(raw!, "Duva-Agent")).toBeUndefined();
+  expect((await parse(raw!)).text).toBe("Tack!\n");
+  const { data: read } = await linus.GET("/mailboxes/{mailbox}/threads/{thread}", { params: { path: { ...params.path, thread } } });
+  expect(read!.messages[1]).toMatchObject({ sentBy: linusId });
+  expect(read!.messages[1]).not.toHaveProperty("approval");
+});
+
+test("the sponsor sending their agent's draft that waits for their approval withdraws the request and sends it as their own", async () => {
+  const fixture = await withSponsor();
+  const { duva, linus, linusId, giveAccess } = fixture;
+  await giveAccess("full");
+  const { params, reply, inDraft, asked } = await withReplyAsSponsor(fixture);
+  const approval = asked.data!.send!.approval!;
+
+  const { response } = await linus.POST("/mailboxes/{mailbox}/drafts/{draft}/send", inDraft);
+
+  expect(response.status).toBe(202);
+  expect(duva.sent()).toHaveLength(1);
+  expect(await header(duva.sent()[0]!, "Duva-Agent")).toBeUndefined();
+  expect((await linus.GET("/approvals")).data).toEqual({ approvals: [] });
+  expect((await linus.POST("/approvals/{approval}/send", { params: { path: { approval } } })).response.status).toBe(409);
+  const { data: feed } = await linus.GET("/mailboxes/{mailbox}/changes", { params });
+  expect(feed!.changes).toContainEqual(expect.objectContaining({ type: "approvalWithdrawn", draft: reply, approval, actor: linusId }));
+  expect(duva.sent()).toHaveLength(1);
+});
+
+test.each(["agent", "sponsor"] as const)("in the sponsor's mailbox, the %s changing a draft that waits for approval withdraws the request", async (editor) => {
+  const fixture = await withSponsor();
+  const { linus, hermes, giveAccess } = fixture;
+  await giveAccess("full");
+  const { inDraft, asked } = await withReplyAsSponsor(fixture);
+  const approval = asked.data!.send!.approval!;
+
+  const { data: changed } = await (editor === "agent" ? hermes : linus).PATCH("/mailboxes/{mailbox}/drafts/{draft}", { ...inDraft, body: { text: "Ny text." } });
+
+  expect(changed!.send).toEqual({ approval, state: "withdrawn" });
+  expect((await linus.GET("/approvals")).data).toEqual({ approvals: [] });
+  expect((await linus.POST("/approvals/{approval}/send", { params: { path: { approval } } })).response.status).toBe(409);
+});
+
+test.each(["read", "none"] as const)("lowering sponsor access from full to %s withdraws the agent's pending approvals in the sponsor's mailbox, its drafts and sent mail staying", async (lowered) => {
+  const fixture = await withSponsor();
+  const { duva, linus, linusId, hermes, hermesMailbox, giveAccess } = fixture;
+  await giveAccess("full");
+  const { params, thread, reply, inDraft, asked } = await withReplyAsSponsor(fixture);
+  const approval = asked.data!.send!.approval!;
+  const { data: sentDraft } = await hermes.POST("/mailboxes/{mailbox}/drafts", { params, body: { to: ["grace@example.org"], subject: "Lunch", text: "Hej." } });
+  const { data: sentAsked } = await hermes.POST("/mailboxes/{mailbox}/drafts/{draft}/send", { params: { path: { ...params.path, draft: sentDraft!.id } } });
+  await linus.POST("/approvals/{approval}/send", { params: { path: { approval: sentAsked!.send!.approval! } } });
+  // A send waiting in the agent's own mailbox isn't the sponsor's mailbox's, so it stays.
+  const { data: ownAsked } = await sendFrom(hermes, hermesMailbox.id);
+
+  await giveAccess(lowered);
+
+  const { data: approvals } = await linus.GET("/approvals");
+  expect(approvals!.approvals.map(({ id }) => id)).toEqual([ownAsked!.send!.approval]);
+  expect((await linus.GET("/mailboxes/{mailbox}/drafts/{draft}", inDraft)).data!.send).toEqual({ approval, state: "withdrawn" });
+  expect((await linus.POST("/approvals/{approval}/send", { params: { path: { approval } } })).response.status).toBe(409);
+  expect(duva.sent()).toHaveLength(1);
+  const { data: feed } = await linus.GET("/mailboxes/{mailbox}/changes", { params });
+  expect(feed!.changes.at(-1)).toEqual({ position: expect.any(Number), at: expect.any(String), actor: linusId, type: "approvalWithdrawn", draft: reply, approval });
+  const { data: read } = await linus.GET("/mailboxes/{mailbox}/threads", { params });
+  expect(read!.threads.map(({ id }) => id)).toContain(thread);
+  expect((await linus.GET("/mailboxes/{mailbox}/drafts", { params })).data!.drafts.map(({ id }) => id)).toEqual(expect.arrayContaining([reply, sentDraft!.id]));
+});
+
+test("lowering sponsor access from full stops the agent's sends as its sponsor that haven't gone out, approved or not needing approval", async () => {
+  const fixture = await withSponsor({ sendsHeld: true });
+  const { duva, linus, hermes, hermesMailbox, linusMailbox, change } = fixture;
+  await change({ sponsorAccess: "full", approvalForOwnMailbox: false });
+  const { inDraft, asked } = await withReplyAsSponsor(fixture);
+  await linus.POST("/approvals/{approval}/send", { params: { path: { approval: asked.data!.send!.approval! } } });
+  await change({ approvalAsSponsor: false });
+  const { data: atOnce } = await sendFrom(hermes, linusMailbox.id);
+  const { data: own } = await sendFrom(hermes, hermesMailbox.id);
+
+  await change({ sponsorAccess: "read" });
+  await duva.releaseSends();
+
+  const [raw, ...more] = duva.sent();
+  expect(more).toEqual([]);
+  expect((await parse(raw!)).from).toEqual({ name: "Hermes", address: "hermes@example.com" });
+  const reason = "The agent's sponsor access was lowered from full before this went out, so it wasn't sent. Its sponsor can send it.";
+  expect((await hermes.GET("/mailboxes/{mailbox}/drafts/{draft}", inDraft)).data!.send).toMatchObject({ state: "failed", reason });
+  expect((await hermes.GET("/mailboxes/{mailbox}/drafts/{draft}", { params: { path: { mailbox: linusMailbox.id, draft: atOnce!.id } } })).data!.send).toMatchObject({ state: "failed", reason });
+  expect((await hermes.GET("/mailboxes/{mailbox}/drafts/{draft}", { params: { path: { mailbox: hermesMailbox.id, draft: own!.id } } })).data!.send).toMatchObject({ state: "sent" });
+});
+
+test("an ask to send as the sponsor at the same time as lowering access from full is refused or withdrawn, never left waiting", async () => {
+  const fixture = await withSponsor();
+  const { linus, hermes, linusMailbox, giveAccess } = fixture;
+
+  for (let round = 0; round < 5; round++) {
+    await giveAccess("full");
+    const params = { path: { mailbox: linusMailbox.id } };
+    const { data: draft } = await hermes.POST("/mailboxes/{mailbox}/drafts", { params, body: { to: ["grace@example.org"], text: `Round ${round}.` } });
+    const [asked] = await Promise.all([hermes.POST("/mailboxes/{mailbox}/drafts/{draft}/send", { params: { path: { ...params.path, draft: draft!.id } } }), giveAccess("read")]);
+
+    expect([202, 403]).toContain(asked.response.status);
+    expect((await linus.GET("/approvals")).data).toEqual({ approvals: [] });
+  }
 });

@@ -285,11 +285,22 @@ export const defaultAgentSettings: AgentSettings = {
   disclosureLineAsSponsor: true,
 };
 
+/** The agent's approval and disclosure-line switches for where it sends from: its own mailbox, or its sponsor's, as them. */
+export const switchesFor = (settings: AgentSettings, asSponsor: boolean) =>
+  asSponsor
+    ? { approval: settings.approvalAsSponsor, disclosureLine: settings.disclosureLineAsSponsor }
+    : { approval: settings.approvalForOwnMailbox, disclosureLine: settings.disclosureLineForOwnMailbox };
+
 /** The agent's settings, each with its default until its sponsor changed it, with the version a write that relies on them checks. */
 export async function agentSettings(table: Table, agent: string): Promise<ReadSettings<AgentSettings>> {
   const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: agentSettingsKey(agent), ConsistentRead: true }));
   const settings = Object.fromEntries(Object.entries(defaultAgentSettings).map(([name, value]) => [name, Item?.[name] ?? value])) as AgentSettings;
   return { settings, version: (Item?.version as number | undefined) ?? 0 };
+}
+
+/** The check that the agent's settings are still as read, for a write that relies on them. */
+export function agentSettingsUnchanged(table: Table, agent: string, read: ReadSettings<AgentSettings>): TransactItem {
+  return { ConditionCheck: { TableName: table.name, Key: agentSettingsKey(agent), ...atVersion(read) } };
 }
 
 /**

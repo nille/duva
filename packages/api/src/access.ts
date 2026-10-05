@@ -12,8 +12,8 @@ export type Ability = "read" | "organize" | "trash" | "draft" | "send" | "emptyT
 // The sponsor acts as owner of its agent's mailbox, except that the agent drafts and sends there itself.
 const sponsorAbilities: Ability[] = ["read", "organize", "trash", "emptyTrash"];
 
-// What each sponsor access lets the agent do. Full lets it send as its sponsor once a later release does.
-const sponsorAccessAbilities: Record<AgentSettings["sponsorAccess"], Ability[]> = { none: [], read: ["read"], full: ["read", "organize", "trash", "draft"] };
+// What each sponsor access lets the agent do. Full lets it do all a sponsor does in their own mailbox but empty Trash.
+const sponsorAccessAbilities: Record<AgentSettings["sponsorAccess"], Ability[]> = { none: [], read: ["read"], full: ["read", "organize", "trash", "draft", "send"] };
 
 // What the agent's refusal says it can't do, for each ability sponsor access can give.
 const abilityWords: Record<Exclude<Ability, "emptyTrash">, string> = {
@@ -23,6 +23,9 @@ const abilityWords: Record<Exclude<Ability, "emptyTrash">, string> = {
   draft: "write or change drafts in your sponsor's mailbox",
   send: "send as your sponsor",
 };
+
+/** Whether the sponsor access lets the agent do what the ability names in its sponsor's mailbox. */
+export const sponsorAccessAllows = (sponsorAccess: AgentSettings["sponsorAccess"], ability: Ability) => sponsorAccessAbilities[sponsorAccess].includes(ability);
 
 /**
  * The mailbox with the ID in the call's path, if the actor may do what the ability names there,
@@ -40,11 +43,10 @@ export async function mailboxFor(
   if (mailbox.owner === actor.id) return mailbox;
   if (actor.kind === "agent" && mailbox.owner === actor.sponsor) {
     const { sponsorAccess } = (await agentSettings(deployment.table, actor.id)).settings;
-    if (sponsorAccessAbilities[sponsorAccess].includes(ability)) return mailbox;
+    if (sponsorAccessAllows(sponsorAccess, ability)) return mailbox;
     if (ability === "emptyTrash") return refusal(403, "Only your sponsor can empty their Trash. Ask them to.");
     if (sponsorAccess === "none") return refusal(403, "Your sponsor hasn't given you sponsor access to their mailbox. Ask them for read access.");
-    if (sponsorAccess === "read") return refusal(403, `Your sponsor access is read, which doesn't let you ${abilityWords[ability]}. Ask your sponsor for full access.`);
-    return refusal(403, `Full sponsor access doesn't let you ${abilityWords[ability]} yet. Ask your sponsor to do it.`);
+    return refusal(403, `Your sponsor access is read, which doesn't let you ${abilityWords[ability]}. Ask your sponsor for full access.`);
   }
   const owner = await findActor(deployment.table, mailbox.owner);
   if (owner?.kind === "agent" && owner.sponsor === actor.id) {

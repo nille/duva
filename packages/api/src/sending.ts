@@ -1,6 +1,6 @@
 // The sender, which the table's stream invokes for each approved draft: one a decision approved,
-// or one a human sent from their own mailbox, which needs no approval. It sends an agent's draft
-// through SES with the disclosure, and a human's without, and records the outcome. Sending starts
+// or one asked to send without approval, as a human's from their own mailbox is. It sends an agent's draft through SES
+// with the disclosure, and a human's without, and records the outcome. Sending starts
 // from the recorded approval, so a crash between it and the send can't lose it, and each step is
 // conditional on the last, so a retried record never sends twice.
 import { randomUUID } from "node:crypto";
@@ -12,7 +12,8 @@ import { sentPrefix } from "./infrastructure.ts";
 import type { MailBucket } from "./mail-bucket.ts";
 import { findMessage } from "./mail.ts";
 import { buildMail } from "./mime.ts";
-import { findActor, organizationDomain } from "./organization.ts";
+import { sponsorAccessAllows } from "./access.ts";
+import { agentSettings, findActor, findMailbox, organizationDomain, switchesFor } from "./organization.ts";
 
 /** Who SES delivers a message to. Bcc recipients are here only, since no header names them. */
 export interface Destination {
@@ -106,24 +107,40 @@ async function send({ table, mailBucket, outbound, region }: Sender, { mailbox, 
 
   const actor = await findActor(table, by);
   if (actor === undefined) throw new Error(`The actor ${by} that draft ${id} is sent for is missing.`);
-  // An agent's mail carries the disclosure, naming the agent and the human it acts for. A human's carries none.
-  let disclosure: string | undefined;
+  // An agent's mail carries the disclosure header, naming the agent and the human it acts for, and
+  // the visible line unless its sponsor switched it off for where it sends from. A human's carries
+  // neither. An agent sends as its sponsor from the sponsor's mailbox, under the sponsor's name.
+  let disclosure: { naming: string; line: boolean } | undefined;
+  let asSponsor = false;
+  // Why the draft can't be sent, if it can't, which fails it before anything is stored.
+  let unsendable: string | undefined;
   if (actor.kind === "agent") {
     const sponsor = await findActor(table, actor.sponsor);
     if (sponsor?.kind !== "human") throw new Error(`The sponsor ${actor.sponsor} of agent ${actor.id} is missing.`);
-    disclosure = `${actor.name} for ${sponsor.email}`;
+    const { settings } = await agentSettings(table, actor.id);
+    asSponsor = (await findMailbox(table, mailbox))?.owner !== actor.id;
+    disclosure = { naming: `${actor.name} for ${sponsor.email}`, line: switchesFor(settings, asSponsor).disclosureLine };
+    // Lowering its access withdraws the agent's pending approvals, and stops what was asked before.
+    // An ask that read full access just before the lowering can land after its withdrawals, and stops here too.
+    if (asSponsor && !sponsorAccessAllows(settings.sponsorAccess, "send")) {
+      unsendable = "The agent's sponsor access was lowered from full before this went out, so it wasn't sent. Its sponsor can send it.";
+    }
   }
   const original = draft.answers === undefined ? undefined : await findMessage(table, mailBucket, mailbox, draft.answers);
   // A forward carries the forwarded message's attachments, taken from it as it is now.
   const forwarded = draft.forwards === undefined ? undefined : await findMessage(table, mailBucket, mailbox, draft.forwards);
+  // Without the message it forwards, a forward can't carry its attachments.
+  if ((draft.attachments ?? []).length > 0 && forwarded === undefined) {
+    unsendable ??= "The message it forwards is no longer in the mailbox, so its attachments can't go with it. Write a new message instead.";
+  }
 
   // Everything is ready before the draft moves to sending, so only SES's answer can leave it unclear.
   const message = randomUUID();
   const sending: Sending = { mailbox, draft: id, approval: approval?.id, message, by };
   const date = new Date();
-  const from = actor.kind === "agent" ? { name: actor.name, address: draft.from } : { address: draft.from };
+  const from = actor.kind === "agent" && !asSponsor ? { name: actor.name, address: draft.from } : { address: draft.from };
   const parent = original?.message.messageId;
-  const text = disclosure === undefined ? draft.text : `${draft.text}\n\nSent by ${disclosure}`;
+  const text = disclosure?.line ? `${draft.text}\n\nSent by ${disclosure.naming}` : draft.text;
   const raw = buildMail({
     // SES replaces it with one of its own, which is the one recorded (docs/aws.md).
     messageId: `<${message}@${await organizationDomain(table)}>`,
@@ -134,17 +151,15 @@ async function send({ table, mailBucket, outbound, region }: Sender, { mailbox, 
     date,
     inReplyTo: parent,
     references: parent === undefined ? [] : [...(original?.references ?? []).filter((reference) => reference !== parent), parent],
-    headers: disclosure === undefined ? [] : [[disclosureHeader, disclosure]],
+    headers: disclosure === undefined ? [] : [[disclosureHeader, disclosure.naming]],
     text,
     attachments: forwarded?.parts ?? [],
   });
   const rawKey = `${sentPrefix}${message}`;
-  // Without the message it forwards, a forward can't carry its attachments, so it fails before anything is stored.
-  const missing = (draft.attachments ?? []).length > 0 && forwarded === undefined;
-  if (!missing) await mailBucket.put(rawKey, raw);
+  if (unsendable === undefined) await mailBucket.put(rawKey, raw);
   if (!(await startSending(table, sending))) return;
-  if (missing) {
-    await markFailed(table, sending, "The message it forwards is no longer in the mailbox, so its attachments can't go with it. Write a new message instead.");
+  if (unsendable !== undefined) {
+    await markFailed(table, sending, unsendable);
     return;
   }
 
