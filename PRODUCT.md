@@ -46,7 +46,7 @@ Success means an organization can let agents own mailboxes and answer mail on it
 - Interface copy uses the terms in GLOSSARY.md and never the ones it lists to avoid: thread, never conversation; label, never folder; human, never user; sponsor, never owner, for an agent.
 - Mail is organized with labels. Inbox, Spam and Trash are built in, and Trash and Spam are erased after the organization's retention period, 30 days by default.
 - The Screener holds mail from first-time senders. It is on by default for humans' personal mailboxes and off for agents'.
-- Tracking protection is on by default and each actor can turn it off. In the first slice, messages show as plain text, so no remote content loads at all.
+- Tracking protection removes known trackers from HTML mail and is always on. Other remote content loads directly (ADR-0017). Each human chooses whether mail shows as HTML or text.
 - Admins can't read personal mailboxes. A sponsor has full access to their agent's personal mailboxes, and an agent works in its sponsor's mailbox only with sponsor access (ADR-0015).
 - Every message an agent sends carries a disclosure header, also after a human approved or edited it, and by default a visible line such as "Sent by Hermes for Nicklas".
 - There is no end-to-end encryption (ADR-0011).
@@ -68,7 +68,7 @@ Success means an organization can let agents own mailboxes and answer mail on it
 
 1. **One actor per action.** The interface always shows who did what: a human, an agent, or nobody, for mail that simply arrived.
 2. **A human signs off before an agent speaks.** Approvals are first-class and quick to act on, and agent-sent mail never hides that an agent wrote it.
-3. **Calm by default.** First-time senders wait in the Screener, tracking is blocked, and spam stays out of sight but can still be found.
+3. **Calm by default.** First-time senders wait in the Screener, known trackers are removed, and spam stays out of sight but can still be found.
 4. **Plain enough for everyone in the organization.** Nobody needs to understand AWS, DNS, CLIs or agents to read and send mail.
 5. **The same powers everywhere.** The web app does only what the API does, so whatever a human can do there, an actor with the same rights can do from the CLI or the API.
 
