@@ -1,8 +1,9 @@
-// Settings: the organization's, which admins choose for everyone, on a sheet of their own. A human's
-// own preferences join them here as a section of their own.
+// Settings: the organization's, which admins choose for everyone, on a sheet of their own, then a
+// sponsor's agents' on theirs. A human's own preferences join them here as a section of their own.
 import { useCallback, useEffect, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
+import { AgentSettingsSheet } from "./agent-settings.tsx";
 import { strings } from "./strings.ts";
 
 type OrganizationSettings = components["schemas"]["OrganizationSettings"];
@@ -11,7 +12,7 @@ type Read = { status: "loading" } | { status: "failed"; message: string } | { st
 type Saving = { status: "idle" } | { status: "saving" } | { status: "saved" } | { status: "failed"; message: string };
 
 /** The settings view. Every human can read the organization's settings, but only an admin changes them. */
-export function Settings({ client, admin, onSignedOut }: { client: DuvaClient; admin: boolean; onSignedOut: () => void }) {
+export function Settings({ client, admin, email, onSignedOut }: { client: DuvaClient; admin: boolean; email: string; onSignedOut: () => void }) {
   const [read, setRead] = useState<Read>({ status: "loading" });
   const [chosen, setChosen] = useState<boolean>();
   const [saving, setSaving] = useState<Saving>({ status: "idle" });
@@ -113,6 +114,7 @@ export function Settings({ client, admin, onSignedOut }: { client: DuvaClient; a
           )}
         </section>
       )}
+      <AgentSettingsSheet client={client} email={email} onSignedOut={onSignedOut} />
     </main>
   );
 }

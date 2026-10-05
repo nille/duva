@@ -1,8 +1,8 @@
 // Duva's web app. A human signs in and lands on the Inbox of their personal mailbox, where they read,
 // organize, write and send their mail, with its views in the side column. Sponsors also read their
 // agents' mailboxes, listed there above the views, and reach the Approvals view from the bar, where
-// they decide what the agents they sponsor ask to send. Admins reach Settings from the bar too,
-// where they choose the organization's settings.
+// they decide what the agents they sponsor ask to send. Admins and sponsors reach Settings from the
+// bar too, where admins choose the organization's settings and sponsors their agents'.
 import "@fontsource-variable/source-serif-4/opsz.css";
 import "./styles.css";
 import { StrictMode, useCallback, useEffect, useRef, useState } from "react";
@@ -116,7 +116,7 @@ function useRoute(): Route & { hash: string } {
   return { ...routeOf(hash), hash };
 }
 
-type Mailboxes = { status: "loading" } | { status: "failed" } | { status: "listed"; mine?: Mailbox; agents: AgentMailbox[] };
+type Mailboxes = { status: "loading" } | { status: "failed" } | { status: "listed"; mine?: Mailbox; agents: AgentMailbox[]; sponsorsAgents: boolean };
 
 /** The signed-in app: the bar, and the view the route names, kept current by following the change feeds. */
 function SignedIn({ config, client, actor, onSignedOut }: { config: Config; client: DuvaClient; actor: Human; onSignedOut: () => void }) {
@@ -139,10 +139,11 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
     if (data === undefined) return setMailboxes({ status: "failed" });
     const theirs = data.mailboxes.filter((mailbox) => mailbox.owner !== actor.id);
     // The other mailboxes a human can read are those of agents they sponsor, which are named for them.
-    const { data: sponsored } = theirs.length === 0 ? { data: { agents: [] } } : await client.GET("/agents").catch(() => ({ data: undefined }));
+    // A sponsor's agents may have no mailbox, and the sponsor still sets their settings.
+    const { data: sponsored } = await client.GET("/agents").catch(() => ({ data: undefined }));
     const names = new Map(sponsored?.agents.map((agent) => [agent.id, agent.name]));
     const agents = theirs.map((mailbox) => ({ mailbox, agent: names.get(mailbox.owner) ?? mailbox.defaultAddress })).sort((a, b) => a.agent.localeCompare(b.agent));
-    setMailboxes({ status: "listed", mine: data.mailboxes.find((mailbox) => mailbox.owner === actor.id), agents });
+    setMailboxes({ status: "listed", mine: data.mailboxes.find((mailbox) => mailbox.owner === actor.id), agents, sponsorsAgents: agents.length > 0 || (sponsored?.agents.length ?? 0) > 0 });
   }, [client, actor.id, onSignedOut]);
   useEffect(() => {
     void listMailboxes();
@@ -234,7 +235,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
 
   const listed = mailboxes.status === "listed" ? mailboxes : undefined;
   const mine = listed?.mine;
-  const sponsor = (listed !== undefined && listed.agents.length > 0) || (waiting ?? 0) > 0;
+  const sponsor = listed?.sponsorsAgents === true || (waiting ?? 0) > 0;
   // The mailbox the route is in, the human's own if it names none.
   const agent = named !== undefined ? listed?.agents.find(({ mailbox }) => mailbox.id === named) : undefined;
   const shown = away ? undefined : named === undefined ? mine : (agent?.mailbox ?? (mine?.id === named ? mine : undefined));
@@ -353,8 +354,8 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
               )}
             </a>
           )}
-          {/* Only admins have settings to choose for now. A human's own preferences will bring Settings to everyone. */}
-          {actor.admin && (
+          {/* Only admins and sponsors have settings to choose for now. A human's own preferences will bring Settings to everyone. */}
+          {(actor.admin || sponsor) && (
             <a href="#/settings" aria-current={route.view === "settings" ? "page" : undefined}>
               {strings.nav.settings}
             </a>
@@ -376,7 +377,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
       {route.view === "approvals" ? (
         <Approvals client={client} sponsor={actor.email} connection={connection} follow={follow} onSignedOut={onSignedOut} />
       ) : route.view === "settings" ? (
-        <Settings client={client} admin={actor.admin} onSignedOut={onSignedOut} />
+        <Settings client={client} admin={actor.admin} email={actor.email} onSignedOut={onSignedOut} />
       ) : shown !== undefined || (listed !== undefined && listed.agents.length > 0) ? (
         <div className={route.view === "thread" || route.view === "draft" || route.view === "write" ? "mail mail-reading" : "mail"}>
           <aside className="side">

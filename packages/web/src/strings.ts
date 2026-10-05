@@ -255,6 +255,42 @@ export const strings = {
     saveUnreachable: "Duva couldn't be reached, so the setting isn't saved. Check your connection and try again.",
   },
 
+  agentSettings: {
+    title: "Your agents",
+    lead: "You choose these for each agent you sponsor.",
+    access: {
+      legend: "Access to my mailbox",
+      lead: "What the agent may do in your personal mailbox.",
+      none: "None",
+      read: "Read",
+      full: "Full",
+      hints: {
+        none: "It can't see your mailbox. This is the default.",
+        read: "It reads everything there: threads, labels, drafts and attachments. It changes nothing.",
+        full: "It also organizes your mail, moves threads to Trash and back, drafts, and sends as you. Only you empty Trash.",
+      },
+      lowering: "Saving withdraws its sends as you that wait for your approval. Its drafts stay in your mailbox.",
+    },
+    asSponsor: {
+      legend: "When it sends as me",
+      approval: "My approval before it sends as me",
+      approvalHint: "Its sends from your mailbox wait for you in Approvals. Off, they go out at once.",
+    },
+    ownMailbox: {
+      legend: "When it sends from its own mailbox",
+      approval: "My approval before it sends from its own mailbox",
+      approvalHint: "Its sends wait for you in Approvals. Off, they go out at once.",
+    },
+    line: "Add a line saying an agent sent it",
+    lineHint: (agent: string, sponsor: string) => `The text ends with "Sent by ${agent} for ${sponsor}". A header always says so too, for software.`,
+    saved: "Saved. This applies at once.",
+    savedLowered: "Saved. Its sends waiting as you are withdrawn, and its drafts stay.",
+    noMailbox: "Duva can save this once you or the agent has a mailbox. Ask an admin to create one.",
+    failed: (status: number) => `Duva couldn't read your agents' settings (error ${status}). Try again in a moment.`,
+    unreachable: "Duva couldn't be reached, so your agents' settings aren't shown. Check your connection and try again.",
+    saveUnreachable: "Duva couldn't be reached, so the settings aren't saved. Check your connection and try again.",
+  },
+
   approvals: {
     title: "Approvals",
     waiting: (count: number) => (count === 1 ? "1 waiting" : `${count} waiting`),

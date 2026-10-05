@@ -1712,6 +1712,29 @@ input[aria-invalid="true"] {
   max-width: 60ch;
 }
 
+/* Sheets on the desk stack with room between them. */
+.settings + .settings {
+  margin-top: var(--space-5);
+}
+
+/* On the Agents sheet each agent is a setting of its own, under its name, divided by hairlines. */
+.agent-setting + .agent-setting {
+  border-top: 1px solid var(--rule);
+}
+
+.agent-setting h3 {
+  font-size: var(--text-lg);
+  font-weight: 650;
+  line-height: 1.3;
+}
+
+/* What saving a choice will also do, said in ink under the choices. */
+.setting-note {
+  max-width: 60ch;
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
 .setting-foot {
   display: flex;
   align-items: center;
