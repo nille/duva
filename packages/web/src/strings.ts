@@ -13,7 +13,8 @@ export const strings = {
     title: "Your session has ended",
     lead: "Sign in again to see your mail and approvals.",
   },
-  title: (view: string) => `${view} · Duva`,
+  /** A tab's title: the view, with how many in it want the human, if any do. */
+  title: (view: string, count = 0) => (count > 0 ? `${view} (${count}) · Duva` : `${view} · Duva`),
   mailboxesFailed: "Duva couldn't list your mailboxes. Try again in a moment.",
 
   mailboxes: {

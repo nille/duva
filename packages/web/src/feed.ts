@@ -27,6 +27,13 @@ export const draftChanges = new Set<Change["type"]>(["draftWritten", "draftChang
 /** How often the signed-in app reads the change feeds while its tab is visible, unless config.json says otherwise. */
 export const defaultPollInterval = 5_000;
 
+/**
+ * How often it reads them while its tab is hidden, so the tab's title keeps counting new mail.
+ * Browsers slow a hidden tab's timers to about once a minute anyway. A tab left open in the
+ * background costs a few requests a minute, which keeps idle cost near zero (ADR-0006).
+ */
+export const defaultHiddenPollInterval = 30_000;
+
 /** Thrown when Duva answers 401, so the human must sign in again. */
 export class SignedOut extends Error {
   constructor() {
@@ -86,19 +93,21 @@ export type Follow = (listener: (changes: MailboxChange[]) => Promise<void>) => 
 export type Connection = { ok: true; at: Date } | { ok: false } | undefined;
 
 /**
- * Reads the feeds every few seconds while the tab is visible, and at once when it becomes visible
- * again. Hands `onChanges` what each read found, `first` on the first read, which also passes
+ * Reads the feeds every few seconds while the tab is visible, less often while it is hidden, and at
+ * once when it becomes visible again. Hands `onChanges` what each read found, `first` on the first read, which also passes
  * everything that happened while the app was closed. Stops when the session has ended.
  */
 export function useFeeds(
   client: DuvaClient,
   {
     interval = defaultPollInterval,
+    hiddenInterval = defaultHiddenPollInterval,
     onChanges,
     onConnection,
     onSignedOut,
   }: {
     interval?: number;
+    hiddenInterval?: number;
     onChanges: (changes: MailboxChange[], first: boolean) => Promise<void> | void;
     onConnection: (connection: Connection) => void;
     onSignedOut: () => void;
@@ -111,12 +120,15 @@ export function useFeeds(
   useEffect(() => {
     let stopped = false;
     let running = false;
+    // Whether the tab became visible during a read, which may have started before what arrived meanwhile.
+    let visibleDuringRead = false;
     let first = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const feeds = mailboxFeeds(client);
     const tick = async () => {
       if (running || stopped) return;
       running = true;
+      visibleDuringRead = false;
       clearTimeout(timer);
       try {
         const { changes, keep } = await feeds.catchUp();
@@ -136,10 +148,12 @@ export function useFeeds(
       } finally {
         running = false;
       }
-      if (!stopped && !document.hidden) timer = setTimeout(() => void tick(), interval);
+      if (!stopped) timer = setTimeout(() => void tick(), visibleDuringRead ? 0 : document.hidden ? hiddenInterval : interval);
     };
     const onVisibility = () => {
-      if (!document.hidden) void tick();
+      if (document.hidden) return;
+      if (running) visibleDuringRead = true;
+      else void tick();
     };
     void tick();
     document.addEventListener("visibilitychange", onVisibility);
@@ -148,5 +162,5 @@ export function useFeeds(
       clearTimeout(timer);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [client, interval]);
+  }, [client, interval, hiddenInterval]);
 }

@@ -141,6 +141,34 @@ test("Approvals says how many wait from anywhere in the web app, an agent's thre
   await expect.poll(() => page.getByRole("link", { name: /Approvals/ }).innerText(), wait).toMatch(/Approvals\s*1/);
 });
 
+test("while the tab is hidden, the agents' unread counts and the requests waiting for approval stay current", budget, async () => {
+  const { page, signIn, receive, ask, hide } = await withSponsor();
+  await signIn("ada@example.org");
+  await expect.poll(() => mailboxes(page).getByRole("link", { name: /^Hermes/ }).getAttribute("aria-label"), wait).toBe("Hermes, hermes@example.com");
+
+  await hide();
+  await receive(note("hermes@example.com", "Ny post"), "hermes@example.com");
+  await ask({ to: ["grace@example.org"], subject: "Hej", text: "Hej Grace." });
+
+  await expect.poll(() => mailboxes(page).getByRole("link", { name: /^Hermes/ }).getAttribute("aria-label"), wait).toBe("Hermes, hermes@example.com, 1 unread");
+  await expect.poll(() => page.getByRole("link", { name: /Approvals/ }).innerText(), wait).toMatch(/Approvals\s*1/);
+  await page.getByRole("link", { name: /Approvals/ }).click();
+  await expect.poll(() => page.title(), wait).toBe("Approvals (1) · Duva");
+});
+
+test("on Approvals, the tab's title counts the requests that wait, and a new one while hidden", budget, async () => {
+  const { page, signIn, ask, hide } = await withSponsor();
+  await ask({ to: ["grace@example.org"], subject: "Hej", text: "Hej Grace." });
+  await signIn("ada@example.org");
+  await page.getByRole("link", { name: /Approvals/ }).click();
+  await expect.poll(() => page.title(), wait).toBe("Approvals (1) · Duva");
+
+  await hide();
+  await ask({ to: ["grace@example.org"], subject: "Igen", text: "Hej igen." });
+
+  await expect.poll(() => page.title(), wait).toBe("Approvals (2) · Duva");
+});
+
 test("a human who sponsors no agents sees only their own mailbox", budget, async () => {
   const { page, signIn, duva } = await startWebApp({ domain: "example.com", admin: "ada@example.org", humans: ["grace@example.org"] });
   const { data: grace } = await duva.signIn("grace@example.org").GET("/whoami");

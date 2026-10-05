@@ -148,7 +148,7 @@ export function ThreadIndex({
   // Sent lists what was written from the mailbox, so it counts nothing unread.
   const unread = listing.status === "listed" && !("sent" in view) ? listing.threads.filter((thread) => thread.unread).length : 0;
   useEffect(() => {
-    document.title = strings.title(unread > 0 ? `${title} (${unread})` : title);
+    document.title = strings.title(title, unread);
   }, [title, unread]);
 
   const threads = listing.status === "listed" ? listing.threads : [];

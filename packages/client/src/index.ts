@@ -22,4 +22,6 @@ export interface WebAppConfig {
   signIn: SignInConfig;
   /** How often, in milliseconds, the web app reads the change feeds while its tab is visible. duva deploy leaves it out, for the default. */
   pollInterval?: number;
+  /** How often, in milliseconds, the web app reads the change feeds while its tab is hidden. duva deploy leaves it out, for the default. */
+  hiddenPollInterval?: number;
 }

@@ -181,6 +181,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
 
   useFeeds(client, {
     interval: config.pollInterval,
+    hiddenInterval: config.hiddenPollInterval,
     async onChanges(changes, first) {
       for (const listener of [...followers.current]) await listener(changes);
       if (first || changes.some(({ change }) => approvalChanges.has(change.type))) {
@@ -221,9 +222,10 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
   useEffect(() => {
     setDone((current) => (current === undefined || current.at === location.hash ? current : undefined));
   }, [routeKey]);
+  // The title counts what waits, so a sponsor sees a new request from another tab.
   useEffect(() => {
-    if (route.view === "approvals") document.title = strings.title(strings.approvals.title);
-  }, [route.view]);
+    if (route.view === "approvals") document.title = strings.title(strings.approvals.title, waiting);
+  }, [route.view, waiting]);
 
   const listed = mailboxes.status === "listed" ? mailboxes : undefined;
   const mine = listed?.mine;

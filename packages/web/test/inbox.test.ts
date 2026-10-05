@@ -169,6 +169,36 @@ test("new mail appears in the open Inbox without reloading", budget, async () =>
   expect(newest).toContain("Ny post");
 });
 
+test("while the tab is hidden, its title counts new mail as it arrives", budget, async () => {
+  const { page, signIn, receive, hide } = await withPersonalMailbox();
+  await signIn("grace@example.org");
+  await expect.poll(() => page.getByRole("heading", { name: "Your Inbox is empty" }).count(), wait).toBe(1);
+  expect(await page.title()).toBe("Inbox · Duva");
+
+  await hide();
+  await receive(note("Ny post", "Hej igen."));
+
+  await expect.poll(() => page.title(), wait).toBe("Inbox (1) · Duva");
+});
+
+test("returning to the tab shows at once the mail that arrived while it was hidden", budget, async () => {
+  // While hidden the page would wait a minute to read the feeds again, longer than the test waits.
+  const { page, signIn, receive, hide, show } = await withPersonalMailbox({ hiddenPollInterval: 60_000 });
+  await signIn("grace@example.org");
+  await expect.poll(() => page.getByRole("heading", { name: "Your Inbox is empty" }).count(), wait).toBe(1);
+  await hide();
+  // The read that was due when the tab was hidden has passed, so the next is a minute away.
+  await page.waitForTimeout(2_000);
+
+  await receive(note("Ny post", "Hej igen."));
+  await page.waitForTimeout(1_000);
+  expect(await page.getByRole("link", { name: /Ny post/ }).count()).toBe(0);
+  await show();
+
+  await expect.poll(() => page.getByRole("link", { name: /^Unread.*Ny post/ }).count(), wait).toBe(1);
+  expect(await page.title()).toBe("Inbox (1) · Duva");
+});
+
 test("a reply that arrives while its thread is open appears there, marked new", budget, async () => {
   const { page, signIn, receive } = await withPersonalMailbox();
   await receive(await mail("plain"));
