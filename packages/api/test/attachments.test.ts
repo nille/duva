@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import PostalMime from "postal-mime";
-import { expect, test } from "vitest";
+import { expect, onTestFinished, test, vi } from "vitest";
 import { type DuvaOptions, startDuva } from "./harness.ts";
 
 const mail = (name: string) => readFile(new URL(`./mail/${name}.eml`, import.meta.url), "utf8");
@@ -134,7 +134,8 @@ test("a link stops working once it expires", async () => {
   const message = await receive(await mail("attachment"));
   const { data } = await link(message.id, 0);
 
-  await new Promise((resolve) => setTimeout(resolve, 1100));
+  vi.useFakeTimers({ toFake: ["Date"], now: Date.now() + 1_100 });
+  onTestFinished(() => void vi.useRealTimers());
   const download = await duva.download(data!.url);
 
   expect(download.status).toBe(404);

@@ -6,7 +6,9 @@ import type { TestProject } from "vitest/node";
 
 export default async function setup(project: TestProject) {
   const port = await freePort();
-  const dynamodb = spawn({ port, sharedDb: true });
+  // Without -sharedDb, DynamoDB Local keeps a database for each access key, and runs each
+  // database's requests one at a time, so tests in parallel use databases of their own.
+  const dynamodb = spawn({ port });
   let output = "";
   let failure: Error | undefined;
   dynamodb.stdout?.on("data", (chunk) => (output += chunk));
@@ -15,21 +17,27 @@ export default async function setup(project: TestProject) {
   dynamodb.once("exit", (code) => (failure ??= new Error(`DynamoDB Local exited with code ${code}:\n${output}`)));
 
   const endpoint = `http://127.0.0.1:${port}`;
-  await untilReady(dynamodbLocal(endpoint, 1), () => failure);
+  await untilReady(dynamodbLocal({ endpoint, accessKeyId: "local" }, 1), () => failure);
   project.provide("dynamodbEndpoint", endpoint);
   return () => {
     dynamodb.kill();
   };
 }
 
-/** A client for DynamoDB Local at `endpoint`, which takes any credentials. */
-export function dynamodbLocal(endpoint: string, maxAttempts?: number): DynamoDBClient {
-  return new DynamoDBClient({
-    endpoint,
-    region: "eu-north-1",
-    credentials: { accessKeyId: "local", secretAccessKey: "local" },
-    maxAttempts,
-  });
+/** A database in DynamoDB Local, which keeps one for each access key, any letters and digits. */
+export interface LocalDatabase {
+  endpoint: string;
+  accessKeyId: string;
+}
+
+/** What a client of DynamoDB or its streams needs to reach the database, which takes any secret. */
+export function localClientConfig({ endpoint, accessKeyId }: LocalDatabase) {
+  return { endpoint, region: "eu-north-1", credentials: { accessKeyId, secretAccessKey: "local" } };
+}
+
+/** A client for the database in DynamoDB Local. */
+export function dynamodbLocal(database: LocalDatabase, maxAttempts?: number): DynamoDBClient {
+  return new DynamoDBClient({ ...localClientConfig(database), maxAttempts });
 }
 
 async function untilReady(client: DynamoDBClient, failure: () => Error | undefined) {

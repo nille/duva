@@ -6,17 +6,18 @@
 // build and the config.json duva deploy publishes beside it, and passes /api and /oauth2 on to the
 // harness, so the page reaches the API and managed login without CORS. The browser is Chromium
 // from the system, found at CHROMIUM or a usual path.
+import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import { type Duva, type DuvaOptions, startDuva } from "@duva/api/harness";
 import type { WebAppConfig } from "@duva/client";
 import { type Browser, chromium, type Page } from "playwright-core";
-import { build } from "vite";
 import { afterAll, onTestFinished } from "vitest";
 
 /** A phone's viewport, for tests of the layout there. */
@@ -80,11 +81,16 @@ async function setVisibility(page: Page, shown: boolean) {
 
 let built: Promise<string> | undefined;
 
-/** Builds the web app once per test file, as npm run build does, into a directory of its own. */
+/** Builds the web app once per test file, with npm run build, into a directory of its own. */
 function builtWebApp(): Promise<string> {
   built ??= (async () => {
     const outDir = await mkdtemp(join(tmpdir(), "duva-web-"));
-    await build({ root: fileURLToPath(new URL("..", import.meta.url)), logLevel: "warn", build: { outDir, emptyOutDir: true } });
+    // Vitest sets NODE_ENV to test, for which Vite would build React's development build, where
+    // StrictMode runs every effect twice.
+    await promisify(execFile)("npm", ["run", "build", "--", "--outDir", outDir, "--logLevel", "warn"], {
+      cwd: fileURLToPath(new URL("..", import.meta.url)),
+      env: { ...process.env, NODE_ENV: "production" },
+    });
     return outDir;
   })();
   return built;
@@ -99,6 +105,8 @@ function browser(): Promise<Browser> {
 
 afterAll(async () => {
   await (await launched)?.close();
+  const outDir = await built?.catch(() => undefined);
+  if (outDir !== undefined) await rm(outDir, { recursive: true, force: true });
 });
 
 function chromiumPath(): string {

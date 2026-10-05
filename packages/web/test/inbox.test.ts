@@ -121,9 +121,12 @@ test("a thread the human marks unread stays unread, however late the mark-reads 
   // The first request to mark the thread read reaches Duva only after a while, as on a slow
   // connection, and the next ones at once.
   let reads = 0;
+  let settled = 0;
   await page.route("**/threads/read", async (route) => {
     if (++reads === 1) await new Promise((resolve) => setTimeout(resolve, 3000));
-    await route.continue().catch(() => undefined);
+    const response = await route.fetch().catch(() => undefined);
+    settled++;
+    if (response !== undefined) await route.fulfill({ response }).catch(() => undefined);
   });
   await page.getByRole("link", { name: /Compiler notes/ }).click();
   // A reply arrives while the thread is open, which makes it unread again, so reading it marks it read once more.
@@ -135,8 +138,8 @@ test("a thread the human marks unread stays unread, however late the mark-reads 
   await page.getByRole("button", { name: "Mark unread" }).click();
 
   await expect.poll(() => page.getByRole("heading", { level: 1 }).textContent(), wait).toBe("Inbox");
-  // By now every request to mark it read has reached Duva.
-  await new Promise((resolve) => setTimeout(resolve, 3500));
+  // Every request to mark it read reaches Duva before the test reads the thread there.
+  await expect.poll(() => settled, wait).toBe(reads);
   const grace = duva.signIn("grace@example.org");
   const { data: mailboxes } = await grace.GET("/mailboxes");
   const { data: inbox } = await grace.GET("/mailboxes/{mailbox}/threads", { params: { path: { mailbox: mailboxes!.mailboxes[0]!.id } } });

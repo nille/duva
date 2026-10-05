@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { startDuva } from "@duva/api/harness";
-import { expect, onTestFinished, test } from "vitest";
+import { expect, onTestFinished, test, vi } from "vitest";
 
 test("deploy refuses a region where SES can't receive mail", async () => {
   const machine = await newMachine();
@@ -80,12 +80,15 @@ test("whoami says to run login first when nobody has signed in", async () => {
 
 test("a session renews itself once its access token has expired", async () => {
   const machine = await newMachine();
-  const server = await (await startDuva({ admin: "ada@example.com", accessTokenLifetime: 1 })).listen();
+  // The CLI renews a session whose access token expires within a minute, so with this lifetime it renews on every call.
+  const server = await (await startDuva({ admin: "ada@example.com", accessTokenLifetime: 30 })).listen();
   onTestFinished(() => server.close());
   await machine.saveDeployment(server);
   await machine.duva("login", { browserSignsIn: "ada@example.com" });
-  // The CLI runs as its own process, so the test can't stand in for its clock. It waits instead.
-  await new Promise((resolve) => setTimeout(resolve, 1100));
+  // The CLI runs as its own process, so the test can't stand in for its clock, but it stands in for
+  // Duva's: there the token login got has expired, and only a renewed one gets through.
+  vi.useFakeTimers({ toFake: ["Date"], now: Date.now() + 31_000 });
+  onTestFinished(() => void vi.useRealTimers());
 
   const result = await machine.duva("whoami");
 
@@ -95,7 +98,8 @@ test("a session renews itself once its access token has expired", async () => {
 
 test("once the session can't be renewed, whoami says to run login again", async () => {
   const machine = await newMachine();
-  const duva = await startDuva({ admin: "ada@example.com", accessTokenLifetime: 1 });
+  // The CLI renews a session whose access token expires within a minute, so with this lifetime it renews on every call.
+  const duva = await startDuva({ admin: "ada@example.com", accessTokenLifetime: 30 });
   const server = await duva.listen();
   onTestFinished(() => server.close());
   await machine.saveDeployment(server);

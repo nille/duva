@@ -126,7 +126,7 @@ export async function startDuva({
   emptyingLost = false,
   downloadLinkLifetime = linkLifetime,
 }: DuvaOptions = {}): Promise<Duva> {
-  const { table, streamArn } = await createTable();
+  const { table, streamArn, database } = await createTable();
   const humans = memoryHumans();
   const issuer = new TestTokenIssuer();
   const setUp = (options: { admin: string }) => setUpOrganization({ table, humans }, { domain, ...options });
@@ -144,7 +144,7 @@ export async function startDuva({
   });
   const receiving = { rules: ses.rules, bucket: mailBucketName, inboundFunction };
   const sending = sesSending({ region, domain, sandbox, answersLost: sesAnswersLost });
-  const stream = tableStream(inject("dynamodbEndpoint"), streamArn, [
+  const stream = tableStream(database, streamArn, [
     { filter: senderFilter, handler: createSender({ table, mailBucket, outbound: sending.outbound, region }), retries: senderRetries, invocations: senderInvocations },
   ]);
   // Download links lead to the web app's domain under /download/, from where CloudFront invokes the
@@ -262,7 +262,9 @@ function memoryHumans(): Humans & { ids: Map<string, string> } {
 }
 
 async function createTable() {
-  const client = dynamodbLocal(inject("dynamodbEndpoint"));
+  // Each Duva has a database of its own, so its requests don't queue behind other tests'.
+  const database = { endpoint: inject("dynamodbEndpoint"), accessKeyId: randomUUID().replaceAll("-", "") };
+  const client = dynamodbLocal(database);
   const name = `duva-${randomUUID()}`;
   const { TableDescription } = await client.send(
     new CreateTableCommand({
@@ -279,7 +281,7 @@ async function createTable() {
       ],
     }),
   );
-  return { table: { client, name }, streamArn: TableDescription!.LatestStreamArn! };
+  return { table: { client, name }, streamArn: TableDescription!.LatestStreamArn!, database };
 }
 
 /** The mail bucket, which keeps one version of each object, and refuses deletes while `deletesFail`. */

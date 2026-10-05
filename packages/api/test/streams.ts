@@ -6,6 +6,7 @@ import {
   type _Record,
 } from "@aws-sdk/client-dynamodb-streams";
 import type { DynamoDBRecord, DynamoDBStreamEvent } from "aws-lambda";
+import { type LocalDatabase, localClientConfig } from "./dynamodb-local.ts";
 
 /** A Lambda the table's stream invokes, as an event source mapping with a filter sets one up. */
 export interface StreamConsumer {
@@ -23,8 +24,8 @@ export interface StreamConsumer {
  * consumer's filter goes to it, one record a batch, in order. A record the consumer keeps failing
  * on fails the delivery, where Lambda would leave it in the failure queue.
  */
-export function tableStream(endpoint: string, streamArn: string, consumers: StreamConsumer[]) {
-  const client = new DynamoDBStreamsClient({ endpoint, region: "eu-north-1", credentials: { accessKeyId: "local", secretAccessKey: "local" } });
+export function tableStream(database: LocalDatabase, streamArn: string, consumers: StreamConsumer[]) {
+  const client = new DynamoDBStreamsClient(localClientConfig(database));
   // Where reading each shard goes on, or null once a closed shard is read to its end.
   const iterators = new Map<string, string | null>();
   let delivered: Promise<void> = Promise.resolve();
