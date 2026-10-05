@@ -5,7 +5,8 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
 import type { Connection as ConnectionState } from "./feed.ts";
-import { Connection, day, nameOf, Time } from "./mail-parts.tsx";
+import { useDates } from "./dates.ts";
+import { Connection, nameOf, Time } from "./mail-parts.tsx";
 import { type Done, type Label, labelRefusal, OrganizeActions, ownLabelsOf } from "./organize.tsx";
 import { strings } from "./strings.ts";
 import { pathOf, titleOf, type View } from "./views.tsx";
@@ -491,6 +492,7 @@ function ThreadRow({
   onToggle: () => void;
 }) {
   const snippetId = useId();
+  const { day } = useDates();
   const sender = nameOf(thread.from);
   const subject = thread.subject || strings.thread.noSubject;
   // A row names the thread's own labels, but not the one the view lists.

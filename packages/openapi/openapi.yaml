@@ -116,6 +116,50 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
+  /preferences:
+    get:
+      operationId: getPreferences
+      summary: Read your own preferences, such as how the web app shows times and dates.
+      description: Only humans have preferences, and each reads only their own.
+      x-cli-command: preferences get
+      responses:
+        "200":
+          description: Your preferences.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Preferences"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    patch:
+      operationId: changePreferences
+      summary: Change your own preferences.
+      description: >
+        Give only the preferences to change. They follow you to every browser
+        you sign in from. Only humans have preferences, and each changes only
+        their own. The CLI prints timestamps as ISO 8601 whatever they are.
+      x-cli-command: preferences change
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PreferencesChanges"
+      responses:
+        "200":
+          description: Your preferences, changed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Preferences"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
   /humans:
     post:
       operationId: addHuman
@@ -2568,6 +2612,40 @@ components:
         made. Off by default, so the records stay as the account of what an
         agent sent and who approved it. Either way the mailbox's change feed
         keeps each decision and who made it.
+    Preferences:
+      type: object
+      additionalProperties: false
+      required: [hourCycle, dateFormat]
+      description: A human's own preferences.
+      properties:
+        hourCycle:
+          $ref: "#/components/schemas/HourCycle"
+        dateFormat:
+          $ref: "#/components/schemas/DateFormat"
+    PreferencesChanges:
+      type: object
+      additionalProperties: false
+      description: The preferences changed, each with its new value.
+      properties:
+        hourCycle:
+          $ref: "#/components/schemas/HourCycle"
+        dateFormat:
+          $ref: "#/components/schemas/DateFormat"
+    HourCycle:
+      type: string
+      enum: [locale, h12, h23]
+      description: >-
+        How the web app shows times. Locale, the default, follows the
+        browser's language. h12 shows 12-hour time, as 2:30 PM, and h23
+        24-hour time, as 14:30.
+    DateFormat:
+      type: string
+      enum: [locale, iso, dayMonth, monthDay]
+      description: >-
+        How the web app shows dates. Locale, the default, follows the
+        browser's language. iso shows 2026-10-05, dayMonth 5 Oct 2026 and
+        monthDay Oct 5, 2026, with month names in the browser's language.
+        Without the year, they show 10-05, 5 Oct and Oct 5.
     Status:
       type: object
       additionalProperties: false

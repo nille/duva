@@ -1,8 +1,9 @@
 // Duva's web app. A human signs in and lands on the Inbox of their personal mailbox, where they read,
 // organize, write and send their mail, with its views in the side column. Sponsors also read their
 // agents' mailboxes, listed there above the views, and reach the Approvals view from the bar, where
-// they decide what the agents they sponsor ask to send. Admins and sponsors reach Settings from the
-// bar too, where admins choose the organization's settings and sponsors their agents'.
+// they decide what the agents they sponsor ask to send. Every human reaches Settings from the bar
+// too, where they choose how times and dates show, admins the organization's settings and sponsors
+// their agents'.
 import "@fontsource-variable/source-serif-4/opsz.css";
 import "./styles.css";
 import { StrictMode, useCallback, useEffect, useRef, useState } from "react";
@@ -11,6 +12,7 @@ import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
 import { Approvals } from "./approvals.tsx";
 import { Composer } from "./compose.tsx";
+import { defaultPreferences, type Preferences, PreferencesContext } from "./dates.ts";
 import { Drafts } from "./drafts.tsx";
 import { approvalChanges, type Connection, draftChanges, type Follow, labelChanges, mailChanges, type MailboxChange, SignedOut, useFeeds } from "./feed.ts";
 import { ThreadIndex } from "./inbox.tsx";
@@ -131,6 +133,16 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
   const [relabelled, setRelabelled] = useState(0);
   // What the human last did, said in the view where it shows, until they go elsewhere.
   const [done, setDone] = useState<{ done: Done; at: string }>();
+  // Times and dates show as the browser's language does until the human's preferences are read.
+  const [preferences, setPreferences] = useState<Preferences>(defaultPreferences);
+
+  useEffect(() => {
+    void (async () => {
+      const { data, response } = await client.GET("/preferences").catch(() => ({ data: undefined, response: undefined }));
+      if (response?.status === 401) return onSignedOut();
+      if (data !== undefined) setPreferences(data);
+    })();
+  }, [client, onSignedOut]);
 
   const listMailboxes = useCallback(async () => {
     setMailboxes({ status: "loading" });
@@ -333,7 +345,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
     );
 
   return (
-    <>
+    <PreferencesContext value={preferences}>
       <header className="bar">
         <p className="wordmark">{strings.nav.label}</p>
         <nav aria-label={strings.nav.label}>
@@ -354,12 +366,9 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
               )}
             </a>
           )}
-          {/* Only admins and sponsors have settings to choose for now. A human's own preferences will bring Settings to everyone. */}
-          {(actor.admin || sponsor) && (
-            <a href="#/settings" aria-current={route.view === "settings" ? "page" : undefined}>
-              {strings.nav.settings}
-            </a>
-          )}
+          <a href="#/settings" aria-current={route.view === "settings" ? "page" : undefined}>
+            {strings.nav.settings}
+          </a>
         </nav>
         {mine !== undefined && (
           <button type="button" className="button button-primary button-small bar-write" onClick={() => (location.hash = "#/write")}>
@@ -377,7 +386,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
       {route.view === "approvals" ? (
         <Approvals client={client} sponsor={actor.email} connection={connection} follow={follow} onSignedOut={onSignedOut} />
       ) : route.view === "settings" ? (
-        <Settings client={client} admin={actor.admin} email={actor.email} onSignedOut={onSignedOut} />
+        <Settings client={client} admin={actor.admin} email={actor.email} onPreferences={setPreferences} onSignedOut={onSignedOut} />
       ) : shown !== undefined || (listed !== undefined && listed.agents.length > 0) ? (
         <div className={route.view === "thread" || route.view === "draft" || route.view === "write" ? "mail mail-reading" : "mail"}>
           <aside className="side">
@@ -401,7 +410,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
       ) : (
         mail
       )}
-    </>
+    </PreferencesContext>
   );
 }
 

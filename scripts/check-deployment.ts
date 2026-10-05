@@ -112,6 +112,10 @@ await check("labelling threads without credentials answers 401", async () =>
   expectStatus(await fetch(`${apiUrl}/mailboxes/x/threads/labels`, { method: "POST", headers: { "content-type": "application/json" }, body: '{"threads":["x"],"add":["trash"]}' }), 401),
 );
 await check("listing All mail without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/mailboxes/x/all-mail`), 401));
+await check("reading a human's preferences without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/preferences`), 401));
+await check("changing a human's preferences without credentials answers 401", async () =>
+  expectStatus(await fetch(`${apiUrl}/preferences`, { method: "PATCH", headers: { "content-type": "application/json" }, body: '{"hourCycle":"h23"}' }), 401),
+);
 await check("reading the organization's settings without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/organization/settings`), 401));
 await check("changing the organization's settings without credentials answers 401", async () =>
   expectStatus(await fetch(`${apiUrl}/organization/settings`, { method: "PATCH", headers: { "content-type": "application/json" }, body: '{"erasureErasesApprovals":true}' }), 401),

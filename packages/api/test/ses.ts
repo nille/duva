@@ -29,6 +29,8 @@ export interface Verdicts {
 export interface ReceiveOptions {
   invocations?: number;
   verdicts?: Verdicts;
+  /** When SES received the message, which is now unless given. */
+  at?: Date;
 }
 
 /**
@@ -78,7 +80,7 @@ export function sesReceiving({ buckets, functions }: { buckets: Map<string, Mail
     async receive(
       raw: string | Uint8Array,
       envelope: Envelope,
-      { invocations = 1, verdicts = {} }: ReceiveOptions = {},
+      { invocations = 1, verdicts = {}, at = new Date() }: ReceiveOptions = {},
     ): Promise<{ refused: string[]; messageId?: string }> {
       const matching = (recipient: string) => rules.find((rule) => rule.Enabled && matches(rule, recipient));
       const refused = envelope.to.filter((recipient) => matching(recipient) === undefined);
@@ -89,7 +91,7 @@ export function sesReceiving({ buckets, functions }: { buckets: Map<string, Mail
       const rule = matching(accepted[0]!)!;
       const recipients = accepted.filter((recipient) => matching(recipient) === rule);
       const messageId = randomUUID().replaceAll("-", "");
-      const timestamp = new Date().toISOString();
+      const timestamp = at.toISOString();
       const verdict = (given: SESReceiptStatus["status"] | undefined): SESReceiptStatus => ({ status: rule.ScanEnabled ? (given ?? "PASS") : "DISABLED" });
       const parsed = await PostalMime.parse(bytes);
       for (const { S3Action, LambdaAction } of rule.Actions ?? []) {

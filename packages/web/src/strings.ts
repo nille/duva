@@ -253,6 +253,28 @@ export const strings = {
     unreachable: "Duva couldn't be reached, so the settings aren't shown. Check your connection and try again.",
     saveFailed: (status: number) => `Duva couldn't save the setting (error ${status}). Try again in a moment.`,
     saveUnreachable: "Duva couldn't be reached, so the setting isn't saved. Check your connection and try again.",
+    you: "You",
+    youLead: "You choose these for yourself, and they follow you to every browser you sign in from.",
+    hourCycle: {
+      legend: "How times show",
+      lead: "Default follows your browser's language.",
+      locale: "Default",
+      h12: "12-hour",
+      h23: "24-hour",
+    },
+    dateFormat: {
+      legend: "How dates show",
+      lead: "Default follows your browser's language, as month names always do.",
+      locale: "Default",
+      iso: "Year first",
+      dayMonth: "Day first",
+      monthDay: "Month first",
+    },
+    preferencesSaved: "Saved. Times and dates show this way from now on.",
+    preferencesFailed: (status: number) => `Duva couldn't read your preferences (error ${status}). Try again in a moment.`,
+    preferencesUnreachable: "Duva couldn't be reached, so your preferences aren't shown. Check your connection and try again.",
+    preferencesSaveFailed: (status: number) => `Duva couldn't save your preferences (error ${status}). Try again in a moment.`,
+    preferencesSaveUnreachable: "Duva couldn't be reached, so your preferences aren't saved. Check your connection and try again.",
   },
 
   agentSettings: {

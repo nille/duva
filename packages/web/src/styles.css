@@ -1698,6 +1698,13 @@ input[aria-invalid="true"] {
   margin: 0.1875rem 0 0;
 }
 
+/* Choices whose names and examples are short sit side by side. */
+.choices-short {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: var(--space-3);
+}
+
 .choice-text {
   display: grid;
   gap: var(--space-1);

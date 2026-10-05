@@ -86,6 +86,49 @@ export const operations = [
     ]
   },
   {
+    "operationId": "getPreferences",
+    "method": "get",
+    "path": "/preferences",
+    "routeKey": "GET /preferences",
+    "summary": "Read your own preferences, such as how the web app shows times and dates.",
+    "description": "Only humans have preferences, and each reads only their own.",
+    "signIn": true,
+    "command": [
+      "preferences",
+      "get"
+    ],
+    "options": []
+  },
+  {
+    "operationId": "changePreferences",
+    "method": "patch",
+    "path": "/preferences",
+    "routeKey": "PATCH /preferences",
+    "summary": "Change your own preferences.",
+    "description": "Give only the preferences to change. They follow you to every browser you sign in from. Only humans have preferences, and each changes only their own. The CLI prints timestamps as ISO 8601 whatever they are.",
+    "signIn": true,
+    "command": [
+      "preferences",
+      "change"
+    ],
+    "options": [
+      {
+        "name": "hourCycle",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "How the web app shows times. Locale, the default, follows the browser's language. h12 shows 12-hour time, as 2:30 PM, and h23 24-hour time, as 14:30."
+      },
+      {
+        "name": "dateFormat",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "How the web app shows dates. Locale, the default, follows the browser's language. iso shows 2026-10-05, dayMonth 5 Oct 2026 and monthDay Oct 5, 2026, with month names in the browser's language. Without the year, they show 10-05, 5 Oct and Oct 5."
+      }
+    ]
+  },
+  {
     "operationId": "listHumans",
     "method": "get",
     "path": "/humans",

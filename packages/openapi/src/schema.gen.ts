@@ -82,6 +82,30 @@ export interface paths {
         patch: operations["changeOrganizationSettings"];
         trace?: never;
     };
+    "/preferences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read your own preferences, such as how the web app shows times and dates.
+         * @description Only humans have preferences, and each reads only their own.
+         */
+        get: operations["getPreferences"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Change your own preferences.
+         * @description Give only the preferences to change. They follow you to every browser you sign in from. Only humans have preferences, and each changes only their own. The CLI prints timestamps as ISO 8601 whatever they are.
+         */
+        patch: operations["changePreferences"];
+        trace?: never;
+    };
     "/humans": {
         parameters: {
             query?: never;
@@ -1547,6 +1571,26 @@ export interface components {
         };
         /** @description Whether erasing a thread also erases the approval records of the agents' sends in it: the draft its approver saw and any edit they made. Off by default, so the records stay as the account of what an agent sent and who approved it. Either way the mailbox's change feed keeps each decision and who made it. */
         ErasureErasesApprovals: boolean;
+        /** @description A human's own preferences. */
+        Preferences: {
+            hourCycle: components["schemas"]["HourCycle"];
+            dateFormat: components["schemas"]["DateFormat"];
+        };
+        /** @description The preferences changed, each with its new value. */
+        PreferencesChanges: {
+            hourCycle?: components["schemas"]["HourCycle"];
+            dateFormat?: components["schemas"]["DateFormat"];
+        };
+        /**
+         * @description How the web app shows times. Locale, the default, follows the browser's language. h12 shows 12-hour time, as 2:30 PM, and h23 24-hour time, as 14:30.
+         * @enum {string}
+         */
+        HourCycle: "locale" | "h12" | "h23";
+        /**
+         * @description How the web app shows dates. Locale, the default, follows the browser's language. iso shows 2026-10-05, dayMonth 5 Oct 2026 and monthDay Oct 5, 2026, with month names in the browser's language. Without the year, they show 10-05, 5 Oct and Oct 5.
+         * @enum {string}
+         */
+        DateFormat: "locale" | "iso" | "dayMonth" | "monthDay";
         Status: {
             /**
              * @description The version of Duva the deployment runs.
@@ -1733,6 +1777,55 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OrganizationSettings"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getPreferences: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Your preferences. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Preferences"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    changePreferences: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PreferencesChanges"];
+            };
+        };
+        responses: {
+            /** @description Your preferences, changed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Preferences"];
                 };
             };
             400: components["responses"]["BadRequest"];

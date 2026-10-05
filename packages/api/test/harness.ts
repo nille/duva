@@ -76,8 +76,8 @@ export interface Duva {
    * Hands the raw message to SES, as the sender's mail server does, and waits until Duva has
    * processed it. Returns the recipients SES refused during delivery. The envelope sender defaults
    * to the message's From. With `invocations`, Lambda runs the inbound handler that many times.
-   * SES judges the message by `verdicts`, which pass unless given. Also returns the ID SES gave
-   * the message, unless it refused every recipient.
+   * SES judges the message by `verdicts`, which pass unless given, and receives it `at` the time
+   * given, or now. Also returns the ID SES gave the message, unless it refused every recipient.
    */
   receive(
     raw: string | Uint8Array,

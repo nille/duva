@@ -81,6 +81,21 @@ Give only the settings to change. A setting applies from when it changes, so tur
 
 - `--erasureErasesApprovals` or `--no-erasureErasesApprovals`: Whether erasing a thread also erases the approval records of the agents' sends in it: the draft its approver saw and any edit they made. Off by default, so the records stay as the account of what an agent sent and who approved it. Either way the mailbox's change feed keeps each decision and who made it.
 
+## duva preferences get
+
+Read your own preferences, such as how the web app shows times and dates.
+
+Only humans have preferences, and each reads only their own.
+
+## duva preferences change
+
+Change your own preferences.
+
+Give only the preferences to change. They follow you to every browser you sign in from. Only humans have preferences, and each changes only their own. The CLI prints timestamps as ISO 8601 whatever they are.
+
+- `--hourCycle`: How the web app shows times. Locale, the default, follows the browser's language. h12 shows 12-hour time, as 2:30 PM, and h23 24-hour time, as 14:30.
+- `--dateFormat`: How the web app shows dates. Locale, the default, follows the browser's language. iso shows 2026-10-05, dayMonth 5 Oct 2026 and monthDay Oct 5, 2026, with month names in the browser's language. Without the year, they show 10-05, 5 Oct and Oct 5.
+
 ## duva humans list
 
 List the organization's humans.

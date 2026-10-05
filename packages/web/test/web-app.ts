@@ -44,7 +44,8 @@ export async function startWebApp(options: DuvaOptions & { viewport?: { width: n
   const duva = await startDuva(duvaOptions);
   const harness = await duva.listen();
   const site = await serve(await builtWebApp(), harness, hiddenPollInterval);
-  const context = await (await browser()).newContext({ viewport: viewport ?? { width: 1280, height: 800 } });
+  // The browser is set to American English in UTC, so what a test expects of times and dates doesn't depend on the machine.
+  const context = await (await browser()).newContext({ viewport: viewport ?? { width: 1280, height: 800 }, locale: "en-US", timezoneId: "UTC" });
   onTestFinished(async () => {
     await context.close();
     await site.close();

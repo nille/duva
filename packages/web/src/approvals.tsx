@@ -5,7 +5,7 @@ import { flushSync } from "react-dom";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
 import { approvalChanges, type Connection as ConnectionState, type Follow, SignedOut } from "./feed.ts";
-import { Addresses, Attachments, clock, Connection, Field, Time } from "./mail-parts.tsx";
+import { Addresses, Attachments, Connection, Field, Time } from "./mail-parts.tsx";
 import { strings } from "./strings.ts";
 
 type Approval = components["schemas"]["Approval"];

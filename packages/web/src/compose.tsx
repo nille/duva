@@ -4,7 +4,8 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
-import { Attachments, clock } from "./mail-parts.tsx";
+import { useDates } from "./dates.ts";
+import { Attachments } from "./mail-parts.tsx";
 import { strings } from "./strings.ts";
 
 type Draft = components["schemas"]["Draft"];
@@ -55,6 +56,7 @@ type Problem = { message: string; field?: ListField };
  * seen, so the composer learns how its send went. It never overwrites what the human typed.
  */
 export function Composer({ client, mailbox, id: given, version, onSignedOut }: { client: DuvaClient; mailbox: Mailbox; id?: string; version: number; onSignedOut: () => void }) {
+  const { clock } = useDates();
   const [loading, setLoading] = useState<Loading>(given === undefined ? { status: "ready" } : { status: "loading" });
   const [draft, setDraft] = useState<Draft>();
   const [fields, setFields] = useState<Fields>({ to: "", cc: "", bcc: "", subject: "", text: "" });

@@ -36,6 +36,10 @@ Sign-off before an action takes effect. An agent's send from its own mailbox, it
 **Admin**:
 An actor allowed to change the organization's setup: domains, addresses, groups, actors and settings. Admins can't read personal mailboxes. An agent can be an admin only if its sponsor is one.
 
+**Preference**:
+A choice a human makes for themselves about how Duva shows things to them, such as how times and dates read in the web app. It follows them to every browser, and no one else sees or changes it. An agent has none; its sponsor changes its settings.
+_Avoid_: user setting, profile
+
 **Sponsor**:
 The human who answers for an agent, at first the one who created it. The sponsor acts as owner of the agent's personal mailboxes, gets the agent's alerts, can pause it or rotate its key, and approves its sends and setup changes. An agent whose sponsor is removed is paused until someone takes it over.
 _Avoid_: owner (for agents), operator, creator
