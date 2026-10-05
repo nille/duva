@@ -3,8 +3,8 @@ import { CfnCondition, CfnOutput, CfnParameter, Duration, Fn, RemovalPolicy, Sta
 import { CorsHttpMethod, HttpApi, HttpMethod } from "aws-cdk-lib/aws-apigatewayv2";
 import { HttpLambdaAuthorizer, HttpLambdaResponseType } from "aws-cdk-lib/aws-apigatewayv2-authorizers";
 import { HttpLambdaIntegration } from "aws-cdk-lib/aws-apigatewayv2-integrations";
-import { Distribution, S3OriginAccessControl, ViewerProtocolPolicy } from "aws-cdk-lib/aws-cloudfront";
-import { S3BucketOrigin } from "aws-cdk-lib/aws-cloudfront-origins";
+import { AllowedMethods, CachePolicy, Distribution, FunctionUrlOriginAccessControl, S3OriginAccessControl, ViewerProtocolPolicy } from "aws-cdk-lib/aws-cloudfront";
+import { FunctionUrlOrigin, S3BucketOrigin } from "aws-cdk-lib/aws-cloudfront-origins";
 import {
   AccountRecovery,
   CfnManagedLoginBranding,
@@ -266,9 +266,11 @@ export class DuvaStack extends Stack {
       );
     }
     new Rule(this, "EraserSchedule", { description: "Erases Trash and Spam past the retention period", schedule: Schedule.rate(Duration.days(1)), targets: [new LambdaFunction(eraser)] });
-    // Download links lead to a function URL anyone can call, since a browser follows a link without
-    // credentials: the link's ticket is what it checks. It streams its answer, since a buffered
-    // one can't exceed 6 MB, and takes the attachment from the raw message, which is parsed whole.
+    // Download links lead to the web app's domain, under /download/, since a browser follows a link
+    // without credentials: the link's ticket is what the download Lambda checks. CloudFront signs
+    // each request to its function URL, which only the distribution may call, since the account
+    // disables a Lambda anyone may invoke (docs/aws.md). It streams its answer, since a buffered one
+    // can't exceed 6 MB, and takes the attachment from the raw message, which is parsed whole.
     const download = lambda(
       "DownloadHandler",
       "@duva/api/download-lambda",
@@ -277,7 +279,28 @@ export class DuvaStack extends Stack {
     );
     table.grantReadData(download);
     mail.grantRead(download);
-    const downloadUrl = download.addFunctionUrl({ authType: FunctionUrlAuthType.NONE, invokeMode: InvokeMode.RESPONSE_STREAM });
+    const downloadFunctionUrl = download.addFunctionUrl({ authType: FunctionUrlAuthType.AWS_IAM, invokeMode: InvokeMode.RESPONSE_STREAM });
+    // A GET has no body, so it needs no payload hash, which OAC asks of a POST or PUT.
+    distribution.addBehavior(
+      "/download/*",
+      FunctionUrlOrigin.withOriginAccessControl(downloadFunctionUrl, {
+        originAccessControl: new FunctionUrlOriginAccessControl(this, "DownloadAccess", { originAccessControlName: `Duva-Download-${this.region}` }),
+        readTimeout: Duration.seconds(60),
+      }),
+      {
+        allowedMethods: AllowedMethods.ALLOW_GET_HEAD,
+        viewerProtocolPolicy: ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+        // Each link stops working after minutes, so CloudFront keeps no answer.
+        cachePolicy: CachePolicy.CACHING_DISABLED,
+      },
+    );
+    // The origin adds lambda:InvokeFunctionUrl, and a function URL needs lambda:InvokeFunction too.
+    download.addPermission("CloudFrontInvoke", {
+      principal: new ServicePrincipal("cloudfront.amazonaws.com"),
+      action: "lambda:InvokeFunction",
+      sourceArn: distribution.distributionArn,
+    });
+    const downloadUrl = `${webUrl}/download/`;
 
     const handler = lambda("ApiHandler", "@duva/api/lambda", {
       [environmentVariables.version]: version,
@@ -287,7 +310,7 @@ export class DuvaStack extends Stack {
       [environmentVariables.receiptRuleSet]: receiving.receiptRuleSetName,
       [environmentVariables.inboundFunction]: inbound.functionArn,
       [environmentVariables.eraserFunction]: eraser.functionArn,
-      [environmentVariables.downloadUrl]: downloadUrl.url,
+      [environmentVariables.downloadUrl]: downloadUrl,
     });
     table.grantReadWriteData(handler);
     // Message bodies are read from the raw mail.
@@ -396,7 +419,8 @@ export class DuvaStack extends Stack {
     new CfnOutput(this, stackOutputs.setupFunction, { value: setup.functionName, description: "The function that sets up the organization" });
     new CfnOutput(this, stackOutputs.receiptRuleSet, { value: receiving.receiptRuleSetName, description: "Duva's receipt rule set" });
     new CfnOutput(this, stackOutputs.sendFailures, { value: sendFailures.queueUrl, description: "The queue of approved sends that failed processing" });
-    new CfnOutput(this, stackOutputs.downloadUrl, { value: downloadUrl.url, description: "The function URL download links lead to" });
+    new CfnOutput(this, stackOutputs.downloadUrl, { value: downloadUrl, description: "Where download links lead, on the web app's domain" });
+    new CfnOutput(this, stackOutputs.downloadFunction, { value: download.functionName, description: "The function download links invoke through CloudFront" });
     new CfnOutput(this, stackOutputs.inboundFailures, { value: inboundFailures.queueUrl, description: "The queue of received mail that failed processing" });
     ([1, 2, 3] as const).forEach((n, index) => {
       const { name, value } = identity.dkimRecords[index]!;

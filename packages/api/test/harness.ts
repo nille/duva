@@ -97,7 +97,7 @@ export interface Duva {
    * delete anything during the run, which then fails, as a run that stops partway does.
    */
   erase(at: Date, options?: { s3DeletesFail?: boolean }): Promise<void>;
-  /** Follows a download link, as a browser does, and gives what the download Lambda's function URL answered. */
+  /** Follows a download link, as a browser does, and gives what the download Lambda answered through CloudFront. */
   download(url: string): Promise<Response>;
   /**
    * Moves Duva to a new user pool, as the deploy of #30 did. No human can sign in there, and every
@@ -147,8 +147,9 @@ export async function startDuva({
   const stream = tableStream(inject("dynamodbEndpoint"), streamArn, [
     { filter: senderFilter, handler: createSender({ table, mailBucket, outbound: sending.outbound, region }), retries: senderRetries, invocations: senderInvocations },
   ]);
-  // The download Lambda's function URL is the API's own URL here, under /downloads/, once it listens.
-  let downloadUrl = `${inProcess}/downloads/`;
+  // Download links lead to the web app's domain under /download/, from where CloudFront invokes the
+  // download Lambda. Here they lead to the API's own URL, under the same path, once it listens.
+  let downloadUrl = `${inProcess}/download/`;
   const downloads = {
     get url() {
       return downloadUrl;
@@ -167,7 +168,7 @@ export async function startDuva({
   // A call returns once the stream has handed what it wrote to the sender, and the eraser has
   // erased the Trash it emptied, so tests see the outcome.
   const api = async (request: Request) => {
-    if (new URL(request.url).pathname.startsWith("/downloads/")) return downloaded(request);
+    if (new URL(request.url).pathname.startsWith("/download/")) return downloaded(request);
     const response = await gatewayed(request);
     await stream.deliver();
     for (let each = emptied.shift(); each !== undefined; each = emptied.shift()) if (!emptyingLost) await eraser({ emptyTrash: each });
@@ -212,7 +213,7 @@ export async function startDuva({
     },
     async listen() {
       const server = await listen(async (request) => (await login.handle(request)) ?? api(request));
-      downloadUrl = `${server.url}/downloads/`;
+      downloadUrl = `${server.url}/download/`;
       return { ...server, signIn: { url: server.url, clientId: managedLoginClientId } };
     },
   };

@@ -3,14 +3,16 @@
 //   AWS_REGION=eu-north-1 node scripts/check-deployment.ts
 //
 // Runs the checks of a real run that need no human: the API answers, refuses calls without valid
-// credentials, and lets the web app call it; the web app is served with the config deploy
-// published; the user pool takes sign-in names in any case, and no pool the stack retired is left;
-// once an address exists, SES's receipt rule lists it; and no received mail and no approved send
-// waits in a failure queue. Signing in stays with a human. Then prints how many messages Duva
-// dropped on arrival each day of the last 7, by reason. Exits 1 if any check fails.
-import { CloudFormationClient, DescribeStacksCommand } from "@aws-sdk/client-cloudformation";
+// credentials, and lets the web app call it; download links go through the web app's domain, and
+// only its distribution may invoke the download Lambda; the web app is served with the config
+// deploy published; the user pool takes sign-in names in any case, and no pool the stack retired
+// is left; once an address exists, SES's receipt rule lists it; and no received mail and no
+// approved send waits in a failure queue. Signing in stays with a human. Then prints how many
+// messages Duva dropped on arrival each day of the last 7, by reason. Exits 1 if any check fails.
+import { CloudFormationClient, DescribeStacksCommand, paginateListStackResources } from "@aws-sdk/client-cloudformation";
 import { CloudWatchClient, GetMetricDataCommand } from "@aws-sdk/client-cloudwatch";
 import { CognitoIdentityProviderClient, DescribeUserPoolCommand, paginateListUserPools } from "@aws-sdk/client-cognito-identity-provider";
+import { GetFunctionUrlConfigCommand, GetPolicyCommand, LambdaClient } from "@aws-sdk/client-lambda";
 import { DescribeReceiptRuleSetCommand, SESClient } from "@aws-sdk/client-ses";
 import { GetQueueAttributesCommand, SQSClient } from "@aws-sdk/client-sqs";
 import { dropMetric, dropReasons, inboundPrefix, receiptRuleName } from "@duva/api/infrastructure";
@@ -19,9 +21,10 @@ import { stackName, stackOutputs } from "@duva/infra/outputs";
 const region = process.env.AWS_REGION;
 if (!region) throw new Error("Set AWS_REGION to the region of the deployment to check.");
 
+const cloudFormation = new CloudFormationClient({ region });
 const [stack] =
   (
-    await new CloudFormationClient({ region })
+    await cloudFormation
       .send(new DescribeStacksCommand({ StackName: stackName }))
       .catch((error: Error) => {
         throw error.message.includes("does not exist") ? new Error(`There is no Duva deployment in ${region}.`) : error;
@@ -76,10 +79,29 @@ for (const read of ["read", "unread"]) {
 }
 await check("listing a mailbox's Sent without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/mailboxes/x/sent`), 401));
 await check("getting an attachment's link without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/mailboxes/x/messages/x/attachments/0`), 401));
-await check("a download link Duva never gave answers 404, from a function URL that needs no credentials", async () => {
+await check("a download link Duva never gave answers 404 through the web app's domain, without credentials", async () => {
   const response = await fetch(`${output(stackOutputs.downloadUrl)}${"A".repeat(43)}`);
   const text = await response.text();
   return response.status === 404 && /expired/.test(text) ? undefined : `answered ${response.status}: ${text.slice(0, 200)}`;
+});
+// The account disables a Lambda anyone may invoke (docs/aws.md), so only CloudFront may call this one.
+const lambda = new LambdaClient({ region });
+const downloadFunction = output(stackOutputs.downloadFunction);
+await check("the download Lambda's function URL takes only signed requests, and refuses one without", async () => {
+  const { AuthType, FunctionUrl } = await lambda.send(new GetFunctionUrlConfigCommand({ FunctionName: downloadFunction }));
+  if (AuthType !== "AWS_IAM") return `has AuthType ${AuthType}`;
+  return expectStatus(await fetch(`${FunctionUrl}download/${"A".repeat(43)}`), 403);
+});
+await check("the download Lambda's policy lets only the web app's distribution invoke it, and nobody publicly", async () => {
+  let distribution: string | undefined;
+  for await (const { StackResourceSummaries = [] } of paginateListStackResources({ client: cloudFormation }, { StackName: stackName })) {
+    distribution ??= StackResourceSummaries.find(({ ResourceType }) => ResourceType === "AWS::CloudFront::Distribution")?.PhysicalResourceId;
+  }
+  const { Policy } = await lambda.send(new GetPolicyCommand({ FunctionName: downloadFunction }));
+  const { Statement = [] } = JSON.parse(Policy ?? "{}") as { Statement?: { Principal?: unknown; Condition?: { ArnLike?: Record<string, string> } }[] };
+  const fine = (statement: (typeof Statement)[number]) =>
+    JSON.stringify(statement.Principal) === '{"Service":"cloudfront.amazonaws.com"}' && statement.Condition?.ArnLike?.["AWS:SourceArn"]?.endsWith(`:distribution/${distribution}`);
+  return distribution !== undefined && Statement.length > 0 && Statement.every(fine) ? undefined : `has ${Policy}`;
 });
 await check("deleting a draft without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/mailboxes/x/drafts/x`, { method: "DELETE" }), 401));
 await check("labelling threads without credentials answers 401", async () =>

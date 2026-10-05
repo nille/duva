@@ -55,7 +55,8 @@ const payPerUse = new Set([
 ]);
 
 const outdir = mkdtempSync(join(tmpdir(), "duva-assembly-"));
-const stack = duvaApp({ outdir, version: "0.0.0-test" }).synth().getStackByName("Duva");
+const assembly = duvaApp({ outdir, version: "0.0.0-test" }).synth();
+const stack = assembly.getStackByName("Duva");
 const resources = Object.entries(stack.template.Resources as Record<string, Resource>);
 const ofType = (type: string) => resources.filter(([, resource]) => resource.Type === type);
 
@@ -462,6 +463,25 @@ test("every name the stack sets in a namespace wider than its region holds the r
   for (const { id, name } of named) expect({ id, name }).toEqual({ id, name: expect.stringContaining('{"Ref":"AWS::Region"}') });
 });
 
+// A Lambda anyone may invoke sets off the account's security alert, which strips the permission and
+// disables the function (docs/aws.md).
+test("no Lambda can be invoked by anyone: each permission names a service and the source it acts for, and each function URL takes only signed requests", () => {
+  // Every stack in the assembly, should the app ever make more than one.
+  const everywhere = assembly.stacks.flatMap(({ template }) => Object.entries(template.Resources as Record<string, Resource>));
+  const ofTypeEverywhere = (type: string) => everywhere.filter(([, resource]) => resource.Type === type);
+  const permissions = ofTypeEverywhere("AWS::Lambda::Permission");
+  expect(permissions).not.toHaveLength(0);
+  for (const [id, { Properties }] of permissions) {
+    const principal = String(Properties?.Principal);
+    expect({ id, principal, sourced: (Properties?.SourceArn ?? Properties?.SourceAccount) !== undefined }).toEqual({
+      id,
+      principal: expect.stringMatching(/^[a-z0-9-]+(\.[a-z0-9-]+)*\.amazonaws\.com$/),
+      sourced: true,
+    });
+  }
+  for (const [id, { Properties }] of ofTypeEverywhere("AWS::Lambda::Url")) expect({ id, authType: Properties?.AuthType }).toEqual({ id, authType: "AWS_IAM" });
+});
+
 test("every Lambda keeps its log a month, so nothing it logs, a drop's record included, outlives that", () => {
   for (const [id, { Properties }] of ofType("AWS::Lambda::Function")) {
     const logGroup = Properties?.LoggingConfig?.LogGroup?.Ref;
@@ -477,16 +497,49 @@ test("the inbound Lambda may publish the drop metric: its role may write its log
   expect(JSON.stringify(stack.template.Resources[roleId]?.Properties?.ManagedPolicyArns)).toContain("service-role/AWSLambdaBasicExecutionRole");
 });
 
-test("download links lead to the download Lambda's function URL, which streams its answer to anyone who has a link", () => {
+test("download links lead to the web app's domain, where CloudFront signs each request to the download Lambda's function URL, which streams its answer", () => {
   const [downloadId] = lambda("DownloadHandler");
   const urls = ofType("AWS::Lambda::Url");
   expect(urls).toHaveLength(1);
   const [[urlId, { Properties: url }]] = urls as [[string, Resource]];
-  expect(url).toMatchObject({ TargetFunctionArn: { "Fn::GetAtt": [downloadId, "Arn"] }, AuthType: "NONE", InvokeMode: "RESPONSE_STREAM" });
-  expect(lambda("ApiHandler")[1].Properties?.Environment?.Variables?.[environmentVariables.downloadUrl]).toEqual({ "Fn::GetAtt": [urlId, "FunctionUrl"] });
-  const invoking = ofType("AWS::Lambda::Permission").filter(([, { Properties }]) => Properties?.Principal === "*");
-  expect(invoking.map(([, { Properties }]) => Properties?.FunctionName)).toEqual(invoking.map(() => ({ "Fn::GetAtt": [downloadId, "Arn"] })));
-  expect(invoking.map(([, { Properties }]) => Properties?.Action).sort()).toEqual(["lambda:InvokeFunction", "lambda:InvokeFunctionUrl"]);
+  expect(url).toMatchObject({ TargetFunctionArn: { "Fn::GetAtt": [downloadId, "Arn"] }, AuthType: "AWS_IAM", InvokeMode: "RESPONSE_STREAM" });
+
+  const [[distributionId, { Properties: distribution }]] = ofType("AWS::CloudFront::Distribution") as [[string, Resource]];
+  const config = distribution?.DistributionConfig;
+  const behaviors = (config?.CacheBehaviors ?? []).filter(({ PathPattern }: { PathPattern: string }) => PathPattern === "/download/*");
+  expect(behaviors).toHaveLength(1);
+  const [behavior] = behaviors;
+  // Each link stops working after minutes, so CloudFront keeps no answer: the ID is AWS's CachingDisabled policy.
+  expect(behavior).toMatchObject({ AllowedMethods: ["GET", "HEAD"], ViewerProtocolPolicy: "redirect-to-https", CachePolicyId: "4135ea2d-6df8-44a3-9df3-4b5a84be39ad" });
+  // Viewer headers would break the signature, which names the function URL's host.
+  expect(behavior.OriginRequestPolicyId).toBeUndefined();
+  const origin = config?.Origins?.find(({ Id }: { Id: string }) => Id === behavior.TargetOriginId);
+  expect(JSON.stringify(origin?.DomainName)).toContain(`{"Fn::GetAtt":["${urlId}","FunctionUrl"]}`);
+  expect(origin?.CustomOriginConfig?.OriginProtocolPolicy).toBe("https-only");
+  const access = stack.template.Resources[origin?.OriginAccessControlId?.["Fn::GetAtt"]?.[0]];
+  expect(access?.Properties?.OriginAccessControlConfig).toMatchObject({ OriginAccessControlOriginType: "lambda", SigningBehavior: "always", SigningProtocol: "sigv4" });
+
+  expect(lambda("ApiHandler")[1].Properties?.Environment?.Variables?.[environmentVariables.downloadUrl]).toEqual({
+    "Fn::Join": ["", ["https://", { "Fn::GetAtt": [distributionId, "DomainName"] }, "/download/"]],
+  });
+});
+
+test("only the web app's distribution may invoke the download Lambda, as its function URL needs", () => {
+  const [downloadId] = lambda("DownloadHandler");
+  const [[distributionId]] = ofType("AWS::CloudFront::Distribution") as [[string, Resource]];
+  const [[urlId]] = ofType("AWS::Lambda::Url") as [[string, Resource]];
+  // The origin names the function by its URL's FunctionArn, which is the function's ARN.
+  const permissions = ofType("AWS::Lambda::Permission").filter(([, { Properties }]) =>
+    [`{"Fn::GetAtt":["${downloadId}","Arn"]}`, `{"Fn::GetAtt":["${urlId}","FunctionArn"]}`].includes(JSON.stringify(Properties?.FunctionName)),
+  );
+  expect(permissions.map(([, { Properties }]) => Properties?.Action).sort()).toEqual(["lambda:InvokeFunction", "lambda:InvokeFunctionUrl"]);
+  for (const [id, { Properties }] of permissions) {
+    expect({ id, principal: Properties?.Principal, source: JSON.stringify(Properties?.SourceArn) }).toEqual({
+      id,
+      principal: "cloudfront.amazonaws.com",
+      source: expect.stringContaining(`distribution/",{"Ref":"${distributionId}"}`),
+    });
+  }
 });
 
 test("the download Lambda only reads: the table and raw mail", () => {

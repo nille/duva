@@ -21,6 +21,7 @@ export const stackOutputs = {
   inboundFailures: "InboundFailuresUrl",
   sendFailures: "SendFailuresUrl",
   downloadUrl: "DownloadUrl",
+  downloadFunction: "DownloadFunction",
   dkimName: (n: 1 | 2 | 3) => `DkimName${n}`,
   dkimValue: (n: 1 | 2 | 3) => `DkimValue${n}`,
 } as const;
