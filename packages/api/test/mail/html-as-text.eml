@@ -1,0 +1,28 @@
+From: Lindvallens IF <nyheter@lindvallen.example.net>
+To: hermes@example.com
+Subject: Matchdag mot Bergsjö
+Date: Sun, 04 Oct 2026 09:00:00 +0000
+Message-ID: <matchdag-2@lindvallen.example.net>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Utskick 41 -->
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" lang="sv">
+<head>
+<meta charset="utf-8">
+<title>Lindvallens IF</title>
+<style>
+body { font-family: Georgia, serif; color: #1d3557; }
+.knapp { padding: 8px 16px; }
+</style>
+<script>window.dataLayer = [];</script>
+</head>
+<body>
+<style>.dold { display: none; }</style>
+<h1>Matchdag mot Bergsjö</h1>
+<p>Avspark klockan <b>15.00</b> på Lindvallen. Ta med fikakorg!</p>
+<script>track("matchdag");</script>
+</body>
+</html>

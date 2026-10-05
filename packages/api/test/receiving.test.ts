@@ -130,23 +130,38 @@ test("the agent reads a message: sender, recipients, subject, date and plain-tex
   });
 });
 
-/** Receives the fixture for the agent, and reads the one message it becomes. */
+/** Receives the fixture for the agent, and lists and reads the one thread and message it becomes. */
 async function receiveAndRead(name: string, to = "hermes@example.com") {
   const { duva, hermes, params } = await withMailbox();
   await duva.receive(await mail(name), { to: [to] });
   const { data: list } = await hermes.GET("/mailboxes/{mailbox}/threads", { params });
-  const { data } = await hermes.GET("/mailboxes/{mailbox}/threads/{thread}", { params: { path: { ...params.path, thread: list!.threads[0]!.id } } });
-  return data!.messages[0]!;
+  const thread = list!.threads[0]!;
+  const { data } = await hermes.GET("/mailboxes/{mailbox}/threads/{thread}", { params: { path: { ...params.path, thread: thread.id } } });
+  return { thread, message: data!.messages[0]! };
 }
 
 test("mail with only HTML is turned into text", async () => {
-  const message = await receiveAndRead("html-only");
+  const { message } = await receiveAndRead("html-only");
 
   expect(message.text).toBe("Weekly update\n\nThe build is green.\n\n * Parser done\n * Tests pass");
 });
 
+test("mail with only HTML gets a snippet of its visible text, without its head, styles or scripts", async () => {
+  const { thread, message } = await receiveAndRead("html-document");
+
+  expect(thread.snippet).toBe("Matchdag mot Bergsjö Avspark klockan 15.00 på Lindvallen. Ta med fikakorg!");
+  expect(message.text).toBe("Matchdag mot Bergsjö\n\nAvspark klockan 15.00 på Lindvallen. Ta med fikakorg!");
+});
+
+test("a text part that holds an HTML document is turned into text, for the snippet and the message", async () => {
+  const { thread, message } = await receiveAndRead("html-as-text");
+
+  expect(thread.snippet).toBe("Matchdag mot Bergsjö Avspark klockan 15.00 på Lindvallen. Ta med fikakorg!");
+  expect(message.text).toBe("Matchdag mot Bergsjö\n\nAvspark klockan 15.00 på Lindvallen. Ta med fikakorg!");
+});
+
 test("a message's attachments are listed by name, type and size", async () => {
-  const message = await receiveAndRead("attachment");
+  const { message } = await receiveAndRead("attachment");
 
   expect(message.text).toBe("The report and its data are attached.");
   expect(message.attachments).toEqual([
@@ -156,13 +171,13 @@ test("a message's attachments are listed by name, type and size", async () => {
 });
 
 test("mail to the address with a plus tag arrives, and the message shows the plus tag", async () => {
-  const message = await receiveAndRead("plus-tagged", "hermes+news@example.com");
+  const { message } = await receiveAndRead("plus-tagged", "hermes+news@example.com");
 
   expect(message).toMatchObject({ recipient: "hermes+news@example.com", plusTag: "news", subject: "October news" });
 });
 
 test("a plus tag is matched without regard to case, and kept as it was sent", async () => {
-  const message = await receiveAndRead("plus-tagged", "Hermes+News@Example.com");
+  const { message } = await receiveAndRead("plus-tagged", "Hermes+News@Example.com");
 
   expect(message).toMatchObject({ recipient: "hermes+News@example.com", plusTag: "News" });
 });

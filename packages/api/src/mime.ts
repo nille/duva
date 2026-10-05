@@ -1,6 +1,6 @@
 // Reading and writing raw messages. PostalMime parses the MIME, and html-to-text turns HTML-only
-// mail into text. Duva writes the MIME of the mail it sends itself: a text part, followed by any
-// attachments a forward carries.
+// mail, and a text part that holds an HTML document, into text. Duva writes the MIME of the mail it
+// sends itself: a text part, followed by any attachments a forward carries.
 import { randomUUID } from "node:crypto";
 import { convert } from "html-to-text";
 import PostalMime, { type Address } from "postal-mime";
@@ -26,7 +26,10 @@ export interface ParsedMail {
   subject: string;
   /** When the sender says it was sent, as an ISO 8601 time, if the Date header gives one. */
   date?: string;
-  /** The plain-text body, from the HTML if the message has no text, with \n line endings and none at the end. */
+  /**
+   * The plain-text body, from the HTML if the message has no text or its text is an HTML document,
+   * with \n line endings and none at the end.
+   */
   text: string;
   attachments: components["schemas"]["Attachment"][];
   /** The attachments' contents, decoded, in the same order. */
@@ -43,7 +46,7 @@ export interface Part {
 export async function parseMail(raw: Uint8Array): Promise<ParsedMail> {
   const email = await PostalMime.parse(raw, { attachmentEncoding: "arraybuffer" });
   const date = email.date === undefined ? undefined : new Date(email.date);
-  const text = email.text ?? (email.html === undefined ? "" : htmlToText(email.html));
+  const text = email.text !== undefined && !isHtmlDocument(email.text) ? email.text : htmlToText(email.html ?? email.text ?? "");
   const parts = email.attachments.map(({ filename, mimeType, content }) => ({
     ...(filename !== null && { name: filename }),
     type: mimeType,
@@ -72,6 +75,12 @@ const messageIds = (header: string | undefined) => header?.match(/<[^<>\s]+>/g) 
 function addresses(list: Address[] | undefined): EmailAddress[] {
   return (list ?? []).flatMap((entry) => (entry.group === undefined ? [entry] : entry.group)).map(({ name, address }) => (name ? { name, address } : { address }));
 }
+
+/**
+ * Whether the text is an HTML document, as some senders put in a message's text part: it starts
+ * with a doctype or an html tag, after any XML declaration and comments.
+ */
+const isHtmlDocument = (text: string) => /^\s*(<\?xml[^>]*>\s*)?(<!--(?:[^-]|-(?!->))*-->\s*)*(<!doctype html\b|<html\b)/i.test(text);
 
 /** Text for a reader: headings keep their case, images are left out, and links show their targets. */
 const htmlToText = (html: string) =>
