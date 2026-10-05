@@ -162,6 +162,37 @@ test("organization changes refuses a position that isn't a number", async () => 
   expect(errorIn(result.stderr)).toMatch(/"first" isn't a whole number. Give --after/);
 });
 
+test("an admin turns erasure of approval records on with a flag, and off with its --no- form", async () => {
+  const machine = await newMachine();
+  const server = await (await startDuva({ domain: "duva.example.com", admin: "ada@example.com" })).listen();
+  onTestFinished(() => server.close());
+  await machine.saveDeployment(server);
+  await machine.duva("login", { browserSignsIn: "ada@example.com" });
+
+  const before = await machine.duva("organization", "settings");
+  const on = await machine.duva("organization", "change-settings", "--erasureErasesApprovals");
+  const off = await machine.duva("organization", "change-settings", "--no-erasureErasesApprovals");
+
+  expect(JSON.parse(before.stdout)).toEqual({ erasureErasesApprovals: false });
+  expect(on.exitCode).toBe(0);
+  expect(JSON.parse(on.stdout)).toEqual({ erasureErasesApprovals: true });
+  expect(off.exitCode).toBe(0);
+  expect(JSON.parse(off.stdout)).toEqual({ erasureErasesApprovals: false });
+});
+
+test("organization change-settings with no setting says which there are", async () => {
+  const machine = await newMachine();
+  const server = await (await startDuva({ admin: "ada@example.com" })).listen();
+  onTestFinished(() => server.close());
+  await machine.saveDeployment(server);
+  await machine.duva("login", { browserSignsIn: "ada@example.com" });
+
+  const result = await machine.duva("organization", "change-settings");
+
+  expect(result.exitCode).toBe(1);
+  expect(errorIn(result.stderr)).toMatch(/400.*Give a setting to change: erasureErasesApprovals/);
+});
+
 test("a human creates an agent, and the agent calls Duva with its key from the environment", async () => {
   const machine = await newMachine();
   const server = await (await startDuva({ admin: "ada@example.com" })).listen();

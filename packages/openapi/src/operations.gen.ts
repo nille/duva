@@ -50,6 +50,42 @@ export const operations = [
     ]
   },
   {
+    "operationId": "getOrganizationSettings",
+    "method": "get",
+    "path": "/organization/settings",
+    "routeKey": "GET /organization/settings",
+    "summary": "Read the organization's settings.",
+    "description": "Every actor can read them. Only admins change them.",
+    "signIn": true,
+    "command": [
+      "organization",
+      "settings"
+    ],
+    "options": []
+  },
+  {
+    "operationId": "changeOrganizationSettings",
+    "method": "patch",
+    "path": "/organization/settings",
+    "routeKey": "PATCH /organization/settings",
+    "summary": "Change the organization's settings.",
+    "description": "Give only the settings to change. A setting applies from when it changes, so turning on erasureErasesApprovals leaves the approval records of threads erased before then. Only admins can change the settings. Each change is recorded in the organization's change feed under you.",
+    "signIn": true,
+    "command": [
+      "organization",
+      "change-settings"
+    ],
+    "options": [
+      {
+        "name": "erasureErasesApprovals",
+        "in": "body",
+        "type": "boolean",
+        "required": false,
+        "description": "Whether erasing a thread also erases the approval records of the agents' sends in it: the draft its approver saw and any edit they made. Off by default, so the records stay as the account of what an agent sent and who approved it. Either way the mailbox's change feed keeps each decision and who made it."
+      }
+    ]
+  },
+  {
     "operationId": "listHumans",
     "method": "get",
     "path": "/humans",

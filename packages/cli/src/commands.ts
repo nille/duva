@@ -21,7 +21,7 @@ export interface CommandOption {
   name: string;
   required: boolean;
   description: string;
-  /** "strings" for a list, given as the option once for each of its items, and "boolean" for a flag, which takes no value. */
+  /** "strings" for a list, given as the option once for each of its items, and "boolean" for a flag, which takes no value and is false as --no-<name>. */
   type?: string;
 }
 
@@ -29,12 +29,14 @@ export interface CommandOption {
 export const commands: Command[] = [deploy, login, skillInstall, attachmentsDownload, ...apiCommands];
 
 /**
- * The values of the command's options in its arguments. A flag is true when given, a list's option
- * takes a value once for each item, and every other option takes a value.
+ * The values of the command's options in its arguments. A flag is true when given and false when
+ * given as --no-<name>, a list's option takes a value once for each item, and every other option
+ * takes a value.
  */
 export function optionValues(command: Command, args: string[]): Record<string, string | string[] | boolean | undefined> {
   const { values } = parseArgs({
     args,
+    allowNegative: true,
     options: Object.fromEntries(
       command.options.map(({ name, type }) => [name, type === "boolean" ? { type: "boolean" as const } : { type: "string" as const, multiple: type === "strings" }]),
     ),

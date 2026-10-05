@@ -15,6 +15,7 @@ export type Human = components["schemas"]["Human"];
 export type Agent = components["schemas"]["Agent"];
 export type Mailbox = components["schemas"]["Mailbox"];
 export type OrganizationChange = components["schemas"]["OrganizationChange"];
+export type OrganizationSettings = components["schemas"]["OrganizationSettings"];
 /** A change as its maker describes it, before the feed gives it a position, a time and its actor. */
 type ChangeDetails = OrganizationChange extends infer Change ? (Change extends unknown ? Omit<Change, "position" | "at" | "actor"> : never) : never;
 
@@ -39,6 +40,9 @@ const ownedKey = (owner: string, mailbox: string) => ({ [pk]: `actor#${owner}`, 
 // Every address is in one partition, so the receipt rule's recipients are one query away.
 const addressesPartition = "organization#addresses";
 const addressKey = (address: string) => ({ [pk]: addressesPartition, [sk]: `address#${address}` });
+// The settings are an item of their own, so changing one doesn't contend with the organization's feed.
+// Each change counts up its version, which a write that relies on the settings checks.
+const settingsKey = { [pk]: "organization", [sk]: "settings" };
 const organizationFeed: Feed = {
   counter: organizationKey,
   partition: "organization#changes",
@@ -394,4 +398,53 @@ export async function organizationChanges(table: Table, after: number): Promise<
     if (change.mailbox !== undefined && typeof change.mailbox === "object") change.mailbox = mailboxOf(change.mailbox as Mailbox);
   }
   return changes as OrganizationChange[];
+}
+
+/** What each setting is until an admin changes it. */
+export const defaultSettings: OrganizationSettings = { erasureErasesApprovals: false };
+
+/** The organization's settings as read, with the version a write that relies on them checks. */
+export interface ReadSettings {
+  settings: OrganizationSettings;
+  version: number;
+}
+
+/** The organization's settings, each with its default until an admin changed it. */
+export async function organizationSettings(table: Table): Promise<ReadSettings> {
+  const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: settingsKey, ConsistentRead: true }));
+  const settings = Object.fromEntries(Object.entries(defaultSettings).map(([name, value]) => [name, Item?.[name] ?? value])) as OrganizationSettings;
+  return { settings, version: (Item?.version as number | undefined) ?? 0 };
+}
+
+/** The write that holds only while the settings are still as read. */
+export function settingsUnchanged(table: Table, read: ReadSettings): TransactItem {
+  return { ConditionCheck: { TableName: table.name, Key: settingsKey, ...atVersion(read) } };
+}
+
+const atVersion = ({ version }: ReadSettings) => (version === 0 ? isNew : { ConditionExpression: "version = :version", ExpressionAttributeValues: { ":version": version } });
+
+/**
+ * Changes the settings, on behalf of the admin `by`, recording the ones whose value changes in
+ * the organization's change feed, and returns them all. Giving a setting the value it has records
+ * nothing.
+ */
+export async function changeSettings(table: Table, { by, changes }: { by: string; changes: Partial<OrganizationSettings> }): Promise<OrganizationSettings> {
+  // recordChange gives the items' cancellation reasons after the counter's and the one change's.
+  const settingsReason = 2;
+  for (let attempt = 1; ; attempt++) {
+    const read = await organizationSettings(table);
+    const changed = Object.fromEntries(Object.entries(changes).filter(([name, value]) => read.settings[name as keyof OrganizationSettings] !== value));
+    if (Object.keys(changed).length === 0) return read.settings;
+    const settings = { ...read.settings, ...changed };
+    try {
+      await recordChange(table, by, { type: "settingsChanged", settings: changed }, [
+        { Put: { TableName: table.name, Item: { ...settingsKey, ...settings, version: read.version + 1 }, ...atVersion(read) } },
+      ]);
+      return settings;
+    } catch (error) {
+      // Another admin changed the settings since they were read, so they are read again.
+      const reasons = error instanceof TransactionCanceledException ? (error.CancellationReasons ?? []) : [];
+      if (reasons[settingsReason]?.Code !== "ConditionalCheckFailed" || attempt === 10) throw error;
+    }
+  }
 }

@@ -58,6 +58,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/organization/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the organization's settings.
+         * @description Every actor can read them. Only admins change them.
+         */
+        get: operations["getOrganizationSettings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Change the organization's settings.
+         * @description Give only the settings to change. A setting applies from when it changes, so turning on erasureErasesApprovals leaves the approval records of threads erased before then. Only admins can change the settings. Each change is recorded in the organization's change feed under you.
+         */
+        patch: operations["changeOrganizationSettings"];
+        trace?: never;
+    };
     "/humans": {
         parameters: {
             query?: never;
@@ -1321,7 +1345,7 @@ export interface components {
             position: number;
         };
         /** @description A change to the organization's setup. */
-        OrganizationChange: components["schemas"]["OrganizationAdded"] | components["schemas"]["DomainAdded"] | components["schemas"]["ActorAdded"] | components["schemas"]["AgentKeyRotated"] | components["schemas"]["MailboxAdded"] | components["schemas"]["AddressAdded"];
+        OrganizationChange: components["schemas"]["OrganizationAdded"] | components["schemas"]["DomainAdded"] | components["schemas"]["ActorAdded"] | components["schemas"]["AgentKeyRotated"] | components["schemas"]["MailboxAdded"] | components["schemas"]["AddressAdded"] | components["schemas"]["SettingsChanged"];
         ChangeBase: {
             /** @description The change's position in the feed, counting from 1. */
             position: number;
@@ -1409,6 +1433,26 @@ export interface components {
              */
             type: "addressAdded";
         };
+        SettingsChanged: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "settingsChanged";
+            settings: components["schemas"]["SettingsChanges"];
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "settingsChanged";
+        };
+        OrganizationSettings: {
+            erasureErasesApprovals: components["schemas"]["ErasureErasesApprovals"];
+        };
+        /** @description The settings changed, each with its new value. */
+        SettingsChanges: {
+            erasureErasesApprovals?: components["schemas"]["ErasureErasesApprovals"];
+        };
+        /** @description Whether erasing a thread also erases the approval records of the agents' sends in it: the draft its approver saw and any edit they made. Off by default, so the records stay as the account of what an agent sent and who approved it. Either way the mailbox's change feed keeps each decision and who made it. */
+        ErasureErasesApprovals: boolean;
         Status: {
             /**
              * @description The version of Duva the deployment runs.
@@ -1545,6 +1589,54 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChangePage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getOrganizationSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The organization's settings. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationSettings"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    changeOrganizationSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SettingsChanges"];
+            };
+        };
+        responses: {
+            /** @description The organization's settings, changed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationSettings"];
                 };
             };
             400: components["responses"]["BadRequest"];

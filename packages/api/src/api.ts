@@ -26,6 +26,7 @@ import {
 } from "./mailboxes.ts";
 import type { Deployment } from "./deployment.ts";
 import { type Actor, actorOf } from "./organization.ts";
+import { changeOrganizationSettings, getOrganizationSettings } from "./settings.ts";
 import { getStatus } from "./status.ts";
 import { whoami } from "./whoami.ts";
 
@@ -43,6 +44,8 @@ const handlers: Record<OperationId, OperationHandler> = {
   getStatus,
   whoami,
   listOrganizationChanges,
+  getOrganizationSettings,
+  changeOrganizationSettings,
   addHuman,
   listHumans,
   createAgent,

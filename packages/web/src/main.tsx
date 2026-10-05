@@ -1,7 +1,8 @@
 // Duva's web app. A human signs in and lands on the Inbox of their personal mailbox, where they read,
 // organize, write and send their mail, with its views in the side column. Sponsors also read their
 // agents' mailboxes, listed there above the views, and reach the Approvals view from the bar, where
-// they decide what the agents they sponsor ask to send.
+// they decide what the agents they sponsor ask to send. Admins reach Settings from the bar too,
+// where they choose the organization's settings.
 import "@fontsource-variable/source-serif-4/opsz.css";
 import "./styles.css";
 import { StrictMode, useCallback, useEffect, useRef, useState } from "react";
@@ -15,6 +16,7 @@ import { approvalChanges, type Connection, draftChanges, type Follow, labelChang
 import { ThreadIndex } from "./inbox.tsx";
 import { type AgentMailbox, MailboxList, mailboxHref } from "./mailboxes.tsx";
 import { type Config, loadConfig, signedInClient, signIn, signOut } from "./session.ts";
+import { Settings } from "./settings.tsx";
 import { strings } from "./strings.ts";
 import type { Done, Label } from "./organize.tsx";
 import { ThreadView } from "./thread.tsx";
@@ -83,7 +85,7 @@ function App() {
  * was opened from, to go back there.
  */
 type Route =
-  | { view: "approvals" }
+  | { view: "approvals" | "settings" }
   | { view: "list"; mailbox?: string; list: View }
   | { view: "thread"; mailbox?: string; id: string; from: View }
   | { view: "drafts" | "write" }
@@ -91,6 +93,7 @@ type Route =
 
 function routeOf(hash: string): Route {
   if (hash === "#/approvals") return { view: "approvals" };
+  if (hash === "#/settings") return { view: "settings" };
   if (hash === "#/drafts") return { view: "drafts" };
   if (hash === "#/write") return { view: "write" };
   const draft = /^#\/drafts\/(.+)$/.exec(hash)?.[1];
@@ -205,7 +208,9 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
   const navigated = useRef(false);
   // The mailbox the route names, if it names one.
   const named = "mailbox" in route ? route.mailbox : undefined;
-  const routeKey = route.view === "approvals" ? route.view : `${route.view}/${named ?? ""}/${"id" in route ? route.id : route.view === "list" ? pathOf(route.list) : ""}`;
+  // The views outside the mail.
+  const away = route.view === "approvals" || route.view === "settings";
+  const routeKey = away ? route.view : `${route.view}/${named ?? ""}/${"id" in route ? route.id : route.view === "list" ? pathOf(route.list) : ""}`;
   useEffect(() => {
     if (!navigated.current) {
       navigated.current = true;
@@ -232,7 +237,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
   const sponsor = (listed !== undefined && listed.agents.length > 0) || (waiting ?? 0) > 0;
   // The mailbox the route is in, the human's own if it names none.
   const agent = named !== undefined ? listed?.agents.find(({ mailbox }) => mailbox.id === named) : undefined;
-  const shown = route.view === "approvals" ? undefined : named === undefined ? mine : (agent?.mailbox ?? (mine?.id === named ? mine : undefined));
+  const shown = away ? undefined : named === undefined ? mine : (agent?.mailbox ?? (mine?.id === named ? mine : undefined));
   const base = shown === undefined ? "#/" : mailboxHref(shown, shown === mine);
   const version = shown === undefined ? 0 : (versions.get(shown.id) ?? 0);
 
@@ -258,7 +263,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
   const writing = route.view === "drafts" || route.view === "draft" || route.view === "write";
 
   const mail =
-    route.view === "approvals" ? undefined : mailboxes.status === "loading" ? (
+    away ? undefined : mailboxes.status === "loading" ? (
       <main className="desk" aria-busy="true" />
     ) : mailboxes.status === "failed" ? (
       <main className="desk">
@@ -332,7 +337,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
         <p className="wordmark">{strings.nav.label}</p>
         <nav aria-label={strings.nav.label}>
           {/* The mail's own views are in the side column, so the bar names only the mail as a whole. */}
-          <a href={base} aria-current={route.view === "approvals" ? undefined : "page"}>
+          <a href={base} aria-current={away ? undefined : "page"}>
             {strings.nav.mail}
           </a>
           {sponsor && (
@@ -346,6 +351,12 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
                   <span className="visually-hidden">{strings.nav.waiting(waiting)}</span>
                 </>
               )}
+            </a>
+          )}
+          {/* Only admins have settings to choose for now. A human's own preferences will bring Settings to everyone. */}
+          {actor.admin && (
+            <a href="#/settings" aria-current={route.view === "settings" ? "page" : undefined}>
+              {strings.nav.settings}
             </a>
           )}
         </nav>
@@ -364,6 +375,8 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
       </header>
       {route.view === "approvals" ? (
         <Approvals client={client} sponsor={actor.email} connection={connection} follow={follow} onSignedOut={onSignedOut} />
+      ) : route.view === "settings" ? (
+        <Settings client={client} admin={actor.admin} onSignedOut={onSignedOut} />
       ) : shown !== undefined || (listed !== undefined && listed.agents.length > 0) ? (
         <div className={route.view === "thread" || route.view === "draft" || route.view === "write" ? "mail mail-reading" : "mail"}>
           <aside className="side">

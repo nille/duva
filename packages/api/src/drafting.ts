@@ -7,10 +7,10 @@
 // A human's send from their own mailbox needs no approval, so asking leaves the draft approved at once.
 import { randomUUID } from "node:crypto";
 import { ConditionalCheckFailedException, TransactionCanceledException } from "@aws-sdk/client-dynamodb";
-import { GetCommand, QueryCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, QueryCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import type { components } from "@duva/openapi";
 import type { Table } from "./deployment.ts";
-import { recordChanges } from "./feed.ts";
+import { entryKey, recordChanges } from "./feed.ts";
 import { mailboxFeed, type StoredMessage, storeSentMessage } from "./mail.ts";
 import { type Agent, mailboxKey } from "./organization.ts";
 import { documents, isNew, pk, sk, type TransactItem } from "./table.ts";
@@ -22,8 +22,14 @@ type Edits = components["schemas"]["Edits"];
 type DraftContent = Omit<Draft, "id" | "updatedAt" | "send">;
 /** Where a draft's send stands as stored, with the actor who asked to send it if it needs no approval. */
 type StoredSend = SendStatus & { by?: string };
-/** A draft as stored, with the count of its writes, which each write checks, so of two at once one retries. */
-type StoredDraft = Omit<Draft, "send"> & { send?: StoredSend; version: number };
+/**
+ * A draft as stored, with the count of its writes, which each write checks, so of two at once one
+ * retries, and the IDs of the approvals it asked for, so erasure finds them. Drafts written before
+ * approvals were listed list none, and erasure finds theirs in the mailbox's change feed.
+ */
+type StoredDraft = Omit<Draft, "send"> & { send?: StoredSend; version: number; approvals?: string[] };
+/** An approval as stored, with the position of its decision in the mailbox's change feed once it is decided. */
+type StoredApproval = Approval & { decidedIn?: number };
 
 const draftKey = (mailbox: string, draft: string) => ({ [pk]: mailboxKey(mailbox)[pk]!, [sk]: `draft#${draft}` });
 const approvalKey = (approval: string) => ({ [pk]: `approval#${approval}`, [sk]: "approval" });
@@ -64,7 +70,7 @@ export async function addDraft(table: Table, { mailbox, by, content }: { mailbox
   await recordChanges(table, mailboxFeed(mailbox), {
     by,
     changes: [{ type: "draftWritten", draft: draft.id }],
-    items: [{ Put: { TableName: table.name, Item: { ...draftKey(mailbox, draft.id), ...draft, version: 1 }, ...isNew } }],
+    items: [{ Put: { TableName: table.name, Item: { ...draftKey(mailbox, draft.id), ...draft, version: 1, approvals: [] }, ...isNew } }],
   });
   return draft;
 }
@@ -215,7 +221,12 @@ export async function askToSend(table: Table, { mailbox, id, agent }: { mailbox:
       draft: approvalDraftOf(draft),
       askedAt: new Date().toISOString(),
     };
-    const asked: StoredDraft = { ...draft, send: { approval: approval.id, state: "waiting" }, version: draft.version + 1 };
+    const asked: StoredDraft = {
+      ...draft,
+      send: { approval: approval.id, state: "waiting" },
+      version: draft.version + 1,
+      ...(draft.approvals !== undefined && { approvals: [...draft.approvals, approval.id] }),
+    };
     await recordChanges(table, mailboxFeed(mailbox), {
       by: agent.id,
       changes: [{ type: "approvalAsked", draft: id, approval: approval.id }],
@@ -286,8 +297,8 @@ async function decide(table: Table, approval: Approval, by: string, { state, not
     await recordChanges(table, mailboxFeed(mailbox), {
       by,
       changes: [{ type: "approvalDecided", draft: draft.id, approval: approval.id, decision: state, edits, note }],
-      items: [
-        ...settle(table, approval, { state, decidedAt, note, edits }),
+      items: (decidedIn) => [
+        ...settle(table, approval, { state, decidedAt, note, edits, decidedIn }),
         {
           Update: {
             TableName: table.name,
@@ -312,7 +323,7 @@ async function decide(table: Table, approval: Approval, by: string, { state, not
  * The writes that move a pending approval to its outcome: the approval, on condition that it is
  * still pending, and the removal of its copy from the approver's pending approvals.
  */
-function settle(table: Table, approval: Approval, outcome: Pick<Approval, "state" | "decidedAt" | "note" | "edits">): TransactItem[] {
+function settle(table: Table, approval: Approval, outcome: Pick<StoredApproval, "state" | "decidedAt" | "note" | "edits" | "decidedIn">): TransactItem[] {
   const set = setting(outcome);
   return [
     {
@@ -327,6 +338,68 @@ function settle(table: Table, approval: Approval, outcome: Pick<Approval, "state
     },
     { Delete: { TableName: table.name, Key: pendingKey(approval.approver, approval.askedAt, approval.id) } },
   ];
+}
+
+/**
+ * Erases the approval records of the draft's sends: each approval it asked for, with the draft its
+ * approver saw and any edit they made. Their decisions stay in the mailbox's change feed, naming
+ * the decision and its actor, without the edit or the note. Run again, it finishes what an earlier
+ * run left.
+ */
+export async function eraseApprovals(table: Table, mailbox: string, stored: Record<string, unknown>): Promise<void> {
+  const draft = stored as StoredDraft;
+  const feed = mailboxFeed(mailbox);
+  // Where each approval's decision is in the feed, for those that don't keep it.
+  const listed = draft.approvals === undefined ? await approvalsInFeed(table, mailbox, draft.id) : undefined;
+  for (const id of draft.approvals ?? listed!.keys()) {
+    const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: approvalKey(id), ConsistentRead: true }));
+    if (Item === undefined) continue;
+    const decidedIn = (Item as StoredApproval).decidedIn ?? listed?.get(id);
+    await documents(table).send(
+      new TransactWriteCommand({
+        TransactItems: [
+          { Delete: { TableName: table.name, Key: approvalKey(id) } },
+          ...(decidedIn === undefined
+            ? []
+            : [
+                {
+                  Update: {
+                    TableName: table.name,
+                    Key: entryKey(feed, decidedIn),
+                    UpdateExpression: "REMOVE edits, note",
+                    ConditionExpression: "approval = :approval",
+                    ExpressionAttributeValues: { ":approval": id },
+                  },
+                },
+              ]),
+        ],
+      }),
+    );
+  }
+}
+
+/** The approvals the draft asked for, as the mailbox's change feed records them, each with where its decision is, once decided. */
+async function approvalsInFeed(table: Table, mailbox: string, draft: string): Promise<Map<string, number | undefined>> {
+  const approvals = new Map<string, number | undefined>();
+  let start: Record<string, unknown> | undefined;
+  do {
+    const page = await documents(table).send(
+      new QueryCommand({
+        TableName: table.name,
+        KeyConditionExpression: `${pk} = :feed`,
+        FilterExpression: "draft = :draft AND #type IN (:asked, :decided)",
+        ExpressionAttributeNames: { "#type": "type" },
+        ExpressionAttributeValues: { ":feed": mailboxFeed(mailbox).partition, ":draft": draft, ":asked": "approvalAsked", ":decided": "approvalDecided" },
+        ConsistentRead: true,
+        ExclusiveStartKey: start,
+      }),
+    );
+    for (const { type, approval, position } of page.Items ?? []) {
+      approvals.set(approval as string, type === "approvalDecided" ? (position as number) : approvals.get(approval as string));
+    }
+    start = page.LastEvaluatedKey;
+  } while (start !== undefined);
+  return approvals;
 }
 
 /** An update that sets each attribute given a value to it. */

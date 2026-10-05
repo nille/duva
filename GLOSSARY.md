@@ -38,7 +38,7 @@ _Avoid_: delegation, permission, share
 Sign-off before an action takes effect. A send needs it when the sender's grant says so, from the mailbox's owner or an approver they choose. An agent's send from its own mailbox, and a setup change by an agent admin, need it from the agent's sponsor; each can be switched off for that agent.
 
 **Admin**:
-An actor allowed to change the organization's setup: domains, addresses, groups and actors. Admins act as owner of shared mailboxes only; they never give grants to personal ones. An agent can be an admin only if its sponsor is one.
+An actor allowed to change the organization's setup: domains, addresses, groups, actors and settings. Admins act as owner of shared mailboxes only; they never give grants to personal ones. An agent can be an admin only if its sponsor is one.
 
 **Sponsor**:
 The human who answers for an agent, at first the one who created it. The sponsor acts as owner of the agent's personal mailboxes, gets the agent's alerts, can pause it or rotate its key, and approves its sends and setup changes. An agent whose sponsor is removed is paused until someone takes it over.

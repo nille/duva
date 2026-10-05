@@ -1618,6 +1618,109 @@ input[aria-invalid="true"] {
   border-top: 1px solid var(--rule);
 }
 
+/* Settings: each group of settings a sheet of its own, each setting a set of choices on it. */
+
+.settings {
+  max-width: 44rem;
+  background: var(--paper);
+  border-radius: 2px;
+  box-shadow: var(--sheet-shadow);
+}
+
+.settings-head {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-5) var(--space-5) var(--space-4);
+  border-bottom: 1px solid var(--rule);
+}
+
+.settings-head h2 {
+  font-size: var(--text-md);
+  font-weight: 650;
+}
+
+.settings-head p {
+  font-size: var(--text-sm);
+  color: var(--ink-2);
+}
+
+.setting {
+  display: grid;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5) var(--space-5);
+}
+
+.setting fieldset {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.setting legend {
+  padding: 0;
+  margin-bottom: var(--space-1);
+  font-weight: 650;
+}
+
+.setting-lead {
+  max-width: 60ch;
+  font-size: var(--text-sm);
+  color: var(--ink-2);
+}
+
+.choice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 150ms, border-color 150ms;
+}
+
+.choice:has(input:checked) {
+  background: var(--pencil-wash);
+  border-color: var(--pencil);
+}
+
+.choice:has(input:disabled) {
+  cursor: default;
+}
+
+.choice input {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+  margin: 0.1875rem 0 0;
+}
+
+.choice-text {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.choice-name {
+  font-weight: 600;
+}
+
+.choice .hint {
+  margin-top: 0;
+  max-width: 60ch;
+}
+
+.setting-foot {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3) var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--ink-2);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   ::view-transition-group(*) {

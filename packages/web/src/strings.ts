@@ -24,7 +24,7 @@ export const strings = {
     unread: (count: number) => `${count} unread`,
   },
 
-  nav: { label: "Duva", mail: "Mail", approvals: "Approvals", waiting: (count: number) => `, ${count} waiting`, write: "Write" },
+  nav: { label: "Duva", mail: "Mail", approvals: "Approvals", settings: "Settings", waiting: (count: number) => `, ${count} waiting`, write: "Write" },
   connection: {
     upToDate: (time: string) => `Up to date at ${time}`,
     unreachable: "Duva couldn't check for new requests. It tries again by itself.",
@@ -231,6 +231,28 @@ export const strings = {
     gone: "This thread is no longer in your mailbox.",
     failed: (status: number) => `Duva couldn't open this thread (error ${status}). Try again in a moment.`,
     unreachable: "Duva couldn't be reached, so the thread isn't shown. Check your connection and try again.",
+  },
+
+  settings: {
+    title: "Settings",
+    organization: "Organization",
+    organizationLead: "Admins choose these for everyone in the organization.",
+    onlyAdmins: "Only admins change these. Ask one if this should change.",
+    erasure: {
+      legend: "When a thread with an agent's sends is erased",
+      lead: "Each send an agent asked for has an approval record: the draft its approver saw, and any change they made.",
+      keep: "Keep them",
+      keepHint: "They stay as the record of what an agent sent and who approved it. This is the default.",
+      erase: "Erase them with the thread",
+      eraseHint: "The change feed still shows each decision and who made it, without the text.",
+    },
+    save: "Save",
+    saving: "Saving…",
+    saved: "Saved. This applies to threads erased from now on.",
+    failed: (status: number) => `Duva couldn't read the settings (error ${status}). Try again in a moment.`,
+    unreachable: "Duva couldn't be reached, so the settings aren't shown. Check your connection and try again.",
+    saveFailed: (status: number) => `Duva couldn't save the setting (error ${status}). Try again in a moment.`,
+    saveUnreachable: "Duva couldn't be reached, so the setting isn't saved. Check your connection and try again.",
   },
 
   approvals: {

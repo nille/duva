@@ -23,14 +23,15 @@ export const entryKey = (feed: Feed, position: number): Key => ({ [pk]: feed.par
 /**
  * Writes the items with the changes' entries in the feed, in one transaction, attributed to the
  * actor `by`, or to no actor if it is undefined. The counter holds the feed's last position, and
- * the changes claim the next ones, so concurrent changes retry until each has its own. If one of
- * the items' conditions fails, the transaction's TransactionCanceledException is thrown, with the
- * items' reasons from index 1 + changes.length on.
+ * the changes claim the next ones, so concurrent changes retry until each has its own. Items that
+ * name where the changes are in the feed are given as a function of the first change's position.
+ * If one of the items' conditions fails, the transaction's TransactionCanceledException is thrown,
+ * with the items' reasons from index 1 + changes.length on.
  */
 export async function recordChanges(
   table: Table,
   feed: Feed,
-  { by, changes, items }: { by: string | undefined; changes: object[]; items: TransactItem[] },
+  { by, changes, items }: { by: string | undefined; changes: object[]; items: TransactItem[] | ((first: number) => TransactItem[]) },
 ): Promise<void> {
   for (let attempt = 1; ; attempt++) {
     const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: feed.counter, ConsistentRead: true }));
@@ -58,7 +59,7 @@ export async function recordChanges(
                 ...isNew,
               },
             })),
-            ...items,
+            ...(typeof items === "function" ? items(last + 1) : items),
           ],
         }),
       );

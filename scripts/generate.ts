@@ -33,7 +33,8 @@ interface SchemaObject {
   type?: string;
   items?: SchemaObject;
   required?: string[];
-  properties?: Record<string, SchemaObject & { description?: string }>;
+  description?: string;
+  properties?: Record<string, SchemaObject>;
 }
 
 interface ParameterObject {
@@ -118,9 +119,10 @@ function bodyOf(where: string, body: OperationObject["requestBody"]) {
   if (body === undefined) return [];
   const schema = resolve(body.content?.["application/json"]?.schema);
   if (schema?.type !== "object") fail(`${where} has a body that isn't a JSON object, which the CLI can't pass yet.`);
-  return Object.entries(schema.properties ?? {}).map(([name, property]) =>
-    option(where, "body", name, property.type === "array" && property.items?.type === "string" ? "strings" : property.type, schema.required?.includes(name) ?? false, property.description),
-  );
+  return Object.entries(schema.properties ?? {}).map(([name, given]) => {
+    const property = resolve(given) ?? given;
+    return option(where, "body", name, property.type === "array" && property.items?.type === "string" ? "strings" : property.type, schema.required?.includes(name) ?? false, property.description);
+  });
 }
 
 function option(where: string, place: "query" | "path" | "body", name: string, type: string | undefined, required: boolean, description = "") {

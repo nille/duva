@@ -67,6 +67,20 @@ Lists up to 100 changes, oldest first. To catch up, call again with the position
 
 - `--after`: The position to list changes after. 0, the default, lists from the start.
 
+## duva organization settings
+
+Read the organization's settings.
+
+Every actor can read them. Only admins change them.
+
+## duva organization change-settings
+
+Change the organization's settings.
+
+Give only the settings to change. A setting applies from when it changes, so turning on erasureErasesApprovals leaves the approval records of threads erased before then. Only admins can change the settings. Each change is recorded in the organization's change feed under you.
+
+- `--erasureErasesApprovals` or `--no-erasureErasesApprovals`: Whether erasing a thread also erases the approval records of the agents' sends in it: the draft its approver saw and any edit they made. Off by default, so the records stay as the account of what an agent sent and who approved it. Either way the mailbox's change feed keeps each decision and who made it.
+
 ## duva humans list
 
 List the organization's humans.
@@ -130,7 +144,7 @@ Lists up to 100 changes, oldest first, leaving out the arrivals of mail judged t
 
 - `--mailbox` (required): The mailbox's ID.
 - `--after`: The position to list changes after. 0, the default, lists from the start.
-- `--spam`: Lists the arrivals of mail judged to be spam too.
+- `--spam` or `--no-spam`: Lists the arrivals of mail judged to be spam too.
 
 ## duva threads list
 
@@ -270,7 +284,7 @@ A reply goes from the address the original was sent to, plus tag kept, to the or
 - `--mailbox` (required): The mailbox's ID.
 - `--answers`: The ID of the message the draft replies to. Without it or forwards, the draft is a new message.
 - `--forwards`: The ID of the message the draft forwards, with its text and attachments. Give answers or forwards, not both.
-- `--replyAll`: With answers, replies to all, so every other recipient of the original gets it too, except the mailbox's own addresses.
+- `--replyAll` or `--no-replyAll`: With answers, replies to all, so every other recipient of the original gets it too, except the mailbox's own addresses.
 - `--to` (once for each): The recipients' addresses. A reply goes to the original's Reply-To or From unless you give them.
 - `--cc` (once for each): The Cc recipients' addresses. A reply to all copies the original's Cc recipients unless you give them.
 - `--bcc` (once for each): The Bcc recipients' addresses, which get the message but appear in no header.

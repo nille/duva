@@ -337,3 +337,135 @@ test("a Trash whose emptying failed is erased by the eraser's next daily run, un
   expect(keeps(duva, "Hej. Kvitto.")).toBe(false);
   expect((await changes()).at(-1)).toMatchObject({ type: "threadErased", thread, actor: graceId });
 });
+
+/**
+ * A deployment where the admin Ada sponsors the agent Hermes, which owns hermes@example.com and
+ * has a thread from Ada there. `answer` has Hermes reply in it and Ada approve the reply with her
+ * edit, and answers the approval. Grace is another human.
+ */
+async function withAgentSend() {
+  const duva = await startDuva({ domain: "example.com", admin: "ada@example.org", humans: ["grace@example.org"] });
+  const ada = duva.signIn("ada@example.org");
+  const { data: me } = await ada.GET("/whoami");
+  const { data: created } = await ada.POST("/agents", { body: { name: "Hermes" } });
+  const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: created!.agent.id, address: "hermes@example.com" } });
+  const hermes = duva.withKey(created!.key);
+  const params = { path: { mailbox: mailbox!.id } };
+  /** Receives a message with the subject for Hermes, and answers its thread and message. */
+  const receive = async (subject: string) => {
+    await duva.receive(note(subject, { to: "hermes@example.com" }), { to: ["hermes@example.com"] });
+    const { data: changes } = await ada.GET("/mailboxes/{mailbox}/changes", { params });
+    const { thread } = changes!.changes.findLast((change) => change.type === "messageReceived") as { thread: string };
+    const { data: read } = await ada.GET("/mailboxes/{mailbox}/threads/{thread}", { params: { path: { ...params.path, thread } } });
+    return { thread, message: read!.messages[0]!.id };
+  };
+  /** Hermes drafts the text in reply to the message and asks to send it, and answers the draft and the approval it waits for. */
+  const ask = async (message: string, text: string, draft?: string) => {
+    const path = { ...params.path, draft: draft ?? (await hermes.POST("/mailboxes/{mailbox}/drafts", { params, body: { answers: message, text } })).data!.id };
+    if (draft !== undefined) await hermes.PATCH("/mailboxes/{mailbox}/drafts/{draft}", { params: { path }, body: { text } });
+    const { data: asked } = await hermes.POST("/mailboxes/{mailbox}/drafts/{draft}/send", { params: { path } });
+    return { draft: path.draft, approval: asked!.send!.approval! };
+  };
+  const answer = async (message: string) => {
+    const { approval } = await ask(message, "Ja, gärna.");
+    await ada.POST("/approvals/{approval}/send", { params: { path: { approval } }, body: { text: "Ja, gärna. Hälsningar, Ada." } });
+    return approval;
+  };
+  /** Ada puts the thread in Trash and empties it, as Hermes's sponsor. */
+  const eraseNow = async (thread: string) => {
+    await ada.POST("/mailboxes/{mailbox}/threads/labels", { params, body: { threads: [thread], add: ["trash"] } });
+    await ada.POST("/mailboxes/{mailbox}/trash/empty", { params });
+  };
+  const decisions = async () => (await ada.GET("/mailboxes/{mailbox}/changes", { params })).data!.changes.filter((change) => change.type === "approvalDecided");
+  /** Whether the approval can still be read: deciding it again is refused as decided, rather than as missing. */
+  const kept = async (approval: string) => (await ada.POST("/approvals/{approval}/send", { params: { path: { approval } } })).response.status === 409;
+  const erasesApprovals = (on: boolean) => ada.PATCH("/organization/settings", { body: { erasureErasesApprovals: on } });
+  return { duva, ada, adaId: me!.id, hermes, params, receive, ask, answer, eraseNow, decisions, kept, erasesApprovals };
+}
+
+test("by default an erased thread keeps its approval records, and their decisions in the feed keep the approver's edit", async () => {
+  const { receive, answer, eraseNow, decisions, kept } = await withAgentSend();
+  const { thread, message } = await receive("Möte");
+  const approval = await answer(message);
+
+  await eraseNow(thread);
+
+  expect(await kept(approval)).toBe(true);
+  expect(await decisions()).toMatchObject([{ approval, decision: "approved", edits: { text: "Ja, gärna. Hälsningar, Ada." } }]);
+});
+
+test("with erasure of approval records on, emptying Trash erases the approval records of the agent's sends in it, and their decisions keep only who decided what", async () => {
+  const { adaId, receive, answer, eraseNow, decisions, kept, erasesApprovals } = await withAgentSend();
+  const { thread, message } = await receive("Möte");
+  const approval = await answer(message);
+  await erasesApprovals(true);
+
+  await eraseNow(thread);
+
+  expect(await kept(approval)).toBe(false);
+  const [decided] = await decisions();
+  expect(decided).toEqual({ position: expect.any(Number), at: expect.any(String), actor: adaId, type: "approvalDecided", draft: expect.any(String), approval, decision: "approved" });
+});
+
+test("with erasure of approval records on, the eraser's daily run erases them too", async () => {
+  const { duva, ada, params, receive, answer, decisions, kept, erasesApprovals } = await withAgentSend();
+  const { thread, message } = await receive("Möte");
+  const approval = await answer(message);
+  await erasesApprovals(true);
+  await ada.POST("/mailboxes/{mailbox}/threads/labels", { params, body: { threads: [thread], add: ["trash"] } });
+
+  await duva.erase(inDays(31));
+
+  expect(await kept(approval)).toBe(false);
+  expect((await decisions())[0]).not.toHaveProperty("edits");
+});
+
+test("with erasure of approval records on, every approval a sent draft asked for is erased, the rejected one's note too", async () => {
+  const { ada, receive, ask, eraseNow, decisions, kept, erasesApprovals } = await withAgentSend();
+  const { thread, message } = await receive("Möte");
+  const first = await ask(message, "Ja.");
+  await ada.POST("/approvals/{approval}/reject", { params: { path: { approval: first.approval } }, body: { note: "Skriv lite mer." } });
+  const second = await ask(message, "Ja, gärna.", first.draft);
+  await ada.POST("/approvals/{approval}/send", { params: { path: { approval: second.approval } } });
+  await erasesApprovals(true);
+
+  await eraseNow(thread);
+
+  expect(await kept(first.approval)).toBe(false);
+  expect(await kept(second.approval)).toBe(false);
+  const left = await decisions();
+  expect(left.map(({ decision }) => decision)).toEqual(["rejected", "approved"]);
+  for (const decided of left) expect(Object.keys(decided).sort()).toEqual(["actor", "approval", "at", "decision", "draft", "position", "type"]);
+});
+
+test("turning erasure of approval records on doesn't reach back, and turning it off again keeps the next ones", budget, async () => {
+  const { receive, answer, eraseNow, decisions, kept, erasesApprovals } = await withAgentSend();
+  const before = await receive("Före");
+  const keptBefore = await answer(before.message);
+  await eraseNow(before.thread);
+  await erasesApprovals(true);
+  const during = await receive("Under");
+  const erased = await answer(during.message);
+  await eraseNow(during.thread);
+  await erasesApprovals(false);
+  const after = await receive("Efter");
+  const keptAfter = await answer(after.message);
+
+  await eraseNow(after.thread);
+
+  expect([await kept(keptBefore), await kept(erased), await kept(keptAfter)]).toEqual([true, false, true]);
+  expect((await decisions()).map((decided) => decided.edits?.text)).toEqual(["Ja, gärna. Hälsningar, Ada.", undefined, "Ja, gärna. Hälsningar, Ada."]);
+});
+
+test("an approval record of a thread still in the mailbox stays, the setting on or not", async () => {
+  const { receive, answer, eraseNow, kept, erasesApprovals } = await withAgentSend();
+  const erased = await receive("Kvitto");
+  const other = await receive("Möte");
+  await answer(erased.message);
+  const approval = await answer(other.message);
+  await erasesApprovals(true);
+
+  await eraseNow(erased.thread);
+
+  expect(await kept(approval)).toBe(true);
+});

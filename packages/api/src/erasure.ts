@@ -2,7 +2,9 @@
 // Trash for the retention period, and emptying Trash hands it the threads in Trash. A thread leaves
 // every listing in one transaction with its threadErased change, which keeps none of its content.
 // Its messages, their pointers, the drafts it sent and their raw messages go after that, recorded
-// as work to finish, so a run that stops partway finishes on the next one.
+// as work to finish, so a run that stops partway finishes on the next one. The approval records of
+// the agents' sends in it go too if the organization's setting says so when the thread is erased,
+// so turning the setting on doesn't reach back.
 import { BatchGetCommand, type BatchGetCommandOutput, DeleteCommand, GetCommand, PutCommand, QueryCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import { TransactionCanceledException } from "@aws-sdk/client-dynamodb";
 import { InvokeCommand, type LambdaClient } from "@aws-sdk/client-lambda";
@@ -12,7 +14,8 @@ import { recordChanges } from "./feed.ts";
 import { inboundPrefix } from "./infrastructure.ts";
 import type { MailBucket } from "./mail-bucket.ts";
 import { asRead, type Cursor, cursorOf, type ErasedLabel, keys, listingsOf, mailboxFeed, type StoredSummary, threadsPerPage, threadSummary, threadsWithLabel, trash } from "./mail.ts";
-import { allMailboxes } from "./organization.ts";
+import { eraseApprovals } from "./drafting.ts";
+import { allMailboxes, organizationSettings, settingsUnchanged } from "./organization.ts";
 import { documents, pk, sk, type TransactItem } from "./table.ts";
 
 /** How long a thread keeps Spam or Trash before it is erased: the organization's retention period. */
@@ -94,30 +97,39 @@ async function eraseTrash(table: Table, emptied: TrashEmptied): Promise<void> {
 async function eraseThread(table: Table, { mailbox, thread, by, due }: { mailbox: string; thread: string; by: string | undefined; due: (summary: StoredSummary) => boolean }) {
   // recordChanges gives the items' cancellation reasons after the counter's and the one change's.
   const threadReason = 2;
+  let erasesApprovals: boolean;
   for (let attempt = 1; ; attempt++) {
     const summary = await threadSummary(table, mailbox, thread);
     if (summary === undefined || !due(summary)) return;
+    const settings = await organizationSettings(table);
+    erasesApprovals = settings.settings.erasureErasesApprovals;
+    const items: TransactItem[] = [
+      { Put: { TableName: table.name, Item: { ...keys.threadKey(mailbox, thread), erasing: true }, ...asTimed(summary) } },
+      ...listingsOf(summary).map((listing) => ({ Delete: { TableName: table.name, Key: keys.listingKey(mailbox, listing, summary.latestAt, thread) } })),
+      ...Object.entries(summary.labelledAt ?? {}).map(([label, at]) => ({
+        Delete: { TableName: table.name, Key: keys.labelledKey(at, mailbox, thread, label as ErasedLabel) },
+      })),
+      { Put: { TableName: table.name, Item: { ...erasingKey(mailbox, thread), mailbox, thread, erasesApprovals } } },
+      // An admin who changes the settings meanwhile changes them before or after this erasure, never during it.
+      settingsUnchanged(table, settings),
+    ];
     try {
       await recordChanges(table, mailboxFeed(mailbox), {
         by,
         changes: [{ type: "threadErased", thread }],
-        items: [
-          { Put: { TableName: table.name, Item: { ...keys.threadKey(mailbox, thread), erasing: true }, ...asTimed(summary) } },
-          ...listingsOf(summary).map((listing) => ({ Delete: { TableName: table.name, Key: keys.listingKey(mailbox, listing, summary.latestAt, thread) } })),
-          ...Object.entries(summary.labelledAt ?? {}).map(([label, at]) => ({
-            Delete: { TableName: table.name, Key: keys.labelledKey(at, mailbox, thread, label as ErasedLabel) },
-          })),
-          { Put: { TableName: table.name, Item: { ...erasingKey(mailbox, thread), mailbox, thread } } },
-        ],
+        items,
       });
       break;
     } catch (error) {
-      // Mail joined the thread, or it was changed, since it was read, so it is read again.
+      // Mail joined the thread, it was changed, or the settings were, since they were read, so they are read again.
       const reasons = error instanceof TransactionCanceledException ? (error.CancellationReasons ?? []) : [];
-      if (reasons[threadReason]?.Code !== "ConditionalCheckFailed" || attempt === 10) throw error;
+      // The settings' check is the last item.
+      const settingsReason = threadReason + items.length - 1;
+      const changed = [threadReason, settingsReason].some((reason) => reasons[reason]?.Code === "ConditionalCheckFailed");
+      if (!changed || attempt === 10) throw error;
     }
   }
-  await eraseMessages(table, mailbox, thread);
+  await eraseMessages(table, mailbox, thread, erasesApprovals);
 }
 
 /** The condition that the thread is as it was read, with the same times for Spam and Trash, so one restored and labelled again meanwhile isn't erased. */
@@ -133,10 +145,11 @@ const messagesAtOnce = 20;
 
 /**
  * Deletes the thread's messages, their Message-ID pointers and references, the marks that SES's
- * messages were received, and the drafts it sent, listing each raw message to erase, and then the
- * thread itself. Run again, it finishes what an earlier run left.
+ * messages were received, and the drafts it sent, with their approval records if `erasesApprovals`,
+ * listing each raw message to erase, and then the thread itself. Run again, it finishes what an
+ * earlier run left.
  */
-async function eraseMessages(table: Table, mailbox: string, thread: string) {
+async function eraseMessages(table: Table, mailbox: string, thread: string, erasesApprovals: boolean) {
   const db = documents(table);
   const messages = await allItems(table, {
     KeyConditionExpression: `${pk} = :mailbox AND begins_with(${sk}, :thread)`,
@@ -165,6 +178,7 @@ async function eraseMessages(table: Table, mailbox: string, thread: string) {
     ExpressionAttributeNames: { "#send": "send" },
     ExpressionAttributeValues: { ":mailbox": keys.partition(mailbox), ":draft": "draft#", ":thread": thread },
   });
+  if (erasesApprovals) for (const draft of drafts) await eraseApprovals(table, mailbox, draft);
   for (let index = 0; index < drafts.length; index += 100) {
     const chunk = drafts.slice(index, index + 100);
     await db.send(new TransactWriteCommand({ TransactItems: chunk.map((draft) => ({ Delete: { TableName: table.name, Key: { [pk]: draft[pk], [sk]: draft[sk] } } })) }));
@@ -189,7 +203,7 @@ async function finishErasures(table: Table, mailBucket: MailBucket) {
     await eraseTrash(table, item as unknown as TrashEmptied);
   }
   for (const item of await allItems(table, { KeyConditionExpression: `${pk} = :threads`, ExpressionAttributeValues: { ":threads": erasingKey("", "")[pk] } })) {
-    await eraseMessages(table, item.mailbox as string, item.thread as string);
+    await eraseMessages(table, item.mailbox as string, item.thread as string, item.erasesApprovals === true);
   }
   const raw = await allItems(table, { KeyConditionExpression: `${pk} = :raw`, ExpressionAttributeValues: { ":raw": rawErasureKey("", "")[pk] } });
   if (raw.length === 0) return;
