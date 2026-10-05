@@ -28,7 +28,7 @@ Success means an organization can let agents own mailboxes and answer mail on it
 
 ## Positioning
 
-- Agents are actors with their own mailboxes and grants, and every action is attributed to exactly one actor. The usual model treats an agent as an API client acting as a human.
+- Agents are actors with their own mailboxes, and every action is attributed to exactly one actor. The usual model treats an agent as an API client acting as a human.
 - Human sign-off is part of the model. An agent's sends wait for approval, and every message an agent sends carries the disclosure, so recipients can tell.
 - Each organization runs Duva in its own AWS account. An idle deployment costs close to nothing (ADR-0006), and the code is open source under MIT (ADR-0012).
 - Mail is reached only through Duva's own clients. There is no IMAP, SMTP or JMAP access (ADR-0008).
@@ -45,9 +45,9 @@ Success means an organization can let agents own mailboxes and answer mail on it
 
 - Interface copy uses the terms in GLOSSARY.md and never the ones it lists to avoid: thread, never conversation; label, never folder; human, never user; sponsor, never owner, for an agent.
 - Mail is organized with labels. Inbox, Spam and Trash are built in, and Trash and Spam are erased after the organization's retention period, 30 days by default.
-- The Screener holds mail from first-time senders. It is on by default for humans' personal mailboxes and off for agents' and shared ones.
+- The Screener holds mail from first-time senders. It is on by default for humans' personal mailboxes and off for agents'.
 - Tracking protection is on by default and each actor can turn it off. In the first slice, messages show as plain text, so no remote content loads at all.
-- Admins can't read a personal mailbox without its owner's grant. A sponsor has full access to their agent's personal mailboxes.
+- Admins can't read personal mailboxes. A sponsor has full access to their agent's personal mailboxes, and an agent works in its sponsor's mailbox only with sponsor access (ADR-0015).
 - Every message an agent sends carries a disclosure header, also after a human approved or edited it, and by default a visible line such as "Sent by Hermes for Nicklas".
 - There is no end-to-end encryption (ADR-0011).
 - The interface is in English for now. All strings live in one place, so Swedish or Danish can be added later without a rewrite.

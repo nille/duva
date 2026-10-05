@@ -17,35 +17,31 @@ An actor that is a person.
 _Avoid_: user
 
 **Agent**:
-An actor that is software. Any human can create one and becomes its sponsor. An agent can own personal mailboxes, which an admin creates, and act in mailboxes it holds a grant to.
+An actor that is software. Any human can create one and becomes its sponsor. An agent can own personal mailboxes, which an admin creates, and works in no one else's mailbox but its sponsor's, if its sponsor gives it sponsor access.
 _Avoid_: bot, assistant
 
 **Mailbox**:
-A store of received and sent mail, reached through one or more addresses, that actors read and act on. It is either personal or shared.
+A store of received and sent mail, reached through one or more addresses, that actors read and act on. Every mailbox is a personal mailbox.
 
 **Personal mailbox**:
-A mailbox owned by one actor. Admins cannot read it without a grant from the owner. When the actor is removed, it is handed over or deleted.
+A mailbox owned by one actor. Admins cannot read it. When the actor is removed, it is handed over or deleted.
 
-**Shared mailbox**:
-A mailbox owned by the organization, where admins act as its owner. Other actors use it through grants. It holds one copy of each message; a group sends a copy to each member instead.
-_Avoid_: team inbox, collaborative inbox
-
-**Grant**:
-Limited, revocable access to a mailbox, given to an actor by the mailbox's owner, or by an agent's sponsor for the agent's mailbox. It says which of read, organize, draft, send and delete the actor may do: everything includes read, and send includes draft. It also says whether sending needs approval (yes by default) and, for an agent, whether its mail carries the disclosure's visible line (yes by default). It works as soon as it's given and lasts until revoked. An actor holds at most one grant to a mailbox.
-_Avoid_: delegation, permission, share
+**Sponsor access**:
+An agent's access to its sponsor's personal mailbox, which the sponsor gives per agent and which is off by default. Read lets it read everything there. Full also lets it organize, move threads to Trash and back, draft, and send as the sponsor. Only the sponsor empties the Trash. Mail that several people need goes to a group, which gives each member their own copy; no actor works in another human's mailbox.
+_Avoid_: grant, delegation, share
 
 **Approval**:
-Sign-off before an action takes effect. A send needs it when the sender's grant says so, from the mailbox's owner, or the sponsor for an agent's mailbox. An agent's send from its own mailbox, and a setup change by an agent admin, need it from the agent's sponsor; each can be switched off for that agent.
+Sign-off before an action takes effect. An agent's send from its own mailbox, its send from its sponsor's mailbox, and a setup change by an agent admin need it from the agent's sponsor; each can be switched off for that agent on its own.
 
 **Admin**:
-An actor allowed to change the organization's setup: domains, addresses, groups, actors and settings. Admins act as owner of shared mailboxes only; they never give grants to personal ones. An agent can be an admin only if its sponsor is one.
+An actor allowed to change the organization's setup: domains, addresses, groups, actors and settings. Admins can't read personal mailboxes. An agent can be an admin only if its sponsor is one.
 
 **Sponsor**:
 The human who answers for an agent, at first the one who created it. The sponsor acts as owner of the agent's personal mailboxes, gets the agent's alerts, can pause it or rotate its key, and approves its sends and setup changes. An agent whose sponsor is removed is paused until someone takes it over.
 _Avoid_: owner (for agents), operator, creator
 
 **Disclosure**:
-The mark on mail an agent sends: always a header, even after a human approved it, and by default a visible line naming the agent and whom it acts for, the owner of the mailbox it sends from. It follows the actor who sends: a draft an agent wrote that a human sends carries none.
+The mark on mail an agent sends: always a header, even after a human approved it, and by default a visible line naming the agent and whom it acts for, its sponsor. The sponsor can turn the line off for that agent, separately for mail from its own mailbox and mail it sends as the sponsor. Disclosure follows the actor who sends: a draft an agent wrote that its sponsor sends carries none.
 
 **Send limit**:
 How much an actor may send per hour, and to how many new recipients per day. Agents start low; admins can change it. Mail over the limit waits.
@@ -109,11 +105,11 @@ A built-in label for mail judged to be spam. Threads with it are out of the Inbo
 A built-in label for deleted threads. Trash and Spam are erased for good after the organization's retention period, 30 days by default. Only the mailbox owner can empty Trash early.
 
 **Screener**:
-Where mail from a mailbox's first-time senders waits until an actor who may organize the mailbox lets the sender in or blocks them. On by default for humans' personal mailboxes, off for agents' and shared ones.
+Where mail from a mailbox's first-time senders waits until an actor who may organize the mailbox lets the sender in or blocks them. On by default for humans' personal mailboxes, off for agents'.
 
 **Tracking protection**:
 Keeping senders from learning whether, when or where their mail was read. On by default; each actor can turn it off.
 
 **Change feed**:
-The ordered record of every change in a mailbox, of every change to the organization's setup, and of the grants each actor gives and is given. A change made by an actor names that actor; arriving mail names none. Clients and agents catch up from where they left off. It is also the audit trail.
+The ordered record of every change in a mailbox, and of every change to the organization's setup. A change made by an actor names that actor; arriving mail names none. Clients and agents catch up from where they left off. It is also the audit trail.
 _Avoid_: event log, activity log, audit log
