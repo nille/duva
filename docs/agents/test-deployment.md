@@ -44,3 +44,7 @@ SMTP to `inbound-smtp.eu-north-1.amazonaws.com:25` from this machine works only 
 ## Nicklas's own mail
 
 `nicklas@duva.nille.xyz` is Nicklas's personal mailbox, and may carry his real mail. An agent never reads its threads, messages or raw copies unless he asks. Real runs use the test mailboxes, and find raw copies in the mail bucket by exact Message-ID or key, never as "the latest".
+
+## No world-invocable Lambdas
+
+No Lambda in this account may be invocable by anyone: no resource policy with a public principal, and no function URL with `AuthType NONE`. The account's security mitigation removes such permissions within minutes and raises an alert that disables the function, as it did to the download Lambda after #26's deploy. Every Lambda is invoked by an AWS service principal with a source condition, or through IAM. The cloud assembly's tests check this before any deploy.
