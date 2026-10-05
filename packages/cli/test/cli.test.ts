@@ -252,6 +252,35 @@ test("agents list shows the agents the signed-in human sponsors", async () => {
   expect(JSON.parse(result.stdout)).toEqual({ agents: [agent] });
 });
 
+test("the sponsor gives an agent read sponsor access and turns a switch off, and the agent then lists and reads the sponsor's mailbox", async () => {
+  const machine = await newMachine();
+  const duva = await startDuva({ domain: "example.com", admin: "ada@example.org" });
+  const server = await duva.listen();
+  onTestFinished(() => server.close());
+  await machine.saveDeployment(server);
+  await machine.duva("login", { browserSignsIn: "ada@example.org" });
+  const ada = JSON.parse((await machine.duva("whoami")).stdout) as { id: string };
+  const mailbox = JSON.parse((await machine.duva("mailboxes", "create", "--owner", ada.id, "--address", "ada@example.com")).stdout) as { id: string };
+  const { agent, key } = JSON.parse((await machine.duva("agents", "create", "--name", "Hermes")).stdout) as { agent: { id: string }; key: string };
+  const asAgent = { env: { DUVA_AGENT_KEY: key } };
+
+  const refused = await machine.duva("threads", "list", "--mailbox", mailbox.id, asAgent);
+  const changed = await machine.duva("agents", "change-settings", "--agent", agent.id, "--sponsorAccess", "read", "--no-approvalAsSponsor");
+  const settings = await machine.duva("agents", "settings", "--agent", agent.id, asAgent);
+  const mailboxes = await machine.duva("mailboxes", "list", asAgent);
+  const threads = await machine.duva("threads", "list", "--mailbox", mailbox.id, asAgent);
+
+  const expected = { sponsorAccess: "read", approvalForOwnMailbox: true, approvalAsSponsor: false, disclosureLineForOwnMailbox: true, disclosureLineAsSponsor: true };
+  expect(refused.exitCode).toBe(1);
+  expect(errorIn(refused.stderr)).toMatch(/403.*Ask them for read access/);
+  expect(changed.exitCode).toBe(0);
+  expect(JSON.parse(changed.stdout)).toEqual(expected);
+  expect(JSON.parse(settings.stdout)).toEqual(expected);
+  expect(JSON.parse(mailboxes.stdout)).toEqual({ mailboxes: [{ ...mailbox, sponsorAccess: "read" }] });
+  expect(threads.exitCode).toBe(0);
+  expect(JSON.parse(threads.stdout)).toEqual({ threads: [] });
+});
+
 test("agents create asks for the name when it's missing", async () => {
   const machine = await newMachine();
 

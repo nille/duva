@@ -1,7 +1,8 @@
 import type { components } from "@duva/openapi";
 import { jsonBody, type OperationHandler, refusal } from "./api.ts";
+import { mailboxesReadBy, mailboxFor } from "./access.ts";
 import type { Deployment } from "./deployment.ts";
-import { type Actor, AddressTaken, addMailbox, allAddresses, findActor, findMailbox, type Mailbox, organizationDomain, ownedMailboxes, sponsoredAgents } from "./organization.ts";
+import { AddressTaken, addMailbox, allAddresses, findActor, organizationDomain } from "./organization.ts";
 import { builtInLabels, createLabel, deleteLabel, hasLabel, listLabels, NameTaken, renameLabel } from "./labels.ts";
 import { allMail, type Cursor, cursorOf, inbox, labelThreads, mailboxChanges, markThreads, readThread, spam, threadsMarkedAtOnce, threadsPerPage, sentThreads, threadsWithLabel, trash, unreadWithLabel } from "./mail.ts";
 import { recordEmptying } from "./erasure.ts";
@@ -50,40 +51,20 @@ export const createMailbox: OperationHandler = async (event, deployment, actor) 
   }
 };
 
-export const listMailboxes: OperationHandler = async (_event, deployment, actor) => {
-  const agents = actor!.kind === "human" ? await sponsoredAgents(deployment.table, actor!.id) : [];
-  const owners = [actor!.id, ...agents.map(({ id }) => id)];
-  const mailboxes = (await Promise.all(owners.map((owner) => ownedMailboxes(deployment.table, owner)))).flat();
-  return { statusCode: 200, body: { mailboxes } satisfies components["schemas"]["MailboxList"] };
-};
-
-/**
- * The mailbox with the ID in the call's path, if the actor may read it: its owner can, and so can
- * the sponsor of an agent that owns it. Admins can't, unless they are that sponsor.
- */
-export async function readableMailbox(
-  event: Parameters<OperationHandler>[0],
-  deployment: Deployment,
-  actor: Actor,
-): Promise<Mailbox | ReturnType<typeof refusal>> {
-  const id = event.pathParameters?.mailbox ?? "";
-  const mailbox = await findMailbox(deployment.table, id);
-  if (mailbox === undefined) return refusal(404, `There is no mailbox ${JSON.stringify(id)}. List the mailboxes you can read to find its ID.`);
-  if (mailbox.owner === actor.id) return mailbox;
-  const owner = await findActor(deployment.table, mailbox.owner);
-  if (owner?.kind === "agent" && owner.sponsor === actor.id) return mailbox;
-  return refusal(403, "Only the mailbox's owner can read it, and its sponsor if an agent owns it.");
-}
+export const listMailboxes: OperationHandler = async (_event, deployment, actor) => ({
+  statusCode: 200,
+  body: { mailboxes: await mailboxesReadBy(deployment, actor!) } satisfies components["schemas"]["MailboxList"],
+});
 
 export const getMailbox: OperationHandler = async (event, deployment, actor) => {
-  const mailbox = await readableMailbox(event, deployment, actor!);
+  const mailbox = await mailboxFor(event, deployment, actor!, "read");
   if ("statusCode" in mailbox) return mailbox;
   const unread = await unreadWithLabel(deployment.table, mailbox.id, inbox);
   return { statusCode: 200, body: { ...mailbox, unread } satisfies components["schemas"]["MailboxWithCounts"] };
 };
 
 export const listMailboxChanges: OperationHandler = async (event, deployment, actor) => {
-  const mailbox = await readableMailbox(event, deployment, actor!);
+  const mailbox = await mailboxFor(event, deployment, actor!, "read");
   if ("statusCode" in mailbox) return mailbox;
   const given = event.queryStringParameters?.after ?? "0";
   if (!/^\d+$/.test(given)) return refusal(400, `${JSON.stringify(given)} isn't a position. Give after as a whole number from 0.`);
@@ -110,7 +91,7 @@ function pageAsked(event: Parameters<OperationHandler>[0]): { limit: number; aft
 const listing =
   (list: (table: Deployment["table"], mailbox: string, page: { limit: number; after?: Cursor }, event: Parameters<OperationHandler>[0]) => Promise<components["schemas"]["ThreadList"]>): OperationHandler =>
   async (event, deployment, actor) => {
-    const mailbox = await readableMailbox(event, deployment, actor!);
+    const mailbox = await mailboxFor(event, deployment, actor!, "read");
     if ("statusCode" in mailbox) return mailbox;
     const page = pageAsked(event);
     if ("statusCode" in page) return page;
@@ -137,7 +118,7 @@ const noThread = (missing: string[]) =>
 const markingThreads =
   (unread: boolean): OperationHandler =>
   async (event, deployment, actor) => {
-    const mailbox = await readableMailbox(event, deployment, actor!);
+    const mailbox = await mailboxFor(event, deployment, actor!, "organize");
     if ("statusCode" in mailbox) return mailbox;
     const threads = threadsGiven(jsonBody(event));
     if ("statusCode" in threads) return threads;
@@ -150,7 +131,7 @@ export const markThreadsRead = markingThreads(false);
 export const markThreadsUnread = markingThreads(true);
 
 export const getThread: OperationHandler = async (event, deployment, actor) => {
-  const mailbox = await readableMailbox(event, deployment, actor!);
+  const mailbox = await mailboxFor(event, deployment, actor!, "read");
   if ("statusCode" in mailbox) return mailbox;
   const id = event.pathParameters?.thread ?? "";
   const thread = await readThread(deployment.table, deployment.mailBucket, mailbox.id, id);
@@ -159,9 +140,11 @@ export const getThread: OperationHandler = async (event, deployment, actor) => {
 };
 
 export const labelMailboxThreads: OperationHandler = async (event, deployment, actor) => {
-  const mailbox = await readableMailbox(event, deployment, actor!);
-  if ("statusCode" in mailbox) return mailbox;
   const body = jsonBody(event);
+  // Moving threads to Trash and back is an ability of its own.
+  const trashing = [body?.add, body?.remove].some((labels) => Array.isArray(labels) && labels.includes(trash));
+  const mailbox = await mailboxFor(event, deployment, actor!, trashing ? "trash" : "organize");
+  if ("statusCode" in mailbox) return mailbox;
   const threads = threadsGiven(body);
   if ("statusCode" in threads) return threads;
   const [add, remove] = [body?.add ?? [], body?.remove ?? []];
@@ -184,7 +167,7 @@ export const labelMailboxThreads: OperationHandler = async (event, deployment, a
 const isList = (value: unknown): value is string[] => Array.isArray(value) && value.every((each) => typeof each === "string");
 
 export const listMailboxLabels: OperationHandler = async (event, deployment, actor) => {
-  const mailbox = await readableMailbox(event, deployment, actor!);
+  const mailbox = await mailboxFor(event, deployment, actor!, "read");
   if ("statusCode" in mailbox) return mailbox;
   return { statusCode: 200, body: { labels: await listLabels(deployment.table, mailbox.id) } satisfies components["schemas"]["LabelList"] };
 };
@@ -200,7 +183,7 @@ function nameGiven(event: Parameters<OperationHandler>[0]): string | ReturnType<
 const nameRefused = (name: string) => refusal(409, `The mailbox has a label named ${JSON.stringify(name)} already, or the name is a built-in one. Give another name.`);
 
 export const createMailboxLabel: OperationHandler = async (event, deployment, actor) => {
-  const mailbox = await readableMailbox(event, deployment, actor!);
+  const mailbox = await mailboxFor(event, deployment, actor!, "organize");
   if ("statusCode" in mailbox) return mailbox;
   const name = nameGiven(event);
   if (typeof name !== "string") return name;
@@ -224,7 +207,7 @@ function ownLabelAsked(event: Parameters<OperationHandler>[0], doing: string): s
 const noLabel = (label: string) => refusal(404, `The mailbox has no label ${JSON.stringify(label)}. List its labels to find their IDs.`);
 
 export const renameMailboxLabel: OperationHandler = async (event, deployment, actor) => {
-  const mailbox = await readableMailbox(event, deployment, actor!);
+  const mailbox = await mailboxFor(event, deployment, actor!, "organize");
   if ("statusCode" in mailbox) return mailbox;
   const label = ownLabelAsked(event, "renamed");
   if (typeof label !== "string") return label;
@@ -240,7 +223,7 @@ export const renameMailboxLabel: OperationHandler = async (event, deployment, ac
 };
 
 export const deleteMailboxLabel: OperationHandler = async (event, deployment, actor) => {
-  const mailbox = await readableMailbox(event, deployment, actor!);
+  const mailbox = await mailboxFor(event, deployment, actor!, "organize");
   if ("statusCode" in mailbox) return mailbox;
   const label = ownLabelAsked(event, "deleted");
   if (typeof label !== "string") return label;
@@ -249,7 +232,7 @@ export const deleteMailboxLabel: OperationHandler = async (event, deployment, ac
 };
 
 export const emptyMailboxTrash: OperationHandler = async (event, deployment, actor) => {
-  const mailbox = await readableMailbox(event, deployment, actor!);
+  const mailbox = await mailboxFor(event, deployment, actor!, "emptyTrash");
   if ("statusCode" in mailbox) return mailbox;
   const emptiedAt = new Date().toISOString();
   const emptied = { mailbox: mailbox.id, before: emptiedAt, by: actor!.id };

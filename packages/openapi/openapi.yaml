@@ -213,12 +213,7 @@ paths:
         the organization's setup, recorded in its change feed.
       x-cli-command: agents rotate-key
       parameters:
-        - name: agent
-          in: path
-          required: true
-          description: The agent's ID.
-          schema:
-            type: string
+        - $ref: "#/components/parameters/Agent"
       responses:
         "200":
           description: The agent and its new key.
@@ -226,6 +221,66 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AgentWithKey"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /agents/{agent}/settings:
+    get:
+      operationId: getAgentSettings
+      summary: Read an agent's settings, its sponsor access and its approval and disclosure-line switches.
+      description: >
+        Only the agent's sponsor and the agent itself can read them. An agent
+        starts with no sponsor access and every switch on.
+      x-cli-command: agents settings
+      parameters:
+        - $ref: "#/components/parameters/Agent"
+      responses:
+        "200":
+          description: The agent's settings.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentSettings"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: changeAgentSettings
+      summary: Change an agent's sponsor access or its approval and disclosure-line switches.
+      description: >
+        Give only the settings to change. A change works at once. Only the
+        agent's sponsor can change them, so not even an admin can. Each change is
+        recorded under you, with the old and new values, in your personal
+        mailbox's change feed, or if you have none, in the agent's. If
+        neither of you has a mailbox, the change is refused. Read and
+        full sponsor access let the agent read your mailbox. What else full
+        lets it do, and the switches, take effect in later releases.
+      x-cli-command: agents change-settings
+      parameters:
+        - $ref: "#/components/parameters/Agent"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentSettingsChanges"
+      responses:
+        "200":
+          description: The agent's settings, changed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentSettings"
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -270,6 +325,9 @@ paths:
     get:
       operationId: listMailboxes
       summary: List the mailboxes you can read, your own and those of the agents you sponsor.
+      description: >
+        An agent your sponsor gives read or full sponsor access also finds
+        your sponsor's personal mailbox here, listed with that access.
       x-cli-command: mailboxes list
       responses:
         "200":
@@ -285,8 +343,8 @@ paths:
       operationId: getMailbox
       summary: Read a mailbox you can read, with how many threads in its Inbox are unread.
       description: >
-        Only the mailbox's owner and, for an agent's mailbox, its sponsor can
-        read it.
+        Only the mailbox's owner, for an agent's mailbox its sponsor, and
+        for a human's mailbox the agents they give sponsor access can read it.
       x-cli-command: mailboxes get
       parameters:
         - $ref: "#/components/parameters/Mailbox"
@@ -311,7 +369,8 @@ paths:
         Lists up to 100 changes, oldest first, leaving out the arrivals of
         mail judged to be spam unless asked for them. To catch up, call again with
         the position the answer ends at until it lists no more. Only the
-        mailbox's owner and, for an agent's mailbox, its sponsor can read it.
+        mailbox's owner, for an agent's mailbox its sponsor, and for a human's
+        mailbox the agents they give sponsor access can read it.
       x-cli-command: mailboxes changes
       parameters:
         - $ref: "#/components/parameters/Mailbox"
@@ -435,7 +494,8 @@ paths:
         Marks each thread read. Read state belongs to the mailbox, so it is
         the same for each actor who reads it. Each thread
         that was unread gets a change in the mailbox's change feed, naming
-        you. Only those who can read the mailbox can mark its threads.
+        you. Only the mailbox's owner and, for an agent's mailbox, its sponsor
+        can mark its threads.
       x-cli-command: threads mark-read
       parameters:
         - $ref: "#/components/parameters/Mailbox"
@@ -467,7 +527,8 @@ paths:
       description: >
         Marks each thread unread, so it stands out until it is read again.
         Each thread that was read gets a change in the mailbox's change feed,
-        naming you. Only those who can read the mailbox can mark its threads.
+        naming you. Only the mailbox's owner and, for an agent's mailbox, its sponsor
+        can mark its threads.
       x-cli-command: threads mark-unread
       parameters:
         - $ref: "#/components/parameters/Mailbox"
@@ -502,8 +563,8 @@ paths:
         Trash. Adding spam or trash takes a thread out of the Inbox. Removing
         spam (not spam) or trash (restore) puts it back in the Inbox, unless
         it still has the other or inbox is removed too. Each thread whose labels change gets a change
-        in the mailbox's change feed, naming you. Only those who can read the
-        mailbox can label its threads.
+        in the mailbox's change feed, naming you. Only the mailbox's owner and,
+        for an agent's mailbox, its sponsor can label its threads.
       x-cli-command: threads label
       parameters:
         - $ref: "#/components/parameters/Mailbox"
@@ -750,7 +811,8 @@ paths:
         Duva takes the attachment from the stored message when the link is
         followed, so nothing is stored twice. The link works for 5 minutes,
         for whoever follows it, so keep it to yourself. Only those who can read
-        the mailbox get one: its owner and, for an agent's mailbox, its sponsor.
+        the mailbox get one: its owner, for an agent's mailbox its sponsor, and
+        for a human's mailbox the agents they give sponsor access.
       x-cli-command: attachments link
       parameters:
         - $ref: "#/components/parameters/Mailbox"
@@ -825,7 +887,7 @@ paths:
     get:
       operationId: listDrafts
       summary: List the drafts in a mailbox, newest first, with where each send stands.
-      description: Only the mailbox's owner and, for an agent's mailbox, its sponsor can list them.
+      description: Only those who can read the mailbox can list them.
       x-cli-command: drafts list
       parameters:
         - $ref: "#/components/parameters/Mailbox"
@@ -846,7 +908,7 @@ paths:
     get:
       operationId: getDraft
       summary: Read a draft, with where its send stands.
-      description: Only the mailbox's owner and, for an agent's mailbox, its sponsor can read it.
+      description: Only those who can read the mailbox can read it.
       x-cli-command: drafts get
       parameters:
         - $ref: "#/components/parameters/Mailbox"
@@ -1081,6 +1143,13 @@ components:
       description: The approval's ID.
       schema:
         type: string
+    Agent:
+      name: agent
+      in: path
+      required: true
+      description: The agent's ID.
+      schema:
+        type: string
   securitySchemes:
     session:
       type: http
@@ -1229,6 +1298,58 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Agent"
+    AgentSettings:
+      type: object
+      additionalProperties: false
+      required: [sponsorAccess, approvalForOwnMailbox, approvalAsSponsor, disclosureLineForOwnMailbox, disclosureLineAsSponsor]
+      description: What an agent may do in its sponsor's personal mailbox, and which of its sends wait for approval or carry the disclosure's visible line.
+      properties:
+        sponsorAccess:
+          $ref: "#/components/schemas/SponsorAccess"
+        approvalForOwnMailbox:
+          $ref: "#/components/schemas/ApprovalForOwnMailbox"
+        approvalAsSponsor:
+          $ref: "#/components/schemas/ApprovalAsSponsor"
+        disclosureLineForOwnMailbox:
+          $ref: "#/components/schemas/DisclosureLineForOwnMailbox"
+        disclosureLineAsSponsor:
+          $ref: "#/components/schemas/DisclosureLineAsSponsor"
+    AgentSettingsChanges:
+      type: object
+      additionalProperties: false
+      description: The agent's settings changed, each with its new value.
+      properties:
+        sponsorAccess:
+          $ref: "#/components/schemas/SponsorAccess"
+        approvalForOwnMailbox:
+          $ref: "#/components/schemas/ApprovalForOwnMailbox"
+        approvalAsSponsor:
+          $ref: "#/components/schemas/ApprovalAsSponsor"
+        disclosureLineForOwnMailbox:
+          $ref: "#/components/schemas/DisclosureLineForOwnMailbox"
+        disclosureLineAsSponsor:
+          $ref: "#/components/schemas/DisclosureLineAsSponsor"
+    SponsorAccess:
+      type: string
+      enum: [none, read, full]
+      description: >-
+        The agent's access to its sponsor's personal mailbox. None, the
+        default, gives it none. Read lets it read everything there: threads,
+        labels, drafts, the change feed and attachments. Full also lets it
+        organize, move threads to Trash and back, draft, and send as its
+        sponsor, once those take effect. Only the sponsor empties their Trash.
+    ApprovalForOwnMailbox:
+      type: boolean
+      description: Whether the agent's sends from its own mailbox wait for its sponsor's approval. On by default.
+    ApprovalAsSponsor:
+      type: boolean
+      description: Whether the agent's sends as its sponsor, from the sponsor's mailbox, wait for the sponsor's approval. On by default.
+    DisclosureLineForOwnMailbox:
+      type: boolean
+      description: Whether mail the agent sends from its own mailbox carries the disclosure's visible line. It always carries the Duva-Agent header. On by default.
+    DisclosureLineAsSponsor:
+      type: boolean
+      description: Whether mail the agent sends as its sponsor carries the disclosure's visible line. It always carries the Duva-Agent header. On by default.
     NewMailbox:
       type: object
       additionalProperties: false
@@ -1261,6 +1382,30 @@ components:
           type: string
           description: The address the mailbox sends new messages from.
           examples: ["hermes@example.com"]
+    ListedMailbox:
+      type: object
+      additionalProperties: false
+      required: [id, kind, owner, defaultAddress]
+      description: A mailbox you can read, with your sponsor access if it is your sponsor's.
+      properties:
+        id:
+          type: string
+          description: The mailbox's ID, which never changes.
+        kind:
+          type: string
+          const: personal
+          description: Personal mailboxes are owned by one actor.
+        owner:
+          type: string
+          description: The ID of the actor that owns the mailbox.
+        defaultAddress:
+          type: string
+          description: The address the mailbox sends new messages from.
+          examples: ["hermes@example.com"]
+        sponsorAccess:
+          type: string
+          enum: [read, full]
+          description: For an agent, its sponsor access, present when the mailbox is its sponsor's.
     MailboxWithCounts:
       type: object
       additionalProperties: false
@@ -1293,7 +1438,7 @@ components:
         mailboxes:
           type: array
           items:
-            $ref: "#/components/schemas/Mailbox"
+            $ref: "#/components/schemas/ListedMailbox"
     MailboxChangePage:
       type: object
       additionalProperties: false
@@ -1327,6 +1472,7 @@ components:
         - $ref: "#/components/schemas/LabelRenamed"
         - $ref: "#/components/schemas/LabelDeleted"
         - $ref: "#/components/schemas/ThreadErased"
+        - $ref: "#/components/schemas/AgentSettingsChanged"
       discriminator:
         propertyName: type
         mapping:
@@ -1348,6 +1494,7 @@ components:
           labelRenamed: "#/components/schemas/LabelRenamed"
           labelDeleted: "#/components/schemas/LabelDeleted"
           threadErased: "#/components/schemas/ThreadErased"
+          agentSettingsChanged: "#/components/schemas/AgentSettingsChanged"
     MessageReceived:
       type: object
       additionalProperties: false
@@ -1649,6 +1796,25 @@ components:
         thread:
           type: string
           description: The ID of the thread erased.
+    AgentSettingsChanged:
+      allOf:
+        - $ref: "#/components/schemas/ChangeBase"
+        - type: object
+          required: [type, agent, before, after]
+          description: The sponsor changed an agent's settings. Recorded in the sponsor's personal mailbox, or the agent's if the sponsor has none.
+          properties:
+            type:
+              type: string
+              const: agentSettingsChanged
+            agent:
+              type: string
+              description: The ID of the agent whose settings changed.
+            before:
+              $ref: "#/components/schemas/AgentSettingsChanges"
+              description: The settings that changed, each with its old value.
+            after:
+              $ref: "#/components/schemas/AgentSettingsChanges"
+              description: The settings that changed, each with its new value.
     TrashEmptying:
       type: object
       additionalProperties: false

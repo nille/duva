@@ -180,12 +180,91 @@ export const operations = [
     ]
   },
   {
+    "operationId": "getAgentSettings",
+    "method": "get",
+    "path": "/agents/{agent}/settings",
+    "routeKey": "GET /agents/{agent}/settings",
+    "summary": "Read an agent's settings, its sponsor access and its approval and disclosure-line switches.",
+    "description": "Only the agent's sponsor and the agent itself can read them. An agent starts with no sponsor access and every switch on.",
+    "signIn": true,
+    "command": [
+      "agents",
+      "settings"
+    ],
+    "options": [
+      {
+        "name": "agent",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The agent's ID."
+      }
+    ]
+  },
+  {
+    "operationId": "changeAgentSettings",
+    "method": "patch",
+    "path": "/agents/{agent}/settings",
+    "routeKey": "PATCH /agents/{agent}/settings",
+    "summary": "Change an agent's sponsor access or its approval and disclosure-line switches.",
+    "description": "Give only the settings to change. A change works at once. Only the agent's sponsor can change them, so not even an admin can. Each change is recorded under you, with the old and new values, in your personal mailbox's change feed, or if you have none, in the agent's. If neither of you has a mailbox, the change is refused. Read and full sponsor access let the agent read your mailbox. What else full lets it do, and the switches, take effect in later releases.",
+    "signIn": true,
+    "command": [
+      "agents",
+      "change-settings"
+    ],
+    "options": [
+      {
+        "name": "agent",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The agent's ID."
+      },
+      {
+        "name": "sponsorAccess",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "The agent's access to its sponsor's personal mailbox. None, the default, gives it none. Read lets it read everything there: threads, labels, drafts, the change feed and attachments. Full also lets it organize, move threads to Trash and back, draft, and send as its sponsor, once those take effect. Only the sponsor empties their Trash."
+      },
+      {
+        "name": "approvalForOwnMailbox",
+        "in": "body",
+        "type": "boolean",
+        "required": false,
+        "description": "Whether the agent's sends from its own mailbox wait for its sponsor's approval. On by default."
+      },
+      {
+        "name": "approvalAsSponsor",
+        "in": "body",
+        "type": "boolean",
+        "required": false,
+        "description": "Whether the agent's sends as its sponsor, from the sponsor's mailbox, wait for the sponsor's approval. On by default."
+      },
+      {
+        "name": "disclosureLineForOwnMailbox",
+        "in": "body",
+        "type": "boolean",
+        "required": false,
+        "description": "Whether mail the agent sends from its own mailbox carries the disclosure's visible line. It always carries the Duva-Agent header. On by default."
+      },
+      {
+        "name": "disclosureLineAsSponsor",
+        "in": "body",
+        "type": "boolean",
+        "required": false,
+        "description": "Whether mail the agent sends as its sponsor carries the disclosure's visible line. It always carries the Duva-Agent header. On by default."
+      }
+    ]
+  },
+  {
     "operationId": "listMailboxes",
     "method": "get",
     "path": "/mailboxes",
     "routeKey": "GET /mailboxes",
     "summary": "List the mailboxes you can read, your own and those of the agents you sponsor.",
-    "description": "",
+    "description": "An agent your sponsor gives read or full sponsor access also finds your sponsor's personal mailbox here, listed with that access.",
     "signIn": true,
     "command": [
       "mailboxes",
@@ -228,7 +307,7 @@ export const operations = [
     "path": "/mailboxes/{mailbox}",
     "routeKey": "GET /mailboxes/{mailbox}",
     "summary": "Read a mailbox you can read, with how many threads in its Inbox are unread.",
-    "description": "Only the mailbox's owner and, for an agent's mailbox, its sponsor can read it.",
+    "description": "Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give sponsor access can read it.",
     "signIn": true,
     "command": [
       "mailboxes",
@@ -250,7 +329,7 @@ export const operations = [
     "path": "/mailboxes/{mailbox}/changes",
     "routeKey": "GET /mailboxes/{mailbox}/changes",
     "summary": "List the changes in a mailbox after a position in its change feed.",
-    "description": "Lists up to 100 changes, oldest first, leaving out the arrivals of mail judged to be spam unless asked for them. To catch up, call again with the position the answer ends at until it lists no more. Only the mailbox's owner and, for an agent's mailbox, its sponsor can read it.",
+    "description": "Lists up to 100 changes, oldest first, leaving out the arrivals of mail judged to be spam unless asked for them. To catch up, call again with the position the answer ends at until it lists no more. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give sponsor access can read it.",
     "signIn": true,
     "command": [
       "mailboxes",
@@ -365,7 +444,7 @@ export const operations = [
     "path": "/mailboxes/{mailbox}/threads/read",
     "routeKey": "POST /mailboxes/{mailbox}/threads/read",
     "summary": "Mark threads in a mailbox read.",
-    "description": "Marks each thread read. Read state belongs to the mailbox, so it is the same for each actor who reads it. Each thread that was unread gets a change in the mailbox's change feed, naming you. Only those who can read the mailbox can mark its threads.",
+    "description": "Marks each thread read. Read state belongs to the mailbox, so it is the same for each actor who reads it. Each thread that was unread gets a change in the mailbox's change feed, naming you. Only the mailbox's owner and, for an agent's mailbox, its sponsor can mark its threads.",
     "signIn": true,
     "command": [
       "threads",
@@ -394,7 +473,7 @@ export const operations = [
     "path": "/mailboxes/{mailbox}/threads/unread",
     "routeKey": "POST /mailboxes/{mailbox}/threads/unread",
     "summary": "Mark threads in a mailbox unread.",
-    "description": "Marks each thread unread, so it stands out until it is read again. Each thread that was read gets a change in the mailbox's change feed, naming you. Only those who can read the mailbox can mark its threads.",
+    "description": "Marks each thread unread, so it stands out until it is read again. Each thread that was read gets a change in the mailbox's change feed, naming you. Only the mailbox's owner and, for an agent's mailbox, its sponsor can mark its threads.",
     "signIn": true,
     "command": [
       "threads",
@@ -423,7 +502,7 @@ export const operations = [
     "path": "/mailboxes/{mailbox}/threads/labels",
     "routeKey": "POST /mailboxes/{mailbox}/threads/labels",
     "summary": "Add labels to threads in a mailbox, and remove them.",
-    "description": "Adds and removes the labels on each thread. Archiving removes inbox, and adding inbox moves a thread back to the Inbox, out of Spam and Trash. Adding spam or trash takes a thread out of the Inbox. Removing spam (not spam) or trash (restore) puts it back in the Inbox, unless it still has the other or inbox is removed too. Each thread whose labels change gets a change in the mailbox's change feed, naming you. Only those who can read the mailbox can label its threads.",
+    "description": "Adds and removes the labels on each thread. Archiving removes inbox, and adding inbox moves a thread back to the Inbox, out of Spam and Trash. Adding spam or trash takes a thread out of the Inbox. Removing spam (not spam) or trash (restore) puts it back in the Inbox, unless it still has the other or inbox is removed too. Each thread whose labels change gets a change in the mailbox's change feed, naming you. Only the mailbox's owner and, for an agent's mailbox, its sponsor can label its threads.",
     "signIn": true,
     "command": [
       "threads",
@@ -669,7 +748,7 @@ export const operations = [
     "path": "/mailboxes/{mailbox}/messages/{message}/attachments/{attachment}",
     "routeKey": "GET /mailboxes/{mailbox}/messages/{message}/attachments/{attachment}",
     "summary": "Get a short-lived link that downloads one of a message's attachments.",
-    "description": "Duva takes the attachment from the stored message when the link is followed, so nothing is stored twice. The link works for 5 minutes, for whoever follows it, so keep it to yourself. Only those who can read the mailbox get one: its owner and, for an agent's mailbox, its sponsor.",
+    "description": "Duva takes the attachment from the stored message when the link is followed, so nothing is stored twice. The link works for 5 minutes, for whoever follows it, so keep it to yourself. Only those who can read the mailbox get one: its owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give sponsor access.",
     "signIn": true,
     "command": [
       "attachments",
@@ -705,7 +784,7 @@ export const operations = [
     "path": "/mailboxes/{mailbox}/drafts",
     "routeKey": "GET /mailboxes/{mailbox}/drafts",
     "summary": "List the drafts in a mailbox, newest first, with where each send stands.",
-    "description": "Only the mailbox's owner and, for an agent's mailbox, its sponsor can list them.",
+    "description": "Only those who can read the mailbox can list them.",
     "signIn": true,
     "command": [
       "drafts",
@@ -805,7 +884,7 @@ export const operations = [
     "path": "/mailboxes/{mailbox}/drafts/{draft}",
     "routeKey": "GET /mailboxes/{mailbox}/drafts/{draft}",
     "summary": "Read a draft, with where its send stands.",
-    "description": "Only the mailbox's owner and, for an agent's mailbox, its sponsor can read it.",
+    "description": "Only those who can read the mailbox can read it.",
     "signIn": true,
     "command": [
       "drafts",

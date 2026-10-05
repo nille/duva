@@ -23,7 +23,7 @@ import {
   sendAtOnce,
 } from "./drafting.ts";
 import { findMessage } from "./mail.ts";
-import { readableMailbox } from "./mailboxes.ts";
+import { mailboxFor } from "./access.ts";
 import type { Actor, Mailbox } from "./organization.ts";
 
 type EmailAddress = components["schemas"]["EmailAddress"];
@@ -34,7 +34,7 @@ const maxSubject = 998;
 const maxNote = 2000;
 
 export const createDraft: OperationHandler = async (event, deployment, actor) => {
-  const mailbox = await ownMailbox(event, deployment, actor!);
+  const mailbox = await mailboxFor(event, deployment, actor!, "draft");
   if ("statusCode" in mailbox) return mailbox;
   const body = jsonBody(event) ?? {};
   const given = fieldsIn(body);
@@ -123,14 +123,6 @@ const othersThan =
     return kept;
   };
 
-/** The mailbox with the ID in the call's path, if the actor owns it, since only its owner drafts in it. */
-async function ownMailbox(event: Parameters<OperationHandler>[0], deployment: Deployment, actor: Actor): Promise<Mailbox | ReturnType<typeof refusal>> {
-  const mailbox = await readableMailbox(event, deployment, actor);
-  if ("statusCode" in mailbox) return mailbox;
-  if (mailbox.owner !== actor.id) return refusal(403, "Only the mailbox's owner can write drafts in it and ask to send them. For an agent's mailbox, the agent's sponsor decides its sends in approvals.");
-  return mailbox;
-}
-
 type Fields = { to?: EmailAddress[]; cc?: EmailAddress[]; bcc?: EmailAddress[]; subject?: string; text?: string };
 
 /** The recipients, subject and text the body gives, each checked, or why one doesn't fit. A list of recipients can be empty. */
@@ -153,13 +145,13 @@ function fieldsIn(body: Record<string, unknown>): Fields | ReturnType<typeof ref
 }
 
 export const listDrafts: OperationHandler = async (event, deployment, actor) => {
-  const mailbox = await readableMailbox(event, deployment, actor!);
+  const mailbox = await mailboxFor(event, deployment, actor!, "read");
   if ("statusCode" in mailbox) return mailbox;
   return { statusCode: 200, body: { drafts: await draftsIn(deployment.table, mailbox.id) } satisfies components["schemas"]["DraftList"] };
 };
 
 export const getDraft: OperationHandler = async (event, deployment, actor) => {
-  const mailbox = await readableMailbox(event, deployment, actor!);
+  const mailbox = await mailboxFor(event, deployment, actor!, "read");
   if ("statusCode" in mailbox) return mailbox;
   const draft = await findDraft(deployment.table, mailbox.id, event.pathParameters?.draft ?? "");
   if (draft === undefined) return noDraft(event);
@@ -167,7 +159,7 @@ export const getDraft: OperationHandler = async (event, deployment, actor) => {
 };
 
 export const editDraft: OperationHandler = async (event, deployment, actor) => {
-  const mailbox = await ownMailbox(event, deployment, actor!);
+  const mailbox = await mailboxFor(event, deployment, actor!, "draft");
   if ("statusCode" in mailbox) return mailbox;
   const changes = fieldsIn(jsonBody(event) ?? {});
   if ("statusCode" in changes) return changes;
@@ -183,7 +175,7 @@ export const editDraft: OperationHandler = async (event, deployment, actor) => {
 };
 
 export const deleteDraft: OperationHandler = async (event, deployment, actor) => {
-  const mailbox = await ownMailbox(event, deployment, actor!);
+  const mailbox = await mailboxFor(event, deployment, actor!, "draft");
   if ("statusCode" in mailbox) return mailbox;
   try {
     const draft = await deleteStoredDraft(deployment.table, { mailbox: mailbox.id, id: event.pathParameters?.draft ?? "", by: actor!.id });
@@ -196,7 +188,7 @@ export const deleteDraft: OperationHandler = async (event, deployment, actor) =>
 };
 
 export const sendDraft: OperationHandler = async (event, deployment, actor) => {
-  const mailbox = await ownMailbox(event, deployment, actor!);
+  const mailbox = await mailboxFor(event, deployment, actor!, "send");
   if ("statusCode" in mailbox) return mailbox;
   const id = event.pathParameters?.draft ?? "";
   try {

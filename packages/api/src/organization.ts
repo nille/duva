@@ -7,7 +7,7 @@ import type { components } from "@duva/openapi";
 import { agentKeyHash, newAgentKey } from "./agent-keys.ts";
 import type { Humans } from "./user-pool.ts";
 import type { Table } from "./deployment.ts";
-import { changesAfter, entryKey, type Feed, recordChanges } from "./feed.ts";
+import { changesAfter, entryKey, type Feed, recordChanges, recordInFeeds } from "./feed.ts";
 import { documents, isNew, pk, sk, type TransactItem } from "./table.ts";
 
 export type Actor = components["schemas"]["Actor"];
@@ -16,6 +16,7 @@ export type Agent = components["schemas"]["Agent"];
 export type Mailbox = components["schemas"]["Mailbox"];
 export type OrganizationChange = components["schemas"]["OrganizationChange"];
 export type OrganizationSettings = components["schemas"]["OrganizationSettings"];
+export type AgentSettings = components["schemas"]["AgentSettings"];
 /** A change as its maker describes it, before the feed gives it a position, a time and its actor. */
 type ChangeDetails = OrganizationChange extends infer Change ? (Change extends unknown ? Omit<Change, "position" | "at" | "actor"> : never) : never;
 
@@ -23,6 +24,8 @@ const organizationKey = { [pk]: "organization", [sk]: "organization" };
 const actorKey = (id: string) => ({ [pk]: `actor#${id}`, [sk]: "actor" });
 // Each agent is listed in its sponsor's partition, so a human's agents are one query away.
 const sponsoredKey = (sponsor: string, agent: string) => ({ [pk]: `actor#${sponsor}`, [sk]: `agent#${agent}` });
+// An agent's settings are an item of their own beside it, which counts up its version as the organization's settings do.
+const agentSettingsKey = (agent: string) => ({ [pk]: `actor#${agent}`, [sk]: "settings" });
 // Every human is listed in one partition, so the organization's humans are one query away.
 const humansPartition = "organization#humans";
 const humanListedKey = (id: string) => ({ [pk]: humansPartition, [sk]: `human#${id}` });
@@ -35,6 +38,11 @@ const signInItem = (sub: string, actor: string) => ({ ...signInKey(sub), actor }
 const agentKeyKey = (hash: string) => ({ [pk]: `key#${hash}`, [sk]: "key" });
 // A mailbox's own partition also holds its mail and the position of its change feed.
 export const mailboxKey = (id: string) => ({ [pk]: `mailbox#${id}`, [sk]: "mailbox" });
+export const mailboxFeed = (mailbox: string): Feed => ({
+  counter: mailboxKey(mailbox),
+  partition: `${mailboxKey(mailbox)[pk]}#changes`,
+  missing: `The mailbox ${mailbox} is missing.`,
+});
 // Each mailbox is listed in its owner's partition, so an actor's mailboxes are one query away.
 const ownedKey = (owner: string, mailbox: string) => ({ [pk]: `actor#${owner}`, [sk]: `mailbox#${mailbox}` });
 // Every address is in one partition, so the receipt rule's recipients are one query away.
@@ -265,6 +273,60 @@ export async function sponsoredAgents(table: Table, sponsor: string): Promise<Ag
   return agents.filter((agent): agent is Agent => agent?.kind === "agent");
 }
 
+/** Neither the agent nor its sponsor has a mailbox, whose change feed would record a change to the agent's settings. */
+export class NowhereToRecord extends Error {}
+
+/** What each of an agent's settings is until its sponsor changes it. */
+export const defaultAgentSettings: AgentSettings = {
+  sponsorAccess: "none",
+  approvalForOwnMailbox: true,
+  approvalAsSponsor: true,
+  disclosureLineForOwnMailbox: true,
+  disclosureLineAsSponsor: true,
+};
+
+/** The agent's settings, each with its default until its sponsor changed it, with the version a write that relies on them checks. */
+export async function agentSettings(table: Table, agent: string): Promise<ReadSettings<AgentSettings>> {
+  const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: agentSettingsKey(agent), ConsistentRead: true }));
+  const settings = Object.fromEntries(Object.entries(defaultAgentSettings).map(([name, value]) => [name, Item?.[name] ?? value])) as AgentSettings;
+  return { settings, version: (Item?.version as number | undefined) ?? 0 };
+}
+
+/**
+ * Changes the agent's settings, on behalf of its sponsor, and returns them all. The ones whose
+ * value changes are one change, with their old and new values, in the change feed of each of the
+ * sponsor's mailboxes, or if the sponsor has none, of each of the agent's. Giving a setting the
+ * value it has records nothing. Throws NowhereToRecord if neither has a mailbox.
+ */
+export async function changeAgentSettings(table: Table, { agent, changes }: { agent: Agent; changes: Partial<AgentSettings> }): Promise<AgentSettings> {
+  const sponsorsMailboxes = await ownedMailboxes(table, agent.sponsor);
+  const mailboxes = sponsorsMailboxes.length > 0 ? sponsorsMailboxes : await ownedMailboxes(table, agent.id);
+  if (mailboxes.length === 0) throw new NowhereToRecord();
+  for (let attempt = 1; ; attempt++) {
+    const read = await agentSettings(table, agent.id);
+    const names = (Object.keys(defaultAgentSettings) as (keyof AgentSettings)[]).filter((name) => changes[name] !== undefined && changes[name] !== read.settings[name]);
+    if (names.length === 0) return read.settings;
+    const settings = { ...read.settings, ...changes };
+    const change = {
+      type: "agentSettingsChanged",
+      agent: agent.id,
+      before: Object.fromEntries(names.map((name) => [name, read.settings[name]])),
+      after: Object.fromEntries(names.map((name) => [name, settings[name]])),
+    };
+    try {
+      await recordInFeeds(table, mailboxes.map(({ id }) => ({ feed: mailboxFeed(id), changes: [change] })), {
+        by: agent.sponsor,
+        items: [{ Put: { TableName: table.name, Item: { ...agentSettingsKey(agent.id), ...settings, version: read.version + 1 }, ...atVersion(read) } }],
+      });
+      return settings;
+    } catch (error) {
+      // The sponsor changed the settings at the same time, so they are read again. The item comes after each feed's counter and change.
+      const reasons = error instanceof TransactionCanceledException ? (error.CancellationReasons ?? []) : [];
+      if (reasons[2 * mailboxes.length]?.Code !== "ConditionalCheckFailed" || attempt === 10) throw error;
+    }
+  }
+}
+
 /** The organization's domain, which every address is on. */
 export async function organizationDomain(table: Table): Promise<string> {
   const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: organizationKey }));
@@ -403,9 +465,9 @@ export async function organizationChanges(table: Table, after: number): Promise<
 /** What each setting is until an admin changes it. */
 export const defaultSettings: OrganizationSettings = { erasureErasesApprovals: false };
 
-/** The organization's settings as read, with the version a write that relies on them checks. */
-export interface ReadSettings {
-  settings: OrganizationSettings;
+/** Settings as read, with the version a write that relies on them checks. */
+export interface ReadSettings<Settings = OrganizationSettings> {
+  settings: Settings;
   version: number;
 }
 
@@ -421,7 +483,7 @@ export function settingsUnchanged(table: Table, read: ReadSettings): TransactIte
   return { ConditionCheck: { TableName: table.name, Key: settingsKey, ...atVersion(read) } };
 }
 
-const atVersion = ({ version }: ReadSettings) => (version === 0 ? isNew : { ConditionExpression: "version = :version", ExpressionAttributeValues: { ":version": version } });
+const atVersion = ({ version }: { version: number }) => (version === 0 ? isNew : { ConditionExpression: "version = :version", ExpressionAttributeValues: { ":version": version } });
 
 /**
  * Changes the settings, on behalf of the admin `by`, recording the ones whose value changes in

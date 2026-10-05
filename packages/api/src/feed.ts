@@ -28,51 +28,76 @@ export const entryKey = (feed: Feed, position: number): Key => ({ [pk]: feed.par
  * If one of the items' conditions fails, the transaction's TransactionCanceledException is thrown,
  * with the items' reasons from index 1 + changes.length on.
  */
-export async function recordChanges(
+export function recordChanges(
   table: Table,
   feed: Feed,
   { by, changes, items }: { by: string | undefined; changes: object[]; items: TransactItem[] | ((first: number) => TransactItem[]) },
 ): Promise<void> {
+  return recordInFeeds(table, [{ feed, changes }], { by, items: typeof items === "function" ? ([first]) => items(first!) : items });
+}
+
+/**
+ * Writes the items with changes in several feeds, as recordChanges does with one, in one
+ * transaction. Items are given as a function of each feed's first position, in the feeds' order.
+ * If one of the items' conditions fails, its reason comes after each feed's counter and changes.
+ */
+export async function recordInFeeds(
+  table: Table,
+  feeds: { feed: Feed; changes: object[] }[],
+  { by, items }: { by: string | undefined; items: TransactItem[] | ((firsts: number[]) => TransactItem[]) },
+): Promise<void> {
+  // Where each feed's counter is among the transaction's items, and so among its reasons.
+  const counters = feeds.map((_, index) => feeds.slice(0, index).reduce((at, { changes }) => at + 1 + changes.length, 0));
   for (let attempt = 1; ; attempt++) {
-    const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: feed.counter, ConsistentRead: true }));
-    if (Item === undefined) throw new Error(feed.missing);
-    const last = Item.position as number;
+    const lasts = await Promise.all(feeds.map(({ feed }) => lastPosition(table, feed)));
     const at = new Date().toISOString();
     try {
       await documents(table).send(
         new TransactWriteCommand({
           TransactItems: [
-            {
-              Update: {
-                TableName: table.name,
-                Key: feed.counter,
-                UpdateExpression: "SET #position = :next",
-                ConditionExpression: "#position = :current",
-                ExpressionAttributeNames: { "#position": "position" },
-                ExpressionAttributeValues: { ":next": last + changes.length, ":current": last },
-              },
-            },
-            ...changes.map((change, index) => ({
-              Put: {
-                TableName: table.name,
-                Item: { ...entryKey(feed, last + index + 1), ...change, position: last + index + 1, at, actor: by },
-                ...isNew,
-              },
-            })),
-            ...(typeof items === "function" ? items(last + 1) : items),
+            ...feeds.flatMap(({ feed, changes }, index) => {
+              const last = lasts[index]!;
+              return [
+                {
+                  Update: {
+                    TableName: table.name,
+                    Key: feed.counter,
+                    UpdateExpression: "SET #position = :next",
+                    ConditionExpression: "#position = :current",
+                    ExpressionAttributeNames: { "#position": "position" },
+                    ExpressionAttributeValues: { ":next": last + changes.length, ":current": last },
+                  },
+                },
+                ...changes.map((change, offset) => ({
+                  Put: {
+                    TableName: table.name,
+                    Item: { ...entryKey(feed, last + offset + 1), ...change, position: last + offset + 1, at, actor: by },
+                    ...isNew,
+                  },
+                })),
+              ];
+            }),
+            ...(typeof items === "function" ? items(lasts.map((last) => last + 1)) : items),
           ],
         }),
       );
       return;
     } catch (error) {
-      // Only a change that lost the race for the position tries again. One that ran into another
+      // Only a change that lost the race for a position tries again. One that ran into another
       // transaction on the same items is cancelled with TransactionConflict instead, and waits a little.
       const reasons = error instanceof TransactionCanceledException ? (error.CancellationReasons ?? []) : [];
       const conflict = reasons.some(({ Code }) => Code === "TransactionConflict");
-      if (!(conflict || reasons[0]?.Code === "ConditionalCheckFailed") || attempt === 10) throw error;
+      const lost = counters.some((index) => reasons[index]?.Code === "ConditionalCheckFailed");
+      if (!(conflict || lost) || attempt === 10) throw error;
       if (conflict) await new Promise((resolve) => setTimeout(resolve, Math.random() * 50 * attempt));
     }
   }
+}
+
+async function lastPosition(table: Table, feed: Feed): Promise<number> {
+  const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: feed.counter, ConsistentRead: true }));
+  if (Item === undefined) throw new Error(feed.missing);
+  return Item.position as number;
 }
 
 /**

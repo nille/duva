@@ -6,8 +6,8 @@ import { GetCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
 import type { components } from "@duva/openapi";
 import type { Table } from "./deployment.ts";
 import { recordChanges } from "./feed.ts";
-import { type Cursor, cursorOf, inbox, labelThreads, mailboxFeed, spam, threadsMarkedAtOnce, threadsWithLabel, trash, unreadWithLabel } from "./mail.ts";
-import { mailboxKey } from "./organization.ts";
+import { type Cursor, cursorOf, inbox, labelThreads, spam, threadsMarkedAtOnce, threadsWithLabel, trash, unreadWithLabel } from "./mail.ts";
+import { mailboxFeed, mailboxKey } from "./organization.ts";
 import { documents, isNew, pk, sk } from "./table.ts";
 
 export type Label = components["schemas"]["Label"];

@@ -11,8 +11,8 @@ import { GetCommand, QueryCommand, TransactWriteCommand, UpdateCommand } from "@
 import type { components } from "@duva/openapi";
 import type { Table } from "./deployment.ts";
 import { entryKey, recordChanges } from "./feed.ts";
-import { mailboxFeed, type StoredMessage, storeSentMessage } from "./mail.ts";
-import { type Agent, mailboxKey } from "./organization.ts";
+import { type StoredMessage, storeSentMessage } from "./mail.ts";
+import { type Agent, mailboxFeed, mailboxKey } from "./organization.ts";
 import { documents, isNew, pk, sk, type TransactItem } from "./table.ts";
 
 export type Draft = components["schemas"]["Draft"];

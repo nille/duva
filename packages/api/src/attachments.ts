@@ -10,7 +10,7 @@ import { timeToLiveAttribute } from "./infrastructure.ts";
 import type { MailBucket } from "./mail-bucket.ts";
 import { findMessage } from "./mail.ts";
 import { mediaTypeOf } from "./mime.ts";
-import { readableMailbox } from "./mailboxes.ts";
+import { mailboxFor } from "./access.ts";
 import { documents, pk, sk } from "./table.ts";
 
 /** Where download links lead, and how long each works. */
@@ -35,7 +35,7 @@ interface Ticket {
 }
 
 export const getAttachment: OperationHandler = async (event, deployment, actor) => {
-  const mailbox = await readableMailbox(event, deployment, actor!);
+  const mailbox = await mailboxFor(event, deployment, actor!, "read");
   if ("statusCode" in mailbox) return mailbox;
   const id = event.pathParameters?.message ?? "";
   const given = event.pathParameters?.attachment ?? "";

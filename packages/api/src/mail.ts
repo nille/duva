@@ -6,10 +6,10 @@ import { TransactionCanceledException } from "@aws-sdk/client-dynamodb";
 import { GetCommand, QueryCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import type { components } from "@duva/openapi";
 import type { Table } from "./deployment.ts";
-import { changesAfter, changesPerPage, type Feed, recordChanges } from "./feed.ts";
+import { changesAfter, changesPerPage, recordChanges } from "./feed.ts";
 import type { MailBucket } from "./mail-bucket.ts";
 import { type ParsedMail, type Part, parseMail } from "./mime.ts";
-import { allMailboxes, mailboxKey } from "./organization.ts";
+import { allMailboxes, defaultAgentSettings, mailboxFeed, mailboxKey } from "./organization.ts";
 import { documents, isNew, pk, sk, type TransactItem } from "./table.ts";
 
 export type ThreadSummary = components["schemas"]["ThreadSummary"];
@@ -63,12 +63,6 @@ const labelledKey = (labelledAt: string, mailbox: string, thread: string, label:
 
 /** What erasure.ts needs of how a mailbox's mail is stored. */
 export const keys = { partition, threadPrefix, threadKey, messageIdKey, messageRefKey, receivedKey, labelledKey, listingKey };
-
-export const mailboxFeed = (mailbox: string): Feed => ({
-  counter: mailboxKey(mailbox),
-  partition: `${partition(mailbox)}#changes`,
-  missing: `The mailbox ${mailbox} is missing.`,
-});
 
 /** A message SES received for one of the mailbox's addresses. */
 export interface Arrival {
@@ -635,11 +629,18 @@ async function storedMessage(table: Table, mailbox: string, id: string): Promise
 export async function mailboxChanges(table: Table, mailbox: string, after: number, withSpam: boolean): Promise<MailboxChangePage> {
   let position = after;
   for (;;) {
-    const read = (await changesAfter(table, mailboxFeed(mailbox), position)) as MailboxChange[];
+    const read = (await changesAfter(table, mailboxFeed(mailbox), position)).map(inContractOrder) as MailboxChange[];
     position = read.at(-1)?.position ?? position;
     const changes = read.filter((change) => withSpam || !(change.type === "messageReceived" && change.spam === true));
     if (changes.length > 0 || read.length < changesPerPage) return { changes, position };
   }
+}
+
+// DynamoDB keeps no attribute order, so the settings in a change to an agent's are listed in the order the contract lists them.
+function inContractOrder(change: Record<string, unknown>): Record<string, unknown> {
+  if (change.type !== "agentSettingsChanged") return change;
+  const ordered = (settings: Record<string, unknown>) => Object.fromEntries(Object.keys(defaultAgentSettings).filter((name) => name in settings).map((name) => [name, settings[name]]));
+  return { ...change, before: ordered(change.before as Record<string, unknown>), after: ordered(change.after as Record<string, unknown>) };
 }
 
 /**

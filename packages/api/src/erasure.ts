@@ -13,9 +13,9 @@ import type { Table } from "./deployment.ts";
 import { recordChanges } from "./feed.ts";
 import { inboundPrefix } from "./infrastructure.ts";
 import type { MailBucket } from "./mail-bucket.ts";
-import { asRead, type Cursor, cursorOf, type ErasedLabel, keys, listingsOf, mailboxFeed, type StoredSummary, threadsPerPage, threadSummary, threadsWithLabel, trash } from "./mail.ts";
+import { asRead, type Cursor, cursorOf, type ErasedLabel, keys, listingsOf, type StoredSummary, threadsPerPage, threadSummary, threadsWithLabel, trash } from "./mail.ts";
 import { eraseApprovals } from "./drafting.ts";
-import { allMailboxes, organizationSettings, settingsUnchanged } from "./organization.ts";
+import { allMailboxes, mailboxFeed, organizationSettings, settingsUnchanged } from "./organization.ts";
 import { documents, pk, sk, type TransactItem } from "./table.ts";
 
 /** How long a thread keeps Spam or Trash before it is erased: the organization's retention period. */

@@ -1,6 +1,18 @@
 import type { components } from "@duva/openapi";
 import { jsonBody, type OperationHandler, refusal } from "./api.ts";
-import { addAgent, findActor, KeyChanged, replaceAgentKey, sponsoredAgents } from "./organization.ts";
+import {
+  addAgent,
+  type Agent,
+  type AgentSettings,
+  agentSettings,
+  changeAgentSettings as changeStoredSettings,
+  defaultAgentSettings,
+  findActor,
+  KeyChanged,
+  NowhereToRecord,
+  replaceAgentKey,
+  sponsoredAgents,
+} from "./organization.ts";
 
 export const createAgent: OperationHandler = async (event, deployment, actor) => {
   if (actor?.kind !== "human") return refusal(403, "Only humans can create agents. Ask your sponsor to create one.");
@@ -16,9 +28,8 @@ export const listAgents: OperationHandler = async (_event, deployment, actor) =>
 });
 
 export const rotateAgentKey: OperationHandler = async (event, deployment, actor) => {
-  const id = event.pathParameters?.agent ?? "";
-  const agent = await findActor(deployment.table, id);
-  if (agent?.kind !== "agent") return refusal(404, `There is no agent ${JSON.stringify(id)}. List the agents you sponsor to find its ID.`);
+  const agent = await agentAsked(event, deployment);
+  if ("statusCode" in agent) return agent;
   if (agent.sponsor !== actor?.id) return refusal(403, "Only the agent's sponsor can rotate its key. Ask them to.");
   try {
     const key = await replaceAgentKey(deployment.table, { agent: agent.id, by: actor.id });
@@ -35,4 +46,48 @@ function nameIn(body: Record<string, unknown> | undefined): string | undefined {
   if (typeof name !== "string") return undefined;
   const trimmed = name.trim();
   return trimmed.length >= 1 && trimmed.length <= 64 ? trimmed : undefined;
+}
+
+export const getAgentSettings: OperationHandler = async (event, deployment, actor) => {
+  const agent = await agentAsked(event, deployment);
+  if ("statusCode" in agent) return agent;
+  if (actor!.id !== agent.sponsor && actor!.id !== agent.id) return refusal(403, "Only the agent's sponsor and the agent can read its settings. Ask its sponsor.");
+  const { settings } = await agentSettings(deployment.table, agent.id);
+  return { statusCode: 200, body: settings satisfies components["schemas"]["AgentSettings"] };
+};
+
+export const changeAgentSettings: OperationHandler = async (event, deployment, actor) => {
+  const agent = await agentAsked(event, deployment);
+  if ("statusCode" in agent) return agent;
+  if (actor!.id !== agent.sponsor) return refusal(403, "Only the agent's sponsor can change its settings. Ask them to.");
+  const body = jsonBody(event) ?? {};
+  const names = Object.keys(defaultAgentSettings);
+  const unknown = Object.keys(body).find((name) => !names.includes(name));
+  if (unknown !== undefined) return refusal(400, `An agent has no setting ${JSON.stringify(unknown)}. Its settings are ${names.join(", ")}.`);
+  if (Object.keys(body).length === 0) return refusal(400, `Give a setting to change: ${names.join(", ")}.`);
+  const { sponsorAccess, ...switches } = body;
+  if (sponsorAccess !== undefined && !sponsorAccesses.includes(sponsorAccess as AgentSettings["sponsorAccess"])) {
+    return refusal(400, `Give sponsorAccess as ${sponsorAccesses.slice(0, -1).join(", ")} or ${sponsorAccesses.at(-1)}.`);
+  }
+  const notOnOrOff = Object.entries(switches).find(([, value]) => typeof value !== "boolean");
+  if (notOnOrOff !== undefined) return refusal(400, `Give ${notOnOrOff[0]} as true to turn it on, or false to turn it off.`);
+  try {
+    const settings = await changeStoredSettings(deployment.table, { agent, changes: body as Partial<AgentSettings> });
+    return { statusCode: 200, body: settings satisfies components["schemas"]["AgentSettings"] };
+  } catch (error) {
+    if (error instanceof NowhereToRecord) {
+      return refusal(409, "Neither you nor the agent has a mailbox, whose change feed would record the change. Ask an admin to create one for you first.");
+    }
+    throw error;
+  }
+};
+
+const sponsorAccesses: AgentSettings["sponsorAccess"][] = ["none", "read", "full"];
+
+/** The agent the call's path names, or a refusal if there is none. */
+async function agentAsked(event: Parameters<OperationHandler>[0], deployment: Parameters<OperationHandler>[1]): Promise<Agent | ReturnType<typeof refusal>> {
+  const id = event.pathParameters?.agent ?? "";
+  const agent = await findActor(deployment.table, id);
+  if (agent?.kind !== "agent") return refusal(404, `There is no agent ${JSON.stringify(id)}. List the agents you sponsor to find its ID.`);
+  return agent;
 }

@@ -1,7 +1,7 @@
 import type { APIGatewayProxyEventV2, APIGatewayProxyStructuredResultV2 } from "aws-lambda";
 import { type Operation, operations, type OperationId } from "@duva/openapi";
 import { getAttachment } from "./attachments.ts";
-import { createAgent, listAgents, rotateAgentKey } from "./agents.ts";
+import { changeAgentSettings, createAgent, getAgentSettings, listAgents, rotateAgentKey } from "./agents.ts";
 import type { AuthorizerContext } from "./authorizer.ts";
 import { listOrganizationChanges } from "./changes.ts";
 import { createDraft, deleteDraft, editDraft, getDraft, listApprovals, listDrafts, rejectApproval, sendApproval, sendDraft } from "./drafts.ts";
@@ -51,6 +51,8 @@ const handlers: Record<OperationId, OperationHandler> = {
   createAgent,
   listAgents,
   rotateAgentKey,
+  getAgentSettings,
+  changeAgentSettings,
   createMailbox,
   listMailboxes,
   getMailbox,

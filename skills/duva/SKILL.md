@@ -115,9 +115,32 @@ Only the agent's sponsor can rotate its key. Rotating is a change to the organiz
 
 - `--agent` (required): The agent's ID.
 
+## duva agents settings
+
+Read an agent's settings, its sponsor access and its approval and disclosure-line switches.
+
+Only the agent's sponsor and the agent itself can read them. An agent starts with no sponsor access and every switch on.
+
+- `--agent` (required): The agent's ID.
+
+## duva agents change-settings
+
+Change an agent's sponsor access or its approval and disclosure-line switches.
+
+Give only the settings to change. A change works at once. Only the agent's sponsor can change them, so not even an admin can. Each change is recorded under you, with the old and new values, in your personal mailbox's change feed, or if you have none, in the agent's. If neither of you has a mailbox, the change is refused. Read and full sponsor access let the agent read your mailbox. What else full lets it do, and the switches, take effect in later releases.
+
+- `--agent` (required): The agent's ID.
+- `--sponsorAccess`: The agent's access to its sponsor's personal mailbox. None, the default, gives it none. Read lets it read everything there: threads, labels, drafts, the change feed and attachments. Full also lets it organize, move threads to Trash and back, draft, and send as its sponsor, once those take effect. Only the sponsor empties their Trash.
+- `--approvalForOwnMailbox` or `--no-approvalForOwnMailbox`: Whether the agent's sends from its own mailbox wait for its sponsor's approval. On by default.
+- `--approvalAsSponsor` or `--no-approvalAsSponsor`: Whether the agent's sends as its sponsor, from the sponsor's mailbox, wait for the sponsor's approval. On by default.
+- `--disclosureLineForOwnMailbox` or `--no-disclosureLineForOwnMailbox`: Whether mail the agent sends from its own mailbox carries the disclosure's visible line. It always carries the Duva-Agent header. On by default.
+- `--disclosureLineAsSponsor` or `--no-disclosureLineAsSponsor`: Whether mail the agent sends as its sponsor carries the disclosure's visible line. It always carries the Duva-Agent header. On by default.
+
 ## duva mailboxes list
 
 List the mailboxes you can read, your own and those of the agents you sponsor.
+
+An agent your sponsor gives read or full sponsor access also finds your sponsor's personal mailbox here, listed with that access.
 
 ## duva mailboxes create
 
@@ -132,7 +155,7 @@ Only admins can create mailboxes. The address becomes the mailbox's default addr
 
 Read a mailbox you can read, with how many threads in its Inbox are unread.
 
-Only the mailbox's owner and, for an agent's mailbox, its sponsor can read it.
+Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give sponsor access can read it.
 
 - `--mailbox` (required): The mailbox's ID.
 
@@ -140,7 +163,7 @@ Only the mailbox's owner and, for an agent's mailbox, its sponsor can read it.
 
 List the changes in a mailbox after a position in its change feed.
 
-Lists up to 100 changes, oldest first, leaving out the arrivals of mail judged to be spam unless asked for them. To catch up, call again with the position the answer ends at until it lists no more. Only the mailbox's owner and, for an agent's mailbox, its sponsor can read it.
+Lists up to 100 changes, oldest first, leaving out the arrivals of mail judged to be spam unless asked for them. To catch up, call again with the position the answer ends at until it lists no more. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give sponsor access can read it.
 
 - `--mailbox` (required): The mailbox's ID.
 - `--after`: The position to list changes after. 0, the default, lists from the start.
@@ -171,7 +194,7 @@ Lists every thread with a message sent from the mailbox, except those in Spam an
 
 Mark threads in a mailbox read.
 
-Marks each thread read. Read state belongs to the mailbox, so it is the same for each actor who reads it. Each thread that was unread gets a change in the mailbox's change feed, naming you. Only those who can read the mailbox can mark its threads.
+Marks each thread read. Read state belongs to the mailbox, so it is the same for each actor who reads it. Each thread that was unread gets a change in the mailbox's change feed, naming you. Only the mailbox's owner and, for an agent's mailbox, its sponsor can mark its threads.
 
 - `--mailbox` (required): The mailbox's ID.
 - `--threads` (required) (once for each): The IDs of the threads.
@@ -180,7 +203,7 @@ Marks each thread read. Read state belongs to the mailbox, so it is the same for
 
 Mark threads in a mailbox unread.
 
-Marks each thread unread, so it stands out until it is read again. Each thread that was read gets a change in the mailbox's change feed, naming you. Only those who can read the mailbox can mark its threads.
+Marks each thread unread, so it stands out until it is read again. Each thread that was read gets a change in the mailbox's change feed, naming you. Only the mailbox's owner and, for an agent's mailbox, its sponsor can mark its threads.
 
 - `--mailbox` (required): The mailbox's ID.
 - `--threads` (required) (once for each): The IDs of the threads.
@@ -189,7 +212,7 @@ Marks each thread unread, so it stands out until it is read again. Each thread t
 
 Add labels to threads in a mailbox, and remove them.
 
-Adds and removes the labels on each thread. Archiving removes inbox, and adding inbox moves a thread back to the Inbox, out of Spam and Trash. Adding spam or trash takes a thread out of the Inbox. Removing spam (not spam) or trash (restore) puts it back in the Inbox, unless it still has the other or inbox is removed too. Each thread whose labels change gets a change in the mailbox's change feed, naming you. Only those who can read the mailbox can label its threads.
+Adds and removes the labels on each thread. Archiving removes inbox, and adding inbox moves a thread back to the Inbox, out of Spam and Trash. Adding spam or trash takes a thread out of the Inbox. Removing spam (not spam) or trash (restore) puts it back in the Inbox, unless it still has the other or inbox is removed too. Each thread whose labels change gets a change in the mailbox's change feed, naming you. Only the mailbox's owner and, for an agent's mailbox, its sponsor can label its threads.
 
 - `--mailbox` (required): The mailbox's ID.
 - `--threads` (required) (once for each): The IDs of the threads.
@@ -261,7 +284,7 @@ Erases each thread that is in Trash when you call, with its messages and their r
 
 Get a short-lived link that downloads one of a message's attachments.
 
-Duva takes the attachment from the stored message when the link is followed, so nothing is stored twice. The link works for 5 minutes, for whoever follows it, so keep it to yourself. Only those who can read the mailbox get one: its owner and, for an agent's mailbox, its sponsor.
+Duva takes the attachment from the stored message when the link is followed, so nothing is stored twice. The link works for 5 minutes, for whoever follows it, so keep it to yourself. Only those who can read the mailbox get one: its owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give sponsor access.
 
 - `--mailbox` (required): The mailbox's ID.
 - `--message` (required): The message's ID.
@@ -271,7 +294,7 @@ Duva takes the attachment from the stored message when the link is followed, so 
 
 List the drafts in a mailbox, newest first, with where each send stands.
 
-Only the mailbox's owner and, for an agent's mailbox, its sponsor can list them.
+Only those who can read the mailbox can list them.
 
 - `--mailbox` (required): The mailbox's ID.
 
@@ -295,7 +318,7 @@ A reply goes from the address the original was sent to, plus tag kept, to the or
 
 Read a draft, with where its send stands.
 
-Only the mailbox's owner and, for an agent's mailbox, its sponsor can read it.
+Only those who can read the mailbox can read it.
 
 - `--mailbox` (required): The mailbox's ID.
 - `--draft` (required): The draft's ID.

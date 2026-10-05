@@ -147,6 +147,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/agents/{agent}/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read an agent's settings, its sponsor access and its approval and disclosure-line switches.
+         * @description Only the agent's sponsor and the agent itself can read them. An agent starts with no sponsor access and every switch on.
+         */
+        get: operations["getAgentSettings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Change an agent's sponsor access or its approval and disclosure-line switches.
+         * @description Give only the settings to change. A change works at once. Only the agent's sponsor can change them, so not even an admin can. Each change is recorded under you, with the old and new values, in your personal mailbox's change feed, or if you have none, in the agent's. If neither of you has a mailbox, the change is refused. Read and full sponsor access let the agent read your mailbox. What else full lets it do, and the switches, take effect in later releases.
+         */
+        patch: operations["changeAgentSettings"];
+        trace?: never;
+    };
     "/mailboxes": {
         parameters: {
             query?: never;
@@ -154,7 +178,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List the mailboxes you can read, your own and those of the agents you sponsor. */
+        /**
+         * List the mailboxes you can read, your own and those of the agents you sponsor.
+         * @description An agent your sponsor gives read or full sponsor access also finds your sponsor's personal mailbox here, listed with that access.
+         */
         get: operations["listMailboxes"];
         put?: never;
         /**
@@ -177,7 +204,7 @@ export interface paths {
         };
         /**
          * Read a mailbox you can read, with how many threads in its Inbox are unread.
-         * @description Only the mailbox's owner and, for an agent's mailbox, its sponsor can read it.
+         * @description Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give sponsor access can read it.
          */
         get: operations["getMailbox"];
         put?: never;
@@ -197,7 +224,7 @@ export interface paths {
         };
         /**
          * List the changes in a mailbox after a position in its change feed.
-         * @description Lists up to 100 changes, oldest first, leaving out the arrivals of mail judged to be spam unless asked for them. To catch up, call again with the position the answer ends at until it lists no more. Only the mailbox's owner and, for an agent's mailbox, its sponsor can read it.
+         * @description Lists up to 100 changes, oldest first, leaving out the arrivals of mail judged to be spam unless asked for them. To catch up, call again with the position the answer ends at until it lists no more. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give sponsor access can read it.
          */
         get: operations["listMailboxChanges"];
         put?: never;
@@ -259,7 +286,7 @@ export interface paths {
         put?: never;
         /**
          * Mark threads in a mailbox read.
-         * @description Marks each thread read. Read state belongs to the mailbox, so it is the same for each actor who reads it. Each thread that was unread gets a change in the mailbox's change feed, naming you. Only those who can read the mailbox can mark its threads.
+         * @description Marks each thread read. Read state belongs to the mailbox, so it is the same for each actor who reads it. Each thread that was unread gets a change in the mailbox's change feed, naming you. Only the mailbox's owner and, for an agent's mailbox, its sponsor can mark its threads.
          */
         post: operations["markThreadsRead"];
         delete?: never;
@@ -279,7 +306,7 @@ export interface paths {
         put?: never;
         /**
          * Mark threads in a mailbox unread.
-         * @description Marks each thread unread, so it stands out until it is read again. Each thread that was read gets a change in the mailbox's change feed, naming you. Only those who can read the mailbox can mark its threads.
+         * @description Marks each thread unread, so it stands out until it is read again. Each thread that was read gets a change in the mailbox's change feed, naming you. Only the mailbox's owner and, for an agent's mailbox, its sponsor can mark its threads.
          */
         post: operations["markThreadsUnread"];
         delete?: never;
@@ -299,7 +326,7 @@ export interface paths {
         put?: never;
         /**
          * Add labels to threads in a mailbox, and remove them.
-         * @description Adds and removes the labels on each thread. Archiving removes inbox, and adding inbox moves a thread back to the Inbox, out of Spam and Trash. Adding spam or trash takes a thread out of the Inbox. Removing spam (not spam) or trash (restore) puts it back in the Inbox, unless it still has the other or inbox is removed too. Each thread whose labels change gets a change in the mailbox's change feed, naming you. Only those who can read the mailbox can label its threads.
+         * @description Adds and removes the labels on each thread. Archiving removes inbox, and adding inbox moves a thread back to the Inbox, out of Spam and Trash. Adding spam or trash takes a thread out of the Inbox. Removing spam (not spam) or trash (restore) puts it back in the Inbox, unless it still has the other or inbox is removed too. Each thread whose labels change gets a change in the mailbox's change feed, naming you. Only the mailbox's owner and, for an agent's mailbox, its sponsor can label its threads.
          */
         post: operations["labelThreads"];
         delete?: never;
@@ -422,7 +449,7 @@ export interface paths {
         };
         /**
          * Get a short-lived link that downloads one of a message's attachments.
-         * @description Duva takes the attachment from the stored message when the link is followed, so nothing is stored twice. The link works for 5 minutes, for whoever follows it, so keep it to yourself. Only those who can read the mailbox get one: its owner and, for an agent's mailbox, its sponsor.
+         * @description Duva takes the attachment from the stored message when the link is followed, so nothing is stored twice. The link works for 5 minutes, for whoever follows it, so keep it to yourself. Only those who can read the mailbox get one: its owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give sponsor access.
          */
         get: operations["getAttachment"];
         put?: never;
@@ -442,7 +469,7 @@ export interface paths {
         };
         /**
          * List the drafts in a mailbox, newest first, with where each send stands.
-         * @description Only the mailbox's owner and, for an agent's mailbox, its sponsor can list them.
+         * @description Only those who can read the mailbox can list them.
          */
         get: operations["listDrafts"];
         put?: never;
@@ -466,7 +493,7 @@ export interface paths {
         };
         /**
          * Read a draft, with where its send stands.
-         * @description Only the mailbox's owner and, for an agent's mailbox, its sponsor can read it.
+         * @description Only those who can read the mailbox can read it.
          */
         get: operations["getDraft"];
         put?: never;
@@ -639,6 +666,35 @@ export interface components {
         AgentList: {
             agents: components["schemas"]["Agent"][];
         };
+        /** @description What an agent may do in its sponsor's personal mailbox, and which of its sends wait for approval or carry the disclosure's visible line. */
+        AgentSettings: {
+            sponsorAccess: components["schemas"]["SponsorAccess"];
+            approvalForOwnMailbox: components["schemas"]["ApprovalForOwnMailbox"];
+            approvalAsSponsor: components["schemas"]["ApprovalAsSponsor"];
+            disclosureLineForOwnMailbox: components["schemas"]["DisclosureLineForOwnMailbox"];
+            disclosureLineAsSponsor: components["schemas"]["DisclosureLineAsSponsor"];
+        };
+        /** @description The agent's settings changed, each with its new value. */
+        AgentSettingsChanges: {
+            sponsorAccess?: components["schemas"]["SponsorAccess"];
+            approvalForOwnMailbox?: components["schemas"]["ApprovalForOwnMailbox"];
+            approvalAsSponsor?: components["schemas"]["ApprovalAsSponsor"];
+            disclosureLineForOwnMailbox?: components["schemas"]["DisclosureLineForOwnMailbox"];
+            disclosureLineAsSponsor?: components["schemas"]["DisclosureLineAsSponsor"];
+        };
+        /**
+         * @description The agent's access to its sponsor's personal mailbox. None, the default, gives it none. Read lets it read everything there: threads, labels, drafts, the change feed and attachments. Full also lets it organize, move threads to Trash and back, draft, and send as its sponsor, once those take effect. Only the sponsor empties their Trash.
+         * @enum {string}
+         */
+        SponsorAccess: "none" | "read" | "full";
+        /** @description Whether the agent's sends from its own mailbox wait for its sponsor's approval. On by default. */
+        ApprovalForOwnMailbox: boolean;
+        /** @description Whether the agent's sends as its sponsor, from the sponsor's mailbox, wait for the sponsor's approval. On by default. */
+        ApprovalAsSponsor: boolean;
+        /** @description Whether mail the agent sends from its own mailbox carries the disclosure's visible line. It always carries the Duva-Agent header. On by default. */
+        DisclosureLineForOwnMailbox: boolean;
+        /** @description Whether mail the agent sends as its sponsor carries the disclosure's visible line. It always carries the Duva-Agent header. On by default. */
+        DisclosureLineAsSponsor: boolean;
         NewMailbox: {
             /** @description The ID of the human or agent that owns the mailbox. */
             owner: string;
@@ -665,6 +721,28 @@ export interface components {
              */
             defaultAddress: string;
         };
+        /** @description A mailbox you can read, with your sponsor access if it is your sponsor's. */
+        ListedMailbox: {
+            /** @description The mailbox's ID, which never changes. */
+            id: string;
+            /**
+             * @description Personal mailboxes are owned by one actor.
+             * @constant
+             */
+            kind: "personal";
+            /** @description The ID of the actor that owns the mailbox. */
+            owner: string;
+            /**
+             * @description The address the mailbox sends new messages from.
+             * @example hermes@example.com
+             */
+            defaultAddress: string;
+            /**
+             * @description For an agent, its sponsor access, present when the mailbox is its sponsor's.
+             * @enum {string}
+             */
+            sponsorAccess?: "read" | "full";
+        };
         /** @description A mailbox, with how many of its threads want attention. */
         MailboxWithCounts: {
             /** @description The mailbox's ID, which never changes. */
@@ -688,7 +766,7 @@ export interface components {
             unread: number;
         };
         MailboxList: {
-            mailboxes: components["schemas"]["Mailbox"][];
+            mailboxes: components["schemas"]["ListedMailbox"][];
         };
         MailboxChangePage: {
             changes: components["schemas"]["MailboxChange"][];
@@ -696,7 +774,7 @@ export interface components {
             position: number;
         };
         /** @description A change in a mailbox. */
-        MailboxChange: components["schemas"]["MessageReceived"] | components["schemas"]["DraftWritten"] | components["schemas"]["DraftChanged"] | components["schemas"]["DraftDeleted"] | components["schemas"]["SendAsked"] | components["schemas"]["ApprovalAsked"] | components["schemas"]["ApprovalWithdrawn"] | components["schemas"]["ApprovalDecided"] | components["schemas"]["MessageSent"] | components["schemas"]["SendFailed"] | components["schemas"]["SendUnclear"] | components["schemas"]["ThreadRead"] | components["schemas"]["ThreadUnread"] | components["schemas"]["ThreadLabelsChanged"] | components["schemas"]["LabelCreated"] | components["schemas"]["LabelRenamed"] | components["schemas"]["LabelDeleted"] | components["schemas"]["ThreadErased"];
+        MailboxChange: components["schemas"]["MessageReceived"] | components["schemas"]["DraftWritten"] | components["schemas"]["DraftChanged"] | components["schemas"]["DraftDeleted"] | components["schemas"]["SendAsked"] | components["schemas"]["ApprovalAsked"] | components["schemas"]["ApprovalWithdrawn"] | components["schemas"]["ApprovalDecided"] | components["schemas"]["MessageSent"] | components["schemas"]["SendFailed"] | components["schemas"]["SendUnclear"] | components["schemas"]["ThreadRead"] | components["schemas"]["ThreadUnread"] | components["schemas"]["ThreadLabelsChanged"] | components["schemas"]["LabelCreated"] | components["schemas"]["LabelRenamed"] | components["schemas"]["LabelDeleted"] | components["schemas"]["ThreadErased"] | components["schemas"]["AgentSettingsChanged"];
         /** @description Mail arrived. No actor made this change, so it names none. */
         MessageReceived: {
             /** @description The change's position in the mailbox's feed, counting from 1. */
@@ -970,6 +1048,22 @@ export interface components {
             type: "threadErased";
             /** @description The ID of the thread erased. */
             thread: string;
+        };
+        AgentSettingsChanged: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "agentSettingsChanged";
+            /** @description The ID of the agent whose settings changed. */
+            agent: string;
+            /** @description The settings that changed, each with its old value. */
+            before: components["schemas"]["AgentSettingsChanges"];
+            /** @description The settings that changed, each with its new value. */
+            after: components["schemas"]["AgentSettingsChanges"];
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "agentSettingsChanged";
         };
         TrashEmptying: {
             /**
@@ -1522,6 +1616,8 @@ export interface components {
         Label: string;
         /** @description The approval's ID. */
         Approval: string;
+        /** @description The agent's ID. */
+        Agent: string;
     };
     requestBodies: never;
     headers: never;
@@ -1748,7 +1844,7 @@ export interface operations {
             header?: never;
             path: {
                 /** @description The agent's ID. */
-                agent: string;
+                agent: components["parameters"]["Agent"];
             };
             cookie?: never;
         };
@@ -1763,6 +1859,64 @@ export interface operations {
                     "application/json": components["schemas"]["AgentWithKey"];
                 };
             };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getAgentSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The agent's ID. */
+                agent: components["parameters"]["Agent"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The agent's settings. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentSettings"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    changeAgentSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The agent's ID. */
+                agent: components["parameters"]["Agent"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentSettingsChanges"];
+            };
+        };
+        responses: {
+            /** @description The agent's settings, changed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentSettings"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
