@@ -342,19 +342,133 @@ test("an agent with read sponsor access gets 403 changing anything in its sponso
   expect(await everything()).toEqual(before);
 });
 
-test("an agent with full sponsor access can't change anything in its sponsor's mailbox yet, and never empties its Trash", async () => {
+test("an agent with full sponsor access organizes its sponsor's mailbox as its sponsor does, each change in the feed naming it", async () => {
+  const fixture = await withSponsor();
+  const { linus, hermes, hermesId, giveAccess } = fixture;
+  const { params, thread } = await withMail(fixture);
+  await giveAccess("full");
+  const threads = { threads: [thread] };
+  const label = (body: { add?: string[]; remove?: string[] }) => hermes.POST("/mailboxes/{mailbox}/threads/labels", { params, body: { ...threads, ...body } });
+  const labels = async () => (await linus.GET("/mailboxes/{mailbox}/threads/{thread}", { params: { path: { ...params.path, thread } } })).data!.labels;
+
+  expect((await hermes.POST("/mailboxes/{mailbox}/threads/read", { params, body: threads })).response.status).toBe(200);
+  expect((await hermes.POST("/mailboxes/{mailbox}/threads/unread", { params, body: threads })).response.status).toBe(200);
+  expect((await label({ remove: ["inbox"] })).response.status).toBe(200);
+  expect(await labels()).toEqual([]);
+  expect((await label({ add: ["inbox"] })).response.status).toBe(200);
+  expect((await label({ add: ["spam"] })).response.status).toBe(200);
+  expect(await labels()).toEqual(["spam"]);
+  expect((await label({ remove: ["spam"] })).response.status).toBe(200);
+  expect((await label({ add: ["trash"] })).response.status).toBe(200);
+  expect(await labels()).toEqual(["trash"]);
+  expect((await label({ remove: ["trash"] })).response.status).toBe(200);
+  expect(await labels()).toEqual(["inbox"]);
+  const { response: created, data: kvitton } = await hermes.POST("/mailboxes/{mailbox}/labels", { params, body: { name: "Kvitton" } });
+  expect(created.status).toBe(201);
+  const inLabel = { params: { path: { ...params.path, label: kvitton!.id } } };
+  expect((await label({ add: [kvitton!.id] })).response.status).toBe(200);
+  expect(await labels()).toEqual(expect.arrayContaining(["inbox", kvitton!.id]));
+  expect((await label({ remove: [kvitton!.id] })).response.status).toBe(200);
+  expect((await hermes.PATCH("/mailboxes/{mailbox}/labels/{label}", { ...inLabel, body: { name: "Kvitton 2026" } })).response.status).toBe(200);
+  expect((await linus.GET("/mailboxes/{mailbox}/labels", { params })).data!.labels).toContainEqual(expect.objectContaining({ id: kvitton!.id, name: "Kvitton 2026" }));
+  expect((await hermes.DELETE("/mailboxes/{mailbox}/labels/{label}", inLabel)).response.status).toBe(200);
+
+  const { data: feed } = await linus.GET("/mailboxes/{mailbox}/changes", { params });
+  const byHermes = feed!.changes.filter((change) => "actor" in change && change.actor === hermesId);
+  expect(byHermes.map(({ type }) => type)).toEqual([
+    "threadRead",
+    "threadUnread",
+    ...Array(6).fill("threadLabelsChanged"),
+    "labelCreated",
+    "threadLabelsChanged",
+    "threadLabelsChanged",
+    "labelRenamed",
+    "labelDeleted",
+  ]);
+});
+
+test("an agent with full sponsor access never empties its sponsor's Trash, and can't send as them yet", async () => {
   const fixture = await withSponsor();
   const { hermes, giveAccess } = fixture;
-  const placed = await withMail(fixture);
+  const { params, draft } = await withMail(fixture);
   await giveAccess("full");
 
-  for (const [name, change] of Object.entries(changes(hermes, placed))) {
-    const { response, error } = await change();
-    expect(response.status, name).toBe(403);
-    expect(error, name).toEqual({
-      message: readRefusals[name as keyof typeof readRefusals].replace(/^Your sponsor access is read, which doesn't let you (.*)\. Ask your sponsor for full access\.$/, "Full sponsor access doesn't let you $1 yet. Ask your sponsor to do it."),
-    });
+  const { response: emptied, error: notEmptied } = await hermes.POST("/mailboxes/{mailbox}/trash/empty", { params });
+  const { response: sent, error: notSent } = await hermes.POST("/mailboxes/{mailbox}/drafts/{draft}/send", { params: { path: { ...params.path, draft } } });
+
+  expect(emptied.status).toBe(403);
+  expect(notEmptied).toEqual({ message: "Only your sponsor can empty their Trash. Ask them to." });
+  expect(sent.status).toBe(403);
+  expect(notSent).toEqual({ message: "Full sponsor access doesn't let you send as your sponsor yet. Ask your sponsor to do it." });
+});
+
+test("an agent with full sponsor access drafts replies, replies to all, forwards and new mail in its sponsor's mailbox, as its sponsor's own drafts are", async () => {
+  const fixture = await withSponsor();
+  const { linus, hermes, hermesId, giveAccess } = fixture;
+  const { params, message } = await withMail(fixture);
+  await giveAccess("full");
+  const linusAddress = "linus@example.com";
+  const drafts: [Record<string, unknown>, Record<string, unknown>][] = [
+    [{ answers: message, text: "Tack!" }, { from: linusAddress, to: [{ name: "Grace Hopper", address: "grace@example.org" }], subject: "Re: The report", text: "Tack!" }],
+    [{ answers: message, replyAll: true }, { from: linusAddress, to: [{ name: "Grace Hopper", address: "grace@example.org" }], cc: [] }],
+    [{ forwards: message, to: ["ada@example.org"] }, { from: linusAddress, to: [{ address: "ada@example.org" }], subject: "Fwd: The report", attachments: expect.any(Array) }],
+    [{ to: ["grace@example.org"], subject: "Lunch", text: "Hej." }, { from: linusAddress, to: [{ address: "grace@example.org" }], subject: "Lunch", text: "Hej." }],
+  ];
+  const withoutIdAndTime = ({ id: _, updatedAt: __, ...draft }: { id: string; updatedAt: string }) => draft;
+
+  for (const [body, expected] of drafts) {
+    const { response, data } = await hermes.POST("/mailboxes/{mailbox}/drafts", { params, body });
+    expect(response.status).toBe(201);
+    expect(data).toMatchObject(expected);
+    const { data: sponsors } = await linus.POST("/mailboxes/{mailbox}/drafts", { params, body });
+    expect(withoutIdAndTime(data!)).toEqual(withoutIdAndTime(sponsors!));
+    expect((await linus.GET("/mailboxes/{mailbox}/drafts/{draft}", { params: { path: { ...params.path, draft: data!.id } } })).data).toEqual(data);
   }
+  const { data: feed } = await linus.GET("/mailboxes/{mailbox}/changes", { params });
+  expect(feed!.changes.filter((change) => change.type === "draftWritten" && "actor" in change && change.actor === hermesId)).toHaveLength(drafts.length);
+});
+
+test("in the sponsor's mailbox, an agent with full access and its sponsor each change and delete the other's drafts, each change in the feed naming who", async () => {
+  const fixture = await withSponsor();
+  const { linus, linusId, hermes, hermesId, giveAccess } = fixture;
+  const { params, draft: linusDraft } = await withMail(fixture);
+  await giveAccess("full");
+  const { data: hermesDraft } = await hermes.POST("/mailboxes/{mailbox}/drafts", { params, body: { to: ["grace@example.org"], text: "Utkast." } });
+  const inDraft = (draft: string) => ({ params: { path: { ...params.path, draft } } });
+
+  const { response: hermesEdits, data: editedByHermes } = await hermes.PATCH("/mailboxes/{mailbox}/drafts/{draft}", { ...inDraft(linusDraft), body: { text: "Hej igen." } });
+  const { response: linusEdits, data: editedByLinus } = await linus.PATCH("/mailboxes/{mailbox}/drafts/{draft}", { ...inDraft(hermesDraft!.id), body: { subject: "Lunch" } });
+
+  expect(hermesEdits.status).toBe(200);
+  expect(editedByHermes).toMatchObject({ id: linusDraft, text: "Hej igen." });
+  expect(linusEdits.status).toBe(200);
+  expect(editedByLinus).toMatchObject({ id: hermesDraft!.id, subject: "Lunch", text: "Utkast." });
+
+  expect((await hermes.DELETE("/mailboxes/{mailbox}/drafts/{draft}", inDraft(linusDraft))).response.status).toBe(200);
+  expect((await linus.DELETE("/mailboxes/{mailbox}/drafts/{draft}", inDraft(hermesDraft!.id))).response.status).toBe(200);
+  expect((await linus.GET("/mailboxes/{mailbox}/drafts", { params })).data).toEqual({ drafts: [] });
+  const { data: feed } = await linus.GET("/mailboxes/{mailbox}/changes", { params });
+  const drafting = feed!.changes.filter(({ type }) => type === "draftChanged" || type === "draftDeleted");
+  expect(drafting).toEqual([
+    expect.objectContaining({ type: "draftChanged", draft: linusDraft, actor: hermesId }),
+    expect.objectContaining({ type: "draftChanged", draft: hermesDraft!.id, actor: linusId }),
+    expect.objectContaining({ type: "draftDeleted", draft: linusDraft, actor: hermesId }),
+    expect.objectContaining({ type: "draftDeleted", draft: hermesDraft!.id, actor: linusId }),
+  ]);
+});
+
+test("lowering sponsor access from full to read stops the agent changing anything at once, its drafts staying", async () => {
+  const fixture = await withSponsor();
+  const { linus, hermes, giveAccess } = fixture;
+  const { params, thread } = await withMail(fixture);
+  await giveAccess("full");
+  const { data: draft } = await hermes.POST("/mailboxes/{mailbox}/drafts", { params, body: { to: ["grace@example.org"] } });
+
+  await giveAccess("read");
+
+  const { response } = await hermes.POST("/mailboxes/{mailbox}/threads/labels", { params, body: { threads: [thread], add: ["trash"] } });
+  expect(response.status).toBe(403);
+  expect((await linus.GET("/mailboxes/{mailbox}/drafts/{draft}", { params: { path: { ...params.path, draft: draft!.id } } })).data).toEqual(draft);
 });
 
 test("sponsor access reaches only the sponsor's mailbox, so an agent with full access gets 403 in another human's and another agent's", async () => {

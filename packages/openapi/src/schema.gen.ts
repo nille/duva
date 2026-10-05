@@ -166,7 +166,7 @@ export interface paths {
         head?: never;
         /**
          * Change an agent's sponsor access or its approval and disclosure-line switches.
-         * @description Give only the settings to change. A change works at once. Only the agent's sponsor can change them, so not even an admin can. Each change is recorded under you, with the old and new values, in your personal mailbox's change feed, or if you have none, in the agent's. If neither of you has a mailbox, the change is refused. Read and full sponsor access let the agent read your mailbox. What else full lets it do, and the switches, take effect in later releases.
+         * @description Give only the settings to change. A change works at once. Only the agent's sponsor can change them, so not even an admin can. Each change is recorded under you, with the old and new values, in your personal mailbox's change feed, or if you have none, in the agent's. If neither of you has a mailbox, the change is refused. Read lets the agent read your mailbox. Full also lets it organize it, move threads to Trash and back, and draft there. Sending as you, and the switches, take effect in a later release.
          */
         patch: operations["changeAgentSettings"];
         trace?: never;
@@ -286,7 +286,7 @@ export interface paths {
         put?: never;
         /**
          * Mark threads in a mailbox read.
-         * @description Marks each thread read. Read state belongs to the mailbox, so it is the same for each actor who reads it. Each thread that was unread gets a change in the mailbox's change feed, naming you. Only the mailbox's owner and, for an agent's mailbox, its sponsor can mark its threads.
+         * @description Marks each thread read. Read state belongs to the mailbox, so it is the same for each actor who reads it. Each thread that was unread gets a change in the mailbox's change feed, naming you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can mark its threads.
          */
         post: operations["markThreadsRead"];
         delete?: never;
@@ -306,7 +306,7 @@ export interface paths {
         put?: never;
         /**
          * Mark threads in a mailbox unread.
-         * @description Marks each thread unread, so it stands out until it is read again. Each thread that was read gets a change in the mailbox's change feed, naming you. Only the mailbox's owner and, for an agent's mailbox, its sponsor can mark its threads.
+         * @description Marks each thread unread, so it stands out until it is read again. Each thread that was read gets a change in the mailbox's change feed, naming you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can mark its threads.
          */
         post: operations["markThreadsUnread"];
         delete?: never;
@@ -326,7 +326,7 @@ export interface paths {
         put?: never;
         /**
          * Add labels to threads in a mailbox, and remove them.
-         * @description Adds and removes the labels on each thread. Archiving removes inbox, and adding inbox moves a thread back to the Inbox, out of Spam and Trash. Adding spam or trash takes a thread out of the Inbox. Removing spam (not spam) or trash (restore) puts it back in the Inbox, unless it still has the other or inbox is removed too. Each thread whose labels change gets a change in the mailbox's change feed, naming you. Only the mailbox's owner and, for an agent's mailbox, its sponsor can label its threads.
+         * @description Adds and removes the labels on each thread. Archiving removes inbox, and adding inbox moves a thread back to the Inbox, out of Spam and Trash. Adding spam or trash takes a thread out of the Inbox. Removing spam (not spam) or trash (restore) puts it back in the Inbox, unless it still has the other or inbox is removed too. Each thread whose labels change gets a change in the mailbox's change feed, naming you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can label its threads.
          */
         post: operations["labelThreads"];
         delete?: never;
@@ -387,7 +387,7 @@ export interface paths {
         put?: never;
         /**
          * Create a label in a mailbox.
-         * @description Creates a label of the mailbox's own, with a name no other label in it has, in any case. Then add it to threads by its ID. Only those who can read the mailbox can create its labels. The change is recorded in the mailbox's change feed.
+         * @description Creates a label of the mailbox's own, with a name no other label in it has, in any case. Then add it to threads by its ID. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can create its labels. The change is recorded in the mailbox's change feed, naming you.
          */
         post: operations["createLabel"];
         delete?: never;
@@ -408,14 +408,14 @@ export interface paths {
         post?: never;
         /**
          * Delete one of a mailbox's own labels.
-         * @description Removes the label from each of its threads, each with a change in the mailbox's change feed, and then deletes it. The threads stay. The built-in labels can't be deleted. If deleting stops partway, delete the label again to finish.
+         * @description Removes the label from each of its threads, each with a change in the mailbox's change feed, and then deletes it. The threads stay. The built-in labels can't be deleted. If deleting stops partway, delete the label again to finish. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can delete its labels.
          */
         delete: operations["deleteLabel"];
         options?: never;
         head?: never;
         /**
          * Rename one of a mailbox's own labels.
-         * @description Gives the label a name no other label in the mailbox has, in any case. Its threads keep it. The built-in labels can't be renamed. The change is recorded in the mailbox's change feed.
+         * @description Gives the label a name no other label in the mailbox has, in any case. Its threads keep it. The built-in labels can't be renamed. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can rename its labels. The change is recorded in the mailbox's change feed, naming you.
          */
         patch: operations["renameLabel"];
         trace?: never;
@@ -431,7 +431,7 @@ export interface paths {
         put?: never;
         /**
          * Empty a mailbox's Trash, erasing every thread in it for good.
-         * @description Erases each thread that is in Trash when you call, with its messages and their raw copies, every stored version included. Erasing can't be undone. Each erased thread gets a threadErased change in the mailbox's change feed, naming you, with none of its content. Duva erases the threads right after answering, and finishes on its next daily run if that fails. Only the mailbox's owner can empty its Trash, and an agent's sponsor its agent's. Without emptying, Trash and Spam are erased 30 days after a thread got the label.
+         * @description Erases each thread that is in Trash when you call, with its messages and their raw copies, every stored version included. Erasing can't be undone. Each erased thread gets a threadErased change in the mailbox's change feed, naming you, with none of its content. Duva erases the threads right after answering, and finishes on its next daily run if that fails. Only the mailbox's owner can empty its Trash, and an agent's sponsor its agent's. An agent never empties its sponsor's Trash, whatever its sponsor access. Without emptying, Trash and Spam are erased 30 days after a thread got the label.
          */
         post: operations["emptyTrash"];
         delete?: never;
@@ -475,7 +475,7 @@ export interface paths {
         put?: never;
         /**
          * Draft a reply to a message in a mailbox, a reply to all, a forward, or a new message.
-         * @description A reply goes from the address the original was sent to, plus tag kept, to the original's Reply-To or, without one, its From, with the subject carrying a single "Re: " prefix. A reply to your own message goes to its recipients instead. A reply to all also goes to every other recipient of the original, except the mailbox's own addresses. A forward goes from the address the original was sent to, to whoever you give, with the subject carrying a single "Fwd: " prefix, the original's text quoted and its attachments. A new message goes from the mailbox's default address. A draft can be saved before it has recipients, a subject or text, but it needs a recipient in To to be sent. Only the mailbox's owner can draft in it. Writing a draft is recorded in the mailbox's change feed.
+         * @description A reply goes from the address the original was sent to, plus tag kept, to the original's Reply-To or, without one, its From, with the subject carrying a single "Re: " prefix. A reply to your own message goes to its recipients instead. A reply to all also goes to every other recipient of the original, except the mailbox's own addresses. A forward goes from the address the original was sent to, to whoever you give, with the subject carrying a single "Fwd: " prefix, the original's text quoted and its attachments. A new message goes from the mailbox's default address. A draft can be saved before it has recipients, a subject or text, but it needs a recipient in To to be sent. Only the mailbox's owner can draft in it, and for a human's mailbox the agents they give full sponsor access, whose drafts go from the same addresses as the human's own. Writing a draft is recorded in the mailbox's change feed, naming you.
          */
         post: operations["createDraft"];
         delete?: never;
@@ -500,14 +500,14 @@ export interface paths {
         post?: never;
         /**
          * Delete a draft.
-         * @description Deleting a draft that waits for approval withdraws the request. A draft being sent can't be deleted until its send is done. Deleting a sent draft leaves the sent message in its thread. Only the mailbox's owner can delete its drafts. The deletion, and any withdrawal, is recorded in the mailbox's change feed.
+         * @description Deleting a draft that waits for approval withdraws the request. A draft being sent can't be deleted until its send is done. Deleting a sent draft leaves the sent message in its thread. Only the mailbox's owner can delete its drafts, and for a human's mailbox the agents they give full sponsor access, whoever wrote the draft. The deletion, and any withdrawal, is recorded in the mailbox's change feed, naming you.
          */
         delete: operations["deleteDraft"];
         options?: never;
         head?: never;
         /**
          * Change a draft's recipients, subject or text.
-         * @description Changing a draft that waits for approval withdraws the request, so an approver never approves text they didn't see. Ask to send it again once it is ready. Only the mailbox's owner can edit its drafts. The change, and any withdrawal, is recorded in the mailbox's change feed.
+         * @description Changing a draft that waits for approval withdraws the request, so an approver never approves text they didn't see. Ask to send it again once it is ready. Only the mailbox's owner can edit its drafts, and for a human's mailbox the agents they give full sponsor access, whoever wrote the draft. The change, and any withdrawal, is recorded in the mailbox's change feed, naming you.
          */
         patch: operations["editDraft"];
         trace?: never;
@@ -683,7 +683,7 @@ export interface components {
             disclosureLineAsSponsor?: components["schemas"]["DisclosureLineAsSponsor"];
         };
         /**
-         * @description The agent's access to its sponsor's personal mailbox. None, the default, gives it none. Read lets it read everything there: threads, labels, drafts, the change feed and attachments. Full also lets it organize, move threads to Trash and back, draft, and send as its sponsor, once those take effect. Only the sponsor empties their Trash.
+         * @description The agent's access to its sponsor's personal mailbox. None, the default, gives it none. Read lets it read everything there: threads, labels, drafts, the change feed and attachments. Full also lets it organize, move threads to Trash and back, and draft and change any draft there, and will let it send as its sponsor. Only the sponsor empties their Trash.
          * @enum {string}
          */
         SponsorAccess: "none" | "read" | "full";

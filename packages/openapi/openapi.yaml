@@ -260,9 +260,10 @@ paths:
         agent's sponsor can change them, so not even an admin can. Each change is
         recorded under you, with the old and new values, in your personal
         mailbox's change feed, or if you have none, in the agent's. If
-        neither of you has a mailbox, the change is refused. Read and
-        full sponsor access let the agent read your mailbox. What else full
-        lets it do, and the switches, take effect in later releases.
+        neither of you has a mailbox, the change is refused. Read lets the
+        agent read your mailbox. Full also lets it organize it, move threads
+        to Trash and back, and draft there. Sending as you, and the switches,
+        take effect in a later release.
       x-cli-command: agents change-settings
       parameters:
         - $ref: "#/components/parameters/Agent"
@@ -494,7 +495,8 @@ paths:
         Marks each thread read. Read state belongs to the mailbox, so it is
         the same for each actor who reads it. Each thread
         that was unread gets a change in the mailbox's change feed, naming
-        you. Only the mailbox's owner and, for an agent's mailbox, its sponsor
+        you. Only the mailbox's owner, for an agent's mailbox its sponsor, and
+        for a human's mailbox the agents they give full sponsor access
         can mark its threads.
       x-cli-command: threads mark-read
       parameters:
@@ -527,7 +529,8 @@ paths:
       description: >
         Marks each thread unread, so it stands out until it is read again.
         Each thread that was read gets a change in the mailbox's change feed,
-        naming you. Only the mailbox's owner and, for an agent's mailbox, its sponsor
+        naming you. Only the mailbox's owner, for an agent's mailbox its sponsor, and
+        for a human's mailbox the agents they give full sponsor access
         can mark its threads.
       x-cli-command: threads mark-unread
       parameters:
@@ -563,8 +566,9 @@ paths:
         Trash. Adding spam or trash takes a thread out of the Inbox. Removing
         spam (not spam) or trash (restore) puts it back in the Inbox, unless
         it still has the other or inbox is removed too. Each thread whose labels change gets a change
-        in the mailbox's change feed, naming you. Only the mailbox's owner and,
-        for an agent's mailbox, its sponsor can label its threads.
+        in the mailbox's change feed, naming you. Only the mailbox's owner, for an agent's mailbox its sponsor, and
+        for a human's mailbox the agents they give full sponsor access
+        can label its threads.
       x-cli-command: threads label
       parameters:
         - $ref: "#/components/parameters/Mailbox"
@@ -683,9 +687,10 @@ paths:
       summary: Create a label in a mailbox.
       description: >
         Creates a label of the mailbox's own, with a name no other label in it
-        has, in any case. Then add it to threads by its ID. Only those who can
-        read the mailbox can create its labels. The change is recorded in the
-        mailbox's change feed.
+        has, in any case. Then add it to threads by its ID. Only
+        the mailbox's owner, for an agent's mailbox its sponsor, and
+        for a human's mailbox the agents they give full sponsor access can create its labels. The change is recorded in the
+        mailbox's change feed, naming you.
       x-cli-command: labels create
       parameters:
         - $ref: "#/components/parameters/Mailbox"
@@ -718,8 +723,10 @@ paths:
       summary: Rename one of a mailbox's own labels.
       description: >
         Gives the label a name no other label in the mailbox has, in any case.
-        Its threads keep it. The built-in labels can't be renamed. The change
-        is recorded in the mailbox's change feed.
+        Its threads keep it. The built-in labels can't be renamed. Only
+        the mailbox's owner, for an agent's mailbox its sponsor, and
+        for a human's mailbox the agents they give full sponsor access can rename its labels. The change
+        is recorded in the mailbox's change feed, naming you.
       x-cli-command: labels rename
       parameters:
         - $ref: "#/components/parameters/Mailbox"
@@ -754,7 +761,8 @@ paths:
         Removes the label from each of its threads, each with a change in the
         mailbox's change feed, and then deletes it. The threads stay. The
         built-in labels can't be deleted. If deleting stops partway, delete
-        the label again to finish.
+        the label again to finish. Only the mailbox's owner, for an agent's mailbox its sponsor, and
+        for a human's mailbox the agents they give full sponsor access can delete its labels.
       x-cli-command: labels delete
       parameters:
         - $ref: "#/components/parameters/Mailbox"
@@ -785,7 +793,8 @@ paths:
         change feed, naming you, with none of its content. Duva erases the
         threads right after answering, and finishes on its next daily run if
         that fails. Only the mailbox's owner can empty its Trash, and an agent's
-        sponsor its agent's. Without emptying, Trash and Spam are erased 30
+        sponsor its agent's. An agent never empties its sponsor's Trash, whatever
+        its sponsor access. Without emptying, Trash and Spam are erased 30
         days after a thread got the label.
       x-cli-command: threads empty-trash
       parameters:
@@ -858,8 +867,10 @@ paths:
         original's text quoted and its attachments. A new message goes from
         the mailbox's default address. A draft can be saved before it has
         recipients, a subject or text, but it needs a recipient in To to be
-        sent. Only the mailbox's owner can draft in it.
-        Writing a draft is recorded in the mailbox's change feed.
+        sent. Only the mailbox's owner can draft in it, and for a human's
+        mailbox the agents they give full sponsor access, whose drafts go from
+        the same addresses as the human's own. Writing a draft is recorded in
+        the mailbox's change feed, naming you.
       x-cli-command: drafts create
       parameters:
         - $ref: "#/components/parameters/Mailbox"
@@ -932,8 +943,10 @@ paths:
       description: >
         Changing a draft that waits for approval withdraws the request, so an
         approver never approves text they didn't see. Ask to send it again
-        once it is ready. Only the mailbox's owner can edit its drafts. The
-        change, and any withdrawal, is recorded in the mailbox's change feed.
+        once it is ready. Only the mailbox's owner can edit its drafts, and
+        for a human's mailbox the agents they give full sponsor access,
+        whoever wrote the draft. The change, and any withdrawal, is recorded
+        in the mailbox's change feed, naming you.
       x-cli-command: drafts edit
       parameters:
         - $ref: "#/components/parameters/Mailbox"
@@ -968,8 +981,9 @@ paths:
         Deleting a draft that waits for approval withdraws the request. A
         draft being sent can't be deleted until its send is done. Deleting a
         sent draft leaves the sent message in its thread. Only the mailbox's
-        owner can delete its drafts. The deletion, and any withdrawal, is
-        recorded in the mailbox's change feed.
+        owner can delete its drafts, and for a human's mailbox the agents they
+        give full sponsor access, whoever wrote the draft. The deletion,
+        and any withdrawal, is recorded in the mailbox's change feed, naming you.
       x-cli-command: drafts delete
       parameters:
         - $ref: "#/components/parameters/Mailbox"
@@ -1336,8 +1350,9 @@ components:
         The agent's access to its sponsor's personal mailbox. None, the
         default, gives it none. Read lets it read everything there: threads,
         labels, drafts, the change feed and attachments. Full also lets it
-        organize, move threads to Trash and back, draft, and send as its
-        sponsor, once those take effect. Only the sponsor empties their Trash.
+        organize, move threads to Trash and back, and draft and change any
+        draft there, and will let it send as its sponsor. Only the sponsor
+        empties their Trash.
     ApprovalForOwnMailbox:
       type: boolean
       description: Whether the agent's sends from its own mailbox wait for its sponsor's approval. On by default.

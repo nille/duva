@@ -12,8 +12,8 @@ export type Ability = "read" | "organize" | "trash" | "draft" | "send" | "emptyT
 // The sponsor acts as owner of its agent's mailbox, except that the agent drafts and sends there itself.
 const sponsorAbilities: Ability[] = ["read", "organize", "trash", "emptyTrash"];
 
-// What each sponsor access lets the agent do. Full does more once later releases let it.
-const sponsorAccessAbilities: Record<AgentSettings["sponsorAccess"], Ability[]> = { none: [], read: ["read"], full: ["read"] };
+// What each sponsor access lets the agent do. Full lets it send as its sponsor once a later release does.
+const sponsorAccessAbilities: Record<AgentSettings["sponsorAccess"], Ability[]> = { none: [], read: ["read"], full: ["read", "organize", "trash", "draft"] };
 
 // What the agent's refusal says it can't do, for each ability sponsor access can give.
 const abilityWords: Record<Exclude<Ability, "emptyTrash">, string> = {
