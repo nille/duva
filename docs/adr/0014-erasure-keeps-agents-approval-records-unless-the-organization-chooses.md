@@ -6,7 +6,7 @@ Erasing a thread (#28) removes its messages, their raw copies and the drafts tha
 
 - By default an erased thread's approval records and its `approvalDecided` entries stay, text and edits included.
 - With the setting on, erasing a thread also erases the approval records of the drafts that sent in it. Their `approvalDecided` entries stay in the feed, naming the decision and its actor, without the draft's text or the edit, so the feed still shows that a decision was made and by whom.
-- The setting applies to erasures from when it changes. Records kept before it was turned on stay until their thread is erased again, which can't happen, so turning it on doesn't reach back.
+- The setting applies to erasures from when it changes. Turning it on doesn't reach back: approval records of threads erased before then stay.
 - Changing it is a setup change in the organization's change feed, attributed to the admin.
 - Either way, point-in-time recovery can keep erased metadata in DynamoDB's backups for up to 35 days (`docs/aws.md`). The raw mail is gone at once.
 - It is the organization's first setting, so it sets the pattern for later ones, such as the retention period.
