@@ -1,5 +1,7 @@
 // The Approvals view: the sends waiting for the signed-in sponsor, each laid out like a galley proof,
 // with the agent's draft set beside the message it answers, to send as is, edit and send, or reject.
+// Each says whether the agent sends as the sponsor, from their mailbox, or from its own, and shows
+// the disclosure's line as the sponsor's switch for that place leaves it.
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import type { DuvaClient } from "@duva/client";
@@ -12,6 +14,7 @@ type Approval = components["schemas"]["Approval"];
 type SendStatus = components["schemas"]["SendStatus"];
 type Message = components["schemas"]["Message"];
 type EmailAddress = components["schemas"]["EmailAddress"];
+type AgentSettings = components["schemas"]["AgentSettings"];
 
 /** An approval the view shows: waiting, or decided while the page was open. */
 interface Entry {
@@ -30,14 +33,17 @@ type Outcome = SendStatus | "none" | "unknown";
 // A send in these states can still change, so the view keeps checking it.
 const settling = new Set<SendStatus["state"]>(["waiting", "approved", "sending"]);
 
+/** The approvals waiting for the sponsor, whose ID is `me` and whose email address is `sponsor`. */
 export function Approvals({
   client,
+  me,
   sponsor,
   connection,
   follow,
   onSignedOut,
 }: {
   client: DuvaClient;
+  me: string;
   sponsor: string;
   connection: ConnectionState;
   follow: Follow;
@@ -46,6 +52,12 @@ export function Approvals({
   const [entries, setEntries] = useState<Entry[] | undefined>();
   const [outcomes, setOutcomes] = useState<Record<string, Outcome>>({});
   const [agents, setAgents] = useState<Record<string, string>>({});
+  // The sponsor's own mailboxes, where an agent sends as them, once listed.
+  const [own, setOwn] = useState<ReadonlySet<string>>();
+  const ownRef = useRef(own);
+  ownRef.current = own;
+  // Each agent's settings, as last read, whose switches say whether its sends carry the line.
+  const [settings, setSettings] = useState<Record<string, AgentSettings>>({});
   const entriesRef = useRef(entries);
   entriesRef.current = entries;
   const outcomesRef = useRef(outcomes);
@@ -65,9 +77,21 @@ export function Approvals({
   );
 
   const loadAgents = useCallback(async () => {
-    const { data } = await client.GET("/agents");
+    const [{ data }, { data: mailboxes }] = await Promise.all([client.GET("/agents"), client.GET("/mailboxes")]);
     if (data !== undefined) setAgents(Object.fromEntries(data.agents.map((agent) => [agent.id, agent.name])));
-  }, [client]);
+    if (mailboxes !== undefined) setOwn(new Set(mailboxes.mailboxes.filter((mailbox) => mailbox.owner === me).map((mailbox) => mailbox.id)));
+  }, [client, me]);
+
+  // The settings are read again with each new list, so a switch changed meanwhile shows.
+  const loadSettings = useCallback(
+    async (ids: string[]) => {
+      const read = await Promise.all(
+        ids.map(async (agent) => [agent, (await client.GET("/agents/{agent}/settings", { params: { path: { agent } } }).catch(() => ({ data: undefined }))).data] as const),
+      );
+      setSettings((current) => ({ ...current, ...Object.fromEntries(read.flatMap(([agent, data]) => (data === undefined ? [] : [[agent, data]]))) }));
+    },
+    [client],
+  );
 
   /** Lists the waiting approvals again. One that left the list without a decision here was decided elsewhere. */
   const refresh = useCallback(
@@ -82,9 +106,10 @@ export function Approvals({
         const arrived = data.approvals.filter((approval) => !known.has(approval.id)).map((approval) => ({ approval, fresh: !first }));
         return [...arrived, ...kept].sort((a, b) => b.approval.askedAt.localeCompare(a.approval.askedAt));
       });
-      if (data.approvals.some((approval) => !(approval.agent in agentsRef.current))) await loadAgents();
+      if (ownRef.current === undefined || data.approvals.some((approval) => !(approval.agent in agentsRef.current))) await loadAgents();
+      await loadSettings([...new Set(data.approvals.map((approval) => approval.agent))]);
     },
-    [client, loadAgents],
+    [client, loadAgents, loadSettings],
   );
 
   // List the approvals, then again when a request or decision shows up in the change feeds, and
@@ -141,20 +166,25 @@ export function Approvals({
         <Empty />
       ) : (
         <ol className="galleys" aria-label={strings.approvals.title}>
-          {entries.map((entry) => (
-            <li key={entry.approval.id}>
-              <Galley
-                entry={entry}
-                agent={agents[entry.approval.agent] ?? strings.galley.anAgent}
-                sponsor={sponsor}
-                outcome={outcomes[entry.approval.id]}
-                client={client}
-                onDecided={decided}
-                onSeen={seen}
-                onSignedOut={onSignedOut}
-              />
-            </li>
-          ))}
+          {entries.map((entry) => {
+            const asSponsor = own?.has(entry.approval.mailbox);
+            return (
+              <li key={entry.approval.id}>
+                <Galley
+                  entry={entry}
+                  agent={agents[entry.approval.agent] ?? strings.galley.anAgent}
+                  sponsor={sponsor}
+                  asSponsor={asSponsor}
+                  line={lineFor(settings[entry.approval.agent], asSponsor)}
+                  outcome={outcomes[entry.approval.id]}
+                  client={client}
+                  onDecided={decided}
+                  onSeen={seen}
+                  onSignedOut={onSignedOut}
+                />
+              </li>
+            );
+          })}
         </ol>
       )}
       {entries !== undefined && entries.length > 0 && waiting === 0 && <p className="all-done">{strings.approvals.noneWaiting}.</p>}
@@ -193,10 +223,23 @@ function SkeletonGalley() {
 
 type Mode = "reading" | "editing" | "rejecting";
 
+/**
+ * Whether the agent's send carries the disclosure's line, by its sponsor's switch for where it
+ * sends from. Until both are known, it's shown with the line, which every switch starts with.
+ */
+function lineFor(settings: AgentSettings | undefined, asSponsor: boolean | undefined): boolean {
+  if (settings === undefined || asSponsor === undefined) return true;
+  return asSponsor ? settings.disclosureLineAsSponsor : settings.disclosureLineForOwnMailbox;
+}
+
 interface GalleyProps {
   entry: Entry;
   agent: string;
   sponsor: string;
+  /** Whether the agent sends as the sponsor, from the sponsor's own mailbox, or undefined until that is known. */
+  asSponsor: boolean | undefined;
+  /** Whether the send carries the disclosure's visible line. */
+  line: boolean;
   outcome: Outcome | undefined;
   client: DuvaClient;
   onDecided: (approval: Approval, decision: Decision) => void;
@@ -204,7 +247,7 @@ interface GalleyProps {
   onSignedOut: () => void;
 }
 
-function Galley({ entry, agent, sponsor, outcome, client, onDecided, onSeen, onSignedOut }: GalleyProps) {
+function Galley({ entry, agent, sponsor, asSponsor, line, outcome, client, onDecided, onSeen, onSignedOut }: GalleyProps) {
   const { approval, decision, fresh } = entry;
   const { draft, original } = approval;
   const titleId = useId();
@@ -287,6 +330,9 @@ function Galley({ entry, agent, sponsor, outcome, client, onDecided, onSeen, onS
           {strings.galley.asks(agent)}{" "}
           <span className="slug-subject">{draft.subject || strings.galley.noSubject}</span>
         </h2>
+        {asSponsor !== undefined && (
+          <p className={asSponsor ? "slug-from slug-from-sponsor" : "slug-from"}>{asSponsor ? strings.galley.asYou(draft.from) : strings.galley.fromOwnMailbox(draft.from)}</p>
+        )}
         <p className="slug-meta">
           {fresh && <span className="mark-new">{strings.galley.isNew}</span>}
           <Time at={approval.askedAt} format={(time) => strings.galley.askedAt(time)} />
@@ -328,12 +374,12 @@ function Galley({ entry, agent, sponsor, outcome, client, onDecided, onSeen, onS
                 <div className="body" lang="">
                   {draft.text}
                 </div>
-                <Disclosure agent={agent} sponsor={sponsor} />
+                <Disclosure agent={agent} sponsor={sponsor} line={line} />
                 {draft.attachments !== undefined && draft.attachments.length > 0 && <Attachments list={draft.attachments} />}
               </div>
             </>
           )}
-          {editing && <Disclosure agent={agent} sponsor={sponsor} />}
+          {editing && <Disclosure agent={agent} sponsor={sponsor} line={line} />}
         </section>
       </div>
 
@@ -450,12 +496,12 @@ function Original({ message }: { message: Message }) {
   );
 }
 
-/** The line Duva adds to every message an agent sends, as recipients get it. */
-function Disclosure({ agent, sponsor }: { agent: string; sponsor: string }) {
+/** The line Duva adds to the message, as recipients get it, or that it adds none, as the sponsor chose. */
+function Disclosure({ agent, sponsor, line }: { agent: string; sponsor: string; line: boolean }) {
   return (
     <p className="disclosure">
-      <span className="disclosure-line">{strings.galley.disclosure(agent, sponsor)}</span>
-      <span className="disclosure-note">{strings.galley.disclosureNote}</span>
+      {line && <span className="disclosure-line">{strings.galley.disclosure(agent, sponsor)}</span>}
+      <span className="disclosure-note">{line ? strings.galley.disclosureNote : strings.galley.noDisclosureLine(agent)}</span>
     </p>
   );
 }

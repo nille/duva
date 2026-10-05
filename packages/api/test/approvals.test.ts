@@ -28,7 +28,7 @@ const fromGrace = (headers: string, text = "Can we meet on Monday?") =>
   `From: Grace Hopper <grace@example.org>\r\n${headers}Date: Sat, 03 Oct 2026 10:00:00 +0000\r\nMessage-ID: <meet-1@example.org>\r\n\r\n${text}\r\n`;
 
 test("the agent drafts a reply, from the address the original was sent to, plus tag kept, to its From, with Re: before the subject", async () => {
-  const { hermes, params, receive } = await withMailbox();
+  const { hermes, agent, params, receive } = await withMailbox();
   const { thread, message } = await receive(fromGrace("To: hermes+meetings@example.com\r\nSubject: Meeting\r\n"), "hermes+meetings@example.com");
 
   const { response, data } = await hermes.POST("/mailboxes/{mailbox}/drafts", { params, body: { answers: message.id, text: "Monday works." } });
@@ -45,6 +45,7 @@ test("the agent drafts a reply, from the address the original was sent to, plus 
     subject: "Re: Meeting",
     text: "Monday works.",
     updatedAt: expect.any(String),
+    updatedBy: agent.id,
   });
 });
 
@@ -62,7 +63,7 @@ test("a reply goes to the original's Reply-To when it has one, and its subject k
 });
 
 test("the agent drafts a new message, which goes from the mailbox's default address", async () => {
-  const { hermes, params } = await withMailbox();
+  const { hermes, agent, params } = await withMailbox();
 
   const { response, data } = await hermes.POST("/mailboxes/{mailbox}/drafts", {
     params,
@@ -79,6 +80,7 @@ test("the agent drafts a new message, which goes from the mailbox's default addr
     subject: "Hello",
     text: "Hej Grace.",
     updatedAt: expect.any(String),
+    updatedBy: agent.id,
   });
 });
 

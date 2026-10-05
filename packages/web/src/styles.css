@@ -256,6 +256,18 @@ a {
   overflow-wrap: anywhere;
 }
 
+/* Where the agent sends from. A send as the sponsor speaks louder, since it goes out in their name. */
+.slug-from {
+  font-size: var(--text-sm);
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+
+.slug-from-sponsor {
+  color: var(--ink);
+  font-weight: 650;
+}
+
 .slug-meta {
   display: flex;
   align-items: center;

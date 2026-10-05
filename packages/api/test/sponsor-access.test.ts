@@ -424,14 +424,15 @@ test("an agent with full sponsor access drafts replies, replies to all, forwards
     [{ forwards: message, to: ["ada@example.org"] }, { from: linusAddress, to: [{ address: "ada@example.org" }], subject: "Fwd: The report", attachments: expect.any(Array) }],
     [{ to: ["grace@example.org"], subject: "Lunch", text: "Hej." }, { from: linusAddress, to: [{ address: "grace@example.org" }], subject: "Lunch", text: "Hej." }],
   ];
-  const withoutIdAndTime = ({ id: _, updatedAt: __, ...draft }: { id: string; updatedAt: string }) => draft;
+  // What the agent and the sponsor each drafted, without the ID or who saved it when.
+  const withoutWhoAndWhen = ({ id: _, updatedAt: __, updatedBy: ___, ...draft }: { id: string; updatedAt: string; updatedBy?: string }) => draft;
 
   for (const [body, expected] of drafts) {
     const { response, data } = await hermes.POST("/mailboxes/{mailbox}/drafts", { params, body });
     expect(response.status).toBe(201);
     expect(data).toMatchObject(expected);
     const { data: sponsors } = await linus.POST("/mailboxes/{mailbox}/drafts", { params, body });
-    expect(withoutIdAndTime(data!)).toEqual(withoutIdAndTime(sponsors!));
+    expect(withoutWhoAndWhen(data!)).toEqual(withoutWhoAndWhen(sponsors!));
     expect((await linus.GET("/mailboxes/{mailbox}/drafts/{draft}", { params: { path: { ...params.path, draft: data!.id } } })).data).toEqual(data);
   }
   const { data: feed } = await linus.GET("/mailboxes/{mailbox}/changes", { params });
@@ -465,6 +466,35 @@ test("in the sponsor's mailbox, an agent with full access and its sponsor each c
     expect.objectContaining({ type: "draftDeleted", draft: linusDraft, actor: hermesId }),
     expect.objectContaining({ type: "draftDeleted", draft: hermesDraft!.id, actor: linusId }),
   ]);
+});
+
+test("a draft in the sponsor's mailbox names the actor who wrote it or changed it last", async () => {
+  const fixture = await withSponsor();
+  const { linus, linusId, hermes, hermesId, giveAccess } = fixture;
+  const { params } = await withMail(fixture);
+  await giveAccess("full");
+  const { data: written } = await hermes.POST("/mailboxes/{mailbox}/drafts", { params, body: { to: ["grace@example.org"], text: "Utkast." } });
+  const inDraft = { params: { path: { ...params.path, draft: written!.id } } };
+
+  expect(written!.updatedBy).toBe(hermesId);
+  const { data: changedByLinus } = await linus.PATCH("/mailboxes/{mailbox}/drafts/{draft}", { ...inDraft, body: { subject: "Lunch" } });
+  expect(changedByLinus!.updatedBy).toBe(linusId);
+  const { data: changedByHermes } = await hermes.PATCH("/mailboxes/{mailbox}/drafts/{draft}", { ...inDraft, body: { text: "Hej." } });
+  expect(changedByHermes!.updatedBy).toBe(hermesId);
+  expect((await linus.GET("/mailboxes/{mailbox}/drafts/{draft}", inDraft)).data!.updatedBy).toBe(hermesId);
+  expect((await linus.GET("/mailboxes/{mailbox}/drafts", { params })).data!.drafts.find(({ id }) => id === written!.id)!.updatedBy).toBe(hermesId);
+});
+
+test("the sponsor's edit to a send as them, approving it, makes the draft theirs as changed last", async () => {
+  const fixture = await withSponsor();
+  const { linus, linusId, hermesId, giveAccess } = fixture;
+  await giveAccess("full");
+  const { asked, inDraft } = await withReplyAsSponsor(fixture);
+  expect(asked.data!.updatedBy).toBe(hermesId);
+
+  await linus.POST("/approvals/{approval}/send", { params: { path: { approval: asked.data!.send!.approval! } }, body: { text: "Tack!" } });
+
+  expect((await linus.GET("/mailboxes/{mailbox}/drafts/{draft}", inDraft)).data!.updatedBy).toBe(linusId);
 });
 
 test("lowering sponsor access from full to read stops the agent changing anything at once, its drafts staying", async () => {

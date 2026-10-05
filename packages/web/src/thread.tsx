@@ -23,7 +23,8 @@ const quoteShown = 3;
 
 /**
  * The thread with the ID in the mailbox, the human's own or, with the agent's name, an agent's
- * they sponsor. `version` counts the changes to the mailbox the app has
+ * they sponsor, where the human has no replies. `agentNames` names the agents they sponsor by ID,
+ * for the messages those agents sent. `version` counts the changes to the mailbox the app has
  * seen, so the thread is read again when it grows, and replies that arrive while it's open show.
  * `back` is the view it was opened from, named `backTo`, where archiving, Spam, Trash and restoring
  * return to, telling `onDone` what was done.
@@ -34,6 +35,7 @@ export function ThreadView({
   id,
   me,
   agent,
+  agentNames,
   labels,
   back,
   backTo,
@@ -46,6 +48,7 @@ export function ThreadView({
   id: string;
   me: string;
   agent?: string;
+  agentNames: ReadonlyMap<string, string>;
   labels: Label[];
   back: string;
   backTo: string;
@@ -211,7 +214,8 @@ export function ThreadView({
                 <Letter
                   message={message}
                   me={me}
-                  agent={agent}
+                  agentNames={agentNames}
+                  owner={agent === undefined ? undefined : { id: mailbox.owner, name: agent }}
                   fresh={reading.fresh.has(message.id)}
                   starting={typeof replying === "object" && replying.message === message.id ? replying.start : undefined}
                   busy={typeof replying === "object"}
@@ -248,14 +252,16 @@ function ThreadLabels({ thread, labels }: { thread: Thread; labels: Label[] }) {
 }
 
 /**
- * A message as a sheet. `starting` says which draft from it is being started, if one is. Without
+ * A message as a sheet, saying who sent it from the mailbox, if anyone did: the human, or an agent
+ * they sponsor, named. `starting` says which draft from it is being started, if one is. Without
  * `onReply`, as in an agent's mailbox, where only the agent drafts, it has no replies or forward.
  * `downloading` says which of its attachments is on its way, if one is.
  */
 function Letter({
   message,
   me,
-  agent,
+  agentNames,
+  owner,
   fresh,
   starting,
   busy,
@@ -265,7 +271,9 @@ function Letter({
 }: {
   message: Message;
   me: string;
-  agent?: string;
+  agentNames: ReadonlyMap<string, string>;
+  /** In an agent's mailbox, the agent, by the name the mailbox list gave it, for when its name isn't among `agentNames`. */
+  owner?: { id: string; name: string };
   fresh: boolean;
   starting?: Start;
   busy: boolean;
@@ -274,6 +282,7 @@ function Letter({
   onDownload: (index: number) => void;
 }) {
   const titleId = useId();
+  const agent = message.sentBy === undefined ? undefined : (agentNames.get(message.sentBy) ?? (message.sentBy === owner?.id ? owner.name : undefined));
   const sent =
     message.sentBy === undefined ? undefined : message.sentBy === me ? strings.thread.sentByYou : agent === undefined ? strings.thread.sentFromMailbox : strings.thread.sentBy(agent);
   return (

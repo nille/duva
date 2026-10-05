@@ -20,7 +20,7 @@ export type Draft = components["schemas"]["Draft"];
 export type Approval = components["schemas"]["Approval"];
 export type SendStatus = components["schemas"]["SendStatus"];
 type Edits = components["schemas"]["Edits"];
-type DraftContent = Omit<Draft, "id" | "updatedAt" | "send">;
+type DraftContent = Omit<Draft, "id" | "updatedAt" | "updatedBy" | "send">;
 /** Where a draft's send stands as stored, with the actor who asked to send it if it needs no approval. */
 type StoredSend = SendStatus & { by?: string };
 /**
@@ -67,7 +67,7 @@ export class AlreadyDecided extends Error {
 
 /** Writes a new draft in the mailbox, on behalf of the actor `by`. */
 export async function addDraft(table: Table, { mailbox, by, content }: { mailbox: string; by: string; content: DraftContent }): Promise<Draft> {
-  const draft: Draft = { id: randomUUID(), ...content, updatedAt: new Date().toISOString() };
+  const draft: Draft = { id: randomUUID(), ...content, updatedAt: new Date().toISOString(), updatedBy: by };
   await recordChanges(table, mailboxFeed(mailbox), {
     by,
     changes: [{ type: "draftWritten", draft: draft.id }],
@@ -130,6 +130,7 @@ export async function changeDraft(
       ...draft,
       ...Object.fromEntries(Object.entries(changes).filter(([, value]) => value !== undefined)),
       updatedAt: new Date().toISOString(),
+      updatedBy: by,
       send: waiting ? { approval: waiting.approval, state: "withdrawn" } : draft.send,
       version: draft.version + 1,
     };
@@ -333,7 +334,7 @@ async function decide(table: Table, approval: Approval, by: string, { state, not
   const decidedAt = new Date().toISOString();
   const { mailbox, draft } = approval;
   const send: SendStatus = { approval: approval.id, state, note };
-  const draftSet = setting({ ...edits, ...(edits !== undefined && { updatedAt: decidedAt }), send });
+  const draftSet = setting({ ...edits, ...(edits !== undefined && { updatedAt: decidedAt, updatedBy: by }), send });
   try {
     await recordChanges(table, mailboxFeed(mailbox), {
       by,
@@ -517,7 +518,7 @@ const attachmentOf = ({ name, type, size }: components["schemas"]["Attachment"])
 const addressOf = ({ name, address }: components["schemas"]["EmailAddress"]) => (name === undefined ? { address } : { name, address });
 
 /** The draft in the order the contract lists its fields, without what only Duva keeps. */
-const draftOf = ({ id, answers, forwards, thread, from, to, cc = [], bcc = [], subject, text, attachments, updatedAt, send }: Omit<StoredDraft, "version">): Draft => ({
+const draftOf = ({ id, answers, forwards, thread, from, to, cc = [], bcc = [], subject, text, attachments, updatedAt, updatedBy, send }: Omit<StoredDraft, "version">): Draft => ({
   id,
   ...(answers !== undefined && { answers }),
   ...(forwards !== undefined && { forwards }),
@@ -530,6 +531,7 @@ const draftOf = ({ id, answers, forwards, thread, from, to, cc = [], bcc = [], s
   text,
   ...(attachments !== undefined && { attachments: attachments.map(attachmentOf) }),
   updatedAt,
+  ...(updatedBy !== undefined && { updatedBy }),
   ...(send !== undefined && { send: sendOf(send) }),
 });
 

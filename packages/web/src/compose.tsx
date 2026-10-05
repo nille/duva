@@ -52,10 +52,25 @@ type Problem = { message: string; field?: ListField };
 
 /**
  * The draft with the ID in the mailbox, or a new message if there is no ID yet, which becomes a
- * draft once there is something to save. `version` counts the changes to the mailbox the app has
+ * draft once there is something to save. `agentNames` names the agents the human sponsors by ID, so a
+ * draft an agent saved last says so. `version` counts the changes to the mailbox the app has
  * seen, so the composer learns how its send went. It never overwrites what the human typed.
  */
-export function Composer({ client, mailbox, id: given, version, onSignedOut }: { client: DuvaClient; mailbox: Mailbox; id?: string; version: number; onSignedOut: () => void }) {
+export function Composer({
+  client,
+  mailbox,
+  id: given,
+  agentNames,
+  version,
+  onSignedOut,
+}: {
+  client: DuvaClient;
+  mailbox: Mailbox;
+  id?: string;
+  agentNames: ReadonlyMap<string, string>;
+  version: number;
+  onSignedOut: () => void;
+}) {
   const { clock } = useDates();
   const [loading, setLoading] = useState<Loading>(given === undefined ? { status: "ready" } : { status: "loading" });
   const [draft, setDraft] = useState<Draft>();
@@ -157,6 +172,8 @@ export function Composer({ client, mailbox, id: given, version, onSignedOut }: {
   };
 
   const state = draft?.send?.state;
+  // The agent that saved the draft last, if one did. Once the human saves it, it's theirs.
+  const agent = draft?.updatedBy === undefined ? undefined : agentNames.get(draft.updatedBy);
   const locked = state === "approved" || state === "sending" || state === "sent" || state === "unclear" || busy !== undefined;
 
   const send = async () => {
@@ -262,7 +279,7 @@ export function Composer({ client, mailbox, id: given, version, onSignedOut }: {
           {title}
         </h1>
         <p className="compose-saved" role="status">
-          {saving.status === "saving" ? strings.compose.saving : saving.status === "saved" ? strings.compose.saved(clock(saving.at)) : ""}
+          {saving.status === "saving" ? strings.compose.saving : agent !== undefined ? strings.compose.savedBy(agent) : saving.status === "saved" ? strings.compose.saved(clock(saving.at)) : ""}
         </p>
       </div>
       <form

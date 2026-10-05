@@ -32,7 +32,7 @@ async function withHumansMailbox(options: DuvaOptions = {}) {
     await linus.POST("/mailboxes/{mailbox}/drafts/{draft}/send", draftParams);
     return (await linus.GET("/mailboxes/{mailbox}/drafts/{draft}", draftParams)).data!;
   };
-  return { duva, ada, linus, mailbox: mailbox!, params, receive, link, forward, send };
+  return { duva, ada, linus, linusId: human!.id, mailbox: mailbox!, params, receive, link, forward, send };
 }
 
 test("a human downloads an attachment of a received message through a short-lived link", async () => {
@@ -165,7 +165,7 @@ test("asking for an attachment the message doesn't have, or a message the mailbo
 });
 
 test("forwarding a message makes a draft with Fwd:, the original's text quoted, and its attachments", async () => {
-  const { receive, forward } = await withHumansMailbox();
+  const { linusId, receive, forward } = await withHumansMailbox();
   const message = await receive(await mail("attachment"));
 
   const draft = await forward({ forwards: message.id });
@@ -195,6 +195,7 @@ test("forwarding a message makes a draft with Fwd:, the original's text quoted, 
       { type: "text/csv", size: 8 },
     ],
     updatedAt: expect.any(String),
+    updatedBy: linusId,
   });
 });
 

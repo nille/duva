@@ -57,7 +57,7 @@ const parse = (raw: string) => PostalMime.parse(raw);
 const addresses = (list: { address?: string }[] | undefined) => (list ?? []).map(({ address }) => address);
 
 test("a human drafts a new message from their mailbox's default address, with To, Cc and Bcc", async () => {
-  const { draft } = await withHumansMailbox();
+  const { draft, human } = await withHumansMailbox();
 
   const written = await draft({ to: ["grace@example.org"], cc: ["ada@example.org"], bcc: ["iris@example.net"], subject: "Lunch", text: "Lunch på fredag?" });
 
@@ -70,6 +70,7 @@ test("a human drafts a new message from their mailbox's default address, with To
     subject: "Lunch",
     text: "Lunch på fredag?",
     updatedAt: expect.any(String),
+    updatedBy: human.id,
   });
 });
 

@@ -1,5 +1,5 @@
 // The drafts a mailbox's owner hasn't sent, the most recently written first, on one sheet like the
-// Inbox's index. Each opens in the composer.
+// Inbox's index, each naming the agent that saved it last, if one did. Each opens in the composer.
 import { useCallback, useEffect, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
@@ -11,8 +11,23 @@ type Mailbox = components["schemas"]["Mailbox"];
 
 type Listing = { status: "loading" } | { status: "failed"; message: string } | { status: "listed"; drafts: Draft[] };
 
-/** The mailbox's drafts. `version` counts the changes to the mailbox the app has seen, so the list reads them again when they change. */
-export function Drafts({ client, mailbox, version, onSignedOut }: { client: DuvaClient; mailbox: Mailbox; version: number; onSignedOut: () => void }) {
+/**
+ * The mailbox's drafts. `agentNames` names the agents the human sponsors by ID. `version` counts the
+ * changes to the mailbox the app has seen, so the list reads them again when they change.
+ */
+export function Drafts({
+  client,
+  mailbox,
+  agentNames,
+  version,
+  onSignedOut,
+}: {
+  client: DuvaClient;
+  mailbox: Mailbox;
+  agentNames: ReadonlyMap<string, string>;
+  version: number;
+  onSignedOut: () => void;
+}) {
   const [listing, setListing] = useState<Listing>({ status: "loading" });
 
   const load = useCallback(async () => {
@@ -71,7 +86,7 @@ export function Drafts({ client, mailbox, version, onSignedOut }: { client: Duva
         <div className="index">
           <ol className="threads" aria-label={strings.drafts.list}>
             {listing.drafts.map((draft) => (
-              <DraftRow key={draft.id} draft={draft} />
+              <DraftRow key={draft.id} draft={draft} agent={draft.updatedBy === undefined ? undefined : agentNames.get(draft.updatedBy)} />
             ))}
           </ol>
         </div>
@@ -80,21 +95,24 @@ export function Drafts({ client, mailbox, version, onSignedOut }: { client: Duva
   );
 }
 
-function DraftRow({ draft }: { draft: Draft }) {
+/** A draft in the list, with the name of the agent that saved it last, if one did. */
+function DraftRow({ draft, agent }: { draft: Draft; agent?: string }) {
   const recipients = [...draft.to, ...draft.cc, ...draft.bcc].map(({ name, address }) => name || address).join(", ");
   const to = recipients === "" ? strings.drafts.noRecipients : strings.drafts.to(recipients);
   const subject = draft.subject || strings.thread.noSubject;
   const state = draft.send === undefined ? undefined : strings.drafts.states[draft.send.state];
   const snippet = draft.text.replace(/\s+/g, " ").trim();
+  const by = agent === undefined ? undefined : strings.drafts.by(agent);
   return (
     <li className="thread-row">
-      <a className="thread" href={`#/drafts/${encodeURIComponent(draft.id)}`} aria-label={[state, to, subject].filter(Boolean).join(", ")}>
+      <a className="thread" href={`#/drafts/${encodeURIComponent(draft.id)}`} aria-label={[by, state, to, subject].filter(Boolean).join(", ")}>
         <span className="thread-mark" aria-hidden="true" />
         <span className="thread-sender">
           <span className="thread-sender-name">{to}</span>
         </span>
         <span className="thread-text">
           <span className="thread-subject">
+            {by !== undefined && <span className="draft-state">{by}</span>}
             {state !== undefined && <span className={`draft-state draft-state-${draft.send!.state}`}>{state}</span>}
             {subject}
           </span>

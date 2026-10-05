@@ -71,6 +71,7 @@ export const strings = {
     emptyLead: "Duva saves what you write as you type, so a message you haven't sent waits here until you finish it.",
     noRecipients: "No recipients yet",
     to: (recipients: string) => `To ${recipients}`,
+    by: (agent: string) => `By ${agent}`,
     states: { failed: "Not sent", approved: "Sending", sending: "Sending", unclear: "Unclear" } as Partial<Record<string, string>>,
     failed: (status: number) => `Duva couldn't list your drafts (error ${status}). Try again in a moment.`,
     unreachable: "Duva couldn't be reached, so your drafts aren't listed. Check your connection and try again.",
@@ -98,6 +99,7 @@ export const strings = {
     deleting: "Deleting…",
     saving: "Saving…",
     saved: (time: string) => `Saved at ${time}`,
+    savedBy: (agent: string) => `Last saved by ${agent}`,
     saveFailed: "Duva couldn't save the draft. It tries again as you type.",
     notAddress: (address: string) => `“${address}” isn't an email address. Fix it, and Duva saves the rest meanwhile.`,
     noRecipient: "Add a recipient in To, then send.",
@@ -347,6 +349,9 @@ export const strings = {
     showLess: "Show less",
     disclosure: (agent: string, sponsor: string) => `Sent by ${agent} for ${sponsor}`,
     disclosureNote: "Duva adds this line, so recipients can tell an agent wrote it.",
+    noDisclosureLine: (agent: string) => `Duva adds no line to it, as you chose for ${agent}. A header still tells recipients' software that an agent wrote it.`,
+    asYou: (address: string) => `As you, from ${address}`,
+    fromOwnMailbox: (address: string) => `From its own mailbox, ${address}`,
   },
 
   decide: {

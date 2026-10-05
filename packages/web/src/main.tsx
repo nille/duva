@@ -118,7 +118,8 @@ function useRoute(): Route & { hash: string } {
   return { ...routeOf(hash), hash };
 }
 
-type Mailboxes = { status: "loading" } | { status: "failed" } | { status: "listed"; mine?: Mailbox; agents: AgentMailbox[]; sponsorsAgents: boolean };
+/** The mailboxes the human reads, and the names of the agents they sponsor, by ID, mailbox or not. */
+type Mailboxes = { status: "loading" } | { status: "failed" } | { status: "listed"; mine?: Mailbox; agents: AgentMailbox[]; agentNames: ReadonlyMap<string, string>; sponsorsAgents: boolean };
 
 /** The signed-in app: the bar, and the view the route names, kept current by following the change feeds. */
 function SignedIn({ config, client, actor, onSignedOut }: { config: Config; client: DuvaClient; actor: Human; onSignedOut: () => void }) {
@@ -155,7 +156,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
     const { data: sponsored } = await client.GET("/agents").catch(() => ({ data: undefined }));
     const names = new Map(sponsored?.agents.map((agent) => [agent.id, agent.name]));
     const agents = theirs.map((mailbox) => ({ mailbox, agent: names.get(mailbox.owner) ?? mailbox.defaultAddress })).sort((a, b) => a.agent.localeCompare(b.agent));
-    setMailboxes({ status: "listed", mine: data.mailboxes.find((mailbox) => mailbox.owner === actor.id), agents, sponsorsAgents: agents.length > 0 || (sponsored?.agents.length ?? 0) > 0 });
+    setMailboxes({ status: "listed", mine: data.mailboxes.find((mailbox) => mailbox.owner === actor.id), agents, agentNames: names, sponsorsAgents: agents.length > 0 || (sponsored?.agents.length ?? 0) > 0 });
   }, [client, actor.id, onSignedOut]);
   useEffect(() => {
     void listMailboxes();
@@ -247,6 +248,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
 
   const listed = mailboxes.status === "listed" ? mailboxes : undefined;
   const mine = listed?.mine;
+  const agentNames = listed?.agentNames ?? noNames;
   const sponsor = listed?.sponsorsAgents === true || (waiting ?? 0) > 0;
   // The mailbox the route is in, the human's own if it names none.
   const agent = named !== undefined ? listed?.agents.find(({ mailbox }) => mailbox.id === named) : undefined;
@@ -316,6 +318,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
         id={route.id}
         me={actor.id}
         agent={agent?.agent}
+        agentNames={agentNames}
         labels={labels}
         back={hrefOf(route.from, base)}
         backTo={titleOf(route.from, labels, agent?.agent)}
@@ -324,9 +327,9 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
         onSignedOut={onSignedOut}
       />
     ) : route.view === "draft" || route.view === "write" ? (
-      <Composer key={routeKey} client={client} mailbox={shown} id={route.view === "draft" ? route.id : undefined} version={version} onSignedOut={onSignedOut} />
+      <Composer key={routeKey} client={client} mailbox={shown} id={route.view === "draft" ? route.id : undefined} agentNames={agentNames} version={version} onSignedOut={onSignedOut} />
     ) : route.view !== "list" ? (
-      <Drafts client={client} mailbox={shown} version={version} onSignedOut={onSignedOut} />
+      <Drafts client={client} mailbox={shown} agentNames={agentNames} version={version} onSignedOut={onSignedOut} />
     ) : (
       <ThreadIndex
         key={`${shown.id}/${pathOf(route.list)}`}
@@ -384,7 +387,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
         </div>
       </header>
       {route.view === "approvals" ? (
-        <Approvals client={client} sponsor={actor.email} connection={connection} follow={follow} onSignedOut={onSignedOut} />
+        <Approvals client={client} me={actor.id} sponsor={actor.email} connection={connection} follow={follow} onSignedOut={onSignedOut} />
       ) : route.view === "settings" ? (
         <Settings client={client} admin={actor.admin} email={actor.email} onPreferences={setPreferences} onSignedOut={onSignedOut} />
       ) : shown !== undefined || (listed !== undefined && listed.agents.length > 0) ? (
@@ -398,7 +401,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
                 base={base}
                 labels={labels}
                 current={viewed}
-                // Only a mailbox's owner writes in it, so drafts are always the human's own.
+                // A human writes only in their own mailbox, so its Drafts is the only one listed.
                 drafts={shown === mine ? { current: writing } : undefined}
                 onLabelCreated={() => setRelabelled((current) => current + 1)}
                 onSignedOut={onSignedOut}
@@ -413,6 +416,8 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
     </PreferencesContext>
   );
 }
+
+const noNames: ReadonlyMap<string, string> = new Map();
 
 const WriteIcon = () => (
   <svg className="icon" viewBox="0 0 16 16" aria-hidden="true">

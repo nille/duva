@@ -1179,6 +1179,8 @@ export interface components {
              * @description When the draft was written or last changed.
              */
             updatedAt: string;
+            /** @description The ID of the actor who wrote the draft or changed it last, the approver if they edited it. Drafts written before Duva kept this have none. */
+            updatedBy?: string;
             send?: components["schemas"]["SendStatus"];
         };
         /** @description Where the draft's latest request to send stands. A draft never asked to send has none. */

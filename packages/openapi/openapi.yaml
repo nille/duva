@@ -2040,6 +2040,9 @@ components:
           type: string
           format: date-time
           description: When the draft was written or last changed.
+        updatedBy:
+          type: string
+          description: The ID of the actor who wrote the draft or changed it last, the approver if they edited it. Drafts written before Duva kept this have none.
         send:
           $ref: "#/components/schemas/SendStatus"
     SendStatus:
