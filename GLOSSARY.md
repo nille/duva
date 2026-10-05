@@ -31,11 +31,11 @@ A mailbox owned by the organization, where admins act as its owner. Other actors
 _Avoid_: team inbox, collaborative inbox
 
 **Grant**:
-Limited, revocable access to a mailbox, given to an actor by the mailbox's owner. It says which of read, organize, draft, send and delete the actor may do, and whether sending needs approval.
+Limited, revocable access to a mailbox, given to an actor by the mailbox's owner, or by an agent's sponsor for the agent's mailbox. It says which of read, organize, draft, send and delete the actor may do: everything includes read, and send includes draft. It also says whether sending needs approval (yes by default) and, for an agent, whether its mail carries the disclosure's visible line (yes by default). It works as soon as it's given and lasts until revoked. An actor holds at most one grant to a mailbox.
 _Avoid_: delegation, permission, share
 
 **Approval**:
-Sign-off before an action takes effect. A send needs it when the sender's grant says so, from the mailbox's owner or an approver they choose. An agent's send from its own mailbox, and a setup change by an agent admin, need it from the agent's sponsor; each can be switched off for that agent.
+Sign-off before an action takes effect. A send needs it when the sender's grant says so, from the mailbox's owner, or the sponsor for an agent's mailbox. An agent's send from its own mailbox, and a setup change by an agent admin, need it from the agent's sponsor; each can be switched off for that agent.
 
 **Admin**:
 An actor allowed to change the organization's setup: domains, addresses, groups, actors and settings. Admins act as owner of shared mailboxes only; they never give grants to personal ones. An agent can be an admin only if its sponsor is one.
@@ -45,7 +45,7 @@ The human who answers for an agent, at first the one who created it. The sponsor
 _Avoid_: owner (for agents), operator, creator
 
 **Disclosure**:
-The mark on mail an agent sends: always a header, even after a human approved it, and by default a visible line naming the agent and whom it acts for.
+The mark on mail an agent sends: always a header, even after a human approved it, and by default a visible line naming the agent and whom it acts for, the owner of the mailbox it sends from. It follows the actor who sends: a draft an agent wrote that a human sends carries none.
 
 **Send limit**:
 How much an actor may send per hour, and to how many new recipients per day. Agents start low; admins can change it. Mail over the limit waits.
@@ -115,5 +115,5 @@ Where mail from a mailbox's first-time senders waits until an actor who may orga
 Keeping senders from learning whether, when or where their mail was read. On by default; each actor can turn it off.
 
 **Change feed**:
-The ordered record of every change in a mailbox, and of every change to the organization's setup. A change made by an actor names that actor; arriving mail names none. Clients and agents catch up from where they left off. It is also the audit trail.
+The ordered record of every change in a mailbox, of every change to the organization's setup, and of the grants each actor gives and is given. A change made by an actor names that actor; arriving mail names none. Clients and agents catch up from where they left off. It is also the audit trail.
 _Avoid_: event log, activity log, audit log
