@@ -106,6 +106,26 @@ test("a human has no time zone until they choose one, and then it is theirs", as
   expect((await ada.GET("/preferences")).data?.timeZone).toBe("Europe/Stockholm");
 });
 
+test("a human removes their time zone, and has none again, with other preferences changed in the same call", async () => {
+  const { ada } = await withOrganization();
+  await ada.PATCH("/preferences", { body: { timeZone: "Europe/Stockholm" } });
+
+  const { response, data } = await ada.PATCH("/preferences", { body: { timeZone: null, hourCycle: "h23" } });
+
+  expect(response.status).toBe(200);
+  expect(data).toEqual({ hourCycle: "h23", dateFormat: "locale", mailView: "html" });
+  expect((await ada.GET("/preferences")).data).toEqual({ hourCycle: "h23", dateFormat: "locale", mailView: "html" });
+});
+
+test("removing a time zone a human never chose leaves them without one", async () => {
+  const { ada } = await withOrganization();
+
+  const { response, data } = await ada.PATCH("/preferences", { body: { timeZone: null } });
+
+  expect(response.status).toBe(200);
+  expect(data).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "html" });
+});
+
 test("a time zone that isn't one is refused", async () => {
   const { ada } = await withOrganization();
 

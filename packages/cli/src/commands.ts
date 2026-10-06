@@ -23,23 +23,30 @@ export interface CommandOption {
   description: string;
   /** "strings" for a list, given as the option once for each of its items, and "boolean" for a flag, which takes no value and is false as --no-<name>. */
   type?: string;
+  /** Whether the option is null as --no-<name>. */
+  nullable?: boolean;
 }
 
 /** The hand-written commands, then one for each API operation. */
 export const commands: Command[] = [deploy, login, skillInstall, attachmentsDownload, ...apiCommands];
 
+/** The values of a command's options, by name: null for a nullable option given as --no-<name>. */
+export type OptionValues = Record<string, string | string[] | boolean | null | undefined>;
+
 /**
  * The values of the command's options in its arguments. A flag is true when given and false when
- * given as --no-<name>, a list's option takes a value once for each item, and every other option
- * takes a value.
+ * given as --no-<name>, a nullable option is null as --no-<name>, a list's option takes a value
+ * once for each item, and every other option takes a value.
  */
-export function optionValues(command: Command, args: string[]): Record<string, string | string[] | boolean | undefined> {
+export function optionValues(command: Command, args: string[]): OptionValues {
+  const nulled = new Set(command.options.filter(({ nullable }) => nullable).map(({ name }) => `--no-${name}`));
   const { values } = parseArgs({
-    args,
+    args: args.filter((arg) => !nulled.has(arg)),
     allowNegative: true,
     options: Object.fromEntries(
       command.options.map(({ name, type }) => [name, type === "boolean" ? { type: "boolean" as const } : { type: "string" as const, multiple: type === "strings" }]),
     ),
   });
-  return values as Record<string, string | string[] | boolean | undefined>;
+  const given = args.filter((arg) => nulled.has(arg)).map((arg) => [arg.slice("--no-".length), null]);
+  return { ...(values as OptionValues), ...Object.fromEntries(given) };
 }

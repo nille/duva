@@ -1,8 +1,10 @@
 // Vitest global setup: starts DynamoDB Local once per test run. It runs on Java, which must be on the PATH.
+import { createHash } from "node:crypto";
 import { createServer } from "node:net";
 import { DynamoDBClient, ListTablesCommand } from "@aws-sdk/client-dynamodb";
 import { spawn } from "dynamo-db-local";
 import type { TestProject } from "vitest/node";
+import { tableKey } from "../src/infrastructure.ts";
 
 export default async function setup(project: TestProject) {
   const port = await freePort();
@@ -35,9 +37,47 @@ export function localClientConfig({ endpoint, accessKeyId }: LocalDatabase) {
   return { endpoint, region: "eu-north-1", credentials: { accessKeyId, secretAccessKey: "local" } };
 }
 
-/** A client for the database in DynamoDB Local. */
+/**
+ * A client for the database in DynamoDB Local. DynamoDB keeps no order of an item's attributes,
+ * where DynamoDB Local keeps the order they were written in, so this client lists the attributes
+ * of each item it reads, and those of each map in them, in an order of the item's own, by a hash
+ * of its key and their names. An item comes back the same way each time it is read, and two items
+ * with the same attributes almost always in different orders.
+ */
 export function dynamodbLocal(database: LocalDatabase, maxAttempts?: number): DynamoDBClient {
-  return new DynamoDBClient({ ...localClientConfig(database), maxAttempts });
+  const client = new DynamoDBClient({ ...localClientConfig(database), maxAttempts });
+  client.middlewareStack.add(
+    (next) => async (args) => {
+      const result = await next(args);
+      const output = result.output as unknown as Record<string, unknown>;
+      for (const name of ["Item", "Items", "Attributes", "Responses"]) if (output[name] !== undefined) output[name] = inOwnOrder(output[name]);
+      return result;
+    },
+    { step: "initialize" },
+  );
+  return client;
+}
+
+/** The items in the value, each with its attributes in its own order. */
+function inOwnOrder(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(inOwnOrder);
+  if (value?.constructor !== Object) return value;
+  const item = value as Record<string, unknown>;
+  const key = [tableKey.partitionKey, tableKey.sortKey].map((name) => (item[name] as { S?: string } | undefined)?.S ?? item[name]);
+  if (key.some((part) => typeof part !== "string")) return Object.fromEntries(Object.entries(item).map(([name, inner]) => [name, inOwnOrder(inner)]));
+  return shuffled(item, key.join("|"));
+}
+
+/** The value with each object's properties in an order the seed gives, however deep. */
+function shuffled(value: unknown, seed: string): unknown {
+  if (Array.isArray(value)) return value.map((inner, index) => shuffled(inner, `${seed}|${index}`));
+  if (value?.constructor !== Object) return value;
+  const rank = (name: string) => createHash("sha256").update(`${seed}|${name}`).digest("hex");
+  return Object.fromEntries(
+    Object.entries(value as object)
+      .sort(([a], [b]) => (rank(a) < rank(b) ? -1 : 1))
+      .map(([name, inner]) => [name, shuffled(inner, `${seed}|${name}`)]),
+  );
 }
 
 async function untilReady(client: DynamoDBClient, failure: () => Error | undefined) {

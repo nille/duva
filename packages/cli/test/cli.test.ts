@@ -258,6 +258,22 @@ test("a human chooses 24-hour time and ISO dates, and the CLI's own timestamps s
   for (const at of times) expect(at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
 });
 
+test("a human chooses a time zone, and removes it again", async () => {
+  const machine = await newMachine();
+  const server = await (await startDuva({ admin: "ada@example.com" })).listen();
+  onTestFinished(() => server.close());
+  await machine.saveDeployment(server);
+  await machine.duva("login", { browserSignsIn: "ada@example.com" });
+
+  const chosen = await machine.duva("preferences", "change", "--timeZone", "Europe/Stockholm");
+  const removed = await machine.duva("preferences", "change", "--no-timeZone");
+
+  expect(JSON.parse(chosen.stdout)).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "html", timeZone: "Europe/Stockholm" });
+  expect(removed.stderr).toBe("");
+  expect(removed.exitCode).toBe(0);
+  expect(JSON.parse(removed.stdout)).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "html" });
+});
+
 test("preferences change with a date format Duva doesn't have says which there are", async () => {
   const machine = await newMachine();
   const server = await (await startDuva({ admin: "ada@example.com" })).listen();

@@ -3299,7 +3299,8 @@ export interface components {
             hourCycle?: components["schemas"]["HourCycle"];
             dateFormat?: components["schemas"]["DateFormat"];
             mailView?: components["schemas"]["MailView"];
-            timeZone?: components["schemas"]["TimeZone"];
+            /** @description The time zone, as an IANA name, or null to remove it, as if the human never chose one. The CLI removes it with --no-timeZone. */
+            timeZone?: components["schemas"]["TimeZone"] | null;
         };
         /**
          * @description The time zone an agent's activity is in, as an IANA name. Left out until the human chooses one, when the API counts days in UTC and the web app in the browser's time zone.

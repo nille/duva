@@ -349,6 +349,23 @@ test("an admin who isn't the sponsor reads no approver's edits, no bounced recip
   expect((find(admins, "feedbackReceived") as { feedback: object }).feedback).not.toHaveProperty("recipients");
 });
 
+test.each([5, 20, 100])("a change to the agent's settings in two of its sponsor's mailboxes is in the timeline once, read %i at a time", async (limit) => {
+  const { duva, ada, grace, agent, timeline } = await withAgent();
+  const agentParams = { params: { path: { agent: agent.id } } };
+  await grace.POST("/mailboxes", { body: { owner: (await ada.GET("/whoami")).data!.id, address: "ada.lovelace@example.com" } });
+  await duva.clock(new Date("2026-09-15T10:00:00Z"));
+  for (const sendsPerHour of [10, 20, 30, 40, 50, 60]) await ada.PATCH("/agents/{agent}/settings", { ...agentParams, body: { sendsPerHour } });
+
+  const read = [];
+  for (let after: string | undefined, page = 0; page === 0 || after !== undefined; page++) {
+    const { data } = await timeline("2026-09-15", { limit, ...(after !== undefined && { after }) });
+    read.push(...data!.entries);
+    after = data!.next;
+  }
+
+  expect(read.map(({ change }) => change.type === "agentSettingsChanged" && change.after.sendsPerHour)).toEqual([60, 50, 40, 30, 20, 10]);
+});
+
 test("a long timeline is read a page at a time, newest first, without repeats", async () => {
   const { duva, receive, timeline } = await withAgent();
   await duva.clock(new Date("2026-09-15T10:00:00Z"));

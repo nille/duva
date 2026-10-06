@@ -1,6 +1,6 @@
 import { createDuvaClient } from "@duva/client";
 import { operations, type Operation, type OperationId } from "@duva/openapi";
-import { type Command, optionValues } from "./commands.ts";
+import { type Command, type OptionValues, optionValues } from "./commands.ts";
 import { readConfig } from "./config.ts";
 import { accessToken } from "./session.ts";
 
@@ -11,13 +11,14 @@ export const agentKeyVariable = "DUVA_AGENT_KEY";
 interface Call {
   query?: Record<string, string | number | boolean>;
   path?: Record<string, string | number>;
-  body?: Record<string, string | number | boolean | string[]>;
+  body?: Record<string, string | number | boolean | string[] | null>;
 }
 
 /**
  * One command for each operation in the OpenAPI document, named by its x-cli-command. Query and
  * path parameters and the properties of a JSON body are options, a list is an option given
- * once for each of its items, and a boolean is a flag.
+ * once for each of its items, a boolean is a flag, and a property that may be null is null as
+ * --no-<name>.
  */
 export const apiCommands: Command[] = operations.map((operation) => {
   const command: Command = {
@@ -30,10 +31,14 @@ export const apiCommands: Command[] = operations.map((operation) => {
   return command;
 });
 
-function callOf(operation: Operation, values: Record<string, string | string[] | boolean | undefined>): Call {
+function callOf(operation: Operation, values: OptionValues): Call {
   const call: Required<Call> = { query: {}, path: {}, body: {} };
   for (const { name, in: place, type, required } of operation.options) {
     const value = values[name];
+    if (value === null) {
+      call.body[name] = null;
+      continue;
+    }
     if (typeof value === "boolean") {
       if (place !== "path") call[place][name] = value;
       continue;

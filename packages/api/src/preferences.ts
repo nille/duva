@@ -59,21 +59,27 @@ export const changePreferences: OperationHandler = async (event, deployment, act
     const values: string[] = choices[name];
     if (body[name] !== undefined && !values.includes(body[name] as string)) return refusal(400, `Give ${name} as ${values.slice(0, -1).join(", ")} or ${values.at(-1)}.`);
   }
-  if (body.timeZone !== undefined) {
+  if (body.timeZone !== undefined && body.timeZone !== null) {
     const timeZone = timeZoneNamed(body.timeZone);
     if (timeZone === undefined) return refusal(400, `${JSON.stringify(body.timeZone)} isn't a time zone. Give timeZone as an IANA name, such as Europe/Stockholm.`);
     body.timeZone = timeZone;
   }
-  const changes = Object.entries(body);
-  // Each preference is set on its own, so two changes at once to different ones both hold.
+  // Each preference is set on its own, so two changes at once to different ones both hold. The time
+  // zone given as null is removed, so the human has none again.
+  const changes = Object.entries(body).map(([name, value], index) => ({ name, value, index }));
+  const set = changes.filter(({ value }) => value !== null);
+  const removed = changes.filter(({ value }) => value === null);
   const { table } = deployment;
   const { Attributes } = await documents(table).send(
     new UpdateCommand({
       TableName: table.name,
       Key: preferencesKey(actor.id),
-      UpdateExpression: `SET ${changes.map((_, index) => `#name${index} = :value${index}`).join(", ")}`,
-      ExpressionAttributeNames: Object.fromEntries(changes.map(([name], index) => [`#name${index}`, name])),
-      ExpressionAttributeValues: Object.fromEntries(changes.map(([, value], index) => [`:value${index}`, value])),
+      UpdateExpression: [
+        ...(set.length > 0 ? [`SET ${set.map(({ index }) => `#name${index} = :value${index}`).join(", ")}`] : []),
+        ...(removed.length > 0 ? [`REMOVE ${removed.map(({ index }) => `#name${index}`).join(", ")}`] : []),
+      ].join(" "),
+      ExpressionAttributeNames: Object.fromEntries(changes.map(({ name, index }) => [`#name${index}`, name])),
+      ...(set.length > 0 && { ExpressionAttributeValues: Object.fromEntries(set.map(({ value, index }) => [`:value${index}`, value])) }),
       ReturnValues: "ALL_NEW",
     }),
   );

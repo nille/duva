@@ -55,12 +55,11 @@ async function activityOf(table: Table, agent: Agent): Promise<Entry[]> {
   const add = (mailbox: string | undefined, change: Change) =>
     entries.push({ mailbox, change, key: `${change.at}|${mailbox ?? "organization"}|${String(change.position).padStart(12, "0")}` });
   // A change to the agent's settings is in each of its sponsor's mailboxes, or each of its own,
-  // with the same time, and counts once.
+  // with the same time and actor, and counts once.
   const settingsChanged = new Set<string>();
   const once = (change: Change) => {
     if (change.type !== "agentSettingsChanged") return true;
-    const { position: _position, ...same } = change;
-    const copy = JSON.stringify(same);
+    const copy = `${change.at}|${change.actor}|${change.agent}`;
     if (settingsChanged.has(copy)) return false;
     settingsChanged.add(copy);
     return true;

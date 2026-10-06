@@ -30,6 +30,7 @@ interface OperationObject {
 
 interface SchemaObject {
   $ref?: string;
+  anyOf?: SchemaObject[];
   type?: string;
   items?: SchemaObject;
   required?: string[];
@@ -114,14 +115,21 @@ function parametersOf(where: string, parameters: NonNullable<OperationObject["pa
   });
 }
 
-/** The properties of the operation's JSON body, which the CLI takes as options too. A list of strings is an option given once per item. */
+/**
+ * The properties of the operation's JSON body, which the CLI takes as options too. A list of
+ * strings is an option given once per item, and a property that may be null, as anyOf it and
+ * null, is nullable, which the CLI gives as --no-<name>.
+ */
 function bodyOf(where: string, body: OperationObject["requestBody"]) {
   if (body === undefined) return [];
   const schema = resolve(body.content?.["application/json"]?.schema);
   if (schema?.type !== "object") fail(`${where} has a body that isn't a JSON object, which the CLI can't pass yet.`);
   return Object.entries(schema.properties ?? {}).map(([name, given]) => {
-    const property = resolve(given) ?? given;
-    return option(where, "body", name, property.type === "array" && resolve(property.items as SchemaObject | undefined)?.type === "string" ? "strings" : property.type, schema.required?.includes(name) ?? false, property.description);
+    const others = given.anyOf?.filter(({ type }) => type !== "null");
+    if (others !== undefined && (others.length !== 1 || others.length === given.anyOf!.length)) fail(`${where} has the property ${name} that is anyOf other than one type and null, which the CLI can't pass yet.`);
+    const property = resolve(others?.[0] ?? given) ?? given;
+    const type = property.type === "array" && resolve(property.items as SchemaObject | undefined)?.type === "string" ? "strings" : property.type;
+    return { ...option(where, "body", name, type, schema.required?.includes(name) ?? false, given.description ?? property.description), ...(others !== undefined && { nullable: true }) };
   });
 }
 

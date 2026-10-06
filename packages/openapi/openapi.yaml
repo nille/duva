@@ -5653,7 +5653,12 @@ components:
         mailView:
           $ref: "#/components/schemas/MailView"
         timeZone:
-          $ref: "#/components/schemas/TimeZone"
+          description: >-
+            The time zone, as an IANA name, or null to remove it, as if the
+            human never chose one. The CLI removes it with --no-timeZone.
+          anyOf:
+            - $ref: "#/components/schemas/TimeZone"
+            - type: "null"
     TimeZone:
       type: string
       description: >-
