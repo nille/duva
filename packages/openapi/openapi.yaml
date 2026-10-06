@@ -2283,6 +2283,78 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+  /alerts:
+    get:
+      operationId: listAlerts
+      summary: List your agents' alerts, newest first, with how many you haven't seen.
+      description: >
+        An alert tells a sponsor that one of their agents needs them: a send
+        that failed, bounced or drew a complaint, its send limit reached, its
+        key used while paused, a pause, limit change or removal by an admin,
+        or a pause by Duva. A human lists the alerts about the agents they
+        sponsor, and an agent those about itself, as its sponsor sees them.
+        Urgent alerts are also mailed to the sponsor's own mailbox, if they
+        have one. Removing an agent keeps its alerts. To read the next page,
+        call again with the answer's next as after, until an answer has no
+        next.
+      x-cli-command: alerts list
+      parameters:
+        - name: agent
+          in: query
+          description: List only the alerts about this agent.
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: How many alerts a page lists at most.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 100
+        - name: after
+          in: query
+          description: Where the page starts, the next of the page before it. Leave it out for the first page.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: A page of the alerts, newest first.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlertList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /alerts/seen:
+    post:
+      operationId: markAlertsSeen
+      summary: Mark alerts seen, so they no longer count as unseen.
+      description: >
+        Only the sponsor marks their alerts seen. IDs of alerts that aren't
+        yours, or no longer exist, are left alone.
+      x-cli-command: alerts mark-seen
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AlertIds"
+      responses:
+        "200":
+          description: How many of your alerts you haven't seen now.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnseenAlerts"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
   /approvals:
     get:
       operationId: listApprovals
@@ -4356,6 +4428,101 @@ components:
           items:
             $ref: "#/components/schemas/Attachment"
           description: The attachments it carries, those of the message it forwards, if it is a forward.
+    Alert:
+      type: object
+      additionalProperties: false
+      required: [id, kind, agent, agentName, at, what, urgent, seen]
+      description: A notice to a sponsor that one of their agents needs them.
+      properties:
+        id:
+          type: string
+          description: The alert's ID.
+        kind:
+          type: string
+          enum: [sendFailed, bounced, complained, limitReached, pausedBy, limitsChangedBy, removedBy, keyUsedWhilePaused, autoPaused]
+          description: >
+            What happened: sendFailed, the agent's send failed, SES rejected
+            it, or it's unclear whether it went out; bounced, it hard-bounced;
+            complained, a recipient complained about it; limitReached, its
+            sends wait for its send limits, once per window; pausedBy,
+            limitsChangedBy and removedBy, an admin paused it, lowered its
+            limits with a cap, or removed it; keyUsedWhilePaused, its key was
+            used while it is paused, once per pause; autoPaused, Duva paused it
+            because its mail hurts the domain (ADR-0021).
+        agent:
+          type: string
+          description: The ID of the agent the alert is about.
+        agentName:
+          type: string
+          description: The agent's name when the alert was raised, kept after it is removed.
+        at:
+          type: string
+          format: date-time
+          description: When the alert was raised.
+        what:
+          type: string
+          description: What happened, in a sentence or two.
+        urgent:
+          type: boolean
+          description: >
+            Whether it is urgent, so also mailed to the sponsor's own mailbox:
+            a complaint, a hard bounce that makes 3 or more within an hour, a
+            pause or removal by someone else, and a pause by Duva. Urgent
+            bounces are mailed once an hour at most, and not while the agent
+            is paused.
+        seen:
+          type: boolean
+          description: Whether the sponsor marked it seen.
+        by:
+          type: string
+          description: The ID of the actor who paused, changed or removed the agent, for pausedBy, limitsChangedBy and removedBy.
+        mailbox:
+          type: string
+          description: The ID of the mailbox the message or draft is in, where there is one.
+        thread:
+          type: string
+          description: The ID of the thread the message is in, where there is one.
+        message:
+          type: string
+          description: The ID of the message, where there is one.
+        draft:
+          type: string
+          description: The ID of the draft, where there is one.
+    AlertList:
+      type: object
+      additionalProperties: false
+      required: [alerts, unseen]
+      properties:
+        alerts:
+          type: array
+          items:
+            $ref: "#/components/schemas/Alert"
+        unseen:
+          type: integer
+          description: How many of the alerts listed, on every page, the sponsor hasn't seen.
+        next:
+          type: string
+          description: Where the next page starts, if there is one. Give it as after.
+    AlertIds:
+      type: object
+      additionalProperties: false
+      required: [alerts]
+      properties:
+        alerts:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            type: string
+          description: The IDs of the alerts.
+    UnseenAlerts:
+      type: object
+      additionalProperties: false
+      required: [unseen]
+      properties:
+        unseen:
+          type: integer
+          description: How many of your alerts you haven't seen.
     ApprovalList:
       type: object
       additionalProperties: false
@@ -5383,7 +5550,7 @@ components:
     ActivitySummary:
       type: object
       additionalProperties: false
-      required: [day, sent, approved, rejected, received, organized, screened]
+      required: [day, sent, approved, rejected, received, organized, screened, alerts]
       description: How much an agent did in one day.
       properties:
         day:
@@ -5408,6 +5575,9 @@ components:
         screened:
           type: integer
           description: The times it let a sender in, blocked one, removed a decision on one, or switched a Screener.
+        alerts:
+          type: integer
+          description: The alerts about it its sponsor got that day.
     ActivityTimeline:
       type: object
       additionalProperties: false

@@ -1,6 +1,6 @@
-// The Lambda entry point the table's stream invokes for each draft a decision approved, and the
-// API and EventBridge Scheduler for an agent whose sends wait for its limits. The CDK app sets the
-// environment and the filter.
+// The Lambda entry point the table's stream invokes for each draft a decision approved and each
+// urgent alert to mail, and the API and EventBridge Scheduler for an agent whose sends wait for its
+// limits. The CDK app sets the environment and the filters.
 import type { Context } from "aws-lambda";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { S3Client } from "@aws-sdk/client-s3";

@@ -1,9 +1,10 @@
 // An agent's activity: its daily summaries, and each day's timeline. Both come from change feeds,
 // read whole each time: those of the agent's mailboxes, its sponsor's for what concerns the agent,
-// and the organization's for changes to it or by it. So they reach back to the agent's start and
-// need no storage of their own.
+// and the organization's for changes to it or by it, with the alerts about it its sponsor got. So
+// they reach back to the agent's start and need no storage of their own.
 import type { components } from "@duva/openapi";
 import { type OperationHandler, refusal } from "./api.ts";
+import { alertTimes } from "./alerting.ts";
 import type { Table } from "./deployment.ts";
 import { findDraft } from "./drafting.ts";
 import { changesPerPage } from "./feed.ts";
@@ -145,7 +146,7 @@ export const getAgentActivity: OperationHandler = async (event, deployment, acto
 
   const days = new Map<string, Summary>();
   for (let number = to; number >= from; number--) {
-    const summary = { day: dayOfNumber(number), sent: 0, approved: 0, rejected: 0, received: 0, organized: 0, screened: 0 };
+    const summary = { day: dayOfNumber(number), sent: 0, approved: 0, rejected: 0, received: 0, organized: 0, screened: 0, alerts: 0 };
     days.set(summary.day, summary);
   }
   for (const { change } of await activityOf(deployment.table, agent)) {
@@ -157,6 +158,11 @@ export const getAgentActivity: OperationHandler = async (event, deployment, acto
     else if (change.type === "messageReceived") summary.received++;
     else if (organizing.has(change.type) && byAgent) summary.organized++;
     else if (screening.has(change.type) && byAgent) summary.screened++;
+  }
+  // No time zone is more than 14 hours ahead of UTC, so the first day starts after midnight UTC the day before.
+  for (const at of await alertTimes(deployment.table, agent.sponsor, agent.id, `${dayOfNumber(from - 1)}T00:00:00.000Z`)) {
+    const summary = days.get(day(at));
+    if (summary !== undefined) summary.alerts++;
   }
   return { statusCode: 200, body: { timeZone, days: [...days.values()] } satisfies components["schemas"]["ActivitySummaries"] };
 };

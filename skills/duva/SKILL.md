@@ -691,6 +691,24 @@ Only the agent's sponsor can, for one draft at a time, and the agent's limits st
 - `--mailbox` (required): The mailbox's ID.
 - `--draft` (required): The draft's ID.
 
+## duva alerts list
+
+List your agents' alerts, newest first, with how many you haven't seen.
+
+An alert tells a sponsor that one of their agents needs them: a send that failed, bounced or drew a complaint, its send limit reached, its key used while paused, a pause, limit change or removal by an admin, or a pause by Duva. A human lists the alerts about the agents they sponsor, and an agent those about itself, as its sponsor sees them. Urgent alerts are also mailed to the sponsor's own mailbox, if they have one. Removing an agent keeps its alerts. To read the next page, call again with the answer's next as after, until an answer has no next.
+
+- `--agent`: List only the alerts about this agent.
+- `--limit`: How many alerts a page lists at most.
+- `--after`: Where the page starts, the next of the page before it. Leave it out for the first page.
+
+## duva alerts mark-seen
+
+Mark alerts seen, so they no longer count as unseen.
+
+Only the sponsor marks their alerts seen. IDs of alerts that aren't yours, or no longer exist, are left alone.
+
+- `--alerts` (required) (once for each): The IDs of the alerts.
+
 ## duva approvals list
 
 List the approvals waiting for you, newest first, sends with their drafts and setup changes with their previews.

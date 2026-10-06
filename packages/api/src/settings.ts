@@ -1,4 +1,5 @@
 import type { components } from "@duva/openapi";
+import { actorNamed, alertItems, limitsRead } from "./alerting.ts";
 import { jsonBody, type OperationHandler, refusal } from "./api.ts";
 import { threadsPastRetention } from "./erasure.ts";
 import { indexMailboxes } from "./indexing.ts";
@@ -53,7 +54,15 @@ export const changeOrganizationSettings = setupOperation("changeOrganizationSett
       // no longer the ones mail is indexed in.
       if (changes.searchLanguages !== undefined) await indexMailboxes(deployment.table, deployment.indexQueue);
       // Each change to a cap does it, so a change again finishes what one that stopped partway left.
-      if ("agentSendsPerHourCap" in body || "agentNewRecipientsPerDayCap" in body) await lowerLimitsToCaps(deployment.table, actor.id);
+      // Each agent whose limits it lowers is an alert to its sponsor, unless they lowered it themselves.
+      if ("agentSendsPerHourCap" in body || "agentNewRecipientsPerDayCap" in body) {
+        const who = await actorNamed(deployment.table, actor.id);
+        await lowerLimitsToCaps(deployment.table, actor.id, (agent, after) =>
+          agent.sponsor === actor.id
+            ? []
+            : alertItems(deployment.table, { kind: "limitsChangedBy", agent, by: actor.id, what: `${who} lowered the organization's caps, so ${agent.name}'s limits are now ${limitsRead(after)}.` }),
+        );
+      }
       return { statusCode: 200, body: settings satisfies components["schemas"]["OrganizationSettings"] };
     },
   };

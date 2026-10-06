@@ -347,9 +347,28 @@ test("the sponsor reads their agent's daily summaries and a day's timeline from 
   const timeline = await machine.duva("agents", "timeline", "--agent", agent.id, "--day", today, "--timeZone", "UTC");
 
   expect(summaries.exitCode).toBe(0);
-  expect(JSON.parse(summaries.stdout)).toEqual({ timeZone: "UTC", days: [{ day: today, sent: 0, approved: 0, rejected: 0, received: 0, organized: 0, screened: 0 }] });
+  expect(JSON.parse(summaries.stdout)).toEqual({ timeZone: "UTC", days: [{ day: today, sent: 0, approved: 0, rejected: 0, received: 0, organized: 0, screened: 0, alerts: 0 }] });
   expect(timeline.exitCode).toBe(0);
   expect((JSON.parse(timeline.stdout) as { entries: { change: { type: string } }[] }).entries.map(({ change }) => change.type)).toEqual(["agentPaused", "actorAdded"]);
+});
+
+test("the sponsor lists their agents' alerts with the unseen count, and marks one seen", async () => {
+  const machine = await newMachine();
+  const server = await (await startDuva({ admin: "ada@example.com" })).listen();
+  onTestFinished(() => server.close());
+  await machine.saveDeployment(server);
+  await machine.duva("login", { browserSignsIn: "ada@example.com" });
+  const { agent, key } = JSON.parse((await machine.duva("agents", "create", "--name", "Hermes")).stdout) as { agent: { id: string }; key: string };
+  await machine.duva("agents", "pause", "--agent", agent.id);
+  await machine.duva("whoami", { env: { DUVA_AGENT_KEY: key } });
+
+  const listed = await machine.duva("alerts", "list");
+  const { alerts } = JSON.parse(listed.stdout) as { alerts: { id: string }[] };
+  const seen = await machine.duva("alerts", "mark-seen", "--alerts", alerts[0]!.id);
+
+  expect(JSON.parse(listed.stdout)).toEqual({ alerts: [expect.objectContaining({ kind: "keyUsedWhilePaused", agent: agent.id, seen: false })], unseen: 1 });
+  expect(seen.exitCode).toBe(0);
+  expect(JSON.parse(seen.stdout)).toEqual({ unseen: 0 });
 });
 
 test("the sponsor limits an agent to one send an hour, and sends its second message now from the CLI", async () => {

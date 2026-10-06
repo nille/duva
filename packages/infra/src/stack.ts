@@ -35,6 +35,7 @@ import {
   embeddingModel,
   translationModel,
   environmentVariables,
+  alertMailFilter,
   feederFilter,
   inboundPrefix,
   receiptRuleName,
@@ -501,7 +502,8 @@ export class DuvaStack extends Stack {
         batchSize: 1,
         retryAttempts: senderRetries,
         onFailure: new SqsDlq(sendFailures),
-        filters: [FilterCriteria.filter(senderFilter)],
+        // The sender also mails each urgent alert to its sponsor.
+        filters: [FilterCriteria.filter(senderFilter), FilterCriteria.filter(alertMailFilter)],
       }),
     );
     table.grantReadWriteData(sender);

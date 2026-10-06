@@ -26,7 +26,7 @@ import type { RecordType } from "../src/dns-records.ts";
 import { createEraser, type EraserEvent } from "../src/erasure.ts";
 import { createInbound } from "../src/inbound.ts";
 import { createFeeder, createIndexer, type IndexQueue, indexMailboxes, type QueuedTask } from "../src/indexing.ts";
-import { feederFilter, senderFilter, senderRetries, tableKey, tableStreamView } from "../src/infrastructure.ts";
+import { alertMailFilter, feederFilter, senderFilter, senderRetries, tableKey, tableStreamView } from "../src/infrastructure.ts";
 import { lanceSearch } from "../src/lancedb-search.ts";
 import { createSearcher } from "../src/searching.ts";
 import type { Table } from "../src/deployment.ts";
@@ -141,7 +141,8 @@ export interface Duva {
    * bounces it, a recipient complains or SES rejects it, through Duva's configuration set and its
    * topic, and waits until Duva has processed it. SES reports it `at` the time given, or now, and
    * SNS delivers it `deliveries` times, once unless given. With `again`, SNS delivers the event
-   * last published for the message once more, as a late redelivery does.
+   * last published for the message once more, as a late redelivery does. Returns once the sends
+   * it led to are done, unless sends are held.
    */
   sendingEvent(messageId: string, event: SendingEvent, options?: PublishOptions): Promise<void>;
   /** Lets the sender read the table's stream when sendsHeld, and waits until the sends it held are done. */
@@ -262,7 +263,10 @@ export async function startDuva({
   // EventBridge Scheduler's one-time schedules, each invoking the sender with an agent at a time.
   const schedules: { agent: string; at: Date }[] = [];
   const sender = createSender({ table, mailBucket, outbound: sending.outbound, region, schedules: { releaseAt: async (agent, at) => void schedules.push({ agent, at }) } });
-  const stream = tableStream(database, streamArn, [{ filter: senderFilter, handler: sender, retries: senderRetries, invocations: senderInvocations }]);
+  const stream = tableStream(database, streamArn, [
+    { filter: senderFilter, handler: sender, retries: senderRetries, invocations: senderInvocations },
+    { filter: alertMailFilter, handler: sender, retries: senderRetries, invocations: senderInvocations },
+  ]);
   // Agents the API handed the sender in a call, which it invokes once the call is answered.
   const released: string[] = [];
   // Download links lead to the web app's domain under /download/, from where CloudFront invokes the
@@ -352,6 +356,7 @@ export async function startDuva({
     suppressionList: () => sending.suppressed(),
     async sendingEvent(messageId, event, options) {
       await sending.publish(messageId, event, options);
+      if (!sendsHeld) await stream.deliver();
       if (!indexingHeld) await index();
     },
     releaseSends: () => stream.deliver(),

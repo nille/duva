@@ -20,13 +20,21 @@ import { CloudFormationClient, DescribeStacksCommand, paginateListStackResources
 import { CloudWatchClient, GetMetricDataCommand } from "@aws-sdk/client-cloudwatch";
 import { CognitoIdentityProviderClient, DescribeUserPoolCommand, paginateListUserPools } from "@aws-sdk/client-cognito-identity-provider";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { GetFunctionConfigurationCommand, GetFunctionUrlConfigCommand, GetPolicyCommand, InvokeCommand, LambdaClient, ResourceNotFoundException } from "@aws-sdk/client-lambda";
+import {
+  GetFunctionConfigurationCommand,
+  GetFunctionUrlConfigCommand,
+  GetPolicyCommand,
+  InvokeCommand,
+  LambdaClient,
+  paginateListEventSourceMappings,
+  ResourceNotFoundException,
+} from "@aws-sdk/client-lambda";
 import { paginateListSchedules, SchedulerClient } from "@aws-sdk/client-scheduler";
 import { DescribeReceiptRuleSetCommand, SESClient } from "@aws-sdk/client-ses";
 import { GetConfigurationSetEventDestinationsCommand, GetEmailIdentityCommand, SESv2Client } from "@aws-sdk/client-sesv2";
 import { GetQueueAttributesCommand, SQSClient } from "@aws-sdk/client-sqs";
 import { indexedMailboxes, uncompactedSince } from "@duva/api/indexing";
-import { dropMetric, dropReasons, inboundPrefix, receiptRuleNumber, recipientsPerRule, signInFrom } from "@duva/api/infrastructure";
+import { alertMailFilter, dropMetric, dropReasons, inboundPrefix, receiptRuleNumber, recipientsPerRule, senderFilter, signInFrom } from "@duva/api/infrastructure";
 import { rulesTake } from "@duva/api/receiving";
 import { sesSuppressionList } from "@duva/api/suppression";
 import { novaTranslator } from "@duva/api/translation";
@@ -159,6 +167,20 @@ await check("the sender has no resource policy, so only IAM invokes it, as Event
   const sender = await stackResource("AWS::Lambda::Function", "SenderHandler");
   return sender === undefined ? "isn't in the stack" : missing(lambda.send(new GetPolicyCommand({ FunctionName: sender })));
 });
+await check("the table's stream hands the sender each approved draft and each urgent alert to mail, and nothing else", async () => {
+  const sender = await stackResource("AWS::Lambda::Function", "SenderHandler");
+  if (sender === undefined) return "the sender isn't in the stack";
+  const patterns: string[] = [];
+  for await (const { EventSourceMappings = [] } of paginateListEventSourceMappings({ client: lambda }, { FunctionName: sender })) {
+    for (const { FilterCriteria } of EventSourceMappings) patterns.push(...(FilterCriteria?.Filters ?? []).map(({ Pattern = "" }) => JSON.stringify(JSON.parse(Pattern))));
+  }
+  const expected = [senderFilter, alertMailFilter].map((filter) => JSON.stringify(filter));
+  return JSON.stringify(patterns.sort()) === JSON.stringify(expected.sort()) ? undefined : `its filters are ${patterns.join(", ")}`;
+});
+await check("listing alerts without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/alerts`), 401));
+await check("marking alerts seen without credentials answers 401", async () =>
+  expectStatus(await fetch(`${apiUrl}/alerts/seen`, { method: "POST", headers: { "content-type": "application/json" }, body: '{"alerts":["x"]}' }), 401),
+);
 await check("no schedule for sends that wait for an agent's limits is more than an hour overdue", async () => {
   const group = await stackResource("AWS::Scheduler::ScheduleGroup", "SenderSchedules");
   if (group === undefined) return "the schedule group isn't in the stack";

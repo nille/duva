@@ -2138,6 +2138,64 @@ export const operations = [
     ]
   },
   {
+    "operationId": "listAlerts",
+    "method": "get",
+    "path": "/alerts",
+    "routeKey": "GET /alerts",
+    "summary": "List your agents' alerts, newest first, with how many you haven't seen.",
+    "description": "An alert tells a sponsor that one of their agents needs them: a send that failed, bounced or drew a complaint, its send limit reached, its key used while paused, a pause, limit change or removal by an admin, or a pause by Duva. A human lists the alerts about the agents they sponsor, and an agent those about itself, as its sponsor sees them. Urgent alerts are also mailed to the sponsor's own mailbox, if they have one. Removing an agent keeps its alerts. To read the next page, call again with the answer's next as after, until an answer has no next.",
+    "signIn": true,
+    "command": [
+      "alerts",
+      "list"
+    ],
+    "options": [
+      {
+        "name": "agent",
+        "in": "query",
+        "type": "string",
+        "required": false,
+        "description": "List only the alerts about this agent."
+      },
+      {
+        "name": "limit",
+        "in": "query",
+        "type": "integer",
+        "required": false,
+        "description": "How many alerts a page lists at most."
+      },
+      {
+        "name": "after",
+        "in": "query",
+        "type": "string",
+        "required": false,
+        "description": "Where the page starts, the next of the page before it. Leave it out for the first page."
+      }
+    ]
+  },
+  {
+    "operationId": "markAlertsSeen",
+    "method": "post",
+    "path": "/alerts/seen",
+    "routeKey": "POST /alerts/seen",
+    "summary": "Mark alerts seen, so they no longer count as unseen.",
+    "description": "Only the sponsor marks their alerts seen. IDs of alerts that aren't yours, or no longer exist, are left alone.",
+    "signIn": true,
+    "command": [
+      "alerts",
+      "mark-seen"
+    ],
+    "options": [
+      {
+        "name": "alerts",
+        "in": "body",
+        "type": "strings",
+        "required": true,
+        "description": "The IDs of the alerts."
+      }
+    ]
+  },
+  {
     "operationId": "listApprovals",
     "method": "get",
     "path": "/approvals",

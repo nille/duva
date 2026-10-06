@@ -5,6 +5,7 @@ import { withdrawPendingApprovals } from "./drafting.ts";
 import { mailboxErasure } from "./erasure.ts";
 import { withdrawSetupApprovals } from "./setup.ts";
 import { type Agent, deleteMailbox, type Mailbox, ownedMailboxes, removeAgentFromOrganization } from "./organization.ts";
+import type { TransactItem } from "./table.ts";
 
 /**
  * Deletes the mailboxes, on behalf of the actor `by`, and hands each to the eraser. The receipt
@@ -20,14 +21,15 @@ export async function deleteMailboxes(deployment: Deployment, { mailboxes, by }:
 
 /**
  * Removes the agent, on behalf of the actor `by`: its sends and setup changes waiting for approval are withdrawn,
- * its mailboxes deleted and its key stops working. Returns its mailboxes.
+ * its mailboxes deleted and its key stops working, with the `items` written as it stops. Returns
+ * its mailboxes.
  */
-export async function removeAgentWithMailboxes(deployment: Deployment, { agent, by }: { agent: Agent; by: string }): Promise<Mailbox[]> {
+export async function removeAgentWithMailboxes(deployment: Deployment, { agent, by, items = [] }: { agent: Agent; by: string; items?: TransactItem[] }): Promise<Mailbox[]> {
   const mailboxes = await ownedMailboxes(deployment.table, agent.id);
   const sponsors = await ownedMailboxes(deployment.table, agent.sponsor);
   await withdrawPendingApprovals(deployment.table, { agent, mailboxes: [...mailboxes, ...sponsors].map(({ id }) => id), by });
   await withdrawSetupApprovals(deployment.table, { agent, by });
   await deleteMailboxes(deployment, { mailboxes, by });
-  await removeAgentFromOrganization(deployment.table, { agent, by });
+  await removeAgentFromOrganization(deployment.table, { agent, by, items });
   return mailboxes;
 }

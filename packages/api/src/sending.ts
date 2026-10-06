@@ -8,22 +8,38 @@
 // (ADR-0019), also when a retried record finds it sent already. An
 // agent's send over its send limits, or behind its others that wait, waits for them, and the
 // sender sends what waits, oldest first, when it is handed the agent, at a time it scheduled or
-// once the API changed what holds them.
+// once the API changed what holds them. An agent's send that fails, and its limits reached, are
+// alerts to its sponsor. The sender also mails each urgent alert to its sponsor, from Duva.
 import { randomUUID } from "node:crypto";
 import { SendEmailCommand, SESv2ServiceException, type SESv2Client } from "@aws-sdk/client-sesv2";
 import type { DynamoDBStreamEvent } from "aws-lambda";
 import { TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import type { Table } from "./deployment.ts";
-import { approvedAt, draftAt, draftToSend, findApproval, markFailed, markSent, markUnclear, type Sending, startSending, unsendableFrom, waitForLimit } from "./drafting.ts";
-import { allowedAt, counting, limitsOf, newRecipients, readWindow, type ReleaseEvent, type Schedules, type WaitingSend, stopWaiting, waitingSends, windowUnchanged } from "./limits.ts";
-import { documents, type TransactItem } from "./table.ts";
-import { sentPrefix } from "./infrastructure.ts";
+import { approvedAt, type Draft, draftAt, draftToSend, findApproval, markFailed, markSent, markUnclear, type Sending, startSending, unsendableFrom, waitForLimit } from "./drafting.ts";
+import { alertAt, alertItems, limitRead, mailingSettled, raiseAlert, startMailing } from "./alerting.ts";
+import {
+  allowedAt,
+  counting,
+  type Limits,
+  limitsOf,
+  newRecipients,
+  readWindow,
+  type ReleaseEvent,
+  type Schedules,
+  type WaitingSend,
+  stopWaiting,
+  waitingSends,
+  type Window,
+  windowUnchanged,
+} from "./limits.ts";
+import { documents, pk, sk, type TransactItem } from "./table.ts";
+import { sentPrefix, systemAddress, timeToLiveAttribute } from "./infrastructure.ts";
 import type { MailBucket } from "./mail-bucket.ts";
 import { copyToOtherMembers, fromStanding } from "./group-mail.ts";
 import { findMessage } from "./mail.ts";
 import { buildMail } from "./mime.ts";
 import { sponsorAccessAllows } from "./access.ts";
-import { agentSettings, agentUnpaused, findActor, findMailbox, switchesFor } from "./organization.ts";
+import { type Actor, type Agent, agentSettings, agentUnpaused, findActor, findMailbox, organizationDomain, switchesFor } from "./organization.ts";
 
 /** Who SES delivers a message to. Bcc recipients are here only, since no header names them. */
 export interface Destination {
@@ -105,6 +121,8 @@ export function createSender(sender: Sender) {
       const keys = Object.fromEntries(Object.entries(record.dynamodb?.Keys ?? {}).map(([name, value]) => [name, value.S ?? ""]));
       const at = draftAt(keys);
       if (at !== undefined) await send(sender, at);
+      const alert = alertAt(keys);
+      if (alert !== undefined) await mailAlert(sender, alert);
     }
   };
 }
@@ -170,7 +188,7 @@ async function sendOnce(
   }
   if (status.state === "sending") {
     // Found again, it is another run's, which got in this one's way and is sending it now.
-    if (!again) await markUnclear(table, { mailbox, draft: id, approval: approval?.id, message: status.message!, by });
+    if (!again) await markUnclear(table, { mailbox, draft: id, approval: approval?.id, message: status.message!, by }, unclearAlert(table, await findActor(table, by), mailbox, draft));
     return "done";
   }
   // A run that had it wait, then stopped before sending what waits, left the agent's queue to this one.
@@ -228,9 +246,14 @@ async function sendOnce(
   if (actor.kind === "agent" && unsendable === undefined) {
     const window = await readWindow(table, actor.id, date);
     const unknown = await newRecipients(table, actor.id, [...draft.to, ...draft.cc, ...draft.bcc].map(({ address }) => address));
-    const allowed = status.pastLimit ? undefined : allowedAt(window, await limitsOf(table, actor.id), unknown.length, date);
+    const limits = await limitsOf(table, actor.id);
+    const allowed = status.pastLimit ? undefined : allowedAt(window, limits, unknown.length, date);
     if (waiting === undefined && !status.pastLimit && (allowed !== undefined || (await waitingSends(table, actor.id)).length > 0)) {
       if (!(await waitForLimit(table, sending, approvedAt(draft, approval), [windowUnchanged(table, actor.id, window), agentUnpaused(table, actor.id)]))) return "again";
+      // Only a send the limits stop, not one behind others that wait, says they are reached. The
+      // alert can't join the wait's transaction, whose check that none was raised this window
+      // would cancel the wait, so a run that stops in between raises none.
+      if (allowed !== undefined) await limitReached(table, { agent: actor, mailbox, draft, window, limits, allowed, now: date });
       await release({ table, mailBucket, outbound, region, schedules }, actor.id);
       return "done";
     }
@@ -265,7 +288,7 @@ async function sendOnce(
   // A pause since the agent was read holds the send too.
   if (!(await startSending(table, sending, actor.kind === "agent" ? [agentUnpaused(table, actor.id), ...counted] : [], expected))) return "again";
   if (unsendable !== undefined) {
-    await markFailed(table, sending, unsendable);
+    await markFailed(table, sending, unsendable, failedAlert(table, actor, mailbox, draft, unsendable));
     return "done";
   }
 
@@ -274,8 +297,8 @@ async function sendOnce(
   try {
     sesMessageId = await outbound.send(raw, { to: addresses(draft.to), cc: addresses(draft.cc), bcc: addresses(draft.bcc) });
   } catch (error) {
-    if (error instanceof Refused) await markFailed(table, sending, error.message);
-    else await markUnclear(table, sending);
+    if (error instanceof Refused) await markFailed(table, sending, error.message, failedAlert(table, actor, mailbox, draft, error.message));
+    else await markUnclear(table, sending, unclearAlert(table, actor, mailbox, draft));
     return "done";
   }
   const sentAt = date.toISOString();
@@ -289,4 +312,81 @@ async function sendOnce(
   });
   if (marked) await copyToOtherMembers({ table, mailBucket }, mailbox, message);
   return "done";
+}
+
+/** How an agent's draft reads in an alert about its send: its subject and its recipients. */
+const messageRead = ({ subject, to, cc, bcc }: Pick<Draft, "subject" | "to" | "cc" | "bcc">) =>
+  `message "${subject}" to ${[...to, ...cc, ...bcc].map(({ address }) => address).join(", ")}`;
+
+/** The writes of the alert to an agent's sponsor that its send of the draft failed for the reason, or none for a human's send. */
+const failedAlert = (table: Table, actor: Actor, mailbox: string, draft: Draft, reason: string): TransactItem[] =>
+  actor.kind !== "agent" ? [] : alertItems(table, { kind: "sendFailed", agent: actor, what: `${actor.name}'s ${messageRead(draft)} failed: ${reason}`, link: { mailbox, draft: draft.id } });
+
+/** The writes of the alert to an agent's sponsor that it is unclear whether its send of the draft went out, or none for a human's send. */
+function unclearAlert(table: Table, actor: Actor | undefined, mailbox: string, draft: Draft): TransactItem[] {
+  if (actor?.kind !== "agent") return [];
+  const what = `Sending ${actor.name}'s ${messageRead(draft)} stopped before SES answered, so it's unclear whether it went out. Duva won't send it again.`;
+  return alertItems(table, { kind: "sendFailed", agent: actor, what, link: { mailbox, draft: draft.id } });
+}
+
+const hour = 60 * 60 * 1000;
+const day = 24 * hour;
+
+/**
+ * Raises the alert to the agent's sponsor that its send of the draft waits for its limits: once
+ * for each window a limit fills, until the limits allow a send again, or once for a draft with
+ * more new recipients than the whole daily limit.
+ */
+async function limitReached(
+  table: Table,
+  { agent, mailbox, draft, window, limits, allowed, now }: { agent: Agent; mailbox: string; draft: Draft; window: Window; limits: Limits; allowed: Date | "never"; now: Date },
+): Promise<void> {
+  const link = { mailbox, draft: draft.id };
+  if (allowed === "never") {
+    const what = `${agent.name}'s message "${draft.subject}" has more new recipients than its limit of ${limits.newRecipientsPerDay} a day, so it waits until you send it now.`;
+    await raiseAlert(table, { kind: "limitReached", agent, what, link }, { source: `limit-never#${mailbox}#${draft.id}` });
+    return;
+  }
+  const limit = window.sends.filter((send) => send.at > now.getTime() - hour).length >= limits.sendsPerHour ? "sendsPerHour" : "newRecipientsPerDay";
+  // Times read to the minute, never before the limits allow.
+  const from = new Date(Math.ceil(allowed.getTime() / 60_000) * 60_000).toISOString();
+  const what = `${agent.name} reached its limit of ${limitRead(limit, limits[limit])}, so its sends wait. They go out by themselves from ${from.slice(11, 16)} UTC on ${from.slice(0, 10)}, or when you send them now.`;
+  // What says a limit is reached lasts until it allows a send again, and the table forgets it a day later.
+  const reached: TransactItem = {
+    Put: {
+      TableName: table.name,
+      Item: { [pk]: `actor#${agent.id}`, [sk]: `limits#reached#${limit}`, until: allowed.toISOString(), [timeToLiveAttribute]: Math.ceil((allowed.getTime() + day) / 1000) },
+      ConditionExpression: `attribute_not_exists(${pk}) OR #until <= :now`,
+      ExpressionAttributeNames: { "#until": "until" },
+      ExpressionAttributeValues: { ":now": now.toISOString() },
+    },
+  };
+  await raiseAlert(table, { kind: "limitReached", agent, what, link }, { checks: [reached] });
+}
+
+/** Mails the urgent alert to its sponsor's default address, from Duva's system address on the organization's first domain, once. */
+async function mailAlert({ table, outbound }: Sender, alert: { sponsor: string; id: string }): Promise<void> {
+  const mail = await startMailing(table, alert);
+  if (mail === undefined) return;
+  const domain = await organizationDomain(table);
+  // No agent sends it, so it carries no disclosure.
+  const raw = buildMail({
+    messageId: `<${randomUUID()}@${domain}>`,
+    from: { name: "Duva", address: systemAddress(domain) },
+    to: [{ address: mail.to }],
+    cc: [],
+    subject: mail.subject,
+    date: new Date(),
+    references: [],
+    headers: [["Auto-Submitted", "auto-generated"]],
+    text: `${mail.what}\n\nAll alerts about your agents are in Duva, under Alerts.`,
+    attachments: [],
+  });
+  try {
+    await outbound.send(raw, { to: [mail.to], cc: [], bcc: [] });
+  } catch (error) {
+    await mailingSettled(table, alert, error instanceof Refused ? "failed" : "unclear");
+    return;
+  }
+  await mailingSettled(table, alert, "sent");
 }

@@ -3,7 +3,7 @@
 import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { embeddingModel, environmentVariables, feederFilter, senderFilter, senderRetries, timeToLiveAttribute, translationModel } from "@duva/api/infrastructure";
+import { alertMailFilter, embeddingModel, environmentVariables, feederFilter, senderFilter, senderRetries, timeToLiveAttribute, translationModel } from "@duva/api/infrastructure";
 import { operations } from "@duva/openapi";
 import { buildSync } from "esbuild";
 import { afterAll, expect, test } from "vitest";
@@ -385,7 +385,7 @@ test("the inbound Lambda retries a failed event, then leaves it in a queue for r
   expect(queue?.Properties?.MessageRetentionPeriod).toBe(14 * 24 * 3600);
 });
 
-test("the table's stream invokes the sender for each draft a decision approved, one record at a time, from the oldest", () => {
+test("the table's stream invokes the sender for each draft a decision approved, and each urgent alert to mail, one record at a time, from the oldest", () => {
   const [[tableId, { Properties: table }]] = ofType("AWS::DynamoDB::GlobalTable") as [[string, Resource]];
   expect(table?.StreamSpecification).toEqual({ StreamViewType: "NEW_IMAGE" });
   const [, { Properties: mapping }] = mappingOf("SenderHandler");
@@ -394,7 +394,7 @@ test("the table's stream invokes the sender for each draft a decision approved, 
     EventSourceArn: { "Fn::GetAtt": [tableId, "StreamArn"] },
     StartingPosition: "TRIM_HORIZON",
     BatchSize: 1,
-    FilterCriteria: { Filters: [{ Pattern: JSON.stringify(senderFilter) }] },
+    FilterCriteria: { Filters: [{ Pattern: JSON.stringify(senderFilter) }, { Pattern: JSON.stringify(alertMailFilter) }] },
   });
 });
 

@@ -292,13 +292,14 @@ export async function findAgentByKey(table: Table, key: string): Promise<Agent |
 export const duva = "duva";
 
 /**
- * Pauses the agent, on behalf of the actor `by`, or Duva, and returns it. The pause is one change
- * in the change feed of each of the agent's mailboxes and in the organization's. Pausing a paused
- * agent records nothing. Returns undefined if the agent was removed.
+ * Pauses the agent, on behalf of the actor `by`, or Duva, with the `items` written too, and returns
+ * it. The pause is one change in the change feed of each of the agent's mailboxes and in the
+ * organization's. Pausing a paused agent records nothing, and writes no items. Returns undefined
+ * if the agent was removed.
  */
-export function pauseAgent(table: Table, { agent, by }: { agent: Agent; by: string }): Promise<Agent | undefined> {
+export function pauseAgent(table: Table, { agent, by, items = [] }: { agent: Agent; by: string; items?: TransactItem[] }): Promise<Agent | undefined> {
   const paused = { by, at: new Date().toISOString() };
-  return changePause(table, agent, by, {
+  return changePause(table, agent, by, items, {
     type: "agentPaused",
     done: (current) => current.paused !== undefined,
     update: { UpdateExpression: "SET paused = :paused", ConditionExpression: `attribute_exists(${pk}) AND attribute_not_exists(paused)`, ExpressionAttributeValues: { ":paused": paused } },
@@ -312,18 +313,19 @@ export function pauseAgent(table: Table, { agent, by }: { agent: Agent; by: stri
  * undefined if the agent was removed.
  */
 export function unpauseAgent(table: Table, { agent, by }: { agent: Agent; by: string }): Promise<Agent | undefined> {
-  return changePause(table, agent, by, {
+  return changePause(table, agent, by, [], {
     type: "agentUnpaused",
     done: (current) => current.paused === undefined,
     update: { UpdateExpression: "REMOVE paused", ConditionExpression: "attribute_exists(paused)" },
   });
 }
 
-/** Writes the pause or unpause with its change, unless it is done already, and returns the agent as it is then, if it still is one. */
+/** Writes the pause or unpause with its change and the items, unless it is done already, and returns the agent as it is then, if it still is one. */
 async function changePause(
   table: Table,
   agent: Agent,
   by: string,
+  items: TransactItem[],
   { type, done, update }: { type: "agentPaused" | "agentUnpaused"; done: (current: Agent) => boolean; update: { UpdateExpression: string; ConditionExpression: string; ExpressionAttributeValues?: Record<string, unknown> } },
 ): Promise<Agent | undefined> {
   for (let attempt = 1; ; attempt++) {
@@ -335,7 +337,7 @@ async function changePause(
     try {
       await recordInFeeds(table, [organizationFeed, ...mailboxes.map(({ id }) => mailboxFeed(id))].map((feed) => ({ feed, changes: [change] })), {
         by,
-        items: [{ Update: { TableName: table.name, Key: actorKey(agent.id), ...update } }],
+        items: [{ Update: { TableName: table.name, Key: actorKey(agent.id), ...update } }, ...items],
       });
     } catch (error) {
       // A pause or unpause at the same time got there first, so the agent is read again.
@@ -461,9 +463,13 @@ export function agentSettingsUnchanged(table: Table, agent: string, read: ReadSe
  * their old and new values, in the change feed of each of the sponsor's mailboxes, or if the
  * sponsor has none, of each of the agent's. Giving a setting the value it has records nothing.
  * Throws OverCap for a send limit over the organization's cap, which holds only while the caps
- * are still as read, and NowhereToRecord if neither has a mailbox for the sponsor's change.
+ * are still as read, and NowhereToRecord if neither has a mailbox for the sponsor's change. The
+ * `items` of the change, given its settings as they are after it, are written with it.
  */
-export async function changeAgentSettings(table: Table, { agent, changes, by = agent.sponsor }: { agent: Agent; changes: Partial<AgentSettings>; by?: string }): Promise<AgentSettings> {
+export async function changeAgentSettings(
+  table: Table,
+  { agent, changes, by = agent.sponsor, items = () => [] }: { agent: Agent; changes: Partial<AgentSettings>; by?: string; items?: (after: AgentSettings) => TransactItem[] },
+): Promise<AgentSettings> {
   const sponsorsMailboxes = await ownedMailboxes(table, agent.sponsor);
   const mailboxes = sponsorsMailboxes.length > 0 ? sponsorsMailboxes : await ownedMailboxes(table, agent.id);
   // A cap's lowering is in the organization's change feed even when no mailbox's has it.
@@ -487,7 +493,7 @@ export async function changeAgentSettings(table: Table, { agent, changes, by = a
     try {
       await recordInFeeds(table, mailboxes.map(({ id }) => ({ feed: mailboxFeed(id), changes: [change] })), {
         by,
-        items: [{ Put: { TableName: table.name, Item: { ...agentSettingsKey(agent.id), ...settings, version: read.version + 1 }, ...atVersion(read) } }, settingsUnchanged(table, caps)],
+        items: [{ Put: { TableName: table.name, Item: { ...agentSettingsKey(agent.id), ...settings, version: read.version + 1 }, ...atVersion(read) } }, settingsUnchanged(table, caps), ...items(settings)],
       });
       return settings;
     } catch (error) {
@@ -1109,10 +1115,10 @@ export async function changeSettings(table: Table, { by, changes }: { by: string
 
 /**
  * Lowers each agent's send limits that are above the organization's caps to them, on behalf of
- * the admin `by` who lowered a cap, each recorded as a change to the agent's settings. Run again,
- * it finishes what an earlier run left.
+ * the admin `by` who lowered a cap, each recorded as a change to the agent's settings, with the
+ * `items` for the agent written too. Run again, it finishes what an earlier run left.
  */
-export async function lowerLimitsToCaps(table: Table, by: string): Promise<void> {
+export async function lowerLimitsToCaps(table: Table, by: string, items: (agent: Agent, after: AgentSettings) => TransactItem[] = () => []): Promise<void> {
   const { settings: caps } = await organizationSettings(table);
   for (const human of await allHumans(table)) {
     for (const agent of await sponsoredAgents(table, human.id)) {
@@ -1120,7 +1126,7 @@ export async function lowerLimitsToCaps(table: Table, by: string): Promise<void>
       const lowered = Object.fromEntries(
         (Object.keys(limitCaps) as (keyof typeof limitCaps)[]).filter((limit) => settings[limit] > caps[limitCaps[limit]]).map((limit) => [limit, caps[limitCaps[limit]]]),
       );
-      if (Object.keys(lowered).length > 0) await changeAgentSettings(table, { agent, changes: lowered, by });
+      if (Object.keys(lowered).length > 0) await changeAgentSettings(table, { agent, changes: lowered, by, items: (after) => items(agent, after) });
     }
   }
 }
@@ -1201,10 +1207,10 @@ export async function deleteMailbox(table: Table, { mailbox, by, items }: { mail
 }
 
 /**
- * Removes the agent, on behalf of the actor `by`, so its key stops working at once. Its
- * mailboxes are deleted beforehand.
+ * Removes the agent, on behalf of the actor `by`, so its key stops working at once, with the
+ * `items` written too. Its mailboxes are deleted beforehand.
  */
-export async function removeAgentFromOrganization(table: Table, { agent, by }: { agent: Agent; by: string }): Promise<void> {
+export async function removeAgentFromOrganization(table: Table, { agent, by, items = [] }: { agent: Agent; by: string; items?: TransactItem[] }): Promise<void> {
   for (let attempt = 1; ; attempt++) {
     const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: actorKey(agent.id), ConsistentRead: true }));
     if (Item === undefined) return;
@@ -1216,6 +1222,7 @@ export async function removeAgentFromOrganization(table: Table, { agent, by }: {
         { Delete: { TableName: table.name, Key: agentKeyKey(hash) } },
         { Delete: { TableName: table.name, Key: sponsoredKey(agent.sponsor, agent.id) } },
         { Delete: { TableName: table.name, Key: agentSettingsKey(agent.id) } },
+        ...items,
       ]);
       break;
     } catch (error) {

@@ -854,14 +854,14 @@ export async function feedbackOnSend(table: Table, { mailbox, draft, message }: 
   };
 }
 
-/** Marks the draft failed with SES's reason, which those who read the mailbox see. Returns false if it was no longer sending. */
-export function markFailed(table: Table, sending: Sending, reason: string): Promise<boolean> {
+/** Marks the draft failed with SES's reason, which those who read the mailbox see, with the items written too. Returns false if it was no longer sending. */
+export function markFailed(table: Table, sending: Sending, reason: string, items: TransactItem[] = []): Promise<boolean> {
   const { mailbox, draft, approval, by } = sending;
   return conditionally(
     recordChanges(table, mailboxFeed(mailbox), {
       by,
       changes: [{ type: "sendFailed", draft, approval, reason }],
-      items: [sendingSettles(table, sending, { ...outcomeOf(sending, "failed"), reason })],
+      items: [sendingSettles(table, sending, { ...outcomeOf(sending, "failed"), reason }), ...items],
     }),
   );
 }
@@ -869,15 +869,15 @@ export function markFailed(table: Table, sending: Sending, reason: string): Prom
 /**
  * Marks the draft unclear: sending it stopped before SES answered, so a human checks whether it
  * went out, and Duva never sends it again. Without SES's answer, the Message-ID its recipients see
- * is unknown. Returns false if it was no longer sending.
+ * is unknown. The items are written too. Returns false if it was no longer sending.
  */
-export function markUnclear(table: Table, sending: Sending): Promise<boolean> {
+export function markUnclear(table: Table, sending: Sending, items: TransactItem[] = []): Promise<boolean> {
   const { mailbox, draft, approval, by } = sending;
   return conditionally(
     recordChanges(table, mailboxFeed(mailbox), {
       by,
       changes: [{ type: "sendUnclear", draft, approval }],
-      items: [sendingSettles(table, sending, outcomeOf(sending, "unclear"))],
+      items: [sendingSettles(table, sending, outcomeOf(sending, "unclear")), ...items],
     }),
   );
 }

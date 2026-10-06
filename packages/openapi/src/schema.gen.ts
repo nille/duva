@@ -1096,6 +1096,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/alerts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List your agents' alerts, newest first, with how many you haven't seen.
+         * @description An alert tells a sponsor that one of their agents needs them: a send that failed, bounced or drew a complaint, its send limit reached, its key used while paused, a pause, limit change or removal by an admin, or a pause by Duva. A human lists the alerts about the agents they sponsor, and an agent those about itself, as its sponsor sees them. Urgent alerts are also mailed to the sponsor's own mailbox, if they have one. Removing an agent keeps its alerts. To read the next page, call again with the answer's next as after, until an answer has no next.
+         */
+        get: operations["listAlerts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/alerts/seen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark alerts seen, so they no longer count as unseen.
+         * @description Only the sponsor marks their alerts seen. IDs of alerts that aren't yours, or no longer exist, are left alone.
+         */
+        post: operations["markAlertsSeen"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/approvals": {
         parameters: {
             query?: never;
@@ -2401,6 +2441,56 @@ export interface components {
             /** @description The attachments it carries, those of the message it forwards, if it is a forward. */
             attachments?: components["schemas"]["Attachment"][];
         };
+        /** @description A notice to a sponsor that one of their agents needs them. */
+        Alert: {
+            /** @description The alert's ID. */
+            id: string;
+            /**
+             * @description What happened: sendFailed, the agent's send failed, SES rejected it, or it's unclear whether it went out; bounced, it hard-bounced; complained, a recipient complained about it; limitReached, its sends wait for its send limits, once per window; pausedBy, limitsChangedBy and removedBy, an admin paused it, lowered its limits with a cap, or removed it; keyUsedWhilePaused, its key was used while it is paused, once per pause; autoPaused, Duva paused it because its mail hurts the domain (ADR-0021).
+             * @enum {string}
+             */
+            kind: "sendFailed" | "bounced" | "complained" | "limitReached" | "pausedBy" | "limitsChangedBy" | "removedBy" | "keyUsedWhilePaused" | "autoPaused";
+            /** @description The ID of the agent the alert is about. */
+            agent: string;
+            /** @description The agent's name when the alert was raised, kept after it is removed. */
+            agentName: string;
+            /**
+             * Format: date-time
+             * @description When the alert was raised.
+             */
+            at: string;
+            /** @description What happened, in a sentence or two. */
+            what: string;
+            /** @description Whether it is urgent, so also mailed to the sponsor's own mailbox: a complaint, a hard bounce that makes 3 or more within an hour, a pause or removal by someone else, and a pause by Duva. Urgent bounces are mailed once an hour at most, and not while the agent is paused. */
+            urgent: boolean;
+            /** @description Whether the sponsor marked it seen. */
+            seen: boolean;
+            /** @description The ID of the actor who paused, changed or removed the agent, for pausedBy, limitsChangedBy and removedBy. */
+            by?: string;
+            /** @description The ID of the mailbox the message or draft is in, where there is one. */
+            mailbox?: string;
+            /** @description The ID of the thread the message is in, where there is one. */
+            thread?: string;
+            /** @description The ID of the message, where there is one. */
+            message?: string;
+            /** @description The ID of the draft, where there is one. */
+            draft?: string;
+        };
+        AlertList: {
+            alerts: components["schemas"]["Alert"][];
+            /** @description How many of the alerts listed, on every page, the sponsor hasn't seen. */
+            unseen: number;
+            /** @description Where the next page starts, if there is one. Give it as after. */
+            next?: string;
+        };
+        AlertIds: {
+            /** @description The IDs of the alerts. */
+            alerts: string[];
+        };
+        UnseenAlerts: {
+            /** @description How many of your alerts you haven't seen. */
+            unseen: number;
+        };
         ApprovalList: {
             approvals: components["schemas"]["Approval"][];
             /** @description The setup changes your agent admins asked for that wait for you, newest first. */
@@ -3164,6 +3254,8 @@ export interface components {
             organized: number;
             /** @description The times it let a sender in, blocked one, removed a decision on one, or switched a Screener. */
             screened: number;
+            /** @description The alerts about it its sponsor got that day. */
+            alerts: number;
         };
         ActivityTimeline: {
             /**
@@ -5351,6 +5443,62 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    listAlerts: {
+        parameters: {
+            query?: {
+                /** @description List only the alerts about this agent. */
+                agent?: string;
+                /** @description How many alerts a page lists at most. */
+                limit?: number;
+                /** @description Where the page starts, the next of the page before it. Leave it out for the first page. */
+                after?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of the alerts, newest first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertList"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    markAlertsSeen: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AlertIds"];
+            };
+        };
+        responses: {
+            /** @description How many of your alerts you haven't seen now. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnseenAlerts"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
         };
     };
     listApprovals: {

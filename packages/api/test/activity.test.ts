@@ -59,7 +59,7 @@ async function withAgent(options: DuvaOptions = {}) {
 }
 
 /** A day of a summary with nothing in it. */
-const quiet = (day: string) => ({ day, sent: 0, approved: 0, rejected: 0, received: 0, organized: 0, screened: 0 });
+const quiet = (day: string) => ({ day, sent: 0, approved: 0, rejected: 0, received: 0, organized: 0, screened: 0, alerts: 0 });
 
 test("the sponsor reads their agent's daily summaries, newest first, each day's mail counted on the day it arrived in their time zone", async () => {
   const { duva, receive, summaries } = await withAgent();
@@ -105,6 +105,21 @@ test("a day's summary counts what the agent organized and screened itself, and l
   const { data } = await summaries({ from: "2026-10-06", to: "2026-10-06" });
 
   expect(data?.days).toEqual([{ ...quiet("2026-10-06"), received: 1, organized: 3, screened: 2 }]);
+});
+
+test("a day's summary counts the alerts about the agent its sponsor got, on the day in the reader's time zone, and none about their other agents", async () => {
+  const { duva, ada, grace, hermes, agent, summaries } = await withAgent();
+  const { data: other } = await ada.POST("/agents", { body: { name: "Iris" } });
+  // 01:30 on 6 October in Stockholm, still 5 October in UTC.
+  await duva.clock(new Date("2026-10-05T23:30:00Z"));
+  await grace.POST("/agents/{agent}/pause", { params: { path: { agent: agent.id } } });
+  await hermes.GET("/whoami");
+  await grace.POST("/agents/{agent}/pause", { params: { path: { agent: other!.agent.id } } });
+
+  const { data } = await summaries({ from: "2026-10-05", to: "2026-10-06", timeZone: "Europe/Stockholm" });
+
+  expect(data?.days).toEqual([{ ...quiet("2026-10-06"), alerts: 2 }, quiet("2026-10-05")]);
+  expect((await summaries({ from: "2026-10-05", to: "2026-10-06", timeZone: "UTC" })).data?.days).toEqual([quiet("2026-10-06"), { ...quiet("2026-10-05"), alerts: 2 }]);
 });
 
 test("the sponsor's days are in their time zone preference, and a call's time zone beats it", async () => {

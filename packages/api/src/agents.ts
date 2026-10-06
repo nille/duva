@@ -1,6 +1,7 @@
 import type { components } from "@duva/openapi";
 import { jsonBody, type OperationHandler, refusal } from "./api.ts";
 import { sponsorAccessAllows } from "./access.ts";
+import { actorNamed, alertWrites, raiseAlert } from "./alerting.ts";
 import { releaseHeldSends, withdrawPendingApprovals } from "./drafting.ts";
 import type { Table } from "./deployment.ts";
 import { syncRecipients } from "./receiving.ts";
@@ -140,7 +141,11 @@ export const removeAgent: OperationHandler = async (event, deployment, actor) =>
   const agent = await agentAsked(event, deployment);
   if ("statusCode" in agent) return agent;
   if (!sponsorOrAdmin(actor!, agent)) return refusal(403, "Only the agent's sponsor and admins can remove it. Ask its sponsor.");
-  const mailboxes = await removeAgentWithMailboxes(deployment, { agent, by: actor!.id });
+  const alert = await alertUnlessSponsor(deployment.table, actor!, agent, "removedBy", (who) => ({
+    what: `${who} removed ${agent.name}, with its mailboxes.`,
+    urgent: `${who} removed ${agent.name}`,
+  }));
+  const mailboxes = await removeAgentWithMailboxes(deployment, { agent, by: actor!.id, items: alert });
   await syncRecipients(deployment.table, deployment.receiving);
   return { statusCode: 200, body: { agent, mailboxes } satisfies components["schemas"]["AgentRemoval"] };
 };
@@ -183,7 +188,11 @@ export const pauseAgent = setupOperation("pauseAgent", async (event, deployment,
         ? []
         : [`Pauses ${await agentNamed(deployment.table, agent)}. Its key is refused and its approved sends are held until a human unpauses it.`],
     run: async () => {
-      const paused = await pause(deployment.table, { agent, by: actor.id });
+      const alert = await alertUnlessSponsor(deployment.table, actor, agent, "pausedBy", (who) => ({
+        what: `${who} paused ${agent.name}. Its approved sends are held, and unpausing sends them.`,
+        urgent: `${who} paused ${agent.name}`,
+      }));
+      const paused = await pause(deployment.table, { agent, by: actor.id, items: alert });
       return paused === undefined ? removedMeanwhile(agent) : { statusCode: 200, body: paused satisfies components["schemas"]["Agent"] };
     },
   };
@@ -202,12 +211,20 @@ export const unpauseAgent: OperationHandler = async (event, deployment, actor) =
   return { statusCode: 200, body: unpaused satisfies components["schemas"]["Agent"] };
 };
 
+/**
+ * The writes of the urgent alert to the agent's sponsor that the actor paused or removed it, to
+ * write with what it did, or none if the actor is its sponsor, who knows.
+ */
+async function alertUnlessSponsor(table: Table, actor: Actor, agent: Agent, kind: "pausedBy" | "removedBy", did: (who: string) => { what: string; urgent: string }) {
+  if (actor.id === agent.sponsor) return [];
+  return alertWrites(table, { kind, agent, by: actor.id, ...did(await actorNamed(table, actor.id)) });
+}
+
 const removedMeanwhile = (agent: Agent) => refusal(404, `The agent ${JSON.stringify(agent.id)} was removed meanwhile.`);
 
-/** The answer to every call with a paused agent's key, naming who paused it. */
-export async function pausedRefusal(table: Table, { by }: Pause) {
-  const pauser = by === duva ? undefined : await findActor(table, by);
-  // Only an admin can leave while the agent stays, since its sponsor's removal removes it.
-  const who = by === duva ? "Duva" : pauser?.kind === "human" ? pauser.email : (pauser?.name ?? "an admin who has since left");
-  return refusal(403, `This agent is paused by ${who}. Ask its sponsor to unpause it.`);
+/** The answer to every call with a paused agent's key, naming who paused it. The first call of each pause is an alert to its sponsor. */
+export async function pausedRefusal(table: Table, agent: Agent & { paused: Pause }) {
+  const what = `${agent.name}'s key was used while it is paused, and Duva refused it.`;
+  await raiseAlert(table, { kind: "keyUsedWhilePaused", agent, what }, { source: `key-used#${agent.id}#${agent.paused.at}` });
+  return refusal(403, `This agent is paused by ${await actorNamed(table, agent.paused.by)}. Ask its sponsor to unpause it.`);
 }

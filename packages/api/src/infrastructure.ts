@@ -57,6 +57,9 @@ export const tableStreamView = "NEW_IMAGE";
  */
 export const senderFilter = { dynamodb: { NewImage: { send: { M: { state: { S: ["approved"] } } } } } };
 
+/** Which of the table stream's records Lambda also hands the sender: each urgent alert to mail to its sponsor. */
+export const alertMailFilter = { dynamodb: { NewImage: { mail: { S: ["pending"] } } } };
+
 /**
  * Which of the table stream's records Lambda hands the feeder: each new change in a mailbox's change
  * feed, whose entries are in the mailbox's changes partition.
@@ -103,8 +106,11 @@ export const dropMetric = { namespace: "Duva", name: "DroppedMessages", dimensio
 /** Why Duva drops a message on arrival, as the drop metric's dimension names it. */
 export const dropReasons = ["virus", "dmarcReject"] as const;
 
+/** Duva's own address on the domain, which mail no actor sent comes from, such as sign-in codes and urgent alerts. */
+export const systemAddress = (domain: string) => `no-reply@${domain}`;
+
 /** The address sign-in codes come from once SES has verified the sign-in domain. */
-export const signInSender = (domain: string) => `no-reply@${domain}`;
+export const signInSender = systemAddress;
 
 /** The From of sign-in codes, as Cognito sends them from the sign-in domain. */
 export const signInFrom = (domain: string) => `Duva <${signInSender(domain)}>`;

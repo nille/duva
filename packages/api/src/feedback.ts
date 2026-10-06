@@ -2,19 +2,20 @@
 // Duva's configuration set: bounces, complaints and rejects. Each finds the message the sender sent
 // by the ID SES gave it, and is recorded on the message and its send, and in the mailbox's change
 // feed, once however often SNS delivers it. Duva pauses an agent after one complaint about its
-// mail, or 5 hard bounces of it within an hour, across its mailboxes (ADR-0021). The urgent alert
-// ADR-0021 sends its sponsor comes with alerts, in #82. A hard bounce of one of the organization's
-// own addresses comes from SES receiving not knowing it yet, so Duva takes it off SES's suppression
-// list again, and never counts it.
+// mail, or 5 hard bounces of it within an hour, across its mailboxes (ADR-0021), with an urgent
+// alert to its sponsor. Each hard bounce, complaint and reject of an agent's mail is an alert too.
+// A hard bounce of one of the organization's own addresses comes from SES receiving not knowing it
+// yet, so Duva takes it off SES's suppression list again, and never counts it or alerts about it.
 import { TransactionCanceledException } from "@aws-sdk/client-dynamodb";
 import { GetCommand, QueryCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import type { SNSEvent } from "aws-lambda";
+import { alertItems, alertWrites, type NewAlert } from "./alerting.ts";
 import type { Table } from "./deployment.ts";
 import { feedbackOnSend, sentBySes, sesMessagePartition } from "./drafting.ts";
 import { recordChanges } from "./feed.ts";
 import { timeToLiveAttribute } from "./infrastructure.ts";
 import { feedbackOnMessage, type SendFeedback } from "./mail.ts";
-import { duva, findActor, mailboxFeed, pauseAgent } from "./organization.ts";
+import { type Agent, duva, findActor, mailboxFeed, pauseAgent } from "./organization.ts";
 import { localRecipients } from "./receiving.ts";
 import type { SuppressionList } from "./suppression.ts";
 import { documents, isNew, pk, sk, type TransactItem } from "./table.ts";
@@ -30,6 +31,8 @@ interface SesEvent {
 
 /** How many hard bounces of an agent's mail within an hour pause it (ADR-0021). */
 const hardBouncesToPause = 5;
+/** How many hard bounces of an agent's mail within an hour make the alert of each urgent. */
+const urgentHardBounces = 3;
 const hour = 3600_000;
 
 // Each hard bounce of an agent's mail is kept in its partition, by when it happened, for as long as it counts.
@@ -38,6 +41,9 @@ const hardBounceKey = (agent: string, at: string, sesMessageId: string, recipien
   [pk]: `actor#${agent}`,
   [sk]: `${hardBouncePrefix}${at}#${sesMessageId}#${recipient.toLowerCase()}`,
 });
+
+// Until when the agent's urgent bounces were mailed to its sponsor.
+const bouncesMailedKey = (agent: string) => ({ [pk]: `actor#${agent}`, [sk]: "alerts#bounces-mailed" });
 
 export function createFeedback({ table, suppressionList }: { table: Table; suppressionList: SuppressionList }) {
   return async (event: SNSEvent): Promise<void> => {
@@ -106,7 +112,9 @@ async function recordFeedback(table: Table, suppressionList: SuppressionList, ev
           .map((recipient) => ({
             Put: { TableName: table.name, Item: { ...hardBounceKey(agent.id, feedback.at, sesMessageId, recipient), [timeToLiveAttribute]: expires } },
           }));
-  const items = [claim, ...(onMessage === undefined ? [] : [onMessage.item]), ...(onSend === undefined ? [] : [onSend]), ...counted];
+  const link = { mailbox: sent.mailbox, ...(onMessage !== undefined && { thread: onMessage.thread }), message: sent.message, draft: sent.draft };
+  const alert = agent === undefined ? [] : await feedbackAlert(table, { agent, feedback, local, link });
+  const items = [claim, ...(onMessage === undefined ? [] : [onMessage.item]), ...(onSend === undefined ? [] : [onSend]), ...counted, ...alert];
   try {
     if (onMessage === undefined) await documents(table).send(new TransactWriteCommand({ TransactItems: items }));
     else {
@@ -122,17 +130,64 @@ async function recordFeedback(table: Table, suppressionList: SuppressionList, ev
     if (Item?.checked === true) return;
   }
 
-  if (agent !== undefined && (feedback.kind === "complaint" || (feedback.kind === "hardBounce" && counted.length > 0 && (await tooManyHardBounces(table, agent.id, feedback.at))))) {
-    await pauseAgent(table, { agent, by: duva });
+  const tooMany = feedback.kind === "hardBounce" && agent !== undefined && counted.length > 0 && hourWith(await hardBounces(table, agent.id, feedback.at), feedback.at, hardBouncesToPause);
+  if (agent !== undefined && (feedback.kind === "complaint" || tooMany)) {
+    const why = feedback.kind === "complaint" ? "a complaint about its mail" : `${hardBouncesToPause} hard bounces of its mail within an hour`;
+    const what = `Duva paused ${agent.name} after ${why}, so it can't hurt the domain. Its approved sends are held, and unpausing sends them, so look at them first.`;
+    await pauseAgent(table, { agent, by: duva, items: await alertWrites(table, { kind: "autoPaused", agent, what, urgent: `Duva paused ${agent.name}` }) });
   }
   await documents(table).send(new UpdateCommand({ TableName: table.name, Key: claimKey, UpdateExpression: "SET checked = :checked", ExpressionAttributeValues: { ":checked": true } }));
 }
 
 /**
- * Whether some hour that includes the time saw enough hard bounces of the agent's mail to pause
- * it. Every such hour is checked, since SNS may deliver a later bounce before an earlier one.
+ * The writes of the alert to the agent's sponsor about what SES reported of its mail: a hard
+ * bounce, urgent if it makes 3 or more within an hour, mailed once an hour, a complaint, which is urgent, or a reject,
+ * which failed the send. A soft bounce raises none, nor a hard bounce of only the organization's
+ * own addresses.
  */
-async function tooManyHardBounces(table: Table, agent: string, at: string): Promise<boolean> {
+async function feedbackAlert(
+  table: Table,
+  { agent, feedback, local, link }: { agent: Agent; feedback: SendFeedback; local: string[]; link: NewAlert["link"] },
+) {
+  const recipients = feedback.recipients.join(", ");
+  if (feedback.kind === "hardBounce") {
+    const bounced = feedback.recipients.filter((recipient) => !local.includes(recipient));
+    if (bounced.length === 0) return [];
+    // This bounce isn't counted yet, so each of its recipients is added.
+    const times = [...(await hardBounces(table, agent.id, feedback.at)), ...bounced.map(() => Date.parse(feedback.at))];
+    const what = `Mail from ${agent.name} to ${bounced.join(", ")} hard-bounced, so the address takes no mail.`;
+    if (!hourWith(times, feedback.at, urgentHardBounces)) return alertWrites(table, { kind: "bounced", agent, what, link });
+    const alert = { kind: "bounced" as const, agent, what, link, urgent: `Mail from ${agent.name} bounced` };
+    // Urgent bounces are mailed once an hour at most, and not while the agent is paused, whose own alert says why.
+    const { Item: mailed } = await documents(table).send(new GetCommand({ TableName: table.name, Key: bouncesMailedKey(agent.id), ConsistentRead: true }));
+    const mailedUntil = mailed?.until as string | undefined;
+    if (agent.paused !== undefined || (mailedUntil !== undefined && mailedUntil > feedback.at)) return alertItems(table, alert);
+    const until = new Date(Date.parse(feedback.at) + hour).toISOString();
+    const mailing: TransactItem = { Put: { TableName: table.name, Item: { ...bouncesMailedKey(agent.id), until, [timeToLiveAttribute]: Math.floor(Date.parse(until) / 1000) + 3600 } } };
+    return [mailing, ...(await alertWrites(table, alert))];
+  }
+  if (feedback.kind === "complaint") {
+    return alertWrites(table, { kind: "complained", agent, what: `${recipients} complained about mail from ${agent.name}.`, link, urgent: `A complaint about mail from ${agent.name}` });
+  }
+  if (feedback.kind === "reject") {
+    const what = `SES rejected ${agent.name}'s message to ${recipients}${feedback.reason === undefined ? "." : `: ${feedback.reason}`}`;
+    return alertWrites(table, { kind: "sendFailed", agent, what, link });
+  }
+  return [];
+}
+
+/**
+ * Whether some hour that includes the time saw at least `count` of the times. Every such hour is
+ * checked, since SNS may deliver a later bounce before an earlier one.
+ */
+function hourWith(times: number[], at: string, count: number): boolean {
+  const time = Date.parse(at);
+  // Each hour starting at a bounce no more than an hour before the time includes the time.
+  return times.some((first) => first <= time && first >= time - hour && times.filter((each) => each >= first && each <= first + hour).length >= count);
+}
+
+/** When each hard bounce of the agent's mail within an hour of the time happened, one for each recipient. */
+async function hardBounces(table: Table, agent: string, at: string): Promise<number[]> {
   const time = Date.parse(at);
   const from = new Date(time - hour).toISOString();
   const to = new Date(time + hour).toISOString();
@@ -153,6 +208,5 @@ async function tooManyHardBounces(table: Table, agent: string, at: string): Prom
     for (const item of page.Items ?? []) times.push(Date.parse(String(item[sk]).slice(hardBouncePrefix.length).split("#")[0]!));
     start = page.LastEvaluatedKey;
   } while (start !== undefined);
-  // Each hour starting at a bounce no more than an hour before the time includes the time.
-  return times.some((first) => first <= time && times.filter((each) => each >= first && each <= first + hour).length >= hardBouncesToPause);
+  return times;
 }
