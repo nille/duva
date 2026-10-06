@@ -1,7 +1,8 @@
 // Keyboard shortcuts, as other mail apps have them: single keys that move through a list and open,
-// archive or trash its threads, write, search and close, and ? for a sheet listing them all. None acts
-// while the human types in a field. A stray key, or a word said to speech input, would set them off,
-// so a human can turn them all off on You (WCAG 2.1.4).
+// archive or trash its threads, reply to, forward, archive or trash the thread open, write, search
+// and close, and ? for a sheet listing them all. None acts while the human types in a field. A stray
+// key, or a word said to speech input, would set them off, so a human can turn them all off on You
+// (WCAG 2.1.4).
 import { type RefObject, useContext, useEffect, useId, useRef, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
@@ -165,6 +166,16 @@ function ShortcutsSheet({ onClose }: { onClose: () => void }) {
         [["j"], copy.next],
         [["k"], copy.previous],
         [["Enter", "o"], copy.open],
+        [["e"], copy.archive],
+        [["#"], copy.trash],
+      ],
+    ],
+    [
+      copy.inThread,
+      [
+        [["r"], copy.reply],
+        [["a"], copy.replyAll],
+        [["f"], copy.forward],
         [["e"], copy.archive],
         [["#"], copy.trash],
       ],

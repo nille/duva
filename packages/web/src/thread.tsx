@@ -10,7 +10,8 @@ import { Composer, startDraft } from "./compose.tsx";
 import { PreferencesContext } from "./dates.ts";
 import { DesignedBody } from "./designed.tsx";
 import { Addresses, Attachments, Field, nameOf, Time } from "./mail-parts.tsx";
-import { type Done, type Label, organize, OrganizeActions, ownLabelsOf, SessionEnded } from "./organize.tsx";
+import { changeFor, type Done, type Label, organize, OrganizeActions, ownLabelsOf, SessionEnded } from "./organize.tsx";
+import { useShortcuts } from "./shortcuts.tsx";
 import { strings } from "./strings.ts";
 
 type Thread = components["schemas"]["Thread"];
@@ -20,6 +21,9 @@ type MailView = components["schemas"]["MailView"];
 
 /** What the thread's foot starts: a reply, a reply to all, or a forward. */
 type Start = "reply" | "replyAll" | "forward";
+
+/** Whether the message went to more than one recipient, so it offers Reply all. */
+const toSeveral = (message: Message) => message.to.length + message.cc.length > 1;
 
 type Reading = { status: "loading" } | { status: "failed"; message: string; gone?: boolean } | { status: "read"; thread: Thread; fresh: Set<string> };
 
@@ -292,6 +296,26 @@ export function ThreadView({
   const thread = reading.status === "read" ? reading.thread : undefined;
   const newest = thread?.messages.at(-1);
   const composing = typeof replying === "object" && replying.draft !== undefined;
+  // Archiving and Trash at the thread's foot, where the thread's toolbar offers them.
+  const moveFor = (action: "archive" | "trash") => {
+    const what = thread === undefined ? undefined : changeFor(action, [thread], { thread: true });
+    return thread === undefined || what === undefined ? undefined : () => void move(thread, what.change, what.message);
+  };
+  const archive = moveFor("archive");
+  const trash = moveFor("trash");
+  const busy = moving === "busy";
+
+  // r, a and f start what Reply, Reply all and Forward start, while the newest message offers them
+  // and no reply is under way, and e and # do what Archive and Trash do, while no move is.
+  const answerable = canReply && !composing && typeof replying !== "object" ? newest : undefined;
+  const startOn = (start: Start, offered = true) => (answerable === undefined || !offered ? undefined : () => void reply(answerable, start));
+  useShortcuts({
+    r: startOn("reply"),
+    a: startOn("replyAll", answerable !== undefined && toSeveral(answerable)),
+    f: startOn("forward"),
+    e: busy ? undefined : archive,
+    "#": busy ? undefined : trash,
+  });
 
   return (
     <main className={composing ? "desk desk-reading thread-composing" : "desk desk-reading"} aria-busy={reading.status === "loading"}>
@@ -408,20 +432,14 @@ export function ThreadView({
                   {typeof replying === "object" && replying.start === "reply" ? strings.thread.starting : strings.thread.reply}
                 </button>
               )}
-              {reading.thread.labels.includes("inbox") && !reading.thread.labels.includes("trash") && !reading.thread.labels.includes("spam") && (
-                <button type="button" className="button button-small" disabled={moving === "busy"} onClick={() => void move(reading.thread, { remove: ["inbox"] }, strings.organize.archived)}>
+              {archive !== undefined && (
+                <button type="button" className="button button-small" disabled={busy} onClick={archive}>
                   <ArchiveIcon />
                   {strings.organize.archive}
                 </button>
               )}
-              {!reading.thread.labels.includes("trash") && (
-                <button
-                  type="button"
-                  className="button button-small"
-                  aria-label={strings.organize.trash}
-                  disabled={moving === "busy"}
-                  onClick={() => void move(reading.thread, { add: ["trash"] }, strings.organize.trashed)}
-                >
+              {trash !== undefined && (
+                <button type="button" className="button button-small" aria-label={strings.organize.trash} disabled={busy} onClick={trash}>
                   <TrashIcon />
                   {strings.thread.trashShort}
                 </button>
@@ -463,7 +481,7 @@ function ReplyButtons({
         <ReplyIcon />
         {starting === "reply" ? strings.thread.starting : strings.thread.reply}
       </button>
-      {message.to.length + message.cc.length > 1 && (
+      {toSeveral(message) && (
         <button type="button" className="button button-small" disabled={busy} onClick={() => onReply("replyAll")}>
           <ReplyAllIcon />
           {starting === "replyAll" ? strings.thread.starting : strings.thread.replyAll}
