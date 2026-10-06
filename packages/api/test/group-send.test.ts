@@ -201,6 +201,24 @@ test("a paused agent's send as the group is held, with no copies, until it is un
   expect((await messagesIn(grace, graces))[1]).toMatchObject({ sentAs: { group: "team@example.com", by: agentId, name: "Hermes" } });
 });
 
+test("an agent's send as the group counts toward its send limits, waits over them with no copies, and its sponsor sends it now", async () => {
+  const { ada, grace, hermes, graces, hermess, agentId, sentAfter } = await withQuestion();
+  await ada.PATCH("/agents/{agent}/settings", { params: { path: { agent: agentId } }, body: { sendsPerHour: 1 } });
+  const approve = (draft: { send?: { approval?: string } }) => ada.POST("/approvals/{approval}/send", { params: { path: { approval: draft.send!.approval! } } });
+  const [question] = await messagesIn(hermes, hermess);
+  await approve((await draftAndSend(hermes, hermess, { to: ["ken@example.net"], subject: "Hello", text: "Hej." })).sent.data!);
+
+  const { draft, sent } = await draftAndSend(hermes, hermess, { answers: question!.id, from: "team@example.com", text: "Looking into it." });
+  await approve(sent.data!);
+
+  expect((await hermes.GET("/mailboxes/{mailbox}/drafts/{draft}", { params: { path: { ...hermess.path, draft: draft.id } } })).data?.send?.state).toBe("waitingForLimit");
+  expect(sentAfter()).toHaveLength(1);
+  expect(await messagesIn(grace, graces)).toHaveLength(1);
+  await ada.POST("/mailboxes/{mailbox}/drafts/{draft}/send-now", { params: { path: { ...hermess.path, draft: draft.id } } });
+  expect((await parse(sentAfter()[1]!)).from?.address).toBe("team@example.com");
+  expect((await messagesIn(grace, graces))[1]).toMatchObject({ sentAs: { group: "team@example.com", by: agentId, name: "Hermes" } });
+});
+
 test("only a group's members can send as it, others get 403, and an address that is neither the mailbox's nor a group can't be From", async () => {
   const { ada, grace, adas, graces, question } = await withQuestion();
   await ada.POST("/groups", { body: { address: "others@example.com", members: ["ada@example.com"] } });

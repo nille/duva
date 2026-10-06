@@ -3,7 +3,10 @@ import { jsonBody, type OperationHandler, refusal } from "./api.ts";
 import { threadsPastRetention } from "./erasure.ts";
 import { indexMailboxes } from "./indexing.ts";
 import { type Language, languages } from "./languages.ts";
-import { changeSettings, defaultSettings, organizationSettings, type OrganizationSettings } from "./organization.ts";
+import { changeSettings, defaultSettings, lowerLimitsToCaps, organizationSettings, type OrganizationSettings } from "./organization.ts";
+
+/** Whether the value is a send limit or a cap on one: a whole number from 1 to 10,000. */
+export const isLimit = (value: unknown): value is number => Number.isInteger(value) && (value as number) >= 1 && (value as number) <= 10_000;
 
 /** Which values each setting takes, and what refuses one it doesn't. */
 const values: { [Name in keyof OrganizationSettings]: { takes: (value: unknown) => value is OrganizationSettings[Name]; refusal: string } } = {
@@ -19,6 +22,8 @@ const values: { [Name in keyof OrganizationSettings]: { takes: (value: unknown) 
     takes: (value): value is Language[] => Array.isArray(value) && value.every((language) => languages.includes(language)) && new Set(value).size === value.length,
     refusal: `Give searchLanguages as a list of different languages from ${languages.join(", ")}.`,
   },
+  agentSendsPerHourCap: { takes: isLimit, refusal: "Give agentSendsPerHourCap as a whole number from 1 to 10000." },
+  agentNewRecipientsPerDayCap: { takes: isLimit, refusal: "Give agentNewRecipientsPerDayCap as a whole number from 1 to 10000." },
 };
 
 export const getOrganizationSettings: OperationHandler = async (_event, deployment) => {
@@ -42,6 +47,8 @@ export const changeOrganizationSettings: OperationHandler = async (event, deploy
   // Each mailbox's index files mail by language, so the indexer rebuilds those whose languages are
   // no longer the ones mail is indexed in.
   if (changes.searchLanguages !== undefined) await indexMailboxes(deployment.table, deployment.indexQueue);
+  // Each change to a cap does it, so a change again finishes what one that stopped partway left.
+  if ("agentSendsPerHourCap" in body || "agentNewRecipientsPerDayCap" in body) await lowerLimitsToCaps(deployment.table, actor.id);
   return { statusCode: 200, body: settings satisfies components["schemas"]["OrganizationSettings"] };
 };
 

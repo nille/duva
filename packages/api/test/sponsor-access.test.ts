@@ -63,6 +63,8 @@ const defaults = {
   approvalAsSponsor: true,
   disclosureLineForOwnMailbox: true,
   disclosureLineAsSponsor: true,
+  sendsPerHour: 100,
+  newRecipientsPerDay: 50,
 };
 
 test("an agent starts with no sponsor access and every switch on, which its sponsor and the agent read", async () => {
@@ -187,8 +189,8 @@ test("nobody but the agent's sponsor changes its settings, not the agent, anothe
 });
 
 test.each([
-  ["no setting", {}, "Give a setting to change: sponsorAccess, approvalForOwnMailbox, approvalAsSponsor, disclosureLineForOwnMailbox, disclosureLineAsSponsor."],
-  ["a setting agents don't have", { admin: true }, `An agent has no setting "admin". Its settings are sponsorAccess, approvalForOwnMailbox, approvalAsSponsor, disclosureLineForOwnMailbox, disclosureLineAsSponsor.`],
+  ["no setting", {}, "Give a setting to change: sponsorAccess, approvalForOwnMailbox, approvalAsSponsor, disclosureLineForOwnMailbox, disclosureLineAsSponsor, sendsPerHour, newRecipientsPerDay."],
+  ["a setting agents don't have", { admin: true }, `An agent has no setting "admin". Its settings are sponsorAccess, approvalForOwnMailbox, approvalAsSponsor, disclosureLineForOwnMailbox, disclosureLineAsSponsor, sendsPerHour, newRecipientsPerDay.`],
   ["a sponsor access there isn't", { sponsorAccess: "write" }, "Give sponsorAccess as none, read or full."],
   ["a switch that isn't on or off", { approvalAsSponsor: "no" }, "Give approvalAsSponsor as true to turn it on, or false to turn it off."],
 ])("changing an agent's settings with %s gets 400", async (_, body, message) => {

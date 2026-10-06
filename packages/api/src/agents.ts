@@ -5,6 +5,7 @@ import { releaseHeldSends, withdrawPendingApprovals } from "./drafting.ts";
 import type { Table } from "./deployment.ts";
 import { syncRecipients } from "./receiving.ts";
 import { removeAgentWithMailboxes } from "./removal.ts";
+import { isLimit } from "./settings.ts";
 import {
   type Actor,
   addAgent,
@@ -17,7 +18,9 @@ import {
   findActor,
   KeyChanged,
   NowhereToRecord,
+  OverCap,
   ownedMailboxes,
+  limitCaps,
   pauseAgent as pause,
   replaceAgentKey,
   sponsoredAgents,
@@ -75,14 +78,18 @@ export const changeAgentSettings: OperationHandler = async (event, deployment, a
   const unknown = Object.keys(body).find((name) => !names.includes(name));
   if (unknown !== undefined) return refusal(400, `An agent has no setting ${JSON.stringify(unknown)}. Its settings are ${names.join(", ")}.`);
   if (Object.keys(body).length === 0) return refusal(400, `Give a setting to change: ${names.join(", ")}.`);
-  const { sponsorAccess, ...switches } = body;
+  const { sponsorAccess, sendsPerHour, newRecipientsPerDay, ...switches } = body;
   if (sponsorAccess !== undefined && !sponsorAccesses.includes(sponsorAccess as AgentSettings["sponsorAccess"])) {
     return refusal(400, `Give sponsorAccess as ${sponsorAccesses.slice(0, -1).join(", ")} or ${sponsorAccesses.at(-1)}.`);
   }
+  const notLimit = Object.entries({ sendsPerHour, newRecipientsPerDay }).find(([, value]) => value !== undefined && !isLimit(value));
+  if (notLimit !== undefined) return refusal(400, `Give ${notLimit[0]} as a whole number from 1 up to the organization's cap.`);
   const notOnOrOff = Object.entries(switches).find(([, value]) => typeof value !== "boolean");
   if (notOnOrOff !== undefined) return refusal(400, `Give ${notOnOrOff[0]} as true to turn it on, or false to turn it off.`);
   try {
     const settings = await changeStoredSettings(deployment.table, { agent, changes: body as Partial<AgentSettings> });
+    // A higher limit may let sends that wait for it go out.
+    if (sendsPerHour !== undefined || newRecipientsPerDay !== undefined) await deployment.waitingSends.release(agent.id);
     // Without full access the agent can't send as its sponsor, so what waits for that is withdrawn.
     // Each change does it, so a change again finishes what one that stopped partway left.
     if (!sponsorAccessAllows(settings.sponsorAccess, "send")) {
@@ -91,6 +98,9 @@ export const changeAgentSettings: OperationHandler = async (event, deployment, a
     }
     return { statusCode: 200, body: settings satisfies components["schemas"]["AgentSettings"] };
   } catch (error) {
+    if (error instanceof OverCap) {
+      return refusal(400, `${error.limit} can be at most the organization's cap of ${error.cap}. Ask an admin to raise ${limitCaps[error.limit]}.`);
+    }
     if (error instanceof NowhereToRecord) {
       return refusal(409, "Neither you nor the agent has a mailbox, whose change feed would record the change. Ask an admin to create one for you first.");
     }
@@ -139,6 +149,7 @@ export const unpauseAgent: OperationHandler = async (event, deployment, actor) =
   if (unpaused === undefined) return removedMeanwhile(agent);
   // Each unpause releases what is held, so unpausing again finishes what one that stopped partway left.
   await releaseHeldSends(deployment.table, agent);
+  await deployment.waitingSends.release(agent.id);
   return { statusCode: 200, body: unpaused satisfies components["schemas"]["Agent"] };
 };
 

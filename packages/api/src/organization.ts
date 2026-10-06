@@ -375,7 +375,23 @@ export const defaultAgentSettings: AgentSettings = {
   approvalAsSponsor: true,
   disclosureLineForOwnMailbox: true,
   disclosureLineAsSponsor: true,
+  sendsPerHour: 100,
+  newRecipientsPerDay: 50,
 };
+
+/** Each of an agent's send limits, with the organization's setting that caps it. */
+export const limitCaps = { sendsPerHour: "agentSendsPerHourCap", newRecipientsPerDay: "agentNewRecipientsPerDayCap" } as const;
+
+/** A send limit given is above the organization's cap. */
+export class OverCap extends Error {
+  readonly limit: keyof typeof limitCaps;
+  readonly cap: number;
+  constructor(limit: keyof typeof limitCaps, cap: number) {
+    super(`${limit} is over the cap of ${cap}.`);
+    this.limit = limit;
+    this.cap = cap;
+  }
+}
 
 /** The agent's approval and disclosure-line switches for where it sends from: its own mailbox, or its sponsor's, as them. */
 export const switchesFor = (settings: AgentSettings, asSponsor: boolean) =>
@@ -396,16 +412,24 @@ export function agentSettingsUnchanged(table: Table, agent: string, read: ReadSe
 }
 
 /**
- * Changes the agent's settings, on behalf of its sponsor, and returns them all. The ones whose
- * value changes are one change, with their old and new values, in the change feed of each of the
- * sponsor's mailboxes, or if the sponsor has none, of each of the agent's. Giving a setting the
- * value it has records nothing. Throws NowhereToRecord if neither has a mailbox.
+ * Changes the agent's settings, on behalf of its sponsor, or of the admin `by` who lowered a cap
+ * below its send limits, and returns them all. The ones whose value changes are one change, with
+ * their old and new values, in the change feed of each of the sponsor's mailboxes, or if the
+ * sponsor has none, of each of the agent's. Giving a setting the value it has records nothing.
+ * Throws OverCap for a send limit over the organization's cap, which holds only while the caps
+ * are still as read, and NowhereToRecord if neither has a mailbox for the sponsor's change.
  */
-export async function changeAgentSettings(table: Table, { agent, changes }: { agent: Agent; changes: Partial<AgentSettings> }): Promise<AgentSettings> {
+export async function changeAgentSettings(table: Table, { agent, changes, by = agent.sponsor }: { agent: Agent; changes: Partial<AgentSettings>; by?: string }): Promise<AgentSettings> {
   const sponsorsMailboxes = await ownedMailboxes(table, agent.sponsor);
   const mailboxes = sponsorsMailboxes.length > 0 ? sponsorsMailboxes : await ownedMailboxes(table, agent.id);
-  if (mailboxes.length === 0) throw new NowhereToRecord();
+  // A cap's lowering is in the organization's change feed even when no mailbox's has it.
+  if (mailboxes.length === 0 && by === agent.sponsor) throw new NowhereToRecord();
   for (let attempt = 1; ; attempt++) {
+    const caps = await organizationSettings(table);
+    for (const limit of Object.keys(limitCaps) as (keyof typeof limitCaps)[]) {
+      const cap = caps.settings[limitCaps[limit]];
+      if ((changes[limit] ?? 0) > cap) throw new OverCap(limit, cap);
+    }
     const read = await agentSettings(table, agent.id);
     const names = (Object.keys(defaultAgentSettings) as (keyof AgentSettings)[]).filter((name) => changes[name] !== undefined && changes[name] !== read.settings[name]);
     if (names.length === 0) return read.settings;
@@ -418,14 +442,16 @@ export async function changeAgentSettings(table: Table, { agent, changes }: { ag
     };
     try {
       await recordInFeeds(table, mailboxes.map(({ id }) => ({ feed: mailboxFeed(id), changes: [change] })), {
-        by: agent.sponsor,
-        items: [{ Put: { TableName: table.name, Item: { ...agentSettingsKey(agent.id), ...settings, version: read.version + 1 }, ...atVersion(read) } }],
+        by,
+        items: [{ Put: { TableName: table.name, Item: { ...agentSettingsKey(agent.id), ...settings, version: read.version + 1 }, ...atVersion(read) } }, settingsUnchanged(table, caps)],
       });
       return settings;
     } catch (error) {
-      // The sponsor changed the settings at the same time, so they are read again. The item comes after each feed's counter and change.
+      // The sponsor changed the settings, or an admin the caps, at the same time, so they are read
+      // again. The items come after each feed's counter and change.
       const reasons = error instanceof TransactionCanceledException ? (error.CancellationReasons ?? []) : [];
-      if (reasons[2 * mailboxes.length]?.Code !== "ConditionalCheckFailed" || attempt === 10) throw error;
+      const changed = [reasons[2 * mailboxes.length], reasons[2 * mailboxes.length + 1]].some((reason) => reason?.Code === "ConditionalCheckFailed");
+      if (!changed || attempt === 10) throw error;
     }
   }
 }
@@ -982,7 +1008,13 @@ export async function organizationChanges(table: Table, after: number): Promise<
 }
 
 /** What each setting is until an admin changes it. */
-export const defaultSettings: OrganizationSettings = { erasureErasesApprovals: false, retentionDays: 30, searchLanguages: defaultSearchLanguages };
+export const defaultSettings: OrganizationSettings = {
+  erasureErasesApprovals: false,
+  retentionDays: 30,
+  searchLanguages: defaultSearchLanguages,
+  agentSendsPerHourCap: 100,
+  agentNewRecipientsPerDayCap: 50,
+};
 
 /** Settings as read, with the version a write that relies on them checks. */
 export interface ReadSettings<Settings = OrganizationSettings> {
@@ -1027,6 +1059,24 @@ export async function changeSettings(table: Table, { by, changes }: { by: string
       // Another admin changed the settings since they were read, so they are read again.
       const reasons = error instanceof TransactionCanceledException ? (error.CancellationReasons ?? []) : [];
       if (reasons[settingsReason]?.Code !== "ConditionalCheckFailed" || attempt === 10) throw error;
+    }
+  }
+}
+
+/**
+ * Lowers each agent's send limits that are above the organization's caps to them, on behalf of
+ * the admin `by` who lowered a cap, each recorded as a change to the agent's settings. Run again,
+ * it finishes what an earlier run left.
+ */
+export async function lowerLimitsToCaps(table: Table, by: string): Promise<void> {
+  const { settings: caps } = await organizationSettings(table);
+  for (const human of await allHumans(table)) {
+    for (const agent of await sponsoredAgents(table, human.id)) {
+      const { settings } = await agentSettings(table, agent.id);
+      const lowered = Object.fromEntries(
+        (Object.keys(limitCaps) as (keyof typeof limitCaps)[]).filter((limit) => settings[limit] > caps[limitCaps[limit]]).map((limit) => [limit, caps[limitCaps[limit]]]),
+      );
+      if (Object.keys(lowered).length > 0) await changeAgentSettings(table, { agent, changes: lowered, by });
     }
   }
 }

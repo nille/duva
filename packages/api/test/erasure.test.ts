@@ -194,7 +194,7 @@ test("an admin previews how many threads in every mailbox's Trash and Spam a ret
 
   expect((await preview(7)).data).toEqual({ retentionDays: 7, threads: 4 });
   expect((await preview(30)).data).toEqual({ retentionDays: 30, threads: 0 });
-  expect((await grace.GET("/organization/settings")).data).toEqual({ erasureErasesApprovals: false, retentionDays: 30, searchLanguages: ["English", "Swedish"] });
+  expect((await grace.GET("/organization/settings")).data).toEqual({ erasureErasesApprovals: false, retentionDays: 30, searchLanguages: ["English", "Swedish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50 });
 });
 
 test("the preview counts what the eraser erases under that period", async () => {

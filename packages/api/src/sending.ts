@@ -5,12 +5,18 @@
 // conditional on the last, so a retried record never sends twice. A paused agent's sends stay
 // approved, held, until unpausing writes them again and the stream hands them over once more. A
 // draft sent as a group is copied to each other local member's mailbox once it is sent
-// (ADR-0019), also when a retried record finds it sent already.
+// (ADR-0019), also when a retried record finds it sent already. An
+// agent's send over its send limits, or behind its others that wait, waits for them, and the
+// sender sends what waits, oldest first, when it is handed the agent, at a time it scheduled or
+// once the API changed what holds them.
 import { randomUUID } from "node:crypto";
 import { SendEmailCommand, SESv2ServiceException, type SESv2Client } from "@aws-sdk/client-sesv2";
 import type { DynamoDBStreamEvent } from "aws-lambda";
+import { TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import type { Table } from "./deployment.ts";
-import { draftAt, draftToSend, findApproval, markFailed, markSent, markUnclear, type Sending, startSending, unsendableFrom } from "./drafting.ts";
+import { approvedAt, draftAt, draftToSend, findApproval, markFailed, markSent, markUnclear, type Sending, startSending, unsendableFrom, waitForLimit } from "./drafting.ts";
+import { allowedAt, counting, limitsOf, newRecipients, readWindow, type ReleaseEvent, type Schedules, type WaitingSend, stopWaiting, waitingSends, windowUnchanged } from "./limits.ts";
+import { documents, type TransactItem } from "./table.ts";
 import { sentPrefix } from "./infrastructure.ts";
 import type { MailBucket } from "./mail-bucket.ts";
 import { copyToOtherMembers, fromStanding } from "./group-mail.ts";
@@ -35,6 +41,9 @@ export interface Outbound {
    */
   send(raw: Uint8Array, destination: Destination): Promise<string>;
 }
+
+/** How many recipients SES sends one message to, in To, Cc and Bcc together (docs/aws.md). */
+const maxRecipients = 50;
 
 /** SES refused the message, so it wasn't sent. */
 export class Refused extends Error {}
@@ -82,10 +91,16 @@ interface Sender {
   outbound: Outbound;
   /** The region SES sends from, which names the Message-ID it gives each message. */
   region: string;
+  /** Where the sender asks to be handed an agent again, once its limits allow what waits. */
+  schedules: Schedules;
 }
 
 export function createSender(sender: Sender) {
-  return async (event: DynamoDBStreamEvent): Promise<void> => {
+  return async (event: DynamoDBStreamEvent | ReleaseEvent): Promise<void> => {
+    if ("release" in event) {
+      await release(sender, event.release);
+      return;
+    }
     for (const record of event.Records) {
       const keys = Object.fromEntries(Object.entries(record.dynamodb?.Keys ?? {}).map(([name, value]) => [name, value.S ?? ""]));
       const at = draftAt(keys);
@@ -94,29 +109,81 @@ export function createSender(sender: Sender) {
   };
 }
 
-/** Sends the draft if it is approved. One left sending by an earlier run that stopped is marked unclear, never sent again. */
-async function send({ table, mailBucket, outbound, region }: Sender, { mailbox, draft: id }: { mailbox: string; draft: string }) {
+/**
+ * Sends the agent's sends that wait for its limits, the first approved first, as far as the limits
+ * allow now, and schedules the next run for when they allow the next. A send with more new
+ * recipients than the whole daily limit waits for its sponsor, so the others pass it. Nothing goes
+ * while the agent is paused, and its unpausing hands it to the sender again.
+ */
+async function release(sender: Sender, agent: string): Promise<void> {
+  for (const waiting of await waitingSends(sender.table, agent)) {
+    const outcome = await send(sender, waiting, { agent, ...waiting });
+    if (outcome === "waits" || outcome === "held") return;
+  }
+}
+
+/**
+ * How a send ended: done, whatever came of it, or waiting for the agent's limits, or held while
+ * it is paused. A send that waits for its sponsor has more new recipients than the whole daily limit.
+ */
+type Outcome = "done" | "waits" | "waitsForSponsor" | "held";
+
+/**
+ * Sends the draft if it is approved, or, given where it waits, if it waits for its agent's limits
+ * and they allow it. One left sending by an earlier run that stopped is marked unclear, never sent
+ * again. A write that found another between its read and itself, such as another of the agent's
+ * sends counted, is tried again from the read.
+ */
+async function send(sender: Sender, at: { mailbox: string; draft: string }, waiting?: Waiting): Promise<Outcome> {
+  for (let attempt = 1; ; attempt++) {
+    const outcome = await sendOnce(sender, at, waiting, attempt > 1);
+    if (outcome !== "again") return outcome;
+    if (attempt === 10) throw new Error(`Sending draft ${at.draft} found another write in its way 10 times.`);
+  }
+}
+
+/** One of the agent's sends that wait for its limits. */
+type Waiting = WaitingSend & { agent: string };
+
+/** One try at sending the draft. `again` says an earlier try found another write in its way. */
+async function sendOnce(
+  { table, mailBucket, outbound, region, schedules }: Sender,
+  { mailbox, draft: id }: { mailbox: string; draft: string },
+  waiting: Waiting | undefined,
+  again: boolean,
+): Promise<Outcome | "again"> {
   const draft = await draftToSend(table, mailbox, id);
   const status = draft?.send;
-  if (draft === undefined || status === undefined) return;
+  const expected = waiting === undefined ? "approved" : "waitingForLimit";
+  if (draft === undefined || status === undefined || (waiting !== undefined && status.state !== expected)) {
+    // Sent now, or deleted with its mailbox, it no longer waits.
+    if (waiting !== undefined) await documents(table).send(new TransactWriteCommand({ TransactItems: [stopWaiting(table, waiting.agent, waiting)] }));
+    return "done";
+  }
   const approval = status.approval === undefined ? undefined : await findApproval(table, status.approval);
   if (status.approval !== undefined && approval === undefined) throw new Error(`The approval ${status.approval} that draft ${id} was sent with is missing.`);
   const by = approval?.agent ?? status.by;
   if (by === undefined) throw new Error(`Draft ${id} was asked to send without an approval or a human who sent it.`);
   if (status.state === "sent") {
     await copyToOtherMembers({ table, mailBucket }, mailbox, status.message!);
-    return;
+    return "done";
   }
   if (status.state === "sending") {
-    await markUnclear(table, { mailbox, draft: id, approval: approval?.id, message: status.message!, by });
-    return;
+    // Found again, it is another run's, which got in this one's way and is sending it now.
+    if (!again) await markUnclear(table, { mailbox, draft: id, approval: approval?.id, message: status.message!, by });
+    return "done";
   }
-  if (status.state !== "approved") return;
+  // A run that had it wait, then stopped before sending what waits, left the agent's queue to this one.
+  if (waiting === undefined && status.state === "waitingForLimit") {
+    await release({ table, mailBucket, outbound, region, schedules }, by);
+    return "done";
+  }
+  if (status.state !== expected) return "done";
 
   const actor = await findActor(table, by);
   if (actor === undefined) throw new Error(`The actor ${by} that draft ${id} is sent for is missing.`);
   // A paused agent's sends are held, approved, until unpausing releases them.
-  if (actor.kind === "agent" && actor.paused !== undefined) return;
+  if (actor.kind === "agent" && actor.paused !== undefined) return "held";
   // An agent's mail carries the disclosure header, naming the agent and the human it acts for, and
   // the visible line unless its sponsor switched it off for where it sends from. A human's carries
   // neither. An agent sends as its sponsor from the sponsor's mailbox, under the sponsor's name.
@@ -146,11 +213,36 @@ async function send({ table, mailBucket, outbound, region }: Sender, { mailbox, 
   if ((draft.attachments ?? []).length > 0 && forwarded === undefined) {
     unsendable ??= "The message it forwards is no longer in the mailbox, so its attachments can't go with it. Write a new message instead.";
   }
+  if (draft.to.length + draft.cc.length + draft.bcc.length > maxRecipients) {
+    unsendable ??= `SES sends a message to at most ${maxRecipients} recipients, in To, Cc and Bcc together. Send it as several messages.`;
+  }
 
   // Everything is ready before the draft moves to sending, so only SES's answer can leave it unclear.
   const message = randomUUID();
   const sending: Sending = { mailbox, draft: id, approval: approval?.id, message, by };
   const date = new Date();
+
+  // An agent's send counts against its limits when it goes out, unless it can't go at all. Over
+  // them, or behind its others that wait, it waits, unless its sponsor sent it now.
+  const counted: TransactItem[] = [];
+  if (actor.kind === "agent" && unsendable === undefined) {
+    const window = await readWindow(table, actor.id, date);
+    const unknown = await newRecipients(table, actor.id, [...draft.to, ...draft.cc, ...draft.bcc].map(({ address }) => address));
+    const allowed = status.pastLimit ? undefined : allowedAt(window, await limitsOf(table, actor.id), unknown.length, date);
+    if (waiting === undefined && !status.pastLimit && (allowed !== undefined || (await waitingSends(table, actor.id)).length > 0)) {
+      if (!(await waitForLimit(table, sending, approvedAt(draft, approval), [windowUnchanged(table, actor.id, window), agentUnpaused(table, actor.id)]))) return "again";
+      await release({ table, mailBucket, outbound, region, schedules }, actor.id);
+      return "done";
+    }
+    if (allowed === "never") return "waitsForSponsor";
+    if (allowed !== undefined) {
+      await schedules.releaseAt(actor.id, allowed);
+      return "waits";
+    }
+    counted.push(...counting(table, actor.id, window, { message, at: date, fresh: unknown }));
+  }
+  // Going out or failing, it no longer waits.
+  if (waiting !== undefined) counted.push(stopWaiting(table, waiting.agent, waiting));
   const from = actor.kind === "agent" && !asSponsor ? { name: actor.name, address: draft.from } : { address: draft.from };
   const parent = original?.message.messageId;
   const text = disclosure?.line ? `${draft.text}\n\nSent by ${disclosure.naming}` : draft.text;
@@ -171,10 +263,10 @@ async function send({ table, mailBucket, outbound, region }: Sender, { mailbox, 
   const rawKey = `${sentPrefix}${message}`;
   if (unsendable === undefined) await mailBucket.put(rawKey, raw);
   // A pause since the agent was read holds the send too.
-  if (!(await startSending(table, sending, actor.kind === "agent" ? [agentUnpaused(table, actor.id)] : []))) return;
+  if (!(await startSending(table, sending, actor.kind === "agent" ? [agentUnpaused(table, actor.id), ...counted] : [], expected))) return "again";
   if (unsendable !== undefined) {
     await markFailed(table, sending, unsendable);
-    return;
+    return "done";
   }
 
   let sesMessageId: string;
@@ -184,7 +276,7 @@ async function send({ table, mailBucket, outbound, region }: Sender, { mailbox, 
   } catch (error) {
     if (error instanceof Refused) await markFailed(table, sending, error.message);
     else await markUnclear(table, sending);
-    return;
+    return "done";
   }
   const sentAt = date.toISOString();
   const marked = await markSent(table, sending, {
@@ -196,4 +288,5 @@ async function send({ table, mailBucket, outbound, region }: Sender, { mailbox, 
     approval,
   });
   if (marked) await copyToOtherMembers({ table, mailBucket }, mailbox, message);
+  return "done";
 }

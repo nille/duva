@@ -83,7 +83,7 @@ export const operations = [
     "path": "/organization/settings",
     "routeKey": "PATCH /organization/settings",
     "summary": "Change the organization's settings.",
-    "description": "Give only the settings to change. A setting applies from when it changes, so turning on erasureErasesApprovals leaves the approval records of threads erased before then. A shorter retentionDays reaches back: the eraser's next daily run erases every thread that has had Trash or Spam longer than it. Preview the period first to see how many. Only admins can change the settings. Each change is recorded in the organization's change feed under you.",
+    "description": "Give only the settings to change. A setting applies from when it changes, so turning on erasureErasesApprovals leaves the approval records of threads erased before then. A shorter retentionDays reaches back: the eraser's next daily run erases every thread that has had Trash or Spam longer than it. Preview the period first to see how many. Lowering an agent cap lowers each agent above it, each recorded as a change to its settings under you. Only admins can change the settings. Each change is recorded in the organization's change feed under you.",
     "signIn": true,
     "command": [
       "organization",
@@ -110,6 +110,20 @@ export const operations = [
         "type": "strings",
         "required": false,
         "description": "The languages the organization's mail is in, English and Swedish by default. Each search is also translated into every other one on the list, so \"kvitto\" finds an English receipt: its words go to Amazon's Nova Lite model, in the same AWS region as the mail, which adds a little time to each search. With fewer than two, searches aren't translated. Quoted phrases and subject: never are. English and Swedish mail is always indexed in its own language. Adding another, or removing it, rebuilds every mailbox's search index, embedding its mail again, and search finds less until that is done."
+      },
+      {
+        "name": "agentSendsPerHourCap",
+        "in": "body",
+        "type": "integer",
+        "required": false,
+        "description": "The most sendsPerHour a sponsor can give an agent. 100 by default. Lowering it lowers each agent above it to it, recorded as a change to the agent's settings under you. Raising it raises no agent."
+      },
+      {
+        "name": "agentNewRecipientsPerDayCap",
+        "in": "body",
+        "type": "integer",
+        "required": false,
+        "description": "The most newRecipientsPerDay a sponsor can give an agent. 50 by default. Lowering it lowers each agent above it to it, recorded as a change to the agent's settings under you. Raising it raises no agent."
       }
     ]
   },
@@ -429,8 +443,8 @@ export const operations = [
     "method": "get",
     "path": "/agents/{agent}/settings",
     "routeKey": "GET /agents/{agent}/settings",
-    "summary": "Read an agent's settings, its sponsor access and its approval and disclosure-line switches.",
-    "description": "Only the agent's sponsor and the agent itself can read them. An agent starts with no sponsor access and every switch on.",
+    "summary": "Read an agent's settings, its sponsor access, its approval and disclosure-line switches and its send limits.",
+    "description": "Only the agent's sponsor and the agent itself can read them. An agent starts with no sponsor access, every switch on, and send limits of 100 an hour and 50 new recipients a day.",
     "signIn": true,
     "command": [
       "agents",
@@ -451,8 +465,8 @@ export const operations = [
     "method": "patch",
     "path": "/agents/{agent}/settings",
     "routeKey": "PATCH /agents/{agent}/settings",
-    "summary": "Change an agent's sponsor access or its approval and disclosure-line switches.",
-    "description": "Give only the settings to change. A change works at once. Only the agent's sponsor can change them, so not even an admin can. Each change is recorded under you, with the old and new values, in your personal mailbox's change feed, or if you have none, in the agent's. If neither of you has a mailbox, the change is refused. Read lets the agent read your mailbox. Full also lets it organize it, move threads to Trash and back, draft there, and send as you. Lowering access from full, or removing it, withdraws the agent's sends waiting for your approval in your mailbox, recorded in its change feed under you, and fails those approved but not yet gone out. Its drafts and sent messages stay.",
+    "summary": "Change an agent's sponsor access, its approval and disclosure-line switches, or its send limits.",
+    "description": "Give only the settings to change. A change works at once. Only the agent's sponsor can change them, so not even an admin can. Each change is recorded under you, with the old and new values, in your personal mailbox's change feed, or if you have none, in the agent's. If neither of you has a mailbox, the change is refused. Read lets the agent read your mailbox. Full also lets it organize it, move threads to Trash and back, draft there, and send as you. Lowering access from full, or removing it, withdraws the agent's sends waiting for your approval in your mailbox, recorded in its change feed under you, and fails those approved but not yet gone out. Its drafts and sent messages stay. Send limits go up to the organization's caps, and raising one lets its sends that wait go out as far as the new limit allows.",
     "signIn": true,
     "command": [
       "agents",
@@ -500,6 +514,20 @@ export const operations = [
         "type": "boolean",
         "required": false,
         "description": "Whether mail the agent sends as its sponsor carries the disclosure's visible line. It always carries the Duva-Agent header. On by default."
+      },
+      {
+        "name": "sendsPerHour",
+        "in": "body",
+        "type": "integer",
+        "required": false,
+        "description": "How many messages the agent sends in any hour, from all its mailboxes and as its sponsor. 100 by default, and up to the organization's agentSendsPerHourCap. A send counts when it goes out, and one over the limit waits."
+      },
+      {
+        "name": "newRecipientsPerDay",
+        "in": "body",
+        "type": "integer",
+        "required": false,
+        "description": "How many new recipients the agent sends to in any 24 hours: addresses it hasn't sent to before, from any mailbox. 50 by default, and up to the organization's agentNewRecipientsPerDayCap. A send counts when it goes out, and one over the limit waits. A message with more new recipients than the whole limit waits until its sponsor sends it now."
       }
     ]
   },
@@ -1907,11 +1935,40 @@ export const operations = [
     "path": "/mailboxes/{mailbox}/drafts/{draft}/send",
     "routeKey": "POST /mailboxes/{mailbox}/drafts/{draft}/send",
     "summary": "Ask for a draft to be sent.",
-    "description": "A human's send from their own mailbox needs no approval, so Duva sends it at once, with no disclosure, also when their agent wrote the draft. An agent's send waits for its sponsor's approval unless the sponsor switched that off, separately for its own mailbox and for its sponsor's. With full sponsor access, an agent sends as its sponsor from the sponsor's mailbox: from the draft's address, under the sponsor's name. Every message an agent sends carries the Duva-Agent header, and a visible line unless its sponsor switched that off for where it sends from. Its send shows where it stands. Bcc recipients get the message, but no header names them. Only the mailbox's owner, and an agent with full sponsor access to it, can ask. The draft needs a recipient in To, and a draft waits for one approval at a time. It goes only from an address the mailbox still has, so a draft from an address since removed fails. A draft from a group goes out from the group's address, as any send does, and only while the mailbox's owner is still a local member: otherwise asking gets 403, and a send asked before fails. Each other local member's mailbox then gets a copy, in the thread of the message it answers, marked with who sent it as the group. External members get none. A send that needs no approval withdraws the request the draft waits for, if it waits. Asking is recorded in the mailbox's change feed.",
+    "description": "A human's send from their own mailbox needs no approval, so Duva sends it at once, with no disclosure, also when their agent wrote the draft. An agent's send waits for its sponsor's approval unless the sponsor switched that off, separately for its own mailbox and for its sponsor's. With full sponsor access, an agent sends as its sponsor from the sponsor's mailbox: from the draft's address, under the sponsor's name. Every message an agent sends carries the Duva-Agent header, and a visible line unless its sponsor switched that off for where it sends from. Its send shows where it stands. Bcc recipients get the message, but no header names them. Only the mailbox's owner, and an agent with full sponsor access to it, can ask. The draft needs a recipient in To, and a draft waits for one approval at a time. It goes only from an address the mailbox still has, so a draft from an address since removed fails. A draft from a group goes out from the group's address, as any send does, and only while the mailbox's owner is still a local member: otherwise asking gets 403, and a send asked before fails. Each other local member's mailbox then gets a copy, in the thread of the message it answers, marked with who sent it as the group. External members get none. A send that needs no approval withdraws the request the draft waits for, if it waits. Asking is recorded in the mailbox's change feed. An agent's approved send over its send limits waits, as waitingForLimit, and goes out by itself, oldest first, as the limits allow, or when its sponsor sends it now. Humans have no send limits.",
     "signIn": true,
     "command": [
       "drafts",
       "send"
+    ],
+    "options": [
+      {
+        "name": "mailbox",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The mailbox's ID."
+      },
+      {
+        "name": "draft",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The draft's ID."
+      }
+    ]
+  },
+  {
+    "operationId": "sendDraftNow",
+    "method": "post",
+    "path": "/mailboxes/{mailbox}/drafts/{draft}/send-now",
+    "routeKey": "POST /mailboxes/{mailbox}/drafts/{draft}/send-now",
+    "summary": "Send a draft waiting for an agent's send limits now, past the limits.",
+    "description": "Only the agent's sponsor can, for one draft at a time, and the agent's limits stay as they are. The send still counts toward them. A paused agent's send is held until it is unpaused. Sending now is recorded in the mailbox's change feed under you, and the draft's send shows sending, then sent or failed. A draft that isn't waitingForLimit is 409.",
+    "signIn": true,
+    "command": [
+      "drafts",
+      "send-now"
     ],
     "options": [
       {

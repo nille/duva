@@ -117,8 +117,10 @@ paths:
         records of threads erased before then. A shorter retentionDays
         reaches back: the eraser's next daily run erases every thread that
         has had Trash or Spam longer than it. Preview the period first to see
-        how many. Only admins can change the settings. Each change is
-        recorded in the organization's change feed under you.
+        how many. Lowering an agent cap lowers each agent above it, each
+        recorded as a change to its settings under you. Only admins can
+        change the settings. Each change is recorded in the organization's
+        change feed under you.
       x-cli-command: organization change-settings
       requestBody:
         required: true
@@ -492,10 +494,11 @@ paths:
   /agents/{agent}/settings:
     get:
       operationId: getAgentSettings
-      summary: Read an agent's settings, its sponsor access and its approval and disclosure-line switches.
+      summary: Read an agent's settings, its sponsor access, its approval and disclosure-line switches and its send limits.
       description: >
         Only the agent's sponsor and the agent itself can read them. An agent
-        starts with no sponsor access and every switch on.
+        starts with no sponsor access, every switch on, and send limits of
+        100 an hour and 50 new recipients a day.
       x-cli-command: agents settings
       parameters:
         - $ref: "#/components/parameters/Agent"
@@ -514,7 +517,7 @@ paths:
           $ref: "#/components/responses/NotFound"
     patch:
       operationId: changeAgentSettings
-      summary: Change an agent's sponsor access or its approval and disclosure-line switches.
+      summary: Change an agent's sponsor access, its approval and disclosure-line switches, or its send limits.
       description: >
         Give only the settings to change. A change works at once. Only the
         agent's sponsor can change them, so not even an admin can. Each change is
@@ -526,7 +529,9 @@ paths:
         full, or removing it, withdraws the agent's sends waiting for your
         approval in your mailbox, recorded in its change feed under you, and
         fails those approved but not yet gone out. Its drafts and sent
-        messages stay.
+        messages stay. Send limits go up to the organization's caps, and
+        raising one lets its sends that wait go out as far as the new limit
+        allows.
       x-cli-command: agents change-settings
       parameters:
         - $ref: "#/components/parameters/Agent"
@@ -2044,7 +2049,10 @@ paths:
         the thread of the message it answers, marked with who sent it as the
         group. External members get none. A send that needs no
         approval withdraws the request the draft waits for, if it waits. Asking is recorded in the
-        mailbox's change feed.
+        mailbox's change feed. An agent's approved send over its send limits
+        waits, as waitingForLimit, and goes out by itself, oldest first, as
+        the limits allow, or when its sponsor sends it now. Humans have no
+        send limits.
       x-cli-command: drafts send
       parameters:
         - $ref: "#/components/parameters/Mailbox"
@@ -2058,6 +2066,36 @@ paths:
                 $ref: "#/components/schemas/Draft"
         "400":
           $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /mailboxes/{mailbox}/drafts/{draft}/send-now:
+    post:
+      operationId: sendDraftNow
+      summary: Send a draft waiting for an agent's send limits now, past the limits.
+      description: >
+        Only the agent's sponsor can, for one draft at a time, and the
+        agent's limits stay as they are. The send still counts toward them.
+        A paused agent's send is held until it is unpaused. Sending now is
+        recorded in the mailbox's change feed under you, and the draft's send
+        shows sending, then sent or failed. A draft that isn't
+        waitingForLimit is 409.
+      x-cli-command: drafts send-now
+      parameters:
+        - $ref: "#/components/parameters/Mailbox"
+        - $ref: "#/components/parameters/Draft"
+      responses:
+        "202":
+          description: The draft, approved and about to be sent.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Draft"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -2453,8 +2491,8 @@ components:
     AgentSettings:
       type: object
       additionalProperties: false
-      required: [sponsorAccess, approvalForOwnMailbox, approvalAsSponsor, disclosureLineForOwnMailbox, disclosureLineAsSponsor]
-      description: What an agent may do in its sponsor's personal mailbox, and which of its sends wait for approval or carry the disclosure's visible line.
+      required: [sponsorAccess, approvalForOwnMailbox, approvalAsSponsor, disclosureLineForOwnMailbox, disclosureLineAsSponsor, sendsPerHour, newRecipientsPerDay]
+      description: What an agent may do in its sponsor's personal mailbox, which of its sends wait for approval or carry the disclosure's visible line, and its send limits.
       properties:
         sponsorAccess:
           $ref: "#/components/schemas/SponsorAccess"
@@ -2466,6 +2504,10 @@ components:
           $ref: "#/components/schemas/DisclosureLineForOwnMailbox"
         disclosureLineAsSponsor:
           $ref: "#/components/schemas/DisclosureLineAsSponsor"
+        sendsPerHour:
+          $ref: "#/components/schemas/SendsPerHour"
+        newRecipientsPerDay:
+          $ref: "#/components/schemas/NewRecipientsPerDay"
     AgentSettingsChanges:
       type: object
       additionalProperties: false
@@ -2481,6 +2523,10 @@ components:
           $ref: "#/components/schemas/DisclosureLineForOwnMailbox"
         disclosureLineAsSponsor:
           $ref: "#/components/schemas/DisclosureLineAsSponsor"
+        sendsPerHour:
+          $ref: "#/components/schemas/SendsPerHour"
+        newRecipientsPerDay:
+          $ref: "#/components/schemas/NewRecipientsPerDay"
     SponsorAccess:
       type: string
       enum: [none, read, full]
@@ -2502,6 +2548,25 @@ components:
     DisclosureLineAsSponsor:
       type: boolean
       description: Whether mail the agent sends as its sponsor carries the disclosure's visible line. It always carries the Duva-Agent header. On by default.
+    SendsPerHour:
+      type: integer
+      minimum: 1
+      maximum: 10000
+      description: >-
+        How many messages the agent sends in any hour, from all its mailboxes
+        and as its sponsor. 100 by default, and up to the organization's
+        agentSendsPerHourCap. A send counts when it goes out, and one over
+        the limit waits.
+    NewRecipientsPerDay:
+      type: integer
+      minimum: 1
+      maximum: 10000
+      description: >-
+        How many new recipients the agent sends to in any 24 hours: addresses
+        it hasn't sent to before, from any mailbox. 50 by default, and up to
+        the organization's agentNewRecipientsPerDayCap. A send counts when it
+        goes out, and one over the limit waits. A message with more new
+        recipients than the whole limit waits until its sponsor sends it now.
     NewAddress:
       type: object
       additionalProperties: false
@@ -2950,6 +3015,8 @@ components:
         - $ref: "#/components/schemas/ApprovalWithdrawn"
         - $ref: "#/components/schemas/ApprovalDecided"
         - $ref: "#/components/schemas/MessageSent"
+        - $ref: "#/components/schemas/SendWaitingForLimit"
+        - $ref: "#/components/schemas/SentNow"
         - $ref: "#/components/schemas/SendFailed"
         - $ref: "#/components/schemas/SendUnclear"
         - $ref: "#/components/schemas/FeedbackReceived"
@@ -2979,6 +3046,8 @@ components:
           approvalWithdrawn: "#/components/schemas/ApprovalWithdrawn"
           approvalDecided: "#/components/schemas/ApprovalDecided"
           messageSent: "#/components/schemas/MessageSent"
+          sendWaitingForLimit: "#/components/schemas/SendWaitingForLimit"
+          sentNow: "#/components/schemas/SentNow"
           sendFailed: "#/components/schemas/SendFailed"
           sendUnclear: "#/components/schemas/SendUnclear"
           feedbackReceived: "#/components/schemas/FeedbackReceived"
@@ -3155,6 +3224,42 @@ components:
             message:
               type: string
               description: The sent message's ID.
+    SendWaitingForLimit:
+      allOf:
+        - $ref: "#/components/schemas/ChangeBase"
+        - type: object
+          required: [type, draft]
+          description: >
+            An agent's approved draft waits, since sending it now would go over
+            the agent's send limits, or its other sends already wait. It goes
+            out by itself as the limits allow, oldest first. Recorded under the
+            agent.
+          properties:
+            type:
+              type: string
+              const: sendWaitingForLimit
+            draft:
+              type: string
+              description: The draft's ID.
+            approval:
+              type: string
+              description: The ID of the approval that let it go, if it needed one.
+    SentNow:
+      allOf:
+        - $ref: "#/components/schemas/ChangeBase"
+        - type: object
+          required: [type, draft]
+          description: The agent's sponsor sent a draft waiting for the agent's send limits now, past the limits, which stay as they are.
+          properties:
+            type:
+              type: string
+              const: sentNow
+            draft:
+              type: string
+              description: The draft's ID.
+            approval:
+              type: string
+              description: The ID of the approval that let it go, if it needed one.
     SendFailed:
       allOf:
         - $ref: "#/components/schemas/ChangeBase"
@@ -3371,7 +3476,7 @@ components:
         - $ref: "#/components/schemas/ChangeBase"
         - type: object
           required: [type, agent, before, after]
-          description: The sponsor changed an agent's settings. Recorded in the sponsor's personal mailbox, or the agent's if the sponsor has none.
+          description: The sponsor changed an agent's settings, or an admin lowered a cap below its send limits. Recorded in the sponsor's personal mailbox, or the agent's if the sponsor has none.
           properties:
             type:
               type: string
@@ -3811,12 +3916,15 @@ components:
           description: The ID of the approval the request needs, if it needs one. A human's send from their own mailbox needs none, nor does an agent's whose sponsor switched approval off.
         state:
           type: string
-          enum: [waiting, withdrawn, rejected, approved, sending, sent, failed, unclear]
+          enum: [waiting, withdrawn, rejected, approved, waitingForLimit, sending, sent, failed, unclear]
           description: >
             waiting for approval; withdrawn because the draft changed while
             it waited, was sent without approval, or the agent's sponsor
             access was lowered; rejected, with the approver's note; approved,
             and about to be sent, which a send without approval is at once;
+            waitingForLimit, approved but over the agent's send limits, or
+            behind its other sends that wait, until it goes out by itself,
+            oldest first, as the limits allow, or its sponsor sends it now;
             sending; sent, as the message in its thread; failed, with the
             reason; or unclear, when sending stopped before
             SES answered, so a human checks whether it went out, by its
@@ -4673,7 +4781,7 @@ components:
     OrganizationSettings:
       type: object
       additionalProperties: false
-      required: [erasureErasesApprovals, retentionDays, searchLanguages]
+      required: [erasureErasesApprovals, retentionDays, searchLanguages, agentSendsPerHourCap, agentNewRecipientsPerDayCap]
       properties:
         erasureErasesApprovals:
           $ref: "#/components/schemas/ErasureErasesApprovals"
@@ -4681,6 +4789,10 @@ components:
           $ref: "#/components/schemas/RetentionDays"
         searchLanguages:
           $ref: "#/components/schemas/SearchLanguages"
+        agentSendsPerHourCap:
+          $ref: "#/components/schemas/AgentSendsPerHourCap"
+        agentNewRecipientsPerDayCap:
+          $ref: "#/components/schemas/AgentNewRecipientsPerDayCap"
     SettingsChanges:
       type: object
       additionalProperties: false
@@ -4692,6 +4804,10 @@ components:
           $ref: "#/components/schemas/RetentionDays"
         searchLanguages:
           $ref: "#/components/schemas/SearchLanguages"
+        agentSendsPerHourCap:
+          $ref: "#/components/schemas/AgentSendsPerHourCap"
+        agentNewRecipientsPerDayCap:
+          $ref: "#/components/schemas/AgentNewRecipientsPerDayCap"
     RetentionDays:
       type: integer
       minimum: 7
@@ -4701,6 +4817,22 @@ components:
         the label, before the eraser erases it for good. 30 by default, and a
         whole number from 7 to 365. It applies to all Trash and Spam, threads
         already there included.
+    AgentSendsPerHourCap:
+      type: integer
+      minimum: 1
+      maximum: 10000
+      description: >-
+        The most sendsPerHour a sponsor can give an agent. 100 by default.
+        Lowering it lowers each agent above it to it, recorded as a change to
+        the agent's settings under you. Raising it raises no agent.
+    AgentNewRecipientsPerDayCap:
+      type: integer
+      minimum: 1
+      maximum: 10000
+      description: >-
+        The most newRecipientsPerDay a sponsor can give an agent. 50 by
+        default. Lowering it lowers each agent above it to it, recorded as a
+        change to the agent's settings under you. Raising it raises no agent.
     RetentionPreview:
       type: object
       additionalProperties: false

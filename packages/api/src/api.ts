@@ -6,7 +6,7 @@ import { changeAgentSettings, createAgent, getAgentSettings, listAgents, pauseAg
 import type { AuthorizerContext } from "./authorizer.ts";
 import { addDomain, changeDomain, clearCatchAll, getDomain, listDomains, removeDomain, setCatchAll } from "./domains.ts";
 import { listOrganizationChanges } from "./changes.ts";
-import { createDraft, deleteDraft, editDraft, getDraft, listApprovals, listDrafts, rejectApproval, sendApproval, sendDraft } from "./drafts.ts";
+import { createDraft, deleteDraft, editDraft, getDraft, listApprovals, listDrafts, rejectApproval, sendApproval, sendDraft, sendDraftNow } from "./drafts.ts";
 import { changeGroup, createGroup, deleteGroup, getGroup, listGroups } from "./groups.ts";
 import { addHuman, changeHuman, listHumans, removeHuman } from "./humans.ts";
 import {
@@ -115,6 +115,7 @@ const handlers: Record<OperationId, OperationHandler> = {
   editDraft,
   deleteDraft,
   sendDraft,
+  sendDraftNow,
   listApprovals,
   sendApproval,
   rejectApproval,

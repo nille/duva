@@ -11,7 +11,7 @@ import { strings } from "./strings.ts";
 type Agent = components["schemas"]["Agent"];
 type AgentSettings = components["schemas"]["AgentSettings"];
 type SponsorAccess = AgentSettings["sponsorAccess"];
-type Switch = Exclude<keyof AgentSettings, "sponsorAccess">;
+type Switch = Exclude<keyof AgentSettings, "sponsorAccess" | "sendsPerHour" | "newRecipientsPerDay">;
 
 type Read = { status: "loading" } | { status: "failed"; message: string } | { status: "read"; agents: { agent: Agent; settings: AgentSettings }[] };
 type Saving = { status: "idle" } | { status: "saving" } | { status: "saved"; lowered: boolean } | { status: "failed"; message: string };

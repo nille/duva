@@ -12,6 +12,7 @@ import type { components } from "@duva/openapi";
 import type { Table } from "./deployment.ts";
 import { entryKey, recordChanges } from "./feed.ts";
 import { type SendFeedback, type StoredMessage, storeSentMessage } from "./mail.ts";
+import { startWaiting, stopWaiting, type WaitingSend } from "./limits.ts";
 import { sponsorAccessAllows } from "./access.ts";
 import {
   type Actor,
@@ -35,9 +36,10 @@ type Edits = components["schemas"]["Edits"];
 type DraftContent = Omit<Draft, "id" | "updatedAt" | "updatedBy" | "send">;
 /**
  * Where a draft's send stands as stored, with the actor who asked to send it if it needs no
- * approval, and when they asked, which sends held while an agent is paused are released in.
+ * approval, and when they asked, which sends held while an agent is paused are released in, and
+ * whether its sponsor sent it now, past the agent's send limits.
  */
-type StoredSend = SendStatus & { by?: string; askedAt?: string };
+type StoredSend = SendStatus & { by?: string; askedAt?: string; pastLimit?: boolean };
 /**
  * A draft as stored, with the count of its writes, which each write checks, so of two at once one
  * retries, and the IDs of the approvals it asked for, so erasure finds them. Drafts written before
@@ -66,7 +68,7 @@ export class AlreadyApproved extends Error {
 }
 
 // The states a send reaches once its approver approved it, after which the draft never changes.
-const approvedStates: SendStatus["state"][] = ["approved", "sending", "sent", "unclear"];
+const approvedStates: SendStatus["state"][] = ["approved", "waitingForLimit", "sending", "sent", "unclear"];
 const refuseApproved = (draft: Pick<Draft, "send">) => {
   if (draft.send !== undefined && approvedStates.includes(draft.send.state)) throw new AlreadyApproved(draft.send.state);
 };
@@ -180,7 +182,7 @@ export async function deleteDraft(table: Table, { mailbox, id, by }: { mailbox: 
   return retried(async () => {
     const draft = await storedDraft(table, mailbox, id);
     if (draft === undefined) return undefined;
-    if (draft.send?.state === "approved" || draft.send?.state === "sending") throw new BeingSent();
+    if (draft.send?.state === "approved" || draft.send?.state === "waitingForLimit" || draft.send?.state === "sending") throw new BeingSent();
     const waiting = draft.send?.state === "waiting" ? draft.send : undefined;
     const withdrawn = await withdrawing(table, id, waiting);
     await recordChanges(table, mailboxFeed(mailbox), {
@@ -598,12 +600,15 @@ export function draftAt(keys: Record<string, string>): { mailbox: string; draft:
   return mailbox === undefined || draft === undefined ? undefined : { mailbox, draft };
 }
 
+/** When the draft's send was approved, or asked for if it needed no approval, which the sends of a paused or limited agent go out in. */
+export const approvedAt = (draft: Pick<Draft, "updatedAt"> & { send?: StoredSend }, approval: Approval | undefined) => approval?.decidedAt ?? draft.send?.askedAt ?? draft.updatedAt;
+
 /**
- * Moves the approved draft to sending, as the message with the ID in Duva, on condition that it is
- * still approved for the same request, and with the `checks` written too. Returns false if it
- * no longer is, or a check failed.
+ * Moves the draft to sending, as the message with the ID in Duva, on condition that it is still
+ * approved, or waiting for the agent's limits if `from` says so, for the same request, and with
+ * the `checks` written too. Returns false if it no longer is, or a check failed.
  */
-export async function startSending(table: Table, sending: Sending, checks: TransactItem[] = []): Promise<boolean> {
+export async function startSending(table: Table, sending: Sending, checks: TransactItem[] = [], from: "approved" | "waitingForLimit" = "approved"): Promise<boolean> {
   const { mailbox, draft, message } = sending;
   const request = sameRequest(sending);
   return conditionally(
@@ -617,7 +622,7 @@ export async function startSending(table: Table, sending: Sending, checks: Trans
               UpdateExpression: "SET #send = :sending, version = version + :one",
               ConditionExpression: `${request.condition} AND #send.#state = :approved`,
               ExpressionAttributeNames: { "#send": "send", "#state": "state", ...request.names },
-              ExpressionAttributeValues: { ":sending": { ...outcomeOf(sending, "sending"), message }, ":one": 1, ...request.values, ":approved": "approved" },
+              ExpressionAttributeValues: { ":sending": { ...outcomeOf(sending, "sending"), message }, ":one": 1, ...request.values, ":approved": from },
             },
           },
           ...checks,
@@ -625,6 +630,64 @@ export async function startSending(table: Table, sending: Sending, checks: Trans
       }),
     ),
   );
+}
+
+/**
+ * Has the agent's approved draft wait for its send limits, listed among its sends that wait, with
+ * the `checks` written too, recorded in the mailbox's change feed under the agent. Returns false if
+ * the draft is no longer approved for the same request, or a check failed.
+ */
+export function waitForLimit(table: Table, { mailbox, draft, approval, by }: Omit<Sending, "message">, approvedAt: string, checks: TransactItem[]): Promise<boolean> {
+  const request = sameRequest({ approval, by });
+  const waiting: WaitingSend = { mailbox, draft, approvedAt };
+  return conditionally(
+    recordChanges(table, mailboxFeed(mailbox), {
+      by,
+      changes: [{ type: "sendWaitingForLimit", draft, approval }],
+      items: [
+        {
+          Update: {
+            TableName: table.name,
+            Key: draftKey(mailbox, draft),
+            UpdateExpression: "SET #send.#state = :waiting, version = version + :one",
+            ConditionExpression: `${request.condition} AND #send.#state = :approved`,
+            ExpressionAttributeNames: { "#send": "send", "#state": "state", ...request.names },
+            ExpressionAttributeValues: { ":waiting": "waitingForLimit", ":one": 1, ...request.values, ":approved": "approved" },
+          },
+        },
+        startWaiting(table, by, waiting),
+        ...checks,
+      ],
+    }),
+  );
+}
+
+/** The draft isn't waiting for its agent's send limits. */
+export class NotWaitingForLimit extends Error {}
+
+/**
+ * Sends the draft waiting for its agent's send limits now, past them, on behalf of the agent's
+ * sponsor `by`: it is approved again, marked to go past the limits, which the sender then sends,
+ * and no longer listed among the agent's sends that wait. Recorded in the mailbox's change feed.
+ * Throws NotWaitingForLimit if it isn't waiting.
+ */
+export function sendNow(table: Table, { mailbox, id, agent, by }: { mailbox: string; id: string; agent: string; by: string }): Promise<Draft> {
+  return retried(async () => {
+    const draft = await storedDraft(table, mailbox, id);
+    const status = draft?.send;
+    if (draft === undefined || status?.state !== "waitingForLimit") throw new NotWaitingForLimit();
+    const approval = status.approval === undefined ? undefined : await findApproval(table, status.approval);
+    const now: StoredDraft = { ...draft, send: { ...status, state: "approved", pastLimit: true }, version: draft.version + 1 };
+    await recordChanges(table, mailboxFeed(mailbox), {
+      by,
+      changes: [{ type: "sentNow", draft: id, approval: status.approval }],
+      items: [
+        { Put: { TableName: table.name, Item: { ...draftKey(mailbox, id), ...now }, ...unchanged(draft) } },
+        stopWaiting(table, agent, { mailbox, draft: id, approvedAt: approvedAt(draft, approval) }),
+      ],
+    });
+    return draftOf(now);
+  });
 }
 
 /**
@@ -656,7 +719,7 @@ export async function releaseHeldSends(table: Table, agent: Agent): Promise<void
         const draft = item as StoredDraft;
         const approval = draft.send?.approval === undefined ? undefined : await findApproval(table, draft.send.approval);
         if ((approval?.agent ?? draft.send?.by) !== agent.id) continue;
-        held.push({ mailbox, draft, approvedAt: approval?.decidedAt ?? draft.send?.askedAt ?? draft.updatedAt });
+        held.push({ mailbox, draft, approvedAt: approvedAt(draft, approval) });
       }
       start = page.LastEvaluatedKey;
     } while (start !== undefined);
@@ -688,7 +751,7 @@ function sendingSettles(table: Table, sending: Sending, outcome: StoredSend): Tr
 }
 
 /** The condition that the draft's send is still the request being sent: the same approval, or the same ask without one. */
-const sameRequest = ({ approval, by }: Sending): { condition: string; names: Record<string, string>; values: Record<string, string> } =>
+const sameRequest = ({ approval, by }: Pick<Sending, "approval" | "by">): { condition: string; names: Record<string, string>; values: Record<string, string> } =>
   approval === undefined
     ? { condition: "attribute_not_exists(#send.approval) AND #send.#by = :by", names: { "#by": "by" }, values: { ":by": by } }
     : { condition: "#send.approval = :approval", names: {}, values: { ":approval": approval } };

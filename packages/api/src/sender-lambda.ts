@@ -1,17 +1,25 @@
-// The Lambda entry point the table's stream invokes for each draft a decision approved. The CDK app
-// sets the environment and the filter.
+// The Lambda entry point the table's stream invokes for each draft a decision approved, and the
+// API and EventBridge Scheduler for an agent whose sends wait for its limits. The CDK app sets the
+// environment and the filter.
+import type { Context } from "aws-lambda";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { S3Client } from "@aws-sdk/client-s3";
+import { SchedulerClient } from "@aws-sdk/client-scheduler";
 import { SESv2Client } from "@aws-sdk/client-sesv2";
 import { required } from "./environment.ts";
 import { environmentVariables } from "./infrastructure.ts";
+import { eventBridgeSchedules } from "./limits.ts";
 import { s3MailBucket } from "./mail-bucket.ts";
 import { createSender, sesOutbound } from "./sending.ts";
 
-export const handler = createSender({
-  table: { client: new DynamoDBClient({}), name: required(environmentVariables.tableName) },
-  mailBucket: s3MailBucket(new S3Client({}), required(environmentVariables.mailBucket)),
-  // One attempt per call, so the SDK never sends a message again whose answer was lost.
-  region: required("AWS_REGION"),
-  outbound: sesOutbound(new SESv2Client({ maxAttempts: 1 }), required(environmentVariables.configurationSet)),
-});
+const table = { client: new DynamoDBClient({}), name: required(environmentVariables.tableName) };
+const mailBucket = s3MailBucket(new S3Client({}), required(environmentVariables.mailBucket));
+const region = required("AWS_REGION");
+// One attempt per call, so the SDK never sends a message again whose answer was lost.
+const outbound = sesOutbound(new SESv2Client({ maxAttempts: 1 }), required(environmentVariables.configurationSet));
+const scheduler = new SchedulerClient({});
+const schedule = { group: required(environmentVariables.scheduleGroup), role: required(environmentVariables.schedulerRole) };
+
+export const handler = (event: Parameters<ReturnType<typeof createSender>>[0], context: Context) =>
+  // The schedules invoke this function, which the CDK app can't name in its own environment.
+  createSender({ table, mailBucket, region, outbound, schedules: eventBridgeSchedules(scheduler, { ...schedule, sender: context.invokedFunctionArn }) })(event);

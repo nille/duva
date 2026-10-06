@@ -40,6 +40,12 @@ export const environmentVariables = {
   searchIndexes: "SEARCH_INDEXES",
   /** The URL of the indexer's FIFO queue. */
   indexQueue: "INDEX_QUEUE",
+  /** The sender Lambda, which the API invokes to send what waits for an agent's send limits. */
+  senderFunction: "SENDER_FUNCTION",
+  /** The schedule group the sender's one-time schedules are in. */
+  scheduleGroup: "SCHEDULE_GROUP",
+  /** The role EventBridge Scheduler invokes the sender with. */
+  schedulerRole: "SCHEDULER_ROLE",
 } as const;
 
 /** What the table's stream shows of each changed item. The sender reads the item itself, so only its new image. */

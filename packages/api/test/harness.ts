@@ -16,7 +16,7 @@ import type { ReceiptRule } from "@aws-sdk/client-ses";
 import type { SESEvent } from "aws-lambda";
 import PostalMime from "postal-mime";
 import { createDuvaClient, type DuvaClient } from "@duva/client";
-import { inject } from "vitest";
+import { inject, onTestFinished, vi } from "vitest";
 import { createApi } from "../src/api.ts";
 import { createFeedback } from "../src/feedback.ts";
 import { createDownloads, downloadLinkLifetime as linkLifetime } from "../src/attachments.ts";
@@ -145,6 +145,12 @@ export interface Duva {
   sendingEvent(messageId: string, event: SendingEvent, options?: PublishOptions): Promise<void>;
   /** Lets the sender read the table's stream when sendsHeld, and waits until the sends it held are done. */
   releaseSends(): Promise<void>;
+  /**
+   * Moves the clock Duva reads to the time, for the rest of the test, from where it goes on, and
+   * has EventBridge Scheduler invoke what it had scheduled until then, in order, as it does at
+   * those times.
+   */
+  clock(at: Date): Promise<void>;
   /** The recipients SES delivered each message in sent() to, in the same order, Bcc recipients included. */
   sentTo(): string[][];
   /** The raw messages the mail bucket keeps, received and sent, every version of each. */
@@ -239,9 +245,12 @@ export async function startDuva({
     await indexQueue.drain(indexer);
   };
   const searcher = createSearcher(lanceSearch({ uri: indexes, embedder: titan, translator: recordedNova() }));
-  const stream = tableStream(database, streamArn, [
-    { filter: senderFilter, handler: createSender({ table, mailBucket, outbound: sending.outbound, region }), retries: senderRetries, invocations: senderInvocations },
-  ]);
+  // EventBridge Scheduler's one-time schedules, each invoking the sender with an agent at a time.
+  const schedules: { agent: string; at: Date }[] = [];
+  const sender = createSender({ table, mailBucket, outbound: sending.outbound, region, schedules: { releaseAt: async (agent, at) => void schedules.push({ agent, at }) } });
+  const stream = tableStream(database, streamArn, [{ filter: senderFilter, handler: sender, retries: senderRetries, invocations: senderInvocations }]);
+  // Agents the API handed the sender in a call, which it invokes once the call is answered.
+  const released: string[] = [];
   // Download links lead to the web app's domain under /download/, from where CloudFront invokes the
   // download Lambda. Here they lead to the API's own URL, under the same path, once it listens.
   let downloadUrl = `${inProcess}/download/`;
@@ -276,6 +285,7 @@ export async function startDuva({
       // The API invokes the search Lambda and waits for it, so the search goes through JSON.
       searcher: async (request) => JSON.parse(JSON.stringify(await searcher(JSON.parse(JSON.stringify(request))))),
       indexQueue,
+      waitingSends: { release: async (agent) => void released.push(agent) },
     }),
     createAuthorizer({ table, verifyAccessToken: issuer.verify }),
   );
@@ -286,6 +296,8 @@ export async function startDuva({
   const api = async (request: Request) => {
     if (new URL(request.url).pathname.startsWith("/download/")) return downloaded(request);
     const response = await gatewayed(request);
+    if (!sendsHeld) await stream.deliver();
+    for (let agent = released.shift(); agent !== undefined; agent = released.shift()) await sender({ release: agent });
     if (!sendsHeld) await stream.deliver();
     for (let each = handed.shift(); each !== undefined; each = handed.shift()) if (!eraserRunsLost) await eraser(each);
     if (!screenerDeployed) await forgetScreener(table);
@@ -328,6 +340,17 @@ export async function startDuva({
       if (!indexingHeld) await index();
     },
     releaseSends: () => stream.deliver(),
+    async clock(at) {
+      for (;;) {
+        const due = schedules.filter((schedule) => schedule.at <= at).sort((a, b) => a.at.getTime() - b.at.getTime())[0];
+        if (due === undefined) break;
+        schedules.splice(schedules.indexOf(due), 1);
+        setClock(due.at);
+        await sender({ release: due.agent });
+        if (!sendsHeld) await stream.deliver();
+      }
+      setClock(at);
+    },
     releaseIndexing: index,
     stored: () => mailBucket.stored(),
     searchObjects: () => filesUnder(indexes).map((file) => new TextDecoder().decode(readFileSync(file))),
@@ -364,6 +387,12 @@ export async function startDuva({
       return { ...server, signIn: { url: server.url, clientId: managedLoginClientId } };
     },
   };
+}
+
+/** Moves the clock Duva reads to the time, from where it goes on, for the rest of the test. */
+function setClock(at: Date) {
+  vi.useFakeTimers({ toFake: ["Date"], now: at, shouldAdvanceTime: true, advanceTimeDelta: 1 });
+  onTestFinished(() => void vi.useRealTimers());
 }
 
 /** Every file in the directory and the directories in it, none if it doesn't exist. */

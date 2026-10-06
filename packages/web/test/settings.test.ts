@@ -27,7 +27,7 @@ test("an admin opens Settings from the bar and chooses that erasing a thread era
 
   await expect.poll(() => organization(page).getByRole("status").textContent(), wait).toBe("Saved. This applies to threads erased from now on.");
   const ada = duva.signIn("ada@example.org");
-  expect((await ada.GET("/organization/settings")).data).toEqual({ erasureErasesApprovals: true, retentionDays: 30, searchLanguages: ["English", "Swedish"] });
+  expect((await ada.GET("/organization/settings")).data).toEqual({ erasureErasesApprovals: true, retentionDays: 30, searchLanguages: ["English", "Swedish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50 });
 
   await page.reload();
 
@@ -56,7 +56,7 @@ test("an admin reads what translating searches does, and adds Danish to the sear
     .poll(() => organization(page).getByRole("status").textContent(), wait)
     .toBe("Saved. Searches use these languages from now on. Each mailbox's search index is being rebuilt, and finds less until it is done.");
   const ada = duva.signIn("ada@example.org");
-  expect((await ada.GET("/organization/settings")).data).toEqual({ erasureErasesApprovals: false, retentionDays: 30, searchLanguages: ["English", "Swedish", "Danish"] });
+  expect((await ada.GET("/organization/settings")).data).toEqual({ erasureErasesApprovals: false, retentionDays: 30, searchLanguages: ["English", "Swedish", "Danish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50 });
   expect(await organization(page).getByRole("button", { name: "Save" }).isDisabled()).toBe(true);
 });
 

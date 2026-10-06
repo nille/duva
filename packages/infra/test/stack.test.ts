@@ -47,6 +47,8 @@ const payPerUse = new Set([
   "AWS::Logs::LogGroup",
   "AWS::S3::Bucket",
   "AWS::S3::BucketPolicy",
+  // EventBridge Scheduler is paid per invocation, and a group costs nothing of its own.
+  "AWS::Scheduler::ScheduleGroup",
   "AWS::SES::ConfigurationSet",
   // Publishing events costs nothing beyond SNS's per-message price, and Lambda's for the invocations.
   "AWS::SES::ConfigurationSetEventDestination",
@@ -222,17 +224,19 @@ test("the eraser can write the table and erase raw mail for good, every version 
   expect(scoped).not.toMatch(/"\/\*"|"s3:prefix":"\*"/);
 });
 
-test("the API invokes the eraser to empty a Trash, the unsubscriber to unsubscribe and search to search, and may invoke no other Lambda", () => {
+test("the API invokes the eraser to empty a Trash, the unsubscriber to unsubscribe, search to search and the sender to send what waits for an agent's limits, and may invoke no other Lambda", () => {
   const [eraserId] = lambda("EraserHandler");
   const [unsubscriberId] = lambda("UnsubscriberHandler");
   const [searchId] = lambda("SearchHandler");
+  const [senderId] = lambda("SenderHandler");
   const invoking = statements("ApiHandler").filter(({ Action }) => [Action].flat().some((action) => action.startsWith("lambda:")));
   const invoked = JSON.stringify(invoking.map(({ Resource }) => Resource)).match(/Fn::GetAtt":\["(\w+)"/g)?.map((ref) => ref.replace(/^Fn::GetAtt":\["|"$/g, ""));
-  expect(new Set(invoked)).toEqual(new Set([eraserId, unsubscriberId, searchId]));
+  expect(new Set(invoked)).toEqual(new Set([eraserId, unsubscriberId, searchId, senderId]));
   const variables = lambda("ApiHandler")[1].Properties?.Environment?.Variables;
   expect(variables?.[environmentVariables.eraserFunction]).toEqual({ "Fn::GetAtt": [eraserId, "Arn"] });
   expect(variables?.[environmentVariables.unsubscriberFunction]).toEqual({ "Fn::GetAtt": [unsubscriberId, "Arn"] });
   expect(variables?.[environmentVariables.searchFunction]).toEqual({ "Fn::GetAtt": [searchId, "Arn"] });
+  expect(variables?.[environmentVariables.senderFunction]).toEqual({ "Fn::GetAtt": [senderId, "Arn"] });
 });
 
 /** The resources that name the Lambda whose ID is given. */
@@ -425,6 +429,31 @@ test("the sender sends through SES under Duva's configuration set, from any of t
   const puts = statements("SenderHandler").filter(({ Action }) => [Action].flat().some((action) => action.startsWith("s3:PutObject")));
   expect(puts).toHaveLength(1);
   expect(JSON.stringify(puts[0]!.Resource)).toContain('"/sent/*"');
+});
+
+test("the sender schedules itself in its own schedule group, and EventBridge Scheduler invokes it with a role only that group's schedules in this account assume", () => {
+  const [[groupId, group]] = ofType("AWS::Scheduler::ScheduleGroup") as [[string, Resource]];
+  const [senderId, sender] = lambda("SenderHandler");
+  const variables = sender.Properties?.Environment?.Variables;
+  expect(variables?.[environmentVariables.scheduleGroup]).toEqual(group.Properties?.Name);
+  const roleId = variables?.[environmentVariables.schedulerRole]?.["Fn::GetAtt"]?.[0];
+  const role = stack.template.Resources[roleId] as Resource;
+  expect(role.Properties?.AssumeRolePolicyDocument?.Statement).toEqual([
+    {
+      Action: "sts:AssumeRole",
+      Effect: "Allow",
+      Principal: { Service: "scheduler.amazonaws.com" },
+      Condition: { StringEquals: { "aws:SourceAccount": { Ref: "AWS::AccountId" } }, ArnLike: { "aws:SourceArn": { "Fn::GetAtt": [groupId, "Arn"] } } },
+    },
+  ]);
+  const roleStatements = ofType("AWS::IAM::Policy")
+    .filter(([, { Properties }]) => (Properties?.Roles ?? []).some((ref: { Ref?: string }) => ref.Ref === roleId))
+    .flatMap(([, { Properties }]) => Properties?.PolicyDocument?.Statement ?? []);
+  expect(roleStatements.flatMap(({ Action }: { Action: string | string[] }) => [Action].flat())).toEqual(["lambda:InvokeFunction"]);
+  expect(JSON.stringify(roleStatements.map(({ Resource }: { Resource: unknown }) => Resource))).toContain(`{"Fn::GetAtt":["${senderId}","Arn"]}`);
+  expect(actions("SenderHandler", "scheduler")).toContain("scheduler:CreateSchedule");
+  const passes = statements("SenderHandler").filter(({ Action }) => [Action].flat().includes("iam:PassRole"));
+  expect(passes).toEqual([expect.objectContaining({ Resource: { "Fn::GetAtt": [roleId, "Arn"] }, Condition: { StringEquals: { "iam:PassedToService": "scheduler.amazonaws.com" } } })]);
 });
 
 test("the inbound Lambda re-sends groups' mail through SES under Duva's configuration set, and bounces what a group refuses, only from the organization's domains' identities in this account and region", () => {

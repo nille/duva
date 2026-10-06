@@ -9,6 +9,7 @@ import type { MailBucket } from "./mail-bucket.ts";
 import type { Receiving } from "./receiving.ts";
 import type { Searcher } from "./searching.ts";
 import type { Unsubscriber } from "./unsubscriber.ts";
+import type { WaitingSends } from "./limits.ts";
 
 /** Duva's one DynamoDB table. */
 export interface Table {
@@ -41,4 +42,6 @@ export interface Deployment {
   searcher: Searcher;
   /** The indexer's queue, which rebuilds every mailbox's index when the languages mail is indexed in change. */
   indexQueue: IndexQueue;
+  /** Hands the sender an agent whose sends wait for its limits, once something lets them go. */
+  waitingSends: WaitingSends;
 }

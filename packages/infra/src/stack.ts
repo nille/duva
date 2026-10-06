@@ -18,13 +18,14 @@ import {
 import { AttributeType, Billing, StreamViewType, TableV2 } from "aws-cdk-lib/aws-dynamodb";
 import { Rule, Schedule } from "aws-cdk-lib/aws-events";
 import { LambdaFunction } from "aws-cdk-lib/aws-events-targets";
-import { PolicyStatement, ServicePrincipal } from "aws-cdk-lib/aws-iam";
+import { PolicyStatement, Role, ServicePrincipal } from "aws-cdk-lib/aws-iam";
 import { Architecture, Code, FilterCriteria, Function as LambdaFunctionResource, FunctionUrlAuthType, InvokeMode, Runtime, StartingPosition } from "aws-cdk-lib/aws-lambda";
 import { SqsDestination } from "aws-cdk-lib/aws-lambda-destinations";
 import { DynamoEventSource, SqsDlq, SqsEventSource } from "aws-cdk-lib/aws-lambda-event-sources";
 import { NodejsFunction, OutputFormat } from "aws-cdk-lib/aws-lambda-nodejs";
 import { LogGroup, RetentionDays } from "aws-cdk-lib/aws-logs";
 import { BlockPublicAccess, Bucket, BucketEncryption } from "aws-cdk-lib/aws-s3";
+import { ScheduleGroup } from "aws-cdk-lib/aws-scheduler";
 import { ConfigurationSet, EmailIdentity, EmailSendingEvent, EventDestination, Identity, ReceiptRuleSet } from "aws-cdk-lib/aws-ses";
 import { Topic } from "aws-cdk-lib/aws-sns";
 import { LambdaSubscription } from "aws-cdk-lib/aws-sns-subscriptions";
@@ -509,6 +510,26 @@ export class DuvaStack extends Stack {
     // domains, which admins add at run time. SESv2 SendEmail with raw content is authorized as
     // ses:SendRawEmail (see docs/aws.md).
     sender.addToRolePolicy(new PolicyStatement({ actions: ["ses:SendEmail", "ses:SendRawEmail"], resources: [identities, configurationSet] }));
+    // An agent's sends over its send limits wait, and the sender schedules itself for when the limits
+    // allow them: a one-time schedule, deleted once it ran, through which EventBridge Scheduler
+    // invokes it with a role of its own, so no resource policy lets anyone invoke it. Deleting the
+    // group deletes its schedules.
+    const senderSchedules = new ScheduleGroup(this, "SenderSchedules", { removalPolicy: RemovalPolicy.DESTROY });
+    const schedulerRole = new Role(this, "SenderSchedulerRole", {
+      assumedBy: new ServicePrincipal("scheduler.amazonaws.com", {
+        conditions: { StringEquals: { "aws:SourceAccount": this.account }, ArnLike: { "aws:SourceArn": senderSchedules.scheduleGroupArn } },
+      }),
+    });
+    sender.grantInvoke(schedulerRole);
+    senderSchedules.grants.writeSchedules(sender);
+    sender.addToRolePolicy(
+      new PolicyStatement({ actions: ["iam:PassRole"], resources: [schedulerRole.roleArn], conditions: { StringEquals: { "iam:PassedToService": "scheduler.amazonaws.com" } } }),
+    );
+    sender.addEnvironment(environmentVariables.scheduleGroup, senderSchedules.scheduleGroupName);
+    sender.addEnvironment(environmentVariables.schedulerRole, schedulerRole.roleArn);
+    // Unpausing an agent, and raising its limits, hand the sender what waits, without waiting.
+    handler.addEnvironment(environmentVariables.senderFunction, sender.functionArn);
+    sender.grantInvoke(handler);
 
     // SNS invokes the feedback Lambda, without waiting, with each event SES publishes, and only SNS
     // may, for this topic. Lambda retries a failed event twice, then leaves it in the failure queue.

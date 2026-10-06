@@ -97,7 +97,7 @@ export interface paths {
         head?: never;
         /**
          * Change the organization's settings.
-         * @description Give only the settings to change. A setting applies from when it changes, so turning on erasureErasesApprovals leaves the approval records of threads erased before then. A shorter retentionDays reaches back: the eraser's next daily run erases every thread that has had Trash or Spam longer than it. Preview the period first to see how many. Only admins can change the settings. Each change is recorded in the organization's change feed under you.
+         * @description Give only the settings to change. A setting applies from when it changes, so turning on erasureErasesApprovals leaves the approval records of threads erased before then. A shorter retentionDays reaches back: the eraser's next daily run erases every thread that has had Trash or Spam longer than it. Preview the period first to see how many. Lowering an agent cap lowers each agent above it, each recorded as a change to its settings under you. Only admins can change the settings. Each change is recorded in the organization's change feed under you.
          */
         patch: operations["changeOrganizationSettings"];
         trace?: never;
@@ -319,8 +319,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Read an agent's settings, its sponsor access and its approval and disclosure-line switches.
-         * @description Only the agent's sponsor and the agent itself can read them. An agent starts with no sponsor access and every switch on.
+         * Read an agent's settings, its sponsor access, its approval and disclosure-line switches and its send limits.
+         * @description Only the agent's sponsor and the agent itself can read them. An agent starts with no sponsor access, every switch on, and send limits of 100 an hour and 50 new recipients a day.
          */
         get: operations["getAgentSettings"];
         put?: never;
@@ -329,8 +329,8 @@ export interface paths {
         options?: never;
         head?: never;
         /**
-         * Change an agent's sponsor access or its approval and disclosure-line switches.
-         * @description Give only the settings to change. A change works at once. Only the agent's sponsor can change them, so not even an admin can. Each change is recorded under you, with the old and new values, in your personal mailbox's change feed, or if you have none, in the agent's. If neither of you has a mailbox, the change is refused. Read lets the agent read your mailbox. Full also lets it organize it, move threads to Trash and back, draft there, and send as you. Lowering access from full, or removing it, withdraws the agent's sends waiting for your approval in your mailbox, recorded in its change feed under you, and fails those approved but not yet gone out. Its drafts and sent messages stay.
+         * Change an agent's sponsor access, its approval and disclosure-line switches, or its send limits.
+         * @description Give only the settings to change. A change works at once. Only the agent's sponsor can change them, so not even an admin can. Each change is recorded under you, with the old and new values, in your personal mailbox's change feed, or if you have none, in the agent's. If neither of you has a mailbox, the change is refused. Read lets the agent read your mailbox. Full also lets it organize it, move threads to Trash and back, draft there, and send as you. Lowering access from full, or removing it, withdraws the agent's sends waiting for your approval in your mailbox, recorded in its change feed under you, and fails those approved but not yet gone out. Its drafts and sent messages stay. Send limits go up to the organization's caps, and raising one lets its sends that wait go out as far as the new limit allows.
          */
         patch: operations["changeAgentSettings"];
         trace?: never;
@@ -1003,9 +1003,29 @@ export interface paths {
         put?: never;
         /**
          * Ask for a draft to be sent.
-         * @description A human's send from their own mailbox needs no approval, so Duva sends it at once, with no disclosure, also when their agent wrote the draft. An agent's send waits for its sponsor's approval unless the sponsor switched that off, separately for its own mailbox and for its sponsor's. With full sponsor access, an agent sends as its sponsor from the sponsor's mailbox: from the draft's address, under the sponsor's name. Every message an agent sends carries the Duva-Agent header, and a visible line unless its sponsor switched that off for where it sends from. Its send shows where it stands. Bcc recipients get the message, but no header names them. Only the mailbox's owner, and an agent with full sponsor access to it, can ask. The draft needs a recipient in To, and a draft waits for one approval at a time. It goes only from an address the mailbox still has, so a draft from an address since removed fails. A draft from a group goes out from the group's address, as any send does, and only while the mailbox's owner is still a local member: otherwise asking gets 403, and a send asked before fails. Each other local member's mailbox then gets a copy, in the thread of the message it answers, marked with who sent it as the group. External members get none. A send that needs no approval withdraws the request the draft waits for, if it waits. Asking is recorded in the mailbox's change feed.
+         * @description A human's send from their own mailbox needs no approval, so Duva sends it at once, with no disclosure, also when their agent wrote the draft. An agent's send waits for its sponsor's approval unless the sponsor switched that off, separately for its own mailbox and for its sponsor's. With full sponsor access, an agent sends as its sponsor from the sponsor's mailbox: from the draft's address, under the sponsor's name. Every message an agent sends carries the Duva-Agent header, and a visible line unless its sponsor switched that off for where it sends from. Its send shows where it stands. Bcc recipients get the message, but no header names them. Only the mailbox's owner, and an agent with full sponsor access to it, can ask. The draft needs a recipient in To, and a draft waits for one approval at a time. It goes only from an address the mailbox still has, so a draft from an address since removed fails. A draft from a group goes out from the group's address, as any send does, and only while the mailbox's owner is still a local member: otherwise asking gets 403, and a send asked before fails. Each other local member's mailbox then gets a copy, in the thread of the message it answers, marked with who sent it as the group. External members get none. A send that needs no approval withdraws the request the draft waits for, if it waits. Asking is recorded in the mailbox's change feed. An agent's approved send over its send limits waits, as waitingForLimit, and goes out by itself, oldest first, as the limits allow, or when its sponsor sends it now. Humans have no send limits.
          */
         post: operations["sendDraft"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mailboxes/{mailbox}/drafts/{draft}/send-now": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send a draft waiting for an agent's send limits now, past the limits.
+         * @description Only the agent's sponsor can, for one draft at a time, and the agent's limits stay as they are. The send still counts toward them. A paused agent's send is held until it is unpaused. Sending now is recorded in the mailbox's change feed under you, and the draft's send shows sending, then sent or failed. A draft that isn't waitingForLimit is 409.
+         */
+        post: operations["sendDraftNow"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1189,13 +1209,15 @@ export interface components {
             /** @description The agent's mailboxes, erased with it. */
             mailboxes: components["schemas"]["Mailbox"][];
         };
-        /** @description What an agent may do in its sponsor's personal mailbox, and which of its sends wait for approval or carry the disclosure's visible line. */
+        /** @description What an agent may do in its sponsor's personal mailbox, which of its sends wait for approval or carry the disclosure's visible line, and its send limits. */
         AgentSettings: {
             sponsorAccess: components["schemas"]["SponsorAccess"];
             approvalForOwnMailbox: components["schemas"]["ApprovalForOwnMailbox"];
             approvalAsSponsor: components["schemas"]["ApprovalAsSponsor"];
             disclosureLineForOwnMailbox: components["schemas"]["DisclosureLineForOwnMailbox"];
             disclosureLineAsSponsor: components["schemas"]["DisclosureLineAsSponsor"];
+            sendsPerHour: components["schemas"]["SendsPerHour"];
+            newRecipientsPerDay: components["schemas"]["NewRecipientsPerDay"];
         };
         /** @description The agent's settings changed, each with its new value. */
         AgentSettingsChanges: {
@@ -1204,6 +1226,8 @@ export interface components {
             approvalAsSponsor?: components["schemas"]["ApprovalAsSponsor"];
             disclosureLineForOwnMailbox?: components["schemas"]["DisclosureLineForOwnMailbox"];
             disclosureLineAsSponsor?: components["schemas"]["DisclosureLineAsSponsor"];
+            sendsPerHour?: components["schemas"]["SendsPerHour"];
+            newRecipientsPerDay?: components["schemas"]["NewRecipientsPerDay"];
         };
         /**
          * @description The agent's access to its sponsor's personal mailbox. None, the default, gives it none. Read lets it read everything there: threads, labels, drafts, the change feed and attachments. Full also lets it organize, move threads to Trash and back, draft and change any draft there, and send as its sponsor. Only the sponsor empties their Trash.
@@ -1218,6 +1242,10 @@ export interface components {
         DisclosureLineForOwnMailbox: boolean;
         /** @description Whether mail the agent sends as its sponsor carries the disclosure's visible line. It always carries the Duva-Agent header. On by default. */
         DisclosureLineAsSponsor: boolean;
+        /** @description How many messages the agent sends in any hour, from all its mailboxes and as its sponsor. 100 by default, and up to the organization's agentSendsPerHourCap. A send counts when it goes out, and one over the limit waits. */
+        SendsPerHour: number;
+        /** @description How many new recipients the agent sends to in any 24 hours: addresses it hasn't sent to before, from any mailbox. 50 by default, and up to the organization's agentNewRecipientsPerDayCap. A send counts when it goes out, and one over the limit waits. A message with more new recipients than the whole limit waits until its sponsor sends it now. */
+        NewRecipientsPerDay: number;
         NewAddress: {
             /**
              * @description The address, on one of the organization's standalone domains, without a plus tag. Its alias domains mirror it.
@@ -1519,7 +1547,7 @@ export interface components {
             position: number;
         };
         /** @description A change in a mailbox. */
-        MailboxChange: components["schemas"]["MessageReceived"] | components["schemas"]["DraftWritten"] | components["schemas"]["DraftChanged"] | components["schemas"]["DraftDeleted"] | components["schemas"]["SendAsked"] | components["schemas"]["ApprovalAsked"] | components["schemas"]["ApprovalWithdrawn"] | components["schemas"]["ApprovalDecided"] | components["schemas"]["MessageSent"] | components["schemas"]["SendFailed"] | components["schemas"]["SendUnclear"] | components["schemas"]["FeedbackReceived"] | components["schemas"]["ThreadRead"] | components["schemas"]["ThreadUnread"] | components["schemas"]["ThreadLabelsChanged"] | components["schemas"]["LabelCreated"] | components["schemas"]["LabelRenamed"] | components["schemas"]["LabelDeleted"] | components["schemas"]["ThreadErased"] | components["schemas"]["AgentSettingsChanged"] | components["schemas"]["AgentPaused"] | components["schemas"]["AgentUnpaused"] | components["schemas"]["SenderScreened"] | components["schemas"]["ScreenerSwitched"] | components["schemas"]["ScreenedSenderRemoved"] | components["schemas"]["UnsubscribeAttempted"];
+        MailboxChange: components["schemas"]["MessageReceived"] | components["schemas"]["DraftWritten"] | components["schemas"]["DraftChanged"] | components["schemas"]["DraftDeleted"] | components["schemas"]["SendAsked"] | components["schemas"]["ApprovalAsked"] | components["schemas"]["ApprovalWithdrawn"] | components["schemas"]["ApprovalDecided"] | components["schemas"]["MessageSent"] | components["schemas"]["SendWaitingForLimit"] | components["schemas"]["SentNow"] | components["schemas"]["SendFailed"] | components["schemas"]["SendUnclear"] | components["schemas"]["FeedbackReceived"] | components["schemas"]["ThreadRead"] | components["schemas"]["ThreadUnread"] | components["schemas"]["ThreadLabelsChanged"] | components["schemas"]["LabelCreated"] | components["schemas"]["LabelRenamed"] | components["schemas"]["LabelDeleted"] | components["schemas"]["ThreadErased"] | components["schemas"]["AgentSettingsChanged"] | components["schemas"]["AgentPaused"] | components["schemas"]["AgentUnpaused"] | components["schemas"]["SenderScreened"] | components["schemas"]["ScreenerSwitched"] | components["schemas"]["ScreenedSenderRemoved"] | components["schemas"]["UnsubscribeAttempted"];
         /** @description Mail arrived. No actor made this change, so it names none. */
         MessageReceived: {
             /** @description The change's position in the mailbox's feed, counting from 1. */
@@ -1659,6 +1687,34 @@ export interface components {
              * @enum {string}
              */
             type: "messageSent";
+        };
+        SendWaitingForLimit: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "sendWaitingForLimit";
+            /** @description The draft's ID. */
+            draft: string;
+            /** @description The ID of the approval that let it go, if it needed one. */
+            approval?: string;
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "sendWaitingForLimit";
+        };
+        SentNow: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "sentNow";
+            /** @description The draft's ID. */
+            draft: string;
+            /** @description The ID of the approval that let it go, if it needed one. */
+            approval?: string;
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "sentNow";
         };
         SendFailed: components["schemas"]["ChangeBase"] & {
             /** @constant */
@@ -2142,10 +2198,10 @@ export interface components {
             /** @description The ID of the approval the request needs, if it needs one. A human's send from their own mailbox needs none, nor does an agent's whose sponsor switched approval off. */
             approval?: string;
             /**
-             * @description waiting for approval; withdrawn because the draft changed while it waited, was sent without approval, or the agent's sponsor access was lowered; rejected, with the approver's note; approved, and about to be sent, which a send without approval is at once; sending; sent, as the message in its thread; failed, with the reason; or unclear, when sending stopped before SES answered, so a human checks whether it went out, by its recipients and subject, since only SES's answer gives its Message-ID. Duva never sends an unclear draft again. An approved draft can't change, but a rejected or failed one can be revised and sent again.
+             * @description waiting for approval; withdrawn because the draft changed while it waited, was sent without approval, or the agent's sponsor access was lowered; rejected, with the approver's note; approved, and about to be sent, which a send without approval is at once; waitingForLimit, approved but over the agent's send limits, or behind its other sends that wait, until it goes out by itself, oldest first, as the limits allow, or its sponsor sends it now; sending; sent, as the message in its thread; failed, with the reason; or unclear, when sending stopped before SES answered, so a human checks whether it went out, by its recipients and subject, since only SES's answer gives its Message-ID. Duva never sends an unclear draft again. An approved draft can't change, but a rejected or failed one can be revised and sent again.
              * @enum {string}
              */
-            state: "waiting" | "withdrawn" | "rejected" | "approved" | "sending" | "sent" | "failed" | "unclear";
+            state: "waiting" | "withdrawn" | "rejected" | "approved" | "waitingForLimit" | "sending" | "sent" | "failed" | "unclear";
             /** @description The approver's note, if they rejected it. */
             note?: string;
             /**
@@ -2775,15 +2831,23 @@ export interface components {
             erasureErasesApprovals: components["schemas"]["ErasureErasesApprovals"];
             retentionDays: components["schemas"]["RetentionDays"];
             searchLanguages: components["schemas"]["SearchLanguages"];
+            agentSendsPerHourCap: components["schemas"]["AgentSendsPerHourCap"];
+            agentNewRecipientsPerDayCap: components["schemas"]["AgentNewRecipientsPerDayCap"];
         };
         /** @description The settings changed, each with its new value. */
         SettingsChanges: {
             erasureErasesApprovals?: components["schemas"]["ErasureErasesApprovals"];
             retentionDays?: components["schemas"]["RetentionDays"];
             searchLanguages?: components["schemas"]["SearchLanguages"];
+            agentSendsPerHourCap?: components["schemas"]["AgentSendsPerHourCap"];
+            agentNewRecipientsPerDayCap?: components["schemas"]["AgentNewRecipientsPerDayCap"];
         };
         /** @description How many days Trash and Spam keep a thread, counted from when it got the label, before the eraser erases it for good. 30 by default, and a whole number from 7 to 365. It applies to all Trash and Spam, threads already there included. */
         RetentionDays: number;
+        /** @description The most sendsPerHour a sponsor can give an agent. 100 by default. Lowering it lowers each agent above it to it, recorded as a change to the agent's settings under you. Raising it raises no agent. */
+        AgentSendsPerHourCap: number;
+        /** @description The most newRecipientsPerDay a sponsor can give an agent. 50 by default. Lowering it lowers each agent above it to it, recorded as a change to the agent's settings under you. Raising it raises no agent. */
+        AgentNewRecipientsPerDayCap: number;
         RetentionPreview: {
             retentionDays: components["schemas"]["RetentionDays"];
             /** @description How many threads in Trash and Spam are older than retentionDays now. */
@@ -4776,6 +4840,35 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    sendDraftNow: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The mailbox's ID. */
+                mailbox: components["parameters"]["Mailbox"];
+                /** @description The draft's ID. */
+                draft: components["parameters"]["Draft"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The draft, approved and about to be sent. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Draft"];
+                };
+            };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];

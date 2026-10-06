@@ -90,6 +90,8 @@ test("a sponsor gives an agent full access and switches off approval of its send
     approvalAsSponsor: false,
     disclosureLineForOwnMailbox: true,
     disclosureLineAsSponsor: true,
+    sendsPerHour: 100,
+    newRecipientsPerDay: 50,
   });
   expect((await grace.GET("/agents/{agent}/settings", { params: { path: { agent: iris } } })).data?.sponsorAccess).toBe("none");
   expect((await summaries(page))[0]).toBe("Hermes\nFull access to your mailbox. Its sends from its own mailbox wait for your approval.");

@@ -177,11 +177,11 @@ test("an admin turns erasure of approval records on with a flag, and off with it
   const on = await machine.duva("organization", "change-settings", "--erasureErasesApprovals");
   const off = await machine.duva("organization", "change-settings", "--no-erasureErasesApprovals");
 
-  expect(JSON.parse(before.stdout)).toEqual({ erasureErasesApprovals: false, retentionDays: 30, searchLanguages: ["English", "Swedish"] });
+  expect(JSON.parse(before.stdout)).toEqual({ erasureErasesApprovals: false, retentionDays: 30, searchLanguages: ["English", "Swedish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50 });
   expect(on.exitCode).toBe(0);
-  expect(JSON.parse(on.stdout)).toEqual({ erasureErasesApprovals: true, retentionDays: 30, searchLanguages: ["English", "Swedish"] });
+  expect(JSON.parse(on.stdout)).toEqual({ erasureErasesApprovals: true, retentionDays: 30, searchLanguages: ["English", "Swedish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50 });
   expect(off.exitCode).toBe(0);
-  expect(JSON.parse(off.stdout)).toEqual({ erasureErasesApprovals: false, retentionDays: 30, searchLanguages: ["English", "Swedish"] });
+  expect(JSON.parse(off.stdout)).toEqual({ erasureErasesApprovals: false, retentionDays: 30, searchLanguages: ["English", "Swedish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50 });
 });
 
 test("an admin previews a retention period and sets it", async () => {
@@ -197,7 +197,7 @@ test("an admin previews a retention period and sets it", async () => {
   expect(preview.exitCode).toBe(0);
   expect(JSON.parse(preview.stdout)).toEqual({ retentionDays: 7, threads: 0 });
   expect(changed.exitCode).toBe(0);
-  expect(JSON.parse(changed.stdout)).toEqual({ erasureErasesApprovals: false, retentionDays: 7, searchLanguages: ["English", "Swedish"] });
+  expect(JSON.parse(changed.stdout)).toEqual({ erasureErasesApprovals: false, retentionDays: 7, searchLanguages: ["English", "Swedish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50 });
 });
 
 test("an admin gives the search languages to organization change-settings, once for each", async () => {
@@ -210,7 +210,7 @@ test("an admin gives the search languages to organization change-settings, once 
   const result = await machine.duva("organization", "change-settings", "--searchLanguages", "Swedish", "--searchLanguages", "Danish", "--searchLanguages", "English");
 
   expect(result.exitCode).toBe(0);
-  expect(JSON.parse(result.stdout)).toEqual({ erasureErasesApprovals: false, retentionDays: 30, searchLanguages: ["English", "Swedish", "Danish"] });
+  expect(JSON.parse(result.stdout)).toEqual({ erasureErasesApprovals: false, retentionDays: 30, searchLanguages: ["English", "Swedish", "Danish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50 });
 });
 
 test("organization change-settings with no setting says which there are", async () => {
@@ -333,6 +333,35 @@ test("the sponsor pauses an agent, its key is refused saying so, and unpausing l
   expect(JSON.parse(whoami.stdout)).toEqual(agent);
 });
 
+test("the sponsor limits an agent to one send an hour, and sends its second message now from the CLI", async () => {
+  const machine = await newMachine();
+  const duva = await startDuva({ domain: "example.com", admin: "ada@example.org" });
+  const server = await duva.listen();
+  onTestFinished(() => server.close());
+  await machine.saveDeployment(server);
+  await machine.duva("login", { browserSignsIn: "ada@example.org" });
+  const { agent, key } = JSON.parse((await machine.duva("agents", "create", "--name", "Hermes")).stdout) as { agent: { id: string }; key: string };
+  const mailbox = JSON.parse((await machine.duva("mailboxes", "create", "--owner", agent.id, "--address", "hermes@example.com")).stdout) as { id: string };
+  const limited = await machine.duva("agents", "change-settings", "--agent", agent.id, "--sendsPerHour", "1", "--no-approvalForOwnMailbox");
+  const asAgent = { env: { DUVA_AGENT_KEY: key } };
+  const send = async (to: string) => {
+    const draft = JSON.parse((await machine.duva("drafts", "create", "--mailbox", mailbox.id, "--to", to, "--subject", "Hello", "--text", "Hej.", asAgent)).stdout) as { id: string };
+    await machine.duva("drafts", "send", "--mailbox", mailbox.id, "--draft", draft.id, asAgent);
+    return draft.id;
+  };
+  await send("grace@example.org");
+  const second = await send("linus@example.org");
+
+  const waiting = await machine.duva("drafts", "get", "--mailbox", mailbox.id, "--draft", second);
+  const now = await machine.duva("drafts", "send-now", "--mailbox", mailbox.id, "--draft", second);
+
+  expect(JSON.parse(limited.stdout)).toMatchObject({ sendsPerHour: 1, approvalForOwnMailbox: false });
+  expect(JSON.parse(waiting.stdout)).toMatchObject({ send: { state: "waitingForLimit" } });
+  expect(now.exitCode).toBe(0);
+  expect(JSON.parse(now.stdout)).toMatchObject({ id: second, send: { state: "approved" } });
+  expect(duva.sentTo()).toEqual([["grace@example.org"], ["linus@example.org"]]);
+});
+
 test("an admin removes a human from the CLI, first with --dryRun, handing their mailbox to another human", async () => {
   const machine = await newMachine();
   const duva = await startDuva({ domain: "example.com", admin: "ada@example.com", humans: ["grace@example.com", "linus@example.com"] });
@@ -439,7 +468,7 @@ test("the sponsor gives an agent read sponsor access and turns a switch off, and
   const mailboxes = await machine.duva("mailboxes", "list", asAgent);
   const threads = await machine.duva("threads", "list", "--mailbox", mailbox.id, asAgent);
 
-  const expected = { sponsorAccess: "read", approvalForOwnMailbox: true, approvalAsSponsor: false, disclosureLineForOwnMailbox: true, disclosureLineAsSponsor: true };
+  const expected = { sponsorAccess: "read", approvalForOwnMailbox: true, approvalAsSponsor: false, disclosureLineForOwnMailbox: true, disclosureLineAsSponsor: true, sendsPerHour: 100, newRecipientsPerDay: 50 };
   expect(refused.exitCode).toBe(1);
   expect(errorIn(refused.stderr)).toMatch(/403.*Ask them for read access/);
   expect(changed.exitCode).toBe(0);

@@ -16,19 +16,22 @@ import {
   changeDraft,
   deleteDraft as deleteStoredDraft,
   draftsIn,
+  draftToSend,
   findApproval,
   findDraft,
   NoRecipient,
+  NotWaitingForLimit,
   pendingApprovals,
   reject,
   SendNotAllowed,
+  sendNow,
   unsendableFrom,
 } from "./drafting.ts";
 import { attachmentLinks } from "./attachments.ts";
 import { fromStanding, groupsSentAsBy } from "./group-mail.ts";
 import { findMessage } from "./mail.ts";
 import { mailboxFor } from "./access.ts";
-import { type Actor, aliasDomains, isAddressOf, type Mailbox } from "./organization.ts";
+import { type Actor, aliasDomains, findActor, isAddressOf, type Mailbox } from "./organization.ts";
 
 type EmailAddress = components["schemas"]["EmailAddress"];
 type Message = components["schemas"]["Message"];
@@ -215,7 +218,7 @@ export const deleteDraft: OperationHandler = async (event, deployment, actor) =>
     if (draft === undefined) return noDraft(event);
     return { statusCode: 200, body: draft satisfies components["schemas"]["Draft"] };
   } catch (error) {
-    if (error instanceof BeingSent) return refusal(409, "The draft is being sent, so it can't be deleted yet. Read it again in a moment to see how the send went.");
+    if (error instanceof BeingSent) return refusal(409, "The draft is being sent, or waits for the agent's send limits, so it can't be deleted. Read it again later to see how the send went.");
     throw error;
   }
 };
@@ -247,6 +250,27 @@ export const sendDraft: OperationHandler = async (event, deployment, actor) => {
   }
 };
 
+export const sendDraftNow: OperationHandler = async (event, deployment, actor) => {
+  const mailbox = await mailboxFor(event, deployment, actor!, "read");
+  if ("statusCode" in mailbox) return mailbox;
+  const id = event.pathParameters?.draft ?? "";
+  const draft = await draftToSend(deployment.table, mailbox.id, id);
+  if (draft === undefined) return noDraft(event);
+  const status = draft.send;
+  const agentId = status?.approval === undefined ? status?.by : (await findApproval(deployment.table, status.approval))?.agent;
+  const agent = agentId === undefined ? undefined : await findActor(deployment.table, agentId);
+  if (agent?.kind === "agent" && agent.sponsor !== actor!.id) return refusal(403, "Only the agent's sponsor can send its mail now, past its send limits. Ask them to.");
+  const notWaiting = refusal(409, "The draft isn't waiting for the agent's send limits, so there is nothing to send now. Read it to see where its send stands.");
+  if (agent?.kind !== "agent" || status?.state !== "waitingForLimit") return notWaiting;
+  try {
+    const sent = await sendNow(deployment.table, { mailbox: mailbox.id, id, agent: agent.id, by: actor!.id });
+    return { statusCode: 202, body: sent satisfies components["schemas"]["Draft"] };
+  } catch (error) {
+    if (error instanceof NotWaitingForLimit) return notWaiting;
+    throw error;
+  }
+};
+
 export const listApprovals: OperationHandler = async (_event, deployment, actor) => {
   const approvals = await pendingApprovals(deployment.table, actor!.id);
   return {
@@ -260,6 +284,7 @@ const approvedRefusal = (error: AlreadyApproved) => refusal(409, `The draft ${ap
 // What became of an approved draft, by its send's state.
 const approvedOutcomes: Partial<Record<AlreadyApproved["state"], string>> = {
   approved: "is about to be sent",
+  waitingForLimit: "waits for the agent's send limits",
   sending: "is being sent",
   sent: "was sent",
   unclear: "may have been sent, which a human checks",

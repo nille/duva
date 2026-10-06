@@ -630,6 +630,8 @@ function describe(outcome: Outcome | undefined, approval: Approval, agent: strin
     case "waiting":
     case "approved":
       return { tone: "pending", text: strings.outcome.approved };
+    case "waitingForLimit":
+      return { tone: "pending", text: strings.outcome.waitingForLimit(agent) };
     case "sending":
       return { tone: "pending", text: strings.outcome.sending };
     case "sent":

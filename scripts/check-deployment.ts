@@ -12,7 +12,8 @@
 // complaints and rejects, to a topic that only it may invoke the feedback Lambda for, and no event
 // of SES's waits in the feedback Lambda's failure queue; nothing but IAM may invoke search, which runs at 10,240 MB
 // on x64, and Nova Lite translates in the region; every mailbox's search index is backfilled, none has held
-// erased mail for more than a day, and no indexer task waits in its failure queue. Signing in stays
+// erased mail for more than a day, and no indexer task waits in its failure queue; nothing but IAM
+// may invoke the sender, and no schedule for sends that wait for an agent's limits is overdue. Signing in stays
 // with a human. Then prints how many
 // messages Duva dropped on arrival each day of the last 7, by reason. Exits 1 if any check fails.
 import { CloudFormationClient, DescribeStacksCommand, paginateListStackResources } from "@aws-sdk/client-cloudformation";
@@ -20,6 +21,7 @@ import { CloudWatchClient, GetMetricDataCommand } from "@aws-sdk/client-cloudwat
 import { CognitoIdentityProviderClient, DescribeUserPoolCommand, paginateListUserPools } from "@aws-sdk/client-cognito-identity-provider";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { GetFunctionConfigurationCommand, GetFunctionUrlConfigCommand, GetPolicyCommand, InvokeCommand, LambdaClient, ResourceNotFoundException } from "@aws-sdk/client-lambda";
+import { paginateListSchedules, SchedulerClient } from "@aws-sdk/client-scheduler";
 import { DescribeReceiptRuleSetCommand, SESClient } from "@aws-sdk/client-ses";
 import { GetConfigurationSetEventDestinationsCommand, GetEmailIdentityCommand, SESv2Client } from "@aws-sdk/client-sesv2";
 import { GetQueueAttributesCommand, SQSClient } from "@aws-sdk/client-sqs";
@@ -143,6 +145,28 @@ for (const url of ["https://169.254.169.254/latest/meta-data/", "https://localho
     return FunctionError === undefined && answer === JSON.stringify({ outcome: "failed", reason: "notPublic" }) ? undefined : `answered ${answer}`;
   });
 }
+/** The physical ID of the stack's one resource of the type whose logical ID starts with the prefix. */
+async function stackResource(type: string, prefix: string): Promise<string | undefined> {
+  for await (const { StackResourceSummaries = [] } of paginateListStackResources({ client: cloudFormation }, { StackName: stackName })) {
+    const id = StackResourceSummaries.find(({ ResourceType, LogicalResourceId }) => ResourceType === type && LogicalResourceId?.startsWith(prefix))?.PhysicalResourceId;
+    if (id !== undefined) return id;
+  }
+  return undefined;
+}
+await check("the sender has no resource policy, so only IAM invokes it, as EventBridge Scheduler does with its role", async () => {
+  const sender = await stackResource("AWS::Lambda::Function", "SenderHandler");
+  return sender === undefined ? "isn't in the stack" : missing(lambda.send(new GetPolicyCommand({ FunctionName: sender })));
+});
+await check("no schedule for sends that wait for an agent's limits is more than an hour overdue", async () => {
+  const group = await stackResource("AWS::Scheduler::ScheduleGroup", "SenderSchedules");
+  if (group === undefined) return "the schedule group isn't in the stack";
+  const overdue: string[] = [];
+  for await (const { Schedules = [] } of paginateListSchedules({ client: new SchedulerClient({ region }) }, { GroupName: group.split("/").at(-1) })) {
+    // Each is named for the second it runs at, and deleted once it ran.
+    for (const { Name = "" } of Schedules) if (Number(/-(\d+)$/.exec(Name)?.[1] ?? 0) * 1000 < Date.now() - 60 * 60 * 1000) overdue.push(Name);
+  }
+  return overdue.length === 0 ? undefined : `${overdue.join(", ")} should have run`;
+});
 const searchFunction = output(stackOutputs.searchFunction);
 await check("search has no resource policy, so only IAM invokes it", () => missing(lambda.send(new GetPolicyCommand({ FunctionName: searchFunction }))));
 await check("search has no function URL", () => missing(lambda.send(new GetFunctionUrlConfigCommand({ FunctionName: searchFunction }))));

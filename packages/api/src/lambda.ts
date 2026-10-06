@@ -19,6 +19,7 @@ import { sqsIndexQueue } from "./indexing.ts";
 import { sesReceiptRules } from "./receiving.ts";
 import { lambdaSearcher } from "./searching.ts";
 import { lambdaUnsubscriber } from "./unsubscriber.ts";
+import { lambdaWaitingSends } from "./limits.ts";
 
 const mailBucket = required(environmentVariables.mailBucket);
 const lambda = new LambdaClient({});
@@ -44,5 +45,6 @@ export const handler = createApi({
   unsubscriber: lambdaUnsubscriber(lambda, required(environmentVariables.unsubscriberFunction)),
   searcher: lambdaSearcher(lambda, required(environmentVariables.searchFunction)),
   indexQueue: sqsIndexQueue(new SQSClient({}), required(environmentVariables.indexQueue)),
+  waitingSends: lambdaWaitingSends(lambda, required(environmentVariables.senderFunction)),
   downloads: { url: required(environmentVariables.downloadUrl), lifetime: downloadLinkLifetime },
 });
