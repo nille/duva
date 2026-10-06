@@ -1,5 +1,5 @@
-// The views of a mailbox's mail: the Inbox, the Screener, Sent, Drafts, All mail, Spam and Trash, then
-// its own labels, each a link with how many unread threads it has, the Screener with how many senders wait. It is one component, so the side column can hold it.
+// The views of a mailbox's mail: the Inbox, the Screener, Sent, Drafts, All mail, Spam and Trash, an
+// agent's activity in its mailbox, then its own labels, each a link with how many unread threads it has, the Screener with how many senders wait. It is one component, so the side column can hold it.
 // A search's results are a view too, which the bar opens.
 import { useId, useState } from "react";
 import type { DuvaClient } from "@duva/client";
@@ -86,6 +86,7 @@ export function MailViews({
   labels,
   current,
   drafts,
+  activity,
   screener,
   onLabelCreated,
   onSignedOut,
@@ -97,6 +98,8 @@ export function MailViews({
   current: View | undefined;
   /** Whether Drafts is listed, as it is for the human's own mailbox only, and whether it's open. */
   drafts?: { current: boolean };
+  /** Where the activity of the agent whose mailbox it is lies, as an agent's mailbox lists it, and whether it's open. */
+  activity?: { href: string; current: boolean };
   /** Whether the mailbox's Screener is on, and how many senders wait there, once Duva has said. */
   screener?: { on: boolean; waiting: number };
   onLabelCreated: (label: Label) => void;
@@ -153,6 +156,13 @@ export function MailViews({
         {link({ all: true }, strings.views.allMail, 0)}
         {link({ label: "spam" }, strings.views.spam, 0)}
         {link({ label: "trash" }, strings.views.trash, 0)}
+        {activity !== undefined && (
+          <li className="views-activity">
+            <a href={activity.href} className="view-link" aria-current={activity.current ? "page" : undefined}>
+              <span className="view-name">{strings.activity.link}</span>
+            </a>
+          </li>
+        )}
       </ul>
       <h2 className="views-heading" id={headingId}>
         {strings.views.yourLabels}

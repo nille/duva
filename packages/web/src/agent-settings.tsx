@@ -1,10 +1,12 @@
 // The Agents sheet in Settings: for each agent the human sponsors, its sponsor access to their
 // mailbox and the switches for approval and the disclosure's visible line. Each agent is a line
-// saying its access and approval, which opens into its form, one at a time. A human who sponsors no
+// saying its access and approval, which opens into a link to its activity and its form, one at a
+// time. A human who sponsors no
 // agents never sees it.
 import { useCallback, useEffect, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
+import { activityHref } from "./activity.tsx";
 import { ChevronIcon } from "./setting-parts.tsx";
 import { strings } from "./strings.ts";
 
@@ -118,6 +120,9 @@ function AgentForm({ client, agent, saved: first, email, onSignedOut }: { client
         </div>
         <ChevronIcon />
       </summary>
+      <p className="agent-activity">
+        <a href={activityHref(agent.id)}>{strings.activity.title(agent.name)}</a>
+      </p>
       <form
         className="setting"
         aria-labelledby={heading}

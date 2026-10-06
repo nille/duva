@@ -1,21 +1,24 @@
 // Duva's web app. A human signs in and lands on the Inbox of their personal mailbox, where they read,
 // organize, write and send their mail, with its views in the side column. Sponsors also read their
 // agents' mailboxes, listed there above the views, and reach the Approvals view from the bar, where
-// they decide what the agents they sponsor ask to send. Mail from first-time senders waits in each
-// mailbox's Screener, beside its views. Every human reaches Settings from the bar too, where they
-// choose how times and dates show and switch their Screeners, admins the organization's settings and
-// sponsors their agents'. The bar's search box searches the mailbox open, or the human's own.
+// they decide what the agents they sponsor ask to send and the setup changes their agent admins ask
+// for. Mail from first-time senders waits in each mailbox's Screener, beside its views. Each agent's
+// activity, a summary a day that opens into the day's timeline, is reached from its mailbox's views
+// and from Settings. Every human reaches Settings from the bar too, where they choose how times and
+// dates show and switch their Screeners, admins the organization's settings and sponsors their
+// agents'. The bar's search box searches the mailbox open, or the human's own.
 import "@fontsource-variable/source-serif-4/opsz.css";
 import "./styles.css";
 import { StrictMode, useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
+import { activityHref, AgentActivity, AgentDay } from "./activity.tsx";
 import { Approvals } from "./approvals.tsx";
 import { Composer } from "./compose.tsx";
 import { defaultPreferences, type Preferences, PreferencesContext } from "./dates.ts";
 import { Drafts } from "./drafts.tsx";
-import { approvalChanges, type Connection, draftChanges, type Follow, labelChanges, mailChanges, type MailboxChange, screenerChanges, SignedOut, useFeeds } from "./feed.ts";
+import { approvalChanges, type Connection, draftChanges, type Follow, labelChanges, mailChanges, screenerChanges, setupChanges, SignedOut, useFeeds } from "./feed.ts";
 import { ThreadIndex } from "./inbox.tsx";
 import { type AgentMailbox, MailboxList, mailboxHref } from "./mailboxes.tsx";
 import { readScreener, ScreenedSenders, type ScreenerRead, ScreenerView } from "./screener.tsx";
@@ -88,7 +91,8 @@ function App() {
  * without a server. A listing or thread without a mailbox is in the human's own, and drafts are
  * always the human's own, since only a mailbox's owner writes in it. A thread knows the view it
  * was opened from, to go back there, and from a search, the message that matched. A mailbox's
- * screened senders are reached from its Screener.
+ * screened senders are reached from its Screener. An agent's activity is in the mail, beside its
+ * mailbox's views, if it has a mailbox, and opens into one day.
  */
 type Route =
   | { view: "approvals" | "settings" }
@@ -97,13 +101,16 @@ type Route =
   | { view: "search"; mailbox?: string; search: SearchView }
   | { view: "thread"; mailbox?: string; id: string; from: View; message?: string }
   | { view: "drafts" | "write" }
-  | { view: "draft"; id: string };
+  | { view: "draft"; id: string }
+  | { view: "activity"; agent: string; day?: string };
 
 function routeOf(hash: string): Route {
   if (hash === "#/approvals") return { view: "approvals" };
   if (hash === "#/settings") return { view: "settings" };
   if (hash === "#/drafts") return { view: "drafts" };
   if (hash === "#/write") return { view: "write" };
+  const [, agent, day] = /^#\/agents\/([^/]+)(?:\/(\d{4}-\d{2}-\d{2}))?$/.exec(hash) ?? [];
+  if (agent !== undefined) return { view: "activity", agent: decodeURIComponent(agent), day };
   const draft = /^#\/drafts\/(.+)$/.exec(hash)?.[1];
   if (draft !== undefined) return { view: "draft", id: decodeURIComponent(draft) };
   const path = hash.replace(/^#\/?/, "");
@@ -203,7 +210,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
   }, [mailboxes, countUnread, onSignedOut]);
 
   // Views that follow the feeds themselves, such as Approvals.
-  const followers = useRef(new Set<(changes: MailboxChange[]) => Promise<void>>());
+  const followers = useRef(new Set<Parameters<Follow>[0]>());
   const follow = useCallback<Follow>((listener) => {
     followers.current.add(listener);
     return () => followers.current.delete(listener);
@@ -212,12 +219,14 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
   useFeeds(client, {
     interval: config.pollInterval,
     hiddenInterval: config.hiddenPollInterval,
-    async onChanges(changes, first) {
-      for (const listener of [...followers.current]) await listener(changes);
-      if (first || changes.some(({ change }) => approvalChanges.has(change.type))) {
+    // Only admins read the organization's feed, and only an admin sponsors an agent admin, whose setup changes it records.
+    organization: actor.admin,
+    async onChanges(changes, first, organization) {
+      for (const listener of [...followers.current]) await listener(changes, organization);
+      if (first || changes.some(({ change }) => approvalChanges.has(change.type)) || organization.some((change) => setupChanges.has(change.type))) {
         const { data, response } = await client.GET("/approvals");
         if (response.status === 401) throw new SignedOut();
-        if (data !== undefined) setWaiting(data.approvals.length);
+        if (data !== undefined) setWaiting(data.approvals.length + data.setupApprovals.length);
       }
       // The first read passes mail that may have arrived after the views listed it, so it counts too.
       const mail = new Set(changes.filter(({ change }) => mailChanges.has(change.type)).map(({ mailbox }) => mailbox));
@@ -236,13 +245,16 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
 
   // A screen reader follows the human to the view they opened, and the page starts at its top.
   const navigated = useRef(false);
-  // The mailbox the route names, if it names one.
-  const named = "mailbox" in route ? route.mailbox : undefined;
+  const listed = mailboxes.status === "listed" ? mailboxes : undefined;
+  // The mailbox the route names, if it names one. An agent's activity is beside its mailbox, if it has one.
+  const named = "mailbox" in route ? route.mailbox : route.view === "activity" ? listed?.agents.find(({ mailbox }) => mailbox.owner === route.agent)?.mailbox.id : undefined;
   // The views outside the mail.
   const away = route.view === "approvals" || route.view === "settings";
   const routeKey = away
     ? route.view
-    : `${route.view}/${named ?? ""}/${"id" in route ? route.id : route.view === "list" ? pathOf(route.list) : route.view === "search" ? pathOf(route.search) : route.view === "screener" ? String(route.senders) : ""}`;
+    : route.view === "activity"
+      ? `activity/${route.agent}/${route.day ?? ""}`
+      : `${route.view}/${named ?? ""}/${"id" in route ? route.id : route.view === "list" ? pathOf(route.list) : route.view === "search" ? pathOf(route.search) : route.view === "screener" ? String(route.senders) : ""}`;
   useEffect(() => {
     if (!navigated.current) {
       navigated.current = true;
@@ -264,7 +276,6 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
     if (route.view === "approvals") document.title = strings.title(strings.approvals.title, waiting);
   }, [route.view, waiting]);
 
-  const listed = mailboxes.status === "listed" ? mailboxes : undefined;
   const mine = listed?.mine;
   const agentNames = listed?.agentNames ?? noNames;
   const sponsor = listed?.sponsorsAgents === true || (waiting ?? 0) > 0;
@@ -314,7 +325,13 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
   const writing = route.view === "drafts" || route.view === "draft" || route.view === "write";
 
   const mail =
-    away ? undefined : mailboxes.status === "loading" ? (
+    away ? undefined : route.view === "activity" ? (
+      route.day === undefined ? (
+        <AgentActivity key={route.agent} client={client} agent={route.agent} name={agentNames.get(route.agent)} timeZone={preferences.timeZone} onSignedOut={onSignedOut} />
+      ) : (
+        <AgentDay key={`${route.agent}/${route.day}`} client={client} agent={route.agent} day={route.day} name={agentNames.get(route.agent)} me={actor.id} mine={mine?.id} timeZone={preferences.timeZone} onSignedOut={onSignedOut} />
+      )
+    ) : mailboxes.status === "loading" ? (
       <main className="desk" aria-busy="true" />
     ) : mailboxes.status === "failed" ? (
       <main className="desk">
@@ -489,6 +506,8 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
                 current={viewed}
                 // A human writes only in their own mailbox, so its Drafts is the only one listed.
                 drafts={shown === mine ? { current: writing } : undefined}
+                // An agent's mailbox lists the agent's activity too.
+                activity={agent === undefined ? undefined : { href: activityHref(agent.mailbox.owner), current: route.view === "activity" }}
                 // A Screener Duva couldn't read is still listed, so its view can say so and try again.
                 screener={
                   shownScreener.status === "read"

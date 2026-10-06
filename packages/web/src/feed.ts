@@ -1,10 +1,12 @@
-// Following the change feeds of the mailboxes the signed-in human can read, so the web app learns
-// about new mail, approval requests and sends without reloading. It polls for now; a stream comes later.
+// Following the change feeds of the mailboxes the signed-in human can read, and an admin's of the
+// organization too, so the web app learns about new mail, approval requests and sends without
+// reloading. It polls for now; a stream comes later.
 import { useEffect, useRef } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
 
 export type Change = components["schemas"]["MailboxChange"];
+export type OrganizationChange = components["schemas"]["OrganizationChange"];
 
 /** A change, with the mailbox it was made in. */
 export interface MailboxChange {
@@ -14,6 +16,9 @@ export interface MailboxChange {
 
 /** The changes that alter what the Approvals view shows: a request, its decision, or how its send went. */
 export const approvalChanges = new Set<Change["type"]>(["approvalAsked", "approvalWithdrawn", "approvalDecided", "messageSent", "sendFailed", "sendUnclear"]);
+
+/** The organization's changes that alter what the Approvals view shows: an agent admin's setup change asked for or decided. */
+export const setupChanges = new Set<OrganizationChange["type"]>(["setupAsked", "setupApproved", "setupRejected", "setupWithdrawn"]);
 
 /** The changes that alter what a mailbox's threads show: mail in or out, read state, labels and erasure. */
 export const mailChanges = new Set<Change["type"]>(["messageReceived", "messageSent", "threadRead", "threadUnread", "threadLabelsChanged", "threadErased"]);
@@ -46,10 +51,11 @@ export class SignedOut extends Error {
 }
 
 /**
- * The feeds of every mailbox the client can read, each followed from where this browser left off.
- * Positions are kept in localStorage, so opening the web app again doesn't read a feed from the start.
+ * The feeds of every mailbox the client can read, and the organization's if `organization`, each
+ * followed from where this browser left off. Positions are kept in localStorage, so opening the
+ * web app again doesn't read a feed from the start.
  */
-function mailboxFeeds(client: DuvaClient) {
+function mailboxFeeds(client: DuvaClient, organization: boolean) {
   const positions = new Map<string, number>();
   const key = (mailbox: string) => `duva.feed.${mailbox}`;
 
@@ -57,7 +63,7 @@ function mailboxFeeds(client: DuvaClient) {
    * Reads every mailbox's feed to its end. Answers the changes read, and how to keep the new
    * positions once the caller has acted on them, so a failure there loses nothing.
    */
-  async function catchUp(): Promise<{ changes: MailboxChange[]; keep: () => void }> {
+  async function catchUp(): Promise<{ changes: MailboxChange[]; organization: OrganizationChange[]; keep: () => void }> {
     const { data: list, response } = await client.GET("/mailboxes");
     if (response.status === 401) throw new SignedOut();
     if (list === undefined) throw new Error(`Duva answered ${response.status} listing mailboxes.`);
@@ -75,8 +81,24 @@ function mailboxFeeds(client: DuvaClient) {
       }
       read.set(id, after);
     }
+    const setup: OrganizationChange[] = [];
+    if (organization) {
+      let after = positions.get(organizationFeed) ?? Number(localStorage.getItem(key(organizationFeed)) ?? 0);
+      for (;;) {
+        const { data: page, response } = await client.GET("/organization/changes", { params: { query: { after } } });
+        if (response.status === 401) throw new SignedOut();
+        // A human who stopped being an admin reads only their mailboxes' feeds from then on.
+        if (response.status === 403) break;
+        if (page === undefined) throw new Error(`Duva answered ${response.status} reading the organization's changes.`);
+        setup.push(...page.changes);
+        if (page.position === after) break;
+        after = page.position;
+      }
+      read.set(organizationFeed, after);
+    }
     return {
       changes,
+      organization: setup,
       keep() {
         for (const [id, after] of read) {
           positions.set(id, after);
@@ -89,29 +111,38 @@ function mailboxFeeds(client: DuvaClient) {
   return { catchUp };
 }
 
-/** Hands a view each read's changes until it calls the function returned. A view that throws keeps the read from counting, so its changes come again. */
-export type Follow = (listener: (changes: MailboxChange[]) => Promise<void>) => () => void;
+// Where the organization's feed is kept among the mailboxes', whose IDs are UUIDs.
+const organizationFeed = "organization";
+
+/**
+ * Hands a view each read's changes, the mailboxes' and the organization's, until it calls the
+ * function returned. A view that throws keeps the read from counting, so its changes come again.
+ */
+export type Follow = (listener: (changes: MailboxChange[], organization: OrganizationChange[]) => Promise<void>) => () => void;
 
 /** How the last read of the feeds went. */
 export type Connection = { ok: true; at: Date } | { ok: false } | undefined;
 
 /**
  * Reads the feeds every few seconds while the tab is visible, less often while it is hidden, and at
- * once when it becomes visible again. Hands `onChanges` what each read found, `first` on the first read, which also passes
- * everything that happened while the app was closed. Stops when the session has ended.
+ * once when it becomes visible again, the organization's too for an admin. Hands `onChanges` what
+ * each read found, `first` on the first read, which also passes everything that happened while the
+ * app was closed. Stops when the session has ended.
  */
 export function useFeeds(
   client: DuvaClient,
   {
     interval = defaultPollInterval,
     hiddenInterval = defaultHiddenPollInterval,
+    organization = false,
     onChanges,
     onConnection,
     onSignedOut,
   }: {
     interval?: number;
     hiddenInterval?: number;
-    onChanges: (changes: MailboxChange[], first: boolean) => Promise<void> | void;
+    organization?: boolean;
+    onChanges: (changes: MailboxChange[], first: boolean, organization: OrganizationChange[]) => Promise<void> | void;
     onConnection: (connection: Connection) => void;
     onSignedOut: () => void;
   },
@@ -127,16 +158,16 @@ export function useFeeds(
     let visibleDuringRead = false;
     let first = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const feeds = mailboxFeeds(client);
+    const feeds = mailboxFeeds(client, organization);
     const tick = async () => {
       if (running || stopped) return;
       running = true;
       visibleDuringRead = false;
       clearTimeout(timer);
       try {
-        const { changes, keep } = await feeds.catchUp();
+        const { changes, organization: setup, keep } = await feeds.catchUp();
         if (stopped) return;
-        await callbacks.current.onChanges(changes, first);
+        await callbacks.current.onChanges(changes, first, setup);
         keep();
         first = false;
         if (!stopped) callbacks.current.onConnection({ ok: true, at: new Date() });
@@ -165,5 +196,5 @@ export function useFeeds(
       clearTimeout(timer);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [client, interval, hiddenInterval]);
+  }, [client, interval, hiddenInterval, organization]);
 }

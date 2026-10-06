@@ -1,12 +1,14 @@
 // The Approvals view: the sends waiting for the signed-in sponsor, each laid out like a galley proof,
 // with the agent's draft set beside the message it answers, to send as is, edit and send, or reject.
 // Each says whether the agent sends as the sponsor, from their mailbox, or from its own, and shows
-// the disclosure's line as the sponsor's switch for that place leaves it.
+// the disclosure's line as the sponsor's switch for that place leaves it. Beside them wait the setup
+// changes the sponsor's agent admins ask for, each with the call it made and what it would do, to
+// approve or reject with a note.
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
-import { approvalChanges, type Connection as ConnectionState, type Follow, SignedOut } from "./feed.ts";
+import { approvalChanges, type Connection as ConnectionState, type Follow, setupChanges, SignedOut } from "./feed.ts";
 import { Addresses, Attachments, Connection, Field, Time } from "./mail-parts.tsx";
 import { strings } from "./strings.ts";
 
@@ -15,6 +17,8 @@ type SendStatus = components["schemas"]["SendStatus"];
 type Message = components["schemas"]["Message"];
 type EmailAddress = components["schemas"]["EmailAddress"];
 type AgentSettings = components["schemas"]["AgentSettings"];
+type SetupApproval = components["schemas"]["SetupApproval"];
+type SetupResult = components["schemas"]["SetupResult"];
 
 /** An approval the view shows: waiting, or decided while the page was open. */
 interface Entry {
@@ -26,6 +30,16 @@ interface Entry {
 }
 
 type Decision = { by: "you"; how: "sent" | "edited" | "rejected"; note?: string } | { by: "elsewhere" };
+
+/** A setup approval the view shows: waiting, or decided while the page was open. */
+interface SetupEntry {
+  setup: SetupApproval;
+  /** Set once it is decided, by this page or elsewhere, where it says what became of it once read. */
+  decision?: SetupDecision;
+  fresh?: boolean;
+}
+
+type SetupDecision = { by: "you"; how: "approved"; result?: SetupResult } | { by: "you"; how: "rejected"; note: string } | { by: "elsewhere"; read?: SetupApproval };
 
 /** Where a decided approval's draft stands, or "unknown" if Duva couldn't say. */
 type Outcome = SendStatus | "none" | "unknown";
@@ -50,6 +64,7 @@ export function Approvals({
   onSignedOut: () => void;
 }) {
   const [entries, setEntries] = useState<Entry[] | undefined>();
+  const [setups, setSetups] = useState<SetupEntry[]>([]);
   const [outcomes, setOutcomes] = useState<Record<string, Outcome>>({});
   const [agents, setAgents] = useState<Record<string, string>>({});
   // The sponsor's own mailboxes, where an agent sends as them, once listed.
@@ -100,13 +115,23 @@ export function Approvals({
       if (response.status === 401) throw new SignedOut();
       if (data === undefined) throw new Error(`Duva answered ${response.status} listing approvals.`);
       const waiting = new Map(data.approvals.map((approval) => [approval.id, approval]));
+      const setupsWaiting = new Map(data.setupApprovals.map((setup) => [setup.id, setup]));
+      setSetups((current) => {
+        const known = new Set(current.map((entry) => entry.setup.id));
+        // A waiting one keeps the preview Duva gives now, which approving may have changed.
+        const kept = current.map((entry) =>
+          entry.decision !== undefined ? entry : setupsWaiting.has(entry.setup.id) ? { ...entry, setup: setupsWaiting.get(entry.setup.id)! } : { ...entry, decision: { by: "elsewhere" as const } },
+        );
+        const arrived = data.setupApprovals.filter((setup) => !known.has(setup.id)).map((setup) => ({ setup, fresh: !first }));
+        return [...arrived, ...kept];
+      });
       setEntries((current = []) => {
         const known = new Set(current.map((entry) => entry.approval.id));
         const kept = current.map((entry) => (entry.decision === undefined && !waiting.has(entry.approval.id) ? { ...entry, decision: { by: "elsewhere" as const } } : entry));
         const arrived = data.approvals.filter((approval) => !known.has(approval.id)).map((approval) => ({ approval, fresh: !first }));
         return [...arrived, ...kept].sort((a, b) => b.approval.askedAt.localeCompare(a.approval.askedAt));
       });
-      if (ownRef.current === undefined || data.approvals.some((approval) => !(approval.agent in agentsRef.current))) await loadAgents();
+      if (ownRef.current === undefined || [...data.approvals, ...data.setupApprovals].some((approval) => !(approval.agent in agentsRef.current))) await loadAgents();
       await loadSettings([...new Set(data.approvals.map((approval) => approval.agent))]);
     },
     [client, loadAgents, loadSettings],
@@ -119,8 +144,8 @@ export function Approvals({
     refresh(true).catch((error: unknown) => {
       if (!stopped && error instanceof SignedOut) onSignedOut();
     });
-    const unfollow = follow(async (changes) => {
-      const touched = changes.some(({ change }) => approvalChanges.has(change.type));
+    const unfollow = follow(async (changes, organization) => {
+      const touched = changes.some(({ change }) => approvalChanges.has(change.type)) || organization.some((change) => setupChanges.has(change.type));
       if (entriesRef.current === undefined || touched) await refresh(entriesRef.current === undefined);
       if (!touched) return;
       for (const entry of entriesRef.current ?? []) {
@@ -152,7 +177,32 @@ export function Approvals({
   }, []);
   const seen = useCallback((id: string) => setEntries((current) => current?.map((entry) => (entry.approval.id === id ? { ...entry, fresh: false } : entry))), []);
 
-  const waiting = entries?.filter((entry) => entry.decision === undefined).length ?? 0;
+  const setupDecided = useCallback((setup: SetupApproval, decision: SetupDecision) => {
+    const update = () => setSetups((current) => current.map((entry) => (entry.setup.id === setup.id ? { ...entry, decision, fresh: false } : entry)));
+    if (document.startViewTransition === undefined) return update();
+    document.startViewTransition(() => flushSync(update));
+  }, []);
+  const setupSeen = useCallback((id: string) => setSetups((current) => current.map((entry) => (entry.setup.id === id ? { ...entry, fresh: false } : entry))), []);
+  const setupChanged = useCallback((setup: SetupApproval) => setSetups((current) => current.map((entry) => (entry.setup.id === setup.id ? { ...entry, setup } : entry))), []);
+
+  // One decided elsewhere says what became of it once it's read.
+  const setupsRead = useRef(new Set<string>());
+  useEffect(() => {
+    for (const { setup, decision } of setups) {
+      if (decision?.by !== "elsewhere" || setupsRead.current.has(setup.id)) continue;
+      setupsRead.current.add(setup.id);
+      void client
+        .GET("/setup-approvals/{approval}", { params: { path: { approval: setup.id } } })
+        .then(({ data }) => data !== undefined && setSetups((current) => current.map((entry) => (entry.setup.id === setup.id ? { ...entry, decision: { by: "elsewhere", read: data } } : entry))))
+        .catch(() => undefined);
+    }
+  }, [client, setups]);
+
+  // Sends and setup changes wait side by side, newest first.
+  const items = [...(entries ?? []).map((entry) => ({ askedAt: entry.approval.askedAt, entry })), ...setups.map((setup) => ({ askedAt: setup.setup.askedAt, setup }))].sort((a, b) =>
+    b.askedAt.localeCompare(a.askedAt),
+  );
+  const waiting = (entries?.filter((entry) => entry.decision === undefined).length ?? 0) + setups.filter((entry) => entry.decision === undefined).length;
   return (
     <main className="desk" aria-busy={entries === undefined}>
       <div className="desk-head">
@@ -162,11 +212,28 @@ export function Approvals({
       </div>
       {entries === undefined ? (
         <SkeletonGalley />
-      ) : entries.length === 0 ? (
+      ) : items.length === 0 ? (
         <Empty />
       ) : (
         <ol className="galleys" aria-label={strings.approvals.title}>
-          {entries.map((entry) => {
+          {items.map((item) => {
+            if ("setup" in item) {
+              const { setup } = item;
+              return (
+                <li key={setup.setup.id}>
+                  <SetupGalley
+                    entry={setup}
+                    agent={agents[setup.setup.agent] ?? strings.galley.anAgent}
+                    client={client}
+                    onDecided={setupDecided}
+                    onChanged={setupChanged}
+                    onSeen={setupSeen}
+                    onSignedOut={onSignedOut}
+                  />
+                </li>
+              );
+            }
+            const { entry } = item;
             const asSponsor = own?.has(entry.approval.mailbox);
             return (
               <li key={entry.approval.id}>
@@ -187,7 +254,7 @@ export function Approvals({
           })}
         </ol>
       )}
-      {entries !== undefined && entries.length > 0 && waiting === 0 && <p className="all-done">{strings.approvals.noneWaiting}.</p>}
+      {entries !== undefined && items.length > 0 && waiting === 0 && <p className="all-done">{strings.approvals.noneWaiting}.</p>}
     </main>
   );
 }
@@ -614,8 +681,9 @@ function DecidedSlip({ approval, agent, decision, outcome }: { approval: Approva
 }
 
 const transitionName = (approval: Approval) => `approval-${approval.id.replace(/[^\w-]/g, "")}`;
+const setupTransitionName = (setup: SetupApproval) => `setup-${setup.id.replace(/[^\w-]/g, "")}`;
 
-type Tone = "pending" | "sent" | "rejected" | "failed";
+type Tone = "pending" | "sent" | "done" | "rejected" | "failed";
 
 function describe(outcome: Outcome | undefined, approval: Approval, agent: string, decision: Decision): { tone: Tone; text: string; detail?: string } {
   if (outcome === undefined) return { tone: "pending", text: strings.outcome.checking };
@@ -650,6 +718,212 @@ function describe(outcome: Outcome | undefined, approval: Approval, agent: strin
   }
 }
 
+interface SetupGalleyProps {
+  entry: SetupEntry;
+  agent: string;
+  client: DuvaClient;
+  onDecided: (setup: SetupApproval, decision: SetupDecision) => void;
+  /** Duva worked out a new preview, as when the setup changed since the agent asked. */
+  onChanged: (setup: SetupApproval) => void;
+  onSeen: (id: string) => void;
+  onSignedOut: () => void;
+}
+
+/**
+ * A setup change an agent admin asks for, as a proof: the call it made, beside what Duva works out
+ * the change would do, with the decision under them.
+ */
+function SetupGalley({ entry, agent, client, onDecided, onChanged, onSeen, onSignedOut }: SetupGalleyProps) {
+  const { setup, decision, fresh } = entry;
+  const titleId = useId();
+  const problemId = useId();
+  const [rejecting, setRejecting] = useState(false);
+  const [busy, setBusy] = useState<"approving" | "rejecting" | undefined>();
+  const [problem, setProblem] = useState<string | undefined>();
+  const [note, setNote] = useState("");
+  const [noteRefused, setNoteRefused] = useState(0);
+  const ref = useRef<HTMLElement>(null);
+  const copy = strings.setupGalley;
+
+  useEffect(() => {
+    if (!fresh || ref.current === null) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const observer = new IntersectionObserver(([seen]) => {
+      clearTimeout(timer);
+      if (seen?.isIntersecting) timer = setTimeout(() => onSeen(setup.id), 1500);
+    }, { threshold: 0.4 });
+    observer.observe(ref.current);
+    return () => {
+      clearTimeout(timer);
+      observer.disconnect();
+    };
+  }, [fresh, setup.id, onSeen]);
+
+  if (decision !== undefined) return <SetupSlip setup={setup} agent={agent} decision={decision} />;
+
+  const path = { params: { path: { approval: setup.id } } };
+  /** What a refused decision means: decided elsewhere, a new preview to read, or Duva's reason. */
+  const refused = async (response: Response, error: { message: string } | undefined) => {
+    if (response.status === 401) return onSignedOut();
+    if (response.status === 404) return setProblem(strings.decide.gone);
+    if (response.status === 403) return setProblem(strings.decide.notYours);
+    if (response.status !== 409) return setProblem(error?.message ?? strings.decide.failed(response.status));
+    const { data: now } = await client.GET("/setup-approvals/{approval}", path).catch(() => ({ data: undefined }));
+    if (now !== undefined && now.state !== "pending") return onDecided(setup, { by: "elsewhere", read: now });
+    if (now !== undefined && now.preview.join("\n") !== setup.preview.join("\n")) {
+      onChanged(now);
+      return setProblem(copy.previewChanged(agent));
+    }
+    setProblem(error?.message ?? strings.decide.failed(response.status));
+  };
+  const decide = async (kind: "approving" | "rejecting", call: () => Promise<{ data?: SetupApproval; response: Response; error?: { message: string } }>, decision: (data: SetupApproval) => SetupDecision) => {
+    if (busy !== undefined) return;
+    setBusy(kind);
+    setProblem(undefined);
+    try {
+      const { data, response, error } = await call();
+      if (data !== undefined) return onDecided(setup, decision(data));
+      await refused(response, error);
+    } catch {
+      setProblem(strings.decide.unreachable);
+    }
+    setBusy(undefined);
+  };
+  const approve = () => decide("approving", () => client.POST("/setup-approvals/{approval}/approve", path), (data) => ({ by: "you", how: "approved", ...(data.result !== undefined && { result: data.result }) }));
+  const reject = () => {
+    if (note.trim() === "") {
+      setNoteRefused((count) => count + 1);
+      return setProblem(strings.decide.noteMissing(agent));
+    }
+    return decide("rejecting", () => client.POST("/setup-approvals/{approval}/reject", { ...path, body: { note: note.trim() } }), () => ({ by: "you", how: "rejected", note: note.trim() }));
+  };
+  const fields = [...Object.entries(setup.operation.path ?? {}), ...Object.entries(setup.operation.body ?? {})];
+
+  return (
+    <article className={fresh ? "galley galley-setup galley-fresh" : "galley galley-setup"} aria-labelledby={titleId} ref={ref} style={{ viewTransitionName: setupTransitionName(setup) }}>
+      <header className="slug">
+        <h2 id={titleId}>{copy.asks(agent)}</h2>
+        <p className="slug-meta">
+          {fresh && <span className="mark-new">{strings.galley.isNew}</span>}
+          <Time at={setup.askedAt} format={(time) => strings.galley.askedAt(time)} />
+        </p>
+      </header>
+      <div className="sheet sheet-setup">
+        <section className="copy original setup-call" aria-labelledby={`${titleId}-call`}>
+          <h3 className="copy-label" id={`${titleId}-call`}>
+            {copy.call}
+          </h3>
+          <dl className="fields setup-fields">
+            <Field label={copy.operation}>
+              <code>{setup.operation.operationId}</code>
+            </Field>
+            {fields.map(([name, value]) => (
+              <Field key={name} label={name}>
+                <code>{typeof value === "string" ? value : JSON.stringify(value)}</code>
+              </Field>
+            ))}
+          </dl>
+        </section>
+        <section className="copy proof setup-preview" aria-labelledby={`${titleId}-preview`}>
+          <h3 className="copy-label" id={`${titleId}-preview`}>
+            {copy.preview}
+          </h3>
+          <ul className="preview">
+            {setup.preview.map((line, index) => (
+              <li key={index}>{line}</li>
+            ))}
+          </ul>
+          <p className="hint">{copy.previewHint(agent)}</p>
+        </section>
+      </div>
+      <footer className="decision">
+        {rejecting && <RejectNote agent={agent} note={[note, setNote]} refused={noteRefused} errorId={problemId} />}
+        {problem !== undefined && (
+          <p className="notice notice-alert" role="alert" id={problemId}>
+            {problem}
+          </p>
+        )}
+        <div className="actions">
+          {rejecting ? (
+            <>
+              <button type="button" className="button button-reject" onClick={reject} disabled={busy !== undefined}>
+                {busy === "rejecting" ? strings.decide.rejecting : strings.decide.rejectWith}
+              </button>
+              <button
+                type="button"
+                className="button button-quiet"
+                disabled={busy !== undefined}
+                onClick={() => {
+                  setProblem(undefined);
+                  setRejecting(false);
+                }}
+              >
+                {strings.decide.cancel}
+              </button>
+            </>
+          ) : (
+            <>
+              <button type="button" className="button button-primary" onClick={approve} disabled={busy !== undefined}>
+                {busy === "approving" ? copy.approving : copy.approve}
+              </button>
+              <button
+                type="button"
+                className="button button-quiet"
+                disabled={busy !== undefined}
+                onClick={() => {
+                  setProblem(undefined);
+                  setNoteRefused(0);
+                  setRejecting(true);
+                }}
+              >
+                {strings.decide.reject}
+              </button>
+            </>
+          )}
+        </div>
+      </footer>
+    </article>
+  );
+}
+
+/** A decided setup change, folded to one slip: what was decided, and what became of it. */
+function SetupSlip({ setup, agent, decision }: { setup: SetupApproval; agent: string; decision: SetupDecision }) {
+  const copy = strings.setupGalley;
+  const read = decision.by === "elsewhere" ? decision.read : undefined;
+  const failed = decision.by === "you" && decision.how === "approved" && decision.result !== undefined && decision.result.status >= 400;
+  const { headline, tone, text } =
+    decision.by === "you"
+      ? decision.how === "approved"
+        ? failed
+          ? { headline: copy.approved, tone: "failed" as const, text: copy.notMade(messageOf(decision.result!.body)) }
+          : { headline: copy.approved, tone: "done" as const, text: copy.made(agent) }
+        : { headline: strings.outcome.rejected, tone: "rejected" as const, text: copy.unchanged(agent) }
+      : read?.state === "withdrawn"
+        ? { headline: strings.outcome.withdrawnHead, tone: "rejected" as const, text: copy.withdrawn(agent) }
+        : read?.state === "approved"
+          ? { headline: strings.outcome.elsewhere, tone: "done" as const, text: copy.made(agent) }
+          : read?.state === "rejected"
+            ? { headline: strings.outcome.elsewhere, tone: "rejected" as const, text: copy.unchanged(agent) }
+            : { headline: strings.outcome.noLongerWaiting, tone: "pending" as const, text: strings.outcome.checking };
+  return (
+    <article className={`slip slip-${tone}`} aria-live="polite" style={{ viewTransitionName: setupTransitionName(setup) }}>
+      <StateIcon tone={tone} />
+      <div>
+        <h2 className="slip-head">
+          {headline} <span className="slip-subject slip-subject-setup">{copy.slipSubject(agent)}</span>
+        </h2>
+        <p className="slip-result">{text}</p>
+        <p className="slip-detail">{setup.preview.join(" ")}</p>
+        {decision.by === "you" && decision.how === "rejected" && <p className="slip-note">{strings.outcome.note(decision.note)}</p>}
+        {read?.note !== undefined && <p className="slip-note">{strings.outcome.noteFrom(read.note)}</p>}
+      </div>
+    </article>
+  );
+}
+
+/** The message in a refusal's body, or the body as it came. */
+const messageOf = (body: unknown) => (typeof body === "object" && body !== null && "message" in body && typeof body.message === "string" ? body.message : JSON.stringify(body));
+
 const SendIcon = () => (
   <svg className="icon" viewBox="0 0 16 16" aria-hidden="true">
     <path d="M2 8h9M8 4.5 11.5 8 8 11.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
@@ -661,6 +935,7 @@ function StateIcon({ tone }: { tone: Tone }) {
   const paths: Record<Tone, React.ReactNode> = {
     pending: <path d="M8 4.5V8l2.5 1.5" />,
     sent: <path d="m5 8.2 2 2 4-4.4" />,
+    done: <path d="m5 8.2 2 2 4-4.4" />,
     rejected: <path d="M5.5 5.5l5 5M10.5 5.5l-5 5" />,
     failed: <path d="M8 4.5v4.2M8 11.2v.3" />,
   };

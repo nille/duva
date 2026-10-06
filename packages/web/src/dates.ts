@@ -12,8 +12,8 @@ export const defaultPreferences: Preferences = { hourCycle: "locale", dateFormat
 export const PreferencesContext = createContext<Preferences>(defaultPreferences);
 
 export interface Dates {
-  /** The time alone. */
-  clock(date: Date): string;
+  /** The time alone, in the time zone if one is given, else the browser's. */
+  clock(date: Date, timeZone?: string): string;
   /** The date alone, with its year, or without it when `short` and it is this year's. */
   date(date: Date, short?: boolean): string;
   /** The time alone for today, or the day and time otherwise. */
@@ -28,7 +28,7 @@ export interface Dates {
 export function datesFor({ hourCycle, dateFormat }: Preferences): Dates {
   // 12-hour time reads as 2:30 PM, and 24-hour time as 09:05.
   const hours: Intl.DateTimeFormatOptions = hourCycle === "locale" ? { hour: "2-digit" } : { hour: hourCycle === "h12" ? "numeric" : "2-digit", hourCycle };
-  const clock = (date: Date) => date.toLocaleTimeString(undefined, { ...hours, minute: "2-digit" });
+  const clock = (date: Date, timeZone?: string) => date.toLocaleTimeString(undefined, { ...hours, minute: "2-digit", ...(timeZone !== undefined && { timeZone }) });
   const isToday = (date: Date) => date.toDateString() === new Date().toDateString();
   const withYear = (date: Date, short: boolean) => !short || date.getFullYear() !== new Date().getFullYear();
   const date = (date: Date, short = false) => {

@@ -470,7 +470,7 @@ function FoldedQuote({ text }: { text: string }) {
   );
 }
 
-const BackIcon = () => (
+export const BackIcon = () => (
   <svg className="icon" viewBox="0 0 16 16" aria-hidden="true">
     <path d="M10 3.5 5.5 8l4.5 4.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
