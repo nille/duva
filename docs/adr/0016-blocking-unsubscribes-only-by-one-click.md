@@ -12,3 +12,4 @@ When an actor blocks a sender in the Screener, Duva also tries to unsubscribe th
 - Mail without one-click, or whose headers no passing DKIM signature covers, gets no unsubscribe. The block still keeps it out.
 - Duva never unsubscribes from mail SES judged to be spam, since that confirms a live address.
 - The POST goes out from Duva's account to the sender's server. It needs no endpoint of Duva's own.
+- A 307 or 308 redirect repeats the POST at the new URL, which may be `http:`, a few times at most, each checked as the first URL was: port 80 or 443, at a public address. Only a success unsubscribes, since another redirect may lead to a page that asks to confirm. #55 settled this on 2026-10-06.

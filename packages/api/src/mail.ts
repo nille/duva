@@ -867,3 +867,24 @@ export async function noteSentTo(table: Table, mailbox: string, addresses: Itera
     await Promise.all(all.slice(at, at + 25).map((address) => documents(table).send(new PutCommand({ TableName: table.name, Item: sentToKey(mailbox, address) }))));
   }
 }
+
+/** Where the raw copies of the mail the mailbox received from the addresses `from` takes are, newest first. It is given each in lower case. */
+export async function receivedFrom(table: Table, mailbox: string, from: (address: string) => boolean): Promise<Pick<StoredMessage, "rawKey" | "receivedAt">[]> {
+  const found: Pick<StoredMessage, "rawKey" | "receivedAt">[] = [];
+  let start: Record<string, unknown> | undefined;
+  do {
+    const page = await documents(table).send(
+      new QueryCommand({
+        TableName: table.name,
+        KeyConditionExpression: `${pk} = :mailbox AND begins_with(${sk}, :threads)`,
+        // A thread's messages that the mailbox received, not sent.
+        FilterExpression: "attribute_exists(rawKey) AND attribute_not_exists(sentBy)",
+        ExpressionAttributeValues: { ":mailbox": partition(mailbox), ":threads": "thread#" },
+        ExclusiveStartKey: start,
+      }),
+    );
+    for (const message of (page.Items ?? []) as StoredMessage[]) if (from(message.from.address.toLowerCase())) found.push({ rawKey: message.rawKey, receivedAt: message.receivedAt });
+    start = page.LastEvaluatedKey;
+  } while (start !== undefined);
+  return found.sort((a, b) => b.receivedAt.localeCompare(a.receivedAt));
+}

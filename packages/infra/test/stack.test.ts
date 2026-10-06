@@ -213,12 +213,33 @@ test("the eraser can write the table and erase raw mail for good, every version 
   expect(scoped).not.toMatch(/"\/\*"|"s3:prefix":"\*"/);
 });
 
-test("the API invokes the eraser to empty a Trash, and may invoke no other Lambda", () => {
+test("the API invokes the eraser to empty a Trash and the unsubscriber to unsubscribe, and may invoke no other Lambda", () => {
   const [eraserId] = lambda("EraserHandler");
+  const [unsubscriberId] = lambda("UnsubscriberHandler");
   const invoking = statements("ApiHandler").filter(({ Action }) => [Action].flat().some((action) => action.startsWith("lambda:")));
-  expect(JSON.stringify(invoking.map(({ Resource }) => Resource))).toContain(`{"Fn::GetAtt":["${eraserId}","Arn"]}`);
-  expect(JSON.stringify(invoking.map(({ Resource }) => Resource)).match(/Fn::GetAtt":\["(\w+)"/g)?.every((ref) => ref.includes(eraserId))).toBe(true);
-  expect(lambda("ApiHandler")[1].Properties?.Environment?.Variables?.[environmentVariables.eraserFunction]).toEqual({ "Fn::GetAtt": [eraserId, "Arn"] });
+  const invoked = JSON.stringify(invoking.map(({ Resource }) => Resource)).match(/Fn::GetAtt":\["(\w+)"/g)?.map((ref) => ref.replace(/^Fn::GetAtt":\["|"$/g, ""));
+  expect(new Set(invoked)).toEqual(new Set([eraserId, unsubscriberId]));
+  const variables = lambda("ApiHandler")[1].Properties?.Environment?.Variables;
+  expect(variables?.[environmentVariables.eraserFunction]).toEqual({ "Fn::GetAtt": [eraserId, "Arn"] });
+  expect(variables?.[environmentVariables.unsubscriberFunction]).toEqual({ "Fn::GetAtt": [unsubscriberId, "Arn"] });
+});
+
+// The unsubscriber sends a POST to a URL from someone's mail, so it may reach nothing of Duva's (ADR-0016).
+test("the unsubscriber can be invoked only by the API, through IAM, and may do nothing but write its log", () => {
+  const [unsubscriberId, { Properties }] = lambda("UnsubscriberHandler");
+  const naming = (type: string) => ofType(type).filter(([, resource]) => JSON.stringify(resource.Properties).includes(`"${unsubscriberId}"`));
+  expect(naming("AWS::Lambda::Permission")).toEqual([]);
+  expect(naming("AWS::Lambda::Url")).toEqual([]);
+  expect(naming("AWS::Lambda::EventSourceMapping")).toEqual([]);
+  expect(naming("AWS::Events::Rule")).toEqual([]);
+  expect(statements("UnsubscriberHandler")).toEqual([]);
+  const roleId = Properties?.Role?.["Fn::GetAtt"]?.[0];
+  expect(stack.template.Resources[roleId]?.Properties?.ManagedPolicyArns).toEqual([
+    { "Fn::Join": ["", ["arn:", { Ref: "AWS::Partition" }, ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"]] },
+  ]);
+  expect(Object.keys(Properties?.Environment?.Variables ?? {})).toEqual(["NODE_OPTIONS"]);
+  // Longer than the POST's 5 seconds.
+  expect(Properties?.Timeout).toBe(10);
 });
 
 const [ruleSetId] = ofType("AWS::SES::ReceiptRuleSet")[0]!;

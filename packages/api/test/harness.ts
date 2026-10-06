@@ -1,8 +1,9 @@
 // The API test harness: the real handlers, authorizer, inbound handler, sender and eraser in-process, with
 // DynamoDB Local (started by dynamodb-local.ts) for DynamoDB and its stream, an in-memory stand-in
-// for the mail bucket and for the inbound Lambda's log, stand-ins for SES receiving and sending, and a test token issuer in place of
-// Cognito. Tests drive the API only through the generated client, hand mail to SES as a sender's
-// server does, and read what SES sent.
+// for the mail bucket and for the inbound Lambda's log, stand-ins for SES receiving and sending, a
+// stand-in internet for the unsubscriber, and a test token issuer in place of Cognito. Tests drive
+// the API only through the generated client, hand mail to SES as a sender's server does, read what
+// SES sent, and put web servers on the internet to see what the unsubscriber sends them.
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { randomUUID } from "node:crypto";
@@ -24,12 +25,14 @@ import { keys, timeEarlierLabels } from "../src/mail.ts";
 import { addHumanToOrganization, screenerKey, setUpOrganization } from "../src/organization.ts";
 import { setUpScreeners } from "../src/screening.ts";
 import { createSender } from "../src/sending.ts";
+import { postOneClick } from "../src/unsubscriber.ts";
 import { dynamodbLocal } from "./dynamodb-local.ts";
 import { gateway } from "./gateway.ts";
 import { managedLogin, managedLoginClientId } from "./managed-login.ts";
 import { type Envelope, type ReceiveOptions, sesReceiving, sesSending } from "./ses.ts";
 import { tableStream } from "./streams.ts";
 import { TestTokenIssuer } from "./token-issuer.ts";
+import { type ReceivedRequest, standInInternet, type WebServerOptions } from "./web.ts";
 
 declare module "vitest" {
   export interface ProvidedContext {
@@ -108,6 +111,11 @@ export interface Duva {
    * delete anything during the run, which then fails, as a run that stops partway does.
    */
   erase(at: Date, options?: { s3DeletesFail?: boolean }): Promise<void>;
+  /**
+   * Puts a web server on the internet the unsubscriber reaches, at the host name, serving http on
+   * port 80 and https on 443. Returns the requests it gets, as they arrive.
+   */
+  webServer(hostname: string, options?: WebServerOptions): Promise<ReceivedRequest[]>;
   /** Follows a download link, as a browser does, and gives what the download Lambda answered through CloudFront. */
   download(url: string): Promise<Response>;
   /**
@@ -174,8 +182,11 @@ export async function startDuva({
     const { statusCode, headers, body } = await download(new URL(request.url).pathname);
     return new Response(body, { status: statusCode, headers });
   };
+  // The API invokes the unsubscriber Lambda and waits for it, so its answer goes through JSON.
+  const internet = standInInternet();
+  const unsubscriber = { post: async (url: string) => JSON.parse(JSON.stringify(await postOneClick(internet.network, url))) };
   const gatewayed = gateway(
-    createApi({ version, region, table, humans, mailBucket, receiving, downloads, eraser: { emptyTrash: async (each) => void emptied.push(each) } }),
+    createApi({ version, region, table, humans, mailBucket, receiving, downloads, unsubscriber, eraser: { emptyTrash: async (each) => void emptied.push(each) } }),
     createAuthorizer({ table, verifyAccessToken: issuer.verify }),
   );
   // A call returns once the stream has handed what it wrote to the sender, unless sends are held,
@@ -222,6 +233,7 @@ export async function startDuva({
         mailBucket.deletesFail = false;
       }
     },
+    webServer: (hostname, options) => internet.webServer(hostname, options),
     download: (url) => (url.startsWith(inProcess) ? api(new Request(url)) : fetch(url)),
     setUp: async (options) => {
       await setUp(options);

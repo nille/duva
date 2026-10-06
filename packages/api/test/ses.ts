@@ -16,13 +16,15 @@ export interface Envelope {
 
 /**
  * SES's verdicts on a message. While the rule scans, each is PASS unless given. SES names the
- * sender's DMARC policy only with a DMARC FAIL.
+ * sender's DMARC policy only with a DMARC FAIL. `dkim` gives the result for each DKIM signature, by
+ * its domain.
  */
 export interface Verdicts {
   spam?: SESReceiptStatus["status"];
   virus?: SESReceiptStatus["status"];
   dmarc?: SESReceiptStatus["status"];
   dmarcPolicy?: "none" | "quarantine" | "reject";
+  dkim?: Record<string, SESReceiptStatus["status"]>;
 }
 
 /** How SES receives a message: how often Lambda runs its event, and what SES judged it to be. */
@@ -94,8 +96,9 @@ export function sesReceiving({ buckets, functions }: { buckets: Map<string, Mail
       const timestamp = at.toISOString();
       const verdict = (given: SESReceiptStatus["status"] | undefined): SESReceiptStatus => ({ status: rule.ScanEnabled ? (given ?? "PASS") : "DISABLED" });
       const parsed = await PostalMime.parse(bytes);
+      const stored = rule.ScanEnabled ? withVerdicts(bytes, parsed, envelope, verdicts) : bytes;
       for (const { S3Action, LambdaAction } of rule.Actions ?? []) {
-        if (S3Action) await buckets.get(S3Action.BucketName!)!.put(`${S3Action.ObjectKeyPrefix ?? ""}${messageId}`, bytes);
+        if (S3Action) await buckets.get(S3Action.BucketName!)!.put(`${S3Action.ObjectKeyPrefix ?? ""}${messageId}`, stored);
         if (LambdaAction) {
           const event: SESEvent = {
             Records: [
@@ -143,6 +146,30 @@ export function sesReceiving({ buckets, functions }: { buckets: Map<string, Mail
       return { refused, messageId };
     },
   };
+}
+
+/**
+ * The message as SES stores it when its rule scans: headed by its verdicts, and an
+ * Authentication-Results with a result for each DKIM signature, which names it by its domain.
+ */
+function withVerdicts(raw: Uint8Array, parsed: Awaited<ReturnType<typeof PostalMime.parse>>, envelope: Envelope, verdicts: Verdicts): Uint8Array {
+  const result = (status: SESReceiptStatus["status"] = "PASS") => ({ PASS: "pass", FAIL: "fail", GRAY: "neutral", PROCESSING_FAILED: "temperror", DISABLED: "none" })[status];
+  const signers = parsed.headers.filter(({ key }) => key === "dkim-signature").map(({ value }) => /(?:^|;)\s*d\s*=\s*([^;\s]+)/.exec(value)?.[1]?.toLowerCase() ?? "");
+  const fromDomain = parsed.from?.address?.split("@")[1] ?? "";
+  const header = [
+    `X-SES-Spam-Verdict: ${verdicts.spam ?? "PASS"}`,
+    `X-SES-Virus-Verdict: ${verdicts.virus ?? "PASS"}`,
+    "Authentication-Results: amazonses.com;",
+    ` spf=pass smtp.mailfrom=${envelope.from};`,
+    ...(signers.length === 0 ? [" dkim=none;"] : signers.map((domain) => ` dkim=${result(verdicts.dkim?.[domain])} header.i=@${domain};`)),
+    ` dmarc=${result(verdicts.dmarc)} header.from=${fromDomain};`,
+    "",
+  ].join("\r\n");
+  const head = new TextEncoder().encode(header);
+  const stored = new Uint8Array(head.length + raw.length);
+  stored.set(head);
+  stored.set(raw, head.length);
+  return stored;
 }
 
 /**

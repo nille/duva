@@ -4,6 +4,7 @@ import type { Downloads } from "./attachments.ts";
 import type { Humans } from "./user-pool.ts";
 import type { MailBucket } from "./mail-bucket.ts";
 import type { Receiving } from "./receiving.ts";
+import type { Unsubscriber } from "./unsubscriber.ts";
 
 /** Duva's one DynamoDB table. */
 export interface Table {
@@ -24,4 +25,6 @@ export interface Deployment {
   receiving: Receiving;
   eraser: Eraser;
   downloads: Downloads;
+  /** Sends the one-click POST when an actor blocks a sender. */
+  unsubscriber: Unsubscriber;
 }

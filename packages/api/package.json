@@ -11,6 +11,7 @@
     "./sender-lambda": "./src/sender-lambda.ts",
     "./eraser-lambda": "./src/eraser-lambda.ts",
     "./download-lambda": "./src/download-lambda.ts",
+    "./unsubscriber-lambda": "./src/unsubscriber-lambda.ts",
     "./infrastructure": "./src/infrastructure.ts",
     "./harness": "./test/harness.ts"
   },

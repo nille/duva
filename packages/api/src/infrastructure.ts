@@ -28,6 +28,8 @@ export const environmentVariables = {
   inboundFunction: "INBOUND_FUNCTION",
   /** The eraser Lambda, which the API invokes for each Trash emptied. */
   eraserFunction: "ERASER_FUNCTION",
+  /** The unsubscriber Lambda, which the API invokes for each one-click unsubscribe. */
+  unsubscriberFunction: "UNSUBSCRIBER_FUNCTION",
   /** The SES configuration set every send goes through. */
   configurationSet: "CONFIGURATION_SET",
   /** The URL of the download Lambda, which download links lead to. */

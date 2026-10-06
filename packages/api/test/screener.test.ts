@@ -229,6 +229,7 @@ test("blocking an address moves its waiting threads to Trash, and its later mail
   expect(data).toEqual({
     sender: { address: "mallory@example.net", decision: "block", decidedAt: expect.any(String), actor: graceId },
     threads: [expect.objectContaining({ id: waited.thread, labels: ["trash"] })],
+    unsubscribe: { outcome: "notOffered", reason: "noOneClick" },
   });
   expect(later.screened).toBe("blocked");
   expect(await listed("trash")).toEqual([later.thread, waited.thread]);
@@ -237,6 +238,7 @@ test("blocking an address moves its waiting threads to Trash, and its later mail
   expect((await changes()).filter(({ type }) => type !== "messageReceived")).toEqual([
     { position: 2, at: expect.any(String), actor: graceId, type: "senderScreened", address: "mallory@example.net", decision: "block" },
     { position: 3, at: expect.any(String), actor: graceId, type: "threadLabelsChanged", thread: waited.thread, added: ["trash"], removed: ["screener"] },
+    { position: 4, at: expect.any(String), actor: graceId, type: "unsubscribeAttempted", address: "mallory@example.net", outcome: "notOffered", reason: "noOneClick" },
   ]);
 });
 

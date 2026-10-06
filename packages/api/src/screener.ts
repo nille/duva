@@ -4,6 +4,7 @@ import { mailboxFor } from "./access.ts";
 import { isEmailAddress } from "./email-address.ts";
 import { isPublicMailProvider } from "./mail-providers.ts";
 import { decide, removeDecision, type Sender, screenedSenders, screenerOf, switchScreener as switchMailboxScreener } from "./screening.ts";
+import { unsubscribeFrom } from "./unsubscribing.ts";
 
 export const getScreener: OperationHandler = async (event, deployment, actor) => {
   const mailbox = await mailboxFor(event, deployment, actor!, "read");
@@ -41,7 +42,10 @@ function domainIn(given: unknown): string | undefined {
   return /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(domain) ? domain : undefined;
 }
 
-/** Lets in or blocks the address or domain in the call's body, for those who may organize the mailbox. */
+/**
+ * Lets in or blocks the address or domain in the call's body, for those who may organize the
+ * mailbox. A block also unsubscribes from the sender's mail, once the decision has been made.
+ */
 const deciding =
   (decision: components["schemas"]["ScreeningDecisionKind"]): OperationHandler =>
   async (event, deployment, actor) => {
@@ -50,7 +54,9 @@ const deciding =
     const sender = senderIn(jsonBody(event));
     if ("statusCode" in sender) return sender;
     const decided = await decide(deployment.table, { mailbox: mailbox.id, sender, decision, by: actor!.id });
-    return { statusCode: 200, body: decided satisfies components["schemas"]["ScreeningDecision"] };
+    if (decision === "letIn") return { statusCode: 200, body: decided satisfies components["schemas"]["ScreeningDecision"] };
+    const unsubscribe = await unsubscribeFrom(deployment, { mailbox: mailbox.id, sender, by: actor!.id });
+    return { statusCode: 200, body: { ...decided, unsubscribe } satisfies components["schemas"]["ScreeningDecision"] };
   };
 
 export const letInSender = deciding("letIn");

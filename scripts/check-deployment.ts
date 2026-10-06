@@ -4,7 +4,8 @@
 //
 // Runs the checks of a real run that need no human: the API answers, refuses calls without valid
 // credentials, and lets the web app call it; download links go through the web app's domain, and
-// only its distribution may invoke the download Lambda; the web app is served with the config
+// only its distribution may invoke the download Lambda; nothing but IAM may invoke the
+// unsubscriber, which refuses addresses that aren't public; the web app is served with the config
 // deploy published; the user pool takes sign-in names in any case, and no pool the stack retired
 // is left; once an address exists, SES's receipt rule lists it; and no received mail and no
 // approved send waits in a failure queue. Signing in stays with a human. Then prints how many
@@ -12,7 +13,7 @@
 import { CloudFormationClient, DescribeStacksCommand, paginateListStackResources } from "@aws-sdk/client-cloudformation";
 import { CloudWatchClient, GetMetricDataCommand } from "@aws-sdk/client-cloudwatch";
 import { CognitoIdentityProviderClient, DescribeUserPoolCommand, paginateListUserPools } from "@aws-sdk/client-cognito-identity-provider";
-import { GetFunctionUrlConfigCommand, GetPolicyCommand, LambdaClient } from "@aws-sdk/client-lambda";
+import { GetFunctionUrlConfigCommand, GetPolicyCommand, InvokeCommand, LambdaClient, ResourceNotFoundException } from "@aws-sdk/client-lambda";
 import { DescribeReceiptRuleSetCommand, SESClient } from "@aws-sdk/client-ses";
 import { GetQueueAttributesCommand, SQSClient } from "@aws-sdk/client-sqs";
 import { dropMetric, dropReasons, inboundPrefix, receiptRuleName } from "@duva/api/infrastructure";
@@ -107,6 +108,24 @@ await check("the download Lambda's policy lets only the web app's distribution i
     JSON.stringify(statement.Principal) === '{"Service":"cloudfront.amazonaws.com"}' && statement.Condition?.ArnLike?.["AWS:SourceArn"]?.endsWith(`:distribution/${distribution}`);
   return distribution !== undefined && Statement.length > 0 && Statement.every(fine) ? undefined : `has ${Policy}`;
 });
+const unsubscriberFunction = output(stackOutputs.unsubscriberFunction);
+const missing = (request: Promise<unknown>) =>
+  request.then(
+    () => "exists",
+    (error: unknown) => {
+      if (error instanceof ResourceNotFoundException) return undefined;
+      throw error;
+    },
+  );
+await check("the unsubscriber has no resource policy, so only IAM invokes it", () => missing(lambda.send(new GetPolicyCommand({ FunctionName: unsubscriberFunction }))));
+await check("the unsubscriber has no function URL", () => missing(lambda.send(new GetFunctionUrlConfigCommand({ FunctionName: unsubscriberFunction }))));
+for (const url of ["https://169.254.169.254/latest/meta-data/", "https://localhost/", "https://[::1]/"]) {
+  await check(`the unsubscriber refuses to POST to ${url}, which isn't public`, async () => {
+    const { FunctionError, Payload } = await lambda.send(new InvokeCommand({ FunctionName: unsubscriberFunction, Payload: JSON.stringify({ url }) }));
+    const answer = new TextDecoder().decode(Payload);
+    return FunctionError === undefined && answer === JSON.stringify({ outcome: "failed", reason: "notPublic" }) ? undefined : `answered ${answer}`;
+  });
+}
 await check("deleting a draft without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/mailboxes/x/drafts/x`, { method: "DELETE" }), 401));
 await check("labelling threads without credentials answers 401", async () =>
   expectStatus(await fetch(`${apiUrl}/mailboxes/x/threads/labels`, { method: "POST", headers: { "content-type": "application/json" }, body: '{"threads":["x"],"add":["trash"]}' }), 401),

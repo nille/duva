@@ -302,6 +302,11 @@ export class DuvaStack extends Stack {
     });
     const downloadUrl = `${webUrl}/download/`;
 
+    // Blocking a sender unsubscribes by one-click: one POST to a URL from someone's mail. So it goes
+    // from a Lambda of its own, which nothing but the API may invoke, through IAM, and whose role may
+    // do nothing but write its log (ADR-0016). Its POST gives up well within its time.
+    const unsubscriber = lambda("UnsubscriberHandler", "@duva/api/unsubscriber-lambda", {}, { memorySize: 256 });
+
     const handler = lambda("ApiHandler", "@duva/api/lambda", {
       [environmentVariables.version]: version,
       [environmentVariables.tableName]: table.tableName,
@@ -310,6 +315,7 @@ export class DuvaStack extends Stack {
       [environmentVariables.receiptRuleSet]: receiving.receiptRuleSetName,
       [environmentVariables.inboundFunction]: inbound.functionArn,
       [environmentVariables.eraserFunction]: eraser.functionArn,
+      [environmentVariables.unsubscriberFunction]: unsubscriber.functionArn,
       [environmentVariables.downloadUrl]: downloadUrl,
     });
     table.grantReadWriteData(handler);
@@ -317,6 +323,8 @@ export class DuvaStack extends Stack {
     mail.grantRead(handler);
     // Emptying Trash hands the eraser the threads, without waiting.
     eraser.grantInvoke(handler);
+    // Blocking a sender waits for the unsubscriber's POST.
+    unsubscriber.grantInvoke(handler);
     // Admins add humans, who can then sign in.
     humans.grant(handler, "cognito-idp:AdminCreateUser", "cognito-idp:AdminGetUser");
     // Creating an address adds it to the receipt rule's recipients. IAM has no resource type for
@@ -421,6 +429,7 @@ export class DuvaStack extends Stack {
     new CfnOutput(this, stackOutputs.sendFailures, { value: sendFailures.queueUrl, description: "The queue of approved sends that failed processing" });
     new CfnOutput(this, stackOutputs.downloadUrl, { value: downloadUrl, description: "Where download links lead, on the web app's domain" });
     new CfnOutput(this, stackOutputs.downloadFunction, { value: download.functionName, description: "The function download links invoke through CloudFront" });
+    new CfnOutput(this, stackOutputs.unsubscriberFunction, { value: unsubscriber.functionName, description: "The function that sends one-click unsubscribes" });
     new CfnOutput(this, stackOutputs.inboundFailures, { value: inboundFailures.queueUrl, description: "The queue of received mail that failed processing" });
     ([1, 2, 3] as const).forEach((n, index) => {
       const { name, value } = identity.dkimRecords[index]!;

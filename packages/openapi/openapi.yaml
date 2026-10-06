@@ -967,11 +967,16 @@ paths:
         provider's, like gmail.com. An address's decision beats its domain's.
         Their later mail that starts a thread goes straight to Trash, even
         while the Screener is off. Trash is erased 30 days after a thread got
-        it. Blocking a sender the mailbox let in replaces that. The decision
-        and each thread it moves are recorded in the mailbox's change feed
-        under you. Only the mailbox's owner, for an agent's mailbox its
-        sponsor, and for a human's mailbox the agents they give full sponsor
-        access can decide.
+        it. Blocking a sender the mailbox let in replaces that. Blocking also
+        unsubscribes the mailbox from the sender's mail by one-click (RFC
+        8058), when their newest mail that SES didn't judge to be spam offers
+        it and a DKIM signature that passed covers its unsubscribe headers.
+        For a domain, that is the newest mail from an address there that the
+        mailbox hasn't let in. Duva never unsubscribes by mailto or by a link
+        in the body. The decision, each thread it moves and the unsubscribe's
+        outcome are recorded in the mailbox's change feed under you. Only the
+        mailbox's owner, for an agent's mailbox its sponsor, and for a human's
+        mailbox the agents they give full sponsor access can decide.
       x-cli-command: screener block
       parameters:
         - $ref: "#/components/parameters/Mailbox"
@@ -1739,6 +1744,7 @@ components:
         - $ref: "#/components/schemas/SenderScreened"
         - $ref: "#/components/schemas/ScreenerSwitched"
         - $ref: "#/components/schemas/ScreenedSenderRemoved"
+        - $ref: "#/components/schemas/UnsubscribeAttempted"
       discriminator:
         propertyName: type
         mapping:
@@ -1764,6 +1770,7 @@ components:
           senderScreened: "#/components/schemas/SenderScreened"
           screenerSwitched: "#/components/schemas/ScreenerSwitched"
           screenedSenderRemoved: "#/components/schemas/ScreenedSenderRemoved"
+          unsubscribeAttempted: "#/components/schemas/UnsubscribeAttempted"
     MessageReceived:
       type: object
       additionalProperties: false
@@ -2203,6 +2210,9 @@ components:
           description: The threads it moved, as they are now, newest first.
           items:
             $ref: "#/components/schemas/ThreadSummary"
+        unsubscribe:
+          $ref: "#/components/schemas/Unsubscribe"
+          description: For a block, how unsubscribing from the sender's mail went.
     ScreenedSenderList:
       type: object
       additionalProperties: false
@@ -2213,6 +2223,62 @@ components:
           description: The addresses and domains the mailbox let in or blocked, newest decision first.
           items:
             $ref: "#/components/schemas/ScreenedSender"
+    Unsubscribe:
+      type: object
+      additionalProperties: false
+      required: [outcome]
+      properties:
+        outcome:
+          $ref: "#/components/schemas/UnsubscribeOutcome"
+        reason:
+          $ref: "#/components/schemas/UnsubscribeReason"
+        status:
+          type: integer
+          description: The HTTP status the sender's server answered with, when it refused.
+    UnsubscribeOutcome:
+      type: string
+      enum: [unsubscribed, notOffered, failed]
+      description: >
+        unsubscribed: the sender's server took the one-click POST. notOffered:
+        Duva sent nothing, and reason says why. failed: the POST didn't go
+        through, and reason says why.
+    UnsubscribeReason:
+      type: string
+      enum: [noMail, spam, noOneClick, notSigned, notAllowed, notPublic, unreachable, timedOut, refused, tooManyRedirects]
+      description: >
+        Why it wasn't unsubscribed. Not offered: noMail, the mailbox has no
+        mail from the sender; spam, SES judged all of it to be spam;
+        noOneClick, the newest has no https List-Unsubscribe with
+        List-Unsubscribe-Post One-Click; notSigned, no DKIM signature that
+        passed covers both headers. Failed: notAllowed, the URL or a redirect
+        isn't http or https on port 80 or 443; notPublic, its host isn't at a
+        public address; unreachable, its server couldn't be reached; timedOut,
+        it didn't answer in time; refused, it answered with neither a
+        success nor a 307 or 308 redirect, and status gives its code;
+        tooManyRedirects, it redirected more than 3 times.
+    UnsubscribeAttempted:
+      allOf:
+        - $ref: "#/components/schemas/ChangeBase"
+        - type: object
+          required: [type, outcome]
+          description: Blocking a sender, by address or by domain, tried to unsubscribe the mailbox from their mail.
+          properties:
+            type:
+              type: string
+              const: unsubscribeAttempted
+            address:
+              type: string
+              description: The sender's address, in lower case, if the block is on an address.
+            domain:
+              type: string
+              description: The domain, in lower case, if the block is on a domain.
+            outcome:
+              $ref: "#/components/schemas/UnsubscribeOutcome"
+            reason:
+              $ref: "#/components/schemas/UnsubscribeReason"
+            status:
+              type: integer
+              description: The HTTP status the sender's server answered with, when it refused.
     SenderScreened:
       allOf:
         - $ref: "#/components/schemas/ChangeBase"

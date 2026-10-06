@@ -519,7 +519,7 @@ export interface paths {
         put?: never;
         /**
          * Block a sender in a mailbox, moving their waiting threads to Trash.
-         * @description Give an address, or a domain to block everyone there. A domain covers exactly that domain, not its subdomains, and can't be a public mail provider's, like gmail.com. An address's decision beats its domain's. Their later mail that starts a thread goes straight to Trash, even while the Screener is off. Trash is erased 30 days after a thread got it. Blocking a sender the mailbox let in replaces that. The decision and each thread it moves are recorded in the mailbox's change feed under you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can decide.
+         * @description Give an address, or a domain to block everyone there. A domain covers exactly that domain, not its subdomains, and can't be a public mail provider's, like gmail.com. An address's decision beats its domain's. Their later mail that starts a thread goes straight to Trash, even while the Screener is off. Trash is erased 30 days after a thread got it. Blocking a sender the mailbox let in replaces that. Blocking also unsubscribes the mailbox from the sender's mail by one-click (RFC 8058), when their newest mail that SES didn't judge to be spam offers it and a DKIM signature that passed covers its unsubscribe headers. For a domain, that is the newest mail from an address there that the mailbox hasn't let in. Duva never unsubscribes by mailto or by a link in the body. The decision, each thread it moves and the unsubscribe's outcome are recorded in the mailbox's change feed under you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can decide.
          */
         post: operations["blockSender"];
         delete?: never;
@@ -902,7 +902,7 @@ export interface components {
             position: number;
         };
         /** @description A change in a mailbox. */
-        MailboxChange: components["schemas"]["MessageReceived"] | components["schemas"]["DraftWritten"] | components["schemas"]["DraftChanged"] | components["schemas"]["DraftDeleted"] | components["schemas"]["SendAsked"] | components["schemas"]["ApprovalAsked"] | components["schemas"]["ApprovalWithdrawn"] | components["schemas"]["ApprovalDecided"] | components["schemas"]["MessageSent"] | components["schemas"]["SendFailed"] | components["schemas"]["SendUnclear"] | components["schemas"]["ThreadRead"] | components["schemas"]["ThreadUnread"] | components["schemas"]["ThreadLabelsChanged"] | components["schemas"]["LabelCreated"] | components["schemas"]["LabelRenamed"] | components["schemas"]["LabelDeleted"] | components["schemas"]["ThreadErased"] | components["schemas"]["AgentSettingsChanged"] | components["schemas"]["SenderScreened"] | components["schemas"]["ScreenerSwitched"] | components["schemas"]["ScreenedSenderRemoved"];
+        MailboxChange: components["schemas"]["MessageReceived"] | components["schemas"]["DraftWritten"] | components["schemas"]["DraftChanged"] | components["schemas"]["DraftDeleted"] | components["schemas"]["SendAsked"] | components["schemas"]["ApprovalAsked"] | components["schemas"]["ApprovalWithdrawn"] | components["schemas"]["ApprovalDecided"] | components["schemas"]["MessageSent"] | components["schemas"]["SendFailed"] | components["schemas"]["SendUnclear"] | components["schemas"]["ThreadRead"] | components["schemas"]["ThreadUnread"] | components["schemas"]["ThreadLabelsChanged"] | components["schemas"]["LabelCreated"] | components["schemas"]["LabelRenamed"] | components["schemas"]["LabelDeleted"] | components["schemas"]["ThreadErased"] | components["schemas"]["AgentSettingsChanged"] | components["schemas"]["SenderScreened"] | components["schemas"]["ScreenerSwitched"] | components["schemas"]["ScreenedSenderRemoved"] | components["schemas"]["UnsubscribeAttempted"];
         /** @description Mail arrived. No actor made this change, so it names none. */
         MessageReceived: {
             /** @description The change's position in the mailbox's feed, counting from 1. */
@@ -1282,10 +1282,46 @@ export interface components {
             sender: components["schemas"]["ScreenedSender"];
             /** @description The threads it moved, as they are now, newest first. */
             threads: components["schemas"]["ThreadSummary"][];
+            /** @description For a block, how unsubscribing from the sender's mail went. */
+            unsubscribe?: components["schemas"]["Unsubscribe"];
         };
         ScreenedSenderList: {
             /** @description The addresses and domains the mailbox let in or blocked, newest decision first. */
             senders: components["schemas"]["ScreenedSender"][];
+        };
+        Unsubscribe: {
+            outcome: components["schemas"]["UnsubscribeOutcome"];
+            reason?: components["schemas"]["UnsubscribeReason"];
+            /** @description The HTTP status the sender's server answered with, when it refused. */
+            status?: number;
+        };
+        /**
+         * @description unsubscribed: the sender's server took the one-click POST. notOffered: Duva sent nothing, and reason says why. failed: the POST didn't go through, and reason says why.
+         * @enum {string}
+         */
+        UnsubscribeOutcome: "unsubscribed" | "notOffered" | "failed";
+        /**
+         * @description Why it wasn't unsubscribed. Not offered: noMail, the mailbox has no mail from the sender; spam, SES judged all of it to be spam; noOneClick, the newest has no https List-Unsubscribe with List-Unsubscribe-Post One-Click; notSigned, no DKIM signature that passed covers both headers. Failed: notAllowed, the URL or a redirect isn't http or https on port 80 or 443; notPublic, its host isn't at a public address; unreachable, its server couldn't be reached; timedOut, it didn't answer in time; refused, it answered with neither a success nor a 307 or 308 redirect, and status gives its code; tooManyRedirects, it redirected more than 3 times.
+         * @enum {string}
+         */
+        UnsubscribeReason: "noMail" | "spam" | "noOneClick" | "notSigned" | "notAllowed" | "notPublic" | "unreachable" | "timedOut" | "refused" | "tooManyRedirects";
+        UnsubscribeAttempted: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "unsubscribeAttempted";
+            /** @description The sender's address, in lower case, if the block is on an address. */
+            address?: string;
+            /** @description The domain, in lower case, if the block is on a domain. */
+            domain?: string;
+            outcome: components["schemas"]["UnsubscribeOutcome"];
+            reason?: components["schemas"]["UnsubscribeReason"];
+            /** @description The HTTP status the sender's server answered with, when it refused. */
+            status?: number;
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "unsubscribeAttempted";
         };
         SenderScreened: components["schemas"]["ChangeBase"] & {
             /** @constant */
