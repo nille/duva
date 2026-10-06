@@ -637,6 +637,45 @@ test("removing a block puts the sender's threads still in Trash back in the Inbo
   ]);
 });
 
+test("removing a block restores only the threads the block moved to Trash, and leaves those trashed by hand there", async () => {
+  const { grace, params, receive, listed, letIn, block, remove } = await withScreener();
+  const label = (thread: string, change: { add?: string[]; remove?: string[] }) => grace.POST("/mailboxes/{mailbox}/threads/labels", { params, body: { threads: [thread], ...change } });
+  const waitedTrashed = await receive(note("mallory@example.net", "Waited, trashed by hand"));
+  await label(waitedTrashed.thread, { add: ["trash"] });
+  await letIn("mallory@example.net");
+  const trashedByHand = await receive(note("mallory@example.net", "Let in, trashed by hand"));
+  await label(trashedByHand.thread, { add: ["trash"] });
+  await remove("mallory@example.net");
+  const waited = await receive(note("mallory@example.net", "Waited"));
+  await block("mallory@example.net");
+  const arrived = await receive(note("mallory@example.net", "Arrived blocked"));
+  const retrashed = await receive(note("mallory@example.net", "Restored, then trashed by hand"));
+  await label(retrashed.thread, { remove: ["trash"] });
+  await label(retrashed.thread, { add: ["trash"] });
+
+  const { data } = await remove("mallory@example.net");
+
+  expect(data!.threads.map(({ id }) => id)).toEqual([arrived.thread, waited.thread]);
+  expect(await listed("inbox")).toEqual([arrived.thread, waited.thread]);
+  expect(await listed("trash")).toEqual([retrashed.thread, trashedByHand.thread, waitedTrashed.thread]);
+});
+
+test("letting in a blocked domain restores only the threads the block moved to Trash", async () => {
+  const { grace, params, receive, listed, letIn, block } = await withScreener();
+  await block({ domain: "example.net" });
+  const arrived = await receive(note("mallory@example.net", "Arrived blocked"));
+  const retrashed = await receive(note("trudy@example.net", "Restored, then trashed by hand"));
+  const label = (change: { add?: string[]; remove?: string[] }) => grace.POST("/mailboxes/{mailbox}/threads/labels", { params, body: { threads: [retrashed.thread], ...change } });
+  await label({ remove: ["trash"] });
+  await label({ add: ["trash"] });
+
+  const { data } = await letIn({ domain: "example.net" });
+
+  expect(data!.threads.map(({ id }) => id)).toEqual([arrived.thread]);
+  expect(await listed("inbox")).toEqual([arrived.thread]);
+  expect(await listed("trash")).toEqual([retrashed.thread]);
+});
+
 test("removing a let-in makes the sender first-time again, and leaves their threads where they are", async () => {
   const { graceId, receive, listed, letIn, remove, changes } = await withScreener();
   const first = await receive(note("mallory@example.net", "First"));

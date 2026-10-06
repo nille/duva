@@ -34,6 +34,11 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+// The names Duva lists a service by where the port's would mislead. MailTrackerBlocker names
+// Mailchimp's pixels after Intuit, which owns it, but the mail's sender knows it as Mailchimp.
+// Mapped here rather than in the list, so the port stays as it is.
+export const listedNames: Record<string, string> = { Intuit: "Mailchimp" };
+
 export const knownTrackers: [service: string, patterns: string[]][] = [
   ["1&1", ["simg.1und1.de", "oc.ionos.com/\\?utm_rid=", "t.ionos.com/oms_p/"]],
   ["365offers.trade", ["trk.365offers.trade"]],

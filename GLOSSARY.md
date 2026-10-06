@@ -109,7 +109,7 @@ A built-in label for mail judged to be spam. Threads with it are out of the Inbo
 A built-in label for deleted threads. Trash and Spam are erased for good after the organization's retention period, 30 days by default. Only the mailbox owner can empty Trash early.
 
 **Screener**:
-Where mail from a mailbox's first-time senders waits until an actor who may organize the mailbox lets the sender in or blocks them. A first-time sender is one the mailbox hasn't let in and hasn't sent mail to; senders on the organization's own domains, and messages joining a thread the mailbox already has, never wait. Letting in moves the sender's waiting threads to the Inbox; blocking moves them to Trash, and later mail from them goes straight there. On by default for humans' personal mailboxes, off for agents'; the mailbox's owner switches it.
+Where mail from a mailbox's first-time senders waits until an actor who may organize the mailbox lets the sender in or blocks them. A first-time sender is one the mailbox hasn't let in and hasn't sent mail to; senders on the organization's own domains, and messages joining a thread the mailbox already has, never wait. Letting in moves the sender's waiting threads to the Inbox; blocking moves them to Trash, and later mail from them goes straight there. Removing a block, or letting the sender in, brings back to the Inbox only the threads the block put in Trash, never those trashed by hand. On by default for humans' personal mailboxes, off for agents'; the mailbox's owner switches it.
 _Avoid_: gatekeeper, allowlist
 
 **Screened sender**:

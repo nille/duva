@@ -60,6 +60,24 @@ test("after signing in, a human lands on their Inbox, newest thread first, each 
   expect(await page.getByText("2 unread", { exact: true }).isVisible()).toBe(true);
 });
 
+test("the tab shows Duva's icon, and the page loads without an error", budget, async () => {
+  const { page, signIn } = await withPersonalMailbox();
+  const errors: string[] = [];
+  page.on("console", (message) => void (message.type() === "error" && errors.push(message.text())));
+
+  await signIn("grace@example.org");
+  await expect.poll(() => page.getByRole("heading", { level: 1 }).textContent(), wait).toBe("Inbox");
+
+  const icons = await page.locator("link[rel=icon]").evaluateAll((links) => links.map((link) => (link as HTMLLinkElement).href));
+  const loaded = await page.evaluate(
+    (icons) => Promise.all(icons.map((icon) => new Promise<boolean>((resolve) => Object.assign(new Image(), { onload: () => resolve(true), onerror: () => resolve(false), src: icon })))),
+    icons,
+  );
+  expect(icons.map((icon) => new URL(icon).pathname)).toEqual(["/favicon.ico", "/favicon.svg"]);
+  expect(loaded).toEqual([true, true]);
+  expect(errors).toEqual([]);
+});
+
 test("opening a thread shows its messages oldest first, and the Inbox then lists it read", budget, async () => {
   const { page, signIn, receive } = await withPersonalMailbox();
   await receive(await mail("plain"));

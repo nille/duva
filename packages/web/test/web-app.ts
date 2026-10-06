@@ -122,6 +122,7 @@ const types: Record<string, string> = {
   ".css": "text/css",
   ".woff2": "font/woff2",
   ".svg": "image/svg+xml",
+  ".ico": "image/x-icon",
 };
 
 async function serve(root: string, harness: { url: string; signIn: { clientId: string } }, hiddenPollInterval: number) {

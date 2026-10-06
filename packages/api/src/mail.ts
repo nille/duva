@@ -110,11 +110,13 @@ export type ErasedLabel = typeof spam | typeof trash;
 const erasedLabels: ErasedLabel[] = [spam, trash];
 
 /**
- * A thread's summary as stored, with whether the mailbox sent in it, and when it got Spam and
- * Trash if it has them. Threads stored before Sent existed don't say, and those that got Spam or
- * Trash before erasure existed have no time for it.
+ * A thread's summary as stored, with whether the mailbox sent in it, when it got Spam and Trash if
+ * it has them, and whether a block on its sender put it in Trash, on arrival or from the Screener,
+ * so lifting the block restores only those. Threads stored before Sent existed don't say, those
+ * that got Spam or Trash before erasure existed have no time for it, and those a block put in Trash
+ * before blocks were marked aren't marked.
  */
-export type StoredSummary = ThreadSummary & { sent?: boolean; labelledAt?: Partial<Record<ErasedLabel, string>> };
+export type StoredSummary = ThreadSummary & { sent?: boolean; labelledAt?: Partial<Record<ErasedLabel, string>>; trashedByBlock?: boolean };
 
 /** How many of the messages a reply names are looked up, newest first, to find its thread. */
 const answersLookedUp = 100;
@@ -187,6 +189,7 @@ export async function receiveMessage(table: Table, arrival: Arrival): Promise<bo
     }),
     once: () => ({ Put: { TableName: table.name, Item: receivedKey(mailbox, sesMessageId), ...isNew } }),
     checks: arrival.spam ? [] : (screening?.items ?? []),
+    trashedByBlock: !arrival.spam && started === trash,
   });
 }
 
@@ -229,13 +232,13 @@ export async function storeSentMessage(
  * gives for either if it gives one, in one transaction with the write `once` gives for the thread,
  * the checks, and the change in the mailbox's change feed. If `findable`, its Message-ID points at
  * it, so replies to it join its thread. If `unread` is given, the thread becomes unread or read. If
- * `sent`, Sent lists the thread from then on. If the message is the thread's newest, its text
- * gives the thread's snippet. Returns false if that write's condition failed, since then the
+ * `sent`, Sent lists the thread from then on. If `trashedByBlock`, a new thread is marked as put in
+ * Trash by a block. If the message is the thread's newest, its text gives the thread's snippet. Returns false if that write's condition failed, since then the
  * message is already stored, and throws ScreeningChanged if a check's did.
  */
 async function storeMessage(
   table: Table,
-  { mailbox, message, text, thread: find, label: labelFor, unread, findable, sent, by, change, once, checks = [] }: {
+  { mailbox, message, text, thread: find, label: labelFor, unread, findable, sent, by, change, once, checks = [], trashedByBlock }: {
     mailbox: string;
     message: StoredMessage;
     text: string;
@@ -248,6 +251,7 @@ async function storeMessage(
     change: (thread: string, joined: boolean) => object;
     once: (thread: string) => TransactItem;
     checks?: TransactItem[];
+    trashedByBlock?: boolean;
   },
 ): Promise<boolean> {
   const { id, receivedAt } = message;
@@ -271,6 +275,7 @@ async function storeMessage(
             latestAt: receivedAt,
             messages: 1,
             ...(sent && { sent }),
+            ...(trashedByBlock && { trashedByBlock }),
           }
         : {
             ...joined,
@@ -382,6 +387,8 @@ async function changeThreads(
       const next = change(current!);
       if (next === undefined) break;
       timeErasedLabels(current, next.summary);
+      // Out of Trash, a thread is no longer there by a block, so trashed again it is there by hand.
+      if (!next.summary.labels.includes(trash)) delete next.summary.trashedByBlock;
       try {
         await recordChanges(table, mailboxFeed(mailbox), {
           by,
@@ -512,7 +519,12 @@ export async function timeEarlierLabels(table: Table): Promise<void> {
 export async function threadSummary(table: Table, mailbox: string, thread: string): Promise<StoredSummary | undefined> {
   const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: threadKey(mailbox, thread), ConsistentRead: true }));
   if (Item === undefined || Item.erasing === true) return undefined;
-  return { ...summaryOf(Item as ThreadSummary), ...(Item.sent === true && { sent: true }), ...(Item.labelledAt !== undefined && { labelledAt: Item.labelledAt }) };
+  return {
+    ...summaryOf(Item as ThreadSummary),
+    ...(Item.sent === true && { sent: true }),
+    ...(Item.labelledAt !== undefined && { labelledAt: Item.labelledAt }),
+    ...(Item.trashedByBlock === true && { trashedByBlock: true }),
+  };
 }
 
 /** The thread of the first of the messages that the mailbox has, if it has any. */
@@ -791,8 +803,9 @@ export async function threadsLabelled(table: Table, mailbox: string, label: stri
 
 /**
  * Takes each waiting thread out of the Screener, to the Inbox unless it is in Spam or Trash, or to
- * Trash, with a change in the mailbox's change feed attributed to the actor `by` for each, and
- * returns the threads as they are now, in the order given. A thread erased meanwhile is left out.
+ * Trash, marked as put there by a block unless it was there already, with a change in the
+ * mailbox's change feed attributed to the actor `by` for each, and returns the threads as they
+ * are now, in the order given. A thread erased meanwhile is left out.
  */
 export async function releaseWaiting(table: Table, { mailbox, threads, to, by }: { mailbox: string; threads: string[]; to: typeof inbox | typeof trash; by: string }): Promise<ThreadSummary[]> {
   const found = (await Promise.all(threads.map((thread) => threadSummary(table, mailbox, thread)))).filter((summary) => summary !== undefined);
@@ -802,20 +815,22 @@ export async function releaseWaiting(table: Table, { mailbox, threads, to, by }:
     const labels = to === trash ? relabelled(kept, [trash], []) : kept.includes(spam) || kept.includes(trash) ? kept : [...kept, inbox];
     const added = labels.filter((label) => !current.labels.includes(label));
     const removed = current.labels.filter((label) => !labels.includes(label));
-    return { summary: { ...current, labels }, change: { type: "threadLabelsChanged", thread: current.id, added, removed } };
+    return { summary: { ...current, labels, ...(added.includes(trash) && { trashedByBlock: true }) }, change: { type: "threadLabelsChanged", thread: current.id, added, removed } };
   });
   return "threads" in released ? released.threads : [];
 }
 
 /**
- * Takes each thread out of Trash, back to the Inbox as removing the label does, with a change in
- * the mailbox's change feed attributed to the actor `by` for each, and returns the threads as they
- * are now, in the order given. A thread erased meanwhile is left out.
+ * Takes each thread a block put in Trash out of it, back to the Inbox as removing the label does,
+ * with a change in the mailbox's change feed attributed to the actor `by` for each, and returns
+ * those threads as they are now, in the order given. A thread erased meanwhile, or in Trash by
+ * hand, is left out.
  */
-export async function restoreFromTrash(table: Table, { mailbox, threads, by }: { mailbox: string; threads: string[]; by: string }): Promise<ThreadSummary[]> {
-  const found = (await Promise.all(threads.map((thread) => threadSummary(table, mailbox, thread)))).filter((summary) => summary !== undefined);
+export async function restoreBlocked(table: Table, { mailbox, threads, by }: { mailbox: string; threads: string[]; by: string }): Promise<ThreadSummary[]> {
+  const blocked = (summary: StoredSummary | undefined): summary is StoredSummary => summary !== undefined && summary.labels.includes(trash) && summary.trashedByBlock === true;
+  const found = (await Promise.all(threads.map((thread) => threadSummary(table, mailbox, thread)))).filter(blocked);
   const restored = await changeThreads(table, { mailbox, threads: found.map(({ id }) => id), by }, (current) => {
-    if (!current.labels.includes(trash)) return undefined;
+    if (!blocked(current)) return undefined;
     const labels = relabelled(current.labels, [], [trash]);
     const added = labels.filter((label) => !current.labels.includes(label));
     return { summary: { ...current, labels }, change: { type: "threadLabelsChanged", thread: current.id, added, removed: [trash] } };

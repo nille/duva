@@ -125,7 +125,23 @@ test("known trackers are removed and listed by service, and images hidden or of 
   );
 
   expect(message.html).toBe(`<p>Hej!</p><img src="https://lindvallen.example.net/lag.jpg" width="600" height="300" alt="Laget" />`);
-  expect(message.removedTrackers).toEqual(["Intuit", "SendGrid", ...Array(10).fill("a hidden image")]);
+  expect(message.removedTrackers).toEqual(["Mailchimp", "SendGrid", ...Array(10).fill("a hidden image")]);
+});
+
+test("Mailchimp's open pixels are listed as Mailchimp, whichever of its addresses they load from", async () => {
+  const { read } = await withMailbox();
+
+  const message = await read(
+    newsletter(
+      [
+        `<p>Hej!</p>`,
+        `<img src="https://lindvallen.us21.list-manage.com/track/open.php?u=abc&id=def" alt="">`,
+        `<img src="https://us21.mailchimp.com/mctx/opens?xid=abc" alt="">`,
+      ].join(""),
+    ),
+  );
+
+  expect(message.removedTrackers).toEqual(["Mailchimp", "Mailchimp"]);
 });
 
 test("a known tracker in a background or a style's url() is removed and listed by service, as MailTrackerBlocker finds them in CSS", async () => {

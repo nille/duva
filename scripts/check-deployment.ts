@@ -213,6 +213,10 @@ await check("the web app is served", async () => {
   const response = await fetch(`${webUrl}/`);
   return response.ok && response.headers.get("content-type")?.startsWith("text/html") ? undefined : `answered ${response.status}`;
 });
+await check("the web app's icon is served", async () => {
+  const response = await fetch(`${webUrl}/favicon.ico`);
+  return response.ok && response.headers.get("content-type") === "image/x-icon" ? undefined : `answered ${response.status} with ${response.headers.get("content-type")}`;
+});
 await check("the web app's config names this deployment's API and sign-in", async () => {
   const config = (await (await fetch(`${webUrl}/config.json`)).json()) as {
     apiUrl?: string;

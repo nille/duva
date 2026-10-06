@@ -317,6 +317,13 @@ export const strings = {
       approval: "My approval before it sends from its own mailbox",
       approvalHint: "Its sends wait for you in Approvals. Off, they go out at once.",
     },
+    summary: {
+      access: { none: "No access to your mailbox.", read: "Reads your mailbox.", full: "Full access to your mailbox." },
+      allWait: "Its sends wait for your approval.",
+      noneWait: "Its sends go out without your approval.",
+      ownWait: "Its sends from its own mailbox wait for your approval.",
+      asSponsorWait: "Its sends as you wait for your approval.",
+    },
     line: "Add a line saying an agent sent it",
     lineHint: (agent: string, sponsor: string) => `The text ends with "Sent by ${agent} for ${sponsor}". A header always says so too, for software.`,
     saved: "Saved. This applies at once.",

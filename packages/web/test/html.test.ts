@@ -119,7 +119,7 @@ test("a single tracker is named by its service", budget, async () => {
 
   await letterFrame(page);
 
-  expect(await page.getByRole("article").getByText("Removed a tracker from Intuit.").count()).toBe(1);
+  expect(await page.getByRole("article").getByText("Removed a tracker from Mailchimp.").count()).toBe(1);
 });
 
 test("a script and an inline handler in HTML mail don't run, and the frame is never allowed scripts", budget, async () => {

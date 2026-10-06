@@ -8,7 +8,7 @@ import { GetCommand, PutCommand, QueryCommand, TransactWriteCommand } from "@aws
 import type { components } from "@duva/openapi";
 import type { Table } from "./deployment.ts";
 import { recordChanges } from "./feed.ts";
-import { type Arrival, correspondents, hasSentTo, inbox, noteSentTo, receiveMessage, releaseWaiting, restoreFromTrash, screener, type Screening, ScreeningChanged, spam, threadsLabelled, type ThreadSummary, trash, waitingThreads } from "./mail.ts";
+import { type Arrival, correspondents, hasSentTo, inbox, noteSentTo, receiveMessage, releaseWaiting, restoreBlocked, screener, type Screening, ScreeningChanged, spam, threadsLabelled, type ThreadSummary, trash, waitingThreads } from "./mail.ts";
 import { allMailboxes, findActor, findMailbox, mailboxFeed, mailboxKey, organizationDomain, screenerKey } from "./organization.ts";
 import { documents, pk, sk, type TransactItem } from "./table.ts";
 
@@ -215,7 +215,7 @@ export async function removeDecision(
 /**
  * Moves the threads from senders the address or domain covers as their decision changed from
  * `before` to `after`: those that wait to the Inbox if let in now, or to Trash if blocked, and
- * those in Trash to the Inbox if they were blocked and aren't now. Returns them, newest first.
+ * those a block put in Trash to the Inbox if they were blocked and aren't now. Returns them, newest first.
  */
 async function moveCovered(
   table: Table,
@@ -229,11 +229,10 @@ async function moveCovered(
     ...(await releaseWaiting(table, { mailbox, threads: waiting.filter(decidedFor(after, "letIn")).map(({ id }) => id), to: inbox, by })),
     ...(await releaseWaiting(table, { mailbox, threads: waiting.filter(decidedFor(after, "block")).map(({ id }) => id), to: trash, by })),
   ];
-  // Restored after release, so a waiting thread in Trash that is let in leaves both. Only a block
-  // lifted can restore any, so Trash is read only if the mailbox had one.
+  // Only a block lifted can restore any, so Trash is read only if the mailbox had one.
   const hadBlock = [...before.values()].some(({ decision }) => decision === "block");
   const unblocked = (hadBlock ? await threadsLabelled(table, mailbox, trash) : []).filter((thread) => covers(thread) && decidedFor(before, "block")(thread) && !decidedFor(after, "block")(thread));
-  const restored = await restoreFromTrash(table, { mailbox, threads: unblocked.map(({ id }) => id), by });
+  const restored = await restoreBlocked(table, { mailbox, threads: unblocked.map(({ id }) => id), by });
   const threads = new Map([...moved, ...restored].map((thread) => [thread.id, thread]));
   return [...threads.values()].sort((a, b) => b.latestAt.localeCompare(a.latestAt));
 }

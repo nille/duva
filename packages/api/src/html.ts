@@ -3,7 +3,7 @@
 // attributes known to be harmless are kept, which leaves out scripts, event handlers, forms,
 // frames, objects and `javascript:` links, and known trackers are removed and listed.
 import sanitizeHtml from "sanitize-html";
-import { knownTrackers } from "./trackers.ts";
+import { knownTrackers, listedNames } from "./trackers.ts";
 
 /** The HTML as Duva serves it, and the trackers removed from it. */
 export interface ServedHtml {
@@ -76,7 +76,7 @@ export function serveHtml(html: string, linkTo: (contentId: string) => string | 
   /** The service of the first known tracker the URL leads to, listed as removed, if it leads to one. */
   const trackerRemoved = (url: string, patterns = trackerPatterns) => {
     const service = patterns.find(([, pattern]) => pattern.test(url))?.[0];
-    if (service !== undefined) removedTrackers.push(service);
+    if (service !== undefined) removedTrackers.push(listedNames[service] ?? service);
     return service;
   };
   /** The URL with a `cid:` URL leading to its part, or undefined if it can't be had. */
