@@ -33,6 +33,15 @@ To re-run the benchmark on a new LanceDB release, one command pins and installs 
 
 ```sh
 node harness/harness.ts benchmark <version>   # for example 0.40.0
+node harness/harness.ts benchmark --shipped   # only what Duva ships, into results/62-latency.json (about 1.5 hours)
+```
+
+`--shipped` measures only the x64 zip at 10,240 MB with the vector index, the configuration ADR-0007 chose, in about an hour less. It still rewrites `results/16-mailbox.json`, so keep that run's copy under its own ticket's name and restore #16's.
+
+#62 tunes the vector index with `harness/recall.ts`, which needs no stack. It reads the vectors `node harness/models.ts export` keeps in .data/models/:
+
+```sh
+node harness/recall.ts            # each vector index's recall against a flat scan, into results/62-recall.json
 ```
 
 #19 has a harness of its own, `harness/models.ts`, with its own stack, `duva-search-spike-models`. It reads the benchmark mailbox and never writes to it:
@@ -305,3 +314,38 @@ Titan V2, eu-north-1, on 2026-10-04:
 - Query embedding from Lambda (`nodejs24.x`, x64, 1,769 MB), timed in the handler, 300 questions per size: warm p50 54 to 63 ms and p95 111 to 121 ms. The first request in a new environment, 10 per size: p50 160 to 168 ms. Size makes no difference.
 
 Open risk for #20: Swedish MRR is far below English, 0.13 against 0.38. The Swedish mail is generated from a few sentences per topic, so many messages answer each Swedish question about equally well, and it's unclear whether the gap is Titan's or the data's. Real Swedish mail would settle it.
+
+## #62: the vector index, and hybrid search as Duva runs it
+
+LanceDB 0.39.0, eu-north-1, 2026-10-06. Raw numbers in `results/62-recall.json`, `results/62-mailbox.json` and `results/62-latency.json`.
+
+**Recall.** `harness/recall.ts` loads the 100k mailbox's Titan vectors into a table on local disk, in 50 fragments as the benchmark's, and asks each index for the top 20 of #19's 300 questions and #17's 15 meanings. Recall is the share of a flat scan's top 20 it finds. Labels are drawn in the benchmark's shares, so a search can leave out Spam and Trash (8.1%) or keep only Travel (1.8%).
+
+| Index | Search | Recall, none / not Spam or Trash / Travel | Built in |
+| --- | --- | --- | ---: |
+| IVF_PQ at defaults | defaults | 0.50 / 0.51 / 0.47 | 47 s |
+| IVF_PQ at defaults | refine factor 10 | 0.87 / 0.87 / 0.88 | |
+| IVF_PQ, 128 subvectors | refine factor 5 | 0.93 / 0.93 / 0.92 | 87 s |
+| IVF_PQ, 256 subvectors | refine factor 2 | 0.97 / 0.97 / 0.97 | 294 s |
+| IVF_HNSW_SQ | ef 100 | 0.94 / 0.95 / 0.98, and 0 for some queries | 19 s |
+| **IVF_RQ** | **refine factor 5** | **0.98 / 0.98 / 0.98** | **0.8 s** |
+
+- Probing 40 partitions instead of LanceDB's 20 changed IVF_PQ by nothing and IVF_RQ by 0.01, so what loses neighbours is quantization, which refining from the full vectors makes up.
+- Duva ships IVF_RQ with a refine factor of 5. Built on S3 in the benchmark table it takes 14.6 MB for 100k messages, and its six check queries found all of a flat scan's top 10.
+- Built again on the same 100k vectors, on local disk, IVF_RQ takes 0.9 s on 16 cores and 5.8 s at about 600 MB on one core, as Duva's indexer has.
+
+**Hybrid search.** LanceDB's own hybrid search scales each side's distances and scores to between 0 and 1 before its reranker sees them, so it can't tell a near meaning from a far one. Duva runs the words and the meaning as two searches of the table at once, and fuses them by RRF itself. The spike's module does the same now, so the benchmark measures that.
+
+**Latency,** with `benchmark --shipped`: the x64 zip at 10,240 MB, the benchmark mailbox built again with IVF_RQ (embedding $0.55), the same query set. Milliseconds, inside the Lambda, cold including init.
+
+| Query | Target | Cold p50 / p95 | Cold round trip p95 | Warm-first p95 | Warm p50 / p95 | #17's warm p95, cold p95 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| keyword | 300 warm | 2,452 / 2,566 | 3,232 | 879 | 75 / 186 | 177, 2,534 |
+| phrase | 500 warm | 2,385 / 2,569 | 3,173 | 907 | 61 / 171 | 166, 2,567 |
+| vector | 500 warm | 2,516 / 2,650 | 3,239 | 954 | 184 / 241 | 202, 2,403 |
+| hybrid | 800 warm | 2,596 / 2,698 | 3,304 | 934 | 179 / 213 | 193, 2,689 |
+
+- Every target holds: cold under 3,000 ms, by 0.30 s at worst, as in #17. Seen by the caller, cold takes 3.2 to 3.3 s, also as in #17.
+- Vector queries take about 40 ms more than with IVF_PQ at its defaults when warm, and 0.25 s more at cold p95. That's the refining, which reads the 100 nearest's full vectors.
+- This measures the spike's module, which has Duva's index, refining and fusion but not its cut of far meanings, its definite Swedish forms or its 1,000-message vector index threshold. The real run measures Duva's own search Lambda.
+

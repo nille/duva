@@ -2,7 +2,7 @@
 // DynamoDB Local (started by dynamodb-local.ts) for DynamoDB and its stream, an in-memory stand-in
 // for the mail bucket and for the inbound Lambda's log, stand-ins for SES receiving and sending, a
 // stand-in internet for the unsubscriber, a test token issuer in place of Cognito, and search indexes
-// in LanceDB on local disk, with a stand-in for the indexer's FIFO queue. Tests drive
+// in LanceDB on local disk, with a stand-in for the indexer's FIFO queue and Titan's recorded vectors. Tests drive
 // the API only through the generated client, hand mail to SES as a sender's server does, read what
 // SES sent, and put web servers on the internet to see what the unsubscriber sends them.
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
@@ -38,6 +38,7 @@ import { gateway } from "./gateway.ts";
 import { managedLogin, managedLoginClientId } from "./managed-login.ts";
 import { type Envelope, type ReceiveOptions, sesReceiving, sesSending } from "./ses.ts";
 import { tableStream } from "./streams.ts";
+import { recordedTitan } from "./titan.ts";
 import { TestTokenIssuer } from "./token-issuer.ts";
 import { type ReceivedRequest, standInInternet, type WebServerOptions } from "./web.ts";
 
@@ -192,7 +193,10 @@ export async function startDuva({
   const indexes = join(searchIndexes, randomUUID());
   const indexQueue = memoryIndexQueue();
   const eraser = createEraser({ table, mailBucket, indexQueue });
-  const indexer = createIndexer({ table, mailBucket, engine: lanceSearch({ uri: indexes }), queue: indexQueue, backfillMessages: 2 });
+  const titan = recordedTitan();
+  // A test mailbox is small, so its vector index is built from a few messages.
+  const vectorIndexFrom = 5;
+  const indexer = createIndexer({ table, mailBucket, engine: lanceSearch({ uri: indexes, embedder: titan, vectorIndexFrom }), queue: indexQueue, backfillMessages: 2 });
   let searchDeployed = !beforeSearch;
   const feeder = createFeeder(indexQueue);
   const feed = tableStream(database, streamArn, [
@@ -202,7 +206,7 @@ export async function startDuva({
     await feed.deliver();
     await indexQueue.drain(indexer);
   };
-  const searcher = createSearcher(lanceSearch({ uri: indexes }));
+  const searcher = createSearcher(lanceSearch({ uri: indexes, embedder: titan }));
   const stream = tableStream(database, streamArn, [
     { filter: senderFilter, handler: createSender({ table, mailBucket, outbound: sending.outbound, region }), retries: senderRetries, invocations: senderInvocations },
   ]);

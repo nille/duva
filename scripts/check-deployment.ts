@@ -9,8 +9,9 @@
 // deploy published; the user pool takes sign-in names in any case, and no pool the stack retired
 // is left; once an address exists, SES's receipt rule lists it; and no received mail and no
 // approved send waits in a failure queue; nothing but IAM may invoke search, which runs at 10,240 MB
-// on x64; every mailbox's search index is backfilled, none has held erased mail for more than a
-// day, and no indexer task waits in its failure queue. Signing in stays with a human. Then prints how many
+// on x64; every mailbox's search index is backfilled, none has held
+// erased mail for more than a day, and no indexer task waits in its failure queue. Signing in stays
+// with a human. Then prints how many
 // messages Duva dropped on arrival each day of the last 7, by reason. Exits 1 if any check fails.
 import { CloudFormationClient, DescribeStacksCommand, paginateListStackResources } from "@aws-sdk/client-cloudformation";
 import { CloudWatchClient, GetMetricDataCommand } from "@aws-sdk/client-cloudwatch";

@@ -6,6 +6,7 @@
 import snowball from "snowball-stemmers";
 import { readableLine } from "./readable-line.ts";
 import type { SearchTerm } from "./search-engine.ts";
+import { definiteForms, messageLanguage } from "./swedish.ts";
 
 export interface Snippet {
   text: string;
@@ -38,12 +39,14 @@ export function snippetFor(text: string, terms: SearchTerm[]): Snippet {
   const line = readableLine(text);
   const words = [...line.matchAll(/[\p{L}\p{N}]+/gu)].map((match) => ({ start: match.index, end: match.index + match[0].length, forms: formsOf(match[0]) }));
   const matched: { start: number; end: number }[] = [];
+  const swedish = messageLanguage({ subject: "", text }) === "Swedish";
   for (const term of terms.filter((each) => each.in === "anywhere")) {
-    const wanted = [...term.text.matchAll(/[\p{L}\p{N}]+/gu)].map(([word]) => formsOf(word));
+    // In Swedish text a word matches its other definite form too, as the index does, and a phrase only as written.
+    const wanted = [...term.text.matchAll(/[\p{L}\p{N}]+/gu)].map(([word]) => [word, ...(term.phrase || !swedish ? [] : definiteForms(word))].map(formsOf));
     if (wanted.length === 0) continue;
     // A phrase matches where its words stand together, and a word with several parts, like an address, too.
     for (let at = 0; at + wanted.length <= words.length; at++) {
-      if (wanted.every((forms, offset) => sameWord(words[at + offset]!.forms, forms))) {
+      if (wanted.every((alternatives, offset) => alternatives.some((forms) => sameWord(words[at + offset]!.forms, forms)))) {
         matched.push({ start: words[at]!.start, end: words[at + wanted.length - 1]!.end });
       }
     }

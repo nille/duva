@@ -66,7 +66,7 @@ const phrase: Query[] = [
 
 // Filtered vector queries: every one has a filter, label, sender and date
 // among them.
-const meanings = [
+export const meanings = [
   "pipeline capacity for natural gas into California",
   "who is in the fantasy football league this season",
   "what happens to employees' retirement savings after the bankruptcy",

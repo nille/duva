@@ -23,6 +23,7 @@
     "typecheck": "tsc -p ."
   },
   "dependencies": {
+    "@aws-sdk/client-bedrock-runtime": "^3.1146.0",
     "@aws-sdk/client-cognito-identity-provider": "^3.1146.0",
     "@aws-sdk/client-dynamodb": "^3.1146.0",
     "@aws-sdk/client-lambda": "^3.1146.0",

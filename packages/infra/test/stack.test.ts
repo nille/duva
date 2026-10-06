@@ -3,7 +3,7 @@
 import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { environmentVariables, feederFilter, senderFilter, senderRetries, timeToLiveAttribute } from "@duva/api/infrastructure";
+import { embeddingModel, environmentVariables, feederFilter, senderFilter, senderRetries, timeToLiveAttribute } from "@duva/api/infrastructure";
 import { operations } from "@duva/openapi";
 import { buildSync } from "esbuild";
 import { afterAll, expect, test } from "vitest";
@@ -268,6 +268,16 @@ test("search may only read the search bucket, and only the indexer may write it"
     .filter(([id, { Type }]) => Type === "AWS::Lambda::Function" && !id.startsWith("IndexerHandler"))
     .filter(([id]) => onBucket(id).some((action) => /Put|Delete/.test(action)));
   expect(writers).toEqual([]);
+});
+
+test("only search and the indexer call Bedrock, and only to embed with Titan in the deployment's region", () => {
+  const titan = { "Fn::Join": ["", ["arn:", { Ref: "AWS::Partition" }, ":bedrock:", { Ref: "AWS::Region" }, `::foundation-model/${embeddingModel}`]] };
+  const onBedrock = (prefix: string) => statements(prefix).filter(({ Action }) => [Action].flat().some((action) => action.startsWith("bedrock:")));
+  for (const prefix of ["SearchHandler", "IndexerHandler"]) expect(onBedrock(prefix)).toEqual([expect.objectContaining({ Action: "bedrock:InvokeModel", Effect: "Allow", Resource: titan })]);
+  const others = ofType("AWS::Lambda::Function")
+    .map(([id]) => id)
+    .filter((id) => !id.startsWith("SearchHandler") && !id.startsWith("IndexerHandler") && onBedrock(id).length > 0);
+  expect(others).toEqual([]);
 });
 
 test("search and the indexer share one zip, which fits Lambda's limit unzipped", () => {

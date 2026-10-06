@@ -140,6 +140,19 @@ test("Swedish and English words find their other forms", async () => {
   expect(await subjects("betala")).toEqual(["Hyran"]);
 });
 
+test("a Swedish word finds its definite form, and the definite form the word", async () => {
+  const { search, receive } = await withMailbox();
+  await receive({ subject: "Oktober", text: "Här kommer fakturan för hyran. Betala senast fredag." });
+  const highlighted = async (q: string) => {
+    const { data } = await search(q);
+    return data!.results.map(({ snippet, highlights }) => highlights.map(({ start, end }) => snippet.slice(start, end)));
+  };
+
+  expect(await highlighted("faktura")).toEqual([["fakturan"]]);
+  expect(await highlighted("hyra")).toEqual([["hyran"]]);
+  expect(await highlighted("fakturan hyra")).toEqual([["fakturan", "hyran"]]);
+});
+
 test("mail with only HTML is found by its text, and not by its links' targets", async () => {
   const { receive, subjects } = await withMailbox();
   await receive({ subject: "Newsletter", html: '<p>Our <b>spring</b> collection is here. <a href="https://click.tracker.example/abc">Shop now</a></p><img src="https://pixel.tracker.example/open.gif">' });
@@ -165,6 +178,38 @@ test("a quoted phrase matches only where its words stand together", async () => 
 
   expect((await subjects("quarterly budget review")).sort()).toEqual(["Agenda", "Numbers"]);
   expect(await subjects('"quarterly budget review"')).toEqual(["Agenda"]);
+});
+
+test("a search finds mail by its meaning, without its words, English and Swedish", async () => {
+  const { receive, subjects } = await withMailbox();
+  await receive({ subject: "Your booking", from: "TAP Air Portugal <booking@flytap.example>", text: "TAP itinerary ARN-LIS, 14 November. Departure 06:55, seat 21C. Check in opens 36 hours before." });
+  await receive({ subject: "Kayak rental", text: "Your kayak is ready at the north jetty on Saturday." });
+  await receive({ subject: "Bokad tid", from: "Folktandvården <kallelse@folktandvarden.example>", text: "Välkommen på undersökning hos tandhygienisten tisdag 9 december klockan 08:30." });
+  await receive({ subject: "Hyran", text: "Hej! Här kommer fakturan för hyran i december. Betala senast den sista." });
+
+  expect((await subjects("flight to Lisbon"))[0]).toBe("Your booking");
+  expect((await subjects("när ska jag till tandläkaren"))[0]).toBe("Bokad tid");
+});
+
+test("a search finds what has its words and what is near in meaning, best first", async () => {
+  const { receive, subjects } = await withMailbox();
+  await receive({ subject: "Electricity", from: "Billing <billing@power.example>", text: "Your electricity bill for November is 812 SEK, paid on the 30th." });
+  await receive({ subject: "Invoice 1042", from: "Billing <billing@hosting.example>", text: "Your invoice for November is attached. It is paid by card." });
+  await receive({ subject: "Kayak rental", text: "Your kayak is ready at the north jetty on Saturday." });
+
+  expect(await subjects("november bill")).toEqual(["Electricity", "Invoice 1042"]);
+});
+
+test("a quoted phrase and the filters hold for what is found by meaning too", async () => {
+  const { receive, subjects } = await withMailbox();
+  await receive({ subject: "Your booking", from: "TAP Air Portugal <booking@flytap.example>", text: "TAP itinerary ARN-LIS, 14 November. Departure 06:55, seat 21C. Check in opens 36 hours before." });
+
+  expect(await subjects("flight to Lisbon from:flytap")).toEqual(["Your booking"]);
+  expect(await subjects("flight to Lisbon from:ada")).toEqual([]);
+  expect(await subjects("flight to Lisbon has:attachment")).toEqual([]);
+  expect(await subjects('"flight to Lisbon"')).toEqual([]);
+  expect(await subjects("subject:flight")).toEqual([]);
+  expect(await subjects("flight to Lisbon label:trash")).toEqual([]);
 });
 
 test("from: and to: keep the threads whose sender or a recipient has the part of a name or address", async () => {
@@ -380,6 +425,25 @@ test("a Trash emptied leaves the search index's files at the eraser's next daily
   expect(objects.filter((object) => object.includes("zqkeptlisbon"))).not.toEqual([]);
   expect(objects.filter((object) => object.includes("zqerased"))).toEqual([]);
   expect((await subjects("itinerary")).sort()).toEqual(["Trip to Braga", "Trip to Evora", "Trip to Faro", "Trip to Lisbon", "Trip to Porto"]);
+});
+
+test("a Trash emptied leaves the vector index at the eraser's next daily run, which builds it again from the mail kept", async () => {
+  const { duva, grace, params, receive, subjects, label } = await withMailbox();
+  // Enough mail for maintenance to build the vector index.
+  const towns = ["Lisbon", "Porto", "Faro", "Braga", "Evora", "Coimbra", "Sintra", "Tavira", "Nazare", "Obidos"];
+  for (const name of towns) await receive({ subject: `Trip to ${name}`, text: "Our trip itinerary." });
+  const erased = await receive({ subject: "Old photos", text: "The photos from the trip." });
+  const vectorIndex = () => duva.searchObjects().filter((object) => object.includes("rabit_codes"));
+  const before = vectorIndex();
+  expect(before).not.toEqual([]);
+
+  await label([erased.id], { add: ["trash"] });
+  await grace.POST("/mailboxes/{mailbox}/trash/empty", { params });
+  await duva.erase(new Date());
+
+  expect(vectorIndex()).not.toEqual([]);
+  expect(vectorIndex().filter((object) => before.includes(object))).toEqual([]);
+  expect((await subjects("itinerary")).sort()).toEqual(towns.map((name) => `Trip to ${name}`).sort());
 });
 
 test("mail the eraser's daily run erases leaves the search index's files in the same run", async () => {

@@ -60,6 +60,9 @@ export const feederFilter = { eventName: ["INSERT"], dynamodb: { Keys: { [tableK
 /** Where in the search bucket the mailboxes' indexes are, one table each. */
 export const searchIndexesPrefix = "indexes";
 
+/** The Bedrock model that embeds mail and searches: Titan Text Embeddings V2 (ADR-0007). */
+export const embeddingModel = "amazon.titan-embed-text-v2:0";
+
 /** How often Lambda retries a stream record the sender failed on, before it gives up and records it in the failure queue. */
 export const senderRetries = 2;
 

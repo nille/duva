@@ -7,10 +7,10 @@
 //   node harness/harness.ts seed      write the fixture mailbox to the functions' table location
 //   node harness/harness.ts measure   cold and warm invocations of each function, into results/
 //   node harness/harness.ts mailbox   rebuild the 100k-message benchmark mailbox from scratch, into results/
-//   node harness/harness.ts latency   every query type's cold and warm latency on the benchmark mailbox, into results/
+//   node harness/harness.ts latency [--shipped]   every query type's cold and warm latency on the benchmark mailbox, into results/
 //   node harness/harness.ts down      empty the bucket and delete the stack
 //
-//   node harness/harness.ts benchmark [version]   up, seed, mailbox, latency and down in one go, on the LanceDB release given
+//   node harness/harness.ts benchmark [version] [--shipped]   up, seed, mailbox, latency and down in one go, on the LanceDB release given
 //
 // Run it with AWS_PROFILE set to the spike's account.
 import { spawnSync } from "node:child_process";
@@ -45,7 +45,7 @@ import type { SearchHit, SearchQuery } from "../src/search.ts";
 import { titanEmbedder, titanModelId } from "../src/titan.ts";
 import { fixture } from "../test/fixture.ts";
 import { download } from "./enron.ts";
-import { latency } from "./latency.ts";
+import { latency, shipped } from "./latency.ts";
 import { benchmarkMailbox, labelShares, mailboxSize } from "./mailbox.ts";
 import { packageAll, type Package } from "./package.ts";
 
@@ -281,11 +281,13 @@ function lancedbVersion(): string {
   return JSON.parse(readFileSync(join(root, "node_modules/@lancedb/lancedb/package.json"), "utf8")).version;
 }
 
-// About two hours. Run `up` first if the handler changed.
+// About two hours, or half an hour with --shipped, which measures only what
+// Duva ships, into results/62-latency.json. Run `up` first if the handler changed.
 async function measureLatency() {
-  const report = { lancedbVersion: lancedbVersion(), ...(await latency(await bucketName())) };
+  const onlyShipped = process.argv.includes("--shipped");
+  const report = { lancedbVersion: lancedbVersion(), ...(await latency(await bucketName(), onlyShipped ? shipped : undefined)) };
   mkdirSync(join(root, "results"), { recursive: true });
-  writeFileSync(join(root, "results/17-latency.json"), JSON.stringify(report, null, 2) + "\n");
+  writeFileSync(join(root, onlyShipped ? "results/62-latency.json" : "results/17-latency.json"), JSON.stringify(report, null, 2) + "\n");
   return report.results.map(({ samples, window, ...summary }) => summary);
 }
 
@@ -304,18 +306,19 @@ async function down() {
 // About 2.5 hours and $3. Each step runs in a process of its own, so it loads
 // the release just installed.
 async function rerunBenchmark() {
-  const release = process.argv[3];
+  const release = process.argv.slice(3).find((arg) => !arg.startsWith("--"));
+  const onlyShipped = process.argv.includes("--shipped");
   const run = (command: string, args: string[]) => {
     const { status } = spawnSync(command, args, { cwd: root, stdio: ["ignore", "inherit", "inherit"] });
     if (status !== 0) throw new Error(`\`${[command, ...args].join(" ")}\` exited with ${status}.`);
   };
   if (release) run("npm", ["install", "--save-exact", `@lancedb/lancedb@${release}`]);
   try {
-    for (const step of ["up", "seed", "mailbox", "latency"]) run("node", ["harness/harness.ts", step]);
+    for (const step of ["up", "seed", "mailbox", "latency"]) run("node", ["harness/harness.ts", step, ...(onlyShipped && step === "latency" ? ["--shipped"] : [])]);
   } finally {
     run("node", ["harness/harness.ts", "down"]);
   }
-  return { lancedbVersion: lancedbVersion(), results: ["results/16-mailbox.json", "results/17-latency.json"] };
+  return { lancedbVersion: lancedbVersion(), results: ["results/16-mailbox.json", onlyShipped ? "results/62-latency.json" : "results/17-latency.json"] };
 }
 
 async function deployStack(parameters: Record<string, string>) {

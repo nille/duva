@@ -1,0 +1,8280 @@
+{
+  "lancedbVersion": "0.39.0",
+  "startedAt": "2026-10-06T04:09:51.444Z",
+  "finishedAt": "2026-10-06T04:33:02.140Z",
+  "region": "eu-north-1",
+  "readConsistencyIntervalSeconds": 0,
+  "caches": "index cache a quarter of the function's memory, metadata cache a sixteenth",
+  "querySet": {
+    "keyword": [
+      {
+        "words": "pipeline",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "invoice",
+        "filters": {
+          "labels": {
+            "include": [
+              "Inbox"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "california",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2001-01-01T00:00:00.000Z",
+            "to": "2002-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "turbine",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "hasAttachment": true
+        },
+        "limit": 20
+      },
+      {
+        "words": "derivatives",
+        "filters": {
+          "labels": {
+            "include": [
+              "Finance"
+            ],
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2000-01-01T00:00:00.000Z",
+            "to": "2001-07-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "bankruptcy",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "football",
+        "filters": {
+          "labels": {
+            "include": [
+              "Inbox"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "golf",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2001-01-01T00:00:00.000Z",
+            "to": "2002-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "merger",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "hasAttachment": true
+        },
+        "limit": 20
+      },
+      {
+        "words": "faktura",
+        "filters": {
+          "labels": {
+            "include": [
+              "Finance"
+            ],
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2000-01-01T00:00:00.000Z",
+            "to": "2001-07-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "budget",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "lunch",
+        "filters": {
+          "labels": {
+            "include": [
+              "Inbox"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "weather",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2001-01-01T00:00:00.000Z",
+            "to": "2002-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "isda",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "hasAttachment": true
+        },
+        "limit": 20
+      },
+      {
+        "words": "storage",
+        "filters": {
+          "labels": {
+            "include": [
+              "Finance"
+            ],
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2000-01-01T00:00:00.000Z",
+            "to": "2001-07-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "gas prices",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "credit rating",
+        "filters": {
+          "labels": {
+            "include": [
+              "Inbox"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "power plant",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2001-01-01T00:00:00.000Z",
+            "to": "2002-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "conference call",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "hasAttachment": true
+        },
+        "limit": 20
+      },
+      {
+        "words": "trading floor",
+        "filters": {
+          "labels": {
+            "include": [
+              "Finance"
+            ],
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2000-01-01T00:00:00.000Z",
+            "to": "2001-07-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "price cap",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "board meeting",
+        "filters": {
+          "labels": {
+            "include": [
+              "Inbox"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "employee stock",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2001-01-01T00:00:00.000Z",
+            "to": "2002-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "natural gas",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "hasAttachment": true
+        },
+        "limit": 20
+      },
+      {
+        "words": "interview schedule",
+        "filters": {
+          "labels": {
+            "include": [
+              "Finance"
+            ],
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2000-01-01T00:00:00.000Z",
+            "to": "2001-07-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "legal review",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "rate case",
+        "filters": {
+          "labels": {
+            "include": [
+              "Inbox"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "wine dinner",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2001-01-01T00:00:00.000Z",
+            "to": "2002-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "protokoll m\u00f6tet",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "hasAttachment": true
+        },
+        "limit": 20
+      },
+      {
+        "words": "transmission capacity",
+        "filters": {
+          "labels": {
+            "include": [
+              "Finance"
+            ],
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2000-01-01T00:00:00.000Z",
+            "to": "2001-07-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "kenneth lay",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "skilling",
+        "filters": {
+          "labels": {
+            "include": [
+              "Inbox"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "fastow",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2001-01-01T00:00:00.000Z",
+            "to": "2002-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "sara shackleton",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "hasAttachment": true
+        },
+        "limit": 20
+      },
+      {
+        "words": "vince kaminski",
+        "filters": {
+          "labels": {
+            "include": [
+              "Finance"
+            ],
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2000-01-01T00:00:00.000Z",
+            "to": "2001-07-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "jeff dasovich",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "louise kitchen",
+        "filters": {
+          "labels": {
+            "include": [
+              "Inbox"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "john arnold",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2001-01-01T00:00:00.000Z",
+            "to": "2002-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "kay mann",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "hasAttachment": true
+        },
+        "limit": 20
+      },
+      {
+        "words": "tana jones",
+        "filters": {
+          "labels": {
+            "include": [
+              "Finance"
+            ],
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2000-01-01T00:00:00.000Z",
+            "to": "2001-07-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "isda master agreement",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "sender": "sara.shackleton@enron.com"
+        },
+        "limit": 20
+      },
+      {
+        "words": "electricity",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "sender": "jeff.dasovich@enron.com",
+          "date": {
+            "from": "2001-01-01T00:00:00.000Z",
+            "to": "2002-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "model",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "sender": "vince.kaminski@enron.com"
+        },
+        "limit": 20
+      },
+      {
+        "words": "spam",
+        "filters": {
+          "labels": {
+            "include": [
+              "Spam"
+            ]
+          }
+        },
+        "limit": 20
+      }
+    ],
+    "phrase": [
+      {
+        "phrase": "wholly owned subsidiary of",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "phrase": "plan to attend the",
+        "filters": {
+          "labels": {
+            "include": [
+              "Inbox"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "phrase": "to discuss this issue",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2001-01-01T00:00:00.000Z",
+            "to": "2002-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "phrase": "office of the chair",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "hasAttachment": true
+        },
+        "limit": 20
+      },
+      {
+        "phrase": "the final draft of",
+        "filters": {
+          "labels": {
+            "include": [
+              "Finance"
+            ],
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2000-01-01T00:00:00.000Z",
+            "to": "2001-07-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "phrase": "the supreme court has",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "phrase": "phase of the project",
+        "filters": {
+          "labels": {
+            "include": [
+              "Inbox"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "phrase": "sent on behalf of",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2001-01-01T00:00:00.000Z",
+            "to": "2002-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "phrase": "due to the lack",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "hasAttachment": true
+        },
+        "limit": 20
+      },
+      {
+        "phrase": "choose their electricity provider",
+        "filters": {
+          "labels": {
+            "include": [
+              "Finance"
+            ],
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2000-01-01T00:00:00.000Z",
+            "to": "2001-07-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "phrase": "some of the best",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "phrase": "was sent to you",
+        "filters": {
+          "labels": {
+            "include": [
+              "Inbox"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "phrase": "orders and instructions please",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2001-01-01T00:00:00.000Z",
+            "to": "2002-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "phrase": "please let me know",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "hasAttachment": true
+        },
+        "limit": 20
+      },
+      {
+        "phrase": "out of the office",
+        "filters": {
+          "labels": {
+            "include": [
+              "Finance"
+            ],
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2000-01-01T00:00:00.000Z",
+            "to": "2001-07-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "phrase": "kan ni skicka",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "phrase": "conference call",
+        "filters": {
+          "labels": {
+            "include": [
+              "Inbox"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "phrase": "the attached file",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2001-01-01T00:00:00.000Z",
+            "to": "2002-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "phrase": "natural gas",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "hasAttachment": true
+        },
+        "limit": 20
+      },
+      {
+        "phrase": "price caps",
+        "filters": {
+          "labels": {
+            "include": [
+              "Finance"
+            ],
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2000-01-01T00:00:00.000Z",
+            "to": "2001-07-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "phrase": "credit support annex",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "sender": "sara.shackleton@enron.com"
+        },
+        "limit": 20
+      },
+      {
+        "phrase": "california public utilities commission",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "sender": "jeff.dasovich@enron.com"
+        },
+        "limit": 20
+      }
+    ],
+    "vector": [
+      {
+        "meaning": "pipeline capacity for natural gas into California",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "who is in the fantasy football league this season",
+        "filters": {
+          "labels": {
+            "include": [
+              "Inbox"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "what happens to employees' retirement savings after the bankruptcy",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2001-01-01T00:00:00.000Z",
+            "to": "2002-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "styrelsen vill g\u00e5 igenom budgeten",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "hasAttachment": true
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "a reminder to sign the contract",
+        "filters": {
+          "labels": {
+            "include": [
+              "Finance"
+            ],
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2000-01-01T00:00:00.000Z",
+            "to": "2001-07-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "travel plans for the conference",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "complaints about the new expense report system",
+        "filters": {
+          "labels": {
+            "include": [
+              "Inbox"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "hiring a summer intern for the research group",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2001-01-01T00:00:00.000Z",
+            "to": "2002-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "the regulator's decision on electricity rates",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "hasAttachment": true
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "drinks after work on friday",
+        "filters": {
+          "labels": {
+            "include": [
+              "Finance"
+            ],
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2000-01-01T00:00:00.000Z",
+            "to": "2001-07-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "fixing a mistake in yesterday's trades",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "an offer to buy the company",
+        "filters": {
+          "labels": {
+            "include": [
+              "Inbox"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "n\u00e4r kommer fakturan",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2001-01-01T00:00:00.000Z",
+            "to": "2002-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "weather forecast affecting demand",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "hasAttachment": true
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "a request for a legal opinion on a swap",
+        "filters": {
+          "labels": {
+            "include": [
+              "Finance"
+            ],
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2000-01-01T00:00:00.000Z",
+            "to": "2001-07-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "negotiating terms with a counterparty",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "sender": "sara.shackleton@enron.com"
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "rolling blackouts and the state's response",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "sender": "jeff.dasovich@enron.com",
+          "date": {
+            "from": "2001-01-01T00:00:00.000Z",
+            "to": "2002-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "a paper about pricing options",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "sender": "vince.kaminski@enron.com"
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "a schedule for gas deliveries",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "sender": "chris.germany@enron.com",
+          "hasAttachment": true
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "an urgent question from the boss",
+        "filters": {
+          "labels": {
+            "include": [
+              "Inbox"
+            ]
+          },
+          "date": {
+            "from": "2001-01-01T00:00:00.000Z",
+            "to": "2002-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      }
+    ],
+    "vector-flat": [
+      {
+        "meaning": "pipeline capacity for natural gas into California",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "who is in the fantasy football league this season",
+        "filters": {
+          "labels": {
+            "include": [
+              "Inbox"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "what happens to employees' retirement savings after the bankruptcy",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2001-01-01T00:00:00.000Z",
+            "to": "2002-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "styrelsen vill g\u00e5 igenom budgeten",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "hasAttachment": true
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "a reminder to sign the contract",
+        "filters": {
+          "labels": {
+            "include": [
+              "Finance"
+            ],
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2000-01-01T00:00:00.000Z",
+            "to": "2001-07-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "travel plans for the conference",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "complaints about the new expense report system",
+        "filters": {
+          "labels": {
+            "include": [
+              "Inbox"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "hiring a summer intern for the research group",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2001-01-01T00:00:00.000Z",
+            "to": "2002-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "the regulator's decision on electricity rates",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "hasAttachment": true
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "drinks after work on friday",
+        "filters": {
+          "labels": {
+            "include": [
+              "Finance"
+            ],
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2000-01-01T00:00:00.000Z",
+            "to": "2001-07-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "fixing a mistake in yesterday's trades",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "an offer to buy the company",
+        "filters": {
+          "labels": {
+            "include": [
+              "Inbox"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "n\u00e4r kommer fakturan",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2001-01-01T00:00:00.000Z",
+            "to": "2002-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "weather forecast affecting demand",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "hasAttachment": true
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "a request for a legal opinion on a swap",
+        "filters": {
+          "labels": {
+            "include": [
+              "Finance"
+            ],
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2000-01-01T00:00:00.000Z",
+            "to": "2001-07-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "negotiating terms with a counterparty",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "sender": "sara.shackleton@enron.com"
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "rolling blackouts and the state's response",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "sender": "jeff.dasovich@enron.com",
+          "date": {
+            "from": "2001-01-01T00:00:00.000Z",
+            "to": "2002-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "a paper about pricing options",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "sender": "vince.kaminski@enron.com"
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "a schedule for gas deliveries",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "sender": "chris.germany@enron.com",
+          "hasAttachment": true
+        },
+        "limit": 20
+      },
+      {
+        "meaning": "an urgent question from the boss",
+        "filters": {
+          "labels": {
+            "include": [
+              "Inbox"
+            ]
+          },
+          "date": {
+            "from": "2001-01-01T00:00:00.000Z",
+            "to": "2002-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      }
+    ],
+    "hybrid": [
+      {
+        "words": "california",
+        "meaning": "who is to blame for the power crisis",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "enron",
+        "meaning": "layoffs and severance after the collapse",
+        "filters": {
+          "labels": {
+            "include": [
+              "Inbox"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "gas",
+        "meaning": "a problem with nominations at a delivery point",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2001-01-01T00:00:00.000Z",
+            "to": "2002-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "contract",
+        "meaning": "waiting for the other side's comments",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "hasAttachment": true
+        },
+        "limit": 20
+      },
+      {
+        "words": "meeting",
+        "meaning": "moving the meeting to another day",
+        "filters": {
+          "labels": {
+            "include": [
+              "Finance"
+            ],
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2000-01-01T00:00:00.000Z",
+            "to": "2001-07-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "model",
+        "meaning": "valuing weather derivatives",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "faktura",
+        "meaning": "betalningen \u00e4r f\u00f6rsenad",
+        "filters": {
+          "labels": {
+            "include": [
+              "Inbox"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "golf",
+        "meaning": "a weekend tournament with clients",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2001-01-01T00:00:00.000Z",
+            "to": "2002-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "credit",
+        "meaning": "a counterparty's credit getting worse",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "hasAttachment": true
+        },
+        "limit": 20
+      },
+      {
+        "words": "dinner",
+        "meaning": "celebrating a colleague's promotion",
+        "filters": {
+          "labels": {
+            "include": [
+              "Finance"
+            ],
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2000-01-01T00:00:00.000Z",
+            "to": "2001-07-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "isda",
+        "meaning": "signing a master agreement with a bank",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "power",
+        "meaning": "buying electricity for next summer",
+        "filters": {
+          "labels": {
+            "include": [
+              "Inbox"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "stock",
+        "meaning": "the share price falling",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2001-01-01T00:00:00.000Z",
+            "to": "2002-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "resume",
+        "meaning": "applying for a job in the trading group",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "hasAttachment": true
+        },
+        "limit": 20
+      },
+      {
+        "words": "deal",
+        "meaning": "a mistake in a booked trade",
+        "filters": {
+          "labels": {
+            "include": [
+              "Finance"
+            ],
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2000-01-01T00:00:00.000Z",
+            "to": "2001-07-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "agreement",
+        "meaning": "changes to the collateral terms",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "sender": "sara.shackleton@enron.com"
+        },
+        "limit": 20
+      },
+      {
+        "words": "ferc",
+        "meaning": "price caps across the western states",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "sender": "jeff.dasovich@enron.com",
+          "date": {
+            "from": "2001-01-01T00:00:00.000Z",
+            "to": "2002-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "research",
+        "meaning": "recruiting students from a university",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "sender": "vince.kaminski@enron.com"
+        },
+        "limit": 20
+      },
+      {
+        "words": "deal",
+        "meaning": "the volumes for next month",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "sender": "chris.germany@enron.com",
+          "hasAttachment": true
+        },
+        "limit": 20
+      },
+      {
+        "words": "please",
+        "meaning": "an invitation to a party",
+        "filters": {
+          "labels": {
+            "include": [
+              "Inbox"
+            ]
+          },
+          "date": {
+            "from": "2000-01-01T00:00:00.000Z",
+            "to": "2001-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      }
+    ],
+    "hybrid-flat": [
+      {
+        "words": "california",
+        "meaning": "who is to blame for the power crisis",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "enron",
+        "meaning": "layoffs and severance after the collapse",
+        "filters": {
+          "labels": {
+            "include": [
+              "Inbox"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "gas",
+        "meaning": "a problem with nominations at a delivery point",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2001-01-01T00:00:00.000Z",
+            "to": "2002-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "contract",
+        "meaning": "waiting for the other side's comments",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "hasAttachment": true
+        },
+        "limit": 20
+      },
+      {
+        "words": "meeting",
+        "meaning": "moving the meeting to another day",
+        "filters": {
+          "labels": {
+            "include": [
+              "Finance"
+            ],
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2000-01-01T00:00:00.000Z",
+            "to": "2001-07-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "model",
+        "meaning": "valuing weather derivatives",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "faktura",
+        "meaning": "betalningen \u00e4r f\u00f6rsenad",
+        "filters": {
+          "labels": {
+            "include": [
+              "Inbox"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "golf",
+        "meaning": "a weekend tournament with clients",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2001-01-01T00:00:00.000Z",
+            "to": "2002-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "credit",
+        "meaning": "a counterparty's credit getting worse",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "hasAttachment": true
+        },
+        "limit": 20
+      },
+      {
+        "words": "dinner",
+        "meaning": "celebrating a colleague's promotion",
+        "filters": {
+          "labels": {
+            "include": [
+              "Finance"
+            ],
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2000-01-01T00:00:00.000Z",
+            "to": "2001-07-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "isda",
+        "meaning": "signing a master agreement with a bank",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "power",
+        "meaning": "buying electricity for next summer",
+        "filters": {
+          "labels": {
+            "include": [
+              "Inbox"
+            ]
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "stock",
+        "meaning": "the share price falling",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2001-01-01T00:00:00.000Z",
+            "to": "2002-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "resume",
+        "meaning": "applying for a job in the trading group",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "hasAttachment": true
+        },
+        "limit": 20
+      },
+      {
+        "words": "deal",
+        "meaning": "a mistake in a booked trade",
+        "filters": {
+          "labels": {
+            "include": [
+              "Finance"
+            ],
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "date": {
+            "from": "2000-01-01T00:00:00.000Z",
+            "to": "2001-07-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "agreement",
+        "meaning": "changes to the collateral terms",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "sender": "sara.shackleton@enron.com"
+        },
+        "limit": 20
+      },
+      {
+        "words": "ferc",
+        "meaning": "price caps across the western states",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "sender": "jeff.dasovich@enron.com",
+          "date": {
+            "from": "2001-01-01T00:00:00.000Z",
+            "to": "2002-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      },
+      {
+        "words": "research",
+        "meaning": "recruiting students from a university",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "sender": "vince.kaminski@enron.com"
+        },
+        "limit": 20
+      },
+      {
+        "words": "deal",
+        "meaning": "the volumes for next month",
+        "filters": {
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          },
+          "sender": "chris.germany@enron.com",
+          "hasAttachment": true
+        },
+        "limit": 20
+      },
+      {
+        "words": "please",
+        "meaning": "an invitation to a party",
+        "filters": {
+          "labels": {
+            "include": [
+              "Inbox"
+            ]
+          },
+          "date": {
+            "from": "2000-01-01T00:00:00.000Z",
+            "to": "2001-01-01T00:00:00.000Z"
+          }
+        },
+        "limit": 20
+      }
+    ]
+  },
+  "results": [
+    {
+      "package": "x64-zip",
+      "memoryMb": 10240,
+      "type": "keyword",
+      "condition": "cold",
+      "queries": 30,
+      "excluded": 0,
+      "failed": [],
+      "latencyMs": {
+        "p50": 2451.6402279999998,
+        "p95": 2565.5069999999996,
+        "p99": 2576.8089219999997
+      },
+      "initMs": {
+        "p50": 785.74,
+        "p95": 815.61,
+        "p99": 821.15
+      },
+      "searchMs": {
+        "p50": 1663.7931040000003,
+        "p95": 1779.5769999999998,
+        "p99": 1780.9789219999998
+      },
+      "roundTripMs": {
+        "p50": 3064.443551000004,
+        "p95": 3232.0755260000005,
+        "p99": 3270.421636999992
+      },
+      "target": {
+        "p95Ms": 3000,
+        "met": true
+      },
+      "s3RequestsPerQuery": 117.2,
+      "s3Requests": {
+        "AllRequests": 3516,
+        "GetRequests": 3516,
+        "HeadRequests": 0,
+        "ListRequests": 0,
+        "PutRequests": 0
+      },
+      "maxMemoryMb": 274,
+      "cachedMb": 26.005330085754395,
+      "queriesWithoutHits": 0,
+      "window": {
+        "from": "2026-10-06T04:13:00.000Z",
+        "to": "2026-10-06T04:14:00.000Z"
+      },
+      "samples": [
+        {
+          "query": 0,
+          "latencyMs": 2552.2,
+          "initMs": 781.3,
+          "roundTripMs": 3206.8,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 2576.8,
+          "initMs": 795.8,
+          "roundTripMs": 3205.1,
+          "hits": 20
+        },
+        {
+          "query": 2,
+          "latencyMs": 2518.5,
+          "initMs": 782.6,
+          "roundTripMs": 3170.2,
+          "hits": 20
+        },
+        {
+          "query": 3,
+          "latencyMs": 2496.5,
+          "initMs": 798.7,
+          "roundTripMs": 3205.6,
+          "hits": 20
+        },
+        {
+          "query": 4,
+          "latencyMs": 2565.5,
+          "initMs": 785.9,
+          "roundTripMs": 3232.1,
+          "hits": 20
+        },
+        {
+          "query": 5,
+          "latencyMs": 2513.7,
+          "initMs": 780.6,
+          "roundTripMs": 3207.1,
+          "hits": 20
+        },
+        {
+          "query": 6,
+          "latencyMs": 2501.6,
+          "initMs": 797.8,
+          "roundTripMs": 3202.7,
+          "hits": 20
+        },
+        {
+          "query": 7,
+          "latencyMs": 2539.9,
+          "initMs": 781.9,
+          "roundTripMs": 3206.6,
+          "hits": 20
+        },
+        {
+          "query": 8,
+          "latencyMs": 2517.4,
+          "initMs": 756.3,
+          "roundTripMs": 3270.4,
+          "hits": 20
+        },
+        {
+          "query": 9,
+          "latencyMs": 2416.3,
+          "initMs": 773.4,
+          "roundTripMs": 3090.8,
+          "hits": 3
+        },
+        {
+          "query": 10,
+          "latencyMs": 2209.2,
+          "initMs": 627.8,
+          "roundTripMs": 2758,
+          "hits": 20
+        },
+        {
+          "query": 11,
+          "latencyMs": 2422.6,
+          "initMs": 792.9,
+          "roundTripMs": 3000.2,
+          "hits": 20
+        },
+        {
+          "query": 12,
+          "latencyMs": 2480,
+          "initMs": 803.9,
+          "roundTripMs": 3070.2,
+          "hits": 20
+        },
+        {
+          "query": 13,
+          "latencyMs": 2484.9,
+          "initMs": 821.2,
+          "roundTripMs": 3064.4,
+          "hits": 20
+        },
+        {
+          "query": 14,
+          "latencyMs": 2441.3,
+          "initMs": 777.6,
+          "roundTripMs": 3129.4,
+          "hits": 20
+        },
+        {
+          "query": 15,
+          "latencyMs": 2344.7,
+          "initMs": 677.7,
+          "roundTripMs": 2954.6,
+          "hits": 20
+        },
+        {
+          "query": 16,
+          "latencyMs": 2138.2,
+          "initMs": 673.7,
+          "roundTripMs": 2774.4,
+          "hits": 20
+        },
+        {
+          "query": 17,
+          "latencyMs": 2465.9,
+          "initMs": 780.8,
+          "roundTripMs": 3120,
+          "hits": 20
+        },
+        {
+          "query": 18,
+          "latencyMs": 2398.4,
+          "initMs": 787,
+          "roundTripMs": 2966.2,
+          "hits": 20
+        },
+        {
+          "query": 19,
+          "latencyMs": 2451.6,
+          "initMs": 797.4,
+          "roundTripMs": 3009.8,
+          "hits": 20
+        },
+        {
+          "query": 20,
+          "latencyMs": 2440.5,
+          "initMs": 787.4,
+          "roundTripMs": 2995.3,
+          "hits": 20
+        },
+        {
+          "query": 21,
+          "latencyMs": 2148.3,
+          "initMs": 681,
+          "roundTripMs": 2746.1,
+          "hits": 20
+        },
+        {
+          "query": 22,
+          "latencyMs": 2491.4,
+          "initMs": 796.6,
+          "roundTripMs": 3136.2,
+          "hits": 20
+        },
+        {
+          "query": 23,
+          "latencyMs": 2466.1,
+          "initMs": 792.1,
+          "roundTripMs": 3037,
+          "hits": 20
+        },
+        {
+          "query": 24,
+          "latencyMs": 2438.3,
+          "initMs": 782.3,
+          "roundTripMs": 3067.4,
+          "hits": 20
+        },
+        {
+          "query": 25,
+          "latencyMs": 2346.7,
+          "initMs": 785.7,
+          "roundTripMs": 2897.6,
+          "hits": 20
+        },
+        {
+          "query": 26,
+          "latencyMs": 2180.7,
+          "initMs": 662.5,
+          "roundTripMs": 2786.4,
+          "hits": 20
+        },
+        {
+          "query": 27,
+          "latencyMs": 2493.6,
+          "initMs": 815.6,
+          "roundTripMs": 3064,
+          "hits": 20
+        },
+        {
+          "query": 28,
+          "latencyMs": 2307.3,
+          "initMs": 800.2,
+          "roundTripMs": 2941.7,
+          "hits": 20
+        },
+        {
+          "query": 29,
+          "latencyMs": 2398.8,
+          "initMs": 798.6,
+          "roundTripMs": 3010.6,
+          "hits": 20
+        }
+      ]
+    },
+    {
+      "package": "x64-zip",
+      "memoryMb": 10240,
+      "type": "phrase",
+      "condition": "cold",
+      "queries": 30,
+      "excluded": 0,
+      "failed": [],
+      "latencyMs": {
+        "p50": 2385.467476,
+        "p95": 2569.217227,
+        "p99": 2615.5964619999995
+      },
+      "initMs": {
+        "p50": 674.37,
+        "p95": 810.02,
+        "p99": 811.18
+      },
+      "searchMs": {
+        "p50": 1658.6694900000002,
+        "p95": 1813.5320650000003,
+        "p99": 1827.5864619999998
+      },
+      "roundTripMs": {
+        "p50": 2992.4783670000033,
+        "p95": 3173.173437999998,
+        "p99": 3205.9080589999794
+      },
+      "target": {
+        "p95Ms": 3000,
+        "met": true
+      },
+      "s3RequestsPerQuery": 213.7,
+      "s3Requests": {
+        "AllRequests": 6411,
+        "GetRequests": 6411,
+        "HeadRequests": 0,
+        "ListRequests": 0,
+        "PutRequests": 0
+      },
+      "maxMemoryMb": 277,
+      "cachedMb": 28.676179885864258,
+      "queriesWithoutHits": 1,
+      "window": {
+        "from": "2026-10-06T04:14:00.000Z",
+        "to": "2026-10-06T04:15:00.000Z"
+      },
+      "samples": [
+        {
+          "query": 0,
+          "latencyMs": 2205.9,
+          "initMs": 659.9,
+          "roundTripMs": 2848.6,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 2217.3,
+          "initMs": 660.6,
+          "roundTripMs": 2824.4,
+          "hits": 7
+        },
+        {
+          "query": 2,
+          "latencyMs": 2471.6,
+          "initMs": 764.9,
+          "roundTripMs": 3051.8,
+          "hits": 14
+        },
+        {
+          "query": 3,
+          "latencyMs": 2332.5,
+          "initMs": 661.4,
+          "roundTripMs": 3000.4,
+          "hits": 6
+        },
+        {
+          "query": 4,
+          "latencyMs": 2545.4,
+          "initMs": 773.7,
+          "roundTripMs": 3130.1,
+          "hits": 3
+        },
+        {
+          "query": 5,
+          "latencyMs": 2455.3,
+          "initMs": 782.6,
+          "roundTripMs": 3105.2,
+          "hits": 7
+        },
+        {
+          "query": 6,
+          "latencyMs": 2385.5,
+          "initMs": 783.8,
+          "roundTripMs": 3063.8,
+          "hits": 2
+        },
+        {
+          "query": 7,
+          "latencyMs": 2615.6,
+          "initMs": 788,
+          "roundTripMs": 3205.9,
+          "hits": 15
+        },
+        {
+          "query": 8,
+          "latencyMs": 2345.1,
+          "initMs": 663,
+          "roundTripMs": 2963.8,
+          "hits": 4
+        },
+        {
+          "query": 9,
+          "latencyMs": 2390.8,
+          "initMs": 787.6,
+          "roundTripMs": 2983.1,
+          "hits": 0
+        },
+        {
+          "query": 10,
+          "latencyMs": 2428,
+          "initMs": 788.1,
+          "roundTripMs": 3104.1,
+          "hits": 20
+        },
+        {
+          "query": 11,
+          "latencyMs": 2471.5,
+          "initMs": 810,
+          "roundTripMs": 3055.5,
+          "hits": 18
+        },
+        {
+          "query": 12,
+          "latencyMs": 2518.5,
+          "initMs": 782.5,
+          "roundTripMs": 3084.3,
+          "hits": 20
+        },
+        {
+          "query": 13,
+          "latencyMs": 2210.8,
+          "initMs": 638.6,
+          "roundTripMs": 2765,
+          "hits": 20
+        },
+        {
+          "query": 14,
+          "latencyMs": 2569.2,
+          "initMs": 798.4,
+          "roundTripMs": 3173.2,
+          "hits": 20
+        },
+        {
+          "query": 15,
+          "latencyMs": 2198.2,
+          "initMs": 666.2,
+          "roundTripMs": 2807.8,
+          "hits": 20
+        },
+        {
+          "query": 16,
+          "latencyMs": 2431.8,
+          "initMs": 773.1,
+          "roundTripMs": 2992.5,
+          "hits": 20
+        },
+        {
+          "query": 17,
+          "latencyMs": 2352.1,
+          "initMs": 664.3,
+          "roundTripMs": 2973.7,
+          "hits": 20
+        },
+        {
+          "query": 18,
+          "latencyMs": 2301.2,
+          "initMs": 674.4,
+          "roundTripMs": 2884.5,
+          "hits": 20
+        },
+        {
+          "query": 19,
+          "latencyMs": 2535.8,
+          "initMs": 811.2,
+          "roundTripMs": 3104.2,
+          "hits": 20
+        },
+        {
+          "query": 20,
+          "latencyMs": 2503.8,
+          "initMs": 785,
+          "roundTripMs": 3150.3,
+          "hits": 20
+        },
+        {
+          "query": 21,
+          "latencyMs": 2476.9,
+          "initMs": 663.3,
+          "roundTripMs": 3087.8,
+          "hits": 20
+        },
+        {
+          "query": 0,
+          "latencyMs": 2239.2,
+          "initMs": 667.2,
+          "roundTripMs": 2814.5,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 2234.2,
+          "initMs": 671.4,
+          "roundTripMs": 2815,
+          "hits": 7
+        },
+        {
+          "query": 2,
+          "latencyMs": 2246.2,
+          "initMs": 658.5,
+          "roundTripMs": 2851.5,
+          "hits": 14
+        },
+        {
+          "query": 3,
+          "latencyMs": 2152.1,
+          "initMs": 626.6,
+          "roundTripMs": 2690.5,
+          "hits": 6
+        },
+        {
+          "query": 4,
+          "latencyMs": 2298.1,
+          "initMs": 656.6,
+          "roundTripMs": 2892.6,
+          "hits": 3
+        },
+        {
+          "query": 5,
+          "latencyMs": 2498.9,
+          "initMs": 780.7,
+          "roundTripMs": 3057.8,
+          "hits": 7
+        },
+        {
+          "query": 6,
+          "latencyMs": 2296.5,
+          "initMs": 671,
+          "roundTripMs": 2989.3,
+          "hits": 2
+        },
+        {
+          "query": 7,
+          "latencyMs": 2539,
+          "initMs": 786.3,
+          "roundTripMs": 3139.2,
+          "hits": 15
+        }
+      ]
+    },
+    {
+      "package": "x64-zip",
+      "memoryMb": 10240,
+      "type": "vector",
+      "condition": "cold",
+      "queries": 30,
+      "excluded": 0,
+      "failed": [],
+      "latencyMs": {
+        "p50": 2515.979316,
+        "p95": 2650.0764550000004,
+        "p99": 2660.196311
+      },
+      "initMs": {
+        "p50": 777.63,
+        "p95": 794.2,
+        "p99": 800.05
+      },
+      "searchMs": {
+        "p50": 1747.4199119999998,
+        "p95": 1867.491028,
+        "p99": 1878.3863110000002
+      },
+      "roundTripMs": {
+        "p50": 3086.156707999995,
+        "p95": 3239.1445339999627,
+        "p99": 3245.926015999983
+      },
+      "target": {
+        "p95Ms": 3000,
+        "met": true
+      },
+      "s3RequestsPerQuery": 330.26666666666665,
+      "s3Requests": {
+        "AllRequests": 9908,
+        "GetRequests": 9908,
+        "HeadRequests": 0,
+        "ListRequests": 0,
+        "PutRequests": 0
+      },
+      "maxMemoryMb": 264,
+      "cachedMb": 15.23359489440918,
+      "queriesWithoutHits": 0,
+      "window": {
+        "from": "2026-10-06T04:15:00.000Z",
+        "to": "2026-10-06T04:16:00.000Z"
+      },
+      "samples": [
+        {
+          "query": 0,
+          "latencyMs": 2552.5,
+          "initMs": 785.9,
+          "roundTripMs": 3119.3,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 2546.7,
+          "initMs": 785.3,
+          "roundTripMs": 3128.6,
+          "hits": 20
+        },
+        {
+          "query": 2,
+          "latencyMs": 2383.6,
+          "initMs": 668.4,
+          "roundTripMs": 2987.9,
+          "hits": 20
+        },
+        {
+          "query": 3,
+          "latencyMs": 2325.4,
+          "initMs": 656.1,
+          "roundTripMs": 2936.8,
+          "hits": 20
+        },
+        {
+          "query": 4,
+          "latencyMs": 2558.6,
+          "initMs": 783,
+          "roundTripMs": 3139.2,
+          "hits": 20
+        },
+        {
+          "query": 5,
+          "latencyMs": 2314.3,
+          "initMs": 659.9,
+          "roundTripMs": 2917.9,
+          "hits": 20
+        },
+        {
+          "query": 6,
+          "latencyMs": 2499.4,
+          "initMs": 793,
+          "roundTripMs": 3049.7,
+          "hits": 20
+        },
+        {
+          "query": 7,
+          "latencyMs": 2660.2,
+          "initMs": 781.8,
+          "roundTripMs": 3239.1,
+          "hits": 20
+        },
+        {
+          "query": 8,
+          "latencyMs": 2563.2,
+          "initMs": 782,
+          "roundTripMs": 3129.9,
+          "hits": 20
+        },
+        {
+          "query": 9,
+          "latencyMs": 2544.3,
+          "initMs": 783.5,
+          "roundTripMs": 3127.6,
+          "hits": 20
+        },
+        {
+          "query": 10,
+          "latencyMs": 2495,
+          "initMs": 765.6,
+          "roundTripMs": 3065,
+          "hits": 20
+        },
+        {
+          "query": 11,
+          "latencyMs": 2363,
+          "initMs": 669.8,
+          "roundTripMs": 2963.9,
+          "hits": 20
+        },
+        {
+          "query": 12,
+          "latencyMs": 2554.9,
+          "initMs": 789.1,
+          "roundTripMs": 3098.3,
+          "hits": 20
+        },
+        {
+          "query": 13,
+          "latencyMs": 2525.2,
+          "initMs": 777.8,
+          "roundTripMs": 3117.3,
+          "hits": 20
+        },
+        {
+          "query": 14,
+          "latencyMs": 2440.8,
+          "initMs": 673.7,
+          "roundTripMs": 3047.3,
+          "hits": 20
+        },
+        {
+          "query": 15,
+          "latencyMs": 2288.1,
+          "initMs": 663.6,
+          "roundTripMs": 2928.6,
+          "hits": 20
+        },
+        {
+          "query": 16,
+          "latencyMs": 2650.1,
+          "initMs": 786.2,
+          "roundTripMs": 3207.2,
+          "hits": 20
+        },
+        {
+          "query": 17,
+          "latencyMs": 2495,
+          "initMs": 794.2,
+          "roundTripMs": 3045.1,
+          "hits": 20
+        },
+        {
+          "query": 18,
+          "latencyMs": 2278.2,
+          "initMs": 663.5,
+          "roundTripMs": 2880.5,
+          "hits": 20
+        },
+        {
+          "query": 19,
+          "latencyMs": 2496.4,
+          "initMs": 777.6,
+          "roundTripMs": 3073.3,
+          "hits": 20
+        },
+        {
+          "query": 0,
+          "latencyMs": 2521.3,
+          "initMs": 792.3,
+          "roundTripMs": 3220.8,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 2533.7,
+          "initMs": 770.2,
+          "roundTripMs": 3122.7,
+          "hits": 20
+        },
+        {
+          "query": 2,
+          "latencyMs": 2546.6,
+          "initMs": 788.2,
+          "roundTripMs": 3103.8,
+          "hits": 20
+        },
+        {
+          "query": 3,
+          "latencyMs": 2369.1,
+          "initMs": 668.2,
+          "roundTripMs": 2976.5,
+          "hits": 20
+        },
+        {
+          "query": 4,
+          "latencyMs": 2415.6,
+          "initMs": 655.6,
+          "roundTripMs": 3038,
+          "hits": 20
+        },
+        {
+          "query": 5,
+          "latencyMs": 2312.2,
+          "initMs": 662.7,
+          "roundTripMs": 3066.1,
+          "hits": 20
+        },
+        {
+          "query": 6,
+          "latencyMs": 2536.5,
+          "initMs": 777,
+          "roundTripMs": 3086.2,
+          "hits": 20
+        },
+        {
+          "query": 7,
+          "latencyMs": 2642.8,
+          "initMs": 775.3,
+          "roundTripMs": 3245.9,
+          "hits": 20
+        },
+        {
+          "query": 8,
+          "latencyMs": 2516,
+          "initMs": 782.3,
+          "roundTripMs": 3113.5,
+          "hits": 20
+        },
+        {
+          "query": 9,
+          "latencyMs": 2581.7,
+          "initMs": 800.1,
+          "roundTripMs": 3162.8,
+          "hits": 20
+        }
+      ]
+    },
+    {
+      "package": "x64-zip",
+      "memoryMb": 10240,
+      "type": "hybrid",
+      "condition": "cold",
+      "queries": 30,
+      "excluded": 0,
+      "failed": [],
+      "latencyMs": {
+        "p50": 2595.5643569999997,
+        "p95": 2698.298959,
+        "p99": 2705.770061
+      },
+      "initMs": {
+        "p50": 781.02,
+        "p95": 797.64,
+        "p99": 798.09
+      },
+      "searchMs": {
+        "p50": 1815.4756229999998,
+        "p95": 1916.0800610000001,
+        "p99": 1917.398959
+      },
+      "roundTripMs": {
+        "p50": 3183.2215549999964,
+        "p95": 3303.649599999946,
+        "p99": 3335.357200999977
+      },
+      "target": {
+        "p95Ms": 3000,
+        "met": true
+      },
+      "s3RequestsPerQuery": 440.3333333333333,
+      "s3Requests": {
+        "AllRequests": 13210,
+        "GetRequests": 13210,
+        "HeadRequests": 0,
+        "ListRequests": 0,
+        "PutRequests": 0
+      },
+      "maxMemoryMb": 295,
+      "cachedMb": 38.847829818725586,
+      "queriesWithoutHits": 0,
+      "window": {
+        "from": "2026-10-06T04:16:00.000Z",
+        "to": "2026-10-06T04:17:00.000Z"
+      },
+      "samples": [
+        {
+          "query": 0,
+          "latencyMs": 2595.6,
+          "initMs": 792,
+          "roundTripMs": 3170.3,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 2691.6,
+          "initMs": 782.2,
+          "roundTripMs": 3275,
+          "hits": 20
+        },
+        {
+          "query": 2,
+          "latencyMs": 2674,
+          "initMs": 786.8,
+          "roundTripMs": 3264.2,
+          "hits": 20
+        },
+        {
+          "query": 3,
+          "latencyMs": 2613.1,
+          "initMs": 797.6,
+          "roundTripMs": 3195.7,
+          "hits": 20
+        },
+        {
+          "query": 4,
+          "latencyMs": 2484.5,
+          "initMs": 668.7,
+          "roundTripMs": 3101.4,
+          "hits": 20
+        },
+        {
+          "query": 5,
+          "latencyMs": 2553.8,
+          "initMs": 777.9,
+          "roundTripMs": 3135.5,
+          "hits": 20
+        },
+        {
+          "query": 6,
+          "latencyMs": 2384.5,
+          "initMs": 665,
+          "roundTripMs": 2982.2,
+          "hits": 20
+        },
+        {
+          "query": 7,
+          "latencyMs": 2573.4,
+          "initMs": 788.9,
+          "roundTripMs": 3164,
+          "hits": 20
+        },
+        {
+          "query": 8,
+          "latencyMs": 2690.4,
+          "initMs": 776.2,
+          "roundTripMs": 3240.2,
+          "hits": 20
+        },
+        {
+          "query": 9,
+          "latencyMs": 2623.8,
+          "initMs": 780.5,
+          "roundTripMs": 3233.8,
+          "hits": 20
+        },
+        {
+          "query": 10,
+          "latencyMs": 2326.2,
+          "initMs": 650.9,
+          "roundTripMs": 2904.4,
+          "hits": 20
+        },
+        {
+          "query": 11,
+          "latencyMs": 2667.3,
+          "initMs": 781.1,
+          "roundTripMs": 3258.9,
+          "hits": 20
+        },
+        {
+          "query": 12,
+          "latencyMs": 2671.9,
+          "initMs": 784.9,
+          "roundTripMs": 3335.4,
+          "hits": 20
+        },
+        {
+          "query": 13,
+          "latencyMs": 2676.4,
+          "initMs": 796.7,
+          "roundTripMs": 3260.3,
+          "hits": 20
+        },
+        {
+          "query": 14,
+          "latencyMs": 2524.8,
+          "initMs": 652.1,
+          "roundTripMs": 3113.6,
+          "hits": 20
+        },
+        {
+          "query": 15,
+          "latencyMs": 2256.3,
+          "initMs": 635.2,
+          "roundTripMs": 2799.3,
+          "hits": 20
+        },
+        {
+          "query": 16,
+          "latencyMs": 2705.8,
+          "initMs": 789.7,
+          "roundTripMs": 3259.7,
+          "hits": 20
+        },
+        {
+          "query": 17,
+          "latencyMs": 2606.6,
+          "initMs": 793.6,
+          "roundTripMs": 3186.7,
+          "hits": 20
+        },
+        {
+          "query": 18,
+          "latencyMs": 2389.5,
+          "initMs": 674.4,
+          "roundTripMs": 3115.1,
+          "hits": 20
+        },
+        {
+          "query": 19,
+          "latencyMs": 2622.2,
+          "initMs": 784.1,
+          "roundTripMs": 3204.6,
+          "hits": 20
+        },
+        {
+          "query": 0,
+          "latencyMs": 2583.3,
+          "initMs": 792.1,
+          "roundTripMs": 3185.3,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 2486.2,
+          "initMs": 779.2,
+          "roundTripMs": 3074.1,
+          "hits": 20
+        },
+        {
+          "query": 2,
+          "latencyMs": 2698.3,
+          "initMs": 780.9,
+          "roundTripMs": 3303.6,
+          "hits": 20
+        },
+        {
+          "query": 3,
+          "latencyMs": 2535.5,
+          "initMs": 782.3,
+          "roundTripMs": 3142.6,
+          "hits": 20
+        },
+        {
+          "query": 4,
+          "latencyMs": 2664,
+          "initMs": 798.1,
+          "roundTripMs": 3254.2,
+          "hits": 20
+        },
+        {
+          "query": 5,
+          "latencyMs": 2359.7,
+          "initMs": 663.8,
+          "roundTripMs": 2967.5,
+          "hits": 20
+        },
+        {
+          "query": 6,
+          "latencyMs": 2613.4,
+          "initMs": 782.3,
+          "roundTripMs": 3183.2,
+          "hits": 20
+        },
+        {
+          "query": 7,
+          "latencyMs": 2681.2,
+          "initMs": 781,
+          "roundTripMs": 3296.9,
+          "hits": 20
+        },
+        {
+          "query": 8,
+          "latencyMs": 2442.5,
+          "initMs": 656.1,
+          "roundTripMs": 3047.1,
+          "hits": 20
+        },
+        {
+          "query": 9,
+          "latencyMs": 2341.4,
+          "initMs": 660.9,
+          "roundTripMs": 2948.9,
+          "hits": 20
+        }
+      ]
+    },
+    {
+      "package": "x64-zip",
+      "memoryMb": 10240,
+      "type": "keyword",
+      "condition": "warm-first",
+      "queries": 100,
+      "excluded": 0,
+      "failed": [],
+      "latencyMs": {
+        "p50": 796.4812939999974,
+        "p95": 879.2510920000059,
+        "p99": 888.0365210000018
+      },
+      "roundTripMs": {
+        "p50": 829.5058100000024,
+        "p95": 911.2064770000288,
+        "p99": 922.2979829999967
+      },
+      "s3RequestsPerQuery": 140.15,
+      "s3Requests": {
+        "AllRequests": 14015,
+        "GetRequests": 14015,
+        "HeadRequests": 0,
+        "ListRequests": 0,
+        "PutRequests": 0
+      },
+      "maxMemoryMb": 1559,
+      "cachedMb": 26.005330085754395,
+      "queriesWithoutHits": 0,
+      "window": {
+        "from": "2026-10-06T04:18:00.000Z",
+        "to": "2026-10-06T04:20:00.000Z"
+      },
+      "samples": [
+        {
+          "query": 0,
+          "latencyMs": 898.6,
+          "roundTripMs": 938.2,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 789,
+          "roundTripMs": 824.3,
+          "hits": 20
+        },
+        {
+          "query": 2,
+          "latencyMs": 860.5,
+          "roundTripMs": 893.5,
+          "hits": 20
+        },
+        {
+          "query": 3,
+          "latencyMs": 879.3,
+          "roundTripMs": 909.6,
+          "hits": 20
+        },
+        {
+          "query": 4,
+          "latencyMs": 872.2,
+          "roundTripMs": 906.9,
+          "hits": 20
+        },
+        {
+          "query": 5,
+          "latencyMs": 877.8,
+          "roundTripMs": 915.7,
+          "hits": 20
+        },
+        {
+          "query": 6,
+          "latencyMs": 853,
+          "roundTripMs": 890.6,
+          "hits": 20
+        },
+        {
+          "query": 7,
+          "latencyMs": 789.1,
+          "roundTripMs": 819.2,
+          "hits": 20
+        },
+        {
+          "query": 8,
+          "latencyMs": 778.8,
+          "roundTripMs": 812.9,
+          "hits": 20
+        },
+        {
+          "query": 9,
+          "latencyMs": 794.1,
+          "roundTripMs": 829.3,
+          "hits": 3
+        },
+        {
+          "query": 10,
+          "latencyMs": 888,
+          "roundTripMs": 922.3,
+          "hits": 20
+        },
+        {
+          "query": 11,
+          "latencyMs": 826.5,
+          "roundTripMs": 861,
+          "hits": 20
+        },
+        {
+          "query": 12,
+          "latencyMs": 809.7,
+          "roundTripMs": 844.2,
+          "hits": 20
+        },
+        {
+          "query": 13,
+          "latencyMs": 825,
+          "roundTripMs": 857.5,
+          "hits": 20
+        },
+        {
+          "query": 14,
+          "latencyMs": 787.4,
+          "roundTripMs": 821.2,
+          "hits": 20
+        },
+        {
+          "query": 15,
+          "latencyMs": 772.1,
+          "roundTripMs": 807.4,
+          "hits": 20
+        },
+        {
+          "query": 16,
+          "latencyMs": 763.9,
+          "roundTripMs": 798.2,
+          "hits": 20
+        },
+        {
+          "query": 17,
+          "latencyMs": 734.8,
+          "roundTripMs": 765.2,
+          "hits": 20
+        },
+        {
+          "query": 18,
+          "latencyMs": 820.9,
+          "roundTripMs": 854.9,
+          "hits": 20
+        },
+        {
+          "query": 19,
+          "latencyMs": 751.8,
+          "roundTripMs": 785.6,
+          "hits": 20
+        },
+        {
+          "query": 20,
+          "latencyMs": 813.1,
+          "roundTripMs": 843.4,
+          "hits": 20
+        },
+        {
+          "query": 21,
+          "latencyMs": 735.8,
+          "roundTripMs": 774,
+          "hits": 20
+        },
+        {
+          "query": 22,
+          "latencyMs": 825.9,
+          "roundTripMs": 856.2,
+          "hits": 20
+        },
+        {
+          "query": 23,
+          "latencyMs": 766.7,
+          "roundTripMs": 797.2,
+          "hits": 20
+        },
+        {
+          "query": 24,
+          "latencyMs": 810.1,
+          "roundTripMs": 842.2,
+          "hits": 20
+        },
+        {
+          "query": 25,
+          "latencyMs": 823.5,
+          "roundTripMs": 853.4,
+          "hits": 20
+        },
+        {
+          "query": 26,
+          "latencyMs": 770.9,
+          "roundTripMs": 805,
+          "hits": 20
+        },
+        {
+          "query": 27,
+          "latencyMs": 871.3,
+          "roundTripMs": 904.1,
+          "hits": 20
+        },
+        {
+          "query": 28,
+          "latencyMs": 687.9,
+          "roundTripMs": 721.1,
+          "hits": 20
+        },
+        {
+          "query": 29,
+          "latencyMs": 784.9,
+          "roundTripMs": 817.6,
+          "hits": 20
+        },
+        {
+          "query": 30,
+          "latencyMs": 761.5,
+          "roundTripMs": 792.1,
+          "hits": 20
+        },
+        {
+          "query": 31,
+          "latencyMs": 760.2,
+          "roundTripMs": 794.8,
+          "hits": 20
+        },
+        {
+          "query": 32,
+          "latencyMs": 804,
+          "roundTripMs": 837,
+          "hits": 20
+        },
+        {
+          "query": 33,
+          "latencyMs": 791.7,
+          "roundTripMs": 825.2,
+          "hits": 20
+        },
+        {
+          "query": 34,
+          "latencyMs": 810.7,
+          "roundTripMs": 841.1,
+          "hits": 20
+        },
+        {
+          "query": 35,
+          "latencyMs": 750.6,
+          "roundTripMs": 783.9,
+          "hits": 20
+        },
+        {
+          "query": 36,
+          "latencyMs": 777.9,
+          "roundTripMs": 811.7,
+          "hits": 20
+        },
+        {
+          "query": 37,
+          "latencyMs": 796.5,
+          "roundTripMs": 829.5,
+          "hits": 20
+        },
+        {
+          "query": 38,
+          "latencyMs": 805.2,
+          "roundTripMs": 839.1,
+          "hits": 20
+        },
+        {
+          "query": 39,
+          "latencyMs": 781,
+          "roundTripMs": 813.2,
+          "hits": 20
+        },
+        {
+          "query": 40,
+          "latencyMs": 869.8,
+          "roundTripMs": 904.6,
+          "hits": 20
+        },
+        {
+          "query": 41,
+          "latencyMs": 817.7,
+          "roundTripMs": 851.7,
+          "hits": 20
+        },
+        {
+          "query": 42,
+          "latencyMs": 830.7,
+          "roundTripMs": 860.7,
+          "hits": 20
+        },
+        {
+          "query": 43,
+          "latencyMs": 824,
+          "roundTripMs": 856,
+          "hits": 1
+        },
+        {
+          "query": 0,
+          "latencyMs": 802.3,
+          "roundTripMs": 835,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 836.6,
+          "roundTripMs": 869.5,
+          "hits": 20
+        },
+        {
+          "query": 2,
+          "latencyMs": 830,
+          "roundTripMs": 863.6,
+          "hits": 20
+        },
+        {
+          "query": 3,
+          "latencyMs": 842.3,
+          "roundTripMs": 878.8,
+          "hits": 20
+        },
+        {
+          "query": 4,
+          "latencyMs": 825.6,
+          "roundTripMs": 853.8,
+          "hits": 20
+        },
+        {
+          "query": 5,
+          "latencyMs": 816.1,
+          "roundTripMs": 849.8,
+          "hits": 20
+        },
+        {
+          "query": 6,
+          "latencyMs": 762.5,
+          "roundTripMs": 797.9,
+          "hits": 20
+        },
+        {
+          "query": 7,
+          "latencyMs": 809.9,
+          "roundTripMs": 842.3,
+          "hits": 20
+        },
+        {
+          "query": 8,
+          "latencyMs": 805,
+          "roundTripMs": 841.2,
+          "hits": 20
+        },
+        {
+          "query": 9,
+          "latencyMs": 767.6,
+          "roundTripMs": 801.3,
+          "hits": 3
+        },
+        {
+          "query": 10,
+          "latencyMs": 807.8,
+          "roundTripMs": 836.7,
+          "hits": 20
+        },
+        {
+          "query": 11,
+          "latencyMs": 755.9,
+          "roundTripMs": 789.6,
+          "hits": 20
+        },
+        {
+          "query": 12,
+          "latencyMs": 826,
+          "roundTripMs": 863.8,
+          "hits": 20
+        },
+        {
+          "query": 13,
+          "latencyMs": 812.7,
+          "roundTripMs": 848,
+          "hits": 20
+        },
+        {
+          "query": 14,
+          "latencyMs": 831.3,
+          "roundTripMs": 861.5,
+          "hits": 20
+        },
+        {
+          "query": 15,
+          "latencyMs": 762.8,
+          "roundTripMs": 792.9,
+          "hits": 20
+        },
+        {
+          "query": 16,
+          "latencyMs": 743.5,
+          "roundTripMs": 780,
+          "hits": 20
+        },
+        {
+          "query": 17,
+          "latencyMs": 770.6,
+          "roundTripMs": 804.8,
+          "hits": 20
+        },
+        {
+          "query": 18,
+          "latencyMs": 794.8,
+          "roundTripMs": 825.9,
+          "hits": 20
+        },
+        {
+          "query": 19,
+          "latencyMs": 815,
+          "roundTripMs": 849.7,
+          "hits": 20
+        },
+        {
+          "query": 20,
+          "latencyMs": 773,
+          "roundTripMs": 803.8,
+          "hits": 20
+        },
+        {
+          "query": 21,
+          "latencyMs": 733.6,
+          "roundTripMs": 768.5,
+          "hits": 20
+        },
+        {
+          "query": 22,
+          "latencyMs": 807.8,
+          "roundTripMs": 841.4,
+          "hits": 20
+        },
+        {
+          "query": 23,
+          "latencyMs": 748.4,
+          "roundTripMs": 781.5,
+          "hits": 20
+        },
+        {
+          "query": 24,
+          "latencyMs": 769.3,
+          "roundTripMs": 799.7,
+          "hits": 20
+        },
+        {
+          "query": 25,
+          "latencyMs": 778.9,
+          "roundTripMs": 812.6,
+          "hits": 20
+        },
+        {
+          "query": 26,
+          "latencyMs": 743,
+          "roundTripMs": 793.8,
+          "hits": 20
+        },
+        {
+          "query": 27,
+          "latencyMs": 882.3,
+          "roundTripMs": 915.5,
+          "hits": 20
+        },
+        {
+          "query": 28,
+          "latencyMs": 705.9,
+          "roundTripMs": 735.5,
+          "hits": 20
+        },
+        {
+          "query": 29,
+          "latencyMs": 747.2,
+          "roundTripMs": 776.7,
+          "hits": 20
+        },
+        {
+          "query": 30,
+          "latencyMs": 790.1,
+          "roundTripMs": 824.1,
+          "hits": 20
+        },
+        {
+          "query": 31,
+          "latencyMs": 778.3,
+          "roundTripMs": 812.6,
+          "hits": 20
+        },
+        {
+          "query": 32,
+          "latencyMs": 764.3,
+          "roundTripMs": 798.5,
+          "hits": 20
+        },
+        {
+          "query": 33,
+          "latencyMs": 806.6,
+          "roundTripMs": 841.2,
+          "hits": 20
+        },
+        {
+          "query": 34,
+          "latencyMs": 884,
+          "roundTripMs": 918.3,
+          "hits": 20
+        },
+        {
+          "query": 35,
+          "latencyMs": 800,
+          "roundTripMs": 833.7,
+          "hits": 20
+        },
+        {
+          "query": 36,
+          "latencyMs": 700.1,
+          "roundTripMs": 733,
+          "hits": 20
+        },
+        {
+          "query": 37,
+          "latencyMs": 773.4,
+          "roundTripMs": 805.7,
+          "hits": 20
+        },
+        {
+          "query": 38,
+          "latencyMs": 782.1,
+          "roundTripMs": 820.6,
+          "hits": 20
+        },
+        {
+          "query": 39,
+          "latencyMs": 839.1,
+          "roundTripMs": 873.9,
+          "hits": 20
+        },
+        {
+          "query": 40,
+          "latencyMs": 879.9,
+          "roundTripMs": 911.2,
+          "hits": 20
+        },
+        {
+          "query": 41,
+          "latencyMs": 813.5,
+          "roundTripMs": 846.8,
+          "hits": 20
+        },
+        {
+          "query": 42,
+          "latencyMs": 799.6,
+          "roundTripMs": 835.7,
+          "hits": 20
+        },
+        {
+          "query": 43,
+          "latencyMs": 749.9,
+          "roundTripMs": 785.7,
+          "hits": 1
+        },
+        {
+          "query": 0,
+          "latencyMs": 786.2,
+          "roundTripMs": 822.3,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 768.3,
+          "roundTripMs": 802,
+          "hits": 20
+        },
+        {
+          "query": 2,
+          "latencyMs": 763.4,
+          "roundTripMs": 814,
+          "hits": 20
+        },
+        {
+          "query": 3,
+          "latencyMs": 798.3,
+          "roundTripMs": 832.6,
+          "hits": 20
+        },
+        {
+          "query": 4,
+          "latencyMs": 785.8,
+          "roundTripMs": 815.9,
+          "hits": 20
+        },
+        {
+          "query": 5,
+          "latencyMs": 828.4,
+          "roundTripMs": 859.2,
+          "hits": 20
+        },
+        {
+          "query": 6,
+          "latencyMs": 799.8,
+          "roundTripMs": 833.6,
+          "hits": 20
+        },
+        {
+          "query": 7,
+          "latencyMs": 848.6,
+          "roundTripMs": 879.5,
+          "hits": 20
+        },
+        {
+          "query": 8,
+          "latencyMs": 826.4,
+          "roundTripMs": 858.4,
+          "hits": 20
+        },
+        {
+          "query": 9,
+          "latencyMs": 757.5,
+          "roundTripMs": 787.8,
+          "hits": 3
+        },
+        {
+          "query": 10,
+          "latencyMs": 784.9,
+          "roundTripMs": 814.5,
+          "hits": 20
+        },
+        {
+          "query": 11,
+          "latencyMs": 720.6,
+          "roundTripMs": 755.2,
+          "hits": 20
+        }
+      ]
+    },
+    {
+      "package": "x64-zip",
+      "memoryMb": 10240,
+      "type": "phrase",
+      "condition": "warm-first",
+      "queries": 100,
+      "excluded": 0,
+      "failed": [],
+      "latencyMs": {
+        "p50": 856.3023689999827,
+        "p95": 907.2057560000103,
+        "p99": 910.7141100000008
+      },
+      "roundTripMs": {
+        "p50": 892.051948999986,
+        "p95": 941.3417929999996,
+        "p99": 945.01052599994
+      },
+      "s3RequestsPerQuery": 218.86,
+      "s3Requests": {
+        "AllRequests": 21886,
+        "GetRequests": 21886,
+        "HeadRequests": 0,
+        "ListRequests": 0,
+        "PutRequests": 0
+      },
+      "maxMemoryMb": 1559,
+      "cachedMb": 28.676179885864258,
+      "queriesWithoutHits": 5,
+      "window": {
+        "from": "2026-10-06T04:20:00.000Z",
+        "to": "2026-10-06T04:22:00.000Z"
+      },
+      "samples": [
+        {
+          "query": 0,
+          "latencyMs": 870.6,
+          "roundTripMs": 906.3,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 852.5,
+          "roundTripMs": 888.1,
+          "hits": 7
+        },
+        {
+          "query": 2,
+          "latencyMs": 892.2,
+          "roundTripMs": 927.6,
+          "hits": 14
+        },
+        {
+          "query": 3,
+          "latencyMs": 847.7,
+          "roundTripMs": 881.7,
+          "hits": 6
+        },
+        {
+          "query": 4,
+          "latencyMs": 850.4,
+          "roundTripMs": 892.7,
+          "hits": 3
+        },
+        {
+          "query": 5,
+          "latencyMs": 866.8,
+          "roundTripMs": 899.3,
+          "hits": 7
+        },
+        {
+          "query": 6,
+          "latencyMs": 804,
+          "roundTripMs": 837.4,
+          "hits": 2
+        },
+        {
+          "query": 7,
+          "latencyMs": 817.9,
+          "roundTripMs": 849,
+          "hits": 15
+        },
+        {
+          "query": 8,
+          "latencyMs": 814.9,
+          "roundTripMs": 847.3,
+          "hits": 4
+        },
+        {
+          "query": 9,
+          "latencyMs": 734,
+          "roundTripMs": 768.6,
+          "hits": 0
+        },
+        {
+          "query": 10,
+          "latencyMs": 782.7,
+          "roundTripMs": 813.4,
+          "hits": 20
+        },
+        {
+          "query": 11,
+          "latencyMs": 796.9,
+          "roundTripMs": 831.8,
+          "hits": 18
+        },
+        {
+          "query": 12,
+          "latencyMs": 879.8,
+          "roundTripMs": 911.2,
+          "hits": 20
+        },
+        {
+          "query": 13,
+          "latencyMs": 896.6,
+          "roundTripMs": 929.7,
+          "hits": 20
+        },
+        {
+          "query": 14,
+          "latencyMs": 836.6,
+          "roundTripMs": 871.4,
+          "hits": 20
+        },
+        {
+          "query": 15,
+          "latencyMs": 677.5,
+          "roundTripMs": 711.7,
+          "hits": 20
+        },
+        {
+          "query": 16,
+          "latencyMs": 790.8,
+          "roundTripMs": 820.6,
+          "hits": 20
+        },
+        {
+          "query": 17,
+          "latencyMs": 807.4,
+          "roundTripMs": 841.8,
+          "hits": 20
+        },
+        {
+          "query": 18,
+          "latencyMs": 821.8,
+          "roundTripMs": 856.7,
+          "hits": 20
+        },
+        {
+          "query": 19,
+          "latencyMs": 865.3,
+          "roundTripMs": 896,
+          "hits": 20
+        },
+        {
+          "query": 20,
+          "latencyMs": 822.5,
+          "roundTripMs": 851.3,
+          "hits": 20
+        },
+        {
+          "query": 21,
+          "latencyMs": 829.7,
+          "roundTripMs": 860.7,
+          "hits": 20
+        },
+        {
+          "query": 0,
+          "latencyMs": 846.3,
+          "roundTripMs": 877.3,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 857.6,
+          "roundTripMs": 894.4,
+          "hits": 7
+        },
+        {
+          "query": 2,
+          "latencyMs": 846.8,
+          "roundTripMs": 881.4,
+          "hits": 14
+        },
+        {
+          "query": 3,
+          "latencyMs": 882.3,
+          "roundTripMs": 915.5,
+          "hits": 6
+        },
+        {
+          "query": 4,
+          "latencyMs": 886.2,
+          "roundTripMs": 915.7,
+          "hits": 3
+        },
+        {
+          "query": 5,
+          "latencyMs": 842.1,
+          "roundTripMs": 877.8,
+          "hits": 7
+        },
+        {
+          "query": 6,
+          "latencyMs": 804.6,
+          "roundTripMs": 837.6,
+          "hits": 2
+        },
+        {
+          "query": 7,
+          "latencyMs": 880.6,
+          "roundTripMs": 915.4,
+          "hits": 15
+        },
+        {
+          "query": 8,
+          "latencyMs": 858.4,
+          "roundTripMs": 891.1,
+          "hits": 4
+        },
+        {
+          "query": 9,
+          "latencyMs": 772.5,
+          "roundTripMs": 804.6,
+          "hits": 0
+        },
+        {
+          "query": 10,
+          "latencyMs": 909.5,
+          "roundTripMs": 941.3,
+          "hits": 20
+        },
+        {
+          "query": 11,
+          "latencyMs": 865.1,
+          "roundTripMs": 894.9,
+          "hits": 18
+        },
+        {
+          "query": 12,
+          "latencyMs": 880.8,
+          "roundTripMs": 914.8,
+          "hits": 20
+        },
+        {
+          "query": 13,
+          "latencyMs": 906.9,
+          "roundTripMs": 936,
+          "hits": 20
+        },
+        {
+          "query": 14,
+          "latencyMs": 855.1,
+          "roundTripMs": 892.1,
+          "hits": 20
+        },
+        {
+          "query": 15,
+          "latencyMs": 703,
+          "roundTripMs": 733.5,
+          "hits": 20
+        },
+        {
+          "query": 16,
+          "latencyMs": 879.8,
+          "roundTripMs": 911.5,
+          "hits": 20
+        },
+        {
+          "query": 17,
+          "latencyMs": 882.7,
+          "roundTripMs": 912.8,
+          "hits": 20
+        },
+        {
+          "query": 18,
+          "latencyMs": 873.9,
+          "roundTripMs": 904.9,
+          "hits": 20
+        },
+        {
+          "query": 19,
+          "latencyMs": 867.2,
+          "roundTripMs": 901.8,
+          "hits": 20
+        },
+        {
+          "query": 20,
+          "latencyMs": 879,
+          "roundTripMs": 908.3,
+          "hits": 20
+        },
+        {
+          "query": 21,
+          "latencyMs": 839.6,
+          "roundTripMs": 872.7,
+          "hits": 20
+        },
+        {
+          "query": 0,
+          "latencyMs": 891.9,
+          "roundTripMs": 924.8,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 805.5,
+          "roundTripMs": 839.1,
+          "hits": 7
+        },
+        {
+          "query": 2,
+          "latencyMs": 880.9,
+          "roundTripMs": 912.1,
+          "hits": 14
+        },
+        {
+          "query": 3,
+          "latencyMs": 901.8,
+          "roundTripMs": 932,
+          "hits": 6
+        },
+        {
+          "query": 4,
+          "latencyMs": 883.5,
+          "roundTripMs": 917.5,
+          "hits": 3
+        },
+        {
+          "query": 5,
+          "latencyMs": 823.9,
+          "roundTripMs": 860.4,
+          "hits": 7
+        },
+        {
+          "query": 6,
+          "latencyMs": 819.8,
+          "roundTripMs": 853.1,
+          "hits": 2
+        },
+        {
+          "query": 7,
+          "latencyMs": 854.3,
+          "roundTripMs": 888.4,
+          "hits": 15
+        },
+        {
+          "query": 8,
+          "latencyMs": 842.3,
+          "roundTripMs": 871,
+          "hits": 4
+        },
+        {
+          "query": 9,
+          "latencyMs": 748.6,
+          "roundTripMs": 779,
+          "hits": 0
+        },
+        {
+          "query": 10,
+          "latencyMs": 907.2,
+          "roundTripMs": 945,
+          "hits": 20
+        },
+        {
+          "query": 11,
+          "latencyMs": 853.6,
+          "roundTripMs": 888.4,
+          "hits": 18
+        },
+        {
+          "query": 12,
+          "latencyMs": 904.2,
+          "roundTripMs": 937.2,
+          "hits": 20
+        },
+        {
+          "query": 13,
+          "latencyMs": 845,
+          "roundTripMs": 888.4,
+          "hits": 20
+        },
+        {
+          "query": 14,
+          "latencyMs": 880.8,
+          "roundTripMs": 919.2,
+          "hits": 20
+        },
+        {
+          "query": 15,
+          "latencyMs": 736.2,
+          "roundTripMs": 769.4,
+          "hits": 20
+        },
+        {
+          "query": 16,
+          "latencyMs": 821.2,
+          "roundTripMs": 854.6,
+          "hits": 20
+        },
+        {
+          "query": 17,
+          "latencyMs": 861.3,
+          "roundTripMs": 894.2,
+          "hits": 20
+        },
+        {
+          "query": 18,
+          "latencyMs": 884.4,
+          "roundTripMs": 916.7,
+          "hits": 20
+        },
+        {
+          "query": 19,
+          "latencyMs": 863.2,
+          "roundTripMs": 893.5,
+          "hits": 20
+        },
+        {
+          "query": 20,
+          "latencyMs": 853.9,
+          "roundTripMs": 884.7,
+          "hits": 20
+        },
+        {
+          "query": 21,
+          "latencyMs": 868.5,
+          "roundTripMs": 899.3,
+          "hits": 20
+        },
+        {
+          "query": 0,
+          "latencyMs": 828.6,
+          "roundTripMs": 859.2,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 810.3,
+          "roundTripMs": 843.8,
+          "hits": 7
+        },
+        {
+          "query": 2,
+          "latencyMs": 876.3,
+          "roundTripMs": 909.5,
+          "hits": 14
+        },
+        {
+          "query": 3,
+          "latencyMs": 894.9,
+          "roundTripMs": 931.6,
+          "hits": 6
+        },
+        {
+          "query": 4,
+          "latencyMs": 910.7,
+          "roundTripMs": 941.6,
+          "hits": 3
+        },
+        {
+          "query": 5,
+          "latencyMs": 891.4,
+          "roundTripMs": 924.6,
+          "hits": 7
+        },
+        {
+          "query": 6,
+          "latencyMs": 847.2,
+          "roundTripMs": 881.1,
+          "hits": 2
+        },
+        {
+          "query": 7,
+          "latencyMs": 884.6,
+          "roundTripMs": 919.7,
+          "hits": 15
+        },
+        {
+          "query": 8,
+          "latencyMs": 871.3,
+          "roundTripMs": 899.4,
+          "hits": 4
+        },
+        {
+          "query": 9,
+          "latencyMs": 728.6,
+          "roundTripMs": 764.9,
+          "hits": 0
+        },
+        {
+          "query": 10,
+          "latencyMs": 828.2,
+          "roundTripMs": 859.1,
+          "hits": 20
+        },
+        {
+          "query": 11,
+          "latencyMs": 812.9,
+          "roundTripMs": 841.3,
+          "hits": 18
+        },
+        {
+          "query": 12,
+          "latencyMs": 907.3,
+          "roundTripMs": 944.5,
+          "hits": 20
+        },
+        {
+          "query": 13,
+          "latencyMs": 840.9,
+          "roundTripMs": 875.7,
+          "hits": 20
+        },
+        {
+          "query": 14,
+          "latencyMs": 861.7,
+          "roundTripMs": 895.2,
+          "hits": 20
+        },
+        {
+          "query": 15,
+          "latencyMs": 665.2,
+          "roundTripMs": 698.9,
+          "hits": 20
+        },
+        {
+          "query": 16,
+          "latencyMs": 861.8,
+          "roundTripMs": 899.1,
+          "hits": 20
+        },
+        {
+          "query": 17,
+          "latencyMs": 928.3,
+          "roundTripMs": 960.7,
+          "hits": 20
+        },
+        {
+          "query": 18,
+          "latencyMs": 910.1,
+          "roundTripMs": 939.5,
+          "hits": 20
+        },
+        {
+          "query": 19,
+          "latencyMs": 856.3,
+          "roundTripMs": 891.6,
+          "hits": 20
+        },
+        {
+          "query": 20,
+          "latencyMs": 897.6,
+          "roundTripMs": 942.7,
+          "hits": 20
+        },
+        {
+          "query": 21,
+          "latencyMs": 873.7,
+          "roundTripMs": 906.7,
+          "hits": 20
+        },
+        {
+          "query": 0,
+          "latencyMs": 905.3,
+          "roundTripMs": 934.8,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 894.8,
+          "roundTripMs": 929.2,
+          "hits": 7
+        },
+        {
+          "query": 2,
+          "latencyMs": 887.5,
+          "roundTripMs": 921.4,
+          "hits": 14
+        },
+        {
+          "query": 3,
+          "latencyMs": 857.3,
+          "roundTripMs": 893.5,
+          "hits": 6
+        },
+        {
+          "query": 4,
+          "latencyMs": 891.2,
+          "roundTripMs": 923.4,
+          "hits": 3
+        },
+        {
+          "query": 5,
+          "latencyMs": 818.8,
+          "roundTripMs": 869.1,
+          "hits": 7
+        },
+        {
+          "query": 6,
+          "latencyMs": 840.2,
+          "roundTripMs": 869.2,
+          "hits": 2
+        },
+        {
+          "query": 7,
+          "latencyMs": 854.5,
+          "roundTripMs": 886.6,
+          "hits": 15
+        },
+        {
+          "query": 8,
+          "latencyMs": 856.3,
+          "roundTripMs": 890.9,
+          "hits": 4
+        },
+        {
+          "query": 9,
+          "latencyMs": 723.2,
+          "roundTripMs": 764.7,
+          "hits": 0
+        },
+        {
+          "query": 10,
+          "latencyMs": 874,
+          "roundTripMs": 908.7,
+          "hits": 20
+        },
+        {
+          "query": 11,
+          "latencyMs": 840.1,
+          "roundTripMs": 870.5,
+          "hits": 18
+        }
+      ]
+    },
+    {
+      "package": "x64-zip",
+      "memoryMb": 10240,
+      "type": "vector",
+      "condition": "warm-first",
+      "queries": 100,
+      "excluded": 0,
+      "failed": [],
+      "latencyMs": {
+        "p50": 871.4176060000318,
+        "p95": 954.3064529999974,
+        "p99": 990.5498729999526
+      },
+      "roundTripMs": {
+        "p50": 906.8590109999059,
+        "p95": 983.3715350000421,
+        "p99": 1026.888096999959
+      },
+      "s3RequestsPerQuery": 343.38,
+      "s3Requests": {
+        "AllRequests": 34338,
+        "GetRequests": 34338,
+        "HeadRequests": 0,
+        "ListRequests": 0,
+        "PutRequests": 0
+      },
+      "maxMemoryMb": 1559,
+      "cachedMb": 15.23359489440918,
+      "queriesWithoutHits": 0,
+      "window": {
+        "from": "2026-10-06T04:22:00.000Z",
+        "to": "2026-10-06T04:24:00.000Z"
+      },
+      "samples": [
+        {
+          "query": 0,
+          "latencyMs": 976.9,
+          "roundTripMs": 1011.9,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 873.5,
+          "roundTripMs": 918.7,
+          "hits": 20
+        },
+        {
+          "query": 2,
+          "latencyMs": 859.2,
+          "roundTripMs": 894.6,
+          "hits": 20
+        },
+        {
+          "query": 3,
+          "latencyMs": 916.1,
+          "roundTripMs": 952.3,
+          "hits": 20
+        },
+        {
+          "query": 4,
+          "latencyMs": 860.2,
+          "roundTripMs": 893.3,
+          "hits": 20
+        },
+        {
+          "query": 5,
+          "latencyMs": 893.5,
+          "roundTripMs": 925.8,
+          "hits": 20
+        },
+        {
+          "query": 6,
+          "latencyMs": 858.7,
+          "roundTripMs": 895.2,
+          "hits": 20
+        },
+        {
+          "query": 7,
+          "latencyMs": 858,
+          "roundTripMs": 891.6,
+          "hits": 20
+        },
+        {
+          "query": 8,
+          "latencyMs": 990.5,
+          "roundTripMs": 1026.9,
+          "hits": 20
+        },
+        {
+          "query": 9,
+          "latencyMs": 907.7,
+          "roundTripMs": 939.9,
+          "hits": 20
+        },
+        {
+          "query": 10,
+          "latencyMs": 948.3,
+          "roundTripMs": 976.7,
+          "hits": 20
+        },
+        {
+          "query": 11,
+          "latencyMs": 880.2,
+          "roundTripMs": 911.2,
+          "hits": 20
+        },
+        {
+          "query": 12,
+          "latencyMs": 874,
+          "roundTripMs": 908.1,
+          "hits": 20
+        },
+        {
+          "query": 13,
+          "latencyMs": 880.7,
+          "roundTripMs": 909.6,
+          "hits": 20
+        },
+        {
+          "query": 14,
+          "latencyMs": 853,
+          "roundTripMs": 886.7,
+          "hits": 20
+        },
+        {
+          "query": 15,
+          "latencyMs": 875.9,
+          "roundTripMs": 911.2,
+          "hits": 20
+        },
+        {
+          "query": 16,
+          "latencyMs": 920.4,
+          "roundTripMs": 954.2,
+          "hits": 20
+        },
+        {
+          "query": 17,
+          "latencyMs": 852.2,
+          "roundTripMs": 883.2,
+          "hits": 20
+        },
+        {
+          "query": 18,
+          "latencyMs": 832,
+          "roundTripMs": 864.4,
+          "hits": 20
+        },
+        {
+          "query": 19,
+          "latencyMs": 863.1,
+          "roundTripMs": 893.7,
+          "hits": 20
+        },
+        {
+          "query": 0,
+          "latencyMs": 883.7,
+          "roundTripMs": 915.5,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 870.6,
+          "roundTripMs": 901.2,
+          "hits": 20
+        },
+        {
+          "query": 2,
+          "latencyMs": 843.1,
+          "roundTripMs": 876.5,
+          "hits": 20
+        },
+        {
+          "query": 3,
+          "latencyMs": 859.6,
+          "roundTripMs": 892.3,
+          "hits": 20
+        },
+        {
+          "query": 4,
+          "latencyMs": 803.6,
+          "roundTripMs": 838.4,
+          "hits": 20
+        },
+        {
+          "query": 5,
+          "latencyMs": 936.4,
+          "roundTripMs": 965.1,
+          "hits": 20
+        },
+        {
+          "query": 6,
+          "latencyMs": 854.6,
+          "roundTripMs": 887.9,
+          "hits": 20
+        },
+        {
+          "query": 7,
+          "latencyMs": 971.5,
+          "roundTripMs": 1002.7,
+          "hits": 20
+        },
+        {
+          "query": 8,
+          "latencyMs": 954.3,
+          "roundTripMs": 983.4,
+          "hits": 20
+        },
+        {
+          "query": 9,
+          "latencyMs": 906.3,
+          "roundTripMs": 940.2,
+          "hits": 20
+        },
+        {
+          "query": 10,
+          "latencyMs": 849,
+          "roundTripMs": 885.8,
+          "hits": 20
+        },
+        {
+          "query": 11,
+          "latencyMs": 827.3,
+          "roundTripMs": 858.6,
+          "hits": 20
+        },
+        {
+          "query": 12,
+          "latencyMs": 868.2,
+          "roundTripMs": 897.3,
+          "hits": 20
+        },
+        {
+          "query": 13,
+          "latencyMs": 842.7,
+          "roundTripMs": 875.7,
+          "hits": 20
+        },
+        {
+          "query": 14,
+          "latencyMs": 838.4,
+          "roundTripMs": 872.7,
+          "hits": 20
+        },
+        {
+          "query": 15,
+          "latencyMs": 886.8,
+          "roundTripMs": 923.1,
+          "hits": 20
+        },
+        {
+          "query": 16,
+          "latencyMs": 902.4,
+          "roundTripMs": 937.5,
+          "hits": 20
+        },
+        {
+          "query": 17,
+          "latencyMs": 850.7,
+          "roundTripMs": 888.5,
+          "hits": 20
+        },
+        {
+          "query": 18,
+          "latencyMs": 929.9,
+          "roundTripMs": 962.4,
+          "hits": 20
+        },
+        {
+          "query": 19,
+          "latencyMs": 821,
+          "roundTripMs": 851.2,
+          "hits": 20
+        },
+        {
+          "query": 0,
+          "latencyMs": 871.4,
+          "roundTripMs": 900.1,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 852.6,
+          "roundTripMs": 882,
+          "hits": 20
+        },
+        {
+          "query": 2,
+          "latencyMs": 911.2,
+          "roundTripMs": 945.5,
+          "hits": 20
+        },
+        {
+          "query": 3,
+          "latencyMs": 844.9,
+          "roundTripMs": 877.1,
+          "hits": 20
+        },
+        {
+          "query": 4,
+          "latencyMs": 909.6,
+          "roundTripMs": 942.9,
+          "hits": 20
+        },
+        {
+          "query": 5,
+          "latencyMs": 880.5,
+          "roundTripMs": 911.9,
+          "hits": 20
+        },
+        {
+          "query": 6,
+          "latencyMs": 905.8,
+          "roundTripMs": 944.4,
+          "hits": 20
+        },
+        {
+          "query": 7,
+          "latencyMs": 897,
+          "roundTripMs": 926.7,
+          "hits": 20
+        },
+        {
+          "query": 8,
+          "latencyMs": 855,
+          "roundTripMs": 885.6,
+          "hits": 20
+        },
+        {
+          "query": 9,
+          "latencyMs": 931.8,
+          "roundTripMs": 964.6,
+          "hits": 20
+        },
+        {
+          "query": 10,
+          "latencyMs": 866.9,
+          "roundTripMs": 900,
+          "hits": 20
+        },
+        {
+          "query": 11,
+          "latencyMs": 846.6,
+          "roundTripMs": 880.1,
+          "hits": 20
+        },
+        {
+          "query": 12,
+          "latencyMs": 875.7,
+          "roundTripMs": 909.8,
+          "hits": 20
+        },
+        {
+          "query": 13,
+          "latencyMs": 922.7,
+          "roundTripMs": 953.3,
+          "hits": 20
+        },
+        {
+          "query": 14,
+          "latencyMs": 884.1,
+          "roundTripMs": 917.9,
+          "hits": 20
+        },
+        {
+          "query": 15,
+          "latencyMs": 934.3,
+          "roundTripMs": 968.7,
+          "hits": 20
+        },
+        {
+          "query": 16,
+          "latencyMs": 981.8,
+          "roundTripMs": 1018.4,
+          "hits": 20
+        },
+        {
+          "query": 17,
+          "latencyMs": 851.5,
+          "roundTripMs": 881.8,
+          "hits": 20
+        },
+        {
+          "query": 18,
+          "latencyMs": 931.5,
+          "roundTripMs": 961.8,
+          "hits": 20
+        },
+        {
+          "query": 19,
+          "latencyMs": 868.5,
+          "roundTripMs": 901.5,
+          "hits": 20
+        },
+        {
+          "query": 0,
+          "latencyMs": 920.8,
+          "roundTripMs": 952.5,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 857.9,
+          "roundTripMs": 891.5,
+          "hits": 20
+        },
+        {
+          "query": 2,
+          "latencyMs": 940,
+          "roundTripMs": 974.6,
+          "hits": 20
+        },
+        {
+          "query": 3,
+          "latencyMs": 1013.1,
+          "roundTripMs": 1045.1,
+          "hits": 20
+        },
+        {
+          "query": 4,
+          "latencyMs": 896.2,
+          "roundTripMs": 927.7,
+          "hits": 20
+        },
+        {
+          "query": 5,
+          "latencyMs": 924.8,
+          "roundTripMs": 963.1,
+          "hits": 20
+        },
+        {
+          "query": 6,
+          "latencyMs": 886.7,
+          "roundTripMs": 917.3,
+          "hits": 20
+        },
+        {
+          "query": 7,
+          "latencyMs": 882.7,
+          "roundTripMs": 917.3,
+          "hits": 20
+        },
+        {
+          "query": 8,
+          "latencyMs": 883.8,
+          "roundTripMs": 918.5,
+          "hits": 20
+        },
+        {
+          "query": 9,
+          "latencyMs": 872.2,
+          "roundTripMs": 901.1,
+          "hits": 20
+        },
+        {
+          "query": 10,
+          "latencyMs": 918.6,
+          "roundTripMs": 953.6,
+          "hits": 20
+        },
+        {
+          "query": 11,
+          "latencyMs": 798,
+          "roundTripMs": 834.4,
+          "hits": 20
+        },
+        {
+          "query": 12,
+          "latencyMs": 845.1,
+          "roundTripMs": 876.3,
+          "hits": 20
+        },
+        {
+          "query": 13,
+          "latencyMs": 870.6,
+          "roundTripMs": 907.7,
+          "hits": 20
+        },
+        {
+          "query": 14,
+          "latencyMs": 902.5,
+          "roundTripMs": 937,
+          "hits": 20
+        },
+        {
+          "query": 15,
+          "latencyMs": 834.2,
+          "roundTripMs": 868,
+          "hits": 20
+        },
+        {
+          "query": 16,
+          "latencyMs": 927.2,
+          "roundTripMs": 956.6,
+          "hits": 20
+        },
+        {
+          "query": 17,
+          "latencyMs": 840.7,
+          "roundTripMs": 880.7,
+          "hits": 20
+        },
+        {
+          "query": 18,
+          "latencyMs": 853.1,
+          "roundTripMs": 885,
+          "hits": 20
+        },
+        {
+          "query": 19,
+          "latencyMs": 806.2,
+          "roundTripMs": 840.4,
+          "hits": 20
+        },
+        {
+          "query": 0,
+          "latencyMs": 830.6,
+          "roundTripMs": 863.3,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 859.4,
+          "roundTripMs": 892.6,
+          "hits": 20
+        },
+        {
+          "query": 2,
+          "latencyMs": 838,
+          "roundTripMs": 868,
+          "hits": 20
+        },
+        {
+          "query": 3,
+          "latencyMs": 877.3,
+          "roundTripMs": 913.5,
+          "hits": 20
+        },
+        {
+          "query": 4,
+          "latencyMs": 853.8,
+          "roundTripMs": 894.7,
+          "hits": 20
+        },
+        {
+          "query": 5,
+          "latencyMs": 854.8,
+          "roundTripMs": 885.7,
+          "hits": 20
+        },
+        {
+          "query": 6,
+          "latencyMs": 818,
+          "roundTripMs": 849,
+          "hits": 20
+        },
+        {
+          "query": 7,
+          "latencyMs": 937,
+          "roundTripMs": 969.9,
+          "hits": 20
+        },
+        {
+          "query": 8,
+          "latencyMs": 833.4,
+          "roundTripMs": 868,
+          "hits": 20
+        },
+        {
+          "query": 9,
+          "latencyMs": 881.5,
+          "roundTripMs": 911.3,
+          "hits": 20
+        },
+        {
+          "query": 10,
+          "latencyMs": 847,
+          "roundTripMs": 883.5,
+          "hits": 20
+        },
+        {
+          "query": 11,
+          "latencyMs": 895,
+          "roundTripMs": 925.8,
+          "hits": 20
+        },
+        {
+          "query": 12,
+          "latencyMs": 870.7,
+          "roundTripMs": 906.9,
+          "hits": 20
+        },
+        {
+          "query": 13,
+          "latencyMs": 839.2,
+          "roundTripMs": 868.6,
+          "hits": 20
+        },
+        {
+          "query": 14,
+          "latencyMs": 871.3,
+          "roundTripMs": 906.5,
+          "hits": 20
+        },
+        {
+          "query": 15,
+          "latencyMs": 862.3,
+          "roundTripMs": 895.3,
+          "hits": 20
+        },
+        {
+          "query": 16,
+          "latencyMs": 840.1,
+          "roundTripMs": 870.2,
+          "hits": 20
+        },
+        {
+          "query": 17,
+          "latencyMs": 880.7,
+          "roundTripMs": 915.5,
+          "hits": 20
+        },
+        {
+          "query": 18,
+          "latencyMs": 863.3,
+          "roundTripMs": 899.1,
+          "hits": 20
+        },
+        {
+          "query": 19,
+          "latencyMs": 877.7,
+          "roundTripMs": 911.8,
+          "hits": 20
+        }
+      ]
+    },
+    {
+      "package": "x64-zip",
+      "memoryMb": 10240,
+      "type": "hybrid",
+      "condition": "warm-first",
+      "queries": 100,
+      "excluded": 0,
+      "failed": [],
+      "latencyMs": {
+        "p50": 862.3532919999561,
+        "p95": 934.0728990000207,
+        "p99": 1063.5436779999873
+      },
+      "roundTripMs": {
+        "p50": 894.199850999983,
+        "p95": 969.2191409999505,
+        "p99": 1097.2126760000829
+      },
+      "s3RequestsPerQuery": 451.14,
+      "s3Requests": {
+        "AllRequests": 45114,
+        "GetRequests": 45114,
+        "HeadRequests": 0,
+        "ListRequests": 0,
+        "PutRequests": 0
+      },
+      "maxMemoryMb": 1559,
+      "cachedMb": 38.847829818725586,
+      "queriesWithoutHits": 0,
+      "window": {
+        "from": "2026-10-06T04:24:00.000Z",
+        "to": "2026-10-06T04:26:00.000Z"
+      },
+      "samples": [
+        {
+          "query": 0,
+          "latencyMs": 923.7,
+          "roundTripMs": 958.6,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 837.7,
+          "roundTripMs": 869.7,
+          "hits": 20
+        },
+        {
+          "query": 2,
+          "latencyMs": 900.2,
+          "roundTripMs": 933,
+          "hits": 20
+        },
+        {
+          "query": 3,
+          "latencyMs": 836,
+          "roundTripMs": 868.7,
+          "hits": 20
+        },
+        {
+          "query": 4,
+          "latencyMs": 813.2,
+          "roundTripMs": 843.9,
+          "hits": 20
+        },
+        {
+          "query": 5,
+          "latencyMs": 871.9,
+          "roundTripMs": 911.1,
+          "hits": 20
+        },
+        {
+          "query": 6,
+          "latencyMs": 885.7,
+          "roundTripMs": 918.1,
+          "hits": 20
+        },
+        {
+          "query": 7,
+          "latencyMs": 934.1,
+          "roundTripMs": 969.2,
+          "hits": 20
+        },
+        {
+          "query": 8,
+          "latencyMs": 849.7,
+          "roundTripMs": 887.4,
+          "hits": 20
+        },
+        {
+          "query": 9,
+          "latencyMs": 870.8,
+          "roundTripMs": 905.9,
+          "hits": 20
+        },
+        {
+          "query": 10,
+          "latencyMs": 844.2,
+          "roundTripMs": 882,
+          "hits": 20
+        },
+        {
+          "query": 11,
+          "latencyMs": 824.7,
+          "roundTripMs": 854.3,
+          "hits": 20
+        },
+        {
+          "query": 12,
+          "latencyMs": 883.6,
+          "roundTripMs": 914.4,
+          "hits": 20
+        },
+        {
+          "query": 13,
+          "latencyMs": 891.2,
+          "roundTripMs": 920.1,
+          "hits": 20
+        },
+        {
+          "query": 14,
+          "latencyMs": 1063.5,
+          "roundTripMs": 1097.2,
+          "hits": 20
+        },
+        {
+          "query": 15,
+          "latencyMs": 914.6,
+          "roundTripMs": 949.6,
+          "hits": 20
+        },
+        {
+          "query": 16,
+          "latencyMs": 881.1,
+          "roundTripMs": 911.9,
+          "hits": 20
+        },
+        {
+          "query": 17,
+          "latencyMs": 879.8,
+          "roundTripMs": 913.6,
+          "hits": 20
+        },
+        {
+          "query": 18,
+          "latencyMs": 870.2,
+          "roundTripMs": 903.5,
+          "hits": 20
+        },
+        {
+          "query": 19,
+          "latencyMs": 791.1,
+          "roundTripMs": 821.7,
+          "hits": 20
+        },
+        {
+          "query": 0,
+          "latencyMs": 844.3,
+          "roundTripMs": 877.9,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 839.7,
+          "roundTripMs": 871.8,
+          "hits": 20
+        },
+        {
+          "query": 2,
+          "latencyMs": 911.3,
+          "roundTripMs": 944,
+          "hits": 20
+        },
+        {
+          "query": 3,
+          "latencyMs": 911.7,
+          "roundTripMs": 946.4,
+          "hits": 20
+        },
+        {
+          "query": 4,
+          "latencyMs": 900.5,
+          "roundTripMs": 935.5,
+          "hits": 20
+        },
+        {
+          "query": 5,
+          "latencyMs": 858.3,
+          "roundTripMs": 890.5,
+          "hits": 20
+        },
+        {
+          "query": 6,
+          "latencyMs": 839,
+          "roundTripMs": 868.3,
+          "hits": 20
+        },
+        {
+          "query": 7,
+          "latencyMs": 821,
+          "roundTripMs": 852.4,
+          "hits": 20
+        },
+        {
+          "query": 8,
+          "latencyMs": 855.5,
+          "roundTripMs": 891.7,
+          "hits": 20
+        },
+        {
+          "query": 9,
+          "latencyMs": 896.8,
+          "roundTripMs": 936.1,
+          "hits": 20
+        },
+        {
+          "query": 10,
+          "latencyMs": 932.9,
+          "roundTripMs": 965.9,
+          "hits": 20
+        },
+        {
+          "query": 11,
+          "latencyMs": 861.1,
+          "roundTripMs": 891.1,
+          "hits": 20
+        },
+        {
+          "query": 12,
+          "latencyMs": 893.5,
+          "roundTripMs": 926.9,
+          "hits": 20
+        },
+        {
+          "query": 13,
+          "latencyMs": 921.1,
+          "roundTripMs": 955,
+          "hits": 20
+        },
+        {
+          "query": 14,
+          "latencyMs": 894.8,
+          "roundTripMs": 925.2,
+          "hits": 20
+        },
+        {
+          "query": 15,
+          "latencyMs": 894.8,
+          "roundTripMs": 925.7,
+          "hits": 20
+        },
+        {
+          "query": 16,
+          "latencyMs": 858.9,
+          "roundTripMs": 893.3,
+          "hits": 20
+        },
+        {
+          "query": 17,
+          "latencyMs": 863.2,
+          "roundTripMs": 896.6,
+          "hits": 20
+        },
+        {
+          "query": 18,
+          "latencyMs": 872.9,
+          "roundTripMs": 908.7,
+          "hits": 20
+        },
+        {
+          "query": 19,
+          "latencyMs": 834,
+          "roundTripMs": 866.8,
+          "hits": 20
+        },
+        {
+          "query": 0,
+          "latencyMs": 894.8,
+          "roundTripMs": 928.4,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 873.8,
+          "roundTripMs": 912.6,
+          "hits": 20
+        },
+        {
+          "query": 2,
+          "latencyMs": 787.2,
+          "roundTripMs": 820.7,
+          "hits": 20
+        },
+        {
+          "query": 3,
+          "latencyMs": 879.3,
+          "roundTripMs": 913.8,
+          "hits": 20
+        },
+        {
+          "query": 4,
+          "latencyMs": 875,
+          "roundTripMs": 908.4,
+          "hits": 20
+        },
+        {
+          "query": 5,
+          "latencyMs": 857.6,
+          "roundTripMs": 888.5,
+          "hits": 20
+        },
+        {
+          "query": 6,
+          "latencyMs": 785.8,
+          "roundTripMs": 815.6,
+          "hits": 20
+        },
+        {
+          "query": 7,
+          "latencyMs": 825.8,
+          "roundTripMs": 855.7,
+          "hits": 20
+        },
+        {
+          "query": 8,
+          "latencyMs": 850.3,
+          "roundTripMs": 879.7,
+          "hits": 20
+        },
+        {
+          "query": 9,
+          "latencyMs": 869.6,
+          "roundTripMs": 903.8,
+          "hits": 20
+        },
+        {
+          "query": 10,
+          "latencyMs": 876.3,
+          "roundTripMs": 909.1,
+          "hits": 20
+        },
+        {
+          "query": 11,
+          "latencyMs": 852.2,
+          "roundTripMs": 882.2,
+          "hits": 20
+        },
+        {
+          "query": 12,
+          "latencyMs": 887.8,
+          "roundTripMs": 921.1,
+          "hits": 20
+        },
+        {
+          "query": 13,
+          "latencyMs": 876.3,
+          "roundTripMs": 909.5,
+          "hits": 20
+        },
+        {
+          "query": 14,
+          "latencyMs": 866.9,
+          "roundTripMs": 898.3,
+          "hits": 20
+        },
+        {
+          "query": 15,
+          "latencyMs": 854.4,
+          "roundTripMs": 887.4,
+          "hits": 20
+        },
+        {
+          "query": 16,
+          "latencyMs": 898.5,
+          "roundTripMs": 933.6,
+          "hits": 20
+        },
+        {
+          "query": 17,
+          "latencyMs": 845.8,
+          "roundTripMs": 875.5,
+          "hits": 20
+        },
+        {
+          "query": 18,
+          "latencyMs": 823.2,
+          "roundTripMs": 866.1,
+          "hits": 20
+        },
+        {
+          "query": 19,
+          "latencyMs": 755.8,
+          "roundTripMs": 787.4,
+          "hits": 20
+        },
+        {
+          "query": 0,
+          "latencyMs": 796,
+          "roundTripMs": 832.3,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 800.7,
+          "roundTripMs": 831.7,
+          "hits": 20
+        },
+        {
+          "query": 2,
+          "latencyMs": 803.4,
+          "roundTripMs": 833.7,
+          "hits": 20
+        },
+        {
+          "query": 3,
+          "latencyMs": 949.5,
+          "roundTripMs": 987.3,
+          "hits": 20
+        },
+        {
+          "query": 4,
+          "latencyMs": 835,
+          "roundTripMs": 868.4,
+          "hits": 20
+        },
+        {
+          "query": 5,
+          "latencyMs": 880,
+          "roundTripMs": 913.6,
+          "hits": 20
+        },
+        {
+          "query": 6,
+          "latencyMs": 848.8,
+          "roundTripMs": 879.2,
+          "hits": 20
+        },
+        {
+          "query": 7,
+          "latencyMs": 925.7,
+          "roundTripMs": 958.4,
+          "hits": 20
+        },
+        {
+          "query": 8,
+          "latencyMs": 948.3,
+          "roundTripMs": 983.8,
+          "hits": 20
+        },
+        {
+          "query": 9,
+          "latencyMs": 1010.1,
+          "roundTripMs": 1045.8,
+          "hits": 20
+        },
+        {
+          "query": 10,
+          "latencyMs": 865.4,
+          "roundTripMs": 899.7,
+          "hits": 20
+        },
+        {
+          "query": 11,
+          "latencyMs": 898.1,
+          "roundTripMs": 928,
+          "hits": 20
+        },
+        {
+          "query": 12,
+          "latencyMs": 855.3,
+          "roundTripMs": 887.8,
+          "hits": 20
+        },
+        {
+          "query": 13,
+          "latencyMs": 819.8,
+          "roundTripMs": 853.7,
+          "hits": 20
+        },
+        {
+          "query": 14,
+          "latencyMs": 848.5,
+          "roundTripMs": 882.5,
+          "hits": 20
+        },
+        {
+          "query": 15,
+          "latencyMs": 856,
+          "roundTripMs": 889.2,
+          "hits": 20
+        },
+        {
+          "query": 16,
+          "latencyMs": 865.2,
+          "roundTripMs": 894.2,
+          "hits": 20
+        },
+        {
+          "query": 17,
+          "latencyMs": 815.7,
+          "roundTripMs": 849.5,
+          "hits": 20
+        },
+        {
+          "query": 18,
+          "latencyMs": 839.6,
+          "roundTripMs": 870.9,
+          "hits": 20
+        },
+        {
+          "query": 19,
+          "latencyMs": 883.2,
+          "roundTripMs": 931.9,
+          "hits": 20
+        },
+        {
+          "query": 0,
+          "latencyMs": 879.8,
+          "roundTripMs": 910.5,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 796.9,
+          "roundTripMs": 830.4,
+          "hits": 20
+        },
+        {
+          "query": 2,
+          "latencyMs": 834.8,
+          "roundTripMs": 865,
+          "hits": 20
+        },
+        {
+          "query": 3,
+          "latencyMs": 880.3,
+          "roundTripMs": 911.8,
+          "hits": 20
+        },
+        {
+          "query": 4,
+          "latencyMs": 848,
+          "roundTripMs": 879.4,
+          "hits": 20
+        },
+        {
+          "query": 5,
+          "latencyMs": 1102.2,
+          "roundTripMs": 1132,
+          "hits": 20
+        },
+        {
+          "query": 6,
+          "latencyMs": 814.6,
+          "roundTripMs": 844.3,
+          "hits": 20
+        },
+        {
+          "query": 7,
+          "latencyMs": 880.8,
+          "roundTripMs": 915.7,
+          "hits": 20
+        },
+        {
+          "query": 8,
+          "latencyMs": 829.7,
+          "roundTripMs": 863.3,
+          "hits": 20
+        },
+        {
+          "query": 9,
+          "latencyMs": 854.7,
+          "roundTripMs": 886.9,
+          "hits": 20
+        },
+        {
+          "query": 10,
+          "latencyMs": 851.8,
+          "roundTripMs": 884.7,
+          "hits": 20
+        },
+        {
+          "query": 11,
+          "latencyMs": 797.2,
+          "roundTripMs": 829.5,
+          "hits": 20
+        },
+        {
+          "query": 12,
+          "latencyMs": 842.9,
+          "roundTripMs": 882.3,
+          "hits": 20
+        },
+        {
+          "query": 13,
+          "latencyMs": 867,
+          "roundTripMs": 900.2,
+          "hits": 20
+        },
+        {
+          "query": 14,
+          "latencyMs": 895.3,
+          "roundTripMs": 924,
+          "hits": 20
+        },
+        {
+          "query": 15,
+          "latencyMs": 862.4,
+          "roundTripMs": 898.6,
+          "hits": 20
+        },
+        {
+          "query": 16,
+          "latencyMs": 868.2,
+          "roundTripMs": 900.6,
+          "hits": 20
+        },
+        {
+          "query": 17,
+          "latencyMs": 829.3,
+          "roundTripMs": 858.1,
+          "hits": 20
+        },
+        {
+          "query": 18,
+          "latencyMs": 815.6,
+          "roundTripMs": 848.3,
+          "hits": 20
+        },
+        {
+          "query": 19,
+          "latencyMs": 800.8,
+          "roundTripMs": 838.8,
+          "hits": 20
+        }
+      ]
+    },
+    {
+      "package": "x64-zip",
+      "memoryMb": 10240,
+      "type": "keyword",
+      "condition": "warm",
+      "queries": 100,
+      "excluded": 0,
+      "failed": [],
+      "latencyMs": {
+        "p50": 74.95683999999892,
+        "p95": 186.21581900003366,
+        "p99": 225.64393999997992
+      },
+      "roundTripMs": {
+        "p50": 105.36875600006897,
+        "p95": 218.71579699998256,
+        "p99": 259.43092900002375
+      },
+      "target": {
+        "p95Ms": 300,
+        "met": true
+      },
+      "s3RequestsPerQuery": 16.88,
+      "s3Requests": {
+        "AllRequests": 1688,
+        "GetRequests": 1688,
+        "HeadRequests": 0,
+        "ListRequests": 0,
+        "PutRequests": 0
+      },
+      "maxMemoryMb": 1559,
+      "cachedMb": 38.76736068725586,
+      "queriesWithoutHits": 0,
+      "window": {
+        "from": "2026-10-06T04:27:00.000Z",
+        "to": "2026-10-06T04:28:00.000Z"
+      },
+      "samples": [
+        {
+          "query": 0,
+          "latencyMs": 80,
+          "roundTripMs": 113.7,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 187.3,
+          "roundTripMs": 220,
+          "hits": 20
+        },
+        {
+          "query": 2,
+          "latencyMs": 353.5,
+          "roundTripMs": 382,
+          "hits": 20
+        },
+        {
+          "query": 3,
+          "latencyMs": 190.8,
+          "roundTripMs": 224.2,
+          "hits": 20
+        },
+        {
+          "query": 4,
+          "latencyMs": 225.6,
+          "roundTripMs": 259.4,
+          "hits": 20
+        },
+        {
+          "query": 5,
+          "latencyMs": 160.4,
+          "roundTripMs": 193.6,
+          "hits": 20
+        },
+        {
+          "query": 6,
+          "latencyMs": 186.2,
+          "roundTripMs": 218.7,
+          "hits": 20
+        },
+        {
+          "query": 7,
+          "latencyMs": 158.9,
+          "roundTripMs": 191.7,
+          "hits": 20
+        },
+        {
+          "query": 8,
+          "latencyMs": 149.5,
+          "roundTripMs": 180.3,
+          "hits": 20
+        },
+        {
+          "query": 9,
+          "latencyMs": 122.8,
+          "roundTripMs": 154.9,
+          "hits": 3
+        },
+        {
+          "query": 10,
+          "latencyMs": 132.8,
+          "roundTripMs": 164.1,
+          "hits": 20
+        },
+        {
+          "query": 11,
+          "latencyMs": 126.3,
+          "roundTripMs": 154.6,
+          "hits": 20
+        },
+        {
+          "query": 12,
+          "latencyMs": 111.5,
+          "roundTripMs": 140.1,
+          "hits": 20
+        },
+        {
+          "query": 13,
+          "latencyMs": 128.1,
+          "roundTripMs": 160.8,
+          "hits": 20
+        },
+        {
+          "query": 14,
+          "latencyMs": 122.6,
+          "roundTripMs": 151.7,
+          "hits": 20
+        },
+        {
+          "query": 15,
+          "latencyMs": 121.2,
+          "roundTripMs": 150.9,
+          "hits": 20
+        },
+        {
+          "query": 16,
+          "latencyMs": 116.7,
+          "roundTripMs": 149.6,
+          "hits": 20
+        },
+        {
+          "query": 17,
+          "latencyMs": 141.3,
+          "roundTripMs": 174.2,
+          "hits": 20
+        },
+        {
+          "query": 18,
+          "latencyMs": 136.7,
+          "roundTripMs": 170,
+          "hits": 20
+        },
+        {
+          "query": 19,
+          "latencyMs": 119.5,
+          "roundTripMs": 153.1,
+          "hits": 20
+        },
+        {
+          "query": 20,
+          "latencyMs": 123.7,
+          "roundTripMs": 156.2,
+          "hits": 20
+        },
+        {
+          "query": 21,
+          "latencyMs": 137.6,
+          "roundTripMs": 169.9,
+          "hits": 20
+        },
+        {
+          "query": 22,
+          "latencyMs": 122.8,
+          "roundTripMs": 158.6,
+          "hits": 20
+        },
+        {
+          "query": 23,
+          "latencyMs": 102,
+          "roundTripMs": 134.3,
+          "hits": 20
+        },
+        {
+          "query": 24,
+          "latencyMs": 86.8,
+          "roundTripMs": 117.5,
+          "hits": 20
+        },
+        {
+          "query": 25,
+          "latencyMs": 93.9,
+          "roundTripMs": 125.7,
+          "hits": 20
+        },
+        {
+          "query": 26,
+          "latencyMs": 103.3,
+          "roundTripMs": 136.4,
+          "hits": 20
+        },
+        {
+          "query": 27,
+          "latencyMs": 156.1,
+          "roundTripMs": 188.5,
+          "hits": 20
+        },
+        {
+          "query": 28,
+          "latencyMs": 91.8,
+          "roundTripMs": 125.1,
+          "hits": 20
+        },
+        {
+          "query": 29,
+          "latencyMs": 117.3,
+          "roundTripMs": 147.1,
+          "hits": 20
+        },
+        {
+          "query": 30,
+          "latencyMs": 120.7,
+          "roundTripMs": 154.3,
+          "hits": 20
+        },
+        {
+          "query": 31,
+          "latencyMs": 110.4,
+          "roundTripMs": 139.9,
+          "hits": 20
+        },
+        {
+          "query": 32,
+          "latencyMs": 114.8,
+          "roundTripMs": 144.3,
+          "hits": 20
+        },
+        {
+          "query": 33,
+          "latencyMs": 118.9,
+          "roundTripMs": 148.8,
+          "hits": 20
+        },
+        {
+          "query": 34,
+          "latencyMs": 123.3,
+          "roundTripMs": 162.7,
+          "hits": 20
+        },
+        {
+          "query": 35,
+          "latencyMs": 113.6,
+          "roundTripMs": 143.3,
+          "hits": 20
+        },
+        {
+          "query": 36,
+          "latencyMs": 117.1,
+          "roundTripMs": 146.3,
+          "hits": 20
+        },
+        {
+          "query": 37,
+          "latencyMs": 124.5,
+          "roundTripMs": 158.2,
+          "hits": 20
+        },
+        {
+          "query": 38,
+          "latencyMs": 117.3,
+          "roundTripMs": 147.3,
+          "hits": 20
+        },
+        {
+          "query": 39,
+          "latencyMs": 159.6,
+          "roundTripMs": 191.5,
+          "hits": 20
+        },
+        {
+          "query": 40,
+          "latencyMs": 206.5,
+          "roundTripMs": 247.3,
+          "hits": 20
+        },
+        {
+          "query": 41,
+          "latencyMs": 109.4,
+          "roundTripMs": 141,
+          "hits": 20
+        },
+        {
+          "query": 42,
+          "latencyMs": 133.4,
+          "roundTripMs": 168.6,
+          "hits": 20
+        },
+        {
+          "query": 43,
+          "latencyMs": 105.5,
+          "roundTripMs": 136,
+          "hits": 1
+        },
+        {
+          "query": 0,
+          "latencyMs": 54.3,
+          "roundTripMs": 89.4,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 81,
+          "roundTripMs": 114,
+          "hits": 20
+        },
+        {
+          "query": 2,
+          "latencyMs": 75.9,
+          "roundTripMs": 110,
+          "hits": 20
+        },
+        {
+          "query": 3,
+          "latencyMs": 57.4,
+          "roundTripMs": 87.4,
+          "hits": 20
+        },
+        {
+          "query": 4,
+          "latencyMs": 80.7,
+          "roundTripMs": 114.3,
+          "hits": 20
+        },
+        {
+          "query": 5,
+          "latencyMs": 54.4,
+          "roundTripMs": 86.5,
+          "hits": 20
+        },
+        {
+          "query": 6,
+          "latencyMs": 85.4,
+          "roundTripMs": 114.4,
+          "hits": 20
+        },
+        {
+          "query": 7,
+          "latencyMs": 62.1,
+          "roundTripMs": 92,
+          "hits": 20
+        },
+        {
+          "query": 8,
+          "latencyMs": 67,
+          "roundTripMs": 101.3,
+          "hits": 20
+        },
+        {
+          "query": 9,
+          "latencyMs": 58.4,
+          "roundTripMs": 92.9,
+          "hits": 3
+        },
+        {
+          "query": 10,
+          "latencyMs": 56.1,
+          "roundTripMs": 88.1,
+          "hits": 20
+        },
+        {
+          "query": 11,
+          "latencyMs": 58.5,
+          "roundTripMs": 88.6,
+          "hits": 20
+        },
+        {
+          "query": 12,
+          "latencyMs": 53.3,
+          "roundTripMs": 83.6,
+          "hits": 20
+        },
+        {
+          "query": 13,
+          "latencyMs": 59.3,
+          "roundTripMs": 94.1,
+          "hits": 20
+        },
+        {
+          "query": 14,
+          "latencyMs": 69.6,
+          "roundTripMs": 102.8,
+          "hits": 20
+        },
+        {
+          "query": 15,
+          "latencyMs": 61.1,
+          "roundTripMs": 94.5,
+          "hits": 20
+        },
+        {
+          "query": 16,
+          "latencyMs": 56.5,
+          "roundTripMs": 91.4,
+          "hits": 20
+        },
+        {
+          "query": 17,
+          "latencyMs": 65.5,
+          "roundTripMs": 98.9,
+          "hits": 20
+        },
+        {
+          "query": 18,
+          "latencyMs": 64.6,
+          "roundTripMs": 99.4,
+          "hits": 20
+        },
+        {
+          "query": 19,
+          "latencyMs": 53.9,
+          "roundTripMs": 87.3,
+          "hits": 20
+        },
+        {
+          "query": 20,
+          "latencyMs": 59.7,
+          "roundTripMs": 92.6,
+          "hits": 20
+        },
+        {
+          "query": 21,
+          "latencyMs": 63.6,
+          "roundTripMs": 98.3,
+          "hits": 20
+        },
+        {
+          "query": 22,
+          "latencyMs": 68.9,
+          "roundTripMs": 102.4,
+          "hits": 20
+        },
+        {
+          "query": 23,
+          "latencyMs": 75,
+          "roundTripMs": 105.4,
+          "hits": 20
+        },
+        {
+          "query": 24,
+          "latencyMs": 58.9,
+          "roundTripMs": 93,
+          "hits": 20
+        },
+        {
+          "query": 25,
+          "latencyMs": 58.8,
+          "roundTripMs": 86.5,
+          "hits": 20
+        },
+        {
+          "query": 26,
+          "latencyMs": 65.5,
+          "roundTripMs": 98.3,
+          "hits": 20
+        },
+        {
+          "query": 27,
+          "latencyMs": 59.6,
+          "roundTripMs": 96.2,
+          "hits": 20
+        },
+        {
+          "query": 28,
+          "latencyMs": 78.4,
+          "roundTripMs": 109.8,
+          "hits": 20
+        },
+        {
+          "query": 29,
+          "latencyMs": 59.6,
+          "roundTripMs": 97.5,
+          "hits": 20
+        },
+        {
+          "query": 30,
+          "latencyMs": 52.3,
+          "roundTripMs": 81.8,
+          "hits": 20
+        },
+        {
+          "query": 31,
+          "latencyMs": 59.7,
+          "roundTripMs": 92,
+          "hits": 20
+        },
+        {
+          "query": 32,
+          "latencyMs": 56.1,
+          "roundTripMs": 85.9,
+          "hits": 20
+        },
+        {
+          "query": 33,
+          "latencyMs": 54.1,
+          "roundTripMs": 84,
+          "hits": 20
+        },
+        {
+          "query": 34,
+          "latencyMs": 61.2,
+          "roundTripMs": 93.2,
+          "hits": 20
+        },
+        {
+          "query": 35,
+          "latencyMs": 60,
+          "roundTripMs": 89.9,
+          "hits": 20
+        },
+        {
+          "query": 36,
+          "latencyMs": 58.4,
+          "roundTripMs": 94.4,
+          "hits": 20
+        },
+        {
+          "query": 37,
+          "latencyMs": 75.2,
+          "roundTripMs": 110.3,
+          "hits": 20
+        },
+        {
+          "query": 38,
+          "latencyMs": 59.4,
+          "roundTripMs": 95.2,
+          "hits": 20
+        },
+        {
+          "query": 39,
+          "latencyMs": 56.8,
+          "roundTripMs": 90.9,
+          "hits": 20
+        },
+        {
+          "query": 40,
+          "latencyMs": 69.2,
+          "roundTripMs": 103.8,
+          "hits": 20
+        },
+        {
+          "query": 41,
+          "latencyMs": 56.7,
+          "roundTripMs": 89.6,
+          "hits": 20
+        },
+        {
+          "query": 42,
+          "latencyMs": 52.3,
+          "roundTripMs": 85.6,
+          "hits": 20
+        },
+        {
+          "query": 43,
+          "latencyMs": 47.9,
+          "roundTripMs": 81.8,
+          "hits": 1
+        },
+        {
+          "query": 0,
+          "latencyMs": 59.5,
+          "roundTripMs": 94.2,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 66.9,
+          "roundTripMs": 99.2,
+          "hits": 20
+        },
+        {
+          "query": 2,
+          "latencyMs": 59.9,
+          "roundTripMs": 93.3,
+          "hits": 20
+        },
+        {
+          "query": 3,
+          "latencyMs": 59.8,
+          "roundTripMs": 88.8,
+          "hits": 20
+        },
+        {
+          "query": 4,
+          "latencyMs": 57.3,
+          "roundTripMs": 90.3,
+          "hits": 20
+        },
+        {
+          "query": 5,
+          "latencyMs": 56,
+          "roundTripMs": 85.2,
+          "hits": 20
+        },
+        {
+          "query": 6,
+          "latencyMs": 59.7,
+          "roundTripMs": 90,
+          "hits": 20
+        },
+        {
+          "query": 7,
+          "latencyMs": 58.9,
+          "roundTripMs": 89.7,
+          "hits": 20
+        },
+        {
+          "query": 8,
+          "latencyMs": 63.3,
+          "roundTripMs": 96.2,
+          "hits": 20
+        },
+        {
+          "query": 9,
+          "latencyMs": 59.6,
+          "roundTripMs": 92.2,
+          "hits": 3
+        },
+        {
+          "query": 10,
+          "latencyMs": 55.6,
+          "roundTripMs": 88.3,
+          "hits": 20
+        },
+        {
+          "query": 11,
+          "latencyMs": 63.6,
+          "roundTripMs": 93.7,
+          "hits": 20
+        }
+      ]
+    },
+    {
+      "package": "x64-zip",
+      "memoryMb": 10240,
+      "type": "phrase",
+      "condition": "warm",
+      "queries": 100,
+      "excluded": 0,
+      "failed": [],
+      "latencyMs": {
+        "p50": 61.137451999937184,
+        "p95": 170.5445550000295,
+        "p99": 240.63374199997634
+      },
+      "roundTripMs": {
+        "p50": 93.21414700010791,
+        "p95": 200.07276299991645,
+        "p99": 271.03209899994545
+      },
+      "target": {
+        "p95Ms": 500,
+        "met": true
+      },
+      "s3RequestsPerQuery": 15.91,
+      "s3Requests": {
+        "AllRequests": 1591,
+        "GetRequests": 1591,
+        "HeadRequests": 0,
+        "ListRequests": 0,
+        "PutRequests": 0
+      },
+      "maxMemoryMb": 1559,
+      "cachedMb": 44.970582008361816,
+      "queriesWithoutHits": 5,
+      "window": {
+        "from": "2026-10-06T04:28:00.000Z",
+        "to": "2026-10-06T04:29:00.000Z"
+      },
+      "samples": [
+        {
+          "query": 0,
+          "latencyMs": 182.7,
+          "roundTripMs": 215.2,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 154.5,
+          "roundTripMs": 188,
+          "hits": 7
+        },
+        {
+          "query": 2,
+          "latencyMs": 135.9,
+          "roundTripMs": 169.2,
+          "hits": 14
+        },
+        {
+          "query": 3,
+          "latencyMs": 154.6,
+          "roundTripMs": 184.2,
+          "hits": 6
+        },
+        {
+          "query": 4,
+          "latencyMs": 115.1,
+          "roundTripMs": 147.5,
+          "hits": 3
+        },
+        {
+          "query": 5,
+          "latencyMs": 143.8,
+          "roundTripMs": 176.6,
+          "hits": 7
+        },
+        {
+          "query": 6,
+          "latencyMs": 142.1,
+          "roundTripMs": 177.2,
+          "hits": 2
+        },
+        {
+          "query": 7,
+          "latencyMs": 186,
+          "roundTripMs": 219.3,
+          "hits": 15
+        },
+        {
+          "query": 8,
+          "latencyMs": 240.6,
+          "roundTripMs": 271,
+          "hits": 4
+        },
+        {
+          "query": 9,
+          "latencyMs": 126.7,
+          "roundTripMs": 160.7,
+          "hits": 0
+        },
+        {
+          "query": 10,
+          "latencyMs": 179.1,
+          "roundTripMs": 213.9,
+          "hits": 20
+        },
+        {
+          "query": 11,
+          "latencyMs": 170.5,
+          "roundTripMs": 200.1,
+          "hits": 18
+        },
+        {
+          "query": 12,
+          "latencyMs": 157.5,
+          "roundTripMs": 194.2,
+          "hits": 20
+        },
+        {
+          "query": 13,
+          "latencyMs": 135.8,
+          "roundTripMs": 167.2,
+          "hits": 20
+        },
+        {
+          "query": 14,
+          "latencyMs": 120.5,
+          "roundTripMs": 158.6,
+          "hits": 20
+        },
+        {
+          "query": 15,
+          "latencyMs": 127.3,
+          "roundTripMs": 161.4,
+          "hits": 20
+        },
+        {
+          "query": 16,
+          "latencyMs": 98.1,
+          "roundTripMs": 133,
+          "hits": 20
+        },
+        {
+          "query": 17,
+          "latencyMs": 150.6,
+          "roundTripMs": 187.6,
+          "hits": 20
+        },
+        {
+          "query": 18,
+          "latencyMs": 91.8,
+          "roundTripMs": 120.6,
+          "hits": 20
+        },
+        {
+          "query": 19,
+          "latencyMs": 111.4,
+          "roundTripMs": 140.9,
+          "hits": 20
+        },
+        {
+          "query": 20,
+          "latencyMs": 143,
+          "roundTripMs": 176.3,
+          "hits": 20
+        },
+        {
+          "query": 21,
+          "latencyMs": 137.5,
+          "roundTripMs": 171.1,
+          "hits": 20
+        },
+        {
+          "query": 0,
+          "latencyMs": 54.4,
+          "roundTripMs": 83.9,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 51.8,
+          "roundTripMs": 88.8,
+          "hits": 7
+        },
+        {
+          "query": 2,
+          "latencyMs": 65.4,
+          "roundTripMs": 99.7,
+          "hits": 14
+        },
+        {
+          "query": 3,
+          "latencyMs": 58.1,
+          "roundTripMs": 89.5,
+          "hits": 6
+        },
+        {
+          "query": 4,
+          "latencyMs": 61.7,
+          "roundTripMs": 94.5,
+          "hits": 3
+        },
+        {
+          "query": 5,
+          "latencyMs": 83.3,
+          "roundTripMs": 118.6,
+          "hits": 7
+        },
+        {
+          "query": 6,
+          "latencyMs": 63.6,
+          "roundTripMs": 94.7,
+          "hits": 2
+        },
+        {
+          "query": 7,
+          "latencyMs": 90.9,
+          "roundTripMs": 121,
+          "hits": 15
+        },
+        {
+          "query": 8,
+          "latencyMs": 52.7,
+          "roundTripMs": 91.9,
+          "hits": 4
+        },
+        {
+          "query": 9,
+          "latencyMs": 27.5,
+          "roundTripMs": 57,
+          "hits": 0
+        },
+        {
+          "query": 10,
+          "latencyMs": 60.3,
+          "roundTripMs": 92.3,
+          "hits": 20
+        },
+        {
+          "query": 11,
+          "latencyMs": 52.4,
+          "roundTripMs": 84.5,
+          "hits": 18
+        },
+        {
+          "query": 12,
+          "latencyMs": 56.1,
+          "roundTripMs": 88.9,
+          "hits": 20
+        },
+        {
+          "query": 13,
+          "latencyMs": 76.5,
+          "roundTripMs": 112.3,
+          "hits": 20
+        },
+        {
+          "query": 14,
+          "latencyMs": 95.4,
+          "roundTripMs": 123.4,
+          "hits": 20
+        },
+        {
+          "query": 15,
+          "latencyMs": 59.4,
+          "roundTripMs": 88.6,
+          "hits": 20
+        },
+        {
+          "query": 16,
+          "latencyMs": 73,
+          "roundTripMs": 112.1,
+          "hits": 20
+        },
+        {
+          "query": 17,
+          "latencyMs": 73,
+          "roundTripMs": 106.3,
+          "hits": 20
+        },
+        {
+          "query": 18,
+          "latencyMs": 55.4,
+          "roundTripMs": 87.9,
+          "hits": 20
+        },
+        {
+          "query": 19,
+          "latencyMs": 57.3,
+          "roundTripMs": 92.9,
+          "hits": 20
+        },
+        {
+          "query": 20,
+          "latencyMs": 61.3,
+          "roundTripMs": 96.3,
+          "hits": 20
+        },
+        {
+          "query": 21,
+          "latencyMs": 62.2,
+          "roundTripMs": 91.8,
+          "hits": 20
+        },
+        {
+          "query": 0,
+          "latencyMs": 61.1,
+          "roundTripMs": 92.1,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 50.5,
+          "roundTripMs": 85.2,
+          "hits": 7
+        },
+        {
+          "query": 2,
+          "latencyMs": 55.1,
+          "roundTripMs": 85,
+          "hits": 14
+        },
+        {
+          "query": 3,
+          "latencyMs": 61.8,
+          "roundTripMs": 94.8,
+          "hits": 6
+        },
+        {
+          "query": 4,
+          "latencyMs": 62.7,
+          "roundTripMs": 93.2,
+          "hits": 3
+        },
+        {
+          "query": 5,
+          "latencyMs": 67.1,
+          "roundTripMs": 102.5,
+          "hits": 7
+        },
+        {
+          "query": 6,
+          "latencyMs": 47.1,
+          "roundTripMs": 75.9,
+          "hits": 2
+        },
+        {
+          "query": 7,
+          "latencyMs": 59.3,
+          "roundTripMs": 91.2,
+          "hits": 15
+        },
+        {
+          "query": 8,
+          "latencyMs": 56.7,
+          "roundTripMs": 90.6,
+          "hits": 4
+        },
+        {
+          "query": 9,
+          "latencyMs": 29,
+          "roundTripMs": 62.7,
+          "hits": 0
+        },
+        {
+          "query": 10,
+          "latencyMs": 66.7,
+          "roundTripMs": 97.8,
+          "hits": 20
+        },
+        {
+          "query": 11,
+          "latencyMs": 59.5,
+          "roundTripMs": 89.5,
+          "hits": 18
+        },
+        {
+          "query": 12,
+          "latencyMs": 55.7,
+          "roundTripMs": 89.4,
+          "hits": 20
+        },
+        {
+          "query": 13,
+          "latencyMs": 59,
+          "roundTripMs": 91.9,
+          "hits": 20
+        },
+        {
+          "query": 14,
+          "latencyMs": 92.6,
+          "roundTripMs": 127.9,
+          "hits": 20
+        },
+        {
+          "query": 15,
+          "latencyMs": 68.9,
+          "roundTripMs": 99.6,
+          "hits": 20
+        },
+        {
+          "query": 16,
+          "latencyMs": 57.1,
+          "roundTripMs": 91.1,
+          "hits": 20
+        },
+        {
+          "query": 17,
+          "latencyMs": 71.8,
+          "roundTripMs": 102.5,
+          "hits": 20
+        },
+        {
+          "query": 18,
+          "latencyMs": 62.3,
+          "roundTripMs": 94.8,
+          "hits": 20
+        },
+        {
+          "query": 19,
+          "latencyMs": 57.4,
+          "roundTripMs": 90.6,
+          "hits": 20
+        },
+        {
+          "query": 20,
+          "latencyMs": 59.3,
+          "roundTripMs": 91.8,
+          "hits": 20
+        },
+        {
+          "query": 21,
+          "latencyMs": 84.4,
+          "roundTripMs": 118.6,
+          "hits": 20
+        },
+        {
+          "query": 0,
+          "latencyMs": 54.1,
+          "roundTripMs": 83.8,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 49.9,
+          "roundTripMs": 86.9,
+          "hits": 7
+        },
+        {
+          "query": 2,
+          "latencyMs": 68.7,
+          "roundTripMs": 101.2,
+          "hits": 14
+        },
+        {
+          "query": 3,
+          "latencyMs": 56.5,
+          "roundTripMs": 88.8,
+          "hits": 6
+        },
+        {
+          "query": 4,
+          "latencyMs": 53.3,
+          "roundTripMs": 85.5,
+          "hits": 3
+        },
+        {
+          "query": 5,
+          "latencyMs": 45.4,
+          "roundTripMs": 79.5,
+          "hits": 7
+        },
+        {
+          "query": 6,
+          "latencyMs": 54.5,
+          "roundTripMs": 88.8,
+          "hits": 2
+        },
+        {
+          "query": 7,
+          "latencyMs": 51.1,
+          "roundTripMs": 84.6,
+          "hits": 15
+        },
+        {
+          "query": 8,
+          "latencyMs": 43.5,
+          "roundTripMs": 75.8,
+          "hits": 4
+        },
+        {
+          "query": 9,
+          "latencyMs": 26.9,
+          "roundTripMs": 59.6,
+          "hits": 0
+        },
+        {
+          "query": 10,
+          "latencyMs": 61.1,
+          "roundTripMs": 89.5,
+          "hits": 20
+        },
+        {
+          "query": 11,
+          "latencyMs": 59.4,
+          "roundTripMs": 91,
+          "hits": 18
+        },
+        {
+          "query": 12,
+          "latencyMs": 57.4,
+          "roundTripMs": 90.2,
+          "hits": 20
+        },
+        {
+          "query": 13,
+          "latencyMs": 63.1,
+          "roundTripMs": 101.5,
+          "hits": 20
+        },
+        {
+          "query": 14,
+          "latencyMs": 275.3,
+          "roundTripMs": 309.6,
+          "hits": 20
+        },
+        {
+          "query": 15,
+          "latencyMs": 72.2,
+          "roundTripMs": 101.1,
+          "hits": 20
+        },
+        {
+          "query": 16,
+          "latencyMs": 57.7,
+          "roundTripMs": 91.1,
+          "hits": 20
+        },
+        {
+          "query": 17,
+          "latencyMs": 85.5,
+          "roundTripMs": 116.5,
+          "hits": 20
+        },
+        {
+          "query": 18,
+          "latencyMs": 60.7,
+          "roundTripMs": 100,
+          "hits": 20
+        },
+        {
+          "query": 19,
+          "latencyMs": 72.2,
+          "roundTripMs": 106.5,
+          "hits": 20
+        },
+        {
+          "query": 20,
+          "latencyMs": 58.5,
+          "roundTripMs": 91.6,
+          "hits": 20
+        },
+        {
+          "query": 21,
+          "latencyMs": 56.3,
+          "roundTripMs": 85.6,
+          "hits": 20
+        },
+        {
+          "query": 0,
+          "latencyMs": 55.2,
+          "roundTripMs": 87.8,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 57.3,
+          "roundTripMs": 94.4,
+          "hits": 7
+        },
+        {
+          "query": 2,
+          "latencyMs": 63.8,
+          "roundTripMs": 94.9,
+          "hits": 14
+        },
+        {
+          "query": 3,
+          "latencyMs": 64.8,
+          "roundTripMs": 94.2,
+          "hits": 6
+        },
+        {
+          "query": 4,
+          "latencyMs": 55.7,
+          "roundTripMs": 90.2,
+          "hits": 3
+        },
+        {
+          "query": 5,
+          "latencyMs": 52.2,
+          "roundTripMs": 85.1,
+          "hits": 7
+        },
+        {
+          "query": 6,
+          "latencyMs": 48.3,
+          "roundTripMs": 80.9,
+          "hits": 2
+        },
+        {
+          "query": 7,
+          "latencyMs": 58,
+          "roundTripMs": 91.8,
+          "hits": 15
+        },
+        {
+          "query": 8,
+          "latencyMs": 53,
+          "roundTripMs": 86.1,
+          "hits": 4
+        },
+        {
+          "query": 9,
+          "latencyMs": 31.5,
+          "roundTripMs": 69.8,
+          "hits": 0
+        },
+        {
+          "query": 10,
+          "latencyMs": 57.3,
+          "roundTripMs": 90,
+          "hits": 20
+        },
+        {
+          "query": 11,
+          "latencyMs": 59.8,
+          "roundTripMs": 92.6,
+          "hits": 18
+        }
+      ]
+    },
+    {
+      "package": "x64-zip",
+      "memoryMb": 10240,
+      "type": "vector",
+      "condition": "warm",
+      "queries": 100,
+      "excluded": 0,
+      "failed": [],
+      "latencyMs": {
+        "p50": 184.3541120000882,
+        "p95": 241.29668499995023,
+        "p99": 252.61423200007994
+      },
+      "roundTripMs": {
+        "p50": 216.2928359999787,
+        "p95": 272.665990000125,
+        "p99": 287.15644500008784
+      },
+      "target": {
+        "p95Ms": 500,
+        "met": true
+      },
+      "s3RequestsPerQuery": 79.06,
+      "s3Requests": {
+        "AllRequests": 7906,
+        "GetRequests": 7906,
+        "HeadRequests": 0,
+        "ListRequests": 0,
+        "PutRequests": 0
+      },
+      "maxMemoryMb": 1559,
+      "cachedMb": 59.321213722229004,
+      "queriesWithoutHits": 0,
+      "window": {
+        "from": "2026-10-06T04:29:00.000Z",
+        "to": "2026-10-06T04:30:00.000Z"
+      },
+      "samples": [
+        {
+          "query": 0,
+          "latencyMs": 603.5,
+          "roundTripMs": 634.6,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 227.9,
+          "roundTripMs": 258.1,
+          "hits": 20
+        },
+        {
+          "query": 2,
+          "latencyMs": 181.7,
+          "roundTripMs": 216.3,
+          "hits": 20
+        },
+        {
+          "query": 3,
+          "latencyMs": 228.3,
+          "roundTripMs": 262.4,
+          "hits": 20
+        },
+        {
+          "query": 4,
+          "latencyMs": 235.5,
+          "roundTripMs": 269.5,
+          "hits": 20
+        },
+        {
+          "query": 5,
+          "latencyMs": 200,
+          "roundTripMs": 234.8,
+          "hits": 20
+        },
+        {
+          "query": 6,
+          "latencyMs": 230.5,
+          "roundTripMs": 264,
+          "hits": 20
+        },
+        {
+          "query": 7,
+          "latencyMs": 184.4,
+          "roundTripMs": 216.2,
+          "hits": 20
+        },
+        {
+          "query": 8,
+          "latencyMs": 252.6,
+          "roundTripMs": 287.2,
+          "hits": 20
+        },
+        {
+          "query": 9,
+          "latencyMs": 171.7,
+          "roundTripMs": 204.3,
+          "hits": 20
+        },
+        {
+          "query": 10,
+          "latencyMs": 200.8,
+          "roundTripMs": 241.4,
+          "hits": 20
+        },
+        {
+          "query": 11,
+          "latencyMs": 172,
+          "roundTripMs": 207,
+          "hits": 20
+        },
+        {
+          "query": 12,
+          "latencyMs": 179.2,
+          "roundTripMs": 213.8,
+          "hits": 20
+        },
+        {
+          "query": 13,
+          "latencyMs": 171.9,
+          "roundTripMs": 207.9,
+          "hits": 20
+        },
+        {
+          "query": 14,
+          "latencyMs": 175.6,
+          "roundTripMs": 205.8,
+          "hits": 20
+        },
+        {
+          "query": 15,
+          "latencyMs": 232.9,
+          "roundTripMs": 268.9,
+          "hits": 20
+        },
+        {
+          "query": 16,
+          "latencyMs": 212.2,
+          "roundTripMs": 245.7,
+          "hits": 20
+        },
+        {
+          "query": 17,
+          "latencyMs": 242.3,
+          "roundTripMs": 274.1,
+          "hits": 20
+        },
+        {
+          "query": 18,
+          "latencyMs": 203.8,
+          "roundTripMs": 237.2,
+          "hits": 20
+        },
+        {
+          "query": 19,
+          "latencyMs": 195.8,
+          "roundTripMs": 228.4,
+          "hits": 20
+        },
+        {
+          "query": 0,
+          "latencyMs": 245.3,
+          "roundTripMs": 278.3,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 196.6,
+          "roundTripMs": 228,
+          "hits": 20
+        },
+        {
+          "query": 2,
+          "latencyMs": 178.4,
+          "roundTripMs": 217.9,
+          "hits": 20
+        },
+        {
+          "query": 3,
+          "latencyMs": 171.7,
+          "roundTripMs": 206.1,
+          "hits": 20
+        },
+        {
+          "query": 4,
+          "latencyMs": 175.5,
+          "roundTripMs": 211.9,
+          "hits": 20
+        },
+        {
+          "query": 5,
+          "latencyMs": 199,
+          "roundTripMs": 229.9,
+          "hits": 20
+        },
+        {
+          "query": 6,
+          "latencyMs": 207.9,
+          "roundTripMs": 241.1,
+          "hits": 20
+        },
+        {
+          "query": 7,
+          "latencyMs": 181.1,
+          "roundTripMs": 214.1,
+          "hits": 20
+        },
+        {
+          "query": 8,
+          "latencyMs": 200.5,
+          "roundTripMs": 232.3,
+          "hits": 20
+        },
+        {
+          "query": 9,
+          "latencyMs": 204.8,
+          "roundTripMs": 238,
+          "hits": 20
+        },
+        {
+          "query": 10,
+          "latencyMs": 193.6,
+          "roundTripMs": 227.8,
+          "hits": 20
+        },
+        {
+          "query": 11,
+          "latencyMs": 186.1,
+          "roundTripMs": 219.8,
+          "hits": 20
+        },
+        {
+          "query": 12,
+          "latencyMs": 175.7,
+          "roundTripMs": 204,
+          "hits": 20
+        },
+        {
+          "query": 13,
+          "latencyMs": 173.8,
+          "roundTripMs": 205.5,
+          "hits": 20
+        },
+        {
+          "query": 14,
+          "latencyMs": 171.9,
+          "roundTripMs": 206.1,
+          "hits": 20
+        },
+        {
+          "query": 15,
+          "latencyMs": 178.6,
+          "roundTripMs": 211.2,
+          "hits": 20
+        },
+        {
+          "query": 16,
+          "latencyMs": 208.2,
+          "roundTripMs": 244.3,
+          "hits": 20
+        },
+        {
+          "query": 17,
+          "latencyMs": 194.9,
+          "roundTripMs": 228.8,
+          "hits": 20
+        },
+        {
+          "query": 18,
+          "latencyMs": 161.7,
+          "roundTripMs": 194.6,
+          "hits": 20
+        },
+        {
+          "query": 19,
+          "latencyMs": 188.4,
+          "roundTripMs": 217.3,
+          "hits": 20
+        },
+        {
+          "query": 0,
+          "latencyMs": 177.8,
+          "roundTripMs": 219.4,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 170.6,
+          "roundTripMs": 202.9,
+          "hits": 20
+        },
+        {
+          "query": 2,
+          "latencyMs": 207.1,
+          "roundTripMs": 238.4,
+          "hits": 20
+        },
+        {
+          "query": 3,
+          "latencyMs": 241.3,
+          "roundTripMs": 272.4,
+          "hits": 20
+        },
+        {
+          "query": 4,
+          "latencyMs": 178.4,
+          "roundTripMs": 210,
+          "hits": 20
+        },
+        {
+          "query": 5,
+          "latencyMs": 177.8,
+          "roundTripMs": 212.5,
+          "hits": 20
+        },
+        {
+          "query": 6,
+          "latencyMs": 186.8,
+          "roundTripMs": 217.1,
+          "hits": 20
+        },
+        {
+          "query": 7,
+          "latencyMs": 239,
+          "roundTripMs": 272.7,
+          "hits": 20
+        },
+        {
+          "query": 8,
+          "latencyMs": 203.7,
+          "roundTripMs": 235.9,
+          "hits": 20
+        },
+        {
+          "query": 9,
+          "latencyMs": 193.9,
+          "roundTripMs": 224.2,
+          "hits": 20
+        },
+        {
+          "query": 10,
+          "latencyMs": 177.7,
+          "roundTripMs": 209.1,
+          "hits": 20
+        },
+        {
+          "query": 11,
+          "latencyMs": 195.4,
+          "roundTripMs": 229.5,
+          "hits": 20
+        },
+        {
+          "query": 12,
+          "latencyMs": 184.5,
+          "roundTripMs": 214.4,
+          "hits": 20
+        },
+        {
+          "query": 13,
+          "latencyMs": 207.2,
+          "roundTripMs": 241.1,
+          "hits": 20
+        },
+        {
+          "query": 14,
+          "latencyMs": 172.4,
+          "roundTripMs": 202.3,
+          "hits": 20
+        },
+        {
+          "query": 15,
+          "latencyMs": 212.5,
+          "roundTripMs": 245.4,
+          "hits": 20
+        },
+        {
+          "query": 16,
+          "latencyMs": 175.2,
+          "roundTripMs": 207.3,
+          "hits": 20
+        },
+        {
+          "query": 17,
+          "latencyMs": 187.6,
+          "roundTripMs": 216.8,
+          "hits": 20
+        },
+        {
+          "query": 18,
+          "latencyMs": 247.3,
+          "roundTripMs": 275.7,
+          "hits": 20
+        },
+        {
+          "query": 19,
+          "latencyMs": 181.7,
+          "roundTripMs": 215.8,
+          "hits": 20
+        },
+        {
+          "query": 0,
+          "latencyMs": 175.1,
+          "roundTripMs": 211.3,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 175.3,
+          "roundTripMs": 209.1,
+          "hits": 20
+        },
+        {
+          "query": 2,
+          "latencyMs": 185.1,
+          "roundTripMs": 212.7,
+          "hits": 20
+        },
+        {
+          "query": 3,
+          "latencyMs": 163,
+          "roundTripMs": 196.4,
+          "hits": 20
+        },
+        {
+          "query": 4,
+          "latencyMs": 180.7,
+          "roundTripMs": 210.9,
+          "hits": 20
+        },
+        {
+          "query": 5,
+          "latencyMs": 178.1,
+          "roundTripMs": 211,
+          "hits": 20
+        },
+        {
+          "query": 6,
+          "latencyMs": 194.6,
+          "roundTripMs": 223.8,
+          "hits": 20
+        },
+        {
+          "query": 7,
+          "latencyMs": 177,
+          "roundTripMs": 208.6,
+          "hits": 20
+        },
+        {
+          "query": 8,
+          "latencyMs": 196.4,
+          "roundTripMs": 227.2,
+          "hits": 20
+        },
+        {
+          "query": 9,
+          "latencyMs": 169.9,
+          "roundTripMs": 200.2,
+          "hits": 20
+        },
+        {
+          "query": 10,
+          "latencyMs": 182.2,
+          "roundTripMs": 215.1,
+          "hits": 20
+        },
+        {
+          "query": 11,
+          "latencyMs": 193,
+          "roundTripMs": 221.8,
+          "hits": 20
+        },
+        {
+          "query": 12,
+          "latencyMs": 177.4,
+          "roundTripMs": 211,
+          "hits": 20
+        },
+        {
+          "query": 13,
+          "latencyMs": 173.1,
+          "roundTripMs": 202.9,
+          "hits": 20
+        },
+        {
+          "query": 14,
+          "latencyMs": 172.5,
+          "roundTripMs": 204.2,
+          "hits": 20
+        },
+        {
+          "query": 15,
+          "latencyMs": 221,
+          "roundTripMs": 255.9,
+          "hits": 20
+        },
+        {
+          "query": 16,
+          "latencyMs": 171.8,
+          "roundTripMs": 205.5,
+          "hits": 20
+        },
+        {
+          "query": 17,
+          "latencyMs": 198,
+          "roundTripMs": 230.9,
+          "hits": 20
+        },
+        {
+          "query": 18,
+          "latencyMs": 159.3,
+          "roundTripMs": 193.8,
+          "hits": 20
+        },
+        {
+          "query": 19,
+          "latencyMs": 173,
+          "roundTripMs": 209.2,
+          "hits": 20
+        },
+        {
+          "query": 0,
+          "latencyMs": 170.9,
+          "roundTripMs": 199.6,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 173.4,
+          "roundTripMs": 202.7,
+          "hits": 20
+        },
+        {
+          "query": 2,
+          "latencyMs": 171,
+          "roundTripMs": 201.5,
+          "hits": 20
+        },
+        {
+          "query": 3,
+          "latencyMs": 173.5,
+          "roundTripMs": 207.5,
+          "hits": 20
+        },
+        {
+          "query": 4,
+          "latencyMs": 179,
+          "roundTripMs": 209.7,
+          "hits": 20
+        },
+        {
+          "query": 5,
+          "latencyMs": 171.8,
+          "roundTripMs": 205.5,
+          "hits": 20
+        },
+        {
+          "query": 6,
+          "latencyMs": 191,
+          "roundTripMs": 224.2,
+          "hits": 20
+        },
+        {
+          "query": 7,
+          "latencyMs": 189.2,
+          "roundTripMs": 218.6,
+          "hits": 20
+        },
+        {
+          "query": 8,
+          "latencyMs": 192.7,
+          "roundTripMs": 225.3,
+          "hits": 20
+        },
+        {
+          "query": 9,
+          "latencyMs": 178.2,
+          "roundTripMs": 208.4,
+          "hits": 20
+        },
+        {
+          "query": 10,
+          "latencyMs": 172.6,
+          "roundTripMs": 203.1,
+          "hits": 20
+        },
+        {
+          "query": 11,
+          "latencyMs": 168.2,
+          "roundTripMs": 200.3,
+          "hits": 20
+        },
+        {
+          "query": 12,
+          "latencyMs": 197.2,
+          "roundTripMs": 226.8,
+          "hits": 20
+        },
+        {
+          "query": 13,
+          "latencyMs": 199.4,
+          "roundTripMs": 228.7,
+          "hits": 20
+        },
+        {
+          "query": 14,
+          "latencyMs": 191.4,
+          "roundTripMs": 219.3,
+          "hits": 20
+        },
+        {
+          "query": 15,
+          "latencyMs": 181.8,
+          "roundTripMs": 210.9,
+          "hits": 20
+        },
+        {
+          "query": 16,
+          "latencyMs": 188.4,
+          "roundTripMs": 222.1,
+          "hits": 20
+        },
+        {
+          "query": 17,
+          "latencyMs": 177.6,
+          "roundTripMs": 216.2,
+          "hits": 20
+        },
+        {
+          "query": 18,
+          "latencyMs": 150.7,
+          "roundTripMs": 180.9,
+          "hits": 20
+        },
+        {
+          "query": 19,
+          "latencyMs": 209.6,
+          "roundTripMs": 243.2,
+          "hits": 20
+        }
+      ]
+    },
+    {
+      "package": "x64-zip",
+      "memoryMb": 10240,
+      "type": "hybrid",
+      "condition": "warm",
+      "queries": 100,
+      "excluded": 0,
+      "failed": [],
+      "latencyMs": {
+        "p50": 178.82641599990893,
+        "p95": 213.49594299995806,
+        "p99": 241.68557600001805
+      },
+      "roundTripMs": {
+        "p50": 211.632203000132,
+        "p95": 246.64107599994168,
+        "p99": 271.012764000101
+      },
+      "target": {
+        "p95Ms": 800,
+        "met": true
+      },
+      "s3RequestsPerQuery": 112.39,
+      "s3Requests": {
+        "AllRequests": 11239,
+        "GetRequests": 11239,
+        "HeadRequests": 0,
+        "ListRequests": 0,
+        "PutRequests": 0
+      },
+      "maxMemoryMb": 1559,
+      "cachedMb": 61.33731174468994,
+      "queriesWithoutHits": 0,
+      "window": {
+        "from": "2026-10-06T04:30:00.000Z",
+        "to": "2026-10-06T04:31:00.000Z"
+      },
+      "samples": [
+        {
+          "query": 0,
+          "latencyMs": 202.9,
+          "roundTripMs": 240.3,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 180.1,
+          "roundTripMs": 212.2,
+          "hits": 20
+        },
+        {
+          "query": 2,
+          "latencyMs": 178.4,
+          "roundTripMs": 212.9,
+          "hits": 20
+        },
+        {
+          "query": 3,
+          "latencyMs": 198.5,
+          "roundTripMs": 232.8,
+          "hits": 20
+        },
+        {
+          "query": 4,
+          "latencyMs": 178.9,
+          "roundTripMs": 221.3,
+          "hits": 20
+        },
+        {
+          "query": 5,
+          "latencyMs": 196.6,
+          "roundTripMs": 228.4,
+          "hits": 20
+        },
+        {
+          "query": 6,
+          "latencyMs": 172.5,
+          "roundTripMs": 205.3,
+          "hits": 20
+        },
+        {
+          "query": 7,
+          "latencyMs": 176.1,
+          "roundTripMs": 207.7,
+          "hits": 20
+        },
+        {
+          "query": 8,
+          "latencyMs": 179.8,
+          "roundTripMs": 215,
+          "hits": 20
+        },
+        {
+          "query": 9,
+          "latencyMs": 176.4,
+          "roundTripMs": 209.8,
+          "hits": 20
+        },
+        {
+          "query": 10,
+          "latencyMs": 177.3,
+          "roundTripMs": 209.7,
+          "hits": 20
+        },
+        {
+          "query": 11,
+          "latencyMs": 168.4,
+          "roundTripMs": 202.7,
+          "hits": 20
+        },
+        {
+          "query": 12,
+          "latencyMs": 186.5,
+          "roundTripMs": 219.4,
+          "hits": 20
+        },
+        {
+          "query": 13,
+          "latencyMs": 176.9,
+          "roundTripMs": 209.5,
+          "hits": 20
+        },
+        {
+          "query": 14,
+          "latencyMs": 203.7,
+          "roundTripMs": 237.4,
+          "hits": 20
+        },
+        {
+          "query": 15,
+          "latencyMs": 179.8,
+          "roundTripMs": 211,
+          "hits": 20
+        },
+        {
+          "query": 16,
+          "latencyMs": 168.8,
+          "roundTripMs": 200.8,
+          "hits": 20
+        },
+        {
+          "query": 17,
+          "latencyMs": 201.2,
+          "roundTripMs": 231.9,
+          "hits": 20
+        },
+        {
+          "query": 18,
+          "latencyMs": 427.4,
+          "roundTripMs": 460.3,
+          "hits": 20
+        },
+        {
+          "query": 19,
+          "latencyMs": 196.6,
+          "roundTripMs": 232.5,
+          "hits": 20
+        },
+        {
+          "query": 0,
+          "latencyMs": 190.8,
+          "roundTripMs": 222.5,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 176.7,
+          "roundTripMs": 209,
+          "hits": 20
+        },
+        {
+          "query": 2,
+          "latencyMs": 173.8,
+          "roundTripMs": 206.1,
+          "hits": 20
+        },
+        {
+          "query": 3,
+          "latencyMs": 198.8,
+          "roundTripMs": 231.1,
+          "hits": 20
+        },
+        {
+          "query": 4,
+          "latencyMs": 189,
+          "roundTripMs": 221.9,
+          "hits": 20
+        },
+        {
+          "query": 5,
+          "latencyMs": 174.2,
+          "roundTripMs": 204.4,
+          "hits": 20
+        },
+        {
+          "query": 6,
+          "latencyMs": 197.1,
+          "roundTripMs": 226.9,
+          "hits": 20
+        },
+        {
+          "query": 7,
+          "latencyMs": 174.5,
+          "roundTripMs": 208.7,
+          "hits": 20
+        },
+        {
+          "query": 8,
+          "latencyMs": 174,
+          "roundTripMs": 207.9,
+          "hits": 20
+        },
+        {
+          "query": 9,
+          "latencyMs": 198.1,
+          "roundTripMs": 229,
+          "hits": 20
+        },
+        {
+          "query": 10,
+          "latencyMs": 179.7,
+          "roundTripMs": 214.8,
+          "hits": 20
+        },
+        {
+          "query": 11,
+          "latencyMs": 177,
+          "roundTripMs": 211.6,
+          "hits": 20
+        },
+        {
+          "query": 12,
+          "latencyMs": 176.6,
+          "roundTripMs": 206.8,
+          "hits": 20
+        },
+        {
+          "query": 13,
+          "latencyMs": 171.3,
+          "roundTripMs": 205.1,
+          "hits": 20
+        },
+        {
+          "query": 14,
+          "latencyMs": 213.5,
+          "roundTripMs": 244.2,
+          "hits": 20
+        },
+        {
+          "query": 15,
+          "latencyMs": 173,
+          "roundTripMs": 202,
+          "hits": 20
+        },
+        {
+          "query": 16,
+          "latencyMs": 170.6,
+          "roundTripMs": 200.5,
+          "hits": 20
+        },
+        {
+          "query": 17,
+          "latencyMs": 171.3,
+          "roundTripMs": 201.8,
+          "hits": 20
+        },
+        {
+          "query": 18,
+          "latencyMs": 148.6,
+          "roundTripMs": 183.9,
+          "hits": 20
+        },
+        {
+          "query": 19,
+          "latencyMs": 212.9,
+          "roundTripMs": 246.6,
+          "hits": 20
+        },
+        {
+          "query": 0,
+          "latencyMs": 175.8,
+          "roundTripMs": 208.9,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 181.2,
+          "roundTripMs": 213.1,
+          "hits": 20
+        },
+        {
+          "query": 2,
+          "latencyMs": 192.4,
+          "roundTripMs": 222.3,
+          "hits": 20
+        },
+        {
+          "query": 3,
+          "latencyMs": 188.9,
+          "roundTripMs": 221.8,
+          "hits": 20
+        },
+        {
+          "query": 4,
+          "latencyMs": 200.4,
+          "roundTripMs": 233,
+          "hits": 20
+        },
+        {
+          "query": 5,
+          "latencyMs": 168.1,
+          "roundTripMs": 204.4,
+          "hits": 20
+        },
+        {
+          "query": 6,
+          "latencyMs": 170.8,
+          "roundTripMs": 200.6,
+          "hits": 20
+        },
+        {
+          "query": 7,
+          "latencyMs": 181.5,
+          "roundTripMs": 212.8,
+          "hits": 20
+        },
+        {
+          "query": 8,
+          "latencyMs": 170.4,
+          "roundTripMs": 198.5,
+          "hits": 20
+        },
+        {
+          "query": 9,
+          "latencyMs": 177.2,
+          "roundTripMs": 207.1,
+          "hits": 20
+        },
+        {
+          "query": 10,
+          "latencyMs": 196.5,
+          "roundTripMs": 226.5,
+          "hits": 20
+        },
+        {
+          "query": 11,
+          "latencyMs": 205.4,
+          "roundTripMs": 236.3,
+          "hits": 20
+        },
+        {
+          "query": 12,
+          "latencyMs": 188.4,
+          "roundTripMs": 218.9,
+          "hits": 20
+        },
+        {
+          "query": 13,
+          "latencyMs": 176.7,
+          "roundTripMs": 206.8,
+          "hits": 20
+        },
+        {
+          "query": 14,
+          "latencyMs": 224.5,
+          "roundTripMs": 257.5,
+          "hits": 20
+        },
+        {
+          "query": 15,
+          "latencyMs": 200.3,
+          "roundTripMs": 241.5,
+          "hits": 20
+        },
+        {
+          "query": 16,
+          "latencyMs": 172.6,
+          "roundTripMs": 206.9,
+          "hits": 20
+        },
+        {
+          "query": 17,
+          "latencyMs": 196.6,
+          "roundTripMs": 230,
+          "hits": 20
+        },
+        {
+          "query": 18,
+          "latencyMs": 154.5,
+          "roundTripMs": 194,
+          "hits": 20
+        },
+        {
+          "query": 19,
+          "latencyMs": 178.8,
+          "roundTripMs": 210.8,
+          "hits": 20
+        },
+        {
+          "query": 0,
+          "latencyMs": 168.6,
+          "roundTripMs": 201.2,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 210.2,
+          "roundTripMs": 242.1,
+          "hits": 20
+        },
+        {
+          "query": 2,
+          "latencyMs": 198,
+          "roundTripMs": 228.6,
+          "hits": 20
+        },
+        {
+          "query": 3,
+          "latencyMs": 178.2,
+          "roundTripMs": 212.4,
+          "hits": 20
+        },
+        {
+          "query": 4,
+          "latencyMs": 175.7,
+          "roundTripMs": 208.1,
+          "hits": 20
+        },
+        {
+          "query": 5,
+          "latencyMs": 170.5,
+          "roundTripMs": 201.5,
+          "hits": 20
+        },
+        {
+          "query": 6,
+          "latencyMs": 172.3,
+          "roundTripMs": 205.7,
+          "hits": 20
+        },
+        {
+          "query": 7,
+          "latencyMs": 192,
+          "roundTripMs": 225.2,
+          "hits": 20
+        },
+        {
+          "query": 8,
+          "latencyMs": 182.2,
+          "roundTripMs": 213.3,
+          "hits": 20
+        },
+        {
+          "query": 9,
+          "latencyMs": 177.9,
+          "roundTripMs": 211.6,
+          "hits": 20
+        },
+        {
+          "query": 10,
+          "latencyMs": 210.7,
+          "roundTripMs": 239.5,
+          "hits": 20
+        },
+        {
+          "query": 11,
+          "latencyMs": 176.4,
+          "roundTripMs": 213.2,
+          "hits": 20
+        },
+        {
+          "query": 12,
+          "latencyMs": 186.1,
+          "roundTripMs": 220.4,
+          "hits": 20
+        },
+        {
+          "query": 13,
+          "latencyMs": 173.4,
+          "roundTripMs": 202.8,
+          "hits": 20
+        },
+        {
+          "query": 14,
+          "latencyMs": 197.7,
+          "roundTripMs": 230.8,
+          "hits": 20
+        },
+        {
+          "query": 15,
+          "latencyMs": 174.4,
+          "roundTripMs": 209.5,
+          "hits": 20
+        },
+        {
+          "query": 16,
+          "latencyMs": 174.7,
+          "roundTripMs": 205.8,
+          "hits": 20
+        },
+        {
+          "query": 17,
+          "latencyMs": 190.5,
+          "roundTripMs": 226.4,
+          "hits": 20
+        },
+        {
+          "query": 18,
+          "latencyMs": 241.7,
+          "roundTripMs": 271,
+          "hits": 20
+        },
+        {
+          "query": 19,
+          "latencyMs": 169.5,
+          "roundTripMs": 199.8,
+          "hits": 20
+        },
+        {
+          "query": 0,
+          "latencyMs": 178.2,
+          "roundTripMs": 209,
+          "hits": 20
+        },
+        {
+          "query": 1,
+          "latencyMs": 166.9,
+          "roundTripMs": 200.6,
+          "hits": 20
+        },
+        {
+          "query": 2,
+          "latencyMs": 221,
+          "roundTripMs": 253.8,
+          "hits": 20
+        },
+        {
+          "query": 3,
+          "latencyMs": 179.3,
+          "roundTripMs": 209.9,
+          "hits": 20
+        },
+        {
+          "query": 4,
+          "latencyMs": 172.3,
+          "roundTripMs": 200.5,
+          "hits": 20
+        },
+        {
+          "query": 5,
+          "latencyMs": 181.1,
+          "roundTripMs": 214.2,
+          "hits": 20
+        },
+        {
+          "query": 6,
+          "latencyMs": 173.3,
+          "roundTripMs": 202.8,
+          "hits": 20
+        },
+        {
+          "query": 7,
+          "latencyMs": 173.2,
+          "roundTripMs": 206.4,
+          "hits": 20
+        },
+        {
+          "query": 8,
+          "latencyMs": 172.8,
+          "roundTripMs": 202.8,
+          "hits": 20
+        },
+        {
+          "query": 9,
+          "latencyMs": 180.6,
+          "roundTripMs": 210.1,
+          "hits": 20
+        },
+        {
+          "query": 10,
+          "latencyMs": 190.4,
+          "roundTripMs": 221.9,
+          "hits": 20
+        },
+        {
+          "query": 11,
+          "latencyMs": 172.1,
+          "roundTripMs": 204.2,
+          "hits": 20
+        },
+        {
+          "query": 12,
+          "latencyMs": 188.8,
+          "roundTripMs": 222.3,
+          "hits": 20
+        },
+        {
+          "query": 13,
+          "latencyMs": 183.3,
+          "roundTripMs": 215.3,
+          "hits": 20
+        },
+        {
+          "query": 14,
+          "latencyMs": 221.4,
+          "roundTripMs": 254.1,
+          "hits": 20
+        },
+        {
+          "query": 15,
+          "latencyMs": 172.9,
+          "roundTripMs": 206.1,
+          "hits": 20
+        },
+        {
+          "query": 16,
+          "latencyMs": 177.9,
+          "roundTripMs": 218.2,
+          "hits": 20
+        },
+        {
+          "query": 17,
+          "latencyMs": 180.3,
+          "roundTripMs": 210.4,
+          "hits": 20
+        },
+        {
+          "query": 18,
+          "latencyMs": 148.2,
+          "roundTripMs": 181.5,
+          "hits": 20
+        },
+        {
+          "query": 19,
+          "latencyMs": 191.4,
+          "roundTripMs": 222.2,
+          "hits": 20
+        }
+      ]
+    }
+  ]
+}

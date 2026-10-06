@@ -21,9 +21,9 @@ import { documents, pk, sk } from "./table.ts";
 
 /**
  * The version of what the index holds. A deploy that changes it rebuilds every mailbox's index:
- * its indexer drops the old one and backfills a new one.
+ * its indexer drops the old one and backfills a new one. Version 2 embeds each message (#62).
  */
-export const indexVersion = 1;
+export const indexVersion = 2;
 
 /**
  * What the indexer's queue carries: a mailbox to bring up to date, the step of its backfill to

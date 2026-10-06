@@ -254,12 +254,12 @@ Lists archived threads too, a page at a time, newest first by their newest messa
 
 ## duva search
 
-Search a mailbox's threads by words and filters.
+Search a mailbox's threads by words, meaning and filters.
 
-Finds the threads whose messages have every word, "quoted phrase" and filter in q, best first, each with the message that matched best and a snippet of its text where the words stand. Subjects, senders and recipients by name and address, message text and attachment names are searched, Sent included. A word also finds its other forms, in English and Swedish. Threads in Spam and Trash, and those waiting in the Screener, are left out unless q has label:spam or label:trash. New mail is found within a minute, and label and read changes count at once. Only those who can read the mailbox can search it. To read the next page, call again with the answer's next as after.
+Finds the threads whose messages have every word in q, or mean what its words say, best first. Each comes with the message that matched best and a snippet of its text where the words stand. A "quoted phrase" or subject: matches by its words alone, and every filter holds. Subjects, senders and recipients by name and address, message text and attachment names are searched, Sent included. A word also finds its other forms in English and Swedish, as invoice finds invoices and faktura finds fakturan. Threads in Spam and Trash, and those waiting in the Screener, are left out unless q has label:spam or label:trash. New mail is found within a minute, and label and read changes count at once. Only those who can read the mailbox can search it. To read the next page, call again with the answer's next as after.
 
 - `--mailbox` (required): The mailbox's ID.
-- `--q` (required): What to search for: words, "quoted phrases", and the filters from: and to: (part of a name or address), subject: (a word or quoted phrase in the subject), label: (a label's name, quoted if it has spaces), has:attachment, is:unread, after: (received on or after the day) and before: (received before the day), with days as YYYY-MM-DD in UTC. Everything given must hold.
+- `--q` (required): What to search for: words, "quoted phrases", and the filters from: and to: (part of a name or address), subject: (a word or quoted phrase in the subject), label: (a label's name, quoted if it has spaces), has:attachment, is:unread, after: (received on or after the day) and before: (received before the day), with days as YYYY-MM-DD in UTC. Every phrase and filter must hold.
 
 - `--sort`: Best first, or newest first. Without words or phrases, both are newest first.
 - `--limit`: How many threads a page lists at most.

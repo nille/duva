@@ -8,10 +8,11 @@ import { createIndexer, sqsIndexQueue } from "./indexing.ts";
 import { environmentVariables } from "./infrastructure.ts";
 import { lanceSearch } from "./lancedb-search.ts";
 import { s3MailBucket } from "./mail-bucket.ts";
+import { titanEmbedder } from "./titan.ts";
 
 export const handler = createIndexer({
   table: { client: new DynamoDBClient({}), name: required(environmentVariables.tableName) },
   mailBucket: s3MailBucket(new S3Client({}), required(environmentVariables.mailBucket)),
-  engine: lanceSearch({ uri: required(environmentVariables.searchIndexes), storageOptions: { region: required("AWS_REGION") } }),
+  engine: lanceSearch({ uri: required(environmentVariables.searchIndexes), storageOptions: { region: required("AWS_REGION") }, embedder: titanEmbedder() }),
   queue: sqsIndexQueue(new SQSClient({}), required(environmentVariables.indexQueue)),
 });

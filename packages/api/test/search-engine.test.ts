@@ -10,6 +10,7 @@ import { afterAll, beforeEach, describe, expect, test } from "vitest";
 import { lanceSearch } from "../src/lancedb-search.ts";
 import type { SearchEngine, SearchHit, Search, SearchTerm } from "../src/search-engine.ts";
 import { fixture } from "./search-fixture.ts";
+import { recordedTitan } from "./titan.ts";
 
 const directories: string[] = [];
 function localDirectory(): string {
@@ -21,9 +22,10 @@ afterAll(() => {
   for (const directory of directories) rmSync(directory, { recursive: true, force: true });
 });
 
-const locations: [string, () => SearchEngine][] = [["a table on local disk", () => lanceSearch({ uri: localDirectory() })]];
+const titan = recordedTitan();
+const locations: [string, () => SearchEngine][] = [["a table on local disk", () => lanceSearch({ uri: localDirectory(), embedder: titan })]];
 const s3 = process.env.DUVA_SEARCH_S3_URI;
-if (s3) locations.push(["a table on S3", () => lanceSearch({ uri: s3, storageOptions: { region: process.env.AWS_REGION ?? "eu-north-1" } })]);
+if (s3) locations.push(["a table on S3", () => lanceSearch({ uri: s3, storageOptions: { region: process.env.AWS_REGION ?? "eu-north-1" }, embedder: titan })]);
 
 const words = (text: string): SearchTerm[] => text.split(" ").map((word) => ({ text: word, phrase: false, in: "anywhere" }));
 const phrase = (text: string, within: SearchTerm["in"] = "anywhere"): SearchTerm => ({ text, phrase: true, in: within });
@@ -52,9 +54,42 @@ describe.each(locations)("Search on %s", (_, start) => {
     expect(hits[0]!.score).toBeGreaterThan(hits[1]!.score);
   });
 
-  test("several words find only messages that have every one of them, the sender's address counting too", async () => {
+  test("several words find the messages that have every one of them, the sender's address counting too, and rank them with those near in meaning", async () => {
     const hits = await search({ terms: words("hosting invoice april") });
-    expect(ids(hits).sort()).toEqual(["invoice-april", "invoice-question"]);
+    expect(ids(hits).slice(0, 2).sort()).toEqual(["invoice-april", "invoice-question"]);
+    expect(ids(hits).slice(2).sort()).toEqual(["invoice-march", "invoice-may"]);
+  });
+
+  test("a search by meaning finds a message that shares none of its words, English and Swedish", async () => {
+    expect(ids(await search({ terms: words("when should I see someone about my teeth") }))[0]).toBe("dentist");
+    expect(ids(await search({ terms: words("räkningen för hösten") }))[0]).toBe("faktura-sv");
+  });
+
+  test("a search by meaning finds only what is near it, and nothing for words unlike any message", async () => {
+    const bills = ids(await search({ terms: words("power bill") }));
+    expect(bills[0]).toBe("electricity");
+    expect(bills.filter((id) => id !== "electricity" && !id.startsWith("invoice-"))).toEqual([]);
+    expect(await search({ terms: words("zebra") })).toEqual([]);
+  });
+
+  test("once maintenance builds the vector index, a search by meaning finds what it found before", async () => {
+    const indexed = lanceSearch({ uri: localDirectory(), embedder: titan, vectorIndexFrom: fixture.length });
+    await (await indexed.writer(mailbox)).put(fixture);
+    const meanings = ["when should I see someone about my teeth", "power bill", "renting a boat for the weekend", "räkningen för hösten"];
+    const found = (engine: SearchEngine) => Promise.all(meanings.map(async (meaning) => ids(await engine.search(mailbox, { terms: words(meaning), filters: notSpamOrTrash, sort: "relevance", limit: 3 }))));
+    const before = await found(indexed);
+    await (await indexed.writer(mailbox)).maintain();
+    expect(await found(indexed)).toEqual(before);
+  });
+
+  test("filters narrow a search by meaning before the limit takes the best", async () => {
+    const hits = await search({ terms: words("paddling on the sea"), filters: { labels: { include: ["Trash"] } }, limit: 1 });
+    expect(ids(hits)).toEqual(["kayak-trash"]);
+  });
+
+  test("a phrase or a subject is matched by its words alone, never by meaning", async () => {
+    expect(ids(await search({ terms: [phrase("power bill")] }))).toEqual([]);
+    expect(ids(await search({ terms: [{ text: "power bill", phrase: false, in: "subject" }] }))).toEqual([]);
   });
 
   test("the words of a phrase out of order don't match the phrase", async () => {
@@ -127,6 +162,12 @@ describe.each(locations)("Search on %s", (_, start) => {
     expect(ids(await search({ terms: words("kayak"), filters: { threads: { exclude: ["kayak-club", "kayak-spam"] } } })).sort()).toEqual(["kayak-rental", "kayak-trash"]);
   });
 
+  test("label and read state filters leave out none of the threads exempt from them, and the other filters still hold", async () => {
+    const exempt = { unread: true, labels: { exclude: ["Spam", "Trash"] }, threads: { exempt: ["kayak-spam", "kayak-trash"] } };
+    expect(ids(await search({ terms: words("kayak"), filters: exempt })).sort()).toEqual(["kayak-spam", "kayak-trash"]);
+    expect(ids(await search({ terms: words("kayak"), filters: { ...exempt, hasAttachment: true } }))).toEqual(["kayak-trash"]);
+  });
+
   test("filters narrow the messages before the limit takes the best", async () => {
     const hits = await search({ terms: words("kayak"), filters: { labels: { include: ["Trash"] } }, limit: 1 });
     expect(ids(hits)).toEqual(["kayak-trash"]);
@@ -176,7 +217,7 @@ describe.each(locations)("Search on %s", (_, start) => {
     expect(ids(await search({ terms: words("kayak") })).sort()).toEqual(["kayak-club", "kayak-rental", "kayak-trash"]);
   });
 
-  test("compaction leaves every message found as before, by words, phrases and filters, with its text", async () => {
+  test("compaction leaves every message found as before, by words, meaning, phrases and filters, with its text", async () => {
     const writer = await engine.writer(mailbox);
     await writer.removeThreads(["kayak-spam"]);
     await writer.relabel([{ id: "kayak-club", labels: ["Inbox", "Travel"], unread: true }]);
@@ -184,7 +225,8 @@ describe.each(locations)("Search on %s", (_, start) => {
     expect(ids(await search({ terms: words("kayak") })).sort()).toEqual(["kayak-club", "kayak-rental", "kayak-trash"]);
     expect(ids(await search({ filters: { labels: { include: ["Travel"] }, unread: true } }))).toEqual(["kayak-club"]);
     expect(ids(await search({ terms: [phrase("förra mötet")] }))).toEqual(["mote-sv"]);
-    expect(ids(await search({ terms: words("hosting invoice april") })).sort()).toEqual(["invoice-april", "invoice-question"]);
+    expect(ids(await search({ terms: words("hosting invoice april") })).slice(0, 2).sort()).toEqual(["invoice-april", "invoice-question"]);
+    expect(ids(await search({ terms: words("when should I see someone about my teeth") }))[0]).toBe("dentist");
     expect(await engine.texts(mailbox, ["kayak-club"])).toEqual(new Map([["kayak-club", fixture.find(({ id }) => id === "kayak-club")!.text]]));
   });
 
@@ -201,6 +243,14 @@ describe.each(locations)("Search on %s", (_, start) => {
     expect(ids(await search({ terms: words("möten") }))).toEqual(["mote-sv"]);
     expect(ids(await search({ terms: [phrase("förra mötet")] }))).toEqual(["mote-sv"]);
     expect(ids(await search({ terms: words("invoices") })).sort()).toEqual(["invoice-april", "invoice-march", "invoice-may", "invoice-question"]);
+  });
+
+  test("a Swedish word finds its definite form, and the definite form the word", async () => {
+    await (await engine.writer(mailbox)).put([{ ...fixture.find(({ id }) => id === "mote-sv")!, id: "hyra-sv", thread: "hyra-sv", subject: "Hyran för november", text: "Hej! Betala senast fredag." }]);
+    const inSubject = (text: string): SearchTerm[] => [{ text, phrase: false, in: "subject" }];
+    expect(ids(await search({ terms: inSubject("hyra") }))).toEqual(["hyra-sv"]);
+    expect(ids(await search({ terms: inSubject("fakturan") }))).toEqual(["faktura-sv"]);
+    expect(ids(await search({ terms: [phrase("hyra", "subject")] }))).toEqual([]);
   });
 
   test("a message's text is given by its ID", async () => {
@@ -231,10 +281,12 @@ describe.each(locations)("Search on %s", (_, start) => {
 test("building the full-text indexes leaves the process running", () => {
   const engine = new URL("../src/lancedb-search.ts", import.meta.url).href;
   const fixtureModule = new URL("./search-fixture.ts", import.meta.url).href;
+  const titanModule = new URL("./titan.ts", import.meta.url).href;
   const script = `
     import { lanceSearch } from ${JSON.stringify(engine)};
     import { fixture } from ${JSON.stringify(fixtureModule)};
-    const search = lanceSearch({ uri: process.argv[1] });
+    import { recordedTitan } from ${JSON.stringify(titanModule)};
+    const search = lanceSearch({ uri: process.argv[1], embedder: recordedTitan() });
     await (await search.writer("crash-check")).put(fixture);
     const hits = await search.search("crash-check", { terms: [{ text: "out of office", phrase: true, in: "anywhere" }], filters: {}, sort: "relevance", limit: 10 });
     console.log(JSON.stringify(hits.map((hit) => hit.message)));

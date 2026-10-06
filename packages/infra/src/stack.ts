@@ -29,6 +29,7 @@ import { ConfigurationSet, EmailIdentity, Identity, ReceiptRuleSet } from "aws-c
 import { Queue, QueueEncryption } from "aws-cdk-lib/aws-sqs";
 import type { Construct } from "constructs";
 import {
+  embeddingModel,
   environmentVariables,
   feederFilter,
   inboundPrefix,
@@ -336,6 +337,10 @@ export class DuvaStack extends Stack {
     // invokes it, through IAM, so it has no resource policy (docs/aws.md).
     const searcher = lanceLambda("SearchHandler", "search.handler", {}, { memorySize: 10_240, timeout: Duration.seconds(30) });
     search.grantRead(searcher);
+    // Search embeds its words, and the indexer each message, with Titan in the deployment's own
+    // region, so mail stays there (ADR-0007). Nothing else calls Bedrock.
+    const embedding = new PolicyStatement({ actions: ["bedrock:InvokeModel"], resources: [this.formatArn({ service: "bedrock", account: "", resource: "foundation-model", resourceName: embeddingModel })] });
+    searcher.addToRolePolicy(embedding);
 
     // The indexer reads a FIFO queue with each mailbox as a message group, so each mailbox's index
     // has one writer at a time (#18). A task that keeps failing goes to a queue of its own, and the
@@ -369,6 +374,7 @@ export class DuvaStack extends Stack {
     mail.grantRead(indexer);
     search.grantReadWrite(indexer);
     search.grantDelete(indexer);
+    indexer.addToRolePolicy(embedding);
 
     // The table's stream hands the feeder each new change in a mailbox's change feed, and the
     // feeder gives the indexer a task for the mailbox. A record it keeps failing on is left, and the

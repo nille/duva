@@ -75,8 +75,12 @@ const indexes: [column: string, index: () => lancedb.Index][] = [
 // IVF_PQ trains on the table's vectors, so it waits until there are enough of
 // them. Until then, and for rows added since it was built, vector queries
 // compare every vector, which is exact.
+// IVF_RQ with a refine factor of 5 finds 0.98 of a flat scan's top 20, where
+// IVF_PQ at its defaults found 0.50 (#62, results/62-recall.json), and is
+// what Duva ships.
 const vectorIndexMinRows = 10_000;
-const vectorIndex = () => lancedb.Index.ivfPq({ distanceType: "cosine" });
+const vectorIndex = () => lancedb.Index.ivfRq({ distanceType: "cosine" });
+const refineFactor = 5;
 
 // One vector per message, from its subject and the start of its body. Titan
 // refuses an empty text, so a message with neither embeds as a placeholder.
@@ -87,8 +91,6 @@ const embeddingText = (m: Message) => `${m.subject}\n\n${m.text.slice(0, embedde
 // in memory at a time.
 const batchSize = 2_000;
 
-// RRF with LanceDB's default k of 60.
-const reranker = lancedb.rerankers.RRFReranker.create();
 
 export function lanceSearch(options: LanceSearchOptions): SearchEngine {
   const connection = lancedb.connect(options.uri, {
@@ -138,30 +140,26 @@ class LanceMailbox implements MailboxSearch {
   }
 
   // Words or a phrase alone search the full-text index, and a meaning alone
-  // the vectors. Both together are a hybrid search: each finds its best
-  // messages and RRF merges the two rankings. Filters apply before each.
+  // the vectors. Both together are a hybrid search, as Duva runs it (#62):
+  // the two at once, each filtered, merged by RRF. LanceDB's own hybrid
+  // search scales each side's distances before its reranker sees them.
   async search(query: SearchQuery): Promise<SearchHit[]> {
     const terms = fullTextQuery(query);
     const meaning = query.meaning?.trim();
     if (!terms && !meaning) throw new Error("A search needs words, a phrase or a meaning.");
     const where = predicate(query.filters);
-    let search: lancedb.Query | lancedb.VectorQuery = this.table.query();
-    if (terms) search = search.fullTextSearch(terms);
-    if (meaning) {
-      const [vector] = await this.embedder.embed([meaning]);
-      let vectorSearch = search.nearestTo(vector!).column("vector").distanceType("cosine");
-      if (this.flatVectorSearch) vectorSearch = vectorSearch.bypassVectorIndex();
-      if (terms) vectorSearch = vectorSearch.rerank(await reranker);
-      search = vectorSearch;
-    }
-    // Naming the score column keeps LanceDB from warning that it adds it
-    // unasked. A hybrid search runs two queries under one selection, so
-    // naming either one's score fails the other.
-    const scores = terms && meaning ? [] : [terms ? "_score" : "_distance"];
-    search = search.select(["id", ...scores]).limit(query.limit);
-    if (where) search = search.where(where);
-    const rows: ({ id: string } & Scores)[] = await search.toArray();
-    return rows.map((r) => ({ messageId: r.id, score: score(r) }));
+    const filtered = <Q extends lancedb.Query | lancedb.VectorQuery>(q: Q): Q => (where ? (q.where(where) as Q) : q);
+    const byWords = terms ? filtered(this.table.query().fullTextSearch(terms).select(["id", "_score"]).limit(query.limit)).toArray() : undefined;
+    const byMeaning = meaning
+      ? this.embedder.embed([meaning]).then(([vector]) => {
+          let vectorSearch = this.table.query().nearestTo(vector!).column("vector").distanceType("cosine").refineFactor(refineFactor);
+          if (this.flatVectorSearch) vectorSearch = vectorSearch.bypassVectorIndex();
+          return filtered(vectorSearch.select(["id", "_distance"]).limit(query.limit)).toArray();
+        })
+      : undefined;
+    const [words, meanings]: (({ id: string } & Scores)[] | undefined)[] = await Promise.all([byWords, byMeaning]);
+    if (words && meanings) return fused(words, meanings).slice(0, query.limit);
+    return (words ?? meanings!).map((r) => ({ messageId: r.id, score: score(r) }));
   }
 
   // Rows added after an index was built are still searched, by a flat scan,
@@ -175,6 +173,13 @@ class LanceMailbox implements MailboxSearch {
       await this.table.createIndex("vector", { config: vectorIndex() });
     }
   }
+}
+
+// RRF with LanceDB's default k of 60.
+function fused(...rankings: { id: string }[][]): SearchHit[] {
+  const scores = new Map<string, number>();
+  for (const ranking of rankings) ranking.forEach((r, rank) => scores.set(r.id, (scores.get(r.id) ?? 0) + 1 / (60 + rank + 1)));
+  return [...scores].map(([messageId, score]) => ({ messageId, score })).sort((a, b) => b.score - a.score);
 }
 
 // What each mode scores by: BM25 for words, cosine distance for a meaning,

@@ -1,0 +1,775 @@
+{
+  "measuredAt": "2026-10-06T04:08:36.112Z",
+  "region": "eu-north-1",
+  "lancedbVersion": "0.39.0",
+  "loadedFrom": "this machine, over the internet to S3 in eu-north-1",
+  "messages": {
+    "total": 100000,
+    "enron": 97000,
+    "swedish": 3000,
+    "threads": 88445,
+    "writtenInSwedish": 3022,
+    "withAttachment": 9574,
+    "labelShares": {
+      "Spam": 0.03,
+      "Trash": 0.05,
+      "Inbox": 0.12,
+      "user": {
+        "Projects": 0.08,
+        "Finance": 0.06,
+        "Important": 0.04,
+        "Legal": 0.03,
+        "Travel": 0.02
+      }
+    },
+    "labels": {
+      "archived": 80999,
+      "Projects": 7353,
+      "Inbox": 10905,
+      "Finance": 5376,
+      "Trash": 5070,
+      "Travel": 1798,
+      "Spam": 3026,
+      "Legal": 2635,
+      "Important": 3590
+    },
+    "from": "1997-01-01T17:22:03.000Z",
+    "to": "2002-09-26T11:57:13.937Z"
+  },
+  "load": {
+    "readCorpusMs": 28317.634055,
+    "addMs": 1791250.93135,
+    "embedMs": 1673825.3894640005,
+    "peakMemoryMb": 1934.00390625,
+    "versions": [
+      {
+        "version": 1,
+        "at": "2026-10-06T03:38:42.514Z"
+      },
+      {
+        "version": 2,
+        "at": "2026-10-06T03:39:15.945Z"
+      },
+      {
+        "version": 3,
+        "at": "2026-10-06T03:39:49.514Z"
+      },
+      {
+        "version": 4,
+        "at": "2026-10-06T03:40:24.637Z"
+      },
+      {
+        "version": 5,
+        "at": "2026-10-06T03:40:58.237Z"
+      },
+      {
+        "version": 6,
+        "at": "2026-10-06T03:41:30.584Z"
+      },
+      {
+        "version": 7,
+        "at": "2026-10-06T03:42:05.114Z"
+      },
+      {
+        "version": 8,
+        "at": "2026-10-06T03:42:39.635Z"
+      },
+      {
+        "version": 9,
+        "at": "2026-10-06T03:43:14.677Z"
+      },
+      {
+        "version": 10,
+        "at": "2026-10-06T03:43:50.680Z"
+      },
+      {
+        "version": 11,
+        "at": "2026-10-06T03:44:26.499Z"
+      },
+      {
+        "version": 12,
+        "at": "2026-10-06T03:45:01.214Z"
+      },
+      {
+        "version": 13,
+        "at": "2026-10-06T03:45:35.319Z"
+      },
+      {
+        "version": 14,
+        "at": "2026-10-06T03:46:09.497Z"
+      },
+      {
+        "version": 15,
+        "at": "2026-10-06T03:46:45.501Z"
+      },
+      {
+        "version": 16,
+        "at": "2026-10-06T03:47:21.509Z"
+      },
+      {
+        "version": 17,
+        "at": "2026-10-06T03:47:58.125Z"
+      },
+      {
+        "version": 18,
+        "at": "2026-10-06T03:48:32.884Z"
+      },
+      {
+        "version": 19,
+        "at": "2026-10-06T03:49:08.382Z"
+      },
+      {
+        "version": 20,
+        "at": "2026-10-06T03:49:48.120Z"
+      },
+      {
+        "version": 21,
+        "at": "2026-10-06T03:50:23.716Z"
+      },
+      {
+        "version": 22,
+        "at": "2026-10-06T03:50:55.120Z"
+      },
+      {
+        "version": 23,
+        "at": "2026-10-06T03:51:29.319Z"
+      },
+      {
+        "version": 24,
+        "at": "2026-10-06T03:52:00.618Z"
+      },
+      {
+        "version": 25,
+        "at": "2026-10-06T03:52:32.047Z"
+      },
+      {
+        "version": 26,
+        "at": "2026-10-06T03:53:03.333Z"
+      },
+      {
+        "version": 27,
+        "at": "2026-10-06T03:53:39.131Z"
+      },
+      {
+        "version": 28,
+        "at": "2026-10-06T03:54:15.229Z"
+      },
+      {
+        "version": 29,
+        "at": "2026-10-06T03:54:52.556Z"
+      },
+      {
+        "version": 30,
+        "at": "2026-10-06T03:55:29.975Z"
+      },
+      {
+        "version": 31,
+        "at": "2026-10-06T03:56:07.780Z"
+      },
+      {
+        "version": 32,
+        "at": "2026-10-06T03:56:42.557Z"
+      },
+      {
+        "version": 33,
+        "at": "2026-10-06T03:57:16.799Z"
+      },
+      {
+        "version": 34,
+        "at": "2026-10-06T03:57:50.601Z"
+      },
+      {
+        "version": 35,
+        "at": "2026-10-06T03:58:25.451Z"
+      },
+      {
+        "version": 36,
+        "at": "2026-10-06T03:58:59.487Z"
+      },
+      {
+        "version": 37,
+        "at": "2026-10-06T03:59:32.422Z"
+      },
+      {
+        "version": 38,
+        "at": "2026-10-06T04:00:08.641Z"
+      },
+      {
+        "version": 39,
+        "at": "2026-10-06T04:00:45.073Z"
+      },
+      {
+        "version": 40,
+        "at": "2026-10-06T04:01:21.832Z"
+      },
+      {
+        "version": 41,
+        "at": "2026-10-06T04:01:58.723Z"
+      },
+      {
+        "version": 42,
+        "at": "2026-10-06T04:02:36.297Z"
+      },
+      {
+        "version": 43,
+        "at": "2026-10-06T04:03:10.769Z"
+      },
+      {
+        "version": 44,
+        "at": "2026-10-06T04:03:45.231Z"
+      },
+      {
+        "version": 45,
+        "at": "2026-10-06T04:04:21.094Z"
+      },
+      {
+        "version": 46,
+        "at": "2026-10-06T04:04:56.761Z"
+      },
+      {
+        "version": 47,
+        "at": "2026-10-06T04:05:35.841Z"
+      },
+      {
+        "version": 48,
+        "at": "2026-10-06T04:06:10.495Z"
+      },
+      {
+        "version": 49,
+        "at": "2026-10-06T04:06:44.640Z"
+      },
+      {
+        "version": 50,
+        "at": "2026-10-06T04:07:19.403Z"
+      },
+      {
+        "version": 51,
+        "at": "2026-10-06T04:07:53.460Z"
+      },
+      {
+        "version": 52,
+        "at": "2026-10-06T04:07:54.762Z"
+      },
+      {
+        "version": 53,
+        "at": "2026-10-06T04:08:06.243Z"
+      },
+      {
+        "version": 54,
+        "at": "2026-10-06T04:08:06.805Z"
+      },
+      {
+        "version": 55,
+        "at": "2026-10-06T04:08:07.419Z"
+      },
+      {
+        "version": 56,
+        "at": "2026-10-06T04:08:07.987Z"
+      },
+      {
+        "version": 57,
+        "at": "2026-10-06T04:08:08.547Z"
+      },
+      {
+        "version": 58,
+        "at": "2026-10-06T04:08:08.961Z"
+      },
+      {
+        "version": 59,
+        "at": "2026-10-06T04:08:09.390Z"
+      },
+      {
+        "version": 60,
+        "at": "2026-10-06T04:08:33.520Z"
+      }
+    ]
+  },
+  "embedding": {
+    "model": "amazon.titan-embed-text-v2:0",
+    "dimensions": 1024,
+    "requests": 100000,
+    "inputTokens": 26072602,
+    "usdPer1kTokens": 0.000021,
+    "usd": 0.547524642
+  },
+  "table": {
+    "stats": {
+      "totalBytes": 606978061,
+      "numRows": 100000,
+      "numIndices": 9,
+      "fragmentStats": {
+        "numFragments": 50,
+        "numSmallFragments": 50,
+        "lengths": {
+          "min": 2000,
+          "max": 2000,
+          "mean": 2000,
+          "p25": 2000,
+          "p50": 2000,
+          "p75": 2000,
+          "p99": 2000
+        }
+      }
+    },
+    "onS3": {
+      "objects": 194,
+      "totalBytes": 607223234,
+      "bytes": {
+        "_indices": 99243239,
+        "_transactions": 10049,
+        "_versions": 235124,
+        "data": 507734822
+      }
+    },
+    "indexes": [
+      {
+        "name": "date_idx",
+        "indexType": "BTREE",
+        "columns": [
+          "date"
+        ],
+        "indexUuid": "c1c251d4-30c3-4908-8b91-174fefe0cb35",
+        "typeUrl": "/lance.table.BTreeIndexDetails",
+        "createdAt": "2026-10-06T04:08:07.901Z",
+        "numIndexedRows": 100000,
+        "numUnindexedRows": 0,
+        "sizeBytes": 966477,
+        "numSegments": 1,
+        "indexVersion": 0,
+        "indexDetails": {},
+        "numIndices": 1
+      },
+      {
+        "name": "has_attachment_idx",
+        "indexType": "BITMAP",
+        "columns": [
+          "has_attachment"
+        ],
+        "indexUuid": "84e5e982-5856-4a7d-8c08-d39760672238",
+        "typeUrl": "/lance.table.BitmapIndexDetails",
+        "createdAt": "2026-10-06T04:08:08.885Z",
+        "numIndexedRows": 100000,
+        "numUnindexedRows": 0,
+        "sizeBytes": 46582,
+        "numSegments": 1,
+        "indexVersion": 0,
+        "indexDetails": {},
+        "numIndices": 1
+      },
+      {
+        "name": "labels_idx",
+        "indexType": "LABEL_LIST",
+        "columns": [
+          "labels"
+        ],
+        "indexUuid": "d6cd1b8e-4085-419c-a782-5c228b94f6ac",
+        "typeUrl": "/lance.table.LabelListIndexDetails",
+        "createdAt": "2026-10-06T04:08:09.310Z",
+        "numIndexedRows": 100000,
+        "numUnindexedRows": 0,
+        "sizeBytes": 90017,
+        "numSegments": 1,
+        "indexVersion": 1,
+        "indexDetails": {},
+        "numIndices": 1
+      },
+      {
+        "name": "sender_idx",
+        "indexType": "BTREE",
+        "columns": [
+          "sender"
+        ],
+        "indexUuid": "5d4ed840-3feb-4c99-9d32-380c5a12d727",
+        "typeUrl": "/lance.table.BTreeIndexDetails",
+        "createdAt": "2026-10-06T04:08:08.475Z",
+        "numIndexedRows": 100000,
+        "numUnindexedRows": 0,
+        "sizeBytes": 752161,
+        "numSegments": 1,
+        "indexVersion": 0,
+        "indexDetails": {},
+        "numIndices": 1
+      },
+      {
+        "name": "subject_en_idx",
+        "indexType": "FTS",
+        "columns": [
+          "subject_en"
+        ],
+        "indexUuid": "eb7d220b-4a2a-4717-87a1-fa8079ebc064",
+        "typeUrl": "/lance.table.InvertedIndexDetails",
+        "createdAt": "2026-10-06T04:07:54.685Z",
+        "numIndexedRows": 100000,
+        "numUnindexedRows": 0,
+        "sizeBytes": 3245917,
+        "numSegments": 1,
+        "indexVersion": 2,
+        "indexDetails": {
+          "ascii_folding": true,
+          "base_tokenizer": "simple",
+          "block_size": 128,
+          "custom_stop_words": null,
+          "index_operators": false,
+          "lance_tokenizer": "text",
+          "language": "English",
+          "lower_case": true,
+          "max_ngram_length": 3,
+          "max_token_length": 40,
+          "min_ngram_length": 3,
+          "prefix_only": false,
+          "preserve_original": false,
+          "remove_stop_words": false,
+          "split_identifiers": false,
+          "split_on_numerics": false,
+          "stem": true,
+          "with_position": true
+        },
+        "numIndices": 1
+      },
+      {
+        "name": "subject_sv_idx",
+        "indexType": "FTS",
+        "columns": [
+          "subject_sv"
+        ],
+        "indexUuid": "747deace-cc80-46b6-89b8-3186f1f11593",
+        "typeUrl": "/lance.table.InvertedIndexDetails",
+        "createdAt": "2026-10-06T04:08:06.735Z",
+        "numIndexedRows": 100000,
+        "numUnindexedRows": 0,
+        "sizeBytes": 52652,
+        "numSegments": 1,
+        "indexVersion": 2,
+        "indexDetails": {
+          "ascii_folding": false,
+          "base_tokenizer": "simple",
+          "block_size": 128,
+          "custom_stop_words": null,
+          "index_operators": false,
+          "lance_tokenizer": "text",
+          "language": "Swedish",
+          "lower_case": true,
+          "max_ngram_length": 3,
+          "max_token_length": 40,
+          "min_ngram_length": 3,
+          "prefix_only": false,
+          "preserve_original": false,
+          "remove_stop_words": false,
+          "split_identifiers": false,
+          "split_on_numerics": false,
+          "stem": true,
+          "with_position": true
+        },
+        "numIndices": 1
+      },
+      {
+        "name": "text_en_idx",
+        "indexType": "FTS",
+        "columns": [
+          "text_en"
+        ],
+        "indexUuid": "534270de-a1b8-420e-8e5a-d77e9b48f133",
+        "typeUrl": "/lance.table.InvertedIndexDetails",
+        "createdAt": "2026-10-06T04:08:06.163Z",
+        "numIndexedRows": 100000,
+        "numUnindexedRows": 0,
+        "sizeBytes": 79242922,
+        "numSegments": 1,
+        "indexVersion": 2,
+        "indexDetails": {
+          "ascii_folding": true,
+          "base_tokenizer": "simple",
+          "block_size": 128,
+          "custom_stop_words": null,
+          "index_operators": false,
+          "lance_tokenizer": "text",
+          "language": "English",
+          "lower_case": true,
+          "max_ngram_length": 3,
+          "max_token_length": 40,
+          "min_ngram_length": 3,
+          "prefix_only": false,
+          "preserve_original": false,
+          "remove_stop_words": false,
+          "split_identifiers": false,
+          "split_on_numerics": false,
+          "stem": true,
+          "with_position": true
+        },
+        "numIndices": 1
+      },
+      {
+        "name": "text_sv_idx",
+        "indexType": "FTS",
+        "columns": [
+          "text_sv"
+        ],
+        "indexUuid": "8091810f-4a04-48d1-a0e3-7bc02c79962f",
+        "typeUrl": "/lance.table.InvertedIndexDetails",
+        "createdAt": "2026-10-06T04:08:07.340Z",
+        "numIndexedRows": 100000,
+        "numUnindexedRows": 0,
+        "sizeBytes": 264760,
+        "numSegments": 1,
+        "indexVersion": 2,
+        "indexDetails": {
+          "ascii_folding": false,
+          "base_tokenizer": "simple",
+          "block_size": 128,
+          "custom_stop_words": null,
+          "index_operators": false,
+          "lance_tokenizer": "text",
+          "language": "Swedish",
+          "lower_case": true,
+          "max_ngram_length": 3,
+          "max_token_length": 40,
+          "min_ngram_length": 3,
+          "prefix_only": false,
+          "preserve_original": false,
+          "remove_stop_words": false,
+          "split_identifiers": false,
+          "split_on_numerics": false,
+          "stem": true,
+          "with_position": true
+        },
+        "numIndices": 1
+      },
+      {
+        "name": "vector_idx",
+        "indexType": "IVF_RQ",
+        "columns": [
+          "vector"
+        ],
+        "indexUuid": "3887c218-b207-47e1-89fc-dbf8e33cda54",
+        "typeUrl": "/lance.index.pb.VectorIndexDetails",
+        "createdAt": "2026-10-06T04:08:33.445Z",
+        "numIndexedRows": 100000,
+        "numUnindexedRows": 0,
+        "sizeBytes": 14581751,
+        "numSegments": 1,
+        "indexVersion": 2,
+        "indexDetails": {
+          "compression": {
+            "num_bits": 1,
+            "rotation_type": "fast",
+            "type": "rq"
+          },
+          "metric_type": "COSINE",
+          "runtime_hints": {
+            "lance.ivf.max_iters": "50",
+            "lance.ivf.sample_rate": "256",
+            "lance.ivf.shuffle_partition_batches": "10240",
+            "lance.ivf.shuffle_partition_concurrency": "2",
+            "lance.skip_transpose": "false"
+          }
+        },
+        "distanceType": "cosine",
+        "numIndices": 1
+      }
+    ]
+  },
+  "indexAgainstFlat": [
+    {
+      "query": {
+        "meaning": "pipeline capacity for natural gas into California",
+        "limit": 10
+      },
+      "recallAt10": 1,
+      "index": [
+        "enron-06ea7981f26937014473",
+        "enron-2438cb9c8c5219cb7180",
+        "enron-2001b35a3d15a0c9a254",
+        "enron-4befc65172c9a095ea9a",
+        "enron-193b921f2fbcbc4b4b0b",
+        "enron-0cfb8a9806582d363c57",
+        "enron-3eb2a2108d7f66ba239c",
+        "enron-2e615934eff88aad0b1a",
+        "enron-3a79c81f6a80a7993f18",
+        "enron-509a33aa896d378b258c"
+      ],
+      "flat": [
+        "enron-06ea7981f26937014473",
+        "enron-2438cb9c8c5219cb7180",
+        "enron-2001b35a3d15a0c9a254",
+        "enron-4befc65172c9a095ea9a",
+        "enron-193b921f2fbcbc4b4b0b",
+        "enron-0cfb8a9806582d363c57",
+        "enron-3eb2a2108d7f66ba239c",
+        "enron-2e615934eff88aad0b1a",
+        "enron-3a79c81f6a80a7993f18",
+        "enron-509a33aa896d378b258c"
+      ]
+    },
+    {
+      "query": {
+        "meaning": "who is in the fantasy football league this season",
+        "limit": 10
+      },
+      "recallAt10": 1,
+      "index": [
+        "enron-2ba3187beb2ecf73bc98",
+        "enron-4fe91623b701108aac5a",
+        "enron-2290fb542c811fdb4b77",
+        "enron-302e6a19e97e2ac09357",
+        "enron-1e16b7f080c0b9cebc63",
+        "enron-1e29be216804f52ad059",
+        "enron-30d428a43b853f0874eb",
+        "enron-38a56085c84416650fd6",
+        "enron-0e7f2c862af4c0bed415",
+        "enron-27fbb7e0c5aa363c04b4"
+      ],
+      "flat": [
+        "enron-2ba3187beb2ecf73bc98",
+        "enron-4fe91623b701108aac5a",
+        "enron-2290fb542c811fdb4b77",
+        "enron-302e6a19e97e2ac09357",
+        "enron-1e16b7f080c0b9cebc63",
+        "enron-1e29be216804f52ad059",
+        "enron-30d428a43b853f0874eb",
+        "enron-38a56085c84416650fd6",
+        "enron-0e7f2c862af4c0bed415",
+        "enron-27fbb7e0c5aa363c04b4"
+      ]
+    },
+    {
+      "query": {
+        "meaning": "what happens to employees' retirement savings after the bankruptcy",
+        "limit": 10
+      },
+      "recallAt10": 1,
+      "index": [
+        "enron-019145c8e2830d23f73b",
+        "enron-29d433003105db9f09cb",
+        "enron-49075dd628e2e034a134",
+        "enron-042eb32680b8e892acc5",
+        "enron-494776444478a665d357",
+        "enron-583b921d1a60275dbd3a",
+        "enron-35dcbd4affdeef394a96",
+        "enron-2c58865354ce31943842",
+        "enron-5c0e3c62714ad20dfc11",
+        "enron-0e1c39eca791d6b27852"
+      ],
+      "flat": [
+        "enron-019145c8e2830d23f73b",
+        "enron-29d433003105db9f09cb",
+        "enron-49075dd628e2e034a134",
+        "enron-042eb32680b8e892acc5",
+        "enron-494776444478a665d357",
+        "enron-583b921d1a60275dbd3a",
+        "enron-35dcbd4affdeef394a96",
+        "enron-2c58865354ce31943842",
+        "enron-5c0e3c62714ad20dfc11",
+        "enron-0e1c39eca791d6b27852"
+      ]
+    },
+    {
+      "query": {
+        "meaning": "styrelsen vill gå igenom budgeten",
+        "limit": 10
+      },
+      "recallAt10": 1,
+      "index": [
+        "sv-02494",
+        "sv-00744",
+        "sv-02856",
+        "sv-02755",
+        "sv-02265",
+        "sv-02562",
+        "sv-01959",
+        "sv-00785",
+        "sv-00198",
+        "sv-00957"
+      ],
+      "flat": [
+        "sv-02494",
+        "sv-00744",
+        "sv-02856",
+        "sv-02755",
+        "sv-02265",
+        "sv-02562",
+        "sv-01959",
+        "sv-00785",
+        "sv-00198",
+        "sv-00957"
+      ]
+    },
+    {
+      "query": {
+        "meaning": "a reminder to sign the contract",
+        "filters": {
+          "labels": {
+            "include": [
+              "Inbox"
+            ]
+          }
+        },
+        "limit": 10
+      },
+      "recallAt10": 1,
+      "index": [
+        "enron-0bc9fc9aff2b91b6a2ff",
+        "enron-1f2fbd3aac12c54b8a9a",
+        "enron-4fb434daba33f83a3836",
+        "enron-1bd7cf6c81341197e069",
+        "enron-16a6f0005604cc08d25c",
+        "enron-198c29d2588664d11b72",
+        "enron-57a7b47552d169906228",
+        "enron-3fcd6c685c2865380afc",
+        "enron-41ed961ba571d27ddf87",
+        "enron-20dee40ba625bf1d7c2b"
+      ],
+      "flat": [
+        "enron-0bc9fc9aff2b91b6a2ff",
+        "enron-1f2fbd3aac12c54b8a9a",
+        "enron-4fb434daba33f83a3836",
+        "enron-1bd7cf6c81341197e069",
+        "enron-16a6f0005604cc08d25c",
+        "enron-198c29d2588664d11b72",
+        "enron-57a7b47552d169906228",
+        "enron-3fcd6c685c2865380afc",
+        "enron-41ed961ba571d27ddf87",
+        "enron-20dee40ba625bf1d7c2b"
+      ]
+    },
+    {
+      "query": {
+        "meaning": "travel plans for the conference",
+        "filters": {
+          "hasAttachment": true,
+          "labels": {
+            "exclude": [
+              "Spam",
+              "Trash"
+            ]
+          }
+        },
+        "limit": 10
+      },
+      "recallAt10": 1,
+      "index": [
+        "enron-3925419b614b5f0573c6",
+        "enron-376d4c64c3aa3fece709",
+        "enron-4956a3ef3108a9cb48b5",
+        "enron-2f0323ef4d30d2e11c4f",
+        "enron-531fbf489b87ed44ba01",
+        "enron-362f29209846fcdb55de",
+        "enron-4ed53f934f4151dd9305",
+        "enron-225362365632b5f404a3",
+        "enron-5cac46590ff5ebb45dc7",
+        "enron-220a98c1020104708b39"
+      ],
+      "flat": [
+        "enron-3925419b614b5f0573c6",
+        "enron-376d4c64c3aa3fece709",
+        "enron-4956a3ef3108a9cb48b5",
+        "enron-2f0323ef4d30d2e11c4f",
+        "enron-531fbf489b87ed44ba01",
+        "enron-362f29209846fcdb55de",
+        "enron-4ed53f934f4151dd9305",
+        "enron-225362365632b5f404a3",
+        "enron-5cac46590ff5ebb45dc7",
+        "enron-220a98c1020104708b39"
+      ]
+    }
+  ]
+}

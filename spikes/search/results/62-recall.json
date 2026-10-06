@@ -1,0 +1,575 @@
+{
+  "measuredAt": "2026-10-06T03:23:26.151Z",
+  "lancedb": "0.39.0",
+  "mailbox": {
+    "messages": 100000,
+    "fragments": 50
+  },
+  "queries": {
+    "count": 315,
+    "from": "harness/questions.json and the meanings of harness/queries.ts",
+    "model": "amazon.titan-embed-text-v2:0",
+    "dimensions": 1024
+  },
+  "method": "Recall is the share of a flat scan's top 20 in the setting's top 20, averaged over the queries, with the worst query's beside it. Latency is on local disk.",
+  "filters": {
+    "not Spam or Trash": "NOT array_has_any(labels, make_array('Spam', 'Trash'))",
+    "label Travel": "array_has_all(labels, make_array('Travel'))"
+  },
+  "results": [
+    {
+      "index": "IVF_PQ at defaults",
+      "buildMs": 47229,
+      "none": {
+        "recall": 0.504,
+        "worst": 0,
+        "p50Ms": 10.385,
+        "p95Ms": 11.529
+      },
+      "not Spam or Trash": {
+        "recall": 0.506,
+        "worst": 0,
+        "p50Ms": 29.327,
+        "p95Ms": 35.494
+      },
+      "label Travel": {
+        "recall": 0.469,
+        "worst": 0.1,
+        "p50Ms": 12.781,
+        "p95Ms": 13.893
+      }
+    },
+    {
+      "index": "IVF_PQ at defaults",
+      "buildMs": 47229,
+      "nprobes": 40,
+      "none": {
+        "recall": 0.504,
+        "worst": 0,
+        "p50Ms": 10.579,
+        "p95Ms": 11.679
+      },
+      "not Spam or Trash": {
+        "recall": 0.506,
+        "worst": 0,
+        "p50Ms": 28.881,
+        "p95Ms": 35.783
+      },
+      "label Travel": {
+        "recall": 0.469,
+        "worst": 0.1,
+        "p50Ms": 12.167,
+        "p95Ms": 14.063
+      }
+    },
+    {
+      "index": "IVF_PQ at defaults",
+      "buildMs": 47229,
+      "refineFactor": 2,
+      "none": {
+        "recall": 0.655,
+        "worst": 0.05,
+        "p50Ms": 12.812,
+        "p95Ms": 14.88
+      },
+      "not Spam or Trash": {
+        "recall": 0.653,
+        "worst": 0.05,
+        "p50Ms": 28.651,
+        "p95Ms": 36.188
+      },
+      "label Travel": {
+        "recall": 0.613,
+        "worst": 0.15,
+        "p50Ms": 15.829,
+        "p95Ms": 17.682
+      }
+    },
+    {
+      "index": "IVF_PQ at defaults",
+      "buildMs": 47229,
+      "refineFactor": 5,
+      "none": {
+        "recall": 0.798,
+        "worst": 0.2,
+        "p50Ms": 14.503,
+        "p95Ms": 16.727
+      },
+      "not Spam or Trash": {
+        "recall": 0.799,
+        "worst": 0.2,
+        "p50Ms": 33.147,
+        "p95Ms": 38.621
+      },
+      "label Travel": {
+        "recall": 0.779,
+        "worst": 0.2,
+        "p50Ms": 17.978,
+        "p95Ms": 20.393
+      }
+    },
+    {
+      "index": "IVF_PQ at defaults",
+      "buildMs": 47229,
+      "nprobes": 40,
+      "refineFactor": 5,
+      "none": {
+        "recall": 0.798,
+        "worst": 0.2,
+        "p50Ms": 15.646,
+        "p95Ms": 18.027
+      },
+      "not Spam or Trash": {
+        "recall": 0.799,
+        "worst": 0.2,
+        "p50Ms": 34.246,
+        "p95Ms": 38.406
+      },
+      "label Travel": {
+        "recall": 0.779,
+        "worst": 0.2,
+        "p50Ms": 17.825,
+        "p95Ms": 19.676
+      }
+    },
+    {
+      "index": "IVF_PQ at defaults",
+      "buildMs": 47229,
+      "nprobes": 40,
+      "refineFactor": 10,
+      "none": {
+        "recall": 0.871,
+        "worst": 0.25,
+        "p50Ms": 16.599,
+        "p95Ms": 18.489
+      },
+      "not Spam or Trash": {
+        "recall": 0.871,
+        "worst": 0.25,
+        "p50Ms": 34.37,
+        "p95Ms": 40.772
+      },
+      "label Travel": {
+        "recall": 0.88,
+        "worst": 0.3,
+        "p50Ms": 18.218,
+        "p95Ms": 20.299
+      }
+    },
+    {
+      "index": "IVF_PQ, 128 subvectors",
+      "buildMs": 87258,
+      "none": {
+        "recall": 0.643,
+        "worst": 0,
+        "p50Ms": 16.547,
+        "p95Ms": 18.158
+      },
+      "not Spam or Trash": {
+        "recall": 0.638,
+        "worst": 0,
+        "p50Ms": 49.933,
+        "p95Ms": 54.876
+      },
+      "label Travel": {
+        "recall": 0.602,
+        "worst": 0.2,
+        "p50Ms": 13.73,
+        "p95Ms": 15.91
+      }
+    },
+    {
+      "index": "IVF_PQ, 128 subvectors",
+      "buildMs": 87258,
+      "nprobes": 40,
+      "none": {
+        "recall": 0.643,
+        "worst": 0,
+        "p50Ms": 16.217,
+        "p95Ms": 17.803
+      },
+      "not Spam or Trash": {
+        "recall": 0.638,
+        "worst": 0,
+        "p50Ms": 42.125,
+        "p95Ms": 52.937
+      },
+      "label Travel": {
+        "recall": 0.602,
+        "worst": 0.2,
+        "p50Ms": 15.009,
+        "p95Ms": 16.549
+      }
+    },
+    {
+      "index": "IVF_PQ, 128 subvectors",
+      "buildMs": 87258,
+      "refineFactor": 2,
+      "none": {
+        "recall": 0.818,
+        "worst": 0,
+        "p50Ms": 19.374,
+        "p95Ms": 21.212
+      },
+      "not Spam or Trash": {
+        "recall": 0.819,
+        "worst": 0.05,
+        "p50Ms": 45.276,
+        "p95Ms": 55.644
+      },
+      "label Travel": {
+        "recall": 0.78,
+        "worst": 0.4,
+        "p50Ms": 18.43,
+        "p95Ms": 20.25
+      }
+    },
+    {
+      "index": "IVF_PQ, 128 subvectors",
+      "buildMs": 87258,
+      "nprobes": 40,
+      "refineFactor": 2,
+      "none": {
+        "recall": 0.818,
+        "worst": 0,
+        "p50Ms": 19.665,
+        "p95Ms": 21.124
+      },
+      "not Spam or Trash": {
+        "recall": 0.819,
+        "worst": 0.05,
+        "p50Ms": 49.811,
+        "p95Ms": 59.451
+      },
+      "label Travel": {
+        "recall": 0.78,
+        "worst": 0.4,
+        "p50Ms": 18.718,
+        "p95Ms": 21.011
+      }
+    },
+    {
+      "index": "IVF_PQ, 128 subvectors",
+      "buildMs": 87258,
+      "nprobes": 40,
+      "refineFactor": 5,
+      "none": {
+        "recall": 0.933,
+        "worst": 0.15,
+        "p50Ms": 20.709,
+        "p95Ms": 22.766
+      },
+      "not Spam or Trash": {
+        "recall": 0.933,
+        "worst": 0.2,
+        "p50Ms": 49.057,
+        "p95Ms": 56.744
+      },
+      "label Travel": {
+        "recall": 0.921,
+        "worst": 0.45,
+        "p50Ms": 19.134,
+        "p95Ms": 21.722
+      }
+    },
+    {
+      "index": "IVF_PQ, 256 subvectors",
+      "buildMs": 293847,
+      "none": {
+        "recall": 0.822,
+        "worst": 0.1,
+        "p50Ms": 28.045,
+        "p95Ms": 35.959
+      },
+      "not Spam or Trash": {
+        "recall": 0.82,
+        "worst": 0.15,
+        "p50Ms": 122.991,
+        "p95Ms": 137.288
+      },
+      "label Travel": {
+        "recall": 0.803,
+        "worst": 0.55,
+        "p50Ms": 19.401,
+        "p95Ms": 21.208
+      }
+    },
+    {
+      "index": "IVF_PQ, 256 subvectors",
+      "buildMs": 293847,
+      "nprobes": 40,
+      "none": {
+        "recall": 0.822,
+        "worst": 0.1,
+        "p50Ms": 27.861,
+        "p95Ms": 30.06
+      },
+      "not Spam or Trash": {
+        "recall": 0.82,
+        "worst": 0.15,
+        "p50Ms": 134.884,
+        "p95Ms": 142.883
+      },
+      "label Travel": {
+        "recall": 0.803,
+        "worst": 0.55,
+        "p50Ms": 20.346,
+        "p95Ms": 22.229
+      }
+    },
+    {
+      "index": "IVF_PQ, 256 subvectors",
+      "buildMs": 293847,
+      "refineFactor": 2,
+      "none": {
+        "recall": 0.969,
+        "worst": 0.15,
+        "p50Ms": 31.715,
+        "p95Ms": 33.649
+      },
+      "not Spam or Trash": {
+        "recall": 0.97,
+        "worst": 0.4,
+        "p50Ms": 138.24,
+        "p95Ms": 145.751
+      },
+      "label Travel": {
+        "recall": 0.971,
+        "worst": 0.7,
+        "p50Ms": 23.587,
+        "p95Ms": 24.985
+      }
+    },
+    {
+      "index": "IVF_PQ, 256 subvectors",
+      "buildMs": 293847,
+      "nprobes": 40,
+      "refineFactor": 2,
+      "none": {
+        "recall": 0.969,
+        "worst": 0.15,
+        "p50Ms": 31.346,
+        "p95Ms": 33.569
+      },
+      "not Spam or Trash": {
+        "recall": 0.97,
+        "worst": 0.4,
+        "p50Ms": 138.053,
+        "p95Ms": 145.795
+      },
+      "label Travel": {
+        "recall": 0.971,
+        "worst": 0.7,
+        "p50Ms": 23.594,
+        "p95Ms": 25.213
+      }
+    },
+    {
+      "index": "IVF_RQ",
+      "buildMs": 756,
+      "none": {
+        "recall": 0.729,
+        "worst": 0.2,
+        "p50Ms": 6.657,
+        "p95Ms": 7.75
+      },
+      "not Spam or Trash": {
+        "recall": 0.724,
+        "worst": 0.15,
+        "p50Ms": 14.625,
+        "p95Ms": 16.11
+      },
+      "label Travel": {
+        "recall": 0.734,
+        "worst": 0.4,
+        "p50Ms": 12.883,
+        "p95Ms": 14.696
+      }
+    },
+    {
+      "index": "IVF_RQ",
+      "buildMs": 756,
+      "nprobes": 40,
+      "none": {
+        "recall": 0.732,
+        "worst": 0.2,
+        "p50Ms": 6.833,
+        "p95Ms": 7.936
+      },
+      "not Spam or Trash": {
+        "recall": 0.726,
+        "worst": 0.15,
+        "p50Ms": 15.359,
+        "p95Ms": 17.127
+      },
+      "label Travel": {
+        "recall": 0.739,
+        "worst": 0.4,
+        "p50Ms": 13.345,
+        "p95Ms": 15.095
+      }
+    },
+    {
+      "index": "IVF_RQ",
+      "buildMs": 756,
+      "refineFactor": 2,
+      "none": {
+        "recall": 0.9,
+        "worst": 0.25,
+        "p50Ms": 9.895,
+        "p95Ms": 11.311
+      },
+      "not Spam or Trash": {
+        "recall": 0.901,
+        "worst": 0.2,
+        "p50Ms": 16.545,
+        "p95Ms": 18.493
+      },
+      "label Travel": {
+        "recall": 0.916,
+        "worst": 0.6,
+        "p50Ms": 15.906,
+        "p95Ms": 18.037
+      }
+    },
+    {
+      "index": "IVF_RQ",
+      "buildMs": 756,
+      "refineFactor": 5,
+      "none": {
+        "recall": 0.976,
+        "worst": 0.45,
+        "p50Ms": 10.912,
+        "p95Ms": 12.946
+      },
+      "not Spam or Trash": {
+        "recall": 0.977,
+        "worst": 0.45,
+        "p50Ms": 18.204,
+        "p95Ms": 20.431
+      },
+      "label Travel": {
+        "recall": 0.978,
+        "worst": 0.75,
+        "p50Ms": 17.212,
+        "p95Ms": 19.349
+      }
+    },
+    {
+      "index": "IVF_RQ",
+      "buildMs": 756,
+      "nprobes": 40,
+      "refineFactor": 5,
+      "none": {
+        "recall": 0.985,
+        "worst": 0.65,
+        "p50Ms": 11.849,
+        "p95Ms": 13.742
+      },
+      "not Spam or Trash": {
+        "recall": 0.986,
+        "worst": 0.65,
+        "p50Ms": 19.703,
+        "p95Ms": 21.968
+      },
+      "label Travel": {
+        "recall": 0.992,
+        "worst": 0.85,
+        "p50Ms": 18.075,
+        "p95Ms": 20.224
+      }
+    },
+    {
+      "index": "IVF_HNSW_SQ",
+      "buildMs": 18906,
+      "none": {
+        "recall": 0.839,
+        "worst": 0,
+        "p50Ms": 4.326,
+        "p95Ms": 5.31
+      },
+      "not Spam or Trash": {
+        "recall": 0.848,
+        "worst": 0,
+        "p50Ms": 10.096,
+        "p95Ms": 11.12
+      },
+      "label Travel": {
+        "recall": 0.982,
+        "worst": 0.85,
+        "p50Ms": 8.02,
+        "p95Ms": 8.892
+      }
+    },
+    {
+      "index": "IVF_HNSW_SQ",
+      "buildMs": 18906,
+      "nprobes": 40,
+      "none": {
+        "recall": 0.839,
+        "worst": 0,
+        "p50Ms": 4.336,
+        "p95Ms": 5.151
+      },
+      "not Spam or Trash": {
+        "recall": 0.848,
+        "worst": 0,
+        "p50Ms": 9.686,
+        "p95Ms": 11.271
+      },
+      "label Travel": {
+        "recall": 0.982,
+        "worst": 0.85,
+        "p50Ms": 7.631,
+        "p95Ms": 8.499
+      }
+    },
+    {
+      "index": "IVF_HNSW_SQ",
+      "buildMs": 18906,
+      "ef": 100,
+      "none": {
+        "recall": 0.944,
+        "worst": 0,
+        "p50Ms": 4.667,
+        "p95Ms": 5.732
+      },
+      "not Spam or Trash": {
+        "recall": 0.946,
+        "worst": 0,
+        "p50Ms": 10.54,
+        "p95Ms": 11.759
+      },
+      "label Travel": {
+        "recall": 0.982,
+        "worst": 0.85,
+        "p50Ms": 7.642,
+        "p95Ms": 8.889
+      }
+    },
+    {
+      "index": "IVF_HNSW_SQ",
+      "buildMs": 18906,
+      "nprobes": 40,
+      "ef": 100,
+      "none": {
+        "recall": 0.944,
+        "worst": 0,
+        "p50Ms": 4.742,
+        "p95Ms": 5.639
+      },
+      "not Spam or Trash": {
+        "recall": 0.946,
+        "worst": 0,
+        "p50Ms": 10.534,
+        "p95Ms": 11.844
+      },
+      "label Travel": {
+        "recall": 0.982,
+        "worst": 0.85,
+        "p50Ms": 8.007,
+        "p95Ms": 8.858
+      }
+    }
+  ]
+}

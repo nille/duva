@@ -72,16 +72,19 @@ interface Combination {
 
 type Outcome = Sample | { error: string };
 
-export async function latency(bucket: string) {
+// What Duva ships (ADR-0007): the x64 zip at 10,240 MB, with the vector index.
+export const shipped = { packages: ["x64-zip"] as PackageName[], memorySizes: [10240], types: ["keyword", "phrase", "vector", "hybrid"] as QueryType[] };
+
+export async function latency(bucket: string, only?: typeof shipped) {
   const startedAt = new Date().toISOString();
   const combinations = (
     await Promise.all(
-      (Object.keys(packages) as PackageName[]).map(async (name) => {
+      (only?.packages ?? (Object.keys(packages) as PackageName[])).map(async (name) => {
         const copied = Date.now();
         const copy = await copyMailbox(bucket, name);
         await requestMetricsLive(bucket, name, copied);
         const done: Combination[] = [];
-        for (const memoryMb of memorySizes) done.push(...(await measurePackage(name, memoryMb, copy)));
+        for (const memoryMb of only?.memorySizes ?? memorySizes) done.push(...(await measurePackage(name, memoryMb, copy, only?.types)));
         await configure(packages[name], memorySizes[0]!);
         return done;
       }),
@@ -95,10 +98,10 @@ export async function latency(bucket: string) {
 // touching the benchmark mailbox.
 const fixtureQuery: SearchEvent = { mailbox: "fixture", query: { words: "kayak", limit: 1 } };
 
-async function measurePackage(name: PackageName, memoryMb: number, mailbox: string): Promise<Combination[]> {
+async function measurePackage(name: PackageName, memoryMb: number, mailbox: string, only?: QueryType[]): Promise<Combination[]> {
   const functionName = packages[name];
   const done: Combination[] = [];
-  const types = Object.keys(queryTypes) as QueryType[];
+  const types = only ?? (Object.keys(queryTypes) as QueryType[]);
   await configure(functionName, memoryMb);
   // An image's first start after its deploy takes many times longer, while
   // Lambda readies it, so one start goes unmeasured.
@@ -391,7 +394,8 @@ function report(startedAt: string, combinations: Combination[], requests: Reques
     readConsistencyIntervalSeconds: 0,
     caches: "index cache a quarter of the function's memory, metadata cache a sixteenth",
     querySet: Object.fromEntries(Object.entries(queryTypes).map(([type, t]) => [type, t.queries])),
-    recall: recallAgainstFlat(combinations),
+    // Without flat scans, as when only what Duva ships is measured, there is nothing to compare with.
+    ...(combinations.some((c) => queryTypes[c.type].flatVectorSearch) && { recall: recallAgainstFlat(combinations) }),
     results,
   };
 }

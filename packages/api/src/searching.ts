@@ -2,7 +2,7 @@
 // each with the message that matched best and a snippet of that message's text. Only the API
 // invokes it, through IAM, and the API decides who may search what and checks each thread as it is.
 import { InvokeCommand, type LambdaClient } from "@aws-sdk/client-lambda";
-import type { SearchEngine, SearchFilters, SearchHit, Search } from "./search-engine.ts";
+import type { SearchEngine, SearchFilters, Search } from "./search-engine.ts";
 import { type Snippet, snippetFor } from "./snippets.ts";
 
 /** How many messages a search finds at most, and so how far its results can be paged. */
@@ -34,17 +34,8 @@ export function createSearcher(engine: SearchEngine): Searcher {
     const { from, to } = asked.filters.received ?? {};
     const filters: SearchFilters = { ...asked.filters, received: { from: from === undefined ? undefined : new Date(from), to: to === undefined ? undefined : new Date(to) } };
     const search: Search = { ...asked, filters, limit: messagesFound };
-    let hits: SearchHit[];
-    if (changed.length === 0) hits = await engine.search(mailbox, search);
-    else {
-      const { labels: _labels, unread: _unread, ...unlabelled } = filters;
-      const [others, these] = await Promise.all([
-        engine.search(mailbox, { ...search, filters: { ...filters, threads: { exclude: changed } } }),
-        engine.search(mailbox, { ...search, filters: { ...unlabelled, threads: { include: changed } } }),
-      ]);
-      const byScore = search.terms.length > 0 && search.sort === "relevance";
-      hits = [...others, ...these].sort((a, b) => (byScore ? b.score - a.score : b.receivedAt.getTime() - a.receivedAt.getTime())).slice(0, messagesFound);
-    }
+    // The changed threads are left out by no label or read state filter, so the API checks them as they are now.
+    const hits = await engine.search(mailbox, changed.length === 0 ? search : { ...search, filters: { ...filters, threads: { exempt: changed } } });
     // A thread ranks by its best message, which is the one it shows.
     const best = new Map<string, string>();
     for (const hit of hits) if (!best.has(hit.thread)) best.set(hit.thread, hit.message);

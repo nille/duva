@@ -25,7 +25,7 @@ export interface IndexWriter {
   /** Adds what was written since the last time to the index's own indexes, and deletes old versions. */
   maintain(): Promise<void>;
   /**
-   * Rewrites the index, so no file holds a removed message's text, and deletes every old version.
+   * Rewrites the index, so no file holds a removed message's text or vector, and deletes every old version.
    * A search reading an old version meanwhile fails, and is retried on the new one.
    */
   compact(): Promise<void>;
@@ -95,6 +95,8 @@ export interface SearchFilters {
     include?: string[];
     /** The message is in none of these. */
     exclude?: string[];
+    /** A message in one of these is kept whatever its labels and read state, as long as the other filters hold. */
+    exempt?: string[];
   };
 }
 
