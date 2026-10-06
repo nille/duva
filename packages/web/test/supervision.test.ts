@@ -139,6 +139,36 @@ test("a send waiting for the send limit shows on its agent's line, and Send now 
   expect(await summary(page).innerText()).not.toMatch(/waits for the send limit/);
 });
 
+test("while its agent is paused, a send waiting for the send limit is held until it is unpaused, with Send now disabled, and the line and the index catch up without a reload", budget, async () => {
+  const { page, signIn, duva, grace, settings, send } = await withAgent();
+  await grace.PATCH("/agents/{agent}/settings", { ...settings, body: { sendsPerHour: 1 } });
+  await send("ken@example.net", "First");
+  await send("lou@example.net", "Second");
+  await signIn("grace@example.org");
+  await openHermes(page);
+  const index = page.getByRole("navigation", { name: "Settings" });
+  const waiting = agentsSheet(page).getByRole("region", { name: "Waiting for the send limit" });
+  expect(await waiting.getByRole("button", { name: "Send now" }).isEnabled()).toBe(true);
+
+  await agentsSheet(page).getByRole("button", { name: "Pause" }).click();
+
+  await expect.poll(() => waiting.getByText("Held until you unpause Hermes.").isVisible(), wait).toBe(true);
+  const sendNow = waiting.getByRole("button", { name: "Send now" });
+  expect(await sendNow.isDisabled()).toBe(true);
+  expect(await sendNow.getAttribute("aria-describedby").then((id) => page.locator(`[id="${id}"]`).textContent())).toBe("Held until you unpause Hermes.");
+  await expect.poll(() => index.getByRole("link", { name: /^Hermes/ }).innerText(), wait).toBe("Hermes\nPaused, 1 waiting");
+
+  // A higher limit lets the send go out once Hermes is unpaused.
+  await grace.PATCH("/agents/{agent}/settings", { ...settings, body: { sendsPerHour: 2 } });
+  const before = duva.sent().length;
+  await agentsSheet(page).getByRole("button", { name: "Unpause" }).click();
+
+  await expect.poll(() => duva.sent().length, wait).toBe(before + 1);
+  await expect.poll(() => waiting.count(), wait).toBe(0);
+  expect(await summary(page).innerText()).not.toMatch(/waits for the send limit|Paused/);
+  await expect.poll(() => index.getByRole("link", { name: /^Hermes/ }).innerText(), wait).toBe("Hermes");
+});
+
 test("a send waiting for the send limit as the sponsor shows in their draft, with Send now", budget, async () => {
   const { page, signIn, duva, grace, hermes, settings } = await withAgent();
   await grace.PATCH("/agents/{agent}/settings", { ...settings, body: { sponsorAccess: "full", approvalAsSponsor: false, sendsPerHour: 1 } });

@@ -3666,10 +3666,6 @@ a.day:focus-visible {
   .entry-thread {
     grid-column: 2;
   }
-
-  .agent-activity {
-    padding-inline: var(--space-4);
-  }
 }
 
 /*
@@ -3722,9 +3718,10 @@ a.day:focus-visible {
 }
 
 /*
- * Supervising agents. On an agent's line on the Agents sheet, a pause is said in Ink beside its
- * name, in the labels' outline with the pause drawn before it, and who paused it under the name.
- * Opened, its Pause part and its sends waiting for the send limit come before its settings.
+ * Supervising agents. On an agent's line on the Agents sheet, a pause, and being an admin, are said
+ * in Ink beside its name, in the labels' outline with the pause or a key drawn before it, and who
+ * paused it under the name. Opened, its parts on pausing, being an admin and its sends waiting for
+ * the send limit come before its settings.
  */
 .agent-summary-head {
   display: flex;
@@ -3733,7 +3730,7 @@ a.day:focus-visible {
   gap: var(--space-1) var(--space-3);
 }
 
-.paused-mark {
+.line-mark {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
@@ -3744,7 +3741,7 @@ a.day:focus-visible {
   color: var(--ink);
 }
 
-.paused-mark .icon {
+.line-mark .icon {
   width: 0.875rem;
   height: 0.875rem;
 }
@@ -3760,6 +3757,12 @@ a.day:focus-visible {
   display: grid;
   gap: var(--space-5);
   padding: 0 var(--space-5) var(--space-5);
+}
+
+/* Several boxes checked would make one block of blue, so a checked box keeps its paper, and the wash stays for a chosen radio. */
+.agent-setting .choice:has(input[type="checkbox"]:checked) {
+  background: none;
+  border-color: var(--rule);
 }
 
 .agent-setting .agent-parts + .setting {

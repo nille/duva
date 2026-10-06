@@ -1,6 +1,6 @@
 import type { Page } from "playwright-core";
 import { expect, test } from "vitest";
-import { phone, startWebApp } from "./web-app.ts";
+import { phone, startWebApp, textLeft } from "./web-app.ts";
 
 // The page under the full suite's load can take seconds to show what changed, so every wait has room, and every test more.
 const wait = { timeout: 10_000 };
@@ -44,14 +44,14 @@ test("a sponsor who isn't an admin opens Settings from the bar and finds each of
   await expect.poll(() => agentsSheet(page).getByRole("heading", { level: 3 }).allTextContents(), wait).toEqual(["Hermes", "Iris"]);
   const hermes = await openAgent(page, "Hermes");
   expect(await hermes.getByRole("radio", { name: /^None/ }).isChecked()).toBe(true);
-  const access = hermes.getByRole("group", { name: "Access to my mailbox" });
+  const access = hermes.getByRole("group", { name: "Access to your mailbox" });
   expect(await access.getByRole("radio").count()).toBe(3);
   expect(await access.getByRole("radio", { name: /^Read/ }).isChecked()).toBe(false);
   expect(await access.getByRole("radio", { name: /^Full/ }).isChecked()).toBe(false);
-  for (const name of ["My approval before it sends as me", "My approval before it sends from its own mailbox"]) {
+  for (const name of ["Your approval before it sends as you", "Your approval before it sends from its own mailbox"]) {
     expect(await hermes.getByRole("checkbox", { name: new RegExp(`^${name}`) }).isChecked()).toBe(true);
   }
-  for (const group of ["When it sends as me", "When it sends from its own mailbox"]) {
+  for (const group of ["When it sends as you", "When it sends from its own mailbox"]) {
     expect(await hermes.getByRole("group", { name: group }).getByRole("checkbox", { name: /^Add a line saying an agent sent it/ }).isChecked()).toBe(true);
   }
   expect(await hermes.getByRole("button", { name: "Save" }).isDisabled()).toBe(true);
@@ -82,7 +82,7 @@ test("a sponsor gives an agent full access and switches off approval of its send
 
   const form = await openAgent(page, "Hermes");
   await form.getByRole("radio", { name: /^Full/ }).check();
-  await form.getByRole("checkbox", { name: /^My approval before it sends as me/ }).uncheck();
+  await form.getByRole("checkbox", { name: /^Your approval before it sends as you/ }).uncheck();
   await form.getByRole("button", { name: "Save" }).click();
 
   await expect.poll(() => form.getByRole("status").textContent(), wait).toBe("Saved. This applies at once.");
@@ -104,7 +104,7 @@ test("a sponsor gives an agent full access and switches off approval of its send
 
   const reloaded = await openAgent(page, "Hermes");
   expect(await reloaded.getByRole("radio", { name: /^Full/ }).isChecked()).toBe(true);
-  expect(await reloaded.getByRole("checkbox", { name: /^My approval before it sends as me/ }).isChecked()).toBe(false);
+  expect(await reloaded.getByRole("checkbox", { name: /^Your approval before it sends as you/ }).isChecked()).toBe(false);
   expect(await (await openAgent(page, "Iris")).getByRole("radio", { name: /^None/ }).isChecked()).toBe(true);
 });
 
@@ -166,4 +166,149 @@ test("under Your agents in the index each agent is a link saying whether it is p
   expect(await agentForm(page, "Hermes").isVisible()).toBe(false);
   expect(await index.getByRole("link", { name: /^Iris/ }).getAttribute("aria-current")).toBe("page");
   expect(await page.evaluate(() => location.hash)).toMatch(/^#\/settings\/agents\//);
+});
+
+/**
+ * The web app for a deployment where Ada, the admin, has a personal mailbox at ada@example.com and
+ * sponsors the agent Hermes, which owns a mailbox at hermes@example.com.
+ */
+async function withAdminSponsor(options: Parameters<typeof startWebApp>[0] = {}) {
+  const app = await startWebApp({ domain: "example.com", admin: "ada@example.org", ...options });
+  const ada = app.duva.signIn("ada@example.org");
+  const { data: me } = await ada.GET("/whoami");
+  const { data: adaMailbox } = await ada.POST("/mailboxes", { body: { owner: me!.id, address: "ada@example.com" } });
+  await ada.PATCH("/mailboxes/{mailbox}/screener", { params: { path: { mailbox: adaMailbox!.id } }, body: { on: false } });
+  const { data: created } = await ada.POST("/agents", { body: { name: "Hermes" } });
+  await ada.POST("/mailboxes", { body: { owner: created!.agent.id, address: "hermes@example.com" } });
+  return { ...app, ada, hermes: created!.agent.id };
+}
+
+/** Opens Settings from the bar, and Your agents from its index. */
+const openYourAgents = async (page: Page) => {
+  await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
+  await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "Your agents" }).click();
+};
+
+test("an agent admin's line says Admin after its name and whether its setup changes wait, and its sponsor switches that approval off", budget, async () => {
+  const { page, signIn, ada, hermes } = await withAdminSponsor();
+  await ada.PATCH("/agents/{agent}", { params: { path: { agent: hermes } }, body: { admin: true } });
+  await signIn("ada@example.org");
+  await openYourAgents(page);
+
+  await expect.poll(() => summaries(page), wait).toEqual(["Hermes\nAdmin\nNo access to your mailbox. Its sends and setup changes wait for your approval."]);
+  const form = await openAgent(page, "Hermes");
+  const approval = form.getByRole("group", { name: "When it changes the setup" }).getByRole("checkbox", { name: /^Your approval before it changes the setup/ });
+  expect(await approval.isChecked()).toBe(true);
+
+  // By keyboard, as a screen reader's user does.
+  await approval.focus();
+  await page.keyboard.press("Space");
+  await form.getByRole("button", { name: "Save" }).focus();
+  await page.keyboard.press("Enter");
+
+  await expect.poll(() => form.getByRole("status").textContent(), wait).toBe("Saved. This applies at once.");
+  expect((await ada.GET("/agents/{agent}/settings", { params: { path: { agent: hermes } } })).data?.approvalForSetup).toBe(false);
+  expect((await summaries(page))[0]).toBe("Hermes\nAdmin\nNo access to your mailbox. Its sends wait for your approval. Its setup changes go through without your approval.");
+});
+
+test("an admin makes the agent they sponsor an admin on its line, and takes it away again", budget, async () => {
+  const { page, signIn, ada, hermes } = await withAdminSponsor();
+  await signIn("ada@example.org");
+  await openYourAgents(page);
+  await openAgent(page, "Hermes");
+  const part = agentsSheet(page).getByRole("region", { name: "Admin" });
+  expect(await part.getByText("An agent admin may change the organization's setup", { exact: false }).isVisible()).toBe(true);
+  expect(await agentForm(page, "Hermes").getByRole("group", { name: "When it changes the setup" }).count()).toBe(0);
+
+  await part.getByRole("button", { name: "Make it an admin" }).focus();
+  await page.keyboard.press("Enter");
+
+  await expect.poll(async () => (await summaries(page))[0], wait).toMatch(/^Hermes\nAdmin\n/);
+  expect((await ada.GET("/agents")).data!.agents[0]!.admin).toBe(true);
+  expect(await agentForm(page, "Hermes").getByRole("group", { name: "When it changes the setup" }).isVisible()).toBe(true);
+
+  await part.getByRole("button", { name: "Take admin away" }).click();
+
+  await expect.poll(async () => (await summaries(page))[0], wait).not.toMatch(/Admin/);
+  expect((await ada.GET("/agents")).data!.agents[0]!.admin).toBe(false);
+  expect(await part.getByRole("button", { name: "Make it an admin" }).isVisible()).toBe(true);
+});
+
+test("a sponsor who isn't an admin is told only admins make agents admins, and offered no button for it", budget, async () => {
+  const { page, signIn } = await withSponsor();
+  await signIn("grace@example.org");
+  await openYourAgents(page);
+  await openAgent(page, "Hermes");
+
+  const part = agentsSheet(page).getByRole("region", { name: "Admin" }).first();
+  await expect.poll(() => part.innerText(), wait).toContain("Only an admin can make an agent an admin.");
+  expect(await part.getByRole("button").count()).toBe(0);
+});
+
+test("a checked box on an agent's line lies on paper, and only a chosen radio lies on Pencil Wash", budget, async () => {
+  const { page, signIn } = await withSponsor();
+  await signIn("grace@example.org");
+  await openYourAgents(page);
+  const form = await openAgent(page, "Hermes");
+  const background = (control: ReturnType<typeof form.getByRole>) => control.evaluate((input) => getComputedStyle(input.closest(".choice")!).backgroundColor);
+
+  const box = form.getByRole("checkbox", { name: /^Your approval before it sends from its own mailbox/ });
+  expect(await box.isChecked()).toBe(true);
+  expect(await background(box)).toBe("rgba(0, 0, 0, 0)");
+  expect(await background(form.getByRole("radio", { name: /^None/ }))).toBe("rgb(232, 237, 251)");
+});
+
+test("the part on pausing is named for what it holds, not for its button", budget, async () => {
+  const { page, signIn } = await withSponsor();
+  await signIn("grace@example.org");
+  await openYourAgents(page);
+  await openAgent(page, "Hermes");
+
+  const part = agentsSheet(page).getByRole("region", { name: "Running or paused" }).first();
+  expect(await part.getByRole("button", { name: "Pause" }).isVisible()).toBe(true);
+});
+
+test("on a phone, the link to an agent's activity lines up with its line and its settings", budget, async () => {
+  const { page, signIn } = await withSponsor({ viewport: phone });
+  await signIn("grace@example.org");
+  await openYourAgents(page);
+  await openAgent(page, "Hermes");
+
+  const [name, activity, part] = await textLeft([
+    agentsSheet(page).getByRole("heading", { level: 3, name: "Hermes" }),
+    agentsSheet(page).getByRole("link", { name: "Hermes's activity" }),
+    agentsSheet(page).getByRole("heading", { level: 4, name: "Running or paused" }).first(),
+  ]);
+  expect(activity).toBe(name);
+  expect(part).toBe(name);
+});
+
+test("on a phone, Your agents gives the focus to its title, and an agent opened from the index to its line, as other pages do", budget, async () => {
+  const { page, signIn } = await withSponsor({ viewport: phone });
+  await signIn("grace@example.org");
+  await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
+  const index = page.getByRole("navigation", { name: "Settings" });
+
+  await index.getByRole("link", { name: "Your agents" }).click();
+  await expect.poll(() => page.evaluate(() => document.activeElement?.textContent), wait).toBe("Your agents");
+  expect(await page.evaluate(() => document.activeElement?.tagName)).toBe("H2");
+
+  await page.goBack();
+  await index.getByRole("link", { name: /^Iris/ }).click();
+  await expect.poll(() => agentForm(page, "Iris").isVisible(), wait).toBe(true);
+  await expect.poll(() => page.evaluate(() => document.activeElement?.tagName), wait).toBe("SUMMARY");
+  expect(await page.evaluate(() => document.activeElement?.querySelector("h3")?.textContent)).toBe("Iris");
+});
+
+test("on a wide screen too, Your agents gives the focus to its title, and an agent's sub-entry to its line", budget, async () => {
+  const { page, signIn } = await withSponsor();
+  await signIn("grace@example.org");
+  await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
+  const index = page.getByRole("navigation", { name: "Settings" });
+
+  await index.getByRole("link", { name: "Your agents" }).click();
+  await expect.poll(() => page.evaluate(() => `${document.activeElement?.tagName} ${document.activeElement?.textContent}`), wait).toBe("H2 Your agents");
+
+  await index.getByRole("link", { name: /^Iris/ }).click();
+  await expect.poll(() => page.evaluate(() => document.activeElement?.closest("summary")?.querySelector("h3")?.textContent), wait).toBe("Iris");
 });

@@ -139,7 +139,7 @@ type IndexedAgent = { id: string; name: string; paused: boolean; waiting: number
 /**
  * What the index says beside its pages: the agents the human sponsors, and for an admin, which
  * domains have DNS records missing. It reads again whenever the human opens another page, so what
- * they changed on one shows.
+ * they changed on one shows, and whenever `changes` counts another change to an agent there.
  */
 function useIndex({
   client,
@@ -147,6 +147,7 @@ function useIndex({
   me,
   mailboxes,
   hash,
+  changes,
   onSignedOut,
 }: {
   client: DuvaClient;
@@ -154,6 +155,7 @@ function useIndex({
   me: string;
   mailboxes: Mailbox[] | undefined;
   hash: string;
+  changes: number;
   onSignedOut: () => void;
 }): { agents?: IndexedAgent[]; domains?: string } {
   const [agents, setAgents] = useState<IndexedAgent[]>();
@@ -198,7 +200,7 @@ function useIndex({
     return () => {
       current = false;
     };
-  }, [client, admin, me, mailboxesKey, hash, onSignedOut]);
+  }, [client, admin, me, mailboxesKey, hash, changes, onSignedOut]);
   return { agents, domains };
 }
 
@@ -231,7 +233,10 @@ export function Settings({
   const asked = pageOf(hash);
   const own = mailboxes === undefined ? [] : (mailboxes.own ?? (mailboxes.mine === undefined ? [] : [mailboxes.mine]));
   const screened = mailboxes === undefined ? [] : [...own.map((mailbox) => ({ mailbox })), ...mailboxes.agents];
-  const index = useIndex({ client, admin, me, mailboxes: mailboxes === undefined ? undefined : screened.map(({ mailbox }) => mailbox), hash, onSignedOut });
+  // A pause or a send on the Your agents page changes what the index says of the agent.
+  const [agentChanges, setAgentChanges] = useState(0);
+  const agentChanged = useCallback(() => setAgentChanges((count) => count + 1), []);
+  const index = useIndex({ client, admin, me, mailboxes: mailboxes === undefined ? undefined : screened.map(({ mailbox }) => mailbox), hash, changes: agentChanges, onSignedOut });
   const sponsors = (mailboxes?.agents.length ?? 0) > 0 || (index.agents?.length ?? 0) > 0;
   // Pages a human can't open, such as an admin's for a member, or one with nothing on it, open You instead.
   const canOpen = (page: Page) =>
@@ -328,7 +333,7 @@ export function Settings({
         {page === "screener" && screened.length > 0 && (
           <ScreenerSheet key={screened.map(({ mailbox }) => mailbox.id).join()} client={client} mailboxes={screened} onSignedOut={onSignedOut} />
         )}
-        {page === "agents" && <AgentSettingsSheet client={client} me={me} email={email} admin={admin} mailboxes={mailboxes} open={agent} onSignedOut={onSignedOut} />}
+        {page === "agents" && <AgentSettingsSheet client={client} me={me} email={email} admin={admin} mailboxes={mailboxes} open={agent} onChange={agentChanged} onSignedOut={onSignedOut} />}
         {page === "organization" && (
           <>
             <MailSheet client={client} onSignedOut={onSignedOut} />
