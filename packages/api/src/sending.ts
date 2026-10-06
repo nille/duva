@@ -9,13 +9,14 @@
 // agent's send over its send limits, or behind its others that wait, waits for them, and the
 // sender sends what waits, oldest first, when it is handed the agent, at a time it scheduled or
 // once the API changed what holds them. An agent's send that fails, and its limits reached, are
-// alerts to its sponsor. The sender also mails each urgent alert to its sponsor, from Duva.
+// alerts to its sponsor. The sender also mails each urgent alert to its sponsor, from Duva, and
+// records that it did, so the inbound handler knows the mail for Duva's own when it arrives.
 import { randomUUID } from "node:crypto";
 import { SendEmailCommand, SESv2ServiceException, type SESv2Client } from "@aws-sdk/client-sesv2";
 import type { DynamoDBStreamEvent } from "aws-lambda";
-import { TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import type { Table } from "./deployment.ts";
-import { approvedAt, type Draft, draftAt, draftToSend, findApproval, markFailed, markSent, markUnclear, type Sending, startSending, unsendableFrom, waitForLimit } from "./drafting.ts";
+import { approvedAt, type Draft, draftAt, draftToSend, findApproval, markFailed, markSent, markUnclear, type Sending, sesMessagePartition, startSending, unsendableFrom, waitForLimit } from "./drafting.ts";
 import { alertAt, alertItems, limitRead, mailingSettled, raiseAlert, startMailing } from "./alerting.ts";
 import {
   allowedAt,
@@ -382,11 +383,31 @@ async function mailAlert({ table, outbound }: Sender, alert: { sponsor: string; 
     text: `${mail.what}\n\nAll alerts about your agents are in Duva, under Alerts.`,
     attachments: [],
   });
+  let sesMessageId: string;
   try {
-    await outbound.send(raw, { to: [mail.to], cc: [], bcc: [] });
+    sesMessageId = await outbound.send(raw, { to: [mail.to], cc: [], bcc: [] });
   } catch (error) {
     await mailingSettled(table, alert, error instanceof Refused ? "failed" : "unclear");
     return;
   }
-  await mailingSettled(table, alert, "sent");
+  await mailingSettled(table, alert, "sent", [{ Put: { TableName: table.name, Item: { ...systemMailKey(sesMessageId), [timeToLiveAttribute]: Math.floor(Date.now() / 1000) + systemMailKept } } }]);
+}
+
+/** The record that Duva sent the message SES gave the ID from its system address. */
+const systemMailKey = (sesMessageId: string) => ({ [pk]: sesMessagePartition(sesMessageId), [sk]: "system-mail" });
+// Kept 14 days, as long as the inbound Lambda's failure queue keeps an event for replay.
+const systemMailKept = 14 * 24 * 60 * 60;
+
+/**
+ * Whether the message is mail Duva sent from its system address: from that address on one of the
+ * organization's `domains`, with a DMARC pass, and with the Message-ID SES gave a message Duva
+ * recorded sending. A send recorded only after the mail arrived goes unrecognized. A From forged without Duva's send record isn't.
+ */
+export async function sentBySystem(table: Table, { from, dmarc, messageId }: { from: string; dmarc: string; messageId?: string }, domains: Set<string>): Promise<boolean> {
+  if (dmarc !== "PASS" || ![...domains].some((domain) => from === systemAddress(domain))) return false;
+  // SES replaces the Message-ID of each message it sends with one made of the ID it gave it.
+  const sesMessageId = /^<([^@<>\s]+)@[^<>\s]+\.amazonses\.com>$/.exec(messageId ?? "")?.[1];
+  if (sesMessageId === undefined) return false;
+  const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: systemMailKey(sesMessageId), ConsistentRead: true }));
+  return Item !== undefined;
 }

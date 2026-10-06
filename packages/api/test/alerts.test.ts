@@ -114,7 +114,7 @@ test("a complaint is an urgent alert, and the pause it leads to another, both ma
     },
     { kind: "complained", urgent: true, what: "ken@example.net complained about mail from Hermes." },
   ]);
-  expect((await mailed(before)).map(({ subject }) => subject)).toEqual(["A complaint about mail from Hermes", "Duva paused Hermes"]);
+  expect((await mailed(before)).map(({ subject }) => subject)).toEqual(["A complaint about mail from Hermes", "Hermes was paused by Duva"]);
 });
 
 test("five hard bounces within an hour pause the agent, with an urgent alert saying why, and the sponsor gets one mail about the bounces before it", async () => {
@@ -127,7 +127,7 @@ test("five hard bounces within an hour pause the agent, with an urgent alert say
   const [paused] = (await alerts()).alerts;
   expect(paused).toMatchObject({ kind: "autoPaused", urgent: true, what: expect.stringMatching(/^Duva paused Hermes after 5 hard bounces of its mail within an hour, /) });
   const subjects = (await mailed(0)).filter(({ to }) => to?.[0]?.address === "ada@example.com").map(({ subject }) => subject);
-  expect(subjects).toEqual(["Mail from Hermes bounced", "Duva paused Hermes"]);
+  expect(subjects).toEqual(["Mail from Hermes bounced", "Hermes was paused by Duva"]);
 });
 
 test("a hard bounce of the organization's own addresses raises no alert, and the alert of one with others names only theirs", async () => {
@@ -245,7 +245,41 @@ test("an admin's pause is an urgent alert naming them, mailed to the sponsor, an
   expect((await alerts()).alerts).toMatchObject([
     { kind: "pausedBy", urgent: true, by: ids.grace, what: "grace@example.org paused Hermes. Its approved sends are held, and unpausing sends them." },
   ]);
-  expect((await mailed(before)).map(({ subject }) => subject)).toEqual(["grace@example.org paused Hermes"]);
+  expect((await mailed(before)).map(({ subject }) => subject)).toEqual(["Hermes was paused by grace@example.org"]);
+});
+
+/** The subjects of the threads with the label in Ada's mailbox at ada@example.com. */
+async function subjectsIn(ada: DuvaClient, label: "inbox" | "spam") {
+  const mailbox = (await ada.GET("/mailboxes")).data!.mailboxes.find(({ defaultAddress }) => defaultAddress === "ada@example.com")!.id;
+  const { data } = await ada.GET("/mailboxes/{mailbox}/threads", { params: { path: { mailbox }, query: { label } } });
+  return data!.threads.map(({ subject }) => subject);
+}
+
+test("an alert mailed to the sponsor lands in their Inbox even when SES judges it spam", async () => {
+  const { duva, ada, grace, settings } = await withAgent();
+  const before = duva.sent().length;
+  await grace.POST("/agents/{agent}/pause", settings);
+  const [alert] = duva.sent().slice(before);
+
+  await duva.receive(alert!, { to: ["ada@example.com"] }, { verdicts: { spam: "FAIL" } });
+
+  expect(await subjectsIn(ada, "inbox")).toEqual(["Hermes was paused by grace@example.org"]);
+  expect(await subjectsIn(ada, "spam")).toEqual([]);
+});
+
+test("mail from Duva's system address that Duva didn't send, or that fails DMARC, gets SES's spam verdict", async () => {
+  const { duva, ada, grace, settings } = await withAgent();
+  const before = duva.sent().length;
+  await grace.POST("/agents/{agent}/pause", settings);
+  const [alert] = duva.sent().slice(before);
+  const lookalike = alert!.replace(/^Message-ID: <[^@]+@/m, "Message-ID: <forged@").replace(/^Subject: .*$/m, "Subject: Lookalike");
+  const failing = alert!.replace(/^Subject: .*$/m, "Subject: Failing DMARC");
+
+  await duva.receive(lookalike, { to: ["ada@example.com"] }, { verdicts: { spam: "FAIL" } });
+  await duva.receive(failing, { to: ["ada@example.com"] }, { verdicts: { spam: "FAIL", dmarc: "FAIL", dmarcPolicy: "none" } });
+
+  expect(await subjectsIn(ada, "spam")).toEqual(["Failing DMARC", "Lookalike"]);
+  expect(await subjectsIn(ada, "inbox")).toEqual([]);
 });
 
 test("an admin lowering a cap below the agent's limits is an alert with its new limits, not mailed", async () => {
@@ -271,7 +305,7 @@ test("an admin's removal of an agent is an urgent alert, and the sponsor keeps t
     { kind: "removedBy", urgent: true, by: ids.grace, agent: agent.id, agentName: "Hermes", what: "grace@example.org removed Hermes, with its mailboxes." },
     { kind: "pausedBy", agent: agent.id },
   ]);
-  expect((await mailed(before)).map(({ subject }) => subject)).toEqual(["grace@example.org removed Hermes"]);
+  expect((await mailed(before)).map(({ subject }) => subject)).toEqual(["Hermes was removed by grace@example.org"]);
   expect((await ada.GET("/alerts", { params: { query: { agent: agent.id } } })).data?.unseen).toBe(2);
 });
 

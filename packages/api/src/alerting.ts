@@ -260,7 +260,11 @@ export async function startMailing(table: Table, { sponsor, id }: { sponsor: str
   }
 }
 
-/** Records how the alert's mail went: sent, refused by SES, or unclear, when SES's answer never came. Duva never mails it again. */
-export async function mailingSettled(table: Table, { sponsor, id }: { sponsor: string; id: string }, outcome: "sent" | "failed" | "unclear"): Promise<void> {
-  await documents(table).send(new UpdateCommand({ TableName: table.name, Key: alertKey(sponsor, id), UpdateExpression: "SET mail = :outcome", ExpressionAttributeValues: { ":outcome": outcome } }));
+/**
+ * Records how the alert's mail went: sent, refused by SES, or unclear, when SES's answer never
+ * came, with the writes `also` gives. Duva never mails it again.
+ */
+export async function mailingSettled(table: Table, { sponsor, id }: { sponsor: string; id: string }, outcome: "sent" | "failed" | "unclear", also: TransactItem[] = []): Promise<void> {
+  const settled = { Update: { TableName: table.name, Key: alertKey(sponsor, id), UpdateExpression: "SET mail = :outcome", ExpressionAttributeValues: { ":outcome": outcome } } };
+  await documents(table).send(new TransactWriteCommand({ TransactItems: [settled, ...also] }));
 }

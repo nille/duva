@@ -1,9 +1,10 @@
 // The inbound handler, which SES invokes, without waiting, for each message it accepts. By then SES
 // has stored the raw message in the mail bucket. A failure makes Lambda retry the event, then
 // leaves it in the failure queue for replay, so processing is idempotent per SES message ID.
-// Only FAIL verdicts act. GRAY and PROCESSING_FAILED count as passes. Mail to a group goes to its
-// members, as group-mail.ts has it. Mail to an address the organization doesn't have goes to its
-// domain's catch-all, which SES takes it for, as if to the catch-all's mailbox or group.
+// Only FAIL verdicts act. GRAY and PROCESSING_FAILED count as passes. Mail Duva sent from its
+// system address, such as an urgent alert, is never spam, whatever SES's verdict. Mail to a group
+// goes to its members, as group-mail.ts has it. Mail to an address the organization doesn't have
+// goes to its domain's catch-all, which SES takes it for, as if to the catch-all's mailbox or group.
 import type { SESEvent } from "aws-lambda";
 import type { Table } from "./deployment.ts";
 import { dropLogLine, dropReason } from "./drops.ts";
@@ -13,7 +14,7 @@ import type { MailBucket } from "./mail-bucket.ts";
 import { parseMail } from "./mime.ts";
 import { bounceOnce, type Bounces, type Expanded, expand, type GroupRefusal, isOwnMail, refusalOf, resendToExternalMembers, type Sender, sentByMember } from "./group-mail.ts";
 import { addressTarget, allDomains, type CatchAll, catchAllTarget, type Group } from "./organization.ts";
-import type { Outbound } from "./sending.ts";
+import { type Outbound, sentBySystem } from "./sending.ts";
 import { receiveScreened } from "./screening.ts";
 
 /**
@@ -58,12 +59,12 @@ export function createInbound({ table, mailBucket, log, outbound, bounces }: { t
         if (await mailBucket.erase(rawKey)) log(dropLogLine(reason, ses, [...mailboxes]));
         continue;
       }
-      const spam = ses.receipt.spamVerdict.status === "FAIL";
       const dmarcPassed = ses.receipt.dmarcVerdict.status === "PASS";
       const raw = await mailBucket.get(rawKey);
       if (raw === undefined) throw new Error(`SES stored no message at ${rawKey}.`);
       const parsed = await parseMail(raw);
       const sender: Sender = { from: (parsed.from?.address ?? ses.mail.source).toLowerCase(), dmarc: ses.receipt.dmarcVerdict.status };
+      const spam = ses.receipt.spamVerdict.status === "FAIL" && !(await sentBySystem(table, { ...sender, messageId: parsed.messageId }, domains));
       const delivered = new Map<string, Recipient & { group?: string }>(direct);
       const refused: GroupRefusal[] = [];
       const taken: typeof groups = [];

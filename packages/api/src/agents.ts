@@ -143,7 +143,7 @@ export const removeAgent: OperationHandler = async (event, deployment, actor) =>
   if (!sponsorOrAdmin(actor!, agent)) return refusal(403, "Only the agent's sponsor and admins can remove it. Ask its sponsor.");
   const alert = await alertUnlessSponsor(deployment.table, actor!, agent, "removedBy", (who) => ({
     what: `${who} removed ${agent.name}, with its mailboxes.`,
-    urgent: `${who} removed ${agent.name}`,
+    urgent: `${agent.name} was removed by ${who}`,
   }));
   const mailboxes = await removeAgentWithMailboxes(deployment, { agent, by: actor!.id, items: alert });
   await syncRecipients(deployment.table, deployment.receiving);
@@ -190,7 +190,7 @@ export const pauseAgent = setupOperation("pauseAgent", async (event, deployment,
     run: async () => {
       const alert = await alertUnlessSponsor(deployment.table, actor, agent, "pausedBy", (who) => ({
         what: `${who} paused ${agent.name}. Its approved sends are held, and unpausing sends them.`,
-        urgent: `${who} paused ${agent.name}`,
+        urgent: `${agent.name} was paused by ${who}`,
       }));
       const paused = await pause(deployment.table, { agent, by: actor.id, items: alert });
       return paused === undefined ? removedMeanwhile(agent) : { statusCode: 200, body: paused satisfies components["schemas"]["Agent"] };

@@ -137,7 +137,7 @@ async function recordFeedback(table: Table, suppressionList: SuppressionList, ev
         ? ["a complaint about its mail", "A recipient complained about its mail."]
         : [`${hardBouncesToPause} hard bounces of its mail within an hour`, `Its mail hard-bounced ${hardBouncesToPause} times within an hour.`];
     const what = `Duva paused ${agent.name} after ${why}, so it can't hurt the domain. Its approved sends are held, and unpausing sends them, so look at them first.`;
-    await pauseAgent(table, { agent, by: duva, reason, items: await alertWrites(table, { kind: "autoPaused", agent, what, urgent: `Duva paused ${agent.name}` }) });
+    await pauseAgent(table, { agent, by: duva, reason, items: await alertWrites(table, { kind: "autoPaused", agent, what, urgent: `${agent.name} was paused by Duva` }) });
   }
   await documents(table).send(new UpdateCommand({ TableName: table.name, Key: claimKey, UpdateExpression: "SET checked = :checked", ExpressionAttributeValues: { ":checked": true } }));
 }
