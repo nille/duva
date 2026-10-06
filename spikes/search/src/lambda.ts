@@ -4,6 +4,7 @@
 import { Session } from "@lancedb/lancedb";
 import { lanceSearch } from "./lancedb-search.ts";
 import type { MailboxSearch, SearchFilters, SearchQuery } from "./search.ts";
+import { novaTranslator } from "./nova.ts";
 import { titanEmbedder } from "./titan.ts";
 
 // The query as JSON carries it, with dates as ISO strings.
@@ -31,12 +32,13 @@ const cacheBytes = { index: memoryBytes / 4n, metadata: memoryBytes / 16n };
 // Both engines share one session, so their caches are one. Forgetting the
 // mailboxes keeps the embedder and its connections to Bedrock.
 const embedder = titanEmbedder();
+const translator = novaTranslator();
 function engines() {
   const session = new Session(cacheBytes.index, cacheBytes.metadata);
   return {
     session,
-    indexed: lanceSearch({ uri, storageOptions, session, embedder }),
-    flat: lanceSearch({ uri, storageOptions, session, embedder, flatVectorSearch: true }),
+    indexed: lanceSearch({ uri, storageOptions, session, embedder, translator }),
+    flat: lanceSearch({ uri, storageOptions, session, embedder, translator, flatVectorSearch: true }),
   };
 }
 

@@ -40,6 +40,7 @@ import { gateway } from "./gateway.ts";
 import { managedLogin, managedLoginClientId } from "./managed-login.ts";
 import { type Bounce, type Envelope, memoryDns, type ReceiveOptions, sesIdentities, sesReceiving, sesSending, type StoredIdentity } from "./ses.ts";
 import { tableStream } from "./streams.ts";
+import { recordedNova } from "./nova.ts";
 import { recordedTitan } from "./titan.ts";
 import { TestTokenIssuer } from "./token-issuer.ts";
 import { type ReceivedRequest, standInInternet, type WebServerOptions } from "./web.ts";
@@ -228,7 +229,7 @@ export async function startDuva({
     await feed.deliver();
     await indexQueue.drain(indexer);
   };
-  const searcher = createSearcher(lanceSearch({ uri: indexes, embedder: titan }));
+  const searcher = createSearcher(lanceSearch({ uri: indexes, embedder: titan, translator: recordedNova() }));
   const stream = tableStream(database, streamArn, [
     { filter: senderFilter, handler: createSender({ table, mailBucket, outbound: sending.outbound, region }), retries: senderRetries, invocations: senderInvocations },
   ]);
@@ -265,6 +266,7 @@ export async function startDuva({
       eraser: { emptyTrash: async (emptyTrash) => void handed.push({ emptyTrash }), eraseMailbox: async (eraseMailbox) => void handed.push({ eraseMailbox }) },
       // The API invokes the search Lambda and waits for it, so the search goes through JSON.
       searcher: async (request) => JSON.parse(JSON.stringify(await searcher(JSON.parse(JSON.stringify(request))))),
+      indexQueue,
     }),
     createAuthorizer({ table, verifyAccessToken: issuer.verify }),
   );

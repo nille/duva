@@ -8,6 +8,7 @@ import { agentKeyHash, newAgentKey } from "./agent-keys.ts";
 import type { Humans } from "./user-pool.ts";
 import type { Table } from "./deployment.ts";
 import { changesAfter, entryKey, type Feed, recordChanges, recordInFeeds } from "./feed.ts";
+import { defaultSearchLanguages } from "./languages.ts";
 import { documents, isNew, pk, sk, type TransactItem } from "./table.ts";
 
 export type Actor = components["schemas"]["Actor"];
@@ -981,7 +982,7 @@ export async function organizationChanges(table: Table, after: number): Promise<
 }
 
 /** What each setting is until an admin changes it. */
-export const defaultSettings: OrganizationSettings = { erasureErasesApprovals: false, retentionDays: 30 };
+export const defaultSettings: OrganizationSettings = { erasureErasesApprovals: false, retentionDays: 30, searchLanguages: defaultSearchLanguages };
 
 /** Settings as read, with the version a write that relies on them checks. */
 export interface ReadSettings<Settings = OrganizationSettings> {
@@ -1013,7 +1014,8 @@ export async function changeSettings(table: Table, { by, changes }: { by: string
   const settingsReason = 2;
   for (let attempt = 1; ; attempt++) {
     const read = await organizationSettings(table);
-    const changed = Object.fromEntries(Object.entries(changes).filter(([name, value]) => read.settings[name as keyof OrganizationSettings] !== value));
+    // A list of languages is a value too, so values are compared as JSON.
+    const changed = Object.fromEntries(Object.entries(changes).filter(([name, value]) => JSON.stringify(read.settings[name as keyof OrganizationSettings]) !== JSON.stringify(value)));
     if (Object.keys(changed).length === 0) return read.settings;
     const settings = { ...read.settings, ...changed };
     try {

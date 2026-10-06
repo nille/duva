@@ -37,7 +37,7 @@ const warmPerType = 100;
 
 // The spec's targets for p95, in milliseconds.
 const targets = {
-  warm: { keyword: 300, phrase: 500, vector: 500, "vector-flat": 500, hybrid: 800, "hybrid-flat": 800 },
+  warm: { keyword: 300, phrase: 500, vector: 500, "vector-flat": 500, hybrid: 800, "hybrid-flat": 800, translated: 800 },
   cold: 3_000,
 };
 
@@ -72,8 +72,9 @@ interface Combination {
 
 type Outcome = Sample | { error: string };
 
-// What Duva ships (ADR-0007): the x64 zip at 10,240 MB, with the vector index.
-export const shipped = { packages: ["x64-zip"] as PackageName[], memorySizes: [10240], types: ["keyword", "phrase", "vector", "hybrid"] as QueryType[] };
+// What Duva ships (ADR-0007): the x64 zip at 10,240 MB, with the vector index,
+// and from #67 the translated search.
+export const shipped = { packages: ["x64-zip"] as PackageName[], memorySizes: [10240], types: ["keyword", "phrase", "vector", "hybrid", "translated"] as QueryType[] };
 
 export async function latency(bucket: string, only?: typeof shipped) {
   const startedAt = new Date().toISOString();

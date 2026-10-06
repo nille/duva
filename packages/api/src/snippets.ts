@@ -1,12 +1,13 @@
 /// <reference path="./snowball-stemmers.d.ts" />
 // A search result's snippet: the part of the matching message's text where the search's words
 // stand, on one line without URLs or long tokens, with each place they match highlighted. A word
-// matches another form of itself as the index stems it, so "invoices" lights up "invoice", and
-// "fakturor" "faktura".
+// matches another form of itself as the index stems it, so "invoices" lights up "invoice",
+// "fakturor" "faktura", and in Danish text "regningerne" "regning".
 import snowball from "snowball-stemmers";
 import { readableLine } from "./readable-line.ts";
 import type { SearchTerm } from "./search-engine.ts";
-import { definiteForms, messageLanguage } from "./swedish.ts";
+import { languages, messageLanguage } from "./languages.ts";
+import { definiteForms } from "./swedish.ts";
 
 export interface Snippet {
   text: string;
@@ -20,13 +21,13 @@ const snippetLength = 200;
 /** How much of the text before the first match a snippet shows, at most. */
 const leadLength = 60;
 
-const stemmers = [snowball.newStemmer("english"), snowball.newStemmer("swedish")];
+const stemmers = [snowball.newStemmer("english"), snowball.newStemmer("swedish"), snowball.newStemmer("danish")];
 
-/** What a word is compared by: itself in lower case, and its stems in English, folded, and Swedish. */
-const formsOf = (word: string) => {
+/** What a word is compared by: itself in lower case, and its stems in English, folded, and Swedish, and in Danish text Danish. */
+const formsOf = (danish: boolean) => (word: string) => {
   const lower = word.toLowerCase();
   const folded = lower.normalize("NFD").replace(/\p{M}/gu, "");
-  return [lower, stemmers[0]!.stem(folded), stemmers[1]!.stem(lower)];
+  return [lower, stemmers[0]!.stem(folded), stemmers[1]!.stem(lower), ...(danish ? [stemmers[2]!.stem(lower)] : [])];
 };
 
 const sameWord = (a: string[], b: string[]) => a.some((form, index) => form === b[index]);
@@ -37,12 +38,15 @@ const sameWord = (a: string[], b: string[]) => a.some((form, index) => form === 
  */
 export function snippetFor(text: string, terms: SearchTerm[]): Snippet {
   const line = readableLine(text);
-  const words = [...line.matchAll(/[\p{L}\p{N}]+/gu)].map((match) => ({ start: match.index, end: match.index + match[0].length, forms: formsOf(match[0]) }));
+  // Danish text is stemmed as Danish too, where an index has it; any other is never filed as Danish.
+  const language = messageLanguage({ subject: "", text }, languages);
+  const forms = formsOf(language === "Danish");
+  const words = [...line.matchAll(/[\p{L}\p{N}]+/gu)].map((match) => ({ start: match.index, end: match.index + match[0].length, forms: forms(match[0]) }));
   const matched: { start: number; end: number }[] = [];
-  const swedish = messageLanguage({ subject: "", text }) === "Swedish";
+  const swedish = language === "Swedish";
   for (const term of terms.filter((each) => each.in === "anywhere")) {
     // In Swedish text a word matches its other definite form too, as the index does, and a phrase only as written.
-    const wanted = [...term.text.matchAll(/[\p{L}\p{N}]+/gu)].map(([word]) => [word, ...(term.phrase || !swedish ? [] : definiteForms(word))].map(formsOf));
+    const wanted = [...term.text.matchAll(/[\p{L}\p{N}]+/gu)].map(([word]) => [word, ...(term.phrase || !swedish ? [] : definiteForms(word))].map(forms));
     if (wanted.length === 0) continue;
     // A phrase matches where its words stand together, and a word with several parts, like an address, too.
     for (let at = 0; at + wanted.length <= words.length; at++) {

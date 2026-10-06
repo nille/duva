@@ -3,6 +3,7 @@ import type { Eraser } from "./erasure.ts";
 import type { Downloads } from "./attachments.ts";
 import type { Dns } from "./dns-records.ts";
 import type { EmailIdentities } from "./identities.ts";
+import type { IndexQueue } from "./indexing.ts";
 import type { Humans, SignInSender } from "./user-pool.ts";
 import type { MailBucket } from "./mail-bucket.ts";
 import type { Receiving } from "./receiving.ts";
@@ -38,4 +39,6 @@ export interface Deployment {
   unsubscriber: Unsubscriber;
   /** Runs searches in the mailboxes' indexes. */
   searcher: Searcher;
+  /** The indexer's queue, which rebuilds every mailbox's index when the languages mail is indexed in change. */
+  indexQueue: IndexQueue;
 }

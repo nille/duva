@@ -120,6 +120,11 @@ const hybrid: Query[] = [
   { words: "please", meaning: "an invitation to a party", filters: { ...inbox, date: year(2000) }, limit },
 ];
 
+// Duva's search as its words give it (#67): the same words searched as words
+// and as a meaning, also translated into each of three search languages, the
+// most Duva has, so three translations at once.
+const translated: Query[] = hybrid.slice(0, 15).map(({ meaning, filters }) => ({ words: meaning, meaning, translateInto: ["English", "Swedish", "Danish"], filters, limit }));
+
 // Vector and hybrid queries run twice: with the vector index, and as a flat
 // scan that compares every vector.
 export const queryTypes = {
@@ -129,6 +134,7 @@ export const queryTypes = {
   "vector-flat": { queries: vector, flatVectorSearch: true },
   hybrid: { queries: hybrid, flatVectorSearch: false },
   "hybrid-flat": { queries: hybrid, flatVectorSearch: true },
+  translated: { queries: translated, flatVectorSearch: false },
 };
 
 export type QueryType = keyof typeof queryTypes;

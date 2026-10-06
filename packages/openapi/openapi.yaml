@@ -4500,12 +4500,14 @@ components:
     OrganizationSettings:
       type: object
       additionalProperties: false
-      required: [erasureErasesApprovals, retentionDays]
+      required: [erasureErasesApprovals, retentionDays, searchLanguages]
       properties:
         erasureErasesApprovals:
           $ref: "#/components/schemas/ErasureErasesApprovals"
         retentionDays:
           $ref: "#/components/schemas/RetentionDays"
+        searchLanguages:
+          $ref: "#/components/schemas/SearchLanguages"
     SettingsChanges:
       type: object
       additionalProperties: false
@@ -4515,6 +4517,8 @@ components:
           $ref: "#/components/schemas/ErasureErasesApprovals"
         retentionDays:
           $ref: "#/components/schemas/RetentionDays"
+        searchLanguages:
+          $ref: "#/components/schemas/SearchLanguages"
     RetentionDays:
       type: integer
       minimum: 7
@@ -4543,6 +4547,26 @@ components:
         made. Off by default, so the records stay as the account of what an
         agent sent and who approved it. Either way the mailbox's change feed
         keeps each decision and who made it.
+    SearchLanguages:
+      type: array
+      uniqueItems: true
+      items:
+        $ref: "#/components/schemas/SearchLanguage"
+      description: >-
+        The languages the organization's mail is in, English and Swedish by
+        default. Each search is also translated into every other one on the
+        list, so "kvitto" finds an English receipt: its words go to Amazon's
+        Nova Lite model, in the same AWS region as the mail, which adds a
+        little time to each search. With fewer than two, searches aren't
+        translated. Quoted phrases and subject: never are. English and Swedish
+        mail is always indexed in its own language. Adding another, or
+        removing it, rebuilds every mailbox's search index, embedding its
+        mail again, and search finds less until that is done.
+      examples: [["English", "Swedish"]]
+    SearchLanguage:
+      type: string
+      enum: [English, Swedish, Danish]
+      description: A language search knows.
     Preferences:
       type: object
       additionalProperties: false

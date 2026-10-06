@@ -6,8 +6,10 @@ import * as lancedb from "@lancedb/lancedb";
 import { Bool, Field, FixedSizeList, Float32, List, Schema, TimestampMillisecond, Utf8 } from "apache-arrow";
 import type { components } from "@duva/openapi";
 import type { IndexedMessage, IndexedThread, IndexWriter, SearchEngine, SearchFilters, SearchHit, Search, SearchTerm } from "./search-engine.ts";
-import { definiteForms, type Language, messageLanguage } from "./swedish.ts";
+import { type Language, languages, messageLanguage } from "./languages.ts";
+import { definiteForms } from "./swedish.ts";
 import { type Embedder, embeddingDimensions } from "./titan.ts";
+import type { Translator } from "./translation.ts";
 
 export interface LanceSearchOptions {
   /** A local directory, or s3://bucket/prefix. */
@@ -18,16 +20,24 @@ export interface LanceSearchOptions {
   session?: lancedb.Session;
   /** Embeds each message as it is written, and each search's words. */
   embedder: Embedder;
+  /** Translates the words of each search that asks for it. Without one, no search is translated. */
+  translator?: Translator;
   /** How many messages a mailbox has before maintenance builds its vector index. */
   vectorIndexFrom?: number;
 }
 
 // A full-text index stems for one language, so each message's subject and text go to the columns
-// of the language it is written in, and the other language's stay empty. A word searches all of
-// them, and each column stems it its own way, so "fakturor" finds "fakturan" next to "invoices"
-// finding "invoice". Names, addresses and attachment names are matched as written, without stemming.
-const subjectColumns = ["subject_en", "subject_sv"];
-const searchedColumns = [...subjectColumns, "text_en", "text_sv", "people", "attachments"];
+// of the language it is written in, of those its mailbox's index has, and the others stay empty. A
+// word searches all of them, and each column stems it its own way, so "fakturor" finds "fakturan"
+// next to "invoices" finding "invoice". Names, addresses and attachment names are matched as
+// written, without stemming. Every index has every language's columns, and a mailbox whose languages
+// change is dropped and backfilled again, embedding its mail again too (indexing.ts).
+const code: Record<Language, string> = { English: "en", Swedish: "sv", Danish: "da" };
+const subjectColumn = (language: Language) => `subject_${code[language]}`;
+const textColumn = (language: Language) => `text_${code[language]}`;
+const subjectColumns = languages.map(subjectColumn);
+const textColumns = languages.map(textColumn);
+const searchedColumns = [...subjectColumns, ...textColumns, "people", "attachments"];
 
 const schema = new Schema([
   new Field("id", new Utf8(), false),
@@ -41,10 +51,7 @@ const schema = new Schema([
   new Field("has_attachment", new Bool(), false),
   new Field("labels", new List(new Field("item", new Utf8(), true)), false),
   new Field("unread", new Bool(), false),
-  new Field("subject_en", new Utf8(), false),
-  new Field("text_en", new Utf8(), false),
-  new Field("subject_sv", new Utf8(), false),
-  new Field("text_sv", new Utf8(), false),
+  ...languages.flatMap((language) => [new Field(subjectColumn(language), new Utf8(), false), new Field(textColumn(language), new Utf8(), false)]),
   // What the message means, from its subject and the start of its text.
   new Field("vector", new FixedSizeList(embeddingDimensions, new Field("item", new Float32(), true)), false),
 ]);
@@ -53,15 +60,16 @@ const schema = new Schema([
 // keeps its every word. The language must be written as LanceDB's enum spells it: in 0.39.0 any
 // other spelling, "english" included, panics in native code and aborts the process
 // (lancedb/lancedb#4367). Swedish keeps å, ä and ö, which are letters of their own there: folding
-// them would make "får" (gets) and "far" (father) one word. An Index can be used once.
+// them would make "får" (gets) and "far" (father) one word. Danish keeps æ, ø and å for the same
+// reason. An Index can be used once.
 const fullText = (language: Language, stem = true) => () =>
   lancedb.Index.fts({ withPosition: true, removeStopWords: false, stem, language, lowercase: true, asciiFolding: language === "English" });
 
 const indexes: [column: string, index: () => lancedb.Index][] = [
-  ["subject_en", fullText("English")],
-  ["text_en", fullText("English")],
-  ["subject_sv", fullText("Swedish")],
-  ["text_sv", fullText("Swedish")],
+  ...languages.flatMap((language): [string, () => lancedb.Index][] => [
+    [subjectColumn(language), fullText(language)],
+    [textColumn(language), fullText(language)],
+  ]),
   ["people", fullText("English", false)],
   ["attachments", fullText("English", false)],
   ["id", lancedb.Index.btree],
@@ -94,6 +102,33 @@ const embeddedText = ({ subject, text }: IndexedMessage) => `${subject}\n\n${tex
  */
 const meaningPool = 20;
 const furthestMeaning = 0.8;
+
+// Across languages no cutoff helps, so searches are translated (#67). On its evaluation set, 72
+// made-up messages in English, Swedish and Danish on 20 subjects and 75 questions in the three
+// (packages/api/test/search-evaluation.ts), measured with the spike's `node harness/cutoffs.ts`
+// (results/67-cutoffs.json): recall at 5 of the messages each question asks for, by the question's
+// language and the message's, and hits on another subject in the top 5, per question.
+//
+//                                                      en-sv sv-en en-da da-en sv-da da-sv  same  unrelated
+//   within 0.8 (#62)                                    0.49  0.22  0.14  0.21  0.58  0.39  0.67-1   0.40
+//   within 0.85                                         0.63  0.38  0.43  0.32  0.75  0.50  0.74-1   1.07
+//   within 0.9                                          0.74  0.49  0.64  0.32  0.83  0.56  0.81-1   2.15
+//   within 0.9, and 0.05 of the nearest in its language 0.70  0.51  0.71  0.32  0.83  0.72  0.75-1   1.53
+//   by language pair, same 0.8 and cross 0.9            0.79  0.54  0.64  0.37  0.83  0.67  0.67-1   1.79
+//   translated into English and Swedish, within 0.75    0.72  0.68  0.43  0.63  0.58  0.61  0.67-1   0.39
+//   translated into all three, within 0.8               0.74  0.70  0.79  0.74  0.92  0.67  0.70-1   0.73
+//   translated into all three, within 0.75              0.72  0.68  0.71  0.63  0.92  0.61  0.67-1   0.47
+//   translated into all three, by their words alone     0.63  0.49  0.50  0.47  0.83  0.50  0.67-1   0.37
+//
+// Titan puts a word and its match in another language about as far apart as unrelated mail: on the
+// set's English and Swedish, a median 0.85 against 0.86 for the nearest unrelated message, so a
+// cutoff that lets the one in lets the other in too. A translation is in the language of the mail
+// it is for, where distances are nearer, but each language's adds a ranking that the unrelated mail
+// near all of them climbs in, so its meaning reaches less far. The rows shipped are those at 0.75:
+// with English and Swedish, unrelated results stay as they were, and with Danish too they rise by
+// 0.07 per question, which was the "little" #67 allowed: less than one unrelated result in ten
+// searches more.
+const furthestTranslatedMeaning = 0.75;
 
 /** Reciprocal rank fusion's k, as LanceDB's own RRF has it. */
 const fusionK = 60;
@@ -152,37 +187,38 @@ export function lanceSearch(options: LanceSearchOptions): SearchEngine {
     }
   };
   return {
-    writer(mailbox) {
-      const cached = writers.get(mailbox);
+    writer(mailbox, indexed) {
+      const key = `${mailbox}#${indexed.join()}`;
+      const cached = writers.get(key);
       if (cached !== undefined) return cached;
       const writer = (async () => {
         const db = await connection;
         const table = await db.createEmptyTable(mailbox, schema, { existOk: true });
         const existing = new Set((await table.listIndices()).flatMap((index) => index.columns));
         for (const [column, index] of indexes) if (!existing.has(column)) await table.createIndex(column, { config: index() });
-        return new LanceWriter(table, options.embedder, options.vectorIndexFrom ?? vectorIndexFrom);
+        return new LanceWriter(table, options.embedder, options.vectorIndexFrom ?? vectorIndexFrom, indexed);
       })();
-      writers.set(mailbox, writer);
-      writer.catch(() => writers.delete(mailbox));
+      writers.set(key, writer);
+      writer.catch(() => writers.delete(key));
       return writer;
     },
     async drop(mailbox) {
       opened.delete(mailbox);
-      writers.delete(mailbox);
+      for (const key of writers.keys()) if (key.startsWith(`${mailbox}#`)) writers.delete(key);
       const db = await connection;
       if ((await db.tableNames()).includes(mailbox)) await db.dropTable(mailbox);
     },
-    search: (mailbox, asked) => reading(mailbox, [], (table) => search(table, options.embedder, asked)),
+    search: (mailbox, asked) => reading(mailbox, [], (table) => search(table, options, asked)),
     async texts(mailbox, messages) {
       if (messages.length === 0) return new Map();
-      const rows: { id: string; text_en: string; text_sv: string }[] = await reading(mailbox, [], (table) =>
+      const rows: Record<string, string>[] = await reading(mailbox, [], (table) =>
         table
           .query()
           .where(`id IN ${set(messages)}`)
-          .select(["id", "text_en", "text_sv"])
+          .select(["id", ...textColumns])
           .toArray(),
       );
-      return new Map(rows.map((row) => [row.id, row.text_en || row.text_sv]));
+      return new Map(rows.map((row) => [row.id!, textColumns.map((column) => row[column]).find(Boolean) ?? ""]));
     },
   };
 }
@@ -191,11 +227,13 @@ class LanceWriter implements IndexWriter {
   private readonly table: lancedb.Table;
   private readonly embedder: Embedder;
   private readonly vectorIndexFrom: number;
+  private readonly indexed: Language[];
 
-  constructor(table: lancedb.Table, embedder: Embedder, vectorIndexFrom: number) {
+  constructor(table: lancedb.Table, embedder: Embedder, vectorIndexFrom: number, indexed: Language[]) {
     this.table = table;
     this.embedder = embedder;
     this.vectorIndexFrom = vectorIndexFrom;
+    this.indexed = indexed;
   }
 
   async put(messages: IndexedMessage[]): Promise<void> {
@@ -205,7 +243,7 @@ class LanceWriter implements IndexWriter {
       .mergeInsert("id")
       .whenMatchedUpdateAll()
       .whenNotMatchedInsertAll()
-      .execute(messages.map((message, at) => row(message, vectors[at]!)));
+      .execute(messages.map((message, at) => row(message, vectors[at]!, this.indexed)));
   }
 
   // Threads with the same labels and read state change in one update. Values as SQL, since LanceDB
@@ -270,7 +308,7 @@ class LanceWriter implements IndexWriter {
   }
 }
 
-async function search(table: lancedb.Table, embedder: Embedder, { terms, filters, sort, limit }: Search): Promise<SearchHit[]> {
+async function search(table: lancedb.Table, { embedder, translator }: LanceSearchOptions, { terms, filters, sort, limit, translateInto = [] }: Search): Promise<SearchHit[]> {
   const where = predicate(filters);
   const matching = fullTextQuery(terms);
   const filtered = <Q extends lancedb.Query | lancedb.VectorQuery>(query: Q): Q => (where === undefined ? query : (query.where(where) as Q));
@@ -280,11 +318,15 @@ async function search(table: lancedb.Table, embedder: Embedder, { terms, filters
   }
   // A full-text search takes the best before it sorts, so newest first picks from many of them.
   const pool = sort === "newest" ? Math.max(limit, newestPool) : limit;
-  const byWords = filtered(table.query().fullTextSearch(matching).select([...columns, "_score"]).limit(pool)).toArray();
+  const byWords = (matching: lancedb.FullTextQuery) => filtered(table.query().fullTextSearch(matching).select([...columns, "_score"]).limit(pool)).toArray() as Promise<Row[]>;
+  const words = byWords(matching);
   // A phrase or subject: must hold in every message found, so the words alone find them.
-  if (terms.some((term) => term.phrase || term.in === "subject")) return ordered(sort, hitsOf(await byWords), limit);
-  const byMeaning = embedder.embed([terms.map(({ text }) => text).join(" ")]).then(([meaning]) =>
-    filtered(
+  if (terms.some((term) => term.phrase || term.in === "subject")) return ordered(sort, hitsOf(await words), limit);
+  // LanceDB 0.39.0 applies a distance range to the index's rough distances, before refining, which
+  // loses near messages, so the far are left out here.
+  const byMeaning = async (text: string, furthest = furthestMeaning) => {
+    const [meaning] = await embedder.embed([text]);
+    const nearest: Row[] = await filtered(
       table
         .query()
         .nearestTo(meaning!)
@@ -293,15 +335,28 @@ async function search(table: lancedb.Table, embedder: Embedder, { terms, filters
         .refineFactor(refineFactor)
         .select([...columns, "_distance"])
         .limit(Math.min(limit, meaningPool)),
-    ).toArray(),
-  );
-  // LanceDB 0.39.0 applies a distance range to the index's rough distances, before refining, which
-  // loses near messages, so the far are left out here.
-  const [words, nearest] = await Promise.all([byWords, byMeaning]);
-  const meanings = (nearest as Row[]).filter((row) => row._distance! <= furthestMeaning);
-  if (sort === "newest") return ordered(sort, [...new Map([...hitsOf(words), ...hitsOf(meanings)].map((hit) => [hit.message, hit])).values()], limit);
-  return fused(hitsOf(words), hitsOf(meanings)).slice(0, limit);
+    ).toArray();
+    return nearest.filter((row) => row._distance! <= furthest);
+  };
+  const text = terms.map((term) => term.text).join(" ");
+  // Each translation runs beside the search's own words and meaning, and its own after it.
+  const translated = async (language: Language): Promise<Row[][]> => {
+    const other = await translator?.translate(text, language).catch(() => undefined);
+    const matching = other === undefined ? undefined : fullTextQuery(wordsOf(other));
+    return matching === undefined ? [] : Promise.all([byWords(matching), byMeaning(other!, furthestTranslatedMeaning)]);
+  };
+  const [own, meant, ...others] = await Promise.all([words, byMeaning(text), ...translateInto.map(translated)]);
+  const rankings = [own as Row[], meant as Row[], ...(others as Row[][][]).flat()].map(hitsOf);
+  if (sort === "newest") return ordered(sort, [...new Map(rankings.flat().map((hit) => [hit.message, hit])).values()], limit);
+  return fused(...rankings).slice(0, limit);
 }
+
+/** A translation's words, each to be found anywhere. */
+const wordsOf = (text: string): SearchTerm[] =>
+  text
+    .split(/\s+/)
+    .filter((word) => /[\p{L}\p{N}]/u.test(word))
+    .map((word) => ({ text: word, phrase: false, in: "anywhere" }));
 
 const columns = ["id", "thread", "received"];
 
@@ -327,9 +382,9 @@ const ordered = (sort: Search["sort"], hits: SearchHit[], limit: number) =>
   (sort === "newest" ? [...hits].sort((a, b) => b.receivedAt.getTime() - a.receivedAt.getTime()) : hits).slice(0, limit);
 
 /**
- * Reciprocal rank fusion of the best by words and the best by meaning: each message scores one
- * over k plus its rank in each, so one both rank high comes first, and one only its meaning finds
- * can still come before words found further down.
+ * Reciprocal rank fusion of the best by words and the best by meaning, and by each translation's
+ * words and meaning: each message scores one over k plus its rank in each, so one they all rank
+ * high comes first, and one only its meaning finds can still come before words found further down.
  *
  * It runs here because LanceDB 0.39.0's hybrid search scales each side's distances and scores to
  * between 0 and 1 before its reranker sees them, so a reranker can't leave out the far meanings,
@@ -380,8 +435,8 @@ function predicate(filters: SearchFilters): string | undefined {
   return clauses.length > 0 ? clauses.join(" AND ") : undefined;
 }
 
-function row(message: IndexedMessage, vector: Float32Array) {
-  const swedish = messageLanguage(message) === "Swedish";
+function row(message: IndexedMessage, vector: Float32Array, indexed: Language[]) {
+  const language = messageLanguage(message, indexed);
   const person = ({ name, address }: components["schemas"]["EmailAddress"]) => (name === undefined ? address : `${name} <${address}>`);
   return {
     id: message.id,
@@ -394,10 +449,10 @@ function row(message: IndexedMessage, vector: Float32Array) {
     has_attachment: message.hasAttachment,
     labels: message.labels,
     unread: message.unread,
-    subject_en: swedish ? "" : message.subject,
-    text_en: swedish ? "" : message.text,
-    subject_sv: swedish ? message.subject : "",
-    text_sv: swedish ? message.text : "",
+    ...Object.fromEntries(languages.flatMap((each) => [
+      [subjectColumn(each), each === language ? message.subject : ""],
+      [textColumn(each), each === language ? message.text : ""],
+    ])),
     vector: Array.from(vector),
   };
 }

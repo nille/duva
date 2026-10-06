@@ -27,11 +27,37 @@ test("an admin opens Settings from the bar and chooses that erasing a thread era
 
   await expect.poll(() => organization(page).getByRole("status").textContent(), wait).toBe("Saved. This applies to threads erased from now on.");
   const ada = duva.signIn("ada@example.org");
-  expect((await ada.GET("/organization/settings")).data).toEqual({ erasureErasesApprovals: true, retentionDays: 30 });
+  expect((await ada.GET("/organization/settings")).data).toEqual({ erasureErasesApprovals: true, retentionDays: 30, searchLanguages: ["English", "Swedish"] });
 
   await page.reload();
 
   await expect.poll(() => page.getByRole("radio", { name: /^Erase them with the thread/ }).isChecked(), wait).toBe(true);
+});
+
+test("an admin reads what translating searches does, and adds Danish to the search languages", budget, async () => {
+  const { page, signIn, duva } = await withOrganization();
+  await signIn("ada@example.org");
+
+  await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
+
+  const languages = page.getByRole("group", { name: "Languages your mail is in" });
+  const checkbox = (name: string) => languages.getByRole("checkbox", { name: new RegExp(`^${name}`) });
+  await expect.poll(() => checkbox("English").isChecked(), wait).toBe(true);
+  expect(await checkbox("Swedish").isChecked()).toBe(true);
+  expect(await checkbox("Danish").isChecked()).toBe(false);
+  const lead = await languages.innerText();
+  expect(lead).toContain("Amazon's Nova Lite model, in the same AWS region as your mail");
+  expect(lead).toContain("adds a little time to each search");
+
+  await checkbox("Danish").check();
+  await organization(page).getByRole("button", { name: "Save" }).click();
+
+  await expect
+    .poll(() => organization(page).getByRole("status").textContent(), wait)
+    .toBe("Saved. Searches use these languages from now on. Each mailbox's search index is being rebuilt, and finds less until it is done.");
+  const ada = duva.signIn("ada@example.org");
+  expect((await ada.GET("/organization/settings")).data).toEqual({ erasureErasesApprovals: false, retentionDays: 30, searchLanguages: ["English", "Swedish", "Danish"] });
+  expect(await organization(page).getByRole("button", { name: "Save" }).isDisabled()).toBe(true);
 });
 
 test("a human who isn't an admin opens Settings from the bar and reads the organization's settings without changing them", budget, async () => {

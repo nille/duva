@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeEach, describe, expect, test } from "vitest";
 import { lanceSearch } from "../src/lancedb-search.ts";
+import type { Language } from "../src/languages.ts";
 import type { SearchEngine, SearchHit, Search, SearchTerm } from "../src/search-engine.ts";
 import { fixture } from "./search-fixture.ts";
 import { recordedTitan } from "./titan.ts";
@@ -31,6 +32,8 @@ const words = (text: string): SearchTerm[] => text.split(" ").map((word) => ({ t
 const phrase = (text: string, within: SearchTerm["in"] = "anywhere"): SearchTerm => ({ text, phrase: true, in: within });
 const notSpamOrTrash = { labels: { exclude: ["Spam", "Trash"] } };
 const ids = (hits: SearchHit[]) => hits.map((hit) => hit.message);
+/** The languages most of the suite's mail is filed in, as an organization's are by default. */
+const englishAndSwedish: Language[] = ["English", "Swedish"];
 
 describe.each(locations)("Search on %s", (_, start) => {
   let engine: SearchEngine;
@@ -40,7 +43,7 @@ describe.each(locations)("Search on %s", (_, start) => {
   beforeEach(async () => {
     engine = start();
     mailbox = `mailbox-${randomUUID()}`;
-    await (await engine.writer(mailbox)).put(fixture);
+    await (await engine.writer(mailbox, englishAndSwedish)).put(fixture);
   });
 
   test("a word finds every message that has it, in its subject or its text", async () => {
@@ -74,11 +77,11 @@ describe.each(locations)("Search on %s", (_, start) => {
 
   test("once maintenance builds the vector index, a search by meaning finds what it found before", async () => {
     const indexed = lanceSearch({ uri: localDirectory(), embedder: titan, vectorIndexFrom: fixture.length });
-    await (await indexed.writer(mailbox)).put(fixture);
+    await (await indexed.writer(mailbox, englishAndSwedish)).put(fixture);
     const meanings = ["when should I see someone about my teeth", "power bill", "renting a boat for the weekend", "räkningen för hösten"];
     const found = (engine: SearchEngine) => Promise.all(meanings.map(async (meaning) => ids(await engine.search(mailbox, { terms: words(meaning), filters: notSpamOrTrash, sort: "relevance", limit: 3 }))));
     const before = await found(indexed);
-    await (await indexed.writer(mailbox)).maintain();
+    await (await indexed.writer(mailbox, englishAndSwedish)).maintain();
     expect(await found(indexed)).toEqual(before);
   });
 
@@ -132,7 +135,7 @@ describe.each(locations)("Search on %s", (_, start) => {
   });
 
   test("a recipient filter keeps the messages one of whose recipients has it", async () => {
-    await (await engine.writer(mailbox)).put([{ ...fixture[0]!, id: "kayak-for-ada", thread: "kayak-for-ada", recipients: [{ name: "Ada Lovelace", address: "ada@example.org" }] }]);
+    await (await engine.writer(mailbox, englishAndSwedish)).put([{ ...fixture[0]!, id: "kayak-for-ada", thread: "kayak-for-ada", recipients: [{ name: "Ada Lovelace", address: "ada@example.org" }] }]);
     expect(ids(await search({ terms: words("kayak"), filters: { to: ["lovelace"] } }))).toEqual(["kayak-for-ada"]);
     expect(ids(await search({ terms: words("kayak"), filters: { to: ["ada@example"] } }))).toEqual(["kayak-for-ada"]);
   });
@@ -151,7 +154,7 @@ describe.each(locations)("Search on %s", (_, start) => {
   });
 
   test("a read state filter keeps the unread or the read", async () => {
-    await (await engine.writer(mailbox)).relabel([{ id: "kayak-club", labels: [], unread: true }]);
+    await (await engine.writer(mailbox, englishAndSwedish)).relabel([{ id: "kayak-club", labels: [], unread: true }]);
     expect(ids(await search({ terms: words("kayak"), filters: { unread: true } }))).toEqual(["kayak-club"]);
     expect(ids(await search({ terms: words("kayak"), filters: { unread: false } }))).not.toContain("kayak-club");
   });
@@ -189,21 +192,21 @@ describe.each(locations)("Search on %s", (_, start) => {
   });
 
   test("a label change is what the next search filters on", async () => {
-    await (await engine.writer(mailbox)).relabel([{ id: "kayak-club", labels: ["Trash"], unread: false }]);
+    await (await engine.writer(mailbox, englishAndSwedish)).relabel([{ id: "kayak-club", labels: ["Trash"], unread: false }]);
     expect(ids(await search({ terms: words("kayak"), filters: notSpamOrTrash }))).toEqual(["kayak-rental"]);
 
-    await (await engine.writer(mailbox)).relabel([{ id: "kayak-spam", labels: ["Inbox"], unread: false }]);
+    await (await engine.writer(mailbox, englishAndSwedish)).relabel([{ id: "kayak-spam", labels: ["Inbox"], unread: false }]);
     const inbox = await search({ terms: words("kayak"), filters: { labels: { include: ["Inbox"] } } });
     expect(ids(inbox).sort()).toEqual(["kayak-rental", "kayak-spam"]);
   });
 
   test("a removed thread's messages are no longer found", async () => {
-    await (await engine.writer(mailbox)).removeThreads(["kayak-rental", "kayak-spam"]);
+    await (await engine.writer(mailbox, englishAndSwedish)).removeThreads(["kayak-rental", "kayak-spam"]);
     expect(ids(await search({ terms: words("kayak") })).sort()).toEqual(["kayak-club", "kayak-trash"]);
   });
 
   test("messages added later are found next to the first ones, and adding one again replaces it", async () => {
-    const writer = await engine.writer(mailbox);
+    const writer = await engine.writer(mailbox, englishAndSwedish);
     const returned = { ...fixture[0]!, id: "kayak-return", subject: "Kayak returned", text: "Thanks for bringing the kayak back on time." };
     await writer.put([returned]);
     await writer.put([returned]);
@@ -211,14 +214,14 @@ describe.each(locations)("Search on %s", (_, start) => {
   });
 
   test("maintenance leaves every message found as before", async () => {
-    const writer = await engine.writer(mailbox);
+    const writer = await engine.writer(mailbox, englishAndSwedish);
     await writer.removeThreads(["kayak-spam"]);
     await writer.maintain();
     expect(ids(await search({ terms: words("kayak") })).sort()).toEqual(["kayak-club", "kayak-rental", "kayak-trash"]);
   });
 
   test("compaction leaves every message found as before, by words, meaning, phrases and filters, with its text", async () => {
-    const writer = await engine.writer(mailbox);
+    const writer = await engine.writer(mailbox, englishAndSwedish);
     await writer.removeThreads(["kayak-spam"]);
     await writer.relabel([{ id: "kayak-club", labels: ["Inbox", "Travel"], unread: true }]);
     await writer.compact();
@@ -231,10 +234,10 @@ describe.each(locations)("Search on %s", (_, start) => {
   });
 
   test("an index with nothing removed, or nothing in it, compacts", async () => {
-    await (await engine.writer(mailbox)).compact();
+    await (await engine.writer(mailbox, englishAndSwedish)).compact();
     expect(ids(await search({ terms: words("kayak") })).sort()).toEqual(["kayak-club", "kayak-rental", "kayak-spam", "kayak-trash"]);
     const empty = `mailbox-${randomUUID()}`;
-    await (await engine.writer(empty)).compact();
+    await (await engine.writer(empty, englishAndSwedish)).compact();
     expect(await engine.search(empty, { terms: words("kayak"), filters: {}, sort: "relevance", limit: 10 })).toEqual([]);
   });
 
@@ -246,11 +249,42 @@ describe.each(locations)("Search on %s", (_, start) => {
   });
 
   test("a Swedish word finds its definite form, and the definite form the word", async () => {
-    await (await engine.writer(mailbox)).put([{ ...fixture.find(({ id }) => id === "mote-sv")!, id: "hyra-sv", thread: "hyra-sv", subject: "Hyran för november", text: "Hej! Betala senast fredag." }]);
+    await (await engine.writer(mailbox, englishAndSwedish)).put([{ ...fixture.find(({ id }) => id === "mote-sv")!, id: "hyra-sv", thread: "hyra-sv", subject: "Hyran för november", text: "Hej! Betala senast fredag." }]);
     const inSubject = (text: string): SearchTerm[] => [{ text, phrase: false, in: "subject" }];
     expect(ids(await search({ terms: inSubject("hyra") }))).toEqual(["hyra-sv"]);
     expect(ids(await search({ terms: inSubject("fakturan") }))).toEqual(["faktura-sv"]);
     expect(ids(await search({ terms: [phrase("hyra", "subject")] }))).toEqual([]);
+  });
+
+  test("an index written in Danish too files Danish mail as Danish, so its words find their other Danish forms", async () => {
+    const danish = { ...fixture.find(({ id }) => id === "faktura-sv")!, id: "regning-da", thread: "regning-da", subject: "Din regning for vand", text: "Hej! Din regning er klar, og beløbet skal betales senest fredag. Du kan ikke betale med kort." };
+    const regningerne: SearchTerm[] = [{ text: "regningerne", phrase: false, in: "subject" }];
+    await (await engine.writer(mailbox, englishAndSwedish)).put([danish]);
+    expect(ids(await search({ terms: regningerne }))).toEqual([]);
+
+    await engine.drop(mailbox);
+    await (await engine.writer(mailbox, ["English", "Swedish", "Danish"])).put([...fixture, danish]);
+
+    expect(ids(await search({ terms: regningerne }))).toEqual(["regning-da"]);
+    expect(ids(await search({ terms: words("fakturor") }))).toEqual(["faktura-sv"]);
+    expect((await engine.texts(mailbox, ["regning-da"])).get("regning-da")).toBe(danish.text);
+  });
+
+  test("a translated search also finds what each translation's words find, and a translation that fails leaves the search its own", async () => {
+    const translator = {
+      async translate(words: string, into: string) {
+        if (into === "Danish") throw new Error("Nova Lite took too long.");
+        return into === "English" && words === "räkningarna" ? "invoices" : undefined;
+      },
+    };
+    const translating = lanceSearch({ uri: localDirectory(), embedder: titan, translator });
+    await (await translating.writer(mailbox, englishAndSwedish)).put(fixture);
+    const found = async (translateInto: Language[]) =>
+      ids(await translating.search(mailbox, { terms: words("räkningarna"), filters: notSpamOrTrash, sort: "relevance", limit: 10, translateInto })).sort();
+
+    expect(await found([])).not.toContain("invoice-may");
+    expect(await found(["English", "Swedish", "Danish"])).toEqual(expect.arrayContaining(["invoice-april", "invoice-march", "invoice-may", "invoice-question"]));
+    expect(ids(await translating.search(mailbox, { terms: [phrase("räkningarna")], filters: {}, sort: "relevance", limit: 10, translateInto: ["English"] }))).toEqual([]);
   });
 
   test("a message's text is given by its ID", async () => {
@@ -263,7 +297,7 @@ describe.each(locations)("Search on %s", (_, start) => {
 
   test("a search finds only its own mailbox's messages", async () => {
     const other = `mailbox-${randomUUID()}`;
-    await (await engine.writer(other)).put([{ ...fixture[1]!, id: "elsewhere" }]);
+    await (await engine.writer(other, englishAndSwedish)).put([{ ...fixture[1]!, id: "elsewhere" }]);
     expect(ids(await engine.search(other, { terms: words("kayak"), filters: {}, sort: "relevance", limit: 10 }))).toEqual(["elsewhere"]);
     expect(ids(await search({ terms: words("kayak") }))).not.toContain("elsewhere");
   });
@@ -287,7 +321,7 @@ test("building the full-text indexes leaves the process running", () => {
     import { fixture } from ${JSON.stringify(fixtureModule)};
     import { recordedTitan } from ${JSON.stringify(titanModule)};
     const search = lanceSearch({ uri: process.argv[1], embedder: recordedTitan() });
-    await (await search.writer("crash-check")).put(fixture);
+    await (await search.writer("crash-check", ["English", "Swedish", "Danish"])).put(fixture);
     const hits = await search.search("crash-check", { terms: [{ text: "out of office", phrase: true, in: "anywhere" }], filters: {}, sort: "relevance", limit: 10 });
     console.log(JSON.stringify(hits.map((hit) => hit.message)));
   `;

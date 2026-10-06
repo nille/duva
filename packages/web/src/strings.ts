@@ -286,9 +286,21 @@ export const strings = {
       erase: "Erase them with the thread",
       eraseHint: "The change feed still shows each decision and who made it, without the text.",
     },
+    searchLanguages: {
+      legend: "Languages your mail is in",
+      lead: "Each search also looks for its words translated into the other languages checked here, so \"kvitto\" finds an English receipt. Duva sends the words to Amazon's Nova Lite model, in the same AWS region as your mail, which adds a little time to each search. With one language checked, or none, searches aren't translated.",
+      names: { English: "English", Swedish: "Swedish", Danish: "Danish" },
+      rebuildsHint: "Checking or unchecking it rebuilds every mailbox's search index, which finds less until that is done.",
+    },
     save: "Save",
     saving: "Saving…",
-    saved: "Saved. This applies to threads erased from now on.",
+    saved: (changed: ("erasure" | "languages" | "indexes")[]) =>
+      [
+        "Saved.",
+        ...(changed.includes("erasure") ? ["This applies to threads erased from now on."] : []),
+        ...(changed.includes("languages") ? ["Searches use these languages from now on."] : []),
+        ...(changed.includes("indexes") ? ["Each mailbox's search index is being rebuilt, and finds less until it is done."] : []),
+      ].join(" "),
     failed: (status: number) => `Duva couldn't read the settings (error ${status}). Try again in a moment.`,
     unreachable: "Duva couldn't be reached, so the settings aren't shown. Check your connection and try again.",
     saveFailed: (status: number) => `Duva couldn't save the setting (error ${status}). Try again in a moment.`,

@@ -33,7 +33,20 @@ export function titanEmbedder(): TitanEmbedder {
   });
   const usage = { requests: 0, inputTokens: 0 };
 
-  async function embedOne(text: string): Promise<Float32Array> {
+  // Titan sometimes fails a request with ModelErrorException, which the SDK
+  // doesn't retry, or answers without a body. Embedding the 100k mailbox met
+  // each once in #67's runs, so a request is tried again a few times.
+  async function embedOne(text: string, attempt = 1): Promise<Float32Array> {
+    try {
+      return await embedOnce(text);
+    } catch (error) {
+      if (attempt >= 5) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 500 * attempt));
+      return embedOne(text, attempt + 1);
+    }
+  }
+
+  async function embedOnce(text: string): Promise<Float32Array> {
     const response = await client.send(
       new InvokeModelCommand({
         modelId: titanModelId,
@@ -42,6 +55,7 @@ export function titanEmbedder(): TitanEmbedder {
         body: JSON.stringify({ inputText: text, dimensions, normalize: true }),
       }),
     );
+    if (!response.body) throw new Error("Titan answered without a body.");
     const body = JSON.parse(Buffer.from(response.body).toString("utf8")) as { embedding: number[]; inputTextTokenCount: number };
     usage.requests++;
     usage.inputTokens += body.inputTextTokenCount;

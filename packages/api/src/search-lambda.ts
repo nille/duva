@@ -6,6 +6,7 @@ import { environmentVariables } from "./infrastructure.ts";
 import { lanceSearch } from "./lancedb-search.ts";
 import { createSearcher } from "./searching.ts";
 import { titanEmbedder } from "./titan.ts";
+import { novaTranslator } from "./translation.ts";
 
 // A quarter of the function's memory for the index cache and a sixteenth for the metadata cache,
 // as the search spike measured (#17).
@@ -17,5 +18,6 @@ export const handler = createSearcher(
     storageOptions: { region: required("AWS_REGION") },
     session: new Session(memory / 4n, memory / 16n),
     embedder: titanEmbedder(),
+    translator: novaTranslator(),
   }),
 );

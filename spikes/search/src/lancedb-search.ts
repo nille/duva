@@ -4,6 +4,7 @@
 import * as lancedb from "@lancedb/lancedb";
 import { Bool, Field, FixedSizeList, Float32, List, Schema, TimestampMillisecond, Utf8 } from "apache-arrow";
 import type { MailboxSearch, Message, SearchEngine, SearchFilters, SearchHit, SearchQuery } from "./search.ts";
+import type { Translator } from "./nova.ts";
 import { titanEmbedder, type Embedder } from "./titan.ts";
 
 export interface LanceSearchOptions {
@@ -20,6 +21,8 @@ export interface LanceSearchOptions {
   // Holds the index and metadata caches. LanceDB's own defaults are 6 GB and
   // 1 GB, more than a Lambda has, so a Lambda sizes them to its memory.
   session?: lancedb.Session;
+  // Translates a query that asks for it (#67).
+  translator?: Translator;
 }
 
 // A full-text index stems for one language, so each message's subject and
@@ -104,7 +107,7 @@ export function lanceSearch(options: LanceSearchOptions): SearchEngine {
     async mailbox(mailboxId) {
       const db = await connection;
       const table = await db.createEmptyTable(mailboxId, schema(embedder.dimensions), { existOk: true });
-      return new LanceMailbox(table, embedder, options.flatVectorSearch ?? false);
+      return new LanceMailbox(table, embedder, options.flatVectorSearch ?? false, options.translator);
     },
   };
 }
@@ -113,10 +116,12 @@ class LanceMailbox implements MailboxSearch {
   private readonly table: lancedb.Table;
   private readonly embedder: Embedder;
   private readonly flatVectorSearch: boolean;
+  private readonly translator: Translator | undefined;
 
-  constructor(table: lancedb.Table, embedder: Embedder, flatVectorSearch: boolean) {
+  constructor(table: lancedb.Table, embedder: Embedder, flatVectorSearch: boolean, translator?: Translator) {
     this.table = table;
     this.embedder = embedder;
+    this.translator = translator;
     this.flatVectorSearch = flatVectorSearch;
   }
 
@@ -149,17 +154,25 @@ class LanceMailbox implements MailboxSearch {
     if (!terms && !meaning) throw new Error("A search needs words, a phrase or a meaning.");
     const where = predicate(query.filters);
     const filtered = <Q extends lancedb.Query | lancedb.VectorQuery>(q: Q): Q => (where ? (q.where(where) as Q) : q);
-    const byWords = terms ? filtered(this.table.query().fullTextSearch(terms).select(["id", "_score"]).limit(query.limit)).toArray() : undefined;
-    const byMeaning = meaning
-      ? this.embedder.embed([meaning]).then(([vector]) => {
-          let vectorSearch = this.table.query().nearestTo(vector!).column("vector").distanceType("cosine").refineFactor(refineFactor);
-          if (this.flatVectorSearch) vectorSearch = vectorSearch.bypassVectorIndex();
-          return filtered(vectorSearch.select(["id", "_distance"]).limit(query.limit)).toArray();
-        })
-      : undefined;
-    const [words, meanings]: (({ id: string } & Scores)[] | undefined)[] = await Promise.all([byWords, byMeaning]);
+    const searchWords = (asked: lancedb.FullTextQuery) => filtered(this.table.query().fullTextSearch(asked).select(["id", "_score"]).limit(query.limit)).toArray();
+    const searchMeaning = (text: string) =>
+      this.embedder.embed([text]).then(([vector]) => {
+        let vectorSearch = this.table.query().nearestTo(vector!).column("vector").distanceType("cosine").refineFactor(refineFactor);
+        if (this.flatVectorSearch) vectorSearch = vectorSearch.bypassVectorIndex();
+        return filtered(vectorSearch.select(["id", "_distance"]).limit(query.limit)).toArray();
+      });
+    const byWords = terms ? searchWords(terms) : undefined;
+    const byMeaning = meaning ? searchMeaning(meaning) : undefined;
+    // Each translation runs beside the first two, and its own words and meaning after it, as Duva's do.
+    const translateInto = (language: NonNullable<SearchQuery["translateInto"]>[number]) =>
+      this.translator!.translate(meaning!, language)
+        .catch(() => undefined)
+        .then((other): Promise<({ id: string } & Scores)[][]> | [] => (other === undefined ? [] : Promise.all([searchWords(fullTextQuery({ words: other, limit: query.limit })!), searchMeaning(other)])));
+    const byTranslation = meaning && this.translator ? Promise.all((query.translateInto ?? []).map(translateInto)).then((all) => all.flat()) : undefined;
+    const [words, meanings, translated]: [({ id: string } & Scores)[] | undefined, ({ id: string } & Scores)[] | undefined, ({ id: string } & Scores)[][] | undefined] = await Promise.all([byWords, byMeaning, byTranslation]);
+    if (translated && translated.length > 0) return fused(...[words, meanings, ...translated].filter((r) => r !== undefined)).slice(0, query.limit);
     if (words && meanings) return fused(words, meanings).slice(0, query.limit);
-    return (words ?? meanings!).map((r) => ({ messageId: r.id, score: score(r) }));
+    return (words ?? meanings!).map((r: { id: string } & Scores) => ({ messageId: r.id, score: score(r) }));
   }
 
   // Rows added after an index was built are still searched, by a flat scan,

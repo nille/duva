@@ -146,7 +146,10 @@ Resources:
               # The search module embeds a query's meaning itself.
               - Effect: Allow
                 Action: bedrock:InvokeModel
-                Resource: !Sub arn:${AWS::Partition}:bedrock:${AWS::Region}::foundation-model/amazon.titan-embed-text-v2:0
+                Resource:
+                  - !Sub arn:${AWS::Partition}:bedrock:${AWS::Region}::foundation-model/amazon.titan-embed-text-v2:0
+                  # And translates a query's meaning when it asks (#67).
+                  - !Sub arn:${AWS::Partition}:bedrock:${AWS::Region}::foundation-model/amazon.nova-lite-v1:0
 
   ZipFunctionLogs:
     Type: AWS::Logs::LogGroup

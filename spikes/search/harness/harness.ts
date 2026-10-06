@@ -282,12 +282,15 @@ function lancedbVersion(): string {
 }
 
 // About two hours, or half an hour with --shipped, which measures only what
-// Duva ships, into results/62-latency.json. Run `up` first if the handler changed.
+// Duva ships, into results/67-latency.json (#62's run is results/62-latency.json).
+// Run `up` first if the handler changed.
+const shippedResults = "results/67-latency.json";
+
 async function measureLatency() {
   const onlyShipped = process.argv.includes("--shipped");
   const report = { lancedbVersion: lancedbVersion(), ...(await latency(await bucketName(), onlyShipped ? shipped : undefined)) };
   mkdirSync(join(root, "results"), { recursive: true });
-  writeFileSync(join(root, onlyShipped ? "results/62-latency.json" : "results/17-latency.json"), JSON.stringify(report, null, 2) + "\n");
+  writeFileSync(join(root, onlyShipped ? shippedResults : "results/17-latency.json"), JSON.stringify(report, null, 2) + "\n");
   return report.results.map(({ samples, window, ...summary }) => summary);
 }
 
@@ -318,7 +321,7 @@ async function rerunBenchmark() {
   } finally {
     run("node", ["harness/harness.ts", "down"]);
   }
-  return { lancedbVersion: lancedbVersion(), results: ["results/16-mailbox.json", onlyShipped ? "results/62-latency.json" : "results/17-latency.json"] };
+  return { lancedbVersion: lancedbVersion(), results: ["results/16-mailbox.json", onlyShipped ? shippedResults : "results/17-latency.json"] };
 }
 
 async function deployStack(parameters: Record<string, string>) {

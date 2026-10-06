@@ -131,7 +131,9 @@ test("a result's snippet leaves out URLs and tokens, with its highlights on the 
 });
 
 test("Swedish and English words find their other forms", async () => {
-  const { receive, subjects } = await withMailbox();
+  const { ada, receive, subjects } = await withMailbox();
+  // One search language, so the words are searched as given, untranslated.
+  await ada.PATCH("/organization/settings", { body: { searchLanguages: ["English"] } });
   await receive({ subject: "Hyran", text: "Hej! Här är en faktura för hyran i oktober, och den ska betalas senast fredag." });
   await receive({ subject: "Hosting", text: "Your invoice for April is attached, and it is paid by card." });
 
@@ -198,6 +200,38 @@ test("a search finds what has its words and what is near in meaning, best first"
   await receive({ subject: "Kayak rental", text: "Your kayak is ready at the north jetty on Saturday." });
 
   expect(await subjects("november bill")).toEqual(["Electricity", "Invoice 1042"]);
+});
+
+test("a search finds mail in the organization's other search languages, until an admin leaves only one", async () => {
+  const { ada, receive, subjects } = await withMailbox();
+  await receive({ subject: "Your receipt from Northwind Coffee", from: "Northwind Coffee <receipts@northwind.example>", text: "Order 4471. 1 flat white 52.00 SEK. Total 52.00 SEK, paid with Visa ending 4417." });
+  await receive({ subject: "Ditt kvitto från Apotek Linnea", from: "Apotek Linnea <kvitto@apoteklinnea.example>", text: "Tack för ditt köp! Halstabletter 49 kr. Totalt 49 kr, betalt med kort." });
+  await receive({ subject: "Kayak rental", text: "Your kayak is ready at the north jetty on Saturday." });
+
+  expect((await subjects("kvitto")).sort()).toEqual(["Ditt kvitto från Apotek Linnea", "Your receipt from Northwind Coffee"]);
+
+  await ada.PATCH("/organization/settings", { body: { searchLanguages: ["Swedish"] } });
+
+  expect(await subjects("kvitto")).toEqual(["Ditt kvitto från Apotek Linnea"]);
+});
+
+test("adding Danish to the search languages rebuilds the indexes, so Danish mail is found by the other Danish forms of its words, highlighted", async () => {
+  const { ada, receive, subjects, search } = await withMailbox();
+  await receive({
+    subject: "Din regning for vand",
+    from: "Vandselskabet <regning@vandselskabet.example>",
+    text: "Hej! Din regning for vand er klar. Beløbet er 1.140 kr. og skal betales senest den 31. oktober, og du kan ikke betale med kort.",
+  });
+
+  // Swedish and English stemming leave "regningerne" apart from "regning".
+  expect(await subjects("subject:regningerne")).toEqual([]);
+
+  await ada.PATCH("/organization/settings", { body: { searchLanguages: ["English", "Swedish", "Danish"] } });
+
+  expect(await subjects("subject:regningerne")).toEqual(["Din regning for vand"]);
+  const { data } = await search("regningerne");
+  const [found] = data!.results;
+  expect(found!.highlights.map(({ start, end }) => found!.snippet.slice(start, end))).toEqual(["regning"]);
 });
 
 test("a quoted phrase and the filters hold for what is found by meaning too", async () => {

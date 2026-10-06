@@ -36,6 +36,9 @@ export interface SearchQuery {
   phrase?: string;
   // Plain text the module embeds itself, so callers never handle vectors.
   meaning?: string;
+  // Also searches the meaning's words, and that meaning, translated into
+  // each of these languages, as Duva does with its search languages (#67).
+  translateInto?: ("English" | "Swedish" | "Danish")[];
   filters?: SearchFilters;
   limit: number;
 }

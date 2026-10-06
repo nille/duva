@@ -16,15 +16,17 @@ import { changesAfter, changesPerPage, lastPosition } from "./feed.ts";
 import type { MailBucket } from "./mail-bucket.ts";
 import { type StoredMessage, type StoredSummary, storedMessage, threadsWithMessages, threadSummary } from "./mail.ts";
 import { parseMail, searchableText } from "./mime.ts";
-import { allMailboxes, findMailbox, mailboxFeed, mailboxKey } from "./organization.ts";
+import { indexedLanguages, type Language } from "./languages.ts";
+import { allMailboxes, findMailbox, mailboxFeed, mailboxKey, organizationSettings } from "./organization.ts";
 import type { IndexedMessage, IndexWriter, SearchEngine } from "./search-engine.ts";
 import { documents, pk, sk } from "./table.ts";
 
 /**
  * The version of what the index holds. A deploy that changes it rebuilds every mailbox's index:
- * its indexer drops the old one and backfills a new one. Version 2 embeds each message (#62).
+ * its indexer drops the old one and backfills a new one. Version 2 embeds each message (#62), and
+ * version 3 has columns for Danish (#67).
  */
-export const indexVersion = 2;
+export const indexVersion = 3;
 
 /**
  * What the indexer's queue carries: a mailbox to bring up to date, the step of its backfill to
@@ -50,6 +52,8 @@ export interface IndexQueue {
 /** The index's state in a mailbox, which only its indexer writes. */
 interface IndexState {
   version: number;
+  /** The languages its mail is filed in, which the index keeps until it is rebuilt. */
+  languages: Language[];
   /** The position in the mailbox's change feed the index has caught up to. */
   position: number;
   /** How many commits since the index's last maintenance. */
@@ -78,6 +82,12 @@ const indexedTextLength = 100_000;
 
 /** How many raw messages the indexer reads at once. */
 const readsAtOnce = 8;
+
+/** The languages the organization's mail is indexed in now. */
+const languagesIndexed = async (table: Table) => indexedLanguages((await organizationSettings(table)).settings.searchLanguages);
+
+/** Whether the index is of this version, and files mail in the languages it is indexed in now. */
+const current = (state: IndexState | undefined, languages: Language[]): state is IndexState => state?.version === indexVersion && state.languages.join() === languages.join();
 
 async function stateOf(table: Table, mailbox: string): Promise<IndexState | undefined> {
   const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: stateKey(mailbox), ConsistentRead: true }));
@@ -154,18 +164,19 @@ async function bringUpToDate({ table, mailBucket, engine, queue, backfillMessage
     return;
   }
   let state = await stateOf(table, mailbox);
+  const languages = await languagesIndexed(table);
   let step: number | undefined;
-  if (state === undefined || state.version !== indexVersion) {
+  if (!current(state, languages)) {
     // The backfill indexes what is stored now, so the feed's changes count from here on.
     if (state !== undefined) await engine.drop(mailbox);
-    state = { version: indexVersion, position: await lastPosition(table, mailboxFeed(mailbox)), writes: 0, backfill: { step: 0 }, compactedAt: new Date().toISOString() };
+    state = { version: indexVersion, languages, position: await lastPosition(table, mailboxFeed(mailbox)), writes: 0, backfill: { step: 0 }, compactedAt: new Date().toISOString() };
     await documents(table).send(new PutCommand({ TableName: table.name, Item: { ...stateKey(mailbox), ...state } }));
     step = 0;
   } else if (state.backfill !== undefined && (state.backfill.step === 0 || tasks.some((task) => task.backfill === state!.backfill!.step))) {
     // Step 0 is taken when the backfill starts, with no task of its own, so any task takes it again if that failed.
     step = state.backfill.step;
   }
-  const writer = await engine.writer(mailbox);
+  const writer = await engine.writer(mailbox, state.languages);
 
   if (step !== undefined) {
     const { threads, next } = await threadsWithMessages(table, mailbox, { after: state.backfill?.after, messages: backfillMessages });
@@ -280,11 +291,12 @@ async function indexed(mailBucket: MailBucket, messages: { message: StoredMessag
  */
 export async function indexMailboxes(table: Table, queue: IndexQueue): Promise<void> {
   const mailboxes = await allMailboxes(table);
+  const languages = await languagesIndexed(table);
   const tasks: QueuedTask[] = [];
   for (const mailbox of mailboxes) {
     const state = await stateOf(table, mailbox);
-    if (state?.version === indexVersion && state.backfill === undefined) continue;
-    const backfill = state?.version === indexVersion ? state.backfill?.step : undefined;
+    const backfill = current(state, languages) ? (state.backfill?.step ?? "done") : undefined;
+    if (backfill === "done") continue;
     // A new ID each time, so a setup run again hands the task again.
     tasks.push({ task: { mailbox, ...(backfill !== undefined && { backfill }) }, id: `${mailbox}#setup#${randomUUID()}` });
   }
@@ -309,8 +321,8 @@ export async function uncompactedSince(table: Table): Promise<Date | undefined> 
 
 /** How many of the organization's mailboxes there are, and how many have an index of this version, backfilled. */
 export async function indexedMailboxes(table: Table): Promise<{ mailboxes: number; indexed: number }> {
-  const states = await indexStates(table);
-  return { mailboxes: states.length, indexed: states.filter(([, state]) => state?.version === indexVersion && state.backfill === undefined).length };
+  const [states, languages] = await Promise.all([indexStates(table), languagesIndexed(table)]);
+  return { mailboxes: states.length, indexed: states.filter(([, state]) => current(state, languages) && state.backfill === undefined).length };
 }
 
 /** Each of the organization's mailboxes, with its index's state if it has an index. */

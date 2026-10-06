@@ -63,6 +63,9 @@ export const searchIndexesPrefix = "indexes";
 /** The Bedrock model that embeds mail and searches: Titan Text Embeddings V2 (ADR-0007). */
 export const embeddingModel = "amazon.titan-embed-text-v2:0";
 
+/** The Bedrock model that translates a search's words into the organization's search languages: Amazon Nova Lite (ADR-0007). */
+export const translationModel = "amazon.nova-lite-v1:0";
+
 /** How often Lambda retries a stream record the sender failed on, before it gives up and records it in the failure queue. */
 export const senderRetries = 2;
 

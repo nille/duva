@@ -33,15 +33,21 @@ To re-run the benchmark on a new LanceDB release, one command pins and installs 
 
 ```sh
 node harness/harness.ts benchmark <version>   # for example 0.40.0
-node harness/harness.ts benchmark --shipped   # only what Duva ships, into results/62-latency.json (about 1.5 hours)
+node harness/harness.ts benchmark --shipped   # only what Duva ships, into results/67-latency.json (about 1.5 hours)
 ```
 
-`--shipped` measures only the x64 zip at 10,240 MB with the vector index, the configuration ADR-0007 chose, in about an hour less. It still rewrites `results/16-mailbox.json`, so keep that run's copy under its own ticket's name and restore #16's.
+`--shipped` measures only the x64 zip at 10,240 MB with the vector index, the configuration ADR-0007 chose, and from #67 translated searches, in about an hour less. It still rewrites `results/16-mailbox.json`, so keep that run's copy under its own ticket's name and restore #16's.
 
 #62 tunes the vector index with `harness/recall.ts`, which needs no stack. It reads the vectors `node harness/models.ts export` keeps in .data/models/:
 
 ```sh
 node harness/recall.ts            # each vector index's recall against a flat scan, into results/62-recall.json
+```
+
+#67 measures how far search by meaning reaches, and what translating a search adds, with `harness/cutoffs.ts`, on Duva's evaluation set in `packages/api/test/search-evaluation.ts` with the Titan vectors and Nova Lite translations its test recorded. It needs no stack and no AWS:
+
+```sh
+node harness/cutoffs.ts           # recall by language pair and unrelated results per setting, into results/67-cutoffs.json
 ```
 
 #19 has a harness of its own, `harness/models.ts`, with its own stack, `duva-search-spike-models`. It reads the benchmark mailbox and never writes to it:
@@ -349,3 +355,24 @@ LanceDB 0.39.0, eu-north-1, 2026-10-06. Raw numbers in `results/62-recall.json`,
 - Vector queries take about 40 ms more than with IVF_PQ at its defaults when warm, and 0.25 s more at cold p95. That's the refining, which reads the 100 nearest's full vectors.
 - This measures the spike's module, which has Duva's index, refining and fusion but not its cut of far meanings, its definite Swedish forms or its 1,000-message vector index threshold. The real run measures Duva's own search Lambda.
 
+
+## #67: searches translated into the search languages
+
+LanceDB 0.39.0, eu-north-1, 2026-10-06. Raw numbers in `results/67-cutoffs.json`, `results/67-mailbox.json` and `results/67-latency.json`.
+
+**Cutoffs.** On Duva's evaluation set, 72 made-up messages in English, Swedish and Danish on 20 subjects and 75 questions in the three, Titan puts a word and its match in another language about as far apart as unrelated mail, so no cutoff finds one without the other. Translating each search with Nova Lite into every search language does: with English and Swedish, Swedish questions find 0.68 of the English mail they ask for, against 0.22, with no more unrelated results. `harness/cutoffs.ts` has every setting tried, and `packages/api/src/lancedb-search.ts` the table and the choice.
+
+**Latency,** with `benchmark --shipped`: as #62's, plus `translated`, Duva's search as its words give it, the same words searched as words and as a meaning and translated into three languages at once. The spike's module translates as Duva's does, with Nova Lite in eu-north-1. Milliseconds, inside the Lambda, cold including init.
+
+| Query | Target | Cold p50 / p95 | Cold round trip p95 | Warm-first p95 | Warm p50 / p95 | #62's warm p95, cold p95 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| keyword | 300 warm | 2,470 / 3,896 | 4,469 | 869 | 74 / 167 | 186, 2,566 |
+| phrase | 500 warm | 2,443 / 2,567 | 3,243 | 935 | 61 / 155 | 171, 2,569 |
+| vector | 500 warm | 2,514 / 2,585 | 3,228 | 983 | 182 / 212 | 241, 2,650 |
+| hybrid | 800 warm | 2,557 / 2,732 | 3,334 | 957 | 182 / 219 | 213, 2,698 |
+| translated | 800 warm | 2,718 / 3,002 | 3,645 | 1,043 | 515 / 740 | |
+
+- A translated search holds its warm target, 740 ms against 800, and misses the cold one by 2 ms: 3,002 against 3,000. Its caller sees 3.6 s cold.
+- Translating adds about 0.3 s at warm p50 and 0.5 s at warm p95: Nova Lite's answer, then the translation's embedding and searches, which wait for it.
+- Keyword cold missed too, at 3,896 ms, from four slow starts in one batch of ten (3.2 to 3.9 s), where the other 26 took 2.1 to 2.7 s. A keyword search isn't translated and its code didn't change since #62's run, where it was 2,566.
+- Titan failed two runs of the mailbox's 100k embeddings, once with ModelErrorException and once with an answer without a body, neither of which the SDK retries. The harness's embedder now tries a request again up to five times.

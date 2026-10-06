@@ -127,6 +127,10 @@ Removing known trackers, such as spy pixels, from HTML mail before anyone sees i
 Finding threads in one mailbox by words and meaning together, with filters such as from: and label:. It covers subjects, senders, recipients, message text and attachment names, Sent included, and leaves out Spam and Trash unless asked. An actor searches only mailboxes it can read.
 _Avoid_: query, lookup
 
+**Search languages**:
+The languages an organization's mail is in, which admins choose: English and Swedish by default, Danish too if chosen. Each search is also translated into every other one, so a Swedish word finds English mail. Mail in each is indexed with its own stemming.
+_Avoid_: locales, translation setting
+
 **Change feed**:
 The ordered record of every change in a mailbox, and of every change to the organization's setup. A change made by an actor names that actor; arriving mail names none. Clients and agents catch up from where they left off. It is also the audit trail.
 _Avoid_: event log, activity log, audit log

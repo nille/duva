@@ -10,6 +10,7 @@ import type { AgentMailbox } from "./mailboxes.tsx";
 import { strings } from "./strings.ts";
 
 type OrganizationSettings = components["schemas"]["OrganizationSettings"];
+type Language = components["schemas"]["SearchLanguage"];
 type Mailbox = components["schemas"]["Mailbox"];
 
 type Read<Values> = { status: "loading" } | { status: "failed"; message: string } | { status: "read"; values: Values };
@@ -89,7 +90,8 @@ function useSheet<Values extends object>({
     setSaving({ status: "idle" });
   };
 
-  const unchanged = read.status !== "read" || chosen === undefined || Object.entries(chosen).every(([name, value]) => read.values[name as keyof Values] === value);
+  // A value can be a list, so values are compared as JSON.
+  const unchanged = read.status !== "read" || chosen === undefined || Object.entries(chosen).every(([name, value]) => JSON.stringify(read.values[name as keyof Values]) === JSON.stringify(value));
   return { read, chosen, choose, saving, save, load, unchanged };
 }
 
@@ -132,14 +134,26 @@ export function Settings({
   );
 }
 
+/** The languages search knows, as the contract lists them. */
+const searchLanguages: Language[] = ["English", "Swedish", "Danish"];
+
+/** Mail in these is indexed in its own language whatever the list says, so only the others rebuild the indexes. */
+const alwaysIndexed: Language[] = ["English", "Swedish"];
+
 function OrganizationSheet({ client, admin, onSignedOut }: { client: DuvaClient; admin: boolean; onSignedOut: () => void }) {
+  // The settings as they were before the last save, so "Saved" can say what changes from now on.
+  const before = useRef<OrganizationSettings>(undefined);
   const sheet = useSheet<OrganizationSettings>({
     read: () => client.GET("/organization/settings"),
-    write: (settings) => client.PATCH("/organization/settings", { body: settings }),
+    write: (settings) => {
+      before.current = sheet.read.status === "read" ? sheet.read.values : undefined;
+      return client.PATCH("/organization/settings", { body: settings });
+    },
     copy: strings.settings,
     onSignedOut,
   });
   const copy = strings.settings.erasure;
+  const languagesCopy = strings.settings.searchLanguages;
   return (
     <Sheet id="organization-settings" name={strings.settings.organization} lead={strings.settings.organizationLead} sheet={sheet}>
       {(chosen) => (
@@ -158,11 +172,43 @@ function OrganizationSheet({ client, admin, onSignedOut }: { client: DuvaClient;
               />
             ))}
           </fieldset>
-          {admin ? <SaveRow sheet={sheet} saved={strings.settings.saved} /> : <p className="setting-foot">{strings.settings.onlyAdmins}</p>}
+          <fieldset disabled={!admin}>
+            <legend>{languagesCopy.legend}</legend>
+            <p className="setting-lead">{languagesCopy.lead}</p>
+            <div className="choices-short">
+              {searchLanguages.map((language) => (
+                <label className="choice" key={language}>
+                  <input
+                    type="checkbox"
+                    checked={chosen.searchLanguages.includes(language)}
+                    onChange={(event) =>
+                      sheet.choose({ searchLanguages: searchLanguages.filter((each) => (each === language ? event.target.checked : chosen.searchLanguages.includes(each))) })
+                    }
+                  />
+                  <span className="choice-text">
+                    <span className="choice-name">{languagesCopy.names[language]}</span>
+                    {!alwaysIndexed.includes(language) && <span className="hint">{languagesCopy.rebuildsHint}</span>}
+                  </span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          {admin ? <SaveRow sheet={sheet} saved={savedCopy(before.current, sheet.read.status === "read" ? sheet.read.values : undefined)} /> : <p className="setting-foot">{strings.settings.onlyAdmins}</p>}
         </>
       )}
     </Sheet>
   );
+}
+
+/** What "Saved" says about the settings that changed: when each applies from. */
+function savedCopy(before: OrganizationSettings | undefined, after: OrganizationSettings | undefined): string {
+  if (before === undefined || after === undefined) return strings.settings.saved([]);
+  const indexed = (settings: OrganizationSettings) => settings.searchLanguages.filter((language) => !alwaysIndexed.includes(language)).join();
+  return strings.settings.saved([
+    ...(before.erasureErasesApprovals !== after.erasureErasesApprovals ? ["erasure" as const] : []),
+    ...(before.searchLanguages.join() !== after.searchLanguages.join() ? ["languages" as const] : []),
+    ...(indexed(before) !== indexed(after) ? ["indexes" as const] : []),
+  ]);
 }
 
 const hourCycles: Preferences["hourCycle"][] = ["locale", "h12", "h23"];

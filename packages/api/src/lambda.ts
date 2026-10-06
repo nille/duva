@@ -5,6 +5,7 @@ import { LambdaClient } from "@aws-sdk/client-lambda";
 import { S3Client } from "@aws-sdk/client-s3";
 import { SESClient } from "@aws-sdk/client-ses";
 import { SESv2Client } from "@aws-sdk/client-sesv2";
+import { SQSClient } from "@aws-sdk/client-sqs";
 import { createApi } from "./api.ts";
 import { downloadLinkLifetime } from "./attachments.ts";
 import { cognitoHumans, cognitoSignInSender } from "./user-pool.ts";
@@ -14,6 +15,7 @@ import { environmentVariables } from "./infrastructure.ts";
 import { s3MailBucket } from "./mail-bucket.ts";
 import { required } from "./environment.ts";
 import { lambdaEraser } from "./erasure.ts";
+import { sqsIndexQueue } from "./indexing.ts";
 import { sesReceiptRules } from "./receiving.ts";
 import { lambdaSearcher } from "./searching.ts";
 import { lambdaUnsubscriber } from "./unsubscriber.ts";
@@ -41,5 +43,6 @@ export const handler = createApi({
   eraser: lambdaEraser(lambda, required(environmentVariables.eraserFunction)),
   unsubscriber: lambdaUnsubscriber(lambda, required(environmentVariables.unsubscriberFunction)),
   searcher: lambdaSearcher(lambda, required(environmentVariables.searchFunction)),
+  indexQueue: sqsIndexQueue(new SQSClient({}), required(environmentVariables.indexQueue)),
   downloads: { url: required(environmentVariables.downloadUrl), lifetime: downloadLinkLifetime },
 });

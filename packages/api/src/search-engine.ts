@@ -2,10 +2,15 @@
 // swapped. LanceDB is behind them now. The engine knows no labels by name and no mailbox rules:
 // leaving out Spam and Trash is a label filter its callers give.
 import type { components } from "@duva/openapi";
+import type { Language } from "./languages.ts";
 
 export interface SearchEngine {
-  /** The mailbox's index, to write to. A mailbox that has none gets an empty one. */
-  writer(mailbox: string): Promise<IndexWriter>;
+  /**
+   * The mailbox's index, to write to, which files each message under the one of these languages it
+   * is in. A mailbox that has none gets an empty one. Its messages stay filed as they were written,
+   * so an index whose languages change is dropped and written again.
+   */
+  writer(mailbox: string, languages: Language[]): Promise<IndexWriter>;
   /** Deletes the mailbox's index, if it has one. */
   drop(mailbox: string): Promise<void>;
   /** The mailbox's messages that match the search, in its order, at most its limit. A mailbox without an index has none. */
@@ -73,6 +78,12 @@ export interface Search {
   /** Best first, or newest first. Without terms, both are newest first. */
   sort: "relevance" | "newest";
   limit: number;
+  /**
+   * Languages that words searched by meaning are also searched in, by their words and their
+   * meaning, as the engine's translator gives them in each. A translation that is the words
+   * themselves, as when they are in that language already, adds nothing.
+   */
+  translateInto?: Language[];
 }
 
 export interface SearchFilters {

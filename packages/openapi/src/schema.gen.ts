@@ -2663,11 +2663,13 @@ export interface components {
         OrganizationSettings: {
             erasureErasesApprovals: components["schemas"]["ErasureErasesApprovals"];
             retentionDays: components["schemas"]["RetentionDays"];
+            searchLanguages: components["schemas"]["SearchLanguages"];
         };
         /** @description The settings changed, each with its new value. */
         SettingsChanges: {
             erasureErasesApprovals?: components["schemas"]["ErasureErasesApprovals"];
             retentionDays?: components["schemas"]["RetentionDays"];
+            searchLanguages?: components["schemas"]["SearchLanguages"];
         };
         /** @description How many days Trash and Spam keep a thread, counted from when it got the label, before the eraser erases it for good. 30 by default, and a whole number from 7 to 365. It applies to all Trash and Spam, threads already there included. */
         RetentionDays: number;
@@ -2678,6 +2680,19 @@ export interface components {
         };
         /** @description Whether erasing a thread also erases the approval records of the agents' sends in it: the draft its approver saw and any edit they made. Off by default, so the records stay as the account of what an agent sent and who approved it. Either way the mailbox's change feed keeps each decision and who made it. */
         ErasureErasesApprovals: boolean;
+        /**
+         * @description The languages the organization's mail is in, English and Swedish by default. Each search is also translated into every other one on the list, so "kvitto" finds an English receipt: its words go to Amazon's Nova Lite model, in the same AWS region as the mail, which adds a little time to each search. With fewer than two, searches aren't translated. Quoted phrases and subject: never are. English and Swedish mail is always indexed in its own language. Adding another, or removing it, rebuilds every mailbox's search index, embedding its mail again, and search finds less until that is done.
+         * @example [
+         *       "English",
+         *       "Swedish"
+         *     ]
+         */
+        SearchLanguages: components["schemas"]["SearchLanguage"][];
+        /**
+         * @description A language search knows.
+         * @enum {string}
+         */
+        SearchLanguage: "English" | "Swedish" | "Danish";
         /** @description A human's own preferences. */
         Preferences: {
             hourCycle: components["schemas"]["HourCycle"];

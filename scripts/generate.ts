@@ -121,7 +121,7 @@ function bodyOf(where: string, body: OperationObject["requestBody"]) {
   if (schema?.type !== "object") fail(`${where} has a body that isn't a JSON object, which the CLI can't pass yet.`);
   return Object.entries(schema.properties ?? {}).map(([name, given]) => {
     const property = resolve(given) ?? given;
-    return option(where, "body", name, property.type === "array" && property.items?.type === "string" ? "strings" : property.type, schema.required?.includes(name) ?? false, property.description);
+    return option(where, "body", name, property.type === "array" && resolve(property.items as SchemaObject | undefined)?.type === "string" ? "strings" : property.type, schema.required?.includes(name) ?? false, property.description);
   });
 }
 

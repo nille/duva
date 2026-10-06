@@ -30,6 +30,7 @@ import { Queue, QueueEncryption } from "aws-cdk-lib/aws-sqs";
 import type { Construct } from "constructs";
 import {
   embeddingModel,
+  translationModel,
   environmentVariables,
   feederFilter,
   inboundPrefix,
@@ -360,6 +361,8 @@ export class DuvaStack extends Stack {
     // region, so mail stays there (ADR-0007). Nothing else calls Bedrock.
     const embedding = new PolicyStatement({ actions: ["bedrock:InvokeModel"], resources: [this.formatArn({ service: "bedrock", account: "", resource: "foundation-model", resourceName: embeddingModel })] });
     searcher.addToRolePolicy(embedding);
+    // Search also translates its words with Nova Lite there, into the organization's search languages (#67).
+    searcher.addToRolePolicy(new PolicyStatement({ actions: ["bedrock:InvokeModel"], resources: [this.formatArn({ service: "bedrock", account: "", resource: "foundation-model", resourceName: translationModel })] }));
 
     // The indexer reads a FIFO queue with each mailbox as a message group, so each mailbox's index
     // has one writer at a time (#18). A task that keeps failing goes to a queue of its own, and the
@@ -425,10 +428,13 @@ export class DuvaStack extends Stack {
       [environmentVariables.downloadUrl]: downloadUrl,
       [environmentVariables.searchFunction]: searcher.functionArn,
       [environmentVariables.configurationSet]: sending.configurationSetName,
+      [environmentVariables.indexQueue]: indexQueue.queueUrl,
     });
     table.grantReadWriteData(handler);
     // Each search waits for the search Lambda's answer.
     searcher.grantInvoke(handler);
+    // Changing the search languages has the indexer rebuild the indexes that file mail in others (#67).
+    indexQueue.grantSendMessages(handler);
     // Message bodies are read from the raw mail.
     mail.grantRead(handler);
     // Emptying Trash hands the eraser the threads, without waiting.

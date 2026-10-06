@@ -7,6 +7,7 @@ import { type OperationHandler, refusal } from "./api.ts";
 import { mailboxFor } from "./access.ts";
 import { changedSinceIndexed } from "./indexing.ts";
 import { labelNamed } from "./labels.ts";
+import { organizationSettings } from "./organization.ts";
 import { screener, spam, type StoredSummary, summaryOf, threadSummary, trash } from "./mail.ts";
 import type { SearchFilters } from "./search-engine.ts";
 import { parseSearch } from "./search-query.ts";
@@ -54,10 +55,12 @@ export const searchMailbox: OperationHandler = async (event, deployment, actor) 
     ...(parsed.hasAttachment && { hasAttachment: true }),
     ...((parsed.after !== undefined || parsed.before !== undefined) && { received: { from: parsed.after?.toISOString(), to: parsed.before?.toISOString() } }),
   };
+  const [changed, { settings }] = await Promise.all([changedSinceIndexed(deployment.table, mailbox.id), organizationSettings(deployment.table)]);
   const { results } = await deployment.searcher({
     mailbox: mailbox.id,
-    search: { terms: parsed.terms, filters, sort },
-    changed: await changedSinceIndexed(deployment.table, mailbox.id),
+    // A search is translated into the organization's search languages, if it has two or more (#67).
+    search: { terms: parsed.terms, filters, sort, translateInto: settings.searchLanguages.length > 1 ? settings.searchLanguages : [] },
+    changed,
     snippets: { from, count: Number(limit) + spareSnippets },
   });
 

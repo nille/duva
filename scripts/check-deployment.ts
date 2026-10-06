@@ -9,7 +9,7 @@
 // deploy published; the user pool takes sign-in names in any case, sends its codes from a domain
 // SES has verified, and still offers emailed codes, and no pool the stack retired is left; once an address exists, SES's receipt rules list each address, and each domain with a catch-all, once; and no received mail and no
 // approved send waits in a failure queue; nothing but IAM may invoke search, which runs at 10,240 MB
-// on x64; every mailbox's search index is backfilled, none has held
+// on x64, and Nova Lite translates in the region; every mailbox's search index is backfilled, none has held
 // erased mail for more than a day, and no indexer task waits in its failure queue. Signing in stays
 // with a human. Then prints how many
 // messages Duva dropped on arrival each day of the last 7, by reason. Exits 1 if any check fails.
@@ -23,6 +23,7 @@ import { GetEmailIdentityCommand, SESv2Client } from "@aws-sdk/client-sesv2";
 import { GetQueueAttributesCommand, SQSClient } from "@aws-sdk/client-sqs";
 import { indexedMailboxes, uncompactedSince } from "@duva/api/indexing";
 import { dropMetric, dropReasons, inboundPrefix, receiptRuleNumber, recipientsPerRule, signInFrom } from "@duva/api/infrastructure";
+import { novaTranslator } from "@duva/api/translation";
 import { stackName, stackOutputs, stackParameters } from "@duva/infra/outputs";
 
 const region = process.env.AWS_REGION;
@@ -148,6 +149,11 @@ await check("search runs at 10,240 MB on x64, as ADR-0007 measured", async () =>
   return MemorySize === 10_240 && JSON.stringify(Architectures) === '["x86_64"]' ? undefined : `runs at ${MemorySize} MB on ${Architectures}`;
 });
 await check("searching without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/mailboxes/x/search?q=x`), 401));
+await check("Nova Lite translates a search's words in the deployment's region, as search does (#67)", async () => {
+  // The translator's client is in AWS_REGION, the deployment's.
+  const translated = await novaTranslator().translate("kvitto", "English");
+  return translated?.toLowerCase().includes("receipt") ? undefined : `translated "kvitto" into English as ${JSON.stringify(translated)}`;
+});
 // The stack's table, found once, inside the checks that need it.
 let found: Promise<string | undefined> | undefined;
 const stackTable = async () => {

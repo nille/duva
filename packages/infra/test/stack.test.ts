@@ -3,7 +3,7 @@
 import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { embeddingModel, environmentVariables, feederFilter, senderFilter, senderRetries, timeToLiveAttribute } from "@duva/api/infrastructure";
+import { embeddingModel, environmentVariables, feederFilter, senderFilter, senderRetries, timeToLiveAttribute, translationModel } from "@duva/api/infrastructure";
 import { operations } from "@duva/openapi";
 import { buildSync } from "esbuild";
 import { afterAll, expect, test } from "vitest";
@@ -270,10 +270,18 @@ test("search may only read the search bucket, and only the indexer may write it"
   expect(writers).toEqual([]);
 });
 
-test("only search and the indexer call Bedrock, and only to embed with Titan in the deployment's region", () => {
-  const titan = { "Fn::Join": ["", ["arn:", { Ref: "AWS::Partition" }, ":bedrock:", { Ref: "AWS::Region" }, `::foundation-model/${embeddingModel}`]] };
+test("only search and the indexer call Bedrock, both to embed with Titan and search also to translate with Nova Lite, in the deployment's region", () => {
+  const model = (id: string) => ({ "Fn::Join": ["", ["arn:", { Ref: "AWS::Partition" }, ":bedrock:", { Ref: "AWS::Region" }, `::foundation-model/${id}`]] });
   const onBedrock = (prefix: string) => statements(prefix).filter(({ Action }) => [Action].flat().some((action) => action.startsWith("bedrock:")));
-  for (const prefix of ["SearchHandler", "IndexerHandler"]) expect(onBedrock(prefix)).toEqual([expect.objectContaining({ Action: "bedrock:InvokeModel", Effect: "Allow", Resource: titan })]);
+  // Each Bedrock statement invokes models and nothing else, and these are all the models invoked.
+  const invoked = (prefix: string) => {
+    const found = onBedrock(prefix);
+    for (const statement of found) expect(statement).toEqual(expect.objectContaining({ Action: "bedrock:InvokeModel", Effect: "Allow" }));
+    return found.flatMap(({ Resource }) => [Resource].flat());
+  };
+  expect(invoked("SearchHandler")).toEqual(expect.arrayContaining([model(embeddingModel), model(translationModel)]));
+  expect(invoked("SearchHandler")).toHaveLength(2);
+  expect(invoked("IndexerHandler")).toEqual([model(embeddingModel)]);
   const others = ofType("AWS::Lambda::Function")
     .map(([id]) => id)
     .filter((id) => !id.startsWith("SearchHandler") && !id.startsWith("IndexerHandler") && onBedrock(id).length > 0);
@@ -301,7 +309,7 @@ test("the table's stream hands the feeder each new change in a mailbox's change 
   });
 });
 
-test("the indexer reads a FIFO queue, so each mailbox has one writer, which the feeder, setup, the eraser and the indexer give tasks, and a task that keeps failing goes to a queue of its own", () => {
+test("the indexer reads a FIFO queue, so each mailbox has one writer, which the feeder, setup, the eraser, the indexer and the API give tasks, and a task that keeps failing goes to a queue of its own", () => {
   const [, { Properties: mapping }] = mappingOf("IndexerHandler");
   const queueId = mapping?.EventSourceArn?.["Fn::GetAtt"]?.[0];
   const queue = stack.template.Resources[queueId];
@@ -309,7 +317,7 @@ test("the indexer reads a FIFO queue, so each mailbox has one writer, which the 
   expect(queue?.Properties?.VisibilityTimeout).toBeGreaterThanOrEqual(6 * lambda("IndexerHandler")[1].Properties?.Timeout);
   const failures = stack.template.Resources[queue?.Properties?.RedrivePolicy?.deadLetterTargetArn?.["Fn::GetAtt"]?.[0]];
   expect(failures?.Properties).toMatchObject({ FifoQueue: true, MessageRetentionPeriod: 14 * 24 * 3600 });
-  for (const prefix of ["FeederHandler", "IndexerHandler", "SetupHandler", "EraserHandler"]) {
+  for (const prefix of ["FeederHandler", "IndexerHandler", "SetupHandler", "EraserHandler", "ApiHandler"]) {
     expect({ prefix, sends: actions(prefix, "sqs") }).toEqual({ prefix, sends: expect.arrayContaining(["sqs:SendMessage"]) });
     const variables = lambda(prefix)[1].Properties?.Environment?.Variables;
     expect(variables?.[environmentVariables.indexQueue]).toEqual({ Ref: queueId });
