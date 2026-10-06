@@ -1,4 +1,4 @@
-import { expect, test } from "vitest";
+import { expect, onTestFinished, test, vi } from "vitest";
 import { type DuvaOptions, startDuva } from "./harness.ts";
 
 const day = 24 * 60 * 60 * 1000;
@@ -124,6 +124,113 @@ test("a thread in Spam and Trash is erased 30 days after the first of them", asy
 
   expect(await listed("trash")).toEqual([]);
   expect(await listed("spam")).toEqual([]);
+});
+
+test("with a retention period of 7 days set, a thread that got Trash more than 7 days earlier is erased, and Spam too", async () => {
+  const { duva, ada, receive, label, listed } = await withPersonalMailbox();
+  const trashed = await receive(note("Kvitto"));
+  const spam = await receive(note("Vinst"), { verdicts: { spam: "FAIL" } });
+  await label([trashed], { add: ["trash"] });
+  await ada.PATCH("/organization/settings", { body: { retentionDays: 7 } });
+
+  await duva.erase(inDays(6));
+  expect(await listed("trash")).toEqual([trashed]);
+  expect(await listed("spam")).toEqual([spam]);
+
+  await duva.erase(inDays(8));
+  expect(await listed("trash")).toEqual([]);
+  expect(await listed("spam")).toEqual([]);
+});
+
+test("with a retention period of 365 days set, Trash and Spam keep threads past 30 days", async () => {
+  const { duva, ada, receive, label, listed } = await withPersonalMailbox();
+  const trashed = await receive(note("Kvitto"));
+  const spam = await receive(note("Vinst"), { verdicts: { spam: "FAIL" } });
+  await label([trashed], { add: ["trash"] });
+  await ada.PATCH("/organization/settings", { body: { retentionDays: 365 } });
+
+  await duva.erase(inDays(364));
+  expect(await listed("trash")).toEqual([trashed]);
+  expect(await listed("spam")).toEqual([spam]);
+
+  await duva.erase(inDays(366));
+  expect(await listed("trash")).toEqual([]);
+  expect(await listed("spam")).toEqual([]);
+});
+
+test("the eraser uses the retention period as it is when it runs, for threads that got Trash before it changed", async () => {
+  const { duva, ada, receive, label, listed } = await withPersonalMailbox();
+  const thread = await receive(note("Kvitto"));
+  await label([thread], { add: ["trash"] });
+  await ada.PATCH("/organization/settings", { body: { retentionDays: 7 } });
+  await ada.PATCH("/organization/settings", { body: { retentionDays: 60 } });
+
+  await duva.erase(inDays(31));
+
+  expect(await listed("trash")).toEqual([thread]);
+});
+
+// Sessions outlast the days these tests let pass.
+const longSessions = { accessTokenLifetime: 30 * 24 * 60 * 60 };
+/** Moves the clock the API reads `days` days ahead, for the rest of the test. */
+function daysPass(days: number) {
+  vi.useFakeTimers({ toFake: ["Date"], now: inDays(days) });
+  onTestFinished(() => void vi.useRealTimers());
+}
+
+test("an admin previews how many threads in every mailbox's Trash and Spam a retention period would erase", async () => {
+  const { duva, ada, grace, receive, label } = await withPersonalMailbox(longSessions);
+  const { data: linusActor } = await duva.signIn("linus@example.org").GET("/whoami");
+  await ada.POST("/mailboxes", { body: { owner: linusActor!.id, address: "linus@example.com" } });
+  const trashed = await receive(note("Kvitto"));
+  await receive(note("Vinst"), { verdicts: { spam: "FAIL" } });
+  const both = await receive(note("Erbjudande"), { verdicts: { spam: "FAIL" } });
+  await label([trashed, both], { add: ["trash"] });
+  await duva.receive(note("Lotteri", { to: "linus@example.com" }), { to: ["linus@example.com"] }, { verdicts: { spam: "FAIL" } });
+  daysPass(10);
+  await receive(note("Faktura"), { verdicts: { spam: "FAIL" } });
+
+  const preview = (retentionDays: number) => ada.GET("/organization/settings/retention-preview", { params: { query: { retentionDays } } });
+
+  expect((await preview(7)).data).toEqual({ retentionDays: 7, threads: 4 });
+  expect((await preview(30)).data).toEqual({ retentionDays: 30, threads: 0 });
+  expect((await grace.GET("/organization/settings")).data).toEqual({ erasureErasesApprovals: false, retentionDays: 30 });
+});
+
+test("the preview counts what the eraser erases under that period", async () => {
+  const { duva, ada, receive, label, listed } = await withPersonalMailbox(longSessions);
+  const old = await receive(note("Kvitto"));
+  await label([old], { add: ["trash"] });
+  daysPass(10);
+  const recent = await receive(note("Faktura"));
+  await label([recent], { add: ["trash"] });
+
+  const { data: preview } = await ada.GET("/organization/settings/retention-preview", { params: { query: { retentionDays: 7 } } });
+  await ada.PATCH("/organization/settings", { body: { retentionDays: 7 } });
+  await duva.erase(new Date());
+
+  expect(preview).toEqual({ retentionDays: 7, threads: 1 });
+  expect(await listed("trash")).toEqual([recent]);
+});
+
+test("a human who isn't an admin, and an agent, get 403 previewing a retention period", async () => {
+  const { duva, grace } = await withPersonalMailbox();
+  const { data: created } = await duva.signIn("ada@example.org").POST("/agents", { body: { name: "Hermes" } });
+
+  for (const actor of [grace, duva.withKey(created!.key)]) {
+    const { response, error } = await actor.GET("/organization/settings/retention-preview", { params: { query: { retentionDays: 7 } } });
+    expect(response.status).toBe(403);
+    expect(error).toEqual({ message: "Only admins can preview the retention period. Ask an admin." });
+  }
+});
+
+test.each([["6"], ["366"], ["7.5"], ["thirty"]])("previewing a retention period of %s days gets 400", async (retentionDays) => {
+  const { ada } = await withPersonalMailbox();
+
+  const { response, error } = await ada.GET("/organization/settings/retention-preview", { params: { query: { retentionDays: retentionDays as never } } });
+
+  expect(response.status).toBe(400);
+  expect(error).toEqual({ message: "Give retentionDays as a whole number of days from 7 to 365." });
 });
 
 test("the eraser's change names no actor and keeps none of the thread's content", async () => {

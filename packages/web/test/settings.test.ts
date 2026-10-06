@@ -27,7 +27,7 @@ test("an admin opens Settings from the bar and chooses that erasing a thread era
 
   await expect.poll(() => organization(page).getByRole("status").textContent(), wait).toBe("Saved. This applies to threads erased from now on.");
   const ada = duva.signIn("ada@example.org");
-  expect((await ada.GET("/organization/settings")).data).toEqual({ erasureErasesApprovals: true });
+  expect((await ada.GET("/organization/settings")).data).toEqual({ erasureErasesApprovals: true, retentionDays: 30 });
 
   await page.reload();
 

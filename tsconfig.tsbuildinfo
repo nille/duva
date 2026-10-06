@@ -1,0 +1,1 @@
+{"root":["./scripts/check-deployment.ts","./scripts/check-text.ts","./scripts/destroy-test-deployment.ts","./scripts/end-to-end.ts","./scripts/generate.ts","./vitest.config.ts"],"version":"5.9.3"}

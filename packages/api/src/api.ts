@@ -31,7 +31,7 @@ import { type Actor, actorOf } from "./organization.ts";
 import { changePreferences, getPreferences } from "./preferences.ts";
 import { searchMailbox } from "./search.ts";
 import { blockSender, getScreener, letInSender, listScreenedSenders, removeScreenedSender, switchScreener } from "./screener.ts";
-import { changeOrganizationSettings, getOrganizationSettings } from "./settings.ts";
+import { changeOrganizationSettings, getOrganizationSettings, previewRetention } from "./settings.ts";
 import { getStatus } from "./status.ts";
 import { whoami } from "./whoami.ts";
 
@@ -51,6 +51,7 @@ const handlers: Record<OperationId, OperationHandler> = {
   listOrganizationChanges,
   getOrganizationSettings,
   changeOrganizationSettings,
+  previewRetention,
   getPreferences,
   changePreferences,
   addHuman,

@@ -19,11 +19,8 @@ import type { MailBucket } from "./mail-bucket.ts";
 import { asRead, type Cursor, cursorOf, type ErasedLabel, keys, listingsOf, type StoredSummary, threadsPerPage, threadSummary, threadsWithLabel, trash } from "./mail.ts";
 import { eraseApprovals } from "./drafting.ts";
 import { compactIndexes, type IndexQueue } from "./indexing.ts";
-import { allMailboxes, mailboxFeed, mailboxKey, organizationSettings, settingsUnchanged } from "./organization.ts";
+import { allMailboxes, mailboxFeed, mailboxKey, type OrganizationSettings, organizationSettings, settingsUnchanged } from "./organization.ts";
 import { documents, pk, sk, type TransactItem } from "./table.ts";
-
-/** How long a thread keeps Spam or Trash before it is erased: the organization's retention period. */
-export const retentionDays = 30;
 
 // Each thread being erased is listed until its messages are gone, and each of their raw messages,
 // once per mailbox that erased it, until it is gone or another mailbox still has it.
@@ -53,9 +50,34 @@ export interface Eraser {
   eraseMailbox(deleted: MailboxDeleted): Promise<void>;
 }
 
-/** Erases each thread that got Spam or Trash more than the retention period before `now`, naming no actor, and finishes earlier erasures. */
+/**
+ * Erases each thread that got Spam or Trash more than the organization's retention period before
+ * `now`, naming no actor, and finishes earlier erasures. Each thread is checked against the period
+ * as it is when the thread is erased, so one an admin lengthens during the run keeps the rest.
+ */
 export async function eraseExpired(table: Table, mailBucket: MailBucket, indexQueue: IndexQueue, now: Date): Promise<void> {
-  const cutoff = new Date(now.getTime() - retentionDays * 24 * 60 * 60 * 1000).toISOString();
+  const { settings } = await organizationSettings(table);
+  for await (const { mailbox, thread, label, labelledAt } of labelledBefore(table, settings.retentionDays, now)) {
+    const due = (summary: StoredSummary, current: OrganizationSettings) => summary.labelledAt?.[label] === labelledAt && labelledAt < cutoffOf(current.retentionDays, now);
+    await eraseThread(table, { mailbox, thread, by: undefined, due });
+  }
+  await finishErasures(table, mailBucket, indexQueue);
+}
+
+/** How many threads, across mailboxes, got Spam or Trash more than `retentionDays` before `now`: those the eraser would erase then under that period. */
+export async function threadsPastRetention(table: Table, retentionDays: number, now: Date): Promise<number> {
+  // A thread in both Spam and Trash is listed once for each.
+  const threads = new Set<string>();
+  for await (const { mailbox, thread } of labelledBefore(table, retentionDays, now)) threads.add(`${mailbox}#${thread}`);
+  return threads.size;
+}
+
+/** The time a thread must have got Spam or Trash before to be past `retentionDays` at `now`. */
+const cutoffOf = (retentionDays: number, now: Date) => new Date(now.getTime() - retentionDays * 24 * 60 * 60 * 1000).toISOString();
+
+/** Each listing of a thread, across mailboxes, that got Spam or Trash more than `retentionDays` before `now`, oldest first. */
+async function* labelledBefore(table: Table, retentionDays: number, now: Date) {
+  const cutoff = cutoffOf(retentionDays, now);
   const { [pk]: partition } = keys.labelledKey("", "", "", trash);
   let start: Record<string, unknown> | undefined;
   do {
@@ -67,13 +89,9 @@ export async function eraseExpired(table: Table, mailBucket: MailBucket, indexQu
         ExclusiveStartKey: start,
       }),
     );
-    for (const item of page.Items ?? []) {
-      const { mailbox, thread, label, labelledAt } = item as { mailbox: string; thread: string; label: ErasedLabel; labelledAt: string };
-      await eraseThread(table, { mailbox, thread, by: undefined, due: (summary) => summary.labelledAt?.[label] === labelledAt });
-    }
+    for (const item of page.Items ?? []) yield item as { mailbox: string; thread: string; label: ErasedLabel; labelledAt: string };
     start = page.LastEvaluatedKey;
   } while (start !== undefined);
-  await finishErasures(table, mailBucket, indexQueue);
 }
 
 /** Records that the actor emptied the Trash, before the eraser is handed it, so the eraser's daily run finishes it if the run handed it fails. */
@@ -146,17 +164,17 @@ async function eraseTrash(table: Table, emptied: TrashEmptied): Promise<void> {
 
 /**
  * Takes the thread out of every listing, in one transaction with its threadErased change, attributed
- * to the actor `by` or to none, if it is still `due` as it is read, and then erases its messages. The
+ * to the actor `by` or to none, if it is still `due` as it and the settings are read, and then erases its messages. The
  * thread is kept as an empty item until then, which reads as no thread at all.
  */
-async function eraseThread(table: Table, { mailbox, thread, by, due }: { mailbox: string; thread: string; by: string | undefined; due: (summary: StoredSummary) => boolean }) {
+async function eraseThread(table: Table, { mailbox, thread, by, due }: { mailbox: string; thread: string; by: string | undefined; due: (summary: StoredSummary, settings: OrganizationSettings) => boolean }) {
   // recordChanges gives the items' cancellation reasons after the counter's and the one change's.
   const threadReason = 2;
   let erasesApprovals: boolean;
   for (let attempt = 1; ; attempt++) {
     const summary = await threadSummary(table, mailbox, thread);
-    if (summary === undefined || !due(summary)) return;
     const settings = await organizationSettings(table);
+    if (summary === undefined || !due(summary, settings.settings)) return;
     erasesApprovals = settings.settings.erasureErasesApprovals;
     const items: TransactItem[] = [
       { Put: { TableName: table.name, Item: { ...keys.threadKey(mailbox, thread), erasing: true }, ...asTimed(summary) } },

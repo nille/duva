@@ -714,7 +714,7 @@ export async function organizationChanges(table: Table, after: number): Promise<
 }
 
 /** What each setting is until an admin changes it. */
-export const defaultSettings: OrganizationSettings = { erasureErasesApprovals: false };
+export const defaultSettings: OrganizationSettings = { erasureErasesApprovals: false, retentionDays: 30 };
 
 /** Settings as read, with the version a write that relies on them checks. */
 export interface ReadSettings<Settings = OrganizationSettings> {

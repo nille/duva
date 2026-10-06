@@ -77,9 +77,29 @@ export interface paths {
         head?: never;
         /**
          * Change the organization's settings.
-         * @description Give only the settings to change. A setting applies from when it changes, so turning on erasureErasesApprovals leaves the approval records of threads erased before then. Only admins can change the settings. Each change is recorded in the organization's change feed under you.
+         * @description Give only the settings to change. A setting applies from when it changes, so turning on erasureErasesApprovals leaves the approval records of threads erased before then. A shorter retentionDays reaches back: the eraser's next daily run erases every thread that has had Trash or Spam longer than it. Preview the period first to see how many. Only admins can change the settings. Each change is recorded in the organization's change feed under you.
          */
         patch: operations["changeOrganizationSettings"];
+        trace?: never;
+    };
+    "/organization/settings/retention-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Count the threads the eraser's next run would erase under a retention period.
+         * @description Counts the threads in every mailbox's Trash and Spam that are older than retentionDays now, counted from when each got the label. With that retention period, the eraser's next daily run erases them, and any that pass it before the run. It counts threads, and reads none of them. Only admins can preview the retention period.
+         */
+        get: operations["previewRetention"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/preferences": {
@@ -635,7 +655,7 @@ export interface paths {
         put?: never;
         /**
          * Empty a mailbox's Trash, erasing every thread in it for good.
-         * @description Erases each thread that is in Trash when you call, with its messages and their raw copies, every stored version included. Erasing can't be undone. Each erased thread gets a threadErased change in the mailbox's change feed, naming you, with none of its content. Duva erases the threads right after answering, and finishes on its next daily run if that fails. Only the mailbox's owner can empty its Trash, and an agent's sponsor its agent's. An agent never empties its sponsor's Trash, whatever its sponsor access. Without emptying, Trash and Spam are erased 30 days after a thread got the label.
+         * @description Erases each thread that is in Trash when you call, with its messages and their raw copies, every stored version included. Erasing can't be undone. Each erased thread gets a threadErased change in the mailbox's change feed, naming you, with none of its content. Duva erases the threads right after answering, and finishes on its next daily run if that fails. Only the mailbox's owner can empty its Trash, and an agent's sponsor its agent's. An agent never empties its sponsor's Trash, whatever its sponsor access. Without emptying, Trash and Spam are erased after the organization's retention period, counted from when a thread got the label.
          */
         post: operations["emptyTrash"];
         delete?: never;
@@ -699,7 +719,7 @@ export interface paths {
         put?: never;
         /**
          * Block a sender in a mailbox, moving their waiting threads to Trash.
-         * @description Give an address, or a domain to block everyone there. A domain covers exactly that domain, not its subdomains, and can't be a public mail provider's, like gmail.com. An address's decision beats its domain's. Their later mail that starts a thread goes straight to Trash, even while the Screener is off. Trash is erased 30 days after a thread got it. Blocking a sender the mailbox let in replaces that. Blocking also unsubscribes the mailbox from the sender's mail by one-click (RFC 8058), when their newest mail that SES didn't judge to be spam offers it and a DKIM signature that passed covers its unsubscribe headers. For a domain, that is the newest mail from an address there that the mailbox hasn't let in. Duva never unsubscribes by mailto or by a link in the body. The decision, each thread it moves and the unsubscribe's outcome are recorded in the mailbox's change feed under you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can decide.
+         * @description Give an address, or a domain to block everyone there. A domain covers exactly that domain, not its subdomains, and can't be a public mail provider's, like gmail.com. An address's decision beats its domain's. Their later mail that starts a thread goes straight to Trash, even while the Screener is off. Trash is erased after the organization's retention period, counted from when a thread got it. Blocking a sender the mailbox let in replaces that. Blocking also unsubscribes the mailbox from the sender's mail by one-click (RFC 8058), when their newest mail that SES didn't judge to be spam offers it and a DKIM signature that passed covers its unsubscribe headers. For a domain, that is the newest mail from an address there that the mailbox hasn't let in. Duva never unsubscribes by mailto or by a link in the body. The decision, each thread it moves and the unsubscribe's outcome are recorded in the mailbox's change feed under you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can decide.
          */
         post: operations["blockSender"];
         delete?: never;
@@ -2324,10 +2344,19 @@ export interface components {
         };
         OrganizationSettings: {
             erasureErasesApprovals: components["schemas"]["ErasureErasesApprovals"];
+            retentionDays: components["schemas"]["RetentionDays"];
         };
         /** @description The settings changed, each with its new value. */
         SettingsChanges: {
             erasureErasesApprovals?: components["schemas"]["ErasureErasesApprovals"];
+            retentionDays?: components["schemas"]["RetentionDays"];
+        };
+        /** @description How many days Trash and Spam keep a thread, counted from when it got the label, before the eraser erases it for good. 30 by default, and a whole number from 7 to 365. It applies to all Trash and Spam, threads already there included. */
+        RetentionDays: number;
+        RetentionPreview: {
+            retentionDays: components["schemas"]["RetentionDays"];
+            /** @description How many threads in Trash and Spam are older than retentionDays now. */
+            threads: number;
         };
         /** @description Whether erasing a thread also erases the approval records of the agents' sends in it: the draft its approver saw and any edit they made. Off by default, so the records stay as the account of what an agent sent and who approved it. Either way the mailbox's change feed keeps each decision and who made it. */
         ErasureErasesApprovals: boolean;
@@ -2548,6 +2577,32 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OrganizationSettings"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    previewRetention: {
+        parameters: {
+            query: {
+                /** @description The retention period to preview, in days, a whole number from 7 to 365. */
+                retentionDays: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description How many threads the period would erase now. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetentionPreview"];
                 };
             };
             400: components["responses"]["BadRequest"];

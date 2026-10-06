@@ -69,7 +69,7 @@ export const operations = [
     "path": "/organization/settings",
     "routeKey": "PATCH /organization/settings",
     "summary": "Change the organization's settings.",
-    "description": "Give only the settings to change. A setting applies from when it changes, so turning on erasureErasesApprovals leaves the approval records of threads erased before then. Only admins can change the settings. Each change is recorded in the organization's change feed under you.",
+    "description": "Give only the settings to change. A setting applies from when it changes, so turning on erasureErasesApprovals leaves the approval records of threads erased before then. A shorter retentionDays reaches back: the eraser's next daily run erases every thread that has had Trash or Spam longer than it. Preview the period first to see how many. Only admins can change the settings. Each change is recorded in the organization's change feed under you.",
     "signIn": true,
     "command": [
       "organization",
@@ -82,6 +82,35 @@ export const operations = [
         "type": "boolean",
         "required": false,
         "description": "Whether erasing a thread also erases the approval records of the agents' sends in it: the draft its approver saw and any edit they made. Off by default, so the records stay as the account of what an agent sent and who approved it. Either way the mailbox's change feed keeps each decision and who made it."
+      },
+      {
+        "name": "retentionDays",
+        "in": "body",
+        "type": "integer",
+        "required": false,
+        "description": "How many days Trash and Spam keep a thread, counted from when it got the label, before the eraser erases it for good. 30 by default, and a whole number from 7 to 365. It applies to all Trash and Spam, threads already there included."
+      }
+    ]
+  },
+  {
+    "operationId": "previewRetention",
+    "method": "get",
+    "path": "/organization/settings/retention-preview",
+    "routeKey": "GET /organization/settings/retention-preview",
+    "summary": "Count the threads the eraser's next run would erase under a retention period.",
+    "description": "Counts the threads in every mailbox's Trash and Spam that are older than retentionDays now, counted from when each got the label. With that retention period, the eraser's next daily run erases them, and any that pass it before the run. It counts threads, and reads none of them. Only admins can preview the retention period.",
+    "signIn": true,
+    "command": [
+      "organization",
+      "preview-retention"
+    ],
+    "options": [
+      {
+        "name": "retentionDays",
+        "in": "query",
+        "type": "integer",
+        "required": true,
+        "description": "The retention period to preview, in days, a whole number from 7 to 365."
       }
     ]
   },
@@ -1164,7 +1193,7 @@ export const operations = [
     "path": "/mailboxes/{mailbox}/trash/empty",
     "routeKey": "POST /mailboxes/{mailbox}/trash/empty",
     "summary": "Empty a mailbox's Trash, erasing every thread in it for good.",
-    "description": "Erases each thread that is in Trash when you call, with its messages and their raw copies, every stored version included. Erasing can't be undone. Each erased thread gets a threadErased change in the mailbox's change feed, naming you, with none of its content. Duva erases the threads right after answering, and finishes on its next daily run if that fails. Only the mailbox's owner can empty its Trash, and an agent's sponsor its agent's. An agent never empties its sponsor's Trash, whatever its sponsor access. Without emptying, Trash and Spam are erased 30 days after a thread got the label.",
+    "description": "Erases each thread that is in Trash when you call, with its messages and their raw copies, every stored version included. Erasing can't be undone. Each erased thread gets a threadErased change in the mailbox's change feed, naming you, with none of its content. Duva erases the threads right after answering, and finishes on its next daily run if that fails. Only the mailbox's owner can empty its Trash, and an agent's sponsor its agent's. An agent never empties its sponsor's Trash, whatever its sponsor access. Without emptying, Trash and Spam are erased after the organization's retention period, counted from when a thread got the label.",
     "signIn": true,
     "command": [
       "threads",
@@ -1273,7 +1302,7 @@ export const operations = [
     "path": "/mailboxes/{mailbox}/screener/block",
     "routeKey": "POST /mailboxes/{mailbox}/screener/block",
     "summary": "Block a sender in a mailbox, moving their waiting threads to Trash.",
-    "description": "Give an address, or a domain to block everyone there. A domain covers exactly that domain, not its subdomains, and can't be a public mail provider's, like gmail.com. An address's decision beats its domain's. Their later mail that starts a thread goes straight to Trash, even while the Screener is off. Trash is erased 30 days after a thread got it. Blocking a sender the mailbox let in replaces that. Blocking also unsubscribes the mailbox from the sender's mail by one-click (RFC 8058), when their newest mail that SES didn't judge to be spam offers it and a DKIM signature that passed covers its unsubscribe headers. For a domain, that is the newest mail from an address there that the mailbox hasn't let in. Duva never unsubscribes by mailto or by a link in the body. The decision, each thread it moves and the unsubscribe's outcome are recorded in the mailbox's change feed under you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can decide.",
+    "description": "Give an address, or a domain to block everyone there. A domain covers exactly that domain, not its subdomains, and can't be a public mail provider's, like gmail.com. An address's decision beats its domain's. Their later mail that starts a thread goes straight to Trash, even while the Screener is off. Trash is erased after the organization's retention period, counted from when a thread got it. Blocking a sender the mailbox let in replaces that. Blocking also unsubscribes the mailbox from the sender's mail by one-click (RFC 8058), when their newest mail that SES didn't judge to be spam offers it and a DKIM signature that passed covers its unsubscribe headers. For a domain, that is the newest mail from an address there that the mailbox hasn't let in. Duva never unsubscribes by mailto or by a link in the body. The decision, each thread it moves and the unsubscribe's outcome are recorded in the mailbox's change feed under you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can decide.",
     "signIn": true,
     "command": [
       "screener",

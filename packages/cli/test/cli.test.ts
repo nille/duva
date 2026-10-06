@@ -177,11 +177,27 @@ test("an admin turns erasure of approval records on with a flag, and off with it
   const on = await machine.duva("organization", "change-settings", "--erasureErasesApprovals");
   const off = await machine.duva("organization", "change-settings", "--no-erasureErasesApprovals");
 
-  expect(JSON.parse(before.stdout)).toEqual({ erasureErasesApprovals: false });
+  expect(JSON.parse(before.stdout)).toEqual({ erasureErasesApprovals: false, retentionDays: 30 });
   expect(on.exitCode).toBe(0);
-  expect(JSON.parse(on.stdout)).toEqual({ erasureErasesApprovals: true });
+  expect(JSON.parse(on.stdout)).toEqual({ erasureErasesApprovals: true, retentionDays: 30 });
   expect(off.exitCode).toBe(0);
-  expect(JSON.parse(off.stdout)).toEqual({ erasureErasesApprovals: false });
+  expect(JSON.parse(off.stdout)).toEqual({ erasureErasesApprovals: false, retentionDays: 30 });
+});
+
+test("an admin previews a retention period and sets it", async () => {
+  const machine = await newMachine();
+  const server = await (await startDuva({ admin: "ada@example.com" })).listen();
+  onTestFinished(() => server.close());
+  await machine.saveDeployment(server);
+  await machine.duva("login", { browserSignsIn: "ada@example.com" });
+
+  const preview = await machine.duva("organization", "preview-retention", "--retentionDays", "7");
+  const changed = await machine.duva("organization", "change-settings", "--retentionDays", "7");
+
+  expect(preview.exitCode).toBe(0);
+  expect(JSON.parse(preview.stdout)).toEqual({ retentionDays: 7, threads: 0 });
+  expect(changed.exitCode).toBe(0);
+  expect(JSON.parse(changed.stdout)).toEqual({ erasureErasesApprovals: false, retentionDays: 7 });
 });
 
 test("organization change-settings with no setting says which there are", async () => {
@@ -194,7 +210,7 @@ test("organization change-settings with no setting says which there are", async 
   const result = await machine.duva("organization", "change-settings");
 
   expect(result.exitCode).toBe(1);
-  expect(errorIn(result.stderr)).toMatch(/400.*Give a setting to change: erasureErasesApprovals/);
+  expect(errorIn(result.stderr)).toMatch(/400.*Give a setting to change: erasureErasesApprovals, retentionDays/);
 });
 
 test("a human chooses to read mail as text", async () => {

@@ -93,9 +93,11 @@ paths:
       description: >
         Give only the settings to change. A setting applies from when it
         changes, so turning on erasureErasesApprovals leaves the approval
-        records of threads erased before then. Only admins can change the
-        settings. Each change is recorded in the organization's change feed
-        under you.
+        records of threads erased before then. A shorter retentionDays
+        reaches back: the eraser's next daily run erases every thread that
+        has had Trash or Spam longer than it. Preview the period first to see
+        how many. Only admins can change the settings. Each change is
+        recorded in the organization's change feed under you.
       x-cli-command: organization change-settings
       requestBody:
         required: true
@@ -110,6 +112,39 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/OrganizationSettings"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /organization/settings/retention-preview:
+    get:
+      operationId: previewRetention
+      summary: Count the threads the eraser's next run would erase under a retention period.
+      description: >
+        Counts the threads in every mailbox's Trash and Spam that are older
+        than retentionDays now, counted from when each got the label. With
+        that retention period, the eraser's next daily run erases them, and
+        any that pass it before the run. It counts threads, and reads none of
+        them. Only admins can preview the retention period.
+      x-cli-command: organization preview-retention
+      parameters:
+        - name: retentionDays
+          in: query
+          required: true
+          description: The retention period to preview, in days, a whole number from 7 to 365.
+          schema:
+            type: integer
+            minimum: 7
+            maximum: 365
+      responses:
+        "200":
+          description: How many threads the period would erase now.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RetentionPreview"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -1261,8 +1296,9 @@ paths:
         threads right after answering, and finishes on its next daily run if
         that fails. Only the mailbox's owner can empty its Trash, and an agent's
         sponsor its agent's. An agent never empties its sponsor's Trash, whatever
-        its sponsor access. Without emptying, Trash and Spam are erased 30
-        days after a thread got the label.
+        its sponsor access. Without emptying, Trash and Spam are erased after
+        the organization's retention period, counted from when a thread got
+        the label.
       x-cli-command: threads empty-trash
       parameters:
         - $ref: "#/components/parameters/Mailbox"
@@ -1386,8 +1422,9 @@ paths:
         exactly that domain, not its subdomains, and can't be a public mail
         provider's, like gmail.com. An address's decision beats its domain's.
         Their later mail that starts a thread goes straight to Trash, even
-        while the Screener is off. Trash is erased 30 days after a thread got
-        it. Blocking a sender the mailbox let in replaces that. Blocking also
+        while the Screener is off. Trash is erased after the organization's
+        retention period, counted from when a thread got it. Blocking a
+        sender the mailbox let in replaces that. Blocking also
         unsubscribes the mailbox from the sender's mail by one-click (RFC
         8058), when their newest mail that SES didn't judge to be spam offers
         it and a DKIM signature that passed covers its unsubscribe headers.
@@ -3919,10 +3956,12 @@ components:
     OrganizationSettings:
       type: object
       additionalProperties: false
-      required: [erasureErasesApprovals]
+      required: [erasureErasesApprovals, retentionDays]
       properties:
         erasureErasesApprovals:
           $ref: "#/components/schemas/ErasureErasesApprovals"
+        retentionDays:
+          $ref: "#/components/schemas/RetentionDays"
     SettingsChanges:
       type: object
       additionalProperties: false
@@ -3930,6 +3969,28 @@ components:
       properties:
         erasureErasesApprovals:
           $ref: "#/components/schemas/ErasureErasesApprovals"
+        retentionDays:
+          $ref: "#/components/schemas/RetentionDays"
+    RetentionDays:
+      type: integer
+      minimum: 7
+      maximum: 365
+      description: >-
+        How many days Trash and Spam keep a thread, counted from when it got
+        the label, before the eraser erases it for good. 30 by default, and a
+        whole number from 7 to 365. It applies to all Trash and Spam, threads
+        already there included.
+    RetentionPreview:
+      type: object
+      additionalProperties: false
+      required: [retentionDays, threads]
+      properties:
+        retentionDays:
+          $ref: "#/components/schemas/RetentionDays"
+        threads:
+          type: integer
+          minimum: 0
+          description: How many threads in Trash and Spam are older than retentionDays now.
     ErasureErasesApprovals:
       type: boolean
       description: >-
