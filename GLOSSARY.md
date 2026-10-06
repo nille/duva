@@ -41,7 +41,7 @@ A choice a human makes for themselves about how Duva shows things to them, such 
 _Avoid_: user setting, profile
 
 **Sponsor**:
-The human who answers for an agent, at first the one who created it. The sponsor acts as owner of the agent's personal mailboxes, gets the agent's alerts, can pause it or rotate its key, and approves its sends and setup changes. An agent whose sponsor is removed is paused until someone takes it over.
+The human who answers for an agent, at first the one who created it. The sponsor acts as owner of the agent's personal mailboxes, gets the agent's alerts, can pause it or rotate its key, and approves its sends and setup changes. When the sponsor is removed, their agents are removed too, and their mailboxes erased.
 _Avoid_: owner (for agents), operator, creator
 
 **Disclosure**:
@@ -72,7 +72,7 @@ The part of an address after a +, like news in user-1+news@a.com. Mail to a tagg
 _Avoid_: tag, subaddress, detail
 
 **Catch-all**:
-A domain's optional mailbox or group for mail to addresses that don't exist. Off unless an admin sets one; otherwise such mail is refused.
+A domain's optional mailbox or group for mail to addresses that don't exist, removed ones included. Off unless an admin sets one; otherwise such mail is refused.
 
 **Default address**:
 The address a mailbox sends new messages from unless the sender picks another. Replies go out from the address the original was sent to.
@@ -82,7 +82,7 @@ An email address on a domain the organization does not have.
 _Avoid_: remote user, outside user
 
 **Group**:
-An address that delivers a copy of each message to every member. Each group sets who may send to it: anyone, the organization, or its members.
+An address that delivers a copy of each message to every member. Each group sets who may send to it: anyone, the organization, or its members, and that is its only gate: group mail skips members' Screeners. A local member can send as the group, and a copy of what they send goes to the other local members, so everyone sees it was answered.
 _Avoid_: distribution list, mailing list
 
 **Member**:
@@ -106,7 +106,7 @@ A built-in label for threads that want attention. New mail adds it; archiving re
 A built-in label for mail judged to be spam. Threads with it are out of the Inbox and left out of agents' results unless they ask.
 
 **Trash**:
-A built-in label for deleted threads. Trash and Spam are erased for good after the organization's retention period, 30 days by default. Only the mailbox owner can empty Trash early.
+A built-in label for deleted threads. Trash and Spam are erased for good after the organization's retention period, 30 days by default and 7 to 365, counted from when each thread got the label. Only the mailbox owner can empty Trash early.
 
 **Screener**:
 Where mail from a mailbox's first-time senders waits until an actor who may organize the mailbox lets the sender in or blocks them. A first-time sender is one the mailbox hasn't let in and hasn't sent mail to; senders on the organization's own domains, and messages joining a thread the mailbox already has, never wait. Letting in moves the sender's waiting threads to the Inbox; blocking moves them to Trash, and later mail from them goes straight there. Removing a block, or letting the sender in, brings back to the Inbox only the threads the block put in Trash, never those trashed by hand. On by default for humans' personal mailboxes, off for agents'; the mailbox's owner switches it.
