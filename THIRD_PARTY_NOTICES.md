@@ -1,12 +1,13 @@
 # Third-party notices
 
-Duva itself is MIT-licensed (see `LICENSE`). This repository also vendors agent skills written by others, unmodified, and the web app bundles a font, each under its own license.
+Duva itself is MIT-licensed (see `LICENSE`). This repository also vendors agent skills written by others, unmodified, the web app bundles a font, and the API carries a tracker list ported from another project, each under its own license.
 
 | Path | Source | License |
 | --- | --- | --- |
 | `.agents/skills/` | [mattpocock/skills](https://github.com/mattpocock/skills), pinned in `skills-lock.json` | MIT |
 | Part of `.agents/skills/pr/SKILL.md` | Dex Horthy's `show-me` skill in [humanlayer/humanlayer](https://github.com/humanlayer/humanlayer), credited in `.agents/skills/pr/CREDITS.md` | Apache-2.0 |
 | The web app's build, from `@fontsource-variable/source-serif-4` | [Source Serif 4](https://github.com/adobe-fonts/source-serif) by Adobe | OFL-1.1 |
+| `packages/api/src/trackers.ts`, ported from `Source/MTBBlockedMessage.m` | [MailTrackerBlocker](https://github.com/apparition47/MailTrackerBlocker) by Aaron Lee | BSD-3-Clause |
 
 ## mattpocock/skills
 
@@ -338,4 +339,40 @@ INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL
 DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
 OTHER DEALINGS IN THE FONT SOFTWARE.
+```
+
+## MailTrackerBlocker
+
+Duva's list of known trackers, the services they belong to and the patterns that find them, is ported from MailTrackerBlocker's. Thanks to Aaron Lee and its contributors.
+
+```
+BSD 3-Clause License
+
+Copyright (c) 2020, Aaron Lee.
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without modification,
+are permitted provided that the following conditions are met:
+
+ * Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer.
+
+ * Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+ * Neither the name MailTrackerBlocker nor the names of its contributors may be used to
+   endorse or promote products derived from this software without specific
+   prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
+ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
+ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```

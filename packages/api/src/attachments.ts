@@ -8,7 +8,7 @@ import { type OperationHandler, refusal } from "./api.ts";
 import type { Table } from "./deployment.ts";
 import { timeToLiveAttribute } from "./infrastructure.ts";
 import type { MailBucket } from "./mail-bucket.ts";
-import { findMessage } from "./mail.ts";
+import { type AttachmentLinks, findMessage } from "./mail.ts";
 import { mediaTypeOf } from "./mime.ts";
 import { mailboxFor } from "./access.ts";
 import { documents, pk, sk } from "./table.ts";
@@ -47,15 +47,30 @@ export const getAttachment: OperationHandler = async (event, deployment, actor) 
     const count = found.message.attachments.length;
     return refusal(404, count === 0 ? "The message has no attachments." : `The message has ${count} attachment${count === 1 ? "" : "s"}. Give attachment from 0 to ${count - 1}.`);
   }
-  const { downloads } = deployment;
+  const link = await downloadLink(deployment, { mailbox: mailbox.id, message: id, attachment: Number(given) });
+  return { statusCode: 200, body: { ...attachment, ...link } satisfies components["schemas"]["AttachmentLink"] };
+};
+
+/**
+ * Links to the attachments of the mailbox's messages, for the images of its own parts a message's
+ * HTML shows. Each is a new download link, so reading HTML that shows any writes their tickets.
+ */
+export const attachmentLinks =
+  (deployment: { table: Table; downloads: Downloads }, mailbox: string): AttachmentLinks =>
+  async (message, attachment) =>
+    (await downloadLink(deployment, { mailbox, message, attachment })).url;
+
+/** A new download link to the attachment, which works for the deployment's link lifetime. */
+export async function downloadLink(
+  { table, downloads }: { table: Table; downloads: Downloads },
+  attachment: Omit<Ticket, "expiresAt">,
+): Promise<{ url: string; expiresAt: string }> {
   const token = randomBytes(32).toString("base64url");
   const expires = new Date(Date.now() + downloads.lifetime * 1000);
-  const ticket: Ticket = { mailbox: mailbox.id, message: id, attachment: Number(given), expiresAt: expires.toISOString() };
-  await documents(deployment.table).send(
-    new PutCommand({ TableName: deployment.table.name, Item: { ...ticketKey(token), ...ticket, [timeToLiveAttribute]: Math.ceil(expires.getTime() / 1000) } }),
-  );
-  return { statusCode: 200, body: { ...attachment, url: `${downloads.url}${token}`, expiresAt: ticket.expiresAt } satisfies components["schemas"]["AttachmentLink"] };
-};
+  const ticket: Ticket = { ...attachment, expiresAt: expires.toISOString() };
+  await documents(table).send(new PutCommand({ TableName: table.name, Item: { ...ticketKey(token), ...ticket, [timeToLiveAttribute]: Math.ceil(expires.getTime() / 1000) } }));
+  return { url: `${downloads.url}${token}`, expiresAt: ticket.expiresAt };
+}
 
 /** What following a download link answers: the attachment, or a line of text saying why not. */
 export interface DownloadAnswer {

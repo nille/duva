@@ -8,6 +8,7 @@ import type { components } from "@duva/openapi";
 import type { Table } from "./deployment.ts";
 import { changesAfter, changesPerPage, recordChanges } from "./feed.ts";
 import type { MailBucket } from "./mail-bucket.ts";
+import { contentIdsIn, serveHtml, type ServedHtml } from "./html.ts";
 import { type ParsedMail, type Part, parseMail } from "./mime.ts";
 import { allMailboxes, defaultAgentSettings, mailboxFeed, mailboxKey } from "./organization.ts";
 import { documents, isNew, pk, sk, type TransactItem } from "./table.ts";
@@ -573,8 +574,11 @@ export function cursorOf(next: string): Cursor | undefined {
   return labelPosition.test(position) ? { position } : undefined;
 }
 
-/** The thread with its messages, oldest first, each read from its raw message, or undefined if the mailbox has no such thread. */
-export async function readThread(table: Table, mailBucket: MailBucket, mailbox: string, id: string): Promise<Thread | undefined> {
+/** Gives a link to a message's attachment, for the images of its own parts its HTML shows. */
+export type AttachmentLinks = (message: string, attachment: number) => Promise<string>;
+
+/** The thread with its messages, oldest first, each read from its raw message with its HTML served, or undefined if the mailbox has no such thread. */
+export async function readThread(table: Table, mailBucket: MailBucket, mailbox: string, id: string, linkTo: AttachmentLinks): Promise<Thread | undefined> {
   const items = [];
   let start: Record<string, unknown> | undefined;
   do {
@@ -592,23 +596,25 @@ export async function readThread(table: Table, mailBucket: MailBucket, mailbox: 
   const thread = items.find((item) => item[sk] === threadKey(mailbox, id)[sk]);
   if (thread === undefined || thread.erasing === true) return undefined;
   const stored = items.filter((item) => item !== thread);
-  const messages = await Promise.all(stored.map(async (item) => (await readMessage(mailBucket, item as StoredMessage)).message));
+  const messages = await Promise.all(stored.map(async (item) => (await readMessage(mailBucket, item as StoredMessage, linkTo)).message));
   return { id, subject: thread.subject, labels: thread.labels, unread: thread.unread ?? false, messages };
 }
 
 /**
  * The message with the ID in the mailbox, read from its raw message, with its thread and the
- * Reply-To and References it gives, or undefined if the mailbox has no such message.
+ * Reply-To and References it gives, or undefined if the mailbox has no such message. Its HTML is
+ * served only with `linkTo`, for those who show it.
  */
 export async function findMessage(
   table: Table,
   mailBucket: MailBucket,
   mailbox: string,
   id: string,
+  linkTo?: AttachmentLinks,
 ): Promise<{ message: Message; thread: string; replyTo: components["schemas"]["EmailAddress"][]; references: string[]; parts: Part[] } | undefined> {
   const stored = await storedMessage(table, mailbox, id);
   if (stored === undefined) return undefined;
-  const { message, parsed } = await readMessage(mailBucket, stored);
+  const { message, parsed } = await readMessage(mailBucket, stored, linkTo);
   return { message, thread: stored.thread, replyTo: parsed.replyTo, references: parsed.references, parts: parsed.parts };
 }
 
@@ -645,13 +651,15 @@ function inContractOrder(change: Record<string, unknown>): Record<string, unknow
 
 /**
  * The message with its body and attachments from the raw message, in the order the contract lists
- * its fields, and the raw message parsed.
+ * its fields, and the raw message parsed. With `linkTo`, its HTML is served too, its images of its
+ * own parts leading to the links `linkTo` gives.
  */
-async function readMessage(mailBucket: MailBucket, stored: StoredMessage): Promise<{ message: Message; parsed: ParsedMail }> {
+async function readMessage(mailBucket: MailBucket, stored: StoredMessage, linkTo?: AttachmentLinks): Promise<{ message: Message; parsed: ParsedMail }> {
   const raw = await mailBucket.get(stored.rawKey);
   if (raw === undefined) throw new Error(`The raw message ${stored.rawKey} is missing from the mail bucket.`);
   const parsed = await parseMail(raw);
   const { text, attachments } = parsed;
+  const html = parsed.html === undefined || linkTo === undefined ? undefined : await servedHtml(parsed.html, parsed.parts, (attachment) => linkTo(stored.id, attachment));
   const { id, messageId, from, to, cc, bcc, recipient, plusTag, subject, date, receivedAt, sentBy, approval } = stored;
   const message = {
     id,
@@ -668,9 +676,20 @@ async function readMessage(mailBucket: MailBucket, stored: StoredMessage): Promi
     ...(sentBy !== undefined && { sentBy }),
     ...(approval !== undefined && { approval }),
     text,
+    ...html,
     attachments,
   };
   return { message, parsed };
+}
+
+/** The HTML served, with a link to each of the message's parts its `cid:` URLs refer to. */
+async function servedHtml(html: string, parts: Part[], linkTo: (attachment: number) => Promise<string>): Promise<ServedHtml> {
+  const links = new Map<string, string>();
+  for (const contentId of contentIdsIn(html)) {
+    const attachment = parts.findIndex((part) => part.contentId === `<${contentId}>`);
+    if (attachment !== -1) links.set(contentId, await linkTo(attachment));
+  }
+  return serveHtml(html, (contentId) => links.get(contentId));
 }
 
 // Threads stored before snippets and read state existed have neither, and are read.

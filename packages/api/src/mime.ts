@@ -31,6 +31,8 @@ export interface ParsedMail {
    * with \n line endings and none at the end.
    */
   text: string;
+  /** The HTML body, from the HTML part or a text part that holds an HTML document, if it has one. */
+  html?: string;
   attachments: components["schemas"]["Attachment"][];
   /** The attachments' contents, decoded, in the same order. */
   parts: Part[];
@@ -40,6 +42,8 @@ export interface ParsedMail {
 export interface Part {
   name?: string;
   type: string;
+  /** Its Content-ID, in angle brackets, if it has one. */
+  contentId?: string;
   content: Uint8Array<ArrayBuffer>;
 }
 
@@ -47,9 +51,11 @@ export async function parseMail(raw: Uint8Array): Promise<ParsedMail> {
   const email = await PostalMime.parse(raw, { attachmentEncoding: "arraybuffer" });
   const date = email.date === undefined ? undefined : new Date(email.date);
   const text = email.text !== undefined && !isHtmlDocument(email.text) ? email.text : htmlToText(email.html ?? email.text ?? "");
-  const parts = email.attachments.map(({ filename, mimeType, content }) => ({
+  const html = email.html ?? (email.text !== undefined && isHtmlDocument(email.text) ? email.text : undefined);
+  const parts = email.attachments.map(({ filename, mimeType, contentId, content }) => ({
     ...(filename !== null && { name: filename }),
     type: mimeType,
+    ...(contentId !== undefined && { contentId }),
     content: typeof content === "string" ? new TextEncoder().encode(content) : new Uint8Array(content),
   }));
   return {
@@ -63,6 +69,7 @@ export async function parseMail(raw: Uint8Array): Promise<ParsedMail> {
     subject: email.subject ?? "",
     date: date === undefined || Number.isNaN(date.getTime()) ? undefined : date.toISOString(),
     text: text.replace(/\r\n?/g, "\n").replace(/\n+$/, ""),
+    ...(html !== undefined && { html }),
     attachments: parts.map(({ name, type, content }) => ({ ...(name !== undefined && { name }), type, size: content.byteLength })),
     parts,
   };

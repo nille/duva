@@ -22,6 +22,7 @@ import {
   reject,
   SendNotAllowed,
 } from "./drafting.ts";
+import { attachmentLinks } from "./attachments.ts";
 import { findMessage } from "./mail.ts";
 import { mailboxFor } from "./access.ts";
 import type { Actor, Mailbox } from "./organization.ts";
@@ -270,7 +271,7 @@ async function decided(deployment: Deployment, decide: () => Promise<Approval>, 
 /** The approval with the message its draft replies to, if it is a reply and the mailbox still has it. */
 async function withOriginal(deployment: Deployment, approval: Approval): Promise<Approval> {
   if (approval.draft.answers === undefined) return approval;
-  const original = await findMessage(deployment.table, deployment.mailBucket, approval.mailbox, approval.draft.answers);
+  const original = await findMessage(deployment.table, deployment.mailBucket, approval.mailbox, approval.draft.answers, attachmentLinks(deployment, approval.mailbox));
   return approvalOf(approval, original?.message);
 }
 

@@ -1403,6 +1403,16 @@ export interface components {
             approval?: components["schemas"]["SentApproval"];
             /** @description The plain-text body. Mail with only HTML is turned into text. */
             text: string;
+            /** @description The HTML body, if the message has one, made safe to show: no scripts, event handlers, forms, frames, objects or `javascript:` links, and known trackers removed. Its references to the message's own parts (`cid:`) lead to download links, which work for a few minutes. */
+            html?: string;
+            /**
+             * @description The trackers removed from the HTML body, if it has one, each by the name of its service where it is known, or else as "a hidden image". Empty when none was found.
+             * @example [
+             *       "SendGrid",
+             *       "a hidden image"
+             *     ]
+             */
+            removedTrackers?: string[];
             attachments: components["schemas"]["Attachment"][];
         };
         /** @description The approval a sent message went out with. */

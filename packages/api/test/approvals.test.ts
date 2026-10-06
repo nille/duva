@@ -171,6 +171,18 @@ test("asking to send a draft waits for the sponsor's approval, showing the draft
   });
 });
 
+test("the message an asked reply answers is shown with its HTML served, without its trackers", async () => {
+  const { ada, hermes, params, receive } = await withMailbox();
+  const html = `<p>Kan vi ses på <b>måndag</b>?</p><img src="https://u123.ct.sendgrid.net/wf/open?upn=xyz" alt=""><script>track("open");</script>`;
+  const { message } = await receive(fromGrace("To: hermes@example.com\r\nSubject: Meeting\r\nContent-Type: text/html; charset=utf-8\r\n", html));
+  const { data: draft } = await hermes.POST("/mailboxes/{mailbox}/drafts", { params, body: { answers: message.id, text: "Monday works." } });
+  await hermes.POST("/mailboxes/{mailbox}/drafts/{draft}/send", { params: { path: { ...params.path, draft: draft!.id } } });
+
+  const { data } = await ada.GET("/approvals");
+
+  expect(data?.approvals[0]?.original).toMatchObject({ html: "<p>Kan vi ses på <b>måndag</b>?</p>", removedTrackers: ["SendGrid"] });
+});
+
 test("the agent sees its send waiting", async () => {
   const { hermes, draftParams, params, approval } = await withAskedReply();
 

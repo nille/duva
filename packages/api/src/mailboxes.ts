@@ -4,6 +4,7 @@ import { mailboxesReadBy, mailboxFor } from "./access.ts";
 import type { Deployment } from "./deployment.ts";
 import { AddressTaken, addMailbox, allAddresses, findActor, organizationDomain } from "./organization.ts";
 import { builtInLabels, createLabel, deleteLabel, hasLabel, listLabels, NameTaken, renameLabel } from "./labels.ts";
+import { attachmentLinks } from "./attachments.ts";
 import { allMail, type Cursor, cursorOf, inbox, labelThreads, mailboxChanges, markThreads, readThread, spam, threadsMarkedAtOnce, threadsPerPage, sentThreads, threadsWithLabel, trash, unreadWithLabel } from "./mail.ts";
 import { recordEmptying } from "./erasure.ts";
 import { syncRecipients } from "./receiving.ts";
@@ -134,7 +135,7 @@ export const getThread: OperationHandler = async (event, deployment, actor) => {
   const mailbox = await mailboxFor(event, deployment, actor!, "read");
   if ("statusCode" in mailbox) return mailbox;
   const id = event.pathParameters?.thread ?? "";
-  const thread = await readThread(deployment.table, deployment.mailBucket, mailbox.id, id);
+  const thread = await readThread(deployment.table, deployment.mailBucket, mailbox.id, id, attachmentLinks(deployment, mailbox.id));
   if (thread === undefined) return refusal(404, `The mailbox has no thread ${JSON.stringify(id)}. List its threads to find one.`);
   return { statusCode: 200, body: thread satisfies components["schemas"]["Thread"] };
 };

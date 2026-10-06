@@ -2392,6 +2392,20 @@ components:
         text:
           type: string
           description: The plain-text body. Mail with only HTML is turned into text.
+        html:
+          type: string
+          description: >-
+            The HTML body, if the message has one, made safe to show: no scripts, event handlers, forms, frames,
+            objects or `javascript:` links, and known trackers removed. Its references to the message's own
+            parts (`cid:`) lead to download links, which work for a few minutes.
+        removedTrackers:
+          type: array
+          items:
+            type: string
+          description: >-
+            The trackers removed from the HTML body, if it has one, each by the name of its service where it is
+            known, or else as "a hidden image". Empty when none was found.
+          examples: [["SendGrid", "a hidden image"]]
         attachments:
           type: array
           items:
