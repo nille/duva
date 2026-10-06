@@ -1,8 +1,10 @@
 // The Alerts view: what the agents a sponsor answers for need them for, newest first, on one sheet.
 // Each alert names its agent and what happened, and opens the message it is about, or the agent's
-// line in Settings. Unseen alerts carry the pencil's dot, and urgent ones that are unseen lie on
-// Alert Wash. Marking one seen, or opening it, counts it no more in the bar.
-import { useCallback, useEffect, useState } from "react";
+// line in Settings. A pause opens the agent's line at Pause, and while the agent is paused, its sends
+// held in Approvals. Unseen alerts carry the pencil's dot, and urgent ones that are unseen lie on
+// Alert Wash. Marking one seen, or opening it, counts it no more in the bar. Each alert's controls
+// are named for its agent and what happened, so a list of them tells them apart.
+import { useCallback, useEffect, useId, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
 import { Time } from "./mail-parts.tsx";
@@ -11,6 +13,11 @@ import { strings } from "./strings.ts";
 
 type Alert = components["schemas"]["Alert"];
 type Mailbox = components["schemas"]["Mailbox"];
+
+type AlertKind = Alert["kind"];
+
+// What an alert about a pause opens: the agent's line at Pause, and the sends its pause holds.
+const pauses = new Set<AlertKind>(["pausedBy", "autoPaused", "keyUsedWhilePaused"]);
 
 type Listing = { status: "loading" } | { status: "failed"; message: string } | { status: "listed"; alerts: Alert[]; next?: string; more: "idle" | "loading" | "failed" };
 
@@ -41,6 +48,9 @@ export function Alerts({
 }) {
   const [listing, setListing] = useState<Listing>({ status: "loading" });
   const [problem, setProblem] = useState<string>();
+  // The agents paused now, whose held sends Approvals lists.
+  const [paused, setPaused] = useState<ReadonlySet<string>>(new Set());
+  const id = useId();
   const copy = strings.alerts;
 
   const page = useCallback(
@@ -69,10 +79,14 @@ export function Alerts({
         return { status: "listed", alerts: [...answer.alerts, ...older], next: older.length > 0 ? listed.next : answer.next, more: "idle" };
       });
     });
+    void client
+      .GET("/agents")
+      .then(({ data }) => current && data !== undefined && setPaused(new Set(data.agents.filter((agent) => agent.paused !== undefined).map((agent) => agent.id))))
+      .catch(() => undefined);
     return () => {
       current = false;
     };
-  }, [page, version]);
+  }, [client, page, version]);
 
   const unseen = listing.status === "listed" ? listing.alerts.filter((alert) => !alert.seen).length : 0;
   useEffect(() => {
@@ -103,15 +117,17 @@ export function Alerts({
     }
   };
 
-  const hrefOf = (alert: Alert): { href: string; name: string } | undefined => {
+  const linksOf = (alert: Alert): { href: string; name: string }[] => {
     const mailbox = mailboxes.find(({ id }) => id === alert.mailbox);
     if (mailbox !== undefined && alert.thread !== undefined) {
       const message = alert.message === undefined ? "" : `?message=${encodeURIComponent(alert.message)}`;
-      return { href: `${mailboxHref(mailbox, mailbox.id === mine)}threads/${encodeURIComponent(alert.thread)}${message}`, name: copy.openMessage };
+      return [{ href: `${mailboxHref(mailbox, mailbox.id === mine)}threads/${encodeURIComponent(alert.thread)}${message}`, name: copy.openMessage }];
     }
     // Only a mailbox's owner writes there, so only the human's own drafts open.
-    if (mailbox !== undefined && mailbox.id === mine && alert.draft !== undefined) return { href: `#/drafts/${encodeURIComponent(alert.draft)}`, name: copy.openDraft };
-    return agents.has(alert.agent) ? { href: agentHref(alert.agent), name: copy.openAgent(alert.agentName) } : undefined;
+    if (mailbox !== undefined && mailbox.id === mine && alert.draft !== undefined) return [{ href: `#/drafts/${encodeURIComponent(alert.draft)}`, name: copy.openDraft }];
+    if (!agents.has(alert.agent)) return [];
+    if (!pauses.has(alert.kind)) return [{ href: agentHref(alert.agent), name: copy.openAgent(alert.agentName) }];
+    return [...(paused.has(alert.agent) ? [{ href: "#/approvals", name: copy.heldSends }] : []), { href: agentHref(alert.agent), name: copy.openAtPause(alert.agentName) }];
   };
 
   return (
@@ -145,28 +161,37 @@ export function Alerts({
       ) : (
         <div className="index alerts">
           <ol className="alert-list" aria-label={copy.title}>
-            {listing.alerts.map((alert) => {
-              const link = hrefOf(alert);
+            {listing.alerts.map((alert, index) => {
+              const links = linksOf(alert);
+              // Each control is named by its own words, then the agent and what happened, so two alike stay apart.
+              const at = `${id}-${index}`;
+              const about = `${at}-agent ${at}-kind ${at}-what`;
               const classes = ["alert", !alert.seen && "alert-unseen", alert.urgent && "alert-urgent"].filter(Boolean).join(" ");
               return (
                 <li key={alert.id} className={classes}>
                   <span className="alert-mark" aria-hidden="true" />
                   <div className="alert-body">
                     <p className="alert-head">
-                      <span className="alert-agent">{alert.agentName}</span>
-                      <span className="alert-kind">{copy.kinds[alert.kind]}</span>
+                      <span className="alert-agent" id={`${at}-agent`}>
+                        {alert.agentName}
+                      </span>
+                      <span className="alert-kind" id={`${at}-kind`}>
+                        {copy.kinds[alert.kind]}
+                      </span>
                       {alert.urgent && <span className="urgent-mark">{copy.urgent}</span>}
                     </p>
-                    <p className="alert-what">{alert.what}</p>
-                    {(link !== undefined || !alert.seen) && (
+                    <p className="alert-what" id={`${at}-what`}>
+                      {alert.what}
+                    </p>
+                    {(links.length > 0 || !alert.seen) && (
                       <div className="alert-actions">
-                        {link !== undefined && (
-                          <a href={link.href} onClick={() => !alert.seen && void see([alert.id])}>
+                        {links.map((link, each) => (
+                          <a key={link.href} id={`${at}-link-${each}`} href={link.href} aria-labelledby={`${at}-link-${each} ${about}`} onClick={() => !alert.seen && void see([alert.id])}>
                             {link.name}
                           </a>
-                        )}
+                        ))}
                         {!alert.seen && (
-                          <button type="button" className="button button-quiet button-small" onClick={() => void see([alert.id])}>
+                          <button type="button" id={`${at}-seen`} className="button button-quiet button-small" aria-labelledby={`${at}-seen ${about}`} onClick={() => void see([alert.id])}>
                             {copy.markSeen}
                           </button>
                         )}

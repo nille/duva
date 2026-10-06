@@ -27,9 +27,12 @@ async function withAgentAdmin(options: Parameters<typeof startWebApp>[0] = {}) {
   return { ...app, ada, hermes, mailbox: mailbox!, askForAddress, addresses };
 }
 
+/** What the page shows of the element, a line for each block in it. */
+const lines = (text: string) => text.replace(/\n+/g, "\n");
+
 const setupGalley = (page: Page) => page.getByRole("article", { name: /Hermes asks to change the setup/ });
 
-test("an agent admin's setup change waits in Approvals beside its sends, saying what it would do", budget, async () => {
+test("an agent admin's setup change waits in Approvals after its sends, saying what it would do", budget, async () => {
   const { page, signIn, hermes, mailbox, askForAddress } = await withAgentAdmin();
   const { data: draft } = await hermes.POST("/mailboxes/{mailbox}/drafts", { params: { path: { mailbox: mailbox.id } }, body: { to: ["linus@example.net"], subject: "Hej", text: "Hej." } });
   await hermes.POST("/mailboxes/{mailbox}/drafts/{draft}/send", { params: { path: { mailbox: mailbox.id, draft: draft!.id } } });
@@ -39,8 +42,11 @@ test("an agent admin's setup change waits in Approvals beside its sends, saying 
   await page.getByRole("link", { name: /^Approvals/ }).click();
 
   await expect.poll(() => page.getByRole("article").count(), wait).toBe(2);
-  // The setup change was asked for last, so it comes first.
-  await expect.poll(() => page.getByRole("article").first().getByRole("heading", { level: 2 }).textContent(), wait).toBe("Hermes asks to change the setup");
+  // The setup change was asked for last, and still comes after the send, where the agent speaks.
+  await expect.poll(() => page.getByRole("article").first().getByRole("heading", { level: 2 }).textContent(), wait).toBe("Hermes asks to send Hej");
+  expect(await page.getByRole("article").nth(1).getByRole("heading", { level: 2 }).textContent()).toBe(
+    "Hermes asks to change the setup Gives Hermes's mailbox at hermes@example.com the address sales@example.com.",
+  );
   expect(await setupGalley(page).innerText()).toContain("Gives Hermes's mailbox at hermes@example.com the address sales@example.com.");
   await expect.poll(() => page.getByRole("link", { name: /^Approvals/ }).textContent(), wait).toContain("2");
   expect(await page.getByText("2 waiting", { exact: true }).isVisible()).toBe(true);
@@ -123,4 +129,60 @@ test("on a phone, a setup change and its decision fit the screen", budget, async
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(phone.width);
   const approve = await setupGalley(page).getByRole("button", { name: "Approve" }).boundingBox();
   expect(approve!.height).toBeGreaterThanOrEqual(44);
+});
+
+test("a setup proof names the command the agent ran, and each ID by what it is, with the ID as a hint", budget, async () => {
+  const { page, signIn, mailbox, askForAddress } = await withAgentAdmin();
+  await askForAddress("sales@example.com");
+  await signIn("ada@example.org");
+  await page.getByRole("link", { name: /^Approvals/ }).click();
+  const call = setupGalley(page).getByRole("region", { name: "The call it made" });
+
+  await expect
+    .poll(async () => lines(await call.innerText()), wait)
+    .toBe(`The call it made\nCommand\nduva addresses add\naddress\nsales@example.com\nmailbox\nHermes's mailbox, hermes@example.com\n${mailbox.id}`);
+  expect(await call.innerText()).not.toContain("addAddress");
+});
+
+test("a setup proof lists each value of a list on a line of its own", budget, async () => {
+  const { page, signIn, hermes } = await withAgentAdmin();
+  await hermes.POST("/groups", { body: { address: "team@example.com", members: ["hermes@example.com", "linus@example.net"] } });
+  await signIn("ada@example.org");
+  await page.getByRole("link", { name: /^Approvals/ }).click();
+  const call = setupGalley(page).getByRole("region", { name: "The call it made" });
+
+  await expect.poll(() => call.isVisible(), wait).toBe(true);
+  expect(await call.getByRole("list").getByRole("listitem").allInnerTexts()).toEqual(["hermes@example.com", "linus@example.net"]);
+  expect(await call.innerText()).toContain("duva groups create");
+});
+
+test("on a phone, a send comes before the setup changes asked for after it", budget, async () => {
+  const { page, signIn, hermes, mailbox, askForAddress } = await withAgentAdmin({ viewport: phone });
+  const { data: draft } = await hermes.POST("/mailboxes/{mailbox}/drafts", { params: { path: { mailbox: mailbox.id } }, body: { to: ["linus@example.net"], subject: "Hej", text: "Hej." } });
+  await hermes.POST("/mailboxes/{mailbox}/drafts/{draft}/send", { params: { path: { mailbox: mailbox.id, draft: draft!.id } } });
+  await askForAddress("sales@example.com");
+  await askForAddress("support@example.com");
+  await signIn("ada@example.org");
+  await page.getByRole("link", { name: /^Approvals/ }).click();
+
+  await expect.poll(() => page.getByRole("article").count(), wait).toBe(3);
+  const send = await page.getByRole("article", { name: /asks to send/ }).boundingBox();
+  expect(send!.y).toBeLessThan(phone.height);
+});
+
+test("a decided slip sets the agent's name in the sans and the mail's subject in the serif", budget, async () => {
+  const { page, signIn, hermes, mailbox } = await withAgentAdmin();
+  const { data: draft } = await hermes.POST("/mailboxes/{mailbox}/drafts", { params: { path: { mailbox: mailbox.id } }, body: { to: ["linus@example.net"], subject: "Hej", text: "Hej." } });
+  await hermes.POST("/mailboxes/{mailbox}/drafts/{draft}/send", { params: { path: { mailbox: mailbox.id, draft: draft!.id } } });
+  await signIn("ada@example.org");
+  await page.getByRole("link", { name: /^Approvals/ }).click();
+  await page.getByRole("button", { name: "Reject" }).click();
+  await page.getByLabel("Note for Hermes").fill("Not yet.");
+  await page.getByRole("button", { name: "Reject with note" }).click();
+
+  const head = page.getByRole("article").getByRole("heading", { level: 2 });
+  await expect.poll(() => head.textContent(), wait).toMatch(/Hermes/);
+  const font = (text: string) => head.getByText(text, { exact: true }).evaluate((element) => getComputedStyle(element).fontFamily);
+  expect(await font("Hermes")).toMatch(/^system-ui/);
+  expect(await font("Hej")).toMatch(/^"Source Serif 4/);
 });

@@ -233,15 +233,15 @@ test("the bar counts unseen alerts, the Alerts view lists them newest first with
   expect(texts[2]).toMatch(/^Hermes\nBounced\nMail from Hermes to nobody@example\.net hard-bounced/);
   expect(await page.getByRole("heading", { level: 1 }).textContent()).toBe("Alerts");
 
-  await alertItems(page).nth(2).getByRole("button", { name: "Mark as seen" }).click();
+  await alertItems(page).nth(2).getByRole("button", { name: /^Mark as seen/ }).click();
 
   await expect.poll(() => alertsLink(page).getAttribute("aria-label"), wait).toBe("Alerts, 2 unseen");
-  expect(await alertItems(page).nth(2).getByRole("button", { name: "Mark as seen" }).count()).toBe(0);
+  expect(await alertItems(page).nth(2).getByRole("button", { name: /^Mark as seen/ }).count()).toBe(0);
 
   await page.getByRole("button", { name: "Mark all as seen" }).click();
 
   await expect.poll(() => alertsLink(page).getAttribute("aria-label"), wait).toBe("Alerts");
-  expect(await page.getByRole("button", { name: "Mark as seen" }).count()).toBe(0);
+  expect(await page.getByRole("button", { name: /^Mark as seen/ }).count()).toBe(0);
 });
 
 test("an alert opens the message it is about, or its agent's line in Settings, and is seen once opened", budget, async () => {
@@ -253,13 +253,13 @@ test("an alert opens the message it is about, or its agent's line in Settings, a
   await alertsLink(page).click();
   await expect.poll(() => alertItems(page).count(), wait).toBe(2);
 
-  await alertItems(page).nth(1).getByRole("link", { name: "Open the message" }).click();
+  await alertItems(page).nth(1).getByRole("link", { name: /^Open the message/ }).click();
 
   await expect.poll(() => page.getByRole("heading", { level: 1 }).textContent(), wait).toBe("Bounces");
   await expect.poll(() => alertsLink(page).getAttribute("aria-label"), wait).toBe("Alerts, 1 unseen");
 
   await alertsLink(page).click();
-  await alertItems(page).first().getByRole("link", { name: "Open Hermes" }).click();
+  await alertItems(page).first().getByRole("link", { name: /^Open Hermes at Pause/ }).click();
 
   await expect.poll(() => agentsSheet(page).getByRole("form", { name: "Hermes" }).isVisible(), wait).toBe(true);
   expect(await agentsSheet(page).getByRole("button", { name: "Unpause" }).isVisible()).toBe(true);
@@ -319,4 +319,130 @@ test("a send the sponsor approves over its agent's send limit says it waits, and
   await slip.getByRole("button", { name: "Send now" }).click();
 
   await expect.poll(() => duva.sent().length, wait).toBe(before + 1);
+});
+
+const approvalsLink = (page: Page) => page.getByRole("navigation").getByRole("link", { name: /^Approvals/ });
+
+test("an approved send waiting for its send limit stays in Approvals under Waiting for the send limit, after a reload too, until it goes out", budget, async () => {
+  const { page, signIn, duva, grace, settings, send } = await withAgent();
+  await grace.PATCH("/agents/{agent}/settings", { ...settings, body: { sendsPerHour: 1 } });
+  await send("ken@example.net", "First");
+  await send("lou@example.net", "Second");
+  await signIn("grace@example.org");
+  await approvalsLink(page).click();
+  const waiting = page.getByRole("region", { name: "Waiting for the send limit" });
+
+  await expect.poll(async () => (await waiting.getByRole("listitem").allInnerTexts()).map(lines), wait).toEqual([expect.stringMatching(/^Hermes\nSecond\nTo lou@example\.net\n/)]);
+  expect(await page.getByText("Nothing is waiting for you").count()).toBe(0);
+  await page.reload();
+  await expect.poll(() => waiting.getByRole("listitem").count(), wait).toBe(1);
+  const before = duva.sent().length;
+
+  await waiting.getByRole("button", { name: "Send now Second" }).click();
+
+  await expect.poll(() => duva.sent().length, wait).toBe(before + 1);
+  await page.reload();
+  await expect.poll(() => page.getByRole("heading", { name: "Nothing is waiting for you" }).isVisible(), wait).toBe(true);
+  expect(await waiting.count()).toBe(0);
+});
+
+test("a send approved before its agent was paused is held in Approvals, beside a link to the agent's line at Pause", budget, async () => {
+  const { page, signIn, grace, settings, agent, send } = await withAgent();
+  await grace.PATCH("/agents/{agent}/settings", { ...settings, body: { sendsPerHour: 1 } });
+  await send("ken@example.net", "First");
+  await send("lou@example.net", "Held back");
+  await grace.POST("/agents/{agent}/pause", settings);
+  await signIn("grace@example.org");
+  await approvalsLink(page).click();
+  const held = page.getByRole("region", { name: "Held while Hermes is paused" });
+
+  await expect.poll(async () => (await held.getByRole("listitem").allInnerTexts()).map(lines), wait).toEqual([expect.stringMatching(/^Held back\nTo lou@example\.net$/)]);
+  expect(await page.getByRole("region", { name: "Waiting for the send limit" }).count()).toBe(0);
+  await held.getByRole("link", { name: "Open Hermes at Pause" }).click();
+
+  await expect.poll(() => location(page), wait).toBe(`#/settings/agents/${agent.id}`);
+  await expect.poll(() => agentsSheet(page).getByRole("button", { name: "Unpause" }).isVisible(), wait).toBe(true);
+});
+
+const location = (page: Page) => page.evaluate(() => window.location.hash);
+
+test("the urgent pause alert links to the held sends and to the agent's line at Pause", budget, async () => {
+  const { page, signIn, duva, grace, settings, agent, send } = await withAgent();
+  await grace.PATCH("/agents/{agent}/settings", { ...settings, body: { sendsPerHour: 1 } });
+  const { messageId } = await send("ken@example.net", "Complained about");
+  await send("lou@example.net", "Held back");
+  await duva.sendingEvent(messageId!, { type: "Complaint" });
+  await signIn("grace@example.org");
+  await alertsLink(page).click();
+  const pause = alertItems(page).filter({ hasText: "Paused by Duva" });
+
+  await pause.getByRole("link", { name: /^See the held sends/ }).click();
+
+  await expect.poll(() => location(page), wait).toBe("#/approvals");
+  await expect.poll(() => page.getByRole("region", { name: "Held while Hermes is paused" }).getByText("Held back").isVisible(), wait).toBe(true);
+  await alertsLink(page).click();
+  await pause.getByRole("link", { name: /^Open Hermes at Pause/ }).click();
+  await expect.poll(() => location(page), wait).toBe(`#/settings/agents/${agent.id}`);
+  await expect.poll(() => agentsSheet(page).getByRole("button", { name: "Unpause" }).isVisible(), wait).toBe(true);
+});
+
+test("each alert's controls have names that say which agent and event they are for", budget, async () => {
+  const { page, signIn, duva, send } = await withAgent();
+  for (const to of ["nobody@example.net", "noone@example.net"]) {
+    const bounced = await send(to, "Bounces");
+    await duva.sendingEvent(bounced.messageId!, { type: "Bounce", bounceType: "Permanent", bounceSubType: "NoEmail" });
+  }
+  await signIn("grace@example.org");
+  await alertsLink(page).click();
+  await expect.poll(() => alertItems(page).count(), wait).toBe(2);
+
+  for (const to of ["nobody", "noone"]) {
+    expect(await page.getByRole("button", { name: new RegExp(`^Mark as seen Hermes Bounced Mail from Hermes to ${to}@example\\.net hard-bounced`) }).count()).toBe(1);
+    expect(await page.getByRole("link", { name: new RegExp(`^Open the message Hermes Bounced Mail from Hermes to ${to}@example\\.net hard-bounced`) }).count()).toBe(1);
+  }
+});
+
+/** Presses Tab until the element has the keyboard's focus, as someone without a mouse gets there. */
+const tabTo = async (page: Page, target: ReturnType<Page["getByRole"]>) => {
+  for (let presses = 0; presses < 80; presses++) {
+    if (await target.evaluate((element) => element === document.activeElement)) return;
+    await page.keyboard.press("Tab");
+  }
+  throw new Error("Tab never reached it");
+};
+
+test("on a phone, the sends waiting for the send limit and those held fit the screen, and the keyboard reaches Send now and the agent's line", budget, async () => {
+  const { page, signIn, duva, grace, ada, settings, send } = await withAgent({ viewport: phone });
+  await grace.PATCH("/agents/{agent}/settings", { ...settings, body: { sendsPerHour: 1 } });
+  await send("ken@example.net", "First");
+  await send("lou@example.net", "Waiting for a long while before it may go out to everyone it names");
+  const { data: other } = await grace.POST("/agents", { body: { name: "Iris" } });
+  const { data: irisMailbox } = await ada.POST("/mailboxes", { body: { owner: other!.agent.id, address: "iris@example.com" } });
+  const iris = { params: { path: { agent: other!.agent.id } } };
+  await grace.PATCH("/agents/{agent}/settings", { ...iris, body: { approvalForOwnMailbox: false, sendsPerHour: 1 } });
+  const irisKey = duva.withKey(other!.key);
+  for (const subject of ["Iris first", "Iris held"]) {
+    const { data: draft } = await irisKey.POST("/mailboxes/{mailbox}/drafts", { params: { path: { mailbox: irisMailbox!.id } }, body: { to: ["max@example.net"], subject, text: "Hej." } });
+    await irisKey.POST("/mailboxes/{mailbox}/drafts/{draft}/send", { params: { path: { mailbox: irisMailbox!.id, draft: draft!.id } } });
+  }
+  await grace.POST("/agents/{agent}/pause", iris);
+  await signIn("grace@example.org");
+  await approvalsLink(page).click();
+  const waiting = page.getByRole("region", { name: "Waiting for the send limit" });
+  const held = page.getByRole("region", { name: "Held while Iris is paused" });
+  await expect.poll(() => held.getByText("Iris held").isVisible(), wait).toBe(true);
+
+  const width = phone.width;
+  for (const section of [waiting, held]) expect((await section.boundingBox())!.x + (await section.boundingBox())!.width).toBeLessThanOrEqual(width);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+  const before = duva.sent().length;
+  const sendNow = waiting.getByRole("button", { name: /^Send now Waiting for a long while/ });
+  await tabTo(page, sendNow);
+  await page.keyboard.press("Enter");
+
+  await expect.poll(() => duva.sent().length, wait).toBe(before + 1);
+  await expect.poll(() => waiting.getByText("Sent.").isVisible(), wait).toBe(true);
+  await tabTo(page, held.getByRole("link", { name: "Open Iris at Pause" }));
+  await page.keyboard.press("Enter");
+  await expect.poll(() => location(page), wait).toBe(`#/settings/agents/${other!.agent.id}`);
 });

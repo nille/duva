@@ -3,12 +3,15 @@
 // Each says whether the agent sends as the sponsor, from their mailbox, or from its own, and shows
 // the disclosure's line as the sponsor's switch for that place leaves it. Beside them wait the setup
 // changes the sponsor's agent admins ask for, each with the call it made and what it would do, to
-// approve or reject with a note.
+// approve or reject with a note. The sends come first, since they are where an agent speaks. Under
+// them lie the sends already approved that haven't gone out: those waiting for their agent's send
+// limit, and those held while their agent is paused.
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import type { DuvaClient } from "@duva/client";
-import type { components } from "@duva/openapi";
-import { approvalChanges, type Connection as ConnectionState, type Follow, setupChanges, SignedOut } from "./feed.ts";
+import type { components, Operation, OperationId } from "@duva/openapi";
+import { agentHref } from "./alerts.tsx";
+import { approvalChanges, type Change, type Connection as ConnectionState, type Follow, setupChanges, SignedOut } from "./feed.ts";
 import { Addresses, Attachments, Connection, Field, Time } from "./mail-parts.tsx";
 import { SendNow } from "./send-now.tsx";
 import { strings } from "./strings.ts";
@@ -20,6 +23,8 @@ type EmailAddress = components["schemas"]["EmailAddress"];
 type AgentSettings = components["schemas"]["AgentSettings"];
 type SetupApproval = components["schemas"]["SetupApproval"];
 type SetupResult = components["schemas"]["SetupResult"];
+type Draft = components["schemas"]["Draft"];
+type Agent = components["schemas"]["Agent"];
 
 /** An approval the view shows: waiting, or decided while the page was open. */
 interface Entry {
@@ -48,6 +53,101 @@ type Outcome = SendStatus | "none" | "unknown";
 // A send in these states can still change, so the view keeps checking it.
 const settling = new Set<SendStatus["state"]>(["waiting", "approved", "waitingForLimit", "sending"]);
 
+// Pausing holds an agent's approved sends, and unpausing lets them go.
+const pauseChanges = new Set<Change["type"]>(["agentPaused", "agentUnpaused"]);
+
+/** A send approved that hasn't gone out, in the mailbox it waits in, by the agent that wrote it. */
+interface Approved {
+  mailbox: string;
+  draft: Draft;
+  /** None when the sponsor edited it in their own mailbox, so it no longer says which agent wrote it. */
+  agent?: Agent;
+}
+
+/** Each read of a list counts itself, so only the latest one shows, and none once the page has gone. */
+async function latest<T>(count: { current: number }, read: Promise<T>): Promise<{ value: T } | undefined> {
+  const mine = ++count.current;
+  const value = await read;
+  return mine === count.current ? { value } : undefined;
+}
+
+/** A read Duva couldn't answer reads as nothing. */
+const quietly = <T,>(call: Promise<T>) => call.catch(() => ({ data: undefined }));
+
+/** What the IDs in a setup change's call are: a mailbox by its owner and address, an actor by name. */
+type SetupNames = ReadonlyMap<string, string>;
+
+/** The sends approved that haven't gone out, of each agent the sponsor answers for, oldest first. */
+async function readApproved(client: DuvaClient, me: string): Promise<Approved[] | undefined> {
+  const [{ data: agents }, { data: mailboxes }] = await Promise.all([quietly(client.GET("/agents")), quietly(client.GET("/mailboxes"))]);
+  if (agents === undefined || mailboxes === undefined) return undefined;
+  const byId = new Map(agents.agents.map((agent) => [agent.id, agent]));
+  // An agent's sends wait in its own mailboxes, and in the sponsor's when it sends as them.
+  const searched = mailboxes.mailboxes.filter((mailbox) => mailbox.owner === me || byId.has(mailbox.owner));
+  const drafts = await Promise.all(
+    searched.map(async (mailbox) => {
+      const { data } = await quietly(client.GET("/mailboxes/{mailbox}/drafts", { params: { path: { mailbox: mailbox.id } } }));
+      return (data?.drafts ?? []).flatMap((draft) => {
+        const agent = byId.get(mailbox.owner === me ? (draft.updatedBy ?? "") : mailbox.owner);
+        const state = draft.send?.state;
+        // Only an agent's send waits for a limit, so one the sponsor edited stays, though unnamed.
+        const approved = (state === "waitingForLimit" && (agent !== undefined || mailbox.owner === me)) || (state === "approved" && agent?.paused !== undefined);
+        return approved ? [{ mailbox: mailbox.id, draft, agent }] : [];
+      });
+    }),
+  );
+  // Drafts list newest first, and they go out oldest first.
+  return drafts.flat().sort((a, b) => a.draft.updatedAt.localeCompare(b.draft.updatedAt));
+}
+
+/** Names for the mailboxes and actors of the organization, which only an admin can list. A list Duva can't give names nothing. */
+async function readSetupNames(client: DuvaClient, me: string): Promise<SetupNames> {
+  const [{ data: mailboxes }, { data: humans }, { data: agents }] = await Promise.all([
+    quietly(client.GET("/organization/mailboxes")),
+    quietly(client.GET("/humans")),
+    quietly(client.GET("/organization/agents")),
+  ]);
+  const actors = new Map<string, string>([
+    ...(humans?.humans ?? []).map((human) => [human.id, human.email] as const),
+    ...(agents?.agents ?? []).map((agent) => [agent.id, agent.name] as const),
+    ...(mailboxes?.owners ?? []).map((owner) => [owner.id, owner.kind === "agent" ? owner.name : owner.email] as const),
+  ]);
+  const copy = strings.setupGalley;
+  const named = (mailbox: { owner: string; defaultAddress?: string }) => {
+    const address = mailbox.defaultAddress ?? copy.noAddress;
+    if (mailbox.owner === me) return copy.yourMailbox(address);
+    return copy.mailboxOf(actors.get(mailbox.owner) ?? strings.galley.anAgent, address);
+  };
+  return new Map([...actors, ...(mailboxes?.mailboxes ?? []).map((mailbox) => [mailbox.id, named(mailbox)] as const)]);
+}
+
+/** The words of a CLI command, joined as typed. */
+type Joined<Words extends readonly string[]> = Words extends readonly [infer First extends string, ...infer Rest extends readonly string[]]
+  ? Rest extends readonly [] ? First : `${First} ${Joined<Rest>}`
+  : never;
+
+/**
+ * The CLI command for each call an agent admin's setup change can be, as a sponsor would type it.
+ * The contract's own commands type each one, so a command renamed there fails to typecheck here.
+ */
+const commands: { [Id in OperationId]?: `duva ${Joined<Extract<Operation, { operationId: Id }>["command"]>}` } = {
+  addAddress: "duva addresses add",
+  removeAddress: "duva addresses remove",
+  createMailbox: "duva mailboxes create",
+  changeMailbox: "duva mailboxes change",
+  createGroup: "duva groups create",
+  changeGroup: "duva groups change",
+  deleteGroup: "duva groups delete",
+  addDomain: "duva domains add",
+  changeDomain: "duva domains change",
+  removeDomain: "duva domains remove",
+  setCatchAll: "duva domains set-catch-all",
+  clearCatchAll: "duva domains clear-catch-all",
+  addHuman: "duva humans add",
+  pauseAgent: "duva agents pause",
+  changeOrganizationSettings: "duva organization change-settings",
+};
+
 /** The approvals waiting for the sponsor, whose ID is `me` and whose email address is `sponsor`. */
 export function Approvals({
   client,
@@ -74,12 +174,20 @@ export function Approvals({
   ownRef.current = own;
   // Each agent's settings, as last read, whose switches say whether its sends carry the line.
   const [settings, setSettings] = useState<Record<string, AgentSettings>>({});
+  // The sends approved that haven't gone out, once read, and what the IDs in setup changes are.
+  const [approved, setApproved] = useState<Approved[]>();
+  const [setupNames, setSetupNames] = useState<SetupNames>(new Map());
+  // Those sent now from this page, which keep saying so after they leave the list.
+  const [sentNow, setSentNow] = useState<Approved[]>([]);
   const entriesRef = useRef(entries);
   entriesRef.current = entries;
   const outcomesRef = useRef(outcomes);
   outcomesRef.current = outcomes;
   const agentsRef = useRef(agents);
   agentsRef.current = agents;
+  // How many times each list was read, so only the latest reading shows.
+  const approvedRead = useRef(0);
+  const namesRead = useRef(0);
 
   const loadOutcome = useCallback(
     async (approval: Approval) => {
@@ -133,10 +241,19 @@ export function Approvals({
         return [...arrived, ...kept].sort((a, b) => b.approval.askedAt.localeCompare(a.approval.askedAt));
       });
       if (ownRef.current === undefined || [...data.approvals, ...data.setupApprovals].some((approval) => !(approval.agent in agentsRef.current))) await loadAgents();
-      await loadSettings([...new Set(data.approvals.map((approval) => approval.agent))]);
+      await Promise.all([
+        loadSettings([...new Set(data.approvals.map((approval) => approval.agent))]),
+        data.setupApprovals.length > 0 && latest(namesRead, readSetupNames(client, me)).then((read) => read !== undefined && setSetupNames(read.value)),
+      ]);
     },
-    [client, loadAgents, loadSettings],
+    [client, me, loadAgents, loadSettings],
   );
+
+  // A list Duva can't give now shows none, and is read again with the next change.
+  const loadApproved = useCallback(async () => {
+    const read = await latest(approvedRead, readApproved(client, me));
+    if (read !== undefined) setApproved(read.value ?? []);
+  }, [client, me]);
 
   // List the approvals, then again when a request or decision shows up in the change feeds, and
   // check the sends of decided ones. A list that couldn't be read is tried again with the next read of the feeds.
@@ -145,8 +262,10 @@ export function Approvals({
     refresh(true).catch((error: unknown) => {
       if (!stopped && error instanceof SignedOut) onSignedOut();
     });
+    void loadApproved();
     const unfollow = follow(async (changes, organization) => {
       const touched = changes.some(({ change }) => approvalChanges.has(change.type)) || organization.some((change) => setupChanges.has(change.type));
+      if (touched || changes.some(({ change }) => pauseChanges.has(change.type))) void loadApproved();
       if (entriesRef.current === undefined || touched) await refresh(entriesRef.current === undefined);
       if (!touched) return;
       for (const entry of entriesRef.current ?? []) {
@@ -156,9 +275,11 @@ export function Approvals({
     });
     return () => {
       stopped = true;
+      approvedRead.current++;
+      namesRead.current++;
       unfollow();
     };
-  }, [follow, refresh, loadOutcome, onSignedOut]);
+  }, [follow, refresh, loadOutcome, loadApproved, onSignedOut]);
 
   // A decided approval shows how its send went, so read its draft once it's decided.
   const outcomesRead = useRef(new Set<string>());
@@ -199,11 +320,19 @@ export function Approvals({
     }
   }, [client, setups]);
 
-  // Sends and setup changes wait side by side, newest first.
-  const items = [...(entries ?? []).map((entry) => ({ askedAt: entry.approval.askedAt, entry })), ...setups.map((setup) => ({ askedAt: setup.setup.askedAt, setup }))].sort((a, b) =>
-    b.askedAt.localeCompare(a.askedAt),
-  );
+  // The sends come first, where an agent speaks, then the setup changes, each newest first.
+  const newest = <T extends { askedAt: string }>(list: T[]) => [...list].sort((a, b) => b.askedAt.localeCompare(a.askedAt));
+  const items = [...newest((entries ?? []).map((entry) => ({ askedAt: entry.approval.askedAt, entry }))), ...newest(setups.map((setup) => ({ askedAt: setup.setup.askedAt, setup })))];
   const waiting = (entries?.filter((entry) => entry.decision === undefined).length ?? 0) + setups.filter((entry) => entry.decision === undefined).length;
+  // A send whose slip lies on the page already says how it stands there.
+  const slipped = new Set(entries?.map((entry) => entry.approval.id));
+  const unslipped = (approved ?? []).filter(({ draft }) => draft.send?.approval === undefined || !slipped.has(draft.send.approval));
+  const forLimit = [...unslipped.filter(({ agent, draft }) => agent?.paused === undefined && !sentNow.some((sent) => sent.draft.id === draft.id)), ...sentNow].sort((a, b) =>
+    a.draft.updatedAt.localeCompare(b.draft.updatedAt),
+  );
+  const pausedAgents = new Map(unslipped.flatMap(({ agent }) => (agent?.paused !== undefined ? [[agent.id, agent] as const] : [])));
+  const held = [...pausedAgents.values()].map((agent) => ({ agent, sends: unslipped.filter((send) => send.agent?.id === agent.id) }));
+  const anyApproved = forLimit.length > 0 || held.length > 0;
   return (
     <main className="desk" aria-busy={entries === undefined}>
       <div className="desk-head">
@@ -211,11 +340,11 @@ export function Approvals({
         {entries !== undefined && waiting > 0 && <p className="count">{strings.approvals.waiting(waiting)}</p>}
         <Connection state={connection} />
       </div>
-      {entries === undefined ? (
+      {entries === undefined || approved === undefined ? (
         <SkeletonGalley />
-      ) : items.length === 0 ? (
+      ) : items.length === 0 && !anyApproved ? (
         <Empty />
-      ) : (
+      ) : items.length === 0 ? null : (
         <ol className="galleys" aria-label={strings.approvals.title}>
           {items.map((item) => {
             if ("setup" in item) {
@@ -225,6 +354,7 @@ export function Approvals({
                   <SetupGalley
                     entry={setup}
                     agent={agents[setup.setup.agent] ?? strings.galley.anAgent}
+                    names={setupNames}
                     client={client}
                     onDecided={setupDecided}
                     onChanged={setupChanged}
@@ -255,8 +385,69 @@ export function Approvals({
           })}
         </ol>
       )}
-      {entries !== undefined && items.length > 0 && waiting === 0 && <p className="all-done">{strings.approvals.noneWaiting}.</p>}
+      {entries !== undefined && approved !== undefined && waiting === 0 && (items.length > 0 || anyApproved) && (
+        <p className={items.length > 0 ? "all-done" : "all-done all-done-first"}>{anyApproved ? strings.approvals.noneToDecide : strings.approvals.noneWaiting}.</p>
+      )}
+      {entries !== undefined && forLimit.length > 0 && (
+        <ApprovedSends title={strings.approvals.limitTitle} lead={strings.approvals.limitLead} sends={forLimit} client={client} onSent={(send) => setSentNow((current) => [...current, send])} onSignedOut={onSignedOut} />
+      )}
+      {entries !== undefined &&
+        held.map(({ agent, sends }) => (
+          <ApprovedSends key={agent.id} title={strings.approvals.heldTitle(agent.name)} lead={strings.approvals.heldLead(agent.name)} sends={sends} pause={agent} client={client} onSignedOut={onSignedOut} />
+        ))}
     </main>
+  );
+}
+
+/**
+ * Sends approved that haven't gone out, on one sheet: each send's subject in the serif and its
+ * recipients. Those waiting for the send limit name their agent and can go now. Those held while
+ * their agent is paused are one agent's, with a link to its line at Pause.
+ */
+function ApprovedSends({
+  title,
+  lead,
+  sends,
+  pause,
+  client,
+  onSent,
+  onSignedOut,
+}: {
+  title: string;
+  lead: string;
+  sends: Approved[];
+  pause?: Agent;
+  client: DuvaClient;
+  onSent?: (send: Approved) => void;
+  onSignedOut: () => void;
+}) {
+  const id = useId();
+  return (
+    <section className="approved" aria-labelledby={`${id}-title`}>
+      <div className="approved-head">
+        <h2 id={`${id}-title`}>{title}</h2>
+        <p className="approved-lead">{lead}</p>
+        {pause !== undefined && (
+          <a className="approved-pause" href={agentHref(pause.id)}>
+            {strings.alerts.openAtPause(pause.name)}
+          </a>
+        )}
+      </div>
+      <ul className="approved-sends">
+        {sends.map(({ mailbox, draft, agent }, index) => (
+          <li key={draft.id} className="approved-send">
+            <div className="approved-send-text">
+              {pause === undefined && <p className="approved-send-agent">{agent?.name ?? strings.galley.anAgent}</p>}
+              <p className="approved-send-subject" id={`${id}-${index}`}>
+                {draft.subject || strings.galley.noSubject}
+              </p>
+              <p className="approved-send-to">{strings.approvals.to(draft.to.map((address) => address.address).join(", "))}</p>
+            </div>
+            {pause === undefined && <SendNow client={client} mailbox={mailbox} draft={draft.id} labelledBy={`${id}-${index}`} onSent={() => onSent?.(sends[index]!)} onSignedOut={onSignedOut} />}
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -676,10 +867,7 @@ function DecidedSlip({ approval, agent, decision, outcome, children }: { approva
       <StateIcon tone={result.tone} />
       <div>
         <h2 className="slip-head">
-          {headline}{" "}
-          <span className="slip-subject">
-            {agent}, {approval.draft.subject || strings.galley.noSubject}
-          </span>
+          {headline} <span className="slip-agent">{agent}</span> <span className="slip-subject">{approval.draft.subject || strings.galley.noSubject}</span>
         </h2>
         <p className="slip-result">{result.text}</p>
         {result.detail !== undefined && <p className="slip-detail">{result.detail}</p>}
@@ -731,6 +919,7 @@ function describe(outcome: Outcome | undefined, approval: Approval, agent: strin
 interface SetupGalleyProps {
   entry: SetupEntry;
   agent: string;
+  names: SetupNames;
   client: DuvaClient;
   onDecided: (setup: SetupApproval, decision: SetupDecision) => void;
   /** Duva worked out a new preview, as when the setup changed since the agent asked. */
@@ -743,7 +932,7 @@ interface SetupGalleyProps {
  * A setup change an agent admin asks for, as a proof: the call it made, beside what Duva works out
  * the change would do, with the decision under them.
  */
-function SetupGalley({ entry, agent, client, onDecided, onChanged, onSeen, onSignedOut }: SetupGalleyProps) {
+function SetupGalley({ entry, agent, names, client, onDecided, onChanged, onSeen, onSignedOut }: SetupGalleyProps) {
   const { setup, decision, fresh } = entry;
   const titleId = useId();
   const problemId = useId();
@@ -807,12 +996,17 @@ function SetupGalley({ entry, agent, client, onDecided, onChanged, onSeen, onSig
     }
     return decide("rejecting", () => client.POST("/setup-approvals/{approval}/reject", { ...path, body: { note: note.trim() } }), () => ({ by: "you", how: "rejected", note: note.trim() }));
   };
-  const fields = [...Object.entries(setup.operation.path ?? {}), ...Object.entries(setup.operation.body ?? {})];
+  // A body's fields come in no set order, so they show by name, after the path's.
+  const byName = (fields: object) => Object.entries(fields).sort(([a], [b]) => a.localeCompare(b));
+  const fields = [...byName(setup.operation.path ?? {}), ...byName(setup.operation.body ?? {})];
 
   return (
     <article className={fresh ? "galley galley-setup galley-fresh" : "galley galley-setup"} aria-labelledby={titleId} ref={ref} style={{ viewTransitionName: setupTransitionName(setup) }}>
       <header className="slug">
-        <h2 id={titleId}>{copy.asks(agent)}</h2>
+        <h2 id={titleId}>
+          {copy.asks(agent)}
+          {setup.preview[0] !== undefined && <> <span className="slug-subject slug-subject-setup">{setup.preview[0]}</span></>}
+        </h2>
         <p className="slug-meta">
           {fresh && <span className="mark-new">{strings.galley.isNew}</span>}
           <Time at={setup.askedAt} format={(time) => strings.galley.askedAt(time)} />
@@ -824,12 +1018,12 @@ function SetupGalley({ entry, agent, client, onDecided, onChanged, onSeen, onSig
             {copy.call}
           </h3>
           <dl className="fields setup-fields">
-            <Field label={copy.operation}>
-              <code>{setup.operation.operationId}</code>
+            <Field label={copy.command}>
+              <code>{commands[setup.operation.operationId as OperationId] ?? setup.operation.operationId}</code>
             </Field>
             {fields.map(([name, value]) => (
               <Field key={name} label={name}>
-                <code>{typeof value === "string" ? value : JSON.stringify(value)}</code>
+                <CallValue value={value} names={names} />
               </Field>
             ))}
           </dl>
@@ -894,6 +1088,31 @@ function SetupGalley({ entry, agent, client, onDecided, onChanged, onSeen, onSig
       </footer>
     </article>
   );
+}
+
+/** A value in the call: an ID by what it is, with the ID under it, a list a line each, or the value as it came. */
+function CallValue({ value, names }: { value: unknown; names: SetupNames }) {
+  if (Array.isArray(value)) {
+    return (
+      <ul className="setup-values">
+        {value.map((each, index) => (
+          <li key={index}>
+            <CallValue value={each} names={names} />
+          </li>
+        ))}
+      </ul>
+    );
+  }
+  const name = typeof value === "string" ? names.get(value) : undefined;
+  if (name !== undefined) {
+    return (
+      <>
+        <span className="setup-name">{name}</span>
+        <code className="setup-id">{value as string}</code>
+      </>
+    );
+  }
+  return <code>{typeof value === "string" ? value : JSON.stringify(value)}</code>;
 }
 
 /** A decided setup change, folded to one slip: what was decided, and what became of it. */
