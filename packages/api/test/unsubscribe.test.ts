@@ -13,7 +13,12 @@ interface Offer {
   /** Header fields written above the others, as a sender can. */
   above?: string[];
   subject?: string;
+  /** The From address, news unless given. */
+  from?: string;
 }
+
+/** The address newsletters come from unless given, in mixed case, as a sender may write it. */
+const news = "News@Lists.example.org";
 
 const covering = "From:To:Subject:Date:Message-ID:List-Unsubscribe:List-Unsubscribe-Post";
 
@@ -26,12 +31,13 @@ const newsletter = (
     signatures = { "lists.example.org": covering },
     above = [],
     subject = "News",
+    from = news,
   }: Offer = {},
 ) =>
   [
     ...above,
     ...Object.entries(signatures).map(([domain, headers]) => `DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=${domain}; s=s1;\r\n\th=${headers};\r\n\tbh=YWJj; b=ZGVm`),
-    "From: Example News <News@Lists.example.org>",
+    `From: Example News <${from}>`,
     "To: grace@example.com",
     `Subject: ${subject}`,
     "Date: Tue, 06 Oct 2026 09:00:00 +0200",
@@ -43,6 +49,13 @@ const newsletter = (
     "",
     "This week's news.",
   ].join("\r\n");
+
+/**
+ * A newsletter's From and Subject for the ith of several senders at lists.example.org, so that one
+ * mailbox can block each in turn: a test of many cases starts one deployment, not one for each,
+ * which under load takes a second or more.
+ */
+const fromSender = (i: number) => ({ from: `news-${i}@lists.example.org`, subject: `News ${i}` });
 
 /**
  * A deployment on example.com where Grace has her personal mailbox at grace@example.com, with the
@@ -60,9 +73,9 @@ async function withMailbox(server: WebServerOptions = {}) {
   const params = { path: { mailbox: mailbox!.id } };
   const requests = await duva.webServer("lists.example.org", server);
   const receive = (raw: string, verdicts: Verdicts = {}) => duva.receive(raw, { to: ["grace@example.com"] }, { verdicts });
-  /** Blocks News@Lists.example.org as Grace, or the client given, and answers how unsubscribing went. */
-  const block = async (client = grace) => {
-    const { data, response } = await client.POST("/mailboxes/{mailbox}/screener/block", { params, body: { address: "News@Lists.example.org" } });
+  /** Blocks the address given (news by default) as the client given (Grace by default), and answers how unsubscribing went. */
+  const block = async ({ client = grace, address = news } = {}) => {
+    const { data, response } = await client.POST("/mailboxes/{mailbox}/screener/block", { params, body: { address } });
     expect(response.status).toBe(200);
     return data!.unsubscribe;
   };
@@ -99,7 +112,7 @@ test("an agent with full sponsor access that blocks a sender unsubscribes under 
   const { receive, block, iris, irisId, changes } = await withMailbox();
   await receive(newsletter("https://lists.example.org/unsubscribe"));
 
-  expect(await block(iris)).toEqual({ outcome: "unsubscribed" });
+  expect(await block({ client: iris })).toEqual({ outcome: "unsubscribed" });
 
   expect((await changes()).at(-1)).toEqual(expect.objectContaining({ type: "unsubscribeAttempted", outcome: "unsubscribed", actor: irisId }));
 });
@@ -140,7 +153,8 @@ test("when the sender's newest mail offers no one-click, nothing is sent, even i
 });
 
 test("one-click needs an https List-Unsubscribe and List-Unsubscribe-Post as RFC 8058 has it, each once: mailto and http aren't enough", async () => {
-  for (const offer of [
+  const { receive, block, requests } = await withMailbox();
+  for (const [i, offer] of [
     { unsubscribe: "<mailto:leave@lists.example.org>" },
     { unsubscribe: "<http://lists.example.org/unsubscribe>" },
     { unsubscribe: "https://lists.example.org/unsubscribe" },
@@ -148,17 +162,18 @@ test("one-click needs an https List-Unsubscribe and List-Unsubscribe-Post as RFC
     { post: "" },
     { post: "List-Unsubscribe=Yes" },
     { above: ["List-Unsubscribe: <https://lists.example.org/other>"] },
-  ]) {
-    const { receive, block, requests } = await withMailbox();
-    await receive(newsletter("https://lists.example.org/unsubscribe", offer));
+  ].entries()) {
+    const sender = fromSender(i);
+    await receive(newsletter("https://lists.example.org/unsubscribe", { ...offer, ...sender }));
 
-    expect({ offer, unsubscribe: await block() }).toEqual({ offer, unsubscribe: { outcome: "notOffered", reason: "noOneClick" } });
+    expect({ offer, unsubscribe: await block({ address: sender.from }) }).toEqual({ offer, unsubscribe: { outcome: "notOffered", reason: "noOneClick" } });
     expect(requests).toEqual([]);
   }
 });
 
 test("one-click needs a DKIM signature that covers both headers and that SES found passing", async () => {
-  for (const [offer, verdicts] of [
+  const { receive, block, requests } = await withMailbox();
+  for (const [i, [offer, verdicts]] of ([
     [{ signatures: {} }, {}],
     [{ signatures: { "lists.example.org": "From:To:Subject:List-Unsubscribe" } }, {}],
     [{ signatures: { "lists.example.org": "From:To:Subject:List-Unsubscribe-Post" } }, {}],
@@ -166,11 +181,11 @@ test("one-click needs a DKIM signature that covers both headers and that SES fou
     [{ signatures: { "lists.example.org": covering, "example.net": covering } }, { dkim: { "lists.example.org": "FAIL", "example.net": "GRAY" } }],
     // A sender can write its own Authentication-Results, but SES's comes first.
     [{ above: ["Authentication-Results: amazonses.com; dkim=pass header.i=@lists.example.org"] }, { dkim: { "lists.example.org": "FAIL" } }],
-  ] as [Offer, Verdicts][]) {
-    const { receive, block, requests } = await withMailbox();
-    await receive(newsletter("https://lists.example.org/unsubscribe", offer), verdicts);
+  ] as [Offer, Verdicts][]).entries()) {
+    const sender = fromSender(i);
+    await receive(newsletter("https://lists.example.org/unsubscribe", { ...offer, ...sender }), verdicts);
 
-    expect({ offer, verdicts, unsubscribe: await block() }).toEqual({ offer, verdicts, unsubscribe: { outcome: "notOffered", reason: "notSigned" } });
+    expect({ offer, verdicts, unsubscribe: await block({ address: sender.from }) }).toEqual({ offer, verdicts, unsubscribe: { outcome: "notOffered", reason: "notSigned" } });
     expect(requests).toEqual([]);
   }
 });
@@ -213,21 +228,24 @@ test("blocking a sender the mailbox has no mail from unsubscribes from nothing",
 });
 
 test("the POST goes only to http or https on port 80 or 443", async () => {
-  for (const url of ["https://lists.example.org:8443/unsubscribe", "https://lists.example.org:22/unsubscribe"]) {
-    const { receive, block, requests } = await withMailbox();
-    await receive(newsletter(url));
+  const { receive, block, requests } = await withMailbox();
+  for (const [i, url] of ["https://lists.example.org:8443/unsubscribe", "https://lists.example.org:22/unsubscribe"].entries()) {
+    const sender = fromSender(i);
+    await receive(newsletter(url, sender));
 
-    expect({ url, unsubscribe: await block() }).toEqual({ url, unsubscribe: { outcome: "failed", reason: "notAllowed" } });
+    expect({ url, unsubscribe: await block({ address: sender.from }) }).toEqual({ url, unsubscribe: { outcome: "failed", reason: "notAllowed" } });
     expect(requests).toEqual([]);
   }
 });
 
 test("the POST goes only to a public address: never a private, shared, loopback or link-local one", async () => {
-  for (const address of ["10.0.0.7", "172.16.4.1", "192.168.1.1", "100.64.0.1", "127.0.0.1", "169.254.169.254", "0.0.0.0", "::1", "fd00::7", "fe80::1", "::ffff:10.0.0.7", "::127.0.0.1", "64:ff9b::a00:7"]) {
-    const { receive, block, requests } = await withMailbox({ addresses: [address] });
-    await receive(newsletter("https://lists.example.org/unsubscribe"));
+  const { duva, receive, block } = await withMailbox();
+  for (const [i, address] of ["10.0.0.7", "172.16.4.1", "192.168.1.1", "100.64.0.1", "127.0.0.1", "169.254.169.254", "0.0.0.0", "::1", "fd00::7", "fe80::1", "::ffff:10.0.0.7", "::127.0.0.1", "64:ff9b::a00:7"].entries()) {
+    const requests = await duva.webServer("lists.example.org", { addresses: [address] });
+    const sender = fromSender(i);
+    await receive(newsletter("https://lists.example.org/unsubscribe", sender));
 
-    expect({ address, unsubscribe: await block() }).toEqual({ address, unsubscribe: { outcome: "failed", reason: "notPublic" } });
+    expect({ address, unsubscribe: await block({ address: sender.from }) }).toEqual({ address, unsubscribe: { outcome: "failed", reason: "notPublic" } });
     expect(requests).toEqual([]);
   }
 });
@@ -241,11 +259,12 @@ test("a host name that resolves to a public and a private address is refused", a
 });
 
 test("a URL that names an address that isn't public is refused", async () => {
-  for (const url of ["https://127.0.0.1/unsubscribe", "https://169.254.169.254/latest/meta-data/", "https://[::1]/unsubscribe", "https://10.0.0.7/unsubscribe"]) {
-    const { receive, block } = await withMailbox();
-    await receive(newsletter(url));
+  const { receive, block } = await withMailbox();
+  for (const [i, url] of ["https://127.0.0.1/unsubscribe", "https://169.254.169.254/latest/meta-data/", "https://[::1]/unsubscribe", "https://10.0.0.7/unsubscribe"].entries()) {
+    const sender = fromSender(i);
+    await receive(newsletter(url, sender));
 
-    expect({ url, unsubscribe: await block() }).toEqual({ url, unsubscribe: { outcome: "failed", reason: "notPublic" } });
+    expect({ url, unsubscribe: await block({ address: sender.from }) }).toEqual({ url, unsubscribe: { outcome: "failed", reason: "notPublic" } });
   }
 });
 
@@ -283,12 +302,14 @@ test("a 307 or 308 repeats the POST at the new URL, without the cookies the firs
 });
 
 test("another redirect isn't followed, and doesn't unsubscribe, since it may lead to a page that asks to confirm", async () => {
-  for (const status of [301, 302, 303]) {
-    const { duva, receive, block } = await withMailbox({ answer: () => new Response(null, { status, headers: { location: "https://esp.example.net/confirm" } }) });
+  const { duva, receive, block } = await withMailbox();
+  for (const [i, status] of [301, 302, 303].entries()) {
+    await duva.webServer("lists.example.org", { answer: () => new Response(null, { status, headers: { location: "https://esp.example.net/confirm" } }) });
     const esp = await duva.webServer("esp.example.net");
-    await receive(newsletter("https://lists.example.org/unsubscribe"));
+    const sender = fromSender(i);
+    await receive(newsletter("https://lists.example.org/unsubscribe", sender));
 
-    expect(await block()).toEqual({ outcome: "failed", reason: "refused", status });
+    expect(await block({ address: sender.from })).toEqual({ outcome: "failed", reason: "refused", status });
     expect(esp).toEqual([]);
   }
 });
@@ -347,7 +368,7 @@ test("blocking a domain unsubscribes from the newest mail from an address on exa
   const { duva, receive, grace, params, requests, changes, graceId } = await withMailbox();
   const sub = await duva.webServer("mail.lists.example.org");
   await duva.receive(newsletter("https://lists.example.org/older", { subject: "Older" }), { to: ["grace@example.com"] }, { at: new Date("2026-10-01T09:00:00Z") });
-  await receive(newsletter("https://mail.lists.example.org/newer", { subject: "Newer" }).replace("News@Lists.example.org", "news@mail.lists.example.org"));
+  await receive(newsletter("https://mail.lists.example.org/newer", { subject: "Newer", from: "news@mail.lists.example.org" }));
 
   const { data } = await grace.POST("/mailboxes/{mailbox}/screener/block", { params, body: { domain: "lists.example.org" } });
 
