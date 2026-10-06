@@ -1,6 +1,7 @@
 // Settings, each group on a sheet of its own: the organization's, which admins choose for everyone,
-// then for admins its domains and its mailboxes' addresses, then the human's own preferences, which
-// only they choose, then the Screener of their mailbox and their agents', then a sponsor's agents'.
+// then for admins its domains, its mailboxes' addresses, its people and its groups, then the human's
+// own preferences, which only they choose, then the Screener of their mailbox and their agents',
+// then a sponsor's agents'.
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
@@ -9,7 +10,9 @@ import { AgentSettingsSheet } from "./agent-settings.tsx";
 import { Choice } from "./setting-parts.tsx";
 import { datesFor, type Preferences } from "./dates.ts";
 import { DomainsSheet } from "./domains.tsx";
+import { GroupsSheet } from "./groups.tsx";
 import type { AgentMailbox } from "./mailboxes.tsx";
+import { PeopleSheet } from "./people.tsx";
 import { strings } from "./strings.ts";
 
 type OrganizationSettings = components["schemas"]["OrganizationSettings"];
@@ -121,7 +124,7 @@ export function Settings({
   useEffect(() => {
     document.title = strings.title(strings.settings.title);
   }, []);
-  // A change on the Domains or the Addresses sheet can change what the other shows, so both read again after each.
+  // A change on one of the admins' sheets can change what the others show, so all read again after each.
   const [setupChanges, setSetupChanges] = useState(0);
   const setupChanged = useCallback(() => setSetupChanges((count) => count + 1), []);
 
@@ -135,6 +138,8 @@ export function Settings({
       <OrganizationSheet client={client} admin={admin} onSignedOut={onSignedOut} />
       {admin && <DomainsSheet client={client} changes={setupChanges} onChange={setupChanged} onSignedOut={onSignedOut} />}
       {admin && <AddressesSheet client={client} changes={setupChanges} onChange={setupChanged} onSignedOut={onSignedOut} />}
+      {admin && <PeopleSheet client={client} me={email} changes={setupChanges} onChange={setupChanged} onSignedOut={onSignedOut} />}
+      {admin && <GroupsSheet client={client} changes={setupChanges} onChange={setupChanged} onSignedOut={onSignedOut} />}
       <YouSheet client={client} onPreferences={onPreferences} onSignedOut={onSignedOut} />
       {screened.length > 0 && <ScreenerSheet key={screened.map(({ mailbox }) => mailbox.id).join()} client={client} mailboxes={screened} onSignedOut={onSignedOut} />}
       <AgentSettingsSheet client={client} email={email} onSignedOut={onSignedOut} />

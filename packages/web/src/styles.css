@@ -1310,6 +1310,34 @@ a.thread:focus-visible {
   overflow-wrap: anywhere;
 }
 
+/* From, when there is a choice: the mailbox's addresses, then its owner's groups, at most a field's width. */
+.compose-from-choice {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.compose-field:has(.compose-from-choice) {
+  align-items: start;
+}
+
+.compose-field:has(.compose-from-choice) label {
+  padding-top: var(--space-2);
+}
+
+.compose-from-choice select {
+  max-width: 28rem;
+}
+
+.compose-from-choice .hint {
+  margin: 0;
+}
+
+.compose-from-choice select:disabled {
+  background: var(--paper-source);
+  opacity: 1;
+}
+
 .compose-copies {
   margin-top: 0;
 }
@@ -1612,6 +1640,24 @@ input[aria-invalid="true"] {
   border-radius: 4px;
   font: 600 var(--text-xs) / 1.4 var(--sans);
   color: var(--ink-2);
+}
+
+/* Mail that came through a group carries the group's address, as a label does, with the group's two people before it. */
+.group-mark {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0 var(--space-2) 0 var(--space-1);
+  border: 1px solid var(--rule-strong);
+  border-radius: 4px;
+  font: 600 var(--text-xs) / 1.4 var(--sans);
+  color: var(--ink-2);
+}
+
+.group-mark .icon {
+  width: 0.875rem;
+  height: 0.875rem;
 }
 
 .reading-labels {
@@ -2264,6 +2310,11 @@ input[aria-invalid="true"] {
   border-top: 1px solid var(--rule);
 }
 
+/* A field's hint, after its label, sits close under it. */
+.setting-add > .hint {
+  margin-top: calc(-1 * var(--space-3));
+}
+
 .setting-field {
   display: grid;
   gap: var(--space-1);
@@ -2353,6 +2404,109 @@ input[aria-invalid="true"] {
   margin: 0;
 }
 
+/*
+ * The People and Groups sheets. A person's mailboxes and agents, and a group's members, are rows
+ * divided by hairlines as a mailbox's addresses are: the name at 600, what it is in Second Ink, and a
+ * quiet Remove. What a change did is said in the row, or in place of the row or line it removed.
+ */
+.person-list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.person-row {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+}
+
+.person-row + .person-row {
+  border-top: 1px solid var(--rule);
+}
+
+.person-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+  min-height: 2rem;
+}
+
+.person-name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.person-row .hint,
+.person-gone p,
+.person-said {
+  margin: 0;
+}
+
+/* What a row is takes the room left, so Remove sits at the row's end. */
+.person-hint {
+  flex: 1 1 10rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.person-line .button {
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.person-said,
+.person-gone,
+.setting-gone {
+  font-size: var(--text-sm);
+}
+
+.person-gone {
+  color: var(--ink-2);
+}
+
+/* A line removed from a sheet leaves what was done in its place, flat, as the line's summary sits. */
+.setting-gone {
+  margin: 0;
+  padding: var(--space-4) var(--space-5);
+  color: var(--ink-2);
+}
+
+.person-remove {
+  display: grid;
+  gap: var(--space-3);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--rule);
+}
+
+.person-remove.confirm {
+  display: grid;
+  justify-items: stretch;
+}
+
+.person-remove.confirm > p,
+.person-remove .setting-field {
+  max-width: 60ch;
+}
+
+.person-remove .confirm-choices {
+  justify-content: flex-start;
+}
+
+.mailbox-fate legend {
+  padding: 0;
+  margin-bottom: var(--space-2);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.group-policies {
+  display: grid;
+  gap: var(--space-5);
+}
+
 @media (max-width: 48rem) {
   .dns-fields {
     grid-template-columns: minmax(0, 1fr);
@@ -2364,12 +2518,23 @@ input[aria-invalid="true"] {
   }
 
   .copy-button,
-  .mailbox-address-line .button {
+  .mailbox-address-line .button,
+  .person-line .button {
     min-height: 2.75rem;
   }
 
   .address-add-row .button {
     flex: 1 0 100%;
+  }
+
+  /* An address or a name takes its own line, so the buttons after it stay together under it. */
+  .mailbox-address-name,
+  .person-name {
+    flex-basis: 100%;
+  }
+
+  .mailbox-address-line .button {
+    white-space: nowrap;
   }
 }
 
@@ -2578,7 +2743,8 @@ mark {
     white-space: nowrap;
   }
 
-  .thread-text .label-name {
+  .thread-text .label-name,
+  .thread-text .group-mark {
     justify-self: start;
   }
 

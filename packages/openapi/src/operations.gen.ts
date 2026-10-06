@@ -64,6 +64,20 @@ export const operations = [
     "options": []
   },
   {
+    "operationId": "listOrganizationAgents",
+    "method": "get",
+    "path": "/organization/agents",
+    "routeKey": "GET /organization/agents",
+    "summary": "List every agent in the organization, with its sponsor.",
+    "description": "For seeing who sponsors which agent, and removing agents. Only admins can list the organization's agents. A human lists the agents they sponsor with agents list.",
+    "signIn": true,
+    "command": [
+      "organization",
+      "agents"
+    ],
+    "options": []
+  },
+  {
     "operationId": "getOrganizationSettings",
     "method": "get",
     "path": "/organization/settings",

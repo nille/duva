@@ -73,6 +73,12 @@ List every mailbox in the organization, with its addresses and the actor that ow
 
 For giving mailboxes addresses and choosing their default address. It lists what reaches each mailbox and who owns it, and reads none of their mail, which admins can't read. Only admins can list the organization's mailboxes.
 
+## duva organization agents
+
+List every agent in the organization, with its sponsor.
+
+For seeing who sponsors which agent, and removing agents. Only admins can list the organization's agents. A human lists the agents they sponsor with agents list.
+
 ## duva organization settings
 
 Read the organization's settings.

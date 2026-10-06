@@ -78,6 +78,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/organization/agents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List every agent in the organization, with its sponsor.
+         * @description For seeing who sponsors which agent, and removing agents. Only admins can list the organization's agents. A human lists the agents they sponsor with agents list.
+         */
+        get: operations["listOrganizationAgents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/organization/settings": {
         parameters: {
             query?: never;
@@ -2506,6 +2526,13 @@ export interface components {
             latestAt: string;
             /** @description How many messages the thread has. */
             messages: number;
+            /**
+             * @description The addresses of the groups the thread's mail came through as members' copies, in the order it first came through each. Absent when none did, and for threads whose group mail arrived before Duva kept this.
+             * @example [
+             *       "support@example.com"
+             *     ]
+             */
+            groups?: string[];
         };
         Thread: {
             /** @description The thread's ID. */
@@ -3272,6 +3299,28 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OrganizationMailboxList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    listOrganizationAgents: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The organization's agents. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentList"];
                 };
             };
             401: components["responses"]["Unauthorized"];

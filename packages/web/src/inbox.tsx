@@ -533,6 +533,7 @@ export function ThreadLine({ thread, labels, href, snippet }: { thread: ThreadSu
     sender,
     subject,
     thread.messages > 1 && strings.inbox.messages(thread.messages),
+    thread.groups !== undefined && strings.inbox.toGroups(thread.groups),
     labels.length > 0 && strings.inbox.labelled(labels),
     day(new Date(thread.latestAt)),
   ]
@@ -548,6 +549,12 @@ export function ThreadLine({ thread, labels, href, snippet }: { thread: ThreadSu
       <span className="thread-text">
         <span className="thread-line-head">
           <span className="thread-subject">{subject}</span>
+          {thread.groups?.map((group) => (
+            <span key={group} className="group-mark" aria-hidden="true">
+              <GroupIcon />
+              {group}
+            </span>
+          ))}
           {labels.map((name) => (
             <span key={name} className="label-name" aria-hidden="true">
               {name}
@@ -566,6 +573,20 @@ export function ThreadLine({ thread, labels, href, snippet }: { thread: ThreadSu
     </a>
   );
 }
+
+/** Two people, for mail that came through a group. */
+const GroupIcon = () => (
+  <svg className="icon" viewBox="0 0 16 16" aria-hidden="true">
+    <path
+      d="M6 7.5a2.25 2.25 0 1 0 0-4.5 2.25 2.25 0 0 0 0 4.5ZM2 13c0-2.2 1.8-3.75 4-3.75S10 10.8 10 13M10.5 3.2a2.25 2.25 0 0 1 0 4.1M11.5 9.4c1.5.4 2.5 1.8 2.5 3.6"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
 
 export function SkeletonIndex() {
   return (

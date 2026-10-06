@@ -369,3 +369,24 @@ test("changing a missing group is not found", async () => {
 
   expect([changed.response.status, deleted.response.status]).toEqual([404, 404]);
 });
+
+test("a thread of group mail is listed with the groups its mail came through", async () => {
+  const { duva, ada, grace, graces } = await withMembers();
+  await ada.POST("/groups", { body: { address: "team@example.com", members: ["grace@example.com"] } });
+  await ada.POST("/groups", { body: { address: "support@example.com", members: ["grace@example.com"] } });
+
+  await duva.receive(message("linus@example.net", "team@example.com", "To the team"), { to: ["team@example.com"] });
+  await duva.receive(
+    "From: linus@example.net\r\nTo: support@example.com\r\nSubject: Re: To the team\r\nMessage-ID: <again@mail.test>\r\nIn-Reply-To: <To-the-team@mail.test>\r\n\r\nHej.\r\n",
+    { to: ["support@example.com"] },
+  );
+  await duva.receive(message("linus@example.net", "grace@example.com", "To Grace"), { to: ["grace@example.com"] });
+  await grace.POST("/mailboxes/{mailbox}/screener/let-in", { params: graces, body: { address: "linus@example.net" } });
+
+  const { data } = await grace.GET("/mailboxes/{mailbox}/threads", { params: { ...graces, query: { label: "inbox" } } });
+
+  expect(data?.threads.map(({ subject, groups }) => ({ subject, groups }))).toEqual([
+    { subject: "To Grace", groups: undefined },
+    { subject: "To the team", groups: ["team@example.com", "support@example.com"] },
+  ]);
+});

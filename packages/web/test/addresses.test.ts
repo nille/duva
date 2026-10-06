@@ -97,7 +97,40 @@ test("a mailbox whose last address is removed says it has none", budget, async (
   await confirm.getByRole("button", { name: "Remove", exact: true }).click();
 
   await expect.poll(() => summary(page, "grace@example.org"), wait).toBe("No address. It gets and sends no mail until it has one.");
-  expect(await line(page, "grace@example.org").getByRole("list").count()).toBe(0);
+  expect(await addresses(page, "grace@example.org")).toEqual(["Removed grace@example.com."]);
+});
+
+test("what a change did is said in the row of its address, or where the row was", budget, async () => {
+  const { page, ada, graces } = await withMailboxes();
+  await ada.POST("/addresses", { body: { address: "support@example.com", mailbox: graces.id } });
+  await page.reload();
+  await line(page, "grace@example.org").getByRole("heading").click();
+
+  await line(page, "grace@example.org").getByRole("button", { name: "Make support@example.com the default" }).click();
+
+  await expect.poll(() => addresses(page, "grace@example.org"), wait).toEqual([
+    expect.stringMatching(/^grace@example\.com\s+Make default\s+Remove$/),
+    expect.stringMatching(/^support@example\.com\s+Default\s+Remove\s+New mail goes from support@example\.com from now on\.$/),
+  ]);
+
+  await line(page, "grace@example.org").getByRole("button", { name: "Remove grace@example.com" }).click();
+  await line(page, "grace@example.org").getByRole("group", { name: "Remove grace@example.com" }).getByRole("button", { name: "Remove", exact: true }).click();
+
+  await expect.poll(() => addresses(page, "grace@example.org"), wait).toEqual(["Removed grace@example.com.", expect.stringMatching(/^support@example\.com\s+Default\s+Remove$/)]);
+});
+
+test("an owner's two mailboxes say which of theirs each is", budget, async () => {
+  const { page, ada } = await withMailboxes();
+  const grace = (await ada.GET("/humans")).data!.humans.find(({ email }) => email === "grace@example.org")!;
+  await ada.POST("/mailboxes", { body: { owner: grace.id, address: "grace.second@example.com" } });
+  await ada.DELETE("/addresses/{address}", { params: { path: { address: "grace.second@example.com" } } });
+  await page.reload();
+
+  await expect.poll(() => sheet(page).locator(".line-summary-text").allTextContents(), wait).toEqual([
+    "Mailbox 1 of 2. grace@example.com",
+    "Mailbox 2 of 2. No address. It gets and sends no mail until it has one.",
+    "Agent. hermes@example.com",
+  ]);
 });
 
 test("on a phone, a mailbox's addresses fit the screen", budget, async () => {

@@ -49,8 +49,15 @@ export function ownerName(mailbox: Mailbox, listed: Mailboxes): string {
   return owner === undefined ? (mailbox.defaultAddress ?? mailbox.id) : owner.kind === "human" ? owner.email : owner.name;
 }
 
-/** The mailboxes humans' first, by address, then agents', by name. */
+/** Addresses compared as their characters are, so the order doesn't depend on the browser's language. */
+export const byText = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+
+/** One owner's mailboxes in the order every sheet numbers them: by default address, those without one last. */
+export const ownersOrder = (a: Mailbox, b: Mailbox) =>
+  (a.defaultAddress === undefined ? 1 : 0) - (b.defaultAddress === undefined ? 1 : 0) || byText(a.defaultAddress ?? a.id, b.defaultAddress ?? b.id);
+
+/** The mailboxes humans' first, by address, then agents', by name, and each owner's in their order. */
 export function byOwner(listed: Mailboxes): Mailbox[] {
   const rank = (mailbox: Mailbox) => (isAgents(mailbox, listed) ? 1 : 0);
-  return [...listed.mailboxes].sort((a, b) => rank(a) - rank(b) || ownerName(a, listed).localeCompare(ownerName(b, listed)) || a.id.localeCompare(b.id));
+  return [...listed.mailboxes].sort((a, b) => rank(a) - rank(b) || ownerName(a, listed).localeCompare(ownerName(b, listed)) || ownersOrder(a, b));
 }

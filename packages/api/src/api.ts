@@ -2,7 +2,7 @@ import type { APIGatewayProxyEventV2, APIGatewayProxyStructuredResultV2 } from "
 import { type Operation, operations, type OperationId } from "@duva/openapi";
 import { addAddress, changeMailbox, listAddresses, removeAddress } from "./addresses.ts";
 import { getAttachment } from "./attachments.ts";
-import { changeAgent, changeAgentSettings, createAgent, getAgentSettings, listAgents, pauseAgent, pausedRefusal, removeAgent, rotateAgentKey, unpauseAgent } from "./agents.ts";
+import { changeAgent, changeAgentSettings, createAgent, getAgentSettings, listAgents, listOrganizationAgents, pauseAgent, pausedRefusal, removeAgent, rotateAgentKey, unpauseAgent } from "./agents.ts";
 import type { AuthorizerContext } from "./authorizer.ts";
 import { addDomain, changeDomain, clearCatchAll, getDomain, listDomains, removeDomain, setCatchAll } from "./domains.ts";
 import { listOrganizationChanges } from "./changes.ts";
@@ -64,6 +64,7 @@ export const handlers: Record<OperationId, OperationHandler> = {
   createAgent,
   listAgents,
   changeAgent,
+  listOrganizationAgents,
   removeAgent,
   rotateAgentKey,
   pauseAgent,

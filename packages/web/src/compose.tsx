@@ -15,8 +15,8 @@ type NewDraft = components["schemas"]["NewDraft"];
 /** How long the composer waits after the last keystroke before it saves. */
 const saveDelay = 800;
 
-/** The fields the human types in, as they typed them. */
-type Fields = { to: string; cc: string; bcc: string; subject: string; text: string };
+/** The fields the human types in, as they typed them, and the address they chose to send from. */
+type Fields = { from: string; to: string; cc: string; bcc: string; subject: string; text: string };
 type ListField = "to" | "cc" | "bcc";
 const listFields: ListField[] = ["to", "cc", "bcc"];
 
@@ -39,6 +39,7 @@ const addressesIn = (field: string) => field.split(/[\s,;]+/).filter(Boolean);
 const isEmailAddress = (text: string) => /^[^\s@<>",;]+@[^\s@<>",;]+\.[^\s@<>",;]+$/.test(text);
 
 const fieldsOf = (draft: Draft): Fields => ({
+  from: draft.from,
   to: draft.to.map(({ address }) => address).join(", "),
   cc: draft.cc.map(({ address }) => address).join(", "),
   bcc: draft.bcc.map(({ address }) => address).join(", "),
@@ -65,7 +66,8 @@ export function Composer({
   onSignedOut,
 }: {
   client: DuvaClient;
-  mailbox: Mailbox;
+  /** The mailbox, with the groups its owner can send as, when the list of mailboxes gave them. */
+  mailbox: Mailbox & { groups?: string[] };
   id?: string;
   agentNames: ReadonlyMap<string, string>;
   version: number;
@@ -74,7 +76,7 @@ export function Composer({
   const { clock } = useDates();
   const [loading, setLoading] = useState<Loading>(given === undefined ? { status: "ready" } : { status: "loading" });
   const [draft, setDraft] = useState<Draft>();
-  const [fields, setFields] = useState<Fields>({ to: "", cc: "", bcc: "", subject: "", text: "" });
+  const [fields, setFields] = useState<Fields>({ from: mailbox.defaultAddress ?? "", to: "", cc: "", bcc: "", subject: "", text: "" });
   const [copies, setCopies] = useState(false);
   const [saving, setSaving] = useState<Saving>({ status: "idle" });
   const [problem, setProblem] = useState<Problem>();
@@ -134,6 +136,7 @@ export function Composer({
       const changed: components["schemas"]["DraftChanges"] = {};
       const differs = (field: keyof Fields) => now[field] !== stored.current[field] && !wrong.some((each) => each.field === field);
       for (const field of listFields) if (differs(field)) changed[field] = addressesIn(now[field]);
+      if (differs("from")) changed.from = now.from;
       if (differs("subject")) changed.subject = now.subject;
       if (differs("text")) changed.text = now.text;
       if (Object.keys(changed).length === 0) return wrong.length === 0;
@@ -170,6 +173,18 @@ export function Composer({
     clearTimeout(timer.current);
     timer.current = setTimeout(() => void save(), saveDelay);
   };
+
+  /** Chooses the address to send from, saved at once, since nothing more is typed in it. */
+  const chooseFrom = (from: string) => {
+    const next = { ...fieldsRef.current, from };
+    fieldsRef.current = next;
+    setFields(next);
+    void save();
+  };
+  // The draft can go from any of the mailbox's addresses or its owner's groups, and from the address a reply or forward started from.
+  const groups = mailbox.groups ?? [];
+  const fromChoices = [...new Set([...mailbox.addresses, ...(draft === undefined || groups.includes(draft.from) ? [] : [draft.from])])];
+  const asGroup = groups.includes(fields.from);
 
   const state = draft?.send?.state;
   // The agent that saved the draft last, if one did. Once the human saves it, it's theirs.
@@ -291,10 +306,45 @@ export function Composer({
         }}
       >
         <div className="compose-fields">
-          <div className="compose-field">
-            <span className="compose-label">{strings.compose.from}</span>
-            <span className="compose-from">{draft?.from ?? mailbox.defaultAddress}</span>
-          </div>
+          {groups.length === 0 && fromChoices.length <= 1 ? (
+            <div className="compose-field">
+              <span className="compose-label">{strings.compose.from}</span>
+              <span className="compose-from">{draft?.from ?? mailbox.defaultAddress}</span>
+            </div>
+          ) : (
+            <div className="compose-field">
+              <label htmlFor={`${formId}-from`}>{strings.compose.from}</label>
+              <div className="compose-from-choice">
+                <select
+                  id={`${formId}-from`}
+                  value={fields.from}
+                  disabled={locked}
+                  aria-describedby={asGroup ? `${formId}-from-hint` : undefined}
+                  onChange={(event) => chooseFrom(event.target.value)}
+                >
+                  {fromChoices.map((address) => (
+                    <option key={address} value={address}>
+                      {address}
+                    </option>
+                  ))}
+                  {groups.length > 0 && (
+                    <optgroup label={strings.compose.asGroup}>
+                      {groups.map((group) => (
+                        <option key={group} value={group}>
+                          {group}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                </select>
+                {asGroup && (
+                  <p className="hint" id={`${formId}-from-hint`}>
+                    {strings.compose.asGroupHint}
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
           {field("to", strings.compose.to, hintId)}
           {copies ? (
             <>

@@ -93,6 +93,26 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
+  /organization/agents:
+    get:
+      operationId: listOrganizationAgents
+      summary: List every agent in the organization, with its sponsor.
+      description: >
+        For seeing who sponsors which agent, and removing agents. Only admins
+        can list the organization's agents. A human lists the agents they
+        sponsor with agents list.
+      x-cli-command: organization agents
+      responses:
+        "200":
+          description: The organization's agents.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
   /organization/settings:
     get:
       operationId: getOrganizationSettings
@@ -4496,6 +4516,15 @@ components:
         messages:
           type: integer
           description: How many messages the thread has.
+        groups:
+          type: array
+          items:
+            type: string
+          description: >-
+            The addresses of the groups the thread's mail came through as members' copies, in the
+            order it first came through each. Absent when none did, and for threads whose group mail
+            arrived before Duva kept this.
+          examples: [["support@example.com"]]
     Thread:
       type: object
       additionalProperties: false

@@ -49,7 +49,8 @@ export function ThreadView({
   onSignedOut,
 }: {
   client: DuvaClient;
-  mailbox: Mailbox;
+  /** The mailbox, with the groups its owner can send as, when the list of mailboxes gave them. */
+  mailbox: Mailbox & { groups?: string[] };
   id: string;
   matched?: string;
   me: string;
@@ -237,6 +238,7 @@ export function ThreadView({
                   me={me}
                   agentNames={agentNames}
                   owner={agent === undefined ? undefined : { id: mailbox.owner, name: agent }}
+                  groups={mailbox.groups ?? []}
                   fresh={reading.fresh.has(message.id)}
                   starting={typeof replying === "object" && replying.message === message.id ? replying.start : undefined}
                   busy={typeof replying === "object"}
@@ -285,6 +287,7 @@ function Letter({
   me,
   agentNames,
   owner,
+  groups,
   fresh,
   starting,
   busy,
@@ -300,6 +303,8 @@ function Letter({
   agentNames: ReadonlyMap<string, string>;
   /** In an agent's mailbox, the agent, by the name the mailbox list gave it, for when its name isn't among `agentNames`. */
   owner?: { id: string; name: string };
+  /** The groups the mailbox's owner can send as, so a message sent as one says so. */
+  groups: string[];
   fresh: boolean;
   starting?: Start;
   busy: boolean;
@@ -313,8 +318,19 @@ function Letter({
   const [switched, setSwitched] = useState<MailView>();
   const view = message.html === undefined ? "text" : (switched ?? mailView);
   const agent = message.sentBy === undefined ? undefined : (agentNames.get(message.sentBy) ?? (message.sentBy === owner?.id ? owner.name : undefined));
+  // A message sent from the mailbox as a group says which (ADR-0019).
+  const from = message.from.address.toLowerCase();
+  const as = message.sentBy !== undefined && groups.includes(from) ? from : undefined;
   const sent =
-    message.sentBy === undefined ? undefined : message.sentBy === me ? strings.thread.sentByYou : agent === undefined ? strings.thread.sentFromMailbox : strings.thread.sentBy(agent);
+    message.sentAs !== undefined
+      ? strings.thread.sentBy(message.sentAs.name, message.sentAs.group)
+      : message.sentBy === undefined
+        ? undefined
+        : message.sentBy === me
+          ? strings.thread.sentByYou(as)
+          : agent === undefined
+            ? strings.thread.sentFromMailbox
+            : strings.thread.sentBy(agent, as);
   return (
     <article
       ref={ref}
@@ -352,6 +368,7 @@ function Letter({
         </Field>
       </dl>
       {message.approval !== undefined && <p className="letter-note">{approvalNote(message.approval, me)}</p>}
+      {message.group !== undefined && <p className="letter-note">{strings.thread.toGroup(message.group)}</p>}
       {message.plusTag !== undefined && <p className="letter-note">{strings.thread.plusTag(message.recipient, message.plusTag)}</p>}
       {view === "html" ? <DesignedBody html={message.html!} title={strings.thread.designed(nameOf(message.from))} /> : <Body text={message.text} />}
       {message.html !== undefined && (

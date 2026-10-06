@@ -13,6 +13,7 @@ import {
   type Agent,
   type AgentSettings,
   agentSettings,
+  allHumans,
   changeAgentAdmin,
   changeAgentSettings as changeStoredSettings,
   defaultAgentSettings,
@@ -42,6 +43,13 @@ export const listAgents: OperationHandler = async (_event, deployment, actor) =>
   statusCode: 200,
   body: { agents: await sponsoredAgents(deployment.table, actor!.id) } satisfies components["schemas"]["AgentList"],
 });
+
+export const listOrganizationAgents: OperationHandler = async (_event, deployment, actor) => {
+  if (!actor?.admin) return refusal(403, "Only admins can list the organization's agents. List the agents you sponsor with agents list.");
+  // Every agent has a human sponsor, since a removed human's agents go with them (ADR-0020).
+  const agents = (await Promise.all((await allHumans(deployment.table)).map(({ id }) => sponsoredAgents(deployment.table, id)))).flat();
+  return { statusCode: 200, body: { agents } satisfies components["schemas"]["AgentList"] };
+};
 
 export const rotateAgentKey: OperationHandler = async (event, deployment, actor) => {
   const agent = await agentAsked(event, deployment);

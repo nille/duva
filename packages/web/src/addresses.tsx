@@ -1,6 +1,8 @@
 // The Addresses sheet in Settings, for admins: each mailbox in the organization as a line with its
 // owner and default address, which opens into its addresses, across every domain, each made the
-// default or removed there, and a field to add another. A mailbox without an address says so.
+// default or removed there, and a field to add another. A mailbox without an address says so, and
+// an owner's mailboxes say which of theirs each is. What a change did is said in its address's row,
+// or in place of the row it removed.
 import { useCallback, useEffect, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
@@ -66,18 +68,23 @@ export function AddressesSheet({ client, changes, onChange, onSignedOut }: { cli
         </div>
       ) : (
         read.status === "read" &&
-        byOwner(read.listed).map((mailbox) => (
-          <MailboxLine
-            key={mailbox.id}
-            client={client}
-            mailbox={mailbox}
-            owner={ownerName(mailbox, read.listed)}
-            agent={isAgents(mailbox, read.listed)}
-            domains={read.domains}
-            onChanged={onChange}
-            onSignedOut={onSignedOut}
-          />
-        ))
+        byOwner(read.listed).map((mailbox, _, all) => {
+          // An owner with several mailboxes, as a human handed another's has, says which of theirs each is.
+          const owners = all.filter(({ owner }) => owner === mailbox.owner);
+          return (
+            <MailboxLine
+              key={mailbox.id}
+              client={client}
+              mailbox={mailbox}
+              owner={ownerName(mailbox, read.listed)}
+              agent={isAgents(mailbox, read.listed)}
+              place={owners.length > 1 ? { at: owners.indexOf(mailbox) + 1, of: owners.length } : undefined}
+              domains={read.domains}
+              onChanged={onChange}
+              onSignedOut={onSignedOut}
+            />
+          );
+        })
       )}
     </section>
   );
@@ -88,6 +95,7 @@ function MailboxLine({
   mailbox,
   owner,
   agent,
+  place,
   domains,
   onChanged,
   onSignedOut,
@@ -96,51 +104,61 @@ function MailboxLine({
   mailbox: Mailbox;
   owner: string;
   agent: boolean;
+  /** Which of its owner's mailboxes it is, when they have several. */
+  place?: { at: number; of: number };
   domains: string[];
   onChanged: () => void;
   onSignedOut: () => void;
 }) {
-  const [done, setDone] = useState("");
+  // What the last change did, said in the row of the address it was about, or where that row was.
+  const [done, setDone] = useState<{ address: string; said: string; at: number }>();
   const heading = `mailbox-${mailbox.id}`;
   const addresses = mailbox.addresses;
   const summary = mailbox.defaultAddress === undefined ? copy.none : copy.summary(mailbox.defaultAddress, addresses.length - 1);
-  const changed = (said: string) => {
-    setDone(said);
+  const changed = (address: string, said: string) => {
+    setDone({ address, said, at: Math.max(0, addresses.indexOf(address)) });
     onChanged();
   };
+  const rows: { address: string; gone?: boolean }[] = addresses.map((address) => ({ address }));
+  if (done !== undefined && !addresses.includes(done.address)) rows.splice(Math.min(done.at, rows.length), 0, { address: done.address, gone: true });
   return (
     <details className="setting-line" name="mailboxes">
       <summary>
         <div className="line-summary">
           <h3 id={heading}>{owner}</h3>
-          <p className="line-summary-text">{copy.line(agent, summary)}</p>
+          <p className="line-summary-text">{copy.line(agent, summary, place)}</p>
         </div>
         <ChevronIcon />
       </summary>
       <div className="setting" role="group" aria-labelledby={heading}>
-        {addresses.length === 0 ? (
+        {rows.length === 0 ? (
           <p className="setting-note">{copy.none}</p>
         ) : (
           <>
             <ul className="mailbox-addresses" aria-label={copy.listName(owner)}>
-              {addresses.map((address) => (
-                <AddressRow
-                  key={address}
-                  client={client}
-                  mailbox={mailbox}
-                  address={address}
-                  onChanged={changed}
-                  onSignedOut={onSignedOut}
-                />
-              ))}
+              {rows.map(({ address, gone }) =>
+                gone ? (
+                  <li key={`gone-${address}`} className="mailbox-address-row person-gone">
+                    <p role="status">{done!.said}</p>
+                  </li>
+                ) : (
+                  <AddressRow
+                    key={address}
+                    client={client}
+                    mailbox={mailbox}
+                    address={address}
+                    said={done?.address === address ? done.said : undefined}
+                    onChanged={(said) => changed(address, said)}
+                    onSignedOut={onSignedOut}
+                  />
+                ),
+              )}
             </ul>
-            <p className="hint">{copy.defaultHint}</p>
+            {addresses.length > 0 && <p className="hint">{copy.defaultHint}</p>}
           </>
         )}
-        <AddAddress client={client} mailbox={mailbox} domains={domains} onAdded={(address) => changed(copy.added(address))} onSignedOut={onSignedOut} />
-        <p role="status" className="setting-saved">
-          {done}
-        </p>
+        {addresses.length === 0 && rows.length > 0 && <p className="setting-note">{copy.none}</p>}
+        <AddAddress client={client} mailbox={mailbox} domains={domains} onAdded={(address) => changed(address, copy.added(address))} onSignedOut={onSignedOut} />
       </div>
     </details>
   );
@@ -149,7 +167,22 @@ function MailboxLine({
 type RowState = { status: "idle" | "confirming" | "busy" } | { status: "failed"; message: string };
 
 /** One of the mailbox's addresses: the default one marked, any other made the default, and removing it, which asks once in place. */
-function AddressRow({ client, mailbox, address, onChanged, onSignedOut }: { client: DuvaClient; mailbox: Mailbox; address: string; onChanged: (said: string) => void; onSignedOut: () => void }) {
+function AddressRow({
+  client,
+  mailbox,
+  address,
+  said,
+  onChanged,
+  onSignedOut,
+}: {
+  client: DuvaClient;
+  mailbox: Mailbox;
+  address: string;
+  /** What the last change to the address did, if it was the last one changed. */
+  said?: string;
+  onChanged: (said: string) => void;
+  onSignedOut: () => void;
+}) {
   const [state, setState] = useState<RowState>({ status: "idle" });
   const isDefault = mailbox.defaultAddress === address;
   // Removing the default address makes the earliest other one the default.
@@ -198,6 +231,11 @@ function AddressRow({ client, mailbox, address, onChanged, onSignedOut }: { clie
             </button>
           </div>
         </div>
+      )}
+      {said !== undefined && state.status !== "confirming" && (
+        <p className="person-said" role="status">
+          {said}
+        </p>
       )}
       {state.status === "failed" && (
         <p className="notice notice-alert" role="alert">

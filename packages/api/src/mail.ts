@@ -314,6 +314,9 @@ async function storeMessage(
     const label = labelFor?.(joined !== undefined);
     const thread = joined?.id ?? randomUUID();
     const newest = joined === undefined || receivedAt > joined.latestAt;
+    // A member's copy, of mail to the group or of what another member sent as it, marks its thread with the group.
+    const group = message.group ?? message.sentAs?.group;
+    const groups = group === undefined || joined?.groups?.includes(group) ? joined?.groups : [...(joined?.groups ?? []), group];
     const summary: StoredSummary =
       joined === undefined
         ? {
@@ -325,6 +328,7 @@ async function storeMessage(
             unread: unread ?? false,
             latestAt: receivedAt,
             messages: 1,
+            ...(groups !== undefined && { groups }),
             ...(sent && { sent }),
             ...(trashedByBlock && { trashedByBlock }),
           }
@@ -336,6 +340,7 @@ async function storeMessage(
             unread: unread ?? joined.unread,
             latestAt: newest ? receivedAt : joined.latestAt,
             messages: joined.messages + 1,
+            ...(groups !== undefined && { groups }),
             ...((sent || joined.sent) && { sent: true }),
           };
     timeErasedLabels(joined, summary);
@@ -824,7 +829,7 @@ async function servedHtml(html: string, parts: Part[], linkTo: (attachment: numb
 }
 
 // Threads stored before snippets and read state existed have neither, and are read.
-export const summaryOf = ({ id, subject, from, snippet, labels, unread, latestAt, messages }: ThreadSummary): ThreadSummary => ({
+export const summaryOf = ({ id, subject, from, snippet, labels, unread, latestAt, messages, groups }: ThreadSummary): ThreadSummary => ({
   id,
   subject,
   from: addressOf(from),
@@ -833,6 +838,7 @@ export const summaryOf = ({ id, subject, from, snippet, labels, unread, latestAt
   unread: unread ?? false,
   latestAt,
   messages,
+  ...(groups !== undefined && { groups }),
 });
 
 /** The start of the text on one line, without quoted lines, URLs or tokens, cut after snippetLength characters. */

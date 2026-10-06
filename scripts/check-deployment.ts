@@ -222,6 +222,7 @@ await check("changing a human's preferences without credentials answers 401", as
   expectStatus(await fetch(`${apiUrl}/preferences`, { method: "PATCH", headers: { "content-type": "application/json" }, body: '{"hourCycle":"h23"}' }), 401),
 );
 await check("reading the organization's settings without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/organization/settings`), 401));
+await check("listing the organization's agents without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/organization/agents`), 401));
 await check("changing the organization's settings without credentials answers 401", async () =>
   expectStatus(await fetch(`${apiUrl}/organization/settings`, { method: "PATCH", headers: { "content-type": "application/json" }, body: '{"erasureErasesApprovals":true}' }), 401),
 );
