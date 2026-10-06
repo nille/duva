@@ -15,7 +15,9 @@ async function withSponsor(options: Parameters<typeof startWebApp>[0] = {}) {
   const ada = app.duva.signIn("ada@example.org");
   const grace = app.duva.signIn("grace@example.org");
   const { data: me } = await grace.GET("/whoami");
-  await ada.POST("/mailboxes", { body: { owner: me!.id, address: "grace@example.com" } });
+  const { data: graceMailbox } = await ada.POST("/mailboxes", { body: { owner: me!.id, address: "grace@example.com" } });
+  // Mail from first-time senders would wait in the Screener, which these tests leave out.
+  await app.duva.signIn("grace@example.org").PATCH("/mailboxes/{mailbox}/screener", { params: { path: { mailbox: graceMailbox!.id } }, body: { on: false } });
   const { data: hermes } = await grace.POST("/agents", { body: { name: "Hermes" } });
   const { data: iris } = await grace.POST("/agents", { body: { name: "Iris" } });
   return { ...app, grace, hermes: hermes!.agent.id, iris: iris!.agent.id };

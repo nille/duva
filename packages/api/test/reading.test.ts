@@ -28,6 +28,8 @@ async function withPersonalMailbox() {
   const { data: me } = await grace.GET("/whoami");
   const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: me!.id, address: "grace@example.com" } });
   const params = { path: { mailbox: mailbox!.id } };
+  // Mail from first-time senders would wait in the Screener, which these tests leave out.
+  await grace.PATCH("/mailboxes/{mailbox}/screener", { params, body: { on: false } });
   const receive = async (raw: string | Uint8Array) => {
     await duva.receive(raw, { to: ["grace@example.com"] });
   };

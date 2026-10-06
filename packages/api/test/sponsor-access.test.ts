@@ -25,6 +25,9 @@ async function withSponsor(options: DuvaOptions = {}) {
   const { data: linusMailbox } = await ada.POST("/mailboxes", { body: { owner: linusActor!.id, address: "linus@example.com" } });
   const { data: hermesMailbox } = await ada.POST("/mailboxes", { body: { owner: hermesId, address: "hermes@example.com" } });
   const { data: graceMailbox } = await ada.POST("/mailboxes", { body: { owner: graceActor!.id, address: "grace@example.com" } });
+  // Mail from first-time senders would wait in the Screener, which these tests leave out.
+  await linus.PATCH("/mailboxes/{mailbox}/screener", { params: { path: { mailbox: linusMailbox!.id } }, body: { on: false } });
+  await grace.PATCH("/mailboxes/{mailbox}/screener", { params: { path: { mailbox: graceMailbox!.id } }, body: { on: false } });
   const settings = { params: { path: { agent: hermesId } } };
   /** Linus changes Hermes's settings. */
   const change = async (body: Partial<typeof defaults>) => {
@@ -99,10 +102,10 @@ test("the sponsor changes an agent's settings, which works at once and is in the
   expect(response.status).toBe(200);
   expect(data).toEqual(changed);
   expect((await hermes.GET("/agents/{agent}/settings", settings)).data).toEqual(changed);
-  const { data: feed } = await linus.GET("/mailboxes/{mailbox}/changes", { params: { path: { mailbox: linusMailbox.id } } });
+  const { data: feed } = await linus.GET("/mailboxes/{mailbox}/changes", { params: { path: { mailbox: linusMailbox.id }, query: { after: 1 } } });
   expect(feed!.changes).toEqual([
     {
-      position: 1,
+      position: 2,
       at: expect.any(String),
       actor: linusId,
       type: "agentSettingsChanged",
@@ -130,7 +133,7 @@ test("giving a setting the value it has records no change", async () => {
 
   expect(response.status).toBe(200);
   expect(data).toEqual(defaults);
-  const { data: feed } = await linus.GET("/mailboxes/{mailbox}/changes", { params: { path: { mailbox: linusMailbox.id } } });
+  const { data: feed } = await linus.GET("/mailboxes/{mailbox}/changes", { params: { path: { mailbox: linusMailbox.id }, query: { after: 1 } } });
   expect(feed!.changes).toEqual([]);
 });
 
@@ -228,7 +231,7 @@ test("a sponsor with two mailboxes gives an agent sponsor access to both, record
   expect(data!.mailboxes.slice(1)).toEqual(expect.arrayContaining([{ ...linusMailbox, sponsorAccess: "read" }, { ...second!, sponsorAccess: "read" }]));
   for (const mailbox of [linusMailbox, second!]) {
     const { data: feed } = await linus.GET("/mailboxes/{mailbox}/changes", { params: { path: { mailbox: mailbox.id } } });
-    expect(feed!.changes.map(({ type }) => type)).toEqual(["agentSettingsChanged"]);
+    expect(feed!.changes.map(({ type }) => type).filter((type) => type !== "screenerSwitched")).toEqual(["agentSettingsChanged"]);
     expect((await hermes.GET("/mailboxes/{mailbox}/threads", { params: { path: { mailbox: mailbox.id } } })).response.status).toBe(200);
   }
 });

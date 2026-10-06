@@ -7,16 +7,16 @@ import type { components } from "@duva/openapi";
 import { type Actor, type AgentSettings, agentSettings, findActor, findMailbox, type Mailbox, ownedMailboxes, sponsoredAgents } from "./organization.ts";
 
 /** What an operation does in a mailbox, which the actor needs to be allowed. */
-export type Ability = "read" | "organize" | "trash" | "draft" | "send" | "emptyTrash";
+export type Ability = "read" | "organize" | "trash" | "draft" | "send" | "emptyTrash" | "switchScreener";
 
 // The sponsor acts as owner of its agent's mailbox, except that the agent drafts and sends there itself.
-const sponsorAbilities: Ability[] = ["read", "organize", "trash", "emptyTrash"];
+const sponsorAbilities: Ability[] = ["read", "organize", "trash", "emptyTrash", "switchScreener"];
 
 // What each sponsor access lets the agent do. Full lets it do all a sponsor does in their own mailbox but empty Trash.
 const sponsorAccessAbilities: Record<AgentSettings["sponsorAccess"], Ability[]> = { none: [], read: ["read"], full: ["read", "organize", "trash", "draft", "send"] };
 
 // What the agent's refusal says it can't do, for each ability sponsor access can give.
-const abilityWords: Record<Exclude<Ability, "emptyTrash">, string> = {
+const abilityWords: Record<Exclude<Ability, "emptyTrash" | "switchScreener">, string> = {
   read: "read your sponsor's mailbox",
   organize: "organize your sponsor's mailbox",
   trash: "move threads to Trash or back in your sponsor's mailbox",
@@ -45,6 +45,7 @@ export async function mailboxFor(
     const { sponsorAccess } = (await agentSettings(deployment.table, actor.id)).settings;
     if (sponsorAccessAllows(sponsorAccess, ability)) return mailbox;
     if (ability === "emptyTrash") return refusal(403, "Only your sponsor can empty their Trash. Ask them to.");
+    if (ability === "switchScreener") return refusal(403, "Only your sponsor can switch their Screener. Ask them to.");
     if (sponsorAccess === "none") return refusal(403, "Your sponsor hasn't given you sponsor access to their mailbox. Ask them for read access.");
     return refusal(403, `Your sponsor access is read, which doesn't let you ${abilityWords[ability]}. Ask your sponsor for full access.`);
   }

@@ -41,7 +41,8 @@ export const createMailbox: OperationHandler = async (event, deployment, actor) 
   }
 
   try {
-    const mailbox = await addMailbox(deployment.table, { owner: owner.id, address, by: actor.id });
+    // The Screener starts on for a human's mailbox, and off for an agent's.
+    const mailbox = await addMailbox(deployment.table, { owner: owner.id, address, screener: owner.kind === "human", by: actor.id });
     await syncRecipients(deployment.table, deployment.receiving);
     return { statusCode: 201, body: mailbox satisfies components["schemas"]["Mailbox"] };
   } catch (error) {

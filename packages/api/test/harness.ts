@@ -6,7 +6,7 @@
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { randomUUID } from "node:crypto";
-import { CreateTableCommand } from "@aws-sdk/client-dynamodb";
+import { CreateTableCommand, DeleteItemCommand, ScanCommand } from "@aws-sdk/client-dynamodb";
 import type { ReceiptRule } from "@aws-sdk/client-ses";
 import PostalMime from "postal-mime";
 import { createDuvaClient, type DuvaClient } from "@duva/client";
@@ -18,9 +18,11 @@ import type { Humans } from "../src/user-pool.ts";
 import { createEraser, type TrashEmptied } from "../src/erasure.ts";
 import { createInbound } from "../src/inbound.ts";
 import { senderFilter, senderRetries, tableKey, tableStreamView } from "../src/infrastructure.ts";
+import type { Table } from "../src/deployment.ts";
 import type { MailBucket } from "../src/mail-bucket.ts";
-import { timeEarlierLabels } from "../src/mail.ts";
-import { addHumanToOrganization, setUpOrganization } from "../src/organization.ts";
+import { keys, timeEarlierLabels } from "../src/mail.ts";
+import { addHumanToOrganization, screenerKey, setUpOrganization } from "../src/organization.ts";
+import { setUpScreeners } from "../src/screening.ts";
 import { createSender } from "../src/sending.ts";
 import { dynamodbLocal } from "./dynamodb-local.ts";
 import { gateway } from "./gateway.ts";
@@ -58,6 +60,11 @@ export interface DuvaOptions {
   downloadLinkLifetime?: number;
   /** Whether the sender reads the table's stream only at releaseSends(), as when Lambda falls behind. */
   sendsHeld?: boolean;
+  /**
+   * Whether the deployment runs a version from before the Screener until setUp() deploys this one:
+   * its mailboxes have no Screener, and what they send isn't noted for it.
+   */
+  beforeScreener?: boolean;
 }
 
 /** A Duva deployment running in-process, set up as duva deploy sets one up, with its own table and mail bucket. */
@@ -130,6 +137,7 @@ export async function startDuva({
   emptyingLost = false,
   downloadLinkLifetime = linkLifetime,
   sendsHeld = false,
+  beforeScreener = false,
 }: DuvaOptions = {}): Promise<Duva> {
   const { table, streamArn, database } = await createTable();
   const humans = memoryHumans();
@@ -172,11 +180,13 @@ export async function startDuva({
   );
   // A call returns once the stream has handed what it wrote to the sender, unless sends are held,
   // and the eraser has erased the Trash it emptied, so tests see the outcome.
+  let screenerDeployed = !beforeScreener;
   const api = async (request: Request) => {
     if (new URL(request.url).pathname.startsWith("/download/")) return downloaded(request);
     const response = await gatewayed(request);
     if (!sendsHeld) await stream.deliver();
     for (let each = emptied.shift(); each !== undefined; each = emptied.shift()) if (!emptyingLost) await eraser({ emptyTrash: each });
+    if (!screenerDeployed) await forgetScreener(table);
     return response;
   };
   const login = managedLogin({ ids: humans.ids, issuer, accessTokenLifetime });
@@ -216,6 +226,8 @@ export async function startDuva({
     setUp: async (options) => {
       await setUp(options);
       await timeEarlierLabels(table);
+      screenerDeployed = true;
+      await setUpScreeners(table);
     },
     async listen() {
       const server = await listen(async (request) => (await login.handle(request)) ?? api(request));
@@ -288,6 +300,26 @@ async function createTable() {
     }),
   );
   return { table: { client, name }, streamArn: TableDescription!.LatestStreamArn!, database };
+}
+
+/**
+ * Removes what a version from before the Screener didn't write: each mailbox's Screener switch, and
+ * the addresses each mailbox sent to.
+ */
+async function forgetScreener(table: Table) {
+  const switchSortKey = screenerKey("")[tableKey.sortKey];
+  const sentToPrefix = keys.sentToKey("", "")[tableKey.sortKey]!;
+  const { Items = [] } = await table.client.send(
+    new ScanCommand({
+      TableName: table.name,
+      FilterExpression: "#sk = :switch OR begins_with(#sk, :sentTo)",
+      ExpressionAttributeNames: { "#sk": tableKey.sortKey },
+      ExpressionAttributeValues: { ":switch": { S: switchSortKey! }, ":sentTo": { S: sentToPrefix } },
+    }),
+  );
+  for (const item of Items) {
+    await table.client.send(new DeleteItemCommand({ TableName: table.name, Key: { [tableKey.partitionKey]: item[tableKey.partitionKey]!, [tableKey.sortKey]: item[tableKey.sortKey]! } }));
+  }
 }
 
 /** The mail bucket, which keeps one version of each object, and refuses deletes while `deletesFail`. */

@@ -31,6 +31,8 @@ async function withAgentInSponsorsMailbox() {
   const ada = app.duva.signIn("ada@example.org");
   const { data: me } = await ada.GET("/whoami");
   const { data: adaMailbox } = await ada.POST("/mailboxes", { body: { owner: me!.id, address: "ada@example.com" } });
+  // Mail from first-time senders would wait in the Screener, which these tests leave out.
+  await app.duva.signIn("ada@example.org").PATCH("/mailboxes/{mailbox}/screener", { params: { path: { mailbox: adaMailbox!.id } }, body: { on: false } });
   const { data: created } = await ada.POST("/agents", { body: { name: "Hermes" } });
   const { data: hermesMailbox } = await ada.POST("/mailboxes", { body: { owner: created!.agent.id, address: "hermes@example.com" } });
   const settings = { params: { path: { agent: created!.agent.id } } };

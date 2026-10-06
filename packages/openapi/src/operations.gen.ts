@@ -545,7 +545,7 @@ export const operations = [
     "path": "/mailboxes/{mailbox}/threads/labels",
     "routeKey": "POST /mailboxes/{mailbox}/threads/labels",
     "summary": "Add labels to threads in a mailbox, and remove them.",
-    "description": "Adds and removes the labels on each thread. Archiving removes inbox, and adding inbox moves a thread back to the Inbox, out of Spam and Trash. Adding spam or trash takes a thread out of the Inbox. Removing spam (not spam) or trash (restore) puts it back in the Inbox, unless it still has the other or inbox is removed too. Each thread whose labels change gets a change in the mailbox's change feed, naming you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can label its threads.",
+    "description": "Adds and removes the labels on each thread. Archiving removes inbox, and adding inbox moves a thread back to the Inbox, out of Spam, Trash and the Screener. Adding spam or trash takes a thread out of the Inbox. Removing spam (not spam) or trash (restore) puts it back in the Inbox, unless it still has the other, waits in the Screener, or inbox is removed too. Each thread whose labels change gets a change in the mailbox's change feed, naming you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can label its threads.",
     "signIn": true,
     "command": [
       "threads",
@@ -782,6 +782,115 @@ export const operations = [
         "type": "string",
         "required": true,
         "description": "The mailbox's ID."
+      }
+    ]
+  },
+  {
+    "operationId": "getScreener",
+    "method": "get",
+    "path": "/mailboxes/{mailbox}/screener",
+    "routeKey": "GET /mailboxes/{mailbox}/screener",
+    "summary": "Read a mailbox's Screener, with the first-time senders whose mail waits there.",
+    "description": "Lists each sender whose mail waits, newest first, with their waiting threads, newest first. Mail waiting in the Screener is in no other listing and no unread count. Says whether the Screener is on, and how many addresses the mailbox has let in and blocked. Only those who can read the mailbox can read its Screener.",
+    "signIn": true,
+    "command": [
+      "screener",
+      "get"
+    ],
+    "options": [
+      {
+        "name": "mailbox",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The mailbox's ID."
+      }
+    ]
+  },
+  {
+    "operationId": "switchScreener",
+    "method": "patch",
+    "path": "/mailboxes/{mailbox}/screener",
+    "routeKey": "PATCH /mailboxes/{mailbox}/screener",
+    "summary": "Switch a mailbox's Screener on or off.",
+    "description": "Turning it off moves every waiting thread to the Inbox. Turning it on lets in every address mail in the mailbox is from, except mail in Spam, so no sender the mailbox already has waits. A human's mailbox starts with it on, an agent's with it off. Switching is recorded in the mailbox's change feed under you. Only the mailbox's owner, and an agent's sponsor for its agent's mailbox, can switch it.",
+    "signIn": true,
+    "command": [
+      "screener",
+      "switch"
+    ],
+    "options": [
+      {
+        "name": "mailbox",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The mailbox's ID."
+      },
+      {
+        "name": "on",
+        "in": "body",
+        "type": "boolean",
+        "required": true,
+        "description": "True to switch the Screener on, false to switch it off."
+      }
+    ]
+  },
+  {
+    "operationId": "letInSender",
+    "method": "post",
+    "path": "/mailboxes/{mailbox}/screener/let-in",
+    "routeKey": "POST /mailboxes/{mailbox}/screener/let-in",
+    "summary": "Let a sender into a mailbox, moving their waiting threads to the Inbox.",
+    "description": "Their later mail skips the Screener, even while it is off. Letting in an address the mailbox blocked replaces the block. The decision and each thread it moves are recorded in the mailbox's change feed under you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can decide.",
+    "signIn": true,
+    "command": [
+      "screener",
+      "let-in"
+    ],
+    "options": [
+      {
+        "name": "mailbox",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The mailbox's ID."
+      },
+      {
+        "name": "address",
+        "in": "body",
+        "type": "string",
+        "required": true,
+        "description": "The sender's email address. Case doesn't matter."
+      }
+    ]
+  },
+  {
+    "operationId": "blockSender",
+    "method": "post",
+    "path": "/mailboxes/{mailbox}/screener/block",
+    "routeKey": "POST /mailboxes/{mailbox}/screener/block",
+    "summary": "Block a sender in a mailbox, moving their waiting threads to Trash.",
+    "description": "Their later mail that starts a thread goes straight to Trash, even while the Screener is off. Trash is erased 30 days after a thread got it. Blocking an address the mailbox let in replaces that. The decision and each thread it moves are recorded in the mailbox's change feed under you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can decide.",
+    "signIn": true,
+    "command": [
+      "screener",
+      "block"
+    ],
+    "options": [
+      {
+        "name": "mailbox",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The mailbox's ID."
+      },
+      {
+        "name": "address",
+        "in": "body",
+        "type": "string",
+        "required": true,
+        "description": "The sender's email address. Case doesn't matter."
       }
     ]
   },

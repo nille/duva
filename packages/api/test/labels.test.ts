@@ -27,6 +27,8 @@ async function withPersonalMailbox() {
   const { data: me } = await grace.GET("/whoami");
   const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: me!.id, address: "grace@example.com" } });
   const params = { path: { mailbox: mailbox!.id } };
+  // Mail from first-time senders would wait in the Screener, which these tests leave out.
+  await grace.PATCH("/mailboxes/{mailbox}/screener", { params, body: { on: false } });
   /** Receives the message, and answers its thread's ID. */
   const receive = async (raw: string | Uint8Array, options?: Parameters<typeof duva.receive>[2]) => {
     await duva.receive(raw, { to: ["grace@example.com"] }, options);
@@ -296,7 +298,7 @@ test("creating, renaming and deleting a label are each in the change feed under 
   await grace.PATCH("/mailboxes/{mailbox}/labels/{label}", { params: path, body: { name: "Ekonomi" } });
   await grace.DELETE("/mailboxes/{mailbox}/labels/{label}", { params: path });
 
-  const { data } = await grace.GET("/mailboxes/{mailbox}/changes", { params });
+  const { data } = await grace.GET("/mailboxes/{mailbox}/changes", { params: { ...params, query: { after: 1 } } });
 
   const base = { position: expect.any(Number), at: expect.any(String), actor: graceId };
   expect(data?.changes).toEqual([
@@ -332,7 +334,7 @@ test("labelling with a label the mailbox doesn't have, or one both added and rem
 
   expect(statuses).toEqual([400, 400, 400, 400]);
   expect(await listed("inbox")).toEqual([thread]);
-  const { data } = await grace.GET("/mailboxes/{mailbox}/changes", { params });
+  const { data } = await grace.GET("/mailboxes/{mailbox}/changes", { params: { ...params, query: { after: 1 } } });
   expect(data?.changes.map(({ type }) => type)).toEqual(["messageReceived"]);
 });
 
@@ -352,7 +354,7 @@ test("a label change that changes nothing records nothing", async () => {
 
   await label([thread], { add: ["inbox"] });
 
-  const { data } = await grace.GET("/mailboxes/{mailbox}/changes", { params });
+  const { data } = await grace.GET("/mailboxes/{mailbox}/changes", { params: { ...params, query: { after: 1 } } });
   expect(data?.changes.map(({ type }) => type)).toEqual(["messageReceived"]);
 });
 

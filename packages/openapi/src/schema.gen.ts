@@ -350,7 +350,7 @@ export interface paths {
         put?: never;
         /**
          * Add labels to threads in a mailbox, and remove them.
-         * @description Adds and removes the labels on each thread. Archiving removes inbox, and adding inbox moves a thread back to the Inbox, out of Spam and Trash. Adding spam or trash takes a thread out of the Inbox. Removing spam (not spam) or trash (restore) puts it back in the Inbox, unless it still has the other or inbox is removed too. Each thread whose labels change gets a change in the mailbox's change feed, naming you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can label its threads.
+         * @description Adds and removes the labels on each thread. Archiving removes inbox, and adding inbox moves a thread back to the Inbox, out of Spam, Trash and the Screener. Adding spam or trash takes a thread out of the Inbox. Removing spam (not spam) or trash (restore) puts it back in the Inbox, unless it still has the other, waits in the Screener, or inbox is removed too. Each thread whose labels change gets a change in the mailbox's change feed, naming you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can label its threads.
          */
         post: operations["labelThreads"];
         delete?: never;
@@ -458,6 +458,70 @@ export interface paths {
          * @description Erases each thread that is in Trash when you call, with its messages and their raw copies, every stored version included. Erasing can't be undone. Each erased thread gets a threadErased change in the mailbox's change feed, naming you, with none of its content. Duva erases the threads right after answering, and finishes on its next daily run if that fails. Only the mailbox's owner can empty its Trash, and an agent's sponsor its agent's. An agent never empties its sponsor's Trash, whatever its sponsor access. Without emptying, Trash and Spam are erased 30 days after a thread got the label.
          */
         post: operations["emptyTrash"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mailboxes/{mailbox}/screener": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read a mailbox's Screener, with the first-time senders whose mail waits there.
+         * @description Lists each sender whose mail waits, newest first, with their waiting threads, newest first. Mail waiting in the Screener is in no other listing and no unread count. Says whether the Screener is on, and how many addresses the mailbox has let in and blocked. Only those who can read the mailbox can read its Screener.
+         */
+        get: operations["getScreener"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Switch a mailbox's Screener on or off.
+         * @description Turning it off moves every waiting thread to the Inbox. Turning it on lets in every address mail in the mailbox is from, except mail in Spam, so no sender the mailbox already has waits. A human's mailbox starts with it on, an agent's with it off. Switching is recorded in the mailbox's change feed under you. Only the mailbox's owner, and an agent's sponsor for its agent's mailbox, can switch it.
+         */
+        patch: operations["switchScreener"];
+        trace?: never;
+    };
+    "/mailboxes/{mailbox}/screener/let-in": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Let a sender into a mailbox, moving their waiting threads to the Inbox.
+         * @description Their later mail skips the Screener, even while it is off. Letting in an address the mailbox blocked replaces the block. The decision and each thread it moves are recorded in the mailbox's change feed under you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can decide.
+         */
+        post: operations["letInSender"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mailboxes/{mailbox}/screener/block": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Block a sender in a mailbox, moving their waiting threads to Trash.
+         * @description Their later mail that starts a thread goes straight to Trash, even while the Screener is off. Trash is erased 30 days after a thread got it. Blocking an address the mailbox let in replaces that. The decision and each thread it moves are recorded in the mailbox's change feed under you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can decide.
+         */
+        post: operations["blockSender"];
         delete?: never;
         options?: never;
         head?: never;
@@ -798,7 +862,7 @@ export interface components {
             position: number;
         };
         /** @description A change in a mailbox. */
-        MailboxChange: components["schemas"]["MessageReceived"] | components["schemas"]["DraftWritten"] | components["schemas"]["DraftChanged"] | components["schemas"]["DraftDeleted"] | components["schemas"]["SendAsked"] | components["schemas"]["ApprovalAsked"] | components["schemas"]["ApprovalWithdrawn"] | components["schemas"]["ApprovalDecided"] | components["schemas"]["MessageSent"] | components["schemas"]["SendFailed"] | components["schemas"]["SendUnclear"] | components["schemas"]["ThreadRead"] | components["schemas"]["ThreadUnread"] | components["schemas"]["ThreadLabelsChanged"] | components["schemas"]["LabelCreated"] | components["schemas"]["LabelRenamed"] | components["schemas"]["LabelDeleted"] | components["schemas"]["ThreadErased"] | components["schemas"]["AgentSettingsChanged"];
+        MailboxChange: components["schemas"]["MessageReceived"] | components["schemas"]["DraftWritten"] | components["schemas"]["DraftChanged"] | components["schemas"]["DraftDeleted"] | components["schemas"]["SendAsked"] | components["schemas"]["ApprovalAsked"] | components["schemas"]["ApprovalWithdrawn"] | components["schemas"]["ApprovalDecided"] | components["schemas"]["MessageSent"] | components["schemas"]["SendFailed"] | components["schemas"]["SendUnclear"] | components["schemas"]["ThreadRead"] | components["schemas"]["ThreadUnread"] | components["schemas"]["ThreadLabelsChanged"] | components["schemas"]["LabelCreated"] | components["schemas"]["LabelRenamed"] | components["schemas"]["LabelDeleted"] | components["schemas"]["ThreadErased"] | components["schemas"]["AgentSettingsChanged"] | components["schemas"]["SenderScreened"] | components["schemas"]["ScreenerSwitched"];
         /** @description Mail arrived. No actor made this change, so it names none. */
         MessageReceived: {
             /** @description The change's position in the mailbox's feed, counting from 1. */
@@ -822,6 +886,11 @@ export interface components {
              * @constant
              */
             spam?: true;
+            /**
+             * @description Present when the mail started a thread that skipped the Inbox: waiting when its sender is first-time, so it waits in the Screener, and blocked when the mailbox blocked its sender, so it went to Trash.
+             * @enum {string}
+             */
+            screened?: "waiting" | "blocked";
         };
         DraftWritten: components["schemas"]["ChangeBase"] & {
             /** @constant */
@@ -1089,6 +1158,114 @@ export interface components {
              */
             type: "agentSettingsChanged";
         };
+        /** @description Where mail from a mailbox's first-time senders waits until an actor lets the sender in or blocks them. */
+        Screener: {
+            /** @description Whether mail from first-time senders waits here. Mail that is already waiting stays until it is decided. */
+            on: boolean;
+            /** @description The senders whose mail waits, newest first. */
+            senders: components["schemas"]["WaitingSender"][];
+            /**
+             * @description How many addresses the mailbox has let in.
+             * @example 42
+             */
+            letIn: number;
+            /**
+             * @description How many addresses the mailbox has blocked.
+             * @example 3
+             */
+            blocked: number;
+        };
+        /** @description A first-time sender, with their mail that waits in the Screener. */
+        WaitingSender: {
+            /**
+             * @description The sender's address, as their newest waiting thread gives it.
+             * @example grace@example.org
+             */
+            address: string;
+            /**
+             * @description The sender's name, as their newest waiting thread gives it, if it gives one.
+             * @example Grace Hopper
+             */
+            name?: string;
+            /**
+             * Format: date-time
+             * @description When their newest waiting mail arrived.
+             */
+            latestAt: string;
+            /** @description Their waiting threads, newest first. */
+            threads: components["schemas"]["ThreadSummary"][];
+        };
+        ScreenerSwitch: {
+            /** @description True to switch the Screener on, false to switch it off. */
+            on: boolean;
+        };
+        SenderAddress: {
+            /**
+             * @description The sender's email address. Case doesn't matter.
+             * @example grace@example.org
+             */
+            address: string;
+        };
+        /** @description An address a mailbox has let in or blocked. */
+        ScreenedSender: {
+            /**
+             * @description The address, in lower case.
+             * @example grace@example.org
+             */
+            address: string;
+            decision: components["schemas"]["ScreeningDecisionKind"];
+            /**
+             * Format: date-time
+             * @description When it was decided.
+             */
+            decidedAt: string;
+            /** @description The ID of the actor who decided, if one did. Switching the Screener on lets in the mailbox's senders under whoever switched it, and setup's under no one. */
+            actor?: string;
+        };
+        /**
+         * @description letIn lets the sender's mail into the Inbox. block sends it to Trash.
+         * @enum {string}
+         */
+        ScreeningDecisionKind: "letIn" | "block";
+        ScreeningDecision: {
+            sender: components["schemas"]["ScreenedSender"];
+            /** @description The sender's threads that waited, as they are now, newest first. */
+            threads: components["schemas"]["ThreadSummary"][];
+        };
+        SenderScreened: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "senderScreened";
+            /** @description The sender's address, in lower case. */
+            address: string;
+            decision: components["schemas"]["ScreeningDecisionKind"];
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "senderScreened";
+        };
+        /** @description The Screener was switched on or off. Switching it off moves each waiting thread to the Inbox, each with its own threadLabelsChanged. Setup switching it on for a mailbox that had it before the Screener existed names no actor. */
+        ScreenerSwitched: {
+            /** @description The change's position in the mailbox's feed, counting from 1. */
+            position: number;
+            /**
+             * Format: date-time
+             * @description When it was switched.
+             */
+            at: string;
+            /** @description The ID of the actor who switched it, if one did. */
+            actor?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "screenerSwitched";
+            /** @description Whether it is on now. */
+            on: boolean;
+            /** @description When switched on, how many of the mailbox's senders that weren't let in yet it let in. */
+            letIn?: number;
+        };
         TrashEmptying: {
             /**
              * Format: date-time
@@ -1305,7 +1482,7 @@ export interface components {
             name: string;
             /** @description Whether the label is built in, so it can't be renamed or deleted. */
             builtIn: boolean;
-            /** @description How many of the label's threads are unread, leaving out those in Spam and Trash unless the label is one of those. */
+            /** @description How many of the label's threads are unread, leaving out those in Spam and Trash unless the label is one of those, and those waiting in the Screener. */
             unread: number;
         };
         LabelList: {
@@ -1331,7 +1508,7 @@ export interface components {
              */
             snippet: string;
             /**
-             * @description The IDs of the thread's labels.
+             * @description The IDs of the thread's labels. A thread waiting in the Screener has screener among them, which only a decision on its sender removes, or adding inbox.
              * @example [
              *       "inbox"
              *     ]
@@ -2496,6 +2673,125 @@ export interface operations {
                     "application/json": components["schemas"]["TrashEmptying"];
                 };
             };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getScreener: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The mailbox's ID. */
+                mailbox: components["parameters"]["Mailbox"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The Screener. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Screener"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    switchScreener: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The mailbox's ID. */
+                mailbox: components["parameters"]["Mailbox"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScreenerSwitch"];
+            };
+        };
+        responses: {
+            /** @description The Screener, switched. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Screener"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    letInSender: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The mailbox's ID. */
+                mailbox: components["parameters"]["Mailbox"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SenderAddress"];
+            };
+        };
+        responses: {
+            /** @description The decision, with the threads it moved. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScreeningDecision"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    blockSender: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The mailbox's ID. */
+                mailbox: components["parameters"]["Mailbox"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SenderAddress"];
+            };
+        };
+        responses: {
+            /** @description The decision, with the threads it moved. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScreeningDecision"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];

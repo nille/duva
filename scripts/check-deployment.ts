@@ -128,6 +128,15 @@ await check("renaming a label without credentials answers 401", async () =>
   expectStatus(await fetch(`${apiUrl}/mailboxes/x/labels/x`, { method: "PATCH", headers: { "content-type": "application/json" }, body: '{"name":"Check"}' }), 401),
 );
 await check("deleting a label without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/mailboxes/x/labels/x`, { method: "DELETE" }), 401));
+await check("reading a mailbox's Screener without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/mailboxes/x/screener`), 401));
+await check("switching a mailbox's Screener without credentials answers 401", async () =>
+  expectStatus(await fetch(`${apiUrl}/mailboxes/x/screener`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ on: false }) }), 401),
+);
+for (const decision of ["let-in", "block"]) {
+  await check(`screening a sender (${decision}) without credentials answers 401`, async () =>
+    expectStatus(await fetch(`${apiUrl}/mailboxes/x/screener/${decision}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ address: "a@example.org" }) }), 401),
+  );
+}
 await check("emptying Trash without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/mailboxes/x/trash/empty`, { method: "POST" }), 401));
 await check("sending an approval without credentials answers 401", async () =>
   expectStatus(await fetch(`${apiUrl}/approvals/x/send`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }), 401),

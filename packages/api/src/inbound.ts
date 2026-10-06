@@ -7,9 +7,9 @@ import type { Table } from "./deployment.ts";
 import { dropLogLine, dropReason } from "./drops.ts";
 import { inboundPrefix } from "./infrastructure.ts";
 import type { MailBucket } from "./mail-bucket.ts";
-import { receiveMessage } from "./mail.ts";
 import { parseMail } from "./mime.ts";
 import { mailboxAt } from "./organization.ts";
+import { receiveScreened } from "./screening.ts";
 
 /** What the inbound handler needs: the table, the mail bucket, and its log, which takes one line at a time. */
 export function createInbound({ table, mailBucket, log }: { table: Table; mailBucket: MailBucket; log: (line: string) => void }) {
@@ -31,11 +31,12 @@ export function createInbound({ table, mailBucket, log }: { table: Table; mailBu
         continue;
       }
       const spam = ses.receipt.spamVerdict.status === "FAIL";
+      const dmarcPassed = ses.receipt.dmarcVerdict.status === "PASS";
       const raw = await mailBucket.get(rawKey);
       if (raw === undefined) throw new Error(`SES stored no message at ${rawKey}.`);
       const parsed = await parseMail(raw);
       for (const [mailbox, to] of delivered) {
-        await receiveMessage(table, { mailbox, sesMessageId: ses.mail.messageId, rawKey, ...to, sender: ses.mail.source, receivedAt: ses.mail.timestamp, parsed, spam });
+        await receiveScreened(table, { mailbox, sesMessageId: ses.mail.messageId, rawKey, ...to, sender: ses.mail.source, receivedAt: ses.mail.timestamp, parsed, spam, dmarcPassed });
       }
     }
   };

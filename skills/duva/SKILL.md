@@ -227,7 +227,7 @@ Marks each thread unread, so it stands out until it is read again. Each thread t
 
 Add labels to threads in a mailbox, and remove them.
 
-Adds and removes the labels on each thread. Archiving removes inbox, and adding inbox moves a thread back to the Inbox, out of Spam and Trash. Adding spam or trash takes a thread out of the Inbox. Removing spam (not spam) or trash (restore) puts it back in the Inbox, unless it still has the other or inbox is removed too. Each thread whose labels change gets a change in the mailbox's change feed, naming you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can label its threads.
+Adds and removes the labels on each thread. Archiving removes inbox, and adding inbox moves a thread back to the Inbox, out of Spam, Trash and the Screener. Adding spam or trash takes a thread out of the Inbox. Removing spam (not spam) or trash (restore) puts it back in the Inbox, unless it still has the other, waits in the Screener, or inbox is removed too. Each thread whose labels change gets a change in the mailbox's change feed, naming you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can label its threads.
 
 - `--mailbox` (required): The mailbox's ID.
 - `--threads` (required) (once for each): The IDs of the threads.
@@ -294,6 +294,41 @@ Empty a mailbox's Trash, erasing every thread in it for good.
 Erases each thread that is in Trash when you call, with its messages and their raw copies, every stored version included. Erasing can't be undone. Each erased thread gets a threadErased change in the mailbox's change feed, naming you, with none of its content. Duva erases the threads right after answering, and finishes on its next daily run if that fails. Only the mailbox's owner can empty its Trash, and an agent's sponsor its agent's. An agent never empties its sponsor's Trash, whatever its sponsor access. Without emptying, Trash and Spam are erased 30 days after a thread got the label.
 
 - `--mailbox` (required): The mailbox's ID.
+
+## duva screener get
+
+Read a mailbox's Screener, with the first-time senders whose mail waits there.
+
+Lists each sender whose mail waits, newest first, with their waiting threads, newest first. Mail waiting in the Screener is in no other listing and no unread count. Says whether the Screener is on, and how many addresses the mailbox has let in and blocked. Only those who can read the mailbox can read its Screener.
+
+- `--mailbox` (required): The mailbox's ID.
+
+## duva screener switch
+
+Switch a mailbox's Screener on or off.
+
+Turning it off moves every waiting thread to the Inbox. Turning it on lets in every address mail in the mailbox is from, except mail in Spam, so no sender the mailbox already has waits. A human's mailbox starts with it on, an agent's with it off. Switching is recorded in the mailbox's change feed under you. Only the mailbox's owner, and an agent's sponsor for its agent's mailbox, can switch it.
+
+- `--mailbox` (required): The mailbox's ID.
+- `--on` or `--no-on` (required): True to switch the Screener on, false to switch it off.
+
+## duva screener let-in
+
+Let a sender into a mailbox, moving their waiting threads to the Inbox.
+
+Their later mail skips the Screener, even while it is off. Letting in an address the mailbox blocked replaces the block. The decision and each thread it moves are recorded in the mailbox's change feed under you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can decide.
+
+- `--mailbox` (required): The mailbox's ID.
+- `--address` (required): The sender's email address. Case doesn't matter.
+
+## duva screener block
+
+Block a sender in a mailbox, moving their waiting threads to Trash.
+
+Their later mail that starts a thread goes straight to Trash, even while the Screener is off. Trash is erased 30 days after a thread got it. Blocking an address the mailbox let in replaces that. The decision and each thread it moves are recorded in the mailbox's change feed under you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can decide.
+
+- `--mailbox` (required): The mailbox's ID.
+- `--address` (required): The sender's email address. Case doesn't matter.
 
 ## duva attachments link
 

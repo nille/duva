@@ -30,7 +30,9 @@ async function withSponsor(options: Parameters<typeof startWebApp>[0] = {}) {
   const app = await startWebApp({ domain: "example.com", admin: "ada@example.org", ...options });
   const ada = app.duva.signIn("ada@example.org");
   const { data: me } = await ada.GET("/whoami");
-  await ada.POST("/mailboxes", { body: { owner: me!.id, address: "ada@example.com" } });
+  const { data: adaMailbox } = await ada.POST("/mailboxes", { body: { owner: me!.id, address: "ada@example.com" } });
+  // Mail from first-time senders would wait in the Screener, which these tests leave out.
+  await app.duva.signIn("ada@example.org").PATCH("/mailboxes/{mailbox}/screener", { params: { path: { mailbox: adaMailbox!.id } }, body: { on: false } });
   const { data: created } = await ada.POST("/agents", { body: { name: "Hermes" } });
   const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: created!.agent.id, address: "hermes@example.com" } });
   const hermes = app.duva.withKey(created!.key);
@@ -172,7 +174,9 @@ test("on Approvals, the tab's title counts the requests that wait, and a new one
 test("a human who sponsors no agents sees only their own mailbox", budget, async () => {
   const { page, signIn, duva } = await startWebApp({ domain: "example.com", admin: "ada@example.org", humans: ["grace@example.org"] });
   const { data: grace } = await duva.signIn("grace@example.org").GET("/whoami");
-  await duva.signIn("ada@example.org").POST("/mailboxes", { body: { owner: grace!.id, address: "grace@example.com" } });
+  const { data: graceMailbox } = await duva.signIn("ada@example.org").POST("/mailboxes", { body: { owner: grace!.id, address: "grace@example.com" } });
+  // Mail from first-time senders would wait in the Screener, which these tests leave out.
+  await duva.signIn("grace@example.org").PATCH("/mailboxes/{mailbox}/screener", { params: { path: { mailbox: graceMailbox!.id } }, body: { on: false } });
 
   await signIn("grace@example.org");
 

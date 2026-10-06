@@ -30,7 +30,9 @@ async function withPersonalMailbox(options: Parameters<typeof startWebApp>[0] = 
   const app = await startWebApp({ domain: "example.com", admin: "ada@example.org", humans: ["grace@example.org"], ...options });
   const ada = app.duva.signIn("ada@example.org");
   const { data: grace } = await app.duva.signIn("grace@example.org").GET("/whoami");
-  await ada.POST("/mailboxes", { body: { owner: grace!.id, address: "grace@example.com" } });
+  const { data: graceMailbox } = await ada.POST("/mailboxes", { body: { owner: grace!.id, address: "grace@example.com" } });
+  // Mail from first-time senders would wait in the Screener, which these tests leave out.
+  await app.duva.signIn("grace@example.org").PATCH("/mailboxes/{mailbox}/screener", { params: { path: { mailbox: graceMailbox!.id } }, body: { on: false } });
   const receive = async (raw: string | Uint8Array, to = "grace@example.com") => {
     await app.duva.receive(raw, { to: [to] });
   };
@@ -267,7 +269,9 @@ test("a sponsor reaches Approvals from the bar, which says how many wait", budge
     ada: app.duva.signIn("ada@example.org"),
   }));
   const { data: me } = await ada.GET("/whoami");
-  await ada.POST("/mailboxes", { body: { owner: me!.id, address: "ada@example.com" } });
+  const { data: adaMailbox } = await ada.POST("/mailboxes", { body: { owner: me!.id, address: "ada@example.com" } });
+  // Mail from first-time senders would wait in the Screener, which these tests leave out.
+  await duva.signIn("ada@example.org").PATCH("/mailboxes/{mailbox}/screener", { params: { path: { mailbox: adaMailbox!.id } }, body: { on: false } });
   const { data: created } = await ada.POST("/agents", { body: { name: "Hermes" } });
   const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: created!.agent.id, address: "hermes@example.com" } });
   const hermes = duva.withKey(created!.key);

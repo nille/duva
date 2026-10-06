@@ -43,6 +43,9 @@ export const mailboxFeed = (mailbox: string): Feed => ({
   partition: `${mailboxKey(mailbox)[pk]}#changes`,
   missing: `The mailbox ${mailbox} is missing.`,
 });
+// A mailbox's Screener switch is an item of its own in the mailbox's partition. Mailboxes from before
+// the Screener have none until setup gives them one.
+export const screenerKey = (mailbox: string) => ({ [pk]: mailboxKey(mailbox)[pk]!, [sk]: "screener" });
 // Each mailbox is listed in its owner's partition, so an actor's mailboxes are one query away.
 const ownedKey = (owner: string, mailbox: string) => ({ [pk]: `actor#${owner}`, [sk]: `mailbox#${mailbox}` });
 // Every address is in one partition, so the receipt rule's recipients are one query away.
@@ -346,10 +349,11 @@ export async function organizationDomain(table: Table): Promise<string> {
 }
 
 /**
- * Adds a personal mailbox owned by the actor `owner`, with the address as its default address, on
- * behalf of the actor `by`. Throws AddressTaken if another mailbox has the address.
+ * Adds a personal mailbox owned by the actor `owner`, with the address as its default address and
+ * its Screener on if `screener`, on behalf of the actor `by`. Throws AddressTaken if another
+ * mailbox has the address.
  */
-export async function addMailbox(table: Table, { owner, address, by }: { owner: string; address: string; by: string }): Promise<Mailbox> {
+export async function addMailbox(table: Table, { owner, address, screener, by }: { owner: string; address: string; screener: boolean; by: string }): Promise<Mailbox> {
   const mailbox: Mailbox = { id: randomUUID(), kind: "personal", owner, defaultAddress: address };
   await recordChanges(table, organizationFeed, {
     by,
@@ -362,6 +366,7 @@ export async function addMailbox(table: Table, { owner, address, by }: { owner: 
       { Put: { TableName: table.name, Item: { ...mailboxKey(mailbox.id), ...mailbox, position: 0 }, ...isNew } },
       { Put: { TableName: table.name, Item: { ...ownedKey(owner, mailbox.id) }, ...isNew } },
       { Put: { TableName: table.name, Item: { ...addressKey(address), address, mailbox: mailbox.id }, ...isNew } },
+      { Put: { TableName: table.name, Item: { ...screenerKey(mailbox.id), state: screener ? "on" : "off" } } },
     ],
   }).catch((error: unknown) => {
     const taken = error instanceof TransactionCanceledException && error.CancellationReasons?.[5]?.Code === "ConditionalCheckFailed";

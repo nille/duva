@@ -13,6 +13,8 @@ async function withHumansMailbox(options: DuvaOptions = {}) {
   const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: human!.id, address: "linus@example.com" } });
   const linus = duva.signIn("linus@example.org");
   const params = { path: { mailbox: mailbox!.id } };
+  // Mail from first-time senders would wait in the Screener, which these tests leave out.
+  await linus.PATCH("/mailboxes/{mailbox}/screener", { params, body: { on: false } });
 
   /** Writes the draft and asks to send it, and returns the draft as it is once the send is done. */
   const send = async (body: Parameters<typeof draft>[0]) => {
@@ -288,6 +290,7 @@ test("writing, changing, sending and deleting drafts are in the mailbox's change
   const { data } = await linus.GET("/mailboxes/{mailbox}/changes", { params });
 
   expect(data?.changes.map(({ position: _position, at: _at, ...change }) => change)).toEqual([
+    { actor: human.id, type: "screenerSwitched", on: false },
     { actor: human.id, type: "draftWritten", draft: deleting.id },
     { actor: human.id, type: "draftChanged", draft: deleting.id },
     { actor: human.id, type: "draftDeleted", draft: deleting.id },

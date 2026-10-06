@@ -7,6 +7,7 @@ import { cognitoHumans } from "./user-pool.ts";
 import { environmentVariables } from "./infrastructure.ts";
 import { timeEarlierLabels } from "./mail.ts";
 import { setUpOrganization } from "./organization.ts";
+import { setUpScreeners } from "./screening.ts";
 
 const table = { client: new DynamoDBClient({}), name: required(environmentVariables.tableName) };
 const humans = cognitoHumans(new CognitoIdentityProviderClient({}), required(environmentVariables.userPoolId));
@@ -19,5 +20,7 @@ export const handler = async () => {
   );
   // Threads in Spam and Trash from before erasure existed count their retention period from now.
   await timeEarlierLabels(table);
+  // Humans' mailboxes from before the Screener get it on, with every sender they already have let in.
+  await setUpScreeners(table);
   return admin;
 };

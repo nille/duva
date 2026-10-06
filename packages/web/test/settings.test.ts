@@ -71,7 +71,9 @@ async function withGracesInbox() {
   const ada = app.duva.signIn("ada@example.org");
   const grace = app.duva.signIn("grace@example.org");
   const { data: me } = await grace.GET("/whoami");
-  await ada.POST("/mailboxes", { body: { owner: me!.id, address: "grace@example.com" } });
+  const { data: graceMailbox } = await ada.POST("/mailboxes", { body: { owner: me!.id, address: "grace@example.com" } });
+  // Mail from first-time senders would wait in the Screener, which these tests leave out.
+  await app.duva.signIn("grace@example.org").PATCH("/mailboxes/{mailbox}/screener", { params: { path: { mailbox: graceMailbox!.id } }, body: { on: false } });
   await app.duva.receive(note("Kvitto"), { to: ["grace@example.com"] }, { at: new Date("2026-10-04T08:00:00Z") });
   await app.duva.receive(note("Lunch"), { to: ["grace@example.com"] }, { at: new Date("2026-10-05T09:15:00Z") });
   await app.page.clock.setFixedTime(new Date("2026-10-05T12:00:00Z"));

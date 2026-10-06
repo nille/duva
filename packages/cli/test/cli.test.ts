@@ -387,6 +387,26 @@ test("mailboxes changes leaves spam arrivals out unless it's given --spam", asyn
   expect(JSON.parse(withSpam.stdout)).toMatchObject({ changes: [{ position: 1, type: "messageReceived", spam: true }], position: 1 });
 });
 
+test("a human lets a waiting sender in from the CLI, and switches the Screener off with --no-on", async () => {
+  const machine = await newMachine();
+  const duva = await startDuva({ domain: "example.com", admin: "ada@example.org" });
+  const server = await duva.listen();
+  onTestFinished(() => server.close());
+  await machine.saveDeployment(server);
+  await machine.duva("login", { browserSignsIn: "ada@example.org" });
+  const { id: ada } = JSON.parse((await machine.duva("whoami")).stdout) as { id: string };
+  const mailbox = JSON.parse((await machine.duva("mailboxes", "create", "--owner", ada, "--address", "ada@example.com")).stdout) as { id: string };
+  await duva.receive("From: Grace <grace@example.org>\r\nTo: ada@example.com\r\nSubject: Hello\r\n\r\nHi Ada.\r\n", { to: ["ada@example.com"] });
+
+  const waiting = await machine.duva("screener", "get", "--mailbox", mailbox.id);
+  const letIn = await machine.duva("screener", "let-in", "--mailbox", mailbox.id, "--address", "grace@example.org");
+  const off = await machine.duva("screener", "switch", "--mailbox", mailbox.id, "--no-on");
+
+  expect(JSON.parse(waiting.stdout)).toMatchObject({ on: true, senders: [{ address: "grace@example.org", threads: [{ subject: "Hello", labels: ["screener"] }] }] });
+  expect(JSON.parse(letIn.stdout)).toMatchObject({ sender: { address: "grace@example.org", decision: "letIn", actor: ada }, threads: [{ subject: "Hello", labels: ["inbox"] }] });
+  expect(JSON.parse(off.stdout)).toEqual({ on: false, senders: [], letIn: 1, blocked: 0 });
+});
+
 test("mailboxes create says why an address is refused", async () => {
   const machine = await newMachine();
   const server = await (await startDuva({ domain: "example.com", admin: "ada@example.org" })).listen();

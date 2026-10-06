@@ -27,6 +27,7 @@ import {
 import type { Deployment } from "./deployment.ts";
 import { type Actor, actorOf } from "./organization.ts";
 import { changePreferences, getPreferences } from "./preferences.ts";
+import { blockSender, getScreener, letInSender, switchScreener } from "./screener.ts";
 import { changeOrganizationSettings, getOrganizationSettings } from "./settings.ts";
 import { getStatus } from "./status.ts";
 import { whoami } from "./whoami.ts";
@@ -72,6 +73,10 @@ const handlers: Record<OperationId, OperationHandler> = {
   renameLabel: renameMailboxLabel,
   deleteLabel: deleteMailboxLabel,
   emptyTrash: emptyMailboxTrash,
+  getScreener,
+  switchScreener,
+  letInSender,
+  blockSender,
   getAttachment,
   createDraft,
   listDrafts,

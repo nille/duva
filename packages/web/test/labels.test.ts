@@ -26,7 +26,9 @@ async function withThreads(subjects: string[], options: Parameters<typeof startW
   const app = await startWebApp({ domain: "example.com", admin: "ada@example.org", humans: ["grace@example.org"], ...options });
   const ada = app.duva.signIn("ada@example.org");
   const { data: grace } = await app.duva.signIn("grace@example.org").GET("/whoami");
-  await ada.POST("/mailboxes", { body: { owner: grace!.id, address: "grace@example.com" } });
+  const { data: graceMailbox } = await ada.POST("/mailboxes", { body: { owner: grace!.id, address: "grace@example.com" } });
+  // Mail from first-time senders would wait in the Screener, which these tests leave out.
+  await app.duva.signIn("grace@example.org").PATCH("/mailboxes/{mailbox}/screener", { params: { path: { mailbox: graceMailbox!.id } }, body: { on: false } });
   for (const subject of subjects) await app.duva.receive(note(subject), { to: ["grace@example.com"] });
   await app.signIn("grace@example.org");
   const { page } = app;

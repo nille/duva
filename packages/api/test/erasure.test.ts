@@ -33,13 +33,16 @@ async function withPersonalMailbox(options: DuvaOptions = {}) {
   const { data: me } = await grace.GET("/whoami");
   const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: me!.id, address: "grace@example.com" } });
   const params = { path: { mailbox: mailbox!.id } };
+  // Mail from first-time senders would wait in the Screener, which these tests leave out.
+  await grace.PATCH("/mailboxes/{mailbox}/screener", { params, body: { on: false } });
   /** Receives the message, and answers its thread's ID. */
   const receive = async (raw: string, options?: Parameters<typeof duva.receive>[2]) => {
     await duva.receive(raw, { to: ["grace@example.com"] }, options);
     return (await changes()).findLast((change) => change.type === "messageReceived")!.thread;
   };
+  // The changes after the Screener was switched off.
   const changes = async () =>
-    (await grace.GET("/mailboxes/{mailbox}/changes", { params: { ...params, query: { spam: true } } })).data!.changes as { type: string; thread: string }[];
+    (await grace.GET("/mailboxes/{mailbox}/changes", { params: { ...params, query: { after: 1, spam: true } } })).data!.changes as { type: string; thread: string }[];
   const label = (threads: string[], change: { add?: string[]; remove?: string[] }) => grace.POST("/mailboxes/{mailbox}/threads/labels", { params, body: { threads, ...change } });
   /** The IDs of the threads with the label, newest first. */
   const listed = async (label: string) => (await grace.GET("/mailboxes/{mailbox}/threads", { params: { ...params, query: { label } } })).data!.threads.map(({ id }) => id);
@@ -130,7 +133,7 @@ test("the eraser's change names no actor and keeps none of the thread's content"
 
   await duva.erase(inDays(31));
 
-  expect((await changes()).at(-1)).toEqual({ position: 3, at: expect.any(String), type: "threadErased", thread });
+  expect((await changes()).at(-1)).toEqual({ position: 4, at: expect.any(String), type: "threadErased", thread });
 });
 
 test("the owner empties Trash: every thread in it is erased at once, and the rest are kept", budget, async () => {
@@ -267,6 +270,7 @@ test("mail delivered to two mailboxes keeps its raw message until both have eras
   const { data: linusId } = await linus.GET("/whoami");
   const { data: other } = await ada.POST("/mailboxes", { body: { owner: linusId!.id, address: "linus@example.com" } });
   const linusParams = { path: { mailbox: other!.id } };
+  await linus.PATCH("/mailboxes/{mailbox}/screener", { params: linusParams, body: { on: false } });
   await duva.receive(note("Möte", { to: "grace@example.com, linus@example.com" }), { to: ["grace@example.com", "linus@example.com"] });
   const graceThread = (await grace.GET("/mailboxes/{mailbox}/threads", { params })).data!.threads[0]!.id;
   const linusThread = (await linus.GET("/mailboxes/{mailbox}/threads", { params: linusParams })).data!.threads[0]!.id;

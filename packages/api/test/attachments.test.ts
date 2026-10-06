@@ -16,6 +16,8 @@ async function withHumansMailbox(options: DuvaOptions = {}) {
   const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: human!.id, address: "linus@example.com" } });
   const linus = duva.signIn("linus@example.org");
   const params = { path: { mailbox: mailbox!.id } };
+  // Mail from first-time senders would wait in the Screener, which these tests leave out.
+  await linus.PATCH("/mailboxes/{mailbox}/screener", { params, body: { on: false } });
   /** Hands SES the message for Linus's mailbox, and returns it as Linus reads it. */
   const receive = async (raw: string) => {
     await duva.receive(raw, { to: ["linus@example.com"] });

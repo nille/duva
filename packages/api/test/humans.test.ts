@@ -15,7 +15,10 @@ async function withHumansMailbox() {
   const { data: human } = await ada.POST("/humans", { body: { email: "linus@example.org" } });
   const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: human!.id, address: "linus@example.com" } });
   const linus = duva.signIn("linus@example.org");
-  return { duva, ada, linus, mailbox: mailbox!, params: { path: { mailbox: mailbox!.id } } };
+  const params = { path: { mailbox: mailbox!.id } };
+  // Mail from first-time senders would wait in the Screener, which these tests leave out.
+  await linus.PATCH("/mailboxes/{mailbox}/screener", { params, body: { on: false } });
+  return { duva, ada, linus, mailbox: mailbox!, params };
 }
 
 test("an admin adds a human by email address, and the human can sign in", async () => {
@@ -164,7 +167,10 @@ test("a human catches up on their mailbox's change feed", async () => {
 
   const { data } = await linus.GET("/mailboxes/{mailbox}/changes", { params });
 
-  expect(data?.changes).toEqual([{ position: 1, at: expect.any(String), type: "messageReceived", thread: expect.any(String), message: expect.any(String) }]);
+  expect(data?.changes).toEqual([
+    { position: 1, at: expect.any(String), actor: expect.any(String), type: "screenerSwitched", on: false },
+    { position: 2, at: expect.any(String), type: "messageReceived", thread: expect.any(String), message: expect.any(String) },
+  ]);
 });
 
 test("a reply to mail in a human's mailbox joins its thread", async () => {

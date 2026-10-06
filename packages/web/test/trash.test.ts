@@ -28,6 +28,8 @@ async function withTrash({ trashed, kept }: { trashed: string[]; kept: string[] 
   const grace = app.duva.signIn("grace@example.org");
   const { data: me } = await grace.GET("/whoami");
   const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: me!.id, address: "grace@example.com" } });
+  // Mail from first-time senders would wait in the Screener, which these tests leave out.
+  await app.duva.signIn("grace@example.org").PATCH("/mailboxes/{mailbox}/screener", { params: { path: { mailbox: mailbox!.id } }, body: { on: false } });
   const params = { path: { mailbox: mailbox!.id } };
   for (const subject of [...trashed, ...kept]) await app.duva.receive(note(subject), { to: ["grace@example.com"] });
   const { data: inbox } = await grace.GET("/mailboxes/{mailbox}/threads", { params });
