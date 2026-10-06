@@ -30,25 +30,29 @@ A mailbox owned by one actor. Admins cannot read it. When the actor is removed, 
 An agent's access to its sponsor's personal mailbox, which the sponsor gives per agent and which is off by default. Read lets it read everything there. Full also lets it organize, move threads to Trash and back, draft, and send as the sponsor. Only the sponsor empties the Trash. Mail that several people need goes to a group, which gives each member their own copy; no actor works in another human's mailbox.
 _Avoid_: grant, delegation, share
 
+**Alert**:
+A notice to a sponsor that one of their agents needs them: a failed, bounced or complained-about send, its send limit reached, its key used while paused, or a pause, change or removal by someone else. Alerts show in the web app, and urgent ones are also mailed to the sponsor's own mailbox.
+_Avoid_: notification, warning
+
 **Approval**:
 Sign-off before an action takes effect. An agent's send from its own mailbox, its send from its sponsor's mailbox, and a setup change by an agent admin need it from the agent's sponsor; each can be switched off for that agent on its own.
 
 **Admin**:
-An actor allowed to change the organization's setup: domains, addresses, groups, actors and settings. Admins can't read personal mailboxes. An agent can be an admin only if its sponsor is one.
+An actor allowed to change the organization's setup: domains, addresses, groups, actors and settings. Admins can't read personal mailboxes. An agent can be an admin only if its sponsor is one, and stops being one when its sponsor does. An agent admin never removes humans or changes who is admin.
 
 **Preference**:
 A choice a human makes for themselves about how Duva shows things to them, such as how times and dates read in the web app, or whether mail shows as designed or as plain text. It follows them to every browser, and no one else sees or changes it. An agent has none; its sponsor changes its settings.
 _Avoid_: user setting, profile
 
 **Sponsor**:
-The human who answers for an agent, at first the one who created it. The sponsor acts as owner of the agent's personal mailboxes, gets the agent's alerts, can pause it or rotate its key, and approves its sends and setup changes. When the sponsor is removed, their agents are removed too, and their mailboxes erased.
+The human who answers for an agent, at first the one who created it. The sponsor acts as owner of the agent's personal mailboxes, gets the agent's alerts, can pause it or rotate its key, and approves its sends and setup changes. Admins can pause an agent too, and Duva pauses one by itself when its mail draws a complaint or many bounces (ADR-0021). When the sponsor is removed, their agents are removed too, and their mailboxes erased.
 _Avoid_: owner (for agents), operator, creator
 
 **Disclosure**:
 The mark on mail an agent sends: always a header, even after a human approved it, and by default a visible line naming the agent and whom it acts for, its sponsor. The sponsor can turn the line off for that agent, separately for mail from its own mailbox and mail it sends as the sponsor. Disclosure follows the actor who sends: a draft an agent wrote that its sponsor sends carries none.
 
 **Send limit**:
-How much an actor may send per hour, and to how many new recipients per day. Agents start low; admins can change it. Mail over the limit waits.
+How much an agent may send per hour, and to how many new recipients per day: 100 and 50 to start. A sponsor sets their agent's limits up to the organization's cap, which admins set. Mail over the limit waits and goes out by itself as the limit allows, or when the sponsor sends it now. Humans have none.
 
 ## Domains and addresses
 
