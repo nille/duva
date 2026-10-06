@@ -52,14 +52,14 @@ test("an admin sees each group with its members, local or external, and who can 
 
 test("an admin creates a group with its first members, and it opens, saying so", budget, async () => {
   const { page, ada } = await withTeam();
-  const form = sheet(page).getByRole("form", { name: "New group" });
+  const form = sheet(page).getByRole("form", { name: "Add a group" });
 
   await form.getByRole("textbox", { name: "Address" }).fill("Support@Example.com");
   await form.getByRole("textbox", { name: "Members" }).fill("grace@example.com, team@example.com");
-  await form.getByRole("button", { name: "Create group" }).click();
+  await form.getByRole("button", { name: "Add group" }).click();
 
   await expect.poll(() => line(page, "support@example.com").getByRole("status").first().textContent(), wait).toBe(
-    "Created support@example.com. Anyone can send to it until you choose otherwise.",
+    "Added support@example.com. Anyone can send to it until you choose otherwise.",
   );
   expect(await members(page, "support@example.com")).toEqual([expect.stringMatching(/^grace@example\.com/), expect.stringMatching(/^team@example\.com\s+A group/)]);
   expect(await form.getByRole("textbox", { name: "Address" }).inputValue()).toBe("");
@@ -73,25 +73,25 @@ test("an admin creates a group with its first members, and it opens, saying so",
 
 test("a group just created no longer says anyone can send to it once its admin chooses otherwise", budget, async () => {
   const { page } = await withTeam();
-  const form = sheet(page).getByRole("form", { name: "New group" });
+  const form = sheet(page).getByRole("form", { name: "Add a group" });
   await form.getByRole("textbox", { name: "Address" }).fill("support@example.com");
-  await form.getByRole("button", { name: "Create group" }).click();
+  await form.getByRole("button", { name: "Add group" }).click();
   const support = line(page, "support@example.com");
-  await expect.poll(() => support.getByRole("status").first().textContent(), wait).toContain("Created support@example.com.");
+  await expect.poll(() => support.getByRole("status").first().textContent(), wait).toContain("Added support@example.com.");
 
   await support.getByRole("radio", { name: /^Its members/ }).check();
   await support.getByRole("button", { name: "Save" }).click();
 
   await expect.poll(() => summary(page, "support@example.com"), wait).toBe("No members. Only its members can send to it.");
-  expect(await support.getByRole("status").first().textContent()).toBe("Created support@example.com.");
+  expect(await support.getByRole("status").first().textContent()).toBe("Added support@example.com.");
 });
 
 test("a group Duva refuses to create says why", budget, async () => {
   const { page } = await withTeam();
-  const form = sheet(page).getByRole("form", { name: "New group" });
+  const form = sheet(page).getByRole("form", { name: "Add a group" });
 
   await form.getByRole("textbox", { name: "Address" }).fill("grace@example.com");
-  await form.getByRole("button", { name: "Create group" }).click();
+  await form.getByRole("button", { name: "Add group" }).click();
 
   await expect.poll(() => form.getByRole("alert").textContent(), wait).toMatch(/^grace@example\.com is taken/);
 });

@@ -2537,6 +2537,21 @@ input[aria-invalid="true"] {
   min-width: 4.5rem;
 }
 
+/* The copy buttons are one stop in the Tab order, so how to move between them shows while one has the keyboard's focus. */
+.dns-keys {
+  display: none;
+}
+
+.dns-records:has(.copy-button:focus-visible) + .dns-keys {
+  display: block;
+}
+
+/* A domain mail can't arrive at says so in its line in Alert Red, since no one gets the mail sent to it. */
+.line-summary-text.line-summary-alert {
+  color: var(--alert);
+  font-weight: 500;
+}
+
 .catch-all,
 .address-add {
   display: grid;
@@ -2600,6 +2615,13 @@ input[aria-invalid="true"] {
 /* A field's hint, after its label, sits close under it. */
 .setting-add > .hint {
   margin-top: calc(-1 * var(--space-3));
+}
+
+/* Hints on the admin sheets keep a short measure, as leads do. */
+.setting-line .hint,
+.setting-add .hint,
+.address-add .hint {
+  max-width: 60ch;
 }
 
 .setting-field {

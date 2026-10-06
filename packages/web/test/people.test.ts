@@ -34,7 +34,7 @@ const sheet = (page: Page) => page.getByRole("region", { name: "People" });
 const line = (page: Page, email: string) => sheet(page).locator("details").filter({ has: page.getByRole("heading", { name: email, exact: true }) });
 const summary = (page: Page, email: string) => line(page, email).locator(".line-summary-text").textContent();
 const open = (page: Page, email: string) => line(page, email).getByRole("heading").click();
-const create = (page: Page) => page.getByRole("region", { name: "Addresses" }).getByRole("form", { name: "Create a mailbox" });
+const create = (page: Page) => page.getByRole("region", { name: "Addresses" }).getByRole("form", { name: "Add a mailbox" });
 
 test("an admin sees each human with their mailboxes, whether they're an admin, and the agents they sponsor", budget, async () => {
   const { page } = await withPeople();
@@ -164,8 +164,8 @@ test("a human just added is given a mailbox from their line, in the Addresses sh
   await expect.poll(() => create(page).getByRole("combobox", { name: "For" }).locator("option:checked").textContent(), wait).toBe("margaret@example.org");
   await expect.poll(() => create(page).getByRole("textbox", { name: "Address" }).evaluate((element) => element === document.activeElement), wait).toBe(true);
   await create(page).getByRole("textbox", { name: "Address" }).fill("margaret@example.com");
-  await create(page).getByRole("button", { name: "Create mailbox" }).click();
-  await expect.poll(() => page.getByText("Created a mailbox for margaret@example.org at margaret@example.com.").isVisible(), wait).toBe(true);
+  await create(page).getByRole("button", { name: "Add mailbox" }).click();
+  await expect.poll(() => page.getByText("Added a mailbox for margaret@example.org at margaret@example.com.").isVisible(), wait).toBe(true);
   await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "People" }).click();
 
   await expect.poll(() => summary(page, "margaret@example.org"), wait).toBe("1 mailbox. No agents.");
@@ -188,8 +188,8 @@ test("an agent without a mailbox is given one from its sponsor's line", budget, 
 
   await expect.poll(() => create(page).getByRole("combobox", { name: "For" }).locator("option:checked").textContent(), wait).toBe("Hermes, ada@example.org's agent");
   await create(page).getByRole("textbox", { name: "Address" }).fill("hermes@example.com");
-  await create(page).getByRole("button", { name: "Create mailbox" }).click();
-  await expect.poll(() => page.getByText("Created a mailbox for Hermes at hermes@example.com.").isVisible(), wait).toBe(true);
+  await create(page).getByRole("button", { name: "Add mailbox" }).click();
+  await expect.poll(() => page.getByText("Added a mailbox for Hermes at hermes@example.com.").isVisible(), wait).toBe(true);
   await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "People" }).click();
   await open(page, "ada@example.org");
 

@@ -1,9 +1,10 @@
-// The Addresses sheet in Settings, for admins: each mailbox in the organization as a line with its
-// owner and default address, which opens into its addresses, across every domain, each made the
-// default or removed there, and a field to add another. A mailbox without an address says so, and
-// an owner's mailboxes say which of theirs each is. What a change did is said in its address's row,
-// or in place of the row it removed. Creating a mailbox for any human or agent closes the sheet, and
-// the People sheet opens it with the owner chosen.
+// The Addresses sheet in Settings, for admins: each mailbox in the organization as a line titled by
+// its default address, with its owner under it, which opens into its addresses, across every domain,
+// each made the default or removed there, and a field to add another. Removing one says which groups
+// it leaves. A mailbox without an address says so, and an owner's mailboxes say which of theirs each
+// is, so two never look the same. What a change did is said in its address's row, or in place of the
+// row it removed. Adding a mailbox for any human or agent closes the sheet, and the People sheet
+// opens it with the owner chosen.
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
@@ -13,6 +14,7 @@ import { strings } from "./strings.ts";
 
 type Mailbox = components["schemas"]["Mailbox"];
 type Actor = components["schemas"]["Actor"];
+type Group = components["schemas"]["Group"];
 
 /** An actor a mailbox can be created for: their name, a human's address or an agent's, and what the form calls them. */
 interface Owner {
@@ -22,7 +24,7 @@ interface Owner {
   label: string;
 }
 
-type Read = { status: "loading" } | { status: "failed"; message: string } | { status: "read"; listed: Mailboxes; domains: string[]; owners: Owner[] };
+type Read = { status: "loading" } | { status: "failed"; message: string } | { status: "read"; listed: Mailboxes; domains: string[]; owners: Owner[]; groups: Group[] };
 
 /** The owner the People sheet asked to give a mailbox to, once each time it asks. */
 export interface Giving {
@@ -58,13 +60,14 @@ export function AddressesSheet({
   const load = useCallback(
     async (again = false) => {
       if (!again) setRead({ status: "loading" });
-      const [mailboxes, domains, humans, agents] = await Promise.all([
+      const [mailboxes, domains, humans, agents, groups] = await Promise.all([
         attempt(client.GET("/organization/mailboxes")),
         attempt(client.GET("/domains")),
         attempt(client.GET("/humans")),
         attempt(client.GET("/organization/agents")),
+        attempt(client.GET("/groups")),
       ]);
-      const answers = [mailboxes, domains, humans, agents];
+      const answers = [mailboxes, domains, humans, agents, groups];
       if (answers.some(({ response }) => response?.status === 401)) return onSignedOut();
       const unread = answers.find(({ data }) => data === undefined);
       if (unread !== undefined) {
@@ -82,6 +85,7 @@ export function AddressesSheet({
             .data!.agents.map(({ id, name, sponsor }) => ({ id, kind: "agent" as const, name, label: copy.agentWithSponsor(name, humans.data!.humans.find((human) => human.id === sponsor)?.email) }))
             .sort((a, b) => a.label.localeCompare(b.label)),
         ],
+        groups: groups.data!.groups,
       });
     },
     [client, onSignedOut],
@@ -124,6 +128,7 @@ export function AddressesSheet({
               agent={isAgents(mailbox, read.listed)}
               place={owners.length > 1 ? { at: owners.indexOf(mailbox) + 1, of: owners.length } : undefined}
               domains={read.domains}
+              groups={read.groups}
               created={created?.id === mailbox.id ? created.said : undefined}
               onChanged={onChange}
               onSignedOut={onSignedOut}
@@ -132,13 +137,13 @@ export function AddressesSheet({
         })
       )}
       {read.status === "read" && (
-        <CreateMailbox
+        <AddMailbox
           client={client}
           owners={read.owners}
           domains={read.domains}
           giving={giving}
           onCreated={(mailbox, owner) => {
-            setCreated({ id: mailbox.id, said: copy.created(owner, mailbox.defaultAddress ?? mailbox.addresses.join(", ")) });
+            setCreated({ id: mailbox.id, said: copy.addedMailbox(owner, mailbox.defaultAddress ?? mailbox.addresses.join(", ")) });
             onChange();
           }}
           onSignedOut={onSignedOut}
@@ -155,6 +160,7 @@ function MailboxLine({
   agent,
   place,
   domains,
+  groups,
   created,
   onChanged,
   onSignedOut,
@@ -166,6 +172,8 @@ function MailboxLine({
   /** Which of its owner's mailboxes it is, when they have several. */
   place?: { at: number; of: number };
   domains: string[];
+  /** The organization's groups, to say which an address leaves when it's removed. */
+  groups: Group[];
   /** What creating the mailbox did, when it was just created here, so its line opens and says so. */
   created?: string;
   onChanged: () => void;
@@ -179,7 +187,7 @@ function MailboxLine({
   const [done, setDone] = useState<{ address: string; said: string; at: number }>();
   const heading = `mailbox-${mailbox.id}`;
   const addresses = mailbox.addresses;
-  const summary = mailbox.defaultAddress === undefined ? copy.none : copy.summary(mailbox.defaultAddress, addresses.length - 1);
+  const title = mailbox.defaultAddress ?? copy.without(place?.at);
   const changed = (address: string, said: string) => {
     setDone({ address, said, at: Math.max(0, addresses.indexOf(address)) });
     onChanged();
@@ -190,8 +198,8 @@ function MailboxLine({
     <details className="setting-line" name="mailboxes" ref={details}>
       <summary>
         <div className="line-summary">
-          <h3 id={heading}>{owner}</h3>
-          <p className="line-summary-text">{copy.line(agent, summary, place)}</p>
+          <h3 id={heading}>{title}</h3>
+          <p className="line-summary-text">{copy.line({ owner, agent, place, addresses: addresses.length })}</p>
         </div>
         <ChevronIcon />
       </summary>
@@ -205,7 +213,8 @@ function MailboxLine({
           <p className="setting-note">{copy.none}</p>
         ) : (
           <>
-            <ul className="mailbox-addresses" aria-label={copy.listName(owner)}>
+            {addresses.length > 0 && <p className="setting-lead">{copy.defaultHint}</p>}
+            <ul className="mailbox-addresses" aria-label={copy.listName(title)}>
               {rows.map(({ address, gone }) =>
                 gone ? (
                   <li key={`gone-${address}`} className="mailbox-address-row person-gone">
@@ -217,6 +226,7 @@ function MailboxLine({
                     client={client}
                     mailbox={mailbox}
                     address={address}
+                    groups={groups.filter(({ members }) => members.includes(address)).map((group) => group.address)}
                     said={done?.address === address ? done.said : undefined}
                     onChanged={(said) => changed(address, said)}
                     onSignedOut={onSignedOut}
@@ -224,7 +234,6 @@ function MailboxLine({
                 ),
               )}
             </ul>
-            {addresses.length > 0 && <p className="hint">{copy.defaultHint}</p>}
           </>
         )}
         {addresses.length === 0 && rows.length > 0 && <p className="setting-note">{copy.none}</p>}
@@ -236,11 +245,15 @@ function MailboxLine({
 
 type RowState = { status: "idle" | "confirming" | "busy" } | { status: "failed"; message: string };
 
-/** One of the mailbox's addresses: the default one marked, any other made the default, and removing it, which asks once in place. */
+/**
+ * One of the mailbox's addresses: the default one marked, any other made the default, and removing
+ * it, which asks once in place, saying which groups it leaves.
+ */
 function AddressRow({
   client,
   mailbox,
   address,
+  groups,
   said,
   onChanged,
   onSignedOut,
@@ -248,6 +261,8 @@ function AddressRow({
   client: DuvaClient;
   mailbox: Mailbox;
   address: string;
+  /** The groups it is a member of, which removing it leaves, as the API does. */
+  groups: string[];
   /** What the last change to the address did, if it was the last one changed. */
   said?: string;
   onChanged: (said: string) => void;
@@ -289,7 +304,7 @@ function AddressRow({
       {state.status === "confirming" && (
         <div className="confirm" role="group" aria-label={copy.removeWho(address)}>
           <p>
-            {copy.removeAsk(address)} {next === undefined ? copy.removeAskLast : isDefault ? copy.removeAskDefault(next) : ""}
+            {[copy.removeAsk(address), next === undefined ? copy.removeAskLast : isDefault ? copy.removeAskDefault(next) : "", groups.length > 0 ? copy.removeAskGroups(groups) : ""].filter(Boolean).join(" ")}
           </p>
           <div className="confirm-choices">
             <button type="button" className="button button-small button-reject" onClick={() => void remove()}>
@@ -373,10 +388,10 @@ function AddAddress({ client, mailbox, domains, onAdded, onSignedOut }: { client
 }
 
 /**
- * Creating a mailbox for a human or an agent, with its first address. The People sheet's `giving`
+ * Adding a mailbox for a human or an agent, with its first address. The People sheet's `giving`
  * chooses the owner and puts the cursor in the address field.
  */
-function CreateMailbox({
+function AddMailbox({
   client,
   owners,
   domains,
@@ -393,7 +408,7 @@ function CreateMailbox({
 }) {
   const [owner, setOwner] = useState("");
   const [address, setAddress] = useState("");
-  const [state, setState] = useState<{ status: "idle" | "creating" } | { status: "failed"; message: string }>({ status: "idle" });
+  const [state, setState] = useState<{ status: "idle" | "adding" } | { status: "failed"; message: string }>({ status: "idle" });
   const form = useRef<HTMLFormElement>(null);
   const field = useRef<HTMLInputElement>(null);
 
@@ -405,8 +420,8 @@ function CreateMailbox({
     field.current?.focus({ preventScroll: true });
   }, [giving]);
 
-  const create = async () => {
-    setState({ status: "creating" });
+  const add = async () => {
+    setState({ status: "adding" });
     const answer = await change(client.POST("/mailboxes", { body: { owner, address: address.trim() } }), onSignedOut);
     if (answer === undefined) return;
     if ("failed" in answer) return setState({ status: "failed", message: answer.failed });
@@ -427,15 +442,15 @@ function CreateMailbox({
     <form
       ref={form}
       className="setting setting-add"
-      aria-labelledby="create-mailbox"
+      aria-labelledby="add-mailbox"
       onSubmit={(event) => {
         event.preventDefault();
-        void create();
+        void add();
       }}
     >
       <div className="setting-part">
-        <h3 id="create-mailbox">{copy.create}</h3>
-        <p className="setting-lead">{copy.createLead}</p>
+        <h3 id="add-mailbox">{copy.addMailbox}</h3>
+        <p className="setting-lead">{copy.addMailboxLead}</p>
       </div>
       <label className="setting-field">
         <span>{copy.owner}</span>
@@ -457,7 +472,7 @@ function CreateMailbox({
           autoCapitalize="none"
           spellCheck={false}
           placeholder={copy.placeholder(domains[0])}
-          aria-describedby="create-mailbox-hint"
+          aria-describedby="add-mailbox-hint"
           aria-invalid={state.status === "failed"}
           value={address}
           onChange={(event) => {
@@ -467,17 +482,17 @@ function CreateMailbox({
         />
       </label>
       {state.status === "failed" ? (
-        <p id="create-mailbox-hint" className="field-error" role="alert">
+        <p id="add-mailbox-hint" className="field-error" role="alert">
           {state.message}
         </p>
       ) : (
-        <p id="create-mailbox-hint" className="hint">
+        <p id="add-mailbox-hint" className="hint">
           {copy.newAddressHint(domains)}
         </p>
       )}
       <div className="setting-foot">
-        <button type="submit" className="button button-primary" disabled={owner === "" || address.trim() === "" || state.status === "creating"}>
-          {state.status === "creating" ? copy.creating : copy.createButton}
+        <button type="submit" className="button button-primary" disabled={owner === "" || address.trim() === "" || state.status === "adding"}>
+          {state.status === "adding" ? copy.adding : copy.addMailboxButton}
         </button>
       </div>
     </form>
