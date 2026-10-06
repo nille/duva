@@ -39,6 +39,7 @@ test("a sponsor who isn't an admin opens Settings from the bar and finds each of
   await signIn("grace@example.org");
 
   await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
+  await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "Your agents" }).click();
 
   await expect.poll(() => agentsSheet(page).getByRole("heading", { level: 3 }).allTextContents(), wait).toEqual(["Hermes", "Iris"]);
   const hermes = await openAgent(page, "Hermes");
@@ -61,6 +62,7 @@ test("each agent shows as one line, its access and whether its sends wait for ap
   await grace.PATCH("/agents/{agent}/settings", { params: { path: { agent: iris } }, body: { sponsorAccess: "read", approvalForOwnMailbox: false } });
   await signIn("grace@example.org");
   await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
+  await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "Your agents" }).click();
 
   await expect.poll(() => summaries(page), wait).toEqual(["Hermes\nNo access to your mailbox. Its sends wait for your approval.", "Iris\nReads your mailbox. Its sends go out without your approval."]);
   expect(await agentsSheet(page).getByRole("form").count()).toBe(0);
@@ -76,6 +78,7 @@ test("a sponsor gives an agent full access and switches off approval of its send
   const { page, signIn, grace, hermes, iris } = await withSponsor();
   await signIn("grace@example.org");
   await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
+  await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "Your agents" }).click();
 
   const form = await openAgent(page, "Hermes");
   await form.getByRole("radio", { name: /^Full/ }).check();
@@ -110,6 +113,7 @@ test("lowering an agent's full access says its sends waiting as the sponsor are 
   await grace.PATCH("/agents/{agent}/settings", { params: { path: { agent: hermes } }, body: { sponsorAccess: "full" } });
   await signIn("grace@example.org");
   await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
+  await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "Your agents" }).click();
 
   const form = await openAgent(page, "Hermes");
   expect(await form.getByRole("radio", { name: /^Full/ }).isChecked()).toBe(true);
@@ -130,7 +134,8 @@ test("an admin who sponsors no agents finds no Agents sheet in Settings", budget
 
   await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
 
-  await expect.poll(() => page.getByRole("radio", { name: /^Keep them/ }).isChecked(), wait).toBe(true);
+  await expect.poll(() => page.getByRole("region", { name: "You" }).isVisible(), wait).toBe(true);
+  expect(await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "Your agents" }).count()).toBe(0);
   expect(await agentsSheet(page).count()).toBe(0);
 });
 
@@ -139,9 +144,26 @@ test("the Agents sheet fits a phone's screen", budget, async () => {
   await signIn("grace@example.org");
 
   await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
+  await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "Your agents" }).click();
 
   await expect.poll(() => agentsSheet(page).getByRole("heading", { level: 3 }).count(), wait).toBe(2);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(phone.width);
   await openAgent(page, "Iris");
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(phone.width);
+});
+
+test("under Your agents in the index each agent is a link saying whether it is paused, which opens its line", budget, async () => {
+  const { page, signIn, grace, hermes } = await withSponsor();
+  await grace.POST("/agents/{agent}/pause", { params: { path: { agent: hermes } } });
+  await signIn("grace@example.org");
+  await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
+  const index = page.getByRole("navigation", { name: "Settings" });
+
+  await expect.poll(() => index.getByRole("link", { name: /^(Hermes|Iris)/ }).allInnerTexts(), wait).toEqual(["Hermes\nPaused", "Iris"]);
+  await index.getByRole("link", { name: /^Iris/ }).click();
+
+  await expect.poll(() => agentForm(page, "Iris").isVisible(), wait).toBe(true);
+  expect(await agentForm(page, "Hermes").isVisible()).toBe(false);
+  expect(await index.getByRole("link", { name: /^Iris/ }).getAttribute("aria-current")).toBe("page");
+  expect(await page.evaluate(() => location.hash)).toMatch(/^#\/settings\/agents\//);
 });

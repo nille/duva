@@ -1,31 +1,66 @@
 import { expect, onTestFinished, test, vi } from "vitest";
 import type { Page } from "playwright-core";
-import { startWebApp } from "./web-app.ts";
+import { phone, startWebApp } from "./web-app.ts";
 
 // The page under the full suite's load can take seconds to show what changed, so every wait has room, and every test more.
 const wait = { timeout: 10_000 };
 const budget = { timeout: 60_000 };
 
-const organization = (page: Page) => page.getByRole("region", { name: "Organization" });
+const mailSheet = (page: Page) => page.getByRole("region", { name: "Mail", exact: true });
+const agentsSheet = (page: Page) => page.getByRole("region", { name: "Agents", exact: true });
+const settingsIndex = (page: Page) => page.getByRole("navigation", { name: "Settings" });
+/** Opens a page of Settings from its index, as the human does. */
+const openPage = (page: Page, name: string) => settingsIndex(page).getByRole("link", { name, exact: true }).click();
+/** Opens Settings from the bar, then the page from its index. */
+const openSettings = async (page: Page, name?: string) => {
+  await page.getByRole("navigation", { name: "Duva" }).getByRole("link", { name: "Settings" }).click();
+  if (name !== undefined) await openPage(page, name);
+};
+
+/** The names of the index's entries, in order, without their states. */
+const entries = (page: Page) => settingsIndex(page).locator(".settings-entry-name").allTextContents();
 
 const withOrganization = () => startWebApp({ domain: "example.com", admin: "ada@example.org", humans: ["grace@example.org"] });
 
-test("an admin opens Settings from the bar and chooses that erasing a thread erases its approval records too", budget, async () => {
+test("an admin's Settings opens on You, with an index of every page in order and the admins' own under their label", budget, async () => {
+  const { page, signIn } = await withOrganization();
+  await signIn("ada@example.org");
+
+  await openSettings(page);
+
+  await expect.poll(() => page.getByRole("region", { name: "You" }).isVisible(), wait).toBe(true);
+  expect(await page.getByRole("heading", { level: 1 }).textContent()).toBe("Settings");
+  expect(await entries(page)).toEqual(["You", "Organization", "Domains", "Addresses", "People", "Groups"]);
+  expect(await settingsIndex(page).getByRole("list", { name: "For admins" }).locator(".settings-entry-name").allTextContents()).toEqual(["Domains", "Addresses", "People", "Groups"]);
+  expect(await settingsIndex(page).getByRole("link", { name: "You", exact: true }).getAttribute("aria-current")).toBe("page");
+  // The domain's receiving and DMARC records aren't in DNS yet, and its entry says so.
+  await expect.poll(() => settingsIndex(page).getByRole("link", { name: /^Domains/ }).textContent(), wait).toBe("Domainsexample.com, 2 records missing");
+  expect(await page.getByRole("region", { name: "Domains" }).count()).toBe(0);
+
+  await settingsIndex(page).getByRole("link", { name: /^Domains/ }).click();
+
+  await expect.poll(() => page.getByRole("region", { name: "Domains" }).isVisible(), wait).toBe(true);
+  expect(await page.getByRole("region", { name: "You" }).count()).toBe(0);
+  expect(await settingsIndex(page).getByRole("link", { name: /^Domains/ }).getAttribute("aria-current")).toBe("page");
+  expect(await page.evaluate(() => location.hash)).toBe("#/settings/domains");
+});
+
+test("an admin opens the Organization page and chooses that erasing a thread erases its approval records too, on the Agents sheet", budget, async () => {
   const { page, signIn, duva } = await withOrganization();
   await signIn("ada@example.org");
 
-  await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
+  await openSettings(page, "Organization");
 
-  await expect.poll(() => page.getByRole("heading", { level: 1 }).textContent(), wait).toBe("Settings");
-  const keep = organization(page).getByRole("radio", { name: /^Keep them/ });
-  const erase = organization(page).getByRole("radio", { name: /^Erase them with the thread/ });
+  const keep = agentsSheet(page).getByRole("radio", { name: /^Keep them/ });
+  const erase = agentsSheet(page).getByRole("radio", { name: /^Erase them with the thread/ });
   await expect.poll(() => keep.isChecked(), wait).toBe(true);
   expect(await page.getByRole("group", { name: "When a thread with an agent's sends is erased" }).innerText()).toContain("who approved it");
 
   await erase.check();
-  await organization(page).getByRole("button", { name: "Save" }).click();
+  expect(await mailSheet(page).getByRole("button", { name: "Save" }).isDisabled()).toBe(true);
+  await agentsSheet(page).getByRole("button", { name: "Save" }).click();
 
-  await expect.poll(() => organization(page).getByRole("status").textContent(), wait).toBe("Saved. This applies to threads erased from now on.");
+  await expect.poll(() => agentsSheet(page).getByRole("status").textContent(), wait).toBe("Saved. This applies to threads erased from now on.");
   const ada = duva.signIn("ada@example.org");
   expect((await ada.GET("/organization/settings")).data).toEqual({ erasureErasesApprovals: true, retentionDays: 30, searchLanguages: ["English", "Swedish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50 });
 
@@ -34,43 +69,117 @@ test("an admin opens Settings from the bar and chooses that erasing a thread era
   await expect.poll(() => page.getByRole("radio", { name: /^Erase them with the thread/ }).isChecked(), wait).toBe(true);
 });
 
-test("an admin reads what translating searches does, and adds Danish to the search languages", budget, async () => {
+test("the Mail sheet and the Agents sheet each save only their own settings", budget, async () => {
+  const { page, signIn, duva } = await withOrganization();
+  await signIn("ada@example.org");
+  await openSettings(page, "Organization");
+  const field = mailSheet(page).getByRole("textbox", { name: "How long Trash and Spam keep mail" });
+  await expect.poll(() => field.inputValue(), wait).toBe("30");
+
+  await field.fill("60");
+  await agentsSheet(page).getByRole("textbox", { name: "Sends an hour" }).fill("80");
+  await agentsSheet(page).getByRole("button", { name: "Save" }).click();
+
+  await expect.poll(() => agentsSheet(page).getByRole("status").textContent(), wait).toBe("Saved. Agents above a lowered cap are lowered to it.");
+  const ada = duva.signIn("ada@example.org");
+  expect((await ada.GET("/organization/settings")).data).toMatchObject({ retentionDays: 30, agentSendsPerHourCap: 80 });
+  expect(await mailSheet(page).getByRole("button", { name: "Save" }).isEnabled()).toBe(true);
+});
+
+test("an admin reads what translating searches does, and adds Danish to the search languages, told under them that saving rebuilds the indexes", budget, async () => {
   const { page, signIn, duva } = await withOrganization();
   await signIn("ada@example.org");
 
-  await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
+  await openSettings(page, "Organization");
 
   const languages = page.getByRole("group", { name: "Languages your mail is in" });
   const checkbox = (name: string) => languages.getByRole("checkbox", { name: new RegExp(`^${name}`) });
+  const rebuilds = "Saving rebuilds every mailbox's search index, which finds less until that is done.";
   await expect.poll(() => checkbox("English").isChecked(), wait).toBe(true);
   expect(await checkbox("Swedish").isChecked()).toBe(true);
   expect(await checkbox("Danish").isChecked()).toBe(false);
   const lead = await languages.innerText();
   expect(lead).toContain("Amazon's Nova Lite model, in the same AWS region as your mail");
   expect(lead).toContain("adds a little time to each search");
+  expect(lead).not.toContain(rebuilds);
+  // Each language's box is as tall as the others.
+  const heights = await languages.locator(".choice").evaluateAll((choices) => choices.map((choice) => choice.getBoundingClientRect().height));
+  expect(new Set(heights).size).toBe(1);
 
   await checkbox("Danish").check();
-  await organization(page).getByRole("button", { name: "Save" }).click();
+  expect(await languages.innerText()).toContain(rebuilds);
+  await checkbox("Swedish").uncheck();
+  expect(await languages.innerText()).toContain(rebuilds);
+  await checkbox("Swedish").check();
+  await mailSheet(page).getByRole("button", { name: "Save" }).click();
 
   await expect
-    .poll(() => organization(page).getByRole("status").textContent(), wait)
+    .poll(() => mailSheet(page).getByRole("status").textContent(), wait)
     .toBe("Saved. Searches use these languages from now on. Each mailbox's search index is being rebuilt, and finds less until it is done.");
   const ada = duva.signIn("ada@example.org");
   expect((await ada.GET("/organization/settings")).data).toEqual({ erasureErasesApprovals: false, retentionDays: 30, searchLanguages: ["English", "Swedish", "Danish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50 });
-  expect(await organization(page).getByRole("button", { name: "Save" }).isDisabled()).toBe(true);
+  expect(await mailSheet(page).getByRole("button", { name: "Save" }).isDisabled()).toBe(true);
+  expect(await languages.innerText()).not.toContain(rebuilds);
 });
 
-test("a human who isn't an admin opens Settings from the bar and reads the organization's settings without changing them", budget, async () => {
+test("a human who isn't an admin lands on You and reads the organization's retention in a sentence, with no Organization page and nothing of AWS", budget, async () => {
   const { page, signIn } = await withOrganization();
   await signIn("grace@example.org");
 
-  await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
+  await openSettings(page);
 
-  const keep = organization(page).getByRole("radio", { name: /^Keep them/ });
-  await expect.poll(() => keep.isChecked(), wait).toBe(true);
-  expect(await keep.isDisabled()).toBe(true);
-  expect(await organization(page).getByRole("button", { name: "Save" }).count()).toBe(0);
-  expect(await organization(page).innerText()).toContain("Only admins change these.");
+  await expect.poll(() => page.getByText("Trash and Spam keep mail 30 days. Admins choose this for everyone.").isVisible(), wait).toBe(true);
+  expect(await page.getByRole("region", { name: "You" }).isVisible()).toBe(true);
+  expect(await entries(page)).toEqual(["You"]);
+  const text = await page.locator("main").innerText();
+  for (const word of ["AWS", "Nova", "Organization", "send limits", "For admins"]) expect(text).not.toContain(word);
+
+  await page.evaluate(() => (location.hash = "#/settings/organization"));
+
+  await expect.poll(() => page.evaluate(() => location.hash), wait).toBe("#/settings/organization");
+  expect(await page.getByRole("region", { name: "You" }).isVisible()).toBe(true);
+  expect(await page.getByRole("region", { name: "Agents", exact: true }).count()).toBe(0);
+  expect(await page.getByRole("radio", { name: /^Keep them/ }).count()).toBe(0);
+});
+
+test("on a phone Settings opens on its index, each page links back to it, and Sign out is on You", budget, async () => {
+  const { page, signIn } = await startWebApp({ domain: "example.com", admin: "ada@example.org", humans: ["grace@example.org"], viewport: phone });
+  await signIn("ada@example.org");
+
+  await openSettings(page);
+
+  await expect.poll(() => settingsIndex(page).getByRole("link", { name: "Organization" }).isVisible(), wait).toBe(true);
+  expect(await page.getByRole("region", { name: "You" }).isVisible()).toBe(false);
+  expect(await page.getByRole("link", { name: "Settings", exact: true }).filter({ visible: true }).count()).toBe(1);
+
+  await openPage(page, "You");
+
+  await expect.poll(() => page.getByRole("region", { name: "You" }).isVisible(), wait).toBe(true);
+  expect(await settingsIndex(page).isVisible()).toBe(false);
+  expect(await page.getByText("Signed in as ada@example.org.").isVisible()).toBe(true);
+  expect(await page.getByRole("main").getByRole("button", { name: "Sign out" }).isVisible()).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(phone.width);
+
+  await page.getByRole("main").getByRole("link", { name: "Settings" }).click();
+
+  await expect.poll(() => settingsIndex(page).isVisible(), wait).toBe(true);
+  expect(await page.evaluate(() => document.activeElement?.tagName)).toBe("H1");
+  expect(await page.getByRole("region", { name: "You" }).isVisible()).toBe(false);
+  await openPage(page, "Organization");
+  await expect.poll(() => agentsSheet(page).isVisible(), wait).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(phone.width);
+});
+
+test("opening a page from the index by keyboard takes the focus to its sheet", budget, async () => {
+  const { page, signIn } = await withOrganization();
+  await signIn("ada@example.org");
+  await openSettings(page);
+  await expect.poll(() => page.getByRole("region", { name: "You" }).isVisible(), wait).toBe(true);
+
+  await settingsIndex(page).getByRole("link", { name: "Organization" }).focus();
+  await page.keyboard.press("Enter");
+
+  await expect.poll(() => page.evaluate(() => document.activeElement?.textContent), wait).toBe("Mail");
 });
 
 /** A message from Ada to Grace, dated a year before it arrives, so the thread shows its date with the year. */
@@ -124,7 +233,7 @@ test("a human chooses 24-hour time and ISO dates, and the Inbox and a thread sho
   const { page, signIn, grace } = await withGracesInbox();
   await signIn("grace@example.org");
 
-  await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
+  await openSettings(page);
   await expect.poll(() => you(page).getByRole("radio", { name: /^Default/ }).first().isChecked(), wait).toBe(true);
   await you(page).getByRole("radio", { name: /^24-hour/ }).check();
   await you(page).getByRole("radio", { name: /^Year first/ }).check();
@@ -149,7 +258,7 @@ test("each choice of how times and dates show has an example from today", budget
   const { page, signIn } = await withGracesInbox();
   await signIn("grace@example.org");
 
-  await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
+  await openSettings(page);
 
   await expect.poll(() => you(page).getByRole("radio").count(), wait).toBe(9);
   const examples = await you(page).locator(".choices-short .choice").evaluateAll((choices) => choices.map((choice) => choice.querySelector(".hint")?.textContent));
@@ -161,7 +270,7 @@ test("a human chooses dates with the day first, and their 12-hour time stays", b
   await grace.PATCH("/preferences", { body: { hourCycle: "h12" } });
   await signIn("grace@example.org");
 
-  await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
+  await openSettings(page);
   await expect.poll(() => you(page).getByRole("radio", { name: /^12-hour/ }).isChecked(), wait).toBe(true);
   await you(page).getByRole("radio", { name: /^Day first/ }).check();
   await you(page).getByRole("button", { name: "Save" }).click();
@@ -189,49 +298,38 @@ async function withOldSpam() {
   onTestFinished(() => void vi.useRealTimers());
   await app.duva.receive(note("Erbjudande"), { to: ["grace@example.com"] }, { verdicts: { spam: "FAIL" } });
   await app.signIn("ada@example.org");
-  await app.page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
-  const field = organization(app.page).getByRole("textbox", { name: "How long Trash and Spam keep mail" });
+  await openSettings(app.page, "Organization");
+  const field = mailSheet(app.page).getByRole("textbox", { name: "How long Trash and Spam keep mail" });
   await expect.poll(() => field.inputValue(), wait).toBe("30");
   return { ...app, field };
 }
 
 test("an admin shortens how long Trash and Spam keep mail, warned first how many threads saving erases", budget, async () => {
   const { page, duva, field } = await withOldSpam();
-  const note = () => organization(page).locator(".setting-note").textContent();
+  const note = () => mailSheet(page).locator(".setting-note").textContent();
 
   await field.fill("14");
   await expect.poll(note, wait).toBe("No thread in Trash or Spam is older than 14 days now, so saving erases none at once.");
   await field.fill("7");
 
   await expect.poll(note, wait).toBe("Saving erases 2 threads in Trash and Spam that are older than 7 days, at the eraser's next daily run. This can't be undone.");
-  await organization(page).getByRole("button", { name: "Save" }).click();
+  await mailSheet(page).getByRole("button", { name: "Save" }).click();
 
-  await expect.poll(() => organization(page).getByRole("status").last().textContent(), wait).toBe("Saved. The eraser's next daily run follows it.");
+  await expect.poll(() => mailSheet(page).getByRole("status").last().textContent(), wait).toBe("Saved. The eraser's next daily run follows it.");
   expect((await duva.signIn("ada@example.org").GET("/organization/settings")).data).toMatchObject({ erasureErasesApprovals: false, retentionDays: 7 });
-  expect(await organization(page).locator(".setting-note").count()).toBe(0);
+  expect(await mailSheet(page).locator(".setting-note").count()).toBe(0);
 });
 
 test("a longer period warns of nothing, and one outside 7 to 365 days can't be saved", budget, async () => {
   const { page, field } = await withOldSpam();
-  const save = organization(page).getByRole("button", { name: "Save" });
+  const save = mailSheet(page).getByRole("button", { name: "Save" });
 
   await field.fill("90");
-  expect(await organization(page).locator(".setting-note").count()).toBe(0);
+  expect(await mailSheet(page).locator(".setting-note").count()).toBe(0);
   expect(await save.isEnabled()).toBe(true);
   await field.fill("400");
 
-  await expect.poll(() => organization(page).locator(".field-error").textContent(), wait).toBe("Give a whole number of days from 7 to 365.");
+  await expect.poll(() => mailSheet(page).locator(".field-error").textContent(), wait).toBe("Give a whole number of days from 7 to 365.");
   expect(await save.isDisabled()).toBe(true);
   expect(await field.getAttribute("aria-invalid")).toBe("true");
-});
-
-test("a human who isn't an admin reads how long Trash and Spam keep mail without changing it", budget, async () => {
-  const { page, signIn } = await withOrganization();
-  await signIn("grace@example.org");
-
-  await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
-
-  const field = organization(page).getByRole("textbox", { name: "How long Trash and Spam keep mail" });
-  await expect.poll(() => field.inputValue(), wait).toBe("30");
-  expect(await field.isDisabled()).toBe(true);
 });

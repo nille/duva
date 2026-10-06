@@ -23,6 +23,7 @@ async function withTeam(options: { viewport?: { width: number; height: number } 
   const { page } = app;
   await app.signIn("ada@example.org");
   await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
+  await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "Groups" }).click();
   await expect.poll(() => line(page, "team@example.com").count(), wait).toBe(1);
   return { ...app, ada };
 }

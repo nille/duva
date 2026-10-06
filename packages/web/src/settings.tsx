@@ -1,19 +1,24 @@
-// Settings, each group on a sheet of its own: the organization's, which admins choose for everyone,
-// then for admins its domains, its mailboxes' addresses, its people and its groups, then the human's
-// own preferences, which only they choose, then the Screener of their mailbox and their agents',
-// then a sponsor's agents', where they pause each, set its limits and send what waits for them.
+// Settings, a page per sheet, with an index of them in the side column: the human's own
+// preferences, which only they choose, the Screener of their mailboxes and their agents', a
+// sponsor's agents, where they pause each, set its limits and send what waits for them, and the
+// organization's settings, which admins choose for everyone. Then, for admins only, the
+// organization's domains, its mailboxes' addresses, its people and its groups. On a phone the index
+// is the page Settings opens on, and each sheet links back to it.
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
 import { AddressesSheet, type Giving } from "./addresses.tsx";
 import { AgentSettingsSheet } from "./agent-settings.tsx";
+import { agentHref } from "./alerts.tsx";
 import { Choice, wholeNumber } from "./setting-parts.tsx";
 import { datesFor, type Preferences } from "./dates.ts";
 import { DomainsSheet } from "./domains.tsx";
 import { GroupsSheet } from "./groups.tsx";
 import type { AgentMailbox } from "./mailboxes.tsx";
 import { PeopleSheet } from "./people.tsx";
+import { loadConfig, signOut } from "./session.ts";
 import { strings } from "./strings.ts";
+import { BackIcon } from "./thread.tsx";
 
 type OrganizationSettings = components["schemas"]["OrganizationSettings"];
 type Language = components["schemas"]["SearchLanguage"];
@@ -101,9 +106,106 @@ function useSheet<Values extends object>({
   return { read, chosen, choose, saving, save, load, unchanged };
 }
 
+/** Settings' pages, in the index's order: the human's own, then the admins'. */
+const pages = ["you", "screener", "agents", "organization", "domains", "addresses", "people", "groups"] as const;
+type Page = (typeof pages)[number];
+const adminPages: readonly Page[] = ["organization", "domains", "addresses", "people", "groups"];
+
+const pageHref = (page: Page) => `#/settings/${page}`;
+
 /**
- * The settings view. Every human can read the organization's settings, but only an admin changes
- * them. `mailboxes` are the human's own and their agents', once they are listed.
+ * The page the address's hash names, and the agent whose line opens on the Agents page. Plain
+ * `#/settings` is the index, which shows You beside it outside a phone.
+ */
+function pageOf(hash: string): { page?: Page; agent?: string } {
+  const [, page, agent] = /^#\/settings\/([^/]+)(?:\/(.+))?$/.exec(hash) ?? [];
+  if (page === "agents" && agent !== undefined) return { page, agent: decodeURIComponent(agent) };
+  return { page: (pages as readonly string[]).includes(page ?? "") ? (page as Page) : undefined };
+}
+
+function useHash(): string {
+  const [hash, setHash] = useState(location.hash);
+  useEffect(() => {
+    const changed = () => setHash(location.hash);
+    addEventListener("hashchange", changed);
+    return () => removeEventListener("hashchange", changed);
+  }, []);
+  return hash;
+}
+
+/** An agent the human sponsors, as the index lists it: whether it is paused, and how many of its sends wait for its send limits. */
+type IndexedAgent = { id: string; name: string; paused: boolean; waiting: number };
+
+/**
+ * What the index says beside its pages: the agents the human sponsors, and for an admin, which
+ * domains have DNS records missing. It reads again whenever the human opens another page, so what
+ * they changed on one shows.
+ */
+function useIndex({
+  client,
+  admin,
+  me,
+  mailboxes,
+  hash,
+  onSignedOut,
+}: {
+  client: DuvaClient;
+  admin: boolean;
+  me: string;
+  mailboxes: Mailbox[] | undefined;
+  hash: string;
+  onSignedOut: () => void;
+}): { agents?: IndexedAgent[]; domains?: string } {
+  const [agents, setAgents] = useState<IndexedAgent[]>();
+  const [domains, setDomains] = useState<string>();
+  const listed = useRef(mailboxes);
+  listed.current = mailboxes;
+  const mailboxesKey = mailboxes?.map(({ id }) => id).join();
+
+  useEffect(() => {
+    const mailboxes = listed.current;
+    if (mailboxes === undefined) return;
+    let current = true;
+    const quietly = <T,>(call: Promise<T>) => call.catch(() => ({ data: undefined, response: undefined }));
+    void (async () => {
+      const [list, organizationDomains] = await Promise.all([quietly(client.GET("/agents")), admin ? quietly(client.GET("/domains")) : Promise.resolve({ data: undefined, response: undefined })]);
+      if (!current) return;
+      if (list.response?.status === 401 || organizationDomains.response?.status === 401) return onSignedOut();
+      // An agent's sends wait in its own mailboxes, and in the human's when it sends as them. A list Duva can't give now counts none.
+      const drafts = await Promise.all(
+        mailboxes.map(async (mailbox) => {
+          const { data } = await quietly(client.GET("/mailboxes/{mailbox}/drafts", { params: { path: { mailbox: mailbox.id } } }));
+          return (data?.drafts ?? []).filter((draft) => draft.send?.state === "waitingForLimit").map((draft) => (mailbox.owner === me ? draft.updatedBy : mailbox.owner));
+        }),
+      );
+      if (!current) return;
+      const waiting = drafts.flat();
+      if (list.data !== undefined) {
+        setAgents(
+          [...list.data.agents]
+            .sort((a, b) => a.name.localeCompare(b.name))
+            .map((agent) => ({ id: agent.id, name: agent.name, paused: agent.paused !== undefined, waiting: waiting.filter((by) => by === agent.id).length })),
+        );
+      }
+      if (organizationDomains.data !== undefined) {
+        const missing = organizationDomains.data.domains
+          .map(({ domain, records }) => ({ domain, records: records.filter(({ status }) => status === "missing").length }))
+          .filter(({ records }) => records > 0);
+        const copy = strings.settings.index;
+        setDomains(missing.length === 0 ? undefined : missing.length === 1 ? copy.recordsMissing(missing[0]!.domain, missing[0]!.records) : copy.domainsMissing(missing.length));
+      }
+    })();
+    return () => {
+      current = false;
+    };
+  }, [client, admin, me, mailboxesKey, hash, onSignedOut]);
+  return { agents, domains };
+}
+
+/**
+ * The settings view. Its page is in the address's hash, after `#/settings`, so a link, such as an
+ * alert's to an agent's line, opens it. `mailboxes` are the human's own and their agents', once
+ * they are listed: `own` lists every mailbox of the human's, if they have more than `mine`.
  */
 export function Settings({
   client,
@@ -111,7 +213,7 @@ export function Settings({
   admin,
   email,
   mailboxes,
-  agent,
+  agent: agentAsked,
   onPreferences,
   onSignedOut,
 }: {
@@ -119,47 +221,171 @@ export function Settings({
   me: string;
   admin: boolean;
   email: string;
-  /** The agent whose line on the Agents sheet opens first, if any. */
+  /** The agent whose line on the Agents page opens first, if the hash doesn't say. */
   agent?: string;
-  mailboxes: { mine?: Mailbox; agents: AgentMailbox[] } | undefined;
+  mailboxes: { mine?: Mailbox; own?: Mailbox[]; agents: AgentMailbox[] } | undefined;
   onPreferences: (preferences: Preferences) => void;
   onSignedOut: () => void;
 }) {
-  const screened = mailboxes === undefined ? [] : [...(mailboxes.mine === undefined ? [] : [{ mailbox: mailboxes.mine }]), ...mailboxes.agents];
+  const hash = useHash();
+  const asked = pageOf(hash);
+  const own = mailboxes === undefined ? [] : (mailboxes.own ?? (mailboxes.mine === undefined ? [] : [mailboxes.mine]));
+  const screened = mailboxes === undefined ? [] : [...own.map((mailbox) => ({ mailbox })), ...mailboxes.agents];
+  const index = useIndex({ client, admin, me, mailboxes: mailboxes === undefined ? undefined : screened.map(({ mailbox }) => mailbox), hash, onSignedOut });
+  const sponsors = (mailboxes?.agents.length ?? 0) > 0 || (index.agents?.length ?? 0) > 0;
+  // Pages a human can't open, such as an admin's for a member, or one with nothing on it, open You instead.
+  const canOpen = (page: Page) =>
+    adminPages.includes(page) ? admin : page === "screener" ? mailboxes === undefined || screened.length > 0 : page === "agents" ? sponsors || index.agents === undefined : true;
+  const page = asked.page !== undefined && canOpen(asked.page) ? asked.page : "you";
+  const agent = asked.agent ?? agentAsked;
+
   useEffect(() => {
     document.title = strings.title(strings.settings.title);
   }, []);
+  // A screen reader follows the human to the page they opened, and the page starts at its top.
+  const opened = useRef(false);
+  const view = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!opened.current) {
+      opened.current = true;
+      return;
+    }
+    scrollTo(0, 0);
+    // Back at the index, as on a phone, the title of Settings takes the focus, since the sheets beside it don't show there.
+    const title = (asked.page === undefined ? null : view.current?.querySelector<HTMLElement>("h2")) ?? document.querySelector<HTMLElement>("main h1");
+    if (title === null) return;
+    title.tabIndex = -1;
+    title.focus({ preventScroll: true });
+  }, [asked.page]);
+
   // A change on one of the admins' sheets can change what the others show, so all read again after each.
   const [setupChanges, setSetupChanges] = useState(0);
   const setupChanged = useCallback(() => setSetupChanges((count) => count + 1), []);
   // The actor the People sheet asked to give a mailbox to, which the Addresses sheet's form takes.
   const [giving, setGiving] = useState<Giving>();
 
+  const entry = (each: Page, name: string, state?: string) => (
+    <a href={pageHref(each)} className="settings-entry" aria-current={each === page && (each !== "agents" || agent === undefined) ? "page" : undefined}>
+      <span className="settings-entry-name">{name}</span>
+      {state !== undefined && <span className="settings-entry-state">{state}</span>}
+    </a>
+  );
+  const copy = strings.settings;
   return (
-    <main className="desk">
-      <div className="desk-head">
+    <main className={asked.page === undefined ? "desk settings-desk settings-at-index" : "desk settings-desk"}>
+      <div className="settings-side">
         <h1 tabIndex={-1} className="view-title">
-          {strings.settings.title}
+          {copy.title}
         </h1>
+        <nav className="settings-index" aria-label={copy.title}>
+          <ul>
+            <li>{entry("you", copy.you)}</li>
+            {screened.length > 0 && <li>{entry("screener", copy.screener.title)}</li>}
+            {sponsors && (
+              <li>
+                {entry("agents", strings.agentSettings.title)}
+                {index.agents !== undefined && index.agents.length > 0 && (
+                  <ul className="settings-index-agents">
+                    {index.agents.map((each) => (
+                      <li key={each.id}>
+                        <a href={agentHref(each.id)} className="settings-entry" aria-current={page === "agents" && agent === each.id ? "page" : undefined}>
+                          <span className="settings-entry-name">{each.name}</span>
+                          {(each.paused || each.waiting > 0) && (
+                            <span className="settings-entry-state">{[...(each.paused ? [copy.index.paused] : []), ...(each.waiting > 0 ? [copy.index.waiting(each.waiting)] : [])].join(", ")}</span>
+                          )}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </li>
+            )}
+            {admin && <li>{entry("organization", copy.organization)}</li>}
+          </ul>
+          {admin && (
+            <>
+              <h2 className="settings-index-heading" id="settings-admins">
+                {copy.index.admins}
+              </h2>
+              <ul aria-labelledby="settings-admins">
+                <li>{entry("domains", strings.domains.title, index.domains)}</li>
+                <li>{entry("addresses", strings.addresses.title)}</li>
+                <li>{entry("people", strings.people.title)}</li>
+                <li>{entry("groups", strings.groups.title)}</li>
+              </ul>
+            </>
+          )}
+        </nav>
       </div>
-      <OrganizationSheet client={client} admin={admin} onSignedOut={onSignedOut} />
-      {admin && <DomainsSheet client={client} changes={setupChanges} onChange={setupChanged} onSignedOut={onSignedOut} />}
-      {admin && <AddressesSheet client={client} changes={setupChanges} giving={giving} onChange={setupChanged} onSignedOut={onSignedOut} />}
-      {admin && (
-        <PeopleSheet
-          client={client}
-          me={email}
-          changes={setupChanges}
-          onChange={setupChanged}
-          onGiveMailbox={(owner) => setGiving((current) => ({ owner, asked: (current?.asked ?? 0) + 1 }))}
-          onSignedOut={onSignedOut}
-        />
-      )}
-      {admin && <GroupsSheet client={client} changes={setupChanges} onChange={setupChanged} onSignedOut={onSignedOut} />}
-      <YouSheet client={client} onPreferences={onPreferences} onSignedOut={onSignedOut} />
-      {screened.length > 0 && <ScreenerSheet key={screened.map(({ mailbox }) => mailbox.id).join()} client={client} mailboxes={screened} onSignedOut={onSignedOut} />}
-      <AgentSettingsSheet client={client} me={me} email={email} admin={admin} mailboxes={mailboxes} open={agent} onSignedOut={onSignedOut} />
+      <div className="settings-page" ref={view}>
+        <p className="back settings-back">
+          <a href="#/settings">
+            <BackIcon />
+            {copy.index.back}
+          </a>
+        </p>
+        {page === "you" && <YouPage client={client} admin={admin} email={email} onPreferences={onPreferences} onSignedOut={onSignedOut} />}
+        {page === "screener" && screened.length > 0 && (
+          <ScreenerSheet key={screened.map(({ mailbox }) => mailbox.id).join()} client={client} mailboxes={screened} onSignedOut={onSignedOut} />
+        )}
+        {page === "agents" && <AgentSettingsSheet client={client} me={me} email={email} admin={admin} mailboxes={mailboxes} open={agent} onSignedOut={onSignedOut} />}
+        {page === "organization" && (
+          <>
+            <MailSheet client={client} onSignedOut={onSignedOut} />
+            <AgentsSheet client={client} onSignedOut={onSignedOut} />
+          </>
+        )}
+        {page === "domains" && <DomainsSheet client={client} changes={setupChanges} onChange={setupChanged} onSignedOut={onSignedOut} />}
+        {page === "addresses" && <AddressesSheet client={client} changes={setupChanges} giving={giving} onChange={setupChanged} onSignedOut={onSignedOut} />}
+        {page === "people" && (
+          <PeopleSheet
+            client={client}
+            me={email}
+            changes={setupChanges}
+            onChange={setupChanged}
+            onGiveMailbox={(owner) => {
+              setGiving((current) => ({ owner, asked: (current?.asked ?? 0) + 1 }));
+              location.hash = pageHref("addresses");
+            }}
+            onSignedOut={onSignedOut}
+          />
+        )}
+        {page === "groups" && <GroupsSheet client={client} changes={setupChanges} onChange={setupChanged} onSignedOut={onSignedOut} />}
+      </div>
     </main>
+  );
+}
+
+/**
+ * The You page: the human's preferences, then who is signed in, with Sign out, and for a human who
+ * isn't an admin, the one organization setting that touches their mail, in a sentence.
+ */
+function YouPage({ client, admin, email, onPreferences, onSignedOut }: { client: DuvaClient; admin: boolean; email: string; onPreferences: (preferences: Preferences) => void; onSignedOut: () => void }) {
+  const [retention, setRetention] = useState<number>();
+  useEffect(() => {
+    if (admin) return;
+    let current = true;
+    void client
+      .GET("/organization/settings")
+      .then(({ data }) => current && data !== undefined && setRetention(data.retentionDays))
+      .catch(() => undefined);
+    return () => {
+      current = false;
+    };
+  }, [client, admin]);
+  return (
+    <>
+      <YouSheet client={client} onPreferences={onPreferences} onSignedOut={onSignedOut} />
+      <div className="settings-aside">
+        {retention !== undefined && <p>{strings.settings.organizationSummary(retention)}</p>}
+        <div className="settings-signed-in">
+          <p>{strings.settings.signedInAs(email)}</p>
+          <button type="button" className="button button-quiet button-small" onClick={() => void loadConfig().then(signOut)}>
+            {strings.signOut}
+          </button>
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -169,28 +395,107 @@ const searchLanguages: Language[] = ["English", "Swedish", "Danish"];
 /** Mail in these is indexed in its own language whatever the list says, so only the others rebuild the indexes. */
 const alwaysIndexed: Language[] = ["English", "Swedish"];
 
-function OrganizationSheet({ client, admin, onSignedOut }: { client: DuvaClient; admin: boolean; onSignedOut: () => void }) {
+type MailSettings = Pick<OrganizationSettings, "retentionDays" | "searchLanguages">;
+type AgentsSettings = Pick<OrganizationSettings, "erasureErasesApprovals" | "agentSendsPerHourCap" | "agentNewRecipientsPerDayCap">;
+
+/**
+ * A sheet's share of the organization's settings, as Duva has them and as an admin saves them. Each
+ * sheet saves only its own, so a save on one leaves the other's as they are.
+ */
+function useOrganizationSheet<Values extends object>(client: DuvaClient, pick: (settings: OrganizationSettings) => Values, onSignedOut: () => void) {
   // The settings as they were before the last save, so "Saved" can say what changes from now on.
-  const before = useRef<OrganizationSettings>(undefined);
-  const sheet = useSheet<OrganizationSettings>({
-    read: () => client.GET("/organization/settings"),
-    write: (settings) => {
+  const before = useRef<Values>(undefined);
+  const picked = async (answer: Answer<OrganizationSettings>) => {
+    const { data, response } = await answer;
+    return { data: data === undefined ? undefined : pick(data), response };
+  };
+  const sheet = useSheet<Values>({
+    read: () => picked(client.GET("/organization/settings")),
+    write: (values) => {
       before.current = sheet.read.status === "read" ? sheet.read.values : undefined;
       // Only an agent's change waits for approval, so a human's answer is the settings.
-      return client.PATCH("/organization/settings", { body: settings }) as Answer<OrganizationSettings>;
+      return picked(client.PATCH("/organization/settings", { body: values }) as Answer<OrganizationSettings>);
     },
     copy: strings.settings,
     onSignedOut,
   });
+  return { sheet, before: before.current, after: sheet.read.status === "read" ? sheet.read.values : undefined };
+}
+
+/** The organization's Mail sheet: how long Trash and Spam keep mail, and the languages search knows. */
+function MailSheet({ client, onSignedOut }: { client: DuvaClient; onSignedOut: () => void }) {
+  const { sheet, before, after } = useOrganizationSheet<MailSettings>(client, ({ retentionDays, searchLanguages }) => ({ retentionDays, searchLanguages }), onSignedOut);
   const [daysValid, setDaysValid] = useState(true);
-  const [capsValid, setCapsValid] = useState({ agentSendsPerHourCap: true, agentNewRecipientsPerDayCap: true });
-  const copy = strings.settings.erasure;
-  const languagesCopy = strings.settings.searchLanguages;
+  const copy = strings.settings.searchLanguages;
+  // Only the languages mail isn't always indexed in rebuild the indexes, so only a change to one of them says so.
+  const indexed = (languages: Language[]) => languages.filter((language) => !alwaysIndexed.includes(language)).join();
   return (
-    <Sheet id="organization-settings" name={strings.settings.organization} lead={strings.settings.organizationLead} sheet={sheet}>
+    <Sheet id="mail-settings" name={strings.settings.mail} lead={strings.settings.mailLead} sheet={sheet}>
       {(chosen) => (
         <>
-          <fieldset disabled={!admin}>
+          <Retention
+            client={client}
+            chosen={chosen.retentionDays}
+            saved={after?.retentionDays ?? chosen.retentionDays}
+            onChoose={(retentionDays) => {
+              setDaysValid(retentionDays !== undefined);
+              if (retentionDays !== undefined) sheet.choose({ retentionDays });
+            }}
+          />
+          <fieldset>
+            <legend>{copy.legend}</legend>
+            <p className="setting-lead">{copy.lead}</p>
+            <div className="choices-short">
+              {searchLanguages.map((language) => (
+                <label className="choice" key={language}>
+                  <input
+                    type="checkbox"
+                    checked={chosen.searchLanguages.includes(language)}
+                    onChange={(event) =>
+                      sheet.choose({ searchLanguages: searchLanguages.filter((each) => (each === language ? event.target.checked : chosen.searchLanguages.includes(each))) })
+                    }
+                  />
+                  <span className="choice-text">
+                    <span className="choice-name">{copy.names[language]}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+            {after !== undefined && indexed(after.searchLanguages) !== indexed(chosen.searchLanguages) && <p className="setting-note">{copy.rebuilds}</p>}
+          </fieldset>
+          <SaveRow
+            sheet={sheet}
+            saved={strings.settings.saved(
+              before === undefined || after === undefined
+                ? []
+                : [
+                    ...(before.retentionDays !== after.retentionDays ? ["retention" as const] : []),
+                    ...(before.searchLanguages.join() !== after.searchLanguages.join() ? ["languages" as const] : []),
+                    ...(indexed(before.searchLanguages) !== indexed(after.searchLanguages) ? ["indexes" as const] : []),
+                  ],
+            )}
+            invalid={!daysValid}
+          />
+        </>
+      )}
+    </Sheet>
+  );
+}
+
+/** The organization's Agents sheet: whether erasing a thread erases its approval records, and the caps on agents' send limits. */
+function AgentsSheet({ client, onSignedOut }: { client: DuvaClient; onSignedOut: () => void }) {
+  const { sheet, before, after } = useOrganizationSheet<AgentsSettings>(
+    client,
+    ({ erasureErasesApprovals, agentSendsPerHourCap, agentNewRecipientsPerDayCap }) => ({ erasureErasesApprovals, agentSendsPerHourCap, agentNewRecipientsPerDayCap }),
+    onSignedOut,
+  );
+  const [capsValid, setCapsValid] = useState({ agentSendsPerHourCap: true, agentNewRecipientsPerDayCap: true });
+  const copy = strings.settings.erasure;
+  return (
+    <Sheet id="agents-settings" name={strings.settings.agents} lead={strings.settings.agentsLead} sheet={sheet}>
+      {(chosen) => (
+        <>
+          <fieldset>
             <legend>{copy.legend}</legend>
             <p className="setting-lead">{copy.lead}</p>
             {([false, true] as const).map((value) => (
@@ -204,38 +509,7 @@ function OrganizationSheet({ client, admin, onSignedOut }: { client: DuvaClient;
               />
             ))}
           </fieldset>
-          <Retention
-            client={client}
-            admin={admin}
-            chosen={chosen.retentionDays}
-            saved={sheet.read.status === "read" ? sheet.read.values.retentionDays : chosen.retentionDays}
-            onChoose={(retentionDays) => {
-              setDaysValid(retentionDays !== undefined);
-              if (retentionDays !== undefined) sheet.choose({ retentionDays });
-            }}
-          />
-          <fieldset disabled={!admin}>
-            <legend>{languagesCopy.legend}</legend>
-            <p className="setting-lead">{languagesCopy.lead}</p>
-            <div className="choices-short">
-              {searchLanguages.map((language) => (
-                <label className="choice" key={language}>
-                  <input
-                    type="checkbox"
-                    checked={chosen.searchLanguages.includes(language)}
-                    onChange={(event) =>
-                      sheet.choose({ searchLanguages: searchLanguages.filter((each) => (each === language ? event.target.checked : chosen.searchLanguages.includes(each))) })
-                    }
-                  />
-                  <span className="choice-text">
-                    <span className="choice-name">{languagesCopy.names[language]}</span>
-                    {!alwaysIndexed.includes(language) && <span className="hint">{languagesCopy.rebuildsHint}</span>}
-                  </span>
-                </label>
-              ))}
-            </div>
-          </fieldset>
-          <fieldset disabled={!admin}>
+          <fieldset>
             <legend>{strings.settings.caps.legend}</legend>
             <p className="setting-lead">{strings.settings.caps.lead}</p>
             <div className="limits">
@@ -244,7 +518,7 @@ function OrganizationSheet({ client, admin, onSignedOut }: { client: DuvaClient;
                   key={cap}
                   cap={cap}
                   chosen={chosen[cap]}
-                  saved={sheet.read.status === "read" ? sheet.read.values[cap] : chosen[cap]}
+                  saved={after?.[cap] ?? chosen[cap]}
                   onChoose={(value) => {
                     setCapsValid((current) => ({ ...current, [cap]: value !== undefined }));
                     if (value !== undefined) sheet.choose({ [cap]: value });
@@ -253,32 +527,22 @@ function OrganizationSheet({ client, admin, onSignedOut }: { client: DuvaClient;
               ))}
             </div>
           </fieldset>
-          {admin ? (
-            <SaveRow
-              sheet={sheet}
-              saved={savedCopy(before.current, sheet.read.status === "read" ? sheet.read.values : undefined)}
-              invalid={!daysValid || !capsValid.agentSendsPerHourCap || !capsValid.agentNewRecipientsPerDayCap}
-            />
-          ) : (
-            <p className="setting-foot">{strings.settings.onlyAdmins}</p>
-          )}
+          <SaveRow
+            sheet={sheet}
+            saved={strings.settings.saved(
+              before === undefined || after === undefined
+                ? []
+                : [
+                    ...(before.erasureErasesApprovals !== after.erasureErasesApprovals ? ["erasure" as const] : []),
+                    ...(after.agentSendsPerHourCap < before.agentSendsPerHourCap || after.agentNewRecipientsPerDayCap < before.agentNewRecipientsPerDayCap ? ["caps" as const] : []),
+                  ],
+            )}
+            invalid={!capsValid.agentSendsPerHourCap || !capsValid.agentNewRecipientsPerDayCap}
+          />
         </>
       )}
     </Sheet>
   );
-}
-
-/** What "Saved" says about the settings that changed: when each applies from. */
-function savedCopy(before: OrganizationSettings | undefined, after: OrganizationSettings | undefined): string {
-  if (before === undefined || after === undefined) return strings.settings.saved([]);
-  const indexed = (settings: OrganizationSettings) => settings.searchLanguages.filter((language) => !alwaysIndexed.includes(language)).join();
-  return strings.settings.saved([
-    ...(before.erasureErasesApprovals !== after.erasureErasesApprovals ? ["erasure" as const] : []),
-    ...(before.retentionDays !== after.retentionDays ? ["retention" as const] : []),
-    ...(before.searchLanguages.join() !== after.searchLanguages.join() ? ["languages" as const] : []),
-    ...(indexed(before) !== indexed(after) ? ["indexes" as const] : []),
-    ...(after.agentSendsPerHourCap < before.agentSendsPerHourCap || after.agentNewRecipientsPerDayCap < before.agentNewRecipientsPerDayCap ? ["caps" as const] : []),
-  ]);
 }
 
 /** The retention period typed, if it is a whole number of days Duva takes, from 7 to 365. */
@@ -335,16 +599,16 @@ type Preview = { status: "none" } | { status: "counting" } | { status: "counted"
 
 /**
  * How many days Trash and Spam keep a thread, as a field of whole days. Shortening it reaches back,
- * so a shorter period than the saved one counts, for an admin, the threads saving it would erase.
+ * so a shorter period than the saved one counts the threads saving it would erase.
  * `onChoose` hears of each valid period, and of an invalid one as undefined.
  */
-function Retention({ client, admin, chosen, saved, onChoose }: { client: DuvaClient; admin: boolean; chosen: number; saved: number; onChoose: (days: number | undefined) => void }) {
+function Retention({ client, chosen, saved, onChoose }: { client: DuvaClient; chosen: number; saved: number; onChoose: (days: number | undefined) => void }) {
   const copy = strings.settings.retention;
   const [text, setText] = useState(String(chosen));
   const [preview, setPreview] = useState<Preview>({ status: "none" });
   const days = daysOf(text);
   const valid = days !== undefined;
-  const shorter = admin && valid && days < saved;
+  const shorter = valid && days < saved;
 
   useEffect(() => {
     if (!shorter) return setPreview({ status: "none" });
@@ -364,7 +628,7 @@ function Retention({ client, admin, chosen, saved, onChoose }: { client: DuvaCli
   }, [client, shorter, days]);
 
   return (
-    <fieldset disabled={!admin}>
+    <fieldset>
       <legend>{copy.legend}</legend>
       <p className="setting-lead">{copy.lead}</p>
       <div className="retention">
@@ -510,26 +774,31 @@ function ScreenerSheet({ client, mailboxes, onSignedOut }: { client: DuvaClient;
     <Sheet id="screener-settings" name={copy.title} lead={copy.lead} sheet={sheet}>
       {(chosen) => (
         <>
-          {mailboxes.map(({ mailbox, agent }) => {
-            const releasing = sheet.read.status === "read" && sheet.read.values[mailbox.id] === true && chosen[mailbox.id] === false;
-            return (
-              <fieldset key={mailbox.id}>
-                <legend>{agent ?? copy.yours}</legend>
-                <p className="setting-lead">{strings.mailboxes.address(mailbox)}</p>
-                {([true, false] as const).map((on) => (
-                  <Choice
-                    key={String(on)}
-                    name={`screener-${mailbox.id}`}
-                    checked={chosen[mailbox.id] === on}
-                    onChoose={() => sheet.choose({ [mailbox.id]: on })}
-                    label={on ? copy.on : copy.off}
-                    hint={on ? copy.onHint : copy.offHint}
-                  />
-                ))}
-                {releasing && <p className="setting-note">{copy.releasing(agent === undefined ? copy.yourMailbox : copy.agentMailbox(agent))}</p>}
-              </fieldset>
-            );
-          })}
+          <ul className="screener-lines">
+            {mailboxes.map(({ mailbox, agent }) => {
+              const releasing = sheet.read.status === "read" && sheet.read.values[mailbox.id] === true && chosen[mailbox.id] === false;
+              const name = agent ?? copy.yours;
+              return (
+                <li key={mailbox.id}>
+                  <fieldset className="screener-line" aria-labelledby={`screener-${mailbox.id}-name`}>
+                    <div className="screener-line-name" id={`screener-${mailbox.id}-name`}>
+                      <span className="screener-line-owner">{name}</span>
+                      <span className="screener-line-address">{strings.mailboxes.address(mailbox)}</span>
+                    </div>
+                    <div className="switch">
+                      {([true, false] as const).map((on) => (
+                        <label key={String(on)}>
+                          <input type="radio" name={`screener-${mailbox.id}`} checked={chosen[mailbox.id] === on} onChange={() => sheet.choose({ [mailbox.id]: on })} />
+                          <span>{on ? copy.on : copy.off}</span>
+                        </label>
+                      ))}
+                    </div>
+                    {releasing && <p className="setting-note" role="status">{copy.releasing(agent === undefined ? copy.yourMailbox : copy.agentMailbox(agent))}</p>}
+                  </fieldset>
+                </li>
+              );
+            })}
+          </ul>
           <SaveRow sheet={sheet} saved={copy.saved} />
         </>
       )}

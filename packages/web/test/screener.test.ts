@@ -313,12 +313,16 @@ test("a human switches the Screener for their own mailbox and their agents' on t
   await signIn("grace@example.org");
 
   await page.getByRole("navigation", { name: "Duva" }).getByRole("link", { name: "Settings" }).click();
+  await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "Screener" }).click();
 
   const sheet = page.getByRole("region", { name: "Screener" });
   const yours = sheet.getByRole("group", { name: /^Your mailbox/ });
   const irises = sheet.getByRole("group", { name: /^Iris/ });
   await expect.poll(() => yours.getByRole("radio", { name: /^On/ }).isChecked(), wait).toBe(true);
   expect(await irises.getByRole("radio", { name: /^Off/ }).isChecked()).toBe(true);
+  // What On and Off mean is said once, in the sheet's lead, and each mailbox is one line.
+  expect((await sheet.innerText()).match(/first-time senders/g)).toHaveLength(1);
+  expect((await yours.innerText()).replace(/\n+/g, "\n")).toBe("Your mailbox\ngrace@example.com\nOn\nOff");
 
   await irises.getByRole("radio", { name: /^On/ }).check();
   await yours.getByRole("radio", { name: /^Off/ }).check();

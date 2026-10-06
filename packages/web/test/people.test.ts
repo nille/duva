@@ -25,6 +25,7 @@ async function withPeople(options: { viewport?: { width: number; height: number 
   const { page } = app;
   await app.signIn("ada@example.org");
   await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
+  await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "People" }).click();
   await expect.poll(() => line(page, "grace@example.org").count(), wait).toBe(1);
   return { ...app, ada, iris: iris!.agent };
 }
@@ -164,8 +165,11 @@ test("a human just added is given a mailbox from their line, in the Addresses sh
   await expect.poll(() => create(page).getByRole("textbox", { name: "Address" }).evaluate((element) => element === document.activeElement), wait).toBe(true);
   await create(page).getByRole("textbox", { name: "Address" }).fill("margaret@example.com");
   await create(page).getByRole("button", { name: "Create mailbox" }).click();
+  await expect.poll(() => page.getByText("Created a mailbox for margaret@example.org at margaret@example.com.").isVisible(), wait).toBe(true);
+  await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "People" }).click();
 
   await expect.poll(() => summary(page, "margaret@example.org"), wait).toBe("1 mailbox. No agents.");
+  await open(page, "margaret@example.org");
   expect(await margaret.getByRole("list", { name: "Mailboxes of margaret@example.org" }).getByRole("listitem").allInnerTexts()).toEqual(["margaret@example.com"]);
   const raw = ["From: Customer <customer@example.edu>", "To: margaret@example.com", "Subject: Welcome", "Message-ID: <welcome@example.edu>", "", "Hello."].join("\r\n");
   expect((await duva.receive(raw, { to: ["margaret@example.com"] })).refused).toEqual([]);
@@ -185,6 +189,9 @@ test("an agent without a mailbox is given one from its sponsor's line", budget, 
   await expect.poll(() => create(page).getByRole("combobox", { name: "For" }).locator("option:checked").textContent(), wait).toBe("Hermes, ada@example.org's agent");
   await create(page).getByRole("textbox", { name: "Address" }).fill("hermes@example.com");
   await create(page).getByRole("button", { name: "Create mailbox" }).click();
+  await expect.poll(() => page.getByText("Created a mailbox for Hermes at hermes@example.com.").isVisible(), wait).toBe(true);
+  await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "People" }).click();
+  await open(page, "ada@example.org");
 
   await expect.poll(() => agents.getByRole("listitem").allInnerTexts(), wait).toEqual([expect.stringMatching(/^Hermes\s+hermes@example\.com\s+Remove$/)]);
   const hermes = (await ada.GET("/organization/agents")).data!.agents.find(({ name }) => name === "Hermes")!;

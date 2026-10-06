@@ -74,6 +74,7 @@ test("a sponsor reaches each agent's page from the Agents sheet", budget, async 
   await signIn("ada@example.org");
 
   await page.getByRole("link", { name: "Settings" }).click();
+  await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "Your agents" }).click();
   await page.getByRole("region", { name: "Your agents" }).getByRole("heading", { name: "Hermes" }).click();
   await page.getByRole("link", { name: "Hermes's activity" }).click();
 

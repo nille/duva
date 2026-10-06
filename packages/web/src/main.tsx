@@ -112,7 +112,7 @@ type Route =
 function routeOf(hash: string): Route {
   if (hash === "#/approvals") return { view: "approvals" };
   if (hash === "#/alerts") return { view: "alerts" };
-  if (hash === "#/settings") return { view: "settings" };
+  if (hash === "#/settings" || hash.startsWith("#/settings/")) return { view: "settings" };
   const opened = /^#\/settings\/agents\/(.+)$/.exec(hash)?.[1];
   if (opened !== undefined) return { view: "settings", agent: decodeURIComponent(opened) };
   if (hash === "#/drafts") return { view: "drafts" };

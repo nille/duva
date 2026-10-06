@@ -24,6 +24,7 @@ async function withDomains(options: { viewport?: { width: number; height: number
 async function openSettings({ page, signIn }: WebApp) {
   await signIn("ada@example.org");
   await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
+  await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: /^Domains/ }).click();
   await expect.poll(() => domains(page).getByRole("heading", { level: 3 }).count(), wait).toBeGreaterThan(0);
 }
 
@@ -144,6 +145,7 @@ test("an admin removes a domain after a confirmation listing its addresses and t
   await expect.poll(() => line(page, "example.net").count(), wait).toBe(0);
   expect(await line(page, "example.dk").count()).toBe(0);
   // The Addresses sheet follows.
+  await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "Addresses" }).click();
   const graces = page.getByRole("region", { name: "Addresses" }).locator("details").filter({ has: page.getByRole("heading", { name: "grace@example.org", exact: true }) });
   await expect.poll(() => graces.locator(".line-summary-text").textContent(), wait).toBe("grace@example.com");
 });

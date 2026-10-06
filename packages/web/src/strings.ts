@@ -290,9 +290,21 @@ export const strings = {
 
   settings: {
     title: "Settings",
+    index: {
+      admins: "For admins",
+      back: "Settings",
+      paused: "Paused",
+      waiting: (count: number) => `${count} waiting`,
+      recordsMissing: (domain: string, records: number) => `${domain}, ${records === 1 ? "1 record" : `${records} records`} missing`,
+      domainsMissing: (domains: number) => `${domains} domains have records missing`,
+    },
     organization: "Organization",
-    organizationLead: "Admins choose these for everyone in the organization.",
-    onlyAdmins: "Only admins change these. Ask one if this should change.",
+    mail: "Mail",
+    mailLead: "Admins choose these for everyone in the organization.",
+    agents: "Agents",
+    agentsLead: "Admins choose these for every agent in the organization.",
+    organizationSummary: (days: number) => `Trash and Spam keep mail ${days === 1 ? "1 day" : `${days} days`}. Admins choose this for everyone.`,
+    signedInAs: (email: string) => `Signed in as ${email}.`,
     erasure: {
       legend: "When a thread with an agent's sends is erased",
       lead: "Each send an agent asked for has an approval record: the draft its approver saw, and any change they made.",
@@ -305,7 +317,7 @@ export const strings = {
       legend: "Languages your mail is in",
       lead: "Each search also looks for its words translated into the other languages checked here, so \"kvitto\" finds an English receipt. Duva sends the words to Amazon's Nova Lite model, in the same AWS region as your mail, which adds a little time to each search. With one language checked, or none, searches aren't translated.",
       names: { English: "English", Swedish: "Swedish", Danish: "Danish" },
-      rebuildsHint: "Checking or unchecking it rebuilds every mailbox's search index, which finds less until that is done.",
+      rebuilds: "Saving rebuilds every mailbox's search index, which finds less until that is done.",
     },
     retention: {
       legend: "How long Trash and Spam keep mail",
@@ -367,12 +379,10 @@ export const strings = {
     },
     screener: {
       title: "Screener",
-      lead: "You choose this for your mailbox and those of the agents you sponsor.",
+      lead: "On, mail from first-time senders waits in the Screener until you let them in or block them, and every sender already in the mailbox is let in. Off, all mail goes to the Inbox, except mail from blocked senders, which goes to Trash.",
       yours: "Your mailbox",
       on: "On",
-      onHint: "Mail from first-time senders waits in the Screener until you let them in or block them. Switching it on lets in every sender already in the mailbox.",
       off: "Off",
-      offHint: "All mail goes to the Inbox, except mail from blocked senders, which goes to Trash.",
       releasing: (mailbox: string) => `Mail waiting in ${mailbox} Screener moves to the Inbox when you save.`,
       yourMailbox: "your mailbox's",
       agentMailbox: (agent: string) => `${agent}'s`,

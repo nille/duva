@@ -24,6 +24,7 @@ async function withMailboxes(options: { viewport?: { width: number; height: numb
   const { page } = app;
   await app.signIn("ada@example.org");
   await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
+  await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "Addresses" }).click();
   await expect.poll(() => line(page, "grace@example.org").count(), wait).toBe(1);
   await line(page, "grace@example.org").getByRole("heading").click();
   return { ...app, ada, graces: graces!, athena: athena!.agent };
