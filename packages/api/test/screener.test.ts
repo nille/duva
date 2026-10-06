@@ -45,8 +45,12 @@ async function withScreener(options: DuvaOptions = {}) {
   const screener = async (client: DuvaClient = grace, at = params) => (await client.GET("/mailboxes/{mailbox}/screener", { params: at })).data!;
   /** The addresses of the senders waiting in the Screener, newest first. */
   const waiting = async (at = params) => (await screener(grace, at)).senders.map(({ address }) => address);
-  const letIn = (address: string, client: DuvaClient = grace, at = params) => client.POST("/mailboxes/{mailbox}/screener/let-in", { params: at, body: { address } });
-  const block = (address: string, client: DuvaClient = grace, at = params) => client.POST("/mailboxes/{mailbox}/screener/block", { params: at, body: { address } });
+  /** The body that decides on the address, or on the domain given as `{ domain }`. */
+  const sender = (to: string | { domain: string }) => (typeof to === "string" ? { address: to } : to);
+  const letIn = (to: string | { domain: string }, client: DuvaClient = grace, at = params) => client.POST("/mailboxes/{mailbox}/screener/let-in", { params: at, body: sender(to) });
+  const block = (to: string | { domain: string }, client: DuvaClient = grace, at = params) => client.POST("/mailboxes/{mailbox}/screener/block", { params: at, body: sender(to) });
+  const senders = async (client: DuvaClient = grace) => (await client.GET("/mailboxes/{mailbox}/screener/senders", { params })).data!.senders;
+  const remove = (decided: string, client: DuvaClient = grace) => client.DELETE("/mailboxes/{mailbox}/screener/senders/{sender}", { params: { path: { ...params.path, sender: decided } } });
   const turn = (on: boolean, client: DuvaClient = grace, at = params) => client.PATCH("/mailboxes/{mailbox}/screener", { params: at, body: { on } });
   /** The mailbox's changes, from the start. */
   const changes = async (at = params) => (await grace.GET("/mailboxes/{mailbox}/changes", { params: { ...at, query: { spam: true } } })).data!.changes;
@@ -74,6 +78,8 @@ async function withScreener(options: DuvaOptions = {}) {
     waiting,
     letIn,
     block,
+    senders,
+    remove,
     turn,
     changes,
     send,
@@ -482,4 +488,231 @@ test("setup again leaves the Screener as the owner switched it", async () => {
   expect(arrival.screened).toBeUndefined();
   expect((await screener()).on).toBe(false);
   expect((await changes()).filter(({ type }) => type === "screenerSwitched").map((change) => (change as { on: boolean }).on)).toEqual([true, false]);
+});
+
+test("letting in a domain lets in everyone at exactly that domain, while its subdomains still wait", async () => {
+  const { graceId, receive, listed, waiting, screener, letIn, changes } = await withScreener();
+  const mallory = await receive(note("mallory@example.net", "First"));
+  await receive(note("oscar@sub.example.net", "Sub"));
+
+  const { response, data } = await letIn({ domain: "Example.NET" });
+  const colleague = await receive(note("trudy@example.net", "Later"));
+  const sub = await receive(note("walter@sub.example.net", "Later sub"));
+
+  expect(response.status).toBe(200);
+  expect(data).toEqual({
+    sender: { domain: "example.net", decision: "letIn", decidedAt: expect.any(String), actor: graceId },
+    threads: [expect.objectContaining({ id: mallory.thread, labels: ["inbox"] })],
+  });
+  expect([colleague.screened, sub.screened]).toEqual([undefined, "waiting"]);
+  expect(await listed("inbox")).toEqual([colleague.thread, mallory.thread]);
+  expect(await waiting()).toEqual(["walter@sub.example.net", "oscar@sub.example.net"]);
+  expect((await screener()).letIn).toBe(1);
+  expect((await changes()).filter(({ type }) => type === "senderScreened")).toEqual([
+    { position: expect.any(Number), at: expect.any(String), actor: graceId, type: "senderScreened", domain: "example.net", decision: "letIn" },
+  ]);
+});
+
+test("blocking a domain moves its senders' waiting threads to Trash, and their later mail goes straight there", async () => {
+  const { receive, listed, waiting, screener, block } = await withScreener();
+  const waited = await receive(note("mallory@example.net", "First"));
+  const other = await receive(note("oscar@example.org", "Other"));
+
+  const { data } = await block({ domain: "example.net" });
+  const later = await receive(note("trudy@example.net", "Later"));
+
+  expect(data!.threads).toEqual([expect.objectContaining({ id: waited.thread, labels: ["trash"] })]);
+  expect(later.screened).toBe("blocked");
+  expect(await listed("trash")).toEqual([later.thread, waited.thread]);
+  expect(await waiting()).toEqual(["oscar@example.org"]);
+  expect((await screener()).senders[0]!.threads.map(({ id }) => id)).toEqual([other.thread]);
+  expect((await screener()).blocked).toBe(1);
+});
+
+test("an address's decision beats its domain's, either way", async () => {
+  const { receive, listed, letIn, block } = await withScreener();
+  await letIn({ domain: "example.net" });
+  await block("mallory@example.net");
+  await block({ domain: "example.org" });
+  await letIn("Oscar@example.org");
+
+  const blocked = await receive(note("mallory@example.net", "Blocked"));
+  const letInAtDomain = await receive(note("trudy@example.net", "Let in"));
+  const blockedAtDomain = await receive(note("walter@example.org", "Blocked at domain"));
+  const letInAddress = await receive(note("oscar@example.org", "Let in address"));
+
+  expect(await listed("trash")).toEqual([blockedAtDomain.thread, blocked.thread]);
+  expect(await listed("inbox")).toEqual([letInAddress.thread, letInAtDomain.thread]);
+});
+
+test("a decision on an address at a domain moves only that address's waiting threads, and one on a domain leaves those with their own decision", async () => {
+  const { receive, listed, waiting, letIn, block } = await withScreener();
+  await receive(note("mallory@example.net", "First"));
+  const trudy = await receive(note("trudy@example.net", "Second"));
+  await letIn("mallory@example.net");
+
+  const { data } = await block({ domain: "example.net" });
+
+  expect(data!.threads.map(({ id }) => id)).toEqual([trudy.thread]);
+  expect((await listed("inbox")).length).toBe(1);
+  expect(await waiting()).toEqual([]);
+});
+
+test("a domain decision on a public mail provider, or on something that isn't a domain, is refused", async () => {
+  const { letIn, block, grace, params, senders } = await withScreener();
+
+  const providers = await Promise.all([letIn({ domain: "gmail.com" }), block({ domain: "Outlook.com" }), block({ domain: "proton.me" }), letIn({ domain: "icloud.com." })]);
+  const notDomains = await Promise.all([letIn({ domain: "@example.org" }), block({ domain: "example" }), letIn({ domain: "" })]);
+  const both = await grace.POST("/mailboxes/{mailbox}/screener/let-in", { params, body: { address: "mallory@example.net", domain: "example.net" } });
+  const neither = await grace.POST("/mailboxes/{mailbox}/screener/block", { params, body: {} });
+
+  for (const { response, error } of providers) {
+    expect(response.status).toBe(400);
+    expect(error?.message).toMatch(/is a public mail provider/);
+  }
+  for (const { response, error } of notDomains) {
+    expect(response.status).toBe(400);
+    expect(error?.message).toMatch(/isn't a domain/);
+  }
+  expect([both.response.status, neither.response.status]).toEqual([400, 400]);
+  expect(await senders()).toEqual([]);
+});
+
+test("the screened senders list gives each address and domain, its decision, when and by whom, newest first", async () => {
+  const { graceId, iris, irisId, grace, receive, letIn, block, senders, turn } = await withScreener();
+  await receive(note("bob@example.org", "Known"));
+  await turn(false);
+  await turn(true);
+  await letIn({ domain: "example.net" });
+  await grace.PATCH("/agents/{agent}/settings", { params: { path: { agent: irisId } }, body: { sponsorAccess: "full" } });
+  await block("mallory@example.net", iris);
+
+  expect(await senders()).toEqual([
+    { address: "mallory@example.net", decision: "block", decidedAt: expect.any(String), actor: irisId },
+    { domain: "example.net", decision: "letIn", decidedAt: expect.any(String), actor: graceId },
+    { address: "bob@example.org", decision: "letIn", decidedAt: expect.any(String), actor: graceId },
+  ]);
+});
+
+test("letting in a blocked sender moves their threads in Trash to the Inbox", async () => {
+  const { receive, listed, letIn, block } = await withScreener();
+  const waited = await receive(note("mallory@example.net", "First"));
+  await block("mallory@example.net");
+  const later = await receive(note("mallory@example.net", "Later"));
+
+  const { data } = await letIn("mallory@example.net");
+
+  expect(data!.threads).toEqual([expect.objectContaining({ id: later.thread, labels: ["inbox"] }), expect.objectContaining({ id: waited.thread, labels: ["inbox"] })]);
+  expect(await listed("trash")).toEqual([]);
+  expect(await listed("inbox")).toEqual([later.thread, waited.thread]);
+});
+
+test("removing a block puts the sender's threads still in Trash back in the Inbox, and their later mail waits again", async () => {
+  const { graceId, grace, params, receive, listed, waiting, screener, block, remove, senders, changes } = await withScreener();
+  const kept = await receive(note("mallory@example.net", "Kept"));
+  const emptied = await receive(note("mallory@example.net", "Emptied"));
+  await block("mallory@example.net");
+  await grace.POST("/mailboxes/{mailbox}/trash/empty", { params });
+  await receive(note("oscar@example.net", "Other"));
+  const restoredBefore = await receive(note("mallory@example.net", "After emptying"));
+
+  const { response, data } = await remove("Mallory@Example.NET");
+  const later = await receive(note("mallory@example.net", "Later"));
+
+  expect(response.status).toBe(200);
+  expect(data).toEqual({
+    sender: { address: "mallory@example.net", decision: "block", decidedAt: expect.any(String), actor: graceId },
+    threads: [expect.objectContaining({ id: restoredBefore.thread, labels: ["inbox"] })],
+  });
+  expect(await listed("inbox")).toEqual([restoredBefore.thread]);
+  expect(later.screened).toBe("waiting");
+  expect(await waiting()).toEqual(["mallory@example.net", "oscar@example.net"]);
+  expect(await senders()).toEqual([]);
+  expect((await screener()).blocked).toBe(0);
+  expect((await changes()).filter(({ type }) => type === "screenedSenderRemoved" || type === "threadLabelsChanged").slice(-2)).toEqual([
+    { position: expect.any(Number), at: expect.any(String), actor: graceId, type: "screenedSenderRemoved", address: "mallory@example.net", decision: "block" },
+    { position: expect.any(Number), at: expect.any(String), actor: graceId, type: "threadLabelsChanged", thread: restoredBefore.thread, added: ["inbox"], removed: ["trash"] },
+  ]);
+});
+
+test("removing a let-in makes the sender first-time again, and leaves their threads where they are", async () => {
+  const { graceId, receive, listed, letIn, remove, changes } = await withScreener();
+  const first = await receive(note("mallory@example.net", "First"));
+  await letIn({ domain: "example.net" });
+
+  const { data } = await remove("example.net");
+  const later = await receive(note("mallory@example.net", "Later"));
+
+  expect(data).toEqual({ sender: { domain: "example.net", decision: "letIn", decidedAt: expect.any(String), actor: graceId }, threads: [] });
+  expect(later.screened).toBe("waiting");
+  expect(await listed("inbox")).toEqual([first.thread]);
+  expect((await changes()).findLast(({ type }) => type === "screenedSenderRemoved")).toEqual({
+    position: expect.any(Number),
+    at: expect.any(String),
+    actor: graceId,
+    type: "screenedSenderRemoved",
+    domain: "example.net",
+    decision: "letIn",
+  });
+});
+
+test("removing a domain's block restores its senders' threads unless their address is blocked too, and removing an address's block leaves them in Trash while its domain is blocked", async () => {
+  const { receive, listed, block, remove } = await withScreener();
+  await block({ domain: "example.net" });
+  await block("mallory@example.net");
+  const mallory = await receive(note("mallory@example.net", "Mallory"));
+  const trudy = await receive(note("trudy@example.net", "Trudy"));
+
+  const addressRemoved = await remove("mallory@example.net");
+  await block("mallory@example.net");
+  const domainRemoved = await remove("example.net");
+
+  expect(addressRemoved.data!.threads).toEqual([]);
+  expect(domainRemoved.data!.threads.map(({ id }) => id)).toEqual([trudy.thread]);
+  expect(await listed("trash")).toEqual([mallory.thread]);
+  expect(await listed("inbox")).toEqual([trudy.thread]);
+});
+
+test("removing a decision the mailbox doesn't have is refused", async () => {
+  const { remove, letIn } = await withScreener();
+  await letIn("mallory@example.net");
+
+  const results = await Promise.all([remove("oscar@example.net"), remove("example.net")]);
+
+  for (const { response, error } of results) {
+    expect(response.status).toBe(404);
+    expect(error?.message).toMatch(/hasn't let in or blocked/);
+  }
+});
+
+test("an agent with read sponsor access sees the screened senders, one with full removes decisions, and anyone else is refused", async () => {
+  const { grace, iris, irisId, linus, params, letIn, senders, remove } = await withScreener();
+  await letIn("mallory@example.net");
+  await letIn("oscar@example.net");
+  const access = (sponsorAccess: "read" | "full") => grace.PATCH("/agents/{agent}/settings", { params: { path: { agent: irisId } }, body: { sponsorAccess } });
+
+  await access("read");
+  const seen = await senders(iris);
+  const readRemoves = await remove("mallory@example.net", iris);
+  await access("full");
+  const fullRemoves = await remove("mallory@example.net", iris);
+  const others = await Promise.all([remove("oscar@example.net", linus), linus.GET("/mailboxes/{mailbox}/screener/senders", { params })]);
+
+  expect(seen.map(({ address }) => address)).toEqual(["oscar@example.net", "mallory@example.net"]);
+  expect([readRemoves.response.status, fullRemoves.response.status]).toEqual([403, 200]);
+  expect(others.map(({ response }) => response.status)).toEqual([403, 403]);
+  expect((await senders()).map(({ address }) => address)).toEqual(["oscar@example.net"]);
+});
+
+test("switching the Screener on leaves senders at a blocked domain blocked", async () => {
+  const { receive, listed, block, turn } = await withScreener();
+  await turn(false);
+  await block({ domain: "example.net" });
+  await receive(note("mallory@example.net", "Before"));
+  await turn(true);
+
+  const later = await receive(note("mallory@example.net", "Later"));
+
+  expect(later.screened).toBe("blocked");
+  expect((await listed("trash"))[0]).toBe(later.thread);
 });

@@ -420,6 +420,28 @@ test("a human lets a waiting sender in from the CLI, and switches the Screener o
   expect(JSON.parse(off.stdout)).toEqual({ on: false, senders: [], letIn: 1, blocked: 0 });
 });
 
+test("a human blocks a domain from the CLI, lists the screened senders and removes the block", async () => {
+  const machine = await newMachine();
+  const duva = await startDuva({ domain: "example.com", admin: "ada@example.org" });
+  const server = await duva.listen();
+  onTestFinished(() => server.close());
+  await machine.saveDeployment(server);
+  await machine.duva("login", { browserSignsIn: "ada@example.org" });
+  const { id: ada } = JSON.parse((await machine.duva("whoami")).stdout) as { id: string };
+  const mailbox = JSON.parse((await machine.duva("mailboxes", "create", "--owner", ada, "--address", "ada@example.com")).stdout) as { id: string };
+
+  const blocked = await machine.duva("screener", "block", "--mailbox", mailbox.id, "--domain", "example.net");
+  const provider = await machine.duva("screener", "let-in", "--mailbox", mailbox.id, "--domain", "gmail.com");
+  const listed = await machine.duva("screener", "senders", "--mailbox", mailbox.id);
+  const removed = await machine.duva("screener", "remove", "--mailbox", mailbox.id, "--sender", "example.net");
+
+  expect(JSON.parse(blocked.stdout)).toMatchObject({ sender: { domain: "example.net", decision: "block", actor: ada }, threads: [] });
+  expect(provider.exitCode).toBe(1);
+  expect(errorIn(provider.stderr)).toMatch(/gmail.com is a public mail provider/);
+  expect(JSON.parse(listed.stdout)).toEqual({ senders: [{ domain: "example.net", decision: "block", decidedAt: expect.any(String), actor: ada }] });
+  expect(JSON.parse(removed.stdout)).toMatchObject({ sender: { domain: "example.net", decision: "block" }, threads: [] });
+});
+
 test("mailboxes create says why an address is refused", async () => {
   const machine = await newMachine();
   const server = await (await startDuva({ domain: "example.com", admin: "ada@example.org" })).listen();

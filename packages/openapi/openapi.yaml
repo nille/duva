@@ -867,7 +867,7 @@ paths:
         Lists each sender whose mail waits, newest first, with their waiting
         threads, newest first. Mail waiting in the Screener is in no other
         listing and no unread count. Says whether the Screener is on, and how
-        many addresses the mailbox has let in and blocked. Only those who can
+        many senders the mailbox has let in and blocked. Only those who can
         read the mailbox can read its Screener.
       x-cli-command: screener get
       parameters:
@@ -924,10 +924,13 @@ paths:
       operationId: letInSender
       summary: Let a sender into a mailbox, moving their waiting threads to the Inbox.
       description: >
+        Give an address, or a domain to let in everyone there. A domain covers
+        exactly that domain, not its subdomains, and can't be a public mail
+        provider's, like gmail.com. An address's decision beats its domain's.
         Their later mail skips the Screener, even while it is off. Letting in
-        an address the mailbox blocked replaces the block. The decision and
-        each thread it moves are recorded in the mailbox's change feed under
-        you. Only the mailbox's owner, for an agent's mailbox its sponsor, and
+        a sender the mailbox blocked replaces the block and moves their
+        threads still in Trash to the Inbox. The decision and each thread it
+        moves are recorded in the mailbox's change feed under you. Only the mailbox's owner, for an agent's mailbox its sponsor, and
         for a human's mailbox the agents they give full sponsor access can
         decide.
       x-cli-command: screener let-in
@@ -938,7 +941,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/SenderAddress"
+              $ref: "#/components/schemas/SenderToScreen"
       responses:
         "200":
           description: The decision, with the threads it moved.
@@ -959,9 +962,12 @@ paths:
       operationId: blockSender
       summary: Block a sender in a mailbox, moving their waiting threads to Trash.
       description: >
+        Give an address, or a domain to block everyone there. A domain covers
+        exactly that domain, not its subdomains, and can't be a public mail
+        provider's, like gmail.com. An address's decision beats its domain's.
         Their later mail that starts a thread goes straight to Trash, even
         while the Screener is off. Trash is erased 30 days after a thread got
-        it. Blocking an address the mailbox let in replaces that. The decision
+        it. Blocking a sender the mailbox let in replaces that. The decision
         and each thread it moves are recorded in the mailbox's change feed
         under you. Only the mailbox's owner, for an agent's mailbox its
         sponsor, and for a human's mailbox the agents they give full sponsor
@@ -974,7 +980,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/SenderAddress"
+              $ref: "#/components/schemas/SenderToScreen"
       responses:
         "200":
           description: The decision, with the threads it moved.
@@ -984,6 +990,64 @@ paths:
                 $ref: "#/components/schemas/ScreeningDecision"
         "400":
           $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /mailboxes/{mailbox}/screener/senders:
+    get:
+      operationId: listScreenedSenders
+      summary: List the senders a mailbox has let in or blocked.
+      description: >
+        Each address and domain, with its decision, when it was made and by
+        whom, newest first. Only those who can read the mailbox can list them.
+      x-cli-command: screener senders
+      parameters:
+        - $ref: "#/components/parameters/Mailbox"
+      responses:
+        "200":
+          description: The screened senders.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScreenedSenderList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /mailboxes/{mailbox}/screener/senders/{sender}:
+    delete:
+      operationId: removeScreenedSender
+      summary: Remove a mailbox's decision on a sender, so they are first-time again.
+      description: >
+        Their later mail waits in the Screener again, unless the mailbox has
+        written to them, or a decision on their domain covers them. Removing
+        a block moves their threads still in Trash to the Inbox. To flip a
+        decision instead, let them in or block them. The removal and each
+        thread it moves are recorded in the mailbox's change feed under you.
+        Only the mailbox's owner, for an agent's mailbox its sponsor, and for
+        a human's mailbox the agents they give full sponsor access can remove
+        decisions.
+      x-cli-command: screener remove
+      parameters:
+        - $ref: "#/components/parameters/Mailbox"
+        - name: sender
+          in: path
+          required: true
+          description: The address or the domain, as the mailbox decided on it. Case doesn't matter.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The decision removed, with the threads it moved.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScreeningDecision"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -1674,6 +1738,7 @@ components:
         - $ref: "#/components/schemas/AgentSettingsChanged"
         - $ref: "#/components/schemas/SenderScreened"
         - $ref: "#/components/schemas/ScreenerSwitched"
+        - $ref: "#/components/schemas/ScreenedSenderRemoved"
       discriminator:
         propertyName: type
         mapping:
@@ -1698,6 +1763,7 @@ components:
           agentSettingsChanged: "#/components/schemas/AgentSettingsChanged"
           senderScreened: "#/components/schemas/SenderScreened"
           screenerSwitched: "#/components/schemas/ScreenerSwitched"
+          screenedSenderRemoved: "#/components/schemas/ScreenedSenderRemoved"
     MessageReceived:
       type: object
       additionalProperties: false
@@ -2045,11 +2111,11 @@ components:
             $ref: "#/components/schemas/WaitingSender"
         letIn:
           type: integer
-          description: How many addresses the mailbox has let in.
+          description: How many addresses and domains the mailbox has let in.
           examples: [42]
         blocked:
           type: integer
-          description: How many addresses the mailbox has blocked.
+          description: How many addresses and domains the mailbox has blocked.
           examples: [3]
     WaitingSender:
       type: object
@@ -2082,25 +2148,36 @@ components:
         "on":
           type: boolean
           description: True to switch the Screener on, false to switch it off.
-    SenderAddress:
+    SenderToScreen:
       type: object
       additionalProperties: false
-      required: [address]
+      description: An address or a domain. Give one of them.
       properties:
         address:
           type: string
           description: The sender's email address. Case doesn't matter.
           examples: ["grace@example.org"]
+        domain:
+          type: string
+          description: >
+            The domain, for everyone at exactly that domain, not its
+            subdomains. Case doesn't matter. Public mail providers' domains,
+            like gmail.com, are refused.
+          examples: ["example.org"]
     ScreenedSender:
       type: object
       additionalProperties: false
-      required: [address, decision, decidedAt]
-      description: An address a mailbox has let in or blocked.
+      required: [decision, decidedAt]
+      description: An address or a domain a mailbox has let in or blocked. It has one of address and domain.
       properties:
         address:
           type: string
           description: The address, in lower case.
           examples: ["grace@example.org"]
+        domain:
+          type: string
+          description: The domain, in lower case. It covers exactly that domain, and an address's own decision beats it.
+          examples: ["example.org"]
         decision:
           $ref: "#/components/schemas/ScreeningDecisionKind"
         decidedAt:
@@ -2123,24 +2200,56 @@ components:
           $ref: "#/components/schemas/ScreenedSender"
         threads:
           type: array
-          description: The sender's threads that waited, as they are now, newest first.
+          description: The threads it moved, as they are now, newest first.
           items:
             $ref: "#/components/schemas/ThreadSummary"
+    ScreenedSenderList:
+      type: object
+      additionalProperties: false
+      required: [senders]
+      properties:
+        senders:
+          type: array
+          description: The addresses and domains the mailbox let in or blocked, newest decision first.
+          items:
+            $ref: "#/components/schemas/ScreenedSender"
     SenderScreened:
       allOf:
         - $ref: "#/components/schemas/ChangeBase"
         - type: object
-          required: [type, address, decision]
-          description: An actor let a sender in or blocked them. Each thread the decision moved has its own threadLabelsChanged.
+          required: [type, decision]
+          description: An actor let a sender in or blocked them, by address or by domain. Each thread the decision moved has its own threadLabelsChanged.
           properties:
             type:
               type: string
               const: senderScreened
             address:
               type: string
-              description: The sender's address, in lower case.
+              description: The sender's address, in lower case, if the decision is on an address.
+            domain:
+              type: string
+              description: The domain, in lower case, if the decision is on a domain.
             decision:
               $ref: "#/components/schemas/ScreeningDecisionKind"
+    ScreenedSenderRemoved:
+      allOf:
+        - $ref: "#/components/schemas/ChangeBase"
+        - type: object
+          required: [type, decision]
+          description: An actor removed the mailbox's decision on a sender, who is first-time again. Each thread it moved has its own threadLabelsChanged.
+          properties:
+            type:
+              type: string
+              const: screenedSenderRemoved
+            address:
+              type: string
+              description: The sender's address, in lower case, if the decision was on an address.
+            domain:
+              type: string
+              description: The domain, in lower case, if the decision was on a domain.
+            decision:
+              $ref: "#/components/schemas/ScreeningDecisionKind"
+              description: The decision it was.
     ScreenerSwitched:
       type: object
       additionalProperties: false

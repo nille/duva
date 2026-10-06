@@ -798,7 +798,7 @@ export const operations = [
     "path": "/mailboxes/{mailbox}/screener",
     "routeKey": "GET /mailboxes/{mailbox}/screener",
     "summary": "Read a mailbox's Screener, with the first-time senders whose mail waits there.",
-    "description": "Lists each sender whose mail waits, newest first, with their waiting threads, newest first. Mail waiting in the Screener is in no other listing and no unread count. Says whether the Screener is on, and how many addresses the mailbox has let in and blocked. Only those who can read the mailbox can read its Screener.",
+    "description": "Lists each sender whose mail waits, newest first, with their waiting threads, newest first. Mail waiting in the Screener is in no other listing and no unread count. Says whether the Screener is on, and how many senders the mailbox has let in and blocked. Only those who can read the mailbox can read its Screener.",
     "signIn": true,
     "command": [
       "screener",
@@ -849,7 +849,7 @@ export const operations = [
     "path": "/mailboxes/{mailbox}/screener/let-in",
     "routeKey": "POST /mailboxes/{mailbox}/screener/let-in",
     "summary": "Let a sender into a mailbox, moving their waiting threads to the Inbox.",
-    "description": "Their later mail skips the Screener, even while it is off. Letting in an address the mailbox blocked replaces the block. The decision and each thread it moves are recorded in the mailbox's change feed under you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can decide.",
+    "description": "Give an address, or a domain to let in everyone there. A domain covers exactly that domain, not its subdomains, and can't be a public mail provider's, like gmail.com. An address's decision beats its domain's. Their later mail skips the Screener, even while it is off. Letting in a sender the mailbox blocked replaces the block and moves their threads still in Trash to the Inbox. The decision and each thread it moves are recorded in the mailbox's change feed under you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can decide.",
     "signIn": true,
     "command": [
       "screener",
@@ -867,8 +867,15 @@ export const operations = [
         "name": "address",
         "in": "body",
         "type": "string",
-        "required": true,
+        "required": false,
         "description": "The sender's email address. Case doesn't matter."
+      },
+      {
+        "name": "domain",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "The domain, for everyone at exactly that domain, not its subdomains. Case doesn't matter. Public mail providers' domains, like gmail.com, are refused.\n"
       }
     ]
   },
@@ -878,7 +885,7 @@ export const operations = [
     "path": "/mailboxes/{mailbox}/screener/block",
     "routeKey": "POST /mailboxes/{mailbox}/screener/block",
     "summary": "Block a sender in a mailbox, moving their waiting threads to Trash.",
-    "description": "Their later mail that starts a thread goes straight to Trash, even while the Screener is off. Trash is erased 30 days after a thread got it. Blocking an address the mailbox let in replaces that. The decision and each thread it moves are recorded in the mailbox's change feed under you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can decide.",
+    "description": "Give an address, or a domain to block everyone there. A domain covers exactly that domain, not its subdomains, and can't be a public mail provider's, like gmail.com. An address's decision beats its domain's. Their later mail that starts a thread goes straight to Trash, even while the Screener is off. Trash is erased 30 days after a thread got it. Blocking a sender the mailbox let in replaces that. The decision and each thread it moves are recorded in the mailbox's change feed under you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can decide.",
     "signIn": true,
     "command": [
       "screener",
@@ -896,8 +903,66 @@ export const operations = [
         "name": "address",
         "in": "body",
         "type": "string",
-        "required": true,
+        "required": false,
         "description": "The sender's email address. Case doesn't matter."
+      },
+      {
+        "name": "domain",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "The domain, for everyone at exactly that domain, not its subdomains. Case doesn't matter. Public mail providers' domains, like gmail.com, are refused.\n"
+      }
+    ]
+  },
+  {
+    "operationId": "listScreenedSenders",
+    "method": "get",
+    "path": "/mailboxes/{mailbox}/screener/senders",
+    "routeKey": "GET /mailboxes/{mailbox}/screener/senders",
+    "summary": "List the senders a mailbox has let in or blocked.",
+    "description": "Each address and domain, with its decision, when it was made and by whom, newest first. Only those who can read the mailbox can list them.",
+    "signIn": true,
+    "command": [
+      "screener",
+      "senders"
+    ],
+    "options": [
+      {
+        "name": "mailbox",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The mailbox's ID."
+      }
+    ]
+  },
+  {
+    "operationId": "removeScreenedSender",
+    "method": "delete",
+    "path": "/mailboxes/{mailbox}/screener/senders/{sender}",
+    "routeKey": "DELETE /mailboxes/{mailbox}/screener/senders/{sender}",
+    "summary": "Remove a mailbox's decision on a sender, so they are first-time again.",
+    "description": "Their later mail waits in the Screener again, unless the mailbox has written to them, or a decision on their domain covers them. Removing a block moves their threads still in Trash to the Inbox. To flip a decision instead, let them in or block them. The removal and each thread it moves are recorded in the mailbox's change feed under you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can remove decisions.",
+    "signIn": true,
+    "command": [
+      "screener",
+      "remove"
+    ],
+    "options": [
+      {
+        "name": "mailbox",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The mailbox's ID."
+      },
+      {
+        "name": "sender",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The address or the domain, as the mailbox decided on it. Case doesn't matter."
       }
     ]
   },

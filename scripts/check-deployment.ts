@@ -137,6 +137,10 @@ for (const decision of ["let-in", "block"]) {
     expectStatus(await fetch(`${apiUrl}/mailboxes/x/screener/${decision}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ address: "a@example.org" }) }), 401),
   );
 }
+await check("listing a mailbox's screened senders without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/mailboxes/x/screener/senders`), 401));
+await check("removing a screened sender without credentials answers 401", async () =>
+  expectStatus(await fetch(`${apiUrl}/mailboxes/x/screener/senders/a%40example.org`, { method: "DELETE" }), 401),
+);
 await check("emptying Trash without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/mailboxes/x/trash/empty`, { method: "POST" }), 401));
 await check("sending an approval without credentials answers 401", async () =>
   expectStatus(await fetch(`${apiUrl}/approvals/x/send`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }), 401),

@@ -1,0 +1,43 @@
+// Public mail providers' domains, where anyone can have an address. A screening decision on one would
+// let in or block millions of strangers at once, so a domain decision on one is refused.
+const publicMailProviders = new Set([
+  "gmail.com",
+  "googlemail.com",
+  "outlook.com",
+  "hotmail.com",
+  "hotmail.co.uk",
+  "hotmail.se",
+  "live.com",
+  "live.se",
+  "msn.com",
+  "icloud.com",
+  "me.com",
+  "mac.com",
+  "yahoo.com",
+  "yahoo.co.uk",
+  "yahoo.se",
+  "ymail.com",
+  "aol.com",
+  "proton.me",
+  "protonmail.com",
+  "pm.me",
+  "tutanota.com",
+  "tuta.io",
+  "fastmail.com",
+  "hey.com",
+  "zoho.com",
+  "gmx.com",
+  "gmx.net",
+  "gmx.de",
+  "web.de",
+  "mail.com",
+  "yandex.com",
+  "yandex.ru",
+  "mail.ru",
+  "qq.com",
+  "163.com",
+  "126.com",
+]);
+
+/** Whether the domain, in lower case, is a public mail provider's. */
+export const isPublicMailProvider = (domain: string) => publicMailProviders.has(domain);

@@ -473,7 +473,7 @@ export interface paths {
         };
         /**
          * Read a mailbox's Screener, with the first-time senders whose mail waits there.
-         * @description Lists each sender whose mail waits, newest first, with their waiting threads, newest first. Mail waiting in the Screener is in no other listing and no unread count. Says whether the Screener is on, and how many addresses the mailbox has let in and blocked. Only those who can read the mailbox can read its Screener.
+         * @description Lists each sender whose mail waits, newest first, with their waiting threads, newest first. Mail waiting in the Screener is in no other listing and no unread count. Says whether the Screener is on, and how many senders the mailbox has let in and blocked. Only those who can read the mailbox can read its Screener.
          */
         get: operations["getScreener"];
         put?: never;
@@ -499,7 +499,7 @@ export interface paths {
         put?: never;
         /**
          * Let a sender into a mailbox, moving their waiting threads to the Inbox.
-         * @description Their later mail skips the Screener, even while it is off. Letting in an address the mailbox blocked replaces the block. The decision and each thread it moves are recorded in the mailbox's change feed under you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can decide.
+         * @description Give an address, or a domain to let in everyone there. A domain covers exactly that domain, not its subdomains, and can't be a public mail provider's, like gmail.com. An address's decision beats its domain's. Their later mail skips the Screener, even while it is off. Letting in a sender the mailbox blocked replaces the block and moves their threads still in Trash to the Inbox. The decision and each thread it moves are recorded in the mailbox's change feed under you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can decide.
          */
         post: operations["letInSender"];
         delete?: never;
@@ -519,10 +519,50 @@ export interface paths {
         put?: never;
         /**
          * Block a sender in a mailbox, moving their waiting threads to Trash.
-         * @description Their later mail that starts a thread goes straight to Trash, even while the Screener is off. Trash is erased 30 days after a thread got it. Blocking an address the mailbox let in replaces that. The decision and each thread it moves are recorded in the mailbox's change feed under you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can decide.
+         * @description Give an address, or a domain to block everyone there. A domain covers exactly that domain, not its subdomains, and can't be a public mail provider's, like gmail.com. An address's decision beats its domain's. Their later mail that starts a thread goes straight to Trash, even while the Screener is off. Trash is erased 30 days after a thread got it. Blocking a sender the mailbox let in replaces that. The decision and each thread it moves are recorded in the mailbox's change feed under you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can decide.
          */
         post: operations["blockSender"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mailboxes/{mailbox}/screener/senders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the senders a mailbox has let in or blocked.
+         * @description Each address and domain, with its decision, when it was made and by whom, newest first. Only those who can read the mailbox can list them.
+         */
+        get: operations["listScreenedSenders"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mailboxes/{mailbox}/screener/senders/{sender}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove a mailbox's decision on a sender, so they are first-time again.
+         * @description Their later mail waits in the Screener again, unless the mailbox has written to them, or a decision on their domain covers them. Removing a block moves their threads still in Trash to the Inbox. To flip a decision instead, let them in or block them. The removal and each thread it moves are recorded in the mailbox's change feed under you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can remove decisions.
+         */
+        delete: operations["removeScreenedSender"];
         options?: never;
         head?: never;
         patch?: never;
@@ -862,7 +902,7 @@ export interface components {
             position: number;
         };
         /** @description A change in a mailbox. */
-        MailboxChange: components["schemas"]["MessageReceived"] | components["schemas"]["DraftWritten"] | components["schemas"]["DraftChanged"] | components["schemas"]["DraftDeleted"] | components["schemas"]["SendAsked"] | components["schemas"]["ApprovalAsked"] | components["schemas"]["ApprovalWithdrawn"] | components["schemas"]["ApprovalDecided"] | components["schemas"]["MessageSent"] | components["schemas"]["SendFailed"] | components["schemas"]["SendUnclear"] | components["schemas"]["ThreadRead"] | components["schemas"]["ThreadUnread"] | components["schemas"]["ThreadLabelsChanged"] | components["schemas"]["LabelCreated"] | components["schemas"]["LabelRenamed"] | components["schemas"]["LabelDeleted"] | components["schemas"]["ThreadErased"] | components["schemas"]["AgentSettingsChanged"] | components["schemas"]["SenderScreened"] | components["schemas"]["ScreenerSwitched"];
+        MailboxChange: components["schemas"]["MessageReceived"] | components["schemas"]["DraftWritten"] | components["schemas"]["DraftChanged"] | components["schemas"]["DraftDeleted"] | components["schemas"]["SendAsked"] | components["schemas"]["ApprovalAsked"] | components["schemas"]["ApprovalWithdrawn"] | components["schemas"]["ApprovalDecided"] | components["schemas"]["MessageSent"] | components["schemas"]["SendFailed"] | components["schemas"]["SendUnclear"] | components["schemas"]["ThreadRead"] | components["schemas"]["ThreadUnread"] | components["schemas"]["ThreadLabelsChanged"] | components["schemas"]["LabelCreated"] | components["schemas"]["LabelRenamed"] | components["schemas"]["LabelDeleted"] | components["schemas"]["ThreadErased"] | components["schemas"]["AgentSettingsChanged"] | components["schemas"]["SenderScreened"] | components["schemas"]["ScreenerSwitched"] | components["schemas"]["ScreenedSenderRemoved"];
         /** @description Mail arrived. No actor made this change, so it names none. */
         MessageReceived: {
             /** @description The change's position in the mailbox's feed, counting from 1. */
@@ -1165,12 +1205,12 @@ export interface components {
             /** @description The senders whose mail waits, newest first. */
             senders: components["schemas"]["WaitingSender"][];
             /**
-             * @description How many addresses the mailbox has let in.
+             * @description How many addresses and domains the mailbox has let in.
              * @example 42
              */
             letIn: number;
             /**
-             * @description How many addresses the mailbox has blocked.
+             * @description How many addresses and domains the mailbox has blocked.
              * @example 3
              */
             blocked: number;
@@ -1199,20 +1239,31 @@ export interface components {
             /** @description True to switch the Screener on, false to switch it off. */
             on: boolean;
         };
-        SenderAddress: {
+        /** @description An address or a domain. Give one of them. */
+        SenderToScreen: {
             /**
              * @description The sender's email address. Case doesn't matter.
              * @example grace@example.org
              */
-            address: string;
+            address?: string;
+            /**
+             * @description The domain, for everyone at exactly that domain, not its subdomains. Case doesn't matter. Public mail providers' domains, like gmail.com, are refused.
+             * @example example.org
+             */
+            domain?: string;
         };
-        /** @description An address a mailbox has let in or blocked. */
+        /** @description An address or a domain a mailbox has let in or blocked. It has one of address and domain. */
         ScreenedSender: {
             /**
              * @description The address, in lower case.
              * @example grace@example.org
              */
-            address: string;
+            address?: string;
+            /**
+             * @description The domain, in lower case. It covers exactly that domain, and an address's own decision beats it.
+             * @example example.org
+             */
+            domain?: string;
             decision: components["schemas"]["ScreeningDecisionKind"];
             /**
              * Format: date-time
@@ -1229,14 +1280,20 @@ export interface components {
         ScreeningDecisionKind: "letIn" | "block";
         ScreeningDecision: {
             sender: components["schemas"]["ScreenedSender"];
-            /** @description The sender's threads that waited, as they are now, newest first. */
+            /** @description The threads it moved, as they are now, newest first. */
             threads: components["schemas"]["ThreadSummary"][];
+        };
+        ScreenedSenderList: {
+            /** @description The addresses and domains the mailbox let in or blocked, newest decision first. */
+            senders: components["schemas"]["ScreenedSender"][];
         };
         SenderScreened: components["schemas"]["ChangeBase"] & {
             /** @constant */
             type: "senderScreened";
-            /** @description The sender's address, in lower case. */
-            address: string;
+            /** @description The sender's address, in lower case, if the decision is on an address. */
+            address?: string;
+            /** @description The domain, in lower case, if the decision is on a domain. */
+            domain?: string;
             decision: components["schemas"]["ScreeningDecisionKind"];
         } & {
             /**
@@ -1244,6 +1301,22 @@ export interface components {
              * @enum {string}
              */
             type: "senderScreened";
+        };
+        ScreenedSenderRemoved: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "screenedSenderRemoved";
+            /** @description The sender's address, in lower case, if the decision was on an address. */
+            address?: string;
+            /** @description The domain, in lower case, if the decision was on a domain. */
+            domain?: string;
+            /** @description The decision it was. */
+            decision: components["schemas"]["ScreeningDecisionKind"];
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "screenedSenderRemoved";
         };
         /** @description The Screener was switched on or off. Switching it off moves each waiting thread to the Inbox, each with its own threadLabelsChanged. Setup switching it on for a mailbox that had it before the Screener existed names no actor. */
         ScreenerSwitched: {
@@ -2754,7 +2827,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SenderAddress"];
+                "application/json": components["schemas"]["SenderToScreen"];
             };
         };
         responses: {
@@ -2785,7 +2858,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SenderAddress"];
+                "application/json": components["schemas"]["SenderToScreen"];
             };
         };
         responses: {
@@ -2799,6 +2872,60 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listScreenedSenders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The mailbox's ID. */
+                mailbox: components["parameters"]["Mailbox"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The screened senders. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScreenedSenderList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    removeScreenedSender: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The mailbox's ID. */
+                mailbox: components["parameters"]["Mailbox"];
+                /** @description The address or the domain, as the mailbox decided on it. Case doesn't matter. */
+                sender: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The decision removed, with the threads it moved. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScreeningDecision"];
+                };
+            };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];

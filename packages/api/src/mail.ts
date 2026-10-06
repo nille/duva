@@ -766,7 +766,10 @@ export async function hasSentTo(table: Table, mailbox: string, address: string):
 }
 
 /** Every thread that waits in the Screener, newest first, those in Spam and Trash too. */
-export async function waitingThreads(table: Table, mailbox: string): Promise<ThreadSummary[]> {
+export const waitingThreads = (table: Table, mailbox: string) => threadsLabelled(table, mailbox, screener);
+
+/** Every thread with the label, newest first, those in Spam and Trash and waiting in the Screener too. */
+export async function threadsLabelled(table: Table, mailbox: string, label: string): Promise<ThreadSummary[]> {
   const threads: ThreadSummary[] = [];
   let start: Record<string, unknown> | undefined;
   do {
@@ -774,7 +777,7 @@ export async function waitingThreads(table: Table, mailbox: string): Promise<Thr
       new QueryCommand({
         TableName: table.name,
         KeyConditionExpression: `${pk} = :listing`,
-        ExpressionAttributeValues: { ":listing": listingKey(mailbox, `label#${screener}`, "", "")[pk] },
+        ExpressionAttributeValues: { ":listing": listingKey(mailbox, `label#${label}`, "", "")[pk] },
         ScanIndexForward: false,
         ConsistentRead: true,
         ExclusiveStartKey: start,
@@ -802,6 +805,22 @@ export async function releaseWaiting(table: Table, { mailbox, threads, to, by }:
     return { summary: { ...current, labels }, change: { type: "threadLabelsChanged", thread: current.id, added, removed } };
   });
   return "threads" in released ? released.threads : [];
+}
+
+/**
+ * Takes each thread out of Trash, back to the Inbox as removing the label does, with a change in
+ * the mailbox's change feed attributed to the actor `by` for each, and returns the threads as they
+ * are now, in the order given. A thread erased meanwhile is left out.
+ */
+export async function restoreFromTrash(table: Table, { mailbox, threads, by }: { mailbox: string; threads: string[]; by: string }): Promise<ThreadSummary[]> {
+  const found = (await Promise.all(threads.map((thread) => threadSummary(table, mailbox, thread)))).filter((summary) => summary !== undefined);
+  const restored = await changeThreads(table, { mailbox, threads: found.map(({ id }) => id), by }, (current) => {
+    if (!current.labels.includes(trash)) return undefined;
+    const labels = relabelled(current.labels, [], [trash]);
+    const added = labels.filter((label) => !current.labels.includes(label));
+    return { summary: { ...current, labels }, change: { type: "threadLabelsChanged", thread: current.id, added, removed: [trash] } };
+  });
+  return "threads" in restored ? restored.threads : [];
 }
 
 /**
