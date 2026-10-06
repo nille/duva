@@ -82,7 +82,7 @@ async function withGracesInbox() {
 
 const you = (page: Page) => page.getByRole("region", { name: "You" });
 const row = (page: Page, subject: string) => page.getByRole("list", { name: "Threads" }).getByRole("listitem").filter({ hasText: subject }).locator("time");
-const saved = "Saved. Times and dates show this way from now on.";
+const saved = "Saved. This applies from now on.";
 
 test("a human's times and dates follow their browser's language until they choose otherwise", budget, async () => {
   const { page, signIn } = await withGracesInbox();
@@ -105,7 +105,7 @@ test("a human chooses 24-hour time and ISO dates, and the Inbox and a thread sho
   await you(page).getByRole("button", { name: "Save" }).click();
 
   await expect.poll(() => you(page).getByRole("status").textContent(), wait).toBe(saved);
-  expect((await grace.GET("/preferences")).data).toEqual({ hourCycle: "h23", dateFormat: "iso" });
+  expect((await grace.GET("/preferences")).data).toEqual({ hourCycle: "h23", dateFormat: "iso", mailView: "html" });
 
   await page.getByRole("navigation").getByRole("link", { name: "Mail" }).click();
   await expect.poll(() => row(page, "Lunch").textContent(), wait).toBe("09:15");
@@ -125,8 +125,8 @@ test("each choice of how times and dates show has an example from today", budget
 
   await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
 
-  await expect.poll(() => you(page).getByRole("radio").count(), wait).toBe(7);
-  const examples = await you(page).locator(".choice").evaluateAll((choices) => choices.map((choice) => choice.querySelector(".hint")?.textContent));
+  await expect.poll(() => you(page).getByRole("radio").count(), wait).toBe(9);
+  const examples = await you(page).locator(".choices-short .choice").evaluateAll((choices) => choices.map((choice) => choice.querySelector(".hint")?.textContent));
   expect(examples).toEqual(["02:30 PM", "2:30 PM", "14:30", "Oct 5, 2026", "2026-10-05", "5 Oct 2026", "Oct 5, 2026"]);
 });
 

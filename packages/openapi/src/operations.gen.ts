@@ -90,7 +90,7 @@ export const operations = [
     "method": "get",
     "path": "/preferences",
     "routeKey": "GET /preferences",
-    "summary": "Read your own preferences, such as how the web app shows times and dates.",
+    "summary": "Read your own preferences, such as how the web app shows times, dates and mail.",
     "description": "Only humans have preferences, and each reads only their own.",
     "signIn": true,
     "command": [
@@ -125,6 +125,13 @@ export const operations = [
         "type": "string",
         "required": false,
         "description": "How the web app shows dates. Locale, the default, follows the browser's language. iso shows 2026-10-05, dayMonth 5 Oct 2026 and monthDay Oct 5, 2026, with month names in the browser's language. Without the year, they show 10-05, 5 Oct and Oct 5."
+      },
+      {
+        "name": "mailView",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "How the web app shows a message that has HTML. html, the default, shows it as its sender designed it, with known trackers removed. text shows its plain text. Either way, the human can switch each message the other way."
       }
     ]
   },

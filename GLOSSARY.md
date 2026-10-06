@@ -37,7 +37,7 @@ Sign-off before an action takes effect. An agent's send from its own mailbox, it
 An actor allowed to change the organization's setup: domains, addresses, groups, actors and settings. Admins can't read personal mailboxes. An agent can be an admin only if its sponsor is one.
 
 **Preference**:
-A choice a human makes for themselves about how Duva shows things to them, such as how times and dates read in the web app. It follows them to every browser, and no one else sees or changes it. An agent has none; its sponsor changes its settings.
+A choice a human makes for themselves about how Duva shows things to them, such as how times and dates read in the web app, or whether mail shows as designed or as plain text. It follows them to every browser, and no one else sees or changes it. An agent has none; its sponsor changes its settings.
 _Avoid_: user setting, profile
 
 **Sponsor**:

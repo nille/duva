@@ -1,10 +1,12 @@
 // A thread, read: each message a sheet on the desk, oldest first, set in the proof face. Opening
 // the thread marks it read, for everyone who reads the mailbox. Each message can be replied to or
 // forwarded, and its attachments downloaded.
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useCallback, useContext, useEffect, useId, useRef, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
 import { startDraft } from "./compose.tsx";
+import { PreferencesContext } from "./dates.ts";
+import { DesignedBody } from "./designed.tsx";
 import { Addresses, Attachments, Field, nameOf, Time } from "./mail-parts.tsx";
 import { type Done, type Label, OrganizeActions, ownLabelsOf } from "./organize.tsx";
 import { strings } from "./strings.ts";
@@ -12,6 +14,7 @@ import { strings } from "./strings.ts";
 type Thread = components["schemas"]["Thread"];
 type Message = components["schemas"]["Message"];
 type Mailbox = components["schemas"]["Mailbox"];
+type MailView = components["schemas"]["MailView"];
 
 /** What a letter's foot starts: a reply, a reply to all, or a forward. */
 type Start = "reply" | "replyAll" | "forward";
@@ -282,6 +285,10 @@ function Letter({
   onDownload: (index: number) => void;
 }) {
   const titleId = useId();
+  // A message with HTML shows as the human prefers until they switch it.
+  const { mailView } = useContext(PreferencesContext);
+  const [switched, setSwitched] = useState<MailView>();
+  const view = message.html === undefined ? "text" : (switched ?? mailView);
   const agent = message.sentBy === undefined ? undefined : (agentNames.get(message.sentBy) ?? (message.sentBy === owner?.id ? owner.name : undefined));
   const sent =
     message.sentBy === undefined ? undefined : message.sentBy === me ? strings.thread.sentByYou : agent === undefined ? strings.thread.sentFromMailbox : strings.thread.sentBy(agent);
@@ -318,7 +325,17 @@ function Letter({
       </dl>
       {message.approval !== undefined && <p className="letter-note">{approvalNote(message.approval, me)}</p>}
       {message.plusTag !== undefined && <p className="letter-note">{strings.thread.plusTag(message.recipient, message.plusTag)}</p>}
-      <Body text={message.text} />
+      {view === "html" ? <DesignedBody html={message.html!} title={strings.thread.designed(nameOf(message.from))} /> : <Body text={message.text} />}
+      {message.html !== undefined && (
+        <p className="letter-view">
+          {view === "html" && message.removedTrackers !== undefined && message.removedTrackers.length > 0 && (
+            <span className="letter-trackers">{strings.thread.removedTrackers(message.removedTrackers)}</span>
+          )}
+          <button type="button" className="link" onClick={() => setSwitched(view === "html" ? "text" : "html")}>
+            {view === "html" ? strings.thread.showAsText : strings.thread.showAsDesigned}
+          </button>
+        </p>
+      )}
       {message.attachments.length > 0 && <Attachments list={message.attachments} onDownload={onDownload} downloading={downloading} />}
       {onReply !== undefined && (
         <div className="letter-actions">

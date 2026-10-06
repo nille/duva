@@ -90,7 +90,7 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Read your own preferences, such as how the web app shows times and dates.
+         * Read your own preferences, such as how the web app shows times, dates and mail.
          * @description Only humans have preferences, and each reads only their own.
          */
         get: operations["getPreferences"];
@@ -1764,11 +1764,13 @@ export interface components {
         Preferences: {
             hourCycle: components["schemas"]["HourCycle"];
             dateFormat: components["schemas"]["DateFormat"];
+            mailView: components["schemas"]["MailView"];
         };
         /** @description The preferences changed, each with its new value. */
         PreferencesChanges: {
             hourCycle?: components["schemas"]["HourCycle"];
             dateFormat?: components["schemas"]["DateFormat"];
+            mailView?: components["schemas"]["MailView"];
         };
         /**
          * @description How the web app shows times. Locale, the default, follows the browser's language. h12 shows 12-hour time, as 2:30 PM, and h23 24-hour time, as 14:30.
@@ -1780,6 +1782,11 @@ export interface components {
          * @enum {string}
          */
         DateFormat: "locale" | "iso" | "dayMonth" | "monthDay";
+        /**
+         * @description How the web app shows a message that has HTML. html, the default, shows it as its sender designed it, with known trackers removed. text shows its plain text. Either way, the human can switch each message the other way.
+         * @enum {string}
+         */
+        MailView: "html" | "text";
         Status: {
             /**
              * @description The version of Duva the deployment runs.

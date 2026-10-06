@@ -228,6 +228,10 @@ export const strings = {
     downloadFailed: "Duva couldn't get the attachment. Try again.",
     forward: "Forward",
     attachment: (type: string, size: string) => `${type}, ${size}`,
+    showAsText: "Show as plain text",
+    showAsDesigned: "Show as designed",
+    designed: (sender: string) => `The message from ${sender}, as designed`,
+    removedTrackers,
     showQuoted: "Show quoted text",
     hideQuoted: "Hide quoted text",
     gone: "This thread is no longer in your mailbox.",
@@ -272,7 +276,15 @@ export const strings = {
       dayMonth: "Day first",
       monthDay: "Month first",
     },
-    preferencesSaved: "Saved. Times and dates show this way from now on.",
+    mailView: {
+      legend: "How mail shows",
+      lead: "Mail with no design of its own always shows as text. You can switch any message the other way.",
+      html: "As designed",
+      htmlHint: "With the sender's layout, images and fonts. Known trackers are always removed. This is the default.",
+      text: "Plain text",
+      textHint: "The text alone, with no images.",
+    },
+    preferencesSaved: "Saved. This applies from now on.",
     preferencesFailed: (status: number) => `Duva couldn't read your preferences (error ${status}). Try again in a moment.`,
     preferencesUnreachable: "Duva couldn't be reached, so your preferences aren't shown. Check your connection and try again.",
     preferencesSaveFailed: (status: number) => `Duva couldn't save your preferences (error ${status}). Try again in a moment.`,
@@ -406,6 +418,21 @@ export function size(bytes: number): string {
 /** "1 thread", "2 threads". */
 function threads(count: number): string {
   return count === 1 ? "1 thread" : `${count} threads`;
+}
+
+/**
+ * What the note under a message says of the trackers Duva removed from its HTML, each named by its
+ * service or as "a hidden image", grouped so a service that tracked twice is said once.
+ */
+function removedTrackers(removed: string[]): string {
+  const hidden = "a hidden image";
+  const counts = new Map<string, number>();
+  for (const name of removed) counts.set(name, (counts.get(name) ?? 0) + 1);
+  const groups = [...counts].sort(([a], [b]) => Number(a === hidden) - Number(b === hidden));
+  if (removed.length === 1) return removed[0] === hidden ? "Removed a hidden tracking image." : `Removed a tracker from ${removed[0]}.`;
+  if (groups.length === 1) return groups[0]![0] === hidden ? `Removed ${removed.length} hidden tracking images.` : `Removed ${removed.length} trackers from ${groups[0]![0]}.`;
+  const parts = groups.map(([name, count]) => (name === hidden ? `${count} hidden ${count === 1 ? "image" : "images"}` : `${count} from ${name}`));
+  return `Removed ${removed.length} trackers: ${list(parts)}.`;
 }
 
 /** "a", "a and b", "a, b and c". */

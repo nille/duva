@@ -13,6 +13,7 @@ const preferencesKey = (human: string) => ({ [pk]: `actor#${human}`, [sk]: "pref
 const choices: { [Name in keyof Preferences]: Preferences[Name][] } = {
   hourCycle: ["locale", "h12", "h23"],
   dateFormat: ["locale", "iso", "dayMonth", "monthDay"],
+  mailView: ["html", "text"],
 };
 const names = Object.keys(choices) as (keyof Preferences)[];
 

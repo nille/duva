@@ -17,7 +17,7 @@ test("a human's times and dates follow their browser's language until they choos
   const { response, data } = await ada.GET("/preferences");
 
   expect(response.status).toBe(200);
-  expect(data).toEqual({ hourCycle: "locale", dateFormat: "locale" });
+  expect(data).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "html" });
 });
 
 test("a human chooses 24-hour time and ISO dates, and reads them back", async () => {
@@ -26,8 +26,8 @@ test("a human chooses 24-hour time and ISO dates, and reads them back", async ()
   const { response, data } = await ada.PATCH("/preferences", { body: { hourCycle: "h23", dateFormat: "iso" } });
 
   expect(response.status).toBe(200);
-  expect(data).toEqual({ hourCycle: "h23", dateFormat: "iso" });
-  expect((await ada.GET("/preferences")).data).toEqual({ hourCycle: "h23", dateFormat: "iso" });
+  expect(data).toEqual({ hourCycle: "h23", dateFormat: "iso", mailView: "html" });
+  expect((await ada.GET("/preferences")).data).toEqual({ hourCycle: "h23", dateFormat: "iso", mailView: "html" });
 });
 
 test("changing one preference leaves the other as it was", async () => {
@@ -36,7 +36,7 @@ test("changing one preference leaves the other as it was", async () => {
 
   const { data } = await ada.PATCH("/preferences", { body: { dateFormat: "monthDay" } });
 
-  expect(data).toEqual({ hourCycle: "h12", dateFormat: "monthDay" });
+  expect(data).toEqual({ hourCycle: "h12", dateFormat: "monthDay", mailView: "html" });
 });
 
 test("a human's preferences are their own, so another human's stay as they were", async () => {
@@ -44,8 +44,18 @@ test("a human's preferences are their own, so another human's stay as they were"
 
   await grace.PATCH("/preferences", { body: { hourCycle: "h23" } });
 
-  expect((await grace.GET("/preferences")).data).toEqual({ hourCycle: "h23", dateFormat: "locale" });
-  expect((await ada.GET("/preferences")).data).toEqual({ hourCycle: "locale", dateFormat: "locale" });
+  expect((await grace.GET("/preferences")).data).toEqual({ hourCycle: "h23", dateFormat: "locale", mailView: "html" });
+  expect((await ada.GET("/preferences")).data).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "html" });
+});
+
+test("a human's mail shows as HTML until they choose text, and then as text", async () => {
+  const { ada } = await withOrganization();
+  expect((await ada.GET("/preferences")).data?.mailView).toBe("html");
+
+  const { data } = await ada.PATCH("/preferences", { body: { mailView: "text" } });
+
+  expect(data).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "text" });
+  expect((await ada.GET("/preferences")).data?.mailView).toBe("text");
 });
 
 test("a human chooses their browser's language again", async () => {
@@ -54,7 +64,7 @@ test("a human chooses their browser's language again", async () => {
 
   const { data } = await ada.PATCH("/preferences", { body: { hourCycle: "locale", dateFormat: "locale" } });
 
-  expect(data).toEqual({ hourCycle: "locale", dateFormat: "locale" });
+  expect(data).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "html" });
 });
 
 test("an agent has no preferences, so it gets 403 reading or changing them", async () => {
@@ -70,10 +80,11 @@ test("an agent has no preferences, so it gets 403 reading or changing them", asy
 });
 
 test.each([
-  ["no preference", {}, "Give a preference to change: hourCycle, dateFormat."],
+  ["no preference", {}, "Give a preference to change: hourCycle, dateFormat, mailView."],
   ["an hour cycle Duva doesn't have", { hourCycle: "h24" }, "Give hourCycle as locale, h12 or h23."],
   ["a date format Duva doesn't have", { dateFormat: "yearFirst" }, "Give dateFormat as locale, iso, dayMonth or monthDay."],
-  ["a preference Duva doesn't have", { timeZone: "UTC" }, 'Duva has no preference "timeZone". Its preferences are hourCycle, dateFormat.'],
+  ["a mail view Duva doesn't have", { mailView: "markdown" }, "Give mailView as html or text."],
+  ["a preference Duva doesn't have", { timeZone: "UTC" }, 'Duva has no preference "timeZone". Its preferences are hourCycle, dateFormat, mailView.'],
 ])("changing preferences with %s gets 400, and they stay as they were", async (_, body, message) => {
   const { ada } = await withOrganization();
 
@@ -81,5 +92,5 @@ test.each([
 
   expect(response.status).toBe(400);
   expect(error).toEqual({ message });
-  expect((await ada.GET("/preferences")).data).toEqual({ hourCycle: "locale", dateFormat: "locale" });
+  expect((await ada.GET("/preferences")).data).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "html" });
 });

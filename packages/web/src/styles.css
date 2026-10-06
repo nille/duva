@@ -1133,6 +1133,39 @@ a.thread:focus-visible {
   border-top: 1px solid var(--rule);
 }
 
+/* HTML mail lies on its own white paper, in its own colors, as tall as the frame's content. */
+.letter-designed {
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--rule);
+}
+
+.letter-designed iframe {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: var(--paper);
+}
+
+.letter-designed .quote-toggle {
+  margin-top: var(--space-2);
+}
+
+/* What Duva removed from the HTML, and the switch between it and the text, quietly under the body. */
+.letter-view {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 var(--space-4);
+  margin-top: var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--ink-2);
+}
+
+.letter-view .link {
+  margin: 0;
+}
+
 .quote-toggle {
   margin: 0;
 }

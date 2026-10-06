@@ -197,6 +197,19 @@ test("organization change-settings with no setting says which there are", async 
   expect(errorIn(result.stderr)).toMatch(/400.*Give a setting to change: erasureErasesApprovals/);
 });
 
+test("a human chooses to read mail as text", async () => {
+  const machine = await newMachine();
+  const server = await (await startDuva({ admin: "ada@example.com" })).listen();
+  onTestFinished(() => server.close());
+  await machine.saveDeployment(server);
+  await machine.duva("login", { browserSignsIn: "ada@example.com" });
+
+  const changed = await machine.duva("preferences", "change", "--mailView", "text");
+
+  expect(changed.exitCode).toBe(0);
+  expect(JSON.parse(changed.stdout)).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "text" });
+});
+
 test("a human chooses 24-hour time and ISO dates, and the CLI's own timestamps stay ISO 8601", async () => {
   const machine = await newMachine();
   const server = await (await startDuva({ admin: "ada@example.com" })).listen();
@@ -208,9 +221,9 @@ test("a human chooses 24-hour time and ISO dates, and the CLI's own timestamps s
   const changed = await machine.duva("preferences", "change", "--hourCycle", "h23", "--dateFormat", "dayMonth");
   const changes = await machine.duva("organization", "changes");
 
-  expect(JSON.parse(before.stdout)).toEqual({ hourCycle: "locale", dateFormat: "locale" });
+  expect(JSON.parse(before.stdout)).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "html" });
   expect(changed.exitCode).toBe(0);
-  expect(JSON.parse(changed.stdout)).toEqual({ hourCycle: "h23", dateFormat: "dayMonth" });
+  expect(JSON.parse(changed.stdout)).toEqual({ hourCycle: "h23", dateFormat: "dayMonth", mailView: "html" });
   const times = (JSON.parse(changes.stdout) as { changes: { at: string }[] }).changes.map(({ at }) => at);
   expect(times).not.toHaveLength(0);
   for (const at of times) expect(at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);

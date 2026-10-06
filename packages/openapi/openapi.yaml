@@ -119,7 +119,7 @@ paths:
   /preferences:
     get:
       operationId: getPreferences
-      summary: Read your own preferences, such as how the web app shows times and dates.
+      summary: Read your own preferences, such as how the web app shows times, dates and mail.
       description: Only humans have preferences, and each reads only their own.
       x-cli-command: preferences get
       responses:
@@ -2919,13 +2919,15 @@ components:
     Preferences:
       type: object
       additionalProperties: false
-      required: [hourCycle, dateFormat]
+      required: [hourCycle, dateFormat, mailView]
       description: A human's own preferences.
       properties:
         hourCycle:
           $ref: "#/components/schemas/HourCycle"
         dateFormat:
           $ref: "#/components/schemas/DateFormat"
+        mailView:
+          $ref: "#/components/schemas/MailView"
     PreferencesChanges:
       type: object
       additionalProperties: false
@@ -2935,6 +2937,8 @@ components:
           $ref: "#/components/schemas/HourCycle"
         dateFormat:
           $ref: "#/components/schemas/DateFormat"
+        mailView:
+          $ref: "#/components/schemas/MailView"
     HourCycle:
       type: string
       enum: [locale, h12, h23]
@@ -2950,6 +2954,14 @@ components:
         browser's language. iso shows 2026-10-05, dayMonth 5 Oct 2026 and
         monthDay Oct 5, 2026, with month names in the browser's language.
         Without the year, they show 10-05, 5 Oct and Oct 5.
+    MailView:
+      type: string
+      enum: [html, text]
+      description: >-
+        How the web app shows a message that has HTML. html, the default,
+        shows it as its sender designed it, with known trackers removed.
+        text shows its plain text. Either way, the human can switch each
+        message the other way.
     Status:
       type: object
       additionalProperties: false

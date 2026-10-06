@@ -157,8 +157,9 @@ function OrganizationSheet({ client, admin, onSignedOut }: { client: DuvaClient;
 
 const hourCycles: Preferences["hourCycle"][] = ["locale", "h12", "h23"];
 const dateFormats: Preferences["dateFormat"][] = ["locale", "iso", "dayMonth", "monthDay"];
+const mailViews: Preferences["mailView"][] = ["html", "text"];
 
-/** The human's own preferences, each choice shown with an example built from today. */
+/** The human's own preferences: how times and dates show, each choice with an example built from today, and how mail shows. */
 function YouSheet({ client, onPreferences, onSignedOut }: { client: DuvaClient; onPreferences: (preferences: Preferences) => void; onSignedOut: () => void }) {
   const sheet = useSheet<Preferences>({
     read: () => client.GET("/preferences"),
@@ -211,6 +212,20 @@ function YouSheet({ client, onPreferences, onSignedOut }: { client: DuvaClient; 
                 />
               ))}
             </div>
+          </fieldset>
+          <fieldset>
+            <legend>{copy.mailView.legend}</legend>
+            <p className="setting-lead">{copy.mailView.lead}</p>
+            {mailViews.map((mailView) => (
+              <Choice
+                key={mailView}
+                name="mailView"
+                checked={chosen.mailView === mailView}
+                onChoose={() => sheet.choose({ mailView })}
+                label={copy.mailView[mailView]}
+                hint={copy.mailView[`${mailView}Hint`]}
+              />
+            ))}
           </fieldset>
           <SaveRow sheet={sheet} saved={copy.preferencesSaved} />
         </>
