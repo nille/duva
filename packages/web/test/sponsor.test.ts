@@ -109,6 +109,9 @@ test("a message the agent sent is marked as its own, with who approved it and wh
 
   const letters = page.getByRole("article");
   await expect.poll(() => letters.count(), wait).toBe(3);
+  // The thread was read before, so the older messages are folded until opened.
+  const folded = letters.getByRole("button", { expanded: false });
+  while ((await folded.count()) > 0) await folded.first().click();
   const [received, sent, revised] = await letters.allInnerTexts();
   expect(received).not.toContain("Sent by Hermes");
   expect(sent).toContain("Sent by Hermes");

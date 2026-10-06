@@ -52,7 +52,7 @@ test("group mail in the Inbox is marked with its group, and mail to the member a
 });
 
 test("a member replies as the group, choosing it in From, and the thread shows the reply went as the group", budget, async () => {
-  const { page, signIn, duva } = await withSupport();
+  const { page, signIn, duva } = await withSupport({ sendsHeld: true });
   await signIn("grace@example.org");
   await page.getByRole("list", { name: "Threads" }).getByRole("link").first().click();
 
@@ -67,14 +67,15 @@ test("a member replies as the group, choosing it in From, and the thread shows t
   await page.getByLabel("Message", { exact: true }).fill("We'll fix it today.");
   await page.getByRole("button", { name: "Send" }).click();
 
-  await expect.poll(() => page.getByRole("status").filter({ hasText: "Sent" }).count(), wait).toBeGreaterThan(0);
-  expect(duva.sent().at(-1)).toContain("From: support@example.com");
-  // From turns read-only with the other fields, looking as they do.
+  // While it goes out, From turns read-only with the other fields, looking as they do.
+  await expect.poll(() => page.getByRole("status").filter({ hasText: "Sending…" }).count(), wait).toBe(1);
   const look = (field: typeof from) => field.evaluate((element) => ({ border: getComputedStyle(element).borderColor, background: getComputedStyle(element).backgroundColor, arrow: getComputedStyle(element).appearance }));
   expect(await from.isDisabled()).toBe(true);
   expect(await look(from)).toEqual({ ...(await look(page.getByRole("textbox", { name: "To" }))), arrow: "none" });
-  await page.getByRole("link", { name: "Open the thread" }).click();
+  await duva.releaseSends();
+
   await expect.poll(() => page.getByRole("article").count(), wait).toBe(2);
+  expect(duva.sent().at(-1)).toContain("From: support@example.com");
   expect(await page.getByRole("article").nth(1).locator(".letter-sent-mark").textContent()).toBe("You sent this as support@example.com");
 });
 

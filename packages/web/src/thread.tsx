@@ -1,14 +1,16 @@
-// A thread, read: each message a sheet on the desk, oldest first, set in the proof face. Opening
-// the thread marks it read, for everyone who reads the mailbox. Each message can be replied to or
-// forwarded, and its attachments downloaded. Opened from a search, it shows the message that matched.
-import { type Ref, useCallback, useContext, useEffect, useId, useRef, useState } from "react";
+// A thread, read: each message a sheet on the desk, oldest first, set in the proof face. Read and
+// older messages fold to a line each, and the thread opens at the first unread one, or the newest.
+// Opening the thread marks it read, for everyone who reads the mailbox. The newest message can be
+// replied to or forwarded, in a sheet at the thread's foot, and attachments downloaded. Opened from
+// a search, it shows the message that matched.
+import { type ReactNode, type Ref, useCallback, useContext, useEffect, useId, useRef, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
-import { startDraft } from "./compose.tsx";
+import { Composer, startDraft } from "./compose.tsx";
 import { PreferencesContext } from "./dates.ts";
 import { DesignedBody } from "./designed.tsx";
 import { Addresses, Attachments, Field, nameOf, Time } from "./mail-parts.tsx";
-import { type Done, type Label, OrganizeActions, ownLabelsOf } from "./organize.tsx";
+import { type Done, type Label, organize, OrganizeActions, ownLabelsOf, SessionEnded } from "./organize.tsx";
 import { strings } from "./strings.ts";
 
 type Thread = components["schemas"]["Thread"];
@@ -16,13 +18,34 @@ type Message = components["schemas"]["Message"];
 type Mailbox = components["schemas"]["Mailbox"];
 type MailView = components["schemas"]["MailView"];
 
-/** What a letter's foot starts: a reply, a reply to all, or a forward. */
+/** What the thread's foot starts: a reply, a reply to all, or a forward. */
 type Start = "reply" | "replyAll" | "forward";
 
 type Reading = { status: "loading" } | { status: "failed"; message: string; gone?: boolean } | { status: "read"; thread: Thread; fresh: Set<string> };
 
 /** How many quoted lines in a row are shown before they fold. */
 const quoteShown = 3;
+
+/** How far the sender's own date may be from when a message arrived before the letter shows it too. */
+const datedApart = 15 * 60_000;
+
+/**
+ * The messages of an unread thread that the human hasn't read, as far as the thread can tell: Duva
+ * keeps one unread mark for the whole thread, so they are taken to be those that arrived after the
+ * mailbox last sent in it.
+ */
+function unreadIn(thread: Thread): string[] {
+  if (!thread.unread) return [];
+  const since = thread.messages.findLastIndex((message) => message.sentBy !== undefined);
+  return thread.messages.slice(since + 1).map(({ id }) => id);
+}
+
+/** A subject without the Re: and Fwd: a reply or forward puts before it, in any of the usual languages. */
+const bareSubject = (subject: string) =>
+  subject
+    .replace(/^(\s*(re|fwd?|fw|sv|vs|aw|wg|antw|vb|r)\s*(\[\d+\])?\s*:\s*)+/i, "")
+    .trim()
+    .toLowerCase();
 
 /**
  * The thread with the ID in the mailbox, the human's own or, with the agent's name, an agent's
@@ -65,10 +88,17 @@ export function ThreadView({
 }) {
   const [reading, setReading] = useState<Reading>({ status: "loading" });
   const [marking, setMarking] = useState<"idle" | "busy" | "failed" | "readFailed">("idle");
-  // The draft being started, by its message and what it is, or whether starting one failed.
-  const [replying, setReplying] = useState<{ message: string; start: Start } | "failed">();
+  // The messages shown open besides the newest: those unread when the thread opened, the one a
+  // search found, those that arrived while it's open, and those the human opened.
+  const [opened, setOpened] = useState<ReadonlySet<string>>(new Set());
+  // The message the thread opens at: the one a search found, the first unread one, or the newest.
+  const [openAt, setOpenAt] = useState<string>();
+  // The draft at the thread's foot, by what it is, while it's started and once it's there, or whether starting one failed.
+  const [replying, setReplying] = useState<{ start: Start; draft?: string } | "failed">();
   // The attachment on its way, by its message and place, or whether getting one failed.
   const [downloading, setDownloading] = useState<{ message: string; index: number } | "failed">();
+  // Whether the phone's action bar shows the rest of the thread's actions.
+  const [more, setMore] = useState(false);
   const leaving = useRef(false);
   // Every request to mark the thread read still on its way, which marking it unread waits for, so the human's choice lands last.
   const markingRead = useRef<Promise<unknown>>(Promise.resolve());
@@ -87,11 +117,21 @@ export function ThreadView({
       return setReading({
         status: "failed",
         gone: response?.status === 404,
-        message: response === undefined ? strings.thread.unreachable : response.status === 404 ? strings.thread.gone : strings.thread.failed(response.status),
+        message: response === undefined ? strings.thread.unreachable : response.status === 404 ? strings.thread.gone : strings.thread.failed,
       });
     }
     const known = before.status === "read" ? new Set(before.thread.messages.map((message) => message.id)) : undefined;
-    setReading({ status: "read", thread: data, fresh: new Set(known === undefined ? [] : data.messages.filter((message) => !known.has(message.id)).map((message) => message.id)) });
+    // What the human sent from here is no news to them.
+    const fresh = known === undefined ? [] : data.messages.filter((message) => !known.has(message.id) && message.sentBy !== me).map((message) => message.id);
+    if (known === undefined) {
+      const unread = unreadIn(data);
+      const found = data.messages.some((message) => message.id === matched) ? matched : undefined;
+      setOpened(new Set([...unread, ...(found === undefined ? [] : [found])]));
+      setOpenAt(found ?? unread[0] ?? data.messages.at(-1)?.id);
+    } else if (fresh.length > 0) {
+      setOpened((current) => new Set([...current, ...fresh]));
+    }
+    setReading({ status: "read", thread: data, fresh: new Set(fresh) });
     // Reading the thread on screen marks it read, also when a reply arrives while it's open, until the human marks it unread.
     if (data.unread && !leaving.current) {
       const read = client.POST("/mailboxes/{mailbox}/threads/read", { params: { path: { mailbox: mailbox.id } }, body: { threads: [id] } }).catch(() => ({ response: undefined }));
@@ -100,7 +140,7 @@ export function ThreadView({
       if (marked?.status === 401) return onSignedOut();
       setMarking(marked?.ok ? "idle" : "readFailed");
     }
-  }, [client, mailbox.id, id, onSignedOut]);
+  }, [client, mailbox.id, id, matched, me, onSignedOut]);
 
   useEffect(() => {
     void load();
@@ -111,20 +151,25 @@ export function ThreadView({
   useEffect(() => {
     if (subject !== undefined) document.title = strings.title(subject);
   }, [subject]);
-  // The thread opens at the message a search found, focused and marked for a moment. Otherwise the
-  // web app focuses its subject, as every view's title.
+  // The thread opens at the message a search found, focused and marked for a moment, or further
+  // down at its first unread message or its newest. At its first message, the web app focuses its
+  // subject, as every view's title.
   const loaded = reading.status === "read";
-  const matchedRef = useRef<HTMLElement>(null);
+  const openAtRef = useRef<HTMLElement>(null);
   const [marked, setMarked] = useState(false);
   useEffect(() => {
     if (!loaded) return;
-    const letter = matchedRef.current;
-    if (letter === null) return;
+    const letter = openAtRef.current;
+    const first = readingRef.current.status === "read" ? readingRef.current.thread.messages[0]?.id : undefined;
+    if (letter === null || (openAt === first && openAt !== matched)) return;
     letter.focus({ preventScroll: true });
-    letter.scrollIntoView({ block: "start" });
+    // A letter already in the upper part of the screen is read where it is, under the subject.
+    if (letter.getBoundingClientRect().top > innerHeight * 0.4) letter.scrollIntoView({ block: "start" });
+    if (openAt !== matched) return;
     setMarked(true);
     const unmark = setTimeout(() => setMarked(false), 2_000);
     return () => clearTimeout(unmark);
+    // Only once, when the thread first shows.
   }, [loaded]);
 
   const markUnread = async () => {
@@ -152,12 +197,68 @@ export function ThreadView({
     }
   };
 
-  const reply = async (message: Message, start: Start) => {
-    setReplying({ message: message.id, start });
-    const body = start === "forward" ? { forwards: message.id } : { answers: message.id, ...(start === "replyAll" && { replyAll: true }) };
-    const started = await startDraft(client, mailbox.id, body, onSignedOut);
-    if (!started) setReplying("failed");
+  // Archiving and Trash from the phone's action bar, as the thread's toolbar does them.
+  const [moving, setMoving] = useState<"idle" | "busy" | "failed">("idle");
+  const move = async (thread: Thread, change: { add?: string[]; remove?: string[] }, message: (count: number) => string) => {
+    setMoving("busy");
+    try {
+      const done = await organize(client, mailbox.id, [thread], change, message);
+      if (done === undefined) return setMoving("failed");
+      setMoving("idle");
+      organized(done, true);
+    } catch (error) {
+      if (!(error instanceof SessionEnded)) throw error;
+      setMoving("idle");
+      onSignedOut();
+    }
   };
+
+  const reply = async (message: Message, start: Start) => {
+    setReplying({ start });
+    setMore(false);
+    if (readingRef.current.status === "read") before.current = readingRef.current.thread.messages.length;
+    const body = start === "forward" ? { forwards: message.id } : { answers: message.id, ...(start === "replyAll" && { replyAll: true }) };
+    const draft = await startDraft(client, mailbox.id, body, onSignedOut);
+    setReplying(draft === undefined ? "failed" : { start, draft });
+  };
+
+  // Once the reply went out, the thread reads again, and focus goes to the reply once it is there.
+  // A letter opened from its slug takes focus too, since the slug it was opened from is gone.
+  const lettersRef = useRef<HTMLOListElement>(null);
+  const focusAfter = useRef<{ messages: number } | { message: string }>(undefined);
+  // How many messages the thread had when the reply started, so the reply is known when it arrives, whichever read brings it.
+  const before = useRef(0);
+  const replied = useCallback(() => {
+    focusAfter.current = { messages: before.current };
+    setReplying(undefined);
+    void load();
+  }, [load]);
+  const open = (message: string) => {
+    focusAfter.current = { message };
+    setOpened((current) => new Set([...current, message]));
+  };
+  // A reply deleted gives the focus back to Reply.
+  const focusReply = useRef(false);
+  const replyRef = useRef<HTMLButtonElement>(null);
+  const closed = useCallback(() => {
+    focusReply.current = true;
+    setReplying(undefined);
+  }, []);
+  useEffect(() => {
+    if (focusReply.current && replying === undefined) {
+      focusReply.current = false;
+      replyRef.current?.focus();
+    }
+    const after = focusAfter.current;
+    if (after === undefined || reading.status !== "read") return;
+    const messages = reading.thread.messages;
+    const message = "message" in after ? after.message : messages.length > after.messages ? messages.at(-1)!.id : undefined;
+    const letter = message === undefined ? null : lettersRef.current?.querySelector<HTMLElement>(`article[data-message="${CSS.escape(message)}"]`);
+    if (letter == null) return;
+    focusAfter.current = undefined;
+    letter.focus({ preventScroll: true });
+    letter.scrollIntoView({ block: "nearest" });
+  }, [reading, replying, opened]);
 
   // Duva gives a link that works for a few minutes, and the browser saves what it leads to.
   const download = async (message: Message, index: number) => {
@@ -173,8 +274,27 @@ export function ThreadView({
     link.click();
   };
 
+  // Escape closes More, and gives focus back to it.
+  const actionsId = useId();
+  const moreRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!more) return;
+    const close = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setMore(false);
+      moreRef.current?.focus();
+    };
+    addEventListener("keydown", close);
+    return () => removeEventListener("keydown", close);
+  }, [more]);
+
+  const canReply = agent === undefined;
+  const thread = reading.status === "read" ? reading.thread : undefined;
+  const newest = thread?.messages.at(-1);
+  const composing = typeof replying === "object" && replying.draft !== undefined;
+
   return (
-    <main className="desk desk-reading" aria-busy={reading.status === "loading"}>
+    <main className={composing ? "desk desk-reading thread-composing" : "desk desk-reading"} aria-busy={reading.status === "loading"}>
       <p className="back">
         <a href={back}>
           <BackIcon />
@@ -202,11 +322,16 @@ export function ThreadView({
             <h1 ref={titleRef} tabIndex={-1} className="view-title reading-title">
               {subject}
             </h1>
-            <div className="reading-actions" role="toolbar" aria-label={strings.organize.threadToolbar}>
+            <div id={actionsId} className={more ? "reading-actions reading-actions-open" : "reading-actions"} role="toolbar" aria-label={strings.organize.threadToolbar}>
               <OrganizeActions client={client} mailbox={mailbox} threads={[reading.thread]} labels={labels} place={{ thread: true }} onDone={organized} onSignedOut={onSignedOut} />
               <button type="button" className="button button-small" disabled={marking === "busy"} onClick={() => void markUnread()}>
                 {marking === "busy" ? strings.thread.markingUnread : strings.thread.markUnread}
               </button>
+              {more && canReply && newest !== undefined && (
+                <span className="reading-actions-replies">
+                  <ReplyButtons message={newest} replying={replying} onReply={(start) => void reply(newest, start)} />
+                </span>
+              )}
             </div>
           </div>
           <ThreadLabels thread={reading.thread} labels={labels} />
@@ -215,40 +340,140 @@ export function ThreadView({
               {marking === "failed" ? strings.thread.markFailed : strings.thread.markReadFailed}
             </p>
           )}
-          {replying === "failed" && (
-            <p className="notice notice-alert" role="alert">
-              {strings.compose.startFailed}
-            </p>
-          )}
           {downloading === "failed" && (
             <p className="notice notice-alert" role="alert">
               {strings.thread.downloadFailed}
             </p>
           )}
-          <ol className="letters" aria-label={strings.thread.messages}>
-            {reading.thread.messages.map((message) => (
-              <li key={message.id}>
-                <Letter
-                  message={message}
-                  ref={message.id === matched ? matchedRef : undefined}
-                  marked={marked && message.id === matched}
-                  me={me}
-                  agentNames={agentNames}
-                  owner={agent === undefined ? undefined : { id: mailbox.owner, name: agent }}
-                  groups={mailbox.groups ?? []}
-                  fresh={reading.fresh.has(message.id)}
-                  starting={typeof replying === "object" && replying.message === message.id ? replying.start : undefined}
-                  busy={typeof replying === "object"}
-                  onReply={agent === undefined ? (start) => void reply(message, start) : undefined}
-                  downloading={typeof downloading === "object" && downloading.message === message.id ? downloading.index : undefined}
-                  onDownload={(index) => void download(message, index)}
-                />
-              </li>
-            ))}
+          <ol ref={lettersRef} className="letters" aria-label={strings.thread.messages}>
+            {reading.thread.messages.map((message) => {
+              const isNewest = message === newest;
+              const letterRef = message.id === openAt ? openAtRef : undefined;
+              const props = {
+                message,
+                ref: letterRef,
+                me,
+                agentNames,
+                owner: agent === undefined ? undefined : { id: mailbox.owner, name: agent },
+                groups: mailbox.groups ?? [],
+              };
+              return (
+                <li key={message.id}>
+                  {isNewest || opened.has(message.id) ? (
+                    <Letter
+                      {...props}
+                      marked={marked && message.id === matched}
+                      threadSubject={reading.thread.subject}
+                      fresh={reading.fresh.has(message.id)}
+                      downloading={typeof downloading === "object" && downloading.message === message.id ? downloading.index : undefined}
+                      onDownload={(index) => void download(message, index)}
+                    >
+                      {isNewest && canReply && !composing && (
+                        <div className="letter-actions">
+                          <ReplyButtons message={message} replying={replying} firstRef={replyRef} onReply={(start) => void reply(message, start)} />
+                        </div>
+                      )}
+                    </Letter>
+                  ) : (
+                    <FoldedLetter {...props} onOpen={() => open(message.id)} />
+                  )}
+                </li>
+              );
+            })}
           </ol>
+          {replying === "failed" && (
+            <p className="notice notice-alert thread-foot" role="alert">
+              {strings.compose.startFailed}
+            </p>
+          )}
+          {composing && (
+            <div className="thread-foot">
+              <Composer
+                  key={replying.draft}
+                  client={client}
+                  mailbox={mailbox}
+                  id={replying.draft}
+                  agentNames={agentNames}
+                  version={version}
+                  inThread={{ onSent: replied, onClosed: closed }}
+                  onSignedOut={onSignedOut}
+                />
+            </div>
+          )}
+          {!composing && (
+            <div className="thread-bar" role="toolbar" aria-label={strings.thread.bar}>
+              {canReply && newest !== undefined && (
+                <button type="button" className="button button-small" disabled={typeof replying === "object"} onClick={() => void reply(newest, "reply")}>
+                  <ReplyIcon />
+                  {typeof replying === "object" && replying.start === "reply" ? strings.thread.starting : strings.thread.reply}
+                </button>
+              )}
+              {reading.thread.labels.includes("inbox") && !reading.thread.labels.includes("trash") && !reading.thread.labels.includes("spam") && (
+                <button type="button" className="button button-small" disabled={moving === "busy"} onClick={() => void move(reading.thread, { remove: ["inbox"] }, strings.organize.archived)}>
+                  <ArchiveIcon />
+                  {strings.organize.archive}
+                </button>
+              )}
+              {!reading.thread.labels.includes("trash") && (
+                <button
+                  type="button"
+                  className="button button-small"
+                  aria-label={strings.organize.trash}
+                  disabled={moving === "busy"}
+                  onClick={() => void move(reading.thread, { add: ["trash"] }, strings.organize.trashed)}
+                >
+                  <TrashIcon />
+                  {strings.thread.trashShort}
+                </button>
+              )}
+              <button ref={moreRef} type="button" className="button button-small thread-bar-more" aria-expanded={more} aria-controls={actionsId} onClick={() => setMore(!more)}>
+                <MoreIcon />
+                {strings.thread.more}
+              </button>
+              {moving === "failed" && (
+                <p className="notice notice-alert thread-bar-failed" role="alert">
+                  {strings.organize.failed}
+                </p>
+              )}
+            </div>
+          )}
         </>
       )}
     </main>
+  );
+}
+
+/** Reply, Reply all when the message has more than one recipient, and Forward, each saying while its draft is being started. */
+function ReplyButtons({
+  message,
+  replying,
+  firstRef,
+  onReply,
+}: {
+  message: Message;
+  replying: { start: Start; draft?: string } | "failed" | undefined;
+  firstRef?: Ref<HTMLButtonElement>;
+  onReply: (start: Start) => void;
+}) {
+  const starting = typeof replying === "object" ? replying.start : undefined;
+  const busy = starting !== undefined;
+  return (
+    <>
+      <button ref={firstRef} type="button" className="button button-small" disabled={busy} onClick={() => onReply("reply")}>
+        <ReplyIcon />
+        {starting === "reply" ? strings.thread.starting : strings.thread.reply}
+      </button>
+      {message.to.length + message.cc.length > 1 && (
+        <button type="button" className="button button-small" disabled={busy} onClick={() => onReply("replyAll")}>
+          <ReplyAllIcon />
+          {starting === "replyAll" ? strings.thread.starting : strings.thread.replyAll}
+        </button>
+      )}
+      <button type="button" className="button button-small" disabled={busy} onClick={() => onReply("forward")}>
+        <ForwardIcon />
+        {starting === "forward" ? strings.thread.starting : strings.thread.forward}
+      </button>
+    </>
   );
 }
 
@@ -271,11 +496,74 @@ function ThreadLabels({ thread, labels }: { thread: Thread; labels: Label[] }) {
   );
 }
 
+/** Who sent the message from the mailbox, if anyone did: the human, an agent they sponsor by name, or another member as a group. */
+function sentMarkOf(message: Message, me: string, agentNames: ReadonlyMap<string, string>, owner: { id: string; name: string } | undefined, groups: string[]): string | undefined {
+  const agent = message.sentBy === undefined ? undefined : (agentNames.get(message.sentBy) ?? (message.sentBy === owner?.id ? owner.name : undefined));
+  // A message sent from the mailbox as a group says which (ADR-0019).
+  const from = message.from.address.toLowerCase();
+  const as = message.sentBy !== undefined && groups.includes(from) ? from : undefined;
+  return message.sentAs !== undefined
+    ? strings.thread.sentBy(message.sentAs.name, message.sentAs.group)
+    : message.sentBy === undefined
+      ? undefined
+      : message.sentBy === me
+        ? strings.thread.sentByYou(as)
+        : agent === undefined
+          ? strings.thread.sentFromMailbox
+          : strings.thread.sentBy(agent, as);
+}
+
+/** The props a letter takes, open or folded. */
+interface LetterProps {
+  message: Message;
+  /** The letter's sheet, for the message the thread opens at, or the newest. */
+  ref?: Ref<HTMLElement>;
+  me: string;
+  agentNames: ReadonlyMap<string, string>;
+  /** In an agent's mailbox, the agent, by the name the mailbox list gave it, for when its name isn't among `agentNames`. */
+  owner?: { id: string; name: string };
+  /** The groups the mailbox's owner can send as, so a message sent as one says so. */
+  groups: string[];
+}
+
+/** The start of what a message says, on one line, without what it quotes. */
+const snippetOf = (text: string) =>
+  text
+    .split("\n")
+    .filter((line) => !line.trimStart().startsWith(">"))
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 200);
+
+/** A read or older message folded to a line, as a slug: who sent it, the start of what it says, and when it arrived. It opens on click or Enter. */
+function FoldedLetter({ message, ref, me, agentNames, owner, groups, onOpen }: LetterProps & { onOpen: () => void }) {
+  const fromId = useId();
+  const sent = sentMarkOf(message, me, agentNames, owner, groups);
+  return (
+    <article ref={ref} className="letter letter-folded" tabIndex={ref === undefined ? undefined : -1} aria-labelledby={fromId}>
+      <h2 className="letter-slug-title">
+        <button type="button" className="letter-slug" aria-expanded={false} onClick={onOpen}>
+          <span className="letter-slug-from" id={fromId}>
+            {nameOf(message.from)}
+          </span>
+          {sent && <span className="letter-slug-mark">{sent}</span>}
+          <span className="letter-slug-snippet" lang="">
+            {snippetOf(message.text)}
+          </span>
+          <span className="letter-slug-date">
+            <Time at={message.receivedAt} short />
+          </span>
+        </button>
+      </h2>
+    </article>
+  );
+}
+
 /**
  * A message as a sheet, saying who sent it from the mailbox, if anyone did: the human, or an agent
- * they sponsor, named. `starting` says which draft from it is being started, if one is. Without
- * `onReply`, as in an agent's mailbox, where only the agent drafts, it has no replies or forward.
- * `downloading` says which of its attachments is on its way, if one is.
+ * they sponsor, named. Its subject shows only when it differs from the thread's. `downloading` says
+ * which of its attachments is on its way, if one is.
  */
 function Letter({
   message,
@@ -285,65 +573,55 @@ function Letter({
   agentNames,
   owner,
   groups,
+  threadSubject,
   fresh,
-  starting,
-  busy,
-  onReply,
   downloading,
   onDownload,
-}: {
-  message: Message;
-  /** The letter's sheet, for the message a search found, which the thread opens at. */
-  ref?: Ref<HTMLElement>;
+  children,
+}: LetterProps & {
   marked?: boolean;
-  me: string;
-  agentNames: ReadonlyMap<string, string>;
-  /** In an agent's mailbox, the agent, by the name the mailbox list gave it, for when its name isn't among `agentNames`. */
-  owner?: { id: string; name: string };
-  /** The groups the mailbox's owner can send as, so a message sent as one says so. */
-  groups: string[];
+  threadSubject: string;
   fresh: boolean;
-  starting?: Start;
-  busy: boolean;
-  onReply?: (start: Start) => void;
   downloading?: number;
   onDownload: (index: number) => void;
+  /** What the letter ends in, as the newest's replies. */
+  children?: ReactNode;
 }) {
   const titleId = useId();
   // A message with HTML shows as the human prefers until they switch it.
   const { mailView } = useContext(PreferencesContext);
   const [switched, setSwitched] = useState<MailView>();
   const view = message.html === undefined ? "text" : (switched ?? mailView);
-  const agent = message.sentBy === undefined ? undefined : (agentNames.get(message.sentBy) ?? (message.sentBy === owner?.id ? owner.name : undefined));
-  // A message sent from the mailbox as a group says which (ADR-0019).
-  const from = message.from.address.toLowerCase();
-  const as = message.sentBy !== undefined && groups.includes(from) ? from : undefined;
-  const sent =
-    message.sentAs !== undefined
-      ? strings.thread.sentBy(message.sentAs.name, message.sentAs.group)
-      : message.sentBy === undefined
-        ? undefined
-        : message.sentBy === me
-          ? strings.thread.sentByYou(as)
-          : agent === undefined
-            ? strings.thread.sentFromMailbox
-            : strings.thread.sentBy(agent, as);
+  const sent = sentMarkOf(message, me, agentNames, owner, groups);
+  // The letter shows when the message arrived, as the lists do, and the sender's own date too when it's far from that.
+  const dated = Math.abs(new Date(message.date).getTime() - new Date(message.receivedAt).getTime()) > datedApart;
   return (
     <article
       ref={ref}
       className={["letter", fresh ? "letter-fresh" : sent && "letter-sent", marked && "letter-matched"].filter(Boolean).join(" ")}
-      tabIndex={ref === undefined ? undefined : -1}
+      data-message={message.id}
+      tabIndex={-1}
       aria-labelledby={titleId}
     >
       <header className="letter-head">
         <h2 className="letter-from" id={titleId}>
           {nameOf(message.from)}
-          {message.from.name && <span className="address">{message.from.address}</span>}
+          {message.from.name && (
+            <>
+              {" "}
+              <span className="address">{message.from.address}</span>
+            </>
+          )}
         </h2>
         <p className="letter-meta">
           {fresh && <span className="mark-new">{strings.thread.isNew}</span>}
           {sent && <span className="letter-sent-mark">{sent}</span>}
-          <Time at={message.date} />
+          <Time at={message.receivedAt} />
+          {dated && (
+            <span className="letter-dated">
+              <Time at={message.date} format={strings.thread.dated} />
+            </span>
+          )}
         </p>
       </header>
       <dl className="letter-fields">
@@ -360,9 +638,11 @@ function Letter({
             <Addresses list={message.bcc} />
           </Field>
         )}
-        <Field label={strings.thread.subject}>
-          <span className="letter-subject">{message.subject || strings.thread.noSubject}</span>
-        </Field>
+        {bareSubject(message.subject) !== bareSubject(threadSubject) && (
+          <Field label={strings.thread.subject}>
+            <span className="letter-subject">{message.subject || strings.thread.noSubject}</span>
+          </Field>
+        )}
       </dl>
       {message.approval !== undefined && <p className="letter-note">{approvalNote(message.approval, me)}</p>}
       {message.group !== undefined && <p className="letter-note">{strings.thread.toGroup(message.group)}</p>}
@@ -379,24 +659,7 @@ function Letter({
         </p>
       )}
       {message.attachments.length > 0 && <Attachments list={message.attachments} onDownload={onDownload} downloading={downloading} />}
-      {onReply !== undefined && (
-        <div className="letter-actions">
-          <button type="button" className="button button-small" disabled={busy} onClick={() => onReply("reply")}>
-            <ReplyIcon />
-            {starting === "reply" ? strings.thread.starting : strings.thread.reply}
-          </button>
-          {message.to.length + message.cc.length > 1 && (
-            <button type="button" className="button button-small" disabled={busy} onClick={() => onReply("replyAll")}>
-              <ReplyAllIcon />
-              {starting === "replyAll" ? strings.thread.starting : strings.thread.replyAll}
-            </button>
-          )}
-          <button type="button" className="button button-small" disabled={busy} onClick={() => onReply("forward")}>
-            <ForwardIcon />
-            {starting === "forward" ? strings.thread.starting : strings.thread.forward}
-          </button>
-        </div>
-      )}
+      {children}
     </article>
   );
 }
@@ -417,6 +680,24 @@ const ReplyIcon = () => (
 const ReplyAllIcon = () => (
   <svg className="icon" viewBox="0 0 16 16" aria-hidden="true">
     <path d="M8 4 4 8l4 4M4.5 4 .8 8l3.7 4M4 8h5.5a4.5 4.5 0 0 1 4.5 4.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+const ArchiveIcon = () => (
+  <svg className="icon" viewBox="0 0 16 16" aria-hidden="true">
+    <path d="M2.5 3.5h11v3h-11zM3.5 6.5v6h9v-6M6.5 9h3" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+const TrashIcon = () => (
+  <svg className="icon" viewBox="0 0 16 16" aria-hidden="true">
+    <path d="M2.5 4.5h11M6 4.5V3h4v1.5M4 4.5l.7 8.5h6.6l.7-8.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+const MoreIcon = () => (
+  <svg className="icon" viewBox="0 0 16 16" aria-hidden="true">
+    <path d="M3.5 8h.01M8 8h.01M12.5 8h.01" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
   </svg>
 );
 

@@ -226,7 +226,7 @@ test("a human's times and dates follow their browser's language until they choos
   await expect.poll(() => row(page, "Lunch").textContent(), wait).toBe("09:15 AM");
   expect(await row(page, "Kvitto").textContent()).toBe("Oct 4");
   await page.getByRole("link", { name: /Lunch/ }).click();
-  await expect.poll(() => page.getByRole("article").locator("time").textContent(), wait).toBe("Oct 4, 2025, 02:05 PM");
+  await expect.poll(() => page.getByRole("article").locator(".letter-dated").textContent(), wait).toBe("Dated Oct 4, 2025, 02:05 PM");
 });
 
 test("a human chooses 24-hour time and ISO dates, and the Inbox and a thread show them, also after a reload", budget, async () => {
@@ -251,7 +251,7 @@ test("a human chooses 24-hour time and ISO dates, and the Inbox and a thread sho
 
   await expect.poll(() => row(page, "Kvitto").textContent(), wait).toBe("10-04");
   await page.getByRole("link", { name: /Lunch/ }).click();
-  await expect.poll(() => page.getByRole("article").locator("time").textContent(), wait).toBe("2025-10-04 14:05");
+  await expect.poll(() => page.getByRole("article").locator(".letter-dated").textContent(), wait).toBe("Dated 2025-10-04 14:05");
 });
 
 test("each choice of how times and dates show has an example from today", budget, async () => {
@@ -281,7 +281,7 @@ test("a human chooses dates with the day first, and their 12-hour time stays", b
   expect(await row(page, "Lunch").textContent()).toBe("9:15 AM");
   await page.getByRole("link", { name: /Lunch/ }).click();
 
-  await expect.poll(() => page.getByRole("article").locator("time").textContent(), wait).toBe("4 Oct 2025, 2:05 PM");
+  await expect.poll(() => page.getByRole("article").locator(".letter-dated").textContent(), wait).toBe("Dated 4 Oct 2025, 2:05 PM");
 });
 
 /**

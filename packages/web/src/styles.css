@@ -1300,7 +1300,10 @@ a.thread:focus-visible {
   white-space: nowrap;
 }
 
-/* A thread, read: its messages as sheets, oldest first, in one column at the proof's measure. */
+/*
+ * A thread, read: its messages as sheets, oldest first, in one column at the proof's measure. Read
+ * and older ones are folded to slugs, set down as slips are, and the newest ends in its replies.
+ */
 
 .desk-reading {
   max-width: calc(68ch + 2 * var(--space-5) + 2 * var(--space-5));
@@ -1386,6 +1389,79 @@ a.thread:focus-visible {
   animation: arrive 600ms var(--ease-out);
 }
 
+/* A folded letter is a slug: who, the start of what they wrote, and when, on one line. */
+.letters > li {
+  min-width: 0;
+}
+
+.letters .letter-folded {
+  min-width: 0;
+  padding: 0;
+  box-shadow: 0 1px 2px rgb(27 33 41 / 0.08);
+}
+
+.letters > li:has(> .letter-folded) + li:has(> .letter-folded) {
+  margin-top: calc(var(--space-2) - var(--space-4));
+}
+
+.letter-slug-title {
+  min-width: 0;
+  font: inherit;
+}
+
+.letter-slug {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: 2.75rem;
+  padding: var(--space-3) var(--space-5);
+  border: 0;
+  border-radius: 2px;
+  background: none;
+  color: var(--ink);
+  font: 400 var(--text-sm) / 1.5 var(--sans);
+  text-align: start;
+  cursor: pointer;
+  transition: background-color 150ms var(--ease-out);
+}
+
+.letter-slug:hover {
+  background: var(--paper-source);
+}
+
+.letter-slug-from {
+  flex: 0 1 auto;
+  max-width: 16rem;
+  overflow: hidden;
+  font-size: var(--text-md);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.letter-slug-mark {
+  flex: none;
+  font-weight: 600;
+}
+
+/* The start of the letter is mail, so it keeps the serif, a shade off Ink as a snippet in the Index is. */
+.letter-slug-snippet {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  font: 400 var(--text-md) / 1.4 var(--serif);
+  color: var(--ink-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.letter-slug-date {
+  flex: none;
+  margin-left: auto;
+  color: var(--ink-2);
+}
+
 .letter-head {
   display: flex;
   align-items: baseline;
@@ -1422,6 +1498,12 @@ a.thread:focus-visible {
 .letter-sent-mark {
   font-weight: 600;
   color: var(--ink);
+}
+
+/* The sender's own date, when it is far from when the message arrived. */
+.letter-dated::before {
+  content: "·";
+  margin-right: var(--space-3);
 }
 
 .letter-fields {
@@ -1550,7 +1632,7 @@ a.thread:focus-visible {
   cursor: progress;
 }
 
-/* A letter's replies, at its foot. */
+/* The newest letter's replies, at its foot. */
 .letter-actions {
   display: flex;
   flex-wrap: wrap;
@@ -1558,6 +1640,27 @@ a.thread:focus-visible {
   margin-top: var(--space-4);
   padding-top: var(--space-3);
   border-top: 1px solid var(--rule);
+}
+
+/* A reply is a live sheet at the thread's foot, under the message it answers, headed as Duva speaks. */
+.thread-foot {
+  margin-top: var(--space-4);
+}
+
+.compose-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-4);
+}
+
+.compose-heading {
+  font: 650 var(--text-md) / 1.5 var(--sans);
+}
+
+/* On a computer the thread's actions head it, so the phone's bar at its foot stays away. */
+.thread-bar {
+  display: none;
 }
 
 /* Write is the one action the bar offers, so it takes the pencil. */
@@ -1682,14 +1785,34 @@ input[aria-invalid="true"] {
   font-weight: 600;
 }
 
-.compose-sent p {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
+/* "Sent." and the link to its thread share a baseline, the check centred on the line beside them. */
+.compose-sent {
+  align-items: baseline;
+  gap: var(--space-2) var(--space-3);
 }
 
 .compose-sent .icon {
+  align-self: center;
   color: var(--sent);
+}
+
+.compose-sent .icon + p {
+  margin-left: calc(-1 * var(--space-1));
+}
+
+.compose-on-its-way {
+  display: grid;
+  gap: var(--space-1);
+}
+
+/* A send that takes long says the human can leave, in Duva's ordinary voice. */
+.compose-slow {
+  max-width: 60ch;
+  font-weight: 400;
+}
+
+.compose-slip {
+  margin-top: var(--space-2);
 }
 
 .compose-reason {
@@ -1711,6 +1834,91 @@ input[aria-invalid="true"] {
 .draft-state-failed,
 .draft-state-unclear {
   color: var(--alert);
+}
+
+/*
+ * Phones: a folded letter's date stays at the right, and the thread's actions move to a bar along
+ * the screen's foot, above the tab bar: Reply, Archive and Trash, with the rest behind More.
+ */
+@media (max-width: 48rem) {
+  .letter-slug {
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .letter-slug-from {
+    max-width: 10rem;
+  }
+
+  .letter-slug-mark {
+    display: none;
+  }
+
+  /* The bar offers Reply, and More the rest, so the newest letter's own replies step aside. */
+  .letter-actions {
+    display: none;
+  }
+
+  .reading-head .reading-actions {
+    display: none;
+  }
+
+  .reading-head .reading-actions-open {
+    position: fixed;
+    z-index: 3;
+    left: var(--space-3);
+    right: var(--space-3);
+    bottom: calc(var(--tab-bar-height, 0px) + 4.25rem);
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    padding: var(--space-3);
+    background: var(--paper);
+    border-radius: 2px;
+    box-shadow: var(--sheet-shadow);
+  }
+
+  .reading-actions-open .button,
+  .reading-actions-replies {
+    min-height: 2.75rem;
+  }
+
+  .reading-actions-replies {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    flex-basis: 100%;
+    padding-top: var(--space-2);
+    border-top: 1px solid var(--rule);
+  }
+
+  /* The bar stays at the screen's foot however short the thread, so the thread leaves room for it. */
+  .desk-reading:has(> .thread-bar) {
+    padding-bottom: calc(var(--space-6) + 3.75rem);
+  }
+
+  .thread-bar {
+    position: fixed;
+    z-index: 2;
+    left: 0;
+    right: 0;
+    bottom: var(--tab-bar-height, 0px);
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    background: var(--paper);
+    border-top: 1px solid var(--rule);
+  }
+
+  .thread-bar .button {
+    flex: 1 1 0;
+    min-height: 2.75rem;
+    padding: 0 var(--space-2);
+  }
+
+  .thread-bar-failed {
+    flex-basis: 100%;
+  }
 }
 
 /* The proof folds into its slip when it's decided. */

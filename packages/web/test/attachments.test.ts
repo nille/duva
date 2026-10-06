@@ -58,15 +58,16 @@ test("a human forwards a message, and it goes out with its attachments", budget,
   const { page, duva } = await withDrawings();
   await page.getByRole("button", { name: "Forward" }).click();
 
-  await expect.poll(() => page.getByLabel("Subject", { exact: true }).inputValue(), wait).toBe("Fwd: Ritningar");
+  // The forward opens at the thread's foot, under the message, with the cursor in To.
+  const forward = page.getByRole("form", { name: "Forward" });
+  await expect.poll(() => forward.getByLabel("Subject", { exact: true }).inputValue(), wait).toBe("Fwd: Ritningar");
+  expect(await forward.getByLabel("To", { exact: true }).evaluate((field) => field === document.activeElement)).toBe(true);
   expect(await page.getByLabel("Message", { exact: true }).inputValue()).toContain("> Här är ritningarna.");
-  expect(await page.getByRole("region", { name: "Attachments" }).innerText()).toContain("blå æble.txt");
+  expect(await forward.getByRole("region", { name: "Attachments" }).innerText()).toContain("blå æble.txt");
   await page.getByLabel("To", { exact: true }).fill("iris@example.net");
   await page.getByRole("button", { name: "Send" }).click();
-  await expect.poll(() => page.getByRole("status").filter({ hasText: "Sent" }).count(), wait).toBeGreaterThan(0);
+  await expect.poll(() => page.getByRole("article").count(), wait).toBe(2);
 
   // The API's tests read the MIME whole. Here it's enough that the attachment went with it.
   expect(duva.sent()[0]).toContain("filename*=UTF-8''bl%C3%A5%20%C3%A6ble.txt");
-  await page.getByRole("link", { name: "Open the thread" }).click();
-  await expect.poll(() => page.getByRole("article").count(), wait).toBe(2);
 });

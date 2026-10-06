@@ -10,10 +10,14 @@ import { strings } from "./strings.ts";
 const policy = ["default-src 'none'", "script-src 'none'", "img-src * data:", "font-src * data:", "style-src https: 'unsafe-inline'"].join("; ");
 
 /**
- * The paper the mail lies on, before its own styles, which come after and win. Mail without
- * styles is set in a serif, as text mail is.
+ * The paper the mail lies on, in the page's Proof Paper and Ink, before its own styles, which come
+ * after and win. Mail without styles is set in a serif, as text mail is.
  */
-const paper = "html { color-scheme: light; background: #fff; color: #1b2129; } body { margin: 0; font: 1.0625rem / 1.6 Georgia, serif; overflow-wrap: break-word; }";
+function paper(): string {
+  const page = getComputedStyle(document.documentElement);
+  const token = (name: string, otherwise: string) => page.getPropertyValue(name).trim() || otherwise;
+  return `html { color-scheme: light; background: ${token("--paper", "#fff")}; color: ${token("--ink", "#1b2129")}; } body { margin: 0; font: 1.0625rem / 1.6 Georgia, serif; overflow-wrap: break-word; }`;
+}
 
 /** Where a quote the mail cites starts: Gmail's, and Apple Mail's and Thunderbird's. */
 const cited = ".gmail_quote, blockquote[type=cite]";
@@ -33,7 +37,7 @@ function documentFor(html: string): { srcdoc: string; folds: boolean } {
     Object.assign(doc.createElement("meta"), { name: "referrer", content: "no-referrer" }),
     Object.assign(doc.createElement("meta"), { name: "color-scheme", content: "light" }),
     Object.assign(doc.createElement("base"), { target: "_blank" }),
-    Object.assign(doc.createElement("style"), { textContent: paper }),
+    Object.assign(doc.createElement("style"), { textContent: paper() }),
   ];
   doc.head.prepend(...head);
   for (const link of doc.body.querySelectorAll("a[href]")) {

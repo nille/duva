@@ -72,7 +72,10 @@ test("in the sponsor's own mailbox, a message their agent sent as them names the
   const marks = (index: number) => letters.nth(index).getByText(/^(Sent by .*|You sent this|Sent from this mailbox)$/).allInnerTexts();
   expect(await marks(0)).toEqual([]);
   expect(await marks(1)).toEqual(["Sent by Hermes"]);
-  expect(await letters.nth(1).innerText()).toContain("You approved it as written");
+  // Read before, it is folded, and opens to say who approved it.
+  await letters.nth(1).getByRole("button", { expanded: false }).click();
+  await expect.poll(() => letters.nth(1).innerText(), wait).toContain("You approved it as written");
+  expect(await marks(1)).toEqual(["Sent by Hermes"]);
   expect(await marks(2)).toEqual(["You sent this"]);
 });
 

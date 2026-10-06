@@ -85,7 +85,8 @@ test("a human writes from their second mailbox, and the draft lies in its Drafts
   await page.getByLabel("Message", { exact: true }).fill("Hej.");
   const saved = async () => (await ada.GET("/mailboxes/{mailbox}/drafts", { params: { path: { mailbox: lovelace } } })).data?.drafts.map(({ text }) => text);
   await expect.poll(saved, wait).toEqual(["Hej."]);
-  // Reloading the draft opens it in the mailbox it is in.
+  // Once saved, the draft's address names its mailbox (#102), and so does reloading it.
+  await expect.poll(() => page.url(), wait).toMatch(new RegExp(`#/mailboxes/${lovelace}/drafts/[^/]+$`));
   await page.reload();
   await expect.poll(() => page.url(), wait).toMatch(new RegExp(`#/mailboxes/${lovelace}/drafts/`));
   await expect.poll(() => page.getByLabel("Message", { exact: true }).inputValue(), wait).toBe("Hej.");

@@ -47,32 +47,96 @@ test("a human writes a new message and sends it at once, and Sent lists its thre
   await page.getByLabel("Message", { exact: true }).fill("Ska vi äta lunch på fredag?");
   await page.getByRole("button", { name: "Send" }).click();
 
-  await expect.poll(() => page.getByRole("status").filter({ hasText: "Sent" }).count(), wait).toBeGreaterThan(0);
+  const slip = page.getByRole("status").filter({ hasText: "Sent to ada@example.org and iris@example.net." });
+  await expect.poll(() => slip.count(), wait).toBe(1);
+  expect(await slip.innerText()).toContain("Lunch på fredag");
+  expect(await page.getByLabel("Message", { exact: true }).count()).toBe(0);
 
   await page.getByRole("link", { name: "Sent", exact: true }).click();
   await expect.poll(() => page.getByRole("heading", { level: 1 }).textContent(), wait).toBe("Sent");
   await expect.poll(() => page.getByRole("list", { name: "Threads" }).getByRole("listitem").allInnerTexts(), wait).toEqual([expect.stringContaining("Lunch på fredag")]);
 });
 
-test("a human replies from the thread, and the reply joins it, marked as theirs", budget, async () => {
+test("a human replies at the thread's foot, under the message, and the sent reply joins the thread", budget, async () => {
   const { page, signIn, receive } = await withPersonalMailbox();
-  await receive(note("Möte"));
+  await receive(note("Möte", "Kan vi ses på måndag?"));
   await signIn("grace@example.org");
   await page.getByRole("link", { name: /Möte/ }).click();
 
   await page.getByRole("button", { name: "Reply", exact: true }).click();
 
-  await expect.poll(() => page.getByLabel("To", { exact: true }).inputValue(), wait).toBe("ada@example.org");
-  expect(await page.getByLabel("Subject", { exact: true }).inputValue()).toBe("Re: Möte");
-  await page.getByLabel("Message", { exact: true }).fill("Måndag passar.");
-  await page.getByRole("button", { name: "Send" }).click();
-  await expect.poll(() => page.getByRole("status").filter({ hasText: "Sent" }).count(), wait).toBeGreaterThan(0);
+  const reply = page.getByRole("form", { name: "Reply" });
+  await expect.poll(() => reply.getByLabel("To", { exact: true }).inputValue(), wait).toBe("ada@example.org");
+  expect(await reply.getByLabel("Subject", { exact: true }).inputValue()).toBe("Re: Möte");
+  // The thread is still there to read, above the reply, and the cursor is where the reply is written.
+  expect(await page.getByRole("heading", { level: 1 }).textContent()).toBe("Möte");
+  const message = page.getByRole("article");
+  expect(await message.innerText()).toContain("Kan vi ses på måndag?");
+  expect((await message.boundingBox())!.y).toBeLessThan((await reply.boundingBox())!.y);
+  expect(await reply.getByLabel("Message", { exact: true }).evaluate((text) => text === document.activeElement)).toBe(true);
+  await page.keyboard.type("Måndag passar.");
+  await reply.getByRole("button", { name: "Send" }).click();
 
-  await page.getByRole("link", { name: "Open the thread" }).click();
   const letters = page.getByRole("article");
   await expect.poll(() => letters.count(), wait).toBe(2);
   expect(await letters.nth(1).innerText()).toContain("You sent this");
   expect(await letters.nth(1).innerText()).toContain("Måndag passar.");
+  await expect.poll(() => letters.nth(1).evaluate((letter) => letter === document.activeElement), wait).toBe(true);
+  expect(await page.getByRole("form", { name: "Reply" }).count()).toBe(0);
+  expect(await page.getByRole("button", { name: "Reply", exact: true }).count()).toBe(1);
+});
+
+test("a reply deleted at the thread's foot gives the replies back", budget, async () => {
+  const { page, signIn, receive } = await withPersonalMailbox();
+  await receive(note("Möte"));
+  await signIn("grace@example.org");
+  await page.getByRole("link", { name: /Möte/ }).click();
+  await page.getByRole("button", { name: "Reply", exact: true }).click();
+  await expect.poll(() => page.getByRole("form", { name: "Reply" }).count(), wait).toBe(1);
+
+  await page.getByRole("button", { name: "Delete draft" }).click();
+
+  await expect.poll(() => page.getByRole("form", { name: "Reply" }).count(), wait).toBe(0);
+  expect(await page.getByRole("button", { name: "Reply", exact: true }).evaluate((button) => button === document.activeElement)).toBe(true);
+  expect(await page.getByRole("heading", { level: 1 }).textContent()).toBe("Möte");
+});
+
+test("a reply finished from Drafts returns to its thread once it is sent", budget, async () => {
+  const { page, signIn, receive } = await withPersonalMailbox();
+  await receive(note("Möte"));
+  await signIn("grace@example.org");
+  await page.getByRole("link", { name: /Möte/ }).click();
+  await page.getByRole("button", { name: "Reply", exact: true }).click();
+  await page.getByRole("form", { name: "Reply" }).getByLabel("Message", { exact: true }).fill("Jag återkommer.");
+  await expect.poll(() => page.getByText(/^Saved/).count(), wait).toBe(1);
+
+  await page.getByRole("navigation").getByRole("link", { name: "Drafts" }).click();
+  await page.getByRole("list", { name: "Drafts" }).getByRole("link").first().click();
+  await expect.poll(() => page.getByRole("heading", { level: 1 }).textContent(), wait).toBe("Reply");
+  await page.getByRole("button", { name: "Send" }).click();
+
+  await expect.poll(() => page.getByRole("heading", { level: 1 }).textContent(), wait).toBe("Möte");
+  await expect.poll(() => page.getByRole("article").count(), wait).toBe(2);
+  expect(await page.getByRole("article").nth(1).innerText()).toContain("Jag återkommer.");
+});
+
+test("a send that takes a while shows as sent once it goes out, also with no news from the mailbox", { timeout: 90_000 }, async () => {
+  // While the tab is hidden the change feeds are read only every ten minutes, so only the composer's own reads can learn the send went.
+  const { page, signIn, duva, hide } = await withPersonalMailbox({ sendsHeld: true, hiddenPollInterval: 600_000 });
+  await signIn("grace@example.org");
+  await page.getByRole("button", { name: "Write" }).click();
+  await page.getByLabel("To", { exact: true }).fill("ada@example.org");
+  await page.getByLabel("Subject", { exact: true }).fill("Långsamt");
+  await page.getByLabel("Message", { exact: true }).fill("Det här tar tid.");
+  await page.getByRole("button", { name: "Send" }).click();
+  await expect.poll(() => page.getByRole("status").filter({ hasText: "Sending…" }).count(), wait).toBe(1);
+
+  // After half a minute it says the human needn't wait.
+  await expect.poll(() => page.getByText("This takes longer than usual. You can leave, and Duva finishes the send.").count(), { timeout: 40_000 }).toBe(1);
+  await hide();
+  await duva.releaseSends();
+
+  await expect.poll(() => page.getByRole("status").filter({ hasText: "Sent to ada@example.org." }).count(), wait).toBe(1);
 });
 
 test("reply all fills in the sender and every other recipient", budget, async () => {
@@ -83,8 +147,9 @@ test("reply all fills in the sender and every other recipient", budget, async ()
 
   await page.getByRole("button", { name: "Reply all" }).click();
 
-  await expect.poll(() => page.getByLabel("To", { exact: true }).inputValue(), wait).toBe("ada@example.org");
-  expect(await page.getByLabel("Cc", { exact: true }).inputValue()).toBe("iris@example.net");
+  const reply = page.getByRole("form", { name: "Reply" });
+  await expect.poll(() => reply.getByLabel("To", { exact: true }).inputValue(), wait).toBe("ada@example.org");
+  expect(await reply.getByLabel("Cc", { exact: true }).inputValue()).toBe("iris@example.net");
 });
 
 test("a draft is saved as the human writes, listed in Drafts, and can be deleted", budget, async () => {

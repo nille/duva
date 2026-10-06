@@ -524,9 +524,9 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
     ) : route.view === "search" ? (
       <SearchResults key={`${shown.id}/${pathOf(route.search)}`} client={client} mailbox={shown} base={base} view={route.search} labels={labels} onSignedOut={onSignedOut} />
     ) : route.view === "draft" || route.view === "write" ? (
-      <Composer key={routeKey} client={client} mailbox={shown} id={route.view === "draft" ? route.id : undefined} agentNames={agentNames} version={version} onSignedOut={onSignedOut} />
+      <Composer key={routeKey} client={client} mailbox={shown} base={base} id={route.view === "draft" ? route.id : undefined} agentNames={agentNames} version={version} onSignedOut={onSignedOut} />
     ) : route.view !== "list" ? (
-      <Drafts key={shown.id} client={client} mailbox={shown} agentNames={agentNames} version={version} onSignedOut={onSignedOut} />
+      <Drafts key={shown.id} client={client} mailbox={shown} base={base} agentNames={agentNames} version={version} onSignedOut={onSignedOut} />
     ) : (
       <ThreadIndex
         key={`${shown.id}/${pathOf(route.list)}`}

@@ -18,12 +18,15 @@ type Listing = { status: "loading" } | { status: "failed"; message: string } | {
 export function Drafts({
   client,
   mailbox,
+  base = "#/",
   agentNames,
   version,
   onSignedOut,
 }: {
   client: DuvaClient;
   mailbox: Mailbox;
+  /** Where the mailbox's views are, so each draft's link names it. */
+  base?: string;
   agentNames: ReadonlyMap<string, string>;
   version: number;
   onSignedOut: () => void;
@@ -36,7 +39,7 @@ export function Drafts({
     if (data === undefined) {
       // A list on screen stays there when a later read fails.
       setListing((current) =>
-        current.status === "listed" ? current : { status: "failed", message: response === undefined ? strings.drafts.unreachable : strings.drafts.failed(response.status) },
+        current.status === "listed" ? current : { status: "failed", message: response === undefined ? strings.drafts.unreachable : strings.drafts.failed },
       );
       return;
     }
@@ -86,7 +89,7 @@ export function Drafts({
         <div className="index">
           <ol className="threads" aria-label={strings.drafts.list}>
             {listing.drafts.map((draft) => (
-              <DraftRow key={draft.id} draft={draft} agent={draft.updatedBy === undefined ? undefined : agentNames.get(draft.updatedBy)} />
+              <DraftRow key={draft.id} draft={draft} base={base} agent={draft.updatedBy === undefined ? undefined : agentNames.get(draft.updatedBy)} />
             ))}
           </ol>
         </div>
@@ -96,7 +99,7 @@ export function Drafts({
 }
 
 /** A draft in the list, with the name of the agent that saved it last, if one did. */
-function DraftRow({ draft, agent }: { draft: Draft; agent?: string }) {
+function DraftRow({ draft, base, agent }: { draft: Draft; base: string; agent?: string }) {
   const recipients = [...draft.to, ...draft.cc, ...draft.bcc].map(({ name, address }) => name || address).join(", ");
   const to = recipients === "" ? strings.drafts.noRecipients : strings.drafts.to(recipients);
   const subject = draft.subject || strings.thread.noSubject;
@@ -105,7 +108,7 @@ function DraftRow({ draft, agent }: { draft: Draft; agent?: string }) {
   const by = agent === undefined ? undefined : strings.drafts.by(agent);
   return (
     <li className="thread-row">
-      <a className="thread" href={`#/drafts/${encodeURIComponent(draft.id)}`} aria-label={[by, state, to, subject].filter(Boolean).join(", ")}>
+      <a className="thread" href={`${base}drafts/${encodeURIComponent(draft.id)}`} aria-label={[by, state, to, subject].filter(Boolean).join(", ")}>
         <span className="thread-mark" aria-hidden="true" />
         <span className="thread-sender">
           <span className="thread-sender-name">{to}</span>
