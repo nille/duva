@@ -17,8 +17,20 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { type Duva, type DuvaOptions, startDuva } from "@duva/api/harness";
 import type { WebAppConfig } from "@duva/client";
-import { type Browser, chromium, type Page } from "playwright-core";
+import { type Browser, chromium, type Locator, type Page } from "playwright-core";
 import { afterAll, onTestFinished } from "vitest";
+
+/** How far the text of each element starts from the left of the page, as the eye lines them up. */
+export const textLeft = (locators: Locator[]) =>
+  Promise.all(
+    locators.map((each) =>
+      each.evaluate((element) => {
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        return Math.round(range.getBoundingClientRect().left);
+      }),
+    ),
+  );
 
 /** A phone's viewport, for tests of the layout there. */
 export const phone = { width: 390, height: 844 };

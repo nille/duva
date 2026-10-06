@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import type { Page } from "playwright-core";
-import { phone, startWebApp } from "./web-app.ts";
+import { phone, startWebApp, textLeft } from "./web-app.ts";
 
 // The page under the full suite's load can take seconds to show what changed, so every wait has room, and every test more.
 const wait = { timeout: 10_000 };
@@ -70,6 +70,21 @@ test("an admin creates a group with its first members, and it opens, saying so",
   });
 });
 
+test("a group just created no longer says anyone can send to it once its admin chooses otherwise", budget, async () => {
+  const { page } = await withTeam();
+  const form = sheet(page).getByRole("form", { name: "New group" });
+  await form.getByRole("textbox", { name: "Address" }).fill("support@example.com");
+  await form.getByRole("button", { name: "Create group" }).click();
+  const support = line(page, "support@example.com");
+  await expect.poll(() => support.getByRole("status").first().textContent(), wait).toContain("Created support@example.com.");
+
+  await support.getByRole("radio", { name: /^Its members/ }).check();
+  await support.getByRole("button", { name: "Save" }).click();
+
+  await expect.poll(() => summary(page, "support@example.com"), wait).toBe("No members. Only its members can send to it.");
+  expect(await support.getByRole("status").first().textContent()).toBe("Created support@example.com.");
+});
+
 test("a group Duva refuses to create says why", budget, async () => {
   const { page } = await withTeam();
   const form = sheet(page).getByRole("form", { name: "New group" });
@@ -134,4 +149,14 @@ test("on a phone, a group's members fit the screen", budget, async () => {
   await expect.poll(() => members(page, "team@example.com"), wait).toHaveLength(3);
 
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(phone.width);
+});
+
+test("Delete group lines up with the parts above it", budget, async () => {
+  const { page } = await withTeam();
+  await open(page, "team@example.com");
+  const team = line(page, "team@example.com");
+
+  const [heading, button] = await textLeft([team.getByRole("heading", { name: "Members", exact: true }), team.getByRole("button", { name: "Delete group" })]);
+
+  expect(button).toBe(heading);
 });

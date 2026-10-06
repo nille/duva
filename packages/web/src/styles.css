@@ -1333,9 +1333,13 @@ a.thread:focus-visible {
   margin: 0;
 }
 
+/* Sent, From turns read-only as the other fields do, without the arrow that offers a choice. */
 .compose-from-choice select:disabled {
+  border-color: var(--rule);
   background: var(--paper-source);
+  color: var(--ink);
   opacity: 1;
+  appearance: none;
 }
 
 .compose-copies {
@@ -2273,6 +2277,15 @@ input[aria-invalid="true"] {
   border-top: 1px solid var(--rule);
 }
 
+/*
+ * A quiet button that closes a line, such as Remove domain, sets its text level with the parts above
+ * it, its padding and border hanging into the margin, where its hover tint shows.
+ */
+.domain-remove > div > .button-quiet,
+.person-remove > div > .button-quiet {
+  margin-inline-start: calc(-1 * var(--space-3) - 1px);
+}
+
 .domain-remove.confirm {
   display: grid;
   justify-items: start;
@@ -2457,6 +2470,11 @@ input[aria-invalid="true"] {
   white-space: nowrap;
 }
 
+/* A row's buttons stay together at its end. */
+.person-line .button + .button {
+  margin-left: 0;
+}
+
 .person-said,
 .person-gone,
 .setting-gone {
@@ -2530,6 +2548,11 @@ input[aria-invalid="true"] {
   /* An address or a name takes its own line, so the buttons after it stay together under it. */
   .mailbox-address-name,
   .person-name {
+    flex-basis: 100%;
+  }
+
+  /* With two buttons, what a row is takes its own line too. */
+  .person-hint:has(~ .button + .button) {
     flex-basis: 100%;
   }
 

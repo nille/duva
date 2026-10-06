@@ -69,6 +69,10 @@ test("a member replies as the group, choosing it in From, and the thread shows t
 
   await expect.poll(() => page.getByRole("status").filter({ hasText: "Sent" }).count(), wait).toBeGreaterThan(0);
   expect(duva.sent().at(-1)).toContain("From: support@example.com");
+  // From turns read-only with the other fields, looking as they do.
+  const look = (field: typeof from) => field.evaluate((element) => ({ border: getComputedStyle(element).borderColor, background: getComputedStyle(element).backgroundColor, arrow: getComputedStyle(element).appearance }));
+  expect(await from.isDisabled()).toBe(true);
+  expect(await look(from)).toEqual({ ...(await look(page.getByRole("textbox", { name: "To" }))), arrow: "none" });
   await page.getByRole("link", { name: "Open the thread" }).click();
   await expect.poll(() => page.getByRole("article").count(), wait).toBe(2);
   expect(await page.getByRole("article").nth(1).locator(".letter-sent-mark").textContent()).toBe("You sent this as support@example.com");

@@ -1,8 +1,9 @@
 // The People sheet in Settings, for admins: each human as a line saying whether they're an admin and
 // how many mailboxes and agents they have, which opens into whether they're an admin, their
 // mailboxes, the agents they sponsor, each removed there, and removing the human, which says what
-// happens to each of their mailboxes and lists the agents that go with them (ADR-0020). Adding a
-// human comes last. What a change did is said where it happened, in place of what it removed.
+// happens to each of their mailboxes and lists the agents that go with them (ADR-0020). A human or an
+// agent without a mailbox is given one on the Addresses sheet. Adding a human comes last. What a
+// change did is said where it happened, in place of what it removed.
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
@@ -34,9 +35,24 @@ const mailboxName = (mailbox: Mailbox, ofOwner: Mailbox[]) => mailbox.defaultAdd
 
 /**
  * The sheet. `me` is the signed-in admin's address. `changes` counts the changes to the
- * organization's setup made on any sheet, and the sheet reads again on each. `onChange` says it made one.
+ * organization's setup made on any sheet, and the sheet reads again on each. `onChange` says it made
+ * one. `onGiveMailbox` asks the Addresses sheet to create a mailbox for the actor.
  */
-export function PeopleSheet({ client, me, changes, onChange, onSignedOut }: { client: DuvaClient; me: string; changes: number; onChange: () => void; onSignedOut: () => void }) {
+export function PeopleSheet({
+  client,
+  me,
+  changes,
+  onChange,
+  onGiveMailbox,
+  onSignedOut,
+}: {
+  client: DuvaClient;
+  me: string;
+  changes: number;
+  onChange: () => void;
+  onGiveMailbox: (owner: string) => void;
+  onSignedOut: () => void;
+}) {
   const [read, setRead] = useState<Read>({ status: "loading" });
   // The humans removed here, each said in place of their line.
   const [gone, setGone] = useState<{ email: string; said: string }[]>([]);
@@ -104,6 +120,7 @@ export function PeopleSheet({ client, me, changes, onChange, onSignedOut }: { cl
                   me={line.email === me}
                   added={added === line.email}
                   onChanged={onChange}
+                  onGiveMailbox={onGiveMailbox}
                   onRemoved={(said) => {
                     setGone((current) => [...current.filter(({ email }) => email !== line.email), { email: line.email, said }]);
                     onChange();
@@ -139,6 +156,7 @@ function HumanLine({
   me,
   added,
   onChanged,
+  onGiveMailbox,
   onRemoved,
   onSignedOut,
 }: {
@@ -149,6 +167,7 @@ function HumanLine({
   /** Whether the human was just added here, so their line opens and says so. */
   added: boolean;
   onChanged: () => void;
+  onGiveMailbox: (owner: string) => void;
   /** Hears that the human was removed, and what to say of it. */
   onRemoved: (said: string) => void;
   onSignedOut: () => void;
@@ -182,7 +201,12 @@ function HumanLine({
         <div className="setting-part">
           <h4>{copy.mailboxesTitle}</h4>
           {mailboxes.length === 0 ? (
-            <p className="setting-lead">{copy.noMailbox}</p>
+            <div className="setting-foot">
+              <p className="setting-lead">{copy.noMailbox}</p>
+              <button type="button" className="button button-small" aria-label={copy.giveMailboxWho(human.email)} onClick={() => onGiveMailbox(human.id)}>
+                {copy.giveMailbox}
+              </button>
+            </div>
           ) : (
             <ul className="person-list" aria-label={copy.mailboxesOf(human.email)}>
               {mailboxes.map((mailbox) => (
@@ -194,7 +218,7 @@ function HumanLine({
             </ul>
           )}
         </div>
-        <AgentsPart client={client} human={human} agents={agents} mailboxes={people.mailboxes} onChanged={onChanged} onSignedOut={onSignedOut} />
+        <AgentsPart client={client} human={human} agents={agents} mailboxes={people.mailboxes} onChanged={onChanged} onGiveMailbox={onGiveMailbox} onSignedOut={onSignedOut} />
         {lastAdmin ? null : <RemoveHuman client={client} human={human} people={people} onRemoved={onRemoved} onSignedOut={onSignedOut} />}
       </div>
     </details>
@@ -247,6 +271,7 @@ function AgentsPart({
   agents,
   mailboxes,
   onChanged,
+  onGiveMailbox,
   onSignedOut,
 }: {
   client: DuvaClient;
@@ -254,6 +279,7 @@ function AgentsPart({
   agents: Agent[];
   mailboxes: Mailbox[];
   onChanged: () => void;
+  onGiveMailbox: (owner: string) => void;
   onSignedOut: () => void;
 }) {
   // The agents removed here, each said in place of its row.
@@ -268,13 +294,16 @@ function AgentsPart({
         <p className="setting-lead">{copy.noAgents}</p>
       ) : (
         <ul className="person-list" aria-label={copy.agentsOf(human.email)}>
-          {rows.map((row) =>
-            row.agent !== undefined ? (
+          {rows.map((row) => {
+            const own = mailboxesOf(row.id, mailboxes);
+            return row.agent !== undefined ? (
               <AgentRow
                 key={row.id}
                 client={client}
                 agent={row.agent}
-                addresses={mailboxesOf(row.id, mailboxes).flatMap(({ addresses }) => addresses)}
+                addresses={own.flatMap(({ addresses }) => addresses)}
+                mailboxless={own.length === 0}
+                onGiveMailbox={() => onGiveMailbox(row.id)}
                 onRemoved={() => {
                   setGone((current) => [...current, { id: row.id, name: row.name }]);
                   onChanged();
@@ -285,8 +314,8 @@ function AgentsPart({
               <li key={row.id} className="person-row person-gone">
                 <p role="status">{copy.removedAgent(row.name)}</p>
               </li>
-            ),
-          )}
+            );
+          })}
         </ul>
       )}
     </div>
@@ -295,7 +324,24 @@ function AgentsPart({
 
 type Removing = { status: "idle" | "confirming" | "removing" } | { status: "failed"; message: string };
 
-function AgentRow({ client, agent, addresses, onRemoved, onSignedOut }: { client: DuvaClient; agent: Agent; addresses: string[]; onRemoved: () => void; onSignedOut: () => void }) {
+function AgentRow({
+  client,
+  agent,
+  addresses,
+  mailboxless,
+  onGiveMailbox,
+  onRemoved,
+  onSignedOut,
+}: {
+  client: DuvaClient;
+  agent: Agent;
+  addresses: string[];
+  /** Whether the agent has no mailbox, so it is offered one. */
+  mailboxless: boolean;
+  onGiveMailbox: () => void;
+  onRemoved: () => void;
+  onSignedOut: () => void;
+}) {
   const [state, setState] = useState<Removing>({ status: "idle" });
   const remove = async () => {
     setState({ status: "removing" });
@@ -310,6 +356,11 @@ function AgentRow({ client, agent, addresses, onRemoved, onSignedOut }: { client
         <span className="person-name">{agent.name}</span>
         <span className="hint person-hint">{addresses.length === 0 ? copy.agentNoMailbox : addresses.join(", ")}</span>
         {agent.paused !== undefined && <span className="label-name">{copy.paused}</span>}
+        {mailboxless && (
+          <button type="button" className="button button-small" aria-label={copy.giveMailboxWho(agent.name)} onClick={onGiveMailbox}>
+            {copy.giveAgentMailbox}
+          </button>
+        )}
         {state.status !== "confirming" && state.status !== "removing" && (
           <button type="button" className="button button-small button-quiet" aria-label={copy.removeAgentWho(agent.name)} onClick={() => setState({ status: "confirming" })}>
             {copy.remove}

@@ -5,7 +5,7 @@
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
-import { AddressesSheet } from "./addresses.tsx";
+import { AddressesSheet, type Giving } from "./addresses.tsx";
 import { AgentSettingsSheet } from "./agent-settings.tsx";
 import { Choice } from "./setting-parts.tsx";
 import { datesFor, type Preferences } from "./dates.ts";
@@ -127,6 +127,8 @@ export function Settings({
   // A change on one of the admins' sheets can change what the others show, so all read again after each.
   const [setupChanges, setSetupChanges] = useState(0);
   const setupChanged = useCallback(() => setSetupChanges((count) => count + 1), []);
+  // The actor the People sheet asked to give a mailbox to, which the Addresses sheet's form takes.
+  const [giving, setGiving] = useState<Giving>();
 
   return (
     <main className="desk">
@@ -137,8 +139,17 @@ export function Settings({
       </div>
       <OrganizationSheet client={client} admin={admin} onSignedOut={onSignedOut} />
       {admin && <DomainsSheet client={client} changes={setupChanges} onChange={setupChanged} onSignedOut={onSignedOut} />}
-      {admin && <AddressesSheet client={client} changes={setupChanges} onChange={setupChanged} onSignedOut={onSignedOut} />}
-      {admin && <PeopleSheet client={client} me={email} changes={setupChanges} onChange={setupChanged} onSignedOut={onSignedOut} />}
+      {admin && <AddressesSheet client={client} changes={setupChanges} giving={giving} onChange={setupChanged} onSignedOut={onSignedOut} />}
+      {admin && (
+        <PeopleSheet
+          client={client}
+          me={email}
+          changes={setupChanges}
+          onChange={setupChanged}
+          onGiveMailbox={(owner) => setGiving((current) => ({ owner, asked: (current?.asked ?? 0) + 1 }))}
+          onSignedOut={onSignedOut}
+        />
+      )}
       {admin && <GroupsSheet client={client} changes={setupChanges} onChange={setupChanged} onSignedOut={onSignedOut} />}
       <YouSheet client={client} onPreferences={onPreferences} onSignedOut={onSignedOut} />
       {screened.length > 0 && <ScreenerSheet key={screened.map(({ mailbox }) => mailbox.id).join()} client={client} mailboxes={screened} onSignedOut={onSignedOut} />}

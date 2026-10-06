@@ -2,34 +2,71 @@
 // owner and default address, which opens into its addresses, across every domain, each made the
 // default or removed there, and a field to add another. A mailbox without an address says so, and
 // an owner's mailboxes say which of theirs each is. What a change did is said in its address's row,
-// or in place of the row it removed.
-import { useCallback, useEffect, useState } from "react";
+// or in place of the row it removed. Creating a mailbox for any human or agent closes the sheet, and
+// the People sheet opens it with the owner chosen.
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
 import { ChevronIcon } from "./setting-parts.tsx";
-import { type Answer, attempt, byOwner, change, isAgents, type Mailboxes, ownerName } from "./setup.ts";
+import { type Answer, attempt, byOwner, byText, change, isAgents, type Mailboxes, ownerName } from "./setup.ts";
 import { strings } from "./strings.ts";
 
 type Mailbox = components["schemas"]["Mailbox"];
+type Actor = components["schemas"]["Actor"];
 
-type Read = { status: "loading" } | { status: "failed"; message: string } | { status: "read"; listed: Mailboxes; domains: string[] };
+/** An actor a mailbox can be created for: their name, a human's address or an agent's, and what the form calls them. */
+interface Owner {
+  id: string;
+  kind: Actor["kind"];
+  name: string;
+  label: string;
+}
+
+type Read = { status: "loading" } | { status: "failed"; message: string } | { status: "read"; listed: Mailboxes; domains: string[]; owners: Owner[] };
+
+/** The owner the People sheet asked to give a mailbox to, once each time it asks. */
+export interface Giving {
+  owner: string;
+  asked: number;
+}
 
 const copy = strings.addresses;
 
 /**
  * The sheet. `changes` counts the changes to the organization's setup made on any sheet, and the
- * sheet reads again on each. `onChange` says it made one.
+ * sheet reads again on each. `onChange` says it made one. `giving` brings the form to create a
+ * mailbox into view, with its owner chosen.
  */
-export function AddressesSheet({ client, changes, onChange, onSignedOut }: { client: DuvaClient; changes: number; onChange: () => void; onSignedOut: () => void }) {
+export function AddressesSheet({
+  client,
+  changes,
+  giving,
+  onChange,
+  onSignedOut,
+}: {
+  client: DuvaClient;
+  changes: number;
+  giving?: Giving;
+  onChange: () => void;
+  onSignedOut: () => void;
+}) {
   const [read, setRead] = useState<Read>({ status: "loading" });
+  // The mailbox just created, opened so what was done is said in its line.
+  const [created, setCreated] = useState<{ id: string; said: string }>();
 
   // Read again after a change, the sheet stays as it is while it does, so the open line stays open.
   const load = useCallback(
     async (again = false) => {
       if (!again) setRead({ status: "loading" });
-      const [mailboxes, domains] = await Promise.all([attempt(client.GET("/organization/mailboxes")), attempt(client.GET("/domains"))]);
-      if (mailboxes.response?.status === 401 || domains.response?.status === 401) return onSignedOut();
-      const unread = [mailboxes, domains].find(({ data }) => data === undefined);
+      const [mailboxes, domains, humans, agents] = await Promise.all([
+        attempt(client.GET("/organization/mailboxes")),
+        attempt(client.GET("/domains")),
+        attempt(client.GET("/humans")),
+        attempt(client.GET("/organization/agents")),
+      ]);
+      const answers = [mailboxes, domains, humans, agents];
+      if (answers.some(({ response }) => response?.status === 401)) return onSignedOut();
+      const unread = answers.find(({ data }) => data === undefined);
       if (unread !== undefined) {
         if (!again) setRead({ status: "failed", message: unread.response === undefined ? copy.unreachable : copy.failed(unread.response.status) });
         return;
@@ -38,6 +75,13 @@ export function AddressesSheet({ client, changes, onChange, onSignedOut }: { cli
         status: "read",
         listed: mailboxes.data!,
         domains: domains.data!.domains.filter(({ kind }) => kind === "standalone").map(({ domain }) => domain),
+        // Humans by address, then agents by name, each agent with its sponsor, since two can share a name.
+        owners: [
+          ...humans.data!.humans.map(({ id, email }) => ({ id, kind: "human" as const, name: email, label: email })).sort((a, b) => byText(a.name, b.name)),
+          ...agents
+            .data!.agents.map(({ id, name, sponsor }) => ({ id, kind: "agent" as const, name, label: copy.agentWithSponsor(name, humans.data!.humans.find((human) => human.id === sponsor)?.email) }))
+            .sort((a, b) => a.label.localeCompare(b.label)),
+        ],
       });
     },
     [client, onSignedOut],
@@ -80,11 +124,25 @@ export function AddressesSheet({ client, changes, onChange, onSignedOut }: { cli
               agent={isAgents(mailbox, read.listed)}
               place={owners.length > 1 ? { at: owners.indexOf(mailbox) + 1, of: owners.length } : undefined}
               domains={read.domains}
+              created={created?.id === mailbox.id ? created.said : undefined}
               onChanged={onChange}
               onSignedOut={onSignedOut}
             />
           );
         })
+      )}
+      {read.status === "read" && (
+        <CreateMailbox
+          client={client}
+          owners={read.owners}
+          domains={read.domains}
+          giving={giving}
+          onCreated={(mailbox, owner) => {
+            setCreated({ id: mailbox.id, said: copy.created(owner, mailbox.defaultAddress ?? mailbox.addresses.join(", ")) });
+            onChange();
+          }}
+          onSignedOut={onSignedOut}
+        />
       )}
     </section>
   );
@@ -97,6 +155,7 @@ function MailboxLine({
   agent,
   place,
   domains,
+  created,
   onChanged,
   onSignedOut,
 }: {
@@ -107,9 +166,15 @@ function MailboxLine({
   /** Which of its owner's mailboxes it is, when they have several. */
   place?: { at: number; of: number };
   domains: string[];
+  /** What creating the mailbox did, when it was just created here, so its line opens and says so. */
+  created?: string;
   onChanged: () => void;
   onSignedOut: () => void;
 }) {
+  const details = useRef<HTMLDetailsElement>(null);
+  useEffect(() => {
+    if (created !== undefined && details.current !== null) details.current.open = true;
+  }, [created]);
   // What the last change did, said in the row of the address it was about, or where that row was.
   const [done, setDone] = useState<{ address: string; said: string; at: number }>();
   const heading = `mailbox-${mailbox.id}`;
@@ -122,7 +187,7 @@ function MailboxLine({
   const rows: { address: string; gone?: boolean }[] = addresses.map((address) => ({ address }));
   if (done !== undefined && !addresses.includes(done.address)) rows.splice(Math.min(done.at, rows.length), 0, { address: done.address, gone: true });
   return (
-    <details className="setting-line" name="mailboxes">
+    <details className="setting-line" name="mailboxes" ref={details}>
       <summary>
         <div className="line-summary">
           <h3 id={heading}>{owner}</h3>
@@ -131,6 +196,11 @@ function MailboxLine({
         <ChevronIcon />
       </summary>
       <div className="setting" role="group" aria-labelledby={heading}>
+        {created !== undefined && done === undefined && (
+          <p className="setting-note" role="status">
+            {created}
+          </p>
+        )}
         {rows.length === 0 ? (
           <p className="setting-note">{copy.none}</p>
         ) : (
@@ -298,6 +368,118 @@ function AddAddress({ client, mailbox, domains, onAdded, onSignedOut }: { client
           {copy.newAddressHint(domains)}
         </p>
       )}
+    </form>
+  );
+}
+
+/**
+ * Creating a mailbox for a human or an agent, with its first address. The People sheet's `giving`
+ * chooses the owner and puts the cursor in the address field.
+ */
+function CreateMailbox({
+  client,
+  owners,
+  domains,
+  giving,
+  onCreated,
+  onSignedOut,
+}: {
+  client: DuvaClient;
+  owners: Owner[];
+  domains: string[];
+  giving?: Giving;
+  onCreated: (mailbox: Mailbox, owner: string) => void;
+  onSignedOut: () => void;
+}) {
+  const [owner, setOwner] = useState("");
+  const [address, setAddress] = useState("");
+  const [state, setState] = useState<{ status: "idle" | "creating" } | { status: "failed"; message: string }>({ status: "idle" });
+  const form = useRef<HTMLFormElement>(null);
+  const field = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (giving === undefined) return;
+    setOwner(giving.owner);
+    setState({ status: "idle" });
+    form.current?.scrollIntoView({ block: "center", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+    field.current?.focus({ preventScroll: true });
+  }, [giving]);
+
+  const create = async () => {
+    setState({ status: "creating" });
+    const answer = await change(client.POST("/mailboxes", { body: { owner, address: address.trim() } }), onSignedOut);
+    if (answer === undefined) return;
+    if ("failed" in answer) return setState({ status: "failed", message: answer.failed });
+    setState({ status: "idle" });
+    setOwner("");
+    setAddress("");
+    onCreated(answer.data, owners.find(({ id }) => id === owner)?.name ?? owner);
+  };
+  const named = (kind: Actor["kind"]) =>
+    owners
+      .filter((each) => each.kind === kind)
+      .map(({ id, label }) => (
+        <option key={id} value={id}>
+          {label}
+        </option>
+      ));
+  return (
+    <form
+      ref={form}
+      className="setting setting-add"
+      aria-labelledby="create-mailbox"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void create();
+      }}
+    >
+      <div className="setting-part">
+        <h3 id="create-mailbox">{copy.create}</h3>
+        <p className="setting-lead">{copy.createLead}</p>
+      </div>
+      <label className="setting-field">
+        <span>{copy.owner}</span>
+        <select value={owner} onChange={(event) => setOwner(event.target.value)}>
+          <option value="" disabled>
+            {copy.chooseOwner}
+          </option>
+          <optgroup label={copy.humans}>{named("human")}</optgroup>
+          {owners.some(({ kind }) => kind === "agent") && <optgroup label={copy.agents}>{named("agent")}</optgroup>}
+        </select>
+      </label>
+      <label className="setting-field">
+        <span>{copy.address}</span>
+        <input
+          ref={field}
+          type="text"
+          inputMode="email"
+          autoComplete="off"
+          autoCapitalize="none"
+          spellCheck={false}
+          placeholder={copy.placeholder(domains[0])}
+          aria-describedby="create-mailbox-hint"
+          aria-invalid={state.status === "failed"}
+          value={address}
+          onChange={(event) => {
+            setAddress(event.target.value);
+            if (state.status === "failed") setState({ status: "idle" });
+          }}
+        />
+      </label>
+      {state.status === "failed" ? (
+        <p id="create-mailbox-hint" className="field-error" role="alert">
+          {state.message}
+        </p>
+      ) : (
+        <p id="create-mailbox-hint" className="hint">
+          {copy.newAddressHint(domains)}
+        </p>
+      )}
+      <div className="setting-foot">
+        <button type="submit" className="button button-primary" disabled={owner === "" || address.trim() === "" || state.status === "creating"}>
+          {state.status === "creating" ? copy.creating : copy.createButton}
+        </button>
+      </div>
     </form>
   );
 }

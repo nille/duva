@@ -188,7 +188,7 @@ function GroupLine({
       <div className="setting" role="group" aria-labelledby={heading}>
         {created && (
           <p className="setting-note" role="status">
-            {copy.created(group.address)}
+            {copy.created(group.address, group.sendPolicy === "anyone")}
           </p>
         )}
         <div className="setting-part">

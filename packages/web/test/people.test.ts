@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import type { Page } from "playwright-core";
-import { phone, startWebApp } from "./web-app.ts";
+import { phone, startWebApp, textLeft } from "./web-app.ts";
 
 // The page under the full suite's load can take seconds to show what changed, so every wait has room, and every test more.
 const wait = { timeout: 10_000 };
@@ -33,6 +33,7 @@ const sheet = (page: Page) => page.getByRole("region", { name: "People" });
 const line = (page: Page, email: string) => sheet(page).locator("details").filter({ has: page.getByRole("heading", { name: email, exact: true }) });
 const summary = (page: Page, email: string) => line(page, email).locator(".line-summary-text").textContent();
 const open = (page: Page, email: string) => line(page, email).getByRole("heading").click();
+const create = (page: Page) => page.getByRole("region", { name: "Addresses" }).getByRole("form", { name: "Create a mailbox" });
 
 test("an admin sees each human with their mailboxes, whether they're an admin, and the agents they sponsor", budget, async () => {
   const { page } = await withPeople();
@@ -49,16 +50,15 @@ test("an admin sees each human with their mailboxes, whether they're an admin, a
   expect(await grace.getByRole("list", { name: "Agents grace@example.org sponsors" }).getByRole("listitem").allInnerTexts()).toEqual([expect.stringMatching(/^Iris\s+iris@example\.com\s+Remove$/)]);
 });
 
-test("an admin adds a human, whose line opens with no mailbox, saying where to give them one", budget, async () => {
+test("an admin adds a human, whose line opens with no mailbox, offering to give them one", budget, async () => {
   const { page, ada } = await withPeople();
 
   await sheet(page).getByRole("textbox", { name: "Email address" }).fill("Margaret@Example.org");
   await sheet(page).getByRole("button", { name: "Add human" }).click();
 
   await expect.poll(() => summary(page, "margaret@example.org"), wait).toBe("No mailbox. No agents.");
-  expect(await line(page, "margaret@example.org").getByRole("status").first().textContent()).toBe(
-    "Added margaret@example.org. They sign in with a code emailed there. Give them a mailbox on the Addresses sheet.",
-  );
+  expect(await line(page, "margaret@example.org").getByRole("status").first().textContent()).toBe("Added margaret@example.org. They sign in with a code emailed there.");
+  expect(await line(page, "margaret@example.org").getByRole("button", { name: "Give margaret@example.org a mailbox" }).isVisible()).toBe(true);
   expect(await sheet(page).getByRole("textbox", { name: "Email address" }).inputValue()).toBe("");
   expect((await ada.GET("/humans")).data?.humans.map(({ email }) => email)).toContain("margaret@example.org");
 });
@@ -149,4 +149,54 @@ test("on a phone, a human's line and their removal fit the screen", budget, asyn
   await expect.poll(() => line(page, "grace@example.org").getByRole("combobox", { name: "Hand over to" }).count(), wait).toBe(1);
 
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(phone.width);
+});
+
+test("a human just added is given a mailbox from their line, in the Addresses sheet's form with them chosen, and mail to it reaches them", budget, async () => {
+  const { page, duva } = await withPeople();
+  await sheet(page).getByRole("textbox", { name: "Email address" }).fill("margaret@example.org");
+  await sheet(page).getByRole("button", { name: "Add human" }).click();
+  const margaret = line(page, "margaret@example.org");
+  await expect.poll(() => margaret.getByRole("group", { name: "margaret@example.org" }).innerText(), wait).toContain("No mailbox yet.");
+
+  await margaret.getByRole("button", { name: "Give margaret@example.org a mailbox" }).click();
+
+  await expect.poll(() => create(page).getByRole("combobox", { name: "For" }).locator("option:checked").textContent(), wait).toBe("margaret@example.org");
+  await expect.poll(() => create(page).getByRole("textbox", { name: "Address" }).evaluate((element) => element === document.activeElement), wait).toBe(true);
+  await create(page).getByRole("textbox", { name: "Address" }).fill("margaret@example.com");
+  await create(page).getByRole("button", { name: "Create mailbox" }).click();
+
+  await expect.poll(() => summary(page, "margaret@example.org"), wait).toBe("1 mailbox. No agents.");
+  expect(await margaret.getByRole("list", { name: "Mailboxes of margaret@example.org" }).getByRole("listitem").allInnerTexts()).toEqual(["margaret@example.com"]);
+  const raw = ["From: Customer <customer@example.edu>", "To: margaret@example.com", "Subject: Welcome", "Message-ID: <welcome@example.edu>", "", "Hello."].join("\r\n");
+  expect((await duva.receive(raw, { to: ["margaret@example.com"] })).refused).toEqual([]);
+  const own = duva.signIn("margaret@example.org");
+  const [mailbox] = (await own.GET("/mailboxes")).data!.mailboxes;
+  const { data: screener } = await own.GET("/mailboxes/{mailbox}/screener", { params: { path: { mailbox: mailbox!.id } } });
+  expect(screener?.senders.map(({ address }) => address)).toEqual(["customer@example.edu"]);
+});
+
+test("an agent without a mailbox is given one from its sponsor's line", budget, async () => {
+  const { page, ada } = await withPeople();
+  await open(page, "ada@example.org");
+  const agents = line(page, "ada@example.org").getByRole("list", { name: "Agents ada@example.org sponsors" });
+
+  await agents.getByRole("button", { name: "Give Hermes a mailbox" }).click();
+
+  await expect.poll(() => create(page).getByRole("combobox", { name: "For" }).locator("option:checked").textContent(), wait).toBe("Hermes, ada@example.org's agent");
+  await create(page).getByRole("textbox", { name: "Address" }).fill("hermes@example.com");
+  await create(page).getByRole("button", { name: "Create mailbox" }).click();
+
+  await expect.poll(() => agents.getByRole("listitem").allInnerTexts(), wait).toEqual([expect.stringMatching(/^Hermes\s+hermes@example\.com\s+Remove$/)]);
+  const hermes = (await ada.GET("/organization/agents")).data!.agents.find(({ name }) => name === "Hermes")!;
+  expect((await ada.GET("/organization/mailboxes")).data?.mailboxes.filter(({ owner }) => owner === hermes.id).map(({ addresses }) => addresses)).toEqual([["hermes@example.com"]]);
+});
+
+test("Remove human lines up with the parts above it", budget, async () => {
+  const { page } = await withPeople();
+  await open(page, "grace@example.org");
+  const grace = line(page, "grace@example.org");
+
+  const [heading, button] = await textLeft([grace.getByRole("heading", { name: "Agents", exact: true }), grace.getByRole("button", { name: "Remove human" })]);
+
+  expect(button).toBe(heading);
 });
