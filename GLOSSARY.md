@@ -119,6 +119,10 @@ _Avoid_: contact, rule
 **Tracking protection**:
 Removing known trackers, such as spy pixels, from HTML mail before anyone sees it, and saying what was removed. Always on. Other remote images and fonts load from the sender's servers as they are.
 
+**Search**:
+Finding threads in one mailbox by words and meaning together, with filters such as from: and label:. It covers subjects, senders, recipients, message text and attachment names, Sent included, and leaves out Spam and Trash unless asked. An actor searches only mailboxes it can read.
+_Avoid_: query, lookup
+
 **Change feed**:
 The ordered record of every change in a mailbox, and of every change to the organization's setup. A change made by an actor names that actor; arriving mail names none. Clients and agents catch up from where they left off. It is also the audit trail.
 _Avoid_: event log, activity log, audit log
