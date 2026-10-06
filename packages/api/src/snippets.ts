@@ -1,8 +1,10 @@
 /// <reference path="./snowball-stemmers.d.ts" />
 // A search result's snippet: the part of the matching message's text where the search's words
-// stand, on one line, with each place they match highlighted. A word matches another form of
-// itself as the index stems it, so "invoices" lights up "invoice", and "fakturor" "faktura".
+// stand, on one line without URLs or long tokens, with each place they match highlighted. A word
+// matches another form of itself as the index stems it, so "invoices" lights up "invoice", and
+// "fakturor" "faktura".
 import snowball from "snowball-stemmers";
+import { readableLine } from "./readable-line.ts";
 import type { SearchTerm } from "./search-engine.ts";
 
 export interface Snippet {
@@ -33,12 +35,7 @@ const sameWord = (a: string[], b: string[]) => a.some((form, index) => form === 
  * start if nothing matches, with the matches of every term searched anywhere highlighted.
  */
 export function snippetFor(text: string, terms: SearchTerm[]): Snippet {
-  const line = text
-    .split("\n")
-    .filter((each) => !each.trimStart().startsWith(">"))
-    .join(" ")
-    .replace(/\s+/g, " ")
-    .trim();
+  const line = readableLine(text);
   const words = [...line.matchAll(/[\p{L}\p{N}]+/gu)].map((match) => ({ start: match.index, end: match.index + match[0].length, forms: formsOf(match[0]) }));
   const matched: { start: number; end: number }[] = [];
   for (const term of terms.filter((each) => each.in === "anywhere")) {

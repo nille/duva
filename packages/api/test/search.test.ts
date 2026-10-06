@@ -116,6 +116,20 @@ test("a long message's snippet starts near the words, and highlights other forms
   expect(result!.highlights.map(({ start, end }) => result!.snippet.slice(start, end))).toEqual(["faktura"]);
 });
 
+test("a result's snippet leaves out URLs and tokens, with its highlights on the words shown", async () => {
+  const { search, receive } = await withMailbox();
+  await receive({
+    subject: "Ferry news",
+    text: "Book https://ferry.example/b?utm_medium=email_action&utm_source=cio your ferry <https://ferry.example/x> now. a1b2c3d4e5f6g7h8i9j0k1l2m3 The ferry is full.",
+  });
+
+  const { data } = await search("ferry");
+
+  const [result] = data!.results;
+  expect(result!.snippet).toBe("Book your ferry now. The ferry is full.");
+  expect(result!.highlights.map(({ start, end }) => result!.snippet.slice(start, end))).toEqual(["ferry", "ferry"]);
+});
+
 test("Swedish and English words find their other forms", async () => {
   const { receive, subjects } = await withMailbox();
   await receive({ subject: "Hyran", text: "Hej! Här är en faktura för hyran i oktober, och den ska betalas senast fredag." });

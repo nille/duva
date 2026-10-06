@@ -10,6 +10,7 @@ import { changesAfter, changesPerPage, recordChanges } from "./feed.ts";
 import type { MailBucket } from "./mail-bucket.ts";
 import { contentIdsIn, serveHtml, type ServedHtml } from "./html.ts";
 import { type ParsedMail, type Part, parseMail } from "./mime.ts";
+import { readableLine } from "./readable-line.ts";
 import { allMailboxes, defaultAgentSettings, mailboxFeed, mailboxKey } from "./organization.ts";
 import { documents, isNew, pk, sk, type TransactItem } from "./table.ts";
 
@@ -758,14 +759,9 @@ export const summaryOf = ({ id, subject, from, snippet, labels, unread, latestAt
   messages,
 });
 
-/** The start of the text on one line, without quoted lines, cut after snippetLength characters. */
+/** The start of the text on one line, without quoted lines, URLs or tokens, cut after snippetLength characters. */
 function snippetOf(text: string): string {
-  const line = text
-    .split("\n")
-    .filter((each) => !each.trimStart().startsWith(">"))
-    .join(" ")
-    .replace(/\s+/g, " ")
-    .trim();
+  const line = readableLine(text);
   return line.length <= snippetLength ? line : `${line.slice(0, snippetLength).trimEnd()}…`;
 }
 

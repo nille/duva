@@ -68,6 +68,31 @@ test("a snippet leaves out quoted lines and stops after 200 characters", async (
   );
 });
 
+test("a snippet leaves out URLs and long tokens, and shows the words around them", async () => {
+  const { receive, inbox } = await withPersonalMailbox();
+  const text = [
+    "Veckans nyheter från föreningen.",
+    "Läs mer: https://news.example/v/8f3a?utm_medium=email_action&utm_source=cio",
+    "Anmäl dig <https://news.example/signup?id=42> senast fredag",
+    "[https://news.example/track/abc] Vi ses (program på https://news.example/p).",
+    "utm_campaign=autumn_2026&utm_content=header_link",
+    "dGhpcyBpcyBhIHRyYWNraW5nIHRva2VuMTIz",
+  ].join("\n");
+
+  await receive(note("Nyheter", text));
+
+  expect((await inbox())[0]?.snippet).toBe("Veckans nyheter från föreningen. Läs mer: Anmäl dig senast fredag Vi ses (program på).");
+});
+
+test("a snippet keeps ordinary text, long Swedish words, addresses and order numbers included", async () => {
+  const { receive, inbox } = await withPersonalMailbox();
+  const text = "Om realisationsvinstbeskattningen2026: skriv till anna.svensson2026@foretaget.example, ange #INV-2026-000123456789012345. Hälsningar, Åsa-Märta.";
+
+  await receive(note("Skatt", text));
+
+  expect((await inbox())[0]?.snippet).toBe(text);
+});
+
 test("a thread's snippet comes from its newest message", async () => {
   const { receive, inbox } = await withPersonalMailbox();
   await receive(await mail("plain"));
