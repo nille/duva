@@ -212,6 +212,13 @@ export const operations = [
         "description": "How the web app shows a message that has HTML. html, the default, shows it as its sender designed it, with known trackers removed. text shows its plain text. Either way, the human can switch each message the other way."
       },
       {
+        "name": "keyboardShortcuts",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "Whether single keys work as shortcuts in the web app, such as j and k to move through a list and e to archive. on, the default, has them work anywhere but in a field. off turns them all off, for speech input or keys pressed by mistake."
+      },
+      {
         "name": "timeZone",
         "in": "body",
         "type": "string",

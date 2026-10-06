@@ -1,11 +1,12 @@
 // Searching the open mailbox: a box in the bar, which `/` puts the cursor in, with a menu that builds
 // the filters into what is typed, and the results, best match or newest first, a page at a time, each
 // a thread with the words highlighted in its snippet. Opening one goes to the message that matched.
-import { type FormEvent, type ReactNode, useCallback, useEffect, useId, useRef, useState } from "react";
+import { type FormEvent, type ReactNode, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
-import { SkeletonIndex, ThreadLine } from "./inbox.tsx";
-import { type Label, ownLabelsOf } from "./organize.tsx";
+import { DoneLine, IndexTools, SkeletonIndex, ThreadRow, usePicking } from "./inbox.tsx";
+import { type Done, type Label, OrganizeActions, ownLabelsOf } from "./organize.tsx";
+import { useShortcuts, useThreadKeys } from "./shortcuts.tsx";
 import { strings } from "./strings.ts";
 import { hrefOf, type SearchView, threadHref } from "./views.tsx";
 
@@ -108,16 +109,7 @@ export function SearchBox({ client, mailbox, base, agent, labels, current }: { c
   useEffect(() => setValue(shown ?? ""), [shown]);
 
   // `/` puts the cursor in the box from anywhere but a field, as in other mail apps.
-  useEffect(() => {
-    const pressed = (event: KeyboardEvent) => {
-      if (event.key !== "/" || event.ctrlKey || event.metaKey || event.altKey || event.defaultPrevented) return;
-      if (event.target instanceof Element && event.target.closest("input, textarea, select, [contenteditable]")) return;
-      event.preventDefault();
-      box.current?.focus();
-    };
-    document.addEventListener("keydown", pressed);
-    return () => document.removeEventListener("keydown", pressed);
-  }, []);
+  useShortcuts({ "/": () => box.current?.focus() });
 
   const open = chosen !== undefined;
   useEffect(() => {
@@ -263,7 +255,8 @@ type Finding =
 /**
  * A search's results in the mailbox whose Inbox is at `base`, the human's own or, with the agent's
  * name, an agent's they sponsor. Duva's words show when it refuses the search, as for a filter it
- * doesn't know.
+ * doesn't know. The human picks results to organize them as a list's threads, and `done` is what
+ * they last did, said with a way to undo it, which `onDone` hears.
  */
 export function SearchResults({
   client,
@@ -271,6 +264,8 @@ export function SearchResults({
   base,
   view,
   labels,
+  done,
+  onDone,
   onSignedOut,
 }: {
   client: DuvaClient;
@@ -278,6 +273,8 @@ export function SearchResults({
   base: string;
   view: SearchView;
   labels: Label[];
+  done: Done | undefined;
+  onDone: (done: Done | undefined) => void;
   onSignedOut: () => void;
 }) {
   const [finding, setFinding] = useState<Finding>({ status: "loading" });
@@ -309,6 +306,29 @@ export function SearchResults({
     setFinding("results" in answer ? { status: "found", ...answer } : { status: "failed", ...answer });
   }, [page]);
 
+  const findingRef = useRef(finding);
+  findingRef.current = finding;
+  // Which read again is the latest, so an older one that ends later is dropped.
+  const generation = useRef(0);
+  /**
+   * Searches again for as many results as are shown, once the human changed some, so those that no
+   * longer match leave and the others show their labels as they are now. What is shown stays if Duva
+   * can't answer.
+   */
+  const again = async () => {
+    const mine = ++generation.current;
+    const shown = findingRef.current.status === "found" ? findingRef.current.results.length : pageSize;
+    const results: SearchResult[] = [];
+    let next: string | undefined;
+    do {
+      const answer = await page(next);
+      if (answer === undefined || !("results" in answer)) return;
+      results.push(...answer.results.filter(({ thread }) => !results.some((each) => each.thread.id === thread.id)));
+      next = answer.next;
+    } while (results.length < shown && next !== undefined);
+    if (mine === generation.current) setFinding({ status: "found", results, next });
+  };
+
   useEffect(() => {
     void load();
   }, [load]);
@@ -330,6 +350,23 @@ export function SearchResults({
     setFinding({ status: "found", results: [...finding.results, ...answer.results.filter(({ thread }) => !shown.has(thread.id))], next: answer.next });
   };
 
+  const threads = useMemo(() => (finding.status === "found" ? finding.results.map(({ thread }) => thread) : []), [finding]);
+  const picking = usePicking(threads);
+  // Results come from anywhere but Spam and Trash, unless the search asks for one.
+  const place = { all: true } as const;
+  const organized = (what: Done, moved: boolean) => {
+    if (moved) picking.clear();
+    onDone(what);
+    void again();
+  };
+  const list = useRef<HTMLOListElement>(null);
+  useThreadKeys({ list, client, mailbox, threads, picked: picking.picked, place, onDone: organized, onSignedOut });
+
+  // A search that names no label can look in Spam or Trash instead.
+  const { rest, filters } = filtersOf(q);
+  const elsewhere = filters.label === "";
+  const lookIn = (label: string) => hrefOf({ search: { q: withFilters(rest, { ...filters, label }), sort } }, base);
+
   const sortLink = (to: SearchView["search"]["sort"], name: string) => (
     <a href={hrefOf({ search: { q, sort: to } }, base)} aria-current={sort === to ? "page" : undefined}>
       {name}
@@ -347,11 +384,11 @@ export function SearchResults({
           {sortLink("relevance", strings.search.relevance)}
           {sortLink("newest", strings.search.newest)}
         </nav>
-        <p className="mailbox-address">{strings.mailboxes.address(mailbox)}</p>
       </div>
       <p className="visually-hidden" role="status">
         {finding.status === "found" ? (finding.results.length > 0 ? strings.search.found(finding.results.length, finding.next !== undefined) : strings.search.emptyTitle) : ""}
       </p>
+      <DoneLine done={done} onDone={onDone} onUndone={() => void again()} />
       {finding.status === "loading" ? (
         <SkeletonIndex />
       ) : finding.status === "failed" ? (
@@ -367,16 +404,27 @@ export function SearchResults({
         <section className="empty" aria-labelledby="empty-title">
           <h2 id="empty-title">{strings.search.emptyTitle}</h2>
           <p>{strings.search.emptyLead(q)}</p>
+          {elsewhere && (
+            <p className="search-elsewhere">
+              {strings.search.elsewhere} <a href={lookIn("spam")}>{strings.search.inSpam}</a>
+              <a href={lookIn("trash")}>{strings.search.inTrash}</a>
+            </p>
+          )}
         </section>
       ) : (
         <div className="index">
-          <ol className="threads" aria-label={strings.search.results}>
+          <IndexTools picking={picking} more={finding.next !== undefined}>
+            <OrganizeActions client={client} mailbox={mailbox} threads={picking.picked} labels={labels} place={place} onDone={organized} onSignedOut={onSignedOut} />
+          </IndexTools>
+          <ol className="threads results" aria-label={strings.search.results} ref={list}>
             {finding.results.map((result) => (
               <ResultRow
                 key={result.thread.id}
                 result={result}
                 labels={labels}
                 href={threadHref(result.thread.id, view, base, result.message)}
+                selected={picking.selected.has(result.thread.id)}
+                onToggle={() => picking.toggle(result.thread.id)}
               />
             ))}
           </ol>
@@ -399,7 +447,7 @@ export function SearchResults({
 }
 
 /** A thread found, as a line of the index, with the snippet of the message that matched and the words in it marked. */
-function ResultRow({ result, labels, href }: { result: SearchResult; labels: Label[]; href: string }) {
+function ResultRow({ result, labels, href, selected, onToggle }: { result: SearchResult; labels: Label[]; href: string; selected: boolean; onToggle: () => void }) {
   const { thread } = result;
   // Spam and Trash are searched only when asked, and then a result says it is there.
   const named = [
@@ -408,9 +456,14 @@ function ResultRow({ result, labels, href }: { result: SearchResult; labels: Lab
     ...ownLabelsOf(thread, labels).map(({ name }) => name),
   ];
   return (
-    <li className="result">
-      <ThreadLine thread={thread} labels={named} href={href} snippet={result.snippet === "" ? "" : <Highlighted text={result.snippet} highlights={result.highlights} />} />
-    </li>
+    <ThreadRow
+      thread={thread}
+      labels={named}
+      href={href}
+      snippet={result.snippet === "" ? "" : <Highlighted text={result.snippet} highlights={result.highlights} />}
+      selected={selected}
+      onToggle={onToggle}
+    />
   );
 }
 

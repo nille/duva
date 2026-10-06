@@ -77,6 +77,26 @@ export async function organize(
 /** Where threads are being organized: a listing of a label, All mail, or one thread. */
 export type Place = { label: string } | { all: true } | { thread: true };
 
+/** Whether the threads are in Spam or Trash, by the label listed or, elsewhere, by every thread's own labels. */
+function whereOf(threads: Labelled[], place: Place): "spam" | "trash" | undefined {
+  const every = (label: string) => threads.length > 0 && threads.every((thread) => thread.labels.includes(label));
+  if ("label" in place) return place.label === "spam" || place.label === "trash" ? place.label : undefined;
+  return every("trash") ? "trash" : every("spam") && !threads.some((thread) => thread.labels.includes("trash")) ? "spam" : undefined;
+}
+
+/**
+ * What archiving the threads or moving them to Trash changes, and how it is said, as the Archive and
+ * Move to Trash buttons do, or undefined where that button isn't offered: archiving outside the
+ * Inbox, Spam and Trash, and Trash for threads already in it.
+ */
+export function changeFor(action: "archive" | "trash", threads: Labelled[], place: Place): { change: { add?: string[]; remove?: string[] }; message: (count: number) => string } | undefined {
+  const where = whereOf(threads, place);
+  if (threads.length === 0 || where === "trash") return undefined;
+  if (action === "trash") return { change: { add: ["trash"] }, message: strings.organize.trashed };
+  if (where === "spam" || !threads.some((thread) => thread.labels.includes("inbox"))) return undefined;
+  return { change: { remove: ["inbox"] }, message: strings.organize.archived };
+}
+
 /**
  * The buttons that organize the threads, chosen by where they are: Spam offers not spam and
  * Trash, Trash offers restore, and anywhere else archive or move to the Inbox, spam, Trash and
@@ -103,9 +123,10 @@ export function OrganizeActions({
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   const has = (label: string) => threads.some((thread) => thread.labels.includes(label));
-  const every = (label: string) => threads.length > 0 && threads.every((thread) => thread.labels.includes(label));
-  const inSpam = "label" in place ? place.label === "spam" : every("spam") && !has("trash");
-  const inTrash = "label" in place ? place.label === "trash" : every("trash");
+  const where = whereOf(threads, place);
+  // Archive and Move to Trash do what e and # do.
+  const archive = changeFor("archive", threads, place);
+  const trash = changeFor("trash", threads, place);
 
   const act = async (change: { add?: string[]; remove?: string[] }, message: (count: number) => string, moved = true) => {
     setBusy(true);
@@ -125,11 +146,11 @@ export function OrganizeActions({
   const t = strings.organize;
   return (
     <>
-      {inTrash ? (
+      {where === "trash" ? (
         <button type="button" className="button button-small" disabled={busy} onClick={() => void act({ remove: ["trash"] }, t.restored)}>
           {t.restore}
         </button>
-      ) : inSpam ? (
+      ) : where === "spam" ? (
         <>
           <button type="button" className="button button-small" disabled={busy} onClick={() => void act({ remove: ["spam"] }, t.notSpammed)}>
             {t.notSpam}
@@ -140,8 +161,8 @@ export function OrganizeActions({
         </>
       ) : (
         <>
-          {has("inbox") && (
-            <button type="button" className="button button-small" disabled={busy} onClick={() => void act({ remove: ["inbox"] }, t.archived)}>
+          {archive !== undefined && (
+            <button type="button" className="button button-small" disabled={busy} onClick={() => void act(archive.change, archive.message)}>
               <ArchiveIcon />
               {t.archive}
             </button>
@@ -154,10 +175,12 @@ export function OrganizeActions({
           <button type="button" className="button button-small" disabled={busy} onClick={() => void act({ add: ["spam"] }, t.spammed)}>
             {t.spam}
           </button>
-          <button type="button" className="button button-small" disabled={busy} onClick={() => void act({ add: ["trash"] }, t.trashed)}>
-            <TrashIcon />
-            {t.trash}
-          </button>
+          {trash !== undefined && (
+            <button type="button" className="button button-small" disabled={busy} onClick={() => void act(trash.change, trash.message)}>
+              <TrashIcon />
+              {t.trash}
+            </button>
+          )}
           <LabelPicker
             client={client}
             mailbox={mailbox}

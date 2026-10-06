@@ -144,15 +144,58 @@ test("typed filters search too, and an unknown filter shows Duva's words", budge
   expect(await results(page).count()).toBe(0);
 });
 
-test("a search that finds nothing says so", budget, async () => {
-  const { page, signIn, receive } = await withPersonalMailbox();
+test("a search that finds nothing says so, and looks in Spam or Trash from a link, with no filter to learn", budget, async () => {
+  const { page, signIn, receive, grace, mailbox } = await withPersonalMailbox();
   await receive(note("Lunch på fredag", "Ska vi äta lunch på fredag?"));
+  await receive(note("Zebra crossing", "The zebra crossing is closed."));
+  const { data } = await grace.GET("/mailboxes/{mailbox}/threads", { params: { path: { mailbox: mailbox.id }, query: { label: "inbox" } } });
+  const zebra = data!.threads.find(({ subject }) => subject === "Zebra crossing")!;
+  await grace.POST("/mailboxes/{mailbox}/threads/labels", { params: { path: { mailbox: mailbox.id } }, body: { threads: [zebra.id], add: ["spam"] } });
   await signIn("grace@example.org");
 
   await search(page, "zebra");
 
   await expect.poll(() => page.getByRole("heading", { name: "No threads match" }).count(), wait).toBe(1);
-  expect(await page.getByRole("main").innerText()).toContain("zebra");
+  const main = await page.getByRole("main").innerText();
+  expect(main).toContain("zebra");
+  expect(main).not.toContain("label:");
+  expect(await page.getByRole("main").getByRole("link", { name: "Look in Trash" }).count()).toBe(1);
+
+  await page.getByRole("main").getByRole("link", { name: "Look in Spam" }).click();
+
+  await expect.poll(() => subjects(page), wait).toEqual(["Zebra crossing"]);
+  expect(await searchBox(page).inputValue()).toBe("zebra label:spam");
+});
+
+test("search results are picked as a list's threads are, and organized at once with Undo", budget, async () => {
+  const { page, signIn, receive } = await withPersonalMailbox();
+  await receive(note("Hyran för oktober", "Fakturan för hyran i oktober."));
+  await receive(note("Hyran för november", "Fakturan för hyran i november."));
+  await receive(note("Lunch på fredag", "Ska vi äta lunch på fredag?"));
+  await signIn("grace@example.org");
+  await search(page, "hyran");
+  await expect.poll(() => results(page).count(), wait).toBe(2);
+  const tools = page.getByRole("toolbar", { name: "Selected threads" });
+
+  await page.getByRole("checkbox", { name: "Select Hyran för oktober" }).check();
+  expect(await tools.innerText()).toContain("1 selected");
+  await tools.getByRole("button", { name: "Move to Trash" }).click();
+
+  // Trash is searched only when asked, so the thread leaves the results.
+  await expect.poll(() => subjects(page), wait).toEqual(["Hyran för november"]);
+  expect(await page.getByText("Moved 1 thread to Trash.").isVisible()).toBe(true);
+
+  await page.getByRole("button", { name: "Undo" }).click();
+  await expect.poll(() => (subjects(page).then((shown) => shown.sort())), wait).toEqual(["Hyran för november", "Hyran för oktober"]);
+
+  await page.getByRole("checkbox", { name: "Select the threads shown" }).check();
+  expect(await tools.innerText()).toContain("2 selected");
+  await tools.getByRole("button", { name: "Archive" }).click();
+  // Archived threads still match, so they stay, and the Inbox no longer lists them.
+  await expect.poll(() => page.getByText("Archived 2 threads.").isVisible(), wait).toBe(true);
+  expect(await results(page).count()).toBe(2);
+  await page.getByRole("navigation", { name: "Mail" }).getByRole("link", { name: /^Inbox/ }).click();
+  await expect.poll(() => page.getByRole("list", { name: "Threads" }).getByRole("listitem").allInnerTexts(), wait).toEqual([expect.stringContaining("Lunch på fredag")]);
 });
 
 test("results are best match first, and the sort switch puts the newest first", budget, async () => {
@@ -271,6 +314,10 @@ test("on a phone the search box opens from its icon onto a row of its own, and i
   await search(page, "fakturan");
 
   await expect.poll(() => subjects(page), wait).toEqual(["Hyran för oktober"]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(phone.width);
+  // Picked, a result's actions fit too.
+  await page.getByRole("checkbox", { name: "Select Hyran för oktober" }).check();
+  await expect.poll(() => page.getByRole("toolbar", { name: "Selected threads" }).getByRole("button", { name: "Move to Trash" }).isVisible(), wait).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(phone.width);
   await page.getByRole("button", { name: "Filters" }).click();
   const panel = (await page.getByRole("group", { name: "Filters" }).boundingBox())!;

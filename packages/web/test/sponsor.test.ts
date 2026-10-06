@@ -76,7 +76,9 @@ test("a sponsor opens their agent's Inbox and reads its threads as they read the
   await mailboxes(page).getByRole("link", { name: /^Hermes/ }).click();
 
   await expect.poll(() => page.getByRole("link", { name: /^Unread.*Till Hermes/ }).count(), wait).toBe(1);
-  expect(await page.getByRole("main").getByText("hermes@example.com").isVisible()).toBe(true);
+  // The side column names the mailbox by its address, so the Inbox's head doesn't repeat it.
+  expect(await mailboxes(page).getByRole("link", { name: /^Hermes/ }).innerText()).toContain("hermes@example.com");
+  expect(await page.getByRole("main").getByText("hermes@example.com").count()).toBe(0);
   expect(await mailboxes(page).getByRole("link", { name: /^Hermes/ }).getAttribute("aria-current")).toBe("page");
 
   await page.getByRole("link", { name: /Till Hermes/ }).click();

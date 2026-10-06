@@ -7,7 +7,8 @@ import type { components } from "@duva/openapi";
 import type { Connection as ConnectionState } from "./feed.ts";
 import { useDates } from "./dates.ts";
 import { Connection, nameOf, Time } from "./mail-parts.tsx";
-import { type Done, type Label, labelRefusal, OrganizeActions, ownLabelsOf } from "./organize.tsx";
+import { type Done, type Label, type Labelled, labelRefusal, OrganizeActions, ownLabelsOf, type Place } from "./organize.tsx";
+import { useThreadKeys } from "./shortcuts.tsx";
 import { strings } from "./strings.ts";
 import { type ThreadsView, threadHref, titleOf } from "./views.tsx";
 
@@ -30,7 +31,8 @@ class ListingFailed extends Error {}
  * The view's threads, in the human's own mailbox or, with the agent's name, an agent's they
  * sponsor, whose Inbox is at `base` in the web app. `version` counts the changes to the mailbox the
  * app has seen, so the listing reads its pages again when it changes. `done` is what the human last did, said at the head with
- * a way to undo it, and `onDone` hears each new thing they do.
+ * a way to undo it, and `onDone` hears each new thing they do. Only the Inbox says when Duva last
+ * checked for mail, and every view says when it couldn't.
  */
 export function ThreadIndex({
   client,
@@ -60,7 +62,6 @@ export function ThreadIndex({
   const [listing, setListing] = useState<Listing>({ status: "loading" });
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [announcement, setAnnouncement] = useState("");
-  const [selected, setSelected] = useState<Set<string>>(new Set());
   const listingRef = useRef(listing);
   listingRef.current = listing;
   const title = titleOf(view, labels, agent);
@@ -125,9 +126,6 @@ export function ThreadIndex({
       const arrived = before.status === "listed" && arrivals ? threads.filter(({ id, latestAt }) => !known.has(id) && latestAt >= oldest).map(({ id }) => id) : [];
       if (arrived.length > 0) setAnnouncement(strings.inbox.arrived(arrived.length));
       setListing({ status: "listed", threads, next, pages: read, fresh: new Set(arrived) });
-      // Threads that left the view are no longer picked.
-      const listed = new Set(threads.map(({ id }) => id));
-      setSelected((current) => (Array.from(current).every((id) => listed.has(id)) ? current : new Set(Array.from(current).filter((id) => listed.has(id)))));
       return true;
     },
     [page],
@@ -152,31 +150,19 @@ export function ThreadIndex({
     document.title = strings.title(title, unread);
   }, [title, unread]);
 
-  const threads = listing.status === "listed" ? listing.threads : [];
-  const picked = threads.filter(({ id }) => selected.has(id));
-  const toggle = (id: string) =>
-    setSelected((current) => {
-      const next = new Set(current);
-      if (!next.delete(id)) next.add(id);
-      return next;
-    });
+  const threads = listing.status === "listed" ? listing.threads : noThreads;
+  const picking = usePicking(threads);
+  const place: Place = "label" in view ? { label: view.label } : { all: true };
 
   // Threads that leave the view are no longer picked, and those that stay are, so labelling can go on.
   const organized = (what: Done, moved: boolean) => {
-    if (moved) setSelected(new Set());
+    if (moved) picking.clear();
     onDone(what);
     void load({ arrivals: false });
   };
 
-  const [undoing, setUndoing] = useState(false);
-  const undo = async () => {
-    if (done?.undo === undefined || undoing) return;
-    setUndoing(true);
-    const undone = await done.undo().catch(() => false);
-    setUndoing(false);
-    onDone(undone ? { message: strings.organize.undone } : { message: strings.organize.undoFailed });
-    void load({ arrivals: false });
-  };
+  const list = useRef<HTMLOListElement>(null);
+  useThreadKeys({ list, client, mailbox, threads, picked: picking.picked, place, onDone: organized, onSignedOut });
 
   const ownLabel = label === undefined ? undefined : labels.find((each) => each.id === label && !each.builtIn);
 
@@ -197,31 +183,19 @@ export function ThreadIndex({
             mailbox={mailbox}
             onEmptied={() => {
               // The eraser erases them right after Duva answers, and the change feed says when each is gone.
-              setSelected(new Set());
+              picking.clear();
               setListing({ status: "listed", threads: [], pages: 1, fresh: new Set() });
               onDone({ message: strings.trash.emptied });
             }}
             onSignedOut={onSignedOut}
           />
         )}
-        <p className="mailbox-address">{strings.mailboxes.address(mailbox)}</p>
-        <Connection state={connection} unreachable={strings.connection.mailUnreachable} />
+        {(connection?.ok === false || ("label" in view && view.label === "inbox")) && <Connection state={connection} unreachable={strings.connection.mailUnreachable} />}
       </div>
       <p className="visually-hidden" role="status">
         {announcement}
       </p>
-      <div className="done-line" role="status">
-        {done !== undefined && (
-          <>
-            <span>{done.message}</span>
-            {done.undo !== undefined && (
-              <button type="button" className="link" disabled={undoing} onClick={() => void undo()}>
-                {strings.organize.undo}
-              </button>
-            )}
-          </>
-        )}
-      </div>
+      <DoneLine done={done} onDone={onDone} onUndone={() => void load({ arrivals: false })} />
       {listing.status === "loading" ? (
         <SkeletonIndex />
       ) : listing.status === "failed" ? (
@@ -235,35 +209,23 @@ export function ThreadIndex({
         <Empty client={client} view={view} mailbox={mailbox} agent={agent} />
       ) : (
         <div className="index">
-          <div className="index-tools" role="toolbar" aria-label={strings.organize.toolbar}>
-            <label className="pick pick-all">
-              <input
-                type="checkbox"
-                checked={picked.length === threads.length}
-                ref={(input) => {
-                  if (input) input.indeterminate = picked.length > 0 && picked.length < threads.length;
-                }}
-                onChange={() => setSelected(picked.length === threads.length ? new Set() : new Set(threads.map(({ id }) => id)))}
-              />
-              <span className={picked.length > 0 ? "pick-count" : "visually-hidden"}>{picked.length > 0 ? strings.organize.selected(picked.length) : strings.organize.selectAll}</span>
-            </label>
-            {picked.length > 0 && (
-              <div className="index-actions">
-                <OrganizeActions client={client} mailbox={mailbox} threads={picked} labels={labels} place={"label" in view ? { label: view.label } : { all: true }} onDone={organized} onSignedOut={onSignedOut} />
-              </div>
-            )}
-          </div>
-          <ol className="threads" aria-label={strings.inbox.threads}>
+          <IndexTools picking={picking} more={listing.next !== undefined}>
+            <OrganizeActions client={client} mailbox={mailbox} threads={picking.picked} labels={labels} place={place} onDone={organized} onSignedOut={onSignedOut} />
+          </IndexTools>
+          <ol className="threads" aria-label={strings.inbox.threads} ref={list}>
             {listing.threads.map((thread) => (
               <ThreadRow
                 key={thread.id}
                 thread={thread}
-                labels={labels}
-                view={view}
+                // A row names the thread's own labels, but not the one the view lists.
+                labels={ownLabelsOf(thread, labels)
+                  .filter((each) => !("label" in view) || each.id !== view.label)
+                  .map(({ name }) => name)}
                 href={threadHref(thread.id, view, base)}
+                snippet={thread.snippet}
                 fresh={listing.fresh.has(thread.id)}
-                selected={selected.has(thread.id)}
-                onToggle={() => toggle(thread.id)}
+                selected={picking.selected.has(thread.id)}
+                onToggle={() => picking.toggle(thread.id)}
               />
             ))}
           </ol>
@@ -277,6 +239,85 @@ export function ThreadIndex({
         </div>
       )}
     </main>
+  );
+}
+
+const noThreads: ThreadSummary[] = [];
+
+/** The threads of a list the human picked, to organize several at once. Threads that leave the list are no longer picked. */
+export function usePicking<Thread extends Labelled>(threads: Thread[]) {
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  useEffect(() => {
+    const listed = new Set(threads.map(({ id }) => id));
+    setSelected((current) => (Array.from(current).every((id) => listed.has(id)) ? current : new Set(Array.from(current).filter((id) => listed.has(id)))));
+  }, [threads]);
+  const picked = threads.filter(({ id }) => selected.has(id));
+  return {
+    selected,
+    picked,
+    all: threads.length > 0 && picked.length === threads.length,
+    some: picked.length > 0 && picked.length < threads.length,
+    toggle: (id: string) =>
+      setSelected((current) => {
+        const next = new Set(current);
+        if (!next.delete(id)) next.add(id);
+        return next;
+      }),
+    toggleAll: () => setSelected(picked.length === threads.length ? new Set() : new Set(threads.map(({ id }) => id))),
+    clear: () => setSelected(new Set()),
+  };
+}
+
+/**
+ * The toolbar heading a list's sheet: a checkbox that picks every thread shown, and once any is
+ * picked, how many, with the actions. While more threads than those shown follow, it says that
+ * picking all picks only those shown.
+ */
+export function IndexTools({ picking, more, children }: { picking: ReturnType<typeof usePicking>; more: boolean; children: ReactNode }) {
+  const count = picking.picked.length;
+  return (
+    <div className="index-tools" role="toolbar" aria-label={strings.organize.toolbar}>
+      <label className="pick pick-all">
+        <input
+          type="checkbox"
+          checked={picking.all}
+          ref={(input) => {
+            if (input) input.indeterminate = picking.some;
+          }}
+          onChange={picking.toggleAll}
+        />
+        <span className="visually-hidden">{strings.organize.selectAll}</span>
+        {count > 0 && <span className="pick-count">{picking.all && more ? strings.organize.selectedShown(count) : strings.organize.selected(count)}</span>}
+      </label>
+      {count > 0 && <div className="index-actions">{children}</div>}
+    </div>
+  );
+}
+
+/** What the human last did to the list, said above its sheet, with a way to undo it, after which `onUndone` reads the list again. */
+export function DoneLine({ done, onDone, onUndone }: { done: Done | undefined; onDone: (done: Done) => void; onUndone: () => void }) {
+  const [undoing, setUndoing] = useState(false);
+  const undo = async () => {
+    if (done?.undo === undefined || undoing) return;
+    setUndoing(true);
+    const undone = await done.undo().catch(() => false);
+    setUndoing(false);
+    onDone(undone ? { message: strings.organize.undone } : { message: strings.organize.undoFailed });
+    onUndone();
+  };
+  return (
+    <div className="done-line" role="status">
+      {done !== undefined && (
+        <>
+          <span>{done.message}</span>
+          {done.undo !== undefined && (
+            <button type="button" className="link" disabled={undoing} onClick={() => void undo()}>
+              {strings.organize.undo}
+            </button>
+          )}
+        </>
+      )}
+    </div>
   );
 }
 
@@ -487,33 +528,32 @@ function LabelHead({
   );
 }
 
-function ThreadRow({
+/** A line of a list, with the checkbox that picks its thread, outside the line's link. */
+export function ThreadRow({
   thread,
   labels,
-  view,
   href,
-  fresh,
+  snippet,
+  fresh = false,
   selected,
   onToggle,
 }: {
   thread: ThreadSummary;
-  labels: Label[];
-  view: ThreadsView;
+  labels: string[];
   href: string;
-  fresh: boolean;
+  snippet: ReactNode;
+  fresh?: boolean;
   selected: boolean;
   onToggle: () => void;
 }) {
-  // A row names the thread's own labels, but not the one the view lists.
-  const named = ownLabelsOf(thread, labels).filter((each) => !("label" in view) || each.id !== view.label);
   const classes = ["thread-row", fresh && "thread-fresh", selected && "thread-picked"].filter(Boolean).join(" ");
   return (
-    <li className={classes}>
+    <li className={classes} data-thread={thread.id}>
       <label className="pick">
         <input type="checkbox" checked={selected} onChange={onToggle} />
         <span className="visually-hidden">{strings.organize.select(thread.subject || strings.thread.noSubject)}</span>
       </label>
-      <ThreadLine thread={thread} labels={named.map(({ name }) => name)} href={href} snippet={thread.snippet} />
+      <ThreadLine thread={thread} labels={labels} href={href} snippet={snippet} />
     </li>
   );
 }

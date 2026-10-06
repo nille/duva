@@ -15,6 +15,7 @@ const choices: { [Name in Exclude<keyof Preferences, "timeZone">]: Preferences[N
   hourCycle: ["locale", "h12", "h23"],
   dateFormat: ["locale", "iso", "dayMonth", "monthDay"],
   mailView: ["html", "text"],
+  keyboardShortcuts: ["on", "off"],
 };
 const chosen = Object.keys(choices) as (keyof typeof choices)[];
 // The time zone has no default, so a client can tell that the human never chose one.

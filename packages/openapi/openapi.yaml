@@ -5630,7 +5630,7 @@ components:
     Preferences:
       type: object
       additionalProperties: false
-      required: [hourCycle, dateFormat, mailView]
+      required: [hourCycle, dateFormat, mailView, keyboardShortcuts]
       description: A human's own preferences.
       properties:
         hourCycle:
@@ -5639,6 +5639,8 @@ components:
           $ref: "#/components/schemas/DateFormat"
         mailView:
           $ref: "#/components/schemas/MailView"
+        keyboardShortcuts:
+          $ref: "#/components/schemas/KeyboardShortcuts"
         timeZone:
           $ref: "#/components/schemas/TimeZone"
     PreferencesChanges:
@@ -5652,6 +5654,8 @@ components:
           $ref: "#/components/schemas/DateFormat"
         mailView:
           $ref: "#/components/schemas/MailView"
+        keyboardShortcuts:
+          $ref: "#/components/schemas/KeyboardShortcuts"
         timeZone:
           description: >-
             The time zone, as an IANA name, or null to remove it, as if the
@@ -5689,6 +5693,14 @@ components:
         shows it as its sender designed it, with known trackers removed.
         text shows its plain text. Either way, the human can switch each
         message the other way.
+    KeyboardShortcuts:
+      type: string
+      enum: ["on", "off"]
+      description: >-
+        Whether single keys work as shortcuts in the web app, such as j and k
+        to move through a list and e to archive. on, the default, has them
+        work anywhere but in a field. off turns them all off, for speech
+        input or keys pressed by mistake.
     Status:
       type: object
       additionalProperties: false

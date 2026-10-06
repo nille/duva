@@ -699,8 +699,9 @@ function Retention({ client, chosen, saved, onChoose }: { client: DuvaClient; ch
 const hourCycles: Preferences["hourCycle"][] = ["locale", "h12", "h23"];
 const dateFormats: Preferences["dateFormat"][] = ["locale", "iso", "dayMonth", "monthDay"];
 const mailViews: Preferences["mailView"][] = ["html", "text"];
+const keyboardShortcuts: Preferences["keyboardShortcuts"][] = ["on", "off"];
 
-/** The human's own preferences: how times and dates show, each choice with an example built from today, and how mail shows. */
+/** The human's own preferences: how times and dates show, each choice with an example built from today, how mail shows, and whether keyboard shortcuts work. */
 function YouSheet({ client, onPreferences, onSignedOut }: { client: DuvaClient; onPreferences: (preferences: Preferences) => void; onSignedOut: () => void }) {
   const sheet = useSheet<Preferences>({
     read: () => client.GET("/preferences"),
@@ -765,6 +766,20 @@ function YouSheet({ client, onPreferences, onSignedOut }: { client: DuvaClient; 
                 onChoose={() => sheet.choose({ mailView })}
                 label={copy.mailView[mailView]}
                 hint={copy.mailView[`${mailView}Hint`]}
+              />
+            ))}
+          </fieldset>
+          <fieldset>
+            <legend>{copy.keyboardShortcuts.legend}</legend>
+            <p className="setting-lead">{copy.keyboardShortcuts.lead}</p>
+            {keyboardShortcuts.map((choice) => (
+              <Choice
+                key={choice}
+                name="keyboardShortcuts"
+                checked={chosen.keyboardShortcuts === choice}
+                onChoose={() => sheet.choose({ keyboardShortcuts: choice })}
+                label={copy.keyboardShortcuts[choice]}
+                hint={copy.keyboardShortcuts[`${choice}Hint`]}
               />
             ))}
           </fieldset>

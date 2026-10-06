@@ -80,7 +80,7 @@ test("several threads picked at once move to Trash, and are restored to the Inbo
 
   await open("Trash");
   await expect.poll(listed, wait).toEqual(["Tre", "Ett"]);
-  await page.getByRole("checkbox", { name: "Select every thread shown" }).check();
+  await page.getByRole("checkbox", { name: "Select the threads shown" }).check();
   await page.getByRole("button", { name: "Restore" }).click();
 
   await expect.poll(listed, wait).toEqual([]);

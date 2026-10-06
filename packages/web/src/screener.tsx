@@ -91,7 +91,8 @@ function unsubscribeSaid({ outcome, reason, status }: Unsubscribe): string {
 /**
  * The Screener of the mailbox whose Inbox is at `base`, as the web app last read it, in the
  * human's own mailbox or, with the agent's name, an agent's they sponsor. `done` is what the human
- * last did here, and `onDone` hears each decision, after which the Screener is read again.
+ * last did here, and `onDone` hears each decision, after which the Screener is read again. The head
+ * speaks of the connection only when Duva can't be reached.
  */
 export function ScreenerView({
   client,
@@ -129,14 +130,13 @@ export function ScreenerView({
         <h1 tabIndex={-1} className="view-title">
           {title}
         </h1>
-        <p className="mailbox-address">{strings.mailboxes.address(mailbox)}</p>
-        <Connection state={connection} unreachable={strings.connection.mailUnreachable} />
+        {connection?.ok === false && <Connection state={connection} unreachable={strings.connection.mailUnreachable} />}
       </div>
       <div className="screener-lead">
         <p>{strings.screener.lead}</p>
         {screener !== undefined && !screener.on && (
           <p className="screener-off">
-            {strings.screener.off} <a href="#/settings">{strings.screener.switchOn}</a>
+            {strings.screener.off} <a href="#/settings/screener">{strings.screener.switchOn}</a>
           </p>
         )}
         {screener !== undefined && (
@@ -364,7 +364,6 @@ export function ScreenedSenders({
         <h1 tabIndex={-1} className="view-title">
           {title}
         </h1>
-        <p className="mailbox-address">{strings.mailboxes.address(mailbox)}</p>
       </div>
       <div className="screener-lead">
         <p>{strings.screened.lead}</p>

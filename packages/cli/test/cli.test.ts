@@ -236,7 +236,7 @@ test("a human chooses to read mail as text", async () => {
   const changed = await machine.duva("preferences", "change", "--mailView", "text");
 
   expect(changed.exitCode).toBe(0);
-  expect(JSON.parse(changed.stdout)).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "text" });
+  expect(JSON.parse(changed.stdout)).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "text", keyboardShortcuts: "on" });
 });
 
 test("a human chooses 24-hour time and ISO dates, and the CLI's own timestamps stay ISO 8601", async () => {
@@ -250,9 +250,9 @@ test("a human chooses 24-hour time and ISO dates, and the CLI's own timestamps s
   const changed = await machine.duva("preferences", "change", "--hourCycle", "h23", "--dateFormat", "dayMonth");
   const changes = await machine.duva("organization", "changes");
 
-  expect(JSON.parse(before.stdout)).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "html" });
+  expect(JSON.parse(before.stdout)).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "html", keyboardShortcuts: "on" });
   expect(changed.exitCode).toBe(0);
-  expect(JSON.parse(changed.stdout)).toEqual({ hourCycle: "h23", dateFormat: "dayMonth", mailView: "html" });
+  expect(JSON.parse(changed.stdout)).toEqual({ hourCycle: "h23", dateFormat: "dayMonth", mailView: "html", keyboardShortcuts: "on" });
   const times = (JSON.parse(changes.stdout) as { changes: { at: string }[] }).changes.map(({ at }) => at);
   expect(times).not.toHaveLength(0);
   for (const at of times) expect(at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
@@ -268,10 +268,10 @@ test("a human chooses a time zone, and removes it again", async () => {
   const chosen = await machine.duva("preferences", "change", "--timeZone", "Europe/Stockholm");
   const removed = await machine.duva("preferences", "change", "--no-timeZone");
 
-  expect(JSON.parse(chosen.stdout)).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "html", timeZone: "Europe/Stockholm" });
+  expect(JSON.parse(chosen.stdout)).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "html", keyboardShortcuts: "on", timeZone: "Europe/Stockholm" });
   expect(removed.stderr).toBe("");
   expect(removed.exitCode).toBe(0);
-  expect(JSON.parse(removed.stdout)).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "html" });
+  expect(JSON.parse(removed.stdout)).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "html", keyboardShortcuts: "on" });
 });
 
 test("preferences change with a date format Duva doesn't have says which there are", async () => {

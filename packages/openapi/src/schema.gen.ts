@@ -3292,6 +3292,7 @@ export interface components {
             hourCycle: components["schemas"]["HourCycle"];
             dateFormat: components["schemas"]["DateFormat"];
             mailView: components["schemas"]["MailView"];
+            keyboardShortcuts: components["schemas"]["KeyboardShortcuts"];
             timeZone?: components["schemas"]["TimeZone"];
         };
         /** @description The preferences changed, each with its new value. */
@@ -3299,6 +3300,7 @@ export interface components {
             hourCycle?: components["schemas"]["HourCycle"];
             dateFormat?: components["schemas"]["DateFormat"];
             mailView?: components["schemas"]["MailView"];
+            keyboardShortcuts?: components["schemas"]["KeyboardShortcuts"];
             /** @description The time zone, as an IANA name, or null to remove it, as if the human never chose one. The CLI removes it with --no-timeZone. */
             timeZone?: components["schemas"]["TimeZone"] | null;
         };
@@ -3322,6 +3324,11 @@ export interface components {
          * @enum {string}
          */
         MailView: "html" | "text";
+        /**
+         * @description Whether single keys work as shortcuts in the web app, such as j and k to move through a list and e to archive. on, the default, has them work anywhere but in a field. off turns them all off, for speech input or keys pressed by mistake.
+         * @enum {string}
+         */
+        KeyboardShortcuts: "on" | "off";
         Status: {
             /**
              * @description The version of Duva the deployment runs.

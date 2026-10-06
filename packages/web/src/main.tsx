@@ -25,6 +25,7 @@ import { ThreadIndex } from "./inbox.tsx";
 import { type AgentMailbox, MailboxList, mailboxHref, mailboxName, ownInOrder } from "./mailboxes.tsx";
 import { readScreener, ScreenedSenders, type ScreenerRead, ScreenerView } from "./screener.tsx";
 import { SearchBox, SearchResults } from "./search.tsx";
+import { Shortcuts } from "./shortcuts.tsx";
 import { type Config, loadConfig, signedInClient, signIn, signOut } from "./session.ts";
 import { strings } from "./strings.ts";
 import type { Done, Label } from "./organize.tsx";
@@ -522,7 +523,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
         />
       )
     ) : route.view === "search" ? (
-      <SearchResults key={`${shown.id}/${pathOf(route.search)}`} client={client} mailbox={shown} base={base} view={route.search} labels={labels} onSignedOut={onSignedOut} />
+      <SearchResults key={`${shown.id}/${pathOf(route.search)}`} client={client} mailbox={shown} base={base} view={route.search} labels={labels} done={doneHere} onDone={showDone} onSignedOut={onSignedOut} />
     ) : route.view === "draft" || route.view === "write" ? (
       <Composer key={routeKey} client={client} mailbox={shown} base={base} id={route.view === "draft" ? route.id : undefined} agentNames={agentNames} version={version} onSignedOut={onSignedOut} />
     ) : route.view !== "list" ? (
@@ -552,6 +553,8 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
   const unreadElsewhere = columned && [...unread].some(([id, count]) => id !== shown?.id && count > 0);
   const switcherId = useId();
   const switcherRef = useRef<HTMLButtonElement>(null);
+  // Write writes in the own mailbox open, or the first one anywhere else.
+  const write = first === undefined ? undefined : () => (location.hash = shownOwn ? `${base}write` : "#/write");
 
   return (
     <PreferencesContext value={preferences}>
@@ -631,9 +634,8 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
             </div>
           </>
         )}
-        {first !== undefined && (
-          // Write writes in the own mailbox open, or the first one anywhere else.
-          <button type="button" className="button button-primary button-small bar-write" onClick={() => (location.hash = shownOwn ? `${base}write` : "#/write")}>
+        {write !== undefined && (
+          <button type="button" className="button button-primary button-small bar-write" onClick={write}>
             <WriteIcon />
             {strings.nav.write}
           </button>
@@ -645,6 +647,8 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
           </button>
         </div>
       </header>
+      {/* Escape closes a thread, back to the view it was opened from. */}
+      <Shortcuts write={write} close={route.view === "thread" && shown !== undefined ? () => (location.hash = hrefOf(route.from, base)) : undefined} />
       <Suspense fallback={<main className="desk" aria-busy="true" />}>
         {route.view === "approvals" ? (
           <Approvals client={client} me={actor.id} sponsor={actor.email} connection={connection} follow={follow} onSignedOut={onSignedOut} />
