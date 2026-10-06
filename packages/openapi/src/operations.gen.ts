@@ -172,6 +172,85 @@ export const operations = [
     ]
   },
   {
+    "operationId": "changeHuman",
+    "method": "patch",
+    "path": "/humans/{human}",
+    "routeKey": "PATCH /humans/{human}",
+    "summary": "Make a human an admin, or take it away.",
+    "description": "Only admins can change who is an admin, and only humans can be admins. The organization always keeps one, so taking it from the last admin is refused. The change is recorded in the organization's change feed under you.",
+    "signIn": true,
+    "command": [
+      "humans",
+      "change"
+    ],
+    "options": [
+      {
+        "name": "human",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The human's ID."
+      },
+      {
+        "name": "admin",
+        "in": "body",
+        "type": "boolean",
+        "required": true,
+        "description": "Whether the human may change the organization's setup."
+      }
+    ]
+  },
+  {
+    "operationId": "removeHuman",
+    "method": "post",
+    "path": "/humans/{human}/remove",
+    "routeKey": "POST /humans/{human}/remove",
+    "summary": "Remove a human, handing over or deleting each of their mailboxes, and remove the agents they sponsor.",
+    "description": "Only admins can remove humans. Run it first with dryRun to see the human's mailboxes, their agents and the agents' mailboxes. Then say what happens to each of the human's mailboxes: handOver gives it to the human handTo, as another personal mailbox of theirs with its addresses and mail, and delete erases it. The agents are removed, so their keys stop working, and their mailboxes are erased. Erasing a mailbox erases its mail everywhere Duva keeps it, as emptying Trash does, and its approval records only if the organization's settings say so. Its addresses are freed at once. The human's Cognito user is deleted and their sessions stop working. The organization always keeps one admin, so the last admin can't be removed. Each change is recorded in the organization's change feed under you, and older entries keep naming the human and their agents by ID.",
+    "signIn": true,
+    "command": [
+      "humans",
+      "remove"
+    ],
+    "options": [
+      {
+        "name": "human",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The human's ID."
+      },
+      {
+        "name": "dryRun",
+        "in": "body",
+        "type": "boolean",
+        "required": false,
+        "description": "Lists what the removal takes and removes nothing."
+      },
+      {
+        "name": "handTo",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "The ID of the human the mailboxes in handOver go to."
+      },
+      {
+        "name": "handOver",
+        "in": "body",
+        "type": "strings",
+        "required": false,
+        "description": "The IDs of the mailboxes to hand to the human handTo, with their addresses and mail."
+      },
+      {
+        "name": "delete",
+        "in": "body",
+        "type": "strings",
+        "required": false,
+        "description": "The IDs of the mailboxes to erase, with their mail."
+      }
+    ]
+  },
+  {
     "operationId": "listAgents",
     "method": "get",
     "path": "/agents",
@@ -204,6 +283,28 @@ export const operations = [
         "type": "string",
         "required": true,
         "description": "The agent's name."
+      }
+    ]
+  },
+  {
+    "operationId": "removeAgent",
+    "method": "delete",
+    "path": "/agents/{agent}",
+    "routeKey": "DELETE /agents/{agent}",
+    "summary": "Remove an agent, which stops its key working and erases its mailboxes.",
+    "description": "Only the agent's sponsor and admins can remove it. Its sends waiting for approval are withdrawn. Its mailboxes are erased everywhere Duva keeps their mail, as emptying Trash does, and their approval records only if the organization's settings say so. Their addresses are freed at once. The removal is recorded in the organization's change feed under you.",
+    "signIn": true,
+    "command": [
+      "agents",
+      "remove"
+    ],
+    "options": [
+      {
+        "name": "agent",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The agent's ID."
       }
     ]
   },

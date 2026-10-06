@@ -6,7 +6,8 @@
 // the agents' sends in it go too if the organization's setting says so when the thread is erased,
 // so turning the setting on doesn't reach back. A thread's messages leave search at once, and the
 // daily run has the indexer compact each mailbox's index, so their text leaves its files within a
-// day (ADR-0007).
+// day (ADR-0007). A deleted mailbox is erased the same way, thread by thread, and then everything
+// else it holds but its change feed, and its index is dropped (ADR-0020).
 import { BatchGetCommand, type BatchGetCommandOutput, DeleteCommand, GetCommand, PutCommand, QueryCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import { TransactionCanceledException } from "@aws-sdk/client-dynamodb";
 import { InvokeCommand, type LambdaClient } from "@aws-sdk/client-lambda";
@@ -18,7 +19,7 @@ import type { MailBucket } from "./mail-bucket.ts";
 import { asRead, type Cursor, cursorOf, type ErasedLabel, keys, listingsOf, type StoredSummary, threadsPerPage, threadSummary, threadsWithLabel, trash } from "./mail.ts";
 import { eraseApprovals } from "./drafting.ts";
 import { compactIndexes, type IndexQueue } from "./indexing.ts";
-import { allMailboxes, mailboxFeed, organizationSettings, settingsUnchanged } from "./organization.ts";
+import { allMailboxes, mailboxFeed, mailboxKey, organizationSettings, settingsUnchanged } from "./organization.ts";
 import { documents, pk, sk, type TransactItem } from "./table.ts";
 
 /** How long a thread keeps Spam or Trash before it is erased: the organization's retention period. */
@@ -30,6 +31,8 @@ const erasingKey = (mailbox: string, thread: string) => ({ [pk]: "erasure#thread
 const rawErasureKey = (mailbox: string, rawKey: string) => ({ [pk]: "erasure#raw", [sk]: `${mailbox}#${rawKey}` });
 // Each Trash emptied is listed until its threads are erased, so a run that fails is finished by the next.
 const emptiedKey = ({ mailbox, before }: TrashEmptied) => ({ [pk]: "erasure#emptied", [sk]: `${mailbox}#${before}` });
+// Each mailbox deleted is listed until its mail is erased, likewise.
+const deletedKey = (mailbox: string) => ({ [pk]: "erasure#mailboxes", [sk]: mailbox });
 
 /** What the eraser is handed to do besides its daily run: the Trash the actor `by` emptied at `before`. */
 export interface TrashEmptied {
@@ -38,13 +41,20 @@ export interface TrashEmptied {
   by: string;
 }
 
+/** What the eraser is handed when a mailbox is deleted, by the actor `by`: all its mail. */
+export interface MailboxDeleted {
+  mailbox: string;
+  by: string;
+}
+
 /** Hands the eraser work without waiting for it. */
 export interface Eraser {
   emptyTrash(emptied: TrashEmptied): Promise<void>;
+  eraseMailbox(deleted: MailboxDeleted): Promise<void>;
 }
 
 /** Erases each thread that got Spam or Trash more than the retention period before `now`, naming no actor, and finishes earlier erasures. */
-export async function eraseExpired(table: Table, mailBucket: MailBucket, now: Date): Promise<void> {
+export async function eraseExpired(table: Table, mailBucket: MailBucket, indexQueue: IndexQueue, now: Date): Promise<void> {
   const cutoff = new Date(now.getTime() - retentionDays * 24 * 60 * 60 * 1000).toISOString();
   const { [pk]: partition } = keys.labelledKey("", "", "", trash);
   let start: Record<string, unknown> | undefined;
@@ -63,7 +73,7 @@ export async function eraseExpired(table: Table, mailBucket: MailBucket, now: Da
     }
     start = page.LastEvaluatedKey;
   } while (start !== undefined);
-  await finishErasures(table, mailBucket);
+  await finishErasures(table, mailBucket, indexQueue);
 }
 
 /** Records that the actor emptied the Trash, before the eraser is handed it, so the eraser's daily run finishes it if the run handed it fails. */
@@ -72,9 +82,51 @@ export async function recordEmptying(table: Table, emptied: TrashEmptied): Promi
 }
 
 /** Erases each thread that was in the mailbox's Trash at `before`, naming the actor `by`, and finishes earlier erasures. */
-export async function emptyTrash(table: Table, mailBucket: MailBucket, emptied: TrashEmptied): Promise<void> {
+export async function emptyTrash(table: Table, mailBucket: MailBucket, indexQueue: IndexQueue, emptied: TrashEmptied): Promise<void> {
   await eraseTrash(table, emptied);
-  await finishErasures(table, mailBucket);
+  await finishErasures(table, mailBucket, indexQueue);
+}
+
+/**
+ * The write that lists the deleted mailbox for the eraser, in the transaction that deletes it, so
+ * the eraser's daily run erases it if the run it is handed fails.
+ */
+export const mailboxErasure = (table: Table, deleted: MailboxDeleted): TransactItem => ({ Put: { TableName: table.name, Item: { ...deletedKey(deleted.mailbox), ...deleted } } });
+
+/**
+ * Erases all the deleted mailbox's mail, as emptying Trash does, naming the actor `by`: each
+ * thread, then each draft left, with its approval records if the organization's setting says so,
+ * then everything else of the mailbox but its change feed. Then the indexer drops its index, and
+ * the eraser forgets the mailbox. Run again, it finishes what an earlier run left.
+ */
+async function eraseMailbox(table: Table, indexQueue: IndexQueue, { mailbox, by }: MailboxDeleted): Promise<void> {
+  const items = await allItems(table, {
+    KeyConditionExpression: `${pk} = :mailbox`,
+    ProjectionExpression: `${sk}, erasing`,
+    ExpressionAttributeValues: { ":mailbox": keys.partition(mailbox) },
+  });
+  for (const item of items) {
+    const thread = keys.threadOf(item[sk] as string);
+    if (thread !== undefined && item.erasing !== true) await eraseThread(table, { mailbox, thread, by, due: () => true });
+  }
+  // A thread whose erasure stopped partway has its messages erased before the rest of the mailbox goes.
+  for (const item of await allItems(table, {
+    KeyConditionExpression: `${pk} = :threads AND begins_with(${sk}, :mailbox)`,
+    ExpressionAttributeValues: { ":threads": erasingKey("", "")[pk], ":mailbox": `${mailbox}#` },
+  })) {
+    await eraseMessages(table, mailbox, item.thread as string, item.erasesApprovals === true);
+  }
+  const { settings } = await organizationSettings(table);
+  const left = await allItems(table, { KeyConditionExpression: `${pk} = :mailbox`, ExpressionAttributeValues: { ":mailbox": keys.partition(mailbox) } });
+  if (settings.erasureErasesApprovals) for (const draft of left.filter((item) => (item[sk] as string).startsWith("draft#"))) await eraseApprovals(table, mailbox, draft);
+  // The mailbox's own item stays, marked deleted, as its change feed's counter.
+  const rest = left.filter((item) => item[sk] !== mailboxKey(mailbox)[sk]);
+  for (let index = 0; index < rest.length; index += 100) {
+    const chunk = rest.slice(index, index + 100);
+    await documents(table).send(new TransactWriteCommand({ TransactItems: chunk.map((item) => ({ Delete: { TableName: table.name, Key: { [pk]: item[pk], [sk]: item[sk] } } })) }));
+  }
+  await indexQueue.send([{ task: { mailbox }, id: `${mailbox}#deleted` }]);
+  await documents(table).send(new DeleteCommand({ TableName: table.name, Key: deletedKey(mailbox) }));
 }
 
 /** Erases each thread that was in the mailbox's Trash at `before`, naming the actor `by`, and then forgets that it was emptied. */
@@ -197,13 +249,16 @@ async function eraseMessages(table: Table, mailbox: string, thread: string, eras
 }
 
 /**
- * Finishes the Trash emptied and the threads that earlier runs left being erased, and erases each
- * listed raw message, every version of it, unless another mailbox still has it, as one message SES
- * received for two mailboxes is stored once.
+ * Finishes the Trash emptied, the mailboxes deleted and the threads that earlier runs left being
+ * erased, and erases each listed raw message, every version of it, unless another mailbox still
+ * has it, as one message SES received for two mailboxes is stored once.
  */
-async function finishErasures(table: Table, mailBucket: MailBucket) {
+async function finishErasures(table: Table, mailBucket: MailBucket, indexQueue: IndexQueue) {
   for (const item of await allItems(table, { KeyConditionExpression: `${pk} = :emptied`, ExpressionAttributeValues: { ":emptied": emptiedKey({ mailbox: "", before: "", by: "" })[pk] } })) {
     await eraseTrash(table, item as unknown as TrashEmptied);
+  }
+  for (const item of await allItems(table, { KeyConditionExpression: `${pk} = :deleted`, ExpressionAttributeValues: { ":deleted": deletedKey("")[pk] } })) {
+    await eraseMailbox(table, indexQueue, item as unknown as MailboxDeleted);
   }
   for (const item of await allItems(table, { KeyConditionExpression: `${pk} = :threads`, ExpressionAttributeValues: { ":threads": erasingKey("", "")[pk] } })) {
     await eraseMessages(table, item.mailbox as string, item.thread as string, item.erasesApprovals === true);
@@ -248,8 +303,8 @@ async function allItems(table: Table, query: Omit<ConstructorParameters<typeof Q
   return items;
 }
 
-/** What invokes the eraser: its daily schedule, or emptying a Trash. */
-export type EraserEvent = Pick<ScheduledEvent, "time"> | { emptyTrash: TrashEmptied };
+/** What invokes the eraser: its daily schedule, emptying a Trash, or deleting a mailbox. */
+export type EraserEvent = Pick<ScheduledEvent, "time"> | { emptyTrash: TrashEmptied } | { eraseMailbox: MailboxDeleted };
 
 /**
  * The eraser's handler. Either way it finishes what earlier runs left. The daily run then gives
@@ -257,9 +312,11 @@ export type EraserEvent = Pick<ScheduledEvent, "time"> | { emptyTrash: TrashEmpt
  */
 export function createEraser({ table, mailBucket, indexQueue }: { table: Table; mailBucket: MailBucket; indexQueue: IndexQueue }) {
   return async (event: EraserEvent): Promise<void> => {
-    if ("emptyTrash" in event) return emptyTrash(table, mailBucket, event.emptyTrash);
+    if ("emptyTrash" in event) return emptyTrash(table, mailBucket, indexQueue, event.emptyTrash);
+    // The deleted mailbox is listed, so finishing what is listed erases it.
+    if ("eraseMailbox" in event) return finishErasures(table, mailBucket, indexQueue);
     try {
-      await eraseExpired(table, mailBucket, new Date(event.time));
+      await eraseExpired(table, mailBucket, indexQueue, new Date(event.time));
     } finally {
       await compactIndexes(table, indexQueue, new Date(event.time));
     }
@@ -268,10 +325,11 @@ export function createEraser({ table, mailBucket, indexQueue }: { table: Table; 
 
 /** The eraser Lambda, invoked without waiting. Lambda retries a run that failed, which finishes it. */
 export function lambdaEraser(lambda: LambdaClient, functionName: string): Eraser {
+  const invoke = async (event: EraserEvent) => {
+    await lambda.send(new InvokeCommand({ FunctionName: functionName, InvocationType: "Event", Payload: JSON.stringify(event) }));
+  };
   return {
-    async emptyTrash(emptied) {
-      const event: EraserEvent = { emptyTrash: emptied };
-      await lambda.send(new InvokeCommand({ FunctionName: functionName, InvocationType: "Event", Payload: JSON.stringify(event) }));
-    },
+    emptyTrash: (emptyTrash) => invoke({ emptyTrash }),
+    eraseMailbox: (eraseMailbox) => invoke({ eraseMailbox }),
   };
 }

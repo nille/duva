@@ -55,7 +55,8 @@ export function managedLogin({ ids, issuer, accessTokenLifetime }: { ids: Map<st
     }
     if (form.get("grant_type") === "refresh_token") {
       const id = refreshTokens.get(form.get("refresh_token") ?? "");
-      return id === undefined ? refused() : tokens(id);
+      // A human deleted from the user pool can't renew their session.
+      return id === undefined || ![...ids.values()].includes(id) ? refused() : tokens(id);
     }
     return Response.json({ error: "unsupported_grant_type" }, { status: 400 });
   }

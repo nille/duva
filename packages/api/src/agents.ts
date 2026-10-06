@@ -2,6 +2,8 @@ import type { components } from "@duva/openapi";
 import { jsonBody, type OperationHandler, refusal } from "./api.ts";
 import { sponsorAccessAllows } from "./access.ts";
 import { withdrawPendingApprovals } from "./drafting.ts";
+import { syncRecipients } from "./receiving.ts";
+import { removeAgentWithMailboxes } from "./removal.ts";
 import {
   addAgent,
   type Agent,
@@ -100,3 +102,12 @@ async function agentAsked(event: Parameters<OperationHandler>[0], deployment: Pa
   if (agent?.kind !== "agent") return refusal(404, `There is no agent ${JSON.stringify(id)}. List the agents you sponsor to find its ID.`);
   return agent;
 }
+
+export const removeAgent: OperationHandler = async (event, deployment, actor) => {
+  const agent = await agentAsked(event, deployment);
+  if ("statusCode" in agent) return agent;
+  if (actor!.id !== agent.sponsor && !actor!.admin) return refusal(403, "Only the agent's sponsor and admins can remove it. Ask its sponsor.");
+  const mailboxes = await removeAgentWithMailboxes(deployment, { agent, by: actor!.id });
+  await syncRecipients(deployment.table, deployment.receiving);
+  return { statusCode: 200, body: { agent, mailboxes } satisfies components["schemas"]["AgentRemoval"] };
+};

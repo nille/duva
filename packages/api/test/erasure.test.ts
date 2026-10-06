@@ -329,7 +329,7 @@ test("mail that joins a thread in Trash is erased with it", async () => {
 });
 
 test("a Trash whose emptying failed is erased by the eraser's next daily run, under the name of whoever emptied it", async () => {
-  const { duva, graceId, receive, label, listed, changes, emptyTrash } = await withPersonalMailbox({ emptyingLost: true });
+  const { duva, graceId, receive, label, listed, changes, emptyTrash } = await withPersonalMailbox({ eraserRunsLost: true });
   const thread = await receive(note("Kvitto"));
   await label([thread], { add: ["trash"] });
   await emptyTrash();

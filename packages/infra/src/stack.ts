@@ -416,8 +416,8 @@ export class DuvaStack extends Stack {
     eraser.grantInvoke(handler);
     // Blocking a sender waits for the unsubscriber's POST.
     unsubscriber.grantInvoke(handler);
-    // Admins add humans, who can then sign in.
-    humans.grant(handler, "cognito-idp:AdminCreateUser", "cognito-idp:AdminGetUser");
+    // Admins add humans, who can then sign in, and remove them, who then can't.
+    humans.grant(handler, "cognito-idp:AdminCreateUser", "cognito-idp:AdminGetUser", "cognito-idp:AdminDeleteUser");
     // Adding and removing addresses changes the receipt rules' recipients. IAM has no resource type
     // for receipt rules, so these actions can't be limited to Duva's rule set.
     handler.addToRolePolicy(

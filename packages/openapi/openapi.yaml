@@ -207,6 +207,85 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
+  /humans/{human}:
+    patch:
+      operationId: changeHuman
+      summary: Make a human an admin, or take it away.
+      description: >
+        Only admins can change who is an admin, and only humans can be
+        admins. The organization always keeps one, so taking it from the last
+        admin is refused. The change is recorded in the organization's change
+        feed under you.
+      x-cli-command: humans change
+      parameters:
+        - $ref: "#/components/parameters/Human"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HumanChanges"
+      responses:
+        "200":
+          description: The human, changed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Human"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /humans/{human}/remove:
+    post:
+      operationId: removeHuman
+      summary: Remove a human, handing over or deleting each of their mailboxes, and remove the agents they sponsor.
+      description: >
+        Only admins can remove humans. Run it first with dryRun to see the
+        human's mailboxes, their agents and the agents' mailboxes. Then say
+        what happens to each of the human's mailboxes: handOver gives it to
+        the human handTo, as another personal mailbox of theirs with its
+        addresses and mail, and delete erases it. The agents are removed, so
+        their keys stop working, and their mailboxes are erased. Erasing a
+        mailbox erases its mail everywhere Duva keeps it, as emptying Trash
+        does, and its approval records only if the organization's settings
+        say so. Its addresses are freed at once. The human's Cognito user is
+        deleted and their sessions stop working. The organization always keeps
+        one admin, so the last admin can't be removed. Each change is recorded
+        in the organization's change feed under you, and older entries keep
+        naming the human and their agents by ID.
+      x-cli-command: humans remove
+      parameters:
+        - $ref: "#/components/parameters/Human"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HumanRemovalChoices"
+      responses:
+        "200":
+          description: What the removal takes, removed unless it was a dry run.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HumanRemoval"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
   /agents:
     post:
       operationId: createAgent
@@ -248,6 +327,33 @@ paths:
                 $ref: "#/components/schemas/AgentList"
         "401":
           $ref: "#/components/responses/Unauthorized"
+  /agents/{agent}:
+    delete:
+      operationId: removeAgent
+      summary: Remove an agent, which stops its key working and erases its mailboxes.
+      description: >
+        Only the agent's sponsor and admins can remove it. Its sends waiting
+        for approval are withdrawn. Its mailboxes are erased everywhere Duva
+        keeps their mail, as emptying Trash does, and their approval records
+        only if the organization's settings say so. Their addresses are freed
+        at once. The removal is recorded in the organization's change feed
+        under you.
+      x-cli-command: agents remove
+      parameters:
+        - $ref: "#/components/parameters/Agent"
+      responses:
+        "200":
+          description: The agent, removed, and the mailboxes erased with it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentRemoval"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /agents/{agent}/key:
     post:
       operationId: rotateAgentKey
@@ -1607,6 +1713,13 @@ components:
       description: The agent's ID.
       schema:
         type: string
+    Human:
+      name: human
+      in: path
+      required: true
+      description: The human's ID.
+      schema:
+        type: string
   securitySchemes:
     session:
       type: http
@@ -1702,6 +1815,63 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Human"
+    HumanChanges:
+      type: object
+      additionalProperties: false
+      required: [admin]
+      properties:
+        admin:
+          type: boolean
+          description: Whether the human may change the organization's setup.
+    HumanRemovalChoices:
+      type: object
+      additionalProperties: false
+      description: >-
+        What happens to each of the human's mailboxes. Each is given once, in
+        handOver or in delete.
+      properties:
+        dryRun:
+          type: boolean
+          description: Lists what the removal takes and removes nothing.
+        handTo:
+          type: string
+          description: The ID of the human the mailboxes in handOver go to.
+        handOver:
+          type: array
+          items:
+            type: string
+          description: The IDs of the mailboxes to hand to the human handTo, with their addresses and mail.
+        delete:
+          type: array
+          items:
+            type: string
+          description: The IDs of the mailboxes to erase, with their mail.
+    HumanRemoval:
+      type: object
+      additionalProperties: false
+      required: [human, mailboxes, agents, agentMailboxes, removed]
+      description: A human's removal, and what goes with them.
+      properties:
+        human:
+          $ref: "#/components/schemas/Human"
+        mailboxes:
+          type: array
+          description: The human's personal mailboxes, each handed over or erased.
+          items:
+            $ref: "#/components/schemas/Mailbox"
+        agents:
+          type: array
+          description: The agents the human sponsors, removed with them.
+          items:
+            $ref: "#/components/schemas/Agent"
+        agentMailboxes:
+          type: array
+          description: The agents' mailboxes, erased with them.
+          items:
+            $ref: "#/components/schemas/Mailbox"
+        removed:
+          type: boolean
+          description: Whether the human was removed, which a dry run leaves undone.
     Agent:
       type: object
       additionalProperties: false
@@ -1755,6 +1925,18 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Agent"
+    AgentRemoval:
+      type: object
+      additionalProperties: false
+      required: [agent, mailboxes]
+      properties:
+        agent:
+          $ref: "#/components/schemas/Agent"
+        mailboxes:
+          type: array
+          description: The agent's mailboxes, erased with it.
+          items:
+            $ref: "#/components/schemas/Mailbox"
     AgentSettings:
       type: object
       additionalProperties: false
@@ -3265,6 +3447,10 @@ components:
         - $ref: "#/components/schemas/AddressRemoved"
         - $ref: "#/components/schemas/DefaultAddressChanged"
         - $ref: "#/components/schemas/SettingsChanged"
+        - $ref: "#/components/schemas/ActorRemoved"
+        - $ref: "#/components/schemas/AdminChanged"
+        - $ref: "#/components/schemas/MailboxHandedOver"
+        - $ref: "#/components/schemas/MailboxDeleted"
       discriminator:
         propertyName: type
         mapping:
@@ -3277,6 +3463,10 @@ components:
           addressRemoved: "#/components/schemas/AddressRemoved"
           defaultAddressChanged: "#/components/schemas/DefaultAddressChanged"
           settingsChanged: "#/components/schemas/SettingsChanged"
+          actorRemoved: "#/components/schemas/ActorRemoved"
+          adminChanged: "#/components/schemas/AdminChanged"
+          mailboxHandedOver: "#/components/schemas/MailboxHandedOver"
+          mailboxDeleted: "#/components/schemas/MailboxDeleted"
     ChangeBase:
       type: object
       required: [position, at, actor]
@@ -3363,6 +3553,63 @@ components:
             mailbox:
               type: string
               description: The ID of the mailbox it delivers to.
+    ActorRemoved:
+      allOf:
+        - $ref: "#/components/schemas/ChangeBase"
+        - type: object
+          required: [type, removed]
+          properties:
+            type:
+              type: string
+              const: actorRemoved
+            removed:
+              $ref: "#/components/schemas/Actor"
+    AdminChanged:
+      allOf:
+        - $ref: "#/components/schemas/ChangeBase"
+        - type: object
+          required: [type, human, admin]
+          properties:
+            type:
+              type: string
+              const: adminChanged
+            human:
+              type: string
+              description: The ID of the human made an admin, or no longer one.
+            admin:
+              type: boolean
+              description: Whether the human is an admin now.
+    MailboxHandedOver:
+      allOf:
+        - $ref: "#/components/schemas/ChangeBase"
+        - type: object
+          required: [type, mailbox, from, to]
+          properties:
+            type:
+              type: string
+              const: mailboxHandedOver
+            mailbox:
+              type: string
+              description: The ID of the mailbox, with its addresses and mail.
+            from:
+              type: string
+              description: The ID of the actor that owned it.
+            to:
+              type: string
+              description: The ID of the human who owns it now.
+    MailboxDeleted:
+      allOf:
+        - $ref: "#/components/schemas/ChangeBase"
+        - type: object
+          required: [type, mailbox]
+          description: A mailbox was deleted, and its mail is being erased.
+          properties:
+            type:
+              type: string
+              const: mailboxDeleted
+            mailbox:
+              type: string
+              description: The ID of the mailbox.
     AddressRemoved:
       allOf:
         - $ref: "#/components/schemas/ChangeBase"

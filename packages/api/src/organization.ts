@@ -2,7 +2,7 @@
 // Each change to the setup is written in one transaction with its change-feed entry.
 import { randomUUID } from "node:crypto";
 import { ConditionalCheckFailedException, TransactionCanceledException } from "@aws-sdk/client-dynamodb";
-import { GetCommand, PutCommand, QueryCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
+import { DeleteCommand, GetCommand, PutCommand, QueryCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import type { components } from "@duva/openapi";
 import { agentKeyHash, newAgentKey } from "./agent-keys.ts";
 import type { Humans } from "./user-pool.ts";
@@ -70,6 +70,8 @@ const organizationFeed: Feed = {
  * The changes are attributed to that admin, the person running duva deploy, so each has exactly
  * one actor (ADR-0001). Setting up again with the same admin changes nothing, except that a human
  * the user pool doesn't have gets a Cognito user there, as after Duva moved to a new user pool.
+ * Once the first admin has been removed, setting up again does only that, whoever `admin` is, and
+ * returns one of the admins the organization has.
  */
 export async function setUpOrganization(
   { table, humans }: { table: Table; humans: Humans },
@@ -77,6 +79,11 @@ export async function setUpOrganization(
 ): Promise<Human> {
   const db = documents(table);
   const existing = await firstAdmin(table);
+  if (existing === null) {
+    // The first admin was removed since (ADR-0020), which leaves the organization to the admins it has.
+    await moveHumans({ table, humans });
+    return (await allHumans(table)).find((human) => human.admin)!;
+  }
   if (existing !== undefined) {
     if (existing.email !== admin) throw new Error(`The organization's first admin is ${existing.email}, so it can't be ${admin}.`);
     // Organizations set up before humans were listed didn't list their first admin.
@@ -114,18 +121,20 @@ export async function setUpOrganization(
   } catch (error) {
     // If another setup got there first, whether it set up the same admin decides the outcome.
     const winner = error instanceof TransactionCanceledException ? await firstAdmin(table) : undefined;
-    if (winner === undefined) throw error;
+    if (winner === undefined || winner === null) throw error;
     if (winner.email !== admin) throw new Error(`The organization's first admin is ${winner.email}, so it can't be ${admin}.`);
     return winner;
   }
   return actor;
 }
 
-async function firstAdmin(table: Table): Promise<Human | undefined> {
+/** The organization's first admin, null if they have been removed, or undefined if the organization isn't set up. */
+async function firstAdmin(table: Table): Promise<Human | null | undefined> {
   const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: organizationKey }));
   if (Item === undefined) return undefined;
   const actor = await findActor(table, Item.firstAdmin as string);
-  if (actor?.kind !== "human") throw new Error("The organization's first admin is missing.");
+  if (actor === undefined) return null;
+  if (actor.kind !== "human") throw new Error("The organization's first admin isn't a human.");
   return actor;
 }
 
@@ -503,10 +512,10 @@ async function changingAddresses(
   }
 }
 
-/** The mailbox with the ID, or undefined if the organization has none. */
+/** The mailbox with the ID, or undefined if the organization has none, or has deleted it. */
 export async function findMailbox(table: Table, id: string): Promise<Mailbox | undefined> {
   const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: mailboxKey(id), ConsistentRead: true }));
-  return Item === undefined ? undefined : mailboxOf(Item as Mailbox);
+  return Item === undefined || Item.deleted === true ? undefined : mailboxOf(Item as Mailbox);
 }
 
 /** The mailboxes the actor owns. */
@@ -608,6 +617,7 @@ export async function organizationChanges(table: Table, after: number): Promise<
   const changes = await changesAfter(table, organizationFeed, after);
   for (const change of changes) {
     if (change.added !== undefined) change.added = actorOf(change.added as Record<string, unknown>);
+    if (change.removed !== undefined) change.removed = actorOf(change.removed as Record<string, unknown>);
     if (change.mailbox !== undefined && typeof change.mailbox === "object") change.mailbox = mailboxOf(change.mailbox as Mailbox);
   }
   return changes as OrganizationChange[];
@@ -660,4 +670,191 @@ export async function changeSettings(table: Table, { by, changes }: { by: string
       if (reasons[settingsReason]?.Code !== "ConditionalCheckFailed" || attempt === 10) throw error;
     }
   }
+}
+
+/**
+ * Hands the mailbox, with its addresses and mail, to the human `to`, on behalf of the admin `by`.
+ * Throws NotAHuman if `to` is no longer a human in the organization.
+ */
+export async function handOverMailbox(table: Table, { mailbox, to, by }: { mailbox: Mailbox; to: string; by: string }): Promise<void> {
+  await recordChange(table, by, { type: "mailboxHandedOver", mailbox: mailbox.id, from: mailbox.owner, to }, [
+    {
+      Update: {
+        TableName: table.name,
+        Key: mailboxKey(mailbox.id),
+        UpdateExpression: "SET #owner = :to",
+        ConditionExpression: "#owner = :from AND attribute_not_exists(deleted)",
+        ExpressionAttributeNames: { "#owner": "owner" },
+        ExpressionAttributeValues: { ":to": to, ":from": mailbox.owner },
+      },
+    },
+    { Delete: { TableName: table.name, Key: ownedKey(mailbox.owner, mailbox.id) } },
+    { Put: { TableName: table.name, Item: ownedKey(to, mailbox.id) } },
+    { ConditionCheck: { TableName: table.name, Key: actorKey(to), ConditionExpression: "kind = :human", ExpressionAttributeValues: { ":human": "human" } } },
+  ]).catch((error: unknown) => {
+    const gone = error instanceof TransactionCanceledException && error.CancellationReasons?.[5]?.Code === "ConditionalCheckFailed";
+    throw gone ? new NotAHuman() : error;
+  });
+}
+
+/** The actor a mailbox was to be handed to isn't a human in the organization. */
+export class NotAHuman extends Error {}
+
+/**
+ * Deletes the mailbox, on behalf of the actor `by`, with the items that hand its mail to the
+ * eraser. Its addresses go at once, so they can be given again, and the mailbox is kept, marked
+ * deleted, only as the counter of its change feed, where its erasure is recorded.
+ */
+export async function deleteMailbox(table: Table, { mailbox, by, items }: { mailbox: string; by: string; items: TransactItem[] }): Promise<void> {
+  for (let attempt = 1; ; attempt++) {
+    const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: mailboxKey(mailbox), ConsistentRead: true }));
+    if (Item === undefined || Item.deleted === true) return;
+    const { owner, addresses } = mailboxOf(Item as Mailbox);
+    try {
+      await recordChanges(table, organizationFeed, {
+        by,
+        changes: [{ type: "mailboxDeleted", mailbox }, ...addresses.map((address) => ({ type: "addressRemoved" as const, address, mailbox }))] satisfies ChangeDetails[],
+        items: [
+          {
+            // An address given or removed meanwhile has the mailbox read again.
+            Update: {
+              TableName: table.name,
+              Key: mailboxKey(mailbox),
+              UpdateExpression: "SET deleted = :deleted",
+              ConditionExpression: Item.addresses === undefined ? "attribute_not_exists(addresses)" : "addresses = :read",
+              ExpressionAttributeValues: { ":deleted": true, ...(Item.addresses !== undefined && { ":read": Item.addresses }) },
+            },
+          },
+          { Delete: { TableName: table.name, Key: ownedKey(owner, mailbox) } },
+          { Delete: { TableName: table.name, Key: mailboxListedKey(mailbox) } },
+          ...addresses.map((address) => ({
+            Delete: { TableName: table.name, Key: addressKey(address), ConditionExpression: "mailbox = :mailbox", ExpressionAttributeValues: { ":mailbox": mailbox } },
+          })),
+          ...items,
+        ],
+      });
+      return;
+    } catch (error) {
+      // The mailbox's own item comes after the feed's counter and its changes.
+      const reasons = error instanceof TransactionCanceledException ? (error.CancellationReasons ?? []) : [];
+      if (reasons[2 + addresses.length]?.Code !== "ConditionalCheckFailed" || attempt === 10) throw error;
+    }
+  }
+}
+
+/**
+ * Removes the agent, on behalf of the actor `by`, so its key stops working at once. Its
+ * mailboxes are deleted beforehand.
+ */
+export async function removeAgentFromOrganization(table: Table, { agent, by }: { agent: Agent; by: string }): Promise<void> {
+  for (let attempt = 1; ; attempt++) {
+    const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: actorKey(agent.id), ConsistentRead: true }));
+    if (Item === undefined) return;
+    const hash = Item.keyHash as string;
+    try {
+      await recordChange(table, by, { type: "actorRemoved", removed: agent }, [
+        // A rotation at the same time leaves another key, so the removal reads it again.
+        { Delete: { TableName: table.name, Key: actorKey(agent.id), ConditionExpression: "keyHash = :hash", ExpressionAttributeValues: { ":hash": hash } } },
+        { Delete: { TableName: table.name, Key: agentKeyKey(hash) } },
+        { Delete: { TableName: table.name, Key: sponsoredKey(agent.sponsor, agent.id) } },
+        { Delete: { TableName: table.name, Key: agentSettingsKey(agent.id) } },
+      ]);
+      break;
+    } catch (error) {
+      const rotated = error instanceof TransactionCanceledException && error.CancellationReasons?.[2]?.Code === "ConditionalCheckFailed";
+      if (!rotated || attempt === 10) throw error;
+    }
+  }
+  await deletePartition(table, actorKey(agent.id)[pk]!);
+}
+
+/**
+ * Removes the human, on behalf of the admin `by`, so no session of theirs works from then on.
+ * Their mailboxes are handed over or deleted, and their agents removed, beforehand. Throws
+ * LastAdmin if they are the organization's last admin.
+ */
+export async function removeHumanFromOrganization(table: Table, { human, by }: { human: Human; by: string }): Promise<void> {
+  await keepingAnAdmin(table, human, (anotherAdmin) =>
+    recordChange(table, by, { type: "actorRemoved", removed: human }, [
+      { Delete: { TableName: table.name, Key: actorKey(human.id), ConditionExpression: `attribute_exists(${pk})` } },
+      ...anotherAdmin,
+      { Delete: { TableName: table.name, Key: humanListedKey(human.id) } },
+    ]),
+  );
+  // What is left in their partition, such as their preferences, goes too.
+  await deletePartition(table, actorKey(human.id)[pk]!);
+}
+
+/** Forgets the sub of a removed human's Cognito user, which pointed at their actor. */
+export async function forgetSignIn(table: Table, sub: string): Promise<void> {
+  await documents(table).send(new DeleteCommand({ TableName: table.name, Key: signInKey(sub) }));
+}
+
+/** The human is the organization's last admin, which it always keeps. */
+export class LastAdmin extends Error {}
+
+/**
+ * Makes the human an admin, or takes it away, on behalf of the admin `by`, and returns them.
+ * Giving the flag the value it has records nothing. Throws LastAdmin if it would leave the
+ * organization without one.
+ */
+export async function changeAdmin(table: Table, { human, admin, by }: { human: Human; admin: boolean; by: string }): Promise<Human> {
+  if (human.admin === admin) return human;
+  const change = (anotherAdmin: TransactItem[]) =>
+    recordChange(table, by, { type: "adminChanged", human: human.id, admin }, [
+      {
+        Update: {
+          TableName: table.name,
+          Key: actorKey(human.id),
+          UpdateExpression: "SET admin = :admin",
+          ConditionExpression: "admin = :was",
+          ExpressionAttributeValues: { ":admin": admin, ":was": human.admin },
+        },
+      },
+      ...anotherAdmin,
+    ]);
+  await (admin ? change([]) : keepingAnAdmin(table, human, change));
+  return { ...human, admin };
+}
+
+/**
+ * Writes what takes the human's admin away, if they are an admin, with a check that another
+ * human still is, so of two admins taking each other's away at once one fails. Throws LastAdmin
+ * if no other human is an admin.
+ */
+async function keepingAnAdmin(table: Table, human: Human, write: (anotherAdmin: TransactItem[]) => Promise<void>): Promise<void> {
+  for (let attempt = 1; ; attempt++) {
+    const current = await findActor(table, human.id);
+    if (current?.kind !== "human" || !current.admin) return write([]);
+    const other = (await allHumans(table)).find(({ id, admin }) => admin && id !== human.id);
+    if (other === undefined) throw new LastAdmin();
+    // The write's own item comes after the feed's counter and the one change.
+    const checkReason = 3;
+    try {
+      return await write([{ ConditionCheck: { TableName: table.name, Key: actorKey(other.id), ConditionExpression: "admin = :admin", ExpressionAttributeValues: { ":admin": true } } }]);
+    } catch (error) {
+      // The other admin's was taken away, or they were removed, since they were read, so the admins are read again.
+      const reasons = error instanceof TransactionCanceledException ? (error.CancellationReasons ?? []) : [];
+      if (reasons[checkReason]?.Code !== "ConditionalCheckFailed" || attempt === 10) throw error;
+    }
+  }
+}
+
+/** Deletes every item in the partition. */
+async function deletePartition(table: Table, partition: string): Promise<void> {
+  const db = documents(table);
+  let start: Record<string, unknown> | undefined;
+  do {
+    const page = await db.send(
+      new QueryCommand({
+        TableName: table.name,
+        KeyConditionExpression: `${pk} = :partition`,
+        ExpressionAttributeValues: { ":partition": partition },
+        ConsistentRead: true,
+        ExclusiveStartKey: start,
+      }),
+    );
+    for (const item of page.Items ?? []) await db.send(new DeleteCommand({ TableName: table.name, Key: { [pk]: item[pk], [sk]: item[sk] } }));
+    start = page.LastEvaluatedKey;
+  } while (start !== undefined);
 }

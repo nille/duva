@@ -5,17 +5,18 @@
 // FIFO queue a task for its mailbox, with the mailbox as the message group, so each mailbox has
 // one writer at a time. A mailbox whose index is missing, or from an older version of it, is
 // backfilled from its stored mail, a step at a time, each step a task of its own. The eraser's
-// daily run gives each mailbox a task to compact its index, so erased text leaves its files.
+// daily run gives each mailbox a task to compact its index, so erased text leaves its files, and a
+// deleted mailbox's index is dropped.
 import { randomUUID } from "node:crypto";
 import { SendMessageBatchCommand, type SQSClient } from "@aws-sdk/client-sqs";
-import { GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
+import { DeleteCommand, GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 import type { DynamoDBStreamEvent, SQSEvent } from "aws-lambda";
 import type { Table } from "./deployment.ts";
 import { changesAfter, changesPerPage, lastPosition } from "./feed.ts";
 import type { MailBucket } from "./mail-bucket.ts";
 import { type StoredMessage, type StoredSummary, storedMessage, threadsWithMessages, threadSummary } from "./mail.ts";
 import { parseMail, searchableText } from "./mime.ts";
-import { allMailboxes, mailboxFeed, mailboxKey } from "./organization.ts";
+import { allMailboxes, findMailbox, mailboxFeed, mailboxKey } from "./organization.ts";
 import type { IndexedMessage, IndexWriter, SearchEngine } from "./search-engine.ts";
 import { documents, pk, sk } from "./table.ts";
 
@@ -146,6 +147,12 @@ export function createIndexer(parts: IndexerParts) {
 }
 
 async function bringUpToDate({ table, mailBucket, engine, queue, backfillMessages = backfillStep }: IndexerParts, mailbox: string, tasks: IndexTask[]) {
+  // A deleted mailbox's mail leaves search at once, and its index goes for good.
+  if ((await findMailbox(table, mailbox)) === undefined) {
+    await engine.drop(mailbox);
+    await documents(table).send(new DeleteCommand({ TableName: table.name, Key: stateKey(mailbox) }));
+    return;
+  }
   let state = await stateOf(table, mailbox);
   let step: number | undefined;
   if (state === undefined || state.version !== indexVersion) {

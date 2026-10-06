@@ -283,6 +283,44 @@ test("the sponsor rotates an agent's key, and the agent's old key is refused", a
   expect(errorIn(whoami.stderr)).toMatch(/DUVA_AGENT_KEY.*sponsor/);
 });
 
+test("an admin removes a human from the CLI, first with --dryRun, handing their mailbox to another human", async () => {
+  const machine = await newMachine();
+  const duva = await startDuva({ domain: "example.com", admin: "ada@example.com", humans: ["grace@example.com", "linus@example.com"] });
+  const server = await duva.listen();
+  onTestFinished(() => server.close());
+  await machine.saveDeployment(server);
+  await machine.duva("login", { browserSignsIn: "ada@example.com" });
+  const { humans } = JSON.parse((await machine.duva("humans", "list")).stdout) as { humans: { id: string; email: string }[] };
+  const [grace, linus] = ["grace@example.com", "linus@example.com"].map((email) => humans.find((human) => human.email === email)!);
+  const mailbox = JSON.parse((await machine.duva("mailboxes", "create", "--owner", grace!.id, "--address", "grace@example.com")).stdout) as { id: string };
+
+  const dryRun = await machine.duva("humans", "remove", "--human", grace!.id, "--dryRun");
+  const removed = await machine.duva("humans", "remove", "--human", grace!.id, "--handTo", linus!.id, "--handOver", mailbox.id);
+
+  expect(JSON.parse(dryRun.stdout)).toMatchObject({ human: grace, mailboxes: [mailbox], agents: [], removed: false });
+  expect(removed.exitCode).toBe(0);
+  expect(JSON.parse(removed.stdout)).toMatchObject({ human: grace, removed: true });
+  expect((await duva.signIn("linus@example.com").GET("/mailboxes")).data?.mailboxes).toEqual([{ ...mailbox, owner: linus!.id }]);
+});
+
+test("an admin makes a human an admin with --admin, and the last admin can't take away their own with --no-admin", async () => {
+  const machine = await newMachine();
+  const server = await (await startDuva({ admin: "ada@example.com", humans: ["grace@example.com"] })).listen();
+  onTestFinished(() => server.close());
+  await machine.saveDeployment(server);
+  await machine.duva("login", { browserSignsIn: "ada@example.com" });
+  const { humans } = JSON.parse((await machine.duva("humans", "list")).stdout) as { humans: { id: string; email: string }[] };
+  const ada = humans.find(({ email }) => email === "ada@example.com")!;
+  const grace = humans.find(({ email }) => email === "grace@example.com")!;
+
+  const last = await machine.duva("humans", "change", "--human", ada.id, "--no-admin");
+  const made = await machine.duva("humans", "change", "--human", grace.id, "--admin");
+
+  expect(last.exitCode).toBe(1);
+  expect(errorIn(last.stderr)).toMatch(/last admin/);
+  expect(JSON.parse(made.stdout)).toEqual({ ...grace, admin: true });
+});
+
 test("agents list shows the agents the signed-in human sponsors", async () => {
   const machine = await newMachine();
   const server = await (await startDuva({ admin: "ada@example.com" })).listen();

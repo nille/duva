@@ -20,7 +20,7 @@ import { createApi } from "../src/api.ts";
 import { createDownloads, downloadLinkLifetime as linkLifetime } from "../src/attachments.ts";
 import { createAuthorizer } from "../src/authorizer.ts";
 import type { Humans } from "../src/user-pool.ts";
-import { createEraser, type TrashEmptied } from "../src/erasure.ts";
+import { createEraser, type EraserEvent } from "../src/erasure.ts";
 import { createInbound } from "../src/inbound.ts";
 import { createFeeder, createIndexer, type IndexQueue, indexMailboxes, type QueuedTask } from "../src/indexing.ts";
 import { feederFilter, senderFilter, senderRetries, tableKey, tableStreamView } from "../src/infrastructure.ts";
@@ -65,8 +65,8 @@ export interface DuvaOptions {
   sesAnswersLost?: boolean;
   /** How many times Lambda runs the sender for each stream record, as a retried batch can. */
   senderInvocations?: number;
-  /** Whether the eraser's runs for each Trash emptied are lost, as when every one of Lambda's attempts fails. */
-  emptyingLost?: boolean;
+  /** Whether the eraser's runs for each Trash emptied and each mailbox deleted are lost, as when every one of Lambda's attempts fails. */
+  eraserRunsLost?: boolean;
   /** How many seconds a download link works. */
   downloadLinkLifetime?: number;
   /** Whether the sender reads the table's stream only at releaseSends(), as when Lambda falls behind. */
@@ -164,7 +164,7 @@ export async function startDuva({
   sandbox = false,
   sesAnswersLost = false,
   senderInvocations = 1,
-  emptyingLost = false,
+  eraserRunsLost = false,
   downloadLinkLifetime = linkLifetime,
   sendsHeld = false,
   beforeScreener = false,
@@ -179,8 +179,8 @@ export async function startDuva({
   for (const email of others) await addHumanToOrganization({ table, humans }, { email, by: firstAdmin.id });
 
   const mailBucket = memoryMailBucket();
-  // Trash emptied in a call, which the eraser erases once the call is answered.
-  const emptied: TrashEmptied[] = [];
+  // Trash emptied and mailboxes deleted in a call, which the eraser erases once the call is answered.
+  const handed: EraserEvent[] = [];
   const inboundLog: string[] = [];
   const ses = sesReceiving({
     buckets: new Map([[mailBucketName, mailBucket]]),
@@ -237,21 +237,21 @@ export async function startDuva({
       receiving,
       downloads,
       unsubscriber,
-      eraser: { emptyTrash: async (each) => void emptied.push(each) },
+      eraser: { emptyTrash: async (emptyTrash) => void handed.push({ emptyTrash }), eraseMailbox: async (eraseMailbox) => void handed.push({ eraseMailbox }) },
       // The API invokes the search Lambda and waits for it, so the search goes through JSON.
       searcher: async (request) => JSON.parse(JSON.stringify(await searcher(JSON.parse(JSON.stringify(request))))),
     }),
     createAuthorizer({ table, verifyAccessToken: issuer.verify }),
   );
   // A call returns once the stream has handed what it wrote to the sender, unless sends are held,
-  // the eraser has erased the Trash it emptied, and the indexer has caught up, unless indexing is
-  // held, so tests see the outcome.
+  // the eraser has erased the Trash it emptied and the mailboxes it deleted, and the indexer has
+  // caught up, unless indexing is held, so tests see the outcome.
   let screenerDeployed = !beforeScreener;
   const api = async (request: Request) => {
     if (new URL(request.url).pathname.startsWith("/download/")) return downloaded(request);
     const response = await gatewayed(request);
     if (!sendsHeld) await stream.deliver();
-    for (let each = emptied.shift(); each !== undefined; each = emptied.shift()) if (!emptyingLost) await eraser({ emptyTrash: each });
+    for (let each = handed.shift(); each !== undefined; each = handed.shift()) if (!eraserRunsLost) await eraser(each);
     if (!screenerDeployed) await forgetScreener(table);
     if (!indexingHeld) await index();
     return response;
@@ -399,6 +399,11 @@ function memoryHumans(): Humans & { ids: Map<string, string> } {
     async add(email) {
       const id = ids.get(email) ?? randomUUID();
       ids.set(email, id);
+      return id;
+    },
+    async remove(email) {
+      const id = ids.get(email);
+      ids.delete(email);
       return id;
     },
   };

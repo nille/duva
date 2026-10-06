@@ -71,7 +71,10 @@ const sentToKey = (mailbox: string, address: string) => ({ [pk]: partition(mailb
 const labelledKey = (labelledAt: string, mailbox: string, thread: string, label: ErasedLabel) => ({ [pk]: "erasure#labelled", [sk]: `${labelledAt}#${mailbox}#${thread}#${label}` });
 
 /** What erasure.ts, and the test harness's deployment from before the Screener, need of how a mailbox's mail is stored. */
-export const keys = { partition, threadPrefix, threadKey, messageIdKey, messageRefKey, receivedKey, labelledKey, listingKey, sentToKey };
+// A thread's own item's sort key, which no message's matches, gives back its thread's ID.
+const threadOf = (sortKey: string) => /^thread#(.+)#thread$/.exec(sortKey)?.[1];
+
+export const keys = { partition, threadPrefix, threadKey, threadOf, messageIdKey, messageRefKey, receivedKey, labelledKey, listingKey, sentToKey };
 
 /** A message SES received for one of the mailbox's addresses. */
 export interface Arrival {

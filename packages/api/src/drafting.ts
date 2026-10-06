@@ -262,10 +262,10 @@ async function waitForApproval(table: Table, { mailbox, draft, agent, held }: { 
 }
 
 /**
- * Withdraws the agent's pending approvals in the mailboxes, on behalf of its sponsor, who approves
- * them, each recorded in its mailbox's change feed. The drafts stay, marked withdrawn.
+ * Withdraws the agent's pending approvals in the mailboxes, on behalf of the actor `by`, its
+ * sponsor unless given, each recorded in its mailbox's change feed. The drafts stay, marked withdrawn.
  */
-export async function withdrawPendingApprovals(table: Table, { agent, mailboxes }: { agent: Agent; mailboxes: string[] }): Promise<void> {
+export async function withdrawPendingApprovals(table: Table, { agent, mailboxes, by = agent.sponsor }: { agent: Agent; mailboxes: string[]; by?: string }): Promise<void> {
   for (const approval of await pendingApprovals(table, agent.sponsor)) {
     if (approval.agent !== agent.id || !mailboxes.includes(approval.mailbox)) continue;
     await retried(async () => {
@@ -275,7 +275,7 @@ export async function withdrawPendingApprovals(table: Table, { agent, mailboxes 
       const withdrawn = await withdrawing(table, draft.id, draft.send);
       const changed: StoredDraft = { ...draft, send: { approval: approval.id, state: "withdrawn" }, version: draft.version + 1 };
       await recordChanges(table, mailboxFeed(approval.mailbox), {
-        by: agent.sponsor,
+        by,
         changes: withdrawn.changes,
         items: [{ Put: { TableName: table.name, Item: { ...draftKey(approval.mailbox, draft.id), ...changed }, ...unchanged(draft) } }, ...withdrawn.items],
       });

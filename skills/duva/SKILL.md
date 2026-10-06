@@ -111,6 +111,27 @@ Only admins can add humans. The human signs in with a code emailed to the addres
 
 - `--email` (required): The address the human signs in with.
 
+## duva humans change
+
+Make a human an admin, or take it away.
+
+Only admins can change who is an admin, and only humans can be admins. The organization always keeps one, so taking it from the last admin is refused. The change is recorded in the organization's change feed under you.
+
+- `--human` (required): The human's ID.
+- `--admin` or `--no-admin` (required): Whether the human may change the organization's setup.
+
+## duva humans remove
+
+Remove a human, handing over or deleting each of their mailboxes, and remove the agents they sponsor.
+
+Only admins can remove humans. Run it first with dryRun to see the human's mailboxes, their agents and the agents' mailboxes. Then say what happens to each of the human's mailboxes: handOver gives it to the human handTo, as another personal mailbox of theirs with its addresses and mail, and delete erases it. The agents are removed, so their keys stop working, and their mailboxes are erased. Erasing a mailbox erases its mail everywhere Duva keeps it, as emptying Trash does, and its approval records only if the organization's settings say so. Its addresses are freed at once. The human's Cognito user is deleted and their sessions stop working. The organization always keeps one admin, so the last admin can't be removed. Each change is recorded in the organization's change feed under you, and older entries keep naming the human and their agents by ID.
+
+- `--human` (required): The human's ID.
+- `--dryRun` or `--no-dryRun`: Lists what the removal takes and removes nothing.
+- `--handTo`: The ID of the human the mailboxes in handOver go to.
+- `--handOver` (once for each): The IDs of the mailboxes to hand to the human handTo, with their addresses and mail.
+- `--delete` (once for each): The IDs of the mailboxes to erase, with their mail.
+
 ## duva agents list
 
 List the agents you sponsor.
@@ -122,6 +143,14 @@ Create an agent, with you as its sponsor, and show its key once.
 Only humans can create agents. The answer is the only time Duva shows the agent's key: it keeps only a hash. Creating an agent is a change to the organization's setup, recorded in its change feed.
 
 - `--name` (required): The agent's name.
+
+## duva agents remove
+
+Remove an agent, which stops its key working and erases its mailboxes.
+
+Only the agent's sponsor and admins can remove it. Its sends waiting for approval are withdrawn. Its mailboxes are erased everywhere Duva keeps their mail, as emptying Trash does, and their approval records only if the organization's settings say so. Their addresses are freed at once. The removal is recorded in the organization's change feed under you.
+
+- `--agent` (required): The agent's ID.
 
 ## duva agents rotate-key
 

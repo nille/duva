@@ -130,6 +130,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/humans/{human}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Make a human an admin, or take it away.
+         * @description Only admins can change who is an admin, and only humans can be admins. The organization always keeps one, so taking it from the last admin is refused. The change is recorded in the organization's change feed under you.
+         */
+        patch: operations["changeHuman"];
+        trace?: never;
+    };
+    "/humans/{human}/remove": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Remove a human, handing over or deleting each of their mailboxes, and remove the agents they sponsor.
+         * @description Only admins can remove humans. Run it first with dryRun to see the human's mailboxes, their agents and the agents' mailboxes. Then say what happens to each of the human's mailboxes: handOver gives it to the human handTo, as another personal mailbox of theirs with its addresses and mail, and delete erases it. The agents are removed, so their keys stop working, and their mailboxes are erased. Erasing a mailbox erases its mail everywhere Duva keeps it, as emptying Trash does, and its approval records only if the organization's settings say so. Its addresses are freed at once. The human's Cognito user is deleted and their sessions stop working. The organization always keeps one admin, so the last admin can't be removed. Each change is recorded in the organization's change feed under you, and older entries keep naming the human and their agents by ID.
+         */
+        post: operations["removeHuman"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/agents": {
         parameters: {
             query?: never;
@@ -146,6 +186,26 @@ export interface paths {
          */
         post: operations["createAgent"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agents/{agent}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove an agent, which stops its key working and erases its mailboxes.
+         * @description Only the agent's sponsor and admins can remove it. Its sends waiting for approval are withdrawn. Its mailboxes are erased everywhere Duva keeps their mail, as emptying Trash does, and their approval records only if the organization's settings say so. Their addresses are freed at once. The removal is recorded in the organization's change feed under you.
+         */
+        delete: operations["removeAgent"];
         options?: never;
         head?: never;
         patch?: never;
@@ -825,6 +885,33 @@ export interface components {
         HumanList: {
             humans: components["schemas"]["Human"][];
         };
+        HumanChanges: {
+            /** @description Whether the human may change the organization's setup. */
+            admin: boolean;
+        };
+        /** @description What happens to each of the human's mailboxes. Each is given once, in handOver or in delete. */
+        HumanRemovalChoices: {
+            /** @description Lists what the removal takes and removes nothing. */
+            dryRun?: boolean;
+            /** @description The ID of the human the mailboxes in handOver go to. */
+            handTo?: string;
+            /** @description The IDs of the mailboxes to hand to the human handTo, with their addresses and mail. */
+            handOver?: string[];
+            /** @description The IDs of the mailboxes to erase, with their mail. */
+            delete?: string[];
+        };
+        /** @description A human's removal, and what goes with them. */
+        HumanRemoval: {
+            human: components["schemas"]["Human"];
+            /** @description The human's personal mailboxes, each handed over or erased. */
+            mailboxes: components["schemas"]["Mailbox"][];
+            /** @description The agents the human sponsors, removed with them. */
+            agents: components["schemas"]["Agent"][];
+            /** @description The agents' mailboxes, erased with them. */
+            agentMailboxes: components["schemas"]["Mailbox"][];
+            /** @description Whether the human was removed, which a dry run leaves undone. */
+            removed: boolean;
+        };
         /** @description An actor that is software, which calls Duva with its key. */
         Agent: {
             /** @description The actor's ID, which never changes. */
@@ -861,6 +948,11 @@ export interface components {
         };
         AgentList: {
             agents: components["schemas"]["Agent"][];
+        };
+        AgentRemoval: {
+            agent: components["schemas"]["Agent"];
+            /** @description The agent's mailboxes, erased with it. */
+            mailboxes: components["schemas"]["Mailbox"][];
         };
         /** @description What an agent may do in its sponsor's personal mailbox, and which of its sends wait for approval or carry the disclosure's visible line. */
         AgentSettings: {
@@ -1899,7 +1991,7 @@ export interface components {
             position: number;
         };
         /** @description A change to the organization's setup. */
-        OrganizationChange: components["schemas"]["OrganizationAdded"] | components["schemas"]["DomainAdded"] | components["schemas"]["ActorAdded"] | components["schemas"]["AgentKeyRotated"] | components["schemas"]["MailboxAdded"] | components["schemas"]["AddressAdded"] | components["schemas"]["AddressRemoved"] | components["schemas"]["DefaultAddressChanged"] | components["schemas"]["SettingsChanged"];
+        OrganizationChange: components["schemas"]["OrganizationAdded"] | components["schemas"]["DomainAdded"] | components["schemas"]["ActorAdded"] | components["schemas"]["AgentKeyRotated"] | components["schemas"]["MailboxAdded"] | components["schemas"]["AddressAdded"] | components["schemas"]["AddressRemoved"] | components["schemas"]["DefaultAddressChanged"] | components["schemas"]["SettingsChanged"] | components["schemas"]["ActorRemoved"] | components["schemas"]["AdminChanged"] | components["schemas"]["MailboxHandedOver"] | components["schemas"]["MailboxDeleted"];
         ChangeBase: {
             /** @description The change's position in the feed, counting from 1. */
             position: number;
@@ -1986,6 +2078,59 @@ export interface components {
              * @enum {string}
              */
             type: "addressAdded";
+        };
+        ActorRemoved: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "actorRemoved";
+            removed: components["schemas"]["Actor"];
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "actorRemoved";
+        };
+        AdminChanged: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "adminChanged";
+            /** @description The ID of the human made an admin, or no longer one. */
+            human: string;
+            /** @description Whether the human is an admin now. */
+            admin: boolean;
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "adminChanged";
+        };
+        MailboxHandedOver: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "mailboxHandedOver";
+            /** @description The ID of the mailbox, with its addresses and mail. */
+            mailbox: string;
+            /** @description The ID of the actor that owned it. */
+            from: string;
+            /** @description The ID of the human who owns it now. */
+            to: string;
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "mailboxHandedOver";
+        };
+        MailboxDeleted: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "mailboxDeleted";
+            /** @description The ID of the mailbox. */
+            mailbox: string;
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "mailboxDeleted";
         };
         AddressRemoved: components["schemas"]["ChangeBase"] & {
             /** @constant */
@@ -2139,6 +2284,8 @@ export interface components {
         Approval: string;
         /** @description The agent's ID. */
         Agent: string;
+        /** @description The human's ID. */
+        Human: string;
     };
     requestBodies: never;
     headers: never;
@@ -2360,6 +2507,70 @@ export interface operations {
             409: components["responses"]["Conflict"];
         };
     };
+    changeHuman: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The human's ID. */
+                human: components["parameters"]["Human"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HumanChanges"];
+            };
+        };
+        responses: {
+            /** @description The human, changed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Human"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    removeHuman: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The human's ID. */
+                human: components["parameters"]["Human"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HumanRemovalChoices"];
+            };
+        };
+        responses: {
+            /** @description What the removal takes, removed unless it was a dry run. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HumanRemoval"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
     listAgents: {
         parameters: {
             query?: never;
@@ -2406,6 +2617,32 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+        };
+    };
+    removeAgent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The agent's ID. */
+                agent: components["parameters"]["Agent"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The agent, removed, and the mailboxes erased with it. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentRemoval"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     rotateAgentKey: {

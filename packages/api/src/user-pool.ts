@@ -1,8 +1,10 @@
 import {
   AdminCreateUserCommand,
+  AdminDeleteUserCommand,
   AdminGetUserCommand,
   type AttributeType,
   type CognitoIdentityProviderClient,
+  UserNotFoundException,
   UsernameExistsException,
 } from "@aws-sdk/client-cognito-identity-provider";
 
@@ -14,6 +16,11 @@ export interface Humans {
    * the case of the address, returns their ID.
    */
   add(email: string): Promise<string>;
+  /**
+   * Deletes the human at `email`, so they can't sign in or renew a session, and returns the ID
+   * their sign-ins carried, or undefined if they had none.
+   */
+  remove(email: string): Promise<string | undefined>;
 }
 
 /**
@@ -42,6 +49,16 @@ export function cognitoHumans(cognito: CognitoIdentityProviderClient, userPoolId
         if (!(error instanceof UsernameExistsException)) throw error;
         const { UserAttributes } = await cognito.send(new AdminGetUserCommand({ UserPoolId: userPoolId, Username: email }));
         return sub(UserAttributes);
+      }
+    },
+    async remove(email) {
+      try {
+        const { UserAttributes } = await cognito.send(new AdminGetUserCommand({ UserPoolId: userPoolId, Username: email }));
+        await cognito.send(new AdminDeleteUserCommand({ UserPoolId: userPoolId, Username: email }));
+        return sub(UserAttributes);
+      } catch (error) {
+        if (error instanceof UserNotFoundException) return undefined;
+        throw error;
       }
     },
   };

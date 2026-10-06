@@ -482,9 +482,9 @@ test("setup has minutes to move every human to the user pool, one at a time", ()
   expect(lambda("SetupHandler")[1].Properties?.Timeout).toBe(300);
 });
 
-test("the API adds humans to the user pool, and may take no other Cognito action", () => {
+test("the API adds humans to the user pool and deletes them from it, and may take no other Cognito action", () => {
   const [[userPoolId]] = ofType("AWS::Cognito::UserPool") as [[string, Resource]];
-  expect(actions("ApiHandler", "cognito-idp").sort()).toEqual(["cognito-idp:AdminCreateUser", "cognito-idp:AdminGetUser"]);
+  expect(actions("ApiHandler", "cognito-idp").sort()).toEqual(["cognito-idp:AdminCreateUser", "cognito-idp:AdminDeleteUser", "cognito-idp:AdminGetUser"]);
   expect(JSON.stringify(statements("ApiHandler").filter(({ Action }) => [Action].flat().some((action) => action.startsWith("cognito-idp:"))))).toContain(userPoolId);
   expect(lambda("ApiHandler")[1].Properties?.Environment?.Variables?.[environmentVariables.userPoolId]).toEqual({ Ref: userPoolId });
 });
