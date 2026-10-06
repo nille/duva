@@ -1,8 +1,7 @@
-import type { components } from "@duva/openapi";
+import { type components, isPublicMailProvider } from "@duva/openapi";
 import { jsonBody, type OperationHandler, refusal } from "./api.ts";
 import { mailboxFor } from "./access.ts";
 import { isEmailAddress } from "./email-address.ts";
-import { isPublicMailProvider } from "./mail-providers.ts";
 import { decide, removeDecision, type Sender, screenedSenders, screenerOf, switchScreener as switchMailboxScreener } from "./screening.ts";
 import { unsubscribeFrom } from "./unsubscribing.ts";
 

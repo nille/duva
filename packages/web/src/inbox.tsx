@@ -9,7 +9,7 @@ import { useDates } from "./dates.ts";
 import { Connection, nameOf, Time } from "./mail-parts.tsx";
 import { type Done, type Label, labelRefusal, OrganizeActions, ownLabelsOf } from "./organize.tsx";
 import { strings } from "./strings.ts";
-import { pathOf, titleOf, type View } from "./views.tsx";
+import { pathOf, type ThreadsView, titleOf } from "./views.tsx";
 
 type ThreadSummary = components["schemas"]["ThreadSummary"];
 type ThreadList = components["schemas"]["ThreadList"];
@@ -49,7 +49,7 @@ export function ThreadIndex({
   mailbox: Mailbox;
   base: string;
   agent?: string;
-  view: View;
+  view: ThreadsView;
   labels: Label[];
   version: number;
   connection: ConnectionState;
@@ -281,7 +281,7 @@ export function ThreadIndex({
 }
 
 /** What an empty view says, in its own words. */
-function Empty({ view, mailbox, agent }: { view: View; mailbox: Mailbox; agent?: string }) {
+function Empty({ view, mailbox, agent }: { view: ThreadsView; mailbox: Mailbox; agent?: string }) {
   const copy =
     "all" in view
       ? strings.views.empty.all
@@ -485,7 +485,7 @@ function ThreadRow({
 }: {
   thread: ThreadSummary;
   labels: Label[];
-  view: View;
+  view: ThreadsView;
   href: string;
   fresh: boolean;
   selected: boolean;

@@ -1,13 +1,16 @@
 // Settings, each group on a sheet of its own: the organization's, which admins choose for everyone,
-// then the human's own preferences, which only they choose, then a sponsor's agents'.
+// then the human's own preferences, which only they choose, then the Screener of their mailbox and
+// their agents', then a sponsor's agents'.
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
 import { AgentSettingsSheet } from "./agent-settings.tsx";
 import { datesFor, type Preferences } from "./dates.ts";
+import type { AgentMailbox } from "./mailboxes.tsx";
 import { strings } from "./strings.ts";
 
 type OrganizationSettings = components["schemas"]["OrganizationSettings"];
+type Mailbox = components["schemas"]["Mailbox"];
 
 type Read<Values> = { status: "loading" } | { status: "failed"; message: string } | { status: "read"; values: Values };
 type Saving = { status: "idle" } | { status: "saving" } | { status: "saved" } | { status: "failed"; message: string };
@@ -90,20 +93,26 @@ function useSheet<Values extends object>({
   return { read, chosen, choose, saving, save, load, unchanged };
 }
 
-/** The settings view. Every human can read the organization's settings, but only an admin changes them. */
+/**
+ * The settings view. Every human can read the organization's settings, but only an admin changes
+ * them. `mailboxes` are the human's own and their agents', once they are listed.
+ */
 export function Settings({
   client,
   admin,
   email,
+  mailboxes,
   onPreferences,
   onSignedOut,
 }: {
   client: DuvaClient;
   admin: boolean;
   email: string;
+  mailboxes: { mine?: Mailbox; agents: AgentMailbox[] } | undefined;
   onPreferences: (preferences: Preferences) => void;
   onSignedOut: () => void;
 }) {
+  const screened = mailboxes === undefined ? [] : [...(mailboxes.mine === undefined ? [] : [{ mailbox: mailboxes.mine }]), ...mailboxes.agents];
   useEffect(() => {
     document.title = strings.title(strings.settings.title);
   }, []);
@@ -117,6 +126,7 @@ export function Settings({
       </div>
       <OrganizationSheet client={client} admin={admin} onSignedOut={onSignedOut} />
       <YouSheet client={client} onPreferences={onPreferences} onSignedOut={onSignedOut} />
+      {screened.length > 0 && <ScreenerSheet key={screened.map(({ mailbox }) => mailbox.id).join()} client={client} mailboxes={screened} onSignedOut={onSignedOut} />}
       <AgentSettingsSheet client={client} email={email} onSignedOut={onSignedOut} />
     </main>
   );
@@ -228,6 +238,64 @@ function YouSheet({ client, onPreferences, onSignedOut }: { client: DuvaClient; 
             ))}
           </fieldset>
           <SaveRow sheet={sheet} saved={copy.preferencesSaved} />
+        </>
+      )}
+    </Sheet>
+  );
+}
+
+/**
+ * Whether each mailbox's Screener is on, by mailbox ID: the human's own, without an agent's name,
+ * and each agent's they sponsor.
+ */
+function ScreenerSheet({ client, mailboxes, onSignedOut }: { client: DuvaClient; mailboxes: { mailbox: Mailbox; agent?: string }[]; onSignedOut: () => void }) {
+  const copy = strings.settings.screener;
+  const sheet = useSheet<Record<string, boolean>>({
+    read: async () => {
+      const each = await Promise.all(mailboxes.map(({ mailbox }) => client.GET("/mailboxes/{mailbox}/screener", { params: { path: { mailbox: mailbox.id } } })));
+      const unread = each.find(({ data }) => data === undefined);
+      return { data: unread === undefined ? Object.fromEntries(each.map(({ data }, index) => [mailboxes[index]!.mailbox.id, data!.on])) : undefined, response: (unread ?? each[0]!).response };
+    },
+    // Switching a Screener to what it is changes nothing, so every one is switched as chosen, one at a time, stopping at a failure.
+    write: async (chosen) => {
+      const saved: Record<string, boolean> = {};
+      let response = new Response();
+      for (const [mailbox, on] of Object.entries(chosen)) {
+        const answer = await client.PATCH("/mailboxes/{mailbox}/screener", { params: { path: { mailbox } }, body: { on } });
+        response = answer.response;
+        if (answer.data === undefined) return { response };
+        saved[mailbox] = answer.data.on;
+      }
+      return { data: saved, response };
+    },
+    copy,
+    onSignedOut,
+  });
+  return (
+    <Sheet id="screener-settings" name={copy.title} lead={copy.lead} sheet={sheet}>
+      {(chosen) => (
+        <>
+          {mailboxes.map(({ mailbox, agent }) => {
+            const releasing = sheet.read.status === "read" && sheet.read.values[mailbox.id] === true && chosen[mailbox.id] === false;
+            return (
+              <fieldset key={mailbox.id}>
+                <legend>{agent ?? copy.yours}</legend>
+                <p className="setting-lead">{mailbox.defaultAddress}</p>
+                {([true, false] as const).map((on) => (
+                  <Choice
+                    key={String(on)}
+                    name={`screener-${mailbox.id}`}
+                    checked={chosen[mailbox.id] === on}
+                    onChoose={() => sheet.choose({ [mailbox.id]: on })}
+                    label={on ? copy.on : copy.off}
+                    hint={on ? copy.onHint : copy.offHint}
+                  />
+                ))}
+                {releasing && <p className="setting-note">{copy.releasing(agent === undefined ? copy.yourMailbox : copy.agentMailbox(agent))}</p>}
+              </fieldset>
+            );
+          })}
+          <SaveRow sheet={sheet} saved={copy.saved} />
         </>
       )}
     </Sheet>

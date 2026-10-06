@@ -463,6 +463,7 @@ a {
 }
 
 input[type="text"],
+input[type="search"],
 textarea {
   width: 100%;
   border: 1px solid var(--rule-strong);
@@ -474,6 +475,7 @@ textarea {
 }
 
 input[type="text"]:focus-visible,
+input[type="search"]:focus-visible,
 textarea:focus-visible {
   outline: 2px solid var(--pencil);
   outline-offset: 0;
@@ -1663,6 +1665,216 @@ input[aria-invalid="true"] {
   border-top: 1px solid var(--rule);
 }
 
+/* The Screener's count asks for nothing, so it is in Second Ink. */
+.view-count-quiet {
+  color: var(--ink-2);
+  font-weight: 600;
+}
+
+/* The Screener: what it is, then one sheet of waiting senders, each with their mail and the two decisions. */
+
+.screener-lead {
+  display: grid;
+  gap: var(--space-2);
+  max-width: 68ch;
+  margin: calc(-1 * var(--space-3)) 0 var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--ink-2);
+}
+
+.screener-off {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.screener-screened {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.screener-screened a {
+  font-weight: 600;
+}
+
+.waiting,
+.waiting-threads,
+.screened {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.waiting {
+  max-width: 56rem;
+  background: var(--paper);
+  border-radius: 2px;
+  box-shadow: var(--sheet-shadow);
+}
+
+.waiting-sender {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-5);
+}
+
+.waiting-sender + .waiting-sender {
+  border-top: 1px solid var(--rule);
+}
+
+.waiting-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 var(--space-3);
+  min-width: 0;
+}
+
+.waiting-head h2 {
+  min-width: 0;
+  font-size: var(--text-md);
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.waiting-address {
+  min-width: 0;
+  font-size: var(--text-sm);
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+
+.waiting-date {
+  font-size: var(--text-sm);
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+/* Their mail, as lines of the index under the sender, each opening the thread. */
+.waiting-thread {
+  display: grid;
+  grid-template-columns: minmax(0, auto) minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: var(--space-3);
+  margin: 0 calc(-1 * var(--space-3));
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius);
+  color: var(--ink);
+  text-decoration: none;
+  transition: background-color 150ms var(--ease-out);
+}
+
+.waiting-thread:hover {
+  background: var(--paper-source);
+}
+
+.waiting-subject {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 400 var(--text-md) / 1.4 var(--serif);
+}
+
+.waiting-snippet {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 400 var(--text-sm) / 1.4 var(--serif);
+  color: var(--ink-2);
+}
+
+.waiting-actions,
+.screened-actions,
+.confirm-choices {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.waiting-actions {
+  padding-top: var(--space-1);
+}
+
+.waiting-actions .confirm p {
+  flex: 1 0 100%;
+  max-width: 60ch;
+}
+
+/* Screened senders: one sheet, blocked first, then let in, each decision a row with its two actions. */
+
+.screened-sheet {
+  max-width: 44rem;
+  background: var(--paper);
+  border-radius: 2px;
+  box-shadow: var(--sheet-shadow);
+}
+
+.screened-find {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--rule);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.screened-find input {
+  max-width: 24rem;
+  font-weight: 400;
+}
+
+.screened-group {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-5) var(--space-5);
+}
+
+.screened-group + .screened-group {
+  border-top: 1px solid var(--rule);
+}
+
+.screened-group h2 {
+  font-size: var(--text-md);
+  font-weight: 650;
+}
+
+.screened-sender {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-2) 0;
+}
+
+.screened-sender + .screened-sender {
+  border-top: 1px solid var(--rule);
+}
+
+.screened-who {
+  display: grid;
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+
+.screened-name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.screened-who .hint {
+  margin: 0;
+}
+
+.screened-sender .confirm {
+  flex: 1 0 100%;
+}
+
+.screened-sender .field-error {
+  flex: 1 0 100%;
+}
+
 /* Settings: each group of settings a sheet of its own, each setting a set of choices on it. */
 
 .settings {
@@ -1912,6 +2124,23 @@ input[aria-invalid="true"] {
 
   .index-tools {
     padding: var(--space-2) var(--space-4);
+  }
+
+  .waiting-sender,
+  .screened-find,
+  .screened-group {
+    padding-inline: var(--space-4);
+  }
+
+  /* A waiting thread stacks: the subject and date, then the snippet. */
+  .waiting-thread {
+    grid-template-columns: minmax(0, 1fr) auto;
+    row-gap: 0;
+  }
+
+  .waiting-snippet {
+    grid-row: 2;
+    grid-column: 1 / -1;
   }
 
   .thread-row > .pick {

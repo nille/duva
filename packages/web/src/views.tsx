@@ -1,5 +1,5 @@
-// The views of a mailbox's mail: the Inbox, Sent, Drafts, All mail, Spam and Trash, then its own labels,
-// each a link with how many unread threads it has. It is one component, so the side column can hold it.
+// The views of a mailbox's mail: the Inbox, the Screener, Sent, Drafts, All mail, Spam and Trash, then
+// its own labels, each a link with how many unread threads it has, the Screener with how many senders wait. It is one component, so the side column can hold it.
 import { useId, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
@@ -9,10 +9,14 @@ import { strings } from "./strings.ts";
 type Mailbox = components["schemas"]["Mailbox"];
 
 /** A listing of threads: a label's, Sent, or All mail. */
-export type View = { label: string } | { sent: true } | { all: true };
+export type ThreadsView = { label: string } | { sent: true } | { all: true };
+
+/** A view of the mail: a listing of threads, or the Screener. */
+export type View = ThreadsView | { screener: true };
 
 /** Where the view is in its mailbox, after the mailbox's place in the hash the web app routes by. */
 export function pathOf(view: View): string {
+  if ("screener" in view) return "screener";
   if ("all" in view) return "all";
   if ("sent" in view) return "sent";
   if (view.label === "inbox") return "";
@@ -20,12 +24,16 @@ export function pathOf(view: View): string {
   return `labels/${encodeURIComponent(view.label)}`;
 }
 
+/** Where a mailbox's screened senders are, after the mailbox's place in the hash, reached from its Screener. */
+export const screenedSendersPath = "screener/senders";
+
 /** The address of the view in the mailbox whose Inbox is at `base`. */
 export const hrefOf = (view: View, base: string) => `${base}${pathOf(view)}`;
 
 /** The view at the path in its mailbox, or undefined if it names none. */
 export function viewOf(path: string): View | undefined {
   if (path === "") return { label: "inbox" };
+  if (path === "screener") return { screener: true };
   if (path === "all") return { all: true };
   if (path === "sent") return { sent: true };
   if (path === "spam" || path === "trash") return { label: path };
@@ -35,6 +43,7 @@ export function viewOf(path: string): View | undefined {
 
 /** What the view is called, an agent's Inbox by the agent's name. */
 export function titleOf(view: View, labels: Label[], agent?: string): string {
+  if ("screener" in view) return agent === undefined ? strings.screener.title : strings.screener.agentTitle(agent);
   if ("all" in view) return strings.views.allMail;
   if ("sent" in view) return agent === undefined ? strings.sent.title : strings.sent.agentTitle(agent);
   if (view.label === "inbox" && agent !== undefined) return strings.inbox.agentTitle(agent);
@@ -46,7 +55,8 @@ const builtInName = (label: string) => ({ inbox: strings.views.inbox, spam: stri
 /**
  * The mailbox's views as links, the one open marked current, with a form at the foot to create a
  * label. Only the Inbox and the mailbox's own labels count their unread threads, so Sent, Spam,
- * Trash and All mail never call for attention.
+ * Trash and All mail never call for attention. The Screener, listed while it is on or something
+ * waits there, quietly counts the senders who wait.
  */
 export function MailViews({
   client,
@@ -55,6 +65,7 @@ export function MailViews({
   labels,
   current,
   drafts,
+  screener,
   onLabelCreated,
   onSignedOut,
 }: {
@@ -65,6 +76,8 @@ export function MailViews({
   current: View | undefined;
   /** Whether Drafts is listed, as it is for the human's own mailbox only, and whether it's open. */
   drafts?: { current: boolean };
+  /** Whether the mailbox's Screener is on, and how many senders wait there, once Duva has said. */
+  screener?: { on: boolean; waiting: number };
   onLabelCreated: (label: Label) => void;
   onSignedOut: () => void;
 }) {
@@ -93,6 +106,21 @@ export function MailViews({
     <nav className="views" aria-label={strings.views.label}>
       <ul className="views-list">
         {link({ label: "inbox" }, strings.views.inbox, unread("inbox"))}
+        {screener !== undefined && (screener.on || screener.waiting > 0) && (
+          <li>
+            <a href={hrefOf({ screener: true }, base)} className="view-link" aria-current={isCurrent({ screener: true }) ? "page" : undefined}>
+              <span className="view-name">{strings.screener.title}</span>
+              {screener.waiting > 0 && (
+                <>
+                  <span className="view-count view-count-quiet" aria-hidden="true">
+                    {screener.waiting}
+                  </span>
+                  <span className="visually-hidden">{strings.screener.waiting(screener.waiting)}</span>
+                </>
+              )}
+            </a>
+          </li>
+        )}
         {link({ sent: true }, strings.views.sent, 0)}
         {drafts !== undefined && (
           <li>

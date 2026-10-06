@@ -1,9 +1,10 @@
 // Duva's web app. A human signs in and lands on the Inbox of their personal mailbox, where they read,
 // organize, write and send their mail, with its views in the side column. Sponsors also read their
 // agents' mailboxes, listed there above the views, and reach the Approvals view from the bar, where
-// they decide what the agents they sponsor ask to send. Every human reaches Settings from the bar
-// too, where they choose how times and dates show, admins the organization's settings and sponsors
-// their agents'.
+// they decide what the agents they sponsor ask to send. Mail from first-time senders waits in each
+// mailbox's Screener, beside its views. Every human reaches Settings from the bar too, where they
+// choose how times and dates show and switch their Screeners, admins the organization's settings and
+// sponsors their agents'.
 import "@fontsource-variable/source-serif-4/opsz.css";
 import "./styles.css";
 import { StrictMode, useCallback, useEffect, useRef, useState } from "react";
@@ -14,15 +15,16 @@ import { Approvals } from "./approvals.tsx";
 import { Composer } from "./compose.tsx";
 import { defaultPreferences, type Preferences, PreferencesContext } from "./dates.ts";
 import { Drafts } from "./drafts.tsx";
-import { approvalChanges, type Connection, draftChanges, type Follow, labelChanges, mailChanges, type MailboxChange, SignedOut, useFeeds } from "./feed.ts";
+import { approvalChanges, type Connection, draftChanges, type Follow, labelChanges, mailChanges, type MailboxChange, screenerChanges, SignedOut, useFeeds } from "./feed.ts";
 import { ThreadIndex } from "./inbox.tsx";
 import { type AgentMailbox, MailboxList, mailboxHref } from "./mailboxes.tsx";
+import { readScreener, ScreenedSenders, type ScreenerRead, ScreenerView } from "./screener.tsx";
 import { type Config, loadConfig, signedInClient, signIn, signOut } from "./session.ts";
 import { Settings } from "./settings.tsx";
 import { strings } from "./strings.ts";
 import type { Done, Label } from "./organize.tsx";
 import { ThreadView } from "./thread.tsx";
-import { hrefOf, MailViews, pathOf, titleOf, type View, viewOf } from "./views.tsx";
+import { hrefOf, MailViews, pathOf, screenedSendersPath, type ThreadsView, titleOf, type View, viewOf } from "./views.tsx";
 
 type Human = components["schemas"]["Human"];
 type Mailbox = components["schemas"]["Mailbox"];
@@ -84,11 +86,12 @@ function App() {
  * Where in the web app the human is, from the address's hash, so links and the back button work
  * without a server. A listing or thread without a mailbox is in the human's own, and drafts are
  * always the human's own, since only a mailbox's owner writes in it. A thread knows the view it
- * was opened from, to go back there.
+ * was opened from, to go back there. A mailbox's screened senders are reached from its Screener.
  */
 type Route =
   | { view: "approvals" | "settings" }
-  | { view: "list"; mailbox?: string; list: View }
+  | { view: "list"; mailbox?: string; list: ThreadsView }
+  | { view: "screener"; mailbox?: string; senders: boolean }
   | { view: "thread"; mailbox?: string; id: string; from: View }
   | { view: "drafts" | "write" }
   | { view: "draft"; id: string };
@@ -105,7 +108,10 @@ function routeOf(hash: string): Route {
   const decoded = mailbox === undefined ? undefined : decodeURIComponent(mailbox);
   const [, thread, from] = /^threads\/([^?]+)(?:\?from=(.*))?$/.exec(inMailbox ?? "") ?? [];
   if (thread !== undefined) return { view: "thread", mailbox: decoded, id: decodeURIComponent(thread), from: viewOf(decodeURIComponent(from ?? "")) ?? { label: "inbox" } };
-  return { view: "list", mailbox: decoded, list: viewOf(inMailbox ?? "") ?? { label: "inbox" } };
+  if (inMailbox === screenedSendersPath) return { view: "screener", mailbox: decoded, senders: true };
+  const list = viewOf(inMailbox ?? "") ?? { label: "inbox" };
+  if ("screener" in list) return { view: "screener", mailbox: decoded, senders: false };
+  return { view: "list", mailbox: decoded, list };
 }
 
 function useRoute(): Route & { hash: string } {
@@ -208,7 +214,10 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
       }
       // The first read passes mail that may have arrived after the views listed it, so it counts too.
       const mail = new Set(changes.filter(({ change }) => mailChanges.has(change.type)).map(({ mailbox }) => mailbox));
-      const changed = new Set([...mail, ...changes.filter(({ change }) => draftChanges.has(change.type) || labelChanges.has(change.type)).map(({ mailbox }) => mailbox)]);
+      const changed = new Set([
+        ...mail,
+        ...changes.filter(({ change }) => draftChanges.has(change.type) || labelChanges.has(change.type) || screenerChanges.has(change.type)).map(({ mailbox }) => mailbox),
+      ]);
       if (changed.size > 0) {
         setVersions((current) => new Map([...current, ...[...changed].map((mailbox) => [mailbox, (current.get(mailbox) ?? 0) + 1] as const)]));
       }
@@ -224,7 +233,9 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
   const named = "mailbox" in route ? route.mailbox : undefined;
   // The views outside the mail.
   const away = route.view === "approvals" || route.view === "settings";
-  const routeKey = away ? route.view : `${route.view}/${named ?? ""}/${"id" in route ? route.id : route.view === "list" ? pathOf(route.list) : ""}`;
+  const routeKey = away
+    ? route.view
+    : `${route.view}/${named ?? ""}/${"id" in route ? route.id : route.view === "list" ? pathOf(route.list) : route.view === "screener" ? String(route.senders) : ""}`;
   useEffect(() => {
     if (!navigated.current) {
       navigated.current = true;
@@ -268,13 +279,27 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
     })();
   }, [client, shown, version, relabelled, onSignedOut]);
 
+  // The open mailbox's Screener is read whenever its mail changes too, for the side column's count
+  // and the Screener view. Another mailbox's shows as loading until it is read.
+  const [screener, setScreener] = useState<{ mailbox: string; read: ScreenerRead }>();
+  const screenerRead = useRef(0);
+  useEffect(() => {
+    const read = ++screenerRead.current;
+    if (shown === undefined) return;
+    void readScreener(client, shown.id, onSignedOut).then((answer) => {
+      if (answer !== undefined && read === screenerRead.current) setScreener({ mailbox: shown.id, read: answer });
+    });
+  }, [client, shown, version, relabelled, onSignedOut]);
+  const shownScreener: ScreenerRead = screener !== undefined && screener.mailbox === shown?.id ? screener.read : { status: "loading" };
+
   // Something done to the mail changes the labels' counts, so they are read again at once.
   const showDone = (what: Done | undefined) => {
     setDone(what === undefined ? undefined : { done: what, at: location.hash });
     setRelabelled((current) => current + 1);
   };
   // The view the side column marks open: the one listed, or the one a thread was opened from.
-  const viewed = route.view === "list" ? route.list : route.view === "thread" ? route.from : undefined;
+  const viewed: View | undefined = route.view === "list" ? route.list : route.view === "thread" ? route.from : route.view === "screener" ? { screener: true } : undefined;
+  const doneHere = done !== undefined && done.at === route.hash ? done.done : undefined;
   const writing = route.view === "drafts" || route.view === "draft" || route.view === "write";
 
   const mail =
@@ -326,6 +351,36 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
         onDone={showDone}
         onSignedOut={onSignedOut}
       />
+    ) : route.view === "screener" ? (
+      route.senders ? (
+        <ScreenedSenders
+          key={shown.id}
+          client={client}
+          mailbox={shown}
+          base={base}
+          agent={agent?.agent}
+          me={actor.id}
+          agentNames={agentNames}
+          version={version}
+          done={doneHere}
+          onDone={showDone}
+          onSignedOut={onSignedOut}
+        />
+      ) : (
+        <ScreenerView
+          key={shown.id}
+          client={client}
+          mailbox={shown}
+          base={base}
+          agent={agent?.agent}
+          read={shownScreener}
+          connection={connection}
+          done={doneHere}
+          onDone={showDone}
+          onRetry={() => setRelabelled((current) => current + 1)}
+          onSignedOut={onSignedOut}
+        />
+      )
     ) : route.view === "draft" || route.view === "write" ? (
       <Composer key={routeKey} client={client} mailbox={shown} id={route.view === "draft" ? route.id : undefined} agentNames={agentNames} version={version} onSignedOut={onSignedOut} />
     ) : route.view !== "list" ? (
@@ -341,7 +396,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
         labels={labels}
         version={version}
         connection={connection}
-        done={done !== undefined && done.at === route.hash ? done.done : undefined}
+        done={doneHere}
         onDone={showDone}
         onSignedOut={onSignedOut}
       />
@@ -389,7 +444,14 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
       {route.view === "approvals" ? (
         <Approvals client={client} me={actor.id} sponsor={actor.email} connection={connection} follow={follow} onSignedOut={onSignedOut} />
       ) : route.view === "settings" ? (
-        <Settings client={client} admin={actor.admin} email={actor.email} onPreferences={setPreferences} onSignedOut={onSignedOut} />
+        <Settings
+          client={client}
+          admin={actor.admin}
+          email={actor.email}
+          mailboxes={listed === undefined ? undefined : { mine, agents: listed.agents }}
+          onPreferences={setPreferences}
+          onSignedOut={onSignedOut}
+        />
       ) : shown !== undefined || (listed !== undefined && listed.agents.length > 0) ? (
         <div className={route.view === "thread" || route.view === "draft" || route.view === "write" ? "mail mail-reading" : "mail"}>
           <aside className="side">
@@ -403,6 +465,14 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
                 current={viewed}
                 // A human writes only in their own mailbox, so its Drafts is the only one listed.
                 drafts={shown === mine ? { current: writing } : undefined}
+                // A Screener Duva couldn't read is still listed, so its view can say so and try again.
+                screener={
+                  shownScreener.status === "read"
+                    ? { on: shownScreener.screener.on, waiting: shownScreener.screener.senders.length }
+                    : shownScreener.status === "failed"
+                      ? { on: true, waiting: 0 }
+                      : undefined
+                }
                 onLabelCreated={() => setRelabelled((current) => current + 1)}
                 onSignedOut={onSignedOut}
               />

@@ -18,6 +18,9 @@ export const approvalChanges = new Set<Change["type"]>(["approvalAsked", "approv
 /** The changes that alter what a mailbox's threads show: mail in or out, read state, labels and erasure. */
 export const mailChanges = new Set<Change["type"]>(["messageReceived", "messageSent", "threadRead", "threadUnread", "threadLabelsChanged", "threadErased"]);
 
+/** The changes to a mailbox's Screener: its decisions on senders, and switching it. */
+export const screenerChanges = new Set<Change["type"]>(["senderScreened", "screenedSenderRemoved", "screenerSwitched"]);
+
 /** The changes to a mailbox's own labels. */
 export const labelChanges = new Set<Change["type"]>(["labelCreated", "labelRenamed", "labelDeleted"]);
 
