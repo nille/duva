@@ -18,6 +18,7 @@ import PostalMime from "postal-mime";
 import { createDuvaClient, type DuvaClient } from "@duva/client";
 import { inject } from "vitest";
 import { createApi } from "../src/api.ts";
+import { createFeedback } from "../src/feedback.ts";
 import { createDownloads, downloadLinkLifetime as linkLifetime } from "../src/attachments.ts";
 import { createAuthorizer } from "../src/authorizer.ts";
 import type { Humans, SignInSender } from "../src/user-pool.ts";
@@ -38,7 +39,7 @@ import { postOneClick } from "../src/unsubscriber.ts";
 import { dynamodbLocal } from "./dynamodb-local.ts";
 import { gateway } from "./gateway.ts";
 import { managedLogin, managedLoginClientId } from "./managed-login.ts";
-import { type Bounce, type Envelope, memoryDns, type ReceiveOptions, sesIdentities, sesReceiving, sesSending, type StoredIdentity } from "./ses.ts";
+import { type Bounce, type Envelope, memoryDns, type PublishOptions, type ReceiveOptions, type SendingEvent, sesIdentities, sesReceiving, sesSending, type StoredIdentity } from "./ses.ts";
 import { tableStream } from "./streams.ts";
 import { recordedNova } from "./nova.ts";
 import { recordedTitan } from "./titan.ts";
@@ -134,6 +135,14 @@ export interface Duva {
   signInCodesFrom(): string;
   /** The raw messages SES accepted for sending, oldest first. Each API call returns once the sends it led to are done. */
   sent(): string[];
+  /**
+   * Has SES publish the event for the message it sent with the ID, as when a recipient's server
+   * bounces it, a recipient complains or SES rejects it, through Duva's configuration set and its
+   * topic, and waits until Duva has processed it. SES reports it `at` the time given, or now, and
+   * SNS delivers it `deliveries` times, once unless given. With `again`, SNS delivers the event
+   * last published for the message once more, as a late redelivery does.
+   */
+  sendingEvent(messageId: string, event: SendingEvent, options?: PublishOptions): Promise<void>;
   /** Lets the sender read the table's stream when sendsHeld, and waits until the sends it held are done. */
   releaseSends(): Promise<void>;
   /** The recipients SES delivered each message in sent() to, in the same order, Bcc recipients included. */
@@ -205,7 +214,7 @@ export async function startDuva({
   const dns = memoryDns();
   const identities = sesIdentities({ region, dns, verified: [domain], others: othersIdentities, configurationSet: "duva-sending" });
   const signInSender = memorySignInSender(domain, identities.verified);
-  const sending = sesSending({ region, verified: identities.verified, sandbox, answersLost: sesAnswersLost });
+  const sending = sesSending({ region, verified: identities.verified, sandbox, answersLost: sesAnswersLost, subscriber: createFeedback({ table }) });
   // SES invokes the inbound Lambda, which bounces through SES, so the two are tied once both exist.
   let inbound: (event: SESEvent) => Promise<void> = async () => {};
   const ses = sesReceiving({ verified: identities.verified, region, buckets: new Map([[mailBucketName, mailBucket]]), functions: new Map([[inboundFunction, (event) => inbound(event)]]) });
@@ -314,6 +323,10 @@ export async function startDuva({
     signInCodesFrom: () => signInSender.from,
     sent: () => sending.sent(),
     sentTo: () => sending.sentTo(),
+    async sendingEvent(messageId, event, options) {
+      await sending.publish(messageId, event, options);
+      if (!indexingHeld) await index();
+    },
     releaseSends: () => stream.deliver(),
     releaseIndexing: index,
     stored: () => mailBucket.stored(),

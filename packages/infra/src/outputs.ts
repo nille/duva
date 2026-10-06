@@ -20,6 +20,8 @@ export const stackOutputs = {
   receiptRuleSet: "ReceiptRuleSet",
   inboundFailures: "InboundFailuresUrl",
   sendFailures: "SendFailuresUrl",
+  feedbackFunction: "FeedbackFunction",
+  feedbackFailures: "FeedbackFailuresUrl",
   downloadUrl: "DownloadUrl",
   downloadFunction: "DownloadFunction",
   unsubscriberFunction: "UnsubscriberFunction",

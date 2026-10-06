@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { ReceiptRule } from "@aws-sdk/client-ses";
-import type { SESEvent, SESReceiptStatus } from "aws-lambda";
+import type { SESEvent, SESReceiptStatus, SNSEvent } from "aws-lambda";
 import PostalMime from "postal-mime";
 import type { Dns, RecordType } from "../src/dns-records.ts";
 import type { EmailIdentities } from "../src/identities.ts";
@@ -239,15 +239,52 @@ function matches(rule: ReceiptRule, recipient: string): boolean {
 }
 
 /**
+ * What SES reports about a message it sent, after accepting it: a bounce from a recipient's server,
+ * a complaint from a recipient, or a reject, when SES doesn't send it after all. A bounce or
+ * complaint concerns the recipients given, or all of the message's.
+ */
+export type SendingEvent =
+  | { type: "Bounce"; bounceType: "Permanent" | "Transient" | "Undetermined"; bounceSubType?: string; recipients?: string[] }
+  | { type: "Complaint"; complaintFeedbackType?: string; recipients?: string[] }
+  | { type: "Reject"; reason?: string };
+
+/**
+ * How SES publishes an event: `at` the time, or now, and through SNS, which delivers it `deliveries`
+ * times. With `again`, SNS delivers the event last published for the message once more instead, as
+ * a late redelivery or a replay from the failure queue does.
+ */
+export interface PublishOptions {
+  at?: Date;
+  deliveries?: number;
+  again?: boolean;
+}
+
+/**
  * Stands in for SES sending in one region, recording each raw message it accepts as its recipients
  * get it, and the recipients it delivers it to: those the call's destination names, Bcc included,
  * which no header shows. Like SES, it gives each message an ID, answers with it, and replaces the message's
  * Message-ID with <ID@region.amazonses.com>. It sends only from a domain SES has verified, and in
  * the sandbox SES refuses a message to anyone not on one, with SES's reason. With `answersLost`,
- * SES accepts each message but its answer never arrives, as when the connection drops.
+ * SES accepts each message but its answer never arrives, as when the connection drops. Every send
+ * goes through Duva's configuration set, which publishes its bounces, complaints and rejects to
+ * an SNS topic that invokes `subscriber`.
  */
-export function sesSending({ region, verified, sandbox, answersLost }: { region: string; verified: (domain: string) => Promise<boolean>; sandbox: boolean; answersLost: boolean }) {
-  const accepted: { raw: string; recipients: string[] }[] = [];
+export function sesSending({
+  region,
+  verified,
+  sandbox,
+  answersLost,
+  subscriber,
+}: {
+  region: string;
+  verified: (domain: string) => Promise<boolean>;
+  sandbox: boolean;
+  answersLost: boolean;
+  subscriber: (event: SNSEvent) => Promise<void>;
+}) {
+  const accepted: { raw: string; recipients: string[]; messageId: string; source: string; timestamp: string }[] = [];
+  // The notification last published for each message, by the ID SES gave it.
+  const published = new Map<string, SNSEvent>();
   const outbound: Outbound = {
     async send(raw, destination) {
       const parsed = await PostalMime.parse(raw);
@@ -262,7 +299,13 @@ export function sesSending({ region, verified, sandbox, answersLost }: { region:
       const messageId = `0110019${randomUUID().replaceAll("-", "").slice(0, 9)}-${randomUUID()}-000000`;
       const [head = "", ...body] = new TextDecoder().decode(raw).split("\r\n\r\n");
       const fields = head.split(/\r\n(?![ \t])/).filter((field) => !/^message-id:/i.test(field));
-      accepted.push({ raw: [[...fields, `Message-ID: <${messageId}@${region}.amazonses.com>`].join("\r\n"), ...body].join("\r\n\r\n"), recipients });
+      accepted.push({
+        raw: [[...fields, `Message-ID: <${messageId}@${region}.amazonses.com>`].join("\r\n"), ...body].join("\r\n\r\n"),
+        recipients,
+        messageId,
+        source: from,
+        timestamp: new Date().toISOString(),
+      });
       if (answersLost) throw new Error("socket hang up");
       return messageId;
     },
@@ -273,6 +316,86 @@ export function sesSending({ region, verified, sandbox, answersLost }: { region:
     sent: () => accepted.map(({ raw }) => raw),
     /** The recipients SES delivered each message in sent() to, in the same order. */
     sentTo: () => accepted.map(({ recipients }) => [...recipients]),
+    /**
+     * Publishes the event for the message SES sent with the ID, as SES's event publishing writes it
+     * to the topic, and has SNS deliver it to the subscriber.
+     */
+    async publish(messageId: string, event: SendingEvent, { at = new Date(), deliveries = 1, again = false }: PublishOptions = {}) {
+      const last = published.get(messageId);
+      if (again) {
+        if (last === undefined) throw new Error(`SES published no event for the message ${messageId}.`);
+        await subscriber(structuredClone(last));
+        return;
+      }
+      const message = accepted.find((each) => each.messageId === messageId);
+      if (message === undefined) throw new Error(`SES sent no message with the ID ${messageId}.`);
+      const timestamp = at.toISOString();
+      const concerned = (given: string[] | undefined) => given ?? message.recipients;
+      const feedbackId = `0110019${randomUUID().replaceAll("-", "").slice(0, 9)}-${randomUUID()}-000000`;
+      const details =
+        event.type === "Bounce"
+          ? {
+              bounce: {
+                bounceType: event.bounceType,
+                bounceSubType: event.bounceSubType ?? (event.bounceType === "Undetermined" ? "Undetermined" : "General"),
+                bouncedRecipients: concerned(event.recipients).map((emailAddress) =>
+                  event.bounceType === "Permanent"
+                    ? { emailAddress, action: "failed", status: "5.1.1", diagnosticCode: "smtp; 550 5.1.1 user unknown" }
+                    : { emailAddress },
+                ),
+                timestamp,
+                feedbackId,
+                reportingMTA: "dsn; mx.example.net",
+              },
+            }
+          : event.type === "Complaint"
+            ? {
+                complaint: {
+                  complainedRecipients: concerned(event.recipients).map((emailAddress) => ({ emailAddress })),
+                  timestamp,
+                  feedbackId,
+                  ...(event.complaintFeedbackType !== undefined && { complaintFeedbackType: event.complaintFeedbackType }),
+                },
+              }
+            : { reject: { reason: event.reason ?? "Bad content" } };
+      const sesEvent = {
+        eventType: event.type,
+        mail: {
+          timestamp: event.type === "Reject" ? timestamp : message.timestamp,
+          source: message.source,
+          sendingAccountId: "123456789012",
+          messageId,
+          destination: [...message.recipients],
+          headersTruncated: false,
+          tags: { "ses:configuration-set": ["duva-sending"] },
+        },
+        ...details,
+      };
+      const notification: SNSEvent = {
+        Records: [
+          {
+            EventSource: "aws:sns",
+            EventVersion: "1.0",
+            EventSubscriptionArn: `arn:aws:sns:${region}:123456789012:duva-feedback:${randomUUID()}`,
+            Sns: {
+              Type: "Notification",
+              MessageId: randomUUID(),
+              TopicArn: `arn:aws:sns:${region}:123456789012:duva-feedback`,
+              Subject: "",
+              Message: JSON.stringify(sesEvent),
+              Timestamp: new Date().toISOString(),
+              SignatureVersion: "1",
+              Signature: "",
+              SigningCertUrl: "",
+              UnsubscribeUrl: "",
+              MessageAttributes: {},
+            },
+          },
+        ],
+      };
+      published.set(messageId, notification);
+      for (let delivery = 0; delivery < deliveries; delivery++) await subscriber(structuredClone(notification));
+    },
   };
 }
 

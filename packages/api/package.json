@@ -15,6 +15,7 @@
     "./search-lambda": "./src/search-lambda.ts",
     "./indexer-lambda": "./src/indexer-lambda.ts",
     "./feeder-lambda": "./src/feeder-lambda.ts",
+    "./feedback-lambda": "./src/feedback-lambda.ts",
     "./infrastructure": "./src/infrastructure.ts",
     "./dns-records": "./src/dns-records.ts",
     "./indexing": "./src/indexing.ts",

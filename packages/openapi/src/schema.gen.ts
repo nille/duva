@@ -1493,7 +1493,7 @@ export interface components {
             position: number;
         };
         /** @description A change in a mailbox. */
-        MailboxChange: components["schemas"]["MessageReceived"] | components["schemas"]["DraftWritten"] | components["schemas"]["DraftChanged"] | components["schemas"]["DraftDeleted"] | components["schemas"]["SendAsked"] | components["schemas"]["ApprovalAsked"] | components["schemas"]["ApprovalWithdrawn"] | components["schemas"]["ApprovalDecided"] | components["schemas"]["MessageSent"] | components["schemas"]["SendFailed"] | components["schemas"]["SendUnclear"] | components["schemas"]["ThreadRead"] | components["schemas"]["ThreadUnread"] | components["schemas"]["ThreadLabelsChanged"] | components["schemas"]["LabelCreated"] | components["schemas"]["LabelRenamed"] | components["schemas"]["LabelDeleted"] | components["schemas"]["ThreadErased"] | components["schemas"]["AgentSettingsChanged"] | components["schemas"]["AgentPaused"] | components["schemas"]["AgentUnpaused"] | components["schemas"]["SenderScreened"] | components["schemas"]["ScreenerSwitched"] | components["schemas"]["ScreenedSenderRemoved"] | components["schemas"]["UnsubscribeAttempted"];
+        MailboxChange: components["schemas"]["MessageReceived"] | components["schemas"]["DraftWritten"] | components["schemas"]["DraftChanged"] | components["schemas"]["DraftDeleted"] | components["schemas"]["SendAsked"] | components["schemas"]["ApprovalAsked"] | components["schemas"]["ApprovalWithdrawn"] | components["schemas"]["ApprovalDecided"] | components["schemas"]["MessageSent"] | components["schemas"]["SendFailed"] | components["schemas"]["SendUnclear"] | components["schemas"]["FeedbackReceived"] | components["schemas"]["ThreadRead"] | components["schemas"]["ThreadUnread"] | components["schemas"]["ThreadLabelsChanged"] | components["schemas"]["LabelCreated"] | components["schemas"]["LabelRenamed"] | components["schemas"]["LabelDeleted"] | components["schemas"]["ThreadErased"] | components["schemas"]["AgentSettingsChanged"] | components["schemas"]["AgentPaused"] | components["schemas"]["AgentUnpaused"] | components["schemas"]["SenderScreened"] | components["schemas"]["ScreenerSwitched"] | components["schemas"]["ScreenedSenderRemoved"] | components["schemas"]["UnsubscribeAttempted"];
         /** @description Mail arrived. No actor made this change, so it names none. */
         MessageReceived: {
             /** @description The change's position in the mailbox's feed, counting from 1. */
@@ -1663,6 +1663,50 @@ export interface components {
              * @enum {string}
              */
             type: "sendUnclear";
+        };
+        /** @description SES reported a bounce, a complaint or a reject for a message sent from the mailbox. No actor made this change, so it names none. */
+        FeedbackReceived: {
+            /** @description The change's position in the mailbox's feed, counting from 1. */
+            position: number;
+            /**
+             * Format: date-time
+             * @description When Duva recorded it.
+             */
+            at: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "feedbackReceived";
+            /** @description The ID of the draft the message was sent from. */
+            draft: string;
+            /** @description The ID of the thread the message is in. */
+            thread: string;
+            /** @description The sent message's ID. */
+            message: string;
+            feedback: components["schemas"]["SendFeedback"];
+        };
+        /** @description What SES reported about a sent message after accepting it. A hard bounce means the address doesn't take mail, and a soft bounce that it didn't for now. One complaint about an agent's mail, or 5 hard bounces of its mail within an hour, each recipient counting, pause the agent (ADR-0021). */
+        SendFeedback: {
+            /**
+             * @description hardBounce or softBounce from a recipient's mail server; complaint, when a recipient marked it as spam; or reject, when SES didn't send it after all, as for a virus.
+             * @enum {string}
+             */
+            kind: "hardBounce" | "softBounce" | "complaint" | "reject";
+            /**
+             * Format: date-time
+             * @description When SES says it happened.
+             */
+            at: string;
+            /** @description The recipients it concerns. A reject concerns them all. */
+            recipients: string[];
+            /**
+             * @description SES's reason, if it gives one, as the bounce's subtype, the complaint's type or the reject's reason.
+             * @example NoEmail
+             * @example abuse
+             * @example Bad content
+             */
+            reason?: string;
         };
         ThreadRead: components["schemas"]["ChangeBase"] & {
             /** @constant */
@@ -2092,6 +2136,8 @@ export interface components {
              * @example <011001a10373c801-a8e8167e-887a-40a0-a0f7-62c78ecf7270-000000@eu-north-1.amazonses.com>
              */
             messageId?: string;
+            /** @description What SES reported about the sent message since, oldest first, if it reported anything. */
+            feedback?: components["schemas"]["SendFeedback"][];
         };
         DraftList: {
             drafts: components["schemas"]["Draft"][];
@@ -2311,6 +2357,8 @@ export interface components {
             sentAs?: components["schemas"]["SentAsGroup"];
             /** @description Who approved the message before it was sent, if an agent sent it. */
             approval?: components["schemas"]["SentApproval"];
+            /** @description What SES reported about a message sent from the mailbox, oldest first, if it reported anything. */
+            feedback?: components["schemas"]["SendFeedback"][];
             /** @description The plain-text body. Mail with only HTML is turned into text. */
             text: string;
             /** @description The HTML body, if the message has one, made safe to show: no scripts, event handlers, forms, frames, objects or `javascript:` links, and known trackers removed. Its references to the message's own parts (`cid:`) lead to download links, which work for a few minutes. */

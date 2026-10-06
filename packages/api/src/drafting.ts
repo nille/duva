@@ -11,7 +11,7 @@ import { GetCommand, QueryCommand, TransactWriteCommand, UpdateCommand } from "@
 import type { components } from "@duva/openapi";
 import type { Table } from "./deployment.ts";
 import { entryKey, recordChanges } from "./feed.ts";
-import { type StoredMessage, storeSentMessage } from "./mail.ts";
+import { type SendFeedback, type StoredMessage, storeSentMessage } from "./mail.ts";
 import { sponsorAccessAllows } from "./access.ts";
 import {
   type Actor,
@@ -580,7 +580,7 @@ const draftOf = ({ id, answers, forwards, thread, from, to, cc = [], bcc = [], s
   ...(send !== undefined && { send: sendOf(send) }),
 });
 
-const sendOf = ({ approval, state, note, reason, thread, message, messageId }: SendStatus): SendStatus => ({
+const sendOf = ({ approval, state, note, reason, thread, message, messageId, feedback }: SendStatus): SendStatus => ({
   ...(approval !== undefined && { approval }),
   state,
   ...(note !== undefined && { note }),
@@ -588,6 +588,7 @@ const sendOf = ({ approval, state, note, reason, thread, message, messageId }: S
   ...(thread !== undefined && { thread }),
   ...(message !== undefined && { message }),
   ...(messageId !== undefined && { messageId }),
+  ...(feedback !== undefined && { feedback }),
 });
 
 /** Where in the table a draft is, from the keys of its item, or undefined if they are another item's. */
@@ -707,28 +708,84 @@ export interface Sending {
   by: string;
 }
 
+/** A message the sender sent, by the ID SES gave it, so what SES reports about it finds it. */
+export interface SentBySes {
+  mailbox: string;
+  draft: string;
+  message: string;
+  /** The actor whose send it was: the agent for an agent's draft. */
+  by: string;
+}
+
+// What SES reports about a message it sent is in a partition of its own, by the ID SES gave it.
+export const sesMessagePartition = (sesMessageId: string) => `ses-message#${sesMessageId}`;
+const sentBySesKey = (sesMessageId: string) => ({ [pk]: sesMessagePartition(sesMessageId), [sk]: "sent" });
+
+/** The message SES sent with the ID, as the sender recorded it, or undefined if the sender didn't send it. */
+export async function sentBySes(table: Table, sesMessageId: string): Promise<SentBySes | undefined> {
+  const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: sentBySesKey(sesMessageId), ConsistentRead: true }));
+  return Item === undefined ? undefined : { mailbox: Item.mailbox, draft: Item.draft, message: Item.message, by: Item.by };
+}
+
 /**
- * Marks the draft sent as the message, which SES accepted and gave the Message-ID its recipients
- * see, and stores the message in the draft's thread, or in a new one if it isn't a reply, where
- * that Message-ID points at it, naming the approval it went out with, if it needed one. A human's
- * send from their own mailbox needs none. Returns false if the draft was no longer sending it.
+ * Marks the draft sent as the message, which SES accepted with the ID `sesMessageId` and gave the
+ * Message-ID its recipients see, and stores the message in the draft's thread, or in a new one if
+ * it isn't a reply, where that Message-ID points at it, naming the approval it went out with, if it
+ * needed one. A human's send from their own mailbox needs none. Returns false if the draft was no
+ * longer sending it.
  */
 export function markSent(
   table: Table,
   sending: Sending,
   {
     thread,
+    sesMessageId,
     messageId,
     stored,
     text,
     approval,
-  }: { thread: string | undefined; messageId: string; stored: Omit<StoredMessage, "id" | "messageId" | "sentBy" | "approval">; text: string; approval: Approval | undefined },
+  }: {
+    thread: string | undefined;
+    sesMessageId: string;
+    messageId: string;
+    stored: Omit<StoredMessage, "id" | "messageId" | "sentBy" | "approval">;
+    text: string;
+    approval: Approval | undefined;
+  },
 ): Promise<boolean> {
   const { mailbox, draft, message, by } = sending;
   const once = (sentThread: string) => sendingSettles(table, sending, { ...outcomeOf(sending, "sent"), thread: sentThread, message, messageId });
   // The sender sends only drafts whose approval was decided, so it has a time.
   const approved = approval && { id: approval.id, approver: approval.approver, approvedAt: approval.decidedAt!, ...(approval.edits !== undefined && { edits: approval.edits }) };
-  return storeSentMessage(table, { mailbox, message: { ...stored, id: message, messageId, sentBy: by, ...(approved !== undefined && { approval: approved }) }, text, thread, draft, once });
+  const sentBy: SentBySes = { mailbox, draft, message, by };
+  return storeSentMessage(table, {
+    mailbox,
+    message: { ...stored, id: message, messageId, sentBy: by, ...(approved !== undefined && { approval: approved }) },
+    text,
+    thread,
+    draft,
+    once,
+    also: [{ Put: { TableName: table.name, Item: { ...sentBySesKey(sesMessageId), ...sentBy } } }],
+  });
+}
+
+/**
+ * The write that adds what SES reported to the send of the draft, if it is still the draft that
+ * sent the message, or undefined if it isn't, as when it was deleted.
+ */
+export async function feedbackOnSend(table: Table, { mailbox, draft, message }: SentBySes, feedback: SendFeedback): Promise<TransactItem | undefined> {
+  const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: draftKey(mailbox, draft), ConsistentRead: true }));
+  if ((Item as StoredDraft | undefined)?.send?.message !== message) return undefined;
+  return {
+    Update: {
+      TableName: table.name,
+      Key: draftKey(mailbox, draft),
+      UpdateExpression: "SET #send.feedback = list_append(if_not_exists(#send.feedback, :none), :feedback), version = version + :one",
+      ConditionExpression: "#send.message = :message",
+      ExpressionAttributeNames: { "#send": "send" },
+      ExpressionAttributeValues: { ":none": [], ":feedback": [feedback], ":one": 1, ":message": message },
+    },
+  };
 }
 
 /** Marks the draft failed with SES's reason, which those who read the mailbox see. Returns false if it was no longer sending. */

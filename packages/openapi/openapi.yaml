@@ -2913,6 +2913,7 @@ components:
         - $ref: "#/components/schemas/MessageSent"
         - $ref: "#/components/schemas/SendFailed"
         - $ref: "#/components/schemas/SendUnclear"
+        - $ref: "#/components/schemas/FeedbackReceived"
         - $ref: "#/components/schemas/ThreadRead"
         - $ref: "#/components/schemas/ThreadUnread"
         - $ref: "#/components/schemas/ThreadLabelsChanged"
@@ -2941,6 +2942,7 @@ components:
           messageSent: "#/components/schemas/MessageSent"
           sendFailed: "#/components/schemas/SendFailed"
           sendUnclear: "#/components/schemas/SendUnclear"
+          feedbackReceived: "#/components/schemas/FeedbackReceived"
           threadRead: "#/components/schemas/ThreadRead"
           threadUnread: "#/components/schemas/ThreadUnread"
           threadLabelsChanged: "#/components/schemas/ThreadLabelsChanged"
@@ -3152,6 +3154,64 @@ components:
             approval:
               type: string
               description: The ID of the approval that let it go, if it needed one.
+    FeedbackReceived:
+      type: object
+      additionalProperties: false
+      required: [position, at, type, draft, thread, message, feedback]
+      description: >
+        SES reported a bounce, a complaint or a reject for a message sent from the mailbox. No
+        actor made this change, so it names none.
+      properties:
+        position:
+          type: integer
+          description: The change's position in the mailbox's feed, counting from 1.
+        at:
+          type: string
+          format: date-time
+          description: When Duva recorded it.
+        type:
+          type: string
+          const: feedbackReceived
+        draft:
+          type: string
+          description: The ID of the draft the message was sent from.
+        thread:
+          type: string
+          description: The ID of the thread the message is in.
+        message:
+          type: string
+          description: The sent message's ID.
+        feedback:
+          $ref: "#/components/schemas/SendFeedback"
+    SendFeedback:
+      type: object
+      additionalProperties: false
+      required: [kind, at, recipients]
+      description: >
+        What SES reported about a sent message after accepting it. A hard bounce means the address
+        doesn't take mail, and a soft bounce that it didn't for now. One complaint about an agent's
+        mail, or 5 hard bounces of its mail within an hour, each recipient counting, pause the
+        agent (ADR-0021).
+      properties:
+        kind:
+          type: string
+          enum: [hardBounce, softBounce, complaint, reject]
+          description: >
+            hardBounce or softBounce from a recipient's mail server; complaint, when a recipient
+            marked it as spam; or reject, when SES didn't send it after all, as for a virus.
+        at:
+          type: string
+          format: date-time
+          description: When SES says it happened.
+        recipients:
+          type: array
+          items:
+            type: string
+          description: The recipients it concerns. A reject concerns them all.
+        reason:
+          type: string
+          description: SES's reason, if it gives one, as the bounce's subtype, the complaint's type or the reject's reason.
+          examples: ["NoEmail", "abuse", "Bad content"]
     ThreadRead:
       allOf:
         - $ref: "#/components/schemas/ChangeBase"
@@ -3741,6 +3801,11 @@ components:
           type: string
           description: The Message-ID header the recipients see, which SES gave the message, once sent.
           examples: ["<011001a10373c801-a8e8167e-887a-40a0-a0f7-62c78ecf7270-000000@eu-north-1.amazonses.com>"]
+        feedback:
+          type: array
+          items:
+            $ref: "#/components/schemas/SendFeedback"
+          description: What SES reported about the sent message since, oldest first, if it reported anything.
     DraftList:
       type: object
       additionalProperties: false
@@ -4099,6 +4164,11 @@ components:
         approval:
           $ref: "#/components/schemas/SentApproval"
           description: Who approved the message before it was sent, if an agent sent it.
+        feedback:
+          type: array
+          items:
+            $ref: "#/components/schemas/SendFeedback"
+          description: What SES reported about a message sent from the mailbox, oldest first, if it reported anything.
         text:
           type: string
           description: The plain-text body. Mail with only HTML is turned into text.

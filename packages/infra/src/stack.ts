@@ -25,7 +25,9 @@ import { DynamoEventSource, SqsDlq, SqsEventSource } from "aws-cdk-lib/aws-lambd
 import { NodejsFunction, OutputFormat } from "aws-cdk-lib/aws-lambda-nodejs";
 import { LogGroup, RetentionDays } from "aws-cdk-lib/aws-logs";
 import { BlockPublicAccess, Bucket, BucketEncryption } from "aws-cdk-lib/aws-s3";
-import { ConfigurationSet, EmailIdentity, Identity, ReceiptRuleSet } from "aws-cdk-lib/aws-ses";
+import { ConfigurationSet, EmailIdentity, EmailSendingEvent, EventDestination, Identity, ReceiptRuleSet } from "aws-cdk-lib/aws-ses";
+import { Topic } from "aws-cdk-lib/aws-sns";
+import { LambdaSubscription } from "aws-cdk-lib/aws-sns-subscriptions";
 import { Queue, QueueEncryption } from "aws-cdk-lib/aws-sqs";
 import type { Construct } from "constructs";
 import {
@@ -88,9 +90,16 @@ export class DuvaStack extends Stack {
       ),
     });
 
-    // Every send goes through this configuration set. It publishes no events and turns off
-    // engagement metrics, so SES tracks no opens or clicks.
+    // Every send goes through this configuration set. It turns off engagement metrics, so SES
+    // tracks no opens or clicks, and publishes only bounces, complaints and rejects, which the
+    // feedback Lambda reads.
     const sending = new ConfigurationSet(this, "Sending", { vdmOptions: { engagementMetrics: false } });
+    // Only SES may publish to the topic, for this configuration set, as CDK's event destination allows.
+    const feedbackTopic = new Topic(this, "Feedback", { enforceSSL: true });
+    sending.addEventDestination("FeedbackEvents", {
+      destination: EventDestination.snsTopic(feedbackTopic),
+      events: [EmailSendingEvent.BOUNCE, EmailSendingEvent.COMPLAINT, EmailSendingEvent.REJECT],
+    });
     // Every SES identity in this account and region, which admins' domains are, and the configuration set.
     const identities = this.formatArn({ service: "ses", resource: "identity", resourceName: "*" });
     const configurationSet = this.formatArn({ service: "ses", resource: "configuration-set", resourceName: sending.configurationSetName });
@@ -501,6 +510,18 @@ export class DuvaStack extends Stack {
     // ses:SendRawEmail (see docs/aws.md).
     sender.addToRolePolicy(new PolicyStatement({ actions: ["ses:SendEmail", "ses:SendRawEmail"], resources: [identities, configurationSet] }));
 
+    // SNS invokes the feedback Lambda, without waiting, with each event SES publishes, and only SNS
+    // may, for this topic. Lambda retries a failed event twice, then leaves it in the failure queue.
+    const feedbackFailures = new Queue(this, "FeedbackFailures", {
+      encryption: QueueEncryption.SQS_MANAGED,
+      enforceSSL: true,
+      retentionPeriod: Duration.days(14),
+    });
+    const feedback = lambda("FeedbackHandler", "@duva/api/feedback-lambda", { [environmentVariables.tableName]: table.tableName });
+    feedback.configureAsyncInvoke({ retryAttempts: 2, onFailure: new SqsDestination(feedbackFailures) });
+    feedbackTopic.addSubscription(new LambdaSubscription(feedback));
+    table.grantReadWriteData(feedback);
+
     const authorizerHandler = lambda("AuthorizerHandler", "@duva/api/authorizer-lambda", {
       [environmentVariables.tableName]: table.tableName,
       [environmentVariables.userPoolId]: humans.userPoolId,
@@ -558,6 +579,8 @@ export class DuvaStack extends Stack {
     new CfnOutput(this, stackOutputs.setupFunction, { value: setup.functionName, description: "The function that sets up the organization" });
     new CfnOutput(this, stackOutputs.receiptRuleSet, { value: receiving.receiptRuleSetName, description: "Duva's receipt rule set" });
     new CfnOutput(this, stackOutputs.sendFailures, { value: sendFailures.queueUrl, description: "The queue of approved sends that failed processing" });
+    new CfnOutput(this, stackOutputs.feedbackFunction, { value: feedback.functionName, description: "The function SNS invokes with SES's bounces, complaints and rejects" });
+    new CfnOutput(this, stackOutputs.feedbackFailures, { value: feedbackFailures.queueUrl, description: "The queue of SES's events that failed processing" });
     new CfnOutput(this, stackOutputs.downloadUrl, { value: downloadUrl, description: "Where download links lead, on the web app's domain" });
     new CfnOutput(this, stackOutputs.downloadFunction, { value: download.functionName, description: "The function download links invoke through CloudFront" });
     new CfnOutput(this, stackOutputs.unsubscriberFunction, { value: unsubscriber.functionName, description: "The function that sends one-click unsubscribes" });

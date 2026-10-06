@@ -48,8 +48,13 @@ const payPerUse = new Set([
   "AWS::S3::Bucket",
   "AWS::S3::BucketPolicy",
   "AWS::SES::ConfigurationSet",
+  // Publishing events costs nothing beyond SNS's per-message price, and Lambda's for the invocations.
+  "AWS::SES::ConfigurationSetEventDestination",
   "AWS::SES::EmailIdentity",
   "AWS::SES::ReceiptRuleSet",
+  "AWS::SNS::Subscription",
+  "AWS::SNS::Topic",
+  "AWS::SNS::TopicPolicy",
   "AWS::SQS::Queue",
   "AWS::SQS::QueuePolicy",
 ]);
@@ -488,10 +493,68 @@ test("every send goes through a configuration set with no open or click tracking
   const [[id, { Properties }]] = sets as [[string, Resource]];
   expect(Properties?.TrackingOptions).toBeUndefined();
   expect(Properties?.VdmOptions?.DashboardOptions).toEqual({ EngagementMetrics: "DISABLED" });
-  expect(ofType("AWS::SES::ConfigurationSetEventDestination")).toEqual([]);
   for (const [, identity] of ofType("AWS::SES::EmailIdentity")) {
     expect(identity.Properties?.ConfigurationSetAttributes).toEqual({ ConfigurationSetName: { Ref: id } });
   }
+});
+
+const [[feedbackTopicId]] = ofType("AWS::SNS::Topic") as [[string, Resource]];
+
+test("the configuration set publishes only bounces, complaints and rejects, to the feedback topic", () => {
+  const [[setId]] = ofType("AWS::SES::ConfigurationSet") as [[string, Resource]];
+  const destinations = ofType("AWS::SES::ConfigurationSetEventDestination").map(([, { Properties }]) => Properties);
+  expect(destinations).toEqual([
+    {
+      ConfigurationSetName: { Ref: setId },
+      EventDestination: expect.objectContaining({ Enabled: true, MatchingEventTypes: ["bounce", "complaint", "reject"], SnsDestination: { TopicARN: { Ref: feedbackTopicId } } }),
+    },
+  ]);
+  expect(destinations[0]?.EventDestination).not.toHaveProperty("CloudWatchDestination");
+});
+
+test("only SES may publish to the feedback topic, for Duva's configuration set in this account", () => {
+  const [[setId]] = ofType("AWS::SES::ConfigurationSet") as [[string, Resource]];
+  const allowed = ofType("AWS::SNS::TopicPolicy")
+    .filter(([, { Properties }]) => JSON.stringify(Properties?.Topics) === JSON.stringify([{ Ref: feedbackTopicId }]))
+    .flatMap(([, { Properties }]) => Properties?.PolicyDocument?.Statement ?? [])
+    .filter(({ Effect }: { Effect: string }) => Effect === "Allow");
+  expect(allowed).toEqual([
+    expect.objectContaining({
+      Action: "sns:Publish",
+      Principal: { Service: "ses.amazonaws.com" },
+      Condition: { StringEquals: { "AWS:SourceAccount": { Ref: "AWS::AccountId" }, "AWS:SourceArn": expect.anything() } },
+    }),
+  ]);
+  expect(JSON.stringify(allowed[0].Condition.StringEquals["AWS:SourceArn"])).toContain(`:configuration-set/",{"Ref":"${setId}"}`);
+});
+
+test("SNS may invoke the feedback Lambda, only for the feedback topic, which it subscribes to", () => {
+  const [feedbackId] = lambda("FeedbackHandler");
+  const permissions = ofType("AWS::Lambda::Permission").filter(([, { Properties }]) => JSON.stringify(Properties?.FunctionName).includes(`"${feedbackId}"`));
+  expect(permissions.map(([, { Properties }]) => Properties)).toEqual([
+    expect.objectContaining({ Action: "lambda:InvokeFunction", Principal: "sns.amazonaws.com", SourceArn: { Ref: feedbackTopicId } }),
+  ]);
+  const subscriptions = ofType("AWS::SNS::Subscription").map(([, { Properties }]) => Properties);
+  expect(subscriptions).toEqual([expect.objectContaining({ Protocol: "lambda", TopicArn: { Ref: feedbackTopicId }, Endpoint: { "Fn::GetAtt": [feedbackId, "Arn"] } })]);
+  for (const type of ["AWS::Lambda::Url", "AWS::Lambda::EventSourceMapping", "AWS::Events::Rule"]) expect({ type, naming: naming(type, feedbackId) }).toEqual({ type, naming: [] });
+});
+
+test("the feedback Lambda retries a failed event, then leaves it in a queue for replay", () => {
+  const [feedbackId] = lambda("FeedbackHandler");
+  const configs = ofType("AWS::Lambda::EventInvokeConfig").filter(([, { Properties }]) => Properties?.FunctionName?.Ref === feedbackId);
+  expect(configs).toHaveLength(1);
+  const [[, { Properties: config }]] = configs as [[string, Resource]];
+  expect(config?.MaximumRetryAttempts).toBe(2);
+  const queue = stack.template.Resources[config?.DestinationConfig?.OnFailure?.Destination?.["Fn::GetAtt"]?.[0]];
+  expect(queue?.Type).toBe("AWS::SQS::Queue");
+  expect(queue?.Properties?.MessageRetentionPeriod).toBe(14 * 24 * 3600);
+});
+
+test("the feedback Lambda writes the table, and may touch nothing else", () => {
+  expect(tableActions("FeedbackHandler")).toEqual(expect.arrayContaining(["dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:Query"]));
+  const services = new Set(statements("FeedbackHandler").flatMap(({ Action }) => [Action].flat()).map((action) => action.split(":")[0]));
+  // Lambda's own role may send a failed event to the failure queue.
+  expect(services).toEqual(new Set(["dynamodb", "sqs"]));
 });
 
 test("receiving starts with an empty rule set, so SES refuses all mail until the first address exists", () => {

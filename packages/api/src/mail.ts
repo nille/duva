@@ -20,6 +20,7 @@ export type Thread = components["schemas"]["Thread"];
 export type Message = components["schemas"]["Message"];
 export type MailboxChange = components["schemas"]["MailboxChange"];
 export type MailboxChangePage = components["schemas"]["MailboxChangePage"];
+export type SendFeedback = components["schemas"]["SendFeedback"];
 export type { StoredMessage };
 
 /** The label new mail gets. */
@@ -150,6 +151,8 @@ interface StoredMessage {
   sentAs?: components["schemas"]["SentAsGroup"];
   /** The approval an agent's message went out with. */
   approval?: components["schemas"]["SentApproval"];
+  /** What SES reported about a message sent from the mailbox, oldest first. */
+  feedback?: SendFeedback[];
   /** Where the raw message is in the mail bucket. */
   rawKey: string;
 }
@@ -210,8 +213,9 @@ export async function receiveMessage(table: Table, arrival: Arrival): Promise<bo
  * Stores the message the actor `sentBy` sent from the mailbox, which SES accepted, in the thread
  * of the message it answers, whose read state it keeps, or as a new read thread without labels.
  * Either way Sent lists the thread. `once` gives the write that marks
- * the draft sent in the thread, on condition that it is still sending, so the message is stored once. Records the
- * send in the mailbox's change feed, naming the sender. Returns false if `once`'s condition failed.
+ * the draft sent in the thread, on condition that it is still sending, so the message is stored once, and `also`
+ * any other writes that go with it. Records the send in the mailbox's change feed, naming the sender.
+ * Returns false if `once`'s condition failed.
  */
 export async function storeSentMessage(
   table: Table,
@@ -222,7 +226,8 @@ export async function storeSentMessage(
     thread,
     draft,
     once,
-  }: { mailbox: string; message: StoredMessage & { sentBy: string }; text: string; thread: string | undefined; draft: string; once: (thread: string) => TransactItem },
+    also,
+  }: { mailbox: string; message: StoredMessage & { sentBy: string }; text: string; thread: string | undefined; draft: string; once: (thread: string) => TransactItem; also: TransactItem[] },
 ): Promise<boolean> {
   // SES accepted the message, so the mailbox has sent to its recipients whether or not it is stored.
   const recipients = new Set([...message.to, ...message.cc, ...(message.bcc ?? [])].map(({ address }) => address.toLowerCase()));
@@ -237,6 +242,7 @@ export async function storeSentMessage(
     by: message.sentBy,
     change: (id) => ({ type: "messageSent", draft, thread: id, message: message.id }),
     once,
+    also,
   });
 }
 
@@ -276,12 +282,13 @@ export async function sentFromMailbox(table: Table, mailbox: string, messageId: 
  * the checks, and the change in the mailbox's change feed. If `findable`, its Message-ID points at
  * it, so replies to it join its thread. If `unread` is given, the thread becomes unread or read. If
  * `sent`, Sent lists the thread from then on. If `trashedByBlock`, a new thread is marked as put in
- * Trash by a block. If the message is the thread's newest, its text gives the thread's snippet. Returns false if that write's condition failed, since then the
+ * Trash by a block. If the message is the thread's newest, its text gives the thread's snippet. `also`
+ * gives unconditional writes that go with it. Returns false if that write's condition failed, since then the
  * message is already stored, and throws ScreeningChanged if a check's did.
  */
 async function storeMessage(
   table: Table,
-  { mailbox, message, text, thread: find, label: labelFor, unread, findable, sent, by, change, once, checks = [], trashedByBlock }: {
+  { mailbox, message, text, thread: find, label: labelFor, unread, findable, sent, by, change, once, also = [], checks = [], trashedByBlock }: {
     mailbox: string;
     message: StoredMessage;
     text: string;
@@ -293,6 +300,7 @@ async function storeMessage(
     by: string | undefined;
     change: (thread: string, joined: boolean) => object;
     once: (thread: string) => TransactItem;
+    also?: TransactItem[];
     checks?: TransactItem[];
     trashedByBlock?: boolean;
   },
@@ -339,6 +347,7 @@ async function storeMessage(
       ...labelledWrites(table, mailbox, joined, summary),
       ...(message.messageId === undefined || !findable ? [] : [put({ ...messageIdKey(mailbox, message.messageId), thread, message: id })]),
       put({ ...messageRefKey(mailbox, id), thread, receivedAt }),
+      ...also,
       ...checks,
     ];
     try {
@@ -757,7 +766,7 @@ async function readMessage(mailBucket: MailBucket, stored: StoredMessage, linkTo
   const parsed = await parseMail(raw);
   const { text, attachments } = parsed;
   const html = parsed.html === undefined || linkTo === undefined ? undefined : await servedHtml(parsed.html, parsed.parts, (attachment) => linkTo(stored.id, attachment));
-  const { id, messageId, from, to, cc, bcc, recipient, plusTag, group, subject, date, receivedAt, sentBy, sentAs, approval } = stored;
+  const { id, messageId, from, to, cc, bcc, recipient, plusTag, group, subject, date, receivedAt, sentBy, sentAs, approval, feedback } = stored;
   const message = {
     id,
     messageId,
@@ -774,11 +783,34 @@ async function readMessage(mailBucket: MailBucket, stored: StoredMessage, linkTo
     ...(sentBy !== undefined && { sentBy }),
     ...(sentAs !== undefined && { sentAs: { group: sentAs.group, by: sentAs.by, name: sentAs.name } }),
     ...(approval !== undefined && { approval }),
+    ...(feedback !== undefined && { feedback }),
     text,
     ...html,
     attachments,
   };
   return { message, parsed };
+}
+
+/**
+ * The write that adds what SES reported to the message sent from the mailbox, and the thread it
+ * is in, or undefined if the message is no longer there, as when it was erased.
+ */
+export async function feedbackOnMessage(table: Table, mailbox: string, message: string, feedback: SendFeedback): Promise<{ thread: string; item: TransactItem } | undefined> {
+  const { Item: ref } = await documents(table).send(new GetCommand({ TableName: table.name, Key: messageRefKey(mailbox, message), ConsistentRead: true }));
+  if (ref === undefined) return undefined;
+  const { thread, receivedAt } = ref as { thread: string; receivedAt: string };
+  return {
+    thread,
+    item: {
+      Update: {
+        TableName: table.name,
+        Key: messageKey(mailbox, thread, receivedAt, message),
+        UpdateExpression: "SET feedback = list_append(if_not_exists(feedback, :none), :feedback)",
+        ConditionExpression: `attribute_exists(${pk})`,
+        ExpressionAttributeValues: { ":none": [], ":feedback": [feedback] },
+      },
+    },
+  };
 }
 
 /** The HTML served, with a link to each of the message's parts its `cid:` URLs refer to. */

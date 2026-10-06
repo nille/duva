@@ -190,6 +190,7 @@ async function send({ table, mailBucket, outbound, region }: Sender, { mailbox, 
   const marked = await markSent(table, sending, {
     text,
     thread: draft.thread,
+    sesMessageId,
     messageId: `<${sesMessageId}@${region}.amazonses.com>`,
     stored: { from, to: draft.to, cc: draft.cc, bcc: draft.bcc, recipient: draft.from, subject: draft.subject, date: sentAt, receivedAt: sentAt, rawKey },
     approval,

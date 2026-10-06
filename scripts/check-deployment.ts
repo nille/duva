@@ -8,7 +8,9 @@
 // unsubscriber, which refuses addresses that aren't public; the web app is served with the config
 // deploy published; the user pool takes sign-in names in any case, sends its codes from a domain
 // SES has verified, and still offers emailed codes, and no pool the stack retired is left; once an address exists, SES's receipt rules list each address, and each domain with a catch-all, once; and no received mail and no
-// approved send waits in a failure queue; nothing but IAM may invoke search, which runs at 10,240 MB
+// approved send waits in a failure queue; Duva's configuration set publishes only bounces,
+// complaints and rejects, to a topic that only it may invoke the feedback Lambda for, and no event
+// of SES's waits in the feedback Lambda's failure queue; nothing but IAM may invoke search, which runs at 10,240 MB
 // on x64, and Nova Lite translates in the region; every mailbox's search index is backfilled, none has held
 // erased mail for more than a day, and no indexer task waits in its failure queue. Signing in stays
 // with a human. Then prints how many
@@ -19,7 +21,7 @@ import { CognitoIdentityProviderClient, DescribeUserPoolCommand, paginateListUse
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { GetFunctionConfigurationCommand, GetFunctionUrlConfigCommand, GetPolicyCommand, InvokeCommand, LambdaClient, ResourceNotFoundException } from "@aws-sdk/client-lambda";
 import { DescribeReceiptRuleSetCommand, SESClient } from "@aws-sdk/client-ses";
-import { GetEmailIdentityCommand, SESv2Client } from "@aws-sdk/client-sesv2";
+import { GetConfigurationSetEventDestinationsCommand, GetEmailIdentityCommand, SESv2Client } from "@aws-sdk/client-sesv2";
 import { GetQueueAttributesCommand, SQSClient } from "@aws-sdk/client-sqs";
 import { indexedMailboxes, uncompactedSince } from "@duva/api/indexing";
 import { dropMetric, dropReasons, inboundPrefix, receiptRuleNumber, recipientsPerRule, signInFrom } from "@duva/api/infrastructure";
@@ -294,6 +296,25 @@ await check("no received mail waits in the failure queue", async () => {
 await check("no approved send waits in the failure queue", async () => {
   const waiting = await waitingIn(stackOutputs.sendFailures);
   return waiting === 0 ? undefined : `${waiting} stream records failed. Fix what failed, then read them from the stream again within 24 hours of the decision.`;
+});
+await check("the configuration set publishes only bounces, complaints and rejects, to a topic, and only SNS may invoke the feedback Lambda, for that topic", async () => {
+  let configurationSet: string | undefined;
+  for await (const { StackResourceSummaries = [] } of paginateListStackResources({ client: cloudFormation }, { StackName: stackName })) {
+    configurationSet ??= StackResourceSummaries.find(({ ResourceType }) => ResourceType === "AWS::SES::ConfigurationSet")?.PhysicalResourceId;
+  }
+  const { EventDestinations = [] } = await new SESv2Client({ region }).send(new GetConfigurationSetEventDestinationsCommand({ ConfigurationSetName: configurationSet }));
+  const [destination, ...others] = EventDestinations;
+  const types = [...(destination?.MatchingEventTypes ?? [])].sort().join(",");
+  const topic = destination?.SnsDestination?.TopicArn;
+  if (others.length > 0 || !destination?.Enabled || types !== "BOUNCE,COMPLAINT,REJECT" || topic === undefined) return `has ${JSON.stringify(EventDestinations)}`;
+  const { Policy } = await lambda.send(new GetPolicyCommand({ FunctionName: output(stackOutputs.feedbackFunction) }));
+  const { Statement = [] } = JSON.parse(Policy ?? "{}") as { Statement?: { Principal?: unknown; Condition?: { ArnLike?: Record<string, string> } }[] };
+  const fine = (statement: (typeof Statement)[number]) => JSON.stringify(statement.Principal) === '{"Service":"sns.amazonaws.com"}' && statement.Condition?.ArnLike?.["AWS:SourceArn"] === topic;
+  return Statement.length > 0 && Statement.every(fine) ? undefined : `the feedback Lambda has ${Policy}`;
+});
+await check("no event of SES's waits in the feedback Lambda's failure queue", async () => {
+  const waiting = await waitingIn(stackOutputs.feedbackFailures);
+  return waiting === 0 ? undefined : `${waiting} events wait there. Fix what failed, then replay them.`;
 });
 await check("no indexer task waits in the failure queue", async () => {
   const waiting = await waitingIn(stackOutputs.indexFailures);
