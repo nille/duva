@@ -64,13 +64,51 @@ test("a re-run without a domain keeps the deployed one", async () => {
   expect(report.domain.name).toBe("duva.example.com");
 });
 
-test("deploy refuses a different domain, since a deployment has one domain for now", async () => {
+test("deploy keeps the first domain, and says admins add every other one", async () => {
   const world = newWorld();
   await deployDuva({ ...world, admin, domain: "duva.example.com" });
   const changes = [...world.aws.changes];
 
-  await expect(deployDuva({ ...world, admin, domain: "other.example.com" })).rejects.toThrow(/duva\.example\.com/);
+  await expect(deployDuva({ ...world, admin, domain: "other.example.com" })).rejects.toThrow(/first domain is duva\.example\.com.*duva domains add/);
   expect(world.aws.changes).toEqual(changes);
+});
+
+test("a re-run lists only the first domain's records, whatever domains admins have added since", async () => {
+  const world = newWorld();
+  await deployDuva({ ...world, admin, domain: "duva.example.com" });
+  world.aws.identities.set("other.example.com", { dkim: "SUCCESS", mailFrom: "SUCCESS", verified: true });
+
+  const report = await deployDuva(world);
+
+  expect(report.domain.name).toBe("duva.example.com");
+  expect(report.domain.records).toHaveLength(7);
+  expect(report.domain.records.filter(({ name }) => !name.endsWith("duva.example.com"))).toEqual([]);
+  expect(world.aws.stack?.domain).toBe("duva.example.com");
+});
+
+test("a re-run keeps the sign-in domain an admin chose, which the user pool sends codes from", async () => {
+  const world = newWorld();
+  await deployDuva({ ...world, admin, domain: "duva.example.com" });
+  world.aws.identities.set("other.example.com", { dkim: "SUCCESS", mailFrom: "SUCCESS", verified: true });
+  world.aws.poolSenders.set("eu-north-1_old", "other.example.com");
+
+  const report = await deployDuva(world);
+
+  expect(world.aws.stack).toMatchObject({ domain: "duva.example.com", signInDomain: "other.example.com", domainVerified: true });
+  expect(report.admin.signIn).toMatch(/from no-reply@other\.example\.com/);
+});
+
+test("a re-run after an admin removed the first domain says so, and lists no records for it", async () => {
+  const world = newWorld();
+  await deployDuva({ ...world, admin, domain: "duva.example.com" });
+  world.aws.identities.set("other.example.com", { dkim: "SUCCESS", mailFrom: "SUCCESS", verified: true });
+  world.aws.poolSenders.set("eu-north-1_old", "other.example.com");
+  world.aws.identities.delete("duva.example.com");
+
+  const report = await deployDuva(world);
+
+  expect(report.domain).toEqual({ name: "duva.example.com", records: [], removed: expect.stringMatching(/admin removed duva\.example\.com.*duva domains add/) });
+  expect(world.aws.stack).toMatchObject({ domain: "duva.example.com", signInDomain: "other.example.com", domainVerified: true });
 });
 
 test("deploy refuses a domain whose SES identity Duva didn't create", async () => {
@@ -395,6 +433,7 @@ interface Identity {
 interface Parameters {
   domain: string;
   admin: string;
+  signInDomain: string;
   domainVerified: boolean;
 }
 
@@ -423,18 +462,21 @@ class InMemoryAws implements Aws {
   humansMovedTo?: string;
   /** Whether the stack's setup function fails. */
   setupFails = false;
+  /** The domain each user pool sends sign-in codes from, once one does: the stack's sign-in domain, or one the API chose since. */
+  poolSenders = new Map<string, string>();
 
   async duvaStack() {
     return this.stack;
   }
 
   async deployStack(parameters: Parameters) {
-    const { domain, admin, domainVerified } = parameters;
+    const { domain, admin, signInDomain, domainVerified } = parameters;
     if (this.stack?.domain !== domain) this.identities.set(domain, { dkim: "PENDING", mailFrom: "PENDING", verified: false });
     const { userPool, signInUrl, webClientId, cliClientId } = this.shipped;
     if (
       this.stack?.domain !== domain ||
       this.stack.admin !== admin ||
+      this.stack.signInDomain !== signInDomain ||
       this.stack.domainVerified !== domainVerified ||
       this.stack.outputs.UserPoolId !== userPool
     ) {
@@ -458,6 +500,8 @@ class InMemoryAws implements Aws {
       };
       this.stack = { ...parameters, outputs };
       this.userPools.add(userPool);
+      if (domainVerified) this.poolSenders.set(userPool, signInDomain);
+      else this.poolSenders.delete(userPool);
       this.changes.push(`deployed the stack with ${JSON.stringify(parameters)}`);
     }
     return { account: this.account, outputs: this.stack.outputs };
@@ -481,6 +525,10 @@ class InMemoryAws implements Aws {
 
   async stackUserPools() {
     return [...this.userPools];
+  }
+
+  async signInDomain(userPoolId: string) {
+    return this.poolSenders.get(userPoolId);
   }
 
   async deleteUserPool(id: string) {

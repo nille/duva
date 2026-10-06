@@ -10,7 +10,7 @@ import type { Table } from "./deployment.ts";
 import { domainOf } from "./email-address.ts";
 import { recordChanges } from "./feed.ts";
 import { type Arrival, correspondents, hasSentTo, inbox, noteSentTo, receiveMessage, releaseWaiting, restoreBlocked, screener, type Screening, ScreeningChanged, spam, threadsLabelled, type ThreadSummary, trash, waitingThreads } from "./mail.ts";
-import { allMailboxes, findActor, findMailbox, mailboxFeed, mailboxKey, organizationDomain, screenerKey } from "./organization.ts";
+import { allDomains, allMailboxes, findActor, findMailbox, mailboxFeed, mailboxKey, screenerKey } from "./organization.ts";
 import { documents, pk, sk, type TransactItem } from "./table.ts";
 
 export type Screener = components["schemas"]["Screener"];
@@ -72,7 +72,7 @@ async function screeningOf(table: Table, mailbox: string, address: string, dmarc
   items.push(unchanged(table, senderKey(mailbox, { address }), "decision", undefined));
   if (byDomain !== undefined) return { label: labelOf(byDomain), items };
   if (state !== "on") return { label: inbox, items };
-  const ownDomain = dmarcPassed && domain === (await organizationDomain(table)).toLowerCase();
+  const ownDomain = dmarcPassed && (await allDomains(table)).some((each) => each.domain === domain.toLowerCase());
   const firstTime = !ownDomain && !(await hasSentTo(table, mailbox, address));
   return { label: firstTime ? screener : inbox, items };
 }

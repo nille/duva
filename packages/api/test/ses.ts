@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import type { ReceiptRule } from "@aws-sdk/client-ses";
 import type { SESEvent, SESReceiptStatus } from "aws-lambda";
 import PostalMime from "postal-mime";
+import type { Dns, RecordType } from "../src/dns-records.ts";
+import type { EmailIdentities } from "../src/identities.ts";
 import type { MailBucket } from "../src/mail-bucket.ts";
 import { BounceRefused, type Bounces } from "../src/group-mail.ts";
 import type { ReceiptRules } from "../src/receiving.ts";
@@ -54,9 +56,9 @@ const maxRecipients = 500;
  * Stands in for SES receiving in one region: an active rule set, which Duva manages through
  * ReceiptRules, and the mail servers that apply it. Like SES, it checks when a rule is created that
  * it can write to the rule's bucket and invoke its Lambda, which here means the harness has them.
- * It bounces a message it received back to its envelope sender, from an address on the domain.
+ * It bounces a message it received back to its envelope sender, from an address on a domain SES has verified.
  */
-export function sesReceiving({ domain, buckets, functions }: { domain: string; buckets: Map<string, MailBucket>; functions: Map<string, (event: SESEvent) => Promise<void>> }) {
+export function sesReceiving({ verified, buckets, functions }: { verified: (domain: string) => Promise<boolean>; buckets: Map<string, MailBucket>; functions: Map<string, (event: SESEvent) => Promise<void>> }) {
   const rules: ReceiptRule[] = [];
   // The envelope sender of each message SES accepted, by the ID it gave it, and the bounces it sent.
   const senders = new Map<string, string>();
@@ -99,7 +101,7 @@ export function sesReceiving({ domain, buckets, functions }: { domain: string; b
     async send({ messageId, from, recipients, explanation }) {
       const to = senders.get(messageId);
       if (to === undefined) throw new BounceRefused(`Message ${messageId} was not received by Amazon SES.`);
-      if (from.split("@")[1]?.toLowerCase() !== domain) throw new BounceRefused(`Email address is not verified: ${from}`);
+      if (!(await verified(from.split("@")[1]?.toLowerCase() ?? ""))) throw new BounceRefused(`Email address is not verified: ${from}`);
       if (recipients.length === 0) throw new BounceRefused("Specify at least one BouncedRecipientInfo.");
       bounced.push({ messageId, to, from, recipients: [...recipients], explanation });
     },
@@ -237,18 +239,20 @@ function matches(rule: ReceiptRule, recipient: string): boolean {
  * Stands in for SES sending in one region, recording each raw message it accepts as its recipients
  * get it, and the recipients it delivers it to: those the call's destination names, Bcc included,
  * which no header shows. Like SES, it gives each message an ID, answers with it, and replaces the message's
- * Message-ID with <ID@region.amazonses.com>. The domain is verified, and in the sandbox SES refuses
- * a message to anyone not on it, with SES's reason. With `answersLost`, SES accepts each message
- * but its answer never arrives, as when the connection drops.
+ * Message-ID with <ID@region.amazonses.com>. It sends only from a domain SES has verified, and in
+ * the sandbox SES refuses a message to anyone not on one, with SES's reason. With `answersLost`,
+ * SES accepts each message but its answer never arrives, as when the connection drops.
  */
-export function sesSending({ region, domain, sandbox, answersLost }: { region: string; domain: string; sandbox: boolean; answersLost: boolean }) {
+export function sesSending({ region, verified, sandbox, answersLost }: { region: string; verified: (domain: string) => Promise<boolean>; sandbox: boolean; answersLost: boolean }) {
   const accepted: { raw: string; recipients: string[] }[] = [];
   const outbound: Outbound = {
     async send(raw, destination) {
       const parsed = await PostalMime.parse(raw);
       const from = parsed.from?.address ?? "";
       const recipients = [...destination.to, ...destination.cc, ...destination.bcc];
-      const unverified = [from, ...(sandbox ? recipients : [])].filter((address) => address.split("@")[1]?.toLowerCase() !== domain);
+      const addresses = [from, ...(sandbox ? recipients : [])];
+      const checked = await Promise.all(addresses.map((address) => verified(address.split("@")[1]?.toLowerCase() ?? "")));
+      const unverified = addresses.filter((_, index) => !checked[index]);
       if (unverified.length > 0) {
         throw new Refused(`Email address is not verified. The following identities failed the check in region ${region.toUpperCase()}: ${unverified.join(", ")}`);
       }
@@ -268,3 +272,77 @@ export function sesSending({ region, domain, sandbox, answersLost }: { region: s
     sentTo: () => accepted.map(({ recipients }) => [...recipients]),
   };
 }
+
+/** DNS, where admins add records at their DNS provider, with no records until they do. */
+export function memoryDns(): Dns & { set(type: RecordType, name: string, values: string[]): void } {
+  const records = new Map<string, string[]>();
+  return {
+    async resolve(type, name) {
+      return records.get(`${type} ${name.toLowerCase()}`) ?? [];
+    },
+    set(type, name, values) {
+      records.set(`${type} ${name.toLowerCase()}`, values);
+    },
+  };
+}
+
+/** A domain's identity as SES keeps it. */
+export interface StoredIdentity {
+  domain: string;
+  configurationSet?: string;
+  mailFromDomain?: string;
+  dkimTokens: string[];
+}
+
+/**
+ * Stands in for SES's domain identities in one region. SES gives each new identity three DKIM
+ * tokens, and verifies its DKIM once DNS has their CNAME records and its MAIL FROM domain once DNS
+ * has its MX record. Here it checks when asked, where SES checks on its own every so often. The
+ * domains in `verified` have identities SES verified already, as deploy's first domain does, and
+ * those in `others` have identities someone other than Duva created.
+ */
+export function sesIdentities({ region, dns, verified, others, configurationSet }: { region: string; dns: Dns; verified: string[]; others: string[]; configurationSet: string }) {
+  const identities = new Map<string, StoredIdentity & { alwaysVerified: boolean }>();
+  for (const domain of others) identities.set(domain, { domain, dkimTokens: tokens(), alwaysVerified: false });
+  for (const domain of verified) {
+    identities.set(domain, { domain, configurationSet, mailFromDomain: `mail.${domain}`, dkimTokens: tokens(), alwaysVerified: true });
+  }
+  const dkimVerified = async ({ domain, dkimTokens, alwaysVerified }: StoredIdentity & { alwaysVerified: boolean }) => {
+    if (alwaysVerified) return true;
+    const found = await Promise.all(dkimTokens.map((token) => dns.resolve("CNAME", `${token}._domainkey.${domain}`)));
+    return found.every((values, index) => values.includes(`${dkimTokens[index]}.dkim.amazonses.com`));
+  };
+  const mailFromVerified = async ({ mailFromDomain, alwaysVerified }: StoredIdentity & { alwaysVerified: boolean }) =>
+    alwaysVerified || (mailFromDomain !== undefined && (await dns.resolve("MX", mailFromDomain)).some((value) => value.endsWith(`feedback-smtp.${region}.amazonses.com`)));
+  const service: EmailIdentities = {
+    async create(domain) {
+      if (!identities.has(domain)) identities.set(domain, { domain, configurationSet, dkimTokens: tokens(), alwaysVerified: false });
+      identities.get(domain)!.mailFromDomain = `mail.${domain}`;
+    },
+    async get(domain) {
+      const identity = identities.get(domain);
+      if (identity === undefined) return undefined;
+      const dkim = await dkimVerified(identity);
+      return {
+        verified: dkim,
+        dkimStatus: dkim ? "SUCCESS" : "PENDING",
+        dkimTokens: [...identity.dkimTokens],
+        mailFromStatus: identity.mailFromDomain === undefined ? "NOT_STARTED" : (await mailFromVerified(identity)) ? "SUCCESS" : "PENDING",
+      };
+    },
+    async delete(domain) {
+      identities.delete(domain);
+    },
+  };
+  return {
+    service,
+    /** Whether SES has verified the domain's identity. */
+    verified: async (domain: string) => (await service.get(domain))?.verified ?? false,
+    /** The identities SES has, by domain in alphabetical order. */
+    identities: (): StoredIdentity[] =>
+      [...identities.values()].sort((a, b) => a.domain.localeCompare(b.domain)).map(({ alwaysVerified: _, dkimTokens, ...identity }) => ({ ...identity, dkimTokens: [...dkimTokens] })),
+  };
+}
+
+/** Three DKIM tokens, as SES gives a new identity. */
+const tokens = () => [1, 2, 3].map(() => randomUUID().replaceAll("-", ""));

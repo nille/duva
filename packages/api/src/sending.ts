@@ -13,7 +13,7 @@ import type { MailBucket } from "./mail-bucket.ts";
 import { findMessage } from "./mail.ts";
 import { buildMail } from "./mime.ts";
 import { sponsorAccessAllows } from "./access.ts";
-import { agentSettings, findActor, findMailbox, isAddressOf, organizationDomain, switchesFor } from "./organization.ts";
+import { agentSettings, aliasDomains, findActor, findMailbox, isAddressOf, switchesFor } from "./organization.ts";
 
 /** Who SES delivers a message to. Bcc recipients are here only, since no header names them. */
 export interface Destination {
@@ -128,7 +128,7 @@ async function send({ table, mailBucket, outbound, region }: Sender, { mailbox, 
   }
   // An admin may have removed the address since the draft was asked to send.
   const sendsFrom = await findMailbox(table, mailbox);
-  if (sendsFrom !== undefined && !isAddressOf(sendsFrom, draft.from)) unsendable ??= notFrom(draft.from);
+  if (sendsFrom !== undefined && !isAddressOf(sendsFrom, draft.from, await aliasDomains(table))) unsendable ??= notFrom(draft.from);
   const original = draft.answers === undefined ? undefined : await findMessage(table, mailBucket, mailbox, draft.answers);
   // A forward carries the forwarded message's attachments, taken from it as it is now.
   const forwarded = draft.forwards === undefined ? undefined : await findMessage(table, mailBucket, mailbox, draft.forwards);
@@ -146,7 +146,7 @@ async function send({ table, mailBucket, outbound, region }: Sender, { mailbox, 
   const text = disclosure?.line ? `${draft.text}\n\nSent by ${disclosure.naming}` : draft.text;
   const raw = buildMail({
     // SES replaces it with one of its own, which is the one recorded (docs/aws.md).
-    messageId: `<${message}@${await organizationDomain(table)}>`,
+    messageId: `<${message}@${draft.from.slice(draft.from.lastIndexOf("@") + 1)}>`,
     from,
     to: draft.to,
     cc: draft.cc,

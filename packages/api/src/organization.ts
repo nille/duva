@@ -49,6 +49,10 @@ export const mailboxFeed = (mailbox: string): Feed => ({
 export const screenerKey = (mailbox: string) => ({ [pk]: mailboxKey(mailbox)[pk]!, [sk]: "screener" });
 // Each mailbox is listed in its owner's partition, so an actor's mailboxes are one query away.
 const ownedKey = (owner: string, mailbox: string) => ({ [pk]: `actor#${owner}`, [sk]: `mailbox#${mailbox}` });
+// Every domain is in one partition. Organizations from before it list their first domain there once
+// setup has run, and until then only on the organization's item.
+const domainsPartition = "organization#domains";
+const domainKey = (domain: string) => ({ [pk]: domainsPartition, [sk]: `domain#${domain}` });
 // Every address is in one partition, so the receipt rules' recipients are one query away.
 const addressesPartition = "organization#addresses";
 const addressKey = (address: string) => ({ [pk]: addressesPartition, [sk]: `address#${address}` });
@@ -84,6 +88,7 @@ export async function setUpOrganization(
   const existing = await firstAdmin(table);
   if (existing === null) {
     // The first admin was removed since (ADR-0020), which leaves the organization to the admins it has.
+    await listFirstDomain(table);
     await moveHumans({ table, humans });
     return (await allHumans(table)).find((human) => human.admin)!;
   }
@@ -91,6 +96,7 @@ export async function setUpOrganization(
     if (existing.email !== admin) throw new Error(`The organization's first admin is ${existing.email}, so it can't be ${admin}.`);
     // Organizations set up before humans were listed didn't list their first admin.
     await db.send(new PutCommand({ TableName: table.name, Item: humanListedKey(existing.id) }));
+    await listFirstDomain(table);
     await moveHumans({ table, humans });
     return existing;
   }
@@ -107,7 +113,8 @@ export async function setUpOrganization(
     await db.send(
       new TransactWriteCommand({
         TransactItems: [
-          { Put: { TableName: table.name, Item: { ...organizationKey, domain, firstAdmin: actor.id, position: changes.length }, ...isNew } },
+          { Put: { TableName: table.name, Item: { ...organizationKey, domain, firstAdmin: actor.id, domainsListed: true, position: changes.length }, ...isNew } },
+          { Put: { TableName: table.name, Item: { ...domainKey(domain), domain } } },
           { Put: { TableName: table.name, Item: { ...actorKey(actor.id), ...actor }, ...isNew } },
           { Put: { TableName: table.name, Item: humanListedKey(actor.id) } },
           { Put: { TableName: table.name, Item: signInItem(sub, actor.id) } },
@@ -358,11 +365,95 @@ export async function changeAgentSettings(table: Table, { agent, changes }: { ag
   }
 }
 
-/** The organization's domain, which every address is on. */
+/** The organization's first domain, which deploy brought, even if an admin has removed it since. */
 export async function organizationDomain(table: Table): Promise<string> {
   const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: organizationKey }));
   if (Item === undefined) throw new Error(organizationFeed.missing);
   return Item.domain as string;
+}
+
+/** One of the organization's domains, with the standalone domain it mirrors if it is an alias domain. */
+export interface OrganizationDomain {
+  domain: string;
+  aliasOf?: string;
+}
+
+/**
+ * Lists the first domain with the domains admins add, in an organization from before they could,
+ * once, so an admin's removal of it later lasts.
+ */
+async function listFirstDomain(table: Table): Promise<void> {
+  const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: organizationKey, ConsistentRead: true }));
+  if (Item === undefined || Item.domainsListed === true) return;
+  await documents(table).send(
+    new TransactWriteCommand({
+      TransactItems: [
+        { Put: { TableName: table.name, Item: { ...domainKey(Item.domain as string), domain: Item.domain } } },
+        { Update: { TableName: table.name, Key: organizationKey, UpdateExpression: "SET domainsListed = :listed", ExpressionAttributeValues: { ":listed": true } } },
+      ],
+    }),
+  );
+}
+
+/** The organization's domains, in alphabetical order. */
+export async function allDomains(table: Table): Promise<OrganizationDomain[]> {
+  const db = documents(table);
+  const [{ Items = [] }, { Item: organization }] = await Promise.all([
+    db.send(new QueryCommand({ TableName: table.name, KeyConditionExpression: `${pk} = :domains`, ExpressionAttributeValues: { ":domains": domainsPartition }, ConsistentRead: true })),
+    db.send(new GetCommand({ TableName: table.name, Key: organizationKey, ConsistentRead: true })),
+  ]);
+  const domains: OrganizationDomain[] = Items.map(({ domain, aliasOf }) => ({ domain, ...(aliasOf !== undefined && { aliasOf }) }));
+  // Until setup lists it, the first domain is only on the organization's item.
+  if (organization !== undefined && organization.domainsListed !== true && !domains.some(({ domain }) => domain === organization.domain)) {
+    domains.push({ domain: organization.domain as string });
+  }
+  return domains.sort((a, b) => a.domain.localeCompare(b.domain));
+}
+
+/** Each alias domain of the organization, with the standalone domain it mirrors. */
+export async function aliasDomains(table: Table): Promise<Map<string, string>> {
+  return new Map((await allDomains(table)).flatMap(({ domain, aliasOf }) => (aliasOf === undefined ? [] : [[domain, aliasOf] as const])));
+}
+
+/**
+ * Adds the domain, on behalf of the admin `by`, as an alias domain of `aliasOf` if given, or a
+ * standalone domain. Throws DomainTaken if the organization has it, and NotStandalone if `aliasOf`
+ * isn't one of its standalone domains.
+ */
+export async function addDomain(table: Table, { domain, aliasOf, by }: { domain: string; aliasOf?: string; by: string }): Promise<void> {
+  await listFirstDomain(table);
+  const items: TransactItem[] = [{ Put: { TableName: table.name, Item: { ...domainKey(domain), domain, ...(aliasOf !== undefined && { aliasOf }) }, ...isNew } }];
+  // The standalone domain must still be one, and no alias, when the alias is added.
+  if (aliasOf !== undefined) {
+    items.push({ ConditionCheck: { TableName: table.name, Key: domainKey(aliasOf), ConditionExpression: `attribute_exists(${pk}) AND attribute_not_exists(aliasOf)` } });
+  }
+  await recordChange(table, by, { type: "domainAdded", domain, ...(aliasOf !== undefined && { aliasOf }) }, items).catch((error: unknown) => {
+    const reasons = error instanceof TransactionCanceledException ? (error.CancellationReasons ?? []) : [];
+    if (reasons[2]?.Code === "ConditionalCheckFailed") throw new DomainTaken();
+    if (reasons[3]?.Code === "ConditionalCheckFailed") throw new NotStandalone();
+    throw error;
+  });
+}
+
+/** The organization already has the domain. */
+export class DomainTaken extends Error {}
+
+/** The domain an alias domain was to mirror isn't one of the organization's standalone domains. */
+export class NotStandalone extends Error {}
+
+/** Removes the domains, on behalf of the admin `by`, each a change of its own. Their addresses are removed beforehand. */
+export async function removeDomains(table: Table, { domains, by }: { domains: string[]; by: string }): Promise<void> {
+  await listFirstDomain(table);
+  await recordChanges(table, organizationFeed, {
+    by,
+    changes: domains.map((domain) => ({ type: "domainRemoved", domain })) satisfies ChangeDetails[],
+    items: domains.map((domain) => ({ Delete: { TableName: table.name, Key: domainKey(domain) } })),
+  });
+}
+
+/** Records that sign-in codes come from the domain from now on, as chosen by the admin `by`. */
+export async function recordSignInDomain(table: Table, { domain, by }: { domain: string; by: string }): Promise<void> {
+  await recordChange(table, by, { type: "signInDomainChanged", domain }, []);
 }
 
 /**
@@ -422,7 +513,9 @@ export async function addAddress(table: Table, { mailbox, address, by }: { mailb
  */
 export async function removeAddress(table: Table, { address, by }: { address: string; by: string }): Promise<Address | undefined> {
   for (let attempt = 1; ; attempt++) {
-    const mailbox = await mailboxAt(table, address);
+    // Only the organization's own addresses, never one an alias domain mirrors.
+    const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: addressKey(address), ConsistentRead: true }));
+    const mailbox = Item?.mailbox as string | undefined;
     if (mailbox === undefined) return undefined;
     try {
       await changingAddresses(table, mailbox, by, ({ addresses, defaultAddress }) => {
@@ -456,8 +549,11 @@ export async function chooseDefaultAddress(table: Table, { mailbox, address, by 
   });
 }
 
-/** Whether the address, with or without a plus tag and in any case, is one of the mailbox's. */
-export const isAddressOf = (mailbox: Mailbox, address: string) => mailbox.addresses.includes(address.toLowerCase().replace(/\+[^@]*@/, "@"));
+/**
+ * Whether the address, with or without a plus tag and in any case, is one of the mailbox's, or one
+ * an alias domain mirrors, given each alias domain with its standalone domain.
+ */
+export const isAddressOf = (mailbox: Mailbox, address: string, aliases: Map<string, string>) => mailbox.addresses.includes(mirroredAddress(address, aliases));
 
 /** The mailbox doesn't have the address. */
 export class NotItsAddress extends Error {}
@@ -535,10 +631,24 @@ export async function ownedMailboxes(table: Table, owner: string): Promise<Mailb
   return mailboxes.filter((mailbox) => mailbox !== undefined);
 }
 
-/** The mailbox the address delivers to, or undefined if the organization has no such address. */
-export async function mailboxAt(table: Table, address: string): Promise<string | undefined> {
-  const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: addressKey(address), ConsistentRead: true }));
-  return Item?.mailbox as string | undefined;
+/** The address an address on an alias domain mirrors, or the address itself, in lower case and without its plus tag. */
+export function mirroredAddress(address: string, aliases: Map<string, string>): string {
+  const untagged = address.toLowerCase().replace(/\+[^@]*@/, "@");
+  const at = untagged.lastIndexOf("@");
+  const standalone = aliases.get(untagged.slice(at + 1));
+  return standalone === undefined ? untagged : `${untagged.slice(0, at)}@${standalone}`;
+}
+
+/**
+ * Every address SES receives mail for: the organization's own, and the ones each alias domain
+ * mirrors, groups' included, each with the mailbox it delivers to or as a group's.
+ */
+export async function receivingAddresses(table: Table): Promise<Address[]> {
+  const [own, aliases] = await Promise.all([allAddresses(table), aliasDomains(table)]);
+  const mirrored = [...aliases].flatMap(([alias, standalone]) =>
+    own.filter(({ address }) => address.endsWith(`@${standalone}`)).map(({ address, ...target }) => ({ address: `${address.slice(0, address.lastIndexOf("@"))}@${alias}`, ...target })),
+  );
+  return [...own, ...mirrored];
 }
 
 /** Every address in the organization, each with the mailbox it delivers to or as a group's, in alphabetical order. */
@@ -561,12 +671,23 @@ export async function allAddresses(table: Table): Promise<Address[]> {
   return addresses;
 }
 
-/** What the address is: a mailbox's, by the mailbox's ID, or a group, or undefined if the organization has no such address. */
+/**
+ * What the address is: a mailbox's, by the mailbox's ID, or a group, or undefined if the
+ * organization has no such address. An address on an alias domain is what the same local part is
+ * on its standalone domain.
+ */
 export async function addressTarget(table: Table, address: string): Promise<{ mailbox: string } | { group: Group } | undefined> {
-  const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: addressKey(address), ConsistentRead: true }));
-  if (Item === undefined) return undefined;
+  const db = documents(table);
+  let { Item } = await db.send(new GetCommand({ TableName: table.name, Key: addressKey(address), ConsistentRead: true }));
+  const at = address.lastIndexOf("@");
+  if (Item === undefined) {
+    const { Item: domain } = await db.send(new GetCommand({ TableName: table.name, Key: domainKey(address.slice(at + 1)), ConsistentRead: true }));
+    if (domain?.aliasOf === undefined) return undefined;
+    ({ Item } = await db.send(new GetCommand({ TableName: table.name, Key: addressKey(`${address.slice(0, at)}@${domain.aliasOf}`), ConsistentRead: true })));
+    if (Item === undefined) return undefined;
+  }
   if (Item.group !== true) return { mailbox: Item.mailbox as string };
-  const group = await findGroup(table, address);
+  const group = await findGroup(table, Item.address as string);
   return group === undefined ? undefined : { group };
 }
 

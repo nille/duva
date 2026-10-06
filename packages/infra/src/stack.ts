@@ -38,12 +38,13 @@ import {
   senderFilter,
   senderRetries,
   sentPrefix,
+  signInFrom,
   tableKey,
   tableStreamView,
   timeToLiveAttribute,
 } from "@duva/api/infrastructure";
 import { operations } from "@duva/openapi";
-import { cliRedirectUri, signInSender, stackOutputs, stackParameters } from "./outputs.ts";
+import { cliRedirectUri, stackOutputs, stackParameters } from "./outputs.ts";
 import { searchCode } from "./search-code.ts";
 
 export interface DuvaStackProps extends StackProps {
@@ -59,10 +60,17 @@ export class DuvaStack extends Stack {
   constructor(scope: Construct, id: string, { version, ...props }: DuvaStackProps) {
     super(scope, id, props);
 
-    // duva deploy names the organization's first domain when it runs, so it reaches the stack as a parameter.
+    // duva deploy names the organization's first domain when it runs, so it reaches the stack as a
+    // parameter. Admins add every later domain at run time, through the API (ADR-0018).
     const domain = new CfnParameter(this, stackParameters.domain, {
       type: "String",
       description: "The organization's first domain, a standalone domain",
+    }).valueAsString;
+    // The API changes the user pool's sender when an admin chooses another domain, and deploy gives
+    // the stack the one the pool has, so a deploy never reverts it.
+    const signInDomain = new CfnParameter(this, stackParameters.signInDomain, {
+      type: "String",
+      description: "The domain sign-in codes come from, the first domain until an admin chooses another",
     }).valueAsString;
     const admin = new CfnParameter(this, stackParameters.admin, {
       type: "String",
@@ -73,7 +81,7 @@ export class DuvaStack extends Stack {
         new CfnParameter(this, stackParameters.domainVerified, {
           type: "String",
           allowedValues: ["true", "false"],
-          description: "Whether SES has verified the domain",
+          description: "Whether SES has verified the sign-in domain",
         }).valueAsString,
         "true",
       ),
@@ -82,6 +90,9 @@ export class DuvaStack extends Stack {
     // Every send goes through this configuration set. It publishes no events and turns off
     // engagement metrics, so SES tracks no opens or clicks.
     const sending = new ConfigurationSet(this, "Sending", { vdmOptions: { engagementMetrics: false } });
+    // Every SES identity in this account and region, which admins' domains are, and the configuration set.
+    const identities = this.formatArn({ service: "ses", resource: "identity", resourceName: "*" });
+    const configurationSet = this.formatArn({ service: "ses", resource: "configuration-set", resourceName: sending.configurationSetName });
     const identity = new EmailIdentity(this, "DomainIdentity", {
       identity: Identity.domain(domain),
       configurationSet: sending,
@@ -149,6 +160,7 @@ export class DuvaStack extends Stack {
     });
     // Cognito refuses an SES identity SES hasn't verified, which a new domain's isn't yet. Until it
     // is, codes come from Cognito's own sender, and deploy switches once SES has verified the domain.
+    // An admin can choose another verified domain later, which the API sets in the pool.
     humans.node.addDependency(identity);
     (humans.node.defaultChild as CfnUserPool).addPropertyOverride(
       "EmailConfiguration",
@@ -156,8 +168,8 @@ export class DuvaStack extends Stack {
         domainVerified.logicalId,
         {
           EmailSendingAccount: "DEVELOPER",
-          SourceArn: this.formatArn({ service: "ses", resource: "identity", resourceName: domain }),
-          From: `Duva <${signInSender(domain)}>`,
+          SourceArn: this.formatArn({ service: "ses", resource: "identity", resourceName: signInDomain }),
+          From: signInFrom(signInDomain),
           ConfigurationSet: sending.configurationSetName,
         },
         { EmailSendingAccount: "COGNITO_DEFAULT" },
@@ -240,15 +252,10 @@ export class DuvaStack extends Stack {
     );
 
     // It re-sends a group's mail to external members from the group's address (ADR-0003), and
-    // bounces mail a group refuses, both from the domain's identity.
-    identity.grantSendEmail(inbound);
-    identity.grant(inbound, "ses:SendBounce");
-    inbound.addToRolePolicy(
-      new PolicyStatement({
-        actions: ["ses:SendEmail", "ses:SendRawEmail"],
-        resources: [this.formatArn({ service: "ses", resource: "configuration-set", resourceName: sending.configurationSetName })],
-      }),
-    );
+    // bounces mail a group refuses, both from the identity of one of the organization's domains,
+    // which admins add at run time (ADR-0018).
+    inbound.addToRolePolicy(new PolicyStatement({ actions: ["ses:SendEmail", "ses:SendRawEmail"], resources: [identities, configurationSet] }));
+    inbound.addToRolePolicy(new PolicyStatement({ actions: ["ses:SendBounce"], resources: [identities] }));
 
     // Duva creates its receipt rules as addresses come, so only they may use the bucket and the
     // Lambda. Each is named after the first, and Lambda compares a source ARN with StringLike.
@@ -417,6 +424,7 @@ export class DuvaStack extends Stack {
       [environmentVariables.unsubscriberFunction]: unsubscriber.functionArn,
       [environmentVariables.downloadUrl]: downloadUrl,
       [environmentVariables.searchFunction]: searcher.functionArn,
+      [environmentVariables.configurationSet]: sending.configurationSetName,
     });
     table.grantReadWriteData(handler);
     // Each search waits for the search Lambda's answer.
@@ -429,6 +437,18 @@ export class DuvaStack extends Stack {
     unsubscriber.grantInvoke(handler);
     // Admins add humans, who can then sign in, and remove them, who then can't.
     humans.grant(handler, "cognito-idp:AdminCreateUser", "cognito-idp:AdminGetUser", "cognito-idp:AdminDeleteUser");
+    // Choosing the sign-in domain changes the pool's sender, which UpdateUserPool can do only by
+    // giving every setting the pool has.
+    humans.grant(handler, "cognito-idp:DescribeUserPool", "cognito-idp:UpdateUserPool");
+    // Admins add and remove domains at run time, each an SES identity in this account and region
+    // (ADR-0018). A new identity sends through the configuration set by default.
+    handler.addToRolePolicy(
+      new PolicyStatement({
+        actions: ["ses:CreateEmailIdentity", "ses:GetEmailIdentity", "ses:DeleteEmailIdentity", "ses:PutEmailIdentityMailFromAttributes"],
+        resources: [identities],
+      }),
+    );
+    handler.addToRolePolicy(new PolicyStatement({ actions: ["ses:CreateEmailIdentity"], resources: [configurationSet] }));
     // Adding and removing addresses changes the receipt rules' recipients. IAM has no resource type
     // for receipt rules, so these actions can't be limited to Duva's rule set.
     handler.addToRolePolicy(
@@ -470,15 +490,10 @@ export class DuvaStack extends Stack {
     // The sender reads the message it answers or forwards, and stores the raw MIME it sends.
     mail.grantRead(sender);
     mail.grantPut(sender, `${sentPrefix}*`);
-    // SES checks both the identity and the configuration set a send uses. SESv2 SendEmail with raw
-    // content is authorized as ses:SendRawEmail (see docs/aws.md).
-    identity.grantSendEmail(sender);
-    sender.addToRolePolicy(
-      new PolicyStatement({
-        actions: ["ses:SendEmail", "ses:SendRawEmail"],
-        resources: [this.formatArn({ service: "ses", resource: "configuration-set", resourceName: sending.configurationSetName })],
-      }),
-    );
+    // SES checks both the identity and the configuration set a send uses: any of the organization's
+    // domains, which admins add at run time. SESv2 SendEmail with raw content is authorized as
+    // ses:SendRawEmail (see docs/aws.md).
+    sender.addToRolePolicy(new PolicyStatement({ actions: ["ses:SendEmail", "ses:SendRawEmail"], resources: [identities, configurationSet] }));
 
     const authorizerHandler = lambda("AuthorizerHandler", "@duva/api/authorizer-lambda", {
       [environmentVariables.tableName]: table.tableName,

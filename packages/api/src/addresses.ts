@@ -8,11 +8,12 @@ import {
   addAddress as addStoredAddress,
   AddressTaken,
   allAddresses,
+  allDomains,
   chooseDefaultAddress,
   findGroup,
   findMailbox,
   NotItsAddress,
-  organizationDomain,
+  receivingAddresses,
   removeAddress as removeStoredAddress,
   removeMember,
 } from "./organization.ts";
@@ -22,27 +23,36 @@ const onlyAdmins = () => refusal(403, "Only admins can change the organization's
 
 /**
  * The address given, in lower case, if the organization can have it and has room for it, or a
- * refusal that says why not.
+ * refusal that says why not. Addresses are on standalone domains, and each of its alias domains
+ * mirrors them.
  */
 export async function addressGiven(deployment: Deployment, given: unknown): Promise<string | ReturnType<typeof refusal>> {
   const trimmed = typeof given === "string" ? given.trim() : "";
-  const domain = await organizationDomain(deployment.table);
+  const domains = await allDomains(deployment.table);
+  const standalone = domains.filter(({ aliasOf }) => aliasOf === undefined).map(({ domain }) => domain);
   const address = trimmed.toLowerCase();
   const at = address.lastIndexOf("@");
   const local = address.slice(0, at);
-  if (at < 0 || local === "" || address.slice(at + 1) !== domain) {
-    return refusal(400, `${JSON.stringify(trimmed)} isn't an address on ${domain}. Give one like hermes@${domain}.`);
+  const domain = domains.find((each) => each.domain === address.slice(at + 1));
+  const example = `hermes@${standalone[0] ?? "example.com"}`;
+  if (at < 0 || local === "" || domain === undefined) {
+    const listed = standalone.length > 1 ? `${standalone.slice(0, -1).join(", ")} or ${standalone.at(-1)}` : standalone.join("");
+    return refusal(400, `${JSON.stringify(trimmed)} isn't an address on ${listed}. Give one like ${example}.`);
+  }
+  if (domain.aliasOf !== undefined) {
+    return refusal(400, `${domain.domain} is an alias domain, which mirrors every address on ${domain.aliasOf}. Give ${local}@${domain.aliasOf}, and mail to ${local}@${domain.domain} reaches it too.`);
   }
   if (local.includes("+")) {
-    return refusal(400, `An address can't have a plus tag. Give ${local.split("+")[0]}@${domain}, and mail to its tagged addresses reaches it too.`);
+    return refusal(400, `An address can't have a plus tag. Give ${local.split("+")[0]}@${domain.domain}, and mail to its tagged addresses reaches it too.`);
   }
   // Letters, digits and . _ -, with no dot at either end or two in a row, which every mail server takes.
   if (!/^[a-z0-9_-]+(\.[a-z0-9_-]+)*$/.test(local) || local.length > 64) {
     return refusal(400, `${JSON.stringify(trimmed)} isn't an address Duva can create. Use letters, digits, dots, hyphens and underscores before the @.`);
   }
-  // SES's receipt rules list at most this many recipients in all.
-  if ((await allAddresses(deployment.table)).length >= maxAddresses) {
-    return refusal(409, `The organization has ${maxAddresses} addresses, as many as Duva can receive mail for. Remove one first.`);
+  // SES's receipt rules list at most this many recipients in all, and the domain's alias domains each mirror the address.
+  const mirrors = domains.filter(({ aliasOf }) => aliasOf === domain.domain).length;
+  if ((await receivingAddresses(deployment.table)).length + 1 + mirrors > maxAddresses) {
+    return refusal(409, `The organization receives mail for ${maxAddresses} addresses, those its alias domains mirror included, as many as Duva can. Remove one first.`);
   }
   return address;
 }

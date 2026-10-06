@@ -481,10 +481,11 @@ paths:
   /addresses:
     post:
       operationId: addAddress
-      summary: Give a mailbox another address on one of the organization's domains.
+      summary: Give a mailbox another address on one of the organization's standalone domains.
       description: >
         Mail to the address, and to its plus-tagged addresses, reaches the
-        mailbox from then on. A mailbox that had no address takes it as its
+        mailbox from then on, as does mail to the same address on each of the
+        domain's alias domains. A mailbox that had no address takes it as its
         default address. Only admins can add addresses, and an address in use
         is refused. Adding an address is a change to the organization's
         setup, recorded in its change feed under you.
@@ -692,10 +693,171 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+  /domains:
+    post:
+      operationId: addDomain
+      summary: Add a domain to the organization, standalone or an alias of one of its standalone domains.
+      description: >
+        Duva creates the domain's SES identity, with DKIM and its MAIL FROM
+        domain, mail.<domain>, and answers with the DNS records to add at the
+        domain's DNS provider. Duva doesn't change anyone's DNS. SES verifies
+        the domain once its records are live, and the domain shows each
+        record's status and SES's verification as they come. A standalone
+        domain's addresses are its own. An alias domain mirrors every address
+        of the standalone domain given as aliasOf, those added later too: mail
+        to name@alias reaches the mailbox of name@standalone, and replies to it
+        go out from name@alias. Only admins can add domains, and a domain the
+        organization has, or one with an SES identity Duva didn't create, is
+        refused. Adding a domain is a change to the organization's setup,
+        recorded in its change feed under you.
+      x-cli-command: domains add
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NewDomain"
+      responses:
+        "201":
+          description: The domain, with the DNS records it needs.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Domain"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+    get:
+      operationId: listDomains
+      summary: List the organization's domains, each with its DNS records and SES's verification.
+      description: >
+        Each record's status is looked up when you ask: missing until DNS
+        answers with its value, found once it does, and verified once SES has
+        verified what the record is for. Only admins can list the
+        organization's domains.
+      x-cli-command: domains list
+      responses:
+        "200":
+          description: The organization's domains, in alphabetical order.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DomainList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /domains/{domain}:
+    get:
+      operationId: getDomain
+      summary: Show one of the organization's domains, with its DNS records and SES's verification.
+      description: >
+        Each record's status is looked up when you ask, so call it again to
+        see SES verify the domain once its records are live. Only admins can
+        read the organization's domains.
+      x-cli-command: domains get
+      parameters:
+        - $ref: "#/components/parameters/Domain"
+      responses:
+        "200":
+          description: The domain.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Domain"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: changeDomain
+      summary: Send sign-in codes from one of the organization's domains.
+      description: >
+        Sign-in codes come from no-reply@<domain>. The domain must be one SES
+        has verified. Choosing it changes Cognito's sender at once, and duva
+        deploy keeps it. The domain sign-in codes come from can't be removed,
+        so choose another one before removing it. Only admins can choose, and
+        the choice is a change to the organization's setup, recorded in its
+        change feed under you.
+      x-cli-command: domains change
+      parameters:
+        - $ref: "#/components/parameters/Domain"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DomainChanges"
+      responses:
+        "200":
+          description: The domain, changed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Domain"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /domains/{domain}/remove:
+    post:
+      operationId: removeDomain
+      summary: Remove a domain with its addresses, and its alias domains if it is a standalone domain.
+      description: >
+        Run it first with dryRun to see the domains it removes, the addresses
+        that stop receiving mail and the mailboxes left without an address.
+        Removing a standalone domain removes its addresses, deleting the
+        groups among them, and its alias domains with the addresses they
+        mirror, since an alias domain mirrors nothing without it. The
+        addresses that stop working leave every group they are members of. Removing an alias domain removes only what it
+        mirrors. SES refuses mail to those addresses at once, and the domains'
+        SES identities are deleted. The mail the mailboxes have stays. A
+        mailbox left with no address keeps its mail, but receives and sends no
+        new mail until it is given one. The domain sign-in codes come from
+        can't be removed, so choose another one first. Only admins can remove
+        domains. Each removal, and each address removed, is a change to the
+        organization's setup, recorded in its change feed under you.
+      x-cli-command: domains remove
+      parameters:
+        - $ref: "#/components/parameters/Domain"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DomainRemovalChoices"
+      responses:
+        "200":
+          description: What the removal takes, removed unless it was a dry run.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DomainRemoval"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
   /mailboxes:
     post:
       operationId: createMailbox
-      summary: Create a personal mailbox for a human or an agent, with an address on one of the organization's domains.
+      summary: Create a personal mailbox for a human or an agent, with an address on one of the organization's standalone domains.
       description: >
         Only admins can create mailboxes. The address becomes the mailbox's
         default address, and mail to it is accepted from then on. An admin
@@ -1895,6 +2057,13 @@ components:
       description: The group's address. Case doesn't matter.
       schema:
         type: string
+    Domain:
+      name: domain
+      in: path
+      required: true
+      description: The domain. Case doesn't matter.
+      schema:
+        type: string
   securitySchemes:
     session:
       type: http
@@ -2171,7 +2340,7 @@ components:
       properties:
         address:
           type: string
-          description: The address, on one of the organization's domains, without a plus tag.
+          description: The address, on one of the organization's standalone domains, without a plus tag. Its alias domains mirror it.
           examples: ["support@example.com"]
         mailbox:
           type: string
@@ -2208,7 +2377,7 @@ components:
       properties:
         address:
           type: string
-          description: The group's address, on one of the organization's domains, without a plus tag.
+          description: The group's address, on one of the organization's standalone domains, without a plus tag. Its alias domains mirror it.
           examples: ["support@example.com"]
         members:
           $ref: "#/components/schemas/GroupMembers"
@@ -2274,6 +2443,144 @@ components:
       description: >-
         Where external members' replies to the copies re-sent to them go. Sender, the default,
         sends them to the original sender, and group to the group.
+    NewDomain:
+      type: object
+      additionalProperties: false
+      required: [domain]
+      properties:
+        domain:
+          type: string
+          description: The domain. International domains can be given as they are written.
+          examples: ["example.net"]
+        aliasOf:
+          type: string
+          description: The standalone domain it mirrors, to make it an alias domain. Without it the domain is a standalone domain.
+          examples: ["example.com"]
+    DomainChanges:
+      type: object
+      additionalProperties: false
+      required: [signIn]
+      properties:
+        signIn:
+          type: boolean
+          const: true
+          description: Sends sign-in codes from the domain from now on. To stop, choose another domain.
+    Domain:
+      type: object
+      additionalProperties: false
+      required: [domain, kind, signIn, ses, records]
+      description: One of the organization's domains, with the DNS records it needs and SES's verification of it.
+      properties:
+        domain:
+          type: string
+          description: The domain, in lower-case ASCII, international labels in Punycode.
+          examples: ["example.com"]
+        kind:
+          type: string
+          enum: [standalone, alias]
+          description: A standalone domain's addresses are its own. An alias domain mirrors every address of its standalone domain.
+        aliasOf:
+          type: string
+          description: The standalone domain an alias domain mirrors.
+        signIn:
+          type: boolean
+          description: Whether sign-in codes come from the domain, once SES has verified it.
+        ses:
+          $ref: "#/components/schemas/DomainVerification"
+        records:
+          type: array
+          description: >-
+            The DNS records the domain needs, to add at its DNS provider. A
+            DMARC record is left out when a parent domain's covers it.
+          items:
+            $ref: "#/components/schemas/DnsRecord"
+    DomainVerification:
+      type: object
+      additionalProperties: false
+      required: [verified, dkim, mailFrom]
+      description: What SES has verified of the domain. SES checks the DNS records on its own, for up to 72 hours after the domain is added.
+      properties:
+        verified:
+          type: boolean
+          description: Whether SES has verified the domain, which mail from it needs.
+        dkim:
+          type: string
+          description: SES's DKIM status, in words, like pending or verified.
+          examples: ["pending"]
+        mailFrom:
+          type: string
+          description: SES's status of the MAIL FROM domain, in words, like pending or verified.
+          examples: ["pending"]
+    DnsRecord:
+      type: object
+      additionalProperties: false
+      required: [purpose, type, name, value, status]
+      description: A DNS record the domain needs.
+      properties:
+        purpose:
+          type: string
+          enum: [receiving, DKIM, MAIL FROM, DMARC]
+        type:
+          type: string
+          enum: [MX, TXT, CNAME]
+        name:
+          type: string
+          examples: ["example.com"]
+        value:
+          type: string
+          examples: ["10 inbound-smtp.eu-north-1.amazonaws.com"]
+        status:
+          type: string
+          enum: [missing, found, verified]
+          description: >-
+            missing until DNS answers with the value, found once it does, and
+            verified once SES has verified what the record is for. SES never
+            verifies receiving or DMARC records.
+        found:
+          type: array
+          items:
+            type: string
+          description: What DNS answered instead, if it has other values at the name.
+    DomainList:
+      type: object
+      additionalProperties: false
+      required: [domains]
+      properties:
+        domains:
+          type: array
+          items:
+            $ref: "#/components/schemas/Domain"
+    DomainRemovalChoices:
+      type: object
+      additionalProperties: false
+      properties:
+        dryRun:
+          type: boolean
+          description: Lists what the removal takes and removes nothing.
+    DomainRemoval:
+      type: object
+      additionalProperties: false
+      required: [domains, addresses, mailboxesLeftWithoutAddress, removed]
+      description: A domain's removal, and what goes with it.
+      properties:
+        domains:
+          type: array
+          description: The domains removed, the one asked for first, then its alias domains.
+          items:
+            type: string
+        addresses:
+          type: array
+          description: The addresses that stop receiving mail, those its alias domains mirror included, each with its mailbox.
+          items:
+            $ref: "#/components/schemas/Address"
+        mailboxesLeftWithoutAddress:
+          type: array
+          description: The IDs of the mailboxes left with no address, which keep their mail but receive and send none until they are given one.
+          items:
+            type: string
+        removed:
+          type: boolean
+          description: Whether the domains were removed, which a dry run leaves undone.
     MailboxChanges:
       type: object
       additionalProperties: false
@@ -2293,7 +2600,7 @@ components:
           description: The ID of the human or agent that owns the mailbox.
         address:
           type: string
-          description: The mailbox's first address, its default address, on one of the organization's domains, without a plus tag.
+          description: The mailbox's first address, its default address, on one of the organization's standalone domains, without a plus tag.
           examples: ["hermes@example.com"]
     Mailbox:
       type: object
@@ -3698,6 +4005,8 @@ components:
       oneOf:
         - $ref: "#/components/schemas/OrganizationAdded"
         - $ref: "#/components/schemas/DomainAdded"
+        - $ref: "#/components/schemas/DomainRemoved"
+        - $ref: "#/components/schemas/SignInDomainChanged"
         - $ref: "#/components/schemas/ActorAdded"
         - $ref: "#/components/schemas/AgentKeyRotated"
         - $ref: "#/components/schemas/MailboxAdded"
@@ -3717,6 +4026,8 @@ components:
         mapping:
           organizationAdded: "#/components/schemas/OrganizationAdded"
           domainAdded: "#/components/schemas/DomainAdded"
+          domainRemoved: "#/components/schemas/DomainRemoved"
+          signInDomainChanged: "#/components/schemas/SignInDomainChanged"
           actorAdded: "#/components/schemas/ActorAdded"
           agentKeyRotated: "#/components/schemas/AgentKeyRotated"
           mailboxAdded: "#/components/schemas/MailboxAdded"
@@ -3765,8 +4076,37 @@ components:
               const: domainAdded
             domain:
               type: string
-              description: The domain, a standalone domain.
+              description: The domain.
               examples: ["example.com"]
+            aliasOf:
+              type: string
+              description: The standalone domain it mirrors, if it is an alias domain.
+    DomainRemoved:
+      allOf:
+        - $ref: "#/components/schemas/ChangeBase"
+        - type: object
+          required: [type, domain]
+          properties:
+            type:
+              type: string
+              const: domainRemoved
+            domain:
+              type: string
+              description: The domain.
+              examples: ["example.net"]
+    SignInDomainChanged:
+      allOf:
+        - $ref: "#/components/schemas/ChangeBase"
+        - type: object
+          required: [type, domain]
+          properties:
+            type:
+              type: string
+              const: signInDomainChanged
+            domain:
+              type: string
+              description: The domain sign-in codes come from from now on.
+              examples: ["example.net"]
     ActorAdded:
       allOf:
         - $ref: "#/components/schemas/ChangeBase"

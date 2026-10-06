@@ -398,7 +398,7 @@ test("the sender retries a failed record, then records it in a queue for replay"
   expect(queue?.Properties?.MessageRetentionPeriod).toBe(14 * 24 * 3600);
 });
 
-test("the sender sends through SES under Duva's configuration set, and stores what it sent only under the sent prefix", () => {
+test("the sender sends through SES under Duva's configuration set, from any of the organization's domains in this account and region, and stores what it sent only under the sent prefix", () => {
   expect([...new Set(actions("SenderHandler", "ses"))].sort()).toEqual(["ses:SendEmail", "ses:SendRawEmail"]);
   const [[setId]] = ofType("AWS::SES::ConfigurationSet") as [[string, Resource]];
   // SESv2 SendEmail with raw content is authorized as ses:SendRawEmail, on the configuration set too.
@@ -407,32 +407,57 @@ test("the sender sends through SES under Duva's configuration set, and stores wh
   expect(lambda("SenderHandler")[1].Properties?.Environment?.Variables?.[environmentVariables.configurationSet]).toEqual({ Ref: setId });
   const sesResources = JSON.stringify(statements("SenderHandler").filter(({ Action }) => [Action].flat().some((action) => action.startsWith("ses:"))).map(({ Resource }) => Resource));
   expect(sesResources).toContain(`configuration-set/",{"Ref":"${setId}"}`);
-  const [[identityId]] = ofType("AWS::SES::EmailIdentity") as [[string, Resource]];
-  expect(sesResources).toContain(`identity/",{"Ref":"${identityId}"}`);
+  // Admins add domains at run time, each an identity of this account and region.
+  expect(sesResources).toContain(JSON.stringify(identitiesHere));
   const puts = statements("SenderHandler").filter(({ Action }) => [Action].flat().some((action) => action.startsWith("s3:PutObject")));
   expect(puts).toHaveLength(1);
   expect(JSON.stringify(puts[0]!.Resource)).toContain('"/sent/*"');
 });
 
-test("the inbound Lambda re-sends groups' mail through SES under Duva's configuration set, and bounces what a group refuses, only from the domain's identity", () => {
+test("the inbound Lambda re-sends groups' mail through SES under Duva's configuration set, and bounces what a group refuses, only from the organization's domains' identities in this account and region", () => {
   expect([...new Set(actions("InboundHandler", "ses"))].sort()).toEqual(["ses:SendBounce", "ses:SendEmail", "ses:SendRawEmail"]);
   const [[setId]] = ofType("AWS::SES::ConfigurationSet") as [[string, Resource]];
-  const [[identityId]] = ofType("AWS::SES::EmailIdentity") as [[string, Resource]];
   expect(lambda("InboundHandler")[1].Properties?.Environment?.Variables?.[environmentVariables.configurationSet]).toEqual({ Ref: setId });
   for (const { Action, Resource } of statements("InboundHandler").filter(({ Action }) => [Action].flat().some((action) => action.startsWith("ses:")))) {
     const on = JSON.stringify(Resource);
-    const onIdentity = on.includes(`identity/",{"Ref":"${identityId}"}`);
+    const onIdentity = on.includes(JSON.stringify(identitiesHere));
     expect(onIdentity || (on.includes(`configuration-set/",{"Ref":"${setId}"}`) && !JSON.stringify(Action).includes("SendBounce"))).toBe(true);
   }
 });
 
-test("the API manages receipt rules in Duva's rule set, and may take no other SES action", () => {
-  // IAM has no resource type for receipt rules, so the rule set is named only in the environment.
-  expect(actions("ApiHandler", "ses").sort()).toEqual(["ses:CreateReceiptRule", "ses:DeleteReceiptRule", "ses:DescribeReceiptRuleSet", "ses:UpdateReceiptRule"]);
+test("the API manages receipt rules in Duva's rule set and the domains' identities in this account and region, and may take no other SES action", () => {
+  expect(actions("ApiHandler", "ses").sort()).toEqual([
+    "ses:CreateEmailIdentity",
+    "ses:CreateEmailIdentity",
+    "ses:CreateReceiptRule",
+    "ses:DeleteEmailIdentity",
+    "ses:DeleteReceiptRule",
+    "ses:DescribeReceiptRuleSet",
+    "ses:GetEmailIdentity",
+    "ses:PutEmailIdentityMailFromAttributes",
+    "ses:UpdateReceiptRule",
+  ]);
+  const [[setId]] = ofType("AWS::SES::ConfigurationSet") as [[string, Resource]];
+  for (const { Action, Resource } of statements("ApiHandler").filter(({ Action }) => [Action].flat().some((action) => action.startsWith("ses:")))) {
+    const resources = JSON.stringify(Resource);
+    if ([Action].flat().every((action) => action.includes("Receipt"))) {
+      // IAM has no resource type for receipt rules, so the rule set is named only in the environment.
+      expect(Resource).toBe("*");
+    } else if (resources.includes("configuration-set/")) {
+      // A new identity sends through Duva's configuration set by default.
+      expect([Action, resources]).toEqual(["ses:CreateEmailIdentity", JSON.stringify({ "Fn::Join": ["", ["arn:", { Ref: "AWS::Partition" }, ":ses:", { Ref: "AWS::Region" }, ":", { Ref: "AWS::AccountId" }, ":configuration-set/", { Ref: setId }]] })]);
+    } else {
+      expect(resources).toBe(JSON.stringify(identitiesHere));
+    }
+  }
+  expect(lambda("ApiHandler")[1].Properties?.Environment?.Variables?.[environmentVariables.configurationSet]).toEqual({ Ref: setId });
   const variables = lambda("ApiHandler")[1].Properties?.Environment?.Variables;
   expect(variables?.[environmentVariables.receiptRuleSet]).toEqual({ Ref: ruleSetId });
   expect(variables?.[environmentVariables.inboundFunction]).toEqual({ "Fn::GetAtt": [lambda("InboundHandler")[0], "Arn"] });
 });
+
+/** Every SES identity in the deployment's own account and region, as a policy's resource names it. */
+const identitiesHere = { "Fn::Join": ["", ["arn:", { Ref: "AWS::Partition" }, ":ses:", { Ref: "AWS::Region" }, ":", { Ref: "AWS::AccountId" }, ":identity/*"]] };
 
 test("the domain is a parameter, so deploy names it when it runs", () => {
   expect(stack.template.Parameters?.Domain?.Type).toBe("String");
@@ -466,8 +491,9 @@ test("receiving starts with an empty rule set, so SES refuses all mail until the
   expect(ofType("AWS::SES::ReceiptRule")).toEqual([]);
 });
 
-test("the domain, the first admin and whether SES has verified the domain are parameters, so deploy names them when it runs", () => {
+test("the domain, the first admin, the sign-in domain and whether SES has verified it are parameters, so deploy names them when it runs", () => {
   expect(stack.template.Parameters?.Admin?.Type).toBe("String");
+  expect(stack.template.Parameters?.SignInDomain?.Type).toBe("String");
   expect(stack.template.Parameters?.DomainVerified?.AllowedValues).toEqual(["true", "false"]);
 });
 
@@ -494,10 +520,18 @@ test("setup has minutes to move every human to the user pool, one at a time", ()
   expect(lambda("SetupHandler")[1].Properties?.Timeout).toBe(300);
 });
 
-test("the API adds humans to the user pool and deletes them from it, and may take no other Cognito action", () => {
+test("the API adds humans to the user pool, deletes them from it and changes its sender, and may take no other Cognito action", () => {
   const [[userPoolId]] = ofType("AWS::Cognito::UserPool") as [[string, Resource]];
-  expect(actions("ApiHandler", "cognito-idp").sort()).toEqual(["cognito-idp:AdminCreateUser", "cognito-idp:AdminDeleteUser", "cognito-idp:AdminGetUser"]);
-  expect(JSON.stringify(statements("ApiHandler").filter(({ Action }) => [Action].flat().some((action) => action.startsWith("cognito-idp:"))))).toContain(userPoolId);
+  expect(actions("ApiHandler", "cognito-idp").sort()).toEqual([
+    "cognito-idp:AdminCreateUser",
+    "cognito-idp:AdminDeleteUser",
+    "cognito-idp:AdminGetUser",
+    "cognito-idp:DescribeUserPool",
+    "cognito-idp:UpdateUserPool",
+  ]);
+  for (const { Resource } of statements("ApiHandler").filter(({ Action }) => [Action].flat().some((action) => action.startsWith("cognito-idp:")))) {
+    expect(Resource).toEqual({ "Fn::GetAtt": [userPoolId, "Arn"] });
+  }
   expect(lambda("ApiHandler")[1].Properties?.Environment?.Variables?.[environmentVariables.userPoolId]).toEqual({ Ref: userPoolId });
 });
 
@@ -505,15 +539,15 @@ test("humans sign in with an emailed code, and the password Cognito requires is 
   expect(userPool.Properties?.Policies?.SignInPolicy?.AllowedFirstAuthFactors).toEqual(["PASSWORD", "EMAIL_OTP"]);
 });
 
-test("sign-in codes go through SES from the domain once SES has verified it, and from Cognito until then", () => {
+test("sign-in codes go through SES from the sign-in domain once SES has verified it, and from Cognito until then", () => {
   const { EmailConfiguration: email } = userPool.Properties ?? {};
   const [condition, verified, unverified] = email?.["Fn::If"] ?? [];
   expect(stack.template.Conditions?.[condition]).toEqual({ "Fn::Equals": [{ Ref: "DomainVerified" }, "true"] });
   expect(verified).toMatchObject({
     EmailSendingAccount: "DEVELOPER",
-    From: { "Fn::Join": ["", ["Duva <no-reply@", { Ref: "Domain" }, ">"]] },
+    From: { "Fn::Join": ["", ["Duva <no-reply@", { Ref: "SignInDomain" }, ">"]] },
   });
-  expect(JSON.stringify(verified.SourceArn)).toContain('{"Ref":"Domain"}');
+  expect(JSON.stringify(verified.SourceArn)).toContain('{"Ref":"SignInDomain"}');
   expect(unverified).toEqual({ EmailSendingAccount: "COGNITO_DEFAULT" });
 });
 

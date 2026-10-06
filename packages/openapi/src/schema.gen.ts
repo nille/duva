@@ -289,8 +289,8 @@ export interface paths {
         get: operations["listAddresses"];
         put?: never;
         /**
-         * Give a mailbox another address on one of the organization's domains.
-         * @description Mail to the address, and to its plus-tagged addresses, reaches the mailbox from then on. A mailbox that had no address takes it as its default address. Only admins can add addresses, and an address in use is refused. Adding an address is a change to the organization's setup, recorded in its change feed under you.
+         * Give a mailbox another address on one of the organization's standalone domains.
+         * @description Mail to the address, and to its plus-tagged addresses, reaches the mailbox from then on, as does mail to the same address on each of the domain's alias domains. A mailbox that had no address takes it as its default address. Only admins can add addresses, and an address in use is refused. Adding an address is a change to the organization's setup, recorded in its change feed under you.
          */
         post: operations["addAddress"];
         delete?: never;
@@ -371,6 +371,74 @@ export interface paths {
         patch: operations["changeGroup"];
         trace?: never;
     };
+    "/domains": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the organization's domains, each with its DNS records and SES's verification.
+         * @description Each record's status is looked up when you ask: missing until DNS answers with its value, found once it does, and verified once SES has verified what the record is for. Only admins can list the organization's domains.
+         */
+        get: operations["listDomains"];
+        put?: never;
+        /**
+         * Add a domain to the organization, standalone or an alias of one of its standalone domains.
+         * @description Duva creates the domain's SES identity, with DKIM and its MAIL FROM domain, mail.<domain>, and answers with the DNS records to add at the domain's DNS provider. Duva doesn't change anyone's DNS. SES verifies the domain once its records are live, and the domain shows each record's status and SES's verification as they come. A standalone domain's addresses are its own. An alias domain mirrors every address of the standalone domain given as aliasOf, those added later too: mail to name@alias reaches the mailbox of name@standalone, and replies to it go out from name@alias. Only admins can add domains, and a domain the organization has, or one with an SES identity Duva didn't create, is refused. Adding a domain is a change to the organization's setup, recorded in its change feed under you.
+         */
+        post: operations["addDomain"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/domains/{domain}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show one of the organization's domains, with its DNS records and SES's verification.
+         * @description Each record's status is looked up when you ask, so call it again to see SES verify the domain once its records are live. Only admins can read the organization's domains.
+         */
+        get: operations["getDomain"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Send sign-in codes from one of the organization's domains.
+         * @description Sign-in codes come from no-reply@<domain>. The domain must be one SES has verified. Choosing it changes Cognito's sender at once, and duva deploy keeps it. The domain sign-in codes come from can't be removed, so choose another one before removing it. Only admins can choose, and the choice is a change to the organization's setup, recorded in its change feed under you.
+         */
+        patch: operations["changeDomain"];
+        trace?: never;
+    };
+    "/domains/{domain}/remove": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Remove a domain with its addresses, and its alias domains if it is a standalone domain.
+         * @description Run it first with dryRun to see the domains it removes, the addresses that stop receiving mail and the mailboxes left without an address. Removing a standalone domain removes its addresses, deleting the groups among them, and its alias domains with the addresses they mirror, since an alias domain mirrors nothing without it. The addresses that stop working leave every group they are members of. Removing an alias domain removes only what it mirrors. SES refuses mail to those addresses at once, and the domains' SES identities are deleted. The mail the mailboxes have stays. A mailbox left with no address keeps its mail, but receives and sends no new mail until it is given one. The domain sign-in codes come from can't be removed, so choose another one first. Only admins can remove domains. Each removal, and each address removed, is a change to the organization's setup, recorded in its change feed under you.
+         */
+        post: operations["removeDomain"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/mailboxes": {
         parameters: {
             query?: never;
@@ -385,7 +453,7 @@ export interface paths {
         get: operations["listMailboxes"];
         put?: never;
         /**
-         * Create a personal mailbox for a human or an agent, with an address on one of the organization's domains.
+         * Create a personal mailbox for a human or an agent, with an address on one of the organization's standalone domains.
          * @description Only admins can create mailboxes. The address becomes the mailbox's default address, and mail to it is accepted from then on. An admin can't read a personal mailbox they don't own, even one they created, unless they sponsor the agent that owns it. Creating the mailbox and its address are changes to the organization's setup, recorded in its change feed.
          */
         post: operations["createMailbox"];
@@ -1057,7 +1125,7 @@ export interface components {
         DisclosureLineAsSponsor: boolean;
         NewAddress: {
             /**
-             * @description The address, on one of the organization's domains, without a plus tag.
+             * @description The address, on one of the organization's standalone domains, without a plus tag. Its alias domains mirror it.
              * @example support@example.com
              */
             address: string;
@@ -1081,7 +1149,7 @@ export interface components {
         };
         NewGroup: {
             /**
-             * @description The group's address, on one of the organization's domains, without a plus tag.
+             * @description The group's address, on one of the organization's standalone domains, without a plus tag. Its alias domains mirror it.
              * @example support@example.com
              */
             address: string;
@@ -1124,6 +1192,96 @@ export interface components {
          * @enum {string}
          */
         GroupReplyTo: "sender" | "group";
+        NewDomain: {
+            /**
+             * @description The domain. International domains can be given as they are written.
+             * @example example.net
+             */
+            domain: string;
+            /**
+             * @description The standalone domain it mirrors, to make it an alias domain. Without it the domain is a standalone domain.
+             * @example example.com
+             */
+            aliasOf?: string;
+        };
+        DomainChanges: {
+            /**
+             * @description Sends sign-in codes from the domain from now on. To stop, choose another domain.
+             * @constant
+             */
+            signIn: true;
+        };
+        /** @description One of the organization's domains, with the DNS records it needs and SES's verification of it. */
+        Domain: {
+            /**
+             * @description The domain, in lower-case ASCII, international labels in Punycode.
+             * @example example.com
+             */
+            domain: string;
+            /**
+             * @description A standalone domain's addresses are its own. An alias domain mirrors every address of its standalone domain.
+             * @enum {string}
+             */
+            kind: "standalone" | "alias";
+            /** @description The standalone domain an alias domain mirrors. */
+            aliasOf?: string;
+            /** @description Whether sign-in codes come from the domain, once SES has verified it. */
+            signIn: boolean;
+            ses: components["schemas"]["DomainVerification"];
+            /** @description The DNS records the domain needs, to add at its DNS provider. A DMARC record is left out when a parent domain's covers it. */
+            records: components["schemas"]["DnsRecord"][];
+        };
+        /** @description What SES has verified of the domain. SES checks the DNS records on its own, for up to 72 hours after the domain is added. */
+        DomainVerification: {
+            /** @description Whether SES has verified the domain, which mail from it needs. */
+            verified: boolean;
+            /**
+             * @description SES's DKIM status, in words, like pending or verified.
+             * @example pending
+             */
+            dkim: string;
+            /**
+             * @description SES's status of the MAIL FROM domain, in words, like pending or verified.
+             * @example pending
+             */
+            mailFrom: string;
+        };
+        /** @description A DNS record the domain needs. */
+        DnsRecord: {
+            /** @enum {string} */
+            purpose: "receiving" | "DKIM" | "MAIL FROM" | "DMARC";
+            /** @enum {string} */
+            type: "MX" | "TXT" | "CNAME";
+            /** @example example.com */
+            name: string;
+            /** @example 10 inbound-smtp.eu-north-1.amazonaws.com */
+            value: string;
+            /**
+             * @description missing until DNS answers with the value, found once it does, and verified once SES has verified what the record is for. SES never verifies receiving or DMARC records.
+             * @enum {string}
+             */
+            status: "missing" | "found" | "verified";
+            /** @description What DNS answered instead, if it has other values at the name. */
+            found?: string[];
+        };
+        DomainList: {
+            domains: components["schemas"]["Domain"][];
+        };
+        DomainRemovalChoices: {
+            /** @description Lists what the removal takes and removes nothing. */
+            dryRun?: boolean;
+        };
+        /** @description A domain's removal, and what goes with it. */
+        DomainRemoval: {
+            /** @description The domains removed, the one asked for first, then its alias domains. */
+            domains: string[];
+            /** @description The addresses that stop receiving mail, those its alias domains mirror included, each with its mailbox. */
+            addresses: components["schemas"]["Address"][];
+            /** @description The IDs of the mailboxes left with no address, which keep their mail but receive and send none until they are given one. */
+            mailboxesLeftWithoutAddress: string[];
+            /** @description Whether the domains were removed, which a dry run leaves undone. */
+            removed: boolean;
+        };
         MailboxChanges: {
             /**
              * @description The mailbox's new default address, one of its addresses.
@@ -1135,7 +1293,7 @@ export interface components {
             /** @description The ID of the human or agent that owns the mailbox. */
             owner: string;
             /**
-             * @description The mailbox's first address, its default address, on one of the organization's domains, without a plus tag.
+             * @description The mailbox's first address, its default address, on one of the organization's standalone domains, without a plus tag.
              * @example hermes@example.com
              */
             address: string;
@@ -2118,7 +2276,7 @@ export interface components {
             position: number;
         };
         /** @description A change to the organization's setup. */
-        OrganizationChange: components["schemas"]["OrganizationAdded"] | components["schemas"]["DomainAdded"] | components["schemas"]["ActorAdded"] | components["schemas"]["AgentKeyRotated"] | components["schemas"]["MailboxAdded"] | components["schemas"]["AddressAdded"] | components["schemas"]["AddressRemoved"] | components["schemas"]["DefaultAddressChanged"] | components["schemas"]["GroupAdded"] | components["schemas"]["GroupChanged"] | components["schemas"]["GroupRemoved"] | components["schemas"]["SettingsChanged"] | components["schemas"]["ActorRemoved"] | components["schemas"]["AdminChanged"] | components["schemas"]["MailboxHandedOver"] | components["schemas"]["MailboxDeleted"];
+        OrganizationChange: components["schemas"]["OrganizationAdded"] | components["schemas"]["DomainAdded"] | components["schemas"]["DomainRemoved"] | components["schemas"]["SignInDomainChanged"] | components["schemas"]["ActorAdded"] | components["schemas"]["AgentKeyRotated"] | components["schemas"]["MailboxAdded"] | components["schemas"]["AddressAdded"] | components["schemas"]["AddressRemoved"] | components["schemas"]["DefaultAddressChanged"] | components["schemas"]["GroupAdded"] | components["schemas"]["GroupChanged"] | components["schemas"]["GroupRemoved"] | components["schemas"]["SettingsChanged"] | components["schemas"]["ActorRemoved"] | components["schemas"]["AdminChanged"] | components["schemas"]["MailboxHandedOver"] | components["schemas"]["MailboxDeleted"];
         ChangeBase: {
             /** @description The change's position in the feed, counting from 1. */
             position: number;
@@ -2144,8 +2302,25 @@ export interface components {
             /** @constant */
             type: "domainAdded";
             /**
-             * @description The domain, a standalone domain.
+             * @description The domain.
              * @example example.com
+             */
+            domain: string;
+            /** @description The standalone domain it mirrors, if it is an alias domain. */
+            aliasOf?: string;
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "domainAdded";
+        };
+        DomainRemoved: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "domainRemoved";
+            /**
+             * @description The domain.
+             * @example example.net
              */
             domain: string;
         } & {
@@ -2153,7 +2328,22 @@ export interface components {
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
-            type: "domainAdded";
+            type: "domainRemoved";
+        };
+        SignInDomainChanged: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "signInDomainChanged";
+            /**
+             * @description The domain sign-in codes come from from now on.
+             * @example example.net
+             */
+            domain: string;
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "signInDomainChanged";
         };
         ActorAdded: components["schemas"]["ChangeBase"] & {
             /** @constant */
@@ -2462,6 +2652,8 @@ export interface components {
         Human: string;
         /** @description The group's address. Case doesn't matter. */
         Group: string;
+        /** @description The domain. Case doesn't matter. */
+        Domain: string;
     };
     requestBodies: never;
     headers: never;
@@ -3139,6 +3331,145 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    listDomains: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The organization's domains, in alphabetical order. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomainList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    addDomain: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewDomain"];
+            };
+        };
+        responses: {
+            /** @description The domain, with the DNS records it needs. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Domain"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getDomain: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The domain. Case doesn't matter. */
+                domain: components["parameters"]["Domain"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The domain. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Domain"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    changeDomain: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The domain. Case doesn't matter. */
+                domain: components["parameters"]["Domain"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DomainChanges"];
+            };
+        };
+        responses: {
+            /** @description The domain, changed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Domain"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    removeDomain: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The domain. Case doesn't matter. */
+                domain: components["parameters"]["Domain"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DomainRemovalChoices"];
+            };
+        };
+        responses: {
+            /** @description What the removal takes, removed unless it was a dry run. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomainRemoval"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     listMailboxes: {

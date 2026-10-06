@@ -93,3 +93,9 @@ export const dropMetric = { namespace: "Duva", name: "DroppedMessages", dimensio
 
 /** Why Duva drops a message on arrival, as the drop metric's dimension names it. */
 export const dropReasons = ["virus", "dmarcReject"] as const;
+
+/** The address sign-in codes come from once SES has verified the sign-in domain. */
+export const signInSender = (domain: string) => `no-reply@${domain}`;
+
+/** The From of sign-in codes, as Cognito sends them from the sign-in domain. */
+export const signInFrom = (domain: string) => `Duva <${signInSender(domain)}>`;

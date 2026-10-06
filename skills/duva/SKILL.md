@@ -198,11 +198,11 @@ Only admins can list the organization's addresses.
 
 ## duva addresses add
 
-Give a mailbox another address on one of the organization's domains.
+Give a mailbox another address on one of the organization's standalone domains.
 
-Mail to the address, and to its plus-tagged addresses, reaches the mailbox from then on. A mailbox that had no address takes it as its default address. Only admins can add addresses, and an address in use is refused. Adding an address is a change to the organization's setup, recorded in its change feed under you.
+Mail to the address, and to its plus-tagged addresses, reaches the mailbox from then on, as does mail to the same address on each of the domain's alias domains. A mailbox that had no address takes it as its default address. Only admins can add addresses, and an address in use is refused. Adding an address is a change to the organization's setup, recorded in its change feed under you.
 
-- `--address` (required): The address, on one of the organization's domains, without a plus tag.
+- `--address` (required): The address, on one of the organization's standalone domains, without a plus tag. Its alias domains mirror it.
 - `--mailbox` (required): The ID of the mailbox it delivers to.
 
 ## duva addresses remove
@@ -225,7 +225,7 @@ Create a group, an address that delivers a copy of each message to every member.
 
 Members are addresses: the organization's own, of mailboxes or other groups, and external addresses. Each local member's mailbox gets its own copy, marked with the group, which skips its Screener. A member that is a group gives its members a copy too, and each mailbox gets one copy however many ways it is a member. External members get the copy re-sent from the group's address, as "Alice via team", with Reply-To as the group's replyTo says. Mail from a sender the group's sendPolicy doesn't allow is bounced. Only admins can create groups. Creating one is a change to the organization's setup, recorded in its change feed under you.
 
-- `--address` (required): The group's address, on one of the organization's domains, without a plus tag.
+- `--address` (required): The group's address, on one of the organization's standalone domains, without a plus tag. Its alias domains mirror it.
 - `--members` (required) (once for each): The members' addresses, in lower case: the organization's addresses, of mailboxes or other groups, and external addresses. A member on the organization's domains must be one of its addresses, without a plus tag.
 - `--sendPolicy`: Who may send to the group, by the From of their mail. Anyone, the default, lets everyone. Organization lets only senders on the organization's domains. Members lets only the group's members, its nested groups' included, from any address of a member's mailbox. A From on the organization's domains counts only if the mail passed DMARC, and any other only if it didn't fail it. Mail from anyone else is bounced.
 - `--replyTo`: Where external members' replies to the copies re-sent to them go. Sender, the default, sends them to the original sender, and group to the group.
@@ -257,6 +257,47 @@ Give only what to change. Members you give replace the group's members. A change
 - `--sendPolicy`: Who may send to the group, by the From of their mail. Anyone, the default, lets everyone. Organization lets only senders on the organization's domains. Members lets only the group's members, its nested groups' included, from any address of a member's mailbox. A From on the organization's domains counts only if the mail passed DMARC, and any other only if it didn't fail it. Mail from anyone else is bounced.
 - `--replyTo`: Where external members' replies to the copies re-sent to them go. Sender, the default, sends them to the original sender, and group to the group.
 
+## duva domains list
+
+List the organization's domains, each with its DNS records and SES's verification.
+
+Each record's status is looked up when you ask: missing until DNS answers with its value, found once it does, and verified once SES has verified what the record is for. Only admins can list the organization's domains.
+
+## duva domains add
+
+Add a domain to the organization, standalone or an alias of one of its standalone domains.
+
+Duva creates the domain's SES identity, with DKIM and its MAIL FROM domain, mail.<domain>, and answers with the DNS records to add at the domain's DNS provider. Duva doesn't change anyone's DNS. SES verifies the domain once its records are live, and the domain shows each record's status and SES's verification as they come. A standalone domain's addresses are its own. An alias domain mirrors every address of the standalone domain given as aliasOf, those added later too: mail to name@alias reaches the mailbox of name@standalone, and replies to it go out from name@alias. Only admins can add domains, and a domain the organization has, or one with an SES identity Duva didn't create, is refused. Adding a domain is a change to the organization's setup, recorded in its change feed under you.
+
+- `--domain` (required): The domain. International domains can be given as they are written.
+- `--aliasOf`: The standalone domain it mirrors, to make it an alias domain. Without it the domain is a standalone domain.
+
+## duva domains get
+
+Show one of the organization's domains, with its DNS records and SES's verification.
+
+Each record's status is looked up when you ask, so call it again to see SES verify the domain once its records are live. Only admins can read the organization's domains.
+
+- `--domain` (required): The domain. Case doesn't matter.
+
+## duva domains change
+
+Send sign-in codes from one of the organization's domains.
+
+Sign-in codes come from no-reply@<domain>. The domain must be one SES has verified. Choosing it changes Cognito's sender at once, and duva deploy keeps it. The domain sign-in codes come from can't be removed, so choose another one before removing it. Only admins can choose, and the choice is a change to the organization's setup, recorded in its change feed under you.
+
+- `--domain` (required): The domain. Case doesn't matter.
+- `--signIn` or `--no-signIn` (required): Sends sign-in codes from the domain from now on. To stop, choose another domain.
+
+## duva domains remove
+
+Remove a domain with its addresses, and its alias domains if it is a standalone domain.
+
+Run it first with dryRun to see the domains it removes, the addresses that stop receiving mail and the mailboxes left without an address. Removing a standalone domain removes its addresses, deleting the groups among them, and its alias domains with the addresses they mirror, since an alias domain mirrors nothing without it. The addresses that stop working leave every group they are members of. Removing an alias domain removes only what it mirrors. SES refuses mail to those addresses at once, and the domains' SES identities are deleted. The mail the mailboxes have stays. A mailbox left with no address keeps its mail, but receives and sends no new mail until it is given one. The domain sign-in codes come from can't be removed, so choose another one first. Only admins can remove domains. Each removal, and each address removed, is a change to the organization's setup, recorded in its change feed under you.
+
+- `--domain` (required): The domain. Case doesn't matter.
+- `--dryRun` or `--no-dryRun`: Lists what the removal takes and removes nothing.
+
 ## duva mailboxes list
 
 List the mailboxes you can read, your own and those of the agents you sponsor.
@@ -265,12 +306,12 @@ An agent your sponsor gives read or full sponsor access also finds your sponsor'
 
 ## duva mailboxes create
 
-Create a personal mailbox for a human or an agent, with an address on one of the organization's domains.
+Create a personal mailbox for a human or an agent, with an address on one of the organization's standalone domains.
 
 Only admins can create mailboxes. The address becomes the mailbox's default address, and mail to it is accepted from then on. An admin can't read a personal mailbox they don't own, even one they created, unless they sponsor the agent that owns it. Creating the mailbox and its address are changes to the organization's setup, recorded in its change feed.
 
 - `--owner` (required): The ID of the human or agent that owns the mailbox.
-- `--address` (required): The mailbox's first address, its default address, on one of the organization's domains, without a plus tag.
+- `--address` (required): The mailbox's first address, its default address, on one of the organization's standalone domains, without a plus tag.
 
 ## duva mailboxes get
 

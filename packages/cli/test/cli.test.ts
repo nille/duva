@@ -337,6 +337,25 @@ test("an admin makes a human an admin with --admin, and the last admin can't tak
   expect(JSON.parse(made.stdout)).toEqual({ ...grace, admin: true });
 });
 
+test("an admin adds an alias domain from the CLI, sees its records, and removes it, first with --dryRun", async () => {
+  const machine = await newMachine();
+  const duva = await startDuva({ domain: "example.com", admin: "ada@example.org" });
+  const server = await duva.listen();
+  onTestFinished(() => server.close());
+  await machine.saveDeployment(server);
+  await machine.duva("login", { browserSignsIn: "ada@example.org" });
+
+  const added = await machine.duva("domains", "add", "--domain", "example.se", "--aliasOf", "example.com");
+  const dryRun = await machine.duva("domains", "remove", "--domain", "example.se", "--dryRun");
+  const removed = await machine.duva("domains", "remove", "--domain", "example.se");
+
+  expect(JSON.parse(added.stdout)).toMatchObject({ domain: "example.se", kind: "alias", aliasOf: "example.com", ses: { verified: false } });
+  expect(JSON.parse(added.stdout).records.map(({ status }: { status: string }) => status)).toEqual(Array(7).fill("missing"));
+  expect(JSON.parse(dryRun.stdout)).toMatchObject({ domains: ["example.se"], removed: false });
+  expect(JSON.parse(removed.stdout)).toMatchObject({ domains: ["example.se"], removed: true });
+  expect(JSON.parse((await machine.duva("domains", "list")).stdout).domains.map(({ domain }: { domain: string }) => domain)).toEqual(["example.com"]);
+});
+
 test("agents list shows the agents the signed-in human sponsors", async () => {
   const machine = await newMachine();
   const server = await (await startDuva({ admin: "ada@example.com" })).listen();

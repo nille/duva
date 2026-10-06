@@ -16,6 +16,7 @@
     "./indexer-lambda": "./src/indexer-lambda.ts",
     "./feeder-lambda": "./src/feeder-lambda.ts",
     "./infrastructure": "./src/infrastructure.ts",
+    "./dns-records": "./src/dns-records.ts",
     "./indexing": "./src/indexing.ts",
     "./harness": "./test/harness.ts"
   },

@@ -1,10 +1,14 @@
 // What duva deploy does in an AWS account and region, given the organization's first domain and
-// first admin. AWS and DNS sit behind the small interfaces below: aws.ts and dns.ts are the real ones.
-import { domainToASCII } from "node:url";
+// first admin. AWS and DNS sit behind small interfaces: aws.ts and the API's dns-records.ts have the
+// real ones. Every later domain is the API's to add and remove at run time (ADR-0018).
+import { asciiDomain, type Dns, type DnsRecord, domainRecords, verification } from "@duva/api/dns-records";
+import { signInSender } from "@duva/api/infrastructure";
 import type { WebAppConfig } from "@duva/client";
 import type { SignInConfig } from "@duva/client/sign-in";
 import type { components } from "@duva/openapi";
-import { cliRedirectUri, signInSender, stackOutputs } from "@duva/infra/outputs";
+import { cliRedirectUri, stackOutputs } from "@duva/infra/outputs";
+
+export type { Dns } from "@duva/api/dns-records";
 
 /** The Duva stack's outputs, by output name. */
 export type StackOutputs = Record<string, string>;
@@ -15,7 +19,9 @@ export interface StackParameters {
   domain: string;
   /** The first admin's email address. */
   admin: string;
-  /** Whether SES has verified the domain. Cognito can send sign-in codes from it only once SES has. */
+  /** The domain sign-in codes come from, the first domain until an admin chooses another. */
+  signInDomain: string;
+  /** Whether SES has verified the sign-in domain. Cognito can send sign-in codes from it only once SES has. */
   domainVerified: boolean;
 }
 
@@ -32,6 +38,8 @@ export interface Aws {
   setUpOrganization(functionName: string): Promise<components["schemas"]["Human"]>;
   /** The IDs of the user pools the Duva stack in the region has made, those it no longer has included. */
   stackUserPools(): Promise<string[]>;
+  /** The domain the user pool sends sign-in codes from, or undefined while Cognito sends them itself. */
+  signInDomain(userPoolId: string): Promise<string | undefined>;
   /** Deletes the user pool and everything in it, its managed login domain first. */
   deleteUserPool(id: string): Promise<void>;
   /** Uploads the web app this CLI version bundles to the bucket, with its config. */
@@ -52,37 +60,14 @@ export interface Aws {
   sending(): Promise<{ sandbox: boolean; perDay: number; perSecond: number }>;
 }
 
-export interface Dns {
-  /**
-   * The records of the type at the name: MX as "priority host", TXT with its strings joined.
-   * Empty when there are none. Throws when the lookup fails.
-   */
-  resolve(type: RecordType, name: string): Promise<string[]>;
-}
-
-type RecordType = "MX" | "TXT" | "CNAME";
-
-export interface DnsRecord {
-  /** What SES needs the record for. */
-  purpose: "receiving" | "DKIM" | "MAIL FROM" | "DMARC";
-  type: RecordType;
-  name: string;
-  value: string;
-  /** Whether DNS answers with the value. "different" lists what it found, "unchecked" why the lookup failed. */
-  status: "live" | "missing" | "different" | "unchecked";
-  found?: string[];
-  error?: string;
-}
-
-/** The MAIL FROM subdomain's label: mail from Duva bounces to mail.<domain>. */
-const mailFromLabel = "mail";
-
 export async function deployDuva({ aws, dns, ...given }: { aws: Aws; dns: Dns; domain?: string; admin?: string }) {
   const stack = await aws.duvaStack();
-  const domain = given.domain === undefined ? stack?.domain : asciiDomain(given.domain);
+  const domain = given.domain === undefined ? stack?.domain : domainGiven(given.domain);
   if (domain === undefined) throw new Error("Give the organization's first domain, like duva deploy --domain example.com.");
   if (stack?.domain !== undefined && domain !== stack.domain) {
-    throw new Error(`This deployment's domain is ${stack.domain}. For now a deployment has only one, so it can't take ${domain}. Run duva deploy without --domain.`);
+    throw new Error(
+      `This deployment's first domain is ${stack.domain}, and deploy keeps it. Admins add every other domain, so add ${domain} with duva domains add, and run duva deploy without --domain.`,
+    );
   }
   const admin = given.admin === undefined ? stack?.admin : emailAddress(given.admin);
   if (admin === undefined) throw new Error("Give the first admin's email address, yours, like duva deploy --admin you@example.com.");
@@ -111,9 +96,13 @@ export async function deployDuva({ aws, dns, ...given }: { aws: Aws; dns: Dns; d
     );
   }
 
-  // Cognito refuses to send from a domain SES hasn't verified, so until then the stack sends sign-in codes from Cognito.
-  const domainVerified = stack?.domain === domain && ((await aws.emailIdentity(domain))?.verified ?? false);
-  const { account, outputs } = await aws.deployStack({ domain, admin, domainVerified });
+  // An admin may have chosen another domain to send sign-in codes from since, which the user pool
+  // already does, so the stack keeps it. Cognito refuses to send from a domain SES hasn't verified,
+  // so until then the stack sends sign-in codes from Cognito.
+  const userPoolId = stack?.outputs[stackOutputs.userPoolId];
+  const signInDomain = (userPoolId !== undefined ? await aws.signInDomain(userPoolId) : undefined) ?? domain;
+  const domainVerified = stack?.domain === domain && ((await aws.emailIdentity(signInDomain))?.verified ?? false);
+  const { account, outputs } = await aws.deployStack({ domain, admin, signInDomain, domainVerified });
   const ruleSet = output(outputs, stackOutputs.receiptRuleSet);
   if (activeRuleSet !== ruleSet) await aws.activateReceiptRuleSet(ruleSet);
 
@@ -132,33 +121,18 @@ export async function deployDuva({ aws, dns, ...given }: { aws: Aws; dns: Dns; d
   const userPool = output(outputs, stackOutputs.userPoolId);
   for (const retired of await aws.stackUserPools()) if (retired !== userPool) await aws.deleteUserPool(retired);
 
-  const wanted: Wanted[] = [
-    { purpose: "receiving", type: "MX", name: domain, value: `10 inbound-smtp.${aws.region}.amazonaws.com` },
-    ...([1, 2, 3] as const).map((n) => ({
-      purpose: "DKIM" as const,
-      type: "CNAME" as const,
-      name: output(outputs, stackOutputs.dkimName(n)),
-      value: output(outputs, stackOutputs.dkimValue(n)),
-    })),
-    { purpose: "MAIL FROM", type: "MX", name: `${mailFromLabel}.${domain}`, value: `10 feedback-smtp.${aws.region}.amazonses.com` },
-    { purpose: "MAIL FROM", type: "TXT", name: `${mailFromLabel}.${domain}`, value: "v=spf1 include:amazonses.com ~all" },
-  ];
-  const records = await Promise.all(wanted.map((record) => check(dns, record)));
-
-  // The domain needs a DMARC record of its own only if none covers it from a parent domain.
-  const dmarc = await check(dns, { purpose: "DMARC", type: "TXT", name: `_dmarc.${domain}`, value: "v=DMARC1; p=none;" });
-  const coveredBy = dmarc.status === "missing" ? await parentDmarc(dns, domain) : undefined;
-  if (coveredBy === undefined) records.push(dmarc);
-
   const identity = await aws.emailIdentity(domain);
-  if (identity === undefined) throw new Error(`The deployed stack made no SES identity for ${domain}.`);
+  // Only an admin's removal of the first domain deletes its identity once the stack has made it.
+  if (identity === undefined && stack?.domain !== domain) throw new Error(`The deployed stack made no SES identity for ${domain}.`);
+  const dkim = ([1, 2, 3] as const).map((n) => ({ name: output(outputs, stackOutputs.dkimName(n)), value: output(outputs, stackOutputs.dkimValue(n)) }));
+  const { records, coveredBy } = identity === undefined ? { records: [] as DnsRecord[], coveredBy: undefined } : await domainRecords(dns, { region: aws.region, domain, dkim });
 
   const sendingReport = await sending(aws);
   const signIn = [
     `Sign in at ${webUrl}, or with duva login, with a code emailed to ${firstAdmin.email}`,
     domainVerified
-      ? ` from ${signInSender(domain)}.`
-      : ` from Cognito's no-reply@verificationemail.com until SES has verified ${domain}. Once it has, run duva deploy again to send codes from ${signInSender(domain)}.`,
+      ? ` from ${signInSender(signInDomain)}.`
+      : ` from Cognito's no-reply@verificationemail.com until SES has verified ${signInDomain}. Once it has, run duva deploy again to send codes from ${signInSender(signInDomain)}.`,
   ];
   // In the sandbox SES sends only to verified addresses, sign-in codes included.
   const adminVerified = sendingReport.sandbox ? await aws.emailAddressVerified(firstAdmin.email) : undefined;
@@ -168,7 +142,7 @@ export async function deployDuva({ aws, dns, ...given }: { aws: Aws; dns: Dns; d
     signIn.push(
       domainVerified
         ? ` In the SES sandbox codes reach only addresses SES has verified, so SES sent ${firstAdmin.email} a link to verify it. Open it before you sign in.`
-        : ` SES also sent ${firstAdmin.email} a link to verify it, which codes from ${signInSender(domain)} will need while the account is in the SES sandbox.`,
+        : ` SES also sent ${firstAdmin.email} a link to verify it, which codes from ${signInSender(signInDomain)} will need while the account is in the SES sandbox.`,
     );
   }
 
@@ -182,16 +156,15 @@ export async function deployDuva({ aws, dns, ...given }: { aws: Aws; dns: Dns; d
       name: domain,
       records,
       ...(coveredBy && { dmarc: `Covered by the DMARC record at ${coveredBy}.` }),
-      ses: { dkim: verification(identity.dkimStatus), mailFrom: verification(identity.mailFromStatus) },
-    },
+      ...(identity === undefined
+        ? { removed: `An admin removed ${domain} from the organization, so it needs no DNS records. An admin can add it again with duva domains add.` }
+        : { ses: { dkim: verification(identity.dkimStatus), mailFrom: verification(identity.mailFromStatus) } }),
+    } as { name: string; records: DnsRecord[]; dmarc?: string; ses?: { dkim: string; mailFrom: string }; removed?: string },
     sending: sendingReport,
     /** How the CLI signs in, for its config. */
     signIn: { url: signInUrl, clientId: output(outputs, stackOutputs.cliClientId), redirectUri: cliRedirectUri } satisfies SignInConfig,
   };
 }
-
-/** An SES verification status, like TEMPORARY_FAILURE, in words: temporary failure. SUCCESS reads as verified. */
-const verification = (status: string) => (status === "SUCCESS" ? "verified" : status.toLowerCase().replaceAll("_", " "));
 
 async function sending(aws: Aws) {
   const { sandbox, perDay, perSecond } = await aws.sending();
@@ -208,66 +181,10 @@ async function sending(aws: Aws) {
   };
 }
 
-type Wanted = Omit<DnsRecord, "status" | "found" | "error">;
-
-/** The record with whether DNS answers with it. */
-async function check(dns: Dns, record: Wanted): Promise<DnsRecord> {
-  let found: string[];
-  try {
-    found = await dns.resolve(record.type, record.name);
-  } catch (error) {
-    return { ...record, status: "unchecked", error: error instanceof Error ? error.message : String(error) };
-  }
-  // Of a name's TXT records, only those of the same kind (SPF or DMARC) can stand in for it.
-  if (record.type === "TXT") found = found.filter((text) => kind(text) === kind(record.value));
-  if (found.length === 0) return { ...record, status: "missing" };
-  // Any one DMARC policy is the organization's choice, but receivers ignore a name with two. Anything
-  // else must be exactly what SES needs, and an MX with other mail servers next to SES's sends some
-  // mail elsewhere.
-  const live =
-    record.purpose === "DMARC" ? found.length === 1 : found.every((value) => sameValue(record.type, value, record.value));
-  return live ? { ...record, status: "live" } : { ...record, status: "different", found };
-}
-
-/** What a TXT record is, from its first tag, like v=spf1. */
-const kind = (text: string) => text.split(/[\s;]/, 1)[0]?.toLowerCase();
-
-function sameValue(type: RecordType, found: string, wanted: string): boolean {
-  if (type === "TXT") return found === wanted;
-  const host = (value: string) => value.toLowerCase().replace(/\.$/, "");
-  // An MX record's priority doesn't matter while SES's server is the only one.
-  if (type === "MX") return host(found.split(" ").at(-1) ?? "") === host(wanted.split(" ").at(-1) ?? "");
-  return host(found) === host(wanted);
-}
-
-/**
- * The name of the nearest parent domain's DMARC record, which covers the domain too, or undefined if
- * there is none. Walks up to the domain below the top level, as DMARCbis receivers do. Receivers that
- * follow RFC 7489 look only at the organizational domain, which needs the Public Suffix List, so for
- * a.b.example.com they'd skip a record at b.example.com that this counts.
- */
-async function parentDmarc(dns: Dns, domain: string): Promise<string | undefined> {
-  const labels = domain.split(".");
-  for (let start = 1; start < labels.length - 1; start++) {
-    const name = `_dmarc.${labels.slice(start).join(".")}`;
-    // A failed lookup counts as no record, so deploy may print a DMARC record the domain doesn't need.
-    const found = await dns.resolve("TXT", name).catch(() => []);
-    if (found.some((text) => kind(text) === "v=dmarc1")) return name;
-  }
-  return undefined;
-}
-
 /** The domain in lower-case ASCII, international labels in Punycode. Throws if it isn't a domain. */
-function asciiDomain(given: string): string {
-  const domain = domainToASCII(given.replace(/\.$/, ""));
-  const labels = domain.split(".");
-  // domainToASCII accepts some names that aren't domains, like a..b, so check every label too.
-  const valid =
-    domain.length <= 253 &&
-    labels.length >= 2 &&
-    labels.every((label) => /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/.test(label)) &&
-    !/^[0-9]+$/.test(labels.at(-1) ?? "");
-  if (!valid) throw new Error(`${JSON.stringify(given)} isn't a domain. Give one like example.com.`);
+function domainGiven(given: string): string {
+  const domain = asciiDomain(given);
+  if (domain === undefined) throw new Error(`${JSON.stringify(given)} isn't a domain. Give one like example.com.`);
   return domain;
 }
 
@@ -282,7 +199,7 @@ function emailAddress(given: string): string {
   const notAnAddress = new Error(`${JSON.stringify(given)} isn't an email address. Give one like you@example.com.`);
   if (at < 1 || !/^[^\s@"]{1,64}$/.test(local)) throw notAnAddress;
   try {
-    return `${local}@${asciiDomain(address.slice(at + 1))}`;
+    return `${local}@${domainGiven(address.slice(at + 1))}`;
   } catch {
     throw notAnAddress;
   }

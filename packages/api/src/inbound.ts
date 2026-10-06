@@ -10,7 +10,7 @@ import { inboundPrefix } from "./infrastructure.ts";
 import type { MailBucket } from "./mail-bucket.ts";
 import { parseMail } from "./mime.ts";
 import { bounceOnce, type Bounces, type Expanded, expand, type GroupRefusal, isOwnMail, refusalOf, resendToExternalMembers, type Sender } from "./group-mail.ts";
-import { addressTarget, type Group, organizationDomain } from "./organization.ts";
+import { addressTarget, allDomains, type Group } from "./organization.ts";
 import type { Outbound } from "./sending.ts";
 import { receiveScreened } from "./screening.ts";
 
@@ -22,7 +22,7 @@ export function createInbound({ table, mailBucket, log, outbound, bounces }: { t
   return async (event: SESEvent): Promise<void> => {
     for (const { ses } of event.Records) {
       const rawKey = `${inboundPrefix}${ses.mail.messageId}`;
-      const domain = await organizationDomain(table);
+      const domains = new Set((await allDomains(table)).map(({ domain }) => domain));
       // The recipients are those the rule took. Each mailbox gets one copy: for the first of its own
       // addresses, or else as a member of the first group that reaches it.
       const direct = new Map<string, Recipient>();
@@ -34,7 +34,7 @@ export function createInbound({ table, mailBucket, log, outbound, bounces }: { t
         if ("mailbox" in target) {
           if (!direct.has(target.mailbox)) direct.set(target.mailbox, recipient);
         } else if (!groups.some(({ group }) => group.address === target.group.address)) {
-          groups.push({ ...recipient, group: target.group, expanded: await expand(table, target.group, domain) });
+          groups.push({ ...recipient, group: target.group, expanded: await expand(table, target.group, domains) });
         }
       }
       // SES has already accepted the message, so dropping it sends no bounce, and leaves no trace in
@@ -57,7 +57,7 @@ export function createInbound({ table, mailBucket, log, outbound, bounces }: { t
       for (const each of groups) {
         // The group's own copy coming back has already reached its members.
         if (isOwnMail(each.group, sender)) continue;
-        const explanation = refusalOf(each.group, each.expanded, sender, domain);
+        const explanation = refusalOf(each.group, each.expanded, sender, domains);
         if (explanation !== undefined) {
           refused.push({ recipient: each.recipient, group: each.group.address, explanation });
           continue;
@@ -71,7 +71,7 @@ export function createInbound({ table, mailBucket, log, outbound, bounces }: { t
       // Spam goes to no one outside, and a bounce of it would most likely reach someone it forged.
       if (spam) continue;
       await resendToExternalMembers({ table, outbound, log }, { sesMessageId: ses.mail.messageId, raw, parsed, envelopeSender: ses.mail.source, groups: taken });
-      if (refused.length > 0) await bounceOnce({ table, bounces, log }, { sesMessageId: ses.mail.messageId, domain, refused });
+      if (refused.length > 0) await bounceOnce({ table, bounces, log }, { sesMessageId: ses.mail.messageId, refused });
     }
   };
 }

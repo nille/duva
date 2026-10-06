@@ -14,7 +14,7 @@ import {
   findGroup,
   type Group,
   NoGroup,
-  organizationDomain,
+  allDomains,
   removeGroup,
   removeMember,
 } from "./organization.ts";
@@ -27,11 +27,14 @@ const onlyAdmins = () => refusal(403, "Only admins can change the organization's
 
 /**
  * The members given, in lower case and each once, if each is an address the group can have, or a
- * refusal that says why not. A member on the organization's domain must be one of its addresses.
+ * refusal that says why not. A member on one of the organization's domains must be one of its addresses.
  */
 async function membersGiven(deployment: Deployment, group: string, given: unknown): Promise<string[] | ReturnType<typeof refusal>> {
   if (!Array.isArray(given)) return refusal(400, "Give members as a list of addresses.");
-  const domain = await organizationDomain(deployment.table);
+  const all = await allDomains(deployment.table);
+  const domains = all.map(({ domain }) => domain);
+  // Where the refusal's example address is.
+  const domain = all.find(({ aliasOf }) => aliasOf === undefined)?.domain ?? "example.com";
   const members: string[] = [];
   for (const each of given) {
     const member = typeof each === "string" ? each.trim().toLowerCase() : "";
@@ -39,8 +42,8 @@ async function membersGiven(deployment: Deployment, group: string, given: unknow
       return refusal(400, `${JSON.stringify(each)} isn't an address. Give each member as an address, like grace@${domain} or linus@example.org.`);
     }
     if (member === group) return refusal(400, `A group can't have itself as a member. Leave ${group} out of its members.`);
-    if (domainOf(member) === domain) {
-      if (member.split("@")[0]!.includes("+")) return refusal(400, `A member on ${domain} can't have a plus tag. Give ${member.split("+")[0]}@${domain}.`);
+    if (domains.includes(domainOf(member))) {
+      if (member.split("@")[0]!.includes("+")) return refusal(400, `A member on ${domainOf(member)} can't have a plus tag. Give ${member.split("+")[0]}@${domainOf(member)}.`);
       if ((await addressTarget(deployment.table, member)) === undefined) {
         return refusal(400, `${member} isn't one of the organization's addresses. Give a mailbox's or a group's address, or add it first.`);
       }

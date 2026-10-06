@@ -29,7 +29,7 @@ export const deploy: Command = {
     const [{ deployDuva }, { realAws }, { realDns }] = await Promise.all([
       import("./deployment.ts"),
       import("./aws.ts"),
-      import("./dns.ts"),
+      import("@duva/api/dns-records"),
     ]);
     try {
       const { signIn, ...deployed } = await deployDuva({ aws: realAws(region), dns: realDns, domain: values.domain, admin: values.admin });

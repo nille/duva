@@ -6,8 +6,8 @@
 // credentials, and lets the web app call it; download links go through the web app's domain, and
 // only its distribution may invoke the download Lambda; nothing but IAM may invoke the
 // unsubscriber, which refuses addresses that aren't public; the web app is served with the config
-// deploy published; the user pool takes sign-in names in any case, and no pool the stack retired
-// is left; once an address exists, SES's receipt rules list each address once; and no received mail and no
+// deploy published; the user pool takes sign-in names in any case, sends its codes from a domain
+// SES has verified, and still offers emailed codes, and no pool the stack retired is left; once an address exists, SES's receipt rules list each address once; and no received mail and no
 // approved send waits in a failure queue; nothing but IAM may invoke search, which runs at 10,240 MB
 // on x64; every mailbox's search index is backfilled, none has held
 // erased mail for more than a day, and no indexer task waits in its failure queue. Signing in stays
@@ -19,10 +19,11 @@ import { CognitoIdentityProviderClient, DescribeUserPoolCommand, paginateListUse
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { GetFunctionConfigurationCommand, GetFunctionUrlConfigCommand, GetPolicyCommand, InvokeCommand, LambdaClient, ResourceNotFoundException } from "@aws-sdk/client-lambda";
 import { DescribeReceiptRuleSetCommand, SESClient } from "@aws-sdk/client-ses";
+import { GetEmailIdentityCommand, SESv2Client } from "@aws-sdk/client-sesv2";
 import { GetQueueAttributesCommand, SQSClient } from "@aws-sdk/client-sqs";
 import { indexedMailboxes, uncompactedSince } from "@duva/api/indexing";
-import { dropMetric, dropReasons, inboundPrefix, receiptRuleNumber, recipientsPerRule } from "@duva/api/infrastructure";
-import { stackName, stackOutputs } from "@duva/infra/outputs";
+import { dropMetric, dropReasons, inboundPrefix, receiptRuleNumber, recipientsPerRule, signInFrom } from "@duva/api/infrastructure";
+import { stackName, stackOutputs, stackParameters } from "@duva/infra/outputs";
 
 const region = process.env.AWS_REGION;
 if (!region) throw new Error("Set AWS_REGION to the region of the deployment to check.");
@@ -215,7 +216,32 @@ await check("emptying Trash without credentials answers 401", async () => expect
 await check("sending an approval without credentials answers 401", async () =>
   expectStatus(await fetch(`${apiUrl}/approvals/x/send`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }), 401),
 );
+for (const [what, path, method] of [
+  ["adding a domain", "/domains", "POST"],
+  ["listing domains", "/domains", "GET"],
+  ["reading a domain", "/domains/example.net", "GET"],
+  ["choosing the sign-in domain", "/domains/example.net", "PATCH"],
+  ["removing a domain", "/domains/example.net/remove", "POST"],
+] as const) {
+  await check(`${what} without credentials answers 401`, async () =>
+    expectStatus(await fetch(`${apiUrl}${path}`, { method, ...(method !== "GET" && { headers: { "content-type": "application/json" }, body: "{}" }) }), 401),
+  );
+}
 const cognito = new CognitoIdentityProviderClient({ region });
+await check("the user pool sends sign-in codes from no-reply@ a domain SES has verified, or from Cognito until the first is, and still offers emailed codes", async () => {
+  const { UserPool } = await cognito.send(new DescribeUserPoolCommand({ UserPoolId: output(stackOutputs.userPoolId) }));
+  const parameter = (key: string) => stack?.Parameters?.find(({ ParameterKey }) => ParameterKey === key)?.ParameterValue;
+  const { EmailSendingAccount, SourceArn, From } = UserPool?.EmailConfiguration ?? {};
+  const factors = UserPool?.Policies?.SignInPolicy?.AllowedFirstAuthFactors ?? [];
+  if (!factors.includes("EMAIL_OTP")) return `offers only ${factors.join(", ")}`;
+  if (EmailSendingAccount !== "DEVELOPER") return parameter(stackParameters.domainVerified) === "false" ? undefined : `sends with ${EmailSendingAccount}`;
+  const domain = SourceArn?.split(":identity/")[1] ?? "";
+  // An admin may have chosen another domain since the last deploy, so the stack's is only what deploy last saw.
+  if (domain !== parameter(stackParameters.signInDomain)) console.log(`      the stack has ${parameter(stackParameters.signInDomain)}, and an admin has chosen ${domain} since`);
+  const identity = await new SESv2Client({ region }).send(new GetEmailIdentityCommand({ EmailIdentity: domain }));
+  if (identity.VerifiedForSendingStatus !== true) return `${domain} isn't verified in SES`;
+  return From === signInFrom(domain) ? undefined : `sends from ${From}`;
+});
 await check("the user pool takes sign-in names in any case", async () => {
   const { UserPool } = await cognito.send(new DescribeUserPoolCommand({ UserPoolId: output(stackOutputs.userPoolId) }));
   return UserPool?.UsernameConfiguration?.CaseSensitive === false ? undefined : `has ${JSON.stringify(UserPool?.UsernameConfiguration)}`;

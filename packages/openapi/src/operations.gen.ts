@@ -457,8 +457,8 @@ export const operations = [
     "method": "post",
     "path": "/addresses",
     "routeKey": "POST /addresses",
-    "summary": "Give a mailbox another address on one of the organization's domains.",
-    "description": "Mail to the address, and to its plus-tagged addresses, reaches the mailbox from then on. A mailbox that had no address takes it as its default address. Only admins can add addresses, and an address in use is refused. Adding an address is a change to the organization's setup, recorded in its change feed under you.",
+    "summary": "Give a mailbox another address on one of the organization's standalone domains.",
+    "description": "Mail to the address, and to its plus-tagged addresses, reaches the mailbox from then on, as does mail to the same address on each of the domain's alias domains. A mailbox that had no address takes it as its default address. Only admins can add addresses, and an address in use is refused. Adding an address is a change to the organization's setup, recorded in its change feed under you.",
     "signIn": true,
     "command": [
       "addresses",
@@ -470,7 +470,7 @@ export const operations = [
         "in": "body",
         "type": "string",
         "required": true,
-        "description": "The address, on one of the organization's domains, without a plus tag."
+        "description": "The address, on one of the organization's standalone domains, without a plus tag. Its alias domains mirror it."
       },
       {
         "name": "mailbox",
@@ -535,7 +535,7 @@ export const operations = [
         "in": "body",
         "type": "string",
         "required": true,
-        "description": "The group's address, on one of the organization's domains, without a plus tag."
+        "description": "The group's address, on one of the organization's standalone domains, without a plus tag. Its alias domains mirror it."
       },
       {
         "name": "members",
@@ -648,6 +648,129 @@ export const operations = [
     ]
   },
   {
+    "operationId": "listDomains",
+    "method": "get",
+    "path": "/domains",
+    "routeKey": "GET /domains",
+    "summary": "List the organization's domains, each with its DNS records and SES's verification.",
+    "description": "Each record's status is looked up when you ask: missing until DNS answers with its value, found once it does, and verified once SES has verified what the record is for. Only admins can list the organization's domains.",
+    "signIn": true,
+    "command": [
+      "domains",
+      "list"
+    ],
+    "options": []
+  },
+  {
+    "operationId": "addDomain",
+    "method": "post",
+    "path": "/domains",
+    "routeKey": "POST /domains",
+    "summary": "Add a domain to the organization, standalone or an alias of one of its standalone domains.",
+    "description": "Duva creates the domain's SES identity, with DKIM and its MAIL FROM domain, mail.<domain>, and answers with the DNS records to add at the domain's DNS provider. Duva doesn't change anyone's DNS. SES verifies the domain once its records are live, and the domain shows each record's status and SES's verification as they come. A standalone domain's addresses are its own. An alias domain mirrors every address of the standalone domain given as aliasOf, those added later too: mail to name@alias reaches the mailbox of name@standalone, and replies to it go out from name@alias. Only admins can add domains, and a domain the organization has, or one with an SES identity Duva didn't create, is refused. Adding a domain is a change to the organization's setup, recorded in its change feed under you.",
+    "signIn": true,
+    "command": [
+      "domains",
+      "add"
+    ],
+    "options": [
+      {
+        "name": "domain",
+        "in": "body",
+        "type": "string",
+        "required": true,
+        "description": "The domain. International domains can be given as they are written."
+      },
+      {
+        "name": "aliasOf",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "The standalone domain it mirrors, to make it an alias domain. Without it the domain is a standalone domain."
+      }
+    ]
+  },
+  {
+    "operationId": "getDomain",
+    "method": "get",
+    "path": "/domains/{domain}",
+    "routeKey": "GET /domains/{domain}",
+    "summary": "Show one of the organization's domains, with its DNS records and SES's verification.",
+    "description": "Each record's status is looked up when you ask, so call it again to see SES verify the domain once its records are live. Only admins can read the organization's domains.",
+    "signIn": true,
+    "command": [
+      "domains",
+      "get"
+    ],
+    "options": [
+      {
+        "name": "domain",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The domain. Case doesn't matter."
+      }
+    ]
+  },
+  {
+    "operationId": "changeDomain",
+    "method": "patch",
+    "path": "/domains/{domain}",
+    "routeKey": "PATCH /domains/{domain}",
+    "summary": "Send sign-in codes from one of the organization's domains.",
+    "description": "Sign-in codes come from no-reply@<domain>. The domain must be one SES has verified. Choosing it changes Cognito's sender at once, and duva deploy keeps it. The domain sign-in codes come from can't be removed, so choose another one before removing it. Only admins can choose, and the choice is a change to the organization's setup, recorded in its change feed under you.",
+    "signIn": true,
+    "command": [
+      "domains",
+      "change"
+    ],
+    "options": [
+      {
+        "name": "domain",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The domain. Case doesn't matter."
+      },
+      {
+        "name": "signIn",
+        "in": "body",
+        "type": "boolean",
+        "required": true,
+        "description": "Sends sign-in codes from the domain from now on. To stop, choose another domain."
+      }
+    ]
+  },
+  {
+    "operationId": "removeDomain",
+    "method": "post",
+    "path": "/domains/{domain}/remove",
+    "routeKey": "POST /domains/{domain}/remove",
+    "summary": "Remove a domain with its addresses, and its alias domains if it is a standalone domain.",
+    "description": "Run it first with dryRun to see the domains it removes, the addresses that stop receiving mail and the mailboxes left without an address. Removing a standalone domain removes its addresses, deleting the groups among them, and its alias domains with the addresses they mirror, since an alias domain mirrors nothing without it. The addresses that stop working leave every group they are members of. Removing an alias domain removes only what it mirrors. SES refuses mail to those addresses at once, and the domains' SES identities are deleted. The mail the mailboxes have stays. A mailbox left with no address keeps its mail, but receives and sends no new mail until it is given one. The domain sign-in codes come from can't be removed, so choose another one first. Only admins can remove domains. Each removal, and each address removed, is a change to the organization's setup, recorded in its change feed under you.",
+    "signIn": true,
+    "command": [
+      "domains",
+      "remove"
+    ],
+    "options": [
+      {
+        "name": "domain",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The domain. Case doesn't matter."
+      },
+      {
+        "name": "dryRun",
+        "in": "body",
+        "type": "boolean",
+        "required": false,
+        "description": "Lists what the removal takes and removes nothing."
+      }
+    ]
+  },
+  {
     "operationId": "listMailboxes",
     "method": "get",
     "path": "/mailboxes",
@@ -666,7 +789,7 @@ export const operations = [
     "method": "post",
     "path": "/mailboxes",
     "routeKey": "POST /mailboxes",
-    "summary": "Create a personal mailbox for a human or an agent, with an address on one of the organization's domains.",
+    "summary": "Create a personal mailbox for a human or an agent, with an address on one of the organization's standalone domains.",
     "description": "Only admins can create mailboxes. The address becomes the mailbox's default address, and mail to it is accepted from then on. An admin can't read a personal mailbox they don't own, even one they created, unless they sponsor the agent that owns it. Creating the mailbox and its address are changes to the organization's setup, recorded in its change feed.",
     "signIn": true,
     "command": [
@@ -686,7 +809,7 @@ export const operations = [
         "in": "body",
         "type": "string",
         "required": true,
-        "description": "The mailbox's first address, its default address, on one of the organization's domains, without a plus tag."
+        "description": "The mailbox's first address, its default address, on one of the organization's standalone domains, without a plus tag."
       }
     ]
   },

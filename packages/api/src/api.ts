@@ -4,6 +4,7 @@ import { addAddress, changeMailbox, listAddresses, removeAddress } from "./addre
 import { getAttachment } from "./attachments.ts";
 import { changeAgentSettings, createAgent, getAgentSettings, listAgents, removeAgent, rotateAgentKey } from "./agents.ts";
 import type { AuthorizerContext } from "./authorizer.ts";
+import { addDomain, changeDomain, getDomain, listDomains, removeDomain } from "./domains.ts";
 import { listOrganizationChanges } from "./changes.ts";
 import { createDraft, deleteDraft, editDraft, getDraft, listApprovals, listDrafts, rejectApproval, sendApproval, sendDraft } from "./drafts.ts";
 import { changeGroup, createGroup, deleteGroup, getGroup, listGroups } from "./groups.ts";
@@ -72,6 +73,11 @@ const handlers: Record<OperationId, OperationHandler> = {
   getGroup,
   changeGroup,
   deleteGroup,
+  addDomain,
+  listDomains,
+  getDomain,
+  changeDomain,
+  removeDomain,
   createMailbox,
   listMailboxes,
   getMailbox,

@@ -20,7 +20,8 @@ import { inject } from "vitest";
 import { createApi } from "../src/api.ts";
 import { createDownloads, downloadLinkLifetime as linkLifetime } from "../src/attachments.ts";
 import { createAuthorizer } from "../src/authorizer.ts";
-import type { Humans } from "../src/user-pool.ts";
+import type { Humans, SignInSender } from "../src/user-pool.ts";
+import type { RecordType } from "../src/dns-records.ts";
 import { createEraser, type EraserEvent } from "../src/erasure.ts";
 import { createInbound } from "../src/inbound.ts";
 import { createFeeder, createIndexer, type IndexQueue, indexMailboxes, type QueuedTask } from "../src/indexing.ts";
@@ -37,7 +38,7 @@ import { postOneClick } from "../src/unsubscriber.ts";
 import { dynamodbLocal } from "./dynamodb-local.ts";
 import { gateway } from "./gateway.ts";
 import { managedLogin, managedLoginClientId } from "./managed-login.ts";
-import { type Bounce, type Envelope, type ReceiveOptions, sesReceiving, sesSending } from "./ses.ts";
+import { type Bounce, type Envelope, memoryDns, type ReceiveOptions, sesIdentities, sesReceiving, sesSending, type StoredIdentity } from "./ses.ts";
 import { tableStream } from "./streams.ts";
 import { recordedTitan } from "./titan.ts";
 import { TestTokenIssuer } from "./token-issuer.ts";
@@ -60,6 +61,8 @@ export interface DuvaOptions {
   humans?: string[];
   /** How many seconds the access tokens of human sessions last. */
   accessTokenLifetime?: number;
+  /** Domains with an SES identity in the region that someone other than Duva created. */
+  othersIdentities?: string[];
   /** Whether the account is in the SES sandbox, where SES refuses mail to anyone not on the domain. */
   sandbox?: boolean;
   /** Whether SES's answers to sends get lost, though SES accepted the messages. */
@@ -116,6 +119,18 @@ export interface Duva {
   receiptRules(): ReceiptRule[];
   /** The bounces SES sent for messages it received, oldest first, as a group refuses one. */
   bounces(): Bounce[];
+  /**
+   * The domain identities SES has in the region, in alphabetical order, each with its configuration
+   * set, its MAIL FROM domain and its DKIM tokens. The first domain's is there from the start, verified.
+   */
+  emailIdentities(): StoredIdentity[];
+  /**
+   * Puts the records of the type at the name in DNS, replacing any there, as an admin does at the
+   * domain's DNS provider. SES verifies an identity once DNS has the records it needs.
+   */
+  dnsRecord(type: RecordType, name: string, values: string[]): void;
+  /** The address the user pool sends sign-in codes from, as Cognito's EmailConfiguration names it. */
+  signInCodesFrom(): string;
   /** The raw messages SES accepted for sending, oldest first. Each API call returns once the sends it led to are done. */
   sent(): string[];
   /** Lets the sender read the table's stream when sendsHeld, and waits until the sends it held are done. */
@@ -164,6 +179,7 @@ export async function startDuva({
   admin = "ada@example.com",
   humans: others = [],
   accessTokenLifetime = 3600,
+  othersIdentities = [],
   sandbox = false,
   sesAnswersLost = false,
   senderInvocations = 1,
@@ -185,10 +201,13 @@ export async function startDuva({
   // Trash emptied and mailboxes deleted in a call, which the eraser erases once the call is answered.
   const handed: EraserEvent[] = [];
   const inboundLog: string[] = [];
-  const sending = sesSending({ region, domain, sandbox, answersLost: sesAnswersLost });
+  const dns = memoryDns();
+  const identities = sesIdentities({ region, dns, verified: [domain], others: othersIdentities, configurationSet: "duva-sending" });
+  const signInSender = memorySignInSender(domain, identities.verified);
+  const sending = sesSending({ region, verified: identities.verified, sandbox, answersLost: sesAnswersLost });
   // SES invokes the inbound Lambda, which bounces through SES, so the two are tied once both exist.
   let inbound: (event: SESEvent) => Promise<void> = async () => {};
-  const ses = sesReceiving({ domain, buckets: new Map([[mailBucketName, mailBucket]]), functions: new Map([[inboundFunction, (event) => inbound(event)]]) });
+  const ses = sesReceiving({ verified: identities.verified, buckets: new Map([[mailBucketName, mailBucket]]), functions: new Map([[inboundFunction, (event) => inbound(event)]]) });
   inbound = createInbound({ table, mailBucket, log: (line) => inboundLog.push(line), outbound: sending.outbound, bounces: ses.bounces });
   const receiving = { rules: ses.rules, bucket: mailBucketName, inboundFunction };
   // Each mailbox's index is a table under the deployment's own directory. The search Lambda and the
@@ -236,6 +255,9 @@ export async function startDuva({
       region,
       table,
       humans,
+      signInSender,
+      identities: identities.service,
+      dns,
       mailBucket,
       receiving,
       downloads,
@@ -285,6 +307,9 @@ export async function startDuva({
     inboundLog: () => [...inboundLog],
     receiptRules: () => ses.describeRules(),
     bounces: () => ses.bounced(),
+    emailIdentities: () => identities.identities(),
+    dnsRecord: (type, name, values) => dns.set(type, name, values),
+    signInCodesFrom: () => signInSender.from,
     sent: () => sending.sent(),
     sentTo: () => sending.sentTo(),
     releaseSends: () => stream.deliver(),
@@ -377,6 +402,26 @@ async function senderOf(raw: string | Uint8Array): Promise<string> {
   const { from } = await PostalMime.parse(raw);
   if (from?.address === undefined) throw new Error("The message has no From, so give the envelope sender.");
   return from.address;
+}
+
+/**
+ * The user pool's sender, which sends sign-in codes from the first domain, verified from the
+ * start. Like Cognito, it refuses a domain SES hasn't verified.
+ */
+function memorySignInSender(domain: string, verified: (domain: string) => Promise<boolean>): SignInSender & { from: string } {
+  const sender = {
+    from: `Duva <no-reply@${domain}>`,
+    async domain() {
+      return sender.from.slice(sender.from.indexOf("@") + 1, -1);
+    },
+    async sendFrom(chosen: string) {
+      if (!(await verified(chosen))) {
+        throw new Error(`Cognito received the following error from Amazon SES when attempting to send email: Email address is not verified. The following identities failed the check: ${chosen}`);
+      }
+      sender.from = `Duva <no-reply@${chosen}>`;
+    },
+  };
+  return sender;
 }
 
 /**

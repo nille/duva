@@ -62,15 +62,18 @@ export interface Expanded {
   sendersAllowed: Set<string>;
 }
 
-/** The group's members, its nested groups' expanded, each group once however often it is a member. */
-export async function expand(table: Table, group: Group, domain: string): Promise<Expanded> {
+/**
+ * The group's members, its nested groups' expanded, each group once however often it is a member.
+ * A member on none of the organization's domains is external.
+ */
+export async function expand(table: Table, group: Group, domains: Set<string>): Promise<Expanded> {
   const expanded: Expanded = { mailboxes: new Set(), external: new Set(), sendersAllowed: new Set() };
   const seen = new Set([group.address]);
   const pending = [group];
   for (let each = pending.pop(); each !== undefined; each = pending.pop()) {
     for (const member of each.members) {
       expanded.sendersAllowed.add(member);
-      if (domainOf(member) !== domain) {
+      if (!domains.has(domainOf(member))) {
         expanded.external.add(member);
         continue;
       }
@@ -101,12 +104,12 @@ export interface Sender {
 export const isOwnMail = (group: Group, { from, dmarc }: Sender) => from === group.address && dmarc === "PASS";
 
 /**
- * Why the group refuses mail from the sender, or undefined if it takes it. A From on the
- * organization's domain counts only with a DMARC pass, as the Screener has it, and any other only
+ * Why the group refuses mail from the sender, or undefined if it takes it. A From on one of the
+ * organization's domains counts only with a DMARC pass, as the Screener has it, and any other only
  * if DMARC didn't fail, since many domains publish no DMARC policy.
  */
-export function refusalOf(group: Group, expanded: Expanded, { from, dmarc }: Sender, domain: string): string | undefined {
-  const own = domainOf(from) === domain;
+export function refusalOf(group: Group, expanded: Expanded, { from, dmarc }: Sender, domains: Set<string>): string | undefined {
+  const own = domains.has(domainOf(from));
   const counts = own ? dmarc === "PASS" : dmarc !== "FAIL";
   if (group.sendPolicy === "organization" && !(own && counts)) return `${group.address} takes mail only from the organization.`;
   if (group.sendPolicy === "members" && !(expanded.sendersAllowed.has(from) && counts)) return `${group.address} takes mail only from its members.`;
@@ -141,11 +144,11 @@ export interface GroupRefusal {
 
 /**
  * Bounces the message SES received, once, for each group recipient that refused it, from the
- * organization's mailer-daemon. If SES refuses to bounce it, that is logged, and it isn't tried again.
+ * mailer-daemon of the domain the message was sent to, whose identity SES has. If SES refuses to bounce it, that is logged, and it isn't tried again.
  */
 export async function bounceOnce(
   { table, bounces, log }: { table: Table; bounces: Bounces; log: (line: string) => void },
-  { sesMessageId, domain, refused }: { sesMessageId: string; domain: string; refused: GroupRefusal[] },
+  { sesMessageId, refused }: { sesMessageId: string; refused: GroupRefusal[] },
 ) {
   const claimed: (GroupRefusal & { release: () => Promise<void> })[] = [];
   for (const each of refused) {
@@ -154,7 +157,7 @@ export async function bounceOnce(
   }
   if (claimed.length === 0) return;
   try {
-    await bounces.send({ messageId: sesMessageId, from: `mailer-daemon@${domain}`, recipients: claimed.map(({ recipient }) => recipient), explanation: claimed.map(({ explanation }) => explanation).join(" ") });
+    await bounces.send({ messageId: sesMessageId, from: `mailer-daemon@${domainOf(claimed[0]!.recipient)}`, recipients: claimed.map(({ recipient }) => recipient), explanation: claimed.map(({ explanation }) => explanation).join(" ") });
   } catch (error) {
     if (error instanceof BounceRefused) {
       log(JSON.stringify({ message: "SES refused to bounce mail a group refused.", sesMessageId, groups: claimed.map(({ group }) => group) }));

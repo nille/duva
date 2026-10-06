@@ -12,7 +12,7 @@ import {
 } from "@aws-sdk/client-ses";
 import type { Table } from "./deployment.ts";
 import { inboundPrefix, receiptRuleName, receiptRuleNumber, recipientsPerRule } from "./infrastructure.ts";
-import { allAddresses } from "./organization.ts";
+import { receivingAddresses } from "./organization.ts";
 
 /** Duva's receipt rule set in SES, or a stand-in in tests. */
 export interface ReceiptRules {
@@ -38,7 +38,7 @@ export interface Receiving {
 /** How many receipt rules SES takes in one rule set (docs/aws.md). */
 export const rulesPerSet = 200;
 
-/** How many addresses the organization can have, as many as its rule set can list. */
+/** How many addresses the organization can receive mail for, those alias domains mirror included, as many as its rule set can list. */
 export const maxAddresses = recipientsPerRule * rulesPerSet;
 
 /** The name of Duva's nth rule for addresses, counting from 1. The first keeps the name it had when there was one. */
@@ -71,7 +71,7 @@ export const receiptRule = ({ bucket, inboundFunction }: Receiving, name: string
  */
 export async function syncRecipients(table: Table, receiving: Receiving): Promise<void> {
   for (let attempt = 1; ; attempt++) {
-    const addresses = new Set((await allAddresses(table)).map(({ address }) => address));
+    const addresses = new Set((await receivingAddresses(table)).map(({ address }) => address));
     const rules = (await receiving.rules.list()).filter(({ Name }) => receiptRuleNumber(Name) !== undefined);
     const placed = new Set<string>();
     const kept = rules.map((rule) => {

@@ -49,6 +49,7 @@ export function realAws(region: string): Aws {
         return {
           domain: parameter(stackParameters.domain),
           admin: parameter(stackParameters.admin),
+          signInDomain: parameter(stackParameters.signInDomain),
           domainVerified: domainVerified === undefined ? undefined : domainVerified === "true",
           outputs,
         };
@@ -86,6 +87,13 @@ export function realAws(region: string): Aws {
         }
       }
       return ids;
+    },
+
+    async signInDomain(id) {
+      const { UserPool } = await cognito.send(new DescribeUserPoolCommand({ UserPoolId: id }));
+      const { EmailSendingAccount, SourceArn } = UserPool?.EmailConfiguration ?? {};
+      // The SES identity's ARN ends in identity/<domain>.
+      return EmailSendingAccount === "DEVELOPER" ? SourceArn?.split(":identity/")[1] : undefined;
     },
 
     async deleteUserPool(id) {
@@ -187,7 +195,7 @@ async function unpackBundle(): Promise<string> {
   return directory;
 }
 
-async function deployBundle(bundle: string, region: string, { domain, admin, domainVerified }: DuvaParameters) {
+async function deployBundle(bundle: string, region: string, { domain, admin, signInDomain, domainVerified }: DuvaParameters) {
   const toolkit = new Toolkit({
     ioHost: progressOnStderr(new NonInteractiveIoHost({ isCI: false })),
     sdkConfig: { baseCredentials: BaseCredentials.awsCliCompatible({ defaultRegion: region }) },
@@ -208,6 +216,7 @@ async function deployBundle(bundle: string, region: string, { domain, admin, dom
       parameters: StackParameters.exactly({
         [stackParameters.domain]: domain,
         [stackParameters.admin]: admin,
+        [stackParameters.signInDomain]: signInDomain,
         [stackParameters.domainVerified]: String(domainVerified),
       }),
     });

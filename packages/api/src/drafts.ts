@@ -26,7 +26,7 @@ import {
 import { attachmentLinks } from "./attachments.ts";
 import { findMessage } from "./mail.ts";
 import { mailboxFor } from "./access.ts";
-import { type Actor, isAddressOf, type Mailbox } from "./organization.ts";
+import { type Actor, aliasDomains, isAddressOf, type Mailbox } from "./organization.ts";
 
 type EmailAddress = components["schemas"]["EmailAddress"];
 type Message = components["schemas"]["Message"];
@@ -49,8 +49,10 @@ export const createDraft: OperationHandler = async (event, deployment, actor) =>
   }
 
   if (mailbox.defaultAddress === undefined) return noAddress();
-  // A reply or a forward goes from the address the original was sent to, plus tag kept, while the mailbox has it.
-  const fromOriginal = (message: Message) => (isAddressOf(mailbox, message.recipient) ? message.recipient : mailbox.defaultAddress!);
+  // A reply or a forward goes from the address the original was sent to, plus tag kept, while the
+  // mailbox has it, an alias domain's mirror of one of its addresses included.
+  const aliases = await aliasDomains(deployment.table);
+  const fromOriginal = (message: Message) => (isAddressOf(mailbox, message.recipient, aliases) ? message.recipient : mailbox.defaultAddress!);
 
   let content;
   if (typeof body.forwards === "string") {
@@ -72,7 +74,7 @@ export const createDraft: OperationHandler = async (event, deployment, actor) =>
     const original = await findMessage(deployment.table, deployment.mailBucket, mailbox.id, body.answers);
     if (original === undefined) return refusal(404, `The mailbox has no message ${JSON.stringify(body.answers)}. Read its threads to find the message to reply to.`);
     const { message, thread, replyTo } = original;
-    const others = othersThan(mailbox);
+    const others = othersThan(mailbox, aliases);
     // A reply goes to the original's sender, unless the mailbox sent it, and then to its recipients.
     const sender = others(replyTo.length > 0 ? replyTo : [message.from]);
     const to = others(sender.length > 0 ? [...sender, ...(body.replyAll === true ? message.to : [])] : message.to);
@@ -118,11 +120,11 @@ const sameAddress = (a: string, b: string) => a.toLowerCase() === b.toLowerCase(
 
 /** The addresses that aren't one of the mailbox's own, with or without a plus tag, each once. */
 const othersThan =
-  (mailbox: Mailbox) =>
+  (mailbox: Mailbox, aliases: Map<string, string>) =>
   (list: EmailAddress[]): EmailAddress[] => {
     const kept: EmailAddress[] = [];
     for (const each of list) {
-      if (isAddressOf(mailbox, each.address) || kept.some(({ address }) => sameAddress(address, each.address))) continue;
+      if (isAddressOf(mailbox, each.address, aliases) || kept.some(({ address }) => sameAddress(address, each.address))) continue;
       kept.push(each);
     }
     return kept;
@@ -197,7 +199,7 @@ export const sendDraft: OperationHandler = async (event, deployment, actor) => {
   if ("statusCode" in mailbox) return mailbox;
   const id = event.pathParameters?.draft ?? "";
   const asked = await findDraft(deployment.table, mailbox.id, id);
-  if (asked !== undefined && !isAddressOf(mailbox, asked.from)) return refusal(409, notFrom(asked.from));
+  if (asked !== undefined && !isAddressOf(mailbox, asked.from, await aliasDomains(deployment.table))) return refusal(409, notFrom(asked.from));
   try {
     const draft = await askToSend(deployment.table, { mailbox, id, actor: actor! });
     if (draft === undefined) return noDraft(event);
