@@ -848,11 +848,8 @@ export const strings = {
     title: (agent: string) => `${agent}'s activity`,
     lead: (timeZone: string) => `What it did each day, the last 30 days, newest first. Days run midnight to midnight in ${timeZone} time.`,
     days: "Days",
-    day: "Day",
-    /** The kinds a summary counts, in the order its columns show them. */
-    kinds: { sent: "Sent", approved: "Approved", rejected: "Rejected", received: "Received", organized: "Organized", screened: "Screened", alerts: "Alerts" },
     counted: (counts: string[]) => (counts.length === 0 ? "nothing counted" : counts.join(", ")),
-    /** How a summary says a kind's count, on a phone and to a screen reader. */
+    /** How a summary says a kind's count, its number first. */
     counts: {
       sent: (count: number) => `${count} sent`,
       approved: (count: number) => `${count} approved`,
@@ -878,7 +875,12 @@ export const strings = {
     duva: "Duva",
     someone: "Someone else",
     /** What a change in the timeline says, `who` being who made it and `agent` the agent's name. */
-    entry: (change: ActivityChange, who: string, agent: string) => entrySaid(change, who, agent),
+    entry: (change: ActivityChange, who: string, agent: string, message?: EntryMessage) => entrySaid(change, who, agent, message),
+    /** A thread's link names the entry it is for, since one thread can be the subject of many. */
+    threadLabel: (subject: string, time: string, said: string) => `${subject}. ${time}: ${said}`,
+    /** Days with nothing counted, folded into one line, from the oldest to the newest. */
+    quietDays: (from: string, to: string) => `${from} to ${to}`,
+    quietLabel: (from: string, to: string) => `${from} to ${to}, nothing counted`,
   },
 
   sendNow: {
@@ -1029,102 +1031,117 @@ export const strings = {
   },
 };
 
-/** What a change in an agent's timeline says. For an admin who isn't the sponsor, Duva leaves out what the mail says, as names, notes and addresses, so the sentence does too. */
-function entrySaid(change: ActivityChange, who: string, agent: string): string {
+/** The message a timeline's entry is about, once its thread is read: who wrote it, to whom, and the mailbox's address it reached or left from. */
+export type EntryMessage = { from: string; to: string[]; recipient: string };
+
+/**
+ * What a change in an agent's timeline says, as who did it and the rest of the sentence, which
+ * follows them directly. Each names its actor: the agent, a human, Duva, Amazon SES, or the sender
+ * of mail that arrived, "Someone" until its thread is read. For an admin who isn't the sponsor,
+ * Duva leaves out what the mail says, as names, notes and addresses, so the sentence does too.
+ */
+function entrySaid(change: ActivityChange, who: string, agent: string, message?: EntryMessage): [by: string, rest: string] {
   const sender = (screened: { address?: string; domain?: string }) => screened.address ?? (screened.domain === undefined ? "a sender" : `everyone at ${screened.domain}`);
+  // "Hermes's message", "your message".
+  const whose = who === strings.activity.you ? "your" : `${who}'s`;
   switch (change.type) {
-    case "messageReceived":
-      return change.spam ? "A message arrived, as spam." : change.screened === "waiting" ? "A message arrived and waits in the Screener." : change.screened === "blocked" ? "A message arrived from a blocked sender, into Trash." : "A message arrived.";
+    case "messageReceived": {
+      // Until the thread is read, or once it is gone, the sender is "Someone".
+      const from = message?.from ?? "Someone";
+      const wrote = ` wrote to ${message?.recipient ?? agent}`;
+      return change.spam ? [from, `${wrote}, and it went to Spam.`] : change.screened === "waiting" ? [from, `${wrote}, and it waits in the Screener.`] : change.screened === "blocked" ? [from, `, a blocked sender,${wrote}, so it went to Trash.`] : [from, `${wrote}.`];
+    }
     case "draftWritten":
-      return `${who} started a draft.`;
+      return [who, ` started a draft.`];
     case "draftChanged":
-      return `${who} changed a draft.`;
+      return [who, ` changed a draft.`];
     case "draftDeleted":
-      return `${who} deleted a draft.`;
+      return [who, ` deleted a draft.`];
     case "sendAsked":
-      return `${who} sent a draft.`;
+      return [who, ` sent a draft.`];
     case "approvalAsked":
-      return `${who} asked for approval to send.`;
+      return [who, ` asked for approval to send.`];
     case "approvalWithdrawn":
-      return "A request for approval was withdrawn.";
+      return ["Duva", ` withdrew ${agent}'s request for approval.`];
     case "approvalDecided": {
-      if (change.decision === "rejected") return change.note === undefined ? `${who} rejected ${agent}'s send.` : `${who} rejected ${agent}'s send: “${change.note}”`;
+      if (change.decision === "rejected") return change.note === undefined ? [who, ` rejected ${agent}'s send.`] : [who, ` rejected ${agent}'s send: “${change.note}”`];
       const edited = change.edits === undefined ? [] : Object.keys(change.edits).map((field) => ({ to: "the recipients", subject: "the subject", text: "the text" })[field] ?? field);
-      return edited.length === 0 ? `${who} approved ${agent}'s send.` : `${who} approved ${agent}'s send, changing ${list(edited)}.`;
+      return edited.length === 0 ? [who, ` approved ${agent}'s send.`] : [who, ` approved ${agent}'s send, changing ${list(edited)}.`];
     }
     case "messageSent":
-      return "A message went out.";
+      return ["Duva", ` sent ${whose} message${message === undefined || message.to.length === 0 ? "" : ` to ${list(message.to)}`}.`];
     case "sendWaitingForLimit":
-      return `A send waits for ${agent}'s send limits.`;
+      return ["Duva", ` holds a message until ${agent}'s send limits allow it.`];
     case "sentNow":
-      return `${who} sent a waiting message now, past the limits.`;
+      return [who, ` sent a waiting message now, past the limits.`];
     case "sendFailed":
-      return change.reason === undefined ? "Amazon SES refused a send." : `Amazon SES refused a send: ${change.reason}`;
+      return ["Amazon SES", change.reason === undefined ? ` refused to send ${whose} message.` : ` refused to send ${whose} message: ${change.reason}`];
     case "sendUnclear":
-      return "Sending stopped before Amazon SES answered.";
+      return ["Duva", ` stopped sending ${whose} message before Amazon SES answered.`];
     case "feedbackReceived": {
-      const to = change.feedback.recipients === undefined || change.feedback.recipients.length === 0 ? "" : ` for ${list(change.feedback.recipients)}`;
-      const said = { hardBounce: "A message bounced", softBounce: "A message bounced for now", complaint: "A recipient marked a message as spam", reject: "Amazon SES didn't send a message after all" }[change.feedback.kind];
-      return `${said}${to}.`;
+      const recipients = change.feedback.recipients === undefined || change.feedback.recipients.length === 0 ? undefined : list(change.feedback.recipients);
+      const to = recipients === undefined ? "" : ` for ${recipients}`;
+      const said = { hardBounce: ` reported that a message bounced${to}.`, softBounce: ` reported that a message bounced for now${to}.`, complaint: ` reported that ${recipients ?? "a recipient"} marked a message as spam.`, reject: " didn't send a message after all." }[change.feedback.kind];
+      return ["Amazon SES", said];
     }
     case "threadRead":
-      return `${who} marked a thread read.`;
+      return [who, ` marked a thread read.`];
     case "threadUnread":
-      return `${who} marked a thread unread.`;
+      return [who, ` marked a thread unread.`];
     case "threadLabelsChanged":
-      if (change.added.includes("trash")) return `${who} moved a thread to Trash.`;
-      if (change.added.includes("spam")) return `${who} marked a thread as spam.`;
-      if (change.removed.includes("trash")) return `${who} restored a thread from Trash.`;
-      if (change.removed.includes("spam")) return `${who} marked a thread as not spam.`;
-      if (change.added.includes("inbox")) return `${who} moved a thread to the Inbox.`;
-      if (change.removed.includes("inbox") && change.added.length === 0) return `${who} archived a thread.`;
-      return `${who} changed a thread's labels.`;
+      if (change.added.includes("trash")) return [who, ` moved a thread to Trash.`];
+      if (change.added.includes("spam")) return [who, ` marked a thread as spam.`];
+      if (change.removed.includes("trash")) return [who, ` restored a thread from Trash.`];
+      if (change.removed.includes("spam")) return [who, ` marked a thread as not spam.`];
+      if (change.added.includes("inbox")) return [who, ` moved a thread to the Inbox.`];
+      if (change.removed.includes("inbox") && change.added.length === 0) return [who, ` archived a thread.`];
+      return [who, ` changed a thread's labels.`];
     case "labelCreated":
-      return change.name === undefined ? `${who} created a label.` : `${who} created the label ${change.name}.`;
+      return change.name === undefined ? [who, ` created a label.`] : [who, ` created the label ${change.name}.`];
     case "labelRenamed":
-      return change.name === undefined ? `${who} renamed a label.` : `${who} renamed a label to ${change.name}.`;
+      return change.name === undefined ? [who, ` renamed a label.`] : [who, ` renamed a label to ${change.name}.`];
     case "labelDeleted":
-      return `${who} deleted a label.`;
+      return [who, ` deleted a label.`];
     case "threadErased":
-      return "A thread was erased for good.";
+      return "actor" in change && change.actor !== undefined ? [who, " erased a thread for good, emptying Trash."] : ["Duva", " erased a thread for good, after the retention period."];
     case "agentSettingsChanged":
-      return `${who} changed ${agent}'s settings.`;
+      return [who, ` changed ${agent}'s settings.`];
     case "agentPaused":
-      return `${who} paused ${agent}.`;
+      return [who, ` paused ${agent}.`];
     case "agentUnpaused":
-      return `${who} unpaused ${agent}.`;
+      return [who, ` unpaused ${agent}.`];
     case "senderScreened":
-      return change.decision === "letIn" ? `${who} let in ${sender(change)}.` : `${who} blocked ${sender(change)}.`;
+      return change.decision === "letIn" ? [who, ` let in ${sender(change)}.`] : [who, ` blocked ${sender(change)}.`];
     case "screenedSenderRemoved":
-      return `${who} removed the decision on ${sender(change)}.`;
+      return [who, ` removed the decision on ${sender(change)}.`];
     case "screenerSwitched":
-      return change.on ? `${who} switched the Screener on.` : `${who} switched the Screener off.`;
+      return change.on ? [who, ` switched the Screener on.`] : [who, ` switched the Screener off.`];
     case "unsubscribeAttempted":
-      return change.outcome === "unsubscribed" ? `Duva unsubscribed from ${sender(change)}.` : `Duva couldn't unsubscribe from ${sender(change)}.`;
+      return change.outcome === "unsubscribed" ? ["Duva", ` unsubscribed from ${sender(change)}.`] : ["Duva", ` couldn't unsubscribe from ${sender(change)}.`];
     case "agentKeyRotated":
-      return `${who} rotated ${agent}'s key.`;
+      return [who, ` rotated ${agent}'s key.`];
     case "agentAdminChanged":
-      return change.admin ? `${who} made ${agent} an admin.` : `${who} took ${agent}'s admin away.`;
+      return change.admin ? [who, ` made ${agent} an admin.`] : [who, ` took ${agent}'s admin away.`];
     case "setupAsked":
-      return `${who} asked to change the setup: ${change.preview.join(" ")}`;
+      return [who, ` asked to change the setup: ${change.preview.join(" ")}`];
     case "setupApproved":
-      return `${who} approved a setup change ${agent} asked for.`;
+      return [who, ` approved a setup change ${agent} asked for.`];
     case "setupRejected":
-      return `${who} rejected a setup change ${agent} asked for: “${change.note}”`;
+      return [who, ` rejected a setup change ${agent} asked for: “${change.note}”`];
     case "setupWithdrawn":
-      return `A setup change ${agent} asked for was withdrawn.`;
+      return ["Duva", ` withdrew a setup change ${agent} asked for, since ${agent} is no longer an admin.`];
     case "mailboxAdded":
-      return change.mailbox.defaultAddress === undefined ? `${who} added a mailbox.` : `${who} added a mailbox at ${change.mailbox.defaultAddress}.`;
+      return change.mailbox.defaultAddress === undefined ? [who, ` added a mailbox.`] : [who, ` added a mailbox at ${change.mailbox.defaultAddress}.`];
     case "addressAdded":
-      return `${who} added the address ${change.address}.`;
+      return [who, ` added the address ${change.address}.`];
     case "addressRemoved":
-      return `${who} removed the address ${change.address}.`;
+      return [who, ` removed the address ${change.address}.`];
     case "actorAdded":
-      return `${who} added ${change.added.kind === "agent" ? `the agent ${change.added.name}` : change.added.email}.`;
+      return [who, ` added ${change.added.kind === "agent" ? `the agent ${change.added.name}` : change.added.email}.`];
     case "actorRemoved":
-      return `${who} removed ${change.removed.kind === "agent" ? `the agent ${change.removed.name}` : change.removed.email}.`;
+      return [who, ` removed ${change.removed.kind === "agent" ? `the agent ${change.removed.name}` : change.removed.email}.`];
     default:
-      return `${who} changed the organization's setup.`;
+      return [who, ` changed the organization's setup.`];
   }
 }
 
