@@ -314,6 +314,24 @@ Run it first with dryRun to see the domains it removes, the addresses that stop 
 - `--domain` (required): The domain. Case doesn't matter.
 - `--dryRun` or `--no-dryRun`: Lists what the removal takes and removes nothing.
 
+## duva domains set-catch-all
+
+Set a standalone domain's catch-all, a mailbox or a group, for mail to addresses the organization doesn't have.
+
+Give the mailbox's ID or the group's address. Mail to an address on the domain, or on its alias domains, that isn't one of the organization's, removed ones included, goes to the catch-all instead of being refused. A mailbox's Screener applies to it, and a group delivers it to its members, skipping their Screeners, as group mail does. Deleting the mailbox or the group clears the catch-all. Only admins can set it, and each change is a change to the organization's setup, recorded in its change feed under you.
+
+- `--domain` (required): The domain. Case doesn't matter.
+- `--mailbox`: The ID of the mailbox that gets the mail, its Screener applying.
+- `--group`: The address of the group whose members get the mail, skipping their Screeners.
+
+## duva domains clear-catch-all
+
+Clear a domain's catch-all, so that mail to addresses the organization doesn't have is refused again.
+
+SES refuses such mail on the domain and its alias domains at once. Mail the catch-all already got stays. Only admins can clear it, and clearing it is a change to the organization's setup, recorded in its change feed under you.
+
+- `--domain` (required): The domain. Case doesn't matter.
+
 ## duva mailboxes list
 
 List the mailboxes you can read, your own and those of the agents you sponsor.

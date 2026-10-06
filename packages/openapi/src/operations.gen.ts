@@ -815,6 +815,64 @@ export const operations = [
     ]
   },
   {
+    "operationId": "setCatchAll",
+    "method": "put",
+    "path": "/domains/{domain}/catch-all",
+    "routeKey": "PUT /domains/{domain}/catch-all",
+    "summary": "Set a standalone domain's catch-all, a mailbox or a group, for mail to addresses the organization doesn't have.",
+    "description": "Give the mailbox's ID or the group's address. Mail to an address on the domain, or on its alias domains, that isn't one of the organization's, removed ones included, goes to the catch-all instead of being refused. A mailbox's Screener applies to it, and a group delivers it to its members, skipping their Screeners, as group mail does. Deleting the mailbox or the group clears the catch-all. Only admins can set it, and each change is a change to the organization's setup, recorded in its change feed under you.",
+    "signIn": true,
+    "command": [
+      "domains",
+      "set-catch-all"
+    ],
+    "options": [
+      {
+        "name": "domain",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The domain. Case doesn't matter."
+      },
+      {
+        "name": "mailbox",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "The ID of the mailbox that gets the mail, its Screener applying."
+      },
+      {
+        "name": "group",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "The address of the group whose members get the mail, skipping their Screeners."
+      }
+    ]
+  },
+  {
+    "operationId": "clearCatchAll",
+    "method": "delete",
+    "path": "/domains/{domain}/catch-all",
+    "routeKey": "DELETE /domains/{domain}/catch-all",
+    "summary": "Clear a domain's catch-all, so that mail to addresses the organization doesn't have is refused again.",
+    "description": "SES refuses such mail on the domain and its alias domains at once. Mail the catch-all already got stays. Only admins can clear it, and clearing it is a change to the organization's setup, recorded in its change feed under you.",
+    "signIn": true,
+    "command": [
+      "domains",
+      "clear-catch-all"
+    ],
+    "options": [
+      {
+        "name": "domain",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The domain. Case doesn't matter."
+      }
+    ]
+  },
+  {
     "operationId": "listMailboxes",
     "method": "get",
     "path": "/mailboxes",

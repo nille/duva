@@ -908,6 +908,71 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+  /domains/{domain}/catch-all:
+    put:
+      operationId: setCatchAll
+      summary: Set a standalone domain's catch-all, a mailbox or a group, for mail to addresses the organization doesn't have.
+      description: >
+        Give the mailbox's ID or the group's address. Mail to an address on
+        the domain, or on its alias domains, that isn't one of the
+        organization's, removed ones included, goes to the catch-all instead
+        of being refused. A mailbox's Screener applies to it, and a group
+        delivers it to its members, skipping their Screeners, as group mail
+        does. Deleting the mailbox or the group clears the catch-all. Only
+        admins can set it, and each change is a change to the organization's
+        setup, recorded in its change feed under you.
+      x-cli-command: domains set-catch-all
+      parameters:
+        - $ref: "#/components/parameters/Domain"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CatchAll"
+      responses:
+        "200":
+          description: The domain, with its catch-all.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Domain"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+    delete:
+      operationId: clearCatchAll
+      summary: Clear a domain's catch-all, so that mail to addresses the organization doesn't have is refused again.
+      description: >
+        SES refuses such mail on the domain and its alias domains at once.
+        Mail the catch-all already got stays. Only admins can clear it, and
+        clearing it is a change to the organization's setup, recorded in its
+        change feed under you.
+      x-cli-command: domains clear-catch-all
+      parameters:
+        - $ref: "#/components/parameters/Domain"
+      responses:
+        "200":
+          description: The domain, without a catch-all.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Domain"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /mailboxes:
     post:
       operationId: createMailbox
@@ -2537,6 +2602,18 @@ components:
           type: boolean
           const: true
           description: Sends sign-in codes from the domain from now on. To stop, choose another domain.
+    CatchAll:
+      type: object
+      additionalProperties: false
+      description: A domain's catch-all, for mail to addresses the organization doesn't have. Exactly one of mailbox and group.
+      properties:
+        mailbox:
+          type: string
+          description: The ID of the mailbox that gets the mail, its Screener applying.
+        group:
+          type: string
+          description: The address of the group whose members get the mail, skipping their Screeners.
+          examples: ["support@example.com"]
     Domain:
       type: object
       additionalProperties: false
@@ -2557,6 +2634,9 @@ components:
         signIn:
           type: boolean
           description: Whether sign-in codes come from the domain, once SES has verified it.
+        catchAll:
+          $ref: "#/components/schemas/CatchAll"
+          description: The standalone domain's catch-all, if an admin set one. Its alias domains use it too. Without one, mail to addresses the organization doesn't have is refused.
         ses:
           $ref: "#/components/schemas/DomainVerification"
         records:
@@ -4083,6 +4163,7 @@ components:
         - $ref: "#/components/schemas/DomainAdded"
         - $ref: "#/components/schemas/DomainRemoved"
         - $ref: "#/components/schemas/SignInDomainChanged"
+        - $ref: "#/components/schemas/CatchAllChanged"
         - $ref: "#/components/schemas/ActorAdded"
         - $ref: "#/components/schemas/AgentKeyRotated"
         - $ref: "#/components/schemas/AgentPaused"
@@ -4106,6 +4187,7 @@ components:
           domainAdded: "#/components/schemas/DomainAdded"
           domainRemoved: "#/components/schemas/DomainRemoved"
           signInDomainChanged: "#/components/schemas/SignInDomainChanged"
+          catchAllChanged: "#/components/schemas/CatchAllChanged"
           actorAdded: "#/components/schemas/ActorAdded"
           agentKeyRotated: "#/components/schemas/AgentKeyRotated"
           agentPaused: "#/components/schemas/AgentPaused"
@@ -4187,6 +4269,22 @@ components:
               type: string
               description: The domain sign-in codes come from from now on.
               examples: ["example.net"]
+    CatchAllChanged:
+      allOf:
+        - $ref: "#/components/schemas/ChangeBase"
+        - type: object
+          required: [type, domain]
+          properties:
+            type:
+              type: string
+              const: catchAllChanged
+            domain:
+              type: string
+              description: The standalone domain.
+              examples: ["example.com"]
+            catchAll:
+              $ref: "#/components/schemas/CatchAll"
+              description: The domain's catch-all from now on, left out when it was cleared.
     ActorAdded:
       allOf:
         - $ref: "#/components/schemas/ChangeBase"

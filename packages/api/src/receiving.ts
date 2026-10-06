@@ -12,7 +12,7 @@ import {
 } from "@aws-sdk/client-ses";
 import type { Table } from "./deployment.ts";
 import { inboundPrefix, receiptRuleName, receiptRuleNumber, recipientsPerRule } from "./infrastructure.ts";
-import { receivingAddresses } from "./organization.ts";
+import { allDomains, catchAllTarget, receivingAddresses } from "./organization.ts";
 
 /** Duva's receipt rule set in SES, or a stand-in in tests. */
 export interface ReceiptRules {
@@ -38,8 +38,24 @@ export interface Receiving {
 /** How many receipt rules SES takes in one rule set (docs/aws.md). */
 export const rulesPerSet = 200;
 
-/** How many addresses the organization can receive mail for, those alias domains mirror included, as many as its rule set can list. */
+/**
+ * How many addresses the organization can receive mail for, those alias domains mirror included,
+ * as many as its rule set can list. A domain with a catch-all takes one of them.
+ */
 export const maxAddresses = recipientsPerRule * rulesPerSet;
+
+/**
+ * What Duva's receipt rules list: every address SES receives mail for, and each domain with a
+ * catch-all, with its alias domains, since SES takes mail for every address on a listed domain.
+ */
+export async function ruleRecipients(table: Table): Promise<string[]> {
+  const [addresses, domains] = await Promise.all([receivingAddresses(table), allDomains(table)]);
+  // One whose mailbox or group is gone would take mail no one gets.
+  const withCatchAll = new Set<string>();
+  for (const { domain, catchAll } of domains) if ((await catchAllTarget(table, catchAll)) !== undefined) withCatchAll.add(domain);
+  const catchAllDomains = domains.filter(({ domain, aliasOf }) => withCatchAll.has(aliasOf ?? domain)).map(({ domain }) => domain);
+  return [...addresses.map(({ address }) => address), ...catchAllDomains];
+}
 
 /** The name of Duva's nth rule for addresses, counting from 1. The first keeps the name it had when there was one. */
 const ruleName = (number: number) => (number === 1 ? receiptRuleName : `${receiptRuleName}-${number}`);
@@ -62,7 +78,7 @@ export const receiptRule = ({ bucket, inboundFunction }: Receiving, name: string
 });
 
 /**
- * Makes Duva's receipt rules list every address once, each rule at most recipientsPerRule of them.
+ * Makes Duva's receipt rules list every address, and each domain with a catch-all, once, each rule at most recipientsPerRule of them.
  * An address stays in the rule that lists it, so mail to it is never refused while rules change. A
  * new one goes in the first rule with room, or a new rule after the others, and an emptied rule is
  * deleted, since a rule without recipients would accept mail to every address on the domain. SES
@@ -71,7 +87,7 @@ export const receiptRule = ({ bucket, inboundFunction }: Receiving, name: string
  */
 export async function syncRecipients(table: Table, receiving: Receiving): Promise<void> {
   for (let attempt = 1; ; attempt++) {
-    const addresses = new Set((await receivingAddresses(table)).map(({ address }) => address));
+    const addresses = new Set(await ruleRecipients(table));
     const rules = (await receiving.rules.list()).filter(({ Name }) => receiptRuleNumber(Name) !== undefined);
     const placed = new Set<string>();
     const kept = rules.map((rule) => {

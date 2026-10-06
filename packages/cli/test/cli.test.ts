@@ -377,6 +377,23 @@ test("an admin adds an alias domain from the CLI, sees its records, and removes 
   expect(JSON.parse((await machine.duva("domains", "list")).stdout).domains.map(({ domain }: { domain: string }) => domain)).toEqual(["example.com"]);
 });
 
+test("an admin sets a domain's catch-all from the CLI, and clears it", async () => {
+  const machine = await newMachine();
+  const duva = await startDuva({ domain: "example.com", admin: "ada@example.org" });
+  const server = await duva.listen();
+  onTestFinished(() => server.close());
+  await machine.saveDeployment(server);
+  await machine.duva("login", { browserSignsIn: "ada@example.org" });
+  await machine.duva("groups", "create", "--address", "support@example.com", "--members", "linus@example.net");
+
+  const set = await machine.duva("domains", "set-catch-all", "--domain", "example.com", "--group", "support@example.com");
+  const cleared = await machine.duva("domains", "clear-catch-all", "--domain", "example.com");
+
+  expect(JSON.parse(set.stdout)).toMatchObject({ domain: "example.com", catchAll: { group: "support@example.com" } });
+  expect(JSON.parse(cleared.stdout)).toMatchObject({ domain: "example.com" });
+  expect(JSON.parse(cleared.stdout).catchAll).toBeUndefined();
+});
+
 test("agents list shows the agents the signed-in human sponsors", async () => {
   const machine = await newMachine();
   const server = await (await startDuva({ admin: "ada@example.com" })).listen();

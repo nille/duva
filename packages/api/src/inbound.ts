@@ -2,15 +2,17 @@
 // has stored the raw message in the mail bucket. A failure makes Lambda retry the event, then
 // leaves it in the failure queue for replay, so processing is idempotent per SES message ID.
 // Only FAIL verdicts act. GRAY and PROCESSING_FAILED count as passes. Mail to a group goes to its
-// members, as group-mail.ts has it.
+// members, as group-mail.ts has it. Mail to an address the organization doesn't have goes to its
+// domain's catch-all, which SES takes it for, as if to the catch-all's mailbox or group.
 import type { SESEvent } from "aws-lambda";
 import type { Table } from "./deployment.ts";
 import { dropLogLine, dropReason } from "./drops.ts";
+import { domainOf } from "./email-address.ts";
 import { inboundPrefix } from "./infrastructure.ts";
 import type { MailBucket } from "./mail-bucket.ts";
 import { parseMail } from "./mime.ts";
 import { bounceOnce, type Bounces, type Expanded, expand, type GroupRefusal, isOwnMail, refusalOf, resendToExternalMembers, type Sender } from "./group-mail.ts";
-import { addressTarget, allDomains, type Group } from "./organization.ts";
+import { addressTarget, allDomains, type CatchAll, catchAllTarget, type Group } from "./organization.ts";
 import type { Outbound } from "./sending.ts";
 import { receiveScreened } from "./screening.ts";
 
@@ -22,26 +24,37 @@ export function createInbound({ table, mailBucket, log, outbound, bounces }: { t
   return async (event: SESEvent): Promise<void> => {
     for (const { ses } of event.Records) {
       const rawKey = `${inboundPrefix}${ses.mail.messageId}`;
-      const domains = new Set((await allDomains(table)).map(({ domain }) => domain));
+      const organizationDomains = await allDomains(table);
+      const domains = new Set(organizationDomains.map(({ domain }) => domain));
+      // An alias domain's catch-all is its standalone domain's.
+      const catchAlls = new Map<string, CatchAll | undefined>(organizationDomains.map(({ domain, aliasOf, catchAll }) => [domain, aliasOf === undefined ? catchAll : organizationDomains.find((each) => each.domain === aliasOf)?.catchAll]));
       // The recipients are those the rule took. Each mailbox gets one copy: for the first of its own
-      // addresses, or else as a member of the first group that reaches it.
+      // addresses, or else as a member of the first group that reaches it, or else as a catch-all.
       const direct = new Map<string, Recipient>();
+      const caught = new Map<string, Recipient>();
       const groups: (Recipient & { group: Group; expanded: Expanded })[] = [];
-      for (const given of ses.receipt.recipients) {
-        const { address, ...recipient } = untagged(given);
-        const target = await addressTarget(table, address);
-        if (target === undefined) continue;
+      const take = async (recipient: Recipient, target: Awaited<ReturnType<typeof catchAllTarget>>, mailboxes: Map<string, Recipient>) => {
+        if (target === undefined) return;
         if ("mailbox" in target) {
-          if (!direct.has(target.mailbox)) direct.set(target.mailbox, recipient);
+          if (!mailboxes.has(target.mailbox)) mailboxes.set(target.mailbox, recipient);
         } else if (!groups.some(({ group }) => group.address === target.group.address)) {
           groups.push({ ...recipient, group: target.group, expanded: await expand(table, target.group, domains) });
         }
+      };
+      const unknown: (Recipient & { address: string })[] = [];
+      for (const given of ses.receipt.recipients) {
+        const { address, ...recipient } = untagged(given);
+        const target = await addressTarget(table, address);
+        if (target === undefined) unknown.push({ address, ...recipient });
+        else await take(recipient, target, direct);
       }
+      // A catch-all takes the mail as if it were sent to its mailbox or group, after the addresses the organization has.
+      for (const { address, ...recipient } of unknown) await take(recipient, await catchAllTarget(table, catchAlls.get(domainOf(address))), caught);
       // SES has already accepted the message, so dropping it sends no bounce, and leaves no trace in
       // the mailbox. A repeat of the event finds nothing left to erase, so it isn't counted again.
       const reason = dropReason(ses.receipt);
       if (reason !== undefined) {
-        const mailboxes = new Set([...direct.keys(), ...groups.flatMap(({ expanded }) => [...expanded.mailboxes])]);
+        const mailboxes = new Set([...direct.keys(), ...groups.flatMap(({ expanded }) => [...expanded.mailboxes]), ...caught.keys()]);
         if (await mailBucket.erase(rawKey)) log(dropLogLine(reason, ses, [...mailboxes]));
         continue;
       }
@@ -65,6 +78,7 @@ export function createInbound({ table, mailBucket, log, outbound, bounces }: { t
         taken.push(each);
         for (const mailbox of each.expanded.mailboxes) if (!delivered.has(mailbox)) delivered.set(mailbox, { recipient: each.recipient, plusTag: each.plusTag, group: each.group.address });
       }
+      for (const [mailbox, to] of caught) if (!delivered.has(mailbox)) delivered.set(mailbox, to);
       for (const [mailbox, to] of delivered) {
         await receiveScreened(table, { mailbox, sesMessageId: ses.mail.messageId, rawKey, ...to, sender: ses.mail.source, receivedAt: ses.mail.timestamp, parsed, spam, dmarcPassed });
       }
@@ -81,6 +95,7 @@ interface Recipient {
   recipient: string;
   plusTag?: string;
 }
+
 
 /**
  * The address a recipient reaches, without its plus tag. Addresses are in lower case, and the

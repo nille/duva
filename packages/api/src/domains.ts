@@ -11,7 +11,9 @@ import {
   allDomains,
   allMailboxes,
   DomainTaken,
+  findGroup,
   findMailbox,
+  NoCatchAll,
   NotStandalone,
   type OrganizationDomain,
   organizationDomain,
@@ -21,9 +23,11 @@ import {
   removeDomains,
   removeGroup,
   removeMember,
+  setCatchAll as setStoredCatchAll,
   type Address,
+  type CatchAll,
 } from "./organization.ts";
-import { maxAddresses, syncRecipients } from "./receiving.ts";
+import { maxAddresses, ruleRecipients, syncRecipients } from "./receiving.ts";
 
 type Domain = components["schemas"]["Domain"];
 type DnsRecord = components["schemas"]["DnsRecord"];
@@ -36,7 +40,7 @@ async function signInDomain(deployment: Deployment): Promise<string> {
 }
 
 /** The domain with its DNS records, each looked up now, and what SES has verified of it. */
-async function domainView(deployment: Deployment, { domain, aliasOf }: OrganizationDomain, signIn: string): Promise<Domain> {
+async function domainView(deployment: Deployment, { domain, aliasOf, catchAll }: OrganizationDomain, signIn: string): Promise<Domain> {
   const identity = await deployment.identities.get(domain);
   const dkim = (identity?.dkimTokens ?? []).map((token) => dkimRecord(domain, token));
   const { records } = await domainRecords(deployment.dns, { region: deployment.region, domain, dkim });
@@ -48,6 +52,7 @@ async function domainView(deployment: Deployment, { domain, aliasOf }: Organizat
     kind: aliasOf === undefined ? "standalone" : "alias",
     ...(aliasOf !== undefined && { aliasOf }),
     signIn: domain === signIn,
+    ...(catchAll !== undefined && { catchAll }),
     ses: {
       verified: identity?.verified ?? false,
       dkim: verification(identity?.dkimStatus ?? "NOT_STARTED"),
@@ -86,10 +91,12 @@ export const addDomain: OperationHandler = async (event, deployment, actor) => {
     if (aliasOf === undefined || !standalone.includes(aliasOf)) {
       return refusal(400, `An alias domain mirrors one of the organization's standalone domains, ${standalone.join(", ")}. Give one of them as aliasOf.`);
     }
-    // Each address on the standalone domain is mirrored, and SES's receipt rules list each.
+    // Each address on the standalone domain is mirrored, and SES's receipt rules list each, and the alias domain itself if the standalone domain has a catch-all.
+    const catchAll = domains.some((each) => each.domain === aliasOf && each.catchAll !== undefined) ? 1 : 0;
     const mirrored = (await allAddresses(deployment.table)).filter(({ address }) => address.endsWith(`@${aliasOf}`)).length;
-    if ((await receivingAddresses(deployment.table)).length + mirrored > maxAddresses) {
-      return refusal(409, `${domain} would mirror ${mirrored} addresses, and the organization can receive mail for at most ${maxAddresses}. Remove addresses first.`);
+    if ((await ruleRecipients(deployment.table)).length + mirrored + catchAll > maxAddresses) {
+      const its = catchAll === 0 ? "" : `, and ${aliasOf}'s catch-all,`;
+      return refusal(409, `${domain} would mirror ${mirrored} addresses${its} and the organization can receive mail for at most ${maxAddresses}. Remove addresses first.`);
     }
   }
   const taken = () => refusal(409, `The organization already has ${domain}. List its domains to see its DNS records.`);
@@ -187,4 +194,57 @@ export const removeDomain: OperationHandler = async (event, deployment, actor) =
   // SES refuses mail to every address that went, mirrored ones included, before the call is answered.
   await syncRecipients(deployment.table, deployment.receiving);
   return removal(true);
+};
+
+/**
+ * The domain the call's path names with its catch-all from now on, `catchAll` if given, or
+ * undefined to clear it, or a refusal. SES takes mail for every address on a domain with a
+ * catch-all, and its alias domains, before the call is answered, and refuses mail to unknown ones
+ * again once it is cleared.
+ */
+async function changingCatchAll(event: Parameters<OperationHandler>[0], deployment: Deployment, by: string, catchAll: CatchAll | undefined) {
+  const domain = await domainAsked(event, deployment);
+  if ("statusCode" in domain) return domain;
+  if (domain.aliasOf !== undefined) {
+    return refusal(400, `${domain.domain} is an alias domain, which mirrors ${domain.aliasOf}'s catch-all. Set ${domain.aliasOf}'s catch-all instead.`);
+  }
+  // The receipt rules list the domain with a catch-all, and each of its alias domains.
+  if (catchAll !== undefined && domain.catchAll === undefined) {
+    const listed = 1 + (await allDomains(deployment.table)).filter(({ aliasOf }) => aliasOf === domain.domain).length;
+    if ((await ruleRecipients(deployment.table)).length + listed > maxAddresses) {
+      return refusal(409, `The organization receives mail for ${maxAddresses} addresses, and a catch-all on ${domain.domain} takes ${listed} of them. Remove addresses first.`);
+    }
+  }
+  try {
+    await setStoredCatchAll(deployment.table, { domain: domain.domain, catchAll, by });
+  } catch (error) {
+    if (error instanceof NotStandalone) return refusal(404, `${domain.domain} was removed meanwhile. List the domains to find it.`);
+    if (error instanceof NoCatchAll) return refusal(409, "The mailbox or group was deleted meanwhile. Choose another catch-all.");
+    throw error;
+  }
+  await syncRecipients(deployment.table, deployment.receiving);
+  return { statusCode: 200, body: await domainView(deployment, { domain: domain.domain, ...(catchAll !== undefined && { catchAll }) }, await signInDomain(deployment)) };
+}
+
+export const setCatchAll: OperationHandler = async (event, deployment, actor) => {
+  if (!actor?.admin) return refusal(403, "Only admins can set a domain's catch-all. Ask an admin to.");
+  const { mailbox, group } = jsonBody(event) ?? {};
+  if ((mailbox === undefined) === (group === undefined)) return refusal(400, "Give either mailbox, a mailbox's ID, or group, a group's address.");
+  let catchAll: CatchAll;
+  if (mailbox !== undefined) {
+    if (typeof mailbox !== "string" || (await findMailbox(deployment.table, mailbox)) === undefined) {
+      return refusal(400, `There is no mailbox ${JSON.stringify(mailbox)}. Give the ID of the mailbox for the catch-all, which listing the addresses shows.`);
+    }
+    catchAll = { mailbox };
+  } else {
+    const address = typeof group === "string" ? group.trim().toLowerCase() : "";
+    if ((await findGroup(deployment.table, address)) === undefined) return refusal(400, `There is no group ${JSON.stringify(address)}. Give a group's address, which listing the groups shows.`);
+    catchAll = { group: address };
+  }
+  return changingCatchAll(event, deployment, actor.id, catchAll);
+};
+
+export const clearCatchAll: OperationHandler = async (event, deployment, actor) => {
+  if (!actor?.admin) return refusal(403, "Only admins can clear a domain's catch-all. Ask an admin to.");
+  return changingCatchAll(event, deployment, actor.id, undefined);
 };

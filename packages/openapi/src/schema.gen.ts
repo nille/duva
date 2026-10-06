@@ -479,6 +479,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/domains/{domain}/catch-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set a standalone domain's catch-all, a mailbox or a group, for mail to addresses the organization doesn't have.
+         * @description Give the mailbox's ID or the group's address. Mail to an address on the domain, or on its alias domains, that isn't one of the organization's, removed ones included, goes to the catch-all instead of being refused. A mailbox's Screener applies to it, and a group delivers it to its members, skipping their Screeners, as group mail does. Deleting the mailbox or the group clears the catch-all. Only admins can set it, and each change is a change to the organization's setup, recorded in its change feed under you.
+         */
+        put: operations["setCatchAll"];
+        post?: never;
+        /**
+         * Clear a domain's catch-all, so that mail to addresses the organization doesn't have is refused again.
+         * @description SES refuses such mail on the domain and its alias domains at once. Mail the catch-all already got stays. Only admins can clear it, and clearing it is a change to the organization's setup, recorded in its change feed under you.
+         */
+        delete: operations["clearCatchAll"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/mailboxes": {
         parameters: {
             query?: never;
@@ -1262,6 +1286,16 @@ export interface components {
              */
             signIn: true;
         };
+        /** @description A domain's catch-all, for mail to addresses the organization doesn't have. Exactly one of mailbox and group. */
+        CatchAll: {
+            /** @description The ID of the mailbox that gets the mail, its Screener applying. */
+            mailbox?: string;
+            /**
+             * @description The address of the group whose members get the mail, skipping their Screeners.
+             * @example support@example.com
+             */
+            group?: string;
+        };
         /** @description One of the organization's domains, with the DNS records it needs and SES's verification of it. */
         Domain: {
             /**
@@ -1278,6 +1312,8 @@ export interface components {
             aliasOf?: string;
             /** @description Whether sign-in codes come from the domain, once SES has verified it. */
             signIn: boolean;
+            /** @description The standalone domain's catch-all, if an admin set one. Its alias domains use it too. Without one, mail to addresses the organization doesn't have is refused. */
+            catchAll?: components["schemas"]["CatchAll"];
             ses: components["schemas"]["DomainVerification"];
             /** @description The DNS records the domain needs, to add at its DNS provider. A DMARC record is left out when a parent domain's covers it. */
             records: components["schemas"]["DnsRecord"][];
@@ -2327,7 +2363,7 @@ export interface components {
             position: number;
         };
         /** @description A change to the organization's setup. */
-        OrganizationChange: components["schemas"]["OrganizationAdded"] | components["schemas"]["DomainAdded"] | components["schemas"]["DomainRemoved"] | components["schemas"]["SignInDomainChanged"] | components["schemas"]["ActorAdded"] | components["schemas"]["AgentKeyRotated"] | components["schemas"]["AgentPaused"] | components["schemas"]["AgentUnpaused"] | components["schemas"]["MailboxAdded"] | components["schemas"]["AddressAdded"] | components["schemas"]["AddressRemoved"] | components["schemas"]["DefaultAddressChanged"] | components["schemas"]["GroupAdded"] | components["schemas"]["GroupChanged"] | components["schemas"]["GroupRemoved"] | components["schemas"]["SettingsChanged"] | components["schemas"]["ActorRemoved"] | components["schemas"]["AdminChanged"] | components["schemas"]["MailboxHandedOver"] | components["schemas"]["MailboxDeleted"];
+        OrganizationChange: components["schemas"]["OrganizationAdded"] | components["schemas"]["DomainAdded"] | components["schemas"]["DomainRemoved"] | components["schemas"]["SignInDomainChanged"] | components["schemas"]["CatchAllChanged"] | components["schemas"]["ActorAdded"] | components["schemas"]["AgentKeyRotated"] | components["schemas"]["AgentPaused"] | components["schemas"]["AgentUnpaused"] | components["schemas"]["MailboxAdded"] | components["schemas"]["AddressAdded"] | components["schemas"]["AddressRemoved"] | components["schemas"]["DefaultAddressChanged"] | components["schemas"]["GroupAdded"] | components["schemas"]["GroupChanged"] | components["schemas"]["GroupRemoved"] | components["schemas"]["SettingsChanged"] | components["schemas"]["ActorRemoved"] | components["schemas"]["AdminChanged"] | components["schemas"]["MailboxHandedOver"] | components["schemas"]["MailboxDeleted"];
         ChangeBase: {
             /** @description The change's position in the feed, counting from 1. */
             position: number;
@@ -2395,6 +2431,23 @@ export interface components {
              * @enum {string}
              */
             type: "signInDomainChanged";
+        };
+        CatchAllChanged: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "catchAllChanged";
+            /**
+             * @description The standalone domain.
+             * @example example.com
+             */
+            domain: string;
+            /** @description The domain's catch-all from now on, left out when it was cleared. */
+            catchAll?: components["schemas"]["CatchAll"];
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "catchAllChanged";
         };
         ActorAdded: components["schemas"]["ChangeBase"] & {
             /** @constant */
@@ -3597,6 +3650,65 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    setCatchAll: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The domain. Case doesn't matter. */
+                domain: components["parameters"]["Domain"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CatchAll"];
+            };
+        };
+        responses: {
+            /** @description The domain, with its catch-all. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Domain"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    clearCatchAll: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The domain. Case doesn't matter. */
+                domain: components["parameters"]["Domain"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The domain, without a catch-all. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Domain"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     listMailboxes: {

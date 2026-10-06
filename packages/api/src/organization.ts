@@ -18,6 +18,7 @@ export type OrganizationChange = components["schemas"]["OrganizationChange"];
 export type OrganizationSettings = components["schemas"]["OrganizationSettings"];
 export type AgentSettings = components["schemas"]["AgentSettings"];
 export type Group = components["schemas"]["Group"];
+export type CatchAll = components["schemas"]["CatchAll"];
 /** A change as its maker describes it, before the feed gives it a position, a time and its actor. */
 type ChangeDetails = OrganizationChange extends infer Change ? (Change extends unknown ? Omit<Change, "position" | "at" | "actor"> : never) : never;
 
@@ -435,10 +436,14 @@ export async function organizationDomain(table: Table): Promise<string> {
   return Item.domain as string;
 }
 
-/** One of the organization's domains, with the standalone domain it mirrors if it is an alias domain. */
+/**
+ * One of the organization's domains, with the standalone domain it mirrors if it is an alias
+ * domain, or its catch-all if it is a standalone domain with one.
+ */
 export interface OrganizationDomain {
   domain: string;
   aliasOf?: string;
+  catchAll?: CatchAll;
 }
 
 /**
@@ -465,7 +470,7 @@ export async function allDomains(table: Table): Promise<OrganizationDomain[]> {
     db.send(new QueryCommand({ TableName: table.name, KeyConditionExpression: `${pk} = :domains`, ExpressionAttributeValues: { ":domains": domainsPartition }, ConsistentRead: true })),
     db.send(new GetCommand({ TableName: table.name, Key: organizationKey, ConsistentRead: true })),
   ]);
-  const domains: OrganizationDomain[] = Items.map(({ domain, aliasOf }) => ({ domain, ...(aliasOf !== undefined && { aliasOf }) }));
+  const domains: OrganizationDomain[] = Items.map(({ domain, aliasOf, catchAll }) => ({ domain, ...(aliasOf !== undefined && { aliasOf }), ...(catchAll !== undefined && { catchAll: catchAllOf(catchAll) }) }));
   // Until setup lists it, the first domain is only on the organization's item.
   if (organization !== undefined && organization.domainsListed !== true && !domains.some(({ domain }) => domain === organization.domain)) {
     domains.push({ domain: organization.domain as string });
@@ -512,6 +517,80 @@ export async function removeDomains(table: Table, { domains, by }: { domains: st
     changes: domains.map((domain) => ({ type: "domainRemoved", domain })) satisfies ChangeDetails[],
     items: domains.map((domain) => ({ Delete: { TableName: table.name, Key: domainKey(domain) } })),
   });
+}
+
+/** The catch-all an item stores, as the contract has it. */
+const catchAllOf = ({ mailbox, group }: CatchAll): CatchAll => (mailbox !== undefined ? { mailbox } : { group: group! });
+
+const sameCatchAll = (a: CatchAll | undefined, b: CatchAll | undefined) => a?.mailbox === b?.mailbox && a?.group === b?.group;
+
+/**
+ * Makes the mailbox or group the standalone domain's catch-all, or clears it without one, on
+ * behalf of the admin `by`, and records nothing if it already is. Throws NotStandalone if the
+ * organization doesn't have the domain as a standalone domain, and NoCatchAll if it has no such
+ * mailbox or group.
+ */
+export async function setCatchAll(table: Table, { domain, catchAll, by }: { domain: string; catchAll?: CatchAll; by: string }): Promise<void> {
+  await listFirstDomain(table);
+  const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: domainKey(domain), ConsistentRead: true }));
+  if (Item === undefined || Item.aliasOf !== undefined) throw new NotStandalone();
+  if (sameCatchAll(Item.catchAll as CatchAll | undefined, catchAll)) return;
+  const write: TransactItem = {
+    Update: {
+      TableName: table.name,
+      Key: domainKey(domain),
+      UpdateExpression: catchAll === undefined ? "REMOVE catchAll" : "SET catchAll = :catchAll",
+      ConditionExpression: `attribute_exists(${pk}) AND attribute_not_exists(aliasOf)`,
+      ...(catchAll !== undefined && { ExpressionAttributeValues: { ":catchAll": catchAll } }),
+    },
+  };
+  // The mailbox or group must still be there when it becomes the catch-all, so its deletion clears it.
+  const target: TransactItem[] =
+    catchAll === undefined
+      ? []
+      : catchAll.mailbox !== undefined
+        ? [{ ConditionCheck: { TableName: table.name, Key: mailboxKey(catchAll.mailbox), ConditionExpression: `attribute_exists(${pk}) AND attribute_not_exists(deleted)` } }]
+        : [{ ConditionCheck: { TableName: table.name, Key: groupKey(catchAll.group!), ConditionExpression: `attribute_exists(${pk})` } }];
+  await recordChange(table, by, { type: "catchAllChanged", domain, ...(catchAll !== undefined && { catchAll }) }, [write, ...target]).catch((error: unknown) => {
+    const reasons = error instanceof TransactionCanceledException ? (error.CancellationReasons ?? []) : [];
+    if (reasons[2]?.Code === "ConditionalCheckFailed") throw new NotStandalone();
+    if (reasons[3]?.Code === "ConditionalCheckFailed") throw new NoCatchAll();
+    throw error;
+  });
+}
+
+/**
+ * What the catch-all is, a mailbox, by its ID, or a group, or undefined if there is none or it is
+ * gone, as when its deletion stopped before clearing it.
+ */
+export async function catchAllTarget(table: Table, catchAll: CatchAll | undefined): Promise<{ mailbox: string } | { group: Group } | undefined> {
+  if (catchAll?.mailbox !== undefined) return (await findMailbox(table, catchAll.mailbox)) === undefined ? undefined : { mailbox: catchAll.mailbox };
+  const group = catchAll?.group === undefined ? undefined : await findGroup(table, catchAll.group);
+  return group === undefined ? undefined : { group };
+}
+
+/** The organization has no such mailbox or group for a catch-all. */
+export class NoCatchAll extends Error {}
+
+/** Clears every catch-all that is the mailbox or the group, which is gone, on behalf of the actor `by`. */
+async function clearCatchAlls(table: Table, { catchAll, by }: { catchAll: CatchAll; by: string }): Promise<void> {
+  for (const { domain } of (await allDomains(table)).filter((each) => sameCatchAll(each.catchAll, catchAll))) {
+    await recordChange(table, by, { type: "catchAllChanged", domain }, [
+      {
+        Update: {
+          TableName: table.name,
+          Key: domainKey(domain),
+          UpdateExpression: "REMOVE catchAll",
+          ConditionExpression: "catchAll.#kind = :target",
+          ExpressionAttributeNames: { "#kind": catchAll.mailbox !== undefined ? "mailbox" : "group" },
+          ExpressionAttributeValues: { ":target": catchAll.mailbox ?? catchAll.group },
+        },
+      },
+    ]).catch((error: unknown) => {
+      // Another admin changed it meanwhile, or the domain is gone.
+      if (!(error instanceof TransactionCanceledException && error.CancellationReasons?.[2]?.Code === "ConditionalCheckFailed")) throw error;
+    });
+  }
 }
 
 /** Records that sign-in codes come from the domain from now on, as chosen by the admin `by`. */
@@ -808,6 +887,7 @@ export async function removeGroup(table: Table, { address, by }: { address: stri
     if (gone) return undefined;
     throw error;
   }
+  await clearCatchAlls(table, { catchAll: { group: address }, by });
   return group;
 }
 
@@ -984,10 +1064,12 @@ export class NotAHuman extends Error {}
  * leave every group they were members of.
  */
 export async function deleteMailbox(table: Table, { mailbox, by, items }: { mailbox: string; by: string; items: TransactItem[] }): Promise<void> {
+  let addresses: string[];
   for (let attempt = 1; ; attempt++) {
     const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: mailboxKey(mailbox), ConsistentRead: true }));
     if (Item === undefined || Item.deleted === true) return;
-    const { owner, addresses } = mailboxOf(Item as Mailbox);
+    const { owner, ...read } = mailboxOf(Item as Mailbox);
+    addresses = read.addresses;
     try {
       await recordChanges(table, organizationFeed, {
         by,
@@ -1011,14 +1093,15 @@ export async function deleteMailbox(table: Table, { mailbox, by, items }: { mail
           ...items,
         ],
       });
-      for (const address of addresses) await removeMember(table, { address, by });
-      return;
+      break;
     } catch (error) {
       // The mailbox's own item comes after the feed's counter and its changes.
       const reasons = error instanceof TransactionCanceledException ? (error.CancellationReasons ?? []) : [];
       if (reasons[2 + addresses.length]?.Code !== "ConditionalCheckFailed" || attempt === 10) throw error;
     }
   }
+  for (const address of addresses) await removeMember(table, { address, by });
+  await clearCatchAlls(table, { catchAll: { mailbox }, by });
 }
 
 /**

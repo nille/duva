@@ -13,11 +13,10 @@ import {
   findGroup,
   findMailbox,
   NotItsAddress,
-  receivingAddresses,
   removeAddress as removeStoredAddress,
   removeMember,
 } from "./organization.ts";
-import { maxAddresses, syncRecipients } from "./receiving.ts";
+import { maxAddresses, ruleRecipients, syncRecipients } from "./receiving.ts";
 
 const onlyAdmins = () => refusal(403, "Only admins can change the organization's addresses. Ask an admin to.");
 
@@ -51,7 +50,7 @@ export async function addressGiven(deployment: Deployment, given: unknown): Prom
   }
   // SES's receipt rules list at most this many recipients in all, and the domain's alias domains each mirror the address.
   const mirrors = domains.filter(({ aliasOf }) => aliasOf === domain.domain).length;
-  if ((await receivingAddresses(deployment.table)).length + 1 + mirrors > maxAddresses) {
+  if ((await ruleRecipients(deployment.table)).length + 1 + mirrors > maxAddresses) {
     return refusal(409, `The organization receives mail for ${maxAddresses} addresses, those its alias domains mirror included, as many as Duva can. Remove one first.`);
   }
   return address;
