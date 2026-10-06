@@ -182,6 +182,35 @@ test("opening a page from the index by keyboard takes the focus to its sheet", b
   await expect.poll(() => page.evaluate(() => document.activeElement?.textContent), wait).toBe("Mail");
 });
 
+for (const viewport of [undefined, phone]) {
+  test(`opening a page by its address, from Mail or by a reload, takes the focus to its sheet's title, even one shown once its data is read${viewport === undefined ? "" : ", on a phone"}`, budget, async () => {
+    const { page, signIn, duva } = await startWebApp({ domain: "example.com", admin: "ada@example.org", ...(viewport === undefined ? {} : { viewport }) });
+    const ada = duva.signIn("ada@example.org");
+    const { data: me } = await ada.GET("/whoami");
+    await ada.POST("/mailboxes", { body: { owner: me!.id, address: "ada@example.com" } });
+    const { data: hermes } = await ada.POST("/agents", { body: { name: "Hermes" } });
+    await signIn("ada@example.org");
+    await expect.poll(() => page.getByRole("navigation", { name: "Duva" }).isVisible(), wait).toBe(true);
+    const focused = () => page.evaluate(() => `${document.activeElement?.tagName} ${document.activeElement?.closest("summary")?.querySelector("h3")?.textContent ?? document.activeElement?.textContent}`);
+
+    for (const [hash, title] of [
+      ["#/settings/agents", "H2 Your agents"],
+      ["#/settings/screener", "H2 Screener"],
+      ["#/settings/organization", "H2 Mail"],
+      // An agent's own page gives the focus on to its line.
+      [`#/settings/agents/${hermes!.agent.id}`, "SUMMARY Hermes"],
+    ] as const) {
+      await page.evaluate(() => (location.hash = "#/"));
+      await expect.poll(() => settingsIndex(page).count(), wait).toBe(0);
+      await page.evaluate((hash) => (location.hash = hash), hash);
+      await expect.poll(focused, wait).toBe(title);
+
+      await page.reload();
+      await expect.poll(focused, wait).toBe(title);
+    }
+  });
+}
+
 /** A message from Ada to Grace, dated a year before it arrives, so the thread shows its date with the year. */
 const note = (subject: string) =>
   [

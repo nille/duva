@@ -247,21 +247,48 @@ export function Settings({
   useEffect(() => {
     document.title = strings.title(strings.settings.title);
   }, []);
-  // A screen reader follows the human to the page they opened, and the page starts at its top.
+  // A screen reader follows the human to the page they opened, and a page opened from another starts at its top.
+  // A page that can't open and opens You instead counts as opening another.
   const opened = useRef(false);
   const view = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (!opened.current) {
-      opened.current = true;
+    const arriving = !opened.current;
+    opened.current = true;
+    // Arriving at the index, the focus is the shell's to give, as on every view.
+    if (arriving && asked.page === undefined) return;
+    const focus = (title: HTMLElement) => {
+      title.tabIndex = -1;
+      title.focus({ preventScroll: true });
+    };
+    const sheetTitle = () => (asked.page === undefined ? null : (view.current?.querySelector<HTMLElement>("h2") ?? null));
+    if (!arriving) {
+      scrollTo(0, 0);
+      // Back at the index, as on a phone, the title of Settings takes the focus, since the sheets beside it don't show there.
+      const title = sheetTitle() ?? document.querySelector<HTMLElement>("main h1");
+      if (title !== null) focus(title);
       return;
     }
-    scrollTo(0, 0);
-    // Back at the index, as on a phone, the title of Settings takes the focus, since the sheets beside it don't show there.
-    const title = (asked.page === undefined ? null : view.current?.querySelector<HTMLElement>("h2")) ?? document.querySelector<HTMLElement>("main h1");
-    if (title === null) return;
-    title.tabIndex = -1;
-    title.focus({ preventScroll: true });
-  }, [asked.page]);
+    // Arriving at a page, by its address or a reload, its sheet's title takes the focus from the title of Settings, which
+    // the shell focuses in its own effect, run after this one since React runs a child's effects first. A sheet that
+    // waits for the mailboxes, as the Screener does, shows its title later, unless the human has moved the focus by then.
+    const take = () => {
+      const title = sheetTitle();
+      const active = document.activeElement;
+      if (title === null || (active !== document.body && active !== document.querySelector("main h1"))) return false;
+      focus(title);
+      return true;
+    };
+    const watching = new MutationObserver(() => {
+      if (take()) watching.disconnect();
+    });
+    const focusing = setTimeout(() => {
+      if (!take() && view.current !== null) watching.observe(view.current, { childList: true, subtree: true });
+    });
+    return () => {
+      clearTimeout(focusing);
+      watching.disconnect();
+    };
+  }, [asked.page, page]);
 
   // A change on one of the admins' sheets can change what the others show, so all read again after each.
   const [setupChanges, setSetupChanges] = useState(0);
