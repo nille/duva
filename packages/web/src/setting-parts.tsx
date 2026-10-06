@@ -1,4 +1,4 @@
-// The parts Settings' sheets share: a choice, and the chevron of a line that opens.
+// The parts Settings' sheets share: a choice, a whole number typed, and the chevron of a line that opens.
 
 /** A choice in a setting: a box holding its radio, its name and what it means. */
 export function Choice({ name, checked, onChoose, label, hint }: { name: string; checked: boolean; onChoose: () => void; label: string; hint: string }) {
@@ -11,6 +11,12 @@ export function Choice({ name, checked, onChoose, label, hint }: { name: string;
       </span>
     </label>
   );
+}
+
+/** The number typed, if it is a whole number from 1 to `most`, as Duva takes a send limit or a cap. */
+export function wholeNumber(text: string, most: number): number | undefined {
+  const value = /^\d+$/.test(text.trim()) ? Number(text.trim()) : undefined;
+  return value !== undefined && value >= 1 && value <= most ? value : undefined;
 }
 
 /** The chevron at the end of a line that opens, turned while it is open. */

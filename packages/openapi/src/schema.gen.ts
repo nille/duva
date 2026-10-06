@@ -1349,6 +1349,11 @@ export interface components {
              * @description When it was paused.
              */
             at: string;
+            /**
+             * @description Why Duva paused it, there only if Duva paused it by itself (ADR-0021).
+             * @example A recipient complained about its mail.
+             */
+            reason?: string;
         };
         NewAgent: {
             /**

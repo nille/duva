@@ -1,45 +1,106 @@
-// The Agents sheet in Settings: for each agent the human sponsors, its sponsor access to their
-// mailbox and the switches for approval and the disclosure's visible line. Each agent is a line
-// saying its access and approval, which opens into a link to its activity and its form, one at a
-// time. A human who sponsors no
-// agents never sees it.
-import { useCallback, useEffect, useState } from "react";
+// The Agents sheet in Settings: for each agent the human sponsors, whether it is paused, its sends
+// waiting for its send limits, and its settings: its sponsor access to their mailbox, the switches
+// for approval and the disclosure's visible line, and its send limits up to the organization's
+// caps. Each agent is a line saying whether it is paused, its access and approval and what waits,
+// which opens into a link to its activity, its parts and its form, one at a time. A human who
+// sponsors no agents never sees it.
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
 import { activityHref } from "./activity.tsx";
-import { ChevronIcon } from "./setting-parts.tsx";
+import { useDates } from "./dates.ts";
+import type { AgentMailbox } from "./mailboxes.tsx";
+import { SendNow } from "./send-now.tsx";
+import { ChevronIcon, wholeNumber } from "./setting-parts.tsx";
 import { strings } from "./strings.ts";
 
 type Agent = components["schemas"]["Agent"];
 type AgentSettings = components["schemas"]["AgentSettings"];
+type Draft = components["schemas"]["Draft"];
+type Mailbox = components["schemas"]["Mailbox"];
 type SponsorAccess = AgentSettings["sponsorAccess"];
 type Switch = Exclude<keyof AgentSettings, "sponsorAccess" | "sendsPerHour" | "newRecipientsPerDay">;
+type Limit = "sendsPerHour" | "newRecipientsPerDay";
 
-type Read = { status: "loading" } | { status: "failed"; message: string } | { status: "read"; agents: { agent: Agent; settings: AgentSettings }[] };
+/** The organization's caps on each limit. */
+type Caps = Record<Limit, number>;
+/** A send of the agent's that waits for its send limits, and the mailbox its draft is in. */
+type Waiting = { mailbox: string; draft: Draft };
+
+type Read =
+  | { status: "loading" }
+  | { status: "failed"; message: string }
+  | { status: "read"; caps: Caps; names: ReadonlyMap<string, string>; agents: { agent: Agent; settings: AgentSettings; waiting: Waiting[] }[] };
 type Saving = { status: "idle" } | { status: "saving" } | { status: "saved"; lowered: boolean } | { status: "failed"; message: string };
 
 const accesses: SponsorAccess[] = ["none", "read", "full"];
 
-/** The sheet, with a line for each agent the human sponsors that opens into its form, `email` being the human's address. */
-export function AgentSettingsSheet({ client, email, onSignedOut }: { client: DuvaClient; email: string; onSignedOut: () => void }) {
+/**
+ * The sheet, with a line for each agent the human sponsors that opens into its parts and form. `me`
+ * is the human's ID and `email` their address, `admin` whether they are an admin, `mailboxes` their
+ * own and their agents', once listed, and `open` the agent whose line opens first, if any.
+ */
+export function AgentSettingsSheet({
+  client,
+  me,
+  email,
+  admin,
+  mailboxes,
+  open,
+  onSignedOut,
+}: {
+  client: DuvaClient;
+  me: string;
+  email: string;
+  admin: boolean;
+  mailboxes: { mine?: Mailbox; agents: AgentMailbox[] } | undefined;
+  open?: string;
+  onSignedOut: () => void;
+}) {
   const [read, setRead] = useState<Read>({ status: "loading" });
+  // The mailboxes are listed anew with each render, so the sheet reads again only when they are others.
+  const listed = useRef(mailboxes);
+  listed.current = mailboxes;
+  const searchedKey = mailboxes === undefined ? undefined : [mailboxes.mine?.id, ...mailboxes.agents.map(({ mailbox }) => mailbox.id)].join();
 
   const load = useCallback(async () => {
+    const mailboxes = listed.current;
+    if (searchedKey === undefined || mailboxes === undefined) return;
     setRead({ status: "loading" });
     const failed = (response: Response | undefined) =>
       setRead({ status: "failed", message: response === undefined ? strings.agentSettings.unreachable : strings.agentSettings.failed(response.status) });
-    const listed = await client.GET("/agents").catch(() => ({ data: undefined, response: undefined }));
-    if (listed.response?.status === 401) return onSignedOut();
-    if (listed.data === undefined) return failed(listed.response);
-    const agents = [...listed.data.agents].sort((a, b) => a.name.localeCompare(b.name));
-    const each = await Promise.all(
-      agents.map((agent) => client.GET("/agents/{agent}/settings", { params: { path: { agent: agent.id } } }).catch(() => ({ data: undefined, response: undefined }))),
-    );
+    const quietly = <T,>(call: Promise<T>) => call.catch(() => ({ data: undefined, response: undefined }));
+    const [agentList, organization, humans] = await Promise.all([
+      quietly(client.GET("/agents")),
+      quietly(client.GET("/organization/settings")),
+      // Only admins list the humans, so only they see which admin paused an agent.
+      admin ? quietly(client.GET("/humans")) : Promise.resolve({ data: undefined, response: undefined }),
+    ]);
+    if (agentList.response?.status === 401 || organization.response?.status === 401) return onSignedOut();
+    if (agentList.data === undefined) return failed(agentList.response);
+    if (organization.data === undefined) return failed(organization.response);
+    const agents = [...agentList.data.agents].sort((a, b) => a.name.localeCompare(b.name));
+    const each = await Promise.all(agents.map((agent) => quietly(client.GET("/agents/{agent}/settings", { params: { path: { agent: agent.id } } }))));
     if (each.some(({ response }) => response?.status === 401)) return onSignedOut();
     const unread = each.find(({ data }) => data === undefined);
     if (unread !== undefined) return failed(unread.response);
-    setRead({ status: "read", agents: agents.map((agent, index) => ({ agent, settings: each[index]!.data! })) });
-  }, [client, onSignedOut]);
+    // An agent's sends wait in its own mailboxes, and in the human's when it sends as them. A list Duva can't give now shows none.
+    const searched = [...(mailboxes.mine === undefined ? [] : [mailboxes.mine]), ...mailboxes.agents.map(({ mailbox }) => mailbox)];
+    const drafts = await Promise.all(
+      searched.map(async (mailbox) => {
+        const { data } = await quietly(client.GET("/mailboxes/{mailbox}/drafts", { params: { path: { mailbox: mailbox.id } } }));
+        return (data?.drafts ?? []).filter((draft) => draft.send?.state === "waitingForLimit").map((draft) => ({ mailbox, draft }));
+      }),
+    );
+    const waitingFor = (agent: string) =>
+      drafts
+        .flat()
+        .filter(({ mailbox, draft }) => (mailbox.owner === me ? draft.updatedBy === agent : mailbox.owner === agent))
+        .map(({ mailbox, draft }) => ({ mailbox: mailbox.id, draft }));
+    const names = new Map<string, string>([...(humans.data?.humans.map((human) => [human.id, human.email] as const) ?? []), ...agents.map((agent) => [agent.id, agent.name] as const)]);
+    const caps = { sendsPerHour: organization.data.agentSendsPerHourCap, newRecipientsPerDay: organization.data.agentNewRecipientsPerDayCap };
+    setRead({ status: "read", caps, names, agents: agents.map((agent, index) => ({ agent, settings: each[index]!.data!, waiting: waitingFor(agent.id) })) });
+  }, [client, me, admin, searchedKey, onSignedOut]);
 
   useEffect(() => {
     void load();
@@ -63,21 +124,69 @@ export function AgentSettingsSheet({ client, email, onSignedOut }: { client: Duv
           </div>
         </div>
       ) : (
-        read.agents.map(({ agent, settings }) => <AgentForm key={agent.id} client={client} agent={agent} saved={settings} email={email} onSignedOut={onSignedOut} />)
+        read.agents.map(({ agent, settings, waiting }) => (
+          <AgentForm
+            key={agent.id}
+            client={client}
+            agent={agent}
+            saved={settings}
+            waiting={waiting}
+            caps={read.caps}
+            whoPaused={(by) => (by === me ? copy.pause.you : by === "duva" ? copy.pause.duva : (read.names.get(by) ?? copy.pause.anAdmin))}
+            email={email}
+            open={open === agent.id}
+            onSignedOut={onSignedOut}
+          />
+        ))
       )}
     </section>
   );
 }
 
-function AgentForm({ client, agent, saved: first, email, onSignedOut }: { client: DuvaClient; agent: Agent; saved: AgentSettings; email: string; onSignedOut: () => void }) {
-  const [saved, setSaved] = useState(first);
-  const [chosen, setChosen] = useState(first);
+function AgentForm({
+  client,
+  agent: first,
+  saved: firstSaved,
+  waiting,
+  caps,
+  whoPaused,
+  email,
+  open,
+  onSignedOut,
+}: {
+  client: DuvaClient;
+  agent: Agent;
+  saved: AgentSettings;
+  waiting: Waiting[];
+  caps: Caps;
+  whoPaused: (by: string) => string;
+  email: string;
+  open: boolean;
+  onSignedOut: () => void;
+}) {
+  const [agent, setAgent] = useState(first);
+  const [saved, setSaved] = useState(firstSaved);
+  const [chosen, setChosen] = useState(firstSaved);
+  // The limits as typed, which may not be numbers Duva takes yet.
+  const [typed, setTyped] = useState<Record<Limit, string>>({ sendsPerHour: String(firstSaved.sendsPerHour), newRecipientsPerDay: String(firstSaved.newRecipientsPerDay) });
   const [saving, setSaving] = useState<Saving>({ status: "idle" });
+  // The sends Send now sent from here, which wait no more.
+  const [sentNow, setSentNow] = useState<ReadonlySet<string>>(new Set());
+  const stillWaiting = waiting.filter(({ draft }) => !sentNow.has(draft.id)).length;
   const copy = strings.agentSettings;
   const heading = `agent-${agent.id}`;
   const changed = (Object.keys(chosen) as (keyof AgentSettings)[]).filter((key) => chosen[key] !== saved[key]);
+  const invalid = (["sendsPerHour", "newRecipientsPerDay"] as const).some((limit) => wholeNumber(typed[limit], caps[limit]) === undefined);
   // Only full access lets an agent send as its sponsor, so only lowering it withdraws what waits.
   const lowers = saved.sponsorAccess === "full" && chosen.sponsorAccess !== "full";
+
+  // The line an alert opens comes open, in view.
+  const details = useRef<HTMLDetailsElement>(null);
+  useEffect(() => {
+    if (!open || details.current === null) return;
+    details.current.open = true;
+    details.current.scrollIntoView({ block: "start" });
+  }, [open]);
 
   const save = async () => {
     setSaving({ status: "saving" });
@@ -92,6 +201,7 @@ function AgentForm({ client, agent, saved: first, email, onSignedOut }: { client
     }
     setSaved(data);
     setChosen(data);
+    setTyped({ sendsPerHour: String(data.sendsPerHour), newRecipientsPerDay: String(data.newRecipientsPerDay) });
     setSaving({ status: "saved", lowered: lowers });
   };
 
@@ -110,19 +220,63 @@ function AgentForm({ client, agent, saved: first, email, onSignedOut }: { client
     </label>
   );
 
+  const limitField = (limit: Limit, label: string, hint?: string) => {
+    const id = `${heading}-${limit}`;
+    const valid = wholeNumber(typed[limit], caps[limit]) !== undefined;
+    return (
+      <div className="limit">
+        <label htmlFor={id} className="limit-name">
+          {label}
+        </label>
+        <input
+          id={id}
+          type="text"
+          inputMode="numeric"
+          aria-describedby={`${id}-hint`}
+          aria-invalid={!valid}
+          value={typed[limit]}
+          onChange={(event) => {
+            const text = event.target.value;
+            setTyped((current) => ({ ...current, [limit]: text }));
+            const value = wholeNumber(text, caps[limit]);
+            if (value !== undefined) choose({ [limit]: value });
+            else setSaving({ status: "idle" });
+          }}
+        />
+        <p id={`${id}-hint`} className={valid ? "hint" : "field-error"}>
+          {valid ? [hint, copy.limits.upTo(caps[limit])].filter(Boolean).join(" ") : copy.limits.invalid(caps[limit])}
+        </p>
+      </div>
+    );
+  };
+
   // Details that share a name are open one at a time. A closed one keeps its form, and what was chosen there.
   return (
-    <details className="agent-setting" name="agents">
+    <details className="agent-setting" name="agents" ref={details}>
       <summary>
         <div className="agent-summary">
-          <h3 id={heading}>{agent.name}</h3>
+          <div className="agent-summary-head">
+            <h3 id={heading}>{agent.name}</h3>
+            {agent.paused !== undefined && (
+              <span className="paused-mark">
+                <PauseIcon />
+                {copy.pause.mark}
+              </span>
+            )}
+          </div>
+          {agent.paused !== undefined && <PausedLine paused={agent.paused} who={whoPaused(agent.paused.by)} />}
           <p className="agent-summary-line">{summaryOf(saved)}</p>
+          {stillWaiting > 0 && <p className="agent-summary-line">{copy.waiting.count(stillWaiting)}</p>}
         </div>
         <ChevronIcon />
       </summary>
       <p className="agent-activity">
         <a href={activityHref(agent.id)}>{strings.activity.title(agent.name)}</a>
       </p>
+      <div className="agent-parts">
+        <PausePart client={client} agent={agent} onChanged={setAgent} onSignedOut={onSignedOut} />
+        {waiting.length > 0 && <WaitingPart client={client} agent={agent} waiting={waiting} onSent={(draft) => setSentNow((current) => new Set([...current, draft]))} onSignedOut={onSignedOut} />}
+      </div>
       <form
         className="setting"
         aria-labelledby={heading}
@@ -155,8 +309,16 @@ function AgentForm({ client, agent, saved: first, email, onSignedOut }: { client
           {toggle("approvalForOwnMailbox", copy.ownMailbox.approval, copy.ownMailbox.approvalHint)}
           {toggle("disclosureLineForOwnMailbox", copy.line, copy.lineHint(agent.name, email))}
         </fieldset>
+        <fieldset>
+          <legend>{copy.limits.legend}</legend>
+          <p className="setting-lead">{copy.limits.lead}</p>
+          <div className="limits">
+            {limitField("sendsPerHour", copy.limits.perHour)}
+            {limitField("newRecipientsPerDay", copy.limits.newPerDay, copy.limits.newPerDayHint)}
+          </div>
+        </fieldset>
         <div className="setting-foot">
-          <button type="submit" className="button button-primary" disabled={changed.length === 0 || saving.status === "saving"}>
+          <button type="submit" className="button button-primary" disabled={changed.length === 0 || invalid || saving.status === "saving"}>
             {saving.status === "saving" ? strings.settings.saving : strings.settings.save}
           </button>
           <p role="status" className="setting-saved">
@@ -172,6 +334,81 @@ function AgentForm({ client, agent, saved: first, email, onSignedOut }: { client
     </details>
   );
 }
+
+/** Who paused the agent and since when, and why if Duva did. */
+function PausedLine({ paused, who }: { paused: NonNullable<Agent["paused"]>; who: string }) {
+  const { when } = useDates();
+  return <p className="paused-line">{[strings.agentSettings.pause.by(who, when(new Date(paused.at))), paused.reason].filter(Boolean).join(" ")}</p>;
+}
+
+/** Pause or Unpause, with what each does. Its answer is the agent as it is then. */
+function PausePart({ client, agent, onChanged, onSignedOut }: { client: DuvaClient; agent: Agent; onChanged: (agent: Agent) => void; onSignedOut: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string>();
+  const copy = strings.agentSettings.pause;
+  const paused = agent.paused !== undefined;
+  const id = `pause-${agent.id}`;
+
+  const change = async () => {
+    setBusy(true);
+    setProblem(undefined);
+    const path = { params: { path: { agent: agent.id } } };
+    const { data, response } = await (paused ? client.POST("/agents/{agent}/unpause", path) : client.POST("/agents/{agent}/pause", path)).catch(() => ({ data: undefined, response: undefined }));
+    setBusy(false);
+    if (response?.status === 401) return onSignedOut();
+    // A human's pause takes effect at once, so its answer is the agent.
+    if (data !== undefined && "kind" in data) return onChanged(data);
+    setProblem(response === undefined ? copy.unreachable : copy.failed(response.status));
+  };
+
+  return (
+    <section className="setting-part pause-part" aria-labelledby={id}>
+      <h4 id={id}>{copy.title}</h4>
+      <div className="pause-row">
+        <p className="setting-lead">{paused ? copy.held : copy.running}</p>
+        <button type="button" className="button button-small" disabled={busy} onClick={() => void change()}>
+          {busy ? (paused ? copy.unpausing : copy.pausing) : paused ? copy.unpause : copy.pause}
+        </button>
+      </div>
+      {problem !== undefined && (
+        <p className="notice notice-alert" role="alert">
+          {problem}
+        </p>
+      )}
+    </section>
+  );
+}
+
+/** The agent's sends that wait for its send limits, oldest first, each with Send now. */
+/** `onSent` hears of each draft that waits no more, sent now or gone meanwhile. */
+function WaitingPart({ client, agent, waiting, onSent, onSignedOut }: { client: DuvaClient; agent: Agent; waiting: Waiting[]; onSent: (draft: string) => void; onSignedOut: () => void }) {
+  const copy = strings.agentSettings.waiting;
+  const id = `waiting-${agent.id}`;
+  const oldestFirst = [...waiting].sort((a, b) => a.draft.updatedAt.localeCompare(b.draft.updatedAt));
+  return (
+    <section className="setting-part" aria-labelledby={id}>
+      <h4 id={id}>{copy.title}</h4>
+      <p className="setting-lead">{copy.lead}</p>
+      <ul className="waiting-sends">
+        {oldestFirst.map(({ mailbox, draft }) => (
+          <li key={draft.id} className="waiting-send">
+            <div className="waiting-send-text">
+              <p className="waiting-send-subject">{draft.subject || copy.noSubject}</p>
+              <p className="waiting-send-to">{copy.to(draft.to.map(({ address }) => address).join(", "))}</p>
+            </div>
+            <SendNow client={client} mailbox={mailbox} draft={draft.id} onSent={() => onSent(draft.id)} onSignedOut={onSignedOut} />
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+const PauseIcon = () => (
+  <svg className="icon" viewBox="0 0 16 16" aria-hidden="true">
+    <path d="M6 4v8M10 4v8" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+  </svg>
+);
 
 /**
  * The agent's line: its access, and whether its sends wait for approval. Only an agent with full

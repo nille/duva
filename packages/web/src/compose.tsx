@@ -6,6 +6,7 @@ import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
 import { useDates } from "./dates.ts";
 import { Attachments } from "./mail-parts.tsx";
+import { SendNow } from "./send-now.tsx";
 import { strings } from "./strings.ts";
 
 type Draft = components["schemas"]["Draft"];
@@ -189,7 +190,7 @@ export function Composer({
   const state = draft?.send?.state;
   // The agent that saved the draft last, if one did. Once the human saves it, it's theirs.
   const agent = draft?.updatedBy === undefined ? undefined : agentNames.get(draft.updatedBy);
-  const locked = state === "approved" || state === "sending" || state === "sent" || state === "unclear" || busy !== undefined;
+  const locked = state === "approved" || state === "waitingForLimit" || state === "sending" || state === "sent" || state === "unclear" || busy !== undefined;
 
   const send = async () => {
     setBusy("sending");
@@ -390,8 +391,8 @@ export function Composer({
             {strings.compose.saveFailed}
           </p>
         )}
-        <Outcome draft={draft} />
-        {state !== "sent" && state !== "unclear" && (
+        <Outcome draft={draft} agent={agent} sendNow={(draft) => <SendNow client={client} mailbox={mailbox.id} draft={draft} onSent={(sent) => sent !== undefined && setDraft(sent)} onSignedOut={onSignedOut} />} />
+        {state !== "sent" && state !== "unclear" && state !== "waitingForLimit" && (
           <div className="compose-actions actions">
             <button type="submit" className="button button-primary" disabled={locked}>
               {busy === "sending" || state === "approved" || state === "sending" ? strings.compose.sending : state === "failed" ? strings.compose.sendAgain : strings.compose.send}
@@ -421,8 +422,11 @@ function Back({ draft }: { draft?: Draft }) {
   );
 }
 
-/** How the draft's send went, under the sheet. */
-function Outcome({ draft }: { draft?: Draft }) {
+/**
+ * How the draft's send went, under the sheet. A send of `agent`'s that waits for its send limits
+ * offers `sendNow`, which only the agent's sponsor, the mailbox's owner, can do.
+ */
+function Outcome({ draft, agent, sendNow }: { draft?: Draft; agent?: string; sendNow: (draft: string) => React.ReactNode }) {
   const send = draft?.send;
   if (send === undefined) return null;
   switch (send.state) {
@@ -432,6 +436,13 @@ function Outcome({ draft }: { draft?: Draft }) {
         <p className="compose-outcome" role="status">
           {strings.compose.sending}
         </p>
+      );
+    case "waitingForLimit":
+      return (
+        <div className="compose-outcome compose-waiting">
+          <p role="status">{strings.compose.waitingForLimit(agent)}</p>
+          {sendNow(draft!.id)}
+        </div>
       );
     case "sent":
       return (

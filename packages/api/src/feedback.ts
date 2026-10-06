@@ -132,9 +132,12 @@ async function recordFeedback(table: Table, suppressionList: SuppressionList, ev
 
   const tooMany = feedback.kind === "hardBounce" && agent !== undefined && counted.length > 0 && hourWith(await hardBounces(table, agent.id, feedback.at), feedback.at, hardBouncesToPause);
   if (agent !== undefined && (feedback.kind === "complaint" || tooMany)) {
-    const why = feedback.kind === "complaint" ? "a complaint about its mail" : `${hardBouncesToPause} hard bounces of its mail within an hour`;
+    const [why, reason] =
+      feedback.kind === "complaint"
+        ? ["a complaint about its mail", "A recipient complained about its mail."]
+        : [`${hardBouncesToPause} hard bounces of its mail within an hour`, `Its mail hard-bounced ${hardBouncesToPause} times within an hour.`];
     const what = `Duva paused ${agent.name} after ${why}, so it can't hurt the domain. Its approved sends are held, and unpausing sends them, so look at them first.`;
-    await pauseAgent(table, { agent, by: duva, items: await alertWrites(table, { kind: "autoPaused", agent, what, urgent: `Duva paused ${agent.name}` }) });
+    await pauseAgent(table, { agent, by: duva, reason, items: await alertWrites(table, { kind: "autoPaused", agent, what, urgent: `Duva paused ${agent.name}` }) });
   }
   await documents(table).send(new UpdateCommand({ TableName: table.name, Key: claimKey, UpdateExpression: "SET checked = :checked", ExpressionAttributeValues: { ":checked": true } }));
 }

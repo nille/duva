@@ -2808,6 +2808,10 @@ components:
           type: string
           format: date-time
           description: When it was paused.
+        reason:
+          type: string
+          description: Why Duva paused it, there only if Duva paused it by itself (ADR-0021).
+          examples: ["A recipient complained about its mail."]
     NewAgent:
       type: object
       additionalProperties: false

@@ -292,13 +292,13 @@ export async function findAgentByKey(table: Table, key: string): Promise<Agent |
 export const duva = "duva";
 
 /**
- * Pauses the agent, on behalf of the actor `by`, or Duva, with the `items` written too, and returns
+ * Pauses the agent, on behalf of the actor `by`, or Duva, saying why if Duva did, with the `items` written too, and returns
  * it. The pause is one change in the change feed of each of the agent's mailboxes and in the
  * organization's. Pausing a paused agent records nothing, and writes no items. Returns undefined
  * if the agent was removed.
  */
-export function pauseAgent(table: Table, { agent, by, items = [] }: { agent: Agent; by: string; items?: TransactItem[] }): Promise<Agent | undefined> {
-  const paused = { by, at: new Date().toISOString() };
+export function pauseAgent(table: Table, { agent, by, reason, items = [] }: { agent: Agent; by: string; reason?: string; items?: TransactItem[] }): Promise<Agent | undefined> {
+  const paused = { by, at: new Date().toISOString(), ...(reason !== undefined && { reason }) };
   return changePause(table, agent, by, items, {
     type: "agentPaused",
     done: (current) => current.paused !== undefined,
@@ -1035,7 +1035,7 @@ export function actorOf(item: Record<string, unknown>): Actor {
   const actor = item as Actor;
   if (actor.kind === "agent") {
     const { id, kind, name, sponsor, admin, paused } = actor;
-    return { id, kind, name, sponsor, admin, ...(paused !== undefined && { paused: { by: paused.by, at: paused.at } }) };
+    return { id, kind, name, sponsor, admin, ...(paused !== undefined && { paused: { by: paused.by, at: paused.at, ...(paused.reason !== undefined && { reason: paused.reason }) } }) };
   }
   return { id: actor.id, kind: actor.kind, email: actor.email, admin: actor.admin };
 }

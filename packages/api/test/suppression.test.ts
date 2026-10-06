@@ -140,7 +140,7 @@ test("hard bounces of the organization's own addresses never pause the agent, wh
   for (const n of [10, 11, 12, 13]) await bounced(["team@example.com", `gone-${n}@example.net`], minute(n));
   expect(await paused()).toBeUndefined();
   await bounced(["team@example.com", "gone-14@example.net"], minute(14));
-  expect(await paused()).toEqual({ by: "duva", at: expect.any(String) });
+  expect(await paused()).toEqual({ by: "duva", at: expect.any(String), reason: "Its mail hard-bounced 5 times within an hour." });
 });
 
 test("an address the organization removed stays on SES's suppression list after a hard bounce, and counts toward pausing the agent", async () => {
@@ -152,7 +152,7 @@ test("an address the organization removed stays on SES's suppression list after 
   for (const n of [0, 1, 2, 3, 4]) await bounced(["support@example.com"], new Date(start + n * 60_000));
 
   expect(suppressed(duva)).toEqual(["support@example.com"]);
-  expect(await paused()).toEqual({ by: "duva", at: expect.any(String) });
+  expect(await paused()).toEqual({ by: "duva", at: expect.any(String), reason: "Its mail hard-bounced 5 times within an hour." });
 });
 
 test("an address on a domain with a catch-all leaves SES's suppression list after a hard bounce, since the catch-all takes its mail", async () => {

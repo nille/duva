@@ -1,13 +1,13 @@
 // Settings, each group on a sheet of its own: the organization's, which admins choose for everyone,
 // then for admins its domains, its mailboxes' addresses, its people and its groups, then the human's
 // own preferences, which only they choose, then the Screener of their mailbox and their agents',
-// then a sponsor's agents'.
+// then a sponsor's agents', where they pause each, set its limits and send what waits for them.
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
 import { AddressesSheet, type Giving } from "./addresses.tsx";
 import { AgentSettingsSheet } from "./agent-settings.tsx";
-import { Choice } from "./setting-parts.tsx";
+import { Choice, wholeNumber } from "./setting-parts.tsx";
 import { datesFor, type Preferences } from "./dates.ts";
 import { DomainsSheet } from "./domains.tsx";
 import { GroupsSheet } from "./groups.tsx";
@@ -107,15 +107,20 @@ function useSheet<Values extends object>({
  */
 export function Settings({
   client,
+  me,
   admin,
   email,
   mailboxes,
+  agent,
   onPreferences,
   onSignedOut,
 }: {
   client: DuvaClient;
+  me: string;
   admin: boolean;
   email: string;
+  /** The agent whose line on the Agents sheet opens first, if any. */
+  agent?: string;
   mailboxes: { mine?: Mailbox; agents: AgentMailbox[] } | undefined;
   onPreferences: (preferences: Preferences) => void;
   onSignedOut: () => void;
@@ -153,7 +158,7 @@ export function Settings({
       {admin && <GroupsSheet client={client} changes={setupChanges} onChange={setupChanged} onSignedOut={onSignedOut} />}
       <YouSheet client={client} onPreferences={onPreferences} onSignedOut={onSignedOut} />
       {screened.length > 0 && <ScreenerSheet key={screened.map(({ mailbox }) => mailbox.id).join()} client={client} mailboxes={screened} onSignedOut={onSignedOut} />}
-      <AgentSettingsSheet client={client} email={email} onSignedOut={onSignedOut} />
+      <AgentSettingsSheet client={client} me={me} email={email} admin={admin} mailboxes={mailboxes} open={agent} onSignedOut={onSignedOut} />
     </main>
   );
 }
@@ -178,6 +183,7 @@ function OrganizationSheet({ client, admin, onSignedOut }: { client: DuvaClient;
     onSignedOut,
   });
   const [daysValid, setDaysValid] = useState(true);
+  const [capsValid, setCapsValid] = useState({ agentSendsPerHourCap: true, agentNewRecipientsPerDayCap: true });
   const copy = strings.settings.erasure;
   const languagesCopy = strings.settings.searchLanguages;
   return (
@@ -229,8 +235,30 @@ function OrganizationSheet({ client, admin, onSignedOut }: { client: DuvaClient;
               ))}
             </div>
           </fieldset>
+          <fieldset disabled={!admin}>
+            <legend>{strings.settings.caps.legend}</legend>
+            <p className="setting-lead">{strings.settings.caps.lead}</p>
+            <div className="limits">
+              {(["agentSendsPerHourCap", "agentNewRecipientsPerDayCap"] as const).map((cap) => (
+                <Cap
+                  key={cap}
+                  cap={cap}
+                  chosen={chosen[cap]}
+                  saved={sheet.read.status === "read" ? sheet.read.values[cap] : chosen[cap]}
+                  onChoose={(value) => {
+                    setCapsValid((current) => ({ ...current, [cap]: value !== undefined }));
+                    if (value !== undefined) sheet.choose({ [cap]: value });
+                  }}
+                />
+              ))}
+            </div>
+          </fieldset>
           {admin ? (
-            <SaveRow sheet={sheet} saved={savedCopy(before.current, sheet.read.status === "read" ? sheet.read.values : undefined)} invalid={!daysValid} />
+            <SaveRow
+              sheet={sheet}
+              saved={savedCopy(before.current, sheet.read.status === "read" ? sheet.read.values : undefined)}
+              invalid={!daysValid || !capsValid.agentSendsPerHourCap || !capsValid.agentNewRecipientsPerDayCap}
+            />
           ) : (
             <p className="setting-foot">{strings.settings.onlyAdmins}</p>
           )}
@@ -249,6 +277,7 @@ function savedCopy(before: OrganizationSettings | undefined, after: Organization
     ...(before.retentionDays !== after.retentionDays ? ["retention" as const] : []),
     ...(before.searchLanguages.join() !== after.searchLanguages.join() ? ["languages" as const] : []),
     ...(indexed(before) !== indexed(after) ? ["indexes" as const] : []),
+    ...(after.agentSendsPerHourCap < before.agentSendsPerHourCap || after.agentNewRecipientsPerDayCap < before.agentNewRecipientsPerDayCap ? ["caps" as const] : []),
   ]);
 }
 
@@ -256,6 +285,50 @@ function savedCopy(before: OrganizationSettings | undefined, after: Organization
 function daysOf(text: string): number | undefined {
   const days = /^\d+$/.test(text.trim()) ? Number(text.trim()) : undefined;
   return days !== undefined && days >= 7 && days <= 365 ? days : undefined;
+}
+
+/** The most a cap can be, as the contract says. */
+const capMost = 10_000;
+
+
+/**
+ * One of the agents' caps, as a short field of a whole number, from 1 to 10,000. A lower cap than
+ * the saved one says that saving lowers the agents above it. `onChoose` hears of each valid cap,
+ * and of an invalid one as undefined.
+ */
+function Cap({ cap, chosen, saved, onChoose }: { cap: "agentSendsPerHourCap" | "agentNewRecipientsPerDayCap"; chosen: number; saved: number; onChoose: (value: number | undefined) => void }) {
+  const copy = strings.agentSettings.limits;
+  const [text, setText] = useState(String(chosen));
+  const value = wholeNumber(text, capMost);
+  const id = `cap-${cap}`;
+  return (
+    <div className="limit">
+      <label htmlFor={id} className="limit-name">
+        {cap === "agentSendsPerHourCap" ? copy.perHour : copy.newPerDay}
+      </label>
+      <input
+        id={id}
+        type="text"
+        inputMode="numeric"
+        aria-invalid={value === undefined}
+        aria-describedby={value === undefined || value < saved ? `${id}-hint` : undefined}
+        value={text}
+        onChange={(event) => {
+          setText(event.target.value);
+          onChoose(wholeNumber(event.target.value, capMost));
+        }}
+      />
+      {value === undefined ? (
+        <p id={`${id}-hint`} className="field-error">
+          {copy.invalid(capMost)}
+        </p>
+      ) : value < saved ? (
+        <p id={`${id}-hint`} className="setting-note">
+          {strings.settings.caps.lowering}
+        </p>
+      ) : null}
+    </div>
+  );
 }
 
 type Preview = { status: "none" } | { status: "counting" } | { status: "counted"; threads: number; days: number } | { status: "failed" };

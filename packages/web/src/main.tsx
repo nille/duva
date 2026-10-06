@@ -2,11 +2,13 @@
 // organize, write and send their mail, with its views in the side column. Sponsors also read their
 // agents' mailboxes, listed there above the views, and reach the Approvals view from the bar, where
 // they decide what the agents they sponsor ask to send and the setup changes their agent admins ask
-// for. Mail from first-time senders waits in each mailbox's Screener, beside its views. Each agent's
-// activity, a summary a day that opens into the day's timeline, is reached from its mailbox's views
-// and from Settings. Every human reaches Settings from the bar too, where they choose how times and
-// dates show and switch their Screeners, admins the organization's settings and sponsors their
-// agents'. The bar's search box searches the mailbox open, or the human's own.
+// for, and the Alerts view, where they read what their agents need them for, with a count of the
+// unseen in the bar. Mail from first-time senders waits in each mailbox's Screener, beside its views.
+// Each agent's activity, a summary a day that opens into the day's timeline, is reached from its
+// mailbox's views and from Settings. Every human reaches Settings from the bar too, where they choose
+// how times and dates show and switch their Screeners, admins the organization's settings and
+// sponsors their agents', which they pause and limit there. The bar's search box searches the
+// mailbox open, or the human's own.
 import "@fontsource-variable/source-serif-4/opsz.css";
 import "./styles.css";
 import { StrictMode, useCallback, useEffect, useRef, useState } from "react";
@@ -14,6 +16,7 @@ import { createRoot } from "react-dom/client";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
 import { activityHref, AgentActivity, AgentDay } from "./activity.tsx";
+import { Alerts } from "./alerts.tsx";
 import { Approvals } from "./approvals.tsx";
 import { Composer } from "./compose.tsx";
 import { defaultPreferences, type Preferences, PreferencesContext } from "./dates.ts";
@@ -92,10 +95,12 @@ function App() {
  * always the human's own, since only a mailbox's owner writes in it. A thread knows the view it
  * was opened from, to go back there, and from a search, the message that matched. A mailbox's
  * screened senders are reached from its Screener. An agent's activity is in the mail, beside its
- * mailbox's views, if it has a mailbox, and opens into one day.
+ * mailbox's views, if it has a mailbox, and opens into one day. Settings can open with an agent's
+ * line open, as an alert about it does.
  */
 type Route =
-  | { view: "approvals" | "settings" }
+  | { view: "approvals" | "alerts" }
+  | { view: "settings"; agent?: string }
   | { view: "list"; mailbox?: string; list: ThreadsView }
   | { view: "screener"; mailbox?: string; senders: boolean }
   | { view: "search"; mailbox?: string; search: SearchView }
@@ -106,7 +111,10 @@ type Route =
 
 function routeOf(hash: string): Route {
   if (hash === "#/approvals") return { view: "approvals" };
+  if (hash === "#/alerts") return { view: "alerts" };
   if (hash === "#/settings") return { view: "settings" };
+  const opened = /^#\/settings\/agents\/(.+)$/.exec(hash)?.[1];
+  if (opened !== undefined) return { view: "settings", agent: decodeURIComponent(opened) };
   if (hash === "#/drafts") return { view: "drafts" };
   if (hash === "#/write") return { view: "write" };
   const [, agent, day] = /^#\/agents\/([^/]+)(?:\/(\d{4}-\d{2}-\d{2}))?$/.exec(hash) ?? [];
@@ -146,6 +154,8 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
   const route = useRoute();
   const [mailboxes, setMailboxes] = useState<Mailboxes>({ status: "loading" });
   const [waiting, setWaiting] = useState<number>();
+  // How many of the sponsor's alerts are unseen, and the newest one's ID, so the Alerts view reads again when one arrives.
+  const [alerts, setAlerts] = useState<{ unseen: number; newest?: string; version: number }>({ unseen: 0, version: 0 });
   // How many changes to each mailbox's mail the app has seen, so its views read it again when it grows.
   const [versions, setVersions] = useState<ReadonlyMap<string, number>>(new Map());
   const [unread, setUnread] = useState<ReadonlyMap<string, number>>(new Map());
@@ -209,6 +219,9 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
     });
   }, [mailboxes, countUnread, onSignedOut]);
 
+  const alertsRef = useRef(alerts);
+  alertsRef.current = alerts;
+
   // Views that follow the feeds themselves, such as Approvals.
   const followers = useRef(new Set<Parameters<Follow>[0]>());
   const follow = useCallback<Follow>((listener) => {
@@ -227,6 +240,16 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
         const { data, response } = await client.GET("/approvals");
         if (response.status === 401) throw new SignedOut();
         if (data !== undefined) setWaiting(data.approvals.length + data.setupApprovals.length);
+      }
+      // Alerts come from no feed, so a sponsor's count is read with every read of the feeds. Only a
+      // sponsor gets alerts, and one whose agents are gone may still have theirs.
+      if (first || (mailboxes.status === "listed" && mailboxes.sponsorsAgents) || alertsRef.current.newest !== undefined) {
+        const { data, response } = await client.GET("/alerts", { params: { query: { limit: 1 } } });
+        if (response.status === 401) throw new SignedOut();
+        if (data !== undefined) {
+          const newest = data.alerts[0]?.id;
+          setAlerts((current) => ({ unseen: data.unseen, newest, version: current.version + (newest === current.newest ? 0 : 1) }));
+        }
       }
       // The first read passes mail that may have arrived after the views listed it, so it counts too.
       const mail = new Set(changes.filter(({ change }) => mailChanges.has(change.type)).map(({ mailbox }) => mailbox));
@@ -249,7 +272,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
   // The mailbox the route names, if it names one. An agent's activity is beside its mailbox, if it has one.
   const named = "mailbox" in route ? route.mailbox : route.view === "activity" ? listed?.agents.find(({ mailbox }) => mailbox.owner === route.agent)?.mailbox.id : undefined;
   // The views outside the mail.
-  const away = route.view === "approvals" || route.view === "settings";
+  const away = route.view === "approvals" || route.view === "alerts" || route.view === "settings";
   const routeKey = away
     ? route.view
     : route.view === "activity"
@@ -279,6 +302,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
   const mine = listed?.mine;
   const agentNames = listed?.agentNames ?? noNames;
   const sponsor = listed?.sponsorsAgents === true || (waiting ?? 0) > 0;
+  const alerted = sponsor || alerts.newest !== undefined;
   // The mailbox the route is in, the human's own if it names none.
   const agent = named !== undefined ? listed?.agents.find(({ mailbox }) => mailbox.id === named) : undefined;
   const shown = away ? undefined : named === undefined ? mine : (agent?.mailbox ?? (mine?.id === named ? mine : undefined));
@@ -455,6 +479,20 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
               )}
             </a>
           )}
+          {alerted && (
+            <a
+              href="#/alerts"
+              aria-current={route.view === "alerts" ? "page" : undefined}
+              aria-label={`${strings.nav.alerts}${alerts.unseen > 0 ? strings.nav.unseen(alerts.unseen) : ""}`}
+            >
+              {strings.nav.alerts}
+              {alerts.unseen > 0 && (
+                <span className="nav-count" aria-hidden="true">
+                  {alerts.unseen}
+                </span>
+              )}
+            </a>
+          )}
           <a href="#/settings" aria-current={route.view === "settings" ? "page" : undefined}>
             {strings.nav.settings}
           </a>
@@ -484,9 +522,21 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
       </header>
       {route.view === "approvals" ? (
         <Approvals client={client} me={actor.id} sponsor={actor.email} connection={connection} follow={follow} onSignedOut={onSignedOut} />
+      ) : route.view === "alerts" ? (
+        <Alerts
+          client={client}
+          mailboxes={listed === undefined ? [] : [...(mine === undefined ? [] : [mine]), ...listed.agents.map(({ mailbox }) => mailbox)]}
+          mine={mine?.id}
+          agents={new Set(agentNames.keys())}
+          version={alerts.version}
+          onUnseen={(unseen) => setAlerts((current) => ({ ...current, unseen }))}
+          onSignedOut={onSignedOut}
+        />
       ) : route.view === "settings" ? (
         <Settings
           client={client}
+          me={actor.id}
+          agent={route.agent}
           admin={actor.admin}
           email={actor.email}
           mailboxes={listed === undefined ? undefined : { mine, agents: listed.agents }}

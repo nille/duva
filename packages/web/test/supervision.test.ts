@@ -1,0 +1,289 @@
+import type { Page } from "playwright-core";
+import { expect, test } from "vitest";
+import type { DuvaClient } from "@duva/client";
+import { phone, startWebApp } from "./web-app.ts";
+
+// The page under the full suite's load can take seconds to show what changed, so every wait has room, and every test more.
+const wait = { timeout: 10_000 };
+const budget = { timeout: 60_000 };
+
+/**
+ * The web app for a deployment where Grace, who isn't an admin, has a personal mailbox at
+ * grace@example.com and sponsors the agent Hermes, which owns a mailbox at hermes@example.com and
+ * sends from it without her approval. Ada is the admin.
+ */
+async function withAgent(options: Parameters<typeof startWebApp>[0] = {}) {
+  const app = await startWebApp({ domain: "example.com", admin: "ada@example.org", humans: ["grace@example.org"], ...options });
+  const ada = app.duva.signIn("ada@example.org");
+  const grace = app.duva.signIn("grace@example.org");
+  const { data: me } = await grace.GET("/whoami");
+  const { data: graceMailbox } = await ada.POST("/mailboxes", { body: { owner: me!.id, address: "grace@example.com" } });
+  await grace.PATCH("/mailboxes/{mailbox}/screener", { params: { path: { mailbox: graceMailbox!.id } }, body: { on: false } });
+  const { data: created } = await grace.POST("/agents", { body: { name: "Hermes" } });
+  const agent = created!.agent;
+  const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: agent.id, address: "hermes@example.com" } });
+  const hermes = app.duva.withKey(created!.key);
+  const settings = { params: { path: { agent: agent.id } } };
+  await grace.PATCH("/agents/{agent}/settings", { ...settings, body: { approvalForOwnMailbox: false } });
+  const params = { path: { mailbox: mailbox!.id } };
+
+  /** Hermes drafts a message to the recipient and sends it, and gets back the draft as it is then, and the ID SES gave it if SES sent it. */
+  const send = async (to: string, subject = "Hello", by: DuvaClient = hermes) => {
+    const { data: draft } = await by.POST("/mailboxes/{mailbox}/drafts", { params, body: { to: [to], subject, text: "Hej." } });
+    await by.POST("/mailboxes/{mailbox}/drafts/{draft}/send", { params: { path: { ...params.path, draft: draft!.id } } });
+    const { data: sent } = await grace.GET("/mailboxes/{mailbox}/drafts/{draft}", { params: { path: { ...params.path, draft: draft!.id } } });
+    const messageId = /^<(.+)@eu-north-1\.amazonses\.com>$/.exec(sent!.send!.messageId ?? "")?.[1];
+    return { draft: sent!, messageId };
+  };
+  const paused = async () => (await grace.GET("/agents")).data!.agents[0]!.paused;
+  return { ...app, ada, grace, hermes, agent, settings, params, send, paused };
+}
+
+const agentsSheet = (page: Page) => page.getByRole("region", { name: "Your agents" });
+/** What the page shows of the element, a line for each block in it. */
+const lines = (text: string) => text.replace(/\n+/g, "\n");
+const summary = (page: Page) => ({ innerText: async () => lines(await agentsSheet(page).locator("summary").innerText()) });
+/** Opens Settings from the bar, and Hermes's line on the Agents sheet, as the sponsor does. */
+const openHermes = async (page: Page) => {
+  await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
+  await agentsSheet(page).getByRole("heading", { level: 3, name: "Hermes" }).click();
+  await expect.poll(() => agentsSheet(page).getByRole("form", { name: "Hermes" }).isVisible(), wait).toBe(true);
+};
+const alertsLink = (page: Page) => page.getByRole("navigation").getByRole("link", { name: /^Alerts/ });
+const alertItems = (page: Page) => page.getByRole("list", { name: "Alerts" }).getByRole("listitem");
+
+test("a sponsor pauses an agent on its line, which then says who paused it and since when, and unpauses it", budget, async () => {
+  const { page, signIn, hermes, paused } = await withAgent();
+  await signIn("grace@example.org");
+  await openHermes(page);
+
+  await agentsSheet(page).getByRole("button", { name: "Pause" }).click();
+
+  await expect.poll(() => summary(page).innerText(), wait).toMatch(/^Hermes\nPaused\nPaused by you since \d\d:\d\d [AP]M\./);
+  expect(await paused()).toMatchObject({ by: expect.any(String) });
+  expect((await hermes.GET("/whoami")).response.status).toBe(403);
+  expect(await agentsSheet(page).getByText("Its key is refused, and its approved sends are held.").isVisible()).toBe(true);
+
+  await agentsSheet(page).getByRole("button", { name: "Unpause" }).click();
+
+  await expect.poll(() => summary(page).innerText(), wait).not.toMatch(/Paused/);
+  expect(await paused()).toBeUndefined();
+  expect((await hermes.GET("/whoami")).response.status).toBe(200);
+});
+
+test("an agent Duva paused says so on its line, with why, and one an admin paused names an admin", budget, async () => {
+  const { page, signIn, duva, ada, grace, agent, send } = await withAgent();
+  const { messageId } = await send("ken@example.net");
+  await duva.sendingEvent(messageId!, { type: "Complaint" });
+  await signIn("grace@example.org");
+  await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
+
+  await expect.poll(() => summary(page).innerText(), wait).toMatch(/^Hermes\nPaused\nPaused by Duva since \d\d:\d\d [AP]M\. A recipient complained about its mail\./);
+
+  await grace.POST("/agents/{agent}/unpause", { params: { path: { agent: agent.id } } });
+  await ada.POST("/agents/{agent}/pause", { params: { path: { agent: agent.id } } });
+  await page.reload();
+
+  await expect.poll(() => summary(page).innerText(), wait).toMatch(/^Hermes\nPaused\nPaused by an admin since \d\d:\d\d [AP]M\./);
+});
+
+test("a sponsor sets an agent's two send limits up to the organization's caps", budget, async () => {
+  const { page, signIn, grace, ada, settings } = await withAgent();
+  await ada.PATCH("/organization/settings", { body: { agentSendsPerHourCap: 80 } });
+  await signIn("grace@example.org");
+  await openHermes(page);
+  const form = agentsSheet(page).getByRole("form", { name: "Hermes" });
+  const perHour = form.getByRole("textbox", { name: "Sends an hour" });
+  const newPerDay = form.getByRole("textbox", { name: "New recipients a day" });
+
+  expect(await perHour.inputValue()).toBe("80");
+  expect(await newPerDay.inputValue()).toBe("50");
+  expect(await form.getByText("Up to 80, the organization's cap.").isVisible()).toBe(true);
+  expect(await form.getByText("Up to 50, the organization's cap.").isVisible()).toBe(true);
+
+  await perHour.fill("81");
+  expect(await form.getByText("Give a whole number from 1 to 80.").isVisible()).toBe(true);
+  expect(await form.getByRole("button", { name: "Save" }).isDisabled()).toBe(true);
+
+  await perHour.fill("20");
+  await newPerDay.fill("5");
+  await form.getByRole("button", { name: "Save" }).click();
+
+  await expect.poll(() => form.getByRole("status").textContent(), wait).toBe("Saved. This applies at once.");
+  expect((await grace.GET("/agents/{agent}/settings", settings)).data).toMatchObject({ sendsPerHour: 20, newRecipientsPerDay: 5 });
+});
+
+test("a send waiting for the send limit shows on its agent's line, and Send now sends it", budget, async () => {
+  const { page, signIn, duva, grace, settings, send } = await withAgent();
+  await grace.PATCH("/agents/{agent}/settings", { ...settings, body: { sendsPerHour: 1 } });
+  await send("ken@example.net", "First");
+  const { draft } = await send("lou@example.net", "Second");
+  expect(draft.send?.state).toBe("waitingForLimit");
+  await signIn("grace@example.org");
+  await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
+
+  await expect.poll(() => summary(page).innerText(), wait).toMatch(/1 send waits for the send limit\./);
+  await agentsSheet(page).getByRole("heading", { level: 3, name: "Hermes" }).click();
+  const waiting = agentsSheet(page).getByRole("region", { name: "Waiting for the send limit" });
+  await expect.poll(async () => (await waiting.getByRole("listitem").allInnerTexts()).map(lines), wait).toEqual([expect.stringMatching(/^Second\nTo lou@example\.net\nSend now$/)]);
+  const before = duva.sent().length;
+
+  await waiting.getByRole("button", { name: "Send now" }).click();
+
+  await expect.poll(() => duva.sent().length, wait).toBe(before + 1);
+  await expect.poll(async () => lines(await waiting.getByRole("listitem").first().innerText()), wait).toMatch(/Sent\.$/);
+  expect(await summary(page).innerText()).not.toMatch(/waits for the send limit/);
+});
+
+test("a send waiting for the send limit as the sponsor shows in their draft, with Send now", budget, async () => {
+  const { page, signIn, duva, grace, hermes, settings } = await withAgent();
+  await grace.PATCH("/agents/{agent}/settings", { ...settings, body: { sponsorAccess: "full", approvalAsSponsor: false, sendsPerHour: 1 } });
+  const { data: mailboxes } = await grace.GET("/mailboxes");
+  const own = { path: { mailbox: mailboxes!.mailboxes.find(({ defaultAddress }) => defaultAddress === "grace@example.com")!.id } };
+  for (const subject of ["First", "Second"]) {
+    const { data: draft } = await hermes.POST("/mailboxes/{mailbox}/drafts", { params: own, body: { to: ["ken@example.net"], subject, text: "Hej." } });
+    await hermes.POST("/mailboxes/{mailbox}/drafts/{draft}/send", { params: { path: { ...own.path, draft: draft!.id } } });
+  }
+  await signIn("grace@example.org");
+  await page.getByRole("link", { name: /^Drafts/ }).click();
+  await page.getByRole("link", { name: /Waiting for the send limit/ }).click();
+
+  await expect.poll(() => page.getByText("Waiting for the send limit. It goes out by itself when Hermes's send limit allows.").isVisible(), wait).toBe(true);
+  expect(await page.getByRole("textbox", { name: "Subject" }).getAttribute("readonly")).not.toBeNull();
+  const before = duva.sent().length;
+
+  await page.getByRole("button", { name: "Send now" }).click();
+
+  await expect.poll(() => duva.sent().length, wait).toBe(before + 1);
+});
+
+test("admins see the agents' caps on the Organization sheet and change them, and other humans only read them", budget, async () => {
+  const { page, signIn, ada } = await withAgent();
+  await signIn("ada@example.org");
+  await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
+  const organization = page.getByRole("region", { name: "Organization" });
+  const caps = organization.getByRole("group", { name: "Agents' send limits" });
+  await expect.poll(() => caps.getByRole("textbox", { name: "Sends an hour" }).inputValue(), wait).toBe("100");
+  expect(await caps.getByRole("textbox", { name: "New recipients a day" }).inputValue()).toBe("50");
+
+  await caps.getByRole("textbox", { name: "New recipients a day" }).fill("30");
+  expect(await caps.getByText("Saving lowers any agent with a higher limit to this cap.").isVisible()).toBe(true);
+  await organization.getByRole("button", { name: "Save" }).click();
+
+  await expect.poll(async () => (await ada.GET("/organization/settings")).data?.agentNewRecipientsPerDayCap, wait).toBe(30);
+
+  const other = await withAgent();
+  await other.signIn("grace@example.org");
+  await other.page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
+  const theirs = other.page.getByRole("region", { name: "Organization" }).getByRole("group", { name: "Agents' send limits" });
+  await expect.poll(() => theirs.getByRole("textbox", { name: "Sends an hour" }).isDisabled(), wait).toBe(true);
+});
+
+test("the bar counts unseen alerts, the Alerts view lists them newest first with the urgent ones marked, and marking one seen counts it no more", budget, async () => {
+  const { page, signIn, duva, send } = await withAgent();
+  const bounced = await send("nobody@example.net", "Bounces");
+  await duva.sendingEvent(bounced.messageId!, { type: "Bounce", bounceType: "Permanent", bounceSubType: "NoEmail" }, { at: new Date(Date.now() - 60_000) });
+  const complained = await send("ken@example.net", "Complained about");
+  await duva.sendingEvent(complained.messageId!, { type: "Complaint" });
+  await signIn("grace@example.org");
+
+  await expect.poll(() => alertsLink(page).getAttribute("aria-label"), wait).toBe("Alerts, 3 unseen");
+  await alertsLink(page).click();
+
+  await expect.poll(() => alertItems(page).count(), wait).toBe(3);
+  const texts = (await alertItems(page).allInnerTexts()).map(lines);
+  expect(texts[0]).toMatch(/^Hermes\nPaused by Duva\nUrgent\n/);
+  expect(texts[1]).toMatch(/^Hermes\nComplaint\nUrgent\n/);
+  expect(texts[2]).toMatch(/^Hermes\nBounced\nMail from Hermes to nobody@example\.net hard-bounced/);
+  expect(await page.getByRole("heading", { level: 1 }).textContent()).toBe("Alerts");
+
+  await alertItems(page).nth(2).getByRole("button", { name: "Mark as seen" }).click();
+
+  await expect.poll(() => alertsLink(page).getAttribute("aria-label"), wait).toBe("Alerts, 2 unseen");
+  expect(await alertItems(page).nth(2).getByRole("button", { name: "Mark as seen" }).count()).toBe(0);
+
+  await page.getByRole("button", { name: "Mark all as seen" }).click();
+
+  await expect.poll(() => alertsLink(page).getAttribute("aria-label"), wait).toBe("Alerts");
+  expect(await page.getByRole("button", { name: "Mark as seen" }).count()).toBe(0);
+});
+
+test("an alert opens the message it is about, or its agent's line in Settings, and is seen once opened", budget, async () => {
+  const { page, signIn, duva, ada, agent, send } = await withAgent();
+  const bounced = await send("nobody@example.net", "Bounces");
+  await duva.sendingEvent(bounced.messageId!, { type: "Bounce", bounceType: "Permanent", bounceSubType: "NoEmail" }, { at: new Date(Date.now() - 60_000) });
+  await ada.POST("/agents/{agent}/pause", { params: { path: { agent: agent.id } } });
+  await signIn("grace@example.org");
+  await alertsLink(page).click();
+  await expect.poll(() => alertItems(page).count(), wait).toBe(2);
+
+  await alertItems(page).nth(1).getByRole("link", { name: "Open the message" }).click();
+
+  await expect.poll(() => page.getByRole("heading", { level: 1 }).textContent(), wait).toBe("Bounces");
+  await expect.poll(() => alertsLink(page).getAttribute("aria-label"), wait).toBe("Alerts, 1 unseen");
+
+  await alertsLink(page).click();
+  await alertItems(page).first().getByRole("link", { name: "Open Hermes" }).click();
+
+  await expect.poll(() => agentsSheet(page).getByRole("form", { name: "Hermes" }).isVisible(), wait).toBe(true);
+  expect(await agentsSheet(page).getByRole("button", { name: "Unpause" }).isVisible()).toBe(true);
+});
+
+test("a sponsor without alerts finds the Alerts view saying so", budget, async () => {
+  const { page, signIn } = await withAgent();
+  await signIn("grace@example.org");
+  await alertsLink(page).click();
+
+  await expect.poll(() => page.getByRole("heading", { name: "No alerts" }).isVisible(), wait).toBe(true);
+});
+
+test("on a phone, the Alerts view, an agent's line with its limits, and the organization's caps fit the screen", budget, async () => {
+  const { page, signIn, duva, grace, settings, send } = await withAgent({ viewport: phone });
+  await grace.PATCH("/agents/{agent}/settings", { ...settings, body: { sendsPerHour: 1 } });
+  const { messageId } = await send("ken@example.net", "A first message with a long subject that has to wrap on a phone");
+  await duva.sendingEvent(messageId!, { type: "Complaint" });
+  await grace.POST("/agents/{agent}/unpause", settings);
+  await send("lou@example.net", "Waiting for the limit, with a subject long enough to wrap");
+  await signIn("grace@example.org");
+  const fits = () => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth);
+
+  await alertsLink(page).click();
+  await expect.poll(() => alertItems(page).count(), wait).toBeGreaterThan(0);
+  expect(await fits()).toBe(true);
+  const button = await page.getByRole("button", { name: "Mark all as seen" }).boundingBox();
+  expect(button!.height).toBeGreaterThanOrEqual(44);
+
+  await openHermes(page);
+  await expect.poll(() => agentsSheet(page).getByRole("button", { name: "Send now" }).isVisible(), wait).toBe(true);
+  expect(await fits()).toBe(true);
+  expect((await agentsSheet(page).getByRole("button", { name: "Pause" }).boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  const form = agentsSheet(page).getByRole("form", { name: "Hermes" });
+  for (const name of ["Sends an hour", "New recipients a day"]) {
+    const field = await form.getByRole("textbox", { name }).boundingBox();
+    expect(field!.x + field!.width).toBeLessThanOrEqual(phone.width);
+  }
+  const caps = page.getByRole("region", { name: "Organization" }).getByRole("group", { name: "Agents' send limits" });
+  expect(await caps.getByRole("textbox", { name: "Sends an hour" }).isVisible()).toBe(true);
+  expect(await fits()).toBe(true);
+});
+
+test("a send the sponsor approves over its agent's send limit says it waits, and Send now sends it", budget, async () => {
+  const { page, signIn, duva, grace, settings, send } = await withAgent();
+  await grace.PATCH("/agents/{agent}/settings", { ...settings, body: { approvalForOwnMailbox: true, sendsPerHour: 1 } });
+  await send("ken@example.net", "First");
+  await send("lou@example.net", "Second");
+  await signIn("grace@example.org");
+  await page.getByRole("navigation").getByRole("link", { name: /^Approvals/ }).click();
+  for (const subject of ["First", "Second"]) {
+    const galley = page.getByRole("article", { name: new RegExp(`${subject}$`) });
+    await galley.getByRole("button", { name: "Send", exact: true }).click();
+    await expect.poll(() => galley.getByRole("button", { name: "Send", exact: true }).count(), wait).toBe(0);
+  }
+
+  const slip = page.getByRole("article").filter({ hasText: "Second" });
+  await expect.poll(() => slip.getByText("Approved. It waits for Hermes's send limit, and goes out by itself when the limit allows.").isVisible(), wait).toBe(true);
+  const before = duva.sent().length;
+  await slip.getByRole("button", { name: "Send now" }).click();
+
+  await expect.poll(() => duva.sent().length, wait).toBe(before + 1);
+});

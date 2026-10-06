@@ -3251,3 +3251,326 @@ a.day:focus-visible {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/*
+ * Supervising agents. On an agent's line on the Agents sheet, a pause is said in Ink beside its
+ * name, in the labels' outline with the pause drawn before it, and who paused it under the name.
+ * Opened, its Pause part and its sends waiting for the send limit come before its settings.
+ */
+.agent-summary-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+}
+
+.paused-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0 var(--space-2) 0 var(--space-1);
+  border: 1px solid var(--rule-strong);
+  border-radius: 4px;
+  font: 650 var(--text-xs) / 1.4 var(--sans);
+  color: var(--ink);
+}
+
+.paused-mark .icon {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+.paused-line {
+  max-width: 60ch;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.agent-parts {
+  display: grid;
+  gap: var(--space-5);
+  padding: 0 var(--space-5) var(--space-5);
+}
+
+.agent-setting .agent-parts + .setting {
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--rule);
+}
+
+.pause-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3) var(--space-5);
+}
+
+.pause-row .setting-lead {
+  flex: 1 1 20rem;
+}
+
+/* The sends that wait, in one box divided by hairlines, as DNS records lie: the subject in the serif, its recipients, and Send now. */
+.waiting-sends {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+}
+
+.waiting-send {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-3) var(--space-4);
+}
+
+.waiting-send + .waiting-send {
+  border-top: 1px solid var(--rule);
+}
+
+.waiting-send-text {
+  display: grid;
+  flex: 1 1 16rem;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.waiting-send-subject {
+  overflow-wrap: anywhere;
+  font: 400 var(--text-md) / 1.4 var(--serif);
+}
+
+.waiting-send-to {
+  overflow-wrap: anywhere;
+  font-size: var(--text-sm);
+  color: var(--ink-2);
+}
+
+.send-now {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-2);
+}
+
+.send-now-done {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--sent);
+}
+
+.send-now-failed {
+  max-width: 40ch;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--alert);
+}
+
+.compose-waiting {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-3);
+}
+
+.slip .send-now {
+  margin-top: var(--space-3);
+}
+
+/* Two limits side by side, each a short field of a whole number with what it allows under it. */
+.limits {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: var(--space-4);
+}
+
+.limit {
+  display: grid;
+  align-content: start;
+  gap: var(--space-1);
+}
+
+.limit-name {
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.limit input[type="text"] {
+  width: 6rem;
+  text-align: right;
+}
+
+.limit .hint,
+.limit .field-error,
+.limit .setting-note {
+  margin-top: 0;
+}
+
+.setting fieldset:disabled .limit input {
+  background: var(--paper-source);
+}
+
+/*
+ * Alerts, on one sheet as the Index lies: the pencil's dot when unseen, the agent at 650 and what
+ * happened, then the sentence and what it opens, and the date. Urgent ones carry the mark in Alert
+ * Red, and while unseen lie on Alert Wash, since they want the sponsor now.
+ */
+.desk-head-action {
+  margin-left: auto;
+}
+
+.alerts-problem {
+  margin-bottom: var(--space-4);
+}
+
+.alert-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.alert {
+  display: grid;
+  grid-template-columns: 0.5rem minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5);
+}
+
+.alert + .alert {
+  border-top: 1px solid var(--rule);
+}
+
+.alert:first-child {
+  border-radius: 2px 2px 0 0;
+}
+
+.alert-mark {
+  align-self: start;
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-top: 0.4375rem;
+  border-radius: 50%;
+}
+
+.alert-unseen .alert-mark {
+  background: var(--pencil);
+}
+
+.alert-unseen.alert-urgent {
+  background: var(--alert-wash);
+}
+
+.alert-body {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.alert-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+}
+
+.alert-agent {
+  font-weight: 600;
+}
+
+.alert-unseen .alert-agent {
+  font-weight: 650;
+}
+
+.alert-kind {
+  font-size: var(--text-sm);
+  color: var(--ink-2);
+}
+
+.urgent-mark {
+  align-self: center;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--alert);
+  border-radius: 4px;
+  font: 650 var(--text-xs) / 1.4 var(--sans);
+  color: var(--alert);
+}
+
+.alert-what {
+  max-width: 68ch;
+  overflow-wrap: anywhere;
+  font-size: var(--text-sm);
+  color: var(--ink-2);
+}
+
+.alert-unseen .alert-what {
+  color: var(--ink);
+}
+
+.alert-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  margin-top: var(--space-1);
+  font-size: var(--text-sm);
+}
+
+.alert-actions a {
+  font-weight: 600;
+}
+
+.alert-actions .button {
+  margin-left: calc(-1 * var(--space-3));
+}
+
+.alert-actions a + .button {
+  margin-left: 0;
+}
+
+.alert-date {
+  font-size: var(--text-sm);
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+.alert-unseen .alert-date {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+@media (max-width: 48rem) {
+  .alert {
+    grid-template-columns: 0.5rem minmax(0, 1fr);
+    gap: var(--space-1) var(--space-3);
+    padding: var(--space-3) var(--space-4);
+  }
+
+  /* The date takes a line of its own under the head, so the head keeps the width. */
+  .alert-date {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  .alert-body {
+    display: contents;
+  }
+
+  .alert-head {
+    grid-column: 2;
+  }
+
+  .alert-what,
+  .alert-actions {
+    grid-column: 2;
+  }
+
+  .waiting-send .send-now,
+  .waiting-send .send-now .button,
+  .pause-row .button {
+    width: 100%;
+  }
+}

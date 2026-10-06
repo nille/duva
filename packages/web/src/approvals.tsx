@@ -10,6 +10,7 @@ import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
 import { approvalChanges, type Connection as ConnectionState, type Follow, setupChanges, SignedOut } from "./feed.ts";
 import { Addresses, Attachments, Connection, Field, Time } from "./mail-parts.tsx";
+import { SendNow } from "./send-now.tsx";
 import { strings } from "./strings.ts";
 
 type Approval = components["schemas"]["Approval"];
@@ -45,7 +46,7 @@ type SetupDecision = { by: "you"; how: "approved"; result?: SetupResult } | { by
 type Outcome = SendStatus | "none" | "unknown";
 
 // A send in these states can still change, so the view keeps checking it.
-const settling = new Set<SendStatus["state"]>(["waiting", "approved", "sending"]);
+const settling = new Set<SendStatus["state"]>(["waiting", "approved", "waitingForLimit", "sending"]);
 
 /** The approvals waiting for the sponsor, whose ID is `me` and whose email address is `sponsor`. */
 export function Approvals({
@@ -345,7 +346,15 @@ function Galley({ entry, agent, sponsor, asSponsor, line, outcome, client, onDec
     };
   }, [fresh, approval.id, onSeen]);
 
-  if (decision !== undefined) return <DecidedSlip approval={approval} agent={agent} decision={decision} outcome={outcome} />;
+  if (decision !== undefined) {
+    // A send that waits for the agent's limits can go now, past them.
+    const waits = typeof outcome === "object" && outcome.approval === approval.id && outcome.state === "waitingForLimit";
+    return (
+      <DecidedSlip approval={approval} agent={agent} decision={decision} outcome={outcome}>
+        {waits && <SendNow client={client} mailbox={approval.mailbox} draft={draft.id} onSignedOut={onSignedOut} />}
+      </DecidedSlip>
+    );
+  }
 
   const decide = async (kind: "sending" | "rejecting", call: () => Promise<{ response: Response; error?: { message: string } }>, decision: Decision) => {
     if (busy !== undefined) return;
@@ -646,7 +655,7 @@ function RejectNote({ agent, note, refused, errorId }: { agent: string; note: [s
 }
 
 /** A decided approval, folded to one slip: what was decided, and how the send went. */
-function DecidedSlip({ approval, agent, decision, outcome }: { approval: Approval; agent: string; decision: Decision; outcome: Outcome | undefined }) {
+function DecidedSlip({ approval, agent, decision, outcome, children }: { approval: Approval; agent: string; decision: Decision; outcome: Outcome | undefined; children?: React.ReactNode }) {
   // What became of an approval that left the list shows only in its draft: decided elsewhere, or withdrawn.
   const own = typeof outcome === "object" && outcome.approval === approval.id ? outcome : undefined;
   const headline =
@@ -675,6 +684,7 @@ function DecidedSlip({ approval, agent, decision, outcome }: { approval: Approva
         <p className="slip-result">{result.text}</p>
         {result.detail !== undefined && <p className="slip-detail">{result.detail}</p>}
         {decision.by === "you" && decision.note !== undefined && <p className="slip-note">{strings.outcome.note(decision.note)}</p>}
+        {children}
       </div>
     </article>
   );

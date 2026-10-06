@@ -78,7 +78,7 @@ test("a soft bounce, a complaint and a reject are recorded on the message in the
   ]);
 });
 
-test("a complaint about an agent's mail pauses the agent, recorded under Duva", async () => {
+test("a complaint about an agent's mail pauses the agent, recorded under Duva, saying why", async () => {
   const { duva, ada, hermes, agent, own, send, paused } = await withAgent();
   const params = { path: { mailbox: own } };
   const { messageId } = await send(hermes, own, ["ken@example.net"]);
@@ -86,7 +86,7 @@ test("a complaint about an agent's mail pauses the agent, recorded under Duva", 
 
   await duva.sendingEvent(messageId, { type: "Complaint" });
 
-  expect(await paused()).toEqual({ by: "duva", at: expect.any(String) });
+  expect(await paused()).toEqual({ by: "duva", at: expect.any(String), reason: "A recipient complained about its mail." });
   const { response, error } = await hermes.GET("/whoami");
   expect(response.status).toBe(403);
   expect(error?.message).toMatch(/^This agent is paused by Duva\./);
@@ -106,7 +106,7 @@ test("five hard bounces within an hour, across the agent's mailboxes, pause it, 
   expect(await paused()).toBeUndefined();
 
   await bounce(own, 59);
-  expect(await paused()).toEqual({ by: "duva", at: expect.any(String) });
+  expect(await paused()).toEqual({ by: "duva", at: expect.any(String), reason: "Its mail hard-bounced 5 times within an hour." });
 });
 
 test("five hard bounces within an hour pause the agent whatever order SNS delivers them in", async () => {
@@ -118,7 +118,7 @@ test("five hard bounces within an hour pause the agent whatever order SNS delive
     await duva.sendingEvent(messageId, { type: "Bounce", bounceType: "Permanent" }, { at: new Date(start + minute * 60_000) });
   }
 
-  expect(await paused()).toEqual({ by: "duva", at: expect.any(String) });
+  expect(await paused()).toEqual({ by: "duva", at: expect.any(String), reason: "Its mail hard-bounced 5 times within an hour." });
 });
 
 test("a complaint SNS delivers again after the sponsor unpaused the agent doesn't pause it again", async () => {
@@ -142,7 +142,7 @@ test("a complaint about mail an agent sent as its group is recorded on the send 
   const { data: sent } = await ada.GET("/mailboxes/{mailbox}/drafts/{draft}", { params: { path: { mailbox: own, draft: draft.id } } });
   expect(sent?.from).toBe("team@example.com");
   expect(sent?.send?.feedback?.map(({ kind }) => kind)).toEqual(["complaint"]);
-  expect(await paused()).toEqual({ by: "duva", at: expect.any(String) });
+  expect(await paused()).toEqual({ by: "duva", at: expect.any(String), reason: "A recipient complained about its mail." });
 });
 
 test("hard bounces more than an hour apart don't pause the agent", async () => {
@@ -163,7 +163,7 @@ test("each recipient of a message that hard-bounces counts as a bounce", async (
 
   await duva.sendingEvent(messageId, { type: "Bounce", bounceType: "Permanent" });
 
-  expect(await paused()).toEqual({ by: "duva", at: expect.any(String) });
+  expect(await paused()).toEqual({ by: "duva", at: expect.any(String), reason: "Its mail hard-bounced 5 times within an hour." });
 });
 
 test("soft bounces and rejects are recorded but don't pause the agent", async () => {
@@ -213,5 +213,5 @@ test("an agent's complaint after its sponsor unpaused it pauses it again", async
 
   await duva.sendingEvent((await send(hermes, own, ["linus@example.net"])).messageId, { type: "Complaint" });
 
-  expect(await paused()).toEqual({ by: "duva", at: expect.any(String) });
+  expect(await paused()).toEqual({ by: "duva", at: expect.any(String), reason: "A recipient complained about its mail." });
 });
