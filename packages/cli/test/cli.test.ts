@@ -381,6 +381,30 @@ test("an admin gives an agent a mailbox, and the agent catches up on it, lists i
   });
 });
 
+test("an agent searches its mailbox, and a search that can't be read says what to do", async () => {
+  const machine = await newMachine();
+  const duva = await startDuva({ domain: "example.com", admin: "ada@example.org" });
+  const server = await duva.listen();
+  onTestFinished(() => server.close());
+  await machine.saveDeployment(server);
+  await machine.duva("login", { browserSignsIn: "ada@example.org" });
+  const { agent, key } = JSON.parse((await machine.duva("agents", "create", "--name", "Hermes")).stdout) as { agent: { id: string }; key: string };
+  const mailbox = JSON.parse((await machine.duva("mailboxes", "create", "--owner", agent.id, "--address", "hermes@example.com")).stdout) as { id: string };
+  await duva.receive("From: Grace <grace@example.org>\r\nTo: hermes@example.com\r\nSubject: Ferry\r\n\r\nThe ferry leaves at noon.\r\n", { to: ["hermes@example.com"] });
+  await duva.receive("From: Linus <linus@example.org>\r\nTo: hermes@example.com\r\nSubject: Lunch\r\n\r\nLunch at noon?\r\n", { to: ["hermes@example.com"] });
+  const asAgent = { env: { DUVA_AGENT_KEY: key } };
+
+  const found = await machine.duva("search", "--mailbox", mailbox.id, "--q", "noon from:grace", asAgent);
+  const refused = await machine.duva("search", "--mailbox", mailbox.id, "--q", "noon size:large", asAgent);
+
+  expect(found.exitCode).toBe(0);
+  expect(JSON.parse(found.stdout)).toMatchObject({
+    results: [{ thread: { subject: "Ferry" }, snippet: "The ferry leaves at noon.", highlights: [{ start: 20, end: 24 }] }],
+  });
+  expect(refused.exitCode).toBe(1);
+  expect(errorIn(refused.stderr)).toMatch(/size: isn't a filter/);
+});
+
 test("mailboxes changes leaves spam arrivals out unless it's given --spam", async () => {
   const machine = await newMachine();
   const duva = await startDuva({ domain: "example.com", admin: "ada@example.org" });

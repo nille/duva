@@ -23,6 +23,9 @@ export const stackOutputs = {
   downloadUrl: "DownloadUrl",
   downloadFunction: "DownloadFunction",
   unsubscriberFunction: "UnsubscriberFunction",
+  searchFunction: "SearchFunction",
+  indexFailures: "IndexFailuresUrl",
+  searchBucket: "SearchBucket",
   dkimName: (n: 1 | 2 | 3) => `DkimName${n}`,
   dkimValue: (n: 1 | 2 | 3) => `DkimValue${n}`,
 } as const;

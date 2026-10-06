@@ -1,10 +1,14 @@
 // The API test harness: the real handlers, authorizer, inbound handler, sender and eraser in-process, with
 // DynamoDB Local (started by dynamodb-local.ts) for DynamoDB and its stream, an in-memory stand-in
 // for the mail bucket and for the inbound Lambda's log, stand-ins for SES receiving and sending, a
-// stand-in internet for the unsubscriber, and a test token issuer in place of Cognito. Tests drive
+// stand-in internet for the unsubscriber, a test token issuer in place of Cognito, and search indexes
+// in LanceDB on local disk, with a stand-in for the indexer's FIFO queue. Tests drive
 // the API only through the generated client, hand mail to SES as a sender's server does, read what
 // SES sent, and put web servers on the internet to see what the unsubscriber sends them.
+import { mkdtempSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { AddressInfo } from "node:net";
 import { randomUUID } from "node:crypto";
 import { CreateTableCommand, DeleteItemCommand, ScanCommand } from "@aws-sdk/client-dynamodb";
@@ -18,7 +22,10 @@ import { createAuthorizer } from "../src/authorizer.ts";
 import type { Humans } from "../src/user-pool.ts";
 import { createEraser, type TrashEmptied } from "../src/erasure.ts";
 import { createInbound } from "../src/inbound.ts";
-import { senderFilter, senderRetries, tableKey, tableStreamView } from "../src/infrastructure.ts";
+import { createFeeder, createIndexer, type IndexQueue, indexMailboxes, type QueuedTask } from "../src/indexing.ts";
+import { feederFilter, senderFilter, senderRetries, tableKey, tableStreamView } from "../src/infrastructure.ts";
+import { lanceSearch } from "../src/lancedb-search.ts";
+import { createSearcher } from "../src/searching.ts";
 import type { Table } from "../src/deployment.ts";
 import type { MailBucket } from "../src/mail-bucket.ts";
 import { keys, timeEarlierLabels } from "../src/mail.ts";
@@ -68,6 +75,13 @@ export interface DuvaOptions {
    * its mailboxes have no Screener, and what they send isn't noted for it.
    */
   beforeScreener?: boolean;
+  /** Whether the indexer reads its queue only at releaseIndexing(), as when Lambda falls behind. */
+  indexingHeld?: boolean;
+  /**
+   * Whether the deployment runs a version from before search until setUp() deploys this one, so
+   * nothing indexes its mail until then.
+   */
+  beforeSearch?: boolean;
 }
 
 /** A Duva deployment running in-process, set up as duva deploy sets one up, with its own table and mail bucket. */
@@ -123,8 +137,13 @@ export interface Duva {
    * session ends, until setUp() moves the humans.
    */
   replaceUserPool(): void;
-  /** Sets the organization up again, as a re-run of duva deploy does. */
-  setUp(options: { admin: string }): Promise<void>;
+  /**
+   * Sets the organization up again, as a re-run of duva deploy does. With `backfillLost`, the
+   * indexer's queue loses each backfill's next step, as when Lambda gives up on it.
+   */
+  setUp(options: { admin: string; backfillLost?: boolean }): Promise<void>;
+  /** Lets the indexer read its queue when indexingHeld, and waits until it has caught up. */
+  releaseIndexing(): Promise<void>;
   /**
    * Serves the API on localhost, for clients that need a URL, such as the CLI, with a stand-in
    * for managed login at the same URL.
@@ -146,6 +165,8 @@ export async function startDuva({
   downloadLinkLifetime = linkLifetime,
   sendsHeld = false,
   beforeScreener = false,
+  indexingHeld = false,
+  beforeSearch = false,
 }: DuvaOptions = {}): Promise<Duva> {
   const { table, streamArn, database } = await createTable();
   const humans = memoryHumans();
@@ -165,6 +186,21 @@ export async function startDuva({
   });
   const receiving = { rules: ses.rules, bucket: mailBucketName, inboundFunction };
   const sending = sesSending({ region, domain, sandbox, answersLost: sesAnswersLost });
+  // Each mailbox's index is a table under the deployment's own directory. The search Lambda and the
+  // indexer each open them, as two Lambdas do. Backfill steps are small, so a few messages take several.
+  const indexes = join(searchIndexes, randomUUID());
+  const indexQueue = memoryIndexQueue();
+  const indexer = createIndexer({ table, mailBucket, engine: lanceSearch({ uri: indexes }), queue: indexQueue, backfillMessages: 2 });
+  let searchDeployed = !beforeSearch;
+  const feeder = createFeeder(indexQueue);
+  const feed = tableStream(database, streamArn, [
+    { filter: feederFilter, handler: async (event) => (searchDeployed ? feeder(event) : undefined), retries: 2, invocations: 1 },
+  ]);
+  const index = async () => {
+    await feed.deliver();
+    await indexQueue.drain(indexer);
+  };
+  const searcher = createSearcher(lanceSearch({ uri: indexes }));
   const stream = tableStream(database, streamArn, [
     { filter: senderFilter, handler: createSender({ table, mailBucket, outbound: sending.outbound, region }), retries: senderRetries, invocations: senderInvocations },
   ]);
@@ -186,11 +222,24 @@ export async function startDuva({
   const internet = standInInternet();
   const unsubscriber = { post: async (url: string) => JSON.parse(JSON.stringify(await postOneClick(internet.network, url))) };
   const gatewayed = gateway(
-    createApi({ version, region, table, humans, mailBucket, receiving, downloads, unsubscriber, eraser: { emptyTrash: async (each) => void emptied.push(each) } }),
+    createApi({
+      version,
+      region,
+      table,
+      humans,
+      mailBucket,
+      receiving,
+      downloads,
+      unsubscriber,
+      eraser: { emptyTrash: async (each) => void emptied.push(each) },
+      // The API invokes the search Lambda and waits for it, so the search goes through JSON.
+      searcher: async (request) => JSON.parse(JSON.stringify(await searcher(JSON.parse(JSON.stringify(request))))),
+    }),
     createAuthorizer({ table, verifyAccessToken: issuer.verify }),
   );
   // A call returns once the stream has handed what it wrote to the sender, unless sends are held,
-  // and the eraser has erased the Trash it emptied, so tests see the outcome.
+  // the eraser has erased the Trash it emptied, and the indexer has caught up, unless indexing is
+  // held, so tests see the outcome.
   let screenerDeployed = !beforeScreener;
   const api = async (request: Request) => {
     if (new URL(request.url).pathname.startsWith("/download/")) return downloaded(request);
@@ -198,6 +247,7 @@ export async function startDuva({
     if (!sendsHeld) await stream.deliver();
     for (let each = emptied.shift(); each !== undefined; each = emptied.shift()) if (!emptyingLost) await eraser({ emptyTrash: each });
     if (!screenerDeployed) await forgetScreener(table);
+    if (!indexingHeld) await index();
     return response;
   };
   const login = managedLogin({ ids: humans.ids, issuer, accessTokenLifetime });
@@ -218,12 +268,17 @@ export async function startDuva({
       issuer.replaceKeys();
       login.endSessions();
     },
-    receive: async (raw, { from, to }, options) => ses.receive(raw, { from: from ?? (await senderOf(raw)), to }, options),
+    async receive(raw, { from, to }, options) {
+      const received = await ses.receive(raw, { from: from ?? (await senderOf(raw)), to }, options);
+      if (!indexingHeld) await index();
+      return received;
+    },
     inboundLog: () => [...inboundLog],
     receiptRules: () => ses.describeRules(),
     sent: () => sending.sent(),
     sentTo: () => sending.sentTo(),
     releaseSends: () => stream.deliver(),
+    releaseIndexing: index,
     stored: () => mailBucket.stored(),
     async erase(at, { s3DeletesFail = false } = {}) {
       mailBucket.deletesFail = s3DeletesFail;
@@ -235,11 +290,21 @@ export async function startDuva({
     },
     webServer: (hostname, options) => internet.webServer(hostname, options),
     download: (url) => (url.startsWith(inProcess) ? api(new Request(url)) : fetch(url)),
-    setUp: async (options) => {
+    setUp: async ({ backfillLost = false, ...options }) => {
       await setUp(options);
       await timeEarlierLabels(table);
       screenerDeployed = true;
       await setUpScreeners(table);
+      // The feeder starts with this version, and reads only what is written from then on.
+      if (!searchDeployed) await feed.deliver();
+      searchDeployed = true;
+      await indexMailboxes(table, indexQueue);
+      indexQueue.backfillLost = backfillLost;
+      try {
+        if (!indexingHeld) await index();
+      } finally {
+        indexQueue.backfillLost = false;
+      }
     },
     async listen() {
       const server = await listen(async (request) => (await login.handle(request)) ?? api(request));
@@ -247,6 +312,42 @@ export async function startDuva({
       return { ...server, signIn: { url: server.url, clientId: managedLoginClientId } };
     },
   };
+}
+
+// Where every deployment's search indexes are, each in a directory of its own, until the test file ends.
+const searchIndexes = mkdtempSync(join(tmpdir(), "duva-indexes-"));
+process.on("exit", () => rmSync(searchIndexes, { recursive: true, force: true }));
+
+/**
+ * The indexer's FIFO queue, with Lambda reading it: each task's ID is kept once, and the indexer
+ * gets the tasks in order, a batch at a time. With `backfillLost`, it loses the tasks that take a
+ * backfill's next step.
+ */
+function memoryIndexQueue(): IndexQueue & { backfillLost: boolean; drain(indexer: ReturnType<typeof createIndexer>): Promise<void> } {
+  const queued: QueuedTask[] = [];
+  const seen = new Set<string>();
+  let draining: Promise<void> = Promise.resolve();
+  const queue = {
+    backfillLost: false,
+    async send(tasks: QueuedTask[]) {
+      for (const each of tasks) {
+        if (seen.has(each.id) || (queue.backfillLost && (each.task.backfill ?? 0) > 0)) continue;
+        seen.add(each.id);
+        queued.push(each);
+      }
+    },
+    drain(indexer: ReturnType<typeof createIndexer>) {
+      const drain = async () => {
+        while (queued.length > 0) {
+          const batch = queued.splice(0, 10);
+          await indexer({ Records: batch.map(({ task }) => ({ body: JSON.stringify(task) })) } as Parameters<typeof indexer>[0]);
+        }
+      };
+      draining = draining.then(drain, drain);
+      return draining;
+    },
+  };
+  return queue;
 }
 
 // Where the API is when called in-process.

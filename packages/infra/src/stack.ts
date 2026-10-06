@@ -19,9 +19,9 @@ import { AttributeType, Billing, StreamViewType, TableV2 } from "aws-cdk-lib/aws
 import { Rule, Schedule } from "aws-cdk-lib/aws-events";
 import { LambdaFunction } from "aws-cdk-lib/aws-events-targets";
 import { PolicyStatement, ServicePrincipal } from "aws-cdk-lib/aws-iam";
-import { Architecture, FilterCriteria, FunctionUrlAuthType, InvokeMode, Runtime, StartingPosition } from "aws-cdk-lib/aws-lambda";
+import { Architecture, Code, FilterCriteria, Function as LambdaFunctionResource, FunctionUrlAuthType, InvokeMode, Runtime, StartingPosition } from "aws-cdk-lib/aws-lambda";
 import { SqsDestination } from "aws-cdk-lib/aws-lambda-destinations";
-import { DynamoEventSource, SqsDlq } from "aws-cdk-lib/aws-lambda-event-sources";
+import { DynamoEventSource, SqsDlq, SqsEventSource } from "aws-cdk-lib/aws-lambda-event-sources";
 import { NodejsFunction, OutputFormat } from "aws-cdk-lib/aws-lambda-nodejs";
 import { LogGroup, RetentionDays } from "aws-cdk-lib/aws-logs";
 import { BlockPublicAccess, Bucket, BucketEncryption } from "aws-cdk-lib/aws-s3";
@@ -30,8 +30,10 @@ import { Queue, QueueEncryption } from "aws-cdk-lib/aws-sqs";
 import type { Construct } from "constructs";
 import {
   environmentVariables,
+  feederFilter,
   inboundPrefix,
   receiptRuleName,
+  searchIndexesPrefix,
   senderFilter,
   senderRetries,
   sentPrefix,
@@ -41,6 +43,7 @@ import {
 } from "@duva/api/infrastructure";
 import { operations } from "@duva/openapi";
 import { cliRedirectUri, signInSender, stackOutputs, stackParameters } from "./outputs.ts";
+import { searchCode } from "./search-code.ts";
 
 export interface DuvaStackProps extends StackProps {
   /** The version of Duva the stack deploys. */
@@ -307,6 +310,81 @@ export class DuvaStack extends Stack {
     // do nothing but write its log (ADR-0016). Its POST gives up well within its time.
     const unsubscriber = lambda("UnsubscriberHandler", "@duva/api/unsubscriber-lambda", {}, { memorySize: 256 });
 
+    // Search (ADR-0007). Each mailbox's index is a LanceDB table in the search bucket, which keeps no
+    // old versions, so what LanceDB deletes is gone. Only the indexer writes there, and the search
+    // Lambda reads. Both are an x64 zip of one code, with LanceDB's native module.
+    const search = new Bucket(this, "Search", {
+      encryption: BucketEncryption.S3_MANAGED,
+      blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
+      enforceSSL: true,
+      removalPolicy: RemovalPolicy.RETAIN_ON_UPDATE_OR_DELETE,
+    });
+    const searchIndexes = `s3://${search.bucketName}/${searchIndexesPrefix}`;
+    const lanceCode = Code.fromAsset(searchCode());
+    const lanceLambda = (id: string, handler: string, environment: Record<string, string>, { memorySize, timeout }: { memorySize: number; timeout: Duration }) =>
+      new LambdaFunctionResource(this, id, {
+        code: lanceCode,
+        handler,
+        runtime: Runtime.NODEJS_24_X,
+        architecture: Architecture.X86_64,
+        memorySize,
+        timeout,
+        environment: { ...environment, [environmentVariables.searchIndexes]: searchIndexes, NODE_OPTIONS: "--enable-source-maps" },
+        logGroup: new LogGroup(this, `${id.replace(/Handler$/, "")}Logs`, { retention: RetentionDays.ONE_MONTH, removalPolicy: RemovalPolicy.DESTROY }),
+      });
+    // The size where every one of ADR-0007's targets held, cold starts included. Only the API
+    // invokes it, through IAM, so it has no resource policy (docs/aws.md).
+    const searcher = lanceLambda("SearchHandler", "search.handler", {}, { memorySize: 10_240, timeout: Duration.seconds(30) });
+    search.grantRead(searcher);
+
+    // The indexer reads a FIFO queue with each mailbox as a message group, so each mailbox's index
+    // has one writer at a time (#18). A task that keeps failing goes to a queue of its own, and the
+    // mailbox's next task catches up on what it missed. A visibility timeout six times the
+    // indexer's, as Lambda asks of a queue it reads.
+    const indexFailures = new Queue(this, "IndexFailures", {
+      fifo: true,
+      encryption: QueueEncryption.SQS_MANAGED,
+      enforceSSL: true,
+      retentionPeriod: Duration.days(14),
+    });
+    const indexerTimeout = Duration.minutes(5);
+    const indexQueue = new Queue(this, "IndexQueue", {
+      fifo: true,
+      encryption: QueueEncryption.SQS_MANAGED,
+      enforceSSL: true,
+      visibilityTimeout: Duration.minutes(30),
+      deadLetterQueue: { queue: indexFailures, maxReceiveCount: 5 },
+    });
+    // Maintenance takes up to 1.1 GB on 100,000 messages (#18).
+    const indexer = lanceLambda(
+      "IndexerHandler",
+      "indexer.handler",
+      { [environmentVariables.tableName]: table.tableName, [environmentVariables.mailBucket]: mail.bucketName, [environmentVariables.indexQueue]: indexQueue.queueUrl },
+      { memorySize: 2048, timeout: indexerTimeout },
+    );
+    indexer.addEventSource(new SqsEventSource(indexQueue, { batchSize: 10 }));
+    // It continues a backfill and a long catch-up with tasks of its own.
+    indexQueue.grantSendMessages(indexer);
+    table.grantReadWriteData(indexer);
+    mail.grantRead(indexer);
+    search.grantReadWrite(indexer);
+    search.grantDelete(indexer);
+
+    // The table's stream hands the feeder each new change in a mailbox's change feed, and the
+    // feeder gives the indexer a task for the mailbox. A record it keeps failing on is left, and the
+    // mailbox's next change brings its index up to date.
+    const feeder = lambda("FeederHandler", "@duva/api/feeder-lambda", { [environmentVariables.indexQueue]: indexQueue.queueUrl });
+    feeder.addEventSource(
+      new DynamoEventSource(table, {
+        startingPosition: StartingPosition.LATEST,
+        batchSize: 100,
+        retryAttempts: 10,
+        bisectBatchOnError: true,
+        filters: [FilterCriteria.filter(feederFilter)],
+      }),
+    );
+    indexQueue.grantSendMessages(feeder);
+
     const handler = lambda("ApiHandler", "@duva/api/lambda", {
       [environmentVariables.version]: version,
       [environmentVariables.tableName]: table.tableName,
@@ -317,8 +395,11 @@ export class DuvaStack extends Stack {
       [environmentVariables.eraserFunction]: eraser.functionArn,
       [environmentVariables.unsubscriberFunction]: unsubscriber.functionArn,
       [environmentVariables.downloadUrl]: downloadUrl,
+      [environmentVariables.searchFunction]: searcher.functionArn,
     });
     table.grantReadWriteData(handler);
+    // Each search waits for the search Lambda's answer.
+    searcher.grantInvoke(handler);
     // Message bodies are read from the raw mail.
     mail.grantRead(handler);
     // Emptying Trash hands the eraser the threads, without waiting.
@@ -392,10 +473,13 @@ export class DuvaStack extends Stack {
         [environmentVariables.userPoolId]: humans.userPoolId,
         [environmentVariables.domain]: domain,
         [environmentVariables.admin]: admin,
+        [environmentVariables.indexQueue]: indexQueue.queueUrl,
       },
       { timeout: Duration.minutes(5) },
     );
     table.grantReadWriteData(setup);
+    // It starts each mailbox's backfill.
+    indexQueue.grantSendMessages(setup);
     humans.grant(setup, "cognito-idp:AdminCreateUser", "cognito-idp:AdminGetUser");
 
     // With no identity sources, API Gateway runs the authorizer on every call and answers 401
@@ -430,6 +514,9 @@ export class DuvaStack extends Stack {
     new CfnOutput(this, stackOutputs.downloadUrl, { value: downloadUrl, description: "Where download links lead, on the web app's domain" });
     new CfnOutput(this, stackOutputs.downloadFunction, { value: download.functionName, description: "The function download links invoke through CloudFront" });
     new CfnOutput(this, stackOutputs.unsubscriberFunction, { value: unsubscriber.functionName, description: "The function that sends one-click unsubscribes" });
+    new CfnOutput(this, stackOutputs.searchFunction, { value: searcher.functionName, description: "The function that runs searches, which only the API invokes" });
+    new CfnOutput(this, stackOutputs.indexFailures, { value: indexFailures.queueUrl, description: "The queue of the indexer's tasks that failed" });
+    new CfnOutput(this, stackOutputs.searchBucket, { value: search.bucketName, description: "The bucket the mailboxes' search indexes are in" });
     new CfnOutput(this, stackOutputs.inboundFailures, { value: inboundFailures.queueUrl, description: "The queue of received mail that failed processing" });
     ([1, 2, 3] as const).forEach((n, index) => {
       const { name, value } = identity.dkimRecords[index]!;

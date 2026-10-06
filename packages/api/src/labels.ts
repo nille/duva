@@ -41,6 +41,14 @@ export async function hasLabel(table: Table, mailbox: string, id: string): Promi
   return builtInLabels.some((label) => label.id === id) || (await ownLabel(table, mailbox, id)) !== undefined;
 }
 
+/** The ID of the mailbox's label with the name, built in or its own, in any case, or undefined if it has none. */
+export async function labelNamed(table: Table, mailbox: string, name: string): Promise<string | undefined> {
+  const builtIn = builtInLabels.find((label) => label.name.toLowerCase() === name.toLowerCase());
+  if (builtIn !== undefined) return builtIn.id;
+  const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: nameKey(mailbox, name), ConsistentRead: true }));
+  return Item?.label as string | undefined;
+}
+
 /** The mailbox's labels, built in first and then its own by name, each with how many unread threads it lists. */
 export async function listLabels(table: Table, mailbox: string): Promise<Label[]> {
   const { Items = [] } = await documents(table).send(

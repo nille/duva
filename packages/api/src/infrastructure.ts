@@ -34,6 +34,12 @@ export const environmentVariables = {
   configurationSet: "CONFIGURATION_SET",
   /** The URL of the download Lambda, which download links lead to. */
   downloadUrl: "DOWNLOAD_URL",
+  /** The search Lambda, which the API invokes for each search. */
+  searchFunction: "SEARCH_FUNCTION",
+  /** Where the mailboxes' search indexes are, as s3://bucket/prefix. */
+  searchIndexes: "SEARCH_INDEXES",
+  /** The URL of the indexer's FIFO queue. */
+  indexQueue: "INDEX_QUEUE",
 } as const;
 
 /** What the table's stream shows of each changed item. The sender reads the item itself, so only its new image. */
@@ -44,6 +50,15 @@ export const tableStreamView = "NEW_IMAGE";
  * approved for sending, which only a decision does. The pattern is a Lambda filter on DynamoDB JSON.
  */
 export const senderFilter = { dynamodb: { NewImage: { send: { M: { state: { S: ["approved"] } } } } } };
+
+/**
+ * Which of the table stream's records Lambda hands the feeder: each new change in a mailbox's change
+ * feed, whose entries are in the mailbox's changes partition.
+ */
+export const feederFilter = { eventName: ["INSERT"], dynamodb: { Keys: { [tableKey.partitionKey]: { S: [{ prefix: "mailbox#" }] }, [tableKey.sortKey]: { S: [{ prefix: "change#" }] } } } };
+
+/** Where in the search bucket the mailboxes' indexes are, one table each. */
+export const searchIndexesPrefix = "indexes";
 
 /** How often Lambda retries a stream record the sender failed on, before it gives up and records it in the failure queue. */
 export const senderRetries = 2;

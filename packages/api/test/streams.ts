@@ -72,9 +72,13 @@ export function tableStream(database: LocalDatabase, streamArn: string, consumer
   };
 }
 
-/** Whether the value matches Lambda's filter pattern, where a list holds the values a field may have. */
+/** Whether the value matches Lambda's filter pattern, where a list holds the values a field may have, or the prefixes it may start with. */
 function matches(pattern: unknown, value: unknown): boolean {
-  if (Array.isArray(pattern)) return pattern.includes(value);
+  if (Array.isArray(pattern)) {
+    return pattern.some((wanted) =>
+      typeof wanted === "object" && wanted !== null && "prefix" in wanted ? typeof value === "string" && value.startsWith(String(wanted.prefix)) : wanted === value,
+    );
+  }
   if (typeof pattern !== "object" || pattern === null) return false;
   return typeof value === "object" && value !== null && Object.entries(pattern).every(([name, wanted]) => matches(wanted, (value as Record<string, unknown>)[name]));
 }

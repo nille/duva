@@ -2,9 +2,11 @@
 // and the CDK app sets the environment from what deploy gave the stack.
 import { CognitoIdentityProviderClient } from "@aws-sdk/client-cognito-identity-provider";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { SQSClient } from "@aws-sdk/client-sqs";
 import { required } from "./environment.ts";
 import { cognitoHumans } from "./user-pool.ts";
 import { environmentVariables } from "./infrastructure.ts";
+import { indexMailboxes, sqsIndexQueue } from "./indexing.ts";
 import { timeEarlierLabels } from "./mail.ts";
 import { setUpOrganization } from "./organization.ts";
 import { setUpScreeners } from "./screening.ts";
@@ -22,5 +24,7 @@ export const handler = async () => {
   await timeEarlierLabels(table);
   // Humans' mailboxes from before the Screener get it on, with every sender they already have let in.
   await setUpScreeners(table);
+  // Each mailbox's index is backfilled with the mail it has, or its backfill finished if one stopped.
+  await indexMailboxes(table, sqsIndexQueue(new SQSClient({}), required(environmentVariables.indexQueue)));
   return admin;
 };

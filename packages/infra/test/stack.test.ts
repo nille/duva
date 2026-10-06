@@ -1,12 +1,12 @@
 // These tests check the cloud assembly the CDK app synthesizes, which is what duva deploy ships.
 // Each rule holds for every resource, so it also covers what later tickets add.
-import { mkdtempSync, readdirSync, readFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { environmentVariables, senderFilter, senderRetries, timeToLiveAttribute } from "@duva/api/infrastructure";
+import { environmentVariables, feederFilter, senderFilter, senderRetries, timeToLiveAttribute } from "@duva/api/infrastructure";
 import { operations } from "@duva/openapi";
 import { buildSync } from "esbuild";
-import { expect, test } from "vitest";
+import { afterAll, expect, test } from "vitest";
 import { duvaApp } from "../src/app.ts";
 
 interface Resource {
@@ -55,6 +55,8 @@ const payPerUse = new Set([
 ]);
 
 const outdir = mkdtempSync(join(tmpdir(), "duva-assembly-"));
+// The assembly holds LanceDB's native module, some 200 MB.
+afterAll(() => rmSync(outdir, { recursive: true, force: true }));
 const assembly = duvaApp({ outdir, version: "0.0.0-test" }).synth();
 const stack = assembly.getStackByName("Duva");
 const resources = Object.entries(stack.template.Resources as Record<string, Resource>);
@@ -65,12 +67,14 @@ test("an idle deployment pays for nothing beyond storage", () => {
   expect([...types].filter((type) => !payPerUse.has(type))).toEqual([]);
 });
 
-test("every Lambda runs Node.js 24 on arm64, outside any VPC", () => {
+// LanceDB's native module fits a zip only on x64 (ADR-0007).
+test("every Lambda runs Node.js 24 outside any VPC, on arm64 but for search and the indexer, on x64", () => {
   const functions = ofType("AWS::Lambda::Function");
   expect(functions).not.toHaveLength(0);
   for (const [id, { Properties }] of functions) {
     const { Runtime: runtime, Architectures: architectures, VpcConfig: vpc } = Properties ?? {};
-    expect({ id, runtime, architectures, vpc }).toEqual({ id, runtime: "nodejs24.x", architectures: ["arm64"], vpc: undefined });
+    const x64 = id.startsWith("SearchHandler") || id.startsWith("IndexerHandler");
+    expect({ id, runtime, architectures, vpc }).toEqual({ id, runtime: "nodejs24.x", architectures: [x64 ? "x86_64" : "arm64"], vpc: undefined });
   }
 });
 
@@ -213,15 +217,93 @@ test("the eraser can write the table and erase raw mail for good, every version 
   expect(scoped).not.toMatch(/"\/\*"|"s3:prefix":"\*"/);
 });
 
-test("the API invokes the eraser to empty a Trash and the unsubscriber to unsubscribe, and may invoke no other Lambda", () => {
+test("the API invokes the eraser to empty a Trash, the unsubscriber to unsubscribe and search to search, and may invoke no other Lambda", () => {
   const [eraserId] = lambda("EraserHandler");
   const [unsubscriberId] = lambda("UnsubscriberHandler");
+  const [searchId] = lambda("SearchHandler");
   const invoking = statements("ApiHandler").filter(({ Action }) => [Action].flat().some((action) => action.startsWith("lambda:")));
   const invoked = JSON.stringify(invoking.map(({ Resource }) => Resource)).match(/Fn::GetAtt":\["(\w+)"/g)?.map((ref) => ref.replace(/^Fn::GetAtt":\["|"$/g, ""));
-  expect(new Set(invoked)).toEqual(new Set([eraserId, unsubscriberId]));
+  expect(new Set(invoked)).toEqual(new Set([eraserId, unsubscriberId, searchId]));
   const variables = lambda("ApiHandler")[1].Properties?.Environment?.Variables;
   expect(variables?.[environmentVariables.eraserFunction]).toEqual({ "Fn::GetAtt": [eraserId, "Arn"] });
   expect(variables?.[environmentVariables.unsubscriberFunction]).toEqual({ "Fn::GetAtt": [unsubscriberId, "Arn"] });
+  expect(variables?.[environmentVariables.searchFunction]).toEqual({ "Fn::GetAtt": [searchId, "Arn"] });
+});
+
+/** The resources that name the Lambda whose ID is given. */
+const naming = (type: string, id: string) => ofType(type).filter(([, resource]) => JSON.stringify(resource.Properties).includes(`"${id}"`));
+
+/** The roles whose policies let them invoke the Lambda whose ID is given. */
+function invokers(id: string): string[] {
+  return ofType("AWS::IAM::Policy")
+    .filter(([, { Properties }]) =>
+      (Properties?.PolicyDocument?.Statement ?? []).some(
+        ({ Action, Resource }: { Action: string | string[]; Resource: unknown }) => [Action].flat().includes("lambda:InvokeFunction") && JSON.stringify(Resource).includes(`"${id}"`),
+      ),
+    )
+    .flatMap(([, { Properties }]) => (Properties?.Roles ?? []).map((role: { Ref: string }) => role.Ref));
+}
+
+// The account disables a Lambda anyone may invoke (docs/aws.md).
+test("search runs at 10,240 MB on x64, and only the API invokes it, through IAM", () => {
+  const [searchId, { Properties }] = lambda("SearchHandler");
+  expect(Properties?.MemorySize).toBe(10_240);
+  expect(Properties?.Architectures).toEqual(["x86_64"]);
+  for (const type of ["AWS::Lambda::Permission", "AWS::Lambda::Url", "AWS::Lambda::EventSourceMapping", "AWS::Events::Rule"]) expect({ type, naming: naming(type, searchId) }).toEqual({ type, naming: [] });
+  expect(invokers(searchId)).toEqual([lambda("ApiHandler")[1].Properties?.Role?.["Fn::GetAtt"]?.[0]]);
+});
+
+test("search may only read the search bucket, and only the indexer may write it", () => {
+  const [[bucketId, { Properties: bucket }]] = ofType("AWS::S3::Bucket").filter(([id]) => id.startsWith("Search")) as [[string, Resource]];
+  // LanceDB deletes what erasure removes, and a versioned bucket would keep it.
+  expect(bucket?.VersioningConfiguration).toBeUndefined();
+  const onBucket = (prefix: string) =>
+    statements(prefix)
+      .filter(({ Resource }) => JSON.stringify(Resource).includes(`"${bucketId}"`))
+      .flatMap(({ Action }) => [Action].flat());
+  expect(onBucket("SearchHandler").filter((action) => /Put|Delete|Write/.test(action))).toEqual([]);
+  expect(onBucket("SearchHandler")).toContain("s3:GetObject*");
+  expect(onBucket("IndexerHandler")).toEqual(expect.arrayContaining(["s3:PutObject", "s3:DeleteObject*"]));
+  const writers = resources
+    .filter(([id, { Type }]) => Type === "AWS::Lambda::Function" && !id.startsWith("IndexerHandler"))
+    .filter(([id]) => onBucket(id).some((action) => /Put|Delete/.test(action)));
+  expect(writers).toEqual([]);
+});
+
+test("search and the indexer share one zip, which fits Lambda's limit unzipped", () => {
+  const [, { Properties: searchProperties }] = lambda("SearchHandler");
+  const [, { Properties: indexerProperties }] = lambda("IndexerHandler");
+  expect(searchProperties?.Code?.S3Key).toEqual(indexerProperties?.Code?.S3Key);
+  expect([searchProperties?.Handler, indexerProperties?.Handler]).toEqual(["search.handler", "indexer.handler"]);
+  const assets = JSON.parse(readFileSync(join(outdir, `${stack.id}.assets.json`), "utf8")) as { files: Record<string, { source: { path: string } }> };
+  const directory = join(outdir, assets.files[String(searchProperties?.Code?.S3Key).replace(/\.zip$/, "")]!.source.path);
+  const bytes = readdirSync(directory, { recursive: true, encoding: "utf8" }).reduce((sum, file) => sum + (statSync(join(directory, file)).isFile() ? statSync(join(directory, file)).size : 0), 0);
+  expect(bytes).toBeLessThan(262_144_000);
+});
+
+test("the table's stream hands the feeder each new change in a mailbox's change feed, from when it is deployed", () => {
+  const [[tableId]] = ofType("AWS::DynamoDB::GlobalTable") as [[string, Resource]];
+  const [, { Properties: mapping }] = mappingOf("FeederHandler");
+  expect(mapping).toMatchObject({
+    EventSourceArn: { "Fn::GetAtt": [tableId, "StreamArn"] },
+    StartingPosition: "LATEST",
+    FilterCriteria: { Filters: [{ Pattern: JSON.stringify(feederFilter) }] },
+  });
+});
+
+test("the indexer reads a FIFO queue, so each mailbox has one writer, and a task that keeps failing goes to a queue of its own", () => {
+  const [, { Properties: mapping }] = mappingOf("IndexerHandler");
+  const queueId = mapping?.EventSourceArn?.["Fn::GetAtt"]?.[0];
+  const queue = stack.template.Resources[queueId];
+  expect(queue?.Properties?.FifoQueue).toBe(true);
+  expect(queue?.Properties?.VisibilityTimeout).toBeGreaterThanOrEqual(6 * lambda("IndexerHandler")[1].Properties?.Timeout);
+  const failures = stack.template.Resources[queue?.Properties?.RedrivePolicy?.deadLetterTargetArn?.["Fn::GetAtt"]?.[0]];
+  expect(failures?.Properties).toMatchObject({ FifoQueue: true, MessageRetentionPeriod: 14 * 24 * 3600 });
+  for (const prefix of ["FeederHandler", "IndexerHandler", "SetupHandler"]) {
+    expect({ prefix, sends: actions(prefix, "sqs") }).toEqual({ prefix, sends: expect.arrayContaining(["sqs:SendMessage"]) });
+    const variables = lambda(prefix)[1].Properties?.Environment?.Variables;
+    expect(variables?.[environmentVariables.indexQueue]).toEqual({ Ref: queueId });
+  }
 });
 
 // The unsubscriber sends a POST to a URL from someone's mail, so it may reach nothing of Duva's (ADR-0016).
@@ -279,9 +361,7 @@ test("the inbound Lambda retries a failed event, then leaves it in a queue for r
 test("the table's stream invokes the sender for each draft a decision approved, one record at a time, from the oldest", () => {
   const [[tableId, { Properties: table }]] = ofType("AWS::DynamoDB::GlobalTable") as [[string, Resource]];
   expect(table?.StreamSpecification).toEqual({ StreamViewType: "NEW_IMAGE" });
-  const mappings = ofType("AWS::Lambda::EventSourceMapping");
-  expect(mappings).toHaveLength(1);
-  const [[, { Properties: mapping }]] = mappings as [[string, Resource]];
+  const [, { Properties: mapping }] = mappingOf("SenderHandler");
   expect(mapping).toMatchObject({
     FunctionName: { Ref: lambda("SenderHandler")[0] },
     EventSourceArn: { "Fn::GetAtt": [tableId, "StreamArn"] },
@@ -291,8 +371,16 @@ test("the table's stream invokes the sender for each draft a decision approved, 
   });
 });
 
+/** The one event source mapping that invokes the Lambda whose ID starts with `prefix`. */
+function mappingOf(prefix: string): [string, Resource] {
+  const [id] = lambda(prefix);
+  const mappings = ofType("AWS::Lambda::EventSourceMapping").filter(([, { Properties }]) => Properties?.FunctionName?.Ref === id);
+  expect(mappings).toHaveLength(1);
+  return mappings[0]!;
+}
+
 test("the sender retries a failed record, then records it in a queue for replay", () => {
-  const [[, { Properties: mapping }]] = ofType("AWS::Lambda::EventSourceMapping") as [[string, Resource]];
+  const [, { Properties: mapping }] = mappingOf("SenderHandler");
   expect(mapping?.MaximumRetryAttempts).toBe(senderRetries);
   const queueId = mapping?.DestinationConfig?.OnFailure?.Destination?.["Fn::GetAtt"]?.[0];
   const queue = stack.template.Resources[queueId];

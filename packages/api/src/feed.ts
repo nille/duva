@@ -94,7 +94,8 @@ export async function recordInFeeds(
   }
 }
 
-async function lastPosition(table: Table, feed: Feed): Promise<number> {
+/** The feed's last position, 0 before its first change. */
+export async function lastPosition(table: Table, feed: Feed): Promise<number> {
   const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: feed.counter, ConsistentRead: true }));
   if (Item === undefined) throw new Error(feed.missing);
   return Item.position as number;

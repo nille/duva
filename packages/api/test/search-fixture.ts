@@ -1,0 +1,288 @@
+// The search module's fixture mailbox, from the search spike (#2): hand-written messages, each
+// group there for a behavior the suite checks. Kayak for ranking and labels, the budget review for
+// phrases against the same words out of order, "out of office" for phrases made of stop words,
+// invoices for the other filters, and two Swedish messages for Swedish words next to English ones.
+// Each message is a thread of its own, and labels are named as the engine sees them, by ID.
+import type { IndexedMessage } from "../src/search-engine.ts";
+
+const me = { name: "Nicklas", address: "nicklas@ekenstam.example" };
+
+interface Written {
+  id: string;
+  sender: string;
+  subject: string;
+  text: string;
+  date: string;
+  labels?: string[];
+  hasAttachment?: boolean;
+}
+
+function message({ id, sender, subject, text, date, labels = [], hasAttachment = false }: Written): IndexedMessage {
+  return { id, thread: id, from: { address: sender }, recipients: [me], subject, receivedAt: new Date(date), labels, unread: false, attachments: [], hasAttachment, text };
+}
+
+export const fixture: IndexedMessage[] = [
+  message({
+    id: "kayak-rental",
+    sender: "rentals@paddla.example",
+    subject: "Your kayak rental is confirmed",
+    date: "2026-05-20T08:00:00Z",
+    labels: ["Inbox", "Travel"],
+    hasAttachment: true,
+    text: "Hi Nicklas, your kayak rental for Saturday is confirmed. Pick up the kayak at the north jetty at nine. The kayak comes with paddles and life jackets.",
+  }),
+  message({
+    id: "kayak-club",
+    sender: "club@paddlers.example",
+    subject: "Paddling club newsletter",
+    date: "2026-04-02T07:30:00Z",
+    text: "This month: a kayak safety course, new members, and the summer trip to the archipelago. Sign up at the club house.",
+  }),
+  message({
+    id: "kayak-spam",
+    sender: "deals@cheap-gear.example",
+    subject: "Cheap kayak deals",
+    date: "2026-05-01T03:12:00Z",
+    labels: ["Spam"],
+    text: "Buy a kayak today at half price. Limited offer, click now before it is gone.",
+  }),
+  message({
+    id: "kayak-trash",
+    sender: "erik@forsberg.example",
+    subject: "Old photos",
+    date: "2025-09-10T18:45:00Z",
+    labels: ["Trash"],
+    hasAttachment: true,
+    text: "Here are the photos from last year's kayak trip. The one with the seal is my favourite.",
+  }),
+  message({
+    id: "budget-review",
+    sender: "maria@ekenstam.example",
+    subject: "Agenda for Monday",
+    date: "2026-03-02T09:00:00Z",
+    labels: ["Inbox"],
+    text: "We start with the quarterly budget review at ten, then lunch, then the hiring plan.",
+  }),
+  message({
+    id: "budget-shuffled",
+    sender: "johan@ekenstam.example",
+    subject: "Numbers before Monday",
+    date: "2026-03-01T16:20:00Z",
+    labels: ["Inbox"],
+    text: "Before Monday, please review the budget numbers for the quarterly report and tell me what looks wrong.",
+  }),
+  message({
+    id: "budget-slides",
+    sender: "maria@ekenstam.example",
+    subject: "Quarterly budget review slides",
+    date: "2026-03-03T11:10:00Z",
+    labels: ["Inbox"],
+    hasAttachment: true,
+    text: "Slides attached for the meeting. Page four has the new forecast.",
+  }),
+  message({
+    id: "out-of-office",
+    sender: "peter@supplier.example",
+    subject: "Automatic reply",
+    date: "2026-07-20T06:00:00Z",
+    labels: ["Inbox"],
+    text: "I am out of office until 4 August and will reply when I am back. For urgent orders, call the shop.",
+  }),
+  message({
+    id: "office-move",
+    sender: "facilities@ekenstam.example",
+    subject: "Office move in August",
+    date: "2026-07-01T10:00:00Z",
+    labels: ["Inbox"],
+    text: "We move out of the old building in August. Pack your desk, and label every box with your name and the new office floor.",
+  }),
+  message({
+    id: "invoice-march",
+    sender: "billing@hosting.example",
+    subject: "Invoice for March",
+    date: "2026-03-31T23:00:00Z",
+    labels: ["Invoices"],
+    hasAttachment: true,
+    text: "Your invoice for March is attached. Amount due: 49 EUR, paid by card.",
+  }),
+  message({
+    id: "invoice-april",
+    sender: "billing@hosting.example",
+    subject: "Invoice for April",
+    date: "2026-04-30T23:00:00Z",
+    labels: ["Invoices"],
+    hasAttachment: true,
+    text: "Your invoice for April is attached. Amount due: 49 EUR, paid by card.",
+  }),
+  message({
+    id: "invoice-may",
+    sender: "billing@hosting.example",
+    subject: "Invoice for May",
+    date: "2026-05-31T23:00:00Z",
+    labels: ["Inbox", "Invoices"],
+    hasAttachment: true,
+    text: "Your invoice for May is attached. Amount due: 59 EUR, paid by card.",
+  }),
+  message({
+    id: "invoice-question",
+    sender: "maria@ekenstam.example",
+    subject: "Question about hosting",
+    date: "2026-05-02T13:40:00Z",
+    labels: ["Inbox"],
+    text: "Did we pay the hosting invoice for April? I can't find the receipt anywhere.",
+  }),
+  message({
+    id: "dentist",
+    sender: "reception@smile.example",
+    subject: "Appointment reminder",
+    date: "2026-06-03T07:00:00Z",
+    labels: ["Inbox"],
+    text: "This is a reminder of your dentist appointment on Thursday at 15:30. Reply to move it.",
+  }),
+  message({
+    id: "train-tickets",
+    sender: "tickets@rail.example",
+    subject: "Your train tickets to Gothenburg",
+    date: "2026-06-10T12:00:00Z",
+    labels: ["Travel"],
+    hasAttachment: true,
+    text: "Departure 07:12 from Stockholm Central, car 4, seat 23. Show the attached ticket on board.",
+  }),
+  message({
+    id: "hotel",
+    sender: "bookings@hotelhaga.example",
+    subject: "Booking confirmation, Hotel Haga",
+    date: "2026-06-10T12:30:00Z",
+    labels: ["Inbox", "Travel"],
+    text: "Two nights, check-in after 15:00. Breakfast is served from seven until ten.",
+  }),
+  message({
+    id: "lunch",
+    sender: "erik@forsberg.example",
+    subject: "Lunch on Friday?",
+    date: "2026-06-11T09:15:00Z",
+    labels: ["Inbox"],
+    text: "Want to grab lunch on Friday near your office? The Thai place is open again.",
+  }),
+  message({
+    id: "password-reset",
+    sender: "no-reply@service.example",
+    subject: "Reset your password",
+    date: "2026-02-14T22:01:00Z",
+    labels: ["Trash"],
+    text: "Someone asked to reset your password. If it was you, use the link below within an hour.",
+  }),
+  message({
+    id: "cinnamon-buns",
+    sender: "grandma@family.example",
+    subject: "Cinnamon bun recipe",
+    date: "2026-01-05T15:00:00Z",
+    text: "Butter, sugar, cinnamon and cardamom. Let the dough rise twice and bake at 225 degrees.",
+  }),
+  message({
+    id: "github-issue",
+    sender: "notifications@github.example",
+    subject: "New issue on duva",
+    date: "2026-09-30T20:00:00Z",
+    labels: ["Inbox"],
+    text: "A new issue was opened: results should leave out mail marked as junk unless asked.",
+  }),
+  message({
+    id: "phishing",
+    sender: "security@bank-verify.example",
+    subject: "Your account is locked",
+    date: "2026-08-08T04:04:00Z",
+    labels: ["Spam"],
+    text: "Verify your bank details now or your account will be closed today.",
+  }),
+  message({
+    id: "planning-notes",
+    sender: "johan@ekenstam.example",
+    subject: "Notes from the planning meeting",
+    date: "2026-08-20T14:00:00Z",
+    labels: ["Inbox"],
+    hasAttachment: true,
+    text: "Notes attached. We agreed to ship the first slice in October and to hire one more developer.",
+  }),
+  message({
+    id: "birthday",
+    sender: "sara@family.example",
+    subject: "Birthday party on Saturday",
+    date: "2026-08-25T17:00:00Z",
+    labels: ["Inbox"],
+    text: "Ella turns seven! Party at our place on Saturday from two. Bring a towel, there will be a pool.",
+  }),
+  message({
+    id: "car-service",
+    sender: "service@garage.example",
+    subject: "Your car is due for service",
+    date: "2026-09-01T08:00:00Z",
+    text: "Your car is due for its yearly service. Book a time online or call the garage.",
+  }),
+  message({
+    id: "flight",
+    sender: "checkin@airline.example",
+    subject: "Check-in is open",
+    date: "2026-09-12T05:00:00Z",
+    labels: ["Inbox", "Travel"],
+    text: "Check in now for flight SK 1415 to Paris. Boarding closes 20 minutes before departure.",
+  }),
+  message({
+    id: "contract",
+    sender: "lawyer@firm.example",
+    subject: "Contract draft",
+    date: "2026-09-15T10:30:00Z",
+    labels: ["Inbox"],
+    hasAttachment: true,
+    text: "Please read the contract draft before Wednesday and mark anything you want changed.",
+  }),
+  message({
+    id: "school",
+    sender: "teacher@school.example",
+    subject: "Parent meeting",
+    date: "2026-09-18T12:00:00Z",
+    labels: ["Inbox"],
+    text: "The parent meeting is on Tuesday at six in the dining hall. Coffee and buns are served.",
+  }),
+  message({
+    id: "weekly-news",
+    sender: "news@product.example",
+    subject: "This week in product news",
+    date: "2026-09-21T06:00:00Z",
+    text: "Dark mode is here, exports are faster, and the mobile app has a new home screen.",
+  }),
+  message({
+    id: "electricity",
+    sender: "billing@power.example",
+    subject: "Your electricity bill",
+    date: "2026-09-25T06:00:00Z",
+    labels: ["Inbox"],
+    hasAttachment: true,
+    text: "Your electricity bill for September is 812 SEK. It will be paid on the 30th.",
+  }),
+  message({
+    id: "book-club",
+    sender: "anna@bookclub.example",
+    subject: "Next book",
+    date: "2026-09-28T19:00:00Z",
+    labels: ["Inbox"],
+    text: "We read The Long Ships next. Meet at the library on the last Sunday of October.",
+  }),
+  message({
+    id: "faktura-sv",
+    sender: "ekonomi@bostad.example",
+    subject: "Faktura för oktober",
+    date: "2026-09-26T08:00:00Z",
+    labels: ["Inbox"],
+    hasAttachment: true,
+    text: "Hej! Här kommer fakturan för hyran i oktober. Betala senast den sista oktober, så slipper du påminnelseavgiften.",
+  }),
+  message({
+    id: "mote-sv",
+    sender: "lena@foreningen.example",
+    subject: "Mötet flyttas till torsdag",
+    date: "2026-09-27T18:00:00Z",
+    labels: ["Inbox"],
+    text: "Vi flyttar mötet med styrelsen till torsdag klockan sju. Ta med protokollet från förra mötet.",
+  }),
+];

@@ -12,7 +12,11 @@
     "./eraser-lambda": "./src/eraser-lambda.ts",
     "./download-lambda": "./src/download-lambda.ts",
     "./unsubscriber-lambda": "./src/unsubscriber-lambda.ts",
+    "./search-lambda": "./src/search-lambda.ts",
+    "./indexer-lambda": "./src/indexer-lambda.ts",
+    "./feeder-lambda": "./src/feeder-lambda.ts",
     "./infrastructure": "./src/infrastructure.ts",
+    "./indexing": "./src/indexing.ts",
     "./harness": "./test/harness.ts"
   },
   "scripts": {
@@ -25,12 +29,16 @@
     "@aws-sdk/client-s3": "^3.1146.0",
     "@aws-sdk/client-ses": "^3.1146.0",
     "@aws-sdk/client-sesv2": "^3.1146.0",
+    "@aws-sdk/client-sqs": "^3.1146.0",
     "@aws-sdk/lib-dynamodb": "^3.1146.0",
     "@duva/openapi": "*",
+    "@lancedb/lancedb": "0.39.0",
+    "apache-arrow": "18.1.0",
     "aws-jwt-verify": "^5.2.1",
     "html-to-text": "^10.0.1",
     "postal-mime": "^4.0.2",
-    "sanitize-html": "^2.18.0"
+    "sanitize-html": "^2.18.0",
+    "snowball-stemmers": "^0.6.0"
   },
   "devDependencies": {
     "@aws-sdk/client-dynamodb-streams": "^3.1146.0",

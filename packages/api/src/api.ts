@@ -27,6 +27,7 @@ import {
 import type { Deployment } from "./deployment.ts";
 import { type Actor, actorOf } from "./organization.ts";
 import { changePreferences, getPreferences } from "./preferences.ts";
+import { searchMailbox } from "./search.ts";
 import { blockSender, getScreener, letInSender, listScreenedSenders, removeScreenedSender, switchScreener } from "./screener.ts";
 import { changeOrganizationSettings, getOrganizationSettings } from "./settings.ts";
 import { getStatus } from "./status.ts";
@@ -68,6 +69,7 @@ const handlers: Record<OperationId, OperationHandler> = {
   labelThreads: labelMailboxThreads,
   getThread,
   listAllMail,
+  searchMailbox,
   listLabels: listMailboxLabels,
   createLabel: createMailboxLabel,
   renameLabel: renameMailboxLabel,

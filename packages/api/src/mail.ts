@@ -673,7 +673,7 @@ export async function findMessage(
 }
 
 /** The message with the ID in the mailbox as stored, with its thread, or undefined if the mailbox has no such message. */
-async function storedMessage(table: Table, mailbox: string, id: string): Promise<(StoredMessage & { thread: string }) | undefined> {
+export async function storedMessage(table: Table, mailbox: string, id: string): Promise<(StoredMessage & { thread: string }) | undefined> {
   const db = documents(table);
   const { Item: ref } = await db.send(new GetCommand({ TableName: table.name, Key: messageRefKey(mailbox, id), ConsistentRead: true }));
   if (ref === undefined) return undefined;
@@ -747,7 +747,7 @@ async function servedHtml(html: string, parts: Part[], linkTo: (attachment: numb
 }
 
 // Threads stored before snippets and read state existed have neither, and are read.
-const summaryOf = ({ id, subject, from, snippet, labels, unread, latestAt, messages }: ThreadSummary): ThreadSummary => ({
+export const summaryOf = ({ id, subject, from, snippet, labels, unread, latestAt, messages }: ThreadSummary): ThreadSummary => ({
   id,
   subject,
   from: addressOf(from),
@@ -872,6 +872,50 @@ export async function correspondents(table: Table, mailbox: string): Promise<{ f
     start = page.LastEvaluatedKey;
   } while (start !== undefined);
   return { from, sentTo };
+}
+
+/**
+ * The mailbox's threads after the one the cursor names, or from the first, each with its summary
+ * and its messages, oldest first, until those given hold at least `messages` messages. Leaves out
+ * threads being erased. Gives the cursor to read on from, if more threads follow.
+ */
+export async function threadsWithMessages(
+  table: Table,
+  mailbox: string,
+  { after, messages: wanted }: { after?: string; messages: number },
+): Promise<{ threads: { summary: StoredSummary; messages: (StoredMessage & { thread: string })[] }[]; next?: string }> {
+  const threads: { summary: StoredSummary; messages: (StoredMessage & { thread: string })[] }[] = [];
+  let count = 0;
+  // A thread's messages sort before the thread itself, so each thread's messages wait for its summary.
+  let messages: (StoredMessage & { thread: string })[] = [];
+  let start: Record<string, unknown> | undefined = after === undefined ? undefined : { [pk]: partition(mailbox), [sk]: after };
+  let last = after;
+  do {
+    const page = await documents(table).send(
+      new QueryCommand({
+        TableName: table.name,
+        KeyConditionExpression: `${pk} = :mailbox AND begins_with(${sk}, :threads)`,
+        ExpressionAttributeValues: { ":mailbox": partition(mailbox), ":threads": "thread#" },
+        ConsistentRead: true,
+        ExclusiveStartKey: start,
+      }),
+    );
+    for (const item of page.Items ?? []) {
+      if (!(item[sk] as string).endsWith("#thread")) {
+        messages.push(item as StoredMessage & { thread: string });
+        continue;
+      }
+      last = item[sk] as string;
+      if (item.erasing !== true) {
+        threads.push({ summary: { ...summaryOf(item as ThreadSummary), ...(item.sent === true && { sent: true }) }, messages });
+        count += messages.length;
+      }
+      messages = [];
+      if (count >= wanted) return { threads, next: last };
+    }
+    start = page.LastEvaluatedKey;
+  } while (start !== undefined);
+  return { threads };
 }
 
 /** Notes that the mailbox has sent to each address. */

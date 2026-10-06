@@ -31,6 +31,8 @@ export interface ParsedMail {
    * with \n line endings and none at the end.
    */
   text: string;
+  /** Whether the text comes from the HTML, since the message has no text of its own. */
+  textFromHtml: boolean;
   /** The HTML body, from the HTML part or a text part that holds an HTML document, if it has one. */
   html?: string;
   attachments: components["schemas"]["Attachment"][];
@@ -50,7 +52,8 @@ export interface Part {
 export async function parseMail(raw: Uint8Array): Promise<ParsedMail> {
   const email = await PostalMime.parse(raw, { attachmentEncoding: "arraybuffer" });
   const date = email.date === undefined ? undefined : new Date(email.date);
-  const text = email.text !== undefined && !isHtmlDocument(email.text) ? email.text : htmlToText(email.html ?? email.text ?? "");
+  const textFromHtml = email.text === undefined || isHtmlDocument(email.text);
+  const text = textFromHtml ? htmlToText(email.html ?? email.text ?? "") : email.text!;
   const html = email.html ?? (email.text !== undefined && isHtmlDocument(email.text) ? email.text : undefined);
   const parts = email.attachments.map(({ filename, mimeType, contentId, content }) => ({
     ...(filename !== null && { name: filename }),
@@ -69,6 +72,7 @@ export async function parseMail(raw: Uint8Array): Promise<ParsedMail> {
     subject: email.subject ?? "",
     date: date === undefined || Number.isNaN(date.getTime()) ? undefined : date.toISOString(),
     text: text.replace(/\r\n?/g, "\n").replace(/\n+$/, ""),
+    textFromHtml,
     ...(html !== undefined && { html }),
     attachments: parts.map(({ name, type, content }) => ({ ...(name !== undefined && { name }), type, size: content.byteLength })),
     parts,
@@ -98,6 +102,15 @@ const htmlToText = (html: string) =>
       { selector: "img", format: "skip" },
     ],
   });
+
+/**
+ * The message's text as search indexes it: its text, or for mail with only HTML, the HTML as text
+ * without the targets of its links, where trackers sit, and without its images.
+ */
+export const searchableText = ({ text, textFromHtml, html }: ParsedMail) =>
+  textFromHtml && html !== undefined
+    ? convert(html, { wordwrap: false, selectors: [{ selector: "img", format: "skip" }, { selector: "a", options: { ignoreHref: true } }] }).replace(/\n+$/, "")
+    : text;
 
 /** A message Duva sends. */
 export interface OutgoingMail {

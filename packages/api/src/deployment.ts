@@ -4,6 +4,7 @@ import type { Downloads } from "./attachments.ts";
 import type { Humans } from "./user-pool.ts";
 import type { MailBucket } from "./mail-bucket.ts";
 import type { Receiving } from "./receiving.ts";
+import type { Searcher } from "./searching.ts";
 import type { Unsubscriber } from "./unsubscriber.ts";
 
 /** Duva's one DynamoDB table. */
@@ -27,4 +28,6 @@ export interface Deployment {
   downloads: Downloads;
   /** Sends the one-click POST when an actor blocks a sender. */
   unsubscriber: Unsubscriber;
+  /** Runs searches in the mailboxes' indexes. */
+  searcher: Searcher;
 }

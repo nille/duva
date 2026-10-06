@@ -705,6 +705,72 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+  /mailboxes/{mailbox}/search:
+    get:
+      operationId: searchMailbox
+      summary: Search a mailbox's threads by words and filters.
+      description: >
+        Finds the threads whose messages have every word, "quoted phrase" and
+        filter in q, best first, each with the message that matched best and a
+        snippet of its text where the words stand. Subjects, senders and
+        recipients by name and address, message text and attachment names are
+        searched, Sent included. A word also finds its other forms, in English
+        and Swedish. Threads in Spam and Trash, and those waiting in the
+        Screener, are left out unless q has label:spam or label:trash. New
+        mail is found within a minute, and label and read changes count at
+        once. Only those who can read the mailbox can search it. To read the
+        next page, call again with the answer's next as after.
+      x-cli-command: search
+      parameters:
+        - $ref: "#/components/parameters/Mailbox"
+        - name: q
+          in: query
+          required: true
+          description: >
+            What to search for: words, "quoted phrases", and the filters
+            from: and to: (part of a name or address), subject: (a word or
+            quoted phrase in the subject), label: (a label's name, quoted if
+            it has spaces), has:attachment, is:unread, after: (received on or
+            after the day) and before: (received before the day), with days as
+            YYYY-MM-DD in UTC. Everything given must hold.
+          schema:
+            type: string
+            examples: ['invoice from:ada after:2026-09-01 "hosting plan"']
+        - name: sort
+          in: query
+          description: Best first, or newest first. Without words or phrases, both are newest first.
+          schema:
+            type: string
+            enum: [relevance, newest]
+            default: relevance
+        - name: limit
+          in: query
+          description: How many threads a page lists at most.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: after
+          in: query
+          description: Where the page starts, the next of the page before it. Leave it out for the first page.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: A page of the threads found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchResults"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /mailboxes/{mailbox}/labels:
     get:
       operationId: listLabels
@@ -2739,6 +2805,49 @@ components:
           maxLength: 100
           description: The label's name.
           examples: ["Receipts"]
+    SearchResults:
+      type: object
+      additionalProperties: false
+      required: [results]
+      properties:
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/SearchResult"
+        next:
+          type: string
+          description: Present when more threads follow. Pass it as after to read the next page.
+    SearchResult:
+      type: object
+      additionalProperties: false
+      required: [thread, message, snippet, highlights]
+      properties:
+        thread:
+          $ref: "#/components/schemas/ThreadSummary"
+        message:
+          type: string
+          description: The ID of the thread's message that matched best, or the newest that matched when sorted by newest.
+        snippet:
+          type: string
+          description: The part of that message's text where the words stand, on one line, without quoted lines.
+        highlights:
+          type: array
+          description: Where in the snippet the words and phrases match, in order.
+          items:
+            $ref: "#/components/schemas/Highlight"
+    Highlight:
+      type: object
+      additionalProperties: false
+      required: [start, end]
+      properties:
+        start:
+          type: integer
+          minimum: 0
+          description: Where the match starts in the snippet, counted in UTF-16 code units, as JavaScript counts a string's length.
+        end:
+          type: integer
+          minimum: 0
+          description: Where the match ends, after its last code unit.
     ThreadSummary:
       type: object
       additionalProperties: false

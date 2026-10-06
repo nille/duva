@@ -396,6 +396,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/mailboxes/{mailbox}/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search a mailbox's threads by words and filters.
+         * @description Finds the threads whose messages have every word, "quoted phrase" and filter in q, best first, each with the message that matched best and a snippet of its text where the words stand. Subjects, senders and recipients by name and address, message text and attachment names are searched, Sent included. A word also finds its other forms, in English and Swedish. Threads in Spam and Trash, and those waiting in the Screener, are left out unless q has label:spam or label:trash. New mail is found within a minute, and label and read changes count at once. Only those who can read the mailbox can search it. To read the next page, call again with the answer's next as after.
+         */
+        get: operations["searchMailbox"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/mailboxes/{mailbox}/labels": {
         parameters: {
             query?: never;
@@ -1604,6 +1624,26 @@ export interface components {
              */
             name: string;
         };
+        SearchResults: {
+            results: components["schemas"]["SearchResult"][];
+            /** @description Present when more threads follow. Pass it as after to read the next page. */
+            next?: string;
+        };
+        SearchResult: {
+            thread: components["schemas"]["ThreadSummary"];
+            /** @description The ID of the thread's message that matched best, or the newest that matched when sorted by newest. */
+            message: string;
+            /** @description The part of that message's text where the words stand, on one line, without quoted lines. */
+            snippet: string;
+            /** @description Where in the snippet the words and phrases match, in order. */
+            highlights: components["schemas"]["Highlight"][];
+        };
+        Highlight: {
+            /** @description Where the match starts in the snippet, counted in UTF-16 code units, as JavaScript counts a string's length. */
+            start: number;
+            /** @description Where the match ends, after its last code unit. */
+            end: number;
+        };
         ThreadSummary: {
             /** @description The thread's ID. */
             id: string;
@@ -2639,6 +2679,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ThreadList"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    searchMailbox: {
+        parameters: {
+            query: {
+                /** @description What to search for: words, "quoted phrases", and the filters from: and to: (part of a name or address), subject: (a word or quoted phrase in the subject), label: (a label's name, quoted if it has spaces), has:attachment, is:unread, after: (received on or after the day) and before: (received before the day), with days as YYYY-MM-DD in UTC. Everything given must hold. */
+                q: string;
+                /** @description Best first, or newest first. Without words or phrases, both are newest first. */
+                sort?: "relevance" | "newest";
+                /** @description How many threads a page lists at most. */
+                limit?: number;
+                /** @description Where the page starts, the next of the page before it. Leave it out for the first page. */
+                after?: string;
+            };
+            header?: never;
+            path: {
+                /** @description The mailbox's ID. */
+                mailbox: components["parameters"]["Mailbox"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of the threads found. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchResults"];
                 };
             };
             400: components["responses"]["BadRequest"];

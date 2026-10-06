@@ -12,6 +12,7 @@ import { s3MailBucket } from "./mail-bucket.ts";
 import { required } from "./environment.ts";
 import { lambdaEraser } from "./erasure.ts";
 import { sesReceiptRules } from "./receiving.ts";
+import { lambdaSearcher } from "./searching.ts";
 import { lambdaUnsubscriber } from "./unsubscriber.ts";
 
 const mailBucket = required(environmentVariables.mailBucket);
@@ -30,5 +31,6 @@ export const handler = createApi({
   },
   eraser: lambdaEraser(lambda, required(environmentVariables.eraserFunction)),
   unsubscriber: lambdaUnsubscriber(lambda, required(environmentVariables.unsubscriberFunction)),
+  searcher: lambdaSearcher(lambda, required(environmentVariables.searchFunction)),
   downloads: { url: required(environmentVariables.downloadUrl), lifetime: downloadLinkLifetime },
 });

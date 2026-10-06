@@ -44,6 +44,8 @@ Facts about AWS that shaped Duva's design, each with how it was established. A c
 
 - **In a versioned bucket a delete without a version ID only adds a delete marker,** and the earlier versions stay. So erasing dropped mail lists the key's versions and delete markers, which needs `s3:ListBucketVersions`, and deletes each by ID, which needs `s3:DeleteObjectVersion`. _[Deleting object versions](https://docs.aws.amazon.com/AmazonS3/latest/userguide/DeletingObjectVersions.html); in the real run of #8 a dropped message left no version and no delete marker, and in the real run of #28 the eraser did the same for a received copy under `inbound/` and a sent one under `sent/`, with `s3:ListBucketVersions` conditioned on each prefix._
 
+- **So search indexes are in a bucket of their own, without versioning.** LanceDB deletes the files of the versions it prunes, and in the versioned mail bucket each delete would only add a marker, so erased mail's text would stay in S3. _Follows from the fact above; ADR-0007._
+
 ## DynamoDB
 
 - **Two transactions on the same item at once can cancel one with `TransactionConflict`,** not `ConditionalCheckFailed`. Two messages arriving together in one mailbox both claimed its feed's next position, and one was cancelled that way, so a feed write retries on both. _Real run of #7._

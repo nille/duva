@@ -8,14 +8,18 @@
 // unsubscriber, which refuses addresses that aren't public; the web app is served with the config
 // deploy published; the user pool takes sign-in names in any case, and no pool the stack retired
 // is left; once an address exists, SES's receipt rule lists it; and no received mail and no
-// approved send waits in a failure queue. Signing in stays with a human. Then prints how many
+// approved send waits in a failure queue; nothing but IAM may invoke search, which runs at 10,240 MB
+// on x64; every mailbox's search index is backfilled, and no indexer task waits in its failure
+// queue. Signing in stays with a human. Then prints how many
 // messages Duva dropped on arrival each day of the last 7, by reason. Exits 1 if any check fails.
 import { CloudFormationClient, DescribeStacksCommand, paginateListStackResources } from "@aws-sdk/client-cloudformation";
 import { CloudWatchClient, GetMetricDataCommand } from "@aws-sdk/client-cloudwatch";
 import { CognitoIdentityProviderClient, DescribeUserPoolCommand, paginateListUserPools } from "@aws-sdk/client-cognito-identity-provider";
-import { GetFunctionUrlConfigCommand, GetPolicyCommand, InvokeCommand, LambdaClient, ResourceNotFoundException } from "@aws-sdk/client-lambda";
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { GetFunctionConfigurationCommand, GetFunctionUrlConfigCommand, GetPolicyCommand, InvokeCommand, LambdaClient, ResourceNotFoundException } from "@aws-sdk/client-lambda";
 import { DescribeReceiptRuleSetCommand, SESClient } from "@aws-sdk/client-ses";
 import { GetQueueAttributesCommand, SQSClient } from "@aws-sdk/client-sqs";
+import { indexedMailboxes } from "@duva/api/indexing";
 import { dropMetric, dropReasons, inboundPrefix, receiptRuleName } from "@duva/api/infrastructure";
 import { stackName, stackOutputs } from "@duva/infra/outputs";
 
@@ -126,6 +130,24 @@ for (const url of ["https://169.254.169.254/latest/meta-data/", "https://localho
     return FunctionError === undefined && answer === JSON.stringify({ outcome: "failed", reason: "notPublic" }) ? undefined : `answered ${answer}`;
   });
 }
+const searchFunction = output(stackOutputs.searchFunction);
+await check("search has no resource policy, so only IAM invokes it", () => missing(lambda.send(new GetPolicyCommand({ FunctionName: searchFunction }))));
+await check("search has no function URL", () => missing(lambda.send(new GetFunctionUrlConfigCommand({ FunctionName: searchFunction }))));
+await check("search runs at 10,240 MB on x64, as ADR-0007 measured", async () => {
+  const { MemorySize, Architectures } = await lambda.send(new GetFunctionConfigurationCommand({ FunctionName: searchFunction }));
+  return MemorySize === 10_240 && JSON.stringify(Architectures) === '["x86_64"]' ? undefined : `runs at ${MemorySize} MB on ${Architectures}`;
+});
+await check("searching without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/mailboxes/x/search?q=x`), 401));
+await check("every mailbox's search index is backfilled", async () => {
+  let table: string | undefined;
+  for await (const { StackResourceSummaries = [] } of paginateListStackResources({ client: cloudFormation }, { StackName: stackName })) {
+    table ??= StackResourceSummaries.find(({ ResourceType }) => ResourceType === "AWS::DynamoDB::GlobalTable")?.PhysicalResourceId;
+  }
+  if (table === undefined) return "the stack has no table";
+  const { mailboxes, indexed } = await indexedMailboxes({ client: new DynamoDBClient({ region }), name: table });
+  console.log(`      ${indexed} of ${mailboxes} mailboxes' indexes are backfilled`);
+  return indexed === mailboxes ? undefined : `${mailboxes - indexed} of ${mailboxes} aren't yet. Wait a few minutes, or run duva deploy again to finish them.`;
+});
 await check("deleting a draft without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/mailboxes/x/drafts/x`, { method: "DELETE" }), 401));
 await check("labelling threads without credentials answers 401", async () =>
   expectStatus(await fetch(`${apiUrl}/mailboxes/x/threads/labels`, { method: "POST", headers: { "content-type": "application/json" }, body: '{"threads":["x"],"add":["trash"]}' }), 401),
@@ -208,6 +230,10 @@ await check("no received mail waits in the failure queue", async () => {
 await check("no approved send waits in the failure queue", async () => {
   const waiting = await waitingIn(stackOutputs.sendFailures);
   return waiting === 0 ? undefined : `${waiting} stream records failed. Fix what failed, then read them from the stream again within 24 hours of the decision.`;
+});
+await check("no indexer task waits in the failure queue", async () => {
+  const waiting = await waitingIn(stackOutputs.indexFailures);
+  return waiting === 0 ? undefined : `${waiting} tasks failed. Fix what failed; each mailbox's next change catches its index up.`;
 });
 await check("the web app is served", async () => {
   const response = await fetch(`${webUrl}/`);
