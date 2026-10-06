@@ -9,7 +9,7 @@
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
-import { createServer } from "node:http";
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { extname, join, normalize } from "node:path";
@@ -125,21 +125,21 @@ const types: Record<string, string> = {
 };
 
 async function serve(root: string, harness: { url: string; signIn: { clientId: string } }, hiddenPollInterval: number) {
-  const server = createServer(async (incoming, outgoing) => {
+  const answer = async (incoming: IncomingMessage, outgoing: ServerResponse) => {
     const url = new URL(incoming.url ?? "/", origin);
     const passed = url.pathname.startsWith("/api/") ? url.pathname.slice("/api".length) : url.pathname.startsWith("/oauth2/") ? url.pathname : undefined;
     if (passed !== undefined) {
       const chunks: Buffer[] = [];
       for await (const chunk of incoming) chunks.push(chunk);
       const headers = Object.entries(incoming.headers).flatMap(([name, value]) => (typeof value === "string" && name !== "host" ? [[name, value] as [string, string]] : []));
-      const answer = await fetch(`${harness.url}${passed}${url.search}`, {
+      const reply = await fetch(`${harness.url}${passed}${url.search}`, {
         method: incoming.method,
         headers,
         body: chunks.length > 0 ? Buffer.concat(chunks) : undefined,
         redirect: "manual",
       });
-      outgoing.writeHead(answer.status, Object.fromEntries(answer.headers));
-      outgoing.end(Buffer.from(await answer.arrayBuffer()));
+      outgoing.writeHead(reply.status, Object.fromEntries(reply.headers));
+      outgoing.end(Buffer.from(await reply.arrayBuffer()));
       return;
     }
     if (url.pathname === "/config.json") {
@@ -152,15 +152,25 @@ async function serve(root: string, harness: { url: string; signIn: { clientId: s
     const body = await readFile(join(root, path)).catch(() => undefined);
     if (body === undefined) outgoing.writeHead(404).end();
     else outgoing.writeHead(200, { "content-type": types[extname(path)] ?? "application/octet-stream" }).end(body);
+  };
+  // Closing the browser and this server's connections doesn't stop what a request passed on to the
+  // harness is still waiting for. Closed under it, the harness would cut its connection, and the
+  // request would fail after the test. So closing waits for every request to be answered.
+  const answering = new Set<Promise<void>>();
+  const server = createServer((incoming, outgoing) => {
+    const answered = answer(incoming, outgoing);
+    answering.add(answered);
+    void answered.finally(() => answering.delete(answered));
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   return {
     url: `${origin}/`,
-    close: () =>
-      new Promise<void>((resolve, reject) => {
-        server.close((error) => (error ? reject(error) : resolve()));
-        server.closeAllConnections();
-      }),
+    close: async () => {
+      const closed = new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+      server.closeAllConnections();
+      await closed;
+      await Promise.allSettled(answering);
+    },
   };
 }
