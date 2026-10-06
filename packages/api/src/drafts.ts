@@ -4,6 +4,7 @@ import { isEmailAddress } from "./email-address.ts";
 import type { Deployment } from "./deployment.ts";
 import {
   addDraft,
+  AgentPaused,
   AlreadyApproved,
   AlreadyDecided,
   AlreadyWaiting,
@@ -272,6 +273,7 @@ async function decided(deployment: Deployment, decide: () => Promise<Approval>, 
     return { statusCode, body: (await withOriginal(deployment, await decide())) satisfies components["schemas"]["Approval"] };
   } catch (error) {
     if (error instanceof AlreadyDecided) return refusal(409, `The approval was already ${error.approval.state}, so it can't be decided again.`);
+    if (error instanceof AgentPaused) return refusal(409, "The agent is paused, so its sends can't be approved. Unpause it first, or reject this with a note.");
     throw error;
   }
 }

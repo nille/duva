@@ -1,22 +1,27 @@
 import type { components } from "@duva/openapi";
 import { jsonBody, type OperationHandler, refusal } from "./api.ts";
 import { sponsorAccessAllows } from "./access.ts";
-import { withdrawPendingApprovals } from "./drafting.ts";
+import { releaseHeldSends, withdrawPendingApprovals } from "./drafting.ts";
+import type { Table } from "./deployment.ts";
 import { syncRecipients } from "./receiving.ts";
 import { removeAgentWithMailboxes } from "./removal.ts";
 import {
+  type Actor,
   addAgent,
   type Agent,
   type AgentSettings,
   agentSettings,
   changeAgentSettings as changeStoredSettings,
   defaultAgentSettings,
+  duva,
   findActor,
   KeyChanged,
   NowhereToRecord,
   ownedMailboxes,
+  pauseAgent as pause,
   replaceAgentKey,
   sponsoredAgents,
+  unpauseAgent as unpause,
 } from "./organization.ts";
 
 export const createAgent: OperationHandler = async (event, deployment, actor) => {
@@ -93,6 +98,8 @@ export const changeAgentSettings: OperationHandler = async (event, deployment, a
   }
 };
 
+type Pause = components["schemas"]["Pause"];
+
 const sponsorAccesses: AgentSettings["sponsorAccess"][] = ["none", "read", "full"];
 
 /** The agent the call's path names, or a refusal if there is none. */
@@ -103,11 +110,44 @@ async function agentAsked(event: Parameters<OperationHandler>[0], deployment: Pa
   return agent;
 }
 
+/** Whether the actor answers for the agent: its sponsor or an admin, who may remove and pause it. */
+const sponsorOrAdmin = (actor: Actor, agent: Agent) => actor.id === agent.sponsor || actor.admin;
+
 export const removeAgent: OperationHandler = async (event, deployment, actor) => {
   const agent = await agentAsked(event, deployment);
   if ("statusCode" in agent) return agent;
-  if (actor!.id !== agent.sponsor && !actor!.admin) return refusal(403, "Only the agent's sponsor and admins can remove it. Ask its sponsor.");
+  if (!sponsorOrAdmin(actor!, agent)) return refusal(403, "Only the agent's sponsor and admins can remove it. Ask its sponsor.");
   const mailboxes = await removeAgentWithMailboxes(deployment, { agent, by: actor!.id });
   await syncRecipients(deployment.table, deployment.receiving);
   return { statusCode: 200, body: { agent, mailboxes } satisfies components["schemas"]["AgentRemoval"] };
 };
+
+export const pauseAgent: OperationHandler = async (event, deployment, actor) => {
+  const agent = await agentAsked(event, deployment);
+  if ("statusCode" in agent) return agent;
+  if (!sponsorOrAdmin(actor!, agent)) return refusal(403, "Only the agent's sponsor and admins can pause it. Ask its sponsor.");
+  const paused = await pause(deployment.table, { agent, by: actor!.id });
+  return paused === undefined ? removedMeanwhile(agent) : { statusCode: 200, body: paused satisfies components["schemas"]["Agent"] };
+};
+
+export const unpauseAgent: OperationHandler = async (event, deployment, actor) => {
+  const agent = await agentAsked(event, deployment);
+  if ("statusCode" in agent) return agent;
+  // Only a human unpauses, so no agent admin undoes a pause, Duva's included (ADR-0021).
+  if (actor!.kind !== "human" || !sponsorOrAdmin(actor!, agent)) return refusal(403, "Only the agent's sponsor and human admins can unpause it. Ask its sponsor.");
+  const unpaused = await unpause(deployment.table, { agent, by: actor!.id });
+  if (unpaused === undefined) return removedMeanwhile(agent);
+  // Each unpause releases what is held, so unpausing again finishes what one that stopped partway left.
+  await releaseHeldSends(deployment.table, agent);
+  return { statusCode: 200, body: unpaused satisfies components["schemas"]["Agent"] };
+};
+
+const removedMeanwhile = (agent: Agent) => refusal(404, `The agent ${JSON.stringify(agent.id)} was removed meanwhile.`);
+
+/** The answer to every call with a paused agent's key, naming who paused it. */
+export async function pausedRefusal(table: Table, { by }: Pause) {
+  const pauser = by === duva ? undefined : await findActor(table, by);
+  // Only an admin can leave while the agent stays, since its sponsor's removal removes it.
+  const who = by === duva ? "Duva" : pauser?.kind === "human" ? pauser.email : (pauser?.name ?? "an admin who has since left");
+  return refusal(403, `This agent is paused by ${who}. Ask its sponsor to unpause it.`);
+}

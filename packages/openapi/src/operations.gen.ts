@@ -360,6 +360,50 @@ export const operations = [
     ]
   },
   {
+    "operationId": "pauseAgent",
+    "method": "post",
+    "path": "/agents/{agent}/pause",
+    "routeKey": "POST /agents/{agent}/pause",
+    "summary": "Pause an agent, which refuses its key and holds its approved sends until it is unpaused.",
+    "description": "Only the agent's sponsor and admins can pause it. While it is paused, every call with its key is refused with 403, its approvals wait but can't be sent, and its sends already approved are held. Mail to its mailboxes keeps arriving. Pausing is recorded under you in the change feed of each of the agent's mailboxes and in the organization's. Pausing a paused agent changes nothing.",
+    "signIn": true,
+    "command": [
+      "agents",
+      "pause"
+    ],
+    "options": [
+      {
+        "name": "agent",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The agent's ID."
+      }
+    ]
+  },
+  {
+    "operationId": "unpauseAgent",
+    "method": "post",
+    "path": "/agents/{agent}/unpause",
+    "routeKey": "POST /agents/{agent}/unpause",
+    "summary": "Unpause an agent, which lets its key work again and sends what it held.",
+    "description": "Only the agent's sponsor and human admins can unpause it, never an agent. Its sends held while it was paused go out, those from each mailbox oldest first, so look at them first. Unpausing is recorded under you in the change feed of each of the agent's mailboxes and in the organization's. Unpausing an agent that isn't paused changes nothing.",
+    "signIn": true,
+    "command": [
+      "agents",
+      "unpause"
+    ],
+    "options": [
+      {
+        "name": "agent",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The agent's ID."
+      }
+    ]
+  },
+  {
     "operationId": "getAgentSettings",
     "method": "get",
     "path": "/agents/{agent}/settings",
@@ -1813,7 +1857,7 @@ export const operations = [
     "path": "/approvals/{approval}/send",
     "routeKey": "POST /approvals/{approval}/send",
     "summary": "Send a draft waiting for your approval, as is or with your changes.",
-    "description": "Give recipients, a subject or text to send your version instead of the agent's. Duva then sends it through SES from the draft's address, as a reply in the thread if it is one. Every message an agent sends carries the Duva-Agent header, naming the agent and the human it acts for, also when you changed it, and a line that says so after the text unless you switched that off for the agent. The draft's send shows sending, then sent or failed with the reason. Only the approver can decide an approval, never an agent, and only once: of two decisions at the same time, one is refused. The decision, with any edits, is recorded in the mailbox's change feed under you, and the send under the agent.",
+    "description": "Give recipients, a subject or text to send your version instead of the agent's. Duva then sends it through SES from the draft's address, as a reply in the thread if it is one. Every message an agent sends carries the Duva-Agent header, naming the agent and the human it acts for, also when you changed it, and a line that says so after the text unless you switched that off for the agent. The draft's send shows sending, then sent or failed with the reason. Only the approver can decide an approval, never an agent, and only once: of two decisions at the same time, one is refused. The decision, with any edits, is recorded in the mailbox's change feed under you, and the send under the agent. While the agent is paused, its approvals wait and can't be sent, which is 409.",
     "signIn": true,
     "command": [
       "approvals",

@@ -13,7 +13,19 @@ import type { Table } from "./deployment.ts";
 import { entryKey, recordChanges } from "./feed.ts";
 import { type StoredMessage, storeSentMessage } from "./mail.ts";
 import { sponsorAccessAllows } from "./access.ts";
-import { type Actor, type Agent, agentSettings, agentSettingsUnchanged, type Mailbox, mailboxFeed, mailboxKey, switchesFor } from "./organization.ts";
+import {
+  type Actor,
+  type Agent,
+  agentSettings,
+  agentSettingsUnchanged,
+  agentUnpaused,
+  findActor,
+  type Mailbox,
+  mailboxFeed,
+  mailboxKey,
+  ownedMailboxes,
+  switchesFor,
+} from "./organization.ts";
 import { documents, isNew, pk, sk, type TransactItem } from "./table.ts";
 
 export type Draft = components["schemas"]["Draft"];
@@ -21,8 +33,11 @@ export type Approval = components["schemas"]["Approval"];
 export type SendStatus = components["schemas"]["SendStatus"];
 type Edits = components["schemas"]["Edits"];
 type DraftContent = Omit<Draft, "id" | "updatedAt" | "updatedBy" | "send">;
-/** Where a draft's send stands as stored, with the actor who asked to send it if it needs no approval. */
-type StoredSend = SendStatus & { by?: string };
+/**
+ * Where a draft's send stands as stored, with the actor who asked to send it if it needs no
+ * approval, and when they asked, which sends held while an agent is paused are released in.
+ */
+type StoredSend = SendStatus & { by?: string; askedAt?: string };
 /**
  * A draft as stored, with the count of its writes, which each write checks, so of two at once one
  * retries, and the IDs of the approvals it asked for, so erasure finds them. Drafts written before
@@ -218,7 +233,7 @@ export async function askToSend(table: Table, { mailbox, id, actor }: { mailbox:
 async function sendAtOnce(table: Table, { mailbox, draft, by, held }: { mailbox: string; draft: StoredDraft; by: string; held: TransactItem[] }): Promise<Draft> {
   refuseApproved(draft);
   if (draft.to.length === 0) throw new NoRecipient();
-  const asked: StoredDraft = { ...draft, send: { state: "approved", by }, version: draft.version + 1 };
+  const asked: StoredDraft = { ...draft, send: { state: "approved", by, askedAt: new Date().toISOString() }, version: draft.version + 1 };
   const withdrawn = await withdrawing(table, draft.id, draft.send?.state === "waiting" ? draft.send : undefined);
   await recordChanges(table, mailboxFeed(mailbox), {
     by,
@@ -321,18 +336,36 @@ export function reject(table: Table, { approval, by, note }: { approval: Approva
   return decide(table, approval, by, { state: "rejected", note });
 }
 
+/** The agent is paused, so its approvals can't be sent until it is unpaused. */
+export class AgentPaused extends Error {}
+
 /**
  * Approves the pending approval, on behalf of the approver `by`, with the approver's edits to the
  * draft, if any, which the draft then carries. That leaves the draft approved, and the sender sends
  * it from there. The decision is a conditional write, so of two at once one wins and the other
- * throws AlreadyDecided.
+ * throws AlreadyDecided. It holds only while the agent isn't paused, and throws AgentPaused if it is.
  */
-export function approve(table: Table, { approval, by, edits }: { approval: Approval; by: string; edits?: Edits }): Promise<Approval> {
-  return decide(table, approval, by, { state: "approved", edits });
+export async function approve(table: Table, { approval, by, edits }: { approval: Approval; by: string; edits?: Edits }): Promise<Approval> {
+  try {
+    return await decide(table, approval, by, { state: "approved", edits }, [agentUnpaused(table, approval.agent)]);
+  } catch (error) {
+    const agent = changedMeanwhile(error) ? await findActor(table, approval.agent) : undefined;
+    if (agent?.kind === "agent" && agent.paused !== undefined) throw new AgentPaused();
+    throw error;
+  }
 }
 
-/** Decides the pending approval, on behalf of the approver `by`, and gives the draft the decision's send status and edits. */
-async function decide(table: Table, approval: Approval, by: string, { state, note, edits }: { state: "approved" | "rejected"; note?: string; edits?: Edits }): Promise<Approval> {
+/**
+ * Decides the pending approval, on behalf of the approver `by`, and gives the draft the decision's
+ * send status and edits, with the `checks` written too.
+ */
+async function decide(
+  table: Table,
+  approval: Approval,
+  by: string,
+  { state, note, edits }: { state: "approved" | "rejected"; note?: string; edits?: Edits },
+  checks: TransactItem[] = [],
+): Promise<Approval> {
   if (approval.state !== "pending") throw new AlreadyDecided(approval);
   const decidedAt = new Date().toISOString();
   const { mailbox, draft } = approval;
@@ -354,6 +387,7 @@ async function decide(table: Table, approval: Approval, by: string, { state, not
             ExpressionAttributeValues: { ...draftSet.ExpressionAttributeValues, ":one": 1, ":approval": approval.id },
           },
         },
+        ...checks,
       ],
     });
   } catch (error) {
@@ -557,23 +591,75 @@ export function draftAt(keys: Record<string, string>): { mailbox: string; draft:
 
 /**
  * Moves the approved draft to sending, as the message with the ID in Duva, on condition that it is
- * still approved for the same request. Returns false if it no longer is.
+ * still approved for the same request, and with the `checks` written too. Returns false if it
+ * no longer is, or a check failed.
  */
-export async function startSending(table: Table, sending: Sending): Promise<boolean> {
+export async function startSending(table: Table, sending: Sending, checks: TransactItem[] = []): Promise<boolean> {
   const { mailbox, draft, message } = sending;
   const request = sameRequest(sending);
   return conditionally(
     documents(table).send(
-      new UpdateCommand({
-        TableName: table.name,
-        Key: draftKey(mailbox, draft),
-        UpdateExpression: "SET #send = :sending, version = version + :one",
-        ConditionExpression: `${request.condition} AND #send.#state = :approved`,
-        ExpressionAttributeNames: { "#send": "send", "#state": "state", ...request.names },
-        ExpressionAttributeValues: { ":sending": { ...outcomeOf(sending, "sending"), message }, ":one": 1, ...request.values, ":approved": "approved" },
+      new TransactWriteCommand({
+        TransactItems: [
+          {
+            Update: {
+              TableName: table.name,
+              Key: draftKey(mailbox, draft),
+              UpdateExpression: "SET #send = :sending, version = version + :one",
+              ConditionExpression: `${request.condition} AND #send.#state = :approved`,
+              ExpressionAttributeNames: { "#send": "send", "#state": "state", ...request.names },
+              ExpressionAttributeValues: { ":sending": { ...outcomeOf(sending, "sending"), message }, ":one": 1, ...request.values, ":approved": "approved" },
+            },
+          },
+          ...checks,
+        ],
       }),
     ),
   );
+}
+
+/**
+ * Releases the agent's sends that the sender held while it was paused, in its own mailboxes and
+ * its sponsor's, where it sends as them: each
+ * draft still approved for the agent is written again, the first approved first, so the table's stream
+ * hands it to the sender once more. Run again, it finishes what an earlier run left. The stream
+ * keeps order within a mailbox, so sends from different mailboxes may go out in either order.
+ */
+export async function releaseHeldSends(table: Table, agent: Agent): Promise<void> {
+  const mailboxes = [...(await ownedMailboxes(table, agent.id)), ...(await ownedMailboxes(table, agent.sponsor))].map(({ id }) => id);
+  const held: { mailbox: string; draft: StoredDraft; approvedAt: string }[] = [];
+  for (const mailbox of mailboxes) {
+    let start: Record<string, unknown> | undefined;
+    do {
+      const page = await documents(table).send(
+        new QueryCommand({
+          TableName: table.name,
+          KeyConditionExpression: `${pk} = :mailbox AND begins_with(${sk}, :draft)`,
+          FilterExpression: "#send.#state = :approved",
+          ExpressionAttributeNames: { "#send": "send", "#state": "state" },
+          ExpressionAttributeValues: { ":mailbox": mailboxKey(mailbox)[pk], ":draft": draftKey(mailbox, "")[sk], ":approved": "approved" },
+          // An unpause finds a send the sender held just before it.
+          ConsistentRead: true,
+          ExclusiveStartKey: start,
+        }),
+      );
+      for (const item of page.Items ?? []) {
+        const draft = item as StoredDraft;
+        const approval = draft.send?.approval === undefined ? undefined : await findApproval(table, draft.send.approval);
+        if ((approval?.agent ?? draft.send?.by) !== agent.id) continue;
+        held.push({ mailbox, draft, approvedAt: approval?.decidedAt ?? draft.send?.askedAt ?? draft.updatedAt });
+      }
+      start = page.LastEvaluatedKey;
+    } while (start !== undefined);
+  }
+  for (const { mailbox, draft } of held.sort((a, b) => a.approvedAt.localeCompare(b.approvedAt))) {
+    // The sender may have taken it since it was read, so it is written only if it wasn't.
+    await conditionally(
+      documents(table).send(
+        new UpdateCommand({ TableName: table.name, Key: draftKey(mailbox, draft.id), UpdateExpression: "SET version = version + :one", ...unchanged(draft), ExpressionAttributeValues: { ":one": 1, ":version": draft.version } }),
+      ),
+    );
+  }
 }
 
 /** The write that moves the draft from sending the message to the outcome, on condition that it is still sending it. */

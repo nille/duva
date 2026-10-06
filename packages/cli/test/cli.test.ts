@@ -299,6 +299,27 @@ test("the sponsor rotates an agent's key, and the agent's old key is refused", a
   expect(errorIn(whoami.stderr)).toMatch(/DUVA_AGENT_KEY.*sponsor/);
 });
 
+test("the sponsor pauses an agent, its key is refused saying so, and unpausing lets it work again", async () => {
+  const machine = await newMachine();
+  const server = await (await startDuva({ admin: "ada@example.com" })).listen();
+  onTestFinished(() => server.close());
+  await machine.saveDeployment(server);
+  await machine.duva("login", { browserSignsIn: "ada@example.com" });
+  const { agent, key } = JSON.parse((await machine.duva("agents", "create", "--name", "Hermes")).stdout) as { agent: { id: string }; key: string };
+
+  const paused = await machine.duva("agents", "pause", "--agent", agent.id);
+  const refused = await machine.duva("whoami", { env: { DUVA_AGENT_KEY: key } });
+  const unpaused = await machine.duva("agents", "unpause", "--agent", agent.id);
+  const whoami = await machine.duva("whoami", { env: { DUVA_AGENT_KEY: key } });
+
+  expect(paused.exitCode).toBe(0);
+  expect(JSON.parse(paused.stdout)).toEqual({ ...agent, paused: { by: expect.any(String), at: expect.any(String) } });
+  expect(refused.exitCode).toBe(1);
+  expect(errorIn(refused.stderr)).toMatch(/403.*This agent is paused by ada@example\.com\./);
+  expect(JSON.parse(unpaused.stdout)).toEqual(agent);
+  expect(JSON.parse(whoami.stdout)).toEqual(agent);
+});
+
 test("an admin removes a human from the CLI, first with --dryRun, handing their mailbox to another human", async () => {
   const machine = await newMachine();
   const duva = await startDuva({ domain: "example.com", admin: "ada@example.com", humans: ["grace@example.com", "linus@example.com"] });

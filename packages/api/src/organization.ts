@@ -286,6 +286,69 @@ export async function findAgentByKey(table: Table, key: string): Promise<Agent |
   return Item?.keyHash === hash ? (actorOf(Item) as Agent) : undefined;
 }
 
+/** The actor ID Duva's own changes are recorded under, such as pausing an agent whose mail hurts the domain (ADR-0021). */
+export const duva = "duva";
+
+/**
+ * Pauses the agent, on behalf of the actor `by`, or Duva, and returns it. The pause is one change
+ * in the change feed of each of the agent's mailboxes and in the organization's. Pausing a paused
+ * agent records nothing. Returns undefined if the agent was removed.
+ */
+export function pauseAgent(table: Table, { agent, by }: { agent: Agent; by: string }): Promise<Agent | undefined> {
+  const paused = { by, at: new Date().toISOString() };
+  return changePause(table, agent, by, {
+    type: "agentPaused",
+    done: (current) => current.paused !== undefined,
+    update: { UpdateExpression: "SET paused = :paused", ConditionExpression: `attribute_exists(${pk}) AND attribute_not_exists(paused)`, ExpressionAttributeValues: { ":paused": paused } },
+  });
+}
+
+/**
+ * Unpauses the agent, on behalf of the actor `by`, and returns it. The unpause is one change in
+ * the change feed of each of the agent's mailboxes and in the organization's. Unpausing an agent
+ * that isn't paused records nothing. Its held sends are released apart from this. Returns
+ * undefined if the agent was removed.
+ */
+export function unpauseAgent(table: Table, { agent, by }: { agent: Agent; by: string }): Promise<Agent | undefined> {
+  return changePause(table, agent, by, {
+    type: "agentUnpaused",
+    done: (current) => current.paused === undefined,
+    update: { UpdateExpression: "REMOVE paused", ConditionExpression: "attribute_exists(paused)" },
+  });
+}
+
+/** Writes the pause or unpause with its change, unless it is done already, and returns the agent as it is then, if it still is one. */
+async function changePause(
+  table: Table,
+  agent: Agent,
+  by: string,
+  { type, done, update }: { type: "agentPaused" | "agentUnpaused"; done: (current: Agent) => boolean; update: { UpdateExpression: string; ConditionExpression: string; ExpressionAttributeValues?: Record<string, unknown> } },
+): Promise<Agent | undefined> {
+  for (let attempt = 1; ; attempt++) {
+    const current = await findActor(table, agent.id);
+    if (current?.kind !== "agent") return undefined;
+    if (done(current)) return current;
+    const mailboxes = await ownedMailboxes(table, agent.id);
+    const change = { type, agent: agent.id };
+    try {
+      await recordInFeeds(table, [organizationFeed, ...mailboxes.map(({ id }) => mailboxFeed(id))].map((feed) => ({ feed, changes: [change] })), {
+        by,
+        items: [{ Update: { TableName: table.name, Key: actorKey(agent.id), ...update } }],
+      });
+    } catch (error) {
+      // A pause or unpause at the same time got there first, so the agent is read again.
+      if (!(error instanceof TransactionCanceledException) || attempt === 10) throw error;
+      continue;
+    }
+    return (await findActor(table, agent.id)) as Agent | undefined;
+  }
+}
+
+/** The check that the agent isn't paused, for a write that would let its mail go out. */
+export function agentUnpaused(table: Table, agent: string): TransactItem {
+  return { ConditionCheck: { TableName: table.name, Key: actorKey(agent), ConditionExpression: "attribute_not_exists(paused)" } };
+}
+
 /** The agents the actor sponsors. */
 export async function sponsoredAgents(table: Table, sponsor: string): Promise<Agent[]> {
   const { [pk]: partition, [sk]: prefix } = sponsoredKey(sponsor, "");
@@ -813,7 +876,10 @@ export async function findActor(table: Table, id: string): Promise<Actor | undef
  */
 export function actorOf(item: Record<string, unknown>): Actor {
   const actor = item as Actor;
-  if (actor.kind === "agent") return { id: actor.id, kind: actor.kind, name: actor.name, sponsor: actor.sponsor, admin: actor.admin };
+  if (actor.kind === "agent") {
+    const { id, kind, name, sponsor, admin, paused } = actor;
+    return { id, kind, name, sponsor, admin, ...(paused !== undefined && { paused: { by: paused.by, at: paused.at } }) };
+  }
   return { id: actor.id, kind: actor.kind, email: actor.email, admin: actor.admin };
 }
 

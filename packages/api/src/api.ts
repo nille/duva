@@ -2,7 +2,7 @@ import type { APIGatewayProxyEventV2, APIGatewayProxyStructuredResultV2 } from "
 import { type Operation, operations, type OperationId } from "@duva/openapi";
 import { addAddress, changeMailbox, listAddresses, removeAddress } from "./addresses.ts";
 import { getAttachment } from "./attachments.ts";
-import { changeAgentSettings, createAgent, getAgentSettings, listAgents, removeAgent, rotateAgentKey } from "./agents.ts";
+import { changeAgentSettings, createAgent, getAgentSettings, listAgents, pauseAgent, pausedRefusal, removeAgent, rotateAgentKey, unpauseAgent } from "./agents.ts";
 import type { AuthorizerContext } from "./authorizer.ts";
 import { addDomain, changeDomain, getDomain, listDomains, removeDomain } from "./domains.ts";
 import { listOrganizationChanges } from "./changes.ts";
@@ -63,6 +63,8 @@ const handlers: Record<OperationId, OperationHandler> = {
   listAgents,
   removeAgent,
   rotateAgentKey,
+  pauseAgent,
+  unpauseAgent,
   getAgentSettings,
   changeAgentSettings,
   addAddress,
@@ -125,7 +127,7 @@ export function createApi(deployment: Deployment) {
     const actor = passed && actorOf(passed);
     // The authorizer guards every route that needs sign-in, so a call without an actor here is a deployment bug.
     if (operation.signIn && actor === undefined) throw new Error(`${operation.operationId} was called without an actor`);
-    const { statusCode, body } = await handlers[operation.operationId](event, deployment, actor);
+    const { statusCode, body } = actor?.kind === "agent" && actor.paused !== undefined ? await pausedRefusal(deployment.table, actor.paused) : await handlers[operation.operationId](event, deployment, actor);
     return { statusCode, headers: { "content-type": "application/json" }, body: JSON.stringify(body) };
   };
 }

@@ -2,7 +2,8 @@
 // or one asked to send without approval, as a human's from their own mailbox is. It sends an agent's draft through SES
 // with the disclosure, and a human's without, and records the outcome. Sending starts
 // from the recorded approval, so a crash between it and the send can't lose it, and each step is
-// conditional on the last, so a retried record never sends twice.
+// conditional on the last, so a retried record never sends twice. A paused agent's sends stay
+// approved, held, until unpausing writes them again and the stream hands them over once more.
 import { randomUUID } from "node:crypto";
 import { SendEmailCommand, SESv2ServiceException, type SESv2Client } from "@aws-sdk/client-sesv2";
 import type { DynamoDBStreamEvent } from "aws-lambda";
@@ -13,7 +14,7 @@ import type { MailBucket } from "./mail-bucket.ts";
 import { findMessage } from "./mail.ts";
 import { buildMail } from "./mime.ts";
 import { sponsorAccessAllows } from "./access.ts";
-import { agentSettings, aliasDomains, findActor, findMailbox, isAddressOf, switchesFor } from "./organization.ts";
+import { agentSettings, agentUnpaused, aliasDomains, findActor, findMailbox, isAddressOf, switchesFor } from "./organization.ts";
 
 /** Who SES delivers a message to. Bcc recipients are here only, since no header names them. */
 export interface Destination {
@@ -107,6 +108,8 @@ async function send({ table, mailBucket, outbound, region }: Sender, { mailbox, 
 
   const actor = await findActor(table, by);
   if (actor === undefined) throw new Error(`The actor ${by} that draft ${id} is sent for is missing.`);
+  // A paused agent's sends are held, approved, until unpausing releases them.
+  if (actor.kind === "agent" && actor.paused !== undefined) return;
   // An agent's mail carries the disclosure header, naming the agent and the human it acts for, and
   // the visible line unless its sponsor switched it off for where it sends from. A human's carries
   // neither. An agent sends as its sponsor from the sponsor's mailbox, under the sponsor's name.
@@ -160,7 +163,8 @@ async function send({ table, mailBucket, outbound, region }: Sender, { mailbox, 
   });
   const rawKey = `${sentPrefix}${message}`;
   if (unsendable === undefined) await mailBucket.put(rawKey, raw);
-  if (!(await startSending(table, sending))) return;
+  // A pause since the agent was read holds the send too.
+  if (!(await startSending(table, sending, actor.kind === "agent" ? [agentUnpaused(table, actor.id)] : []))) return;
   if (unsendable !== undefined) {
     await markFailed(table, sending, unsendable);
     return;
