@@ -190,6 +190,8 @@ export interface Duva {
   setUp(options: { admin: string; backfillLost?: boolean }): Promise<void>;
   /** Lets the indexer read its queue when indexingHeld, and waits until it has caught up. */
   releaseIndexing(): Promise<void>;
+  /** Has the indexer's queue lose the next task that takes a step of a backfill, as when SQS drops it as a duplicate. */
+  loseBackfillStep(): void;
   /**
    * Serves the API on localhost, for clients that need a URL, such as the CLI, with a stand-in
    * for managed login at the same URL.
@@ -365,6 +367,7 @@ export async function startDuva({
       setClock(at);
     },
     releaseIndexing: index,
+    loseBackfillStep: () => void indexQueue.backfillStepsLost++,
     stored: () => mailBucket.stored(),
     searchObjects: () => filesUnder(indexes).map((file) => new TextDecoder().decode(readFileSync(file))),
     async erase(at, { s3DeletesFail = false } = {}) {
@@ -387,11 +390,11 @@ export async function startDuva({
       if (!searchDeployed) await feed.deliver();
       searchDeployed = true;
       await indexMailboxes(table, indexQueue);
-      indexQueue.backfillLost = backfillLost;
+      if (backfillLost) indexQueue.backfillStepsLost = Infinity;
       try {
         if (!indexingHeld) await index();
       } finally {
-        indexQueue.backfillLost = false;
+        if (backfillLost) indexQueue.backfillStepsLost = 0;
       }
     },
     async listen() {
@@ -417,20 +420,24 @@ const searchIndexes = mkdtempSync(join(tmpdir(), "duva-indexes-"));
 process.on("exit", () => rmSync(searchIndexes, { recursive: true, force: true }));
 
 /**
- * The indexer's FIFO queue, with Lambda reading it: each task's ID is kept once, and the indexer
- * gets the tasks in order, a batch at a time. With `backfillLost`, it loses the tasks that take a
- * backfill's next step.
+ * The indexer's FIFO queue, with Lambda reading it: a task whose ID it was given in the last five
+ * minutes is dropped, and the indexer gets the tasks in order, a batch at a time. It loses the next
+ * `backfillStepsLost` tasks that take a step of a backfill after its first.
  */
-function memoryIndexQueue(): IndexQueue & { backfillLost: boolean; drain(indexer: ReturnType<typeof createIndexer>): Promise<void> } {
+function memoryIndexQueue(): IndexQueue & { backfillStepsLost: number; drain(indexer: ReturnType<typeof createIndexer>): Promise<void> } {
   const queued: QueuedTask[] = [];
-  const seen = new Set<string>();
+  const seen = new Map<string, number>();
   let draining: Promise<void> = Promise.resolve();
   const queue = {
-    backfillLost: false,
+    backfillStepsLost: 0,
     async send(tasks: QueuedTask[]) {
       for (const each of tasks) {
-        if (seen.has(each.id) || (queue.backfillLost && (each.task.backfill ?? 0) > 0)) continue;
-        seen.add(each.id);
+        if (Date.now() - (seen.get(each.id) ?? -Infinity) < 5 * 60_000) continue;
+        seen.set(each.id, Date.now());
+        if ((each.task.backfill ?? 0) > 0 && queue.backfillStepsLost > 0) {
+          queue.backfillStepsLost--;
+          continue;
+        }
         queued.push(each);
       }
     },

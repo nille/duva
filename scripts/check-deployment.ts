@@ -11,7 +11,7 @@
 // suppression list, which only warns; and no received mail and no approved send waits in a failure queue; Duva's configuration set publishes only bounces,
 // complaints and rejects, to a topic that only it may invoke the feedback Lambda for, and no event
 // of SES's waits in the feedback Lambda's failure queue; nothing but IAM may invoke search, which runs at 10,240 MB
-// on x64, and Nova Lite translates in the region; every mailbox's search index is backfilled, none has held
+// on x64, and Nova Lite translates in the region; every mailbox's search index is backfilled, naming any whose backfill is stuck, none has held
 // erased mail for more than a day, and no indexer task waits in its failure queue; nothing but IAM
 // may invoke the sender, and no schedule for sends that wait for an agent's limits is overdue. Signing in stays
 // with a human. Then prints how many
@@ -198,9 +198,15 @@ const stackTable = async () => {
 await check("every mailbox's search index is backfilled", async () => {
   const table = await stackTable();
   if (table === undefined) return "the stack has no table";
-  const { mailboxes, indexed } = await indexedMailboxes(table);
+  const { mailboxes, indexed, stuck } = await indexedMailboxes(table);
   console.log(`      ${indexed} of ${mailboxes} mailboxes' indexes are backfilled`);
-  return indexed === mailboxes ? undefined : `${mailboxes - indexed} of ${mailboxes} aren't yet. Wait a few minutes, or run duva deploy again to finish them.`;
+  for (const { mailbox, addresses, step, since } of stuck) {
+    console.log(`      ${mailbox} (${addresses.join(", ")}) waits for backfill step ${step}${since === undefined ? "" : `, its last step at ${since.toISOString()}`}`);
+  }
+  if (indexed === mailboxes) return undefined;
+  return stuck.length > 0
+    ? `${mailboxes - indexed} of ${mailboxes} aren't yet, and ${stuck.length} of those have taken no step for 5 minutes. A change in such a mailbox resumes its backfill, and so does running duva deploy again.`
+    : `${mailboxes - indexed} of ${mailboxes} aren't yet. Wait a few minutes, or run duva deploy again to finish them.`;
 });
 // The eraser runs once a day, so mail erased just after a run waits a day, and the hour is slack.
 await check("no search index has held erased mail's text for more than a day", async () => {

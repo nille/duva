@@ -4,7 +4,8 @@
 // nothing. The table's stream hands the feeder each new change, and the feeder gives the indexer's
 // FIFO queue a task for its mailbox, with the mailbox as the message group, so each mailbox has
 // one writer at a time. A mailbox whose index is missing, or from an older version of it, is
-// backfilled from its stored mail, a step at a time, each step a task of its own. The eraser's
+// backfilled from its stored mail, a step at a time, each step a task of its own, which any task
+// for the mailbox takes itself if the step's own task seems lost. The eraser's
 // daily run gives each mailbox a task to compact its index, so erased text leaves its files, and a
 // deleted mailbox's index is dropped.
 import { randomUUID } from "node:crypto";
@@ -58,8 +59,12 @@ interface IndexState {
   position: number;
   /** How many commits since the index's last maintenance. */
   writes: number;
-  /** The backfill, until it is done: the step to take next, and the thread it reads on from. */
-  backfill?: { step: number; after?: string };
+  /**
+   * The backfill, until it is done: the step to take next, the thread it reads on from, the
+   * rebuild it is part of, whose ID keeps its steps' dedup IDs apart from an earlier rebuild's, and when its
+   * last step was taken. A backfill from before #88 has neither.
+   */
+  backfill?: { step: number; after?: string; rebuild?: string; steppedAt?: string };
   /** When messages first left the index since it was last compacted, so that files may still hold their text. */
   removedSince?: string;
   /** When the index was last compacted, or made. An index from before compaction has none, and may hold removed text. */
@@ -73,6 +78,12 @@ const maintainedAfter = 20;
 
 /** How many of a backfill's messages one step indexes, at least. */
 const backfillStep = 100;
+
+/** How long a backfill waits for its next step's task before any task for the mailbox takes the step itself. */
+const backfillStalledAfter = 2 * 60_000;
+
+/** How long the backfill has waited for its next step, as long as can be if it's from before #88. */
+const waited = (backfill: NonNullable<IndexState["backfill"]>) => (backfill.steppedAt === undefined ? Infinity : Date.now() - new Date(backfill.steppedAt).getTime());
 
 /** How many of the feed's changes one task catches up on at most, before it hands the rest to a task of its own. */
 const changesAtOnce = 10 * changesPerPage;
@@ -169,11 +180,13 @@ async function bringUpToDate({ table, mailBucket, engine, queue, backfillMessage
   if (!current(state, languages)) {
     // The backfill indexes what is stored now, so the feed's changes count from here on.
     if (state !== undefined) await engine.drop(mailbox);
-    state = { version: indexVersion, languages, position: await lastPosition(table, mailboxFeed(mailbox)), writes: 0, backfill: { step: 0 }, compactedAt: new Date().toISOString() };
+    const backfill = { step: 0, rebuild: randomUUID(), steppedAt: new Date().toISOString() };
+    state = { version: indexVersion, languages, position: await lastPosition(table, mailboxFeed(mailbox)), writes: 0, backfill, compactedAt: new Date().toISOString() };
     await documents(table).send(new PutCommand({ TableName: table.name, Item: { ...stateKey(mailbox), ...state } }));
     step = 0;
-  } else if (state.backfill !== undefined && (state.backfill.step === 0 || tasks.some((task) => task.backfill === state!.backfill!.step))) {
-    // Step 0 is taken when the backfill starts, with no task of its own, so any task takes it again if that failed.
+  } else if (state.backfill !== undefined && (state.backfill.step === 0 || tasks.some((task) => task.backfill === state!.backfill!.step) || waited(state.backfill) >= backfillStalledAfter)) {
+    // Step 0 is taken when the backfill starts, with no task of its own, so any task takes it again
+    // if that failed. A later step's task may be lost, as when SQS drops it as a duplicate (#88).
     step = state.backfill.step;
   }
   const writer = await engine.writer(mailbox, state.languages);
@@ -183,8 +196,10 @@ async function bringUpToDate({ table, mailBucket, engine, queue, backfillMessage
     await writer.put(await indexed(mailBucket, threads.flatMap(({ summary, messages }) => messages.map((message) => ({ message, summary })))));
     state.writes++;
     // The next step goes to the queue before the state says so, so a failure between the two takes this step again.
-    if (next !== undefined) await queue.send([{ task: { mailbox, backfill: step + 1 }, id: `${mailbox}#backfill#${step + 1}` }]);
-    state.backfill = next === undefined ? undefined : { step: step + 1, after: next };
+    // Its ID is the rebuild's own, so a rebuild soon after another doesn't have SQS drop its steps.
+    const rebuild = state.backfill?.rebuild ?? randomUUID();
+    if (next !== undefined) await queue.send([{ task: { mailbox, backfill: step + 1 }, id: `${mailbox}#backfill#${rebuild}#${step + 1}` }]);
+    state.backfill = next === undefined ? undefined : { step: step + 1, after: next, rebuild, steppedAt: new Date().toISOString() };
   }
 
   let read = 0;
@@ -319,10 +334,22 @@ export async function uncompactedSince(table: Table): Promise<Date | undefined> 
   return times.length === 0 ? undefined : new Date(Math.min(...times));
 }
 
-/** How many of the organization's mailboxes there are, and how many have an index of this version, backfilled. */
-export async function indexedMailboxes(table: Table): Promise<{ mailboxes: number; indexed: number }> {
+/**
+ * How many of the organization's mailboxes there are, how many have an index of this version,
+ * backfilled, and each mailbox whose backfill has taken no step for 5 minutes, with its
+ * addresses, the step it waits for, and when it took its last, if known.
+ */
+export async function indexedMailboxes(table: Table): Promise<{ mailboxes: number; indexed: number; stuck: { mailbox: string; addresses: string[]; step: number; since?: Date }[] }> {
   const [states, languages] = await Promise.all([indexStates(table), languagesIndexed(table)]);
-  return { mailboxes: states.length, indexed: states.filter(([, state]) => current(state, languages) && state.backfill === undefined).length };
+  const stuck = await Promise.all(
+    states.flatMap(([mailbox, state]) => {
+      const backfill = current(state, languages) ? state.backfill : undefined;
+      const since = backfill?.steppedAt === undefined ? undefined : new Date(backfill.steppedAt);
+      if (backfill === undefined || waited(backfill) < 5 * 60_000) return [];
+      return [(async () => ({ mailbox, addresses: (await findMailbox(table, mailbox))?.addresses ?? [], step: backfill.step, ...(since && { since }) }))()];
+    }),
+  );
+  return { mailboxes: states.length, indexed: states.filter(([, state]) => current(state, languages) && state.backfill === undefined).length, stuck };
 }
 
 /** Each of the organization's mailboxes, with its index's state if it has an index. */

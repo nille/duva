@@ -534,3 +534,33 @@ test("a backfill that stops partway finishes on the next setup, and finding each
   expect(partly.length).toBeLessThan(names.length);
   expect((await subjects("itinerary")).sort()).toEqual(names.map((name) => `Trip to ${name}`).sort());
 });
+
+test("a second rebuild within minutes of the first still backfills the whole mailbox", async () => {
+  const { ada, receive, subjects } = await withMailbox();
+  const names = ["Lisbon", "Porto", "Faro", "Braga", "Evora"];
+  for (const name of names) await receive({ subject: `Trip to ${name}`, text: "Our trip itinerary." });
+
+  await ada.PATCH("/organization/settings", { body: { searchLanguages: ["English", "Swedish", "Danish"] } });
+  await ada.PATCH("/organization/settings", { body: { searchLanguages: ["English", "Swedish"] } });
+
+  expect((await subjects("itinerary")).sort()).toEqual(names.map((name) => `Trip to ${name}`).sort());
+});
+
+test("a backfill whose next step is lost finishes with the mailbox's next change, once it has stalled for 2 minutes", async () => {
+  const { duva, receive, subjects, label } = await withMailbox({ beforeSearch: true });
+  const names = ["Lisbon", "Porto", "Faro", "Braga", "Evora"];
+  const threads = [];
+  for (const name of names) threads.push(await receive({ subject: `Trip to ${name}`, text: "Our trip itinerary." }));
+
+  duva.loseBackfillStep();
+  await duva.setUp({ admin: "ada@example.org" });
+  const partly = (await subjects("itinerary")).sort();
+  await label([threads[0]!.id], { remove: ["inbox"] });
+  const soon = (await subjects("itinerary")).sort();
+  await duva.clock(new Date(Date.now() + 3 * 60_000));
+  await label([threads[1]!.id], { remove: ["inbox"] });
+
+  expect(partly.length).toBeLessThan(names.length);
+  expect(soon).toEqual(partly);
+  expect((await subjects("itinerary")).sort()).toEqual(names.map((name) => `Trip to ${name}`).sort());
+});
