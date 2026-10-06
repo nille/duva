@@ -73,6 +73,9 @@ const refuseApproved = (draft: Pick<Draft, "send">) => {
   if (draft.send !== undefined && approvedStates.includes(draft.send.state)) throw new AlreadyApproved(draft.send.state);
 };
 
+/** How long an approver's note on a rejection is at most. */
+export const maxNote = 2000;
+
 /** The approval was decided, or withdrawn, before this decision. */
 export class AlreadyDecided extends Error {
   readonly approval: Approval;

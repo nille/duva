@@ -346,9 +346,52 @@ async function changePause(
   }
 }
 
+/**
+ * Makes the agent an admin, or takes it away, on behalf of the actor `by`, and returns it as it is
+ * then. Making it one holds only while its sponsor is an admin, and throws SponsorNotAdmin if they
+ * aren't. Giving the flag the value it has records nothing. Returns undefined if the agent was removed.
+ */
+export async function changeAgentAdmin(table: Table, { agent, admin, by }: { agent: Agent; admin: boolean; by: string }): Promise<Agent | undefined> {
+  for (let attempt = 1; ; attempt++) {
+    const current = await findActor(table, agent.id);
+    if (current?.kind !== "agent") return undefined;
+    if (current.admin === admin) return current;
+    try {
+      await recordChange(table, by, { type: "agentAdminChanged", agent: agent.id, admin }, [
+        {
+          Update: {
+            TableName: table.name,
+            Key: actorKey(agent.id),
+            UpdateExpression: "SET admin = :admin",
+            ConditionExpression: "admin = :was",
+            ExpressionAttributeValues: { ":admin": admin, ":was": current.admin },
+          },
+        },
+        // The sponsor's admin taken away at the same time clears the agent's after this, or makes this fail.
+        ...(admin ? [{ ConditionCheck: { TableName: table.name, Key: actorKey(agent.sponsor), ConditionExpression: "admin = :admin", ExpressionAttributeValues: { ":admin": true } } }] : []),
+      ]);
+      return { ...current, admin };
+    } catch (error) {
+      // The agent's own item and the sponsor's check come after the feed's counter and the one change.
+      const reasons = error instanceof TransactionCanceledException ? (error.CancellationReasons ?? []) : [];
+      if (reasons[3]?.Code === "ConditionalCheckFailed") throw new SponsorNotAdmin();
+      // Another change to the flag, or the agent's removal, got there first, so the agent is read again.
+      if (reasons[2]?.Code !== "ConditionalCheckFailed" || attempt === 10) throw error;
+    }
+  }
+}
+
+/** The agent's sponsor isn't an admin, so the agent can't be one. */
+export class SponsorNotAdmin extends Error {}
+
 /** The check that the agent isn't paused, for a write that would let its mail go out. */
 export function agentUnpaused(table: Table, agent: string): TransactItem {
   return { ConditionCheck: { TableName: table.name, Key: actorKey(agent), ConditionExpression: "attribute_not_exists(paused)" } };
+}
+
+/** The check that the agent is an admin and isn't paused, for a write that makes its setup change. */
+export function agentAdminUnpaused(table: Table, agent: string): TransactItem {
+  return { ConditionCheck: { TableName: table.name, Key: actorKey(agent), ConditionExpression: "attribute_not_exists(paused) AND admin = :admin", ExpressionAttributeValues: { ":admin": true } } };
 }
 
 /** The agents the actor sponsors. */
@@ -377,6 +420,7 @@ export const defaultAgentSettings: AgentSettings = {
   disclosureLineAsSponsor: true,
   sendsPerHour: 100,
   newRecipientsPerDay: 50,
+  approvalForSetup: true,
 };
 
 /** Each of an agent's send limits, with the organization's setting that caps it. */
@@ -991,7 +1035,7 @@ export function actorOf(item: Record<string, unknown>): Actor {
 }
 
 /** Records one change to the setup in the organization's change feed, with the items it writes. */
-function recordChange(table: Table, by: string, change: ChangeDetails, items: TransactItem[]): Promise<void> {
+export function recordChange(table: Table, by: string, change: ChangeDetails, items: TransactItem[]): Promise<void> {
   return recordChanges(table, organizationFeed, { by, changes: [change], items });
 }
 

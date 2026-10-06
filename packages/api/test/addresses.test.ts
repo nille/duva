@@ -1,6 +1,9 @@
+import type { components } from "@duva/openapi";
 import PostalMime from "postal-mime";
 import { expect, test } from "vitest";
 import { startDuva } from "./harness.ts";
+
+type Mailbox = components["schemas"]["Mailbox"];
 
 /**
  * A deployment on example.com where ada, the first admin, sponsors the agent Hermes, which owns a
@@ -19,7 +22,7 @@ async function withMailboxes() {
   const graces = { path: { mailbox: gracesMailbox!.id } };
   // Grace's mail goes straight to her Inbox.
   await grace.PATCH("/mailboxes/{mailbox}/screener", { params: graces, body: { on: false } });
-  return { duva, ada, grace, hermes, key: created!.key, mailbox: mailbox!, params, gracesMailbox: gracesMailbox!, graces };
+  return { duva, ada, grace, hermes, key: created!.key, mailbox: mailbox as Mailbox, params, gracesMailbox: gracesMailbox as Mailbox, graces };
 }
 
 const message = (to: string, subject = "Hello") => `From: linus@example.net\r\nTo: ${to}\r\nSubject: ${subject}\r\nMessage-ID: <${subject}@example.net>\r\n\r\nHej.\r\n`;

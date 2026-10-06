@@ -105,7 +105,7 @@ test("an agent's draft without a recipient in To can't be asked to send", async 
 
   expect(response.status).toBe(400);
   expect(error?.message).toMatch(/recipient in To/);
-  expect((await ada.GET("/approvals")).data).toEqual({ approvals: [] });
+  expect((await ada.GET("/approvals")).data).toEqual({ approvals: [], setupApprovals: [] });
 });
 
 test("a reply to a message the mailbox doesn't have is refused", async () => {
@@ -168,6 +168,7 @@ test("asking to send a draft waits for the sponsor's approval, showing the draft
         askedAt: expect.any(String),
       },
     ],
+    setupApprovals: [],
   });
 });
 
@@ -220,8 +221,8 @@ test("the sponsor lists the pending approvals of every agent they sponsor, newes
 
   expect(data?.approvals.map(({ draft }) => draft.id)).toEqual([second!.id, first!.id]);
   expect(data?.approvals[0]).not.toHaveProperty("original");
-  expect(byGrace.data).toEqual({ approvals: [] });
-  expect(byAgent.data).toEqual({ approvals: [] });
+  expect(byGrace.data).toEqual({ approvals: [], setupApprovals: [] });
+  expect(byAgent.data).toEqual({ approvals: [], setupApprovals: [] });
 });
 
 test("asking to send is in the mailbox's change feed, naming the agent", async () => {
@@ -251,7 +252,7 @@ test("changing a draft that waits for approval withdraws the request, so the spo
   const { data } = await hermes.PATCH("/mailboxes/{mailbox}/drafts/{draft}", { params: draftParams, body: { text: "Tuesday works better." } });
 
   expect(data?.send).toEqual({ approval, state: "withdrawn" });
-  expect((await ada.GET("/approvals")).data).toEqual({ approvals: [] });
+  expect((await ada.GET("/approvals")).data).toEqual({ approvals: [], setupApprovals: [] });
   const decision = await ada.POST("/approvals/{approval}/reject", { params: { path: { approval } }, body: { note: "Too late." } });
   expect(decision.response.status).toBe(409);
   expect(decision.error?.message).toMatch(/withdrawn/);
@@ -363,5 +364,5 @@ test("a change and a decision at the same time leave the draft either withdrawn 
   const { data: draft } = await hermes.GET("/mailboxes/{mailbox}/drafts/{draft}", { params: draftParams });
   expect(draft?.text).toBe("Tuesday works.");
   expect(draft?.send?.state).toBe(decision.response.status === 200 ? "rejected" : "withdrawn");
-  expect((await ada.GET("/approvals")).data).toEqual({ approvals: [] });
+  expect((await ada.GET("/approvals")).data).toEqual({ approvals: [], setupApprovals: [] });
 });

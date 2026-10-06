@@ -1,3 +1,4 @@
+import type { components } from "@duva/openapi";
 import PostalMime from "postal-mime";
 import { expect, test } from "vitest";
 import { type Duva, startDuva } from "./harness.ts";
@@ -54,7 +55,7 @@ test("an admin adds a domain, which gets an SES identity with DKIM and its MAIL 
 test("each record shows as found once DNS has it, and as verified once SES has verified what it is for", async () => {
   const { duva, ada } = await withGrace();
   const { data: added } = await ada.POST("/domains", { body: { domain: "example.net" } });
-  const [receiving, dkim1, dkim2, dkim3, mailFromMx, spf] = added!.records;
+  const [receiving, dkim1, dkim2, dkim3, mailFromMx, spf] = (added as components["schemas"]["Domain"]).records;
   const params = { path: { domain: "example.net" } };
 
   duva.dnsRecord("MX", receiving!.name, [receiving!.value]);
@@ -197,7 +198,7 @@ test("removing a domain deletes the groups on it, and takes its addresses out of
 
   const { data } = await ada.POST("/domains/{domain}/remove", { params: { path: { domain: "example.net" } }, body: {} });
 
-  expect(data?.addresses).toEqual([{ address: "grace@example.net", mailbox: mailbox.id }, { address: "team@example.net", group: true }]);
+  expect(data).toMatchObject({ addresses: [{ address: "grace@example.net", mailbox: mailbox.id }, { address: "team@example.net", group: true }] });
   expect((await ada.GET("/groups")).data?.groups.map(({ address, members }) => ({ address, members }))).toEqual([{ address: "crew@example.com", members: ["grace@example.com"] }]);
   expect((await duva.receive(message("team@example.net"), { to: ["team@example.net"] })).refused).toEqual(["team@example.net"]);
 });
@@ -317,7 +318,7 @@ test("removing a standalone domain removes its addresses, its alias domains and 
   const { response, data } = await ada.POST("/domains/{domain}/remove", { params: { path: { domain: "example.net" } }, body: {} });
 
   expect(response.status).toBe(200);
-  expect(data?.removed).toBe(true);
+  expect(data).toMatchObject({ removed: true });
   expect((await ada.GET("/domains")).data?.domains.map(({ domain }) => domain)).toEqual(["example.com"]);
   expect(duva.emailIdentities().map(({ domain }) => domain)).toEqual(["example.com"]);
   expect(duva.receiptRules().flatMap(({ Recipients = [] }) => Recipients)).toEqual(["grace@example.com"]);
@@ -384,7 +385,7 @@ test("an admin chooses another verified domain for sign-in codes, which changes 
     { domain: "example.net", signIn: true },
   ]);
   const removed = await ada.POST("/domains/{domain}/remove", { params: { path: { domain: "example.com" } }, body: {} });
-  expect(removed.data?.removed).toBe(true);
+  expect(removed.data).toMatchObject({ removed: true });
   expect(duva.emailIdentities().map(({ domain }) => domain)).toEqual(["example.net"]);
 });
 

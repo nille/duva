@@ -356,7 +356,7 @@ export const operations = [
     "path": "/agents/{agent}",
     "routeKey": "DELETE /agents/{agent}",
     "summary": "Remove an agent, which stops its key working and erases its mailboxes.",
-    "description": "Only the agent's sponsor and admins can remove it. Its sends waiting for approval are withdrawn. Its mailboxes are erased everywhere Duva keeps their mail, as emptying Trash does, and their approval records only if the organization's settings say so. Their addresses are freed at once. The removal is recorded in the organization's change feed under you.",
+    "description": "Only the agent's sponsor and human admins can remove it, never an agent, not even an agent admin. Its sends and setup changes waiting for approval are withdrawn. Its mailboxes are erased everywhere Duva keeps their mail, as emptying Trash does, and their approval records only if the organization's settings say so. Their addresses are freed at once. The removal is recorded in the organization's change feed under you.",
     "signIn": true,
     "command": [
       "agents",
@@ -369,6 +369,35 @@ export const operations = [
         "type": "string",
         "required": true,
         "description": "The agent's ID."
+      }
+    ]
+  },
+  {
+    "operationId": "changeAgent",
+    "method": "patch",
+    "path": "/agents/{agent}",
+    "routeKey": "PATCH /agents/{agent}",
+    "summary": "Make an agent you sponsor an admin, or take it away.",
+    "description": "Only the agent's sponsor can, and only while they are an admin themselves to make it one. No agent can change who is an admin. An agent admin's changes to the setup wait for your approval unless you switch approvalForSetup off in its settings, and it never removes humans or agents, or changes who is an admin. It stops being an admin when you do, and its setup changes still waiting are withdrawn. The change is recorded in the organization's change feed under you.",
+    "signIn": true,
+    "command": [
+      "agents",
+      "change"
+    ],
+    "options": [
+      {
+        "name": "agent",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The agent's ID."
+      },
+      {
+        "name": "admin",
+        "in": "body",
+        "type": "boolean",
+        "required": true,
+        "description": "Whether the agent may change the organization's setup, with its sponsor's approval unless switched off."
       }
     ]
   },
@@ -528,6 +557,13 @@ export const operations = [
         "type": "integer",
         "required": false,
         "description": "How many new recipients the agent sends to in any 24 hours: addresses it hasn't sent to before, from any mailbox. 50 by default, and up to the organization's agentNewRecipientsPerDayCap. A send counts when it goes out, and one over the limit waits. A message with more new recipients than the whole limit waits until its sponsor sends it now."
+      },
+      {
+        "name": "approvalForSetup",
+        "in": "body",
+        "type": "boolean",
+        "required": false,
+        "description": "Whether the agent's changes to the organization's setup, as an admin, wait for its sponsor's approval. On by default."
       }
     ]
   },
@@ -1992,8 +2028,8 @@ export const operations = [
     "method": "get",
     "path": "/approvals",
     "routeKey": "GET /approvals",
-    "summary": "List the approvals waiting for you, newest first, each with its draft and the message it answers.",
-    "description": "An agent's sends wait for its sponsor, from its own mailbox and as its sponsor from theirs, so a sponsor sees those of every agent they sponsor. Each approval's mailbox tells which.",
+    "summary": "List the approvals waiting for you, newest first, sends with their drafts and setup changes with their previews.",
+    "description": "An agent's sends wait for its sponsor, from its own mailbox and as its sponsor from theirs, so a sponsor sees those of every agent they sponsor. Each approval's mailbox tells which. The setup changes of agents they made admins wait for them too, each with a preview of what it does.",
     "signIn": true,
     "command": [
       "approvals",
@@ -2054,6 +2090,79 @@ export const operations = [
     "signIn": true,
     "command": [
       "approvals",
+      "reject"
+    ],
+    "options": [
+      {
+        "name": "approval",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The approval's ID."
+      },
+      {
+        "name": "note",
+        "in": "body",
+        "type": "string",
+        "required": true,
+        "description": "What the agent should change."
+      }
+    ]
+  },
+  {
+    "operationId": "getSetupApproval",
+    "method": "get",
+    "path": "/setup-approvals/{approval}",
+    "routeKey": "GET /setup-approvals/{approval}",
+    "summary": "Read a setup change an agent admin asked for, and what became of it.",
+    "description": "Only the agent that asked and its sponsor, who decides, can read it.",
+    "signIn": true,
+    "command": [
+      "setup-approvals",
+      "get"
+    ],
+    "options": [
+      {
+        "name": "approval",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The approval's ID."
+      }
+    ]
+  },
+  {
+    "operationId": "approveSetup",
+    "method": "post",
+    "path": "/setup-approvals/{approval}/approve",
+    "routeKey": "POST /setup-approvals/{approval}/approve",
+    "summary": "Approve a setup change your agent admin asked for, which makes it as the agent.",
+    "description": "Duva works out the change's effect again first. If it would now do something other than its preview says, the approval waits with the new preview, and approving is refused with 409, so read it and approve again. A change that can't be made now, as when its address was taken meanwhile, is refused with 409 and keeps waiting, for you to reject. Only the agent's sponsor decides, never an agent, and only once. While the agent is paused, it can't be approved. The decision is recorded in the organization's change feed under you, and the change under the agent.",
+    "signIn": true,
+    "command": [
+      "setup-approvals",
+      "approve"
+    ],
+    "options": [
+      {
+        "name": "approval",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The approval's ID."
+      }
+    ]
+  },
+  {
+    "operationId": "rejectSetup",
+    "method": "post",
+    "path": "/setup-approvals/{approval}/reject",
+    "routeKey": "POST /setup-approvals/{approval}/reject",
+    "summary": "Reject a setup change your agent admin asked for, with a note the agent sees.",
+    "description": "Nothing changes. Only the agent's sponsor decides, never an agent, and only once. The decision is recorded in the organization's change feed under you.",
+    "signIn": true,
+    "command": [
+      "setup-approvals",
       "reject"
     ],
     "options": [

@@ -23,7 +23,7 @@ test("an address is kept in lower case", async () => {
 
   const { data } = await ada.POST("/mailboxes", { body: { owner: hermes.id, address: "Hermes@Example.COM" } });
 
-  expect(data?.defaultAddress).toBe("hermes@example.com");
+  expect(data).toMatchObject({ defaultAddress: "hermes@example.com" });
 });
 
 test("only an admin can create a mailbox", async () => {

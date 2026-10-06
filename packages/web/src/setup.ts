@@ -5,6 +5,7 @@ import { strings } from "./strings.ts";
 
 type Mailbox = components["schemas"]["Mailbox"];
 type Actor = components["schemas"]["Actor"];
+type SetupApproval = components["schemas"]["SetupApproval"];
 
 export interface Answer<Data> {
   data?: Data;
@@ -18,11 +19,12 @@ export const attempt = <Data>(call: Promise<Answer<Data>>): Promise<Answer<Data>
 /**
  * Makes the change the call asks for. Answers what Duva answered, or why it failed in words: Duva's
  * own reason for a refusal, which says what to do, or the error. Answers nothing when the session
- * has ended, after `onSignedOut`.
+ * has ended, after `onSignedOut`. Only an agent admin's change waits for approval, so a human's
+ * answer is never a setup approval.
  */
-export async function change<Data>(call: Promise<Answer<Data>>, onSignedOut: () => void): Promise<{ data: Data } | { failed: string } | undefined> {
+export async function change<Data>(call: Promise<Answer<Data | SetupApproval>>, onSignedOut: () => void): Promise<{ data: Exclude<Data, SetupApproval> } | { failed: string } | undefined> {
   const answer = await attempt(call);
-  if (answer.data !== undefined) return { data: answer.data };
+  if (answer.data !== undefined) return { data: answer.data as Exclude<Data, SetupApproval> };
   if (answer.response === undefined) return { failed: strings.setup.unreachable };
   const status = answer.response.status;
   if (status === 401) return void onSignedOut();

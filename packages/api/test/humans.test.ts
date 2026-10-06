@@ -45,7 +45,7 @@ test("a human's email address is kept in lower case", async () => {
 
   const { data } = await duva.signIn("ada@example.org").POST("/humans", { body: { email: " Grace@Example.ORG " } });
 
-  expect(data?.email).toBe("grace@example.org");
+  expect(data).toMatchObject({ email: "grace@example.org" });
 });
 
 test("only an admin can add a human", async () => {

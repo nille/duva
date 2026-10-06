@@ -1,5 +1,8 @@
+import type { components } from "@duva/openapi";
 import { expect, test } from "vitest";
 import { startDuva } from "./harness.ts";
+
+type Mailbox = components["schemas"]["Mailbox"];
 
 /**
  * A deployment on example.com, with example.se its alias domain, where ada, the first admin, has
@@ -17,7 +20,7 @@ async function withCatchAllCandidates() {
   const { data: hermesMailbox } = await ada.POST("/mailboxes", { body: { owner: agent!.agent.id, address: "hermes@example.com" } });
   const graces = { path: { mailbox: mailbox!.id } };
   const hermess = { path: { mailbox: hermesMailbox!.id } };
-  return { duva, ada, grace, hermes: duva.withKey(agent!.key), agent: agent!.agent, mailbox: mailbox!, graces, hermess };
+  return { duva, ada, grace, hermes: duva.withKey(agent!.key), agent: agent!.agent, mailbox: mailbox as Mailbox, graces, hermess };
 }
 
 const message = (from: string, to: string, subject = "Hello") => `From: ${from}\r\nTo: ${to}\r\nSubject: ${subject}\r\nMessage-ID: <${subject.replaceAll(" ", "-")}@mail.test>\r\n\r\nHej.\r\n`;
@@ -42,7 +45,7 @@ test("a domain has no catch-all to start with, so mail to an address the organiz
 
   const { data } = await ada.GET("/domains/{domain}", { params: { path: { domain: "example.com" } } });
 
-  expect(data?.catchAll).toBeUndefined();
+  expect(data).not.toHaveProperty("catchAll");
   expect((await duva.receive(message("linus@example.net", "nobody@example.com"), { to: ["nobody@example.com", "nobody@example.se"] })).refused).toEqual(["nobody@example.com", "nobody@example.se"]);
 });
 
@@ -108,7 +111,7 @@ test("with a group as the catch-all, its members get the mail marked with the gr
 
   const { data } = await ada.PUT("/domains/{domain}/catch-all", onExampleCom({ group: "Support@example.com" }));
 
-  expect(data?.catchAll).toEqual({ group: "support@example.com" });
+  expect(data).toMatchObject({ catchAll: { group: "support@example.com" } });
   expect((await duva.receive(message("margaret@example.net", "help@example.se"), { to: ["help@example.se"] })).refused).toEqual([]);
   expect(await waiting(grace, graces)).toEqual([]);
   expect((await messagesIn(grace, graces)).map(({ recipient, group }) => ({ recipient, group }))).toEqual([{ recipient: "help@example.se", group: "support@example.com" }]);
@@ -144,7 +147,7 @@ test("clearing the catch-all refuses mail to unknown addresses again", async () 
   const { response, data } = await ada.DELETE("/domains/{domain}/catch-all", { params: { path: { domain: "example.com" } } });
 
   expect(response.status).toBe(200);
-  expect(data?.catchAll).toBeUndefined();
+  expect(data).not.toHaveProperty("catchAll");
   expect((await duva.receive(message("linus@example.net", "nobody@example.com"), { to: ["nobody@example.com", "nobody@example.se", "grace@example.se"] })).refused).toEqual([
     "nobody@example.com",
     "nobody@example.se",

@@ -65,6 +65,7 @@ const defaults = {
   disclosureLineAsSponsor: true,
   sendsPerHour: 100,
   newRecipientsPerDay: 50,
+  approvalForSetup: true,
 };
 
 test("an agent starts with no sponsor access and every switch on, which its sponsor and the agent read", async () => {
@@ -189,8 +190,8 @@ test("nobody but the agent's sponsor changes its settings, not the agent, anothe
 });
 
 test.each([
-  ["no setting", {}, "Give a setting to change: sponsorAccess, approvalForOwnMailbox, approvalAsSponsor, disclosureLineForOwnMailbox, disclosureLineAsSponsor, sendsPerHour, newRecipientsPerDay."],
-  ["a setting agents don't have", { admin: true }, `An agent has no setting "admin". Its settings are sponsorAccess, approvalForOwnMailbox, approvalAsSponsor, disclosureLineForOwnMailbox, disclosureLineAsSponsor, sendsPerHour, newRecipientsPerDay.`],
+  ["no setting", {}, "Give a setting to change: sponsorAccess, approvalForOwnMailbox, approvalAsSponsor, disclosureLineForOwnMailbox, disclosureLineAsSponsor, sendsPerHour, newRecipientsPerDay, approvalForSetup."],
+  ["a setting agents don't have", { admin: true }, `An agent has no setting "admin". Its settings are sponsorAccess, approvalForOwnMailbox, approvalAsSponsor, disclosureLineForOwnMailbox, disclosureLineAsSponsor, sendsPerHour, newRecipientsPerDay, approvalForSetup.`],
   ["a sponsor access there isn't", { sponsorAccess: "write" }, "Give sponsorAccess as none, read or full."],
   ["a switch that isn't on or off", { approvalAsSponsor: "no" }, "Give approvalAsSponsor as true to turn it on, or false to turn it off."],
 ])("changing an agent's settings with %s gets 400", async (_, body, message) => {
@@ -649,7 +650,7 @@ test("with approval of its sends as its sponsor off, an agent's send in its spon
   expect(asked.response.status).toBe(202);
   expect(duva.sent()).toHaveLength(1);
   expect(await header(duva.sent()[0]!, "Duva-Agent")).toBe("Hermes for linus@example.org");
-  expect((await linus.GET("/approvals")).data).toEqual({ approvals: [] });
+  expect((await linus.GET("/approvals")).data).toEqual({ approvals: [], setupApprovals: [] });
   const { data: draft } = await hermes.GET("/mailboxes/{mailbox}/drafts/{draft}", inDraft);
   expect(draft!.send).toEqual({ state: "sent", thread: expect.any(String), message: expect.any(String), messageId: expect.any(String) });
 });
@@ -684,7 +685,7 @@ test("with approval of its sends from its own mailbox off, the agent's send ther
   expect((await parse(raw!)).from).toEqual({ name: "Hermes", address: "hermes@example.com" });
   expect(await header(raw!, "Duva-Agent")).toBe("Hermes for linus@example.org");
   expect((await parse(raw!)).text).toBe("Hej Grace.\n\nSent by Hermes for linus@example.org\n");
-  expect((await linus.GET("/approvals")).data).toEqual({ approvals: [] });
+  expect((await linus.GET("/approvals")).data).toEqual({ approvals: [], setupApprovals: [] });
 });
 
 test.each([
@@ -735,7 +736,7 @@ test("the sponsor sending their agent's draft that waits for their approval with
   expect(response.status).toBe(202);
   expect(duva.sent()).toHaveLength(1);
   expect(await header(duva.sent()[0]!, "Duva-Agent")).toBeUndefined();
-  expect((await linus.GET("/approvals")).data).toEqual({ approvals: [] });
+  expect((await linus.GET("/approvals")).data).toEqual({ approvals: [], setupApprovals: [] });
   expect((await linus.POST("/approvals/{approval}/send", { params: { path: { approval } } })).response.status).toBe(409);
   const { data: feed } = await linus.GET("/mailboxes/{mailbox}/changes", { params });
   expect(feed!.changes).toContainEqual(expect.objectContaining({ type: "approvalWithdrawn", draft: reply, approval, actor: linusId }));
@@ -752,7 +753,7 @@ test.each(["agent", "sponsor"] as const)("in the sponsor's mailbox, the %s chang
   const { data: changed } = await (editor === "agent" ? hermes : linus).PATCH("/mailboxes/{mailbox}/drafts/{draft}", { ...inDraft, body: { text: "Ny text." } });
 
   expect(changed!.send).toEqual({ approval, state: "withdrawn" });
-  expect((await linus.GET("/approvals")).data).toEqual({ approvals: [] });
+  expect((await linus.GET("/approvals")).data).toEqual({ approvals: [], setupApprovals: [] });
   expect((await linus.POST("/approvals/{approval}/send", { params: { path: { approval } } })).response.status).toBe(409);
 });
 
@@ -815,6 +816,6 @@ test("an ask to send as the sponsor at the same time as lowering access from ful
     const [asked] = await Promise.all([hermes.POST("/mailboxes/{mailbox}/drafts/{draft}/send", { params: { path: { ...params.path, draft: draft!.id } } }), giveAccess("read")]);
 
     expect([202, 403]).toContain(asked.response.status);
-    expect((await linus.GET("/approvals")).data).toEqual({ approvals: [] });
+    expect((await linus.GET("/approvals")).data).toEqual({ approvals: [], setupApprovals: [] });
   }
 });

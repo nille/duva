@@ -155,7 +155,8 @@ function OrganizationSheet({ client, admin, onSignedOut }: { client: DuvaClient;
     read: () => client.GET("/organization/settings"),
     write: (settings) => {
       before.current = sheet.read.status === "read" ? sheet.read.values : undefined;
-      return client.PATCH("/organization/settings", { body: settings });
+      // Only an agent's change waits for approval, so a human's answer is the settings.
+      return client.PATCH("/organization/settings", { body: settings }) as Answer<OrganizationSettings>;
     },
     copy: strings.settings,
     onSignedOut,

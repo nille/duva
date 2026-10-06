@@ -2,7 +2,7 @@ import type { APIGatewayProxyEventV2, APIGatewayProxyStructuredResultV2 } from "
 import { type Operation, operations, type OperationId } from "@duva/openapi";
 import { addAddress, changeMailbox, listAddresses, removeAddress } from "./addresses.ts";
 import { getAttachment } from "./attachments.ts";
-import { changeAgentSettings, createAgent, getAgentSettings, listAgents, pauseAgent, pausedRefusal, removeAgent, rotateAgentKey, unpauseAgent } from "./agents.ts";
+import { changeAgent, changeAgentSettings, createAgent, getAgentSettings, listAgents, pauseAgent, pausedRefusal, removeAgent, rotateAgentKey, unpauseAgent } from "./agents.ts";
 import type { AuthorizerContext } from "./authorizer.ts";
 import { addDomain, changeDomain, clearCatchAll, getDomain, listDomains, removeDomain, setCatchAll } from "./domains.ts";
 import { listOrganizationChanges } from "./changes.ts";
@@ -35,6 +35,7 @@ import { searchMailbox } from "./search.ts";
 import { blockSender, getScreener, letInSender, listScreenedSenders, removeScreenedSender, switchScreener } from "./screener.ts";
 import { changeOrganizationSettings, getOrganizationSettings, previewRetention } from "./settings.ts";
 import { getStatus } from "./status.ts";
+import { approveSetup, getSetupApproval, rejectSetup } from "./setup.ts";
 import { whoami } from "./whoami.ts";
 
 /**
@@ -47,7 +48,7 @@ export type OperationHandler = (
   actor: Actor | undefined,
 ) => Promise<{ statusCode: number; body: unknown }>;
 
-const handlers: Record<OperationId, OperationHandler> = {
+export const handlers: Record<OperationId, OperationHandler> = {
   getStatus,
   whoami,
   listOrganizationChanges,
@@ -62,6 +63,7 @@ const handlers: Record<OperationId, OperationHandler> = {
   removeHuman,
   createAgent,
   listAgents,
+  changeAgent,
   removeAgent,
   rotateAgentKey,
   pauseAgent,
@@ -119,6 +121,9 @@ const handlers: Record<OperationId, OperationHandler> = {
   listApprovals,
   sendApproval,
   rejectApproval,
+  getSetupApproval,
+  approveSetup,
+  rejectSetup,
 };
 
 const operationByRouteKey = new Map<string, Operation>(operations.map((operation) => [operation.routeKey, operation]));

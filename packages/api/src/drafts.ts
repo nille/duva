@@ -25,10 +25,12 @@ import {
   reject,
   SendNotAllowed,
   sendNow,
+  maxNote,
   unsendableFrom,
 } from "./drafting.ts";
 import { attachmentLinks } from "./attachments.ts";
 import { fromStanding, groupsSentAsBy } from "./group-mail.ts";
+import { pendingSetupApprovals } from "./setup.ts";
 import { findMessage } from "./mail.ts";
 import { mailboxFor } from "./access.ts";
 import { type Actor, aliasDomains, findActor, isAddressOf, type Mailbox } from "./organization.ts";
@@ -38,7 +40,6 @@ type Message = components["schemas"]["Message"];
 
 const maxText = 50000;
 const maxSubject = 998;
-const maxNote = 2000;
 
 export const createDraft: OperationHandler = async (event, deployment, actor) => {
   const mailbox = await mailboxFor(event, deployment, actor!, "draft");
@@ -275,7 +276,10 @@ export const listApprovals: OperationHandler = async (_event, deployment, actor)
   const approvals = await pendingApprovals(deployment.table, actor!.id);
   return {
     statusCode: 200,
-    body: { approvals: await Promise.all(approvals.map((approval) => withOriginal(deployment, approval))) } satisfies components["schemas"]["ApprovalList"],
+    body: {
+      approvals: await Promise.all(approvals.map((approval) => withOriginal(deployment, approval))),
+      setupApprovals: await pendingSetupApprovals(deployment.table, actor!.id),
+    } satisfies components["schemas"]["ApprovalList"],
   };
 };
 

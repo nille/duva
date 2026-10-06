@@ -19,6 +19,7 @@ import {
   removeMember,
 } from "./organization.ts";
 import { syncRecipients } from "./receiving.ts";
+import { listed, setupOperation } from "./setup.ts";
 
 const sendPolicies: Group["sendPolicy"][] = ["anyone", "organization", "members"];
 const replyTos: Group["replyTo"][] = ["sender", "group"];
@@ -71,8 +72,8 @@ const notFound = (address: string) => refusal(404, `The organization has no grou
 
 const groupIn = (event: Parameters<OperationHandler>[0]) => (event.pathParameters?.group ?? "").trim().toLowerCase();
 
-export const createGroup: OperationHandler = async (event, deployment, actor) => {
-  if (!actor?.admin) return onlyAdmins();
+export const createGroup = setupOperation("createGroup", async (event, deployment, actor) => {
+  if (!actor.admin) return onlyAdmins();
   const body = jsonBody(event);
   const address = await addressGiven(deployment, body?.address);
   if (typeof address !== "string") return address;
@@ -81,15 +82,29 @@ export const createGroup: OperationHandler = async (event, deployment, actor) =>
   const policies = policiesGiven(body);
   if (isRefusal(policies)) return policies;
   const group: Group = { address, members, sendPolicy: "anyone", replyTo: "sender", ...policies };
-  try {
-    await addGroup(deployment.table, { group, by: actor.id });
-  } catch (error) {
-    if (error instanceof AddressTaken) return addressTaken(deployment, address);
-    throw error;
-  }
-  await syncRecipients(deployment.table, deployment.receiving);
-  return { statusCode: 201, body: group satisfies components["schemas"]["Group"] };
-};
+  return {
+    preview: [
+      `Creates the group ${address}, ${members.length === 0 ? "with no members" : `with the members ${listed(members)}`}.`,
+      `${capitalized(senders[group.sendPolicy])} may send to it.`,
+      `Its external members' replies go to ${repliers[group.replyTo]}.`,
+    ],
+    run: async () => {
+      try {
+        await addGroup(deployment.table, { group, by: actor.id });
+      } catch (error) {
+        if (error instanceof AddressTaken) return addressTaken(deployment, address);
+        throw error;
+      }
+      await syncRecipients(deployment.table, deployment.receiving);
+      return { statusCode: 201, body: group satisfies components["schemas"]["Group"] };
+    },
+  };
+});
+
+// Who each send policy lets send, and where each Reply-To choice sends replies, as a preview says it.
+const senders: Record<Group["sendPolicy"], string> = { anyone: "anyone", organization: "only the organization's addresses", members: "only its members" };
+const repliers: Record<Group["replyTo"], string> = { sender: "the original sender", group: "the group" };
+const capitalized = (text: string) => text[0]!.toUpperCase() + text.slice(1);
 
 export const listGroups: OperationHandler = async (_event, deployment, actor) => {
   if (!actor?.admin) return refusal(403, "Only admins can list the organization's groups. Ask an admin to.");
@@ -103,8 +118,8 @@ export const getGroup: OperationHandler = async (event, deployment, actor) => {
   return { statusCode: 200, body: group satisfies components["schemas"]["Group"] };
 };
 
-export const changeGroup: OperationHandler = async (event, deployment, actor) => {
-  if (!actor?.admin) return onlyAdmins();
+export const changeGroup = setupOperation("changeGroup", async (event, deployment, actor) => {
+  if (!actor.admin) return onlyAdmins();
   const address = groupIn(event);
   const stored = await findGroup(deployment.table, address);
   if (stored === undefined) return notFound(address);
@@ -114,24 +129,54 @@ export const changeGroup: OperationHandler = async (event, deployment, actor) =>
   const policies = policiesGiven(body);
   if (isRefusal(policies)) return policies;
   const group: Group = { ...stored, members, ...policies };
+  const added = members.filter((member) => !stored.members.includes(member));
+  const gone = stored.members.filter((member) => !members.includes(member));
   const unchanged = group.members.join() === stored.members.join() && group.sendPolicy === stored.sendPolicy && group.replyTo === stored.replyTo;
-  if (unchanged) return { statusCode: 200, body: stored };
-  try {
-    await changeStoredGroup(deployment.table, { group, by: actor.id });
-  } catch (error) {
-    if (error instanceof NoGroup) return notFound(address);
-    throw error;
-  }
-  return { statusCode: 200, body: group satisfies components["schemas"]["Group"] };
-};
+  if (unchanged) return { preview: [], run: async () => ({ statusCode: 200, body: stored }) };
+  return {
+    preview: [
+      ...(added.length === 0 ? [] : [`Adds ${listed(added)} to the members of the group ${address}.`]),
+      ...(gone.length === 0 ? [] : [`Takes ${listed(gone)} out of the members of the group ${address}.`]),
+      ...(added.length === 0 && gone.length === 0 && members.join() !== stored.members.join() ? [`Puts the members of the group ${address} in the order ${listed(members)}.`] : []),
+      ...(group.sendPolicy === stored.sendPolicy ? [] : [`Lets ${senders[group.sendPolicy]} send to the group ${address}, instead of ${senders[stored.sendPolicy]}.`]),
+      ...(group.replyTo === stored.replyTo ? [] : [`Sends its external members' replies to ${repliers[group.replyTo]}, instead of ${repliers[stored.replyTo]}.`]),
+    ],
+    run: async () => {
+      try {
+        await changeStoredGroup(deployment.table, { group, by: actor.id });
+      } catch (error) {
+        if (error instanceof NoGroup) return notFound(address);
+        throw error;
+      }
+      return { statusCode: 200, body: group satisfies components["schemas"]["Group"] };
+    },
+  };
+});
 
-export const deleteGroup: OperationHandler = async (event, deployment, actor) => {
-  if (!actor?.admin) return onlyAdmins();
+export const deleteGroup = setupOperation("deleteGroup", async (event, deployment, actor) => {
+  if (!actor.admin) return onlyAdmins();
   const address = groupIn(event);
-  const removed = await removeGroup(deployment.table, { address, by: actor.id });
-  // Done even when it's gone, in case SES failed when it was removed.
-  await syncRecipients(deployment.table, deployment.receiving);
-  if (removed === undefined) return notFound(address);
-  await removeMember(deployment.table, { address, by: actor.id });
-  return { statusCode: 200, body: removed satisfies components["schemas"]["Group"] };
-};
+  const group = await findGroup(deployment.table, address);
+  if (group === undefined) {
+    // In case SES failed when it was removed.
+    await syncRecipients(deployment.table, deployment.receiving);
+    return notFound(address);
+  }
+  const catchAllOf = (await allDomains(deployment.table)).filter(({ catchAll }) => catchAll?.group === address).map(({ domain }) => domain);
+  const memberOf = (await allGroups(deployment.table)).filter(({ members }) => members.includes(address)).map((each) => each.address);
+  return {
+    preview: [
+      `Deletes the group ${address}, ${group.members.length === 0 ? "which has no members" : `whose members are ${listed(group.members)}`}. Mail to it is refused from then on.`,
+      ...(catchAllOf.length === 0 ? [] : [`It stops being the catch-all of ${listed(catchAllOf)}, which then refuses mail to unknown addresses.`]),
+      ...(memberOf.length === 0 ? [] : [`It stops being a member of ${listed(memberOf.map((each) => `the group ${each}`))}.`]),
+    ],
+    run: async () => {
+      const removed = await removeGroup(deployment.table, { address, by: actor.id });
+      // Done even when it's gone, in case SES failed when it was removed.
+      await syncRecipients(deployment.table, deployment.receiving);
+      if (removed === undefined) return notFound(address);
+      await removeMember(deployment.table, { address, by: actor.id });
+      return { statusCode: 200, body: removed satisfies components["schemas"]["Group"] };
+    },
+  };
+});

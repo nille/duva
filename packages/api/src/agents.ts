@@ -6,12 +6,14 @@ import type { Table } from "./deployment.ts";
 import { syncRecipients } from "./receiving.ts";
 import { removeAgentWithMailboxes } from "./removal.ts";
 import { isLimit } from "./settings.ts";
+import { setupOperation, takeAgentAdminAway } from "./setup.ts";
 import {
   type Actor,
   addAgent,
   type Agent,
   type AgentSettings,
   agentSettings,
+  changeAgentAdmin,
   changeAgentSettings as changeStoredSettings,
   defaultAgentSettings,
   duva,
@@ -23,6 +25,7 @@ import {
   limitCaps,
   pauseAgent as pause,
   replaceAgentKey,
+  SponsorNotAdmin,
   sponsoredAgents,
   unpauseAgent as unpause,
 } from "./organization.ts";
@@ -124,6 +127,8 @@ async function agentAsked(event: Parameters<OperationHandler>[0], deployment: Pa
 const sponsorOrAdmin = (actor: Actor, agent: Agent) => actor.id === agent.sponsor || actor.admin;
 
 export const removeAgent: OperationHandler = async (event, deployment, actor) => {
+  // Not even with approval, since removal erases another sponsor's mailboxes for good.
+  if (actor!.kind === "agent") return refusal(403, "Agents can't remove agents, even with approval. Ask the agent's sponsor or a human admin.");
   const agent = await agentAsked(event, deployment);
   if ("statusCode" in agent) return agent;
   if (!sponsorOrAdmin(actor!, agent)) return refusal(403, "Only the agent's sponsor and admins can remove it. Ask its sponsor.");
@@ -132,13 +137,49 @@ export const removeAgent: OperationHandler = async (event, deployment, actor) =>
   return { statusCode: 200, body: { agent, mailboxes } satisfies components["schemas"]["AgentRemoval"] };
 };
 
-export const pauseAgent: OperationHandler = async (event, deployment, actor) => {
+/** The agent as a preview names it, with its sponsor. */
+async function agentNamed(table: Table, agent: Agent): Promise<string> {
+  const sponsor = await findActor(table, agent.sponsor);
+  return `the agent ${agent.name}, whose sponsor is ${sponsor?.kind === "human" ? sponsor.email : "removed"}`;
+}
+
+export const changeAgent: OperationHandler = async (event, deployment, actor) => {
+  // Not even with approval, so people stay in charge of who is an admin.
+  if (actor!.kind === "agent") return refusal(403, "Agents can't change who is an admin, even with approval. Ask the agent's sponsor.");
   const agent = await agentAsked(event, deployment);
   if ("statusCode" in agent) return agent;
-  if (!sponsorOrAdmin(actor!, agent)) return refusal(403, "Only the agent's sponsor and admins can pause it. Ask its sponsor.");
-  const paused = await pause(deployment.table, { agent, by: actor!.id });
-  return paused === undefined ? removedMeanwhile(agent) : { statusCode: 200, body: paused satisfies components["schemas"]["Agent"] };
+  if (actor!.id !== agent.sponsor) return refusal(403, "Only the agent's sponsor can make it an admin or take it away. Ask them to.");
+  const admin = jsonBody(event)?.admin;
+  if (typeof admin !== "boolean") return refusal(400, "Give admin as true to make the agent an admin, or false to take it away.");
+  const notAdmin = refusal(403, "Only an admin can make their agent an admin, and you aren't one. Ask an admin to make you one first.");
+  if (admin && !actor!.admin) return notAdmin;
+  let changed: Agent | undefined;
+  try {
+    // Taking it away withdraws its setup changes still waiting.
+    changed = await (admin ? changeAgentAdmin(deployment.table, { agent, admin, by: actor!.id }) : takeAgentAdminAway(deployment.table, { agent, by: actor!.id }));
+  } catch (error) {
+    if (error instanceof SponsorNotAdmin) return notAdmin;
+    throw error;
+  }
+  return changed === undefined ? removedMeanwhile(agent) : { statusCode: 200, body: changed satisfies components["schemas"]["Agent"] };
 };
+
+export const pauseAgent = setupOperation("pauseAgent", async (event, deployment, actor) => {
+  const agent = await agentAsked(event, deployment);
+  if ("statusCode" in agent) return agent;
+  // An agent admin pauses other agents, and its sponsor pauses it.
+  if (!sponsorOrAdmin(actor, agent) || actor.id === agent.id) return refusal(403, "Only the agent's sponsor and admins can pause it. Ask its sponsor.");
+  return {
+    preview:
+      agent.paused !== undefined
+        ? []
+        : [`Pauses ${await agentNamed(deployment.table, agent)}. Its key is refused and its approved sends are held until a human unpauses it.`],
+    run: async () => {
+      const paused = await pause(deployment.table, { agent, by: actor.id });
+      return paused === undefined ? removedMeanwhile(agent) : { statusCode: 200, body: paused satisfies components["schemas"]["Agent"] };
+    },
+  };
+});
 
 export const unpauseAgent: OperationHandler = async (event, deployment, actor) => {
   const agent = await agentAsked(event, deployment);

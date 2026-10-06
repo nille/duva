@@ -10,26 +10,32 @@ import { allMail, type Cursor, cursorOf, inbox, labelThreads, mailboxChanges, ma
 import { recordEmptying } from "./erasure.ts";
 import { syncRecipients } from "./receiving.ts";
 import { groupsSentAsBy } from "./group-mail.ts";
+import { actorNamed, setupOperation } from "./setup.ts";
 
-export const createMailbox: OperationHandler = async (event, deployment, actor) => {
-  if (!actor?.admin) return refusal(403, "Only admins can create mailboxes. Ask an admin to create one.");
+export const createMailbox = setupOperation("createMailbox", async (event, deployment, actor) => {
+  if (!actor.admin) return refusal(403, "Only admins can create mailboxes. Ask an admin to create one.");
   const body = jsonBody(event);
   const ownerId = typeof body?.owner === "string" ? body.owner : "";
   const owner = await findActor(deployment.table, ownerId);
   if (owner === undefined) return refusal(400, `There is no human or agent ${JSON.stringify(ownerId)}. Give the ID of the actor that will own the mailbox.`);
   const address = await addressGiven(deployment, body?.address);
   if (typeof address !== "string") return address;
-
-  try {
-    // The Screener starts on for a human's mailbox, and off for an agent's.
-    const mailbox = await addMailbox(deployment.table, { owner: owner.id, address, screener: owner.kind === "human", by: actor.id });
-    await syncRecipients(deployment.table, deployment.receiving);
-    return { statusCode: 201, body: mailbox satisfies components["schemas"]["Mailbox"] };
-  } catch (error) {
-    if (!(error instanceof AddressTaken)) throw error;
-    return addressTaken(deployment, address);
-  }
-};
+  // The Screener starts on for a human's mailbox, and off for an agent's.
+  const screener = owner.kind === "human";
+  return {
+    preview: [`Creates a mailbox at ${address} for ${actorNamed(owner)}, with its Screener ${screener ? "on" : "off"}.`],
+    run: async () => {
+      try {
+        const mailbox = await addMailbox(deployment.table, { owner: owner.id, address, screener, by: actor.id });
+        await syncRecipients(deployment.table, deployment.receiving);
+        return { statusCode: 201, body: mailbox satisfies components["schemas"]["Mailbox"] };
+      } catch (error) {
+        if (!(error instanceof AddressTaken)) throw error;
+        return addressTaken(deployment, address);
+      }
+    },
+  };
+});
 
 export const listMailboxes: OperationHandler = async (_event, deployment, actor) => ({
   statusCode: 200,

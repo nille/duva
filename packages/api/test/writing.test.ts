@@ -129,7 +129,7 @@ test("a human's send goes out at once, with no approval, and records the Message
   expect(asked.response.status).toBe(202);
   expect(asked.data?.send).toEqual({ state: "approved" });
   expect(draft.send).toEqual({ state: "sent", thread: expect.any(String), message: expect.any(String), messageId: expect.stringMatching(/@eu-north-1\.amazonses\.com>$/) });
-  expect((await ada.GET("/approvals")).data).toEqual({ approvals: [] });
+  expect((await ada.GET("/approvals")).data).toEqual({ approvals: [], setupApprovals: [] });
   expect(duva.sent().map((raw) => raw.match(/^Message-ID: (.+)$/m)?.[1])).toEqual([draft.send!.messageId]);
 });
 
@@ -351,7 +351,7 @@ test("deleting an agent's draft that waits for approval withdraws the request", 
 
   await hermes.DELETE("/mailboxes/{mailbox}/drafts/{draft}", { params: draftParams });
 
-  expect((await ada.GET("/approvals")).data).toEqual({ approvals: [] });
+  expect((await ada.GET("/approvals")).data).toEqual({ approvals: [], setupApprovals: [] });
   const decision = await ada.POST("/approvals/{approval}/send", { params: { path: { approval: asked!.send!.approval! } } });
   expect(decision.response.status).toBe(409);
   const { data: feed } = await hermes.GET("/mailboxes/{mailbox}/changes", { params });

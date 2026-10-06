@@ -362,6 +362,34 @@ test("the sponsor limits an agent to one send an hour, and sends its second mess
   expect(duva.sentTo()).toEqual([["grace@example.org"], ["linus@example.org"]]);
 });
 
+test("an admin makes their agent an admin, which asks to add an address, and the admin approves it from the CLI", async () => {
+  const machine = await newMachine();
+  const server = await (await startDuva({ domain: "example.com", admin: "ada@example.com", humans: ["grace@example.com"] })).listen();
+  onTestFinished(() => server.close());
+  await machine.saveDeployment(server);
+  await machine.duva("login", { browserSignsIn: "ada@example.com" });
+  const { agent, key } = JSON.parse((await machine.duva("agents", "create", "--name", "Hermes")).stdout) as { agent: { id: string }; key: string };
+  const mailbox = JSON.parse((await machine.duva("mailboxes", "create", "--owner", agent.id, "--address", "hermes@example.com")).stdout) as { id: string };
+  const asAgent = { env: { DUVA_AGENT_KEY: key } };
+
+  const made = await machine.duva("agents", "change", "--agent", agent.id, "--admin");
+  const asked = await machine.duva("addresses", "add", "--address", "sales@example.com", "--mailbox", mailbox.id, asAgent);
+  const { id } = JSON.parse(asked.stdout) as { id: string };
+  const approved = await machine.duva("setup-approvals", "approve", "--approval", id);
+  const grace = JSON.parse((await machine.duva("humans", "list")).stdout).humans.find(({ email }: { email: string }) => email === "grace@example.com");
+  const removal = await machine.duva("humans", "remove", "--human", grace.id, asAgent);
+  const unmade = await machine.duva("agents", "change", "--agent", agent.id, "--no-admin");
+
+  expect(JSON.parse(made.stdout)).toEqual({ ...agent, admin: true });
+  expect(asked.exitCode).toBe(0);
+  expect(JSON.parse(asked.stdout)).toMatchObject({ state: "pending", preview: ["Gives Hermes's mailbox at hermes@example.com the address sales@example.com."] });
+  expect(JSON.parse(approved.stdout)).toMatchObject({ state: "approved", result: { status: 201 } });
+  expect(JSON.parse((await machine.duva("addresses", "list")).stdout).addresses.map(({ address }: { address: string }) => address)).toContain("sales@example.com");
+  expect(removal.exitCode).toBe(1);
+  expect(errorIn(removal.stderr)).toMatch(/403.*Agents can't remove humans/);
+  expect(JSON.parse(unmade.stdout)).toEqual(agent);
+});
+
 test("an admin removes a human from the CLI, first with --dryRun, handing their mailbox to another human", async () => {
   const machine = await newMachine();
   const duva = await startDuva({ domain: "example.com", admin: "ada@example.com", humans: ["grace@example.com", "linus@example.com"] });
@@ -468,7 +496,7 @@ test("the sponsor gives an agent read sponsor access and turns a switch off, and
   const mailboxes = await machine.duva("mailboxes", "list", asAgent);
   const threads = await machine.duva("threads", "list", "--mailbox", mailbox.id, asAgent);
 
-  const expected = { sponsorAccess: "read", approvalForOwnMailbox: true, approvalAsSponsor: false, disclosureLineForOwnMailbox: true, disclosureLineAsSponsor: true, sendsPerHour: 100, newRecipientsPerDay: 50 };
+  const expected = { sponsorAccess: "read", approvalForOwnMailbox: true, approvalAsSponsor: false, disclosureLineForOwnMailbox: true, disclosureLineAsSponsor: true, sendsPerHour: 100, newRecipientsPerDay: 50, approvalForSetup: true };
   expect(refused.exitCode).toBe(1);
   expect(errorIn(refused.stderr)).toMatch(/403.*Ask them for read access/);
   expect(changed.exitCode).toBe(0);

@@ -1,6 +1,9 @@
 import { expect, test } from "vitest";
 import type { Page } from "playwright-core";
+import type { components } from "@duva/openapi";
 import { phone, startWebApp, type WebApp } from "./web-app.ts";
+
+type Domain = components["schemas"]["Domain"];
 
 // The page under the full suite's load can take seconds to show what changed, so every wait has room, and every test more.
 const wait = { timeout: 10_000 };
@@ -61,19 +64,19 @@ test("an admin adds a domain and sees the DNS records to add, each missing, with
 
 test("an admin checks a domain's records again once they're in DNS, and sees SES verify it", budget, async () => {
   const { page, duva, ada, settings } = await withDomains();
-  const { data: added } = await ada.POST("/domains", { body: { domain: "example.net" } });
+  const added = (await ada.POST("/domains", { body: { domain: "example.net" } })).data as Domain;
   await settings();
   await line(page, "example.net").getByRole("heading").click();
   await expect.poll(() => statuses(page, "example.net"), wait).toHaveLength(7);
 
   // Every record but DMARC, as its admin adds them at the domain's DNS provider, and the SPF record with another value first.
-  for (const { type, name, value, purpose } of added!.records) if (purpose !== "DMARC") duva.dnsRecord(type, name, [type === "TXT" ? "v=spf1 -all" : value]);
+  for (const { type, name, value, purpose } of added.records) if (purpose !== "DMARC") duva.dnsRecord(type, name, [type === "TXT" ? "v=spf1 -all" : value]);
   await opened(page, "example.net").getByRole("button", { name: "Check again" }).click();
 
   await expect.poll(() => opened(page, "example.net").innerText(), wait).toContain("DNS has v=spf1 -all instead.");
   expect(await statuses(page, "example.net")).toContain("MAIL FROM, TXT record: Missing");
 
-  const spf = added!.records.find(({ type, purpose }) => purpose === "MAIL FROM" && type === "TXT")!;
+  const spf = added.records.find(({ type, purpose }) => purpose === "MAIL FROM" && type === "TXT")!;
   duva.dnsRecord("TXT", spf.name, [spf.value]);
   await opened(page, "example.net").getByRole("button", { name: "Check again" }).click();
 
@@ -147,7 +150,7 @@ test("an admin removes a domain after a confirmation listing its addresses and t
 
 test("the domain sign-in codes come from can't be removed until an admin sends them from another domain SES has verified", budget, async () => {
   const { page, duva, ada, settings } = await withDomains();
-  const { data: added } = await ada.POST("/domains", { body: { domain: "example.net" } });
+  const added = (await ada.POST("/domains", { body: { domain: "example.net" } })).data as Domain;
   await settings();
   await line(page, "example.com").getByRole("heading").click();
 
@@ -156,7 +159,7 @@ test("the domain sign-in codes come from can't be removed until an admin sends t
 
   await line(page, "example.net").getByRole("heading").click();
   expect(await opened(page, "example.net").innerText()).toContain("Once SES has verified example.net, sign-in codes can come from it.");
-  for (const { type, name, value } of added!.records) duva.dnsRecord(type, name, [value]);
+  for (const { type, name, value } of added.records) duva.dnsRecord(type, name, [value]);
   await opened(page, "example.net").getByRole("button", { name: "Check again" }).click();
   await opened(page, "example.net").getByRole("button", { name: "Send them from example.net" }).click();
 

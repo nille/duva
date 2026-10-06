@@ -134,7 +134,8 @@ const agents = await step("the sponsor has two agents, each with a mailbox on th
       : answer(await client.POST("/agents", { body: { name } }));
     const address = `${name.toLowerCase().replaceAll(" ", "-")}@${deployed.domain}`;
     const mailbox =
-      mailboxes.find(({ owner }) => owner === agent.id) ?? answer(await client.POST("/mailboxes", { body: { owner: agent.id, address } }));
+      // A human's change never waits for approval, so the answer is the mailbox.
+      mailboxes.find(({ owner }) => owner === agent.id) ?? (answer(await client.POST("/mailboxes", { body: { owner: agent.id, address } })) as Schemas["Mailbox"]);
     return { name, key, mailbox: mailbox.id, address: mailbox.defaultAddress ?? address, position: 0 };
   };
   return { first: await agentNamed(agentNames.first), second: await agentNamed(agentNames.second) };

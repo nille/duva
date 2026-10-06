@@ -19,9 +19,10 @@ import {
 } from "./organization.ts";
 import { syncRecipients } from "./receiving.ts";
 import { deleteMailboxes, removeAgentWithMailboxes } from "./removal.ts";
+import { setupOperation, takeSponsoredAdminAway } from "./setup.ts";
 
-export const addHuman: OperationHandler = async (event, deployment, actor) => {
-  if (!actor?.admin) return refusal(403, "Only admins can add humans. Ask an admin to add them.");
+export const addHuman = setupOperation("addHuman", async (event, deployment, actor) => {
+  if (!actor.admin) return refusal(403, "Only admins can add humans. Ask an admin to add them.");
   const body = jsonBody(event);
   const given = typeof body?.email === "string" ? body.email.trim() : "";
   // Addresses are kept in lower case, so one human never gets two actors by case alone.
@@ -29,14 +30,21 @@ export const addHuman: OperationHandler = async (event, deployment, actor) => {
   if (!isEmailAddress(email) || email.length > 254) {
     return refusal(400, `${JSON.stringify(given)} isn't an email address. Give the address the human will sign in with, like grace@example.com.`);
   }
-  try {
-    const human = await addHumanToOrganization(deployment, { email, by: actor.id });
-    return { statusCode: 201, body: human satisfies components["schemas"]["Human"] };
-  } catch (error) {
-    if (!(error instanceof HumanExists)) throw error;
-    return refusal(409, `${email} is already a human in the organization. List the humans to find their ID.`);
-  }
-};
+  const exists = () => refusal(409, `${email} is already a human in the organization. List the humans to find their ID.`);
+  if ((await allHumans(deployment.table)).some((human) => human.email === email)) return exists();
+  return {
+    preview: [`Adds the human ${email}, who can then sign in.`],
+    run: async () => {
+      try {
+        const human = await addHumanToOrganization(deployment, { email, by: actor.id });
+        return { statusCode: 201, body: human satisfies components["schemas"]["Human"] };
+      } catch (error) {
+        if (!(error instanceof HumanExists)) throw error;
+        return exists();
+      }
+    },
+  };
+});
 
 export const listHumans: OperationHandler = async (_event, deployment, actor) => {
   if (!actor?.admin) return refusal(403, "Only admins can list the organization's humans. Ask an admin who has access.");
@@ -44,6 +52,8 @@ export const listHumans: OperationHandler = async (_event, deployment, actor) =>
 };
 
 export const removeHuman: OperationHandler = async (event, deployment, actor) => {
+  // Not even with approval, so people stay in charge of people.
+  if (actor?.kind === "agent") return refusal(403, "Agents can't remove humans, even with approval. Ask a human admin.");
   if (!actor?.admin) return refusal(403, "Only admins can remove humans. Ask an admin to remove them.");
   const human = await humanAsked(event, deployment);
   if ("statusCode" in human) return human;
@@ -113,6 +123,7 @@ async function choicesIn(
 }
 
 export const changeHuman: OperationHandler = async (event, deployment, actor) => {
+  if (actor?.kind === "agent") return refusal(403, "Agents can't change who is an admin, even with approval. Ask a human admin.");
   if (!actor?.admin) return refusal(403, "Only admins can change who is an admin. Ask an admin to.");
   const human = await humanAsked(event, deployment);
   if ("statusCode" in human) return human;
@@ -120,6 +131,8 @@ export const changeHuman: OperationHandler = async (event, deployment, actor) =>
   if (typeof admin !== "boolean") return refusal(400, "Give admin as true to make the human an admin, or false to take it away.");
   try {
     const changed = await changeAdmin(deployment.table, { human, admin, by: actor.id });
+    // No agent outranks its sponsor. Each change does it, so a change again finishes what one that stopped partway left.
+    if (!admin) await takeSponsoredAdminAway(deployment.table, { human: human.id, by: actor.id });
     return { statusCode: 200, body: changed satisfies components["schemas"]["Human"] };
   } catch (error) {
     if (!(error instanceof LastAdmin)) throw error;

@@ -166,9 +166,18 @@ Only humans can create agents. The answer is the only time Duva shows the agent'
 
 Remove an agent, which stops its key working and erases its mailboxes.
 
-Only the agent's sponsor and admins can remove it. Its sends waiting for approval are withdrawn. Its mailboxes are erased everywhere Duva keeps their mail, as emptying Trash does, and their approval records only if the organization's settings say so. Their addresses are freed at once. The removal is recorded in the organization's change feed under you.
+Only the agent's sponsor and human admins can remove it, never an agent, not even an agent admin. Its sends and setup changes waiting for approval are withdrawn. Its mailboxes are erased everywhere Duva keeps their mail, as emptying Trash does, and their approval records only if the organization's settings say so. Their addresses are freed at once. The removal is recorded in the organization's change feed under you.
 
 - `--agent` (required): The agent's ID.
+
+## duva agents change
+
+Make an agent you sponsor an admin, or take it away.
+
+Only the agent's sponsor can, and only while they are an admin themselves to make it one. No agent can change who is an admin. An agent admin's changes to the setup wait for your approval unless you switch approvalForSetup off in its settings, and it never removes humans or agents, or changes who is an admin. It stops being an admin when you do, and its setup changes still waiting are withdrawn. The change is recorded in the organization's change feed under you.
+
+- `--agent` (required): The agent's ID.
+- `--admin` or `--no-admin` (required): Whether the agent may change the organization's setup, with its sponsor's approval unless switched off.
 
 ## duva agents rotate-key
 
@@ -216,6 +225,7 @@ Give only the settings to change. A change works at once. Only the agent's spons
 - `--disclosureLineAsSponsor` or `--no-disclosureLineAsSponsor`: Whether mail the agent sends as its sponsor carries the disclosure's visible line. It always carries the Duva-Agent header. On by default.
 - `--sendsPerHour`: How many messages the agent sends in any hour, from all its mailboxes and as its sponsor. 100 by default, and up to the organization's agentSendsPerHourCap. A send counts when it goes out, and one over the limit waits.
 - `--newRecipientsPerDay`: How many new recipients the agent sends to in any 24 hours: addresses it hasn't sent to before, from any mailbox. 50 by default, and up to the organization's agentNewRecipientsPerDayCap. A send counts when it goes out, and one over the limit waits. A message with more new recipients than the whole limit waits until its sponsor sends it now.
+- `--approvalForSetup` or `--no-approvalForSetup`: Whether the agent's changes to the organization's setup, as an admin, wait for its sponsor's approval. On by default.
 
 ## duva addresses list
 
@@ -653,9 +663,9 @@ Only the agent's sponsor can, for one draft at a time, and the agent's limits st
 
 ## duva approvals list
 
-List the approvals waiting for you, newest first, each with its draft and the message it answers.
+List the approvals waiting for you, newest first, sends with their drafts and setup changes with their previews.
 
-An agent's sends wait for its sponsor, from its own mailbox and as its sponsor from theirs, so a sponsor sees those of every agent they sponsor. Each approval's mailbox tells which.
+An agent's sends wait for its sponsor, from its own mailbox and as its sponsor from theirs, so a sponsor sees those of every agent they sponsor. Each approval's mailbox tells which. The setup changes of agents they made admins wait for them too, each with a preview of what it does.
 
 ## duva approvals send
 
@@ -673,6 +683,31 @@ Give recipients, a subject or text to send your version instead of the agent's. 
 Reject a draft waiting for your approval, with a note the agent sees.
 
 The draft goes back to the agent with the note, and the agent can revise it and ask again. Only the approver can decide an approval, never an agent, and only once: of two decisions at the same time, one is refused. The decision is recorded in the mailbox's change feed.
+
+- `--approval` (required): The approval's ID.
+- `--note` (required): What the agent should change.
+
+## duva setup-approvals get
+
+Read a setup change an agent admin asked for, and what became of it.
+
+Only the agent that asked and its sponsor, who decides, can read it.
+
+- `--approval` (required): The approval's ID.
+
+## duva setup-approvals approve
+
+Approve a setup change your agent admin asked for, which makes it as the agent.
+
+Duva works out the change's effect again first. If it would now do something other than its preview says, the approval waits with the new preview, and approving is refused with 409, so read it and approve again. A change that can't be made now, as when its address was taken meanwhile, is refused with 409 and keeps waiting, for you to reject. Only the agent's sponsor decides, never an agent, and only once. While the agent is paused, it can't be approved. The decision is recorded in the organization's change feed under you, and the change under the agent.
+
+- `--approval` (required): The approval's ID.
+
+## duva setup-approvals reject
+
+Reject a setup change your agent admin asked for, with a note the agent sees.
+
+Nothing changes. Only the agent's sponsor decides, never an agent, and only once. The decision is recorded in the organization's change feed under you.
 
 - `--approval` (required): The approval's ID.
 - `--note` (required): What the agent should change.

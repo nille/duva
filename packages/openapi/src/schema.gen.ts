@@ -243,12 +243,16 @@ export interface paths {
         post?: never;
         /**
          * Remove an agent, which stops its key working and erases its mailboxes.
-         * @description Only the agent's sponsor and admins can remove it. Its sends waiting for approval are withdrawn. Its mailboxes are erased everywhere Duva keeps their mail, as emptying Trash does, and their approval records only if the organization's settings say so. Their addresses are freed at once. The removal is recorded in the organization's change feed under you.
+         * @description Only the agent's sponsor and human admins can remove it, never an agent, not even an agent admin. Its sends and setup changes waiting for approval are withdrawn. Its mailboxes are erased everywhere Duva keeps their mail, as emptying Trash does, and their approval records only if the organization's settings say so. Their addresses are freed at once. The removal is recorded in the organization's change feed under you.
          */
         delete: operations["removeAgent"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Make an agent you sponsor an admin, or take it away.
+         * @description Only the agent's sponsor can, and only while they are an admin themselves to make it one. No agent can change who is an admin. An agent admin's changes to the setup wait for your approval unless you switch approvalForSetup off in its settings, and it never removes humans or agents, or changes who is an admin. It stops being an admin when you do, and its setup changes still waiting are withdrawn. The change is recorded in the organization's change feed under you.
+         */
+        patch: operations["changeAgent"];
         trace?: never;
     };
     "/agents/{agent}/key": {
@@ -1040,8 +1044,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List the approvals waiting for you, newest first, each with its draft and the message it answers.
-         * @description An agent's sends wait for its sponsor, from its own mailbox and as its sponsor from theirs, so a sponsor sees those of every agent they sponsor. Each approval's mailbox tells which.
+         * List the approvals waiting for you, newest first, sends with their drafts and setup changes with their previews.
+         * @description An agent's sends wait for its sponsor, from its own mailbox and as its sponsor from theirs, so a sponsor sees those of every agent they sponsor. Each approval's mailbox tells which. The setup changes of agents they made admins wait for them too, each with a preview of what it does.
          */
         get: operations["listApprovals"];
         put?: never;
@@ -1086,6 +1090,66 @@ export interface paths {
          * @description The draft goes back to the agent with the note, and the agent can revise it and ask again. Only the approver can decide an approval, never an agent, and only once: of two decisions at the same time, one is refused. The decision is recorded in the mailbox's change feed.
          */
         post: operations["rejectApproval"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/setup-approvals/{approval}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read a setup change an agent admin asked for, and what became of it.
+         * @description Only the agent that asked and its sponsor, who decides, can read it.
+         */
+        get: operations["getSetupApproval"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/setup-approvals/{approval}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve a setup change your agent admin asked for, which makes it as the agent.
+         * @description Duva works out the change's effect again first. If it would now do something other than its preview says, the approval waits with the new preview, and approving is refused with 409, so read it and approve again. A change that can't be made now, as when its address was taken meanwhile, is refused with 409 and keeps waiting, for you to reject. Only the agent's sponsor decides, never an agent, and only once. While the agent is paused, it can't be approved. The decision is recorded in the organization's change feed under you, and the change under the agent.
+         */
+        post: operations["approveSetup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/setup-approvals/{approval}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reject a setup change your agent admin asked for, with a note the agent sees.
+         * @description Nothing changes. Only the agent's sponsor decides, never an agent, and only once. The decision is recorded in the organization's change feed under you.
+         */
+        post: operations["rejectSetup"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1172,7 +1236,7 @@ export interface components {
             name: string;
             /** @description The ID of the human who answers for the agent. */
             sponsor: string;
-            /** @description Whether the agent may change the organization's setup. */
+            /** @description Whether the agent may change the organization's setup, which only an agent whose sponsor is an admin can. Its changes wait for its sponsor's approval unless approvalForSetup is off, and it never removes humans or agents, or changes who is an admin. */
             admin: boolean;
             paused?: components["schemas"]["Pause"];
         };
@@ -1193,6 +1257,10 @@ export interface components {
              */
             name: string;
         };
+        AgentChanges: {
+            /** @description Whether the agent may change the organization's setup, with its sponsor's approval unless switched off. */
+            admin: boolean;
+        };
         AgentWithKey: {
             agent: components["schemas"]["Agent"];
             /**
@@ -1209,7 +1277,7 @@ export interface components {
             /** @description The agent's mailboxes, erased with it. */
             mailboxes: components["schemas"]["Mailbox"][];
         };
-        /** @description What an agent may do in its sponsor's personal mailbox, which of its sends wait for approval or carry the disclosure's visible line, and its send limits. */
+        /** @description What an agent may do in its sponsor's personal mailbox, which of its sends and setup changes wait for approval, which sends carry the disclosure's visible line, and its send limits. */
         AgentSettings: {
             sponsorAccess: components["schemas"]["SponsorAccess"];
             approvalForOwnMailbox: components["schemas"]["ApprovalForOwnMailbox"];
@@ -1218,6 +1286,7 @@ export interface components {
             disclosureLineAsSponsor: components["schemas"]["DisclosureLineAsSponsor"];
             sendsPerHour: components["schemas"]["SendsPerHour"];
             newRecipientsPerDay: components["schemas"]["NewRecipientsPerDay"];
+            approvalForSetup: components["schemas"]["ApprovalForSetup"];
         };
         /** @description The agent's settings changed, each with its new value. */
         AgentSettingsChanges: {
@@ -1228,6 +1297,7 @@ export interface components {
             disclosureLineAsSponsor?: components["schemas"]["DisclosureLineAsSponsor"];
             sendsPerHour?: components["schemas"]["SendsPerHour"];
             newRecipientsPerDay?: components["schemas"]["NewRecipientsPerDay"];
+            approvalForSetup?: components["schemas"]["ApprovalForSetup"];
         };
         /**
          * @description The agent's access to its sponsor's personal mailbox. None, the default, gives it none. Read lets it read everything there: threads, labels, drafts, the change feed and attachments. Full also lets it organize, move threads to Trash and back, draft and change any draft there, and send as its sponsor. Only the sponsor empties their Trash.
@@ -1236,6 +1306,8 @@ export interface components {
         SponsorAccess: "none" | "read" | "full";
         /** @description Whether the agent's sends from its own mailbox wait for its sponsor's approval. On by default. */
         ApprovalForOwnMailbox: boolean;
+        /** @description Whether the agent's changes to the organization's setup, as an admin, wait for its sponsor's approval. On by default. */
+        ApprovalForSetup: boolean;
         /** @description Whether the agent's sends as its sponsor, from the sponsor's mailbox, wait for the sponsor's approval. On by default. */
         ApprovalAsSponsor: boolean;
         /** @description Whether mail the agent sends from its own mailbox carries the disclosure's visible line. It always carries the Duva-Agent header. On by default. */
@@ -2271,6 +2343,60 @@ export interface components {
         };
         ApprovalList: {
             approvals: components["schemas"]["Approval"][];
+            /** @description The setup changes your agent admins asked for that wait for you, newest first. */
+            setupApprovals: components["schemas"]["SetupApproval"][];
+        };
+        /** @description A change to the organization's setup an agent admin asked for, waiting for or decided by its sponsor. */
+        SetupApproval: {
+            /** @description The setup approval's ID. */
+            id: string;
+            /**
+             * @description Withdrawn when the agent stopped being an admin, or was removed, before it was decided.
+             * @enum {string}
+             */
+            state: "pending" | "withdrawn" | "rejected" | "approved";
+            /** @description The ID of the agent that asked. */
+            agent: string;
+            /** @description The ID of the human who decides, the agent's sponsor. */
+            approver: string;
+            operation: components["schemas"]["SetupOperation"];
+            /**
+             * @description What the change does, as Duva works it out from the setup as it is now.
+             * @example [
+             *       "Gives the mailbox of ada@example.com the address sales@example.com."
+             *     ]
+             */
+            preview: string[];
+            /** Format: date-time */
+            askedAt: string;
+            /** Format: date-time */
+            decidedAt?: string;
+            /** @description The sponsor's note, if they rejected it. */
+            note?: string;
+            result?: components["schemas"]["SetupResult"];
+        };
+        /** @description The call the agent made, which approving makes again as the agent. */
+        SetupOperation: {
+            /**
+             * @description The operation's ID in this document.
+             * @example addAddress
+             */
+            operationId: string;
+            /** @description Its path parameters. */
+            path?: {
+                [key: string]: string;
+            };
+            /** @description Its JSON body. */
+            body?: {
+                [key: string]: unknown;
+            };
+        };
+        /** @description What the change answered once approved, as it would have answered the agent. */
+        SetupResult: {
+            /** @description The HTTP status code. */
+            status: number;
+            /** @description The JSON body. */
+            body: unknown;
         };
         Rejection: {
             /**
@@ -2532,7 +2658,7 @@ export interface components {
             position: number;
         };
         /** @description A change to the organization's setup. */
-        OrganizationChange: components["schemas"]["OrganizationAdded"] | components["schemas"]["DomainAdded"] | components["schemas"]["DomainRemoved"] | components["schemas"]["SignInDomainChanged"] | components["schemas"]["CatchAllChanged"] | components["schemas"]["ActorAdded"] | components["schemas"]["AgentKeyRotated"] | components["schemas"]["AgentPaused"] | components["schemas"]["AgentUnpaused"] | components["schemas"]["MailboxAdded"] | components["schemas"]["AddressAdded"] | components["schemas"]["AddressRemoved"] | components["schemas"]["DefaultAddressChanged"] | components["schemas"]["GroupAdded"] | components["schemas"]["GroupChanged"] | components["schemas"]["GroupRemoved"] | components["schemas"]["SettingsChanged"] | components["schemas"]["ActorRemoved"] | components["schemas"]["AdminChanged"] | components["schemas"]["MailboxHandedOver"] | components["schemas"]["MailboxDeleted"];
+        OrganizationChange: components["schemas"]["OrganizationAdded"] | components["schemas"]["DomainAdded"] | components["schemas"]["DomainRemoved"] | components["schemas"]["SignInDomainChanged"] | components["schemas"]["CatchAllChanged"] | components["schemas"]["ActorAdded"] | components["schemas"]["AgentKeyRotated"] | components["schemas"]["AgentPaused"] | components["schemas"]["AgentUnpaused"] | components["schemas"]["MailboxAdded"] | components["schemas"]["AddressAdded"] | components["schemas"]["AddressRemoved"] | components["schemas"]["DefaultAddressChanged"] | components["schemas"]["GroupAdded"] | components["schemas"]["GroupChanged"] | components["schemas"]["GroupRemoved"] | components["schemas"]["SettingsChanged"] | components["schemas"]["ActorRemoved"] | components["schemas"]["AdminChanged"] | components["schemas"]["MailboxHandedOver"] | components["schemas"]["MailboxDeleted"] | components["schemas"]["AgentAdminChanged"] | components["schemas"]["SetupAsked"] | components["schemas"]["SetupApproved"] | components["schemas"]["SetupRejected"] | components["schemas"]["SetupWithdrawn"];
         ChangeBase: {
             /** @description The change's position in the feed, counting from 1. */
             position: number;
@@ -2746,6 +2872,79 @@ export interface components {
              */
             type: "mailboxDeleted";
         };
+        AgentAdminChanged: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "agentAdminChanged";
+            /** @description The ID of the agent. */
+            agent: string;
+            /** @description Whether the agent is an admin now. */
+            admin: boolean;
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "agentAdminChanged";
+        };
+        SetupAsked: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "setupAsked";
+            /** @description The ID of the setup approval. */
+            approval: string;
+            operation: components["schemas"]["SetupOperation"];
+            /** @description What the change would do, as Duva worked it out then. */
+            preview: string[];
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "setupAsked";
+        };
+        SetupApproved: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "setupApproved";
+            /** @description The ID of the setup approval. */
+            approval: string;
+            /** @description The ID of the agent that asked. */
+            agent: string;
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "setupApproved";
+        };
+        SetupRejected: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "setupRejected";
+            /** @description The ID of the setup approval. */
+            approval: string;
+            /** @description The ID of the agent that asked. */
+            agent: string;
+            /** @description The sponsor's note. */
+            note: string;
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "setupRejected";
+        };
+        SetupWithdrawn: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "setupWithdrawn";
+            /** @description The ID of the setup approval. */
+            approval: string;
+            /** @description The ID of the agent that asked. */
+            agent: string;
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "setupWithdrawn";
+        };
         AddressRemoved: components["schemas"]["ChangeBase"] & {
             /** @constant */
             type: "addressRemoved";
@@ -2911,6 +3110,15 @@ export interface components {
         };
     };
     responses: {
+        /** @description You are an agent admin, so the change waits for your sponsor's approval, which runs it as you. Read the setup approval to see what became of it. */
+        SetupAsked: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["SetupApproval"];
+            };
+        };
         /** @description The request is malformed. */
         BadRequest: {
             headers: {
@@ -3113,6 +3321,7 @@ export interface operations {
                     "application/json": components["schemas"]["OrganizationSettings"];
                 };
             };
+            202: components["responses"]["SetupAsked"];
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
@@ -3237,6 +3446,7 @@ export interface operations {
                     "application/json": components["schemas"]["Human"];
                 };
             };
+            202: components["responses"]["SetupAsked"];
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
@@ -3381,6 +3591,37 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
+    changeAgent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The agent's ID. */
+                agent: components["parameters"]["Agent"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentChanges"];
+            };
+        };
+        responses: {
+            /** @description The agent, changed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Agent"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     rotateAgentKey: {
         parameters: {
             query?: never;
@@ -3429,6 +3670,7 @@ export interface operations {
                     "application/json": components["schemas"]["Agent"];
                 };
             };
+            202: components["responses"]["SetupAsked"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
@@ -3562,6 +3804,7 @@ export interface operations {
                     "application/json": components["schemas"]["Address"];
                 };
             };
+            202: components["responses"]["SetupAsked"];
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
@@ -3589,6 +3832,7 @@ export interface operations {
                     "application/json": components["schemas"]["Address"];
                 };
             };
+            202: components["responses"]["SetupAsked"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
@@ -3638,6 +3882,7 @@ export interface operations {
                     "application/json": components["schemas"]["Group"];
                 };
             };
+            202: components["responses"]["SetupAsked"];
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
@@ -3691,6 +3936,7 @@ export interface operations {
                     "application/json": components["schemas"]["Group"];
                 };
             };
+            202: components["responses"]["SetupAsked"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
@@ -3721,6 +3967,7 @@ export interface operations {
                     "application/json": components["schemas"]["Group"];
                 };
             };
+            202: components["responses"]["SetupAsked"];
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
@@ -3771,6 +4018,7 @@ export interface operations {
                     "application/json": components["schemas"]["Domain"];
                 };
             };
+            202: components["responses"]["SetupAsked"];
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
@@ -3828,6 +4076,7 @@ export interface operations {
                     "application/json": components["schemas"]["Domain"];
                 };
             };
+            202: components["responses"]["SetupAsked"];
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
@@ -3860,6 +4109,7 @@ export interface operations {
                     "application/json": components["schemas"]["DomainRemoval"];
                 };
             };
+            202: components["responses"]["SetupAsked"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
@@ -3891,6 +4141,7 @@ export interface operations {
                     "application/json": components["schemas"]["Domain"];
                 };
             };
+            202: components["responses"]["SetupAsked"];
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
@@ -3919,6 +4170,7 @@ export interface operations {
                     "application/json": components["schemas"]["Domain"];
                 };
             };
+            202: components["responses"]["SetupAsked"];
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
@@ -3968,6 +4220,7 @@ export interface operations {
                     "application/json": components["schemas"]["Mailbox"];
                 };
             };
+            202: components["responses"]["SetupAsked"];
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
@@ -4025,6 +4278,7 @@ export interface operations {
                     "application/json": components["schemas"]["Mailbox"];
                 };
             };
+            202: components["responses"]["SetupAsked"];
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
@@ -4953,6 +5207,91 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Approval"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getSetupApproval: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The approval's ID. */
+                approval: components["parameters"]["Approval"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The setup approval. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupApproval"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    approveSetup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The approval's ID. */
+                approval: components["parameters"]["Approval"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The setup approval, approved, with what the change answered. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupApproval"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    rejectSetup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The approval's ID. */
+                approval: components["parameters"]["Approval"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Rejection"];
+            };
+        };
+        responses: {
+            /** @description The setup approval, rejected. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupApproval"];
                 };
             };
             400: components["responses"]["BadRequest"];

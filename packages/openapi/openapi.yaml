@@ -135,6 +135,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/OrganizationSettings"
+        "202":
+          $ref: "#/components/responses/SetupAsked"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -241,6 +243,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Human"
+        "202":
+          $ref: "#/components/responses/SetupAsked"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -386,11 +390,47 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
   /agents/{agent}:
+    patch:
+      operationId: changeAgent
+      summary: Make an agent you sponsor an admin, or take it away.
+      description: >
+        Only the agent's sponsor can, and only while they are an admin
+        themselves to make it one. No agent can change who is an admin. An
+        agent admin's changes to the setup wait for your approval unless you
+        switch approvalForSetup off in its settings, and it never removes
+        humans or agents, or changes who is an admin. It stops being an admin when you
+        do, and its setup changes still waiting are withdrawn. The change is
+        recorded in the organization's change feed under you.
+      x-cli-command: agents change
+      parameters:
+        - $ref: "#/components/parameters/Agent"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentChanges"
+      responses:
+        "200":
+          description: The agent, changed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agent"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
     delete:
       operationId: removeAgent
       summary: Remove an agent, which stops its key working and erases its mailboxes.
       description: >
-        Only the agent's sponsor and admins can remove it. Its sends waiting
+        Only the agent's sponsor and human admins can remove it, never an
+        agent, not even an agent admin. Its sends and setup changes waiting
         for approval are withdrawn. Its mailboxes are erased everywhere Duva
         keeps their mail, as emptying Trash does, and their approval records
         only if the organization's settings say so. Their addresses are freed
@@ -458,6 +498,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Agent"
+        "202":
+          $ref: "#/components/responses/SetupAsked"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -583,6 +625,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Address"
+        "202":
+          $ref: "#/components/responses/SetupAsked"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -636,6 +680,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Address"
+        "202":
+          $ref: "#/components/responses/SetupAsked"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -671,6 +717,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Group"
+        "202":
+          $ref: "#/components/responses/SetupAsked"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -740,6 +788,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Group"
+        "202":
+          $ref: "#/components/responses/SetupAsked"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -767,6 +817,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Group"
+        "202":
+          $ref: "#/components/responses/SetupAsked"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -804,6 +856,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Domain"
+        "202":
+          $ref: "#/components/responses/SetupAsked"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -882,6 +936,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Domain"
+        "202":
+          $ref: "#/components/responses/SetupAsked"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -926,6 +982,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DomainRemoval"
+        "202":
+          $ref: "#/components/responses/SetupAsked"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -963,6 +1021,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Domain"
+        "202":
+          $ref: "#/components/responses/SetupAsked"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -991,6 +1051,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Domain"
+        "202":
+          $ref: "#/components/responses/SetupAsked"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -1024,6 +1086,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Mailbox"
+        "202":
+          $ref: "#/components/responses/SetupAsked"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -1095,6 +1159,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Mailbox"
+        "202":
+          $ref: "#/components/responses/SetupAsked"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -2107,8 +2173,13 @@ paths:
   /approvals:
     get:
       operationId: listApprovals
-      summary: List the approvals waiting for you, newest first, each with its draft and the message it answers.
-      description: An agent's sends wait for its sponsor, from its own mailbox and as its sponsor from theirs, so a sponsor sees those of every agent they sponsor. Each approval's mailbox tells which.
+      summary: List the approvals waiting for you, newest first, sends with their drafts and setup changes with their previews.
+      description: >
+        An agent's sends wait for its sponsor, from its own mailbox and as its
+        sponsor from theirs, so a sponsor sees those of every agent they
+        sponsor. Each approval's mailbox tells which. The setup changes of
+        agents they made admins wait for them too, each with a preview of what
+        it does.
       x-cli-command: approvals list
       responses:
         "200":
@@ -2196,6 +2267,93 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+  /setup-approvals/{approval}:
+    get:
+      operationId: getSetupApproval
+      summary: Read a setup change an agent admin asked for, and what became of it.
+      description: Only the agent that asked and its sponsor, who decides, can read it.
+      x-cli-command: setup-approvals get
+      parameters:
+        - $ref: "#/components/parameters/Approval"
+      responses:
+        "200":
+          description: The setup approval.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SetupApproval"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /setup-approvals/{approval}/approve:
+    post:
+      operationId: approveSetup
+      summary: Approve a setup change your agent admin asked for, which makes it as the agent.
+      description: >
+        Duva works out the change's effect again first. If it would now do
+        something other than its preview says, the approval waits with the
+        new preview, and approving is refused with 409, so read it and
+        approve again. A change that can't be made now, as when its address
+        was taken meanwhile, is refused with 409 and keeps waiting, for you
+        to reject. Only the agent's sponsor decides, never an agent, and only
+        once. While the agent is paused, it can't be approved. The decision
+        is recorded in the organization's change feed under you, and the
+        change under the agent.
+      x-cli-command: setup-approvals approve
+      parameters:
+        - $ref: "#/components/parameters/Approval"
+      responses:
+        "200":
+          description: The setup approval, approved, with what the change answered.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SetupApproval"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /setup-approvals/{approval}/reject:
+    post:
+      operationId: rejectSetup
+      summary: Reject a setup change your agent admin asked for, with a note the agent sees.
+      description: >
+        Nothing changes. Only the agent's sponsor decides, never an agent,
+        and only once. The decision is recorded in the organization's change
+        feed under you.
+      x-cli-command: setup-approvals reject
+      parameters:
+        - $ref: "#/components/parameters/Approval"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Rejection"
+      responses:
+        "200":
+          description: The setup approval, rejected.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SetupApproval"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
 components:
   parameters:
     Mailbox:
@@ -2264,6 +2422,15 @@ components:
       scheme: bearer
       description: An agent's key, which starts with duva_agent_.
   responses:
+    SetupAsked:
+      description: >-
+        You are an agent admin, so the change waits for your sponsor's
+        approval, which runs it as you. Read the setup approval to see what
+        became of it.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/SetupApproval"
     BadRequest:
       description: The request is malformed.
       content:
@@ -2427,7 +2594,11 @@ components:
           description: The ID of the human who answers for the agent.
         admin:
           type: boolean
-          description: Whether the agent may change the organization's setup.
+          description: >-
+            Whether the agent may change the organization's setup, which only
+            an agent whose sponsor is an admin can. Its changes wait for its
+            sponsor's approval unless approvalForSetup is off, and it never
+            removes humans or agents, or changes who is an admin.
         paused:
           $ref: "#/components/schemas/Pause"
     Pause:
@@ -2456,6 +2627,14 @@ components:
           maxLength: 64
           description: The agent's name.
           examples: ["Hermes"]
+    AgentChanges:
+      type: object
+      additionalProperties: false
+      required: [admin]
+      properties:
+        admin:
+          type: boolean
+          description: Whether the agent may change the organization's setup, with its sponsor's approval unless switched off.
     AgentWithKey:
       type: object
       additionalProperties: false
@@ -2491,8 +2670,8 @@ components:
     AgentSettings:
       type: object
       additionalProperties: false
-      required: [sponsorAccess, approvalForOwnMailbox, approvalAsSponsor, disclosureLineForOwnMailbox, disclosureLineAsSponsor, sendsPerHour, newRecipientsPerDay]
-      description: What an agent may do in its sponsor's personal mailbox, which of its sends wait for approval or carry the disclosure's visible line, and its send limits.
+      required: [sponsorAccess, approvalForOwnMailbox, approvalAsSponsor, disclosureLineForOwnMailbox, disclosureLineAsSponsor, sendsPerHour, newRecipientsPerDay, approvalForSetup]
+      description: What an agent may do in its sponsor's personal mailbox, which of its sends and setup changes wait for approval, which sends carry the disclosure's visible line, and its send limits.
       properties:
         sponsorAccess:
           $ref: "#/components/schemas/SponsorAccess"
@@ -2508,6 +2687,8 @@ components:
           $ref: "#/components/schemas/SendsPerHour"
         newRecipientsPerDay:
           $ref: "#/components/schemas/NewRecipientsPerDay"
+        approvalForSetup:
+          $ref: "#/components/schemas/ApprovalForSetup"
     AgentSettingsChanges:
       type: object
       additionalProperties: false
@@ -2527,6 +2708,8 @@ components:
           $ref: "#/components/schemas/SendsPerHour"
         newRecipientsPerDay:
           $ref: "#/components/schemas/NewRecipientsPerDay"
+        approvalForSetup:
+          $ref: "#/components/schemas/ApprovalForSetup"
     SponsorAccess:
       type: string
       enum: [none, read, full]
@@ -2539,6 +2722,9 @@ components:
     ApprovalForOwnMailbox:
       type: boolean
       description: Whether the agent's sends from its own mailbox wait for its sponsor's approval. On by default.
+    ApprovalForSetup:
+      type: boolean
+      description: Whether the agent's changes to the organization's setup, as an admin, wait for its sponsor's approval. On by default.
     ApprovalAsSponsor:
       type: boolean
       description: Whether the agent's sends as its sponsor, from the sponsor's mailbox, wait for the sponsor's approval. On by default.
@@ -4053,12 +4239,85 @@ components:
     ApprovalList:
       type: object
       additionalProperties: false
-      required: [approvals]
+      required: [approvals, setupApprovals]
       properties:
         approvals:
           type: array
           items:
             $ref: "#/components/schemas/Approval"
+        setupApprovals:
+          type: array
+          description: The setup changes your agent admins asked for that wait for you, newest first.
+          items:
+            $ref: "#/components/schemas/SetupApproval"
+    SetupApproval:
+      type: object
+      additionalProperties: false
+      required: [id, state, agent, approver, operation, preview, askedAt]
+      description: A change to the organization's setup an agent admin asked for, waiting for or decided by its sponsor.
+      properties:
+        id:
+          type: string
+          description: The setup approval's ID.
+        state:
+          type: string
+          enum: [pending, withdrawn, rejected, approved]
+          description: Withdrawn when the agent stopped being an admin, or was removed, before it was decided.
+        agent:
+          type: string
+          description: The ID of the agent that asked.
+        approver:
+          type: string
+          description: The ID of the human who decides, the agent's sponsor.
+        operation:
+          $ref: "#/components/schemas/SetupOperation"
+        preview:
+          type: array
+          items:
+            type: string
+          description: What the change does, as Duva works it out from the setup as it is now.
+          examples: [["Gives the mailbox of ada@example.com the address sales@example.com."]]
+        askedAt:
+          type: string
+          format: date-time
+        decidedAt:
+          type: string
+          format: date-time
+        note:
+          type: string
+          description: The sponsor's note, if they rejected it.
+        result:
+          $ref: "#/components/schemas/SetupResult"
+    SetupOperation:
+      type: object
+      additionalProperties: false
+      required: [operationId]
+      description: The call the agent made, which approving makes again as the agent.
+      properties:
+        operationId:
+          type: string
+          description: The operation's ID in this document.
+          examples: ["addAddress"]
+        path:
+          type: object
+          additionalProperties:
+            type: string
+          description: Its path parameters.
+        body:
+          type: object
+          additionalProperties: true
+          description: Its JSON body.
+    SetupResult:
+      type: object
+      additionalProperties: false
+      required: [status, body]
+      description: What the change answered once approved, as it would have answered the agent.
+      properties:
+        status:
+          type: integer
+          description: The HTTP status code.
+        body:
+          description: The JSON body.
     Rejection:
       type: object
       additionalProperties: false
@@ -4470,6 +4729,11 @@ components:
         - $ref: "#/components/schemas/AdminChanged"
         - $ref: "#/components/schemas/MailboxHandedOver"
         - $ref: "#/components/schemas/MailboxDeleted"
+        - $ref: "#/components/schemas/AgentAdminChanged"
+        - $ref: "#/components/schemas/SetupAsked"
+        - $ref: "#/components/schemas/SetupApproved"
+        - $ref: "#/components/schemas/SetupRejected"
+        - $ref: "#/components/schemas/SetupWithdrawn"
       discriminator:
         propertyName: type
         mapping:
@@ -4494,6 +4758,11 @@ components:
           adminChanged: "#/components/schemas/AdminChanged"
           mailboxHandedOver: "#/components/schemas/MailboxHandedOver"
           mailboxDeleted: "#/components/schemas/MailboxDeleted"
+          agentAdminChanged: "#/components/schemas/AgentAdminChanged"
+          setupAsked: "#/components/schemas/SetupAsked"
+          setupApproved: "#/components/schemas/SetupApproved"
+          setupRejected: "#/components/schemas/SetupRejected"
+          setupWithdrawn: "#/components/schemas/SetupWithdrawn"
     ChangeBase:
       type: object
       required: [position, at, actor]
@@ -4708,6 +4977,93 @@ components:
             mailbox:
               type: string
               description: The ID of the mailbox.
+    AgentAdminChanged:
+      allOf:
+        - $ref: "#/components/schemas/ChangeBase"
+        - type: object
+          required: [type, agent, admin]
+          description: An agent was made an admin, or stopped being one, as when its sponsor stopped being one.
+          properties:
+            type:
+              type: string
+              const: agentAdminChanged
+            agent:
+              type: string
+              description: The ID of the agent.
+            admin:
+              type: boolean
+              description: Whether the agent is an admin now.
+    SetupAsked:
+      allOf:
+        - $ref: "#/components/schemas/ChangeBase"
+        - type: object
+          required: [type, approval, operation, preview]
+          description: An agent admin asked to change the setup, which waits for its sponsor's approval.
+          properties:
+            type:
+              type: string
+              const: setupAsked
+            approval:
+              type: string
+              description: The ID of the setup approval.
+            operation:
+              $ref: "#/components/schemas/SetupOperation"
+            preview:
+              type: array
+              items:
+                type: string
+              description: What the change would do, as Duva worked it out then.
+    SetupApproved:
+      allOf:
+        - $ref: "#/components/schemas/ChangeBase"
+        - type: object
+          required: [type, approval, agent]
+          description: The sponsor approved an agent admin's setup change, which is made next under the agent.
+          properties:
+            type:
+              type: string
+              const: setupApproved
+            approval:
+              type: string
+              description: The ID of the setup approval.
+            agent:
+              type: string
+              description: The ID of the agent that asked.
+    SetupRejected:
+      allOf:
+        - $ref: "#/components/schemas/ChangeBase"
+        - type: object
+          required: [type, approval, agent, note]
+          description: The sponsor rejected an agent admin's setup change.
+          properties:
+            type:
+              type: string
+              const: setupRejected
+            approval:
+              type: string
+              description: The ID of the setup approval.
+            agent:
+              type: string
+              description: The ID of the agent that asked.
+            note:
+              type: string
+              description: The sponsor's note.
+    SetupWithdrawn:
+      allOf:
+        - $ref: "#/components/schemas/ChangeBase"
+        - type: object
+          required: [type, approval, agent]
+          description: An agent admin's setup change was withdrawn before it was decided, since the agent stopped being an admin or was removed.
+          properties:
+            type:
+              type: string
+              const: setupWithdrawn
+            approval:
+              type: string
+              description: The ID of the setup approval.
+            agent:
+              type: string
+              description: The ID of the agent that asked.
     AddressRemoved:
       allOf:
         - $ref: "#/components/schemas/ChangeBase"

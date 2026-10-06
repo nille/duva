@@ -3,7 +3,9 @@ import { jsonBody, type OperationHandler, refusal } from "./api.ts";
 import { threadsPastRetention } from "./erasure.ts";
 import { indexMailboxes } from "./indexing.ts";
 import { type Language, languages } from "./languages.ts";
-import { changeSettings, defaultSettings, lowerLimitsToCaps, organizationSettings, type OrganizationSettings } from "./organization.ts";
+import type { Deployment } from "./deployment.ts";
+import { listed, setupOperation } from "./setup.ts";
+import { agentSettings, allHumans, changeSettings, defaultSettings, limitCaps, lowerLimitsToCaps, organizationSettings, type OrganizationSettings, sponsoredAgents } from "./organization.ts";
 
 /** Whether the value is a send limit or a cap on one: a whole number from 1 to 10,000. */
 export const isLimit = (value: unknown): value is number => Number.isInteger(value) && (value as number) >= 1 && (value as number) <= 10_000;
@@ -31,8 +33,8 @@ export const getOrganizationSettings: OperationHandler = async (_event, deployme
   return { statusCode: 200, body: settings satisfies components["schemas"]["OrganizationSettings"] };
 };
 
-export const changeOrganizationSettings: OperationHandler = async (event, deployment, actor) => {
-  if (!actor?.admin) return refusal(403, "Only admins can change the organization's settings. Ask an admin to change them.");
+export const changeOrganizationSettings = setupOperation("changeOrganizationSettings", async (event, deployment, actor) => {
+  if (!actor.admin) return refusal(403, "Only admins can change the organization's settings. Ask an admin to change them.");
   const body = jsonBody(event) ?? {};
   const names = Object.keys(defaultSettings);
   const unknown = Object.keys(body).find((name) => !names.includes(name));
@@ -43,14 +45,52 @@ export const changeOrganizationSettings: OperationHandler = async (event, deploy
   const changes = body as Partial<OrganizationSettings>;
   // Kept in one order, so a list is the same list however it was given.
   if (changes.searchLanguages !== undefined) changes.searchLanguages = languages.filter((language) => changes.searchLanguages!.includes(language));
-  const settings = await changeSettings(deployment.table, { by: actor.id, changes });
-  // Each mailbox's index files mail by language, so the indexer rebuilds those whose languages are
-  // no longer the ones mail is indexed in.
-  if (changes.searchLanguages !== undefined) await indexMailboxes(deployment.table, deployment.indexQueue);
-  // Each change to a cap does it, so a change again finishes what one that stopped partway left.
-  if ("agentSendsPerHourCap" in body || "agentNewRecipientsPerDayCap" in body) await lowerLimitsToCaps(deployment.table, actor.id);
-  return { statusCode: 200, body: settings satisfies components["schemas"]["OrganizationSettings"] };
-};
+  return {
+    preview: await settingsPreview(deployment, changes),
+    run: async () => {
+      const settings = await changeSettings(deployment.table, { by: actor.id, changes });
+      // Each mailbox's index files mail by language, so the indexer rebuilds those whose languages are
+      // no longer the ones mail is indexed in.
+      if (changes.searchLanguages !== undefined) await indexMailboxes(deployment.table, deployment.indexQueue);
+      // Each change to a cap does it, so a change again finishes what one that stopped partway left.
+      if ("agentSendsPerHourCap" in body || "agentNewRecipientsPerDayCap" in body) await lowerLimitsToCaps(deployment.table, actor.id);
+      return { statusCode: 200, body: settings satisfies components["schemas"]["OrganizationSettings"] };
+    },
+  };
+});
+
+/** What changing the settings does, a sentence for each that changes. */
+async function settingsPreview(deployment: Deployment, changes: Partial<OrganizationSettings>): Promise<string[]> {
+  const { settings } = await organizationSettings(deployment.table);
+  const preview: string[] = [];
+  const { retentionDays, erasureErasesApprovals, searchLanguages } = changes;
+  if (retentionDays !== undefined && retentionDays !== settings.retentionDays) {
+    const threads = retentionDays < settings.retentionDays ? await threadsPastRetention(deployment.table, retentionDays, new Date()) : 0;
+    preview.push(`Keeps threads in Trash and Spam ${retentionDays} days, instead of ${settings.retentionDays}.`);
+    if (threads > 0) preview.push(`${threads === 1 ? "1 thread there is older than that, which the eraser erases" : `${threads} threads there are older than that, which the eraser erases`} for good.`);
+  }
+  if (erasureErasesApprovals !== undefined && erasureErasesApprovals !== settings.erasureErasesApprovals) {
+    preview.push(`Erasing a thread ${erasureErasesApprovals ? "also erases" : "keeps"} the approval records of the agents' sends in it.`);
+  }
+  if (searchLanguages !== undefined && searchLanguages.join() !== settings.searchLanguages.join()) {
+    preview.push(`Searches mail in ${listed(searchLanguages)}, instead of ${listed(settings.searchLanguages)}, which rebuilds every mailbox's search index.`);
+  }
+  for (const [limit, cap] of Object.entries(limitCaps) as [keyof typeof limitCaps, (typeof limitCaps)[keyof typeof limitCaps]][]) {
+    const value = changes[cap];
+    if (value === undefined || value === settings[cap]) continue;
+    preview.push(`Caps each agent's ${capNames[cap]} at ${value}, instead of ${settings[cap]}.`);
+    if (value > settings[cap]) continue;
+    const above: string[] = [];
+    for (const human of await allHumans(deployment.table)) {
+      for (const agent of await sponsoredAgents(deployment.table, human.id)) if ((await agentSettings(deployment.table, agent.id)).settings[limit] > value) above.push(agent.name);
+    }
+    if (above.length > 0) preview.push(`It lowers the ${capNames[cap]} of ${listed(above)} to ${value}.`);
+  }
+  return preview;
+}
+
+// What each cap limits, as a preview says it.
+const capNames = { agentSendsPerHourCap: "sends an hour", agentNewRecipientsPerDayCap: "new recipients a day" } as const;
 
 export const previewRetention: OperationHandler = async (event, deployment, actor) => {
   if (!actor?.admin) return refusal(403, "Only admins can preview the retention period. Ask an admin.");
