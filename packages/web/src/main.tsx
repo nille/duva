@@ -4,7 +4,7 @@
 // they decide what the agents they sponsor ask to send. Mail from first-time senders waits in each
 // mailbox's Screener, beside its views. Every human reaches Settings from the bar too, where they
 // choose how times and dates show and switch their Screeners, admins the organization's settings and
-// sponsors their agents'.
+// sponsors their agents'. The bar's search box searches the mailbox open, or the human's own.
 import "@fontsource-variable/source-serif-4/opsz.css";
 import "./styles.css";
 import { StrictMode, useCallback, useEffect, useRef, useState } from "react";
@@ -19,12 +19,13 @@ import { approvalChanges, type Connection, draftChanges, type Follow, labelChang
 import { ThreadIndex } from "./inbox.tsx";
 import { type AgentMailbox, MailboxList, mailboxHref } from "./mailboxes.tsx";
 import { readScreener, ScreenedSenders, type ScreenerRead, ScreenerView } from "./screener.tsx";
+import { SearchBox, SearchResults } from "./search.tsx";
 import { type Config, loadConfig, signedInClient, signIn, signOut } from "./session.ts";
 import { Settings } from "./settings.tsx";
 import { strings } from "./strings.ts";
 import type { Done, Label } from "./organize.tsx";
 import { ThreadView } from "./thread.tsx";
-import { hrefOf, MailViews, pathOf, screenedSendersPath, type ThreadsView, titleOf, type View, viewOf } from "./views.tsx";
+import { hrefOf, MailViews, pathOf, screenedSendersPath, type SearchView, type ThreadsView, titleOf, type View, viewOf } from "./views.tsx";
 
 type Human = components["schemas"]["Human"];
 type Mailbox = components["schemas"]["Mailbox"];
@@ -86,13 +87,15 @@ function App() {
  * Where in the web app the human is, from the address's hash, so links and the back button work
  * without a server. A listing or thread without a mailbox is in the human's own, and drafts are
  * always the human's own, since only a mailbox's owner writes in it. A thread knows the view it
- * was opened from, to go back there. A mailbox's screened senders are reached from its Screener.
+ * was opened from, to go back there, and from a search, the message that matched. A mailbox's
+ * screened senders are reached from its Screener.
  */
 type Route =
   | { view: "approvals" | "settings" }
   | { view: "list"; mailbox?: string; list: ThreadsView }
   | { view: "screener"; mailbox?: string; senders: boolean }
-  | { view: "thread"; mailbox?: string; id: string; from: View }
+  | { view: "search"; mailbox?: string; search: SearchView }
+  | { view: "thread"; mailbox?: string; id: string; from: View; message?: string }
   | { view: "drafts" | "write" }
   | { view: "draft"; id: string };
 
@@ -106,11 +109,15 @@ function routeOf(hash: string): Route {
   const path = hash.replace(/^#\/?/, "");
   const [, mailbox, inMailbox] = /^mailboxes\/([^/]+)\/?(.*)$/.exec(path) ?? [undefined, undefined, path];
   const decoded = mailbox === undefined ? undefined : decodeURIComponent(mailbox);
-  const [, thread, from] = /^threads\/([^?]+)(?:\?from=(.*))?$/.exec(inMailbox ?? "") ?? [];
-  if (thread !== undefined) return { view: "thread", mailbox: decoded, id: decodeURIComponent(thread), from: viewOf(decodeURIComponent(from ?? "")) ?? { label: "inbox" } };
+  const [, thread, asked] = /^threads\/([^?]+)(?:\?(.*))?$/.exec(inMailbox ?? "") ?? [];
+  if (thread !== undefined) {
+    const params = new URLSearchParams(asked);
+    return { view: "thread", mailbox: decoded, id: decodeURIComponent(thread), from: viewOf(params.get("from") ?? "") ?? { label: "inbox" }, message: params.get("message") ?? undefined };
+  }
   if (inMailbox === screenedSendersPath) return { view: "screener", mailbox: decoded, senders: true };
   const list = viewOf(inMailbox ?? "") ?? { label: "inbox" };
   if ("screener" in list) return { view: "screener", mailbox: decoded, senders: false };
+  if ("search" in list) return { view: "search", mailbox: decoded, search: list };
   return { view: "list", mailbox: decoded, list };
 }
 
@@ -235,7 +242,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
   const away = route.view === "approvals" || route.view === "settings";
   const routeKey = away
     ? route.view
-    : `${route.view}/${named ?? ""}/${"id" in route ? route.id : route.view === "list" ? pathOf(route.list) : route.view === "screener" ? String(route.senders) : ""}`;
+    : `${route.view}/${named ?? ""}/${"id" in route ? route.id : route.view === "list" ? pathOf(route.list) : route.view === "search" ? pathOf(route.search) : route.view === "screener" ? String(route.senders) : ""}`;
   useEffect(() => {
     if (!navigated.current) {
       navigated.current = true;
@@ -298,7 +305,11 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
     setRelabelled((current) => current + 1);
   };
   // The view the side column marks open: the one listed, or the one a thread was opened from.
-  const viewed: View | undefined = route.view === "list" ? route.list : route.view === "thread" ? route.from : route.view === "screener" ? { screener: true } : undefined;
+  const viewed: View | undefined = route.view === "list" ? route.list : route.view === "thread" ? route.from : route.view === "screener" ? { screener: true } : route.view === "search" ? route.search : undefined;
+  // The bar searches the mailbox open, or the human's own outside the mail, and shows the search open
+  // or the one the thread shown was opened from.
+  const searched = away ? mine : shown;
+  const searching = route.view === "search" ? route.search.search : route.view === "thread" && "search" in route.from ? route.from.search : undefined;
   const doneHere = done !== undefined && done.at === route.hash ? done.done : undefined;
   const writing = route.view === "drafts" || route.view === "draft" || route.view === "write";
 
@@ -341,6 +352,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
         client={client}
         mailbox={shown}
         id={route.id}
+        matched={route.message}
         me={actor.id}
         agent={agent?.agent}
         agentNames={agentNames}
@@ -381,6 +393,8 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
           onSignedOut={onSignedOut}
         />
       )
+    ) : route.view === "search" ? (
+      <SearchResults key={`${shown.id}/${pathOf(route.search)}`} client={client} mailbox={shown} base={base} view={route.search} labels={labels} onSignedOut={onSignedOut} />
     ) : route.view === "draft" || route.view === "write" ? (
       <Composer key={routeKey} client={client} mailbox={shown} id={route.view === "draft" ? route.id : undefined} agentNames={agentNames} version={version} onSignedOut={onSignedOut} />
     ) : route.view !== "list" ? (
@@ -428,6 +442,16 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
             {strings.nav.settings}
           </a>
         </nav>
+        {searched !== undefined && (
+          <SearchBox
+            client={client}
+            mailbox={searched}
+            base={away ? mailboxHref(searched, true) : base}
+            agent={away ? undefined : agent?.agent}
+            labels={away ? [] : labels}
+            current={searching}
+          />
+        )}
         {mine !== undefined && (
           <button type="button" className="button button-primary button-small bar-write" onClick={() => (location.hash = "#/write")}>
             <WriteIcon />

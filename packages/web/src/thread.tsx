@@ -1,7 +1,7 @@
 // A thread, read: each message a sheet on the desk, oldest first, set in the proof face. Opening
 // the thread marks it read, for everyone who reads the mailbox. Each message can be replied to or
-// forwarded, and its attachments downloaded.
-import { useCallback, useContext, useEffect, useId, useRef, useState } from "react";
+// forwarded, and its attachments downloaded. Opened from a search, it shows the message that matched.
+import { type Ref, useCallback, useContext, useEffect, useId, useRef, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
 import { startDraft } from "./compose.tsx";
@@ -30,12 +30,14 @@ const quoteShown = 3;
  * for the messages those agents sent. `version` counts the changes to the mailbox the app has
  * seen, so the thread is read again when it grows, and replies that arrive while it's open show.
  * `back` is the view it was opened from, named `backTo`, where archiving, Spam, Trash and restoring
- * return to, telling `onDone` what was done.
+ * return to, telling `onDone` what was done. `matched` is the message a search found, which the
+ * thread opens at, marked for a moment.
  */
 export function ThreadView({
   client,
   mailbox,
   id,
+  matched,
   me,
   agent,
   agentNames,
@@ -49,6 +51,7 @@ export function ThreadView({
   client: DuvaClient;
   mailbox: Mailbox;
   id: string;
+  matched?: string;
   me: string;
   agent?: string;
   agentNames: ReadonlyMap<string, string>;
@@ -107,10 +110,23 @@ export function ThreadView({
   useEffect(() => {
     if (subject !== undefined) document.title = strings.title(subject);
   }, [subject]);
-  // The thread opens with its subject focused, so a screen reader starts there.
+  // The thread opens with its subject focused, so a screen reader starts there, or at the message a
+  // search found, which is marked for a moment.
   const loaded = reading.status === "read";
+  const matchedRef = useRef<HTMLElement>(null);
+  const [marked, setMarked] = useState(false);
   useEffect(() => {
-    if (loaded) titleRef.current?.focus();
+    if (!loaded) return;
+    const letter = matchedRef.current;
+    if (letter === null) {
+      titleRef.current?.focus();
+      return;
+    }
+    letter.focus({ preventScroll: true });
+    letter.scrollIntoView({ block: "start" });
+    setMarked(true);
+    const unmark = setTimeout(() => setMarked(false), 2_000);
+    return () => clearTimeout(unmark);
   }, [loaded]);
 
   const markUnread = async () => {
@@ -216,6 +232,8 @@ export function ThreadView({
               <li key={message.id}>
                 <Letter
                   message={message}
+                  ref={message.id === matched ? matchedRef : undefined}
+                  marked={marked && message.id === matched}
                   me={me}
                   agentNames={agentNames}
                   owner={agent === undefined ? undefined : { id: mailbox.owner, name: agent }}
@@ -262,6 +280,8 @@ function ThreadLabels({ thread, labels }: { thread: Thread; labels: Label[] }) {
  */
 function Letter({
   message,
+  ref,
+  marked = false,
   me,
   agentNames,
   owner,
@@ -273,6 +293,9 @@ function Letter({
   onDownload,
 }: {
   message: Message;
+  /** The letter's sheet, for the message a search found, which the thread opens at. */
+  ref?: Ref<HTMLElement>;
+  marked?: boolean;
   me: string;
   agentNames: ReadonlyMap<string, string>;
   /** In an agent's mailbox, the agent, by the name the mailbox list gave it, for when its name isn't among `agentNames`. */
@@ -293,7 +316,12 @@ function Letter({
   const sent =
     message.sentBy === undefined ? undefined : message.sentBy === me ? strings.thread.sentByYou : agent === undefined ? strings.thread.sentFromMailbox : strings.thread.sentBy(agent);
   return (
-    <article className={fresh ? "letter letter-fresh" : sent ? "letter letter-sent" : "letter"} aria-labelledby={titleId}>
+    <article
+      ref={ref}
+      className={["letter", fresh ? "letter-fresh" : sent && "letter-sent", marked && "letter-matched"].filter(Boolean).join(" ")}
+      tabIndex={ref === undefined ? undefined : -1}
+      aria-labelledby={titleId}
+    >
       <header className="letter-head">
         <h2 className="letter-from" id={titleId}>
           {nameOf(message.from)}

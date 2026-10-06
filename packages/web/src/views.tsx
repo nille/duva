@@ -1,5 +1,6 @@
 // The views of a mailbox's mail: the Inbox, the Screener, Sent, Drafts, All mail, Spam and Trash, then
 // its own labels, each a link with how many unread threads it has, the Screener with how many senders wait. It is one component, so the side column can hold it.
+// A search's results are a view too, which the bar opens.
 import { useId, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
@@ -11,12 +12,19 @@ type Mailbox = components["schemas"]["Mailbox"];
 /** A listing of threads: a label's, Sent, or All mail. */
 export type ThreadsView = { label: string } | { sent: true } | { all: true };
 
-/** A view of the mail: a listing of threads, or the Screener. */
-export type View = ThreadsView | { screener: true };
+/** A search of the mailbox: what to search for, and whether best or newest first. */
+export type SearchView = { search: { q: string; sort: "relevance" | "newest" } };
+
+/** A view of the mail: a listing of threads, the Screener, or a search's results. */
+export type View = ThreadsView | { screener: true } | SearchView;
 
 /** Where the view is in its mailbox, after the mailbox's place in the hash the web app routes by. */
 export function pathOf(view: View): string {
   if ("screener" in view) return "screener";
+  if ("search" in view) {
+    const { q, sort } = view.search;
+    return `search?${new URLSearchParams({ q, ...(sort === "newest" && { sort }) })}`;
+  }
   if ("all" in view) return "all";
   if ("sent" in view) return "sent";
   if (view.label === "inbox") return "";
@@ -30,12 +38,24 @@ export const screenedSendersPath = "screener/senders";
 /** The address of the view in the mailbox whose Inbox is at `base`. */
 export const hrefOf = (view: View, base: string) => `${base}${pathOf(view)}`;
 
+/**
+ * The address of the thread in the mailbox whose Inbox is at `base`, opened from the view, and from a
+ * search at the message that matched.
+ */
+export const threadHref = (thread: string, from: View, base: string, message?: string) =>
+  `${base}threads/${encodeURIComponent(thread)}?${new URLSearchParams({ from: pathOf(from), ...(message !== undefined && { message }) })}`;
+
 /** The view at the path in its mailbox, or undefined if it names none. */
 export function viewOf(path: string): View | undefined {
   if (path === "") return { label: "inbox" };
   if (path === "screener") return { screener: true };
   if (path === "all") return { all: true };
   if (path === "sent") return { sent: true };
+  const search = /^search\?(.*)$/.exec(path)?.[1];
+  if (search !== undefined) {
+    const asked = new URLSearchParams(search);
+    return { search: { q: asked.get("q") ?? "", sort: asked.get("sort") === "newest" ? "newest" : "relevance" } };
+  }
   if (path === "spam" || path === "trash") return { label: path };
   const label = /^labels\/(.+)$/.exec(path)?.[1];
   return label === undefined ? undefined : { label: decodeURIComponent(label) };
@@ -44,6 +64,7 @@ export function viewOf(path: string): View | undefined {
 /** What the view is called, an agent's Inbox by the agent's name. */
 export function titleOf(view: View, labels: Label[], agent?: string): string {
   if ("screener" in view) return agent === undefined ? strings.screener.title : strings.screener.agentTitle(agent);
+  if ("search" in view) return strings.search.title;
   if ("all" in view) return strings.views.allMail;
   if ("sent" in view) return agent === undefined ? strings.sent.title : strings.sent.agentTitle(agent);
   if (view.label === "inbox" && agent !== undefined) return strings.inbox.agentTitle(agent);

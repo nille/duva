@@ -1,7 +1,7 @@
 // A view's threads, newest first, a page at a time, laid on one sheet like the index of a bundle of
 // proofs: the Inbox, a label's, Sent, All mail, Spam or Trash. Unread threads carry the pencil's mark, and
 // the human picks threads to organize several at once.
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useId, useRef, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
 import type { Connection as ConnectionState } from "./feed.ts";
@@ -9,7 +9,7 @@ import { useDates } from "./dates.ts";
 import { Connection, nameOf, Time } from "./mail-parts.tsx";
 import { type Done, type Label, labelRefusal, OrganizeActions, ownLabelsOf } from "./organize.tsx";
 import { strings } from "./strings.ts";
-import { pathOf, type ThreadsView, titleOf } from "./views.tsx";
+import { type ThreadsView, threadHref, titleOf } from "./views.tsx";
 
 type ThreadSummary = components["schemas"]["ThreadSummary"];
 type ThreadList = components["schemas"]["ThreadList"];
@@ -260,7 +260,7 @@ export function ThreadIndex({
                 thread={thread}
                 labels={labels}
                 view={view}
-                href={`${base}threads/${encodeURIComponent(thread.id)}?from=${encodeURIComponent(pathOf(view))}`}
+                href={threadHref(thread.id, view, base)}
                 fresh={listing.fresh.has(thread.id)}
                 selected={selected.has(thread.id)}
                 onToggle={() => toggle(thread.id)}
@@ -491,62 +491,70 @@ function ThreadRow({
   selected: boolean;
   onToggle: () => void;
 }) {
-  const snippetId = useId();
-  const { day } = useDates();
-  const sender = nameOf(thread.from);
-  const subject = thread.subject || strings.thread.noSubject;
   // A row names the thread's own labels, but not the one the view lists.
   const named = ownLabelsOf(thread, labels).filter((each) => !("label" in view) || each.id !== view.label);
-  const label = [
-    thread.unread && strings.inbox.unreadMark,
-    sender,
-    subject,
-    thread.messages > 1 && strings.inbox.messages(thread.messages),
-    named.length > 0 && strings.inbox.labelled(named.map(({ name }) => name)),
-    day(new Date(thread.latestAt)),
-  ]
-    .filter(Boolean)
-    .join(", ");
   const classes = ["thread-row", fresh && "thread-fresh", selected && "thread-picked"].filter(Boolean).join(" ");
   return (
     <li className={classes}>
       <label className="pick">
         <input type="checkbox" checked={selected} onChange={onToggle} />
-        <span className="visually-hidden">{strings.organize.select(subject)}</span>
+        <span className="visually-hidden">{strings.organize.select(thread.subject || strings.thread.noSubject)}</span>
       </label>
-      <a
-        className={thread.unread ? "thread thread-unread" : "thread"}
-        href={href}
-        aria-label={label}
-        aria-describedby={snippetId}
-      >
-        <span className="thread-mark" aria-hidden="true" />
-        <span className="thread-sender">
-          <span className="thread-sender-name">{sender}</span>
-          {thread.messages > 1 && <span className="thread-count">{thread.messages}</span>}
-        </span>
-        <span className="thread-text">
-          <span className="thread-subject">{subject}</span>
-          {named.map((each) => (
-            <span key={each.id} className="label-name" aria-hidden="true">
-              {each.name}
-            </span>
-          ))}
-          {thread.snippet !== "" && (
-            <span className="thread-snippet" id={snippetId} lang="">
-              {thread.snippet}
-            </span>
-          )}
-        </span>
-        <span className="thread-date">
-          <Time at={thread.latestAt} short />
-        </span>
-      </a>
+      <ThreadLine thread={thread} labels={named.map(({ name }) => name)} href={href} snippet={thread.snippet} />
     </li>
   );
 }
 
-function SkeletonIndex() {
+/**
+ * A thread as a line of the index, a link to it: the pencil's dot when unread, the sender, the
+ * subject with the labels named, the snippet, and the date. A search's results give a snippet of
+ * their own, with the words found marked.
+ */
+export function ThreadLine({ thread, labels, href, snippet }: { thread: ThreadSummary; labels: string[]; href: string; snippet: ReactNode }) {
+  const snippetId = useId();
+  const { day } = useDates();
+  const sender = nameOf(thread.from);
+  const subject = thread.subject || strings.thread.noSubject;
+  const label = [
+    thread.unread && strings.inbox.unreadMark,
+    sender,
+    subject,
+    thread.messages > 1 && strings.inbox.messages(thread.messages),
+    labels.length > 0 && strings.inbox.labelled(labels),
+    day(new Date(thread.latestAt)),
+  ]
+    .filter(Boolean)
+    .join(", ");
+  return (
+    <a className={thread.unread ? "thread thread-unread" : "thread"} href={href} aria-label={label} aria-describedby={snippet === "" ? undefined : snippetId}>
+      <span className="thread-mark" aria-hidden="true" />
+      <span className="thread-sender">
+        <span className="thread-sender-name">{sender}</span>
+        {thread.messages > 1 && <span className="thread-count">{thread.messages}</span>}
+      </span>
+      <span className="thread-text">
+        <span className="thread-line-head">
+          <span className="thread-subject">{subject}</span>
+          {labels.map((name) => (
+            <span key={name} className="label-name" aria-hidden="true">
+              {name}
+            </span>
+          ))}
+        </span>
+        {snippet !== "" && (
+          <span className="thread-snippet" id={snippetId} lang="">
+            {snippet}
+          </span>
+        )}
+      </span>
+      <span className="thread-date">
+        <Time at={thread.latestAt} short />
+      </span>
+    </a>
+  );
+}
+
+export function SkeletonIndex() {
   return (
     <div className="index index-skeleton" aria-hidden="true">
       {[0, 1, 2, 3].map((row) => (

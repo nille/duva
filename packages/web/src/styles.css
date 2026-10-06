@@ -464,6 +464,8 @@ a {
 
 input[type="text"],
 input[type="search"],
+input[type="date"],
+select,
 textarea {
   width: 100%;
   border: 1px solid var(--rule-strong);
@@ -476,6 +478,8 @@ textarea {
 
 input[type="text"]:focus-visible,
 input[type="search"]:focus-visible,
+input[type="date"]:focus-visible,
+select:focus-visible,
 textarea:focus-visible {
   outline: 2px solid var(--pencil);
   outline-offset: 0;
@@ -834,6 +838,11 @@ a.thread:focus-visible {
   white-space: nowrap;
 }
 
+/* The subject and its labels, which a result sets on a line of their own above the snippet. */
+.thread-line-head {
+  display: contents;
+}
+
 .thread-subject {
   flex: none;
   max-width: 100%;
@@ -1063,6 +1072,23 @@ a.thread:focus-visible {
   background: var(--paper);
   border-radius: 2px;
   box-shadow: var(--sheet-shadow);
+  scroll-margin-top: var(--space-4);
+  transition: box-shadow 600ms var(--ease-out);
+}
+
+/* The letter a search found takes focus, which its ring shows only from the keyboard. */
+.letter:focus {
+  outline: none;
+}
+
+.letter:focus-visible {
+  outline: 2px solid var(--pencil);
+  outline-offset: 2px;
+}
+
+/* The message a search found, ringed in pencil for a moment as the thread opens at it. */
+.letter-matched {
+  box-shadow: var(--sheet-shadow), 0 0 0 2px var(--pencil);
 }
 
 .letter-fresh {
@@ -2066,6 +2092,162 @@ input[aria-invalid="true"] {
   }
 }
 
+/*
+ * Search: a box in the bar for the open mailbox, with a menu of filters laid over the desk as the
+ * labels picker is, and the results on one sheet as the index is, the words marked in each snippet.
+ */
+.search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 1 1 18rem;
+  max-width: 32rem;
+  min-width: 0;
+}
+
+.search-field {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.search-icon {
+  position: absolute;
+  top: 50%;
+  left: var(--space-3);
+  transform: translateY(-50%);
+  color: var(--ink-2);
+  pointer-events: none;
+}
+
+.search input[type="search"] {
+  height: 2rem;
+  padding-block: 0;
+  padding-left: calc(var(--space-3) + 16px + var(--space-2));
+  font-size: var(--text-sm);
+}
+
+.search-filters {
+  flex: none;
+}
+
+.search-panel {
+  left: auto;
+  right: 0;
+  width: 22rem;
+  gap: var(--space-4);
+  padding: var(--space-4);
+}
+
+.search-filter {
+  display: grid;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+}
+
+.search-filter label {
+  font-weight: 600;
+}
+
+.search-filter .hint {
+  margin-top: 0;
+}
+
+.search-dates {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-3);
+}
+
+.search-dates input {
+  min-width: 0;
+}
+
+.search-check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 2rem;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.search-check input {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+}
+
+.search-panel-actions {
+  display: flex;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--rule);
+}
+
+.search-words {
+  font-size: var(--text-sm);
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+
+/* The sort switch, marked as the bar's nav marks the page. */
+.sort {
+  display: flex;
+  gap: var(--space-4);
+}
+
+.sort a {
+  color: var(--ink);
+  font-weight: 600;
+  font-size: var(--text-sm);
+  text-decoration: none;
+  padding: var(--space-1) 0;
+  border-bottom: 2px solid transparent;
+}
+
+.sort a[aria-current="page"] {
+  border-bottom-color: var(--pencil);
+}
+
+.result + .result {
+  border-top: 1px solid var(--rule);
+}
+
+.result:first-child .thread {
+  border-radius: 2px 2px 0 0;
+}
+
+.result .thread-text {
+  display: grid;
+  gap: var(--space-1);
+  white-space: normal;
+}
+
+.result .thread-line-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.result .thread-snippet {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+/* The words found, as a reader marks them on a proof: the wash under them, the ink heavier. */
+mark {
+  background: var(--pencil-wash);
+  color: var(--ink);
+  font-weight: 600;
+  border-radius: 2px;
+}
+
 /* Phones: the columns stack, the message first and the draft under it. */
 @media (max-width: 48rem) {
   /* The views become a row above the sheet, scrolled sideways, under any mailboxes. */
@@ -2189,6 +2371,21 @@ input[aria-invalid="true"] {
 
   .bar-write {
     margin-left: auto;
+  }
+
+  /* Search takes a row of its own under the nav. */
+  .search {
+    order: 2;
+    flex: 1 0 100%;
+    max-width: none;
+  }
+
+  .search-panel {
+    width: auto;
+  }
+
+  .search input[type="search"] {
+    height: 2.75rem;
   }
 
   .bar-write + .who {

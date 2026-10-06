@@ -175,7 +175,7 @@ A cool, near-neutral paper palette with a single saturated blue and two status i
 ### Primary
 - **Editor's Blue Pencil** (`pencil`): the primary button, links, the "New" mark, focus rings, the text caret, the active nav underline, the "changes made" line and the pending slip icon. Also the native `accent-color`.
 - **Pressed Pencil** (`pencil-deep`): hover on the primary button. Nowhere else.
-- **Pencil Wash** (`pencil-wash`): text selection background.
+- **Pencil Wash** (`pencil-wash`): text selection background, and under the words a search found.
 
 ### Neutral
 - **Dove Desk** (`desk`): the page background and scrollbar track. Everything else lies on it.
@@ -264,7 +264,10 @@ Plain, confident and flat, with the label in the sans at 600.
 - **Hints:** Label size in Second Ink, under the field.
 
 ### Navigation
-The bar holds the wordmark, the nav, Write and who is signed in. The nav names only the app's places: Mail, Approvals for sponsors, and Settings. The mail's own views are in the side column, so there is one navigation for them. Nav links are ink, sans 600 at Small size, with no underline. The current page carries a 2px pencil underline.
+The bar holds the wordmark, the nav, the search box, Write and who is signed in. The nav names only the app's places: Mail, Approvals for sponsors, and Settings. The mail's own views are in the side column, so there is one navigation for them. Nav links are ink, sans 600 at Small size, with no underline. The current page carries a 2px pencil underline.
+
+### Search
+The bar's search box searches the open mailbox, or the human's own outside the mail, and says which: "Search your mail", or an agent's by name. It is a text field 2rem tall with the search icon inside at the left, up to 32rem wide, and `/` puts the cursor in it from anywhere but a field. Beside it, a quiet Filters button opens a slip over the desk, as Labels does, right-aligned under the box: From and To fields with a hint, a Label select, On or after and Before as dates side by side, Has an attachment and Unread as checkboxes, then under a hairline Search, the one primary button, and a quiet Cancel. The slip reads the filters already typed, and writes its own into the box, so typing them works too. Results lie on one Index sheet, a line per thread: the pencil's dot when unread, the sender, then the subject in the serif with its labels, and under it the snippet of the message that matched, two lines at most, with each word found marked in Ink at 600 on Pencil Wash. The head names the words in Second Ink and the sort switch, Best match or Newest, links marked as the bar's nav marks its page. More results come from a default button in the sheet's foot. A search that finds nothing says so as an empty desk does, and words Duva refused, such as an unknown filter, show as an alert notice. Opening a result opens the thread at the message that matched, focused and ringed in pencil for two seconds. On phones the box takes a row of its own under the nav, 2.75rem tall, and the slip lies along the screen's foot.
 
 ### Side column
 The mail's side column lies flat on the desk, 14rem wide, left of the mail, with no sheet. It stays in place as the page scrolls. A sponsor finds their mailboxes at its top, then every human finds the open mailbox's views.
