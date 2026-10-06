@@ -210,6 +210,13 @@ export const operations = [
         "type": "string",
         "required": false,
         "description": "How the web app shows a message that has HTML. html, the default, shows it as its sender designed it, with known trackers removed. text shows its plain text. Either way, the human can switch each message the other way."
+      },
+      {
+        "name": "timeZone",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "The time zone an agent's activity is in, as an IANA name. Left out until the human chooses one, when the API counts days in UTC and the web app in the browser's time zone."
       }
     ]
   },
@@ -578,6 +585,99 @@ export const operations = [
         "type": "boolean",
         "required": false,
         "description": "Whether the agent's changes to the organization's setup, as an admin, wait for its sponsor's approval. On by default."
+      }
+    ]
+  },
+  {
+    "operationId": "getAgentActivity",
+    "method": "get",
+    "path": "/agents/{agent}/activity",
+    "routeKey": "GET /agents/{agent}/activity",
+    "summary": "Read an agent's daily summaries, how much it sent, had approved or rejected, received, organized and screened each day.",
+    "description": "Gives every day from from to to, newest first, each day in your time zone, days without activity included. Leave both out for the last 30 days. Activity reaches back to the agent's start: what happened in its mailboxes, what it did in its sponsor's mailbox, and the organization's changes to it. Only the agent's sponsor and admins can read it.",
+    "signIn": true,
+    "command": [
+      "agents",
+      "activity"
+    ],
+    "options": [
+      {
+        "name": "agent",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The agent's ID."
+      },
+      {
+        "name": "from",
+        "in": "query",
+        "type": "string",
+        "required": false,
+        "description": "The first day, as YYYY-MM-DD. Defaults to 29 days before to."
+      },
+      {
+        "name": "to",
+        "in": "query",
+        "type": "string",
+        "required": false,
+        "description": "The last day, as YYYY-MM-DD, at most 366 days after from. Defaults to today in your time zone."
+      },
+      {
+        "name": "timeZone",
+        "in": "query",
+        "type": "string",
+        "required": false,
+        "description": "The time zone days are in, an IANA name such as Europe/Stockholm. Defaults to your timeZone preference, or UTC if you have none."
+      }
+    ]
+  },
+  {
+    "operationId": "getAgentActivityDay",
+    "method": "get",
+    "path": "/agents/{agent}/activity/{day}",
+    "routeKey": "GET /agents/{agent}/activity/{day}",
+    "summary": "Read an agent's timeline for one day, everything it did and what happened in its mailboxes, newest first.",
+    "description": "Lists the day's entries a page at a time, newest first. Each is a change as the change feed recorded it, with the mailbox it was in and its thread, where it has them. To read the next page, call again with the answer's next as after, until an answer has no next. Only the agent's sponsor and admins can read it. An admin who isn't the sponsor reads no part of what the mail says, so the changes leave out approvers' edits and notes, label names, and senders' and recipients' addresses.",
+    "signIn": true,
+    "command": [
+      "agents",
+      "timeline"
+    ],
+    "options": [
+      {
+        "name": "agent",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The agent's ID."
+      },
+      {
+        "name": "day",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The day, as YYYY-MM-DD, in your time zone."
+      },
+      {
+        "name": "timeZone",
+        "in": "query",
+        "type": "string",
+        "required": false,
+        "description": "The time zone days are in, an IANA name such as Europe/Stockholm. Defaults to your timeZone preference, or UTC if you have none."
+      },
+      {
+        "name": "limit",
+        "in": "query",
+        "type": "integer",
+        "required": false,
+        "description": "How many entries a page lists at most."
+      },
+      {
+        "name": "after",
+        "in": "query",
+        "type": "string",
+        "required": false,
+        "description": "Where the page starts, the next of the page before it. Leave it out for the first page."
       }
     ]
   },

@@ -80,11 +80,11 @@ test("an agent has no preferences, so it gets 403 reading or changing them", asy
 });
 
 test.each([
-  ["no preference", {}, "Give a preference to change: hourCycle, dateFormat, mailView."],
+  ["no preference", {}, "Give a preference to change: hourCycle, dateFormat, mailView, timeZone."],
   ["an hour cycle Duva doesn't have", { hourCycle: "h24" }, "Give hourCycle as locale, h12 or h23."],
   ["a date format Duva doesn't have", { dateFormat: "yearFirst" }, "Give dateFormat as locale, iso, dayMonth or monthDay."],
   ["a mail view Duva doesn't have", { mailView: "markdown" }, "Give mailView as html or text."],
-  ["a preference Duva doesn't have", { timeZone: "UTC" }, 'Duva has no preference "timeZone". Its preferences are hourCycle, dateFormat, mailView.'],
+  ["a preference Duva doesn't have", { language: "sv" }, 'Duva has no preference "language". Its preferences are hourCycle, dateFormat, mailView, timeZone.'],
 ])("changing preferences with %s gets 400, and they stay as they were", async (_, body, message) => {
   const { ada } = await withOrganization();
 
@@ -93,4 +93,24 @@ test.each([
   expect(response.status).toBe(400);
   expect(error).toEqual({ message });
   expect((await ada.GET("/preferences")).data).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "html" });
+});
+
+test("a human has no time zone until they choose one, and then it is theirs", async () => {
+  const { ada } = await withOrganization();
+  expect((await ada.GET("/preferences")).data).not.toHaveProperty("timeZone");
+
+  const { response, data } = await ada.PATCH("/preferences", { body: { timeZone: "Europe/Stockholm" } });
+
+  expect(response.status).toBe(200);
+  expect(data).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "html", timeZone: "Europe/Stockholm" });
+  expect((await ada.GET("/preferences")).data?.timeZone).toBe("Europe/Stockholm");
+});
+
+test("a time zone that isn't one is refused", async () => {
+  const { ada } = await withOrganization();
+
+  const { response, error } = await ada.PATCH("/preferences", { body: { timeZone: "Europe/Atlantis" } });
+
+  expect(response.status).toBe(400);
+  expect(error?.message).toBe('"Europe/Atlantis" isn\'t a time zone. Give timeZone as an IANA name, such as Europe/Stockholm.');
 });

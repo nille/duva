@@ -333,6 +333,25 @@ test("the sponsor pauses an agent, its key is refused saying so, and unpausing l
   expect(JSON.parse(whoami.stdout)).toEqual(agent);
 });
 
+test("the sponsor reads their agent's daily summaries and a day's timeline from the CLI", async () => {
+  const machine = await newMachine();
+  const server = await (await startDuva({ admin: "ada@example.com" })).listen();
+  onTestFinished(() => server.close());
+  await machine.saveDeployment(server);
+  await machine.duva("login", { browserSignsIn: "ada@example.com" });
+  const { agent } = JSON.parse((await machine.duva("agents", "create", "--name", "Hermes")).stdout) as { agent: { id: string } };
+  await machine.duva("agents", "pause", "--agent", agent.id);
+  const today = new Date().toISOString().slice(0, 10);
+
+  const summaries = await machine.duva("agents", "activity", "--agent", agent.id, "--from", today, "--to", today, "--timeZone", "UTC");
+  const timeline = await machine.duva("agents", "timeline", "--agent", agent.id, "--day", today, "--timeZone", "UTC");
+
+  expect(summaries.exitCode).toBe(0);
+  expect(JSON.parse(summaries.stdout)).toEqual({ timeZone: "UTC", days: [{ day: today, sent: 0, approved: 0, rejected: 0, received: 0, organized: 0, screened: 0 }] });
+  expect(timeline.exitCode).toBe(0);
+  expect((JSON.parse(timeline.stdout) as { entries: { change: { type: string } }[] }).entries.map(({ change }) => change.type)).toEqual(["agentPaused", "actorAdded"]);
+});
+
 test("the sponsor limits an agent to one send an hour, and sends its second message now from the CLI", async () => {
   const machine = await newMachine();
   const duva = await startDuva({ domain: "example.com", admin: "ada@example.org" });

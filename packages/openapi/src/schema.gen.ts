@@ -359,6 +359,46 @@ export interface paths {
         patch: operations["changeAgentSettings"];
         trace?: never;
     };
+    "/agents/{agent}/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read an agent's daily summaries, how much it sent, had approved or rejected, received, organized and screened each day.
+         * @description Gives every day from from to to, newest first, each day in your time zone, days without activity included. Leave both out for the last 30 days. Activity reaches back to the agent's start: what happened in its mailboxes, what it did in its sponsor's mailbox, and the organization's changes to it. Only the agent's sponsor and admins can read it.
+         */
+        get: operations["getAgentActivity"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agents/{agent}/activity/{day}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read an agent's timeline for one day, everything it did and what happened in its mailboxes, newest first.
+         * @description Lists the day's entries a page at a time, newest first. Each is a change as the change feed recorded it, with the mailbox it was in and its thread, where it has them. To read the next page, call again with the answer's next as after, until an answer has no next. Only the agent's sponsor and admins can read it. An admin who isn't the sponsor reads no part of what the mail says, so the changes leave out approvers' edits and notes, label names, and senders' and recipients' addresses.
+         */
+        get: operations["getAgentActivityDay"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/addresses": {
         parameters: {
             query?: never;
@@ -1815,8 +1855,8 @@ export interface components {
             draft: string;
             /** @description The ID of the approval that let it go, if it needed one. */
             approval?: string;
-            /** @description SES's reason. */
-            reason: string;
+            /** @description SES's reason. Always there, except in the activity an admin who isn't the agent's sponsor reads. */
+            reason?: string;
         } & {
             /**
              * @description discriminator enum property added by openapi-typescript
@@ -1872,8 +1912,8 @@ export interface components {
              * @description When SES says it happened.
              */
             at: string;
-            /** @description The recipients it concerns. A reject concerns them all. */
-            recipients: string[];
+            /** @description The recipients it concerns. A reject concerns them all. Always there, except in the activity an admin who isn't the agent's sponsor reads. */
+            recipients?: string[];
             /**
              * @description SES's reason, if it gives one, as the bounce's subtype, the complaint's type or the reject's reason.
              * @example NoEmail
@@ -1939,8 +1979,8 @@ export interface components {
             type: "labelCreated";
             /** @description The label's ID. */
             label: string;
-            /** @description The label's name. */
-            name: string;
+            /** @description The label's name. Always there, except in the activity an admin who isn't the agent's sponsor reads. */
+            name?: string;
         } & {
             /**
              * @description discriminator enum property added by openapi-typescript
@@ -1953,8 +1993,8 @@ export interface components {
             type: "labelRenamed";
             /** @description The label's ID. */
             label: string;
-            /** @description The label's new name. */
-            name: string;
+            /** @description The label's new name. Always there, except in the activity an admin who isn't the agent's sponsor reads. */
+            name?: string;
         } & {
             /**
              * @description discriminator enum property added by openapi-typescript
@@ -3096,18 +3136,79 @@ export interface components {
          * @enum {string}
          */
         SearchLanguage: "English" | "Swedish" | "Danish";
+        ActivitySummaries: {
+            /**
+             * @description The time zone the days are in.
+             * @example Europe/Stockholm
+             */
+            timeZone: string;
+            /** @description Every day asked for, newest first. */
+            days: components["schemas"]["ActivitySummary"][];
+        };
+        /** @description How much an agent did in one day. */
+        ActivitySummary: {
+            /**
+             * Format: date
+             * @example 2026-10-06
+             */
+            day: string;
+            /** @description The messages it sent that SES accepted. */
+            sent: number;
+            /** @description Its sends its sponsor approved. */
+            approved: number;
+            /** @description Its sends its sponsor rejected. */
+            rejected: number;
+            /** @description The messages that arrived in its mailboxes, spam included. */
+            received: number;
+            /** @description The times it marked threads read or unread, changed their labels, or created, renamed or deleted a label. */
+            organized: number;
+            /** @description The times it let a sender in, blocked one, removed a decision on one, or switched a Screener. */
+            screened: number;
+        };
+        ActivityTimeline: {
+            /**
+             * Format: date
+             * @example 2026-10-06
+             */
+            day: string;
+            /**
+             * @description The time zone the day is in.
+             * @example Europe/Stockholm
+             */
+            timeZone: string;
+            /** @description The page's entries, newest first. */
+            entries: components["schemas"]["ActivityEntry"][];
+            /** @description Present when more entries follow. Pass it as after to list the next page. */
+            next?: string;
+        };
+        /** @description One change in an agent's activity: in one of its mailboxes, by it in its sponsor's mailbox or about its sends there, or in the organization's setup about it or by it. */
+        ActivityEntry: {
+            /** @description The ID of the mailbox whose change feed recorded it, unless the organization's did. */
+            mailbox?: string;
+            /** @description The ID of the thread it is about, if it is about one. A draft's is the thread it replies in or was sent in. */
+            thread?: string;
+            /** @description The change as its feed recorded it. Its position is in that feed. For an admin who isn't the agent's sponsor, a change in a mailbox leaves out what its mail says: edits, note, name, address, domain, the feedback's recipients, and SES's reason for refusing a send. */
+            change: components["schemas"]["MailboxChange"] | components["schemas"]["OrganizationChange"];
+        };
         /** @description A human's own preferences. */
         Preferences: {
             hourCycle: components["schemas"]["HourCycle"];
             dateFormat: components["schemas"]["DateFormat"];
             mailView: components["schemas"]["MailView"];
+            timeZone?: components["schemas"]["TimeZone"];
         };
         /** @description The preferences changed, each with its new value. */
         PreferencesChanges: {
             hourCycle?: components["schemas"]["HourCycle"];
             dateFormat?: components["schemas"]["DateFormat"];
             mailView?: components["schemas"]["MailView"];
+            timeZone?: components["schemas"]["TimeZone"];
         };
+        /**
+         * @description The time zone an agent's activity is in, as an IANA name. Left out until the human chooses one, when the API counts days in UTC and the web app in the browser's time zone.
+         * @example Europe/Stockholm
+         */
+        TimeZone: string;
         /**
          * @description How the web app shows times. Locale, the default, follows the browser's language. h12 shows 12-hour time, as 2:30 PM, and h23 24-hour time, as 14:30.
          * @enum {string}
@@ -3201,6 +3302,8 @@ export interface components {
         Label: string;
         /** @description The approval's ID. */
         Approval: string;
+        /** @description The time zone days are in, an IANA name such as Europe/Stockholm. Defaults to your timeZone preference, or UTC if you have none. */
+        TimeZone: string;
         /** @description The agent's ID. */
         Agent: string;
         /** @description The human's ID. */
@@ -3807,6 +3910,76 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    getAgentActivity: {
+        parameters: {
+            query?: {
+                /** @description The first day, as YYYY-MM-DD. Defaults to 29 days before to. */
+                from?: string;
+                /** @description The last day, as YYYY-MM-DD, at most 366 days after from. Defaults to today in your time zone. */
+                to?: string;
+                /** @description The time zone days are in, an IANA name such as Europe/Stockholm. Defaults to your timeZone preference, or UTC if you have none. */
+                timeZone?: components["parameters"]["TimeZone"];
+            };
+            header?: never;
+            path: {
+                /** @description The agent's ID. */
+                agent: components["parameters"]["Agent"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The agent's daily summaries. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivitySummaries"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getAgentActivityDay: {
+        parameters: {
+            query?: {
+                /** @description The time zone days are in, an IANA name such as Europe/Stockholm. Defaults to your timeZone preference, or UTC if you have none. */
+                timeZone?: components["parameters"]["TimeZone"];
+                /** @description How many entries a page lists at most. */
+                limit?: number;
+                /** @description Where the page starts, the next of the page before it. Leave it out for the first page. */
+                after?: string;
+            };
+            header?: never;
+            path: {
+                /** @description The agent's ID. */
+                agent: components["parameters"]["Agent"];
+                /** @description The day, as YYYY-MM-DD, in your time zone. */
+                day: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of the day's timeline. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivityTimeline"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     listAddresses: {

@@ -620,6 +620,99 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+  /agents/{agent}/activity:
+    get:
+      operationId: getAgentActivity
+      summary: Read an agent's daily summaries, how much it sent, had approved or rejected, received, organized and screened each day.
+      description: >
+        Gives every day from from to to, newest first, each day in your time
+        zone, days without activity included. Leave both out for the last 30
+        days. Activity reaches back to the agent's start: what happened in its
+        mailboxes, what it did in its sponsor's mailbox, and the organization's
+        changes to it. Only the agent's sponsor and admins can read it.
+      x-cli-command: agents activity
+      parameters:
+        - $ref: "#/components/parameters/Agent"
+        - name: from
+          in: query
+          description: The first day, as YYYY-MM-DD. Defaults to 29 days before to.
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          description: The last day, as YYYY-MM-DD, at most 366 days after from. Defaults to today in your time zone.
+          schema:
+            type: string
+            format: date
+        - $ref: "#/components/parameters/TimeZone"
+      responses:
+        "200":
+          description: The agent's daily summaries.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActivitySummaries"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /agents/{agent}/activity/{day}:
+    get:
+      operationId: getAgentActivityDay
+      summary: Read an agent's timeline for one day, everything it did and what happened in its mailboxes, newest first.
+      description: >
+        Lists the day's entries a page at a time, newest first. Each is a
+        change as the change feed recorded it, with the mailbox it was in and
+        its thread, where it has them. To read the next page, call again with
+        the answer's next as after, until an answer has no next. Only the
+        agent's sponsor and admins can read it. An admin who isn't the
+        sponsor reads no part of what the mail says, so the changes leave out
+        approvers' edits and notes, label names, and senders' and recipients'
+        addresses.
+      x-cli-command: agents timeline
+      parameters:
+        - $ref: "#/components/parameters/Agent"
+        - name: day
+          in: path
+          required: true
+          description: The day, as YYYY-MM-DD, in your time zone.
+          schema:
+            type: string
+            format: date
+        - $ref: "#/components/parameters/TimeZone"
+        - name: limit
+          in: query
+          description: How many entries a page lists at most.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 100
+        - name: after
+          in: query
+          description: Where the page starts, the next of the page before it. Leave it out for the first page.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: A page of the day's timeline.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActivityTimeline"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /addresses:
     post:
       operationId: addAddress
@@ -2404,6 +2497,13 @@ components:
       description: The approval's ID.
       schema:
         type: string
+    TimeZone:
+      name: timeZone
+      in: query
+      description: The time zone days are in, an IANA name such as Europe/Stockholm. Defaults to your timeZone preference, or UTC if you have none.
+      schema:
+        type: string
+        examples: ["Europe/Stockholm"]
     Agent:
       name: agent
       in: path
@@ -3470,7 +3570,7 @@ components:
       allOf:
         - $ref: "#/components/schemas/ChangeBase"
         - type: object
-          required: [type, draft, reason]
+          required: [type, draft]
           description: SES refused an approved draft, so it wasn't sent.
           properties:
             type:
@@ -3484,7 +3584,7 @@ components:
               description: The ID of the approval that let it go, if it needed one.
             reason:
               type: string
-              description: SES's reason.
+              description: SES's reason. Always there, except in the activity an admin who isn't the agent's sponsor reads.
     SendUnclear:
       allOf:
         - $ref: "#/components/schemas/ChangeBase"
@@ -3536,7 +3636,7 @@ components:
     SendFeedback:
       type: object
       additionalProperties: false
-      required: [kind, at, recipients]
+      required: [kind, at]
       description: >
         What SES reported about a sent message after accepting it. A hard bounce means the address
         doesn't take mail, and a soft bounce that it didn't for now. One complaint about an agent's
@@ -3557,7 +3657,7 @@ components:
           type: array
           items:
             type: string
-          description: The recipients it concerns. A reject concerns them all.
+          description: The recipients it concerns. A reject concerns them all. Always there, except in the activity an admin who isn't the agent's sponsor reads.
         reason:
           type: string
           description: SES's reason, if it gives one, as the bounce's subtype, the complaint's type or the reject's reason.
@@ -3623,7 +3723,7 @@ components:
       allOf:
         - $ref: "#/components/schemas/ChangeBase"
         - type: object
-          required: [type, label, name]
+          required: [type, label]
           properties:
             type:
               type: string
@@ -3633,12 +3733,12 @@ components:
               description: The label's ID.
             name:
               type: string
-              description: The label's name.
+              description: The label's name. Always there, except in the activity an admin who isn't the agent's sponsor reads.
     LabelRenamed:
       allOf:
         - $ref: "#/components/schemas/ChangeBase"
         - type: object
-          required: [type, label, name]
+          required: [type, label]
           properties:
             type:
               type: string
@@ -3648,7 +3748,7 @@ components:
               description: The label's ID.
             name:
               type: string
-              description: The label's new name.
+              description: The label's new name. Always there, except in the activity an admin who isn't the agent's sponsor reads.
     LabelDeleted:
       allOf:
         - $ref: "#/components/schemas/ChangeBase"
@@ -5266,6 +5366,93 @@ components:
       type: string
       enum: [English, Swedish, Danish]
       description: A language search knows.
+    ActivitySummaries:
+      type: object
+      additionalProperties: false
+      required: [timeZone, days]
+      properties:
+        timeZone:
+          type: string
+          description: The time zone the days are in.
+          examples: ["Europe/Stockholm"]
+        days:
+          type: array
+          description: Every day asked for, newest first.
+          items:
+            $ref: "#/components/schemas/ActivitySummary"
+    ActivitySummary:
+      type: object
+      additionalProperties: false
+      required: [day, sent, approved, rejected, received, organized, screened]
+      description: How much an agent did in one day.
+      properties:
+        day:
+          type: string
+          format: date
+          examples: ["2026-10-06"]
+        sent:
+          type: integer
+          description: The messages it sent that SES accepted.
+        approved:
+          type: integer
+          description: Its sends its sponsor approved.
+        rejected:
+          type: integer
+          description: Its sends its sponsor rejected.
+        received:
+          type: integer
+          description: The messages that arrived in its mailboxes, spam included.
+        organized:
+          type: integer
+          description: The times it marked threads read or unread, changed their labels, or created, renamed or deleted a label.
+        screened:
+          type: integer
+          description: The times it let a sender in, blocked one, removed a decision on one, or switched a Screener.
+    ActivityTimeline:
+      type: object
+      additionalProperties: false
+      required: [day, timeZone, entries]
+      properties:
+        day:
+          type: string
+          format: date
+          examples: ["2026-10-06"]
+        timeZone:
+          type: string
+          description: The time zone the day is in.
+          examples: ["Europe/Stockholm"]
+        entries:
+          type: array
+          description: The page's entries, newest first.
+          items:
+            $ref: "#/components/schemas/ActivityEntry"
+        next:
+          type: string
+          description: Present when more entries follow. Pass it as after to list the next page.
+    ActivityEntry:
+      type: object
+      additionalProperties: false
+      required: [change]
+      description: >
+        One change in an agent's activity: in one of its mailboxes, by it in
+        its sponsor's mailbox or about its sends there, or in the
+        organization's setup about it or by it.
+      properties:
+        mailbox:
+          type: string
+          description: The ID of the mailbox whose change feed recorded it, unless the organization's did.
+        thread:
+          type: string
+          description: The ID of the thread it is about, if it is about one. A draft's is the thread it replies in or was sent in.
+        change:
+          description: >
+            The change as its feed recorded it. Its position is in that feed.
+            For an admin who isn't the agent's sponsor, a change in a mailbox
+            leaves out what its mail says: edits, note, name, address, domain,
+            the feedback's recipients, and SES's reason for refusing a send.
+          anyOf:
+            - $ref: "#/components/schemas/MailboxChange"
+            - $ref: "#/components/schemas/OrganizationChange"
     Preferences:
       type: object
       additionalProperties: false
@@ -5278,6 +5465,8 @@ components:
           $ref: "#/components/schemas/DateFormat"
         mailView:
           $ref: "#/components/schemas/MailView"
+        timeZone:
+          $ref: "#/components/schemas/TimeZone"
     PreferencesChanges:
       type: object
       additionalProperties: false
@@ -5289,6 +5478,15 @@ components:
           $ref: "#/components/schemas/DateFormat"
         mailView:
           $ref: "#/components/schemas/MailView"
+        timeZone:
+          $ref: "#/components/schemas/TimeZone"
+    TimeZone:
+      type: string
+      description: >-
+        The time zone an agent's activity is in, as an IANA name. Left out
+        until the human chooses one, when the API counts days in UTC and the
+        web app in the browser's time zone.
+      examples: ["Europe/Stockholm"]
     HourCycle:
       type: string
       enum: [locale, h12, h23]

@@ -20,7 +20,8 @@ export type Thread = components["schemas"]["Thread"];
 export type Message = components["schemas"]["Message"];
 export type MailboxChange = components["schemas"]["MailboxChange"];
 export type MailboxChangePage = components["schemas"]["MailboxChangePage"];
-export type SendFeedback = components["schemas"]["SendFeedback"];
+// Duva records the recipients of all it is told, and leaves them out only of an admin's activity.
+export type SendFeedback = components["schemas"]["SendFeedback"] & { recipients: string[] };
 export type { StoredMessage };
 
 /** The label new mail gets. */

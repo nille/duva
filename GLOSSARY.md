@@ -41,7 +41,7 @@ Sign-off before an action takes effect. An agent's send from its own mailbox, it
 An actor allowed to change the organization's setup: domains, addresses, groups, actors and settings. Admins can't read personal mailboxes. An agent can be an admin only if its sponsor is one, and stops being one when its sponsor does. An agent admin never removes humans or agents, or changes who is admin.
 
 **Preference**:
-A choice a human makes for themselves about how Duva shows things to them, such as how times and dates read in the web app, or whether mail shows as designed or as plain text. It follows them to every browser, and no one else sees or changes it. An agent has none; its sponsor changes its settings.
+A choice a human makes for themselves about how Duva shows things to them, such as how times and dates read in the web app, the time zone their agents' activity is counted in, or whether mail shows as designed or as plain text. It follows them to every browser, and no one else sees or changes it. An agent has none; its sponsor changes its settings.
 _Avoid_: user setting, profile
 
 **Sponsor**:
@@ -53,6 +53,10 @@ The mark on mail an agent sends: always a header, even after a human approved it
 
 **Send limit**:
 How much an agent may send per hour, and to how many new recipients per day: 100 and 50 to start. A sponsor sets their agent's limits up to the organization's cap, which admins set. Mail over the limit waits and goes out by itself as the limit allows, or when the sponsor sends it now. Humans have none.
+
+**Activity**:
+What an agent did, and what happened in its mailboxes, day by day: a daily summary of how much it sent, had approved or rejected, received, organized and screened, which opens into the day's timeline. It is read from change feeds, so it reaches back to the agent's start. Only its sponsor and admins read it, and an admin who isn't the sponsor reads none of what the mail says.
+_Avoid_: log, audit
 
 ## Domains and addresses
 

@@ -120,6 +120,7 @@ Give only the preferences to change. They follow you to every browser you sign i
 - `--hourCycle`: How the web app shows times. Locale, the default, follows the browser's language. h12 shows 12-hour time, as 2:30 PM, and h23 24-hour time, as 14:30.
 - `--dateFormat`: How the web app shows dates. Locale, the default, follows the browser's language. iso shows 2026-10-05, dayMonth 5 Oct 2026 and monthDay Oct 5, 2026, with month names in the browser's language. Without the year, they show 10-05, 5 Oct and Oct 5.
 - `--mailView`: How the web app shows a message that has HTML. html, the default, shows it as its sender designed it, with known trackers removed. text shows its plain text. Either way, the human can switch each message the other way.
+- `--timeZone`: The time zone an agent's activity is in, as an IANA name. Left out until the human chooses one, when the API counts days in UTC and the web app in the browser's time zone.
 
 ## duva humans list
 
@@ -232,6 +233,29 @@ Give only the settings to change. A change works at once. Only the agent's spons
 - `--sendsPerHour`: How many messages the agent sends in any hour, from all its mailboxes and as its sponsor. 100 by default, and up to the organization's agentSendsPerHourCap. A send counts when it goes out, and one over the limit waits.
 - `--newRecipientsPerDay`: How many new recipients the agent sends to in any 24 hours: addresses it hasn't sent to before, from any mailbox. 50 by default, and up to the organization's agentNewRecipientsPerDayCap. A send counts when it goes out, and one over the limit waits. A message with more new recipients than the whole limit waits until its sponsor sends it now.
 - `--approvalForSetup` or `--no-approvalForSetup`: Whether the agent's changes to the organization's setup, as an admin, wait for its sponsor's approval. On by default.
+
+## duva agents activity
+
+Read an agent's daily summaries, how much it sent, had approved or rejected, received, organized and screened each day.
+
+Gives every day from from to to, newest first, each day in your time zone, days without activity included. Leave both out for the last 30 days. Activity reaches back to the agent's start: what happened in its mailboxes, what it did in its sponsor's mailbox, and the organization's changes to it. Only the agent's sponsor and admins can read it.
+
+- `--agent` (required): The agent's ID.
+- `--from`: The first day, as YYYY-MM-DD. Defaults to 29 days before to.
+- `--to`: The last day, as YYYY-MM-DD, at most 366 days after from. Defaults to today in your time zone.
+- `--timeZone`: The time zone days are in, an IANA name such as Europe/Stockholm. Defaults to your timeZone preference, or UTC if you have none.
+
+## duva agents timeline
+
+Read an agent's timeline for one day, everything it did and what happened in its mailboxes, newest first.
+
+Lists the day's entries a page at a time, newest first. Each is a change as the change feed recorded it, with the mailbox it was in and its thread, where it has them. To read the next page, call again with the answer's next as after, until an answer has no next. Only the agent's sponsor and admins can read it. An admin who isn't the sponsor reads no part of what the mail says, so the changes leave out approvers' edits and notes, label names, and senders' and recipients' addresses.
+
+- `--agent` (required): The agent's ID.
+- `--day` (required): The day, as YYYY-MM-DD, in your time zone.
+- `--timeZone`: The time zone days are in, an IANA name such as Europe/Stockholm. Defaults to your timeZone preference, or UTC if you have none.
+- `--limit`: How many entries a page lists at most.
+- `--after`: Where the page starts, the next of the page before it. Leave it out for the first page.
 
 ## duva addresses list
 
