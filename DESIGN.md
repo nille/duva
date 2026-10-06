@@ -9,6 +9,7 @@ colors:
   ink-2: "#525b66"
   rule: "#d9dde1"
   rule-strong: "#8a929c"
+  rule-desk: "#747c86"
   pencil: "#2b4fc0"
   pencil-deep: "#203c96"
   pencil-wash: "#e8edfb"
@@ -190,6 +191,7 @@ A cool, near-neutral paper palette with a single saturated blue and two status i
 - **Second Ink** (`ink-2`): field names, meta, hints, subjects beside a title, and the rejected slip icon.
 - **Hairline** (`rule`): dividers inside a sheet, and skeleton lines.
 - **Strong Rule** (`rule-strong`): button and field borders, and the scrollbar thumb.
+- **Desk Rule** (`rule-desk`): the border of a field that lies straight on the desk, as the bar's search field does, which keeps 3:1 against the desk.
 
 ### Status
 - **Sent Green** (`sent`): the sent slip icon only. A setup change made has its check in Ink.
@@ -232,7 +234,7 @@ A galley is a two-column grid of equal halves. Each column is a subgrid over six
 
 Spacing is a seven-step scale from 0.25rem to 3rem, used directly. Sheet padding is 1.5rem; the slug and decision rows are 1rem by 1.5rem.
 
-At 48rem and below, the columns stack with the original first and the draft under it, padding drops to 1rem, the signed-in address hides, buttons grow to 2.75rem, and the primary action takes a full row. An original folds at 8 lines.
+At 48rem and below, the columns stack with the original first and the draft under it, padding drops to 1rem, buttons grow to 2.75rem, and the primary action takes a full row. An original folds at 8 lines. The bar is one row and the places lie in a tab bar along the screen's foot, whose height is `--tab-bar-height` on `:root` (0 on a desk), so anything kept at the screen's foot sits above it.
 
 ### Named Rules
 **The Shared Rows Rule.** When two versions of a message are compared, they share grid rows. Never let one column's header push the other's text out of line.
@@ -260,9 +262,12 @@ Plain, confident and flat, with the label in the sans at 600.
 - **Primary:** pencil fill, white text, wider padding (0 1.5rem). One per decision row: Send, or Send your version.
 - **Default:** white with a Strong Rule border, ink text. Hover shifts to Source Paper with a Second Ink border.
 - **Reject:** ink fill, white text. Used only to confirm a rejection.
-- **Quiet:** no border or fill until hover, which lays a 6% ink tint. Used for Cancel, Reject (the first step) and Sign out.
+- **Quiet:** no border or fill until hover, which lays a 6% ink tint (`--ink-wash`). Used for Cancel, Reject (the first step) and Sign out.
 - **Small:** 2rem tall, for the bar.
 - **States:** colors ease over 150ms; pressing nudges the button down 1px; disabled drops to 60% opacity. Focus is the global 2px pencil outline at 2px offset.
+
+### Focus on arriving
+Opening a view puts focus on its title, so a screen reader starts there. Only someone who got there by the keyboard sees it, as a 3px pencil bar with round ends just before the title, since a ring would box the page's name; after the mouse or a touch it shows nothing. The web app keeps which input came last on `<html>` as `data-input`. The first Tab reaches "Skip to main content", Proof Paper with the pencil's text, which lies over the bar's start while focused and takes focus to the view's title.
 
 ### Text Fields
 - **Style:** white, 1px Strong Rule border, 4px corners, 0.5rem by 0.75rem padding, inheriting the surrounding font. The edit body switches to the proof serif and resizes vertically.
@@ -270,19 +275,23 @@ Plain, confident and flat, with the label in the sans at 600.
 - **Hints:** Label size in Second Ink, under the field.
 
 ### Navigation
-The bar holds the wordmark, the nav, the search box, Write and who is signed in. The nav names only the app's places: Mail, Approvals and Alerts for sponsors, and Settings. Approvals counts what waits and Alerts what is unseen, each in pencil after its name. The mail's own views are in the side column, so there is one navigation for them. Nav links are ink, sans 600 at Small size, with no underline. The current page carries a 2px pencil underline.
+The bar holds the wordmark, the nav, the search box, Write and who is signed in. The nav names only the app's places: Mail, Approvals and Alerts for sponsors, and Settings. Approvals counts what waits and Alerts what is unseen, each in pencil after its name. The mail's own views are in the side column, so there is one navigation for them. Nav links are ink, sans 600 at Small size, with no underline. The current page carries a 2px pencil underline. Write writes in the own mailbox open, or the human's first anywhere else.
+
+On phones the bar is one row: the wordmark, then a quiet search icon button and Write, both 2.75rem tall. The same nav becomes a tab bar fixed along the screen's foot, 3.5rem tall plus the safe area, on Proof Paper under a Hairline: each place an equal column with its icon (1.25rem, the round stroke) over its name at Label size, and its count in pencil at the icon's shoulder. The current place carries the 2px pencil line at the tab bar's top edge, as the bar's underline. Who is signed in and Sign out leave the bar; Sign out is in Settings.
 
 ### Search
-The bar's search box searches the open mailbox, or the human's own outside the mail, and says which: "Search your mail", or an agent's by name. It is a text field 2rem tall with the search icon inside at the left, up to 32rem wide, and `/` puts the cursor in it from anywhere but a field. Beside it, a quiet Filters button opens a slip over the desk, as Labels does, right-aligned under the box: From and To fields with a hint, a Label select, On or after and Before as dates side by side, Has an attachment and Unread as checkboxes, then under a hairline Search, the one primary button, and a quiet Cancel. The slip reads the filters already typed, and writes its own into the box, so typing them works too. Results lie on one Index sheet, a line per thread: the pencil's dot when unread, the sender, then the subject in the serif with its labels, and under it the snippet of the message that matched, two lines at most, with each word found marked in Ink at 600 on Pencil Wash. The head names the words in Second Ink and the sort switch, Best match or Newest, links marked as the bar's nav marks its page. More results come from a default button in the sheet's foot. A search that finds nothing says so as an empty desk does, and words Duva refused, such as an unknown filter, show as an alert notice. Opening a result opens the thread at the message that matched, focused and ringed in pencil for two seconds. On phones the box takes a row of its own under the nav, 2.75rem tall, and the slip lies along the screen's foot.
+The bar's search box searches the open mailbox, or the human's own outside the mail, and says which: "Search your mail", or an agent's by name. It is a text field 2rem tall with the search icon inside at the left, up to 32rem wide, and `/` puts the cursor in it from anywhere but a field. Beside it, a quiet Filters button opens a slip over the desk, as Labels does, right-aligned under the box: From and To fields with a hint, a Label select, On or after and Before as dates side by side, Has an attachment and Unread as checkboxes, then under a hairline Search, the one primary button, and a quiet Cancel. The slip reads the filters already typed, and writes its own into the box, so typing them works too. Results lie on one Index sheet, a line per thread: the pencil's dot when unread, the sender, then the subject in the serif with its labels, and under it the snippet of the message that matched, two lines at most, with each word found marked in Ink at 600 on Pencil Wash. The head names the words in Second Ink and the sort switch, Best match or Newest, links marked as the bar's nav marks its page. More results come from a default button in the sheet's foot. A search that finds nothing says so as an empty desk does, and words Duva refused, such as an unknown filter, show as an alert notice. Opening a result opens the thread at the message that matched, focused and ringed in pencil for two seconds. On phones the box opens from the bar's search icon onto a row of its own under the bar, 2.75rem tall, with the cursor in it, and stays open while a search's results show. The slip lies along the screen's foot.
 
 ### Side column
-The mail's side column lies flat on the desk, 14rem wide, left of the mail, with no sheet. It stays in place as the page scrolls. A sponsor finds their mailboxes at its top, then every human finds the open mailbox's views.
+The mail's side column lies flat on the desk, 14rem wide, left of the mail, with no sheet. It stays in place as the page scrolls. A human with more than one mailbox, or who sponsors an agent, finds the mailboxes at its top, then every human finds the open mailbox's views.
+
+On phones the column folds into one switcher at the desk's head, a quiet full-width button 2.75rem tall: the view open at 650, the mailbox it is in in Second Ink at Small size, the pencil's dot when another mailbox has unread mail, and a chevron at the end that turns when open. It opens the mailboxes and views on a slip of Proof Paper with the slip's shadow, in the same lines as on a desk, each 2.75rem tall, the open ones on Source Paper; nothing scrolls sideways. Choosing one closes it, and so does Escape, which returns focus to the switcher. While a thread or a draft is read the switcher steps aside, and the back link names the view it came from.
 
 ### Mailboxes
-A sponsor's mailboxes, at the top of the side column. Their own comes first as "Your mailbox", then the agents they sponsor under an "Agents" label, by name. Each line holds the name at 600, its unread count at the right (in Ink at 650 when there is unread mail), and the address under it in Second Ink at Label size. Hover lays the 6% ink tint, as a quiet button does. The current mailbox lies on Proof Paper with its name underlined 2px in pencil, as the bar's nav marks the current page. A human who sponsors no agents never sees the list. On phones it becomes a wrapping row of mailboxes above the Inbox, without addresses, and steps aside while a thread is read, where the back link names the view it came from.
+The mailboxes a human reads, at the top of the side column. Their own come first: one is "Your mailbox" with its address under it, and several lie under a "Your mailboxes" label, each by its default address, or as "Mailbox 2, without an address". The one at the address they sign in with comes first, then by address, and the first one's Inbox is the web app's start. The agents they sponsor follow under an "Agents" label, by name. Each line holds the name at 600, its unread count at the right (in Ink at 650 when there is unread mail), and the address under it in Second Ink at Label size. Hover lays the 6% ink tint, as a quiet button does. The current mailbox lies on Proof Paper with its name underlined 2px in pencil, as the bar's nav marks the current page. A human with one mailbox who sponsors no agents never sees the list. Each own mailbox has its own unread counts, Screener, labels, Drafts and Write, and a thread, a draft or Drafts reached by a link that names no mailbox opens in the own mailbox the human was last in.
 
 ### Views
-The open mailbox's views, in the side column under any mailboxes: Inbox, the Screener while it is on or something waits there, Sent, Drafts (in the human's own mailbox only, since only its owner writes there), All mail, Spam and Trash, then "Your labels" with the mailbox's own, and a quiet "New label" button that opens a field in place. Each view is a link in ink, sans 600 at Small size, with its unread count in pencil at the right. Only the Inbox and the mailbox's own labels count, so Sent, Drafts, Spam, Trash and All mail never call for attention. The Screener counts the senders who wait, in Second Ink, since they ask for nothing, and the tab's title never counts them. An agent's mailbox lists Activity after Trash, which opens the agent's activity. The open view lies on Proof Paper, its name underlined 2px in pencil as the bar marks its page. On phones the views become one row above the sheet, scrolled sideways, with a Strong Rule hairline before "Your labels".
+The open mailbox's views, in the side column under any mailboxes: Inbox, the Screener while it is on or something waits there, Sent, Drafts (in the human's own mailboxes only, since only their owner writes there), All mail, Spam and Trash, then "Your labels" with the mailbox's own, and a quiet "New label" button that opens a field in place. Each view is a link in ink, sans 600 at Small size, with its unread count in pencil at the right. Only the Inbox and the mailbox's own labels count, so Sent, Drafts, Spam, Trash and All mail never call for attention. The Screener counts the senders who wait, in Second Ink, since they ask for nothing, and the tab's title never counts them. An agent's mailbox lists Activity after Trash, which opens the agent's activity. The open view lies on Proof Paper, its name underlined 2px in pencil as the bar marks its page. On phones the views are in the switcher's slip.
 
 ### Galley (signature)
 One approval as a proof. A slug row on top (who asks, the subject in serif, the time, a "New" pill if it arrived while the page was open), then the sheet with original and draft side by side, then the decision row. Editing marks up the draft column in place. A new galley arrives by sliding down 0.75rem from 40% opacity over 600ms.

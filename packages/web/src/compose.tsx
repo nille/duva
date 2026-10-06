@@ -236,10 +236,6 @@ export function Composer({
   }, [title]);
 
   const titleRef = useRef<HTMLHeadingElement>(null);
-  const ready = loading.status === "ready";
-  useEffect(() => {
-    if (ready) titleRef.current?.focus();
-  }, [ready]);
 
   if (loading.status !== "ready") {
     return (

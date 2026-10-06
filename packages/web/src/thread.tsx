@@ -111,18 +111,15 @@ export function ThreadView({
   useEffect(() => {
     if (subject !== undefined) document.title = strings.title(subject);
   }, [subject]);
-  // The thread opens with its subject focused, so a screen reader starts there, or at the message a
-  // search found, which is marked for a moment.
+  // The thread opens at the message a search found, focused and marked for a moment. Otherwise the
+  // web app focuses its subject, as every view's title.
   const loaded = reading.status === "read";
   const matchedRef = useRef<HTMLElement>(null);
   const [marked, setMarked] = useState(false);
   useEffect(() => {
     if (!loaded) return;
     const letter = matchedRef.current;
-    if (letter === null) {
-      titleRef.current?.focus();
-      return;
-    }
+    if (letter === null) return;
     letter.focus({ preventScroll: true });
     letter.scrollIntoView({ block: "start" });
     setMarked(true);

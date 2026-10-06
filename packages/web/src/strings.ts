@@ -27,13 +27,27 @@ export const strings = {
   mailboxes: {
     label: "Mailboxes",
     yours: "Your mailbox",
+    yourMailboxes: "Your mailboxes",
+    /** A human's own mailbox that has no address, by its place among theirs, so two never look the same. */
+    withoutAddress: (place: number) => `Mailbox ${place}, without an address`,
     agents: "Agents",
     unread: (count: number) => `${count} unread`,
     /** The address a mailbox is shown with: its default address, if it has one. */
     address: (mailbox: { defaultAddress?: string }) => mailbox.defaultAddress ?? "No address",
   },
 
-  nav: { label: "Duva", mail: "Mail", approvals: "Approvals", alerts: "Alerts", settings: "Settings", waiting: (count: number) => `, ${count} waiting`, unseen: (count: number) => `, ${count} unseen`, write: "Write" },
+  nav: {
+    label: "Duva",
+    mail: "Mail",
+    approvals: "Approvals",
+    alerts: "Alerts",
+    settings: "Settings",
+    waiting: (count: number) => `, ${count} waiting`,
+    unseen: (count: number) => `, ${count} unseen`,
+    write: "Write",
+    search: "Search",
+    skip: "Skip to main content",
+  },
   connection: {
     upToDate: (time: string) => `Up to date at ${time}`,
     unreachable: "Duva couldn't check for new requests. It tries again by itself.",
@@ -174,6 +188,9 @@ export const strings = {
     newLabel: "New label",
     unknownLabel: "Label",
     unread: (count: number) => `, ${count} unread`,
+    /** The phone's one switcher for the mailbox and its view, which names both. */
+    switcher: "Mailboxes and views",
+    elsewhere: "New mail in another mailbox",
     empty: {
       all: { title: "No mail yet", lead: "Every thread is listed here, archived ones too, except those in Spam and Trash." },
       spam: {

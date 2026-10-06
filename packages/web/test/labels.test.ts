@@ -180,10 +180,14 @@ test("a label's name that is taken is refused with words the human can act on", 
   await expect.poll(() => views.getByRole("alert").innerText(), wait).toBe("You have a label named Trash already, or it's a built-in name. Pick another.");
 });
 
-test("on a phone the views sit above the threads, and organizing fits the screen", budget, async () => {
+test("on a phone the views open from one switcher above the threads, and organizing fits the screen", budget, async () => {
   const { page, views, listed } = await withThreads(["Kvitto", "Lunch"], { viewport: phone });
 
+  // One switcher opens the views, which lie in lines, as on a desk.
+  await page.getByRole("button", { name: /Mailboxes and views/ }).click();
   expect(await views.getByRole("link", { name: /^Inbox/ }).isVisible()).toBe(true);
+  // Closed again, it leaves the threads to organize.
+  await page.getByRole("button", { name: /Mailboxes and views/ }).click();
   await page.getByRole("checkbox", { name: "Select Kvitto" }).check();
   await page.getByRole("button", { name: "Labels" }).click();
   expect(await page.getByRole("textbox", { name: "New label" }).last().isVisible()).toBe(true);

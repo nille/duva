@@ -339,6 +339,7 @@ test("at phone width the Screener's senders and their choices fit the screen", b
   await receive(note({ from: "Bartholomew Longname-Smythe <bartholomew.longname-smythe@a-rather-long-domain.example.net>", subject: "A first message with a long subject line" }));
   await signIn("grace@example.org");
 
+  await page.getByRole("button", { name: /Mailboxes and views/ }).click();
   await screenerLink(page).click();
   const longname = sender(page, "bartholomew");
   await longname.getByRole("button", { name: "Block" }).click();

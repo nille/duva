@@ -161,6 +161,189 @@ a {
   white-space: nowrap;
 }
 
+:root {
+  /* The phone's tab bar, which anything kept at the screen's foot sits above. There is none on a desk. */
+  --tab-bar-height: 0px;
+  /* A field's border where it lies straight on the desk, which keeps 3:1 against it. */
+  --rule-desk: #747c86;
+  /* The 6% ink tint a quiet control lays on hover. */
+  --ink-wash: rgb(27 33 41 / 0.06);
+}
+
+/* Where each place is drawn, which only the phone's tab bar shows. */
+.nav-icon {
+  display: none;
+}
+
+.bar .search input[type="search"]:not(:focus-visible) {
+  border-color: var(--rule-desk);
+}
+
+/* On a desk the search field is always in the bar, so its icon has nothing to open. */
+.bar .bar-search-toggle {
+  display: none;
+}
+
+.bar-search {
+  display: contents;
+}
+
+/* The skip link stays out of sight until the keyboard reaches it, then lies over the bar's start. */
+.skip {
+  position: absolute;
+  top: var(--space-2);
+  left: var(--space-3);
+  z-index: 3;
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius);
+  background: var(--paper);
+  color: var(--pencil);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  transform: translateY(-200%);
+}
+
+.skip:focus {
+  transform: none;
+}
+
+/*
+ * A view's title takes focus as the human arrives, so a screen reader starts there. Only someone on
+ * the keyboard sees it, as a pencil bar before the title, since a ring would box the page's name.
+ */
+main h1[tabindex]:focus {
+  outline: none;
+}
+
+[data-input="keyboard"] main h1[tabindex]:focus {
+  position: relative;
+}
+
+[data-input="keyboard"] main h1[tabindex]:focus::before {
+  content: "";
+  position: absolute;
+  top: 0.15em;
+  bottom: 0.15em;
+  left: calc(-1 * var(--space-2));
+  width: 3px;
+  border-radius: 2px;
+  background: var(--pencil);
+}
+
+/*
+ * Phones: one row, the wordmark, the search icon and Write. The places lie in a tab bar along the
+ * screen's foot, in reach of the thumb, and Sign out moves to Settings.
+ */
+@media (max-width: 48rem) {
+  :root {
+    --tab-bar-height: calc(3.5rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  body {
+    padding-bottom: var(--tab-bar-height);
+  }
+
+  .bar {
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3) var(--space-2) var(--space-4);
+  }
+
+  .bar .wordmark {
+    margin-right: auto;
+  }
+
+  .who {
+    display: none;
+  }
+
+  .bar .bar-search-toggle {
+    display: inline-flex;
+    justify-content: center;
+    width: 2.75rem;
+    padding: 0;
+  }
+
+  .bar-search-toggle[aria-expanded="true"] {
+    background: var(--ink-wash);
+  }
+
+  .bar-search-toggle .icon {
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+
+  .bar-search {
+    display: none;
+  }
+
+  /* Search, opened from its icon, takes a row of its own under the bar. */
+  .bar-search-open {
+    display: block;
+    order: 1;
+    flex: 1 0 100%;
+  }
+
+  .bar .search {
+    max-width: none;
+  }
+
+  .bar nav {
+    position: fixed;
+    z-index: 1;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    display: grid;
+    grid-auto-columns: minmax(0, 1fr);
+    grid-auto-flow: column;
+    gap: 0;
+    height: var(--tab-bar-height);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    border-top: 1px solid var(--rule);
+    background: var(--paper);
+  }
+
+  .bar nav a {
+    position: relative;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.125rem;
+    min-height: 2.75rem;
+    padding: 0;
+    border-bottom: 0;
+    font-size: var(--text-xs);
+  }
+
+  /* The current place carries the pencil's line at the bar's edge, as the bar marks it on a desk. */
+  .bar nav a[aria-current="page"]::before {
+    content: "";
+    position: absolute;
+    top: -1px;
+    right: 22%;
+    left: 22%;
+    height: 2px;
+    border-radius: 0 0 2px 2px;
+    background: var(--pencil);
+  }
+
+  .nav-icon {
+    display: block;
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+
+  /* What waits sits at the icon's shoulder, so the names keep one line. */
+  .bar nav .nav-count {
+    position: absolute;
+    top: 0.375rem;
+    left: calc(50% + 0.625rem);
+    font-size: var(--text-xs);
+    line-height: 1;
+  }
+}
+
 /* The desk the proofs lie on. */
 
 .desk {
@@ -960,6 +1143,10 @@ a.thread:focus-visible {
   margin-top: var(--space-4);
 }
 
+.mailboxes-group:first-child {
+  margin-top: 0;
+}
+
 .mailbox {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -972,7 +1159,7 @@ a.thread:focus-visible {
 }
 
 .mailbox:hover {
-  background: rgb(27 33 41 / 0.06);
+  background: var(--ink-wash);
 }
 
 .mailbox[aria-current="page"] {
@@ -1438,8 +1625,8 @@ input[aria-invalid="true"] {
   min-width: 0;
 }
 
-/* A sponsor's mailboxes come first, then the open mailbox's views. */
-.side .mailboxes + .views {
+/* The mailboxes come first, then the open mailbox's views. */
+.side-nav .mailboxes + .views {
   margin-top: var(--space-5);
   padding-top: var(--space-4);
   border-top: 1px solid var(--rule-strong);
@@ -1465,7 +1652,7 @@ input[aria-invalid="true"] {
 }
 
 .view-link:hover {
-  background: rgb(27 33 41 / 0.06);
+  background: var(--ink-wash);
 }
 
 /* The open view lies on the desk as paper, its name underlined in pencil as the bar marks its page. */
@@ -1534,6 +1721,122 @@ input[aria-invalid="true"] {
   color: var(--alert);
   font-size: var(--text-xs);
   font-weight: 600;
+}
+
+/* The phone's switcher for the mailbox and view, which a desk doesn't need. */
+.switcher {
+  display: none;
+}
+
+/*
+ * Phones: the side column folds into one switcher at the desk's head, naming the view and the
+ * mailbox. It opens the mailboxes and views on a slip of paper, in the same lines as on a desk, and
+ * steps aside while a thread is read, where the back link names the view it came from.
+ */
+@media (max-width: 48rem) {
+  .mail {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3) var(--space-6);
+  }
+
+  .side {
+    position: static;
+  }
+
+  .mail-reading .side {
+    display: none;
+  }
+
+  .switcher {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    width: 100%;
+    min-height: 2.75rem;
+    padding: var(--space-2) var(--space-3);
+    border: 0;
+    border-radius: var(--radius);
+    background: none;
+    color: var(--ink);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: background-color 150ms var(--ease-out);
+  }
+
+  .switcher:hover,
+  .switcher[aria-expanded="true"] {
+    background: var(--ink-wash);
+  }
+
+  .switcher-view {
+    flex: none;
+    font-weight: 650;
+  }
+
+  .switcher-mailbox {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--ink-2);
+    font-size: var(--text-sm);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Unread mail in a mailbox the switcher hides, marked with the pencil's dot, as an unread thread is. */
+  .switcher-dot {
+    flex: none;
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 50%;
+    background: var(--pencil);
+  }
+
+  .switcher-chevron {
+    margin-left: auto;
+    color: var(--ink-2);
+    transition: rotate 150ms var(--ease-out);
+  }
+
+  .switcher[aria-expanded="true"] .switcher-chevron {
+    rotate: 180deg;
+  }
+
+  .side-nav {
+    display: none;
+  }
+
+  .side-nav-open {
+    display: block;
+    margin-top: var(--space-2);
+    padding: var(--space-2);
+    border-radius: 2px;
+    background: var(--paper);
+    box-shadow: 0 1px 2px rgb(27 33 41 / 0.08);
+  }
+
+  .side-nav .mailboxes + .views {
+    margin-top: var(--space-2);
+    padding-top: var(--space-2);
+    border-top: 1px solid var(--rule);
+  }
+
+  .side-nav .view-link[aria-current="page"],
+  .side-nav .mailbox[aria-current="page"] {
+    background: var(--paper-source);
+  }
+
+  .view-link,
+  .views-new,
+  .mailbox {
+    min-height: 2.75rem;
+    align-content: center;
+  }
+
+  .views-heading {
+    margin-top: var(--space-3);
+  }
 }
 
 /* A label's own head: its name, then renaming and deleting, quiet until asked for. */
@@ -3023,59 +3326,9 @@ mark {
 
 /* Phones: the columns stack, the message first and the draft under it. */
 @media (max-width: 48rem) {
-  /* The views become a row above the sheet, scrolled sideways, under any mailboxes. */
-  .side {
-    position: static;
-    display: grid;
-    gap: var(--space-2);
-  }
-
-  .side .mailboxes + .views {
-    margin-top: 0;
-    padding-top: var(--space-2);
-  }
-
-  /* While a thread is read the mailboxes step aside, and the line between them and the views goes too. */
-  .mail-reading .side .mailboxes + .views {
-    padding-top: 0;
-    border-top: 0;
-  }
-
-  .views {
-    display: flex;
-    align-items: center;
-    gap: var(--space-1);
-    overflow-x: auto;
-    padding-bottom: var(--space-1);
-  }
-
-  .views-list {
-    display: flex;
-    gap: var(--space-1);
-  }
-
-  .views-heading {
-    flex: none;
-    margin: 0 0 0 var(--space-2);
-    padding: 0 0 0 var(--space-3);
-    border-left: 1px solid var(--rule-strong);
-    white-space: nowrap;
-  }
-
   .thread-text .label-name,
   .thread-text .group-mark {
     justify-self: start;
-  }
-
-  .views .label-form {
-    flex: 0 0 18rem;
-    margin: 0;
-  }
-
-  .view-link,
-  .views-new {
-    min-height: 2.75rem;
-    white-space: nowrap;
   }
 
   .index-tools {
@@ -3123,36 +3376,6 @@ mark {
     max-width: none;
   }
 
-  .bar {
-    gap: var(--space-4);
-    padding: var(--space-3) var(--space-4);
-  }
-
-  .who-email {
-    display: none;
-  }
-
-  /* The nav takes a row of its own under the wordmark, Write and Sign out. */
-  .bar {
-    flex-wrap: wrap;
-  }
-
-  .bar nav {
-    order: 1;
-    flex: 1 0 100%;
-    gap: var(--space-4);
-  }
-
-  .bar-write {
-    margin-left: auto;
-  }
-
-  /* Search takes a row of its own under the nav. */
-  .search {
-    order: 2;
-    flex: 1 0 100%;
-    max-width: none;
-  }
 
   .search-panel {
     width: auto;
@@ -3160,10 +3383,6 @@ mark {
 
   .search input[type="search"] {
     height: 2.75rem;
-  }
-
-  .bar-write + .who {
-    margin-left: 0;
   }
 
   .compose-field {
@@ -3216,52 +3435,6 @@ mark {
 
   .index-skeleton .thread {
     grid-template-columns: 1fr;
-  }
-
-  /* The mailboxes become a row above the Inbox, and step aside while a thread is read. */
-  .mail {
-    grid-template-columns: minmax(0, 1fr);
-    gap: var(--space-4);
-    padding: var(--space-2) var(--space-3) var(--space-6);
-  }
-
-  .mail-reading .mailboxes {
-    display: none;
-  }
-
-  .mailboxes {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--space-2);
-  }
-
-  .mailboxes ul {
-    display: contents;
-  }
-
-  .mailboxes-group {
-    margin: 0;
-    padding-left: var(--space-1);
-  }
-
-  .mailboxes ul:first-child + .mailboxes-group {
-    margin-top: 0;
-  }
-
-  .mailbox {
-    display: flex;
-    align-items: baseline;
-    gap: var(--space-2);
-    min-height: 2.75rem;
-    align-content: center;
-    flex-wrap: wrap;
-    padding: var(--space-2) var(--space-3);
-    max-width: 100%;
-  }
-
-  .mailbox-at {
-    display: none;
   }
 
   .letter {

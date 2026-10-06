@@ -50,37 +50,27 @@ export class SignedOut extends Error {
   }
 }
 
+/** The organization's changes that alter which mailboxes a human reads, or the addresses they show with. */
+export const mailboxSetupChanges = new Set<OrganizationChange["type"]>(["mailboxAdded", "mailboxHandedOver", "mailboxDeleted", "actorRemoved", "addressAdded", "addressRemoved", "defaultAddressChanged"]);
+
 /**
  * The feeds of every mailbox the client can read, and the organization's if `organization`, each
  * followed from where this browser left off. Positions are kept in localStorage, so opening the
- * web app again doesn't read a feed from the start.
+ * web app again doesn't read a feed from the start. `mailboxes` gives the mailboxes as the caller
+ * last listed them, so the feeds don't list them on every read.
  */
-function mailboxFeeds(client: DuvaClient, organization: boolean) {
+function mailboxFeeds(client: DuvaClient, organization: boolean, mailboxes: () => readonly string[]) {
   const positions = new Map<string, number>();
   const key = (mailbox: string) => `duva.feed.${mailbox}`;
 
   /**
-   * Reads every mailbox's feed to its end. Answers the changes read, and how to keep the new
-   * positions once the caller has acted on them, so a failure there loses nothing.
+   * Reads every mailbox's feed to its end. Answers the changes read, whether a mailbox couldn't be
+   * read anymore, and how to keep the new positions once the caller has acted on them, so a failure
+   * there loses nothing.
    */
-  async function catchUp(): Promise<{ changes: MailboxChange[]; organization: OrganizationChange[]; keep: () => void }> {
-    const { data: list, response } = await client.GET("/mailboxes");
-    if (response.status === 401) throw new SignedOut();
-    if (list === undefined) throw new Error(`Duva answered ${response.status} listing mailboxes.`);
-    const changes: MailboxChange[] = [];
+  async function catchUp(): Promise<{ changes: MailboxChange[]; organization: OrganizationChange[]; gone: boolean; keep: () => void }> {
     const read = new Map<string, number>();
-    for (const { id } of list.mailboxes) {
-      let after = positions.get(id) ?? Number(localStorage.getItem(key(id)) ?? 0);
-      for (;;) {
-        const { data: page, response } = await client.GET("/mailboxes/{mailbox}/changes", { params: { path: { mailbox: id }, query: { after } } });
-        if (response.status === 401) throw new SignedOut();
-        if (page === undefined) throw new Error(`Duva answered ${response.status} reading a mailbox's changes.`);
-        changes.push(...page.changes.map((change) => ({ mailbox: id, change })));
-        if (page.position === after) break;
-        after = page.position;
-      }
-      read.set(id, after);
-    }
+    // The organization's feed is read first, so a mailbox it says was added is followed at once.
     const setup: OrganizationChange[] = [];
     if (organization) {
       let after = positions.get(organizationFeed) ?? Number(localStorage.getItem(key(organizationFeed)) ?? 0);
@@ -96,9 +86,29 @@ function mailboxFeeds(client: DuvaClient, organization: boolean) {
       }
       read.set(organizationFeed, after);
     }
+    const changes: MailboxChange[] = [];
+    let gone = false;
+    for (const id of mailboxes()) {
+      let after = positions.get(id) ?? Number(localStorage.getItem(key(id)) ?? 0);
+      for (;;) {
+        const { data: page, response } = await client.GET("/mailboxes/{mailbox}/changes", { params: { path: { mailbox: id }, query: { after } } });
+        if (response.status === 401) throw new SignedOut();
+        // A mailbox deleted, handed over or no longer sponsored is gone, so the caller lists them again.
+        if (response.status === 403 || response.status === 404) {
+          gone = true;
+          break;
+        }
+        if (page === undefined) throw new Error(`Duva answered ${response.status} reading a mailbox's changes.`);
+        changes.push(...page.changes.map((change) => ({ mailbox: id, change })));
+        if (page.position === after) break;
+        after = page.position;
+      }
+      read.set(id, after);
+    }
     return {
       changes,
       organization: setup,
+      gone,
       keep() {
         for (const [id, after] of read) {
           positions.set(id, after);
@@ -127,7 +137,8 @@ export type Connection = { ok: true; at: Date } | { ok: false } | undefined;
  * Reads the feeds every few seconds while the tab is visible, less often while it is hidden, and at
  * once when it becomes visible again, the organization's too for an admin. Hands `onChanges` what
  * each read found, `first` on the first read, which also passes everything that happened while the
- * app was closed. Stops when the session has ended.
+ * app was closed, and `gone` when a mailbox in `mailboxes` couldn't be read anymore, so they need
+ * listing again. Stops when the session has ended.
  */
 export function useFeeds(
   client: DuvaClient,
@@ -136,13 +147,16 @@ export function useFeeds(
     hiddenInterval = defaultHiddenPollInterval,
     organization = false,
     onChanges,
+    mailboxes,
     onConnection,
     onSignedOut,
   }: {
     interval?: number;
     hiddenInterval?: number;
     organization?: boolean;
-    onChanges: (changes: MailboxChange[], first: boolean, organization: OrganizationChange[]) => Promise<void> | void;
+    /** The IDs of the mailboxes to follow, as the caller last listed them. */
+    mailboxes: readonly string[];
+    onChanges: (changes: MailboxChange[], first: boolean, organization: OrganizationChange[], gone: boolean) => Promise<void> | void;
     onConnection: (connection: Connection) => void;
     onSignedOut: () => void;
   },
@@ -150,24 +164,28 @@ export function useFeeds(
   // The latest callbacks, so the loop doesn't restart when the caller renders.
   const callbacks = useRef({ onChanges, onConnection, onSignedOut });
   callbacks.current = { onChanges, onConnection, onSignedOut };
+  const followed = useRef(mailboxes);
+  followed.current = mailboxes;
+  // Reads at once, or again as soon as the read under way ends, as when the mailboxes are listed anew.
+  const readSoon = useRef<() => void>(undefined);
 
   useEffect(() => {
     let stopped = false;
     let running = false;
-    // Whether the tab became visible during a read, which may have started before what arrived meanwhile.
-    let visibleDuringRead = false;
+    // Whether something asked for a read during one, which may have started before what it was for.
+    let askedDuringRead = false;
     let first = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const feeds = mailboxFeeds(client, organization);
+    const feeds = mailboxFeeds(client, organization, () => followed.current);
     const tick = async () => {
       if (running || stopped) return;
       running = true;
-      visibleDuringRead = false;
+      askedDuringRead = false;
       clearTimeout(timer);
       try {
-        const { changes, organization: setup, keep } = await feeds.catchUp();
+        const { changes, organization: setup, gone, keep } = await feeds.catchUp();
         if (stopped) return;
-        await callbacks.current.onChanges(changes, first, setup);
+        await callbacks.current.onChanges(changes, first, setup, gone);
         keep();
         first = false;
         if (!stopped) callbacks.current.onConnection({ ok: true, at: new Date() });
@@ -182,12 +200,14 @@ export function useFeeds(
       } finally {
         running = false;
       }
-      if (!stopped) timer = setTimeout(() => void tick(), visibleDuringRead ? 0 : document.hidden ? hiddenInterval : interval);
+      if (!stopped) timer = setTimeout(() => void tick(), askedDuringRead ? 0 : document.hidden ? hiddenInterval : interval);
+    };
+    readSoon.current = () => {
+      if (running) askedDuringRead = true;
+      else void tick();
     };
     const onVisibility = () => {
-      if (document.hidden) return;
-      if (running) visibleDuringRead = true;
-      else void tick();
+      if (!document.hidden) readSoon.current?.();
     };
     void tick();
     document.addEventListener("visibilitychange", onVisibility);
@@ -197,4 +217,9 @@ export function useFeeds(
       document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [client, interval, hiddenInterval, organization]);
+  // Mailboxes listed anew are followed from the next read, which comes at once.
+  const followedKey = mailboxes.join();
+  useEffect(() => {
+    readSoon.current?.();
+  }, [followedKey]);
 }

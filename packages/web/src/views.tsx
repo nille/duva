@@ -96,7 +96,7 @@ export function MailViews({
   base: string;
   labels: Label[];
   current: View | undefined;
-  /** Whether Drafts is listed, as it is for the human's own mailbox only, and whether it's open. */
+  /** Whether Drafts is listed, as it is for the human's own mailboxes only, and whether it's open. */
   drafts?: { current: boolean };
   /** Where the activity of the agent whose mailbox it is lies, as an agent's mailbox lists it, and whether it's open. */
   activity?: { href: string; current: boolean };
@@ -148,7 +148,7 @@ export function MailViews({
         {link({ sent: true }, strings.views.sent, 0)}
         {drafts !== undefined && (
           <li>
-            <a href="#/drafts" className="view-link" aria-current={drafts.current ? "page" : undefined}>
+            <a href={`${base}drafts`} className="view-link" aria-current={drafts.current ? "page" : undefined}>
               <span className="view-name">{strings.views.drafts}</span>
             </a>
           </li>

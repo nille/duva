@@ -258,11 +258,13 @@ test("a sponsor viewing their agent's mailbox searches that mailbox", budget, as
   await expect.poll(() => page.getByRole("heading", { level: 1 }).textContent(), wait).toBe("Biljetter till Hermes");
 });
 
-test("on a phone the search box takes a row of its own, and its results fit the screen", budget, async () => {
+test("on a phone the search box opens from its icon onto a row of its own, and its results fit the screen", budget, async () => {
   const { page, signIn, receive } = await withPersonalMailbox({ viewport: phone });
   await receive(note("Hyran för oktober", "Här kommer fakturan för hyran i oktober. Betala senast fredag, så slipper du påminnelsen."));
   await signIn("grace@example.org");
 
+  // The search field opens from its icon in the bar.
+  await page.getByRole("button", { name: "Search" }).click();
   const box = (await searchBox(page).boundingBox())!;
   expect(box.width).toBeGreaterThan(phone.width * 0.6);
   expect(box.x + box.width).toBeLessThanOrEqual(phone.width);

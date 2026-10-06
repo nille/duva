@@ -202,6 +202,7 @@ test("the mailboxes fit a phone's screen", budget, async () => {
   await receive(note("hermes@example.com", "Till Hermes"), "hermes@example.com");
 
   await signIn("ada@example.org");
+  await page.getByRole("button", { name: /Mailboxes and views/ }).click();
 
   await expect.poll(() => mailboxes(page).getByRole("link", { name: /^Hermes/ }).isVisible(), wait).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(phone.width);

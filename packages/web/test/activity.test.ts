@@ -125,7 +125,10 @@ test("a day the agent did nothing says so", budget, async () => {
 test("on a phone, each day and each entry fits the screen", budget, async () => {
   const { page, signIn } = await withActivity({ viewport: phone });
   await signIn("ada@example.org");
+  await page.getByRole("button", { name: /Mailboxes and views/ }).click();
   await page.getByRole("navigation", { name: "Mailboxes" }).getByRole("link", { name: /^Hermes/ }).click();
+  await expect.poll(() => page.getByRole("heading", { level: 1 }).textContent(), wait).toBe("Hermes's Inbox");
+  await page.getByRole("button", { name: /Mailboxes and views/ }).click();
   await page.getByRole("navigation", { name: "Mail" }).getByRole("link", { name: "Activity" }).click();
 
   await expect.poll(() => days(page).count(), wait).toBe(30);

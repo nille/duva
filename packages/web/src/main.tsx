@@ -1,37 +1,45 @@
 // Duva's web app. A human signs in and lands on the Inbox of their personal mailbox, where they read,
-// organize, write and send their mail, with its views in the side column. Sponsors also read their
-// agents' mailboxes, listed there above the views, and reach the Approvals view from the bar, where
-// they decide what the agents they sponsor ask to send and the setup changes their agent admins ask
-// for, and the Alerts view, where they read what their agents need them for, with a count of the
+// organize, write and send their mail, with its views in the side column. A human with more than one
+// mailbox finds each listed there above the views, as sponsors find their agents' mailboxes too.
+// Sponsors reach the Approvals view from the bar, where they decide what the agents they sponsor ask
+// to send and the setup changes their agent admins ask for, and the Alerts view, where they read what their agents need them for, with a count of the
 // unseen in the bar. Mail from first-time senders waits in each mailbox's Screener, beside its views.
 // Each agent's activity, a summary a day that opens into the day's timeline, is reached from its
 // mailbox's views and from Settings. Every human reaches Settings from the bar too, where they choose
 // how times and dates show and switch their Screeners, admins the organization's settings and
 // sponsors their agents', which they pause and limit there. The bar's search box searches the
-// mailbox open, or the human's own.
+// mailbox open, or the human's own. On phones the bar is one row, its places lie in a tab bar along
+// the screen's foot, and one switcher at the desk's head opens the mailboxes and views.
 import "@fontsource-variable/source-serif-4/opsz.css";
 import "./styles.css";
-import { StrictMode, useCallback, useEffect, useRef, useState } from "react";
+import { lazy, StrictMode, Suspense, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
 import { activityHref, AgentActivity, AgentDay } from "./activity.tsx";
-import { Alerts } from "./alerts.tsx";
-import { Approvals } from "./approvals.tsx";
 import { Composer } from "./compose.tsx";
 import { defaultPreferences, type Preferences, PreferencesContext } from "./dates.ts";
 import { Drafts } from "./drafts.tsx";
-import { approvalChanges, type Connection, draftChanges, type Follow, labelChanges, mailChanges, screenerChanges, setupChanges, SignedOut, useFeeds } from "./feed.ts";
+import { approvalChanges, type Connection, draftChanges, type Follow, labelChanges, mailChanges, mailboxSetupChanges, screenerChanges, setupChanges, SignedOut, useFeeds } from "./feed.ts";
 import { ThreadIndex } from "./inbox.tsx";
-import { type AgentMailbox, MailboxList, mailboxHref } from "./mailboxes.tsx";
+import { type AgentMailbox, MailboxList, mailboxHref, mailboxName, ownInOrder } from "./mailboxes.tsx";
 import { readScreener, ScreenedSenders, type ScreenerRead, ScreenerView } from "./screener.tsx";
 import { SearchBox, SearchResults } from "./search.tsx";
 import { type Config, loadConfig, signedInClient, signIn, signOut } from "./session.ts";
-import { Settings } from "./settings.tsx";
 import { strings } from "./strings.ts";
 import type { Done, Label } from "./organize.tsx";
 import { ThreadView } from "./thread.tsx";
 import { hrefOf, MailViews, pathOf, screenedSendersPath, type SearchView, type ThreadsView, titleOf, type View, viewOf } from "./views.tsx";
+
+// Views only some humans open, or open seldom, load when first opened, so the mail opens sooner.
+const Approvals = lazy(() => import("./approvals.tsx").then(({ Approvals }) => ({ default: Approvals })));
+const Alerts = lazy(() => import("./alerts.tsx").then(({ Alerts }) => ({ default: Alerts })));
+const Settings = lazy(() => import("./settings.tsx").then(({ Settings }) => ({ default: Settings })));
+
+// Which input the human used last, so the title focused on arriving at a view is ringed only for
+// someone on the keyboard, who needs to see where they are.
+addEventListener("keydown", () => (document.documentElement.dataset.input = "keyboard"), { capture: true });
+addEventListener("pointerdown", () => (document.documentElement.dataset.input = "pointer"), { capture: true });
 
 type Human = components["schemas"]["Human"];
 type Mailbox = components["schemas"]["Mailbox"];
@@ -91,50 +99,51 @@ function App() {
 
 /**
  * Where in the web app the human is, from the address's hash, so links and the back button work
- * without a server. A listing or thread without a mailbox is in the human's own, and drafts are
- * always the human's own, since only a mailbox's owner writes in it. A thread knows the view it
- * was opened from, to go back there, and from a search, the message that matched. A mailbox's
- * screened senders are reached from its Screener. An agent's activity is in the mail, beside its
- * mailbox's views, if it has a mailbox, and opens into one day. Settings can open with an agent's
- * line open, as an alert about it does.
+ * without a server. A listing without a mailbox is in the human's first own mailbox. A thread or a
+ * draft without one, and Drafts and writing, are in the own mailbox the human was last in, since
+ * links to them may not say. A thread knows the view it was opened from, to go back there, and from
+ * a search, the message that matched. A mailbox's screened senders are reached from its Screener. An
+ * agent's activity is in the mail, beside its mailbox's views, if it has a mailbox, and opens into
+ * one day. Settings reads which of its pages is open from the rest of the hash.
  */
 type Route =
   | { view: "approvals" | "alerts" }
-  | { view: "settings"; agent?: string }
+  | { view: "settings" }
   | { view: "list"; mailbox?: string; list: ThreadsView }
   | { view: "screener"; mailbox?: string; senders: boolean }
   | { view: "search"; mailbox?: string; search: SearchView }
   | { view: "thread"; mailbox?: string; id: string; from: View; message?: string }
-  | { view: "drafts" | "write" }
-  | { view: "draft"; id: string }
+  | { view: "drafts" | "write"; mailbox?: string }
+  | { view: "draft"; mailbox?: string; id: string }
   | { view: "activity"; agent: string; day?: string };
 
 function routeOf(hash: string): Route {
   if (hash === "#/approvals") return { view: "approvals" };
   if (hash === "#/alerts") return { view: "alerts" };
   if (hash === "#/settings" || hash.startsWith("#/settings/")) return { view: "settings" };
-  const opened = /^#\/settings\/agents\/(.+)$/.exec(hash)?.[1];
-  if (opened !== undefined) return { view: "settings", agent: decodeURIComponent(opened) };
-  if (hash === "#/drafts") return { view: "drafts" };
-  if (hash === "#/write") return { view: "write" };
   const [, agent, day] = /^#\/agents\/([^/]+)(?:\/(\d{4}-\d{2}-\d{2}))?$/.exec(hash) ?? [];
   if (agent !== undefined) return { view: "activity", agent: decodeURIComponent(agent), day };
-  const draft = /^#\/drafts\/(.+)$/.exec(hash)?.[1];
-  if (draft !== undefined) return { view: "draft", id: decodeURIComponent(draft) };
   const path = hash.replace(/^#\/?/, "");
-  const [, mailbox, inMailbox] = /^mailboxes\/([^/]+)\/?(.*)$/.exec(path) ?? [undefined, undefined, path];
+  const [, mailbox, inMailbox = ""] = /^mailboxes\/([^/]+)\/?(.*)$/.exec(path) ?? [undefined, undefined, path];
   const decoded = mailbox === undefined ? undefined : decodeURIComponent(mailbox);
-  const [, thread, asked] = /^threads\/([^?]+)(?:\?(.*))?$/.exec(inMailbox ?? "") ?? [];
+  if (inMailbox === "drafts" || inMailbox === "write") return { view: inMailbox, mailbox: decoded };
+  const draft = /^drafts\/(.+)$/.exec(inMailbox)?.[1];
+  if (draft !== undefined) return { view: "draft", mailbox: decoded, id: decodeURIComponent(draft) };
+  const [, thread, asked] = /^threads\/([^?]+)(?:\?(.*))?$/.exec(inMailbox) ?? [];
   if (thread !== undefined) {
     const params = new URLSearchParams(asked);
     return { view: "thread", mailbox: decoded, id: decodeURIComponent(thread), from: viewOf(params.get("from") ?? "") ?? { label: "inbox" }, message: params.get("message") ?? undefined };
   }
   if (inMailbox === screenedSendersPath) return { view: "screener", mailbox: decoded, senders: true };
-  const list = viewOf(inMailbox ?? "") ?? { label: "inbox" };
+  const list = viewOf(inMailbox) ?? { label: "inbox" };
   if ("screener" in list) return { view: "screener", mailbox: decoded, senders: false };
   if ("search" in list) return { view: "search", mailbox: decoded, search: list };
   return { view: "list", mailbox: decoded, list };
 }
+
+/** Whether the route is one that links reach without naming a mailbox, so it is in the own mailbox the human was last in. */
+const followsLastMailbox = (route: Route) =>
+  (route.view === "thread" || route.view === "draft" || route.view === "drafts" || route.view === "write") && route.mailbox === undefined;
 
 function useRoute(): Route & { hash: string } {
   const [hash, setHash] = useState(location.hash);
@@ -146,8 +155,14 @@ function useRoute(): Route & { hash: string } {
   return { ...routeOf(hash), hash };
 }
 
-/** The mailboxes the human reads, and the names of the agents they sponsor, by ID, mailbox or not. */
-type Mailboxes = { status: "loading" } | { status: "failed" } | { status: "listed"; mine?: Mailbox; agents: AgentMailbox[]; agentNames: ReadonlyMap<string, string>; sponsorsAgents: boolean };
+/**
+ * The mailboxes the human reads: their own, in the order `ownInOrder` gives, and their agents', with
+ * the names of the agents they sponsor, by ID, mailbox or not.
+ */
+type Mailboxes =
+  | { status: "loading" }
+  | { status: "failed" }
+  | { status: "listed"; own: Mailbox[]; agents: AgentMailbox[]; agentNames: ReadonlyMap<string, string>; sponsorsAgents: boolean };
 
 /** The signed-in app: the bar, and the view the route names, kept current by following the change feeds. */
 function SignedIn({ config, client, actor, onSignedOut }: { config: Config; client: DuvaClient; actor: Human; onSignedOut: () => void }) {
@@ -166,6 +181,9 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
   const [done, setDone] = useState<{ done: Done; at: string }>();
   // Times and dates show as the browser's language does until the human's preferences are read.
   const [preferences, setPreferences] = useState<Preferences>(defaultPreferences);
+  // On phones, whether the search field and the mailboxes and views are open.
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [switching, setSwitching] = useState(false);
 
   useEffect(() => {
     void (async () => {
@@ -175,19 +193,27 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
     })();
   }, [client, onSignedOut]);
 
-  const listMailboxes = useCallback(async () => {
-    setMailboxes({ status: "loading" });
-    const { data, response } = await client.GET("/mailboxes").catch(() => ({ data: undefined, response: undefined }));
-    if (response?.status === 401) return onSignedOut();
-    if (data === undefined) return setMailboxes({ status: "failed" });
-    const theirs = data.mailboxes.filter((mailbox) => mailbox.owner !== actor.id);
-    // The other mailboxes a human can read are those of agents they sponsor, which are named for them.
-    // A sponsor's agents may have no mailbox, and the sponsor still sets their settings.
-    const { data: sponsored } = await client.GET("/agents").catch(() => ({ data: undefined }));
-    const names = new Map(sponsored?.agents.map((agent) => [agent.id, agent.name]));
-    const agents = theirs.map((mailbox) => ({ mailbox, agent: names.get(mailbox.owner) ?? mailbox.defaultAddress ?? mailbox.id })).sort((a, b) => a.agent.localeCompare(b.agent));
-    setMailboxes({ status: "listed", mine: data.mailboxes.find((mailbox) => mailbox.owner === actor.id), agents, agentNames: names, sponsorsAgents: agents.length > 0 || (sponsored?.agents.length ?? 0) > 0 });
-  }, [client, actor.id, onSignedOut]);
+  /** Lists the mailboxes, showing them as loading first unless `quietly`, as when the feeds say they changed. */
+  const listMailboxes = useCallback(
+    async (quietly = false) => {
+      if (!quietly) setMailboxes({ status: "loading" });
+      const { data, response } = await client.GET("/mailboxes").catch(() => ({ data: undefined, response: undefined }));
+      if (response?.status === 401) return onSignedOut();
+      if (data === undefined) return quietly ? undefined : setMailboxes({ status: "failed" });
+      const theirs = data.mailboxes.filter((mailbox) => mailbox.owner !== actor.id);
+      // The other mailboxes a human can read are those of agents they sponsor, which are named for them.
+      // A sponsor's agents may have no mailbox, and the sponsor still sets their settings.
+      const { data: sponsored } = await client.GET("/agents").catch(() => ({ data: undefined }));
+      const names = new Map(sponsored?.agents.map((agent) => [agent.id, agent.name]));
+      const agents = theirs.map((mailbox) => ({ mailbox, agent: names.get(mailbox.owner) ?? mailbox.defaultAddress ?? mailbox.id })).sort((a, b) => a.agent.localeCompare(b.agent));
+      const own = ownInOrder(
+        data.mailboxes.filter((mailbox) => mailbox.owner === actor.id),
+        actor.email,
+      );
+      setMailboxes({ status: "listed", own, agents, agentNames: names, sponsorsAgents: agents.length > 0 || (sponsored?.agents.length ?? 0) > 0 });
+    },
+    [client, actor.id, actor.email, onSignedOut],
+  );
   useEffect(() => {
     void listMailboxes();
   }, [listMailboxes]);
@@ -210,14 +236,16 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
     },
     [client],
   );
+  // The side column lists the mailboxes when the human has more than one of their own, or sponsors an agent with one.
+  const columned = mailboxes.status === "listed" && (mailboxes.own.length > 1 || mailboxes.agents.length > 0);
   // The column lists every mailbox's count once they are listed, and the feeds keep them current.
   useEffect(() => {
-    if (mailboxes.status !== "listed" || mailboxes.agents.length === 0) return;
-    const ids = [...(mailboxes.mine === undefined ? [] : [mailboxes.mine.id]), ...mailboxes.agents.map(({ mailbox }) => mailbox.id)];
+    if (mailboxes.status !== "listed" || !columned) return;
+    const ids = [...mailboxes.own.map(({ id }) => id), ...mailboxes.agents.map(({ mailbox }) => mailbox.id)];
     countUnread(ids).catch((error: unknown) => {
       if (error instanceof SignedOut) onSignedOut();
     });
-  }, [mailboxes, countUnread, onSignedOut]);
+  }, [mailboxes, columned, countUnread, onSignedOut]);
 
   const alertsRef = useRef(alerts);
   alertsRef.current = alerts;
@@ -229,13 +257,19 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
     return () => followers.current.delete(listener);
   }, []);
 
+  const listed = mailboxes.status === "listed" ? mailboxes : undefined;
+  const followed = useMemo(() => (listed === undefined ? [] : [...listed.own.map(({ id }) => id), ...listed.agents.map(({ mailbox }) => mailbox.id)]), [listed]);
   useFeeds(client, {
+    mailboxes: followed,
     interval: config.pollInterval,
     hiddenInterval: config.hiddenPollInterval,
     // Only admins read the organization's feed, and only an admin sponsors an agent admin, whose setup changes it records.
     organization: actor.admin,
-    async onChanges(changes, first, organization) {
+    async onChanges(changes, first, organization, gone) {
       for (const listener of [...followers.current]) await listener(changes, organization);
+      // The mailboxes were listed when the app opened, so they are listed again only when an admin's
+      // feed says they changed, or one of them can't be read anymore.
+      if (!first && (gone || organization.some((change) => mailboxSetupChanges.has(change.type)))) await listMailboxes(true);
       if (first || changes.some(({ change }) => approvalChanges.has(change.type)) || organization.some((change) => setupChanges.has(change.type))) {
         const { data, response } = await client.GET("/approvals");
         if (response.status === 401) throw new SignedOut();
@@ -248,7 +282,8 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
         if (response.status === 401) throw new SignedOut();
         if (data !== undefined) {
           const newest = data.alerts[0]?.id;
-          setAlerts((current) => ({ unseen: data.unseen, newest, version: current.version + (newest === current.newest ? 0 : 1) }));
+          // Nothing new keeps what is shown, so an idle read renders nothing again.
+          setAlerts((current) => (current.unseen === data.unseen && current.newest === newest ? current : { unseen: data.unseen, newest, version: current.version + (newest === current.newest ? 0 : 1) }));
         }
       }
       // The first read passes mail that may have arrived after the views listed it, so it counts too.
@@ -260,17 +295,62 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
       if (changed.size > 0) {
         setVersions((current) => new Map([...current, ...[...changed].map((mailbox) => [mailbox, (current.get(mailbox) ?? 0) + 1] as const)]));
       }
-      if (mailboxes.status === "listed" && mailboxes.agents.length > 0) await countUnread([...mail]);
+      if (columned) await countUnread([...mail]);
     },
-    onConnection: setConnection,
+    // The connection line says the minute it was last up to date, so a read in the same minute keeps what is shown.
+    onConnection: (next) =>
+      setConnection((current) => (current?.ok === true && next?.ok === true && Math.floor(current.at.getTime() / 60_000) === Math.floor(next.at.getTime() / 60_000) ? current : next)),
     onSignedOut,
   });
 
-  // A screen reader follows the human to the view they opened, and the page starts at its top.
-  const navigated = useRef(false);
-  const listed = mailboxes.status === "listed" ? mailboxes : undefined;
+  const own = listed?.own ?? noMailboxes;
+  const first = own[0];
+  const several = own.length > 1;
+  const isOwn = (id: string | undefined) => own.some((mailbox) => mailbox.id === id);
+  // With one mailbox of their own, a link that names none is in it. With several, every link the web
+  // app builds names its mailbox, and one that doesn't, as the composer's and Drafts' don't, says
+  // which once it is opened: a draft is in whichever of them holds it, and a thread, Drafts or
+  // writing in the own mailbox the human was last in. Any other view that names none is in the first.
+  const lastOwn = useRef<string>(undefined);
+  const follows = followsLastMailbox(route);
+  if (listed !== undefined && !follows) lastOwn.current = "mailbox" in route && isOwn(route.mailbox) ? route.mailbox : undefined;
+  const [draftHome, setDraftHome] = useState<{ draft: string; mailbox?: string }>();
+  const unplacedDraft = several && route.view === "draft" && route.mailbox === undefined ? route.id : undefined;
+  useEffect(() => {
+    if (unplacedDraft === undefined) return;
+    let looking = true;
+    void Promise.all(
+      own.map(async (mailbox) => {
+        const { response } = await client.GET("/mailboxes/{mailbox}/drafts/{draft}", { params: { path: { mailbox: mailbox.id, draft: unplacedDraft } } }).catch(() => ({ response: undefined }));
+        return response?.ok === true ? mailbox.id : undefined;
+      }),
+    ).then((homes) => {
+      if (looking) setDraftHome({ draft: unplacedDraft, mailbox: homes.find((home) => home !== undefined) });
+    });
+    return () => {
+      looking = false;
+    };
+  }, [client, unplacedDraft, own]);
+  const placingDraft = unplacedDraft !== undefined && draftHome?.draft !== unplacedDraft;
   // The mailbox the route names, if it names one. An agent's activity is beside its mailbox, if it has one.
-  const named = "mailbox" in route ? route.mailbox : route.view === "activity" ? listed?.agents.find(({ mailbox }) => mailbox.owner === route.agent)?.mailbox.id : undefined;
+  const named =
+    "mailbox" in route
+      ? (route.mailbox ?? (follows ? ((unplacedDraft !== undefined ? draftHome?.mailbox : undefined) ?? lastOwn.current) : undefined))
+      : route.view === "activity"
+        ? listed?.agents.find(({ mailbox }) => mailbox.owner === route.agent)?.mailbox.id
+        : undefined;
+  useEffect(() => {
+    if (several && follows && !placingDraft) location.replace(`#/mailboxes/${encodeURIComponent(named ?? first!.id)}/${route.hash.replace(/^#\/?/, "")}`);
+  }, [several, follows, placingDraft, named, first, route.hash]);
+  // A mailbox the list doesn't have, as one an admin gave the human since, is looked for again once
+  // before the web app says it isn't theirs.
+  const known = named === undefined || isOwn(named) || listed?.agents.some(({ mailbox }) => mailbox.id === named) === true;
+  const [rechecked, setRechecked] = useState<ReadonlySet<string>>(new Set());
+  const checking = listed !== undefined && !known && named !== undefined && !rechecked.has(named);
+  useEffect(() => {
+    if (!checking) return;
+    void listMailboxes(true).then(() => setRechecked((current) => new Set([...current, named])));
+  }, [checking, named, listMailboxes]);
   // The views outside the mail.
   const away = route.view === "approvals" || route.view === "alerts" || route.view === "settings";
   const routeKey = away
@@ -278,17 +358,16 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
     : route.view === "activity"
       ? `activity/${route.agent}/${route.day ?? ""}`
       : `${route.view}/${named ?? ""}/${"id" in route ? route.id : route.view === "list" ? pathOf(route.list) : route.view === "search" ? pathOf(route.search) : route.view === "screener" ? String(route.senders) : ""}`;
+  // A screen reader follows the human to the view they opened, and the page starts at its top.
+  const navigated = useRef(false);
   useEffect(() => {
+    setSwitching(false);
     if (!navigated.current) {
       navigated.current = true;
       return;
     }
     scrollTo(0, 0);
-    const title = document.querySelector<HTMLElement>("main h1");
-    if (title !== null) {
-      title.tabIndex = -1;
-      title.focus();
-    }
+    return focusTitle();
   }, [routeKey]);
   // What was done stops being said once the human goes elsewhere.
   useEffect(() => {
@@ -299,14 +378,14 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
     if (route.view === "approvals") document.title = strings.title(strings.approvals.title, waiting);
   }, [route.view, waiting]);
 
-  const mine = listed?.mine;
   const agentNames = listed?.agentNames ?? noNames;
   const sponsor = listed?.sponsorsAgents === true || (waiting ?? 0) > 0;
   const alerted = sponsor || alerts.newest !== undefined;
-  // The mailbox the route is in, the human's own if it names none.
+  // The mailbox the route is in, the human's first own if it names none.
   const agent = named !== undefined ? listed?.agents.find(({ mailbox }) => mailbox.id === named) : undefined;
-  const shown = away ? undefined : named === undefined ? mine : (agent?.mailbox ?? (mine?.id === named ? mine : undefined));
-  const base = shown === undefined ? "#/" : mailboxHref(shown, shown === mine);
+  const shown = away ? undefined : named === undefined ? first : (agent?.mailbox ?? own.find(({ id }) => id === named));
+  const shownOwn = shown !== undefined && isOwn(shown.id);
+  const base = shown === undefined ? "#/" : mailboxHref(shown, !several && shown.id === first?.id);
   const version = shown === undefined ? 0 : (versions.get(shown.id) ?? 0);
 
   // The open mailbox's labels, with their unread counts, are read again whenever its mail changes, and only the latest read counts.
@@ -341,21 +420,29 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
   };
   // The view the side column marks open: the one listed, or the one a thread was opened from.
   const viewed: View | undefined = route.view === "list" ? route.list : route.view === "thread" ? route.from : route.view === "screener" ? { screener: true } : route.view === "search" ? route.search : undefined;
-  // The bar searches the mailbox open, or the human's own outside the mail, and shows the search open
-  // or the one the thread shown was opened from.
-  const searched = away ? mine : shown;
+  // The bar searches the mailbox open, or the human's first own outside the mail, and shows the search
+  // open or the one the thread shown was opened from.
+  const searched = away ? first : shown;
   const searching = route.view === "search" ? route.search.search : route.view === "thread" && "search" in route.from ? route.from.search : undefined;
   const doneHere = done !== undefined && done.at === route.hash ? done.done : undefined;
   const writing = route.view === "drafts" || route.view === "draft" || route.view === "write";
+
+  // On phones the search field opens from its icon, and stays open while a search is shown.
+  const searchId = useId();
+  const searchShown = searchOpen || searching !== undefined;
+  useEffect(() => {
+    if (searchOpen) document.getElementById(searchId)?.querySelector("input")?.focus();
+  }, [searchOpen, searchId]);
+  useEffect(() => setSearchOpen(false), [routeKey]);
 
   const mail =
     away ? undefined : route.view === "activity" ? (
       route.day === undefined ? (
         <AgentActivity key={route.agent} client={client} agent={route.agent} name={agentNames.get(route.agent)} timeZone={preferences.timeZone} onSignedOut={onSignedOut} />
       ) : (
-        <AgentDay key={`${route.agent}/${route.day}`} client={client} agent={route.agent} day={route.day} name={agentNames.get(route.agent)} me={actor.id} mine={mine?.id} timeZone={preferences.timeZone} onSignedOut={onSignedOut} />
+        <AgentDay key={`${route.agent}/${route.day}`} client={client} agent={route.agent} day={route.day} name={agentNames.get(route.agent)} me={actor.id} mine={first?.id} timeZone={preferences.timeZone} onSignedOut={onSignedOut} />
       )
-    ) : mailboxes.status === "loading" ? (
+    ) : mailboxes.status === "loading" || placingDraft || checking ? (
       <main className="desk" aria-busy="true" />
     ) : mailboxes.status === "failed" ? (
       <main className="desk">
@@ -439,7 +526,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
     ) : route.view === "draft" || route.view === "write" ? (
       <Composer key={routeKey} client={client} mailbox={shown} id={route.view === "draft" ? route.id : undefined} agentNames={agentNames} version={version} onSignedOut={onSignedOut} />
     ) : route.view !== "list" ? (
-      <Drafts client={client} mailbox={shown} agentNames={agentNames} version={version} onSignedOut={onSignedOut} />
+      <Drafts key={shown.id} client={client} mailbox={shown} agentNames={agentNames} version={version} onSignedOut={onSignedOut} />
     ) : (
       <ThreadIndex
         key={`${shown.id}/${pathOf(route.list)}`}
@@ -457,17 +544,38 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
       />
     );
 
+  // What the phone's switcher names: the view open, and the mailbox it is in.
+  const viewName =
+    route.view === "activity" ? strings.activity.link : writing ? strings.views.drafts : viewed === undefined ? undefined : titleOf(viewed, labels);
+  const mailboxShown = shown !== undefined ? mailboxName(shown, own, agent?.agent) : route.view === "activity" ? agentNames.get(route.agent) : undefined;
+  // Whether a mailbox the switcher hides has unread mail.
+  const unreadElsewhere = columned && [...unread].some(([id, count]) => id !== shown?.id && count > 0);
+  const switcherId = useId();
+  const switcherRef = useRef<HTMLButtonElement>(null);
+
   return (
     <PreferencesContext value={preferences}>
+      <a
+        className="skip"
+        href={route.hash || "#/"}
+        onClick={(event) => {
+          event.preventDefault();
+          focusTitle(true);
+        }}
+      >
+        {strings.nav.skip}
+      </a>
       <header className="bar">
         <p className="wordmark">{strings.nav.label}</p>
         <nav aria-label={strings.nav.label}>
           {/* The mail's own views are in the side column, so the bar names only the mail as a whole. */}
           <a href={base} aria-current={away ? undefined : "page"}>
+            <MailIcon />
             {strings.nav.mail}
           </a>
           {sponsor && (
             <a href="#/approvals" aria-current={route.view === "approvals" ? "page" : undefined}>
+              <ApprovalsIcon />
               {strings.nav.approvals}
               {waiting !== undefined && waiting > 0 && (
                 <>
@@ -485,6 +593,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
               aria-current={route.view === "alerts" ? "page" : undefined}
               aria-label={`${strings.nav.alerts}${alerts.unseen > 0 ? strings.nav.unseen(alerts.unseen) : ""}`}
             >
+              <AlertsIcon />
               {strings.nav.alerts}
               {alerts.unseen > 0 && (
                 <span className="nav-count" aria-hidden="true">
@@ -494,21 +603,37 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
             </a>
           )}
           <a href="#/settings" aria-current={route.view === "settings" ? "page" : undefined}>
+            <SettingsIcon />
             {strings.nav.settings}
           </a>
         </nav>
         {searched !== undefined && (
-          <SearchBox
-            client={client}
-            mailbox={searched}
-            base={away ? mailboxHref(searched, true) : base}
-            agent={away ? undefined : agent?.agent}
-            labels={away ? [] : labels}
-            current={searching}
-          />
+          <>
+            <button
+              type="button"
+              className="button button-quiet bar-search-toggle"
+              aria-label={strings.nav.search}
+              aria-expanded={searchShown}
+              aria-controls={searchId}
+              onClick={() => setSearchOpen((open) => !open)}
+            >
+              <SearchIcon />
+            </button>
+            <div id={searchId} className={searchShown ? "bar-search bar-search-open" : "bar-search"}>
+              <SearchBox
+                client={client}
+                mailbox={searched}
+                base={away ? mailboxHref(searched, !several) : base}
+                agent={away ? undefined : agent?.agent}
+                labels={away ? [] : labels}
+                current={searching}
+              />
+            </div>
+          </>
         )}
-        {mine !== undefined && (
-          <button type="button" className="button button-primary button-small bar-write" onClick={() => (location.hash = "#/write")}>
+        {first !== undefined && (
+          // Write writes in the own mailbox open, or the first one anywhere else.
+          <button type="button" className="button button-primary button-small bar-write" onClick={() => (location.hash = shownOwn ? `${base}write` : "#/write")}>
             <WriteIcon />
             {strings.nav.write}
           </button>
@@ -520,67 +645,170 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
           </button>
         </div>
       </header>
-      {route.view === "approvals" ? (
-        <Approvals client={client} me={actor.id} sponsor={actor.email} connection={connection} follow={follow} onSignedOut={onSignedOut} />
-      ) : route.view === "alerts" ? (
-        <Alerts
-          client={client}
-          mailboxes={listed === undefined ? [] : [...(mine === undefined ? [] : [mine]), ...listed.agents.map(({ mailbox }) => mailbox)]}
-          mine={mine?.id}
-          agents={new Set(agentNames.keys())}
-          version={alerts.version}
-          onUnseen={(unseen) => setAlerts((current) => ({ ...current, unseen }))}
-          onSignedOut={onSignedOut}
-        />
-      ) : route.view === "settings" ? (
-        <Settings
-          client={client}
-          me={actor.id}
-          agent={route.agent}
-          admin={actor.admin}
-          email={actor.email}
-          mailboxes={listed === undefined ? undefined : { mine, agents: listed.agents }}
-          onPreferences={setPreferences}
-          onSignedOut={onSignedOut}
-        />
-      ) : shown !== undefined || (listed !== undefined && listed.agents.length > 0) ? (
-        <div className={route.view === "thread" || route.view === "draft" || route.view === "write" ? "mail mail-reading" : "mail"}>
-          <aside className="side">
-            {listed !== undefined && listed.agents.length > 0 && <MailboxList mine={mine} agents={listed.agents} unread={unread} current={shown?.id} />}
-            {shown !== undefined && (
-              <MailViews
-                client={client}
-                mailbox={shown}
-                base={base}
-                labels={labels}
-                current={viewed}
-                // A human writes only in their own mailbox, so its Drafts is the only one listed.
-                drafts={shown === mine ? { current: writing } : undefined}
-                // An agent's mailbox lists the agent's activity too.
-                activity={agent === undefined ? undefined : { href: activityHref(agent.mailbox.owner), current: route.view === "activity" }}
-                // A Screener Duva couldn't read is still listed, so its view can say so and try again.
-                screener={
-                  shownScreener.status === "read"
-                    ? { on: shownScreener.screener.on, waiting: shownScreener.screener.senders.length }
-                    : shownScreener.status === "failed"
-                      ? { on: true, waiting: 0 }
-                      : undefined
-                }
-                onLabelCreated={() => setRelabelled((current) => current + 1)}
-                onSignedOut={onSignedOut}
-              />
-            )}
-          </aside>
-          {mail}
-        </div>
-      ) : (
-        mail
-      )}
+      <Suspense fallback={<main className="desk" aria-busy="true" />}>
+        {route.view === "approvals" ? (
+          <Approvals client={client} me={actor.id} sponsor={actor.email} connection={connection} follow={follow} onSignedOut={onSignedOut} />
+        ) : route.view === "alerts" ? (
+          <Alerts
+            client={client}
+            mailboxes={listed === undefined ? [] : [...own, ...listed.agents.map(({ mailbox }) => mailbox)]}
+            mine={first?.id}
+            agents={new Set(agentNames.keys())}
+            version={alerts.version}
+            onUnseen={(unseen) => setAlerts((current) => ({ ...current, unseen }))}
+            onSignedOut={onSignedOut}
+          />
+        ) : route.view === "settings" ? (
+          <Settings
+            client={client}
+            me={actor.id}
+            admin={actor.admin}
+            email={actor.email}
+            mailboxes={listed === undefined ? undefined : { mine: first, own, agents: listed.agents }}
+            onPreferences={setPreferences}
+            onSignedOut={onSignedOut}
+          />
+        ) : shown !== undefined || columned ? (
+          <div className={route.view === "thread" || route.view === "draft" || route.view === "write" ? "mail mail-reading" : "mail"}>
+            <aside className="side">
+              {(viewName !== undefined || mailboxShown !== undefined) && (
+                // On phones one switcher opens the mailboxes and views, which the side column lists on a desk.
+                <button
+                  ref={switcherRef}
+                  type="button"
+                  className="switcher"
+                  aria-expanded={switching}
+                  aria-controls={switcherId}
+                  aria-label={[viewName, mailboxShown, unreadElsewhere && strings.views.elsewhere, strings.views.switcher].filter(Boolean).join(", ")}
+                  onClick={() => setSwitching((open) => !open)}
+                >
+                  <span className="switcher-view">{viewName ?? mailboxShown}</span>
+                  {viewName !== undefined && mailboxShown !== undefined && <span className="switcher-mailbox">{mailboxShown}</span>}
+                  {unreadElsewhere && <span className="switcher-dot" aria-hidden="true" />}
+                  <ChevronIcon />
+                </button>
+              )}
+              <div
+                id={switcherId}
+                className={switching ? "side-nav side-nav-open" : "side-nav"}
+                onKeyDown={(event) => {
+                  if (event.key !== "Escape" || !switching) return;
+                  setSwitching(false);
+                  switcherRef.current?.focus();
+                }}
+              >
+                {columned && listed !== undefined && <MailboxList own={own} agents={listed.agents} unread={unread} current={shown?.id} />}
+                {shown !== undefined && (
+                  <MailViews
+                    client={client}
+                    mailbox={shown}
+                    base={base}
+                    labels={labels}
+                    current={viewed}
+                    // A human writes only in their own mailboxes, so only theirs list Drafts.
+                    drafts={shownOwn ? { current: writing } : undefined}
+                    // An agent's mailbox lists the agent's activity too.
+                    activity={agent === undefined ? undefined : { href: activityHref(agent.mailbox.owner), current: route.view === "activity" }}
+                    // A Screener Duva couldn't read is still listed, so its view can say so and try again.
+                    screener={
+                      shownScreener.status === "read"
+                        ? { on: shownScreener.screener.on, waiting: shownScreener.screener.senders.length }
+                        : shownScreener.status === "failed"
+                          ? { on: true, waiting: 0 }
+                          : undefined
+                    }
+                    onLabelCreated={() => setRelabelled((current) => current + 1)}
+                    onSignedOut={onSignedOut}
+                  />
+                )}
+              </div>
+            </aside>
+            {mail}
+          </div>
+        ) : (
+          mail
+        )}
+      </Suspense>
     </PreferencesContext>
   );
 }
 
+/**
+ * Puts focus on the open view's title, so a screen reader starts there, as soon as the view shows
+ * it. A view that is still loading shows its title later, and one that loads in place of a skeleton
+ * may replace it, so the title is focused again while focus would otherwise fall to the page, until
+ * the human goes elsewhere or moves focus themselves. `now` focuses the view itself if it has no
+ * title, as the skip link does. Each call ends the one before.
+ */
+function focusTitle(now = false): () => void {
+  stopFocusingTitle();
+  const from = document.activeElement;
+  let focused: HTMLElement | undefined;
+  const focus = () => {
+    const active = document.activeElement;
+    // Focus the human moved, as into the search box while the view loads, stays where they put it.
+    const moved = focused === undefined ? active !== from && active !== document.body && from?.isConnected === true : active !== document.body;
+    if (focused?.isConnected === true || moved) return;
+    const title = document.querySelector<HTMLElement>("main h1") ?? (now ? document.querySelector<HTMLElement>("main") : null);
+    if (title === null) return;
+    title.tabIndex = -1;
+    title.focus();
+    focused = title;
+  };
+  focus();
+  const watching = new MutationObserver(focus);
+  watching.observe(document.getElementById("root")!, { childList: true, subtree: true });
+  const done = setTimeout(() => watching.disconnect(), 10_000);
+  stopFocusingTitle = () => {
+    clearTimeout(done);
+    watching.disconnect();
+  };
+  return stopFocusingTitle;
+}
+
+let stopFocusingTitle = () => {};
+
 const noNames: ReadonlyMap<string, string> = new Map();
+const noMailboxes: Mailbox[] = [];
+
+// The bar's icons, drawn on the 16 unit grid in the round stroke. The places' icons show only in the phone's tab bar.
+const Stroke = ({ d }: { d: string }) => <path d={d} fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />;
+
+const MailIcon = () => (
+  <svg className="icon nav-icon" viewBox="0 0 16 16" aria-hidden="true">
+    <Stroke d="M2.5 4h11v8h-11zM2.5 4.5 8 9l5.5-4.5" />
+  </svg>
+);
+
+const ApprovalsIcon = () => (
+  <svg className="icon nav-icon" viewBox="0 0 16 16" aria-hidden="true">
+    <Stroke d="M4 2.5h8v11H4zM6 8.25l1.5 1.5L10.25 7" />
+  </svg>
+);
+
+const AlertsIcon = () => (
+  <svg className="icon nav-icon" viewBox="0 0 16 16" aria-hidden="true">
+    <Stroke d="M4 11.5V7a4 4 0 0 1 8 0v4.5l1 1H3l1-1ZM6.75 14h2.5" />
+  </svg>
+);
+
+const SettingsIcon = () => (
+  <svg className="icon nav-icon" viewBox="0 0 16 16" aria-hidden="true">
+    <Stroke d="M2.5 5h6M11.5 5h2M2.5 11h2M7.5 11h6M10 3.5v3M6 9.5v3" />
+  </svg>
+);
+
+const SearchIcon = () => (
+  <svg className="icon" viewBox="0 0 16 16" aria-hidden="true">
+    <Stroke d="M7 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10ZM10.75 10.75 14 14" />
+  </svg>
+);
+
+const ChevronIcon = () => (
+  <svg className="icon switcher-chevron" viewBox="0 0 16 16" aria-hidden="true">
+    <Stroke d="M4.5 6.25 8 9.75l3.5-3.5" />
+  </svg>
+);
 
 const WriteIcon = () => (
   <svg className="icon" viewBox="0 0 16 16" aria-hidden="true">
