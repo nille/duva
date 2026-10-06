@@ -8,6 +8,7 @@
 
 ## Consequences
 
-- The API's role gains `ses:CreateEmailIdentity`, `ses:DeleteEmailIdentity` and `ses:GetEmailIdentity`, limited to identities in this account and region. Receipt rules already follow addresses at runtime (#7).
-- The first domain stays in the stack, so it's removed only when another domain sends sign-in codes. Cognito's sender is set by deploy.
+- The API's role gains `ses:CreateEmailIdentity`, `ses:DeleteEmailIdentity`, `ses:GetEmailIdentity` and `ses:PutEmailIdentityMailFromAttributes`, limited to identities in this account and region, and `cognito-idp:DescribeUserPool` and `UpdateUserPool` on the stack's pool, to change the sign-in sender (#70). Receipt rules already follow addresses at runtime (#7).
+- The first domain stays in the stack, so it's removed only when another domain sends sign-in codes. An admin chooses the sign-in domain at runtime, and deploy passes the pool's current sender back as a parameter, so it never reverts that choice. Removing the first domain deletes an identity the stack owns, which drifts from the template; deploy copes.
+- Removing a standalone domain removes its alias domains too.
 - Duva doesn't manage anyone's DNS. It shows the records and checks them, as deploy does for the first domain.
