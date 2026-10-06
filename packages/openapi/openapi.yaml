@@ -72,6 +72,27 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
+  /organization/mailboxes:
+    get:
+      operationId: listOrganizationMailboxes
+      summary: List every mailbox in the organization, with its addresses and the actor that owns it.
+      description: >
+        For giving mailboxes addresses and choosing their default address. It
+        lists what reaches each mailbox and who owns it, and reads none of
+        their mail, which admins can't read. Only admins can list the
+        organization's mailboxes.
+      x-cli-command: organization mailboxes
+      responses:
+        "200":
+          description: The organization's mailboxes, and the actors that own them.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrganizationMailboxList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
   /organization/settings:
     get:
       operationId: getOrganizationSettings
@@ -792,8 +813,8 @@ paths:
       description: >
         Each record's status is looked up when you ask: missing until DNS
         answers with its value, found once it does, and verified once SES has
-        verified what the record is for. Only admins can list the
-        organization's domains.
+        verified what the record is for, unless DNS answers with another
+        value. Only admins can list the organization's domains.
       x-cli-command: domains list
       responses:
         "200":
@@ -2697,8 +2718,11 @@ components:
           enum: [missing, found, verified]
           description: >-
             missing until DNS answers with the value, found once it does, and
-            verified once SES has verified what the record is for. SES never
-            verifies receiving or DMARC records.
+            verified once SES has verified what the record is for. A record DNS
+            doesn't answer for still shows verified then, since a resolver can
+            answer from a cache made before it was added, but one DNS answers
+            with another value for shows missing. SES never verifies receiving
+            or DMARC records.
         found:
           type: array
           items:
@@ -2887,6 +2911,21 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ListedMailbox"
+    OrganizationMailboxList:
+      type: object
+      additionalProperties: false
+      required: [mailboxes, owners]
+      properties:
+        mailboxes:
+          type: array
+          description: Every mailbox, those without an address included.
+          items:
+            $ref: "#/components/schemas/Mailbox"
+        owners:
+          type: array
+          description: The actors that own the mailboxes, each once.
+          items:
+            $ref: "#/components/schemas/Actor"
     MailboxChangePage:
       type: object
       additionalProperties: false

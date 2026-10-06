@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
+import { ChevronIcon } from "./setting-parts.tsx";
 import { strings } from "./strings.ts";
 
 type Agent = components["schemas"]["Agent"];
@@ -178,9 +179,3 @@ function summaryOf(settings: AgentSettings): string {
   const approval = own && asSponsor ? copy.allWait : !own && !asSponsor ? copy.noneWait : own ? copy.ownWait : copy.asSponsorWait;
   return `${copy.access[settings.sponsorAccess]} ${approval}`;
 }
-
-const ChevronIcon = () => (
-  <svg className="icon agent-chevron" viewBox="0 0 16 16" aria-hidden="true">
-    <path d="m4.5 6 3.5 3.5L11.5 6" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-  </svg>
-);

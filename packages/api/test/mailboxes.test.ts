@@ -169,3 +169,40 @@ test("only those who can read a mailbox can read its unread count, so not even t
   expect(response.status).toBe(403);
   expect(missing.status).toBe(404);
 });
+
+test("an admin lists every mailbox in the organization, with its addresses and its owner, a mailbox without an address included", async () => {
+  const { duva, ada, hermes } = await withAgent({ humans: ["grace@example.org"] });
+  const grace = duva.signIn("grace@example.org");
+  const { data: me } = await grace.GET("/whoami");
+  const { data: graces } = await ada.POST("/mailboxes", { body: { owner: me!.id, address: "grace@example.com" } });
+  await ada.POST("/addresses", { body: { address: "support@example.com", mailbox: graces!.id } });
+  await grace.POST("/agents", { body: { name: "Iris" } }).then(async ({ data }) => ada.POST("/mailboxes", { body: { owner: data!.agent.id, address: "iris@example.com" } }));
+  await ada.DELETE("/addresses/{address}", { params: { path: { address: "iris@example.com" } } });
+  await ada.POST("/mailboxes", { body: { owner: hermes.id, address: "hermes@example.com" } });
+
+  const { response, data } = await ada.GET("/organization/mailboxes");
+
+  expect(response.status).toBe(200);
+  const mailboxes = data!.mailboxes.map(({ owner, defaultAddress, addresses }) => ({ owner: data!.owners.find(({ id }) => id === owner), defaultAddress, addresses }));
+  expect(mailboxes).toHaveLength(3);
+  expect(mailboxes).toEqual(
+    expect.arrayContaining([
+      { owner: { id: me!.id, kind: "human", email: "grace@example.org", admin: false }, defaultAddress: "grace@example.com", addresses: ["grace@example.com", "support@example.com"] },
+      { owner: expect.objectContaining({ kind: "agent", name: "Iris", sponsor: me!.id }), defaultAddress: undefined, addresses: [] },
+      { owner: expect.objectContaining({ id: hermes.id, name: "Hermes" }), defaultAddress: "hermes@example.com", addresses: ["hermes@example.com"] },
+    ]),
+  );
+  expect(data!.mailboxes.find(({ owner }) => owner === me!.id)?.id).toBe(graces!.id);
+  expect(data!.owners).toHaveLength(3);
+});
+
+test("only an admin lists the organization's mailboxes", async () => {
+  const { duva, key } = await withAgent({ humans: ["grace@example.org"] });
+
+  const byHuman = await duva.signIn("grace@example.org").GET("/organization/mailboxes");
+  const byAgent = await duva.withKey(key).GET("/organization/mailboxes");
+
+  expect(byHuman.response.status).toBe(403);
+  expect(byHuman.error?.message).toMatch(/admin/);
+  expect(byAgent.response.status).toBe(403);
+});

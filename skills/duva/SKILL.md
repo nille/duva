@@ -67,6 +67,12 @@ Lists up to 100 changes, oldest first. To catch up, call again with the position
 
 - `--after`: The position to list changes after. 0, the default, lists from the start.
 
+## duva organization mailboxes
+
+List every mailbox in the organization, with its addresses and the actor that owns it.
+
+For giving mailboxes addresses and choosing their default address. It lists what reaches each mailbox and who owns it, and reads none of their mail, which admins can't read. Only admins can list the organization's mailboxes.
+
 ## duva organization settings
 
 Read the organization's settings.
@@ -278,7 +284,7 @@ Give only what to change. Members you give replace the group's members. A change
 
 List the organization's domains, each with its DNS records and SES's verification.
 
-Each record's status is looked up when you ask: missing until DNS answers with its value, found once it does, and verified once SES has verified what the record is for. Only admins can list the organization's domains.
+Each record's status is looked up when you ask: missing until DNS answers with its value, found once it does, and verified once SES has verified what the record is for, unless DNS answers with another value. Only admins can list the organization's domains.
 
 ## duva domains add
 

@@ -58,6 +58,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/organization/mailboxes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List every mailbox in the organization, with its addresses and the actor that owns it.
+         * @description For giving mailboxes addresses and choosing their default address. It lists what reaches each mailbox and who owns it, and reads none of their mail, which admins can't read. Only admins can list the organization's mailboxes.
+         */
+        get: operations["listOrganizationMailboxes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/organization/settings": {
         parameters: {
             query?: never;
@@ -420,7 +440,7 @@ export interface paths {
         };
         /**
          * List the organization's domains, each with its DNS records and SES's verification.
-         * @description Each record's status is looked up when you ask: missing until DNS answers with its value, found once it does, and verified once SES has verified what the record is for. Only admins can list the organization's domains.
+         * @description Each record's status is looked up when you ask: missing until DNS answers with its value, found once it does, and verified once SES has verified what the record is for, unless DNS answers with another value. Only admins can list the organization's domains.
          */
         get: operations["listDomains"];
         put?: never;
@@ -1344,7 +1364,7 @@ export interface components {
             /** @example 10 inbound-smtp.eu-north-1.amazonaws.com */
             value: string;
             /**
-             * @description missing until DNS answers with the value, found once it does, and verified once SES has verified what the record is for. SES never verifies receiving or DMARC records.
+             * @description missing until DNS answers with the value, found once it does, and verified once SES has verified what the record is for. A record DNS doesn't answer for still shows verified then, since a resolver can answer from a cache made before it was added, but one DNS answers with another value for shows missing. SES never verifies receiving or DMARC records.
              * @enum {string}
              */
             status: "missing" | "found" | "verified";
@@ -1486,6 +1506,12 @@ export interface components {
         };
         MailboxList: {
             mailboxes: components["schemas"]["ListedMailbox"][];
+        };
+        OrganizationMailboxList: {
+            /** @description Every mailbox, those without an address included. */
+            mailboxes: components["schemas"]["Mailbox"][];
+            /** @description The actors that own the mailboxes, each once. */
+            owners: components["schemas"]["Actor"][];
         };
         MailboxChangePage: {
             changes: components["schemas"]["MailboxChange"][];
@@ -2952,6 +2978,28 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    listOrganizationMailboxes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The organization's mailboxes, and the actors that own them. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationMailboxList"];
+                };
+            };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
         };

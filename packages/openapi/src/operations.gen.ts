@@ -50,6 +50,20 @@ export const operations = [
     ]
   },
   {
+    "operationId": "listOrganizationMailboxes",
+    "method": "get",
+    "path": "/organization/mailboxes",
+    "routeKey": "GET /organization/mailboxes",
+    "summary": "List every mailbox in the organization, with its addresses and the actor that owns it.",
+    "description": "For giving mailboxes addresses and choosing their default address. It lists what reaches each mailbox and who owns it, and reads none of their mail, which admins can't read. Only admins can list the organization's mailboxes.",
+    "signIn": true,
+    "command": [
+      "organization",
+      "mailboxes"
+    ],
+    "options": []
+  },
+  {
     "operationId": "getOrganizationSettings",
     "method": "get",
     "path": "/organization/settings",
@@ -704,7 +718,7 @@ export const operations = [
     "path": "/domains",
     "routeKey": "GET /domains",
     "summary": "List the organization's domains, each with its DNS records and SES's verification.",
-    "description": "Each record's status is looked up when you ask: missing until DNS answers with its value, found once it does, and verified once SES has verified what the record is for. Only admins can list the organization's domains.",
+    "description": "Each record's status is looked up when you ask: missing until DNS answers with its value, found once it does, and verified once SES has verified what the record is for, unless DNS answers with another value. Only admins can list the organization's domains.",
     "signIn": true,
     "command": [
       "domains",

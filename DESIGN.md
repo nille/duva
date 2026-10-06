@@ -65,6 +65,11 @@ typography:
     fontSize: "0.8125rem"
     fontWeight: 650
     lineHeight: 1.5
+  record:
+    fontFamily: "ui-monospace, SF Mono, Menlo, Consolas, Liberation Mono, monospace"
+    fontSize: "0.8125rem"
+    fontWeight: 400
+    lineHeight: 1.5
 rounded:
   sheet: "2px"
   field: "4px"
@@ -199,6 +204,7 @@ A cool, near-neutral paper palette with a single saturated blue and two status i
 
 **Mail Font:** Source Serif 4 Variable (with Georgia, serif), self-hosted from `@fontsource-variable/source-serif-4` with its optical size axis (OFL-1.1, noted in THIRD_PARTY_NOTICES.md).
 **Interface Font:** the system sans stack (`system-ui`, then platform faces, then Arial).
+**Record Font:** the system monospace stack (`ui-monospace`, then platform faces), only for DNS record names and values, which an admin copies or types at a DNS provider exactly.
 
 **Character:** the serif is the written word, so mail reads like a printed proof. The sans is Duva's own voice, plain and close to the platform. Numbers are tabular across the app.
 
@@ -301,6 +307,8 @@ A draft as a live Letter. Its heading ("New message", "Reply" or "Draft") is Duv
 
 ### Settings
 Each group of settings is a sheet of its own, at most 44rem wide: its name as a Title and who chooses it in Second Ink, then a hairline and its settings. A setting is a fieldset: its question as a Title, a line in Second Ink on what it decides, then each choice as a 1px Rule box, 4px corners, holding the radio, the choice's name at 600 and what it means as a hint. The chosen box lies on Pencil Wash with a pencil border. Choices whose names and examples are short, such as how times and dates show, sit side by side in a row that wraps, each with an example built from today as its hint. Choices that need a sentence, such as how mail shows, stack. Save, the one primary button, stays disabled until a choice differs from what is saved, and "Saved" is said beside it, with when it applies. Each sheet has its own Save. The organization's settings come first, which only admins change, then You, with the human's own preferences. The Screener sheet follows, with On and Off for the human's own mailbox and each of their agents', under its name, saying in Ink when switching off will move waiting mail to the Inbox. A sponsor's Agents sheet follows, titled "Your agents", with each agent as one line, divided by hairlines: its name at 650, and under it in Second Ink at Small size its access and whether its sends wait for approval, with a chevron at the end. Clicking the line opens the agent's settings under it and closes any other agent's, and the chevron turns. A line hovered lies on Source Paper. The settings are its sponsor access as radios, then its sends as the sponsor and from its own mailbox, each with a box for approval and one for the disclosure line, as checkboxes in the same boxes, and a Save of its own. A choice that withdraws something on saving says so in Ink under the choices. A human who sponsors no agents has no Agents sheet.
+
+Admins get two more sheets after the organization's, which no one else sees. Domains lists each domain as an Agents sheet line does: the domain at 650, and under it in Second Ink its kind, "Verified" or "Waiting for DNS", and whether sign-in codes come from it or it has a catch-all. Opened, it holds parts, each with its name as a Title: DNS records, Sign-in codes and Catch-all, then Remove domain as a quiet button under a hairline. The records lie in one 1px Rule box, divided by hairlines, each with its purpose at 650 and type in Second Ink, its status at the right in Label size (Missing in Second Ink, Found and Verified in Ink, Verified with the check), then Name and Value on a 4.5rem name column, each set in the record font on Source Paper with a small Copy button that says "Copied" for two seconds. A record DNS answers otherwise says what it has, as a hint. Check again, a small default button, looks them up again. The catch-all is a select with Save, the one primary button. Removing asks once in place, listing the domains, the addresses that stop and the mailboxes left without one, with Remove as the one dark button. Add a domain closes the sheet under a hairline: a Domain field, Standalone and Alias as short choices, a Mirrors select for an alias, and Add domain. Addresses lists each mailbox as a line, humans by address then agents by name: the owner at 650, and under it the default address and how many more, or that it has none. Opened, each address is a row divided by hairlines, at 600, with a Default mark in the labels' outline or a small Make default button, and a quiet Remove that asks once in place. A New address field with Add address follows. The Organization sheet's retention is a short field of days, right-aligned, with "days" after it. A shorter period than the saved one says in Ink under it how many threads saving erases. On phones the record's Name and Value stack over it, and buttons grow to 2.75rem.
 
 ### Notices
 Alert notices are Alert Wash with Alert Red text at weight 500, 4px corners, Small size. The connection line in the desk head is Label size in Second Ink, turning Alert Red and bold when Duva can't be reached.

@@ -1,4 +1,4 @@
-import { expect, test } from "vitest";
+import { expect, onTestFinished, test, vi } from "vitest";
 import type { Page } from "playwright-core";
 import { startWebApp } from "./web-app.ts";
 
@@ -173,4 +173,65 @@ test("a human chooses dates with the day first, and their 12-hour time stays", b
   await page.getByRole("link", { name: /Lunch/ }).click();
 
   await expect.poll(() => page.getByRole("article").locator("time").textContent(), wait).toBe("4 Oct 2025, 2:05 PM");
+});
+
+/**
+ * The web app where Grace's mailbox has two threads that went to Spam ten days ago, and one that
+ * went there today, signed in as Ada on Settings. The API's clock moves the ten days ahead.
+ */
+async function withOldSpam() {
+  const app = await withOrganization();
+  const ada = app.duva.signIn("ada@example.org");
+  const { data: grace } = await app.duva.signIn("grace@example.org").GET("/whoami");
+  await ada.POST("/mailboxes", { body: { owner: grace!.id, address: "grace@example.com" } });
+  for (const subject of ["Vinst", "Lotteri"]) await app.duva.receive(note(subject), { to: ["grace@example.com"] }, { verdicts: { spam: "FAIL" } });
+  vi.useFakeTimers({ toFake: ["Date"], now: Date.now() + 10 * 24 * 60 * 60 * 1000 });
+  onTestFinished(() => void vi.useRealTimers());
+  await app.duva.receive(note("Erbjudande"), { to: ["grace@example.com"] }, { verdicts: { spam: "FAIL" } });
+  await app.signIn("ada@example.org");
+  await app.page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
+  const field = organization(app.page).getByRole("textbox", { name: "How long Trash and Spam keep mail" });
+  await expect.poll(() => field.inputValue(), wait).toBe("30");
+  return { ...app, field };
+}
+
+test("an admin shortens how long Trash and Spam keep mail, warned first how many threads saving erases", budget, async () => {
+  const { page, duva, field } = await withOldSpam();
+  const note = () => organization(page).locator(".setting-note").textContent();
+
+  await field.fill("14");
+  await expect.poll(note, wait).toBe("No thread in Trash or Spam is older than 14 days now, so saving erases none at once.");
+  await field.fill("7");
+
+  await expect.poll(note, wait).toBe("Saving erases 2 threads in Trash and Spam that are older than 7 days, at the eraser's next daily run. This can't be undone.");
+  await organization(page).getByRole("button", { name: "Save" }).click();
+
+  await expect.poll(() => organization(page).getByRole("status").last().textContent(), wait).toBe("Saved. The eraser's next daily run follows it.");
+  expect((await duva.signIn("ada@example.org").GET("/organization/settings")).data).toMatchObject({ erasureErasesApprovals: false, retentionDays: 7 });
+  expect(await organization(page).locator(".setting-note").count()).toBe(0);
+});
+
+test("a longer period warns of nothing, and one outside 7 to 365 days can't be saved", budget, async () => {
+  const { page, field } = await withOldSpam();
+  const save = organization(page).getByRole("button", { name: "Save" });
+
+  await field.fill("90");
+  expect(await organization(page).locator(".setting-note").count()).toBe(0);
+  expect(await save.isEnabled()).toBe(true);
+  await field.fill("400");
+
+  await expect.poll(() => organization(page).locator(".field-error").textContent(), wait).toBe("Give a whole number of days from 7 to 365.");
+  expect(await save.isDisabled()).toBe(true);
+  expect(await field.getAttribute("aria-invalid")).toBe("true");
+});
+
+test("a human who isn't an admin reads how long Trash and Spam keep mail without changing it", budget, async () => {
+  const { page, signIn } = await withOrganization();
+  await signIn("grace@example.org");
+
+  await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
+
+  const field = organization(page).getByRole("textbox", { name: "How long Trash and Spam keep mail" });
+  await expect.poll(() => field.inputValue(), wait).toBe("30");
+  expect(await field.isDisabled()).toBe(true);
 });

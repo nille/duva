@@ -2,7 +2,7 @@ import type { components } from "@duva/openapi";
 import { jsonBody, type OperationHandler, refusal } from "./api.ts";
 import { mailboxesReadBy, mailboxFor } from "./access.ts";
 import type { Deployment } from "./deployment.ts";
-import { AddressTaken, addMailbox, findActor } from "./organization.ts";
+import { AddressTaken, addMailbox, allMailboxes, findActor, findMailbox } from "./organization.ts";
 import { addressGiven, addressTaken } from "./addresses.ts";
 import { builtInLabels, createLabel, deleteLabel, hasLabel, listLabels, NameTaken, renameLabel } from "./labels.ts";
 import { attachmentLinks } from "./attachments.ts";
@@ -35,6 +35,16 @@ export const listMailboxes: OperationHandler = async (_event, deployment, actor)
   statusCode: 200,
   body: { mailboxes: await mailboxesReadBy(deployment, actor!) } satisfies components["schemas"]["MailboxList"],
 });
+
+export const listOrganizationMailboxes: OperationHandler = async (_event, deployment, actor) => {
+  if (!actor?.admin) return refusal(403, "Only admins can list the organization's mailboxes. Ask an admin who has access.");
+  const mailboxes = (await Promise.all((await allMailboxes(deployment.table)).map((id) => findMailbox(deployment.table, id)))).filter((mailbox) => mailbox !== undefined);
+  const owners = await Promise.all([...new Set(mailboxes.map(({ owner }) => owner))].map((id) => findActor(deployment.table, id)));
+  return {
+    statusCode: 200,
+    body: { mailboxes, owners: owners.filter((owner) => owner !== undefined) } satisfies components["schemas"]["OrganizationMailboxList"],
+  };
+};
 
 export const getMailbox: OperationHandler = async (event, deployment, actor) => {
   const mailbox = await mailboxFor(event, deployment, actor!, "read");

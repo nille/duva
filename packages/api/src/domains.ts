@@ -44,7 +44,10 @@ async function domainView(deployment: Deployment, { domain, aliasOf, catchAll }:
   const identity = await deployment.identities.get(domain);
   const dkim = (identity?.dkimTokens ?? []).map((token) => dkimRecord(domain, token));
   const { records } = await domainRecords(deployment.dns, { region: deployment.region, domain, dkim });
-  // A record SES verified is one DNS still answers with, and SES verified what it is for.
+  // A record is verified once SES has verified what it is for. It counts as verified even when DNS
+  // doesn't answer with it, since Duva's resolver can answer from a cache made before it was added.
+  // It doesn't when DNS answers with another value: SES verifies MAIL FROM by its MX record alone, so
+  // a wrong SPF record would otherwise show as verified.
   const verified = (purpose: DnsRecord["purpose"]) =>
     (purpose === "DKIM" && identity?.dkimStatus === "SUCCESS") || (purpose === "MAIL FROM" && identity?.mailFromStatus === "SUCCESS");
   return {
@@ -63,7 +66,7 @@ async function domainView(deployment: Deployment, { domain, aliasOf, catchAll }:
       type,
       name,
       value,
-      status: status !== "live" ? "missing" : verified(purpose) ? "verified" : "found",
+      status: verified(purpose) && status !== "different" ? "verified" : status === "live" ? "found" : "missing",
       ...(found !== undefined && { found }),
     })),
   };

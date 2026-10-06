@@ -1,4 +1,8 @@
 // Every string the web app shows, in one place, so another language can be added later.
+
+/** How long Trash and Spam keep a thread, while the organization's retention period is read, or isn't known. */
+const keptFor = (days?: number) => (days === undefined ? "after the organization's retention period here" : `after ${days === 1 ? "1 day" : `${days} days`} here`);
+
 export const strings = {
   loading: "Loading…",
   signIn: "Sign in",
@@ -165,8 +169,11 @@ export const strings = {
     unread: (count: number) => `, ${count} unread`,
     empty: {
       all: { title: "No mail yet", lead: "Every thread is listed here, archived ones too, except those in Spam and Trash." },
-      spam: { title: "No spam", lead: "Mail judged to be spam when it arrived, and threads you mark as spam, are listed here, out of your Inbox. Each is erased for good after 30 days here." },
-      trash: { title: "Trash is empty", lead: "Threads you move to Trash are listed here until you restore them. Each is erased for good after 30 days here." },
+      spam: {
+        title: "No spam",
+        lead: (days?: number) => `Mail judged to be spam when it arrived, and threads you mark as spam, are listed here, out of your Inbox. Each is erased for good ${keptFor(days)}.`,
+      },
+      trash: { title: "Trash is empty", lead: (days?: number) => `Threads you move to Trash are listed here until you restore them. Each is erased for good ${keptFor(days)}.` },
       label: { title: "No threads have this label", lead: "Pick threads in any view, then add the label to them with Labels." },
     },
   },
@@ -292,12 +299,26 @@ export const strings = {
       names: { English: "English", Swedish: "Swedish", Danish: "Danish" },
       rebuildsHint: "Checking or unchecking it rebuilds every mailbox's search index, which finds less until that is done.",
     },
+    retention: {
+      legend: "How long Trash and Spam keep mail",
+      lead: "Each thread is erased for good this many days after it got the label. It applies to the mail already there too.",
+      days: "days",
+      hint: "From 7 to 365. It is 30 unless an admin changes it.",
+      invalid: "Give a whole number of days from 7 to 365.",
+      counting: "Counting the threads this erases…",
+      erases: (threads: number, days: number) =>
+        threads === 0
+          ? `No thread in Trash or Spam is older than ${days} days now, so saving erases none at once.`
+          : `Saving erases ${threads === 1 ? "1 thread" : `${threads} threads`} in Trash and Spam that ${threads === 1 ? "is" : "are"} older than ${days} days, at the eraser's next daily run. This can't be undone.`,
+      countFailed: "Duva couldn't count the threads this erases. Saving erases every thread in Trash and Spam older than this, at the eraser's next daily run.",
+    },
     save: "Save",
     saving: "Saving…",
-    saved: (changed: ("erasure" | "languages" | "indexes")[]) =>
+    saved: (changed: ("erasure" | "retention" | "languages" | "indexes")[]) =>
       [
         "Saved.",
         ...(changed.includes("erasure") ? ["This applies to threads erased from now on."] : []),
+        ...(changed.includes("retention") ? ["The eraser's next daily run follows it."] : []),
         ...(changed.includes("languages") ? ["Searches use these languages from now on."] : []),
         ...(changed.includes("indexes") ? ["Each mailbox's search index is being rebuilt, and finds less until it is done."] : []),
       ].join(" "),
@@ -352,6 +373,112 @@ export const strings = {
     preferencesUnreachable: "Duva couldn't be reached, so your preferences aren't shown. Check your connection and try again.",
     preferencesSaveFailed: (status: number) => `Duva couldn't save your preferences (error ${status}). Try again in a moment.`,
     preferencesSaveUnreachable: "Duva couldn't be reached, so your preferences aren't saved. Check your connection and try again.",
+  },
+
+  domains: {
+    title: "Domains",
+    lead: "Admins add the domains the organization gets mail on, and choose where sign-in codes come from.",
+    standalone: "Standalone domain",
+    aliasOf: (domain: string) => `Alias of ${domain}`,
+    verified: "Verified",
+    waiting: "Waiting for DNS",
+    signsIn: "Sign-in codes come from here",
+    catchAllTo: (target: string) => `Catch-all to ${target}`,
+    records: "DNS records",
+    recordsLead: "Add these at the domain's DNS provider. SES checks them by itself, for up to 72 hours after the domain is added.",
+    recordsVerifiedLead: "SES has verified the domain. Keep these records at its DNS provider.",
+    name: "Name",
+    value: "Value",
+    copy: "Copy",
+    copied: "Copied",
+    copyWhat: (text: string) => `Copy ${text}`,
+    copiedWhat: (text: string) => `Copied ${text}`,
+    /** A domain's line, from what it says of the domain. */
+    summary: (parts: string[]) => `${parts.join(". ")}.`,
+    namePlaceholder: "example.net",
+    catchAllMailbox: (owner: string, address?: string) => (address === undefined ? owner : `${owner}, ${address}`),
+    copyFailed: "The browser didn't allow copying. Select the text and copy it instead.",
+    status: { missing: "Missing", found: "Found", verified: "Verified" },
+    purpose: { receiving: "Receiving", DKIM: "DKIM", "MAIL FROM": "MAIL FROM", DMARC: "DMARC" },
+    record: (purpose: string, type: string) => `${purpose}, ${type} record`,
+    foundInstead: (values: string[]) => `DNS has ${values.join(", ")} instead.`,
+    checkAgain: "Check again",
+    checking: "Checking…",
+    checked: "Checked. This is what DNS and SES answer now.",
+    signIn: "Sign-in codes",
+    signInHere: (domain: string) => `Sign-in codes come from no-reply@${domain}.`,
+    signInElsewhere: (current: string) => `Sign-in codes come from no-reply@${current}.`,
+    signInWaiting: (domain: string) => `Once SES has verified ${domain}, sign-in codes can come from it.`,
+    sendSignIn: (domain: string) => `Send them from ${domain}`,
+    signInChosen: (domain: string) => `Sign-in codes come from no-reply@${domain} from now on.`,
+    catchAll: "Catch-all",
+    catchAllLead: (domain: string, aliases: string[]) =>
+      `Where mail goes to addresses on ${[domain, ...aliases].join(", ")} that the organization doesn't have, removed ones included.`,
+    catchAllNone: "None. Such mail is refused",
+    catchAllMailboxes: "Mailboxes",
+    catchAllGroups: "Groups",
+    catchAllAlias: (domain: string) => `It uses the catch-all of ${domain}, which it mirrors.`,
+    catchAllSaved: "Saved. This applies to mail from now on.",
+    remove: "Remove domain",
+    removeAsk: (domains: string[]) =>
+      domains.length === 1
+        ? `Remove ${domains[0]}? Mail to its addresses is refused at once, and SES forgets the domain. The mail already in mailboxes stays.`
+        : `Remove ${domains[0]} and its alias domains ${domains.slice(1).join(", ")}? Mail to their addresses is refused at once, and SES forgets the domains. The mail already in mailboxes stays.`,
+    removeAddresses: "These addresses stop getting mail:",
+    removeNoAddresses: "No address is on it.",
+    removeLeftWithout: (mailboxes: string[]) =>
+      `${mailboxes.join(", ")} ${mailboxes.length === 1 ? "is" : "are"} left without an address, and get${mailboxes.length === 1 ? "s" : ""} and send${mailboxes.length === 1 ? "s" : ""} no mail until given one.`,
+    removeConfirm: "Remove",
+    removed: (domains: string[]) => `Removed ${domains.join(", ")}.`,
+    cancel: "Cancel",
+    add: "Add a domain",
+    addLead: "Duva asks SES for the domain, and shows the DNS records to add at its DNS provider.",
+    domain: "Domain",
+    kindStandalone: "Standalone",
+    kindStandaloneHint: "Its addresses are its own.",
+    kindAlias: "Alias",
+    kindAliasHint: "It mirrors every address of a standalone domain, later ones too.",
+    mirrors: "Mirrors",
+    addButton: "Add domain",
+    adding: "Adding…",
+    added: (domain: string) => `Added ${domain}. Add its DNS records, below.`,
+    failed: (status: number) => `Duva couldn't read the domains (error ${status}). Try again in a moment.`,
+    unreachable: "Duva couldn't be reached, so the domains aren't shown. Check your connection and try again.",
+  },
+
+  setup: {
+    unreachable: "Duva couldn't be reached, so nothing changed. Check your connection and try again.",
+    failed: (status: number) => `Duva couldn't make the change (error ${status}). Try again in a moment.`,
+  },
+
+  addresses: {
+    title: "Addresses",
+    lead: "Admins give each mailbox its addresses, on any of the organization's standalone domains, and choose the one new mail goes from.",
+    none: "No address. It gets and sends no mail until it has one.",
+    line: (agent: boolean, summary: string) => (agent ? `Agent. ${summary}` : summary),
+    placeholder: (domain = "example.com") => `name@${domain}`,
+    summary: (defaultAddress: string, others: number) => (others === 0 ? defaultAddress : `${defaultAddress} and ${others === 1 ? "1 more" : `${others} more`}`),
+    listName: (owner: string) => `Addresses of ${owner}`,
+    default: "Default",
+    defaultHint: "New mail goes from the default address. Replies go from the address the mail came to.",
+    makeDefault: "Make default",
+    makeDefaultOf: (address: string) => `Make ${address} the default`,
+    defaultChosen: (address: string) => `New mail goes from ${address} from now on.`,
+    remove: "Remove",
+    removeWho: (address: string) => `Remove ${address}`,
+    removeAsk: (address: string) => `Mail to ${address} is refused from now on, or goes to its domain's catch-all. The mail already here stays.`,
+    removeAskDefault: (next: string) => `${next} becomes the default address.`,
+    removeAskLast: "The mailbox is left without an address, and gets and sends no mail until it has one.",
+    removed: (address: string) => `Removed ${address}.`,
+    cancel: "Cancel",
+    newAddress: "New address",
+    newAddressHint: (domains: string[]) =>
+      `On ${domains.length > 1 ? `${domains.slice(0, -1).join(", ")} or ${domains.at(-1)}` : domains.join("")}. Mail to the same name on alias domains reaches it too.`,
+    add: "Add address",
+    adding: "Adding…",
+    added: (address: string) => `Added ${address}.`,
+    failed: (status: number) => `Duva couldn't read the mailboxes (error ${status}). Try again in a moment.`,
+    unreachable: "Duva couldn't be reached, so the mailboxes aren't shown. Check your connection and try again.",
   },
 
   screener: {

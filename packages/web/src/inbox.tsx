@@ -232,7 +232,7 @@ export function ThreadIndex({
           </button>
         </div>
       ) : listing.threads.length === 0 ? (
-        <Empty view={view} mailbox={mailbox} agent={agent} />
+        <Empty client={client} view={view} mailbox={mailbox} agent={agent} />
       ) : (
         <div className="index">
           <div className="index-tools" role="toolbar" aria-label={strings.organize.toolbar}>
@@ -280,8 +280,21 @@ export function ThreadIndex({
   );
 }
 
-/** What an empty view says, in its own words. */
-function Empty({ view, mailbox, agent }: { view: ThreadsView; mailbox: Mailbox; agent?: string }) {
+/** What an empty view says, in its own words. Spam and Trash say how long they keep a thread, as the organization's settings do. */
+function Empty({ client, view, mailbox, agent }: { client: DuvaClient; view: ThreadsView; mailbox: Mailbox; agent?: string }) {
+  const kept = "label" in view && (view.label === "spam" || view.label === "trash");
+  const [retentionDays, setRetentionDays] = useState<number>();
+  useEffect(() => {
+    if (!kept) return;
+    let current = true;
+    void client
+      .GET("/organization/settings")
+      .then(({ data }) => current && setRetentionDays(data?.retentionDays))
+      .catch(() => undefined);
+    return () => {
+      current = false;
+    };
+  }, [client, kept]);
   const copy =
     "all" in view
       ? strings.views.empty.all
@@ -292,9 +305,9 @@ function Empty({ view, mailbox, agent }: { view: ThreadsView; mailbox: Mailbox; 
         : view.label === "inbox"
         ? { title: agent === undefined ? strings.inbox.emptyTitle : strings.inbox.agentEmptyTitle(agent), lead: strings.inbox.emptyLead(mailbox.defaultAddress) }
         : view.label === "spam"
-          ? strings.views.empty.spam
+          ? { title: strings.views.empty.spam.title, lead: strings.views.empty.spam.lead(retentionDays) }
           : view.label === "trash"
-            ? strings.views.empty.trash
+            ? { title: strings.views.empty.trash.title, lead: strings.views.empty.trash.lead(retentionDays) }
             : strings.views.empty.label;
   return (
     <section className="empty" aria-labelledby="empty-title">

@@ -1,11 +1,14 @@
 // Settings, each group on a sheet of its own: the organization's, which admins choose for everyone,
-// then the human's own preferences, which only they choose, then the Screener of their mailbox and
-// their agents', then a sponsor's agents'.
+// then for admins its domains and its mailboxes' addresses, then the human's own preferences, which
+// only they choose, then the Screener of their mailbox and their agents', then a sponsor's agents'.
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
+import { AddressesSheet } from "./addresses.tsx";
 import { AgentSettingsSheet } from "./agent-settings.tsx";
+import { Choice } from "./setting-parts.tsx";
 import { datesFor, type Preferences } from "./dates.ts";
+import { DomainsSheet } from "./domains.tsx";
 import type { AgentMailbox } from "./mailboxes.tsx";
 import { strings } from "./strings.ts";
 
@@ -118,6 +121,9 @@ export function Settings({
   useEffect(() => {
     document.title = strings.title(strings.settings.title);
   }, []);
+  // A change on the Domains or the Addresses sheet can change what the other shows, so both read again after each.
+  const [setupChanges, setSetupChanges] = useState(0);
+  const setupChanged = useCallback(() => setSetupChanges((count) => count + 1), []);
 
   return (
     <main className="desk">
@@ -127,6 +133,8 @@ export function Settings({
         </h1>
       </div>
       <OrganizationSheet client={client} admin={admin} onSignedOut={onSignedOut} />
+      {admin && <DomainsSheet client={client} changes={setupChanges} onChange={setupChanged} onSignedOut={onSignedOut} />}
+      {admin && <AddressesSheet client={client} changes={setupChanges} onChange={setupChanged} onSignedOut={onSignedOut} />}
       <YouSheet client={client} onPreferences={onPreferences} onSignedOut={onSignedOut} />
       {screened.length > 0 && <ScreenerSheet key={screened.map(({ mailbox }) => mailbox.id).join()} client={client} mailboxes={screened} onSignedOut={onSignedOut} />}
       <AgentSettingsSheet client={client} email={email} onSignedOut={onSignedOut} />
@@ -152,6 +160,7 @@ function OrganizationSheet({ client, admin, onSignedOut }: { client: DuvaClient;
     copy: strings.settings,
     onSignedOut,
   });
+  const [daysValid, setDaysValid] = useState(true);
   const copy = strings.settings.erasure;
   const languagesCopy = strings.settings.searchLanguages;
   return (
@@ -172,6 +181,16 @@ function OrganizationSheet({ client, admin, onSignedOut }: { client: DuvaClient;
               />
             ))}
           </fieldset>
+          <Retention
+            client={client}
+            admin={admin}
+            chosen={chosen.retentionDays}
+            saved={sheet.read.status === "read" ? sheet.read.values.retentionDays : chosen.retentionDays}
+            onChoose={(retentionDays) => {
+              setDaysValid(retentionDays !== undefined);
+              if (retentionDays !== undefined) sheet.choose({ retentionDays });
+            }}
+          />
           <fieldset disabled={!admin}>
             <legend>{languagesCopy.legend}</legend>
             <p className="setting-lead">{languagesCopy.lead}</p>
@@ -193,7 +212,11 @@ function OrganizationSheet({ client, admin, onSignedOut }: { client: DuvaClient;
               ))}
             </div>
           </fieldset>
-          {admin ? <SaveRow sheet={sheet} saved={savedCopy(before.current, sheet.read.status === "read" ? sheet.read.values : undefined)} /> : <p className="setting-foot">{strings.settings.onlyAdmins}</p>}
+          {admin ? (
+            <SaveRow sheet={sheet} saved={savedCopy(before.current, sheet.read.status === "read" ? sheet.read.values : undefined)} invalid={!daysValid} />
+          ) : (
+            <p className="setting-foot">{strings.settings.onlyAdmins}</p>
+          )}
         </>
       )}
     </Sheet>
@@ -206,9 +229,85 @@ function savedCopy(before: OrganizationSettings | undefined, after: Organization
   const indexed = (settings: OrganizationSettings) => settings.searchLanguages.filter((language) => !alwaysIndexed.includes(language)).join();
   return strings.settings.saved([
     ...(before.erasureErasesApprovals !== after.erasureErasesApprovals ? ["erasure" as const] : []),
+    ...(before.retentionDays !== after.retentionDays ? ["retention" as const] : []),
     ...(before.searchLanguages.join() !== after.searchLanguages.join() ? ["languages" as const] : []),
     ...(indexed(before) !== indexed(after) ? ["indexes" as const] : []),
   ]);
+}
+
+/** The retention period typed, if it is a whole number of days Duva takes, from 7 to 365. */
+function daysOf(text: string): number | undefined {
+  const days = /^\d+$/.test(text.trim()) ? Number(text.trim()) : undefined;
+  return days !== undefined && days >= 7 && days <= 365 ? days : undefined;
+}
+
+type Preview = { status: "none" } | { status: "counting" } | { status: "counted"; threads: number; days: number } | { status: "failed" };
+
+/**
+ * How many days Trash and Spam keep a thread, as a field of whole days. Shortening it reaches back,
+ * so a shorter period than the saved one counts, for an admin, the threads saving it would erase.
+ * `onChoose` hears of each valid period, and of an invalid one as undefined.
+ */
+function Retention({ client, admin, chosen, saved, onChoose }: { client: DuvaClient; admin: boolean; chosen: number; saved: number; onChoose: (days: number | undefined) => void }) {
+  const copy = strings.settings.retention;
+  const [text, setText] = useState(String(chosen));
+  const [preview, setPreview] = useState<Preview>({ status: "none" });
+  const days = daysOf(text);
+  const valid = days !== undefined;
+  const shorter = admin && valid && days < saved;
+
+  useEffect(() => {
+    if (!shorter) return setPreview({ status: "none" });
+    setPreview({ status: "counting" });
+    let current = true;
+    // Typing a number passes through shorter ones, so it counts only once the typing pauses.
+    const counting = setTimeout(() => {
+      void client
+        .GET("/organization/settings/retention-preview", { params: { query: { retentionDays: days } } })
+        .then(({ data }) => current && setPreview(data === undefined ? { status: "failed" } : { status: "counted", threads: data.threads, days }))
+        .catch(() => current && setPreview({ status: "failed" }));
+    }, 300);
+    return () => {
+      current = false;
+      clearTimeout(counting);
+    };
+  }, [client, shorter, days]);
+
+  return (
+    <fieldset disabled={!admin}>
+      <legend>{copy.legend}</legend>
+      <p className="setting-lead">{copy.lead}</p>
+      <div className="retention">
+        <input
+          type="text"
+          inputMode="numeric"
+          aria-label={copy.legend}
+          aria-describedby="retention-hint"
+          aria-invalid={!valid}
+          value={text}
+          onChange={(event) => {
+            setText(event.target.value);
+            onChoose(daysOf(event.target.value));
+          }}
+        />
+        <span>{copy.days}</span>
+      </div>
+      {valid ? (
+        <p id="retention-hint" className="hint">
+          {copy.hint}
+        </p>
+      ) : (
+        <p id="retention-hint" className="field-error">
+          {copy.invalid}
+        </p>
+      )}
+      {preview.status !== "none" && (
+        <p className="setting-note" role="status">
+          {preview.status === "counting" ? copy.counting : preview.status === "failed" ? copy.countFailed : copy.erases(preview.threads, preview.days)}
+        </p>
+      )}
+    </fieldset>
+  );
 }
 
 const hourCycles: Preferences["hourCycle"][] = ["locale", "h12", "h23"];
@@ -349,7 +448,19 @@ function ScreenerSheet({ client, mailboxes, onSignedOut }: { client: DuvaClient;
 }
 
 /** A sheet: its name and who chooses what's on it, then its settings once they are read. */
-function Sheet<Values extends object>({ id, name, lead, sheet, children }: { id: string; name: string; lead: string; sheet: SheetState<Values>; children: (chosen: Values) => ReactNode }) {
+function Sheet<Values extends object>({
+  id,
+  name,
+  lead,
+  sheet,
+  children,
+}: {
+  id: string;
+  name: string;
+  lead: string;
+  sheet: SheetState<Values>;
+  children: (chosen: Values) => ReactNode;
+}) {
   return (
     <section className="settings" aria-labelledby={id} aria-busy={sheet.read.status === "loading"}>
       <div className="settings-head">
@@ -386,23 +497,11 @@ function Sheet<Values extends object>({ id, name, lead, sheet, children }: { id:
   );
 }
 
-function Choice({ name, checked, onChoose, label, hint }: { name: string; checked: boolean; onChoose: () => void; label: string; hint: string }) {
-  return (
-    <label className="choice">
-      <input type="radio" name={name} checked={checked} onChange={onChoose} />
-      <span className="choice-text">
-        <span className="choice-name">{label}</span>
-        <span className="hint">{hint}</span>
-      </span>
-    </label>
-  );
-}
-
 /** Save, which waits until a choice differs from what is saved, and "Saved" beside it once it is. */
-function SaveRow<Values extends object>({ sheet, saved }: { sheet: SheetState<Values>; saved: string }) {
+function SaveRow<Values extends object>({ sheet, saved, invalid = false }: { sheet: SheetState<Values>; saved: string; invalid?: boolean }) {
   return (
     <div className="setting-foot">
-      <button type="submit" className="button button-primary" disabled={sheet.unchanged || sheet.saving.status === "saving"}>
+      <button type="submit" className="button button-primary" disabled={sheet.unchanged || invalid || sheet.saving.status === "saving"}>
         {sheet.saving.status === "saving" ? strings.settings.saving : strings.settings.save}
       </button>
       <p role="status" className="setting-saved">

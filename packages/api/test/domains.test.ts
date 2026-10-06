@@ -82,6 +82,33 @@ test("each record shows as found once DNS has it, and as verified once SES has v
   expect(verified?.ses).toEqual({ verified: true, dkim: "verified", mailFrom: "verified" });
 });
 
+test("records SES has verified show as verified even when Duva's lookup doesn't find them, as when DNS answers from a stale cache", async () => {
+  // SES verified the first domain at deploy, and the stand-in's DNS has none of its records.
+  const { ada } = await withGrace();
+
+  const { data } = await ada.GET("/domains/{domain}", { params: { path: { domain: "example.com" } } });
+
+  expect(data?.records.map(({ purpose, status }) => `${purpose} ${status}`)).toEqual([
+    "receiving missing",
+    "DKIM verified",
+    "DKIM verified",
+    "DKIM verified",
+    "MAIL FROM verified",
+    "MAIL FROM verified",
+    "DMARC missing",
+  ]);
+});
+
+test("a record DNS answers with another value shows as missing, with what DNS has, even once SES has verified what it is for", async () => {
+  // SES verified the first domain's MAIL FROM domain, which it checks by the MX record alone.
+  const { duva, ada } = await withGrace();
+  duva.dnsRecord("TXT", "mail.example.com", ["v=spf1 -all"]);
+
+  const { data } = await ada.GET("/domains/{domain}", { params: { path: { domain: "example.com" } } });
+
+  expect(data?.records.find(({ purpose, type }) => purpose === "MAIL FROM" && type === "TXT")).toMatchObject({ status: "missing", found: ["v=spf1 -all"] });
+});
+
 test("an admin lists the organization's domains, the first one included, in alphabetical order", async () => {
   const { ada } = await withGrace();
   await ada.POST("/domains", { body: { domain: "example.net" } });

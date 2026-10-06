@@ -22,9 +22,10 @@ const note = (subject: string) =>
   ].join("\r\n");
 
 /** The web app for a deployment where the human Grace has a personal mailbox, with the threads in Trash and the rest in her Inbox, showing Trash. */
-async function withTrash({ trashed, kept }: { trashed: string[]; kept: string[] }) {
+async function withTrash({ trashed, kept, retentionDays }: { trashed: string[]; kept: string[]; retentionDays?: number }) {
   const app = await startWebApp({ domain: "example.com", admin: "ada@example.org", humans: ["grace@example.org"] });
   const ada = app.duva.signIn("ada@example.org");
+  if (retentionDays !== undefined) await ada.PATCH("/organization/settings", { body: { retentionDays } });
   const grace = app.duva.signIn("grace@example.org");
   const { data: me } = await grace.GET("/whoami");
   const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: me!.id, address: "grace@example.com" } });
@@ -67,10 +68,10 @@ test("emptying Trash asks first, then erases its threads for good", budget, asyn
   await expect.poll(listed, wait).toEqual(["Två"]);
 });
 
-test("an empty Trash offers nothing to empty, and says when Trash is erased", budget, async () => {
-  const { page } = await withTrash({ trashed: [], kept: ["Två"] });
+test("an empty Trash offers nothing to empty, and says when Trash is erased, as the organization's retention period says", budget, async () => {
+  const { page } = await withTrash({ trashed: [], kept: ["Två"], retentionDays: 14 });
 
   await expect.poll(() => page.getByRole("heading", { name: "Trash is empty" }).isVisible(), wait).toBe(true);
   expect(await page.getByRole("button", { name: "Empty Trash" }).count()).toBe(0);
-  expect(await page.getByText("Each is erased for good after 30 days here.", { exact: false }).isVisible()).toBe(true);
+  await expect.poll(() => page.getByText("Each is erased for good after 14 days here.", { exact: false }).isVisible(), wait).toBe(true);
 });
