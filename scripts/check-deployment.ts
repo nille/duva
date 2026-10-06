@@ -7,7 +7,7 @@
 // only its distribution may invoke the download Lambda; nothing but IAM may invoke the
 // unsubscriber, which refuses addresses that aren't public; the web app is served with the config
 // deploy published; the user pool takes sign-in names in any case, and no pool the stack retired
-// is left; once an address exists, SES's receipt rule lists it; and no received mail and no
+// is left; once an address exists, SES's receipt rules list each address once; and no received mail and no
 // approved send waits in a failure queue; nothing but IAM may invoke search, which runs at 10,240 MB
 // on x64; every mailbox's search index is backfilled, none has held
 // erased mail for more than a day, and no indexer task waits in its failure queue. Signing in stays
@@ -21,7 +21,7 @@ import { GetFunctionConfigurationCommand, GetFunctionUrlConfigCommand, GetPolicy
 import { DescribeReceiptRuleSetCommand, SESClient } from "@aws-sdk/client-ses";
 import { GetQueueAttributesCommand, SQSClient } from "@aws-sdk/client-sqs";
 import { indexedMailboxes, uncompactedSince } from "@duva/api/indexing";
-import { dropMetric, dropReasons, inboundPrefix, receiptRuleName } from "@duva/api/infrastructure";
+import { dropMetric, dropReasons, inboundPrefix, receiptRuleNumber, recipientsPerRule } from "@duva/api/infrastructure";
 import { stackName, stackOutputs } from "@duva/infra/outputs";
 
 const region = process.env.AWS_REGION;
@@ -222,23 +222,25 @@ await check("no user pool the stack retired is left", async () => {
   }
   return retired.length === 0 ? undefined : `left: ${retired.join(", ")}. Run duva deploy again.`;
 });
-await check("the receipt rule set holds only Duva's rule, with explicit recipients, scanning, then S3 and the inbound Lambda", async () => {
+await check("the receipt rule set holds only Duva's rules, each with 1 to 500 explicit recipients, none listed twice, scanning, then S3 and the inbound Lambda", async () => {
   const { Rules = [] } = await new SESClient({ region }).send(new DescribeReceiptRuleSetCommand({ RuleSetName: output(stackOutputs.receiptRuleSet) }));
   // Until an admin creates the first address there is no rule, and SES refuses all mail.
-  if (Rules.length === 0) return undefined;
-  const [rule, ...others] = Rules;
-  const [s3, invoke, ...more] = rule?.Actions ?? [];
-  const fine =
-    others.length === 0 &&
-    rule?.Name === receiptRuleName &&
-    rule.Enabled === true &&
-    rule.ScanEnabled === true &&
-    (rule.Recipients?.length ?? 0) > 0 &&
-    rule.Recipients!.every((recipient) => recipient.includes("@")) &&
-    s3?.S3Action?.ObjectKeyPrefix === inboundPrefix &&
-    invoke?.LambdaAction?.InvocationType === "Event" &&
-    more.length === 0;
-  return fine ? undefined : `is ${JSON.stringify(Rules)}`;
+  const recipients = Rules.flatMap((rule) => rule.Recipients ?? []);
+  const fine = (rule: (typeof Rules)[number]) => {
+    const [s3, invoke, ...more] = rule.Actions ?? [];
+    return (
+      receiptRuleNumber(rule.Name) !== undefined &&
+      rule.Enabled === true &&
+      rule.ScanEnabled === true &&
+      (rule.Recipients?.length ?? 0) > 0 &&
+      (rule.Recipients?.length ?? 0) <= recipientsPerRule &&
+      rule.Recipients!.every((recipient) => recipient.includes("@")) &&
+      s3?.S3Action?.ObjectKeyPrefix === inboundPrefix &&
+      invoke?.LambdaAction?.InvocationType === "Event" &&
+      more.length === 0
+    );
+  };
+  return Rules.every(fine) && new Set(recipients).size === recipients.length ? undefined : `is ${JSON.stringify(Rules)}`;
 });
 const waitingIn = async (queue: string) => {
   const { Attributes } = await new SQSClient({ region }).send(new GetQueueAttributesCommand({ QueueUrl: output(queue), AttributeNames: ["ApproximateNumberOfMessages"] }));

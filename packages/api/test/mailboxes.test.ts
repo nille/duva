@@ -15,7 +15,7 @@ test("an admin creates a personal mailbox for an agent, and its address becomes 
   const { response, data } = await ada.POST("/mailboxes", { body: { owner: hermes.id, address: "hermes@example.com" } });
 
   expect(response.status).toBe(201);
-  expect(data).toEqual({ id: expect.any(String), kind: "personal", owner: hermes.id, defaultAddress: "hermes@example.com" });
+  expect(data).toEqual({ id: expect.any(String), kind: "personal", owner: hermes.id, defaultAddress: "hermes@example.com", addresses: ["hermes@example.com"] });
 });
 
 test("an address is kept in lower case", async () => {
@@ -70,7 +70,7 @@ test("an admin creates a personal mailbox for a human, and its address becomes t
   const { response, data } = await ada.POST("/mailboxes", { body: { owner: grace!.id, address: "grace@example.com" } });
 
   expect(response.status).toBe(201);
-  expect(data).toEqual({ id: expect.any(String), kind: "personal", owner: grace?.id, defaultAddress: "grace@example.com" });
+  expect(data).toEqual({ id: expect.any(String), kind: "personal", owner: grace?.id, defaultAddress: "grace@example.com", addresses: ["grace@example.com"] });
 });
 
 test("a mailbox's owner must be an actor in the organization", async () => {

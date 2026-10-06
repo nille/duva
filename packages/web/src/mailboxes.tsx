@@ -45,7 +45,7 @@ export function MailboxList({
 }
 
 function MailboxLink({ mailbox, name, unread = 0, current, mine = false }: { mailbox: Mailbox; name: string; unread?: number; current: boolean; mine?: boolean }) {
-  const label = [name, mailbox.defaultAddress, unread > 0 && strings.mailboxes.unread(unread)].filter(Boolean).join(", ");
+  const label = [name, strings.mailboxes.address(mailbox), unread > 0 && strings.mailboxes.unread(unread)].filter(Boolean).join(", ");
   return (
     <li>
       <a className={unread > 0 ? "mailbox mailbox-unread" : "mailbox"} href={mailboxHref(mailbox, mine)} aria-label={label} aria-current={current ? "page" : undefined}>
@@ -53,7 +53,7 @@ function MailboxLink({ mailbox, name, unread = 0, current, mine = false }: { mai
         <span className="mailbox-count" aria-hidden="true">
           {unread > 0 ? unread : ""}
         </span>
-        <span className="mailbox-at">{mailbox.defaultAddress}</span>
+        <span className="mailbox-at">{strings.mailboxes.address(mailbox)}</span>
       </a>
     </li>
   );

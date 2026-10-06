@@ -280,7 +280,7 @@ function ScreenerSheet({ client, mailboxes, onSignedOut }: { client: DuvaClient;
             return (
               <fieldset key={mailbox.id}>
                 <legend>{agent ?? copy.yours}</legend>
-                <p className="setting-lead">{mailbox.defaultAddress}</p>
+                <p className="setting-lead">{strings.mailboxes.address(mailbox)}</p>
                 {([true, false] as const).map((on) => (
                   <Choice
                     key={String(on)}

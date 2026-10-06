@@ -152,6 +152,29 @@ Give only the settings to change. A change works at once. Only the agent's spons
 - `--disclosureLineForOwnMailbox` or `--no-disclosureLineForOwnMailbox`: Whether mail the agent sends from its own mailbox carries the disclosure's visible line. It always carries the Duva-Agent header. On by default.
 - `--disclosureLineAsSponsor` or `--no-disclosureLineAsSponsor`: Whether mail the agent sends as its sponsor carries the disclosure's visible line. It always carries the Duva-Agent header. On by default.
 
+## duva addresses list
+
+List the organization's addresses, each with the mailbox it delivers to.
+
+Only admins can list the organization's addresses.
+
+## duva addresses add
+
+Give a mailbox another address on one of the organization's domains.
+
+Mail to the address, and to its plus-tagged addresses, reaches the mailbox from then on. A mailbox that had no address takes it as its default address. Only admins can add addresses, and an address in use is refused. Adding an address is a change to the organization's setup, recorded in its change feed under you.
+
+- `--address` (required): The address, on one of the organization's domains, without a plus tag.
+- `--mailbox` (required): The ID of the mailbox it delivers to.
+
+## duva addresses remove
+
+Remove an address, so that its mail is refused from now on.
+
+SES refuses mail to the address, and its plus-tagged addresses, at once, and the address can be given to any mailbox at once. The mail its mailbox already has stays there. If it was the mailbox's default address, the mailbox's earliest other address becomes its default. A mailbox left with no address keeps its mail, but receives and sends no new mail until it is given one. Only admins can remove addresses. Removing an address, and any change of default address it makes, are changes to the organization's setup, recorded in its change feed under you.
+
+- `--address` (required): The address, without a plus tag. Case doesn't matter.
+
 ## duva mailboxes list
 
 List the mailboxes you can read, your own and those of the agents you sponsor.
@@ -160,12 +183,12 @@ An agent your sponsor gives read or full sponsor access also finds your sponsor'
 
 ## duva mailboxes create
 
-Create a personal mailbox for a human or an agent, with an address on the organization's domain.
+Create a personal mailbox for a human or an agent, with an address on one of the organization's domains.
 
 Only admins can create mailboxes. The address becomes the mailbox's default address, and mail to it is accepted from then on. An admin can't read a personal mailbox they don't own, even one they created, unless they sponsor the agent that owns it. Creating the mailbox and its address are changes to the organization's setup, recorded in its change feed.
 
 - `--owner` (required): The ID of the human or agent that owns the mailbox.
-- `--address` (required): The mailbox's address, on the organization's domain, without a plus tag.
+- `--address` (required): The mailbox's first address, its default address, on one of the organization's domains, without a plus tag.
 
 ## duva mailboxes get
 
@@ -174,6 +197,15 @@ Read a mailbox you can read, with how many threads in its Inbox are unread.
 Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give sponsor access can read it.
 
 - `--mailbox` (required): The mailbox's ID.
+
+## duva mailboxes change
+
+Choose a mailbox's default address among its addresses.
+
+New mail goes from the default address. Replies still go from the address the original was sent to. Only admins can choose it, and the choice is a change to the organization's setup, recorded in its change feed under you.
+
+- `--mailbox` (required): The mailbox's ID.
+- `--defaultAddress` (required): The mailbox's new default address, one of its addresses.
 
 ## duva mailboxes changes
 
@@ -387,7 +419,7 @@ Only those who can read the mailbox can list them.
 
 Draft a reply to a message in a mailbox, a reply to all, a forward, or a new message.
 
-A reply goes from the address the original was sent to, plus tag kept, to the original's Reply-To or, without one, its From, with the subject carrying a single "Re: " prefix. A reply to your own message goes to its recipients instead. A reply to all also goes to every other recipient of the original, except the mailbox's own addresses. A forward goes from the address the original was sent to, to whoever you give, with the subject carrying a single "Fwd: " prefix, the original's text quoted and its attachments. A new message goes from the mailbox's default address. A draft can be saved before it has recipients, a subject or text, but it needs a recipient in To to be sent. Only the mailbox's owner can draft in it, and for a human's mailbox the agents they give full sponsor access, whose drafts go from the same addresses as the human's own. Writing a draft is recorded in the mailbox's change feed, naming you.
+A reply goes from the address the original was sent to, plus tag kept, or from the default address if the mailbox no longer has it, to the original's Reply-To or, without one, its From, with the subject carrying a single "Re: " prefix. A reply to your own message goes to its recipients instead. A reply to all also goes to every other recipient of the original, except the mailbox's own addresses. A forward goes from the address the original was sent to, to whoever you give, with the subject carrying a single "Fwd: " prefix, the original's text quoted and its attachments, from the same address a reply would. A new message goes from the mailbox's default address. A mailbox with no address can't draft. A draft can be saved before it has recipients, a subject or text, but it needs a recipient in To to be sent. Only the mailbox's owner can draft in it, and for a human's mailbox the agents they give full sponsor access, whose drafts go from the same addresses as the human's own. Writing a draft is recorded in the mailbox's change feed, naming you.
 
 - `--mailbox` (required): The mailbox's ID.
 - `--answers`: The ID of the message the draft replies to. Without it or forwards, the draft is a new message.
@@ -435,7 +467,7 @@ Changing a draft that waits for approval withdraws the request, so an approver n
 
 Ask for a draft to be sent.
 
-A human's send from their own mailbox needs no approval, so Duva sends it at once, with no disclosure, also when their agent wrote the draft. An agent's send waits for its sponsor's approval unless the sponsor switched that off, separately for its own mailbox and for its sponsor's. With full sponsor access, an agent sends as its sponsor from the sponsor's mailbox: from the draft's address, under the sponsor's name. Every message an agent sends carries the Duva-Agent header, and a visible line unless its sponsor switched that off for where it sends from. Its send shows where it stands. Bcc recipients get the message, but no header names them. Only the mailbox's owner, and an agent with full sponsor access to it, can ask. The draft needs a recipient in To, and a draft waits for one approval at a time. A send that needs no approval withdraws the request the draft waits for, if it waits. Asking is recorded in the mailbox's change feed.
+A human's send from their own mailbox needs no approval, so Duva sends it at once, with no disclosure, also when their agent wrote the draft. An agent's send waits for its sponsor's approval unless the sponsor switched that off, separately for its own mailbox and for its sponsor's. With full sponsor access, an agent sends as its sponsor from the sponsor's mailbox: from the draft's address, under the sponsor's name. Every message an agent sends carries the Duva-Agent header, and a visible line unless its sponsor switched that off for where it sends from. Its send shows where it stands. Bcc recipients get the message, but no header names them. Only the mailbox's owner, and an agent with full sponsor access to it, can ask. The draft needs a recipient in To, and a draft waits for one approval at a time. It goes only from an address the mailbox still has, so a draft from an address since removed fails. A send that needs no approval withdraws the request the draft waits for, if it waits. Asking is recorded in the mailbox's change feed.
 
 - `--mailbox` (required): The mailbox's ID.
 - `--draft` (required): The draft's ID.

@@ -177,6 +177,9 @@ export async function deleteDraft(table: Table, { mailbox, id, by }: { mailbox: 
   });
 }
 
+/** Why a draft from an address its mailbox no longer has isn't sent. */
+export const notFrom = (from: string) => `The draft is from ${from}, which the mailbox no longer has, so it can't be sent. Write it again as a new draft.`;
+
 /** The draft has no recipient in To, so it can't be sent. */
 export class NoRecipient extends Error {}
 

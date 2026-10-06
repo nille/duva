@@ -48,9 +48,14 @@ export const mailboxFeed = (mailbox: string): Feed => ({
 export const screenerKey = (mailbox: string) => ({ [pk]: mailboxKey(mailbox)[pk]!, [sk]: "screener" });
 // Each mailbox is listed in its owner's partition, so an actor's mailboxes are one query away.
 const ownedKey = (owner: string, mailbox: string) => ({ [pk]: `actor#${owner}`, [sk]: `mailbox#${mailbox}` });
-// Every address is in one partition, so the receipt rule's recipients are one query away.
+// Every address is in one partition, so the receipt rules' recipients are one query away.
 const addressesPartition = "organization#addresses";
 const addressKey = (address: string) => ({ [pk]: addressesPartition, [sk]: `address#${address}` });
+// Every mailbox is listed in one partition, those left with no address too. Mailboxes from before
+// the listing are found through their addresses, and listed when they lose one.
+const mailboxesPartition = "organization#mailboxes";
+const mailboxListedKey = (id: string) => ({ [pk]: mailboxesPartition, [sk]: `mailbox#${id}` });
+const mailboxListedPrefix = mailboxListedKey("")[sk];
 // The settings are an item of their own, so changing one doesn't contend with the organization's feed.
 // Each change counts up its version, which a write that relies on the settings checks.
 const settingsKey = { [pk]: "organization", [sk]: "settings" };
@@ -354,7 +359,7 @@ export async function organizationDomain(table: Table): Promise<string> {
  * mailbox has the address.
  */
 export async function addMailbox(table: Table, { owner, address, screener, by }: { owner: string; address: string; screener: boolean; by: string }): Promise<Mailbox> {
-  const mailbox: Mailbox = { id: randomUUID(), kind: "personal", owner, defaultAddress: address };
+  const mailbox: Mailbox = { id: randomUUID(), kind: "personal", owner, defaultAddress: address, addresses: [address] };
   await recordChanges(table, organizationFeed, {
     by,
     changes: [
@@ -367,6 +372,7 @@ export async function addMailbox(table: Table, { owner, address, screener, by }:
       { Put: { TableName: table.name, Item: { ...ownedKey(owner, mailbox.id) }, ...isNew } },
       { Put: { TableName: table.name, Item: { ...addressKey(address), address, mailbox: mailbox.id }, ...isNew } },
       { Put: { TableName: table.name, Item: { ...screenerKey(mailbox.id), state: screener ? "on" : "off" } } },
+      { Put: { TableName: table.name, Item: mailboxListedKey(mailbox.id) } },
     ],
   }).catch((error: unknown) => {
     const taken = error instanceof TransactionCanceledException && error.CancellationReasons?.[5]?.Code === "ConditionalCheckFailed";
@@ -377,6 +383,125 @@ export async function addMailbox(table: Table, { owner, address, screener, by }:
 
 /** Another mailbox has the address. */
 export class AddressTaken extends Error {}
+
+/** An address and the mailbox it delivers to. */
+export type Address = components["schemas"]["Address"];
+
+/**
+ * Gives the mailbox the address, on behalf of the actor `by`. A mailbox with no address takes it as
+ * its default address. Throws AddressTaken if the organization has the address already.
+ */
+export async function addAddress(table: Table, { mailbox, address, by }: { mailbox: string; address: string; by: string }): Promise<void> {
+  await changingAddresses(table, mailbox, by, ({ addresses, defaultAddress }) => ({
+    addresses: [...addresses, address],
+    defaultAddress: defaultAddress ?? address,
+    changes: [{ type: "addressAdded", address, mailbox }],
+    items: [{ Put: { TableName: table.name, Item: { ...addressKey(address), address, mailbox }, ...isNew } }],
+  })).catch((error: unknown) => {
+    if (error instanceof ItemChanged) throw new AddressTaken();
+    throw error;
+  });
+}
+
+/**
+ * Removes the address, on behalf of the actor `by`, and returns it with the mailbox it delivered
+ * to, or undefined if the organization has no such address. If it was its mailbox's default
+ * address, the mailbox's earliest other address becomes its default, if it has one.
+ */
+export async function removeAddress(table: Table, { address, by }: { address: string; by: string }): Promise<Address | undefined> {
+  for (let attempt = 1; ; attempt++) {
+    const mailbox = await mailboxAt(table, address);
+    if (mailbox === undefined) return undefined;
+    try {
+      await changingAddresses(table, mailbox, by, ({ addresses, defaultAddress }) => {
+        const left = addresses.filter((each) => each !== address);
+        return {
+          addresses: left,
+          defaultAddress: defaultAddress === address ? left[0] : defaultAddress,
+          changes: [{ type: "addressRemoved", address, mailbox }],
+          items: [
+            { Delete: { TableName: table.name, Key: addressKey(address), ConditionExpression: "mailbox = :mailbox", ExpressionAttributeValues: { ":mailbox": mailbox } } },
+            { Put: { TableName: table.name, Item: mailboxListedKey(mailbox) } },
+          ],
+        };
+      });
+      return { address, mailbox };
+    } catch (error) {
+      // Another admin removed the address meanwhile, and may have given it to another mailbox.
+      if (!(error instanceof ItemChanged) || attempt === 10) throw error;
+    }
+  }
+}
+
+/**
+ * Makes the address the mailbox's default address, on behalf of the actor `by`, and returns the
+ * mailbox. Throws NotItsAddress if the mailbox doesn't have it.
+ */
+export async function chooseDefaultAddress(table: Table, { mailbox, address, by }: { mailbox: string; address: string; by: string }): Promise<Mailbox> {
+  return changingAddresses(table, mailbox, by, ({ addresses }) => {
+    if (!addresses.includes(address)) throw new NotItsAddress();
+    return { addresses, defaultAddress: address, changes: [], items: [] };
+  });
+}
+
+/** Whether the address, with or without a plus tag and in any case, is one of the mailbox's. */
+export const isAddressOf = (mailbox: Mailbox, address: string) => mailbox.addresses.includes(address.toLowerCase().replace(/\+[^@]*@/, "@"));
+
+/** The mailbox doesn't have the address. */
+export class NotItsAddress extends Error {}
+
+/** An item the change relies on is no longer as it was read. */
+class ItemChanged extends Error {}
+
+/**
+ * Changes the mailbox's addresses and default address as `change` gives them from the mailbox as
+ * it is, with the change's own items and changes in the organization's change feed, and a change
+ * of default address if there is one. The mailbox is written only if it is still as read, so of
+ * two changes at once, the later reads it again. Throws ItemChanged if one of the change's own
+ * items fails its condition, and returns the mailbox as changed.
+ */
+async function changingAddresses(
+  table: Table,
+  id: string,
+  by: string,
+  change: (mailbox: Mailbox) => { addresses: string[]; defaultAddress: string | undefined; changes: ChangeDetails[]; items: TransactItem[] },
+): Promise<Mailbox> {
+  for (let attempt = 1; ; attempt++) {
+    const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: mailboxKey(id), ConsistentRead: true }));
+    if (Item === undefined) throw new Error(`The mailbox ${id} is missing.`);
+    const read = mailboxOf(Item as Mailbox);
+    const { addresses, defaultAddress, changes, items } = change(read);
+    const chosen: ChangeDetails[] = defaultAddress === read.defaultAddress ? [] : [{ type: "defaultAddressChanged", mailbox: id, defaultAddress }];
+    const all = [...changes, ...chosen];
+    const changed: Mailbox = { ...read, addresses, defaultAddress };
+    if (all.length === 0) return read;
+    // A mailbox from before it had several addresses has only its default address.
+    const was = (name: string, value: unknown, placeholder: string) => (value === undefined ? `attribute_not_exists(${name})` : `${name} = ${placeholder}`);
+    const write: TransactItem = {
+      Update: {
+        TableName: table.name,
+        Key: mailboxKey(id),
+        UpdateExpression: defaultAddress === undefined ? "SET addresses = :addresses REMOVE defaultAddress" : "SET addresses = :addresses, defaultAddress = :default",
+        ConditionExpression: [was("addresses", Item.addresses, ":read"), was("defaultAddress", Item.defaultAddress, ":readDefault")].join(" AND "),
+        ExpressionAttributeValues: {
+          ":addresses": addresses,
+          ...(defaultAddress !== undefined && { ":default": defaultAddress }),
+          ...(Item.addresses !== undefined && { ":read": Item.addresses }),
+          ...(Item.defaultAddress !== undefined && { ":readDefault": Item.defaultAddress }),
+        },
+      },
+    };
+    try {
+      await recordChanges(table, organizationFeed, { by, changes: all, items: [write, ...items] });
+      return mailboxOf(changed);
+    } catch (error) {
+      const reasons = error instanceof TransactionCanceledException ? (error.CancellationReasons ?? []) : [];
+      const failed = (index: number) => reasons[1 + all.length + index]?.Code === "ConditionalCheckFailed";
+      if (items.some((_, index) => failed(1 + index))) throw new ItemChanged();
+      if (!failed(0) || attempt === 10) throw error;
+    }
+  }
+}
 
 /** The mailbox with the ID, or undefined if the organization has none. */
 export async function findMailbox(table: Table, id: string): Promise<Mailbox | undefined> {
@@ -404,9 +529,9 @@ export async function mailboxAt(table: Table, address: string): Promise<string |
   return Item?.mailbox as string | undefined;
 }
 
-/** Every address in the organization. */
-export async function allAddresses(table: Table): Promise<string[]> {
-  const addresses: string[] = [];
+/** Every address in the organization, each with the mailbox it delivers to, in alphabetical order. */
+export async function allAddresses(table: Table): Promise<Address[]> {
+  const addresses: Address[] = [];
   let start: Record<string, unknown> | undefined;
   do {
     const page = await documents(table).send(
@@ -418,13 +543,13 @@ export async function allAddresses(table: Table): Promise<string[]> {
         ExclusiveStartKey: start,
       }),
     );
-    for (const item of page.Items ?? []) addresses.push(item.address as string);
+    for (const item of page.Items ?? []) addresses.push({ address: item.address as string, mailbox: item.mailbox as string });
     start = page.LastEvaluatedKey;
   } while (start !== undefined);
   return addresses;
 }
 
-/** The IDs of every mailbox in the organization, each reached through at least one address. */
+/** The IDs of every mailbox in the organization, those with no address included. */
 export async function allMailboxes(table: Table): Promise<string[]> {
   const mailboxes = new Set<string>();
   let start: Record<string, unknown> | undefined;
@@ -432,20 +557,30 @@ export async function allMailboxes(table: Table): Promise<string[]> {
     const page = await documents(table).send(
       new QueryCommand({
         TableName: table.name,
-        KeyConditionExpression: `${pk} = :addresses`,
-        ExpressionAttributeValues: { ":addresses": addressesPartition },
+        KeyConditionExpression: `${pk} = :mailboxes`,
+        ExpressionAttributeValues: { ":mailboxes": mailboxesPartition },
         ConsistentRead: true,
         ExclusiveStartKey: start,
       }),
     );
-    for (const item of page.Items ?? []) mailboxes.add(item.mailbox as string);
+    for (const item of page.Items ?? []) mailboxes.add((item[sk] as string).slice(mailboxListedPrefix.length));
     start = page.LastEvaluatedKey;
   } while (start !== undefined);
+  for (const { mailbox } of await allAddresses(table)) if (mailbox !== undefined) mailboxes.add(mailbox);
   return [...mailboxes];
 }
 
-/** The mailbox an item stores, in the order the contract lists its fields. */
-const mailboxOf = ({ id, kind, owner, defaultAddress }: Mailbox): Mailbox => ({ id, kind, owner, defaultAddress });
+/**
+ * The mailbox an item stores, in the order the contract lists its fields. A mailbox from before it
+ * could have several addresses has only its default address.
+ */
+const mailboxOf = ({ id, kind, owner, defaultAddress, addresses }: Partial<Mailbox>): Mailbox => ({
+  id: id!,
+  kind: kind!,
+  owner: owner!,
+  ...(defaultAddress !== undefined && { defaultAddress }),
+  addresses: addresses ?? (defaultAddress === undefined ? [] : [defaultAddress]),
+});
 
 /** The actor with the ID, or undefined if the organization has none. */
 export async function findActor(table: Table, id: string): Promise<Actor | undefined> {

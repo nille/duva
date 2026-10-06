@@ -35,6 +35,10 @@ export interface ReceiveOptions {
   at?: Date;
 }
 
+/** SES's limits on a rule set: rules in it, and recipients in each rule. */
+const maxRules = 200;
+const maxRecipients = 500;
+
 /**
  * Stands in for SES receiving in one region: an active rule set, which Duva manages through
  * ReceiptRules, and the mail servers that apply it. Like SES, it checks when a rule is created that
@@ -44,6 +48,7 @@ export function sesReceiving({ buckets, functions }: { buckets: Map<string, Mail
   const rules: ReceiptRule[] = [];
 
   const check = (rule: ReceiptRule) => {
+    if ((rule.Recipients ?? []).length > maxRecipients) throw new Error(`Rule ${rule.Name} has more than ${maxRecipients} recipients.`);
     for (const { S3Action, LambdaAction } of rule.Actions ?? []) {
       if (S3Action && !buckets.has(S3Action.BucketName!)) throw new Error(`Could not write to bucket: ${S3Action.BucketName}`);
       if (LambdaAction && !functions.has(LambdaAction.FunctionArn!)) throw new Error(`Could not invoke Lambda function: ${LambdaAction.FunctionArn}`);
@@ -51,20 +56,27 @@ export function sesReceiving({ buckets, functions }: { buckets: Map<string, Mail
   };
 
   const ruleSet: ReceiptRules = {
-    async describe(name) {
-      return structuredClone(rules.find((rule) => rule.Name === name));
+    async list() {
+      return structuredClone(rules);
     },
-    async create(rule) {
+    async create(rule, after) {
       if (rules.some(({ Name }) => Name === rule.Name)) return false;
+      if (rules.length === maxRules) throw new Error(`The rule set has ${maxRules} rules.`);
+      const index = after === undefined ? 0 : rules.findIndex(({ Name }) => Name === after) + 1;
+      if (index === 0 && after !== undefined) return false;
       check(rule);
-      rules.push(structuredClone(rule));
+      rules.splice(index, 0, structuredClone(rule));
       return true;
     },
     async update(rule) {
       const index = rules.findIndex(({ Name }) => Name === rule.Name);
-      if (index < 0) throw new Error(`Rule does not exist: ${rule.Name}`);
+      if (index < 0) return;
       check(rule);
       rules[index] = structuredClone(rule);
+    },
+    async delete(name) {
+      const index = rules.findIndex(({ Name }) => Name === name);
+      if (index >= 0) rules.splice(index, 1);
     },
   };
 
@@ -74,7 +86,8 @@ export function sesReceiving({ buckets, functions }: { buckets: Map<string, Mail
     describeRules: () => structuredClone(rules),
     /**
      * Receives the raw message over SMTP. SES refuses each recipient no enabled rule matches,
-     * during delivery. For the others, it applies the first matching rule's actions in order. A
+     * during delivery. For the others, it applies each matching rule's actions in order, in the
+     * rules' order, with the receipt naming the recipients the rule matched. A
      * Lambda action invokes the function `invocations` times, as Lambda's retries of an
      * asynchronous invocation can, and here waits for it. The receipt carries the verdicts. Returns
      * the ID SES gave the message, if it accepted any recipient.
@@ -84,63 +97,66 @@ export function sesReceiving({ buckets, functions }: { buckets: Map<string, Mail
       envelope: Envelope,
       { invocations = 1, verdicts = {}, at = new Date() }: ReceiveOptions = {},
     ): Promise<{ refused: string[]; messageId?: string }> {
-      const matching = (recipient: string) => rules.find((rule) => rule.Enabled && matches(rule, recipient));
-      const refused = envelope.to.filter((recipient) => matching(recipient) === undefined);
-      const accepted = envelope.to.filter((recipient) => matching(recipient) !== undefined);
+      const matching = (recipient: string) => rules.filter((rule) => rule.Enabled && matches(rule, recipient));
+      const refused = envelope.to.filter((recipient) => matching(recipient).length === 0);
+      const accepted = envelope.to.filter((recipient) => matching(recipient).length > 0);
       if (accepted.length === 0) return { refused };
 
       const bytes = typeof raw === "string" ? new TextEncoder().encode(raw) : raw;
-      const rule = matching(accepted[0]!)!;
-      const recipients = accepted.filter((recipient) => matching(recipient) === rule);
       const messageId = randomUUID().replaceAll("-", "");
       const timestamp = at.toISOString();
-      const verdict = (given: SESReceiptStatus["status"] | undefined): SESReceiptStatus => ({ status: rule.ScanEnabled ? (given ?? "PASS") : "DISABLED" });
       const parsed = await PostalMime.parse(bytes);
-      const stored = rule.ScanEnabled ? withVerdicts(bytes, parsed, envelope, verdicts) : bytes;
-      for (const { S3Action, LambdaAction } of rule.Actions ?? []) {
-        if (S3Action) await buckets.get(S3Action.BucketName!)!.put(`${S3Action.ObjectKeyPrefix ?? ""}${messageId}`, stored);
-        if (LambdaAction) {
-          const event: SESEvent = {
-            Records: [
-              {
-                eventSource: "aws:ses",
-                eventVersion: "1.0",
-                ses: {
-                  mail: {
-                    timestamp,
-                    source: envelope.from,
-                    messageId,
-                    destination: envelope.to,
-                    headersTruncated: false,
-                    headers: parsed.headers.map(({ originalKey, value }) => ({ name: originalKey, value })),
-                    commonHeaders: {
-                      returnPath: envelope.from,
-                      // As written, display name included.
-                      from: parsed.headers.filter(({ key }) => key === "from").map(({ value }) => value),
-                      date: parsed.date ?? "",
-                      to: parsed.to?.map(({ address }) => String(address)),
-                      messageId: parsed.messageId ?? "",
-                      subject: parsed.subject,
+      // Each rule acts on the recipients it matches, all with the one message ID.
+      for (const rule of rules.filter((each) => each.Enabled)) {
+        const recipients = accepted.filter((recipient) => matching(recipient).includes(rule));
+        if (recipients.length === 0) continue;
+        const verdict = (given: SESReceiptStatus["status"] | undefined): SESReceiptStatus => ({ status: rule.ScanEnabled ? (given ?? "PASS") : "DISABLED" });
+        const stored = rule.ScanEnabled ? withVerdicts(bytes, parsed, envelope, verdicts) : bytes;
+        for (const { S3Action, LambdaAction } of rule.Actions ?? []) {
+          if (S3Action) await buckets.get(S3Action.BucketName!)!.put(`${S3Action.ObjectKeyPrefix ?? ""}${messageId}`, stored);
+          if (LambdaAction) {
+            const event: SESEvent = {
+              Records: [
+                {
+                  eventSource: "aws:ses",
+                  eventVersion: "1.0",
+                  ses: {
+                    mail: {
+                      timestamp,
+                      source: envelope.from,
+                      messageId,
+                      destination: envelope.to,
+                      headersTruncated: false,
+                      headers: parsed.headers.map(({ originalKey, value }) => ({ name: originalKey, value })),
+                      commonHeaders: {
+                        returnPath: envelope.from,
+                        // As written, display name included.
+                        from: parsed.headers.filter(({ key }) => key === "from").map(({ value }) => value),
+                        date: parsed.date ?? "",
+                        to: parsed.to?.map(({ address }) => String(address)),
+                        messageId: parsed.messageId ?? "",
+                        subject: parsed.subject,
+                      },
+                    },
+                    receipt: {
+                      timestamp,
+                      processingTimeMillis: 1,
+                      recipients,
+                      spamVerdict: verdict(verdicts.spam),
+                      virusVerdict: verdict(verdicts.virus),
+                      spfVerdict: verdict(undefined),
+                      dkimVerdict: verdict(undefined),
+                      dmarcVerdict: verdict(verdicts.dmarc),
+                      ...(rule.ScanEnabled && verdicts.dmarc === "FAIL" ? { dmarcPolicy: verdicts.dmarcPolicy } : {}),
+                      action: { type: "Lambda", functionArn: LambdaAction.FunctionArn!, invocationType: LambdaAction.InvocationType ?? "Event" },
                     },
                   },
-                  receipt: {
-                    timestamp,
-                    processingTimeMillis: 1,
-                    recipients,
-                    spamVerdict: verdict(verdicts.spam),
-                    virusVerdict: verdict(verdicts.virus),
-                    spfVerdict: verdict(undefined),
-                    dkimVerdict: verdict(undefined),
-                    dmarcVerdict: verdict(verdicts.dmarc),
-                    ...(rule.ScanEnabled && verdicts.dmarc === "FAIL" ? { dmarcPolicy: verdicts.dmarcPolicy } : {}),
-                    action: { type: "Lambda", functionArn: LambdaAction.FunctionArn!, invocationType: LambdaAction.InvocationType ?? "Event" },
-                  },
                 },
-              },
-            ],
-          };
-          const invoke = functions.get(LambdaAction.FunctionArn!)!;
-          for (let invocation = 0; invocation < invocations; invocation++) await invoke(structuredClone(event));
+              ],
+            };
+            const invoke = functions.get(LambdaAction.FunctionArn!)!;
+            for (let invocation = 0; invocation < invocations; invocation++) await invoke(structuredClone(event));
+          }
         }
       }
       return { refused, messageId };

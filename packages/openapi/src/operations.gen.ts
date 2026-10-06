@@ -309,6 +309,71 @@ export const operations = [
     ]
   },
   {
+    "operationId": "listAddresses",
+    "method": "get",
+    "path": "/addresses",
+    "routeKey": "GET /addresses",
+    "summary": "List the organization's addresses, each with the mailbox it delivers to.",
+    "description": "Only admins can list the organization's addresses.",
+    "signIn": true,
+    "command": [
+      "addresses",
+      "list"
+    ],
+    "options": []
+  },
+  {
+    "operationId": "addAddress",
+    "method": "post",
+    "path": "/addresses",
+    "routeKey": "POST /addresses",
+    "summary": "Give a mailbox another address on one of the organization's domains.",
+    "description": "Mail to the address, and to its plus-tagged addresses, reaches the mailbox from then on. A mailbox that had no address takes it as its default address. Only admins can add addresses, and an address in use is refused. Adding an address is a change to the organization's setup, recorded in its change feed under you.",
+    "signIn": true,
+    "command": [
+      "addresses",
+      "add"
+    ],
+    "options": [
+      {
+        "name": "address",
+        "in": "body",
+        "type": "string",
+        "required": true,
+        "description": "The address, on one of the organization's domains, without a plus tag."
+      },
+      {
+        "name": "mailbox",
+        "in": "body",
+        "type": "string",
+        "required": true,
+        "description": "The ID of the mailbox it delivers to."
+      }
+    ]
+  },
+  {
+    "operationId": "removeAddress",
+    "method": "delete",
+    "path": "/addresses/{address}",
+    "routeKey": "DELETE /addresses/{address}",
+    "summary": "Remove an address, so that its mail is refused from now on.",
+    "description": "SES refuses mail to the address, and its plus-tagged addresses, at once, and the address can be given to any mailbox at once. The mail its mailbox already has stays there. If it was the mailbox's default address, the mailbox's earliest other address becomes its default. A mailbox left with no address keeps its mail, but receives and sends no new mail until it is given one. Only admins can remove addresses. Removing an address, and any change of default address it makes, are changes to the organization's setup, recorded in its change feed under you.",
+    "signIn": true,
+    "command": [
+      "addresses",
+      "remove"
+    ],
+    "options": [
+      {
+        "name": "address",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The address, without a plus tag. Case doesn't matter."
+      }
+    ]
+  },
+  {
     "operationId": "listMailboxes",
     "method": "get",
     "path": "/mailboxes",
@@ -327,7 +392,7 @@ export const operations = [
     "method": "post",
     "path": "/mailboxes",
     "routeKey": "POST /mailboxes",
-    "summary": "Create a personal mailbox for a human or an agent, with an address on the organization's domain.",
+    "summary": "Create a personal mailbox for a human or an agent, with an address on one of the organization's domains.",
     "description": "Only admins can create mailboxes. The address becomes the mailbox's default address, and mail to it is accepted from then on. An admin can't read a personal mailbox they don't own, even one they created, unless they sponsor the agent that owns it. Creating the mailbox and its address are changes to the organization's setup, recorded in its change feed.",
     "signIn": true,
     "command": [
@@ -347,7 +412,7 @@ export const operations = [
         "in": "body",
         "type": "string",
         "required": true,
-        "description": "The mailbox's address, on the organization's domain, without a plus tag."
+        "description": "The mailbox's first address, its default address, on one of the organization's domains, without a plus tag."
       }
     ]
   },
@@ -370,6 +435,35 @@ export const operations = [
         "type": "string",
         "required": true,
         "description": "The mailbox's ID."
+      }
+    ]
+  },
+  {
+    "operationId": "changeMailbox",
+    "method": "patch",
+    "path": "/mailboxes/{mailbox}",
+    "routeKey": "PATCH /mailboxes/{mailbox}",
+    "summary": "Choose a mailbox's default address among its addresses.",
+    "description": "New mail goes from the default address. Replies still go from the address the original was sent to. Only admins can choose it, and the choice is a change to the organization's setup, recorded in its change feed under you.",
+    "signIn": true,
+    "command": [
+      "mailboxes",
+      "change"
+    ],
+    "options": [
+      {
+        "name": "mailbox",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The mailbox's ID."
+      },
+      {
+        "name": "defaultAddress",
+        "in": "body",
+        "type": "string",
+        "required": true,
+        "description": "The mailbox's new default address, one of its addresses."
       }
     ]
   },
@@ -1079,7 +1173,7 @@ export const operations = [
     "path": "/mailboxes/{mailbox}/drafts",
     "routeKey": "POST /mailboxes/{mailbox}/drafts",
     "summary": "Draft a reply to a message in a mailbox, a reply to all, a forward, or a new message.",
-    "description": "A reply goes from the address the original was sent to, plus tag kept, to the original's Reply-To or, without one, its From, with the subject carrying a single \"Re: \" prefix. A reply to your own message goes to its recipients instead. A reply to all also goes to every other recipient of the original, except the mailbox's own addresses. A forward goes from the address the original was sent to, to whoever you give, with the subject carrying a single \"Fwd: \" prefix, the original's text quoted and its attachments. A new message goes from the mailbox's default address. A draft can be saved before it has recipients, a subject or text, but it needs a recipient in To to be sent. Only the mailbox's owner can draft in it, and for a human's mailbox the agents they give full sponsor access, whose drafts go from the same addresses as the human's own. Writing a draft is recorded in the mailbox's change feed, naming you.",
+    "description": "A reply goes from the address the original was sent to, plus tag kept, or from the default address if the mailbox no longer has it, to the original's Reply-To or, without one, its From, with the subject carrying a single \"Re: \" prefix. A reply to your own message goes to its recipients instead. A reply to all also goes to every other recipient of the original, except the mailbox's own addresses. A forward goes from the address the original was sent to, to whoever you give, with the subject carrying a single \"Fwd: \" prefix, the original's text quoted and its attachments, from the same address a reply would. A new message goes from the mailbox's default address. A mailbox with no address can't draft. A draft can be saved before it has recipients, a subject or text, but it needs a recipient in To to be sent. Only the mailbox's owner can draft in it, and for a human's mailbox the agents they give full sponsor access, whose drafts go from the same addresses as the human's own. Writing a draft is recorded in the mailbox's change feed, naming you.",
     "signIn": true,
     "command": [
       "drafts",
@@ -1279,7 +1373,7 @@ export const operations = [
     "path": "/mailboxes/{mailbox}/drafts/{draft}/send",
     "routeKey": "POST /mailboxes/{mailbox}/drafts/{draft}/send",
     "summary": "Ask for a draft to be sent.",
-    "description": "A human's send from their own mailbox needs no approval, so Duva sends it at once, with no disclosure, also when their agent wrote the draft. An agent's send waits for its sponsor's approval unless the sponsor switched that off, separately for its own mailbox and for its sponsor's. With full sponsor access, an agent sends as its sponsor from the sponsor's mailbox: from the draft's address, under the sponsor's name. Every message an agent sends carries the Duva-Agent header, and a visible line unless its sponsor switched that off for where it sends from. Its send shows where it stands. Bcc recipients get the message, but no header names them. Only the mailbox's owner, and an agent with full sponsor access to it, can ask. The draft needs a recipient in To, and a draft waits for one approval at a time. A send that needs no approval withdraws the request the draft waits for, if it waits. Asking is recorded in the mailbox's change feed.",
+    "description": "A human's send from their own mailbox needs no approval, so Duva sends it at once, with no disclosure, also when their agent wrote the draft. An agent's send waits for its sponsor's approval unless the sponsor switched that off, separately for its own mailbox and for its sponsor's. With full sponsor access, an agent sends as its sponsor from the sponsor's mailbox: from the draft's address, under the sponsor's name. Every message an agent sends carries the Duva-Agent header, and a visible line unless its sponsor switched that off for where it sends from. Its send shows where it stands. Bcc recipients get the message, but no header names them. Only the mailbox's owner, and an agent with full sponsor access to it, can ask. The draft needs a recipient in To, and a draft waits for one approval at a time. It goes only from an address the mailbox still has, so a draft from an address since removed fails. A send that needs no approval withdraws the request the draft waits for, if it waits. Asking is recorded in the mailbox's change feed.",
     "signIn": true,
     "command": [
       "drafts",

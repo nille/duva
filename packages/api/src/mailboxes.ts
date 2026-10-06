@@ -2,15 +2,13 @@ import type { components } from "@duva/openapi";
 import { jsonBody, type OperationHandler, refusal } from "./api.ts";
 import { mailboxesReadBy, mailboxFor } from "./access.ts";
 import type { Deployment } from "./deployment.ts";
-import { AddressTaken, addMailbox, allAddresses, findActor, organizationDomain } from "./organization.ts";
+import { AddressTaken, addMailbox, findActor } from "./organization.ts";
+import { addressGiven, addressTaken } from "./addresses.ts";
 import { builtInLabels, createLabel, deleteLabel, hasLabel, listLabels, NameTaken, renameLabel } from "./labels.ts";
 import { attachmentLinks } from "./attachments.ts";
 import { allMail, type Cursor, cursorOf, inbox, labelThreads, mailboxChanges, markThreads, readThread, spam, threadsMarkedAtOnce, threadsPerPage, sentThreads, threadsWithLabel, trash, unreadWithLabel } from "./mail.ts";
 import { recordEmptying } from "./erasure.ts";
 import { syncRecipients } from "./receiving.ts";
-
-/** How many addresses the organization can have: SES's limit on one receipt rule's recipients. */
-const maxAddresses = 500;
 
 export const createMailbox: OperationHandler = async (event, deployment, actor) => {
   if (!actor?.admin) return refusal(403, "Only admins can create mailboxes. Ask an admin to create one.");
@@ -18,27 +16,8 @@ export const createMailbox: OperationHandler = async (event, deployment, actor) 
   const ownerId = typeof body?.owner === "string" ? body.owner : "";
   const owner = await findActor(deployment.table, ownerId);
   if (owner === undefined) return refusal(400, `There is no human or agent ${JSON.stringify(ownerId)}. Give the ID of the actor that will own the mailbox.`);
-
-  const given = typeof body?.address === "string" ? body.address.trim() : "";
-  const domain = await organizationDomain(deployment.table);
-  const address = given.toLowerCase();
-  const at = address.lastIndexOf("@");
-  const local = address.slice(0, at);
-  if (at < 0 || local === "" || address.slice(at + 1) !== domain) {
-    return refusal(400, `${JSON.stringify(given)} isn't an address on ${domain}. Give one like hermes@${domain}.`);
-  }
-  if (local.includes("+")) {
-    return refusal(400, `An address can't have a plus tag. Give ${local.split("+")[0]}@${domain}, and mail to its tagged addresses reaches it too.`);
-  }
-  // Letters, digits and . _ -, with no dot at either end or two in a row, which every mail server takes.
-  if (!/^[a-z0-9_-]+(\.[a-z0-9_-]+)*$/.test(local) || local.length > 64) {
-    return refusal(400, `${JSON.stringify(given)} isn't an address Duva can create. Use letters, digits, dots, hyphens and underscores before the @.`);
-  }
-
-  // SES takes at most 500 recipients in a receipt rule, and Duva has one rule for now.
-  if ((await allAddresses(deployment.table)).length >= maxAddresses) {
-    return refusal(409, `The organization has ${maxAddresses} addresses, as many as Duva can receive mail for yet.`);
-  }
+  const address = await addressGiven(deployment, body?.address);
+  if (typeof address !== "string") return address;
 
   try {
     // The Screener starts on for a human's mailbox, and off for an agent's.
@@ -47,9 +26,7 @@ export const createMailbox: OperationHandler = async (event, deployment, actor) 
     return { statusCode: 201, body: mailbox satisfies components["schemas"]["Mailbox"] };
   } catch (error) {
     if (!(error instanceof AddressTaken)) throw error;
-    // If SES failed when the address was created, creating it again repairs the rule.
-    await syncRecipients(deployment.table, deployment.receiving);
-    return refusal(409, `${address} is taken. Give another address.`);
+    return addressTaken(deployment, address);
   }
 };
 

@@ -336,16 +336,16 @@ test("the unsubscriber can be invoked only by the API, through IAM, and may do n
 
 const [ruleSetId] = ofType("AWS::SES::ReceiptRuleSet")[0]!;
 
-test("SES may invoke the inbound Lambda, only for Duva's receipt rule in this account", () => {
+test("SES may invoke the inbound Lambda, only for Duva's receipt rules in this account", () => {
   const [inboundId] = lambda("InboundHandler");
   const permissions = ofType("AWS::Lambda::Permission").filter(([, { Properties }]) => Properties?.Principal === "ses.amazonaws.com");
   expect(permissions).toHaveLength(1);
   const [[, { Properties: permission }]] = permissions as [[string, Resource]];
   expect(permission).toMatchObject({ Action: "lambda:InvokeFunction", FunctionName: { "Fn::GetAtt": [inboundId, "Arn"] }, SourceAccount: { Ref: "AWS::AccountId" } });
-  expect(JSON.stringify(permission?.SourceArn)).toContain(`{"Ref":"${ruleSetId}"},":receipt-rule/Addresses"`);
+  expect(JSON.stringify(permission?.SourceArn)).toContain(`{"Ref":"${ruleSetId}"},":receipt-rule/Addresses*"`);
 });
 
-test("SES may store raw mail in the mail bucket, only under the inbound prefix and for Duva's receipt rule", () => {
+test("SES may store raw mail in the mail bucket, only under the inbound prefix and for Duva's receipt rules", () => {
   const sesStatements = ofType("AWS::S3::BucketPolicy")
     .flatMap(([, { Properties }]) => Properties?.PolicyDocument?.Statement ?? [])
     .filter(({ Principal }: { Principal?: { Service?: string } }) => Principal?.Service === "ses.amazonaws.com");
@@ -353,7 +353,7 @@ test("SES may store raw mail in the mail bucket, only under the inbound prefix a
   const [statement] = sesStatements;
   expect(statement).toMatchObject({ Effect: "Allow", Action: "s3:PutObject", Condition: { StringEquals: { "aws:SourceAccount": { Ref: "AWS::AccountId" } } } });
   expect(JSON.stringify(statement.Resource)).toContain('"/inbound/*"');
-  expect(JSON.stringify(statement.Condition.ArnLike["aws:SourceArn"])).toContain(`{"Ref":"${ruleSetId}"},":receipt-rule/Addresses"`);
+  expect(JSON.stringify(statement.Condition.ArnLike["aws:SourceArn"])).toContain(`{"Ref":"${ruleSetId}"},":receipt-rule/Addresses*"`);
 });
 
 test("the inbound Lambda retries a failed event, then leaves it in a queue for replay", () => {
@@ -416,7 +416,7 @@ test("the sender sends through SES under Duva's configuration set, and stores wh
 
 test("the API manages receipt rules in Duva's rule set, and may take no other SES action", () => {
   // IAM has no resource type for receipt rules, so the rule set is named only in the environment.
-  expect(actions("ApiHandler", "ses").sort()).toEqual(["ses:CreateReceiptRule", "ses:DescribeReceiptRule", "ses:UpdateReceiptRule"]);
+  expect(actions("ApiHandler", "ses").sort()).toEqual(["ses:CreateReceiptRule", "ses:DeleteReceiptRule", "ses:DescribeReceiptRuleSet", "ses:UpdateReceiptRule"]);
   const variables = lambda("ApiHandler")[1].Properties?.Environment?.Variables;
   expect(variables?.[environmentVariables.receiptRuleSet]).toEqual({ Ref: ruleSetId });
   expect(variables?.[environmentVariables.inboundFunction]).toEqual({ "Fn::GetAtt": [lambda("InboundHandler")[0], "Arn"] });
@@ -599,6 +599,16 @@ test("no Lambda can be invoked by anyone: each permission names a service and th
     });
   }
   for (const [id, { Properties }] of ofTypeEverywhere("AWS::Lambda::Url")) expect({ id, authType: Properties?.AuthType }).toEqual({ id, authType: "AWS_IAM" });
+});
+
+test("API Gateway may invoke the API Lambda through one permission, for its own API only", () => {
+  const [handlerId] = lambda("ApiHandler");
+  const [[apiId]] = ofType("AWS::ApiGatewayV2::Api") as [[string, Resource]];
+  const permissions = ofType("AWS::Lambda::Permission").filter(([, { Properties }]) => Properties?.FunctionName?.["Fn::GetAtt"]?.[0] === handlerId);
+  expect(permissions).toHaveLength(1);
+  const [[, { Properties: permission }]] = permissions as [[string, Resource]];
+  expect(permission).toMatchObject({ Action: "lambda:InvokeFunction", Principal: "apigateway.amazonaws.com" });
+  expect(JSON.stringify(permission?.SourceArn)).toMatch(new RegExp(`":execute-api:".*\\{"Ref":"${apiId}"\\},"/\\*/\\*/\\*"`));
 });
 
 test("every Lambda keeps its log a month, so nothing it logs, a drop's record included, outlives that", () => {

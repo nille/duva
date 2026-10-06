@@ -22,6 +22,8 @@ export const strings = {
     yours: "Your mailbox",
     agents: "Agents",
     unread: (count: number) => `${count} unread`,
+    /** The address a mailbox is shown with: its default address, if it has one. */
+    address: (mailbox: { defaultAddress?: string }) => mailbox.defaultAddress ?? "No address",
   },
 
   nav: { label: "Duva", mail: "Mail", approvals: "Approvals", settings: "Settings", waiting: (count: number) => `, ${count} waiting`, write: "Write" },
@@ -44,7 +46,10 @@ export const strings = {
     arrived: (count: number) => (count === 1 ? "1 new thread" : `${count} new threads`),
     emptyTitle: "Your Inbox is empty",
     agentEmptyTitle: (agent: string) => `${agent}'s Inbox is empty`,
-    emptyLead: (address: string) => `Mail to ${address} appears here. This page checks for new mail by itself, so there's no need to reload it.`,
+    emptyLead: (address: string | undefined) =>
+      address === undefined
+        ? "This mailbox has no address, so no new mail reaches it. An admin can give it one."
+        : `Mail to ${address} appears here. This page checks for new mail by itself, so there's no need to reload it.`,
     noMailboxTitle: "You don't have a mailbox yet",
     noMailboxLead: "Ask an admin to give you one. Your mail appears here once you have it.",
     noMailboxSponsor: "You can still decide what your agents ask to send in Approvals.",

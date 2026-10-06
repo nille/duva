@@ -135,7 +135,7 @@ const agents = await step("the sponsor has two agents, each with a mailbox on th
     const address = `${name.toLowerCase().replaceAll(" ", "-")}@${deployed.domain}`;
     const mailbox =
       mailboxes.find(({ owner }) => owner === agent.id) ?? answer(await client.POST("/mailboxes", { body: { owner: agent.id, address } }));
-    return { name, key, mailbox: mailbox.id, address: mailbox.defaultAddress, position: 0 };
+    return { name, key, mailbox: mailbox.id, address: mailbox.defaultAddress ?? address, position: 0 };
   };
   return { first: await agentNamed(agentNames.first), second: await agentNamed(agentNames.second) };
 });

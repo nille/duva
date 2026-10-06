@@ -72,8 +72,18 @@ export const inboundPrefix = "inbound/";
 /** Where in the mail bucket Duva stores the raw MIME of each message it sends, followed by the message's ID in Duva. */
 export const sentPrefix = "sent/";
 
-/** The name of Duva's receipt rule, which lists its addresses. */
+/** The name of Duva's first receipt rule for addresses. Later ones add -2, -3 and on to it. */
 export const receiptRuleName = "Addresses";
+
+/** Which of Duva's receipt rules for addresses the name is, counting from 1, or undefined if it is no such rule. */
+export function receiptRuleNumber(name: string | undefined): number | undefined {
+  if (name === receiptRuleName) return 1;
+  const number = new RegExp(`^${receiptRuleName}-(\\d+)$`).exec(name ?? "")?.[1];
+  return number === undefined ? undefined : Number(number);
+}
+
+/** How many recipients SES takes in one receipt rule (docs/aws.md). */
+export const recipientsPerRule = 500;
 
 /**
  * The CloudWatch metric counting the messages Duva drops on arrival, by reason. The inbound Lambda

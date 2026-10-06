@@ -370,7 +370,7 @@ test("an admin gives an agent a mailbox, and the agent catches up on it, lists i
   const read = await machine.duva("threads", "get", "--mailbox", mailbox.id, "--thread", thread, asAgent);
 
   expect(created.exitCode).toBe(0);
-  expect(mailbox).toEqual({ id: expect.any(String), kind: "personal", owner: agent.id, defaultAddress: "hermes@example.com" });
+  expect(mailbox).toEqual({ id: expect.any(String), kind: "personal", owner: agent.id, defaultAddress: "hermes@example.com", addresses: ["hermes@example.com"] });
   expect(JSON.parse(mailboxes.stdout)).toEqual({ mailboxes: [mailbox] });
   expect(JSON.parse(changes.stdout)).toEqual({ changes: [{ position: 1, at: expect.any(String), type: "messageReceived", thread, message: expect.any(String) }], position: 1 });
   expect(JSON.parse(threads.stdout)).toMatchObject({ threads: [{ id: thread, subject: "Hello", labels: ["inbox"] }] });

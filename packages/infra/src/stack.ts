@@ -239,8 +239,9 @@ export class DuvaStack extends Stack {
       new PolicyStatement({ actions: ["s3:ListBucketVersions"], resources: [mail.bucketArn], conditions: { StringLike: { "s3:prefix": `${inboundPrefix}*` } } }),
     );
 
-    // Duva creates its receipt rule with the first address, so only it may use the bucket and the Lambda.
-    const ruleArn = this.formatArn({ service: "ses", resource: "receipt-rule-set", resourceName: `${receiving.receiptRuleSetName}:receipt-rule/${receiptRuleName}` });
+    // Duva creates its receipt rules as addresses come, so only they may use the bucket and the
+    // Lambda. Each is named after the first, and Lambda compares a source ARN with StringLike.
+    const ruleArn = this.formatArn({ service: "ses", resource: "receipt-rule-set", resourceName: `${receiving.receiptRuleSetName}:receipt-rule/${receiptRuleName}*` });
     const ses = new ServicePrincipal("ses.amazonaws.com");
     inbound.addPermission("SesInvoke", { principal: ses, sourceAccount: this.account, sourceArn: ruleArn });
     mail.addToResourcePolicy(
@@ -417,10 +418,13 @@ export class DuvaStack extends Stack {
     unsubscriber.grantInvoke(handler);
     // Admins add humans, who can then sign in.
     humans.grant(handler, "cognito-idp:AdminCreateUser", "cognito-idp:AdminGetUser");
-    // Creating an address adds it to the receipt rule's recipients. IAM has no resource type for
-    // receipt rules, so these actions can't be limited to Duva's rule set.
+    // Adding and removing addresses changes the receipt rules' recipients. IAM has no resource type
+    // for receipt rules, so these actions can't be limited to Duva's rule set.
     handler.addToRolePolicy(
-      new PolicyStatement({ actions: ["ses:DescribeReceiptRule", "ses:CreateReceiptRule", "ses:UpdateReceiptRule"], resources: ["*"] }),
+      new PolicyStatement({
+        actions: ["ses:DescribeReceiptRuleSet", "ses:CreateReceiptRule", "ses:UpdateReceiptRule", "ses:DeleteReceiptRule"],
+        resources: ["*"],
+      }),
     );
 
     // Sending starts from the recorded decision: the table's stream invokes the sender for each draft
@@ -504,7 +508,9 @@ export class DuvaStack extends Stack {
       description: "Duva's API",
       corsPreflight: { allowOrigins: [webUrl], allowHeaders: ["authorization", "content-type"], allowMethods: [CorsHttpMethod.ANY] },
     });
-    const integration = new HttpLambdaIntegration("Handler", handler);
+    // One permission for the whole API, never one per route: Lambda caps a function's resource
+    // policy at 20 KB, and a statement per route outgrew it (docs/aws.md).
+    const integration = new HttpLambdaIntegration("Handler", handler, { scopePermissionToRoute: false });
     for (const operation of operations) {
       const method = HttpMethod[operation.method.toUpperCase() as keyof typeof HttpMethod];
       api.addRoutes({ path: operation.path, methods: [method], integration, authorizer: operation.signIn ? authorizer : undefined });

@@ -58,7 +58,7 @@ export function Drafts({
         <h1 tabIndex={-1} className="view-title">
           {strings.drafts.title}
         </h1>
-        <p className="mailbox-address">{mailbox.defaultAddress}</p>
+        <p className="mailbox-address">{strings.mailboxes.address(mailbox)}</p>
       </div>
       {listing.status === "loading" ? (
         <div className="index index-skeleton" aria-hidden="true">

@@ -195,6 +195,50 @@ export interface paths {
         patch: operations["changeAgentSettings"];
         trace?: never;
     };
+    "/addresses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the organization's addresses, each with the mailbox it delivers to.
+         * @description Only admins can list the organization's addresses.
+         */
+        get: operations["listAddresses"];
+        put?: never;
+        /**
+         * Give a mailbox another address on one of the organization's domains.
+         * @description Mail to the address, and to its plus-tagged addresses, reaches the mailbox from then on. A mailbox that had no address takes it as its default address. Only admins can add addresses, and an address in use is refused. Adding an address is a change to the organization's setup, recorded in its change feed under you.
+         */
+        post: operations["addAddress"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/addresses/{address}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove an address, so that its mail is refused from now on.
+         * @description SES refuses mail to the address, and its plus-tagged addresses, at once, and the address can be given to any mailbox at once. The mail its mailbox already has stays there. If it was the mailbox's default address, the mailbox's earliest other address becomes its default. A mailbox left with no address keeps its mail, but receives and sends no new mail until it is given one. Only admins can remove addresses. Removing an address, and any change of default address it makes, are changes to the organization's setup, recorded in its change feed under you.
+         */
+        delete: operations["removeAddress"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/mailboxes": {
         parameters: {
             query?: never;
@@ -209,7 +253,7 @@ export interface paths {
         get: operations["listMailboxes"];
         put?: never;
         /**
-         * Create a personal mailbox for a human or an agent, with an address on the organization's domain.
+         * Create a personal mailbox for a human or an agent, with an address on one of the organization's domains.
          * @description Only admins can create mailboxes. The address becomes the mailbox's default address, and mail to it is accepted from then on. An admin can't read a personal mailbox they don't own, even one they created, unless they sponsor the agent that owns it. Creating the mailbox and its address are changes to the organization's setup, recorded in its change feed.
          */
         post: operations["createMailbox"];
@@ -236,7 +280,11 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Choose a mailbox's default address among its addresses.
+         * @description New mail goes from the default address. Replies still go from the address the original was sent to. Only admins can choose it, and the choice is a change to the organization's setup, recorded in its change feed under you.
+         */
+        patch: operations["changeMailbox"];
         trace?: never;
     };
     "/mailboxes/{mailbox}/changes": {
@@ -623,7 +671,7 @@ export interface paths {
         put?: never;
         /**
          * Draft a reply to a message in a mailbox, a reply to all, a forward, or a new message.
-         * @description A reply goes from the address the original was sent to, plus tag kept, to the original's Reply-To or, without one, its From, with the subject carrying a single "Re: " prefix. A reply to your own message goes to its recipients instead. A reply to all also goes to every other recipient of the original, except the mailbox's own addresses. A forward goes from the address the original was sent to, to whoever you give, with the subject carrying a single "Fwd: " prefix, the original's text quoted and its attachments. A new message goes from the mailbox's default address. A draft can be saved before it has recipients, a subject or text, but it needs a recipient in To to be sent. Only the mailbox's owner can draft in it, and for a human's mailbox the agents they give full sponsor access, whose drafts go from the same addresses as the human's own. Writing a draft is recorded in the mailbox's change feed, naming you.
+         * @description A reply goes from the address the original was sent to, plus tag kept, or from the default address if the mailbox no longer has it, to the original's Reply-To or, without one, its From, with the subject carrying a single "Re: " prefix. A reply to your own message goes to its recipients instead. A reply to all also goes to every other recipient of the original, except the mailbox's own addresses. A forward goes from the address the original was sent to, to whoever you give, with the subject carrying a single "Fwd: " prefix, the original's text quoted and its attachments, from the same address a reply would. A new message goes from the mailbox's default address. A mailbox with no address can't draft. A draft can be saved before it has recipients, a subject or text, but it needs a recipient in To to be sent. Only the mailbox's owner can draft in it, and for a human's mailbox the agents they give full sponsor access, whose drafts go from the same addresses as the human's own. Writing a draft is recorded in the mailbox's change feed, naming you.
          */
         post: operations["createDraft"];
         delete?: never;
@@ -671,7 +719,7 @@ export interface paths {
         put?: never;
         /**
          * Ask for a draft to be sent.
-         * @description A human's send from their own mailbox needs no approval, so Duva sends it at once, with no disclosure, also when their agent wrote the draft. An agent's send waits for its sponsor's approval unless the sponsor switched that off, separately for its own mailbox and for its sponsor's. With full sponsor access, an agent sends as its sponsor from the sponsor's mailbox: from the draft's address, under the sponsor's name. Every message an agent sends carries the Duva-Agent header, and a visible line unless its sponsor switched that off for where it sends from. Its send shows where it stands. Bcc recipients get the message, but no header names them. Only the mailbox's owner, and an agent with full sponsor access to it, can ask. The draft needs a recipient in To, and a draft waits for one approval at a time. A send that needs no approval withdraws the request the draft waits for, if it waits. Asking is recorded in the mailbox's change feed.
+         * @description A human's send from their own mailbox needs no approval, so Duva sends it at once, with no disclosure, also when their agent wrote the draft. An agent's send waits for its sponsor's approval unless the sponsor switched that off, separately for its own mailbox and for its sponsor's. With full sponsor access, an agent sends as its sponsor from the sponsor's mailbox: from the draft's address, under the sponsor's name. Every message an agent sends carries the Duva-Agent header, and a visible line unless its sponsor switched that off for where it sends from. Its send shows where it stands. Bcc recipients get the message, but no header names them. Only the mailbox's owner, and an agent with full sponsor access to it, can ask. The draft needs a recipient in To, and a draft waits for one approval at a time. It goes only from an address the mailbox still has, so a draft from an address since removed fails. A send that needs no approval withdraws the request the draft waits for, if it waits. Asking is recorded in the mailbox's change feed.
          */
         post: operations["sendDraft"];
         delete?: never;
@@ -843,11 +891,37 @@ export interface components {
         DisclosureLineForOwnMailbox: boolean;
         /** @description Whether mail the agent sends as its sponsor carries the disclosure's visible line. It always carries the Duva-Agent header. On by default. */
         DisclosureLineAsSponsor: boolean;
+        NewAddress: {
+            /**
+             * @description The address, on one of the organization's domains, without a plus tag.
+             * @example support@example.com
+             */
+            address: string;
+            /** @description The ID of the mailbox it delivers to. */
+            mailbox: string;
+        };
+        /** @description An address on one of the organization's domains, and the mailbox it delivers to. */
+        Address: {
+            /** @example support@example.com */
+            address: string;
+            /** @description The ID of the mailbox it delivers to. */
+            mailbox?: string;
+        };
+        AddressList: {
+            addresses: components["schemas"]["Address"][];
+        };
+        MailboxChanges: {
+            /**
+             * @description The mailbox's new default address, one of its addresses.
+             * @example support@example.com
+             */
+            defaultAddress: string;
+        };
         NewMailbox: {
             /** @description The ID of the human or agent that owns the mailbox. */
             owner: string;
             /**
-             * @description The mailbox's address, on the organization's domain, without a plus tag.
+             * @description The mailbox's first address, its default address, on one of the organization's domains, without a plus tag.
              * @example hermes@example.com
              */
             address: string;
@@ -864,10 +938,18 @@ export interface components {
             /** @description The ID of the actor that owns the mailbox. */
             owner: string;
             /**
-             * @description The address the mailbox sends new messages from.
+             * @description The address the mailbox sends new messages from, one of its addresses. Absent while it has none.
              * @example hermes@example.com
              */
-            defaultAddress: string;
+            defaultAddress?: string;
+            /**
+             * @description The mailbox's addresses, the earliest first. Mail to each, and to its plus-tagged addresses, reaches it. A mailbox with none keeps its mail but receives and sends no new mail.
+             * @example [
+             *       "hermes@example.com",
+             *       "support@example.com"
+             *     ]
+             */
+            addresses: string[];
         };
         /** @description A mailbox you can read, with your sponsor access if it is your sponsor's. */
         ListedMailbox: {
@@ -881,10 +963,18 @@ export interface components {
             /** @description The ID of the actor that owns the mailbox. */
             owner: string;
             /**
-             * @description The address the mailbox sends new messages from.
+             * @description The address the mailbox sends new messages from, one of its addresses. Absent while it has none.
              * @example hermes@example.com
              */
-            defaultAddress: string;
+            defaultAddress?: string;
+            /**
+             * @description The mailbox's addresses, the earliest first. Mail to each, and to its plus-tagged addresses, reaches it. A mailbox with none keeps its mail but receives and sends no new mail.
+             * @example [
+             *       "hermes@example.com",
+             *       "support@example.com"
+             *     ]
+             */
+            addresses: string[];
             /**
              * @description For an agent, its sponsor access, present when the mailbox is its sponsor's.
              * @enum {string}
@@ -903,10 +993,18 @@ export interface components {
             /** @description The ID of the actor that owns the mailbox. */
             owner: string;
             /**
-             * @description The address the mailbox sends new messages from.
+             * @description The address the mailbox sends new messages from, one of its addresses. Absent while it has none.
              * @example hermes@example.com
              */
-            defaultAddress: string;
+            defaultAddress?: string;
+            /**
+             * @description The mailbox's addresses, the earliest first. Mail to each, and to its plus-tagged addresses, reaches it. A mailbox with none keeps its mail but receives and sends no new mail.
+             * @example [
+             *       "hermes@example.com",
+             *       "support@example.com"
+             *     ]
+             */
+            addresses: string[];
             /**
              * @description How many threads in the Inbox are unread.
              * @example 3
@@ -1801,7 +1899,7 @@ export interface components {
             position: number;
         };
         /** @description A change to the organization's setup. */
-        OrganizationChange: components["schemas"]["OrganizationAdded"] | components["schemas"]["DomainAdded"] | components["schemas"]["ActorAdded"] | components["schemas"]["AgentKeyRotated"] | components["schemas"]["MailboxAdded"] | components["schemas"]["AddressAdded"] | components["schemas"]["SettingsChanged"];
+        OrganizationChange: components["schemas"]["OrganizationAdded"] | components["schemas"]["DomainAdded"] | components["schemas"]["ActorAdded"] | components["schemas"]["AgentKeyRotated"] | components["schemas"]["MailboxAdded"] | components["schemas"]["AddressAdded"] | components["schemas"]["AddressRemoved"] | components["schemas"]["DefaultAddressChanged"] | components["schemas"]["SettingsChanged"];
         ChangeBase: {
             /** @description The change's position in the feed, counting from 1. */
             position: number;
@@ -1888,6 +1986,40 @@ export interface components {
              * @enum {string}
              */
             type: "addressAdded";
+        };
+        AddressRemoved: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "addressRemoved";
+            /**
+             * @description The address.
+             * @example support@example.com
+             */
+            address: string;
+            /** @description The ID of the mailbox it delivered to. */
+            mailbox?: string;
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "addressRemoved";
+        };
+        DefaultAddressChanged: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "defaultAddressChanged";
+            /** @description The ID of the mailbox. */
+            mailbox: string;
+            /**
+             * @description Its new default address, absent if it has no address left.
+             * @example support@example.com
+             */
+            defaultAddress?: string;
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "defaultAddressChanged";
         };
         SettingsChanged: components["schemas"]["ChangeBase"] & {
             /** @constant */
@@ -2361,6 +2493,82 @@ export interface operations {
             409: components["responses"]["Conflict"];
         };
     };
+    listAddresses: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The organization's addresses, in alphabetical order. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AddressList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    addAddress: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewAddress"];
+            };
+        };
+        responses: {
+            /** @description The address, with the mailbox it delivers to. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Address"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    removeAddress: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The address, without a plus tag. Case doesn't matter. */
+                address: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The address removed, with the mailbox it delivered to. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Address"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     listMailboxes: {
         parameters: {
             query?: never;
@@ -2431,6 +2639,37 @@ export interface operations {
                     "application/json": components["schemas"]["MailboxWithCounts"];
                 };
             };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    changeMailbox: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The mailbox's ID. */
+                mailbox: components["parameters"]["Mailbox"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MailboxChanges"];
+            };
+        };
+        responses: {
+            /** @description The mailbox, changed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Mailbox"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
@@ -3129,6 +3368,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     getDraft: {

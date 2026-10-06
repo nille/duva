@@ -129,7 +129,7 @@ export function ScreenerView({
         <h1 tabIndex={-1} className="view-title">
           {title}
         </h1>
-        <p className="mailbox-address">{mailbox.defaultAddress}</p>
+        <p className="mailbox-address">{strings.mailboxes.address(mailbox)}</p>
         <Connection state={connection} unreachable={strings.connection.mailUnreachable} />
       </div>
       <div className="screener-lead">
@@ -364,7 +364,7 @@ export function ScreenedSenders({
         <h1 tabIndex={-1} className="view-title">
           {title}
         </h1>
-        <p className="mailbox-address">{mailbox.defaultAddress}</p>
+        <p className="mailbox-address">{strings.mailboxes.address(mailbox)}</p>
       </div>
       <div className="screener-lead">
         <p>{strings.screened.lead}</p>

@@ -204,7 +204,7 @@ export function ThreadIndex({
             onSignedOut={onSignedOut}
           />
         )}
-        <p className="mailbox-address">{mailbox.defaultAddress}</p>
+        <p className="mailbox-address">{strings.mailboxes.address(mailbox)}</p>
         <Connection state={connection} unreachable={strings.connection.mailUnreachable} />
       </div>
       <p className="visually-hidden" role="status">

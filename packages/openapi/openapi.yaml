@@ -337,10 +337,93 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+  /addresses:
+    post:
+      operationId: addAddress
+      summary: Give a mailbox another address on one of the organization's domains.
+      description: >
+        Mail to the address, and to its plus-tagged addresses, reaches the
+        mailbox from then on. A mailbox that had no address takes it as its
+        default address. Only admins can add addresses, and an address in use
+        is refused. Adding an address is a change to the organization's
+        setup, recorded in its change feed under you.
+      x-cli-command: addresses add
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NewAddress"
+      responses:
+        "201":
+          description: The address, with the mailbox it delivers to.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Address"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+    get:
+      operationId: listAddresses
+      summary: List the organization's addresses, each with the mailbox it delivers to.
+      description: Only admins can list the organization's addresses.
+      x-cli-command: addresses list
+      responses:
+        "200":
+          description: The organization's addresses, in alphabetical order.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AddressList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /addresses/{address}:
+    delete:
+      operationId: removeAddress
+      summary: Remove an address, so that its mail is refused from now on.
+      description: >
+        SES refuses mail to the address, and its plus-tagged addresses, at
+        once, and the address can be given to any mailbox at once. The mail
+        its mailbox already has stays there. If it was the mailbox's default
+        address, the mailbox's earliest other address becomes its default.
+        A mailbox left with no address keeps its mail, but receives and sends
+        no new mail until it is given one. Only admins can remove addresses.
+        Removing an address, and any change of default address it makes, are
+        changes to the organization's setup, recorded in its change feed
+        under you.
+      x-cli-command: addresses remove
+      parameters:
+        - name: address
+          in: path
+          required: true
+          description: The address, without a plus tag. Case doesn't matter.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The address removed, with the mailbox it delivered to.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Address"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /mailboxes:
     post:
       operationId: createMailbox
-      summary: Create a personal mailbox for a human or an agent, with an address on the organization's domain.
+      summary: Create a personal mailbox for a human or an agent, with an address on one of the organization's domains.
       description: >
         Only admins can create mailboxes. The address becomes the mailbox's
         default address, and mail to it is accepted from then on. An admin
@@ -403,6 +486,38 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/MailboxWithCounts"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: changeMailbox
+      summary: Choose a mailbox's default address among its addresses.
+      description: >
+        New mail goes from the default address. Replies still go from the
+        address the original was sent to. Only admins can choose it, and the
+        choice is a change to the organization's setup, recorded in its
+        change feed under you.
+      x-cli-command: mailboxes change
+      parameters:
+        - $ref: "#/components/parameters/Mailbox"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MailboxChanges"
+      responses:
+        "200":
+          description: The mailbox, changed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Mailbox"
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -1173,14 +1288,16 @@ paths:
       summary: Draft a reply to a message in a mailbox, a reply to all, a forward, or a new message.
       description: >
         A reply goes from the address the original was sent to, plus tag
-        kept, to the original's Reply-To or, without one, its From, with the
+        kept, or from the default address if the mailbox no longer has it,
+        to the original's Reply-To or, without one, its From, with the
         subject carrying a single "Re: " prefix. A reply to your own message
         goes to its recipients instead. A reply to all also goes to every
         other recipient of the original, except the mailbox's own addresses.
         A forward goes from the address the original was sent to, to whoever
         you give, with the subject carrying a single "Fwd: " prefix, the
-        original's text quoted and its attachments. A new message goes from
-        the mailbox's default address. A draft can be saved before it has
+        original's text quoted and its attachments, from the same address
+        a reply would. A new message goes from the mailbox's default address.
+        A mailbox with no address can't draft. A draft can be saved before it has
         recipients, a subject or text, but it needs a recipient in To to be
         sent. Only the mailbox's owner can draft in it, and for a human's
         mailbox the agents they give full sponsor access, whose drafts go from
@@ -1210,6 +1327,8 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
     get:
       operationId: listDrafts
       summary: List the drafts in a mailbox, newest first, with where each send stands.
@@ -1334,7 +1453,9 @@ paths:
         from. Its send shows where it stands. Bcc recipients get the message,
         but no header names them. Only the mailbox's owner, and an agent with
         full sponsor access to it, can ask. The draft needs a recipient in To,
-        and a draft waits for one approval at a time. A send that needs no
+        and a draft waits for one approval at a time. It goes only from an
+        address the mailbox still has, so a draft from an address since
+        removed fails. A send that needs no
         approval withdraws the request the draft waits for, if it waits. Asking is recorded in the
         mailbox's change feed.
       x-cli-command: drafts send
@@ -1686,6 +1807,48 @@ components:
     DisclosureLineAsSponsor:
       type: boolean
       description: Whether mail the agent sends as its sponsor carries the disclosure's visible line. It always carries the Duva-Agent header. On by default.
+    NewAddress:
+      type: object
+      additionalProperties: false
+      required: [address, mailbox]
+      properties:
+        address:
+          type: string
+          description: The address, on one of the organization's domains, without a plus tag.
+          examples: ["support@example.com"]
+        mailbox:
+          type: string
+          description: The ID of the mailbox it delivers to.
+    Address:
+      type: object
+      additionalProperties: false
+      required: [address]
+      description: An address on one of the organization's domains, and the mailbox it delivers to.
+      properties:
+        address:
+          type: string
+          examples: ["support@example.com"]
+        mailbox:
+          type: string
+          description: The ID of the mailbox it delivers to.
+    AddressList:
+      type: object
+      additionalProperties: false
+      required: [addresses]
+      properties:
+        addresses:
+          type: array
+          items:
+            $ref: "#/components/schemas/Address"
+    MailboxChanges:
+      type: object
+      additionalProperties: false
+      required: [defaultAddress]
+      properties:
+        defaultAddress:
+          type: string
+          description: The mailbox's new default address, one of its addresses.
+          examples: ["support@example.com"]
     NewMailbox:
       type: object
       additionalProperties: false
@@ -1696,12 +1859,12 @@ components:
           description: The ID of the human or agent that owns the mailbox.
         address:
           type: string
-          description: The mailbox's address, on the organization's domain, without a plus tag.
+          description: The mailbox's first address, its default address, on one of the organization's domains, without a plus tag.
           examples: ["hermes@example.com"]
     Mailbox:
       type: object
       additionalProperties: false
-      required: [id, kind, owner, defaultAddress]
+      required: [id, kind, owner, addresses]
       description: A store of received and sent mail, reached through its addresses.
       properties:
         id:
@@ -1716,12 +1879,21 @@ components:
           description: The ID of the actor that owns the mailbox.
         defaultAddress:
           type: string
-          description: The address the mailbox sends new messages from.
+          description: The address the mailbox sends new messages from, one of its addresses. Absent while it has none.
           examples: ["hermes@example.com"]
+        addresses:
+          type: array
+          description: >-
+            The mailbox's addresses, the earliest first. Mail to each, and to
+            its plus-tagged addresses, reaches it. A mailbox with none keeps
+            its mail but receives and sends no new mail.
+          items:
+            type: string
+          examples: [["hermes@example.com", "support@example.com"]]
     ListedMailbox:
       type: object
       additionalProperties: false
-      required: [id, kind, owner, defaultAddress]
+      required: [id, kind, owner, addresses]
       description: A mailbox you can read, with your sponsor access if it is your sponsor's.
       properties:
         id:
@@ -1736,8 +1908,17 @@ components:
           description: The ID of the actor that owns the mailbox.
         defaultAddress:
           type: string
-          description: The address the mailbox sends new messages from.
+          description: The address the mailbox sends new messages from, one of its addresses. Absent while it has none.
           examples: ["hermes@example.com"]
+        addresses:
+          type: array
+          description: >-
+            The mailbox's addresses, the earliest first. Mail to each, and to
+            its plus-tagged addresses, reaches it. A mailbox with none keeps
+            its mail but receives and sends no new mail.
+          items:
+            type: string
+          examples: [["hermes@example.com", "support@example.com"]]
         sponsorAccess:
           type: string
           enum: [read, full]
@@ -1745,7 +1926,7 @@ components:
     MailboxWithCounts:
       type: object
       additionalProperties: false
-      required: [id, kind, owner, defaultAddress, unread]
+      required: [id, kind, owner, addresses, unread]
       description: A mailbox, with how many of its threads want attention.
       properties:
         id:
@@ -1760,8 +1941,17 @@ components:
           description: The ID of the actor that owns the mailbox.
         defaultAddress:
           type: string
-          description: The address the mailbox sends new messages from.
+          description: The address the mailbox sends new messages from, one of its addresses. Absent while it has none.
           examples: ["hermes@example.com"]
+        addresses:
+          type: array
+          description: >-
+            The mailbox's addresses, the earliest first. Mail to each, and to
+            its plus-tagged addresses, reaches it. A mailbox with none keeps
+            its mail but receives and sends no new mail.
+          items:
+            type: string
+          examples: [["hermes@example.com", "support@example.com"]]
         unread:
           type: integer
           description: How many threads in the Inbox are unread.
@@ -3072,6 +3262,8 @@ components:
         - $ref: "#/components/schemas/AgentKeyRotated"
         - $ref: "#/components/schemas/MailboxAdded"
         - $ref: "#/components/schemas/AddressAdded"
+        - $ref: "#/components/schemas/AddressRemoved"
+        - $ref: "#/components/schemas/DefaultAddressChanged"
         - $ref: "#/components/schemas/SettingsChanged"
       discriminator:
         propertyName: type
@@ -3082,6 +3274,8 @@ components:
           agentKeyRotated: "#/components/schemas/AgentKeyRotated"
           mailboxAdded: "#/components/schemas/MailboxAdded"
           addressAdded: "#/components/schemas/AddressAdded"
+          addressRemoved: "#/components/schemas/AddressRemoved"
+          defaultAddressChanged: "#/components/schemas/DefaultAddressChanged"
           settingsChanged: "#/components/schemas/SettingsChanged"
     ChangeBase:
       type: object
@@ -3169,6 +3363,38 @@ components:
             mailbox:
               type: string
               description: The ID of the mailbox it delivers to.
+    AddressRemoved:
+      allOf:
+        - $ref: "#/components/schemas/ChangeBase"
+        - type: object
+          required: [type, address]
+          properties:
+            type:
+              type: string
+              const: addressRemoved
+            address:
+              type: string
+              description: The address.
+              examples: ["support@example.com"]
+            mailbox:
+              type: string
+              description: The ID of the mailbox it delivered to.
+    DefaultAddressChanged:
+      allOf:
+        - $ref: "#/components/schemas/ChangeBase"
+        - type: object
+          required: [type, mailbox]
+          properties:
+            type:
+              type: string
+              const: defaultAddressChanged
+            mailbox:
+              type: string
+              description: The ID of the mailbox.
+            defaultAddress:
+              type: string
+              description: Its new default address, absent if it has no address left.
+              examples: ["support@example.com"]
     SettingsChanged:
       allOf:
         - $ref: "#/components/schemas/ChangeBase"

@@ -18,6 +18,7 @@ import {
   findApproval,
   findDraft,
   NoRecipient,
+  notFrom,
   pendingApprovals,
   reject,
   SendNotAllowed,
@@ -25,7 +26,7 @@ import {
 import { attachmentLinks } from "./attachments.ts";
 import { findMessage } from "./mail.ts";
 import { mailboxFor } from "./access.ts";
-import type { Actor, Mailbox } from "./organization.ts";
+import { type Actor, isAddressOf, type Mailbox } from "./organization.ts";
 
 type EmailAddress = components["schemas"]["EmailAddress"];
 type Message = components["schemas"]["Message"];
@@ -47,6 +48,10 @@ export const createDraft: OperationHandler = async (event, deployment, actor) =>
     return refusal(400, "Give forwards as the ID of the message to forward, without answers. A draft replies or forwards, not both.");
   }
 
+  if (mailbox.defaultAddress === undefined) return noAddress();
+  // A reply or a forward goes from the address the original was sent to, plus tag kept, while the mailbox has it.
+  const fromOriginal = (message: Message) => (isAddressOf(mailbox, message.recipient) ? message.recipient : mailbox.defaultAddress!);
+
   let content;
   if (typeof body.forwards === "string") {
     const original = await findMessage(deployment.table, deployment.mailBucket, mailbox.id, body.forwards);
@@ -55,8 +60,7 @@ export const createDraft: OperationHandler = async (event, deployment, actor) =>
     content = {
       forwards: message.id,
       thread,
-      // A forward goes from the address the original was sent to, as a reply does.
-      from: message.recipient,
+      from: fromOriginal(message),
       to: given.to ?? [],
       cc: given.cc ?? [],
       bcc: given.bcc ?? [],
@@ -76,8 +80,7 @@ export const createDraft: OperationHandler = async (event, deployment, actor) =>
     content = {
       answers: message.id,
       thread,
-      // A reply goes from the address the original was sent to, plus tag kept.
-      from: message.recipient,
+      from: fromOriginal(message),
       to: given.to ?? to,
       cc: given.cc ?? cc,
       bcc: given.bcc ?? [],
@@ -108,17 +111,18 @@ function forwardedText(message: Message): string {
   ].join("\n");
 }
 
+const noAddress = () => refusal(409, "The mailbox has no address, so it can't send mail. Ask an admin to give it one.");
+
 /** Whether two addresses are the same, ignoring case. */
 const sameAddress = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 
-/** The addresses that aren't the mailbox's own, with or without a plus tag, each once. */
+/** The addresses that aren't one of the mailbox's own, with or without a plus tag, each once. */
 const othersThan =
   (mailbox: Mailbox) =>
   (list: EmailAddress[]): EmailAddress[] => {
-    const untagged = (address: string) => address.replace(/\+[^@]*@/, "@");
     const kept: EmailAddress[] = [];
     for (const each of list) {
-      if (sameAddress(untagged(each.address), mailbox.defaultAddress) || kept.some(({ address }) => sameAddress(address, each.address))) continue;
+      if (isAddressOf(mailbox, each.address) || kept.some(({ address }) => sameAddress(address, each.address))) continue;
       kept.push(each);
     }
     return kept;
@@ -192,6 +196,8 @@ export const sendDraft: OperationHandler = async (event, deployment, actor) => {
   const mailbox = await mailboxFor(event, deployment, actor!, "send");
   if ("statusCode" in mailbox) return mailbox;
   const id = event.pathParameters?.draft ?? "";
+  const asked = await findDraft(deployment.table, mailbox.id, id);
+  if (asked !== undefined && !isAddressOf(mailbox, asked.from)) return refusal(409, notFrom(asked.from));
   try {
     const draft = await askToSend(deployment.table, { mailbox, id, actor: actor! });
     if (draft === undefined) return noDraft(event);

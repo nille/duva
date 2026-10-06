@@ -347,7 +347,7 @@ export function SearchResults({
           {sortLink("relevance", strings.search.relevance)}
           {sortLink("newest", strings.search.newest)}
         </nav>
-        <p className="mailbox-address">{mailbox.defaultAddress}</p>
+        <p className="mailbox-address">{strings.mailboxes.address(mailbox)}</p>
       </div>
       <p className="visually-hidden" role="status">
         {finding.status === "found" ? (finding.results.length > 0 ? strings.search.found(finding.results.length, finding.next !== undefined) : strings.search.emptyTitle) : ""}

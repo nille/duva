@@ -168,7 +168,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
     // A sponsor's agents may have no mailbox, and the sponsor still sets their settings.
     const { data: sponsored } = await client.GET("/agents").catch(() => ({ data: undefined }));
     const names = new Map(sponsored?.agents.map((agent) => [agent.id, agent.name]));
-    const agents = theirs.map((mailbox) => ({ mailbox, agent: names.get(mailbox.owner) ?? mailbox.defaultAddress })).sort((a, b) => a.agent.localeCompare(b.agent));
+    const agents = theirs.map((mailbox) => ({ mailbox, agent: names.get(mailbox.owner) ?? mailbox.defaultAddress ?? mailbox.id })).sort((a, b) => a.agent.localeCompare(b.agent));
     setMailboxes({ status: "listed", mine: data.mailboxes.find((mailbox) => mailbox.owner === actor.id), agents, agentNames: names, sponsorsAgents: agents.length > 0 || (sponsored?.agents.length ?? 0) > 0 });
   }, [client, actor.id, onSignedOut]);
   useEffect(() => {

@@ -7,13 +7,13 @@ import { randomUUID } from "node:crypto";
 import { SendEmailCommand, SESv2ServiceException, type SESv2Client } from "@aws-sdk/client-sesv2";
 import type { DynamoDBStreamEvent } from "aws-lambda";
 import type { Table } from "./deployment.ts";
-import { draftAt, draftToSend, findApproval, markFailed, markSent, markUnclear, type Sending, startSending } from "./drafting.ts";
+import { draftAt, draftToSend, findApproval, markFailed, markSent, markUnclear, notFrom, type Sending, startSending } from "./drafting.ts";
 import { sentPrefix } from "./infrastructure.ts";
 import type { MailBucket } from "./mail-bucket.ts";
 import { findMessage } from "./mail.ts";
 import { buildMail } from "./mime.ts";
 import { sponsorAccessAllows } from "./access.ts";
-import { agentSettings, findActor, findMailbox, organizationDomain, switchesFor } from "./organization.ts";
+import { agentSettings, findActor, findMailbox, isAddressOf, organizationDomain, switchesFor } from "./organization.ts";
 
 /** Who SES delivers a message to. Bcc recipients are here only, since no header names them. */
 export interface Destination {
@@ -126,6 +126,9 @@ async function send({ table, mailBucket, outbound, region }: Sender, { mailbox, 
       unsendable = "The agent's sponsor access was lowered from full before this went out, so it wasn't sent. Its sponsor can send it.";
     }
   }
+  // An admin may have removed the address since the draft was asked to send.
+  const sendsFrom = await findMailbox(table, mailbox);
+  if (sendsFrom !== undefined && !isAddressOf(sendsFrom, draft.from)) unsendable ??= notFrom(draft.from);
   const original = draft.answers === undefined ? undefined : await findMessage(table, mailBucket, mailbox, draft.answers);
   // A forward carries the forwarded message's attachments, taken from it as it is now.
   const forwarded = draft.forwards === undefined ? undefined : await findMessage(table, mailBucket, mailbox, draft.forwards);
