@@ -13,6 +13,7 @@ import type { AddressInfo } from "node:net";
 import { randomUUID } from "node:crypto";
 import { CreateTableCommand, DeleteItemCommand, ScanCommand } from "@aws-sdk/client-dynamodb";
 import type { ReceiptRule } from "@aws-sdk/client-ses";
+import type { SESEvent } from "aws-lambda";
 import PostalMime from "postal-mime";
 import { createDuvaClient, type DuvaClient } from "@duva/client";
 import { inject } from "vitest";
@@ -36,7 +37,7 @@ import { postOneClick } from "../src/unsubscriber.ts";
 import { dynamodbLocal } from "./dynamodb-local.ts";
 import { gateway } from "./gateway.ts";
 import { managedLogin, managedLoginClientId } from "./managed-login.ts";
-import { type Envelope, type ReceiveOptions, sesReceiving, sesSending } from "./ses.ts";
+import { type Bounce, type Envelope, type ReceiveOptions, sesReceiving, sesSending } from "./ses.ts";
 import { tableStream } from "./streams.ts";
 import { recordedTitan } from "./titan.ts";
 import { TestTokenIssuer } from "./token-issuer.ts";
@@ -113,6 +114,8 @@ export interface Duva {
   inboundLog(): string[];
   /** The receipt rules in Duva's rule set, as SES describes them. */
   receiptRules(): ReceiptRule[];
+  /** The bounces SES sent for messages it received, oldest first, as a group refuses one. */
+  bounces(): Bounce[];
   /** The raw messages SES accepted for sending, oldest first. Each API call returns once the sends it led to are done. */
   sent(): string[];
   /** Lets the sender read the table's stream when sendsHeld, and waits until the sends it held are done. */
@@ -182,12 +185,12 @@ export async function startDuva({
   // Trash emptied and mailboxes deleted in a call, which the eraser erases once the call is answered.
   const handed: EraserEvent[] = [];
   const inboundLog: string[] = [];
-  const ses = sesReceiving({
-    buckets: new Map([[mailBucketName, mailBucket]]),
-    functions: new Map([[inboundFunction, createInbound({ table, mailBucket, log: (line) => inboundLog.push(line) })]]),
-  });
-  const receiving = { rules: ses.rules, bucket: mailBucketName, inboundFunction };
   const sending = sesSending({ region, domain, sandbox, answersLost: sesAnswersLost });
+  // SES invokes the inbound Lambda, which bounces through SES, so the two are tied once both exist.
+  let inbound: (event: SESEvent) => Promise<void> = async () => {};
+  const ses = sesReceiving({ domain, buckets: new Map([[mailBucketName, mailBucket]]), functions: new Map([[inboundFunction, (event) => inbound(event)]]) });
+  inbound = createInbound({ table, mailBucket, log: (line) => inboundLog.push(line), outbound: sending.outbound, bounces: ses.bounces });
+  const receiving = { rules: ses.rules, bucket: mailBucketName, inboundFunction };
   // Each mailbox's index is a table under the deployment's own directory. The search Lambda and the
   // indexer each open them, as two Lambdas do. Backfill steps are small, so a few messages take several.
   const indexes = join(searchIndexes, randomUUID());
@@ -281,6 +284,7 @@ export async function startDuva({
     },
     inboundLog: () => [...inboundLog],
     receiptRules: () => ses.describeRules(),
+    bounces: () => ses.bounced(),
     sent: () => sending.sent(),
     sentTo: () => sending.sentTo(),
     releaseSends: () => stream.deliver(),

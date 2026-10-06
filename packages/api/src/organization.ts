@@ -17,6 +17,7 @@ export type Mailbox = components["schemas"]["Mailbox"];
 export type OrganizationChange = components["schemas"]["OrganizationChange"];
 export type OrganizationSettings = components["schemas"]["OrganizationSettings"];
 export type AgentSettings = components["schemas"]["AgentSettings"];
+export type Group = components["schemas"]["Group"];
 /** A change as its maker describes it, before the feed gives it a position, a time and its actor. */
 type ChangeDetails = OrganizationChange extends infer Change ? (Change extends unknown ? Omit<Change, "position" | "at" | "actor"> : never) : never;
 
@@ -51,6 +52,8 @@ const ownedKey = (owner: string, mailbox: string) => ({ [pk]: `actor#${owner}`, 
 // Every address is in one partition, so the receipt rules' recipients are one query away.
 const addressesPartition = "organization#addresses";
 const addressKey = (address: string) => ({ [pk]: addressesPartition, [sk]: `address#${address}` });
+// Each group's members and policies are an item of their own, beside its address in the addresses partition.
+const groupKey = (address: string) => ({ [pk]: `group#${address}`, [sk]: "group" });
 // Every mailbox is listed in one partition, those left with no address too. Mailboxes from before
 // the listing are found through their addresses, and listed when they lose one.
 const mailboxesPartition = "organization#mailboxes";
@@ -538,7 +541,7 @@ export async function mailboxAt(table: Table, address: string): Promise<string |
   return Item?.mailbox as string | undefined;
 }
 
-/** Every address in the organization, each with the mailbox it delivers to, in alphabetical order. */
+/** Every address in the organization, each with the mailbox it delivers to or as a group's, in alphabetical order. */
 export async function allAddresses(table: Table): Promise<Address[]> {
   const addresses: Address[] = [];
   let start: Record<string, unknown> | undefined;
@@ -552,11 +555,97 @@ export async function allAddresses(table: Table): Promise<Address[]> {
         ExclusiveStartKey: start,
       }),
     );
-    for (const item of page.Items ?? []) addresses.push({ address: item.address as string, mailbox: item.mailbox as string });
+    for (const item of page.Items ?? []) addresses.push(item.group === true ? { address: item.address as string, group: true } : { address: item.address as string, mailbox: item.mailbox as string });
     start = page.LastEvaluatedKey;
   } while (start !== undefined);
   return addresses;
 }
+
+/** What the address is: a mailbox's, by the mailbox's ID, or a group, or undefined if the organization has no such address. */
+export async function addressTarget(table: Table, address: string): Promise<{ mailbox: string } | { group: Group } | undefined> {
+  const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: addressKey(address), ConsistentRead: true }));
+  if (Item === undefined) return undefined;
+  if (Item.group !== true) return { mailbox: Item.mailbox as string };
+  const group = await findGroup(table, address);
+  return group === undefined ? undefined : { group };
+}
+
+/**
+ * Adds the group, with its address, on behalf of the actor `by`. Throws AddressTaken if the
+ * organization has the address already.
+ */
+export async function addGroup(table: Table, { group, by }: { group: Group; by: string }): Promise<void> {
+  await recordChange(table, by, { type: "groupAdded", group }, [
+    { Put: { TableName: table.name, Item: { ...addressKey(group.address), address: group.address, group: true }, ...isNew } },
+    { Put: { TableName: table.name, Item: { ...groupKey(group.address), ...group } } },
+  ]).catch((error: unknown) => {
+    const taken = error instanceof TransactionCanceledException && error.CancellationReasons?.[2]?.Code === "ConditionalCheckFailed";
+    throw taken ? new AddressTaken() : error;
+  });
+}
+
+/** The group at the address, or undefined if the organization has none there. */
+export async function findGroup(table: Table, address: string): Promise<Group | undefined> {
+  const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: groupKey(address), ConsistentRead: true }));
+  return Item === undefined ? undefined : groupOf(Item as Group);
+}
+
+/** The organization's groups, in alphabetical order of their addresses. */
+export async function allGroups(table: Table): Promise<Group[]> {
+  const groups = await Promise.all((await allAddresses(table)).filter(({ group }) => group).map(({ address }) => findGroup(table, address)));
+  return groups.filter((group) => group !== undefined);
+}
+
+/**
+ * Replaces the group at the group's address with it, on behalf of the actor `by`. Throws NoGroup if
+ * the organization has no group there.
+ */
+export async function changeGroup(table: Table, { group, by }: { group: Group; by: string }): Promise<void> {
+  await recordChange(table, by, { type: "groupChanged", group }, [
+    { Put: { TableName: table.name, Item: { ...groupKey(group.address), ...group }, ConditionExpression: `attribute_exists(${pk})` } },
+  ]).catch((error: unknown) => {
+    const gone = error instanceof TransactionCanceledException && error.CancellationReasons?.[2]?.Code === "ConditionalCheckFailed";
+    throw gone ? new NoGroup() : error;
+  });
+}
+
+/** Removes the group and its address, on behalf of the actor `by`, and returns it, or undefined if the organization has no group there. */
+export async function removeGroup(table: Table, { address, by }: { address: string; by: string }): Promise<Group | undefined> {
+  const group = await findGroup(table, address);
+  if (group === undefined) return undefined;
+  try {
+    await recordChange(table, by, { type: "groupRemoved", address }, [
+      { Delete: { TableName: table.name, Key: addressKey(address), ConditionExpression: "#group = :group", ExpressionAttributeNames: { "#group": "group" }, ExpressionAttributeValues: { ":group": true } } },
+      { Delete: { TableName: table.name, Key: groupKey(address), ConditionExpression: `attribute_exists(${pk})` } },
+    ]);
+  } catch (error) {
+    // Another admin removed it meanwhile.
+    const gone = error instanceof TransactionCanceledException && error.CancellationReasons?.some(({ Code }) => Code === "ConditionalCheckFailed");
+    if (gone) return undefined;
+    throw error;
+  }
+  return group;
+}
+
+/**
+ * Takes the address out of every group it is a member of, on behalf of the actor `by`, each a change
+ * of that group, so whoever gets the address next isn't a member through it.
+ */
+export async function removeMember(table: Table, { address, by }: { address: string; by: string }): Promise<void> {
+  for (const group of await allGroups(table)) {
+    if (!group.members.includes(address)) continue;
+    await changeGroup(table, { group: { ...group, members: group.members.filter((member) => member !== address) }, by }).catch((error: unknown) => {
+      // It was deleted meanwhile, which takes the address out too.
+      if (!(error instanceof NoGroup)) throw error;
+    });
+  }
+}
+
+/** The organization has no group at the address. */
+export class NoGroup extends Error {}
+
+/** The group an item stores, in the order the contract lists its fields. */
+const groupOf = ({ address, members, sendPolicy, replyTo }: Group): Group => ({ address, members, sendPolicy, replyTo });
 
 /** The IDs of every mailbox in the organization, those with no address included. */
 export async function allMailboxes(table: Table): Promise<string[]> {
@@ -619,6 +708,7 @@ export async function organizationChanges(table: Table, after: number): Promise<
     if (change.added !== undefined) change.added = actorOf(change.added as Record<string, unknown>);
     if (change.removed !== undefined) change.removed = actorOf(change.removed as Record<string, unknown>);
     if (change.mailbox !== undefined && typeof change.mailbox === "object") change.mailbox = mailboxOf(change.mailbox as Mailbox);
+    if (change.group !== undefined && typeof change.group === "object") change.group = groupOf(change.group as Group);
   }
   return changes as OrganizationChange[];
 }
@@ -703,7 +793,8 @@ export class NotAHuman extends Error {}
 /**
  * Deletes the mailbox, on behalf of the actor `by`, with the items that hand its mail to the
  * eraser. Its addresses go at once, so they can be given again, and the mailbox is kept, marked
- * deleted, only as the counter of its change feed, where its erasure is recorded.
+ * deleted, only as the counter of its change feed, where its erasure is recorded. Its addresses
+ * leave every group they were members of.
  */
 export async function deleteMailbox(table: Table, { mailbox, by, items }: { mailbox: string; by: string; items: TransactItem[] }): Promise<void> {
   for (let attempt = 1; ; attempt++) {
@@ -733,6 +824,7 @@ export async function deleteMailbox(table: Table, { mailbox, by, items }: { mail
           ...items,
         ],
       });
+      for (const address of addresses) await removeMember(table, { address, by });
       return;
     } catch (error) {
       // The mailbox's own item comes after the feed's counter and its changes.

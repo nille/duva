@@ -299,6 +299,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the organization's groups, with their members.
+         * @description Only admins can list the organization's groups.
+         */
+        get: operations["listGroups"];
+        put?: never;
+        /**
+         * Create a group, an address that delivers a copy of each message to every member.
+         * @description Members are addresses: the organization's own, of mailboxes or other groups, and external addresses. Each local member's mailbox gets its own copy, marked with the group, which skips its Screener. A member that is a group gives its members a copy too, and each mailbox gets one copy however many ways it is a member. External members get the copy re-sent from the group's address, as "Alice via team", with Reply-To as the group's replyTo says. Mail from a sender the group's sendPolicy doesn't allow is bounced. Only admins can create groups. Creating one is a change to the organization's setup, recorded in its change feed under you.
+         */
+        post: operations["createGroup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/groups/{group}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read a group, with its members.
+         * @description Only admins can read the organization's groups.
+         */
+        get: operations["getGroup"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete a group, so that mail to its address is refused from now on.
+         * @description SES refuses mail to the group's address at once, and the address can be given to a mailbox or another group at once. The copies its members got stay theirs. Only admins can delete groups. Deleting one is a change to the organization's setup, recorded in its change feed under you.
+         */
+        delete: operations["deleteGroup"];
+        options?: never;
+        head?: never;
+        /**
+         * Change a group's members, who may send to it, or where external members' replies go.
+         * @description Give only what to change. Members you give replace the group's members. A change works for mail that arrives from then on. Only admins can change groups, and each change is recorded in the organization's change feed under you.
+         */
+        patch: operations["changeGroup"];
+        trace?: never;
+    };
     "/mailboxes": {
         parameters: {
             query?: never;
@@ -992,16 +1044,66 @@ export interface components {
             /** @description The ID of the mailbox it delivers to. */
             mailbox: string;
         };
-        /** @description An address on one of the organization's domains, and the mailbox it delivers to. */
+        /** @description An address on one of the organization's domains, and the mailbox it delivers to, or that it is a group. */
         Address: {
             /** @example support@example.com */
             address: string;
             /** @description The ID of the mailbox it delivers to. */
             mailbox?: string;
+            /**
+             * @description Present when the address is a group's.
+             * @constant
+             */
+            group?: true;
         };
         AddressList: {
             addresses: components["schemas"]["Address"][];
         };
+        NewGroup: {
+            /**
+             * @description The group's address, on one of the organization's domains, without a plus tag.
+             * @example support@example.com
+             */
+            address: string;
+            members: components["schemas"]["GroupMembers"];
+            sendPolicy?: components["schemas"]["SendPolicy"];
+            replyTo?: components["schemas"]["GroupReplyTo"];
+        };
+        GroupChanges: {
+            members?: components["schemas"]["GroupMembers"];
+            sendPolicy?: components["schemas"]["SendPolicy"];
+            replyTo?: components["schemas"]["GroupReplyTo"];
+        };
+        /** @description An address that delivers a copy of each message to every member. */
+        Group: {
+            /** @example support@example.com */
+            address: string;
+            members: components["schemas"]["GroupMembers"];
+            sendPolicy: components["schemas"]["SendPolicy"];
+            replyTo: components["schemas"]["GroupReplyTo"];
+        };
+        GroupList: {
+            groups: components["schemas"]["Group"][];
+        };
+        /**
+         * @description The members' addresses, in lower case: the organization's addresses, of mailboxes or other groups, and external addresses. A member on the organization's domains must be one of its addresses, without a plus tag.
+         * @example [
+         *       "grace@example.com",
+         *       "hermes@example.com",
+         *       "linus@example.net"
+         *     ]
+         */
+        GroupMembers: string[];
+        /**
+         * @description Who may send to the group, by the From of their mail. Anyone, the default, lets everyone. Organization lets only senders on the organization's domains. Members lets only the group's members, its nested groups' included, from any address of a member's mailbox. A From on the organization's domains counts only if the mail passed DMARC, and any other only if it didn't fail it. Mail from anyone else is bounced.
+         * @enum {string}
+         */
+        SendPolicy: "anyone" | "organization" | "members";
+        /**
+         * @description Where external members' replies to the copies re-sent to them go. Sender, the default, sends them to the original sender, and group to the group.
+         * @enum {string}
+         */
+        GroupReplyTo: "sender" | "group";
         MailboxChanges: {
             /**
              * @description The mailbox's new default address, one of its addresses.
@@ -1902,6 +2004,11 @@ export interface components {
              * @example news
              */
             plusTag?: string;
+            /**
+             * @description The address of the group the message came through, if it came to the mailbox as a member's copy, which skipped the Screener. Recipient is then the group's address.
+             * @example support@example.com
+             */
+            group?: string;
             subject: string;
             /**
              * Format: date-time
@@ -1991,7 +2098,7 @@ export interface components {
             position: number;
         };
         /** @description A change to the organization's setup. */
-        OrganizationChange: components["schemas"]["OrganizationAdded"] | components["schemas"]["DomainAdded"] | components["schemas"]["ActorAdded"] | components["schemas"]["AgentKeyRotated"] | components["schemas"]["MailboxAdded"] | components["schemas"]["AddressAdded"] | components["schemas"]["AddressRemoved"] | components["schemas"]["DefaultAddressChanged"] | components["schemas"]["SettingsChanged"] | components["schemas"]["ActorRemoved"] | components["schemas"]["AdminChanged"] | components["schemas"]["MailboxHandedOver"] | components["schemas"]["MailboxDeleted"];
+        OrganizationChange: components["schemas"]["OrganizationAdded"] | components["schemas"]["DomainAdded"] | components["schemas"]["ActorAdded"] | components["schemas"]["AgentKeyRotated"] | components["schemas"]["MailboxAdded"] | components["schemas"]["AddressAdded"] | components["schemas"]["AddressRemoved"] | components["schemas"]["DefaultAddressChanged"] | components["schemas"]["GroupAdded"] | components["schemas"]["GroupChanged"] | components["schemas"]["GroupRemoved"] | components["schemas"]["SettingsChanged"] | components["schemas"]["ActorRemoved"] | components["schemas"]["AdminChanged"] | components["schemas"]["MailboxHandedOver"] | components["schemas"]["MailboxDeleted"];
         ChangeBase: {
             /** @description The change's position in the feed, counting from 1. */
             position: number;
@@ -2166,6 +2273,44 @@ export interface components {
              */
             type: "defaultAddressChanged";
         };
+        GroupAdded: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "groupAdded";
+            group: components["schemas"]["Group"];
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "groupAdded";
+        };
+        GroupChanged: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "groupChanged";
+            /** @description The group as it is after the change. */
+            group: components["schemas"]["Group"];
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "groupChanged";
+        };
+        GroupRemoved: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "groupRemoved";
+            /**
+             * @description The group's address.
+             * @example support@example.com
+             */
+            address: string;
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "groupRemoved";
+        };
         SettingsChanged: components["schemas"]["ChangeBase"] & {
             /** @constant */
             type: "settingsChanged";
@@ -2286,6 +2431,8 @@ export interface components {
         Agent: string;
         /** @description The human's ID. */
         Human: string;
+        /** @description The group's address. Case doesn't matter. */
+        Group: string;
     };
     requestBodies: never;
     headers: never;
@@ -2801,6 +2948,139 @@ export interface operations {
                     "application/json": components["schemas"]["Address"];
                 };
             };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listGroups: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The organization's groups, in alphabetical order of their addresses. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewGroup"];
+            };
+        };
+        responses: {
+            /** @description The group. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Group"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The group's address. Case doesn't matter. */
+                group: components["parameters"]["Group"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The group. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Group"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deleteGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The group's address. Case doesn't matter. */
+                group: components["parameters"]["Group"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The group deleted. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Group"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    changeGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The group's address. Case doesn't matter. */
+                group: components["parameters"]["Group"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GroupChanges"];
+            };
+        };
+        responses: {
+            /** @description The group, changed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Group"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];

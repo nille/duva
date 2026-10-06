@@ -3,6 +3,7 @@ import type { ReceiptRule } from "@aws-sdk/client-ses";
 import type { SESEvent, SESReceiptStatus } from "aws-lambda";
 import PostalMime from "postal-mime";
 import type { MailBucket } from "../src/mail-bucket.ts";
+import { BounceRefused, type Bounces } from "../src/group-mail.ts";
 import type { ReceiptRules } from "../src/receiving.ts";
 import { type Outbound, Refused } from "../src/sending.ts";
 
@@ -35,6 +36,16 @@ export interface ReceiveOptions {
   at?: Date;
 }
 
+/** A bounce SES sent for a message it received: to its envelope sender, from a verified address, for the recipients. */
+export interface Bounce {
+  /** The ID SES gave the message bounced. */
+  messageId: string;
+  to: string;
+  from: string;
+  recipients: string[];
+  explanation: string;
+}
+
 /** SES's limits on a rule set: rules in it, and recipients in each rule. */
 const maxRules = 200;
 const maxRecipients = 500;
@@ -43,9 +54,13 @@ const maxRecipients = 500;
  * Stands in for SES receiving in one region: an active rule set, which Duva manages through
  * ReceiptRules, and the mail servers that apply it. Like SES, it checks when a rule is created that
  * it can write to the rule's bucket and invoke its Lambda, which here means the harness has them.
+ * It bounces a message it received back to its envelope sender, from an address on the domain.
  */
-export function sesReceiving({ buckets, functions }: { buckets: Map<string, MailBucket>; functions: Map<string, (event: SESEvent) => Promise<void>> }) {
+export function sesReceiving({ domain, buckets, functions }: { domain: string; buckets: Map<string, MailBucket>; functions: Map<string, (event: SESEvent) => Promise<void>> }) {
   const rules: ReceiptRule[] = [];
+  // The envelope sender of each message SES accepted, by the ID it gave it, and the bounces it sent.
+  const senders = new Map<string, string>();
+  const bounced: Bounce[] = [];
 
   const check = (rule: ReceiptRule) => {
     if ((rule.Recipients ?? []).length > maxRecipients) throw new Error(`Rule ${rule.Name} has more than ${maxRecipients} recipients.`);
@@ -80,8 +95,21 @@ export function sesReceiving({ buckets, functions }: { buckets: Map<string, Mail
     },
   };
 
+  const bounces: Bounces = {
+    async send({ messageId, from, recipients, explanation }) {
+      const to = senders.get(messageId);
+      if (to === undefined) throw new BounceRefused(`Message ${messageId} was not received by Amazon SES.`);
+      if (from.split("@")[1]?.toLowerCase() !== domain) throw new BounceRefused(`Email address is not verified: ${from}`);
+      if (recipients.length === 0) throw new BounceRefused("Specify at least one BouncedRecipientInfo.");
+      bounced.push({ messageId, to, from, recipients: [...recipients], explanation });
+    },
+  };
+
   return {
     rules: ruleSet,
+    bounces,
+    /** The bounces SES sent for messages it received, oldest first. */
+    bounced: () => structuredClone(bounced),
     /** The rules in the rule set, in order, as SES describes them. */
     describeRules: () => structuredClone(rules),
     /**
@@ -104,6 +132,7 @@ export function sesReceiving({ buckets, functions }: { buckets: Map<string, Mail
 
       const bytes = typeof raw === "string" ? new TextEncoder().encode(raw) : raw;
       const messageId = randomUUID().replaceAll("-", "");
+      senders.set(messageId, envelope.from);
       const timestamp = at.toISOString();
       const parsed = await PostalMime.parse(bytes);
       // Each rule acts on the recipients it matches, all with the one message ID.

@@ -244,3 +244,23 @@ function encodedWords(text: string): string {
   words.push(chunk);
   return words.map((word) => `=?UTF-8?B?${Buffer.from(word).toString("base64")}?=`).join("\r\n ");
 }
+
+/**
+ * Header fields a copy re-sent from a group leaves out: those naming the original sender, from
+ * whom SES won't send, signatures that would no longer verify, and those SES's receiving added.
+ */
+const notResent = /^(from|sender|reply-to|return-path|dkim-signature|domainkey-signature|arc-[\w-]+|authentication-results|received-spf|x-ses-[\w-]+)\s*:/i;
+
+/**
+ * The raw message as a group re-sends it to its external members (ADR-0003): from the group, with
+ * Reply-To as given, and its other header fields and its body as they came.
+ */
+export function resentMail(raw: Uint8Array, { from, replyTo }: { from: EmailAddress; replyTo: EmailAddress[] }): Uint8Array {
+  // Latin-1 keeps each byte as one character, so the body comes through as it was.
+  const text = Buffer.from(raw).toString("latin1");
+  const end = text.search(/\r?\n\r?\n/);
+  const head = end < 0 ? text : text.slice(0, end);
+  const fields = head.split(/\r?\n(?![ \t])/).filter((field) => field !== "" && !notResent.test(field));
+  const added = [`From: ${addressField(from)}`, `Reply-To: ${replyTo.map(addressField).join(",\r\n ")}`];
+  return Buffer.from(`${[...added, ...fields].join("\r\n")}${end < 0 ? "\r\n\r\n" : text.slice(end)}`, "latin1");
+}

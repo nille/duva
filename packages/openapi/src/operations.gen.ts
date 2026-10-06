@@ -475,6 +475,150 @@ export const operations = [
     ]
   },
   {
+    "operationId": "listGroups",
+    "method": "get",
+    "path": "/groups",
+    "routeKey": "GET /groups",
+    "summary": "List the organization's groups, with their members.",
+    "description": "Only admins can list the organization's groups.",
+    "signIn": true,
+    "command": [
+      "groups",
+      "list"
+    ],
+    "options": []
+  },
+  {
+    "operationId": "createGroup",
+    "method": "post",
+    "path": "/groups",
+    "routeKey": "POST /groups",
+    "summary": "Create a group, an address that delivers a copy of each message to every member.",
+    "description": "Members are addresses: the organization's own, of mailboxes or other groups, and external addresses. Each local member's mailbox gets its own copy, marked with the group, which skips its Screener. A member that is a group gives its members a copy too, and each mailbox gets one copy however many ways it is a member. External members get the copy re-sent from the group's address, as \"Alice via team\", with Reply-To as the group's replyTo says. Mail from a sender the group's sendPolicy doesn't allow is bounced. Only admins can create groups. Creating one is a change to the organization's setup, recorded in its change feed under you.",
+    "signIn": true,
+    "command": [
+      "groups",
+      "create"
+    ],
+    "options": [
+      {
+        "name": "address",
+        "in": "body",
+        "type": "string",
+        "required": true,
+        "description": "The group's address, on one of the organization's domains, without a plus tag."
+      },
+      {
+        "name": "members",
+        "in": "body",
+        "type": "strings",
+        "required": true,
+        "description": "The members' addresses, in lower case: the organization's addresses, of mailboxes or other groups, and external addresses. A member on the organization's domains must be one of its addresses, without a plus tag."
+      },
+      {
+        "name": "sendPolicy",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "Who may send to the group, by the From of their mail. Anyone, the default, lets everyone. Organization lets only senders on the organization's domains. Members lets only the group's members, its nested groups' included, from any address of a member's mailbox. A From on the organization's domains counts only if the mail passed DMARC, and any other only if it didn't fail it. Mail from anyone else is bounced."
+      },
+      {
+        "name": "replyTo",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "Where external members' replies to the copies re-sent to them go. Sender, the default, sends them to the original sender, and group to the group."
+      }
+    ]
+  },
+  {
+    "operationId": "getGroup",
+    "method": "get",
+    "path": "/groups/{group}",
+    "routeKey": "GET /groups/{group}",
+    "summary": "Read a group, with its members.",
+    "description": "Only admins can read the organization's groups.",
+    "signIn": true,
+    "command": [
+      "groups",
+      "get"
+    ],
+    "options": [
+      {
+        "name": "group",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The group's address. Case doesn't matter."
+      }
+    ]
+  },
+  {
+    "operationId": "deleteGroup",
+    "method": "delete",
+    "path": "/groups/{group}",
+    "routeKey": "DELETE /groups/{group}",
+    "summary": "Delete a group, so that mail to its address is refused from now on.",
+    "description": "SES refuses mail to the group's address at once, and the address can be given to a mailbox or another group at once. The copies its members got stay theirs. Only admins can delete groups. Deleting one is a change to the organization's setup, recorded in its change feed under you.",
+    "signIn": true,
+    "command": [
+      "groups",
+      "delete"
+    ],
+    "options": [
+      {
+        "name": "group",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The group's address. Case doesn't matter."
+      }
+    ]
+  },
+  {
+    "operationId": "changeGroup",
+    "method": "patch",
+    "path": "/groups/{group}",
+    "routeKey": "PATCH /groups/{group}",
+    "summary": "Change a group's members, who may send to it, or where external members' replies go.",
+    "description": "Give only what to change. Members you give replace the group's members. A change works for mail that arrives from then on. Only admins can change groups, and each change is recorded in the organization's change feed under you.",
+    "signIn": true,
+    "command": [
+      "groups",
+      "change"
+    ],
+    "options": [
+      {
+        "name": "group",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The group's address. Case doesn't matter."
+      },
+      {
+        "name": "members",
+        "in": "body",
+        "type": "strings",
+        "required": false,
+        "description": "The members' addresses, in lower case: the organization's addresses, of mailboxes or other groups, and external addresses. A member on the organization's domains must be one of its addresses, without a plus tag."
+      },
+      {
+        "name": "sendPolicy",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "Who may send to the group, by the From of their mail. Anyone, the default, lets everyone. Organization lets only senders on the organization's domains. Members lets only the group's members, its nested groups' included, from any address of a member's mailbox. A From on the organization's domains counts only if the mail passed DMARC, and any other only if it didn't fail it. Mail from anyone else is bounced."
+      },
+      {
+        "name": "replyTo",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "Where external members' replies to the copies re-sent to them go. Sender, the default, sends them to the original sender, and group to the group."
+      }
+    ]
+  },
+  {
     "operationId": "listMailboxes",
     "method": "get",
     "path": "/mailboxes",

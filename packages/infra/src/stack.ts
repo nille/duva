@@ -227,7 +227,7 @@ export class DuvaStack extends Stack {
     const inbound = lambda(
       "InboundHandler",
       "@duva/api/inbound-lambda",
-      { [environmentVariables.tableName]: table.tableName, [environmentVariables.mailBucket]: mail.bucketName },
+      { [environmentVariables.tableName]: table.tableName, [environmentVariables.mailBucket]: mail.bucketName, [environmentVariables.configurationSet]: sending.configurationSetName },
       { memorySize: 1024, timeout: Duration.seconds(60) },
     );
     inbound.configureAsyncInvoke({ retryAttempts: 2, onFailure: new SqsDestination(inboundFailures) });
@@ -237,6 +237,17 @@ export class DuvaStack extends Stack {
     inbound.addToRolePolicy(new PolicyStatement({ actions: ["s3:DeleteObjectVersion"], resources: [mail.arnForObjects(`${inboundPrefix}*`)] }));
     inbound.addToRolePolicy(
       new PolicyStatement({ actions: ["s3:ListBucketVersions"], resources: [mail.bucketArn], conditions: { StringLike: { "s3:prefix": `${inboundPrefix}*` } } }),
+    );
+
+    // It re-sends a group's mail to external members from the group's address (ADR-0003), and
+    // bounces mail a group refuses, both from the domain's identity.
+    identity.grantSendEmail(inbound);
+    identity.grant(inbound, "ses:SendBounce");
+    inbound.addToRolePolicy(
+      new PolicyStatement({
+        actions: ["ses:SendEmail", "ses:SendRawEmail"],
+        resources: [this.formatArn({ service: "ses", resource: "configuration-set", resourceName: sending.configurationSetName })],
+      }),
     );
 
     // Duva creates its receipt rules as addresses come, so only they may use the bucket and the

@@ -526,6 +526,137 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+  /groups:
+    post:
+      operationId: createGroup
+      summary: Create a group, an address that delivers a copy of each message to every member.
+      description: >
+        Members are addresses: the organization's own, of mailboxes or other
+        groups, and external addresses. Each local member's mailbox gets its
+        own copy, marked with the group, which skips its Screener. A member
+        that is a group gives its members a copy too, and each mailbox gets
+        one copy however many ways it is a member. External members get the
+        copy re-sent from the group's address, as "Alice via team", with
+        Reply-To as the group's replyTo says. Mail from a sender the group's
+        sendPolicy doesn't allow is bounced. Only admins can create groups.
+        Creating one is a change to the organization's setup, recorded in its
+        change feed under you.
+      x-cli-command: groups create
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NewGroup"
+      responses:
+        "201":
+          description: The group.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Group"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+    get:
+      operationId: listGroups
+      summary: List the organization's groups, with their members.
+      description: Only admins can list the organization's groups.
+      x-cli-command: groups list
+      responses:
+        "200":
+          description: The organization's groups, in alphabetical order of their addresses.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /groups/{group}:
+    get:
+      operationId: getGroup
+      summary: Read a group, with its members.
+      description: Only admins can read the organization's groups.
+      x-cli-command: groups get
+      parameters:
+        - $ref: "#/components/parameters/Group"
+      responses:
+        "200":
+          description: The group.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Group"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: changeGroup
+      summary: Change a group's members, who may send to it, or where external members' replies go.
+      description: >
+        Give only what to change. Members you give replace the group's
+        members. A change works for mail that arrives from then on. Only
+        admins can change groups, and each change is recorded in the
+        organization's change feed under you.
+      x-cli-command: groups change
+      parameters:
+        - $ref: "#/components/parameters/Group"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GroupChanges"
+      responses:
+        "200":
+          description: The group, changed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Group"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: deleteGroup
+      summary: Delete a group, so that mail to its address is refused from now on.
+      description: >
+        SES refuses mail to the group's address at once, and the address can
+        be given to a mailbox or another group at once. The copies its members
+        got stay theirs. Only admins can delete groups. Deleting one is a
+        change to the organization's setup, recorded in its change feed under
+        you.
+      x-cli-command: groups delete
+      parameters:
+        - $ref: "#/components/parameters/Group"
+      responses:
+        "200":
+          description: The group deleted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Group"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /mailboxes:
     post:
       operationId: createMailbox
@@ -1720,6 +1851,13 @@ components:
       description: The human's ID.
       schema:
         type: string
+    Group:
+      name: group
+      in: path
+      required: true
+      description: The group's address. Case doesn't matter.
+      schema:
+        type: string
   securitySchemes:
     session:
       type: http
@@ -2005,7 +2143,7 @@ components:
       type: object
       additionalProperties: false
       required: [address]
-      description: An address on one of the organization's domains, and the mailbox it delivers to.
+      description: An address on one of the organization's domains, and the mailbox it delivers to, or that it is a group.
       properties:
         address:
           type: string
@@ -2013,6 +2151,10 @@ components:
         mailbox:
           type: string
           description: The ID of the mailbox it delivers to.
+        group:
+          type: boolean
+          const: true
+          description: Present when the address is a group's.
     AddressList:
       type: object
       additionalProperties: false
@@ -2022,6 +2164,79 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Address"
+    NewGroup:
+      type: object
+      additionalProperties: false
+      required: [address, members]
+      properties:
+        address:
+          type: string
+          description: The group's address, on one of the organization's domains, without a plus tag.
+          examples: ["support@example.com"]
+        members:
+          $ref: "#/components/schemas/GroupMembers"
+        sendPolicy:
+          $ref: "#/components/schemas/SendPolicy"
+        replyTo:
+          $ref: "#/components/schemas/GroupReplyTo"
+    GroupChanges:
+      type: object
+      additionalProperties: false
+      properties:
+        members:
+          $ref: "#/components/schemas/GroupMembers"
+        sendPolicy:
+          $ref: "#/components/schemas/SendPolicy"
+        replyTo:
+          $ref: "#/components/schemas/GroupReplyTo"
+    Group:
+      type: object
+      additionalProperties: false
+      required: [address, members, sendPolicy, replyTo]
+      description: An address that delivers a copy of each message to every member.
+      properties:
+        address:
+          type: string
+          examples: ["support@example.com"]
+        members:
+          $ref: "#/components/schemas/GroupMembers"
+        sendPolicy:
+          $ref: "#/components/schemas/SendPolicy"
+        replyTo:
+          $ref: "#/components/schemas/GroupReplyTo"
+    GroupList:
+      type: object
+      additionalProperties: false
+      required: [groups]
+      properties:
+        groups:
+          type: array
+          items:
+            $ref: "#/components/schemas/Group"
+    GroupMembers:
+      type: array
+      items:
+        type: string
+      description: >-
+        The members' addresses, in lower case: the organization's addresses, of mailboxes or other
+        groups, and external addresses. A member on the organization's domains must be one of its
+        addresses, without a plus tag.
+      examples: [["grace@example.com", "hermes@example.com", "linus@example.net"]]
+    SendPolicy:
+      type: string
+      enum: [anyone, organization, members]
+      description: >-
+        Who may send to the group, by the From of their mail. Anyone, the default, lets everyone.
+        Organization lets only senders on the organization's domains. Members lets only the group's
+        members, its nested groups' included, from any address of a member's mailbox. A From on the
+        organization's domains counts only if the mail passed DMARC, and any other only if it didn't
+        fail it. Mail from anyone else is bounced.
+    GroupReplyTo:
+      type: string
+      enum: [sender, group]
+      description: >-
+        Where external members' replies to the copies re-sent to them go. Sender, the default,
+        sends them to the original sender, and group to the group.
     MailboxChanges:
       type: object
       additionalProperties: false
@@ -3318,6 +3533,12 @@ components:
           type: string
           description: The plus tag of the address the message was delivered to, if it had one.
           examples: ["news"]
+        group:
+          type: string
+          description: >-
+            The address of the group the message came through, if it came to the mailbox as a
+            member's copy, which skipped the Screener. Recipient is then the group's address.
+          examples: ["support@example.com"]
         subject:
           type: string
         date:
@@ -3446,6 +3667,9 @@ components:
         - $ref: "#/components/schemas/AddressAdded"
         - $ref: "#/components/schemas/AddressRemoved"
         - $ref: "#/components/schemas/DefaultAddressChanged"
+        - $ref: "#/components/schemas/GroupAdded"
+        - $ref: "#/components/schemas/GroupChanged"
+        - $ref: "#/components/schemas/GroupRemoved"
         - $ref: "#/components/schemas/SettingsChanged"
         - $ref: "#/components/schemas/ActorRemoved"
         - $ref: "#/components/schemas/AdminChanged"
@@ -3462,6 +3686,9 @@ components:
           addressAdded: "#/components/schemas/AddressAdded"
           addressRemoved: "#/components/schemas/AddressRemoved"
           defaultAddressChanged: "#/components/schemas/DefaultAddressChanged"
+          groupAdded: "#/components/schemas/GroupAdded"
+          groupChanged: "#/components/schemas/GroupChanged"
+          groupRemoved: "#/components/schemas/GroupRemoved"
           settingsChanged: "#/components/schemas/SettingsChanged"
           actorRemoved: "#/components/schemas/ActorRemoved"
           adminChanged: "#/components/schemas/AdminChanged"
@@ -3641,6 +3868,42 @@ components:
             defaultAddress:
               type: string
               description: Its new default address, absent if it has no address left.
+              examples: ["support@example.com"]
+    GroupAdded:
+      allOf:
+        - $ref: "#/components/schemas/ChangeBase"
+        - type: object
+          required: [type, group]
+          properties:
+            type:
+              type: string
+              const: groupAdded
+            group:
+              $ref: "#/components/schemas/Group"
+    GroupChanged:
+      allOf:
+        - $ref: "#/components/schemas/ChangeBase"
+        - type: object
+          required: [type, group]
+          properties:
+            type:
+              type: string
+              const: groupChanged
+            group:
+              $ref: "#/components/schemas/Group"
+              description: The group as it is after the change.
+    GroupRemoved:
+      allOf:
+        - $ref: "#/components/schemas/ChangeBase"
+        - type: object
+          required: [type, address]
+          properties:
+            type:
+              type: string
+              const: groupRemoved
+            address:
+              type: string
+              description: The group's address.
               examples: ["support@example.com"]
     SettingsChanged:
       allOf:

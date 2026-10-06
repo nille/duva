@@ -83,9 +83,11 @@ export interface Arrival {
   sesMessageId: string;
   /** Where the raw message is in the mail bucket. */
   rawKey: string;
-  /** The mailbox's address SES delivered it to, with its plus tag. */
+  /** The mailbox's address SES delivered it to, with its plus tag, or the group's it came through. */
   recipient: string;
   plusTag?: string;
+  /** The address of the group it came through, if it is a member's copy. */
+  group?: string;
   /** The envelope sender, for mail without a From. */
   sender: string;
   receivedAt: string;
@@ -136,6 +138,8 @@ interface StoredMessage {
   bcc?: components["schemas"]["EmailAddress"][];
   recipient: string;
   plusTag?: string;
+  /** The address of the group it came through, if it is a member's copy. */
+  group?: string;
   subject: string;
   date: string;
   receivedAt: string;
@@ -155,7 +159,7 @@ interface StoredMessage {
  * ScreeningChanged if a condition of its screening failed.
  */
 export async function receiveMessage(table: Table, arrival: Arrival): Promise<boolean> {
-  const { mailbox, sesMessageId, rawKey, recipient, plusTag, sender, receivedAt, parsed, screening } = arrival;
+  const { mailbox, sesMessageId, rawKey, recipient, plusTag, group, sender, receivedAt, parsed, screening } = arrival;
   const started = screening?.label ?? inbox;
   const label = (joined: boolean) => (arrival.spam ? spam : joined ? inbox : started);
   const screened = { [screener]: "waiting", [trash]: "blocked", [inbox]: undefined }[started];
@@ -170,6 +174,7 @@ export async function receiveMessage(table: Table, arrival: Arrival): Promise<bo
     cc: parsed.cc,
     recipient,
     plusTag,
+    group,
     subject: parsed.subject,
     date: parsed.date ?? receivedAt,
     receivedAt,
@@ -718,7 +723,7 @@ async function readMessage(mailBucket: MailBucket, stored: StoredMessage, linkTo
   const parsed = await parseMail(raw);
   const { text, attachments } = parsed;
   const html = parsed.html === undefined || linkTo === undefined ? undefined : await servedHtml(parsed.html, parsed.parts, (attachment) => linkTo(stored.id, attachment));
-  const { id, messageId, from, to, cc, bcc, recipient, plusTag, subject, date, receivedAt, sentBy, approval } = stored;
+  const { id, messageId, from, to, cc, bcc, recipient, plusTag, group, subject, date, receivedAt, sentBy, approval } = stored;
   const message = {
     id,
     messageId,
@@ -728,6 +733,7 @@ async function readMessage(mailBucket: MailBucket, stored: StoredMessage, linkTo
     ...(bcc !== undefined && bcc.length > 0 && { bcc: bcc.map(addressOf) }),
     recipient,
     plusTag,
+    ...(group !== undefined && { group }),
     subject,
     date,
     receivedAt,

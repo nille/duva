@@ -9,10 +9,12 @@ import {
   AddressTaken,
   allAddresses,
   chooseDefaultAddress,
+  findGroup,
   findMailbox,
   NotItsAddress,
   organizationDomain,
   removeAddress as removeStoredAddress,
+  removeMember,
 } from "./organization.ts";
 import { maxAddresses, syncRecipients } from "./receiving.ts";
 
@@ -76,10 +78,12 @@ export const listAddresses: OperationHandler = async (_event, deployment, actor)
 export const removeAddress: OperationHandler = async (event, deployment, actor) => {
   if (!actor?.admin) return onlyAdmins();
   const address = (event.pathParameters?.address ?? "").trim().toLowerCase();
+  if ((await findGroup(deployment.table, address)) !== undefined) return refusal(409, `${address} is a group's address. Delete the group to remove it.`);
   const removed = await removeStoredAddress(deployment.table, { address, by: actor.id });
   // Done even when it's gone, in case SES failed when it was removed.
   await syncRecipients(deployment.table, deployment.receiving);
   if (removed === undefined) return refusal(404, `The organization has no address ${JSON.stringify(address)}. List its addresses to find it.`);
+  await removeMember(deployment.table, { address, by: actor.id });
   return { statusCode: 200, body: removed satisfies components["schemas"]["Address"] };
 };
 

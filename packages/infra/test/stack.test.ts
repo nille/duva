@@ -414,6 +414,18 @@ test("the sender sends through SES under Duva's configuration set, and stores wh
   expect(JSON.stringify(puts[0]!.Resource)).toContain('"/sent/*"');
 });
 
+test("the inbound Lambda re-sends groups' mail through SES under Duva's configuration set, and bounces what a group refuses, only from the domain's identity", () => {
+  expect([...new Set(actions("InboundHandler", "ses"))].sort()).toEqual(["ses:SendBounce", "ses:SendEmail", "ses:SendRawEmail"]);
+  const [[setId]] = ofType("AWS::SES::ConfigurationSet") as [[string, Resource]];
+  const [[identityId]] = ofType("AWS::SES::EmailIdentity") as [[string, Resource]];
+  expect(lambda("InboundHandler")[1].Properties?.Environment?.Variables?.[environmentVariables.configurationSet]).toEqual({ Ref: setId });
+  for (const { Action, Resource } of statements("InboundHandler").filter(({ Action }) => [Action].flat().some((action) => action.startsWith("ses:")))) {
+    const on = JSON.stringify(Resource);
+    const onIdentity = on.includes(`identity/",{"Ref":"${identityId}"}`);
+    expect(onIdentity || (on.includes(`configuration-set/",{"Ref":"${setId}"}`) && !JSON.stringify(Action).includes("SendBounce"))).toBe(true);
+  }
+});
+
 test("the API manages receipt rules in Duva's rule set, and may take no other SES action", () => {
   // IAM has no resource type for receipt rules, so the rule set is named only in the environment.
   expect(actions("ApiHandler", "ses").sort()).toEqual(["ses:CreateReceiptRule", "ses:DeleteReceiptRule", "ses:DescribeReceiptRuleSet", "ses:UpdateReceiptRule"]);

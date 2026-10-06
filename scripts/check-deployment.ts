@@ -76,6 +76,14 @@ await check("adding a human without credentials answers 401", async () =>
   expectStatus(await fetch(`${apiUrl}/humans`, { method: "POST", headers: { "content-type": "application/json" }, body: '{"email":"check@example.com"}' }), 401),
 );
 await check("listing humans without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/humans`), 401));
+await check("listing groups without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/groups`), 401));
+await check("creating a group without credentials answers 401", async () =>
+  expectStatus(await fetch(`${apiUrl}/groups`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ address: "x", members: [] }) }), 401),
+);
+await check("changing a group without credentials answers 401", async () =>
+  expectStatus(await fetch(`${apiUrl}/groups/x`, { method: "PATCH", headers: { "content-type": "application/json" }, body: "{}" }), 401),
+);
+await check("deleting a group without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/groups/x`, { method: "DELETE" }), 401));
 await check("listing mailboxes without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/mailboxes`), 401));
 await check("reading a mailbox without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/mailboxes/x`), 401));
 await check("listing approvals without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/approvals`), 401));

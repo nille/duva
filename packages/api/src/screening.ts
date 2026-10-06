@@ -7,6 +7,7 @@ import { ConditionalCheckFailedException, TransactionCanceledException } from "@
 import { GetCommand, PutCommand, QueryCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import type { components } from "@duva/openapi";
 import type { Table } from "./deployment.ts";
+import { domainOf } from "./email-address.ts";
 import { recordChanges } from "./feed.ts";
 import { type Arrival, correspondents, hasSentTo, inbox, noteSentTo, receiveMessage, releaseWaiting, restoreBlocked, screener, type Screening, ScreeningChanged, spam, threadsLabelled, type ThreadSummary, trash, waitingThreads } from "./mail.ts";
 import { allMailboxes, findActor, findMailbox, mailboxFeed, mailboxKey, organizationDomain, screenerKey } from "./organization.ts";
@@ -29,7 +30,6 @@ type State = "on" | "off" | "turningOn" | undefined;
 const senderPrefix = "screened#";
 const keyOf = (sender: Sender) => ("address" in sender ? `address#${sender.address}` : `domain#${sender.domain}`);
 const senderKey = (mailbox: string, sender: Sender) => ({ [pk]: mailboxKey(mailbox)[pk]!, [sk]: `${senderPrefix}${keyOf(sender)}` });
-const domainOf = (address: string) => address.slice(address.lastIndexOf("@") + 1);
 
 async function stateOf(table: Table, mailbox: string): Promise<State> {
   const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: screenerKey(mailbox), ConsistentRead: true }));
@@ -89,11 +89,11 @@ const letInItem = (table: Table, mailbox: string, address: string, at: string, b
 
 /**
  * Receives the message as receiveMessage does, screened by its mailbox's Screener unless it is
- * spam, and screened again if what the Screener decided from changed before it was stored.
- * `dmarcPassed` says whether SES's DMARC verdict on it was PASS.
+ * spam or a group member's copy, since the group's send policy is its gate (ADR-0019), and
+ * screened again if what the Screener decided from changed before it was stored. `dmarcPassed` says whether SES's DMARC verdict on it was PASS.
  */
 export async function receiveScreened(table: Table, { dmarcPassed, ...arrival }: Omit<Arrival, "screening"> & { dmarcPassed: boolean }): Promise<boolean> {
-  if (arrival.spam) return receiveMessage(table, arrival);
+  if (arrival.spam || arrival.group !== undefined) return receiveMessage(table, arrival);
   const address = (arrival.parsed.from?.address ?? arrival.sender).toLowerCase();
   for (let attempt = 1; ; attempt++) {
     try {

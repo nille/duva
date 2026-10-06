@@ -6,6 +6,7 @@ import { changeAgentSettings, createAgent, getAgentSettings, listAgents, removeA
 import type { AuthorizerContext } from "./authorizer.ts";
 import { listOrganizationChanges } from "./changes.ts";
 import { createDraft, deleteDraft, editDraft, getDraft, listApprovals, listDrafts, rejectApproval, sendApproval, sendDraft } from "./drafts.ts";
+import { changeGroup, createGroup, deleteGroup, getGroup, listGroups } from "./groups.ts";
 import { addHuman, changeHuman, listHumans, removeHuman } from "./humans.ts";
 import {
   createMailbox,
@@ -65,6 +66,11 @@ const handlers: Record<OperationId, OperationHandler> = {
   addAddress,
   listAddresses,
   removeAddress,
+  createGroup,
+  listGroups,
+  getGroup,
+  changeGroup,
+  deleteGroup,
   createMailbox,
   listMailboxes,
   getMailbox,
