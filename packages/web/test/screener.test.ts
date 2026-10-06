@@ -218,7 +218,8 @@ test("a Screener that is off says so, and where to switch it on", budget, async 
   await go(page, "#/screener");
 
   await expect.poll(() => page.getByRole("heading", { level: 1 }).textContent(), wait).toBe("Screener");
-  expect(await page.getByRole("main").innerText()).toContain("The Screener is off, so mail from first-time senders goes to the Inbox.");
+  // The heading shows before the Screener's state has loaded.
+  await expect.poll(() => page.getByRole("main").innerText(), wait).toContain("The Screener is off, so mail from first-time senders goes to the Inbox.");
   expect(await page.getByRole("main").getByRole("link", { name: "Switch it on in Settings" }).count()).toBe(1);
 });
 
