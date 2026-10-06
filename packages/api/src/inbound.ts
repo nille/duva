@@ -11,7 +11,7 @@ import { domainOf } from "./email-address.ts";
 import { inboundPrefix } from "./infrastructure.ts";
 import type { MailBucket } from "./mail-bucket.ts";
 import { parseMail } from "./mime.ts";
-import { bounceOnce, type Bounces, type Expanded, expand, type GroupRefusal, isOwnMail, refusalOf, resendToExternalMembers, type Sender } from "./group-mail.ts";
+import { bounceOnce, type Bounces, type Expanded, expand, type GroupRefusal, isOwnMail, refusalOf, resendToExternalMembers, type Sender, sentByMember } from "./group-mail.ts";
 import { addressTarget, allDomains, type CatchAll, catchAllTarget, type Group } from "./organization.ts";
 import type { Outbound } from "./sending.ts";
 import { receiveScreened } from "./screening.ts";
@@ -67,6 +67,8 @@ export function createInbound({ table, mailBucket, log, outbound, bounces }: { t
       const delivered = new Map<string, Recipient & { group?: string }>(direct);
       const refused: GroupRefusal[] = [];
       const taken: typeof groups = [];
+      // A member that mails its group gets no copy of its own mail.
+      const sentBy = { ...sender, envelopeSender: ses.mail.source.toLowerCase(), spf: ses.receipt.spfVerdict.status, messageId: parsed.messageId };
       for (const each of groups) {
         // The group's own copy coming back has already reached its members.
         if (isOwnMail(each.group, sender)) continue;
@@ -76,7 +78,10 @@ export function createInbound({ table, mailBucket, log, outbound, bounces }: { t
           continue;
         }
         taken.push(each);
-        for (const mailbox of each.expanded.mailboxes) if (!delivered.has(mailbox)) delivered.set(mailbox, { recipient: each.recipient, plusTag: each.plusTag, group: each.group.address });
+        for (const mailbox of each.expanded.mailboxes) {
+          if (delivered.has(mailbox) || (await sentByMember(table, mailbox, sentBy))) continue;
+          delivered.set(mailbox, { recipient: each.recipient, plusTag: each.plusTag, group: each.group.address });
+        }
       }
       for (const [mailbox, to] of caught) if (!delivered.has(mailbox)) delivered.set(mailbox, to);
       for (const [mailbox, to] of delivered) {

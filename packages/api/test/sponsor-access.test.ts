@@ -206,7 +206,7 @@ test("an agent without sponsor access lists only its own mailbox", async () => {
 
   const { data } = await hermes.GET("/mailboxes");
 
-  expect(data).toEqual({ mailboxes: [hermesMailbox] });
+  expect(data).toEqual({ mailboxes: [{ ...hermesMailbox, groups: [] }] });
 });
 
 test.each(["read", "full"] as const)("an agent with %s sponsor access lists its sponsor's mailbox beside its own, with its access", async (access) => {
@@ -215,7 +215,7 @@ test.each(["read", "full"] as const)("an agent with %s sponsor access lists its 
   await giveAccess(access);
 
   const { data } = await hermes.GET("/mailboxes");
-  expect(data).toEqual({ mailboxes: [hermesMailbox, { ...linusMailbox, sponsorAccess: access }] });
+  expect(data).toEqual({ mailboxes: [{ ...hermesMailbox, groups: [] }, { ...linusMailbox, groups: [], sponsorAccess: access }] });
 });
 
 test("a sponsor with two mailboxes gives an agent sponsor access to both, recorded in each one's change feed", async () => {
@@ -225,10 +225,10 @@ test("a sponsor with two mailboxes gives an agent sponsor access to both, record
   await giveAccess("read");
 
   const { data } = await hermes.GET("/mailboxes");
-  expect(data!.mailboxes[0]).toEqual(hermesMailbox);
+  expect(data!.mailboxes[0]).toEqual({ ...hermesMailbox, groups: [] });
   // The sponsor's mailboxes come in no particular order.
   expect(data!.mailboxes.slice(1)).toHaveLength(2);
-  expect(data!.mailboxes.slice(1)).toEqual(expect.arrayContaining([{ ...linusMailbox, sponsorAccess: "read" }, { ...second!, sponsorAccess: "read" }]));
+  expect(data!.mailboxes.slice(1)).toEqual(expect.arrayContaining([{ ...linusMailbox, groups: [], sponsorAccess: "read" }, { ...second!, groups: [], sponsorAccess: "read" }]));
   for (const mailbox of [linusMailbox, second!]) {
     const { data: feed } = await linus.GET("/mailboxes/{mailbox}/changes", { params: { path: { mailbox: mailbox.id } } });
     expect(feed!.changes.map(({ type }) => type).filter((type) => type !== "screenerSwitched")).toEqual(["agentSettingsChanged"]);
@@ -303,7 +303,7 @@ test("taking sponsor access away works at once", async () => {
   await giveAccess("none");
 
   expect((await readings(hermes, placed).inbox()).response.status).toBe(403);
-  expect((await hermes.GET("/mailboxes")).data).toEqual({ mailboxes: [hermesMailbox] });
+  expect((await hermes.GET("/mailboxes")).data).toEqual({ mailboxes: [{ ...hermesMailbox, groups: [] }] });
 });
 
 /** What the actor can't do in the mailbox with read sponsor access, each as it calls it. */

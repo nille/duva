@@ -175,8 +175,8 @@ test("a group open to the organization bounces mail from outside it, and from a 
   await duva.receive(message("hermes@example.com", "staff@example.com", "Inside"), { from: "hermes@example.com", to: ["staff@example.com"] });
 
   expect(duva.bounces()).toEqual([
-    { messageId: outside.messageId, to: "linus@example.net", from: "mailer-daemon@example.com", recipients: ["staff@example.com"], explanation: expect.stringMatching(/organization/) },
-    { messageId: forged.messageId, to: "hermes@example.com", from: "mailer-daemon@example.com", recipients: ["staff@example.com"], explanation: expect.stringMatching(/organization/) },
+    { messageId: outside.messageId, to: "linus@example.net", from: "MAILER-DAEMON@eu-north-1.amazonses.com", recipients: ["staff@example.com"], explanation: expect.stringMatching(/organization/) },
+    { messageId: forged.messageId, to: "hermes@example.com", from: "MAILER-DAEMON@eu-north-1.amazonses.com", recipients: ["staff@example.com"], explanation: expect.stringMatching(/organization/) },
   ]);
   expect((await messagesIn(grace, graces)).map(({ subject }) => subject)).toEqual(["Inside"]);
   expect(duva.sentTo()).toEqual([["mia@example.net"]]);
@@ -197,20 +197,41 @@ test("a group open to its members takes mail from them, those of its nested grou
     ["From Hermes", "family@example.com"],
     ["From Mia", "family@example.com"],
   ]);
-  expect(duva.bounces()).toEqual([{ messageId: stranger.messageId, to: "linus@example.net", from: "mailer-daemon@example.com", recipients: ["family@example.com"], explanation: expect.stringMatching(/members/) }]);
+  expect(duva.bounces()).toEqual([{ messageId: stranger.messageId, to: "linus@example.net", from: "MAILER-DAEMON@eu-north-1.amazonses.com", recipients: ["family@example.com"], explanation: expect.stringMatching(/members/) }]);
 });
 
 test("a member's mailbox sends to a members-only group from any of its addresses, but only with a DMARC pass", async () => {
-  const { duva, ada, grace, graces } = await withMembers();
-  await grace.PATCH("/mailboxes/{mailbox}/screener", { params: graces, body: { on: false } });
+  const { duva, ada, hermes, hermess, graces } = await withMembers();
   await ada.POST("/addresses", { body: { address: "g@example.com", mailbox: graces.path.mailbox } });
-  await ada.POST("/groups", { body: { address: "family@example.com", members: ["grace@example.com"], sendPolicy: "members" } });
+  await ada.POST("/groups", { body: { address: "family@example.com", members: ["grace@example.com", "hermes@example.com"], sendPolicy: "members" } });
 
   await duva.receive(message("g@example.com", "family@example.com", "From G"), { to: ["family@example.com"] });
   await duva.receive(message("grace@example.com", "family@example.com", "Forged"), { to: ["family@example.com"] }, { verdicts: { dmarc: "GRAY" } });
 
-  expect((await messagesIn(grace, graces)).map(({ subject }) => subject)).toEqual(["From G"]);
+  expect((await messagesIn(hermes, hermess)).map(({ subject }) => subject)).toEqual(["From G"]);
   expect(duva.bounces().map(({ recipients }) => recipients)).toEqual([["family@example.com"]]);
+});
+
+test("a member mailing its group gets no copy of its own mail, sent from Duva or elsewhere, while forged mail still reaches it", async () => {
+  const { duva, ada, grace, hermes, hermess, graces } = await withMembers();
+  await grace.PATCH("/mailboxes/{mailbox}/screener", { params: graces, body: { on: false } });
+  await ada.POST("/addresses", { body: { address: "g@example.com", mailbox: graces.path.mailbox } });
+  await ada.POST("/groups", { body: { address: "team@example.com", members: ["grace@example.com", "hermes@example.com"] } });
+
+  await duva.receive(message("G@example.com", "team@example.com", "From G"), { from: "bounces@mail.example.com", to: ["team@example.com"] });
+  await duva.receive(message("linus@example.net", "team@example.com", "From Linus"), { from: "g@example.com", to: ["team@example.com"] });
+  await duva.receive(message("mia@example.net", "team@example.com", "From Mia"), { from: "g@example.com", to: ["team@example.com"] }, { verdicts: { spf: "FAIL" } });
+  const { data: draft } = await grace.POST("/mailboxes/{mailbox}/drafts", { params: graces, body: { to: ["team@example.com"], subject: "Sent by Grace", text: "Hej." } });
+  await grace.POST("/mailboxes/{mailbox}/drafts/{draft}/send", { params: { path: { ...graces.path, draft: draft!.id } } });
+  // SES's copy coming back to the group, its DMARC unsettled.
+  await duva.receive(duva.sent()[0]!, { from: "bounces@mail.example.com", to: ["team@example.com"] }, { verdicts: { dmarc: "GRAY" } });
+  await duva.receive(message("grace@example.com", "team@example.com", "Forged"), { from: "spam@example.net", to: ["team@example.com"] }, { verdicts: { dmarc: "GRAY" } });
+
+  expect((await messagesIn(hermes, hermess)).map(({ subject }) => subject)).toEqual(["Forged", "Sent by Grace", "From Mia", "From Linus", "From G"]);
+  // An envelope sender counts only with an SPF pass, and a From only with a DMARC pass.
+  expect((await messagesIn(grace, graces)).map(({ subject }) => subject)).toEqual(["Forged", "From Mia"]);
+  const { data: sent } = await grace.GET("/mailboxes/{mailbox}/sent", { params: graces });
+  expect(sent?.threads).toMatchObject([{ subject: "Sent by Grace", messages: 1 }]);
 });
 
 test("removing an address, or deleting a group, takes it out of every group it was a member of", async () => {
@@ -247,18 +268,17 @@ test("a bounced message is bounced once, however often Lambda runs its event", a
 });
 
 test("an admin changes a group's members and policy, and deletes it, each a change in the organization's feed", async () => {
-  const { duva, ada, grace, graces } = await withMembers();
-  await grace.PATCH("/mailboxes/{mailbox}/screener", { params: graces, body: { on: false } });
+  const { duva, ada, hermes, hermess, graces } = await withMembers();
   const { data: before } = await ada.GET("/organization/changes");
   const group = { path: { group: "Team@example.com" } };
   await ada.POST("/groups", { body: { address: "team@example.com", members: ["hermes@example.com"] } });
 
-  const changed = await ada.PATCH("/groups/{group}", { params: group, body: { members: ["grace@example.com", "grace@example.com"], sendPolicy: "members" } });
+  const changed = await ada.PATCH("/groups/{group}", { params: group, body: { members: ["grace@example.com", "hermes@example.com", "grace@example.com"], sendPolicy: "members" } });
 
-  expect(changed.data).toEqual({ address: "team@example.com", members: ["grace@example.com"], sendPolicy: "members", replyTo: "sender" });
+  expect(changed.data).toEqual({ address: "team@example.com", members: ["grace@example.com", "hermes@example.com"], sendPolicy: "members", replyTo: "sender" });
   expect((await ada.GET("/groups/{group}", { params: group })).data).toEqual(changed.data);
   await duva.receive(message("grace@example.com", "team@example.com", "Mine"), { to: ["team@example.com"] });
-  expect((await messagesIn(grace, graces)).map(({ subject }) => subject)).toEqual(["Mine"]);
+  expect((await messagesIn(hermes, hermess)).map(({ subject }) => subject)).toEqual(["Mine"]);
 
   const deleted = await ada.DELETE("/groups/{group}", { params: group });
 

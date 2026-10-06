@@ -103,8 +103,8 @@ test("an agent lists its own mailboxes, and its sponsor lists them too", async (
   const { data: agents } = await duva.withKey(key).GET("/mailboxes");
   const { data: sponsors } = await ada.GET("/mailboxes");
 
-  expect(agents).toEqual({ mailboxes: [mailbox] });
-  expect(sponsors).toEqual({ mailboxes: [mailbox] });
+  expect(agents).toEqual({ mailboxes: [{ ...mailbox, groups: [] }] });
+  expect(sponsors).toEqual({ mailboxes: [{ ...mailbox, groups: [] }] });
 });
 
 test("a human lists their own mailbox", async () => {
@@ -115,7 +115,7 @@ test("a human lists their own mailbox", async () => {
 
   const { data } = await grace.GET("/mailboxes");
 
-  expect(data).toEqual({ mailboxes: [mailbox] });
+  expect(data).toEqual({ mailboxes: [{ ...mailbox, groups: [] }] });
   expect((await ada.GET("/mailboxes")).data).toEqual({ mailboxes: [] });
 });
 
@@ -143,8 +143,8 @@ test("the sponsor reads their agent's mailbox, with how many threads in its Inbo
   const { data, response } = await ada.GET("/mailboxes/{mailbox}", { params });
 
   expect(response.status).toBe(200);
-  expect(data).toEqual({ ...mailbox, unread: 2 });
-  expect((await duva.withKey(key).GET("/mailboxes/{mailbox}", { params })).data).toEqual({ ...mailbox, unread: 2 });
+  expect(data).toEqual({ ...mailbox, groups: [], unread: 2 });
+  expect((await duva.withKey(key).GET("/mailboxes/{mailbox}", { params })).data).toEqual({ ...mailbox, groups: [], unread: 2 });
 });
 
 test("spam isn't counted among a mailbox's unread threads", async () => {

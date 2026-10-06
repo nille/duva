@@ -9,6 +9,7 @@ import { attachmentLinks } from "./attachments.ts";
 import { allMail, type Cursor, cursorOf, inbox, labelThreads, mailboxChanges, markThreads, readThread, spam, threadsMarkedAtOnce, threadsPerPage, sentThreads, threadsWithLabel, trash, unreadWithLabel } from "./mail.ts";
 import { recordEmptying } from "./erasure.ts";
 import { syncRecipients } from "./receiving.ts";
+import { groupsSentAsBy } from "./group-mail.ts";
 
 export const createMailbox: OperationHandler = async (event, deployment, actor) => {
   if (!actor?.admin) return refusal(403, "Only admins can create mailboxes. Ask an admin to create one.");
@@ -39,7 +40,8 @@ export const getMailbox: OperationHandler = async (event, deployment, actor) => 
   const mailbox = await mailboxFor(event, deployment, actor!, "read");
   if ("statusCode" in mailbox) return mailbox;
   const unread = await unreadWithLabel(deployment.table, mailbox.id, inbox);
-  return { statusCode: 200, body: { ...mailbox, unread } satisfies components["schemas"]["MailboxWithCounts"] };
+  const groups = await groupsSentAsBy(deployment.table, mailbox.owner);
+  return { statusCode: 200, body: { ...mailbox, groups, unread } satisfies components["schemas"]["MailboxWithCounts"] };
 };
 
 export const listMailboxChanges: OperationHandler = async (event, deployment, actor) => {

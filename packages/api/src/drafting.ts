@@ -134,7 +134,7 @@ export async function draftsIn(table: Table, mailbox: string): Promise<Draft[]> 
  */
 export async function changeDraft(
   table: Table,
-  { mailbox, id, by, changes }: { mailbox: string; id: string; by: string; changes: Partial<Pick<Draft, "to" | "cc" | "bcc" | "subject" | "text">> },
+  { mailbox, id, by, changes }: { mailbox: string; id: string; by: string; changes: Partial<Pick<Draft, "from" | "to" | "cc" | "bcc" | "subject" | "text">> },
 ): Promise<Draft | undefined> {
   return retried(async () => {
     const draft = await storedDraft(table, mailbox, id);
@@ -194,6 +194,14 @@ export async function deleteDraft(table: Table, { mailbox, id, by }: { mailbox: 
 
 /** Why a draft from an address its mailbox no longer has isn't sent. */
 export const notFrom = (from: string) => `The draft is from ${from}, which the mailbox no longer has, so it can't be sent. Write it again as a new draft.`;
+
+/** Why a draft from a group its mailbox's owner was taken out of isn't sent. */
+export const notMember = (group: string) =>
+  `The draft is from the group ${group}, which the mailbox's owner is no longer a member of, so it can't be sent. Ask an admin to add them back, or send it from another address.`;
+
+/** Why a draft from the address can't be sent, with where the mailbox stands with it, or undefined if it can. */
+export const unsendableFrom = (standing: "own" | "group" | "notMember" | "none", from: string) =>
+  standing === "none" ? notFrom(from) : standing === "notMember" ? notMember(from) : undefined;
 
 /** The draft has no recipient in To, so it can't be sent. */
 export class NoRecipient extends Error {}

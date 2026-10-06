@@ -19,12 +19,13 @@ import {
   findApproval,
   findDraft,
   NoRecipient,
-  notFrom,
   pendingApprovals,
   reject,
   SendNotAllowed,
+  unsendableFrom,
 } from "./drafting.ts";
 import { attachmentLinks } from "./attachments.ts";
+import { fromStanding, groupsSentAsBy } from "./group-mail.ts";
 import { findMessage } from "./mail.ts";
 import { mailboxFor } from "./access.ts";
 import { type Actor, aliasDomains, isAddressOf, type Mailbox } from "./organization.ts";
@@ -50,10 +51,13 @@ export const createDraft: OperationHandler = async (event, deployment, actor) =>
   }
 
   if (mailbox.defaultAddress === undefined) return noAddress();
+  const chosen = body.from === undefined ? undefined : await fromGiven(deployment, mailbox, body.from);
+  if (typeof chosen === "object") return chosen;
   // A reply or a forward goes from the address the original was sent to, plus tag kept, while the
-  // mailbox has it, an alias domain's mirror of one of its addresses included.
+  // mailbox has it, an alias domain's mirror of one of its addresses included. Group mail came to
+  // the group's address, so a reply to it goes from the member's own.
   const aliases = await aliasDomains(deployment.table);
-  const fromOriginal = (message: Message) => (isAddressOf(mailbox, message.recipient, aliases) ? message.recipient : mailbox.defaultAddress!);
+  const fromOriginal = (message: Message) => chosen ?? (isAddressOf(mailbox, message.recipient, aliases) ? message.recipient : mailbox.defaultAddress!);
 
   let content;
   if (typeof body.forwards === "string") {
@@ -75,9 +79,11 @@ export const createDraft: OperationHandler = async (event, deployment, actor) =>
     const original = await findMessage(deployment.table, deployment.mailBucket, mailbox.id, body.answers);
     if (original === undefined) return refusal(404, `The mailbox has no message ${JSON.stringify(body.answers)}. Read its threads to find the message to reply to.`);
     const { message, thread, replyTo } = original;
-    const others = othersThan(mailbox, aliases);
-    // A reply goes to the original's sender, unless the mailbox sent it, and then to its recipients.
-    const sender = others(replyTo.length > 0 ? replyTo : [message.from]);
+    // A reply sent as a group leaves the group out of its recipients, as the mailbox's own addresses are.
+    const others = othersThan(mailbox, aliases, chosen);
+    // A reply goes to the original's sender, unless the mailbox sent it, or another member sent it
+    // as a group, and then to its recipients.
+    const sender = message.sentBy === undefined && message.sentAs === undefined ? others(replyTo.length > 0 ? replyTo : [message.from]) : [];
     const to = others(sender.length > 0 ? [...sender, ...(body.replyAll === true ? message.to : [])] : message.to);
     const cc = body.replyAll === true ? others(message.cc).filter(({ address }) => !to.some((each) => sameAddress(each.address, address))) : [];
     content = {
@@ -91,7 +97,7 @@ export const createDraft: OperationHandler = async (event, deployment, actor) =>
       text: given.text ?? "",
     };
   } else {
-    content = { from: mailbox.defaultAddress, to: given.to ?? [], cc: given.cc ?? [], bcc: given.bcc ?? [], subject: given.subject ?? "", text: given.text ?? "" };
+    content = { from: chosen ?? mailbox.defaultAddress, to: given.to ?? [], cc: given.cc ?? [], bcc: given.bcc ?? [], subject: given.subject ?? "", text: given.text ?? "" };
   }
   return { statusCode: 201, body: (await addDraft(deployment.table, { mailbox: mailbox.id, by: actor!.id, content })) satisfies components["schemas"]["Draft"] };
 };
@@ -116,16 +122,31 @@ function forwardedText(message: Message): string {
 
 const noAddress = () => refusal(409, "The mailbox has no address, so it can't send mail. Ask an admin to give it one.");
 
+/**
+ * The address given to send from, in lower case, if it is one of the mailbox's or a group its
+ * owner is a member of, or else a refusal that says why not: 403 for another group.
+ */
+async function fromGiven(deployment: Deployment, mailbox: Mailbox, given: unknown): Promise<string | ReturnType<typeof refusal>> {
+  const from = typeof given === "string" ? given.trim().toLowerCase() : "";
+  if (!isEmailAddress(from)) return refusal(400, `${JSON.stringify(given)} isn't an address. Give from as one of the mailbox's addresses, like ${mailbox.defaultAddress}.`);
+  const standing = await fromStanding(deployment.table, mailbox, from);
+  if (standing === "notMember") return refusal(403, `Only members of ${from} can send as it. Ask an admin to add the mailbox's owner to the group.`);
+  if (standing === "none") {
+    return refusal(400, `${from} isn't one of the mailbox's addresses or a group its owner is a member of. Give one of ${[...mailbox.addresses, ...(await groupsSentAsBy(deployment.table, mailbox.owner))].join(", ")}.`);
+  }
+  return from;
+}
+
 /** Whether two addresses are the same, ignoring case. */
 const sameAddress = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 
-/** The addresses that aren't one of the mailbox's own, with or without a plus tag, each once. */
+/** The addresses that aren't one of the mailbox's own, with or without a plus tag, or the address it sends from, each once. */
 const othersThan =
-  (mailbox: Mailbox, aliases: Map<string, string>) =>
+  (mailbox: Mailbox, aliases: Map<string, string>, from: string | undefined) =>
   (list: EmailAddress[]): EmailAddress[] => {
     const kept: EmailAddress[] = [];
     for (const each of list) {
-      if (isAddressOf(mailbox, each.address, aliases) || kept.some(({ address }) => sameAddress(address, each.address))) continue;
+      if (isAddressOf(mailbox, each.address, aliases) || sameAddress(each.address, from ?? "") || kept.some(({ address }) => sameAddress(address, each.address))) continue;
       kept.push(each);
     }
     return kept;
@@ -169,9 +190,13 @@ export const getDraft: OperationHandler = async (event, deployment, actor) => {
 export const editDraft: OperationHandler = async (event, deployment, actor) => {
   const mailbox = await mailboxFor(event, deployment, actor!, "draft");
   if ("statusCode" in mailbox) return mailbox;
-  const changes = fieldsIn(jsonBody(event) ?? {});
-  if ("statusCode" in changes) return changes;
-  if (Object.values(changes).every((value) => value === undefined)) return refusal(400, "Give the draft's new recipients, Cc, Bcc, subject or text.");
+  const body = jsonBody(event) ?? {};
+  const fields = fieldsIn(body);
+  if ("statusCode" in fields) return fields;
+  const from = body.from === undefined ? undefined : await fromGiven(deployment, mailbox, body.from);
+  if (typeof from === "object") return from;
+  const changes = { ...fields, from };
+  if (Object.values(changes).every((value) => value === undefined)) return refusal(400, "Give the draft's new From, recipients, Cc, Bcc, subject or text.");
   try {
     const draft = await changeDraft(deployment.table, { mailbox: mailbox.id, id: event.pathParameters?.draft ?? "", by: actor!.id, changes });
     if (draft === undefined) return noDraft(event);
@@ -200,7 +225,11 @@ export const sendDraft: OperationHandler = async (event, deployment, actor) => {
   if ("statusCode" in mailbox) return mailbox;
   const id = event.pathParameters?.draft ?? "";
   const asked = await findDraft(deployment.table, mailbox.id, id);
-  if (asked !== undefined && !isAddressOf(mailbox, asked.from, await aliasDomains(deployment.table))) return refusal(409, notFrom(asked.from));
+  if (asked !== undefined) {
+    const standing = await fromStanding(deployment.table, mailbox, asked.from);
+    const unsendable = unsendableFrom(standing, asked.from);
+    if (unsendable !== undefined) return refusal(standing === "notMember" ? 403 : 409, unsendable);
+  }
   try {
     const draft = await askToSend(deployment.table, { mailbox, id, actor: actor! });
     if (draft === undefined) return noDraft(event);

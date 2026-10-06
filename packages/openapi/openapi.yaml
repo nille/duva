@@ -1852,6 +1852,10 @@ paths:
         you give, with the subject carrying a single "Fwd: " prefix, the
         original's text quoted and its attachments, from the same address
         a reply would. A new message goes from the mailbox's default address.
+        Give from to choose another of the mailbox's addresses, or a group the
+        mailbox's owner is a local member of, to send as the group. Only its
+        members can, so any other group gets 403. A reply to group mail goes
+        from the member's own address unless you give the group.
         A mailbox with no address can't draft. A draft can be saved before it has
         recipients, a subject or text, but it needs a recipient in To to be
         sent. Only the mailbox's owner can draft in it, and for a human's
@@ -1928,11 +1932,13 @@ paths:
           $ref: "#/components/responses/NotFound"
     patch:
       operationId: editDraft
-      summary: Change a draft's recipients, subject or text.
+      summary: Change a draft's From, recipients, subject or text.
       description: >
         Changing a draft that waits for approval withdraws the request, so an
         approver never approves text they didn't see. Ask to send it again
-        once it is ready. Only the mailbox's owner can edit its drafts, and
+        once it is ready. From can be one of the mailbox's addresses, or a
+        group the mailbox's owner is a local member of, and any other group
+        gets 403. Only the mailbox's owner can edit its drafts, and
         for a human's mailbox the agents they give full sponsor access,
         whoever wrote the draft. The change, and any withdrawal, is recorded
         in the mailbox's change feed, naming you.
@@ -2010,7 +2016,12 @@ paths:
         full sponsor access to it, can ask. The draft needs a recipient in To,
         and a draft waits for one approval at a time. It goes only from an
         address the mailbox still has, so a draft from an address since
-        removed fails. A send that needs no
+        removed fails. A draft from a group goes out from the group's
+        address, as any send does, and only while the mailbox's owner is
+        still a local member: otherwise asking gets 403, and a send asked
+        before fails. Each other local member's mailbox then gets a copy, in
+        the thread of the message it answers, marked with who sent it as the
+        group. External members get none. A send that needs no
         approval withdraws the request the draft waits for, if it waits. Asking is recorded in the
         mailbox's change feed.
       x-cli-command: drafts send
@@ -2786,7 +2797,7 @@ components:
     ListedMailbox:
       type: object
       additionalProperties: false
-      required: [id, kind, owner, addresses]
+      required: [id, kind, owner, addresses, groups]
       description: A mailbox you can read, with your sponsor access if it is your sponsor's.
       properties:
         id:
@@ -2812,6 +2823,15 @@ components:
           items:
             type: string
           examples: [["hermes@example.com", "support@example.com"]]
+        groups:
+          type: array
+          description: >-
+            The groups the mailbox's owner is a local member of, nested ones
+            included, each by its address. Its drafts can go from any of them
+            as well as from its own addresses.
+          items:
+            type: string
+          examples: [["support@example.com"]]
         sponsorAccess:
           type: string
           enum: [read, full]
@@ -2819,7 +2839,7 @@ components:
     MailboxWithCounts:
       type: object
       additionalProperties: false
-      required: [id, kind, owner, addresses, unread]
+      required: [id, kind, owner, addresses, groups, unread]
       description: A mailbox, with how many of its threads want attention.
       properties:
         id:
@@ -2845,6 +2865,15 @@ components:
           items:
             type: string
           examples: [["hermes@example.com", "support@example.com"]]
+        groups:
+          type: array
+          description: >-
+            The groups the mailbox's owner is a local member of, nested ones
+            included, each by its address. Its drafts can go from any of them
+            as well as from its own addresses.
+          items:
+            type: string
+          examples: [["support@example.com"]]
         unread:
           type: integer
           description: How many threads in the Inbox are unread.
@@ -3519,6 +3548,14 @@ components:
         forwards:
           type: string
           description: The ID of the message the draft forwards, with its text and attachments. Give answers or forwards, not both.
+        from:
+          type: string
+          description: >-
+            The address to send from: one of the mailbox's addresses, or a
+            group its owner is a local member of, to send as the group. A
+            reply or a forward goes from the address the original was sent
+            to unless you give one, and a new message from the default address.
+          examples: ["support@example.com"]
         replyAll:
           type: boolean
           description: With answers, replies to all, so every other recipient of the original gets it too, except the mailbox's own addresses.
@@ -3551,6 +3588,11 @@ components:
       additionalProperties: false
       minProperties: 1
       properties:
+        from:
+          type: string
+          description: >-
+            The address to send from, in place of the draft's: one of the
+            mailbox's addresses, or a group its owner is a local member of.
         to:
           type: array
           items:
@@ -3625,7 +3667,7 @@ components:
           description: The ID of the thread of the message it replies to or forwards, which the sent message joins.
         from:
           type: string
-          description: The address it goes from.
+          description: The address it goes from, one of the mailbox's or a group's.
           examples: ["hermes+news@example.com"]
         to:
           type: array
@@ -4052,6 +4094,8 @@ components:
         sentBy:
           type: string
           description: The ID of the actor who sent the message from the mailbox, if it did.
+        sentAs:
+          $ref: "#/components/schemas/SentAsGroup"
         approval:
           $ref: "#/components/schemas/SentApproval"
           description: Who approved the message before it was sent, if an agent sent it.
@@ -4076,6 +4120,26 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Attachment"
+    SentAsGroup:
+      type: object
+      additionalProperties: false
+      required: [group, by, name]
+      description: >-
+        On a copy of a message another local member sent as a group, who sent
+        it and as which group. Each other local member's mailbox gets one, in
+        the thread of the message it answers, so nobody answers twice.
+      properties:
+        group:
+          type: string
+          description: The group's address, which the message went out from.
+          examples: ["support@example.com"]
+        by:
+          type: string
+          description: The ID of the actor who sent it.
+        name:
+          type: string
+          description: Who sent it, as the address a human signs in with, or an agent's name.
+          examples: ["grace@example.com"]
     SentApproval:
       type: object
       additionalProperties: false

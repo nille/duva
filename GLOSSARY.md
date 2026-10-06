@@ -79,7 +79,7 @@ _Avoid_: tag, subaddress, detail
 A domain's optional mailbox or group for mail to addresses that don't exist, removed ones included. Off unless an admin sets one; otherwise such mail is refused.
 
 **Default address**:
-The address a mailbox sends new messages from unless the sender picks another. Replies go out from the address the original was sent to.
+The address a mailbox sends new messages from unless the sender picks another. Replies go out from the address the original was sent to, and replies to group mail from the member's own address unless they choose the group.
 
 **External address**:
 An email address on a domain the organization does not have.

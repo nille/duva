@@ -1679,7 +1679,7 @@ export const operations = [
     "path": "/mailboxes/{mailbox}/drafts",
     "routeKey": "POST /mailboxes/{mailbox}/drafts",
     "summary": "Draft a reply to a message in a mailbox, a reply to all, a forward, or a new message.",
-    "description": "A reply goes from the address the original was sent to, plus tag kept, or from the default address if the mailbox no longer has it, to the original's Reply-To or, without one, its From, with the subject carrying a single \"Re: \" prefix. A reply to your own message goes to its recipients instead. A reply to all also goes to every other recipient of the original, except the mailbox's own addresses. A forward goes from the address the original was sent to, to whoever you give, with the subject carrying a single \"Fwd: \" prefix, the original's text quoted and its attachments, from the same address a reply would. A new message goes from the mailbox's default address. A mailbox with no address can't draft. A draft can be saved before it has recipients, a subject or text, but it needs a recipient in To to be sent. Only the mailbox's owner can draft in it, and for a human's mailbox the agents they give full sponsor access, whose drafts go from the same addresses as the human's own. Writing a draft is recorded in the mailbox's change feed, naming you.",
+    "description": "A reply goes from the address the original was sent to, plus tag kept, or from the default address if the mailbox no longer has it, to the original's Reply-To or, without one, its From, with the subject carrying a single \"Re: \" prefix. A reply to your own message goes to its recipients instead. A reply to all also goes to every other recipient of the original, except the mailbox's own addresses. A forward goes from the address the original was sent to, to whoever you give, with the subject carrying a single \"Fwd: \" prefix, the original's text quoted and its attachments, from the same address a reply would. A new message goes from the mailbox's default address. Give from to choose another of the mailbox's addresses, or a group the mailbox's owner is a local member of, to send as the group. Only its members can, so any other group gets 403. A reply to group mail goes from the member's own address unless you give the group. A mailbox with no address can't draft. A draft can be saved before it has recipients, a subject or text, but it needs a recipient in To to be sent. Only the mailbox's owner can draft in it, and for a human's mailbox the agents they give full sponsor access, whose drafts go from the same addresses as the human's own. Writing a draft is recorded in the mailbox's change feed, naming you.",
     "signIn": true,
     "command": [
       "drafts",
@@ -1706,6 +1706,13 @@ export const operations = [
         "type": "string",
         "required": false,
         "description": "The ID of the message the draft forwards, with its text and attachments. Give answers or forwards, not both."
+      },
+      {
+        "name": "from",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "The address to send from: one of the mailbox's addresses, or a group its owner is a local member of, to send as the group. A reply or a forward goes from the address the original was sent to unless you give one, and a new message from the default address."
       },
       {
         "name": "replyAll",
@@ -1814,8 +1821,8 @@ export const operations = [
     "method": "patch",
     "path": "/mailboxes/{mailbox}/drafts/{draft}",
     "routeKey": "PATCH /mailboxes/{mailbox}/drafts/{draft}",
-    "summary": "Change a draft's recipients, subject or text.",
-    "description": "Changing a draft that waits for approval withdraws the request, so an approver never approves text they didn't see. Ask to send it again once it is ready. Only the mailbox's owner can edit its drafts, and for a human's mailbox the agents they give full sponsor access, whoever wrote the draft. The change, and any withdrawal, is recorded in the mailbox's change feed, naming you.",
+    "summary": "Change a draft's From, recipients, subject or text.",
+    "description": "Changing a draft that waits for approval withdraws the request, so an approver never approves text they didn't see. Ask to send it again once it is ready. From can be one of the mailbox's addresses, or a group the mailbox's owner is a local member of, and any other group gets 403. Only the mailbox's owner can edit its drafts, and for a human's mailbox the agents they give full sponsor access, whoever wrote the draft. The change, and any withdrawal, is recorded in the mailbox's change feed, naming you.",
     "signIn": true,
     "command": [
       "drafts",
@@ -1835,6 +1842,13 @@ export const operations = [
         "type": "string",
         "required": true,
         "description": "The draft's ID."
+      },
+      {
+        "name": "from",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "The address to send from, in place of the draft's: one of the mailbox's addresses, or a group its owner is a local member of."
       },
       {
         "name": "to",
@@ -1879,7 +1893,7 @@ export const operations = [
     "path": "/mailboxes/{mailbox}/drafts/{draft}/send",
     "routeKey": "POST /mailboxes/{mailbox}/drafts/{draft}/send",
     "summary": "Ask for a draft to be sent.",
-    "description": "A human's send from their own mailbox needs no approval, so Duva sends it at once, with no disclosure, also when their agent wrote the draft. An agent's send waits for its sponsor's approval unless the sponsor switched that off, separately for its own mailbox and for its sponsor's. With full sponsor access, an agent sends as its sponsor from the sponsor's mailbox: from the draft's address, under the sponsor's name. Every message an agent sends carries the Duva-Agent header, and a visible line unless its sponsor switched that off for where it sends from. Its send shows where it stands. Bcc recipients get the message, but no header names them. Only the mailbox's owner, and an agent with full sponsor access to it, can ask. The draft needs a recipient in To, and a draft waits for one approval at a time. It goes only from an address the mailbox still has, so a draft from an address since removed fails. A send that needs no approval withdraws the request the draft waits for, if it waits. Asking is recorded in the mailbox's change feed.",
+    "description": "A human's send from their own mailbox needs no approval, so Duva sends it at once, with no disclosure, also when their agent wrote the draft. An agent's send waits for its sponsor's approval unless the sponsor switched that off, separately for its own mailbox and for its sponsor's. With full sponsor access, an agent sends as its sponsor from the sponsor's mailbox: from the draft's address, under the sponsor's name. Every message an agent sends carries the Duva-Agent header, and a visible line unless its sponsor switched that off for where it sends from. Its send shows where it stands. Bcc recipients get the message, but no header names them. Only the mailbox's owner, and an agent with full sponsor access to it, can ask. The draft needs a recipient in To, and a draft waits for one approval at a time. It goes only from an address the mailbox still has, so a draft from an address since removed fails. A draft from a group goes out from the group's address, as any send does, and only while the mailbox's owner is still a local member: otherwise asking gets 403, and a send asked before fails. Each other local member's mailbox then gets a copy, in the thread of the message it answers, marked with who sent it as the group. External members get none. A send that needs no approval withdraws the request the draft waits for, if it waits. Asking is recorded in the mailbox's change feed.",
     "signIn": true,
     "command": [
       "drafts",

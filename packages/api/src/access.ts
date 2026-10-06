@@ -4,6 +4,7 @@
 import { type OperationHandler, refusal } from "./api.ts";
 import type { Deployment } from "./deployment.ts";
 import type { components } from "@duva/openapi";
+import { groupsSentAsBy } from "./group-mail.ts";
 import { type Actor, type AgentSettings, agentSettings, findActor, findMailbox, type Mailbox, ownedMailboxes, sponsoredAgents } from "./organization.ts";
 
 /** What an operation does in a mailbox, which the actor needs to be allowed. */
@@ -59,15 +60,20 @@ export async function mailboxFor(
 
 /**
  * The mailboxes the actor can read: its own, then for a human those of the agents they sponsor,
- * and for an agent with sponsor access its sponsor's, with that access.
+ * and for an agent with sponsor access its sponsor's, with that access. Each lists the groups its
+ * owner can send as.
  */
 export async function mailboxesReadBy(deployment: Deployment, actor: Actor): Promise<components["schemas"]["ListedMailbox"][]> {
   const agents = actor.kind === "human" ? await sponsoredAgents(deployment.table, actor.id) : [];
   const owners = [actor.id, ...agents.map(({ id }) => id)];
-  const mailboxes: components["schemas"]["ListedMailbox"][] = (await Promise.all(owners.map((owner) => ownedMailboxes(deployment.table, owner)))).flat();
+  const owned = async (owner: string) => {
+    const groups = await groupsSentAsBy(deployment.table, owner);
+    return (await ownedMailboxes(deployment.table, owner)).map((mailbox) => ({ ...mailbox, groups }));
+  };
+  const mailboxes: components["schemas"]["ListedMailbox"][] = (await Promise.all(owners.map(owned))).flat();
   if (actor.kind === "agent") {
     const { sponsorAccess } = (await agentSettings(deployment.table, actor.id)).settings;
-    if (sponsorAccess !== "none") mailboxes.push(...(await ownedMailboxes(deployment.table, actor.sponsor)).map((mailbox) => ({ ...mailbox, sponsorAccess })));
+    if (sponsorAccess !== "none") mailboxes.push(...(await owned(actor.sponsor)).map((mailbox) => ({ ...mailbox, sponsorAccess })));
   }
   return mailboxes;
 }

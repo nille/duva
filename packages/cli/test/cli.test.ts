@@ -350,7 +350,7 @@ test("an admin removes a human from the CLI, first with --dryRun, handing their 
   expect(JSON.parse(dryRun.stdout)).toMatchObject({ human: grace, mailboxes: [mailbox], agents: [], removed: false });
   expect(removed.exitCode).toBe(0);
   expect(JSON.parse(removed.stdout)).toMatchObject({ human: grace, removed: true });
-  expect((await duva.signIn("linus@example.com").GET("/mailboxes")).data?.mailboxes).toEqual([{ ...mailbox, owner: linus!.id }]);
+  expect((await duva.signIn("linus@example.com").GET("/mailboxes")).data?.mailboxes).toEqual([{ ...mailbox, owner: linus!.id, groups: [] }]);
 });
 
 test("an admin makes a human an admin with --admin, and the last admin can't take away their own with --no-admin", async () => {
@@ -445,7 +445,7 @@ test("the sponsor gives an agent read sponsor access and turns a switch off, and
   expect(changed.exitCode).toBe(0);
   expect(JSON.parse(changed.stdout)).toEqual(expected);
   expect(JSON.parse(settings.stdout)).toEqual(expected);
-  expect(JSON.parse(mailboxes.stdout)).toEqual({ mailboxes: [{ ...mailbox, sponsorAccess: "read" }] });
+  expect(JSON.parse(mailboxes.stdout)).toEqual({ mailboxes: [{ ...mailbox, groups: [], sponsorAccess: "read" }] });
   expect(threads.exitCode).toBe(0);
   expect(JSON.parse(threads.stdout)).toEqual({ threads: [] });
 });
@@ -495,7 +495,7 @@ test("an admin gives an agent a mailbox, and the agent catches up on it, lists i
 
   expect(created.exitCode).toBe(0);
   expect(mailbox).toEqual({ id: expect.any(String), kind: "personal", owner: agent.id, defaultAddress: "hermes@example.com", addresses: ["hermes@example.com"] });
-  expect(JSON.parse(mailboxes.stdout)).toEqual({ mailboxes: [mailbox] });
+  expect(JSON.parse(mailboxes.stdout)).toEqual({ mailboxes: [{ ...mailbox, groups: [] }] });
   expect(JSON.parse(changes.stdout)).toEqual({ changes: [{ position: 1, at: expect.any(String), type: "messageReceived", thread, message: expect.any(String) }], position: 1 });
   expect(JSON.parse(threads.stdout)).toMatchObject({ threads: [{ id: thread, subject: "Hello", labels: ["inbox"] }] });
   expect(read.exitCode).toBe(0);

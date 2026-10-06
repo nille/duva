@@ -223,8 +223,8 @@ test("a mailbox left with no address keeps its mail, but receives no new mail an
   await ada.DELETE("/addresses/{address}", { params: { path: { address: "grace@example.com" } } });
 
   const { data: mailbox } = await grace.GET("/mailboxes/{mailbox}", { params: graces });
-  expect(mailbox).toEqual({ id: gracesMailbox.id, kind: "personal", owner: gracesMailbox.owner, addresses: [], unread: 1 });
-  expect((await grace.GET("/mailboxes")).data?.mailboxes).toEqual([{ id: gracesMailbox.id, kind: "personal", owner: gracesMailbox.owner, addresses: [] }]);
+  expect(mailbox).toEqual({ id: gracesMailbox.id, kind: "personal", owner: gracesMailbox.owner, addresses: [], groups: [], unread: 1 });
+  expect((await grace.GET("/mailboxes")).data?.mailboxes).toEqual([{ id: gracesMailbox.id, kind: "personal", owner: gracesMailbox.owner, addresses: [], groups: [] }]);
   const { refused } = await duva.receive(message("grace@example.com", "After"), { to: ["grace@example.com"] });
   expect(refused).toEqual(["grace@example.com"]);
   const { data: list } = await grace.GET("/mailboxes/{mailbox}/threads", { params: graces });

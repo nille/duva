@@ -43,7 +43,7 @@ test("when Duva moves to a new user pool, setup moves every human, who signs in 
   expect(refused.response.status).toBe(401);
   expect((await duva.signIn("ada@example.org").GET("/whoami")).data).toEqual(adaBefore);
   expect((await duva.signIn("grace@example.org").GET("/whoami")).data).toEqual(grace);
-  expect((await duva.signIn("grace@example.org").GET("/mailboxes")).data).toEqual({ mailboxes: [mailbox] });
+  expect((await duva.signIn("grace@example.org").GET("/mailboxes")).data).toEqual({ mailboxes: [{ ...mailbox, groups: [] }] });
 });
 
 test("setup is safe to re-run after it moved the humans", async () => {

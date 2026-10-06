@@ -25,6 +25,7 @@ export interface Envelope {
 export interface Verdicts {
   spam?: SESReceiptStatus["status"];
   virus?: SESReceiptStatus["status"];
+  spf?: SESReceiptStatus["status"];
   dmarc?: SESReceiptStatus["status"];
   dmarcPolicy?: "none" | "quarantine" | "reject";
   dkim?: Record<string, SESReceiptStatus["status"]>;
@@ -38,11 +39,12 @@ export interface ReceiveOptions {
   at?: Date;
 }
 
-/** A bounce SES sent for a message it received: to its envelope sender, from a verified address, for the recipients. */
+/** A bounce SES sent for a message it received: to its envelope sender, from SES's own MAILER-DAEMON, for the recipients. */
 export interface Bounce {
   /** The ID SES gave the message bounced. */
   messageId: string;
   to: string;
+  /** The bounce's From, SES's MAILER-DAEMON in its region, whatever BounceSender was given. */
   from: string;
   recipients: string[];
   explanation: string;
@@ -56,9 +58,10 @@ const maxRecipients = 500;
  * Stands in for SES receiving in one region: an active rule set, which Duva manages through
  * ReceiptRules, and the mail servers that apply it. Like SES, it checks when a rule is created that
  * it can write to the rule's bucket and invoke its Lambda, which here means the harness has them.
- * It bounces a message it received back to its envelope sender, from an address on a domain SES has verified.
+ * It bounces a message it received back to its envelope sender, from its own MAILER-DAEMON, given a
+ * BounceSender on a domain SES has verified.
  */
-export function sesReceiving({ verified, buckets, functions }: { verified: (domain: string) => Promise<boolean>; buckets: Map<string, MailBucket>; functions: Map<string, (event: SESEvent) => Promise<void>> }) {
+export function sesReceiving({ verified, region, buckets, functions }: { verified: (domain: string) => Promise<boolean>; region: string; buckets: Map<string, MailBucket>; functions: Map<string, (event: SESEvent) => Promise<void>> }) {
   const rules: ReceiptRule[] = [];
   // The envelope sender of each message SES accepted, by the ID it gave it, and the bounces it sent.
   const senders = new Map<string, string>();
@@ -98,12 +101,12 @@ export function sesReceiving({ verified, buckets, functions }: { verified: (doma
   };
 
   const bounces: Bounces = {
-    async send({ messageId, from, recipients, explanation }) {
+    async send({ messageId, bounceSender, recipients, explanation }) {
       const to = senders.get(messageId);
       if (to === undefined) throw new BounceRefused(`Message ${messageId} was not received by Amazon SES.`);
-      if (!(await verified(from.split("@")[1]?.toLowerCase() ?? ""))) throw new BounceRefused(`Email address is not verified: ${from}`);
+      if (!(await verified(bounceSender.split("@")[1]?.toLowerCase() ?? ""))) throw new BounceRefused(`Email address is not verified: ${bounceSender}`);
       if (recipients.length === 0) throw new BounceRefused("Specify at least one BouncedRecipientInfo.");
-      bounced.push({ messageId, to, from, recipients: [...recipients], explanation });
+      bounced.push({ messageId, to, from: `MAILER-DAEMON@${region}.amazonses.com`, recipients: [...recipients], explanation });
     },
   };
 
@@ -175,7 +178,7 @@ export function sesReceiving({ verified, buckets, functions }: { verified: (doma
                       recipients,
                       spamVerdict: verdict(verdicts.spam),
                       virusVerdict: verdict(verdicts.virus),
-                      spfVerdict: verdict(undefined),
+                      spfVerdict: verdict(verdicts.spf),
                       dkimVerdict: verdict(undefined),
                       dmarcVerdict: verdict(verdicts.dmarc),
                       ...(rule.ScanEnabled && verdicts.dmarc === "FAIL" ? { dmarcPolicy: verdicts.dmarcPolicy } : {}),

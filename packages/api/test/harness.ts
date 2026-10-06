@@ -208,7 +208,7 @@ export async function startDuva({
   const sending = sesSending({ region, verified: identities.verified, sandbox, answersLost: sesAnswersLost });
   // SES invokes the inbound Lambda, which bounces through SES, so the two are tied once both exist.
   let inbound: (event: SESEvent) => Promise<void> = async () => {};
-  const ses = sesReceiving({ verified: identities.verified, buckets: new Map([[mailBucketName, mailBucket]]), functions: new Map([[inboundFunction, (event) => inbound(event)]]) });
+  const ses = sesReceiving({ verified: identities.verified, region, buckets: new Map([[mailBucketName, mailBucket]]), functions: new Map([[inboundFunction, (event) => inbound(event)]]) });
   inbound = createInbound({ table, mailBucket, log: (line) => inboundLog.push(line), outbound: sending.outbound, bounces: ses.bounces });
   const receiving = { rules: ses.rules, bucket: mailBucketName, inboundFunction };
   // Each mailbox's index is a table under the deployment's own directory. The search Lambda and the

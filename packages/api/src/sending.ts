@@ -3,18 +3,21 @@
 // with the disclosure, and a human's without, and records the outcome. Sending starts
 // from the recorded approval, so a crash between it and the send can't lose it, and each step is
 // conditional on the last, so a retried record never sends twice. A paused agent's sends stay
-// approved, held, until unpausing writes them again and the stream hands them over once more.
+// approved, held, until unpausing writes them again and the stream hands them over once more. A
+// draft sent as a group is copied to each other local member's mailbox once it is sent
+// (ADR-0019), also when a retried record finds it sent already.
 import { randomUUID } from "node:crypto";
 import { SendEmailCommand, SESv2ServiceException, type SESv2Client } from "@aws-sdk/client-sesv2";
 import type { DynamoDBStreamEvent } from "aws-lambda";
 import type { Table } from "./deployment.ts";
-import { draftAt, draftToSend, findApproval, markFailed, markSent, markUnclear, notFrom, type Sending, startSending } from "./drafting.ts";
+import { draftAt, draftToSend, findApproval, markFailed, markSent, markUnclear, type Sending, startSending, unsendableFrom } from "./drafting.ts";
 import { sentPrefix } from "./infrastructure.ts";
 import type { MailBucket } from "./mail-bucket.ts";
+import { copyToOtherMembers, fromStanding } from "./group-mail.ts";
 import { findMessage } from "./mail.ts";
 import { buildMail } from "./mime.ts";
 import { sponsorAccessAllows } from "./access.ts";
-import { agentSettings, agentUnpaused, aliasDomains, findActor, findMailbox, isAddressOf, switchesFor } from "./organization.ts";
+import { agentSettings, agentUnpaused, findActor, findMailbox, switchesFor } from "./organization.ts";
 
 /** Who SES delivers a message to. Bcc recipients are here only, since no header names them. */
 export interface Destination {
@@ -100,6 +103,10 @@ async function send({ table, mailBucket, outbound, region }: Sender, { mailbox, 
   if (status.approval !== undefined && approval === undefined) throw new Error(`The approval ${status.approval} that draft ${id} was sent with is missing.`);
   const by = approval?.agent ?? status.by;
   if (by === undefined) throw new Error(`Draft ${id} was asked to send without an approval or a human who sent it.`);
+  if (status.state === "sent") {
+    await copyToOtherMembers({ table, mailBucket }, mailbox, status.message!);
+    return;
+  }
   if (status.state === "sending") {
     await markUnclear(table, { mailbox, draft: id, approval: approval?.id, message: status.message!, by });
     return;
@@ -129,9 +136,9 @@ async function send({ table, mailBucket, outbound, region }: Sender, { mailbox, 
       unsendable = "The agent's sponsor access was lowered from full before this went out, so it wasn't sent. Its sponsor can send it.";
     }
   }
-  // An admin may have removed the address since the draft was asked to send.
+  // An admin may have removed the address since the draft was asked to send, or its owner from the group.
   const sendsFrom = await findMailbox(table, mailbox);
-  if (sendsFrom !== undefined && !isAddressOf(sendsFrom, draft.from, await aliasDomains(table))) unsendable ??= notFrom(draft.from);
+  if (sendsFrom !== undefined) unsendable ??= unsendableFrom(await fromStanding(table, sendsFrom, draft.from), draft.from);
   const original = draft.answers === undefined ? undefined : await findMessage(table, mailBucket, mailbox, draft.answers);
   // A forward carries the forwarded message's attachments, taken from it as it is now.
   const forwarded = draft.forwards === undefined ? undefined : await findMessage(table, mailBucket, mailbox, draft.forwards);
@@ -180,11 +187,12 @@ async function send({ table, mailBucket, outbound, region }: Sender, { mailbox, 
     return;
   }
   const sentAt = date.toISOString();
-  await markSent(table, sending, {
+  const marked = await markSent(table, sending, {
     text,
     thread: draft.thread,
     messageId: `<${sesMessageId}@${region}.amazonses.com>`,
     stored: { from, to: draft.to, cc: draft.cc, bcc: draft.bcc, recipient: draft.from, subject: draft.subject, date: sentAt, receivedAt: sentAt, rawKey },
     approval,
   });
+  if (marked) await copyToOtherMembers({ table, mailBucket }, mailbox, message);
 }

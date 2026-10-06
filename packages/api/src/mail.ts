@@ -65,6 +65,8 @@ const messageIdKey = (mailbox: string, messageId: string) => ({ [pk]: partition(
 const messageRefKey = (mailbox: string, message: string) => ({ [pk]: partition(mailbox), [sk]: `message#${message}` });
 // Each SES message is stored once per mailbox, however often SES's event is processed.
 const receivedKey = (mailbox: string, sesMessageId: string) => ({ [pk]: partition(mailbox), [sk]: `received#${sesMessageId}` });
+// Each message another member sent as a group is copied to the mailbox once, by the sent message's ID in Duva.
+const copiedKey = (mailbox: string, message: string) => ({ [pk]: partition(mailbox), [sk]: `copied#${message}` });
 // Each address the mailbox has sent to is noted, in lower case, so mail from it skips the Screener.
 const sentToKey = (mailbox: string, address: string) => ({ [pk]: partition(mailbox), [sk]: `sent-to#${address.toLowerCase()}` });
 // Each thread in Spam or Trash is listed, across mailboxes, by when it got the label, so the eraser finds those past the retention period.
@@ -144,6 +146,8 @@ interface StoredMessage {
   date: string;
   receivedAt: string;
   sentBy?: string;
+  /** On a copy of what another member sent as a group, who sent it and as which group. */
+  sentAs?: components["schemas"]["SentAsGroup"];
   /** The approval an agent's message went out with. */
   approval?: components["schemas"]["SentApproval"];
   /** Where the raw message is in the mail bucket. */
@@ -234,6 +238,36 @@ export async function storeSentMessage(
     change: (id) => ({ type: "messageSent", draft, thread: id, message: message.id }),
     once,
   });
+}
+
+/**
+ * Stores the copy of the message with the ID `sent` that another member sent as a group, once, in
+ * the thread of the first message it answers that the mailbox has, whose labels and read state it
+ * keeps, or as a new read thread without labels, so only All mail lists it. Replies to it join its
+ * thread. Records it in the mailbox's change feed as arriving mail, naming no actor. Returns false if
+ * the mailbox already has it.
+ */
+export function storeGroupCopy(
+  table: Table,
+  { mailbox, sent, message, text, answers }: { mailbox: string; sent: string; message: StoredMessage & { sentAs: components["schemas"]["SentAsGroup"] }; text: string; answers: string[] },
+): Promise<boolean> {
+  return storeMessage(table, {
+    mailbox,
+    message,
+    text,
+    thread: () => threadAnswered(table, mailbox, answers),
+    findable: true,
+    by: undefined,
+    change: (thread) => ({ type: "messageReceived", thread, message: message.id }),
+    once: () => ({ Put: { TableName: table.name, Item: copiedKey(mailbox, sent), ...isNew } }),
+  });
+}
+
+/** Whether Duva sent the message with the Message-ID from the mailbox. */
+export async function sentFromMailbox(table: Table, mailbox: string, messageId: string): Promise<boolean> {
+  const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: messageIdKey(mailbox, messageId), ConsistentRead: true }));
+  if (Item === undefined) return false;
+  return (await storedMessage(table, mailbox, Item.message as string))?.sentBy !== undefined;
 }
 
 /**
@@ -723,7 +757,7 @@ async function readMessage(mailBucket: MailBucket, stored: StoredMessage, linkTo
   const parsed = await parseMail(raw);
   const { text, attachments } = parsed;
   const html = parsed.html === undefined || linkTo === undefined ? undefined : await servedHtml(parsed.html, parsed.parts, (attachment) => linkTo(stored.id, attachment));
-  const { id, messageId, from, to, cc, bcc, recipient, plusTag, group, subject, date, receivedAt, sentBy, approval } = stored;
+  const { id, messageId, from, to, cc, bcc, recipient, plusTag, group, subject, date, receivedAt, sentBy, sentAs, approval } = stored;
   const message = {
     id,
     messageId,
@@ -738,6 +772,7 @@ async function readMessage(mailBucket: MailBucket, stored: StoredMessage, linkTo
     date,
     receivedAt,
     ...(sentBy !== undefined && { sentBy }),
+    ...(sentAs !== undefined && { sentAs: { group: sentAs.group, by: sentAs.by, name: sentAs.name } }),
     ...(approval !== undefined && { approval }),
     text,
     ...html,

@@ -78,7 +78,7 @@ test("a mailbox handed over becomes another personal mailbox of the human it goe
   await duva.receive(note("Efteråt", "grace@example.com"), { to: ["grace@example.com"] });
 
   expect(data?.removed).toBe(true);
-  const handed = { ...mailbox, owner: linusId };
+  const handed = { ...mailbox, owner: linusId, groups: [] };
   expect((await linus.GET("/mailboxes")).data).toEqual({ mailboxes: [handed] });
   const { data: threads } = await linus.GET("/mailboxes/{mailbox}/threads", { params: { path: { mailbox: mailbox.id } } });
   expect(threads?.threads.map(({ subject }) => subject)).toEqual(["Efteråt", "Till Grace"]);
@@ -96,7 +96,7 @@ test("a mailbox deleted with its human is erased everywhere Duva keeps its mail,
   expect((await duva.receive(note("Efteråt", "grace@example.com"), { to: ["grace@example.com"] })).refused).toEqual(["grace@example.com"]);
   expect(duva.receiptRules().flatMap(({ Recipients }) => Recipients)).toEqual(["linus@example.com"]);
   expect((await linus.GET("/mailboxes/{mailbox}", { params: { path: { mailbox: mailbox.id } } })).response.status).toBe(404);
-  expect((await linus.GET("/mailboxes")).data).toEqual({ mailboxes: [kept] });
+  expect((await linus.GET("/mailboxes")).data).toEqual({ mailboxes: [{ ...kept, groups: [] }] });
 });
 
 test("removing a human removes the agents they sponsor: their keys stop working and their mailboxes are erased", async () => {

@@ -115,6 +115,18 @@ test("with a group as the catch-all, its members get the mail marked with the gr
   expect(duva.sentTo()).toEqual([["linus@example.org"]]);
 });
 
+test("a member mailing a catch-all group, from an alias domain's mirror of its address, gets no copy of its own mail", async () => {
+  const { duva, ada, grace, hermes, graces, hermess } = await withCatchAllCandidates();
+  await grace.PATCH("/mailboxes/{mailbox}/screener", { params: graces, body: { on: false } });
+  await ada.POST("/groups", { body: { address: "support@example.com", members: ["grace@example.com", "hermes@example.com"] } });
+  await ada.PUT("/domains/{domain}/catch-all", onExampleCom({ group: "support@example.com" }));
+
+  await duva.receive(message("grace@example.se", "help@example.com", "From Grace"), { from: "bounces@mail.example.net", to: ["help@example.com"] });
+
+  expect((await messagesIn(hermes, hermess)).map(({ subject }) => subject)).toEqual(["From Grace"]);
+  expect(await messagesIn(grace, graces)).toEqual([]);
+});
+
 test("a group as the catch-all bounces mail from senders it doesn't take", async () => {
   const { duva, ada } = await withCatchAllCandidates();
   await ada.POST("/groups", { body: { address: "family@example.com", members: ["grace@example.com"], sendPolicy: "organization" } });
