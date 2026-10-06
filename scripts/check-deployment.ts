@@ -7,8 +7,8 @@
 // only its distribution may invoke the download Lambda; nothing but IAM may invoke the
 // unsubscriber, which refuses addresses that aren't public; the web app is served with the config
 // deploy published; the user pool takes sign-in names in any case, sends its codes from a domain
-// SES has verified, and still offers emailed codes, and no pool the stack retired is left; once an address exists, SES's receipt rules list each address, and each domain with a catch-all, once; and no received mail and no
-// approved send waits in a failure queue; Duva's configuration set publishes only bounces,
+// SES has verified, and still offers emailed codes, and no pool the stack retired is left; once an address exists, SES's receipt rules list each address, and each domain with a catch-all, once, and none is on SES's
+// suppression list, which only warns; and no received mail and no approved send waits in a failure queue; Duva's configuration set publishes only bounces,
 // complaints and rejects, to a topic that only it may invoke the feedback Lambda for, and no event
 // of SES's waits in the feedback Lambda's failure queue; nothing but IAM may invoke search, which runs at 10,240 MB
 // on x64, and Nova Lite translates in the region; every mailbox's search index is backfilled, none has held
@@ -27,6 +27,8 @@ import { GetConfigurationSetEventDestinationsCommand, GetEmailIdentityCommand, S
 import { GetQueueAttributesCommand, SQSClient } from "@aws-sdk/client-sqs";
 import { indexedMailboxes, uncompactedSince } from "@duva/api/indexing";
 import { dropMetric, dropReasons, inboundPrefix, receiptRuleNumber, recipientsPerRule, signInFrom } from "@duva/api/infrastructure";
+import { rulesTake } from "@duva/api/receiving";
+import { sesSuppressionList } from "@duva/api/suppression";
 import { novaTranslator } from "@duva/api/translation";
 import { stackName, stackOutputs, stackParameters } from "@duva/infra/outputs";
 
@@ -309,6 +311,19 @@ await check("the receipt rule set holds only Duva's rules, each with 1 to 500 re
   };
   return Rules.every(fine) && new Set(recipients).size === recipients.length ? undefined : `is ${JSON.stringify(Rules)}`;
 });
+{
+  // SES suppresses an address that hard-bounced, which one of the organization's can while SES
+  // receiving picks it up, until the feedback Lambda takes it off again. One left there gets no mail
+  // Duva sends, so this warns, without failing the check.
+  const { Rules = [] } = await new SESClient({ region }).send(new DescribeReceiptRuleSetCommand({ RuleSetName: output(stackOutputs.receiptRuleSet) }));
+  const listed = new Set(Rules.flatMap((rule) => rule.Recipients ?? []).map((recipient) => recipient.toLowerCase()));
+  const suppressed = (await sesSuppressionList(new SESv2Client({ region })).list()).filter((address) => rulesTake(listed, address));
+  console.log(
+    suppressed.length === 0
+      ? "ok    none of the organization's addresses is on SES's suppression list"
+      : `WARN  the organization's addresses on SES's suppression list get no mail Duva sends: ${suppressed.join(", ")}. Remove each with aws sesv2 delete-suppressed-destination --email-address <address>.`,
+  );
+}
 const waitingIn = async (queue: string) => {
   const { Attributes } = await new SQSClient({ region }).send(new GetQueueAttributesCommand({ QueueUrl: output(queue), AttributeNames: ["ApproximateNumberOfMessages"] }));
   return Number(Attributes?.ApproximateNumberOfMessages ?? 0);

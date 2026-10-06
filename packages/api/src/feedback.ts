@@ -3,7 +3,9 @@
 // by the ID SES gave it, and is recorded on the message and its send, and in the mailbox's change
 // feed, once however often SNS delivers it. Duva pauses an agent after one complaint about its
 // mail, or 5 hard bounces of it within an hour, across its mailboxes (ADR-0021). The urgent alert
-// ADR-0021 sends its sponsor comes with alerts, in #82.
+// ADR-0021 sends its sponsor comes with alerts, in #82. A hard bounce of one of the organization's
+// own addresses comes from SES receiving not knowing it yet, so Duva takes it off SES's suppression
+// list again, and never counts it.
 import { TransactionCanceledException } from "@aws-sdk/client-dynamodb";
 import { GetCommand, QueryCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import type { SNSEvent } from "aws-lambda";
@@ -13,6 +15,8 @@ import { recordChanges } from "./feed.ts";
 import { timeToLiveAttribute } from "./infrastructure.ts";
 import { feedbackOnMessage, type SendFeedback } from "./mail.ts";
 import { duva, findActor, mailboxFeed, pauseAgent } from "./organization.ts";
+import { localRecipients } from "./receiving.ts";
+import type { SuppressionList } from "./suppression.ts";
 import { documents, isNew, pk, sk, type TransactItem } from "./table.ts";
 
 /** An event SES publishes for a message it sent, as its event publishing writes it. Only what Duva reads. */
@@ -35,9 +39,9 @@ const hardBounceKey = (agent: string, at: string, sesMessageId: string, recipien
   [sk]: `${hardBouncePrefix}${at}#${sesMessageId}#${recipient.toLowerCase()}`,
 });
 
-export function createFeedback({ table }: { table: Table }) {
+export function createFeedback({ table, suppressionList }: { table: Table; suppressionList: SuppressionList }) {
   return async (event: SNSEvent): Promise<void> => {
-    for (const record of event.Records) await recordFeedback(table, JSON.parse(record.Sns.Message) as SesEvent);
+    for (const record of event.Records) await recordFeedback(table, suppressionList, JSON.parse(record.Sns.Message) as SesEvent);
   };
 }
 
@@ -68,12 +72,17 @@ function feedbackAsSesGaveIt({ eventType, mail, bounce, complaint, reject }: Ses
 /**
  * Records what SES reported about the message, unless it was recorded already, and pauses the
  * agent whose send it was if its mail now hurts the domain. Messages the sender didn't send, as a
- * group's copies to its external members, are left alone.
+ * group's copies to its external members, are left alone, but for taking the organization's own
+ * addresses that hard-bounced off SES's suppression list.
  */
-async function recordFeedback(table: Table, event: SesEvent): Promise<void> {
+async function recordFeedback(table: Table, suppressionList: SuppressionList, event: SesEvent): Promise<void> {
   const reported = feedbackOf(event);
   if (reported === undefined) return;
-  const { feedback, id } = reported;
+  const { id } = reported;
+  const local = reported.feedback.kind === "hardBounce" ? await localRecipients(table, reported.feedback.recipients) : [];
+  // Whether SES keeps the case a bounce gives is unknown, so both are taken off.
+  for (const address of new Set(local.flatMap((each) => [each, each.toLowerCase()]))) await suppressionList.remove(address);
+  const feedback: SendFeedback = local.length === 0 ? reported.feedback : { ...reported.feedback, localRecipients: local };
   const sesMessageId = event.mail.messageId;
   const sent = await sentBySes(table, sesMessageId);
   if (sent === undefined) return;
@@ -87,14 +96,16 @@ async function recordFeedback(table: Table, event: SesEvent): Promise<void> {
   // repeat of an old complaint never pauses an agent its sponsor has since unpaused.
   const claimKey = { [pk]: sesMessagePartition(sesMessageId), [sk]: `feedback#${id}` };
   const claim: TransactItem = { Put: { TableName: table.name, Item: claimKey, ...isNew } };
-  // An agent's hard bounces count for an hour, and the table forgets them a while after.
+  // An agent's hard bounces of recipients other than the organization's count for an hour, and the table forgets them a while after.
   const expires = Math.floor((Date.parse(feedback.at) + 2 * hour) / 1000);
   const counted: TransactItem[] =
     agent === undefined || feedback.kind !== "hardBounce"
       ? []
-      : feedback.recipients.map((recipient) => ({
-          Put: { TableName: table.name, Item: { ...hardBounceKey(agent.id, feedback.at, sesMessageId, recipient), [timeToLiveAttribute]: expires } },
-        }));
+      : feedback.recipients
+          .filter((recipient) => !local.includes(recipient))
+          .map((recipient) => ({
+            Put: { TableName: table.name, Item: { ...hardBounceKey(agent.id, feedback.at, sesMessageId, recipient), [timeToLiveAttribute]: expires } },
+          }));
   const items = [claim, ...(onMessage === undefined ? [] : [onMessage.item]), ...(onSend === undefined ? [] : [onSend]), ...counted];
   try {
     if (onMessage === undefined) await documents(table).send(new TransactWriteCommand({ TransactItems: items }));
@@ -111,7 +122,7 @@ async function recordFeedback(table: Table, event: SesEvent): Promise<void> {
     if (Item?.checked === true) return;
   }
 
-  if (agent !== undefined && (feedback.kind === "complaint" || (feedback.kind === "hardBounce" && (await tooManyHardBounces(table, agent.id, feedback.at))))) {
+  if (agent !== undefined && (feedback.kind === "complaint" || (feedback.kind === "hardBounce" && counted.length > 0 && (await tooManyHardBounces(table, agent.id, feedback.at))))) {
     await pauseAgent(table, { agent, by: duva });
   }
   await documents(table).send(new UpdateCommand({ TableName: table.name, Key: claimKey, UpdateExpression: "SET checked = :checked", ExpressionAttributeValues: { ":checked": true } }));

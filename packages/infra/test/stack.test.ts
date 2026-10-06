@@ -467,23 +467,26 @@ test("the inbound Lambda re-sends groups' mail through SES under Duva's configur
   }
 });
 
-test("the API manages receipt rules in Duva's rule set and the domains' identities in this account and region, and may take no other SES action", () => {
+test("the API manages receipt rules in Duva's rule set, the domains' identities in this account and region, and the suppression list, and may take no other SES action", () => {
   expect(actions("ApiHandler", "ses").sort()).toEqual([
     "ses:CreateEmailIdentity",
     "ses:CreateEmailIdentity",
     "ses:CreateReceiptRule",
     "ses:DeleteEmailIdentity",
     "ses:DeleteReceiptRule",
+    "ses:DeleteSuppressedDestination",
     "ses:DescribeReceiptRuleSet",
     "ses:GetEmailIdentity",
+    "ses:ListSuppressedDestinations",
     "ses:PutEmailIdentityMailFromAttributes",
     "ses:UpdateReceiptRule",
   ]);
   const [[setId]] = ofType("AWS::SES::ConfigurationSet") as [[string, Resource]];
   for (const { Action, Resource } of statements("ApiHandler").filter(({ Action }) => [Action].flat().some((action) => action.startsWith("ses:")))) {
     const resources = JSON.stringify(Resource);
-    if ([Action].flat().every((action) => action.includes("Receipt"))) {
-      // IAM has no resource type for receipt rules, so the rule set is named only in the environment.
+    if ([Action].flat().every((action) => action.includes("Receipt") || action.includes("SuppressedDestination"))) {
+      // IAM has no resource type for receipt rules, so the rule set is named only in the environment,
+      // nor for the account's suppression list.
       expect(Resource).toBe("*");
     } else if (resources.includes("configuration-set/")) {
       // A new identity sends through Duva's configuration set by default.
@@ -579,11 +582,14 @@ test("the feedback Lambda retries a failed event, then leaves it in a queue for 
   expect(queue?.Properties?.MessageRetentionPeriod).toBe(14 * 24 * 3600);
 });
 
-test("the feedback Lambda writes the table, and may touch nothing else", () => {
+test("the feedback Lambda writes the table and takes addresses off the suppression list, and may touch nothing else", () => {
   expect(tableActions("FeedbackHandler")).toEqual(expect.arrayContaining(["dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:Query"]));
   const services = new Set(statements("FeedbackHandler").flatMap(({ Action }) => [Action].flat()).map((action) => action.split(":")[0]));
   // Lambda's own role may send a failed event to the failure queue.
-  expect(services).toEqual(new Set(["dynamodb", "sqs"]));
+  expect(services).toEqual(new Set(["dynamodb", "sqs", "ses"]));
+  expect(statements("FeedbackHandler").filter(({ Action }) => [Action].flat().some((action) => action.startsWith("ses:")))).toEqual([
+    expect.objectContaining({ Action: "ses:DeleteSuppressedDestination", Resource: "*" }),
+  ]);
 });
 
 test("receiving starts with an empty rule set, so SES refuses all mail until the first address exists", () => {

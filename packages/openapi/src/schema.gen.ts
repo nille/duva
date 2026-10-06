@@ -1768,7 +1768,7 @@ export interface components {
             message: string;
             feedback: components["schemas"]["SendFeedback"];
         };
-        /** @description What SES reported about a sent message after accepting it. A hard bounce means the address doesn't take mail, and a soft bounce that it didn't for now. One complaint about an agent's mail, or 5 hard bounces of its mail within an hour, each recipient counting, pause the agent (ADR-0021). */
+        /** @description What SES reported about a sent message after accepting it. A hard bounce means the address doesn't take mail, and a soft bounce that it didn't for now. One complaint about an agent's mail, or 5 hard bounces of its mail within an hour, each recipient that isn't one of the organization's addresses counting, pause the agent (ADR-0021). */
         SendFeedback: {
             /**
              * @description hardBounce or softBounce from a recipient's mail server; complaint, when a recipient marked it as spam; or reject, when SES didn't send it after all, as for a virus.
@@ -1789,6 +1789,8 @@ export interface components {
              * @example Bad content
              */
             reason?: string;
+            /** @description The recipients of a hard bounce that are the organization's own addresses, if any. SES takes a few seconds to start receiving mail for a new address, and refuses it until then, so Duva took them off SES's suppression list again, and their bounce never counts toward pausing the agent. */
+            localRecipients?: string[];
         };
         ThreadRead: components["schemas"]["ChangeBase"] & {
             /** @constant */

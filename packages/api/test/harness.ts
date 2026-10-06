@@ -13,7 +13,7 @@ import type { AddressInfo } from "node:net";
 import { randomUUID } from "node:crypto";
 import { CreateTableCommand, DeleteItemCommand, ScanCommand } from "@aws-sdk/client-dynamodb";
 import type { ReceiptRule } from "@aws-sdk/client-ses";
-import type { SESEvent } from "aws-lambda";
+import type { SESEvent, SNSEvent } from "aws-lambda";
 import PostalMime from "postal-mime";
 import { createDuvaClient, type DuvaClient } from "@duva/client";
 import { inject, onTestFinished, vi } from "vitest";
@@ -35,6 +35,7 @@ import { keys, timeEarlierLabels } from "../src/mail.ts";
 import { addHumanToOrganization, screenerKey, setUpOrganization } from "../src/organization.ts";
 import { setUpScreeners } from "../src/screening.ts";
 import { createSender } from "../src/sending.ts";
+import type { SuppressionReason } from "../src/suppression.ts";
 import { postOneClick } from "../src/unsubscriber.ts";
 import { dynamodbLocal } from "./dynamodb-local.ts";
 import { gateway } from "./gateway.ts";
@@ -151,8 +152,16 @@ export interface Duva {
    * those times.
    */
   clock(at: Date): Promise<void>;
-  /** The recipients SES delivered each message in sent() to, in the same order, Bcc recipients included. */
+  /**
+   * The recipients SES delivered each message in sent() to, in the same order, Bcc recipients
+   * included, and none on SES's suppression list.
+   */
   sentTo(): string[][];
+  /**
+   * The addresses on the account's suppression list, in alphabetical order, each with why SES put
+   * it there. SES puts each address that hard-bounces or complains there, as the account is set to.
+   */
+  suppressionList(): { address: string; reason: SuppressionReason }[];
   /** The raw messages the mail bucket keeps, received and sent, every version of each. */
   stored(): string[];
   /** Every object the search bucket keeps, each file of each mailbox's index, as text. */
@@ -220,12 +229,15 @@ export async function startDuva({
   const dns = memoryDns();
   const identities = sesIdentities({ region, dns, verified: [domain], others: othersIdentities, configurationSet: "duva-sending" });
   const signInSender = memorySignInSender(domain, identities.verified);
-  const sending = sesSending({ region, verified: identities.verified, sandbox, answersLost: sesAnswersLost, subscriber: createFeedback({ table }) });
+  // SES's events invoke the feedback Lambda, which changes SES's suppression list, so the two are tied once both exist.
+  let feedback: (event: SNSEvent) => Promise<void> = async () => {};
+  const sending = sesSending({ region, verified: identities.verified, sandbox, answersLost: sesAnswersLost, subscriber: (event) => feedback(event) });
+  feedback = createFeedback({ table, suppressionList: sending.suppressionList });
   // SES invokes the inbound Lambda, which bounces through SES, so the two are tied once both exist.
   let inbound: (event: SESEvent) => Promise<void> = async () => {};
   const ses = sesReceiving({ verified: identities.verified, region, buckets: new Map([[mailBucketName, mailBucket]]), functions: new Map([[inboundFunction, (event) => inbound(event)]]) });
   inbound = createInbound({ table, mailBucket, log: (line) => inboundLog.push(line), outbound: sending.outbound, bounces: ses.bounces });
-  const receiving = { rules: ses.rules, bucket: mailBucketName, inboundFunction };
+  const receiving = { rules: ses.rules, bucket: mailBucketName, inboundFunction, suppressionList: sending.suppressionList };
   // Each mailbox's index is a table under the deployment's own directory. The search Lambda and the
   // indexer each open them, as two Lambdas do. Backfill steps are small, so a few messages take several.
   const indexes = join(searchIndexes, randomUUID());
@@ -335,6 +347,7 @@ export async function startDuva({
     signInCodesFrom: () => signInSender.from,
     sent: () => sending.sent(),
     sentTo: () => sending.sentTo(),
+    suppressionList: () => sending.suppressed(),
     async sendingEvent(messageId, event, options) {
       await sending.publish(messageId, event, options);
       if (!indexingHeld) await index();

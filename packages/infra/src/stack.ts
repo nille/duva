@@ -473,6 +473,8 @@ export class DuvaStack extends Stack {
         resources: ["*"],
       }),
     );
+    // A new address is taken off the account's suppression list, which IAM has no resource type for.
+    handler.addToRolePolicy(new PolicyStatement({ actions: ["ses:ListSuppressedDestinations", "ses:DeleteSuppressedDestination"], resources: ["*"] }));
 
     // Sending starts from the recorded decision: the table's stream invokes the sender for each draft
     // a decision approved, in order, one at a time. Lambda retries a failed record, then records it
@@ -542,6 +544,8 @@ export class DuvaStack extends Stack {
     feedback.configureAsyncInvoke({ retryAttempts: 2, onFailure: new SqsDestination(feedbackFailures) });
     feedbackTopic.addSubscription(new LambdaSubscription(feedback));
     table.grantReadWriteData(feedback);
+    // A hard bounce of one of the organization's own addresses takes it off the account's suppression list.
+    feedback.addToRolePolicy(new PolicyStatement({ actions: ["ses:DeleteSuppressedDestination"], resources: ["*"] }));
 
     const authorizerHandler = lambda("AuthorizerHandler", "@duva/api/authorizer-lambda", {
       [environmentVariables.tableName]: table.tableName,

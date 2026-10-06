@@ -20,6 +20,8 @@
     "./dns-records": "./src/dns-records.ts",
     "./indexing": "./src/indexing.ts",
     "./translation": "./src/translation.ts",
+    "./receiving": "./src/receiving.ts",
+    "./suppression": "./src/suppression.ts",
     "./harness": "./test/harness.ts"
   },
   "scripts": {

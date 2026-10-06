@@ -8,6 +8,7 @@ import type { MailBucket } from "../src/mail-bucket.ts";
 import { BounceRefused, type Bounces } from "../src/group-mail.ts";
 import type { ReceiptRules } from "../src/receiving.ts";
 import { type Outbound, Refused } from "../src/sending.ts";
+import type { SuppressionList, SuppressionReason } from "../src/suppression.ts";
 
 /** The envelope SES receives a message with. */
 export interface Envelope {
@@ -267,7 +268,10 @@ export interface PublishOptions {
  * the sandbox SES refuses a message to anyone not on one, with SES's reason. With `answersLost`,
  * SES accepts each message but its answer never arrives, as when the connection drops. Every send
  * goes through Duva's configuration set, which publishes its bounces, complaints and rejects to
- * an SNS topic that invokes `subscriber`.
+ * an SNS topic that invokes `subscriber`. As the account is set to, SES puts each address that
+ * hard-bounces or complains on its suppression list, and accepts a message for an address there
+ * but doesn't deliver it to them. SES then publishes a hard bounce for it, which here a test
+ * publishes.
  */
 export function sesSending({
   region,
@@ -282,7 +286,20 @@ export function sesSending({
   answersLost: boolean;
   subscriber: (event: SNSEvent) => Promise<void>;
 }) {
-  const accepted: { raw: string; recipients: string[]; messageId: string; source: string; timestamp: string }[] = [];
+  const accepted: { raw: string; recipients: string[]; delivered: string[]; messageId: string; source: string; timestamp: string }[] = [];
+  // The account's suppression list, by address in lower case, with why SES put each there.
+  const suppressed = new Map<string, SuppressionReason>();
+  const suppress = (addresses: string[], reason: SuppressionReason) => {
+    for (const address of addresses) suppressed.set(address.toLowerCase(), reason);
+  };
+  const suppressionList: SuppressionList = {
+    async list() {
+      return [...suppressed.keys()];
+    },
+    async remove(address) {
+      suppressed.delete(address.toLowerCase());
+    },
+  };
   // The notification last published for each message, by the ID SES gave it.
   const published = new Map<string, SNSEvent>();
   const outbound: Outbound = {
@@ -302,6 +319,7 @@ export function sesSending({
       accepted.push({
         raw: [[...fields, `Message-ID: <${messageId}@${region}.amazonses.com>`].join("\r\n"), ...body].join("\r\n\r\n"),
         recipients,
+        delivered: recipients.filter((recipient) => !suppressed.has(recipient.toLowerCase())),
         messageId,
         source: from,
         timestamp: new Date().toISOString(),
@@ -312,10 +330,13 @@ export function sesSending({
   };
   return {
     outbound,
+    suppressionList,
+    /** The addresses on the account's suppression list, in alphabetical order, with why SES put each there. */
+    suppressed: () => [...suppressed].sort(([a], [b]) => a.localeCompare(b)).map(([address, reason]) => ({ address, reason })),
     /** The raw messages SES accepted, as their recipients get them, oldest first. */
     sent: () => accepted.map(({ raw }) => raw),
-    /** The recipients SES delivered each message in sent() to, in the same order. */
-    sentTo: () => accepted.map(({ recipients }) => [...recipients]),
+    /** The recipients SES delivered each message in sent() to, in the same order: none on its suppression list. */
+    sentTo: () => accepted.map(({ delivered }) => [...delivered]),
     /**
      * Publishes the event for the message SES sent with the ID, as SES's event publishing writes it
      * to the topic, and has SNS deliver it to the subscriber.
@@ -394,6 +415,8 @@ export function sesSending({
         ],
       };
       published.set(messageId, notification);
+      if (event.type === "Bounce" && event.bounceType === "Permanent") suppress(concerned(event.recipients), "BOUNCE");
+      if (event.type === "Complaint") suppress(concerned(event.recipients), "COMPLAINT");
       for (let delivery = 0; delivery < deliveries; delivery++) await subscriber(structuredClone(notification));
     },
   };

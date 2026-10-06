@@ -13,6 +13,7 @@ import {
 import type { Table } from "./deployment.ts";
 import { inboundPrefix, receiptRuleName, receiptRuleNumber, recipientsPerRule } from "./infrastructure.ts";
 import { allDomains, catchAllTarget, receivingAddresses } from "./organization.ts";
+import type { SuppressionList } from "./suppression.ts";
 
 /** Duva's receipt rule set in SES, or a stand-in in tests. */
 export interface ReceiptRules {
@@ -33,6 +34,8 @@ export interface Receiving {
   bucket: string;
   /** The ARN of the inbound Lambda, which SES invokes for each message. */
   inboundFunction: string;
+  /** SES's suppression list, which an address the rules start listing is taken off. */
+  suppressionList: SuppressionList;
 }
 
 /** How many receipt rules SES takes in one rule set (docs/aws.md). */
@@ -55,6 +58,21 @@ export async function ruleRecipients(table: Table): Promise<string[]> {
   for (const { domain, catchAll } of domains) if ((await catchAllTarget(table, catchAll)) !== undefined) withCatchAll.add(domain);
   const catchAllDomains = domains.filter(({ domain, aliasOf }) => withCatchAll.has(aliasOf ?? domain)).map(({ domain }) => domain);
   return [...addresses.map(({ address }) => address), ...catchAllDomains];
+}
+
+/**
+ * The recipients among those given that are the organization's: those Duva's receipt rules take
+ * mail for, as an address, its plus-tagged addresses, or one on a domain with a catch-all.
+ */
+export async function localRecipients(table: Table, recipients: string[]): Promise<string[]> {
+  const listed = new Set(await ruleRecipients(table));
+  return recipients.filter((recipient) => rulesTake(listed, recipient));
+}
+
+/** Whether rules listing the recipients take mail for the address, as SES matches them. */
+export function rulesTake(listed: Set<string>, address: string): boolean {
+  const lower = address.toLowerCase();
+  return listed.has(lower) || listed.has(lower.replace(/\+[^@]*@/, "@")) || listed.has(lower.slice(lower.lastIndexOf("@") + 1));
 }
 
 /** The name of Duva's nth rule for addresses, counting from 1. The first keeps the name it had when there was one. */
@@ -83,9 +101,12 @@ export const receiptRule = ({ bucket, inboundFunction }: Receiving, name: string
  * new one goes in the first rule with room, or a new rule after the others, and an emptied rule is
  * deleted, since a rule without recipients would accept mail to every address on the domain. SES
  * can't update a rule conditionally, so two changes at the same time may each write what they read.
- * Each writes what it read, then checks, until the rules list every address.
+ * Each writes what it read, then checks, until the rules list every address. Then each address
+ * the recipients it placed take mail for is taken off SES's suppression list, where mail to it
+ * before the organization had it may have put it.
  */
 export async function syncRecipients(table: Table, receiving: Receiving): Promise<void> {
+  const placedNow = new Set<string>();
   for (let attempt = 1; ; attempt++) {
     const addresses = new Set(await ruleRecipients(table));
     const rules = (await receiving.rules.list()).filter(({ Name }) => receiptRuleNumber(Name) !== undefined);
@@ -96,6 +117,7 @@ export async function syncRecipients(table: Table, receiving: Receiving): Promis
       return { rule, recipients };
     });
     const missing = [...addresses].filter((address) => !placed.has(address)).sort();
+    for (const recipient of missing) placedNow.add(recipient);
     for (const { recipients } of kept) recipients.push(...missing.splice(0, recipientsPerRule - recipients.length));
     const created: ReceiptRule[] = [];
     const taken = new Set(rules.map(({ Name }) => receiptRuleNumber(Name)));
@@ -104,7 +126,14 @@ export async function syncRecipients(table: Table, receiving: Receiving): Promis
       if (!taken.has(number)) created.push(receiptRule(receiving, ruleName(number), missing.splice(0, recipientsPerRule)));
     }
     const changed = kept.filter(({ rule, recipients }) => (rule.Recipients ?? []).join() !== recipients.join());
-    if (changed.length === 0 && created.length === 0) return;
+    if (changed.length === 0 && created.length === 0) {
+      if (placedNow.size === 0) return;
+      // The list is short, where the addresses an alias domain mirrors may be many.
+      const listedNow = new Set([...placedNow].filter((recipient) => addresses.has(recipient)));
+      const suppressed = (await receiving.suppressionList.list()).filter((address) => rulesTake(listedNow, address));
+      for (const address of suppressed) await receiving.suppressionList.remove(address);
+      return;
+    }
     if (attempt === 10)
       throw new Error("SES's receipt rules kept changing while Duva updated them, so mail to the newest addresses may be refused. Adding another address updates them again.");
     for (const { rule, recipients } of changed) {

@@ -3334,8 +3334,8 @@ components:
       description: >
         What SES reported about a sent message after accepting it. A hard bounce means the address
         doesn't take mail, and a soft bounce that it didn't for now. One complaint about an agent's
-        mail, or 5 hard bounces of its mail within an hour, each recipient counting, pause the
-        agent (ADR-0021).
+        mail, or 5 hard bounces of its mail within an hour, each recipient that isn't one of the
+        organization's addresses counting, pause the agent (ADR-0021).
       properties:
         kind:
           type: string
@@ -3356,6 +3356,15 @@ components:
           type: string
           description: SES's reason, if it gives one, as the bounce's subtype, the complaint's type or the reject's reason.
           examples: ["NoEmail", "abuse", "Bad content"]
+        localRecipients:
+          type: array
+          items:
+            type: string
+          description: >
+            The recipients of a hard bounce that are the organization's own addresses, if any. SES
+            takes a few seconds to start receiving mail for a new address, and refuses it until
+            then, so Duva took them off SES's suppression list again, and their bounce never counts
+            toward pausing the agent.
     ThreadRead:
       allOf:
         - $ref: "#/components/schemas/ChangeBase"

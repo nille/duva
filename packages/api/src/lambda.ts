@@ -18,6 +18,7 @@ import { lambdaEraser } from "./erasure.ts";
 import { sqsIndexQueue } from "./indexing.ts";
 import { sesReceiptRules } from "./receiving.ts";
 import { lambdaSearcher } from "./searching.ts";
+import { sesSuppressionList } from "./suppression.ts";
 import { lambdaUnsubscriber } from "./unsubscriber.ts";
 import { lambdaWaitingSends } from "./limits.ts";
 
@@ -26,6 +27,7 @@ const lambda = new LambdaClient({});
 const cognito = new CognitoIdentityProviderClient({});
 const userPoolId = required(environmentVariables.userPoolId);
 const configurationSet = required(environmentVariables.configurationSet);
+const sesV2 = new SESv2Client({});
 
 export const handler = createApi({
   version: required(environmentVariables.version),
@@ -33,13 +35,14 @@ export const handler = createApi({
   table: { client: new DynamoDBClient({}), name: required(environmentVariables.tableName) },
   humans: cognitoHumans(cognito, userPoolId),
   signInSender: cognitoSignInSender(cognito, userPoolId, configurationSet),
-  identities: sesIdentities(new SESv2Client({}), configurationSet),
+  identities: sesIdentities(sesV2, configurationSet),
   dns: realDns,
   mailBucket: s3MailBucket(new S3Client({}), mailBucket),
   receiving: {
     rules: sesReceiptRules(new SESClient({}), required(environmentVariables.receiptRuleSet)),
     bucket: mailBucket,
     inboundFunction: required(environmentVariables.inboundFunction),
+    suppressionList: sesSuppressionList(sesV2),
   },
   eraser: lambdaEraser(lambda, required(environmentVariables.eraserFunction)),
   unsubscriber: lambdaUnsubscriber(lambda, required(environmentVariables.unsubscriberFunction)),
