@@ -91,6 +91,19 @@ export function lanceSearch(options: LanceSearchOptions): SearchEngine {
     table.catch(() => opened.delete(mailbox));
     return table;
   };
+  // A table dropped and made again since it was opened fails, and so does a version that compaction
+  // pruned while it was read, so a read that fails opens the table again and reads once more.
+  const reading = async <T>(mailbox: string, none: T, read: (table: lancedb.Table) => Promise<T>): Promise<T> => {
+    const table = await open(mailbox);
+    if (table === undefined) return none;
+    try {
+      return await read(table);
+    } catch {
+      opened.delete(mailbox);
+      const again = await open(mailbox);
+      return again === undefined ? none : read(again);
+    }
+  };
   return {
     writer(mailbox) {
       const cached = writers.get(mailbox);
@@ -112,25 +125,16 @@ export function lanceSearch(options: LanceSearchOptions): SearchEngine {
       const db = await connection;
       if ((await db.tableNames()).includes(mailbox)) await db.dropTable(mailbox);
     },
-    async search(mailbox, asked) {
-      const table = await open(mailbox);
-      if (table === undefined) return [];
-      try {
-        return await search(table, asked);
-      } catch (error) {
-        // A table dropped and made again since it was opened fails, so the next search opens it again.
-        opened.delete(mailbox);
-        throw error;
-      }
-    },
+    search: (mailbox, asked) => reading(mailbox, [], (table) => search(table, asked)),
     async texts(mailbox, messages) {
-      const table = await open(mailbox);
-      if (table === undefined || messages.length === 0) return new Map();
-      const rows: { id: string; text_en: string; text_sv: string }[] = await table
-        .query()
-        .where(`id IN ${set(messages)}`)
-        .select(["id", "text_en", "text_sv"])
-        .toArray();
+      if (messages.length === 0) return new Map();
+      const rows: { id: string; text_en: string; text_sv: string }[] = await reading(mailbox, [], (table) =>
+        table
+          .query()
+          .where(`id IN ${set(messages)}`)
+          .select(["id", "text_en", "text_sv"])
+          .toArray(),
+      );
       return new Map(rows.map((row) => [row.id, row.text_en || row.text_sv]));
     },
   };
@@ -169,6 +173,18 @@ class LanceWriter implements IndexWriter {
 
   async maintain(): Promise<void> {
     await this.table.optimize({ cleanupOlderThan: new Date(Date.now() - versionsKept) });
+  }
+
+  // A deleted row stays in its data file until compaction rewrites the file, which LanceDB does
+  // only past 10% of its rows deleted, and never for a file its indexes cover while newer ones
+  // aren't. So every row is written again, unchanged, which leaves no row in the old files, and the
+  // full-text indexes, which hold words, are built again from the rows there are. Pruning then takes
+  // every version before, the files only they have, and those a failed write left. The one writer
+  // is this one, so no other write can be in progress.
+  async compact(): Promise<void> {
+    await this.table.update({ where: "true", valuesSql: { unread: "unread" } });
+    for (const [column, index] of indexes) if (searchedColumns.includes(column)) await this.table.createIndex(column, { config: index(), replace: true });
+    await this.table.optimize({ cleanupOlderThan: new Date(), deleteUnverified: true });
   }
 }
 

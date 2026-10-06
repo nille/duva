@@ -4,7 +4,8 @@
 // nothing. The table's stream hands the feeder each new change, and the feeder gives the indexer's
 // FIFO queue a task for its mailbox, with the mailbox as the message group, so each mailbox has
 // one writer at a time. A mailbox whose index is missing, or from an older version of it, is
-// backfilled from its stored mail, a step at a time, each step a task of its own.
+// backfilled from its stored mail, a step at a time, each step a task of its own. The eraser's
+// daily run gives each mailbox a task to compact its index, so erased text leaves its files.
 import { randomUUID } from "node:crypto";
 import { SendMessageBatchCommand, type SQSClient } from "@aws-sdk/client-sqs";
 import { GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
@@ -24,10 +25,14 @@ import { documents, pk, sk } from "./table.ts";
  */
 export const indexVersion = 1;
 
-/** What the indexer's queue carries: a mailbox to bring up to date, and the step of its backfill to take, if any. */
+/**
+ * What the indexer's queue carries: a mailbox to bring up to date, the step of its backfill to
+ * take, if any, and whether to compact its index afterwards, if messages have left it.
+ */
 export interface IndexTask {
   mailbox: string;
   backfill?: number;
+  compact?: true;
 }
 
 /** A task as the queue takes it, with the ID that deduplicates it, as the queue does within five minutes. */
@@ -50,6 +55,10 @@ interface IndexState {
   writes: number;
   /** The backfill, until it is done: the step to take next, and the thread it reads on from. */
   backfill?: { step: number; after?: string };
+  /** When messages first left the index since it was last compacted, so that files may still hold their text. */
+  removedSince?: string;
+  /** When the index was last compacted, or made. An index from before compaction has none, and may hold removed text. */
+  compactedAt?: string;
 }
 
 const stateKey = (mailbox: string) => ({ [pk]: mailboxKey(mailbox)[pk]!, [sk]: "search-index" });
@@ -142,7 +151,7 @@ async function bringUpToDate({ table, mailBucket, engine, queue, backfillMessage
   if (state === undefined || state.version !== indexVersion) {
     // The backfill indexes what is stored now, so the feed's changes count from here on.
     if (state !== undefined) await engine.drop(mailbox);
-    state = { version: indexVersion, position: await lastPosition(table, mailboxFeed(mailbox)), writes: 0, backfill: { step: 0 } };
+    state = { version: indexVersion, position: await lastPosition(table, mailboxFeed(mailbox)), writes: 0, backfill: { step: 0 }, compactedAt: new Date().toISOString() };
     await documents(table).send(new PutCommand({ TableName: table.name, Item: { ...stateKey(mailbox), ...state } }));
     step = 0;
   } else if (state.backfill !== undefined && (state.backfill.step === 0 || tasks.some((task) => task.backfill === state!.backfill!.step))) {
@@ -164,13 +173,23 @@ async function bringUpToDate({ table, mailBucket, engine, queue, backfillMessage
   for (; read < changesAtOnce; read += changesPerPage) {
     const changes = await changesAfter(table, mailboxFeed(mailbox), state.position);
     if (changes.length === 0) break;
-    state.writes += await apply({ table, mailBucket }, writer, mailbox, changes);
+    const { commits, removed } = await apply({ table, mailBucket }, writer, mailbox, changes);
+    state.writes += commits;
+    if (removed) state.removedSince ??= new Date().toISOString();
     state.position = changes.at(-1)!.position as number;
     if (changes.length < changesPerPage) break;
   }
-  if (read >= changesAtOnce) await queue.send([{ task: { mailbox }, id: `${mailbox}#continue#${state.position}` }]);
+  // Compaction waits for the end of a long catch-up, so it covers what is erased there too.
+  const compact = tasks.some((task) => task.compact === true);
+  const continues = read >= changesAtOnce;
+  if (continues) await queue.send([{ task: { mailbox, ...(compact && { compact }) }, id: `${mailbox}#continue#${state.position}` }]);
 
-  if (state.writes >= maintainedAfter) {
+  if (compact && !continues && (state.removedSince !== undefined || state.compactedAt === undefined)) {
+    await writer.compact();
+    state.removedSince = undefined;
+    state.compactedAt = new Date().toISOString();
+    state.writes = 0;
+  } else if (state.writes >= maintainedAfter) {
     await writer.maintain();
     state.writes = 0;
   }
@@ -180,11 +199,16 @@ async function bringUpToDate({ table, mailBucket, engine, queue, backfillMessage
 /**
  * Applies the changes to the index: each changed thread as it is now, its new messages added, its
  * labels and read state given to its messages, or its messages removed if it has been erased.
- * Returns how many commits it made.
+ * Returns how many commits it made, and whether it removed messages.
  */
-async function apply({ table, mailBucket }: { table: Table; mailBucket: MailBucket }, writer: IndexWriter, mailbox: string, changes: Record<string, unknown>[]): Promise<number> {
+async function apply(
+  { table, mailBucket }: { table: Table; mailBucket: MailBucket },
+  writer: IndexWriter,
+  mailbox: string,
+  changes: Record<string, unknown>[],
+): Promise<{ commits: number; removed: boolean }> {
   const threads = [...new Set(changes.flatMap((change) => (typeof change.thread === "string" ? [change.thread] : [])))];
-  if (threads.length === 0) return 0;
+  if (threads.length === 0) return { commits: 0, removed: false };
   const summaries = new Map(await Promise.all(threads.map(async (thread) => [thread, await threadSummary(table, mailbox, thread)] as const)));
   const added = changes.filter((change) => change.type === "messageReceived" || change.type === "messageSent").map((change) => change.message as string);
   const stored = (await Promise.all(added.map((message) => storedMessage(table, mailbox, message)))).flatMap((message) => {
@@ -210,7 +234,7 @@ async function apply({ table, mailBucket }: { table: Table; mailBucket: MailBuck
     await writer.removeThreads(erased);
     commits++;
   }
-  return commits;
+  return { commits, removed: erased.length > 0 };
 }
 
 /** The messages as the index has them, each with its thread's labels and read state, and what its raw message says. */
@@ -260,11 +284,32 @@ export async function indexMailboxes(table: Table, queue: IndexQueue): Promise<v
   await queue.send(tasks);
 }
 
+/**
+ * Gives the indexer a task to compact the index of each mailbox that has one, which it does if
+ * messages have left it. The eraser's daily run at `at` does this, so a run Lambda retries hands
+ * each task once. Each task first catches up, so it covers what the run itself erased.
+ */
+export async function compactIndexes(table: Table, queue: IndexQueue, at: Date): Promise<void> {
+  const indexed = (await indexStates(table)).flatMap(([mailbox, state]) => (state === undefined ? [] : [mailbox]));
+  await queue.send(indexed.map((mailbox) => ({ task: { mailbox, compact: true }, id: `${mailbox}#compact#${at.toISOString()}` })));
+}
+
+/** When messages first left the index that has waited longest for compaction since, if any index has. */
+export async function uncompactedSince(table: Table): Promise<Date | undefined> {
+  const times = (await indexStates(table)).flatMap(([, state]) => (state?.removedSince === undefined ? [] : [new Date(state.removedSince).getTime()]));
+  return times.length === 0 ? undefined : new Date(Math.min(...times));
+}
+
 /** How many of the organization's mailboxes there are, and how many have an index of this version, backfilled. */
 export async function indexedMailboxes(table: Table): Promise<{ mailboxes: number; indexed: number }> {
+  const states = await indexStates(table);
+  return { mailboxes: states.length, indexed: states.filter(([, state]) => state?.version === indexVersion && state.backfill === undefined).length };
+}
+
+/** Each of the organization's mailboxes, with its index's state if it has an index. */
+async function indexStates(table: Table): Promise<[mailbox: string, state: IndexState | undefined][]> {
   const mailboxes = await allMailboxes(table);
-  const states = await Promise.all(mailboxes.map((mailbox) => stateOf(table, mailbox)));
-  return { mailboxes: mailboxes.length, indexed: states.filter((state) => state?.version === indexVersion && state.backfill === undefined).length };
+  return Promise.all(mailboxes.map(async (mailbox) => [mailbox, await stateOf(table, mailbox)] as [string, IndexState | undefined]));
 }
 
 /** The indexer's queue in SQS, a FIFO queue with each mailbox as a message group. */

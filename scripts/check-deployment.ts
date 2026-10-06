@@ -9,8 +9,8 @@
 // deploy published; the user pool takes sign-in names in any case, and no pool the stack retired
 // is left; once an address exists, SES's receipt rule lists it; and no received mail and no
 // approved send waits in a failure queue; nothing but IAM may invoke search, which runs at 10,240 MB
-// on x64; every mailbox's search index is backfilled, and no indexer task waits in its failure
-// queue. Signing in stays with a human. Then prints how many
+// on x64; every mailbox's search index is backfilled, none has held erased mail for more than a
+// day, and no indexer task waits in its failure queue. Signing in stays with a human. Then prints how many
 // messages Duva dropped on arrival each day of the last 7, by reason. Exits 1 if any check fails.
 import { CloudFormationClient, DescribeStacksCommand, paginateListStackResources } from "@aws-sdk/client-cloudformation";
 import { CloudWatchClient, GetMetricDataCommand } from "@aws-sdk/client-cloudwatch";
@@ -19,7 +19,7 @@ import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { GetFunctionConfigurationCommand, GetFunctionUrlConfigCommand, GetPolicyCommand, InvokeCommand, LambdaClient, ResourceNotFoundException } from "@aws-sdk/client-lambda";
 import { DescribeReceiptRuleSetCommand, SESClient } from "@aws-sdk/client-ses";
 import { GetQueueAttributesCommand, SQSClient } from "@aws-sdk/client-sqs";
-import { indexedMailboxes } from "@duva/api/indexing";
+import { indexedMailboxes, uncompactedSince } from "@duva/api/indexing";
 import { dropMetric, dropReasons, inboundPrefix, receiptRuleName } from "@duva/api/infrastructure";
 import { stackName, stackOutputs } from "@duva/infra/outputs";
 
@@ -138,15 +138,35 @@ await check("search runs at 10,240 MB on x64, as ADR-0007 measured", async () =>
   return MemorySize === 10_240 && JSON.stringify(Architectures) === '["x86_64"]' ? undefined : `runs at ${MemorySize} MB on ${Architectures}`;
 });
 await check("searching without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/mailboxes/x/search?q=x`), 401));
+// The stack's table, found once, inside the checks that need it.
+let found: Promise<string | undefined> | undefined;
+const stackTable = async () => {
+  found ??= (async () => {
+    for await (const { StackResourceSummaries = [] } of paginateListStackResources({ client: cloudFormation }, { StackName: stackName })) {
+      const id = StackResourceSummaries.find(({ ResourceType }) => ResourceType === "AWS::DynamoDB::GlobalTable")?.PhysicalResourceId;
+      if (id !== undefined) return id;
+    }
+    return undefined;
+  })();
+  const name = await found;
+  return name === undefined ? undefined : { client: new DynamoDBClient({ region }), name };
+};
 await check("every mailbox's search index is backfilled", async () => {
-  let table: string | undefined;
-  for await (const { StackResourceSummaries = [] } of paginateListStackResources({ client: cloudFormation }, { StackName: stackName })) {
-    table ??= StackResourceSummaries.find(({ ResourceType }) => ResourceType === "AWS::DynamoDB::GlobalTable")?.PhysicalResourceId;
-  }
+  const table = await stackTable();
   if (table === undefined) return "the stack has no table";
-  const { mailboxes, indexed } = await indexedMailboxes({ client: new DynamoDBClient({ region }), name: table });
+  const { mailboxes, indexed } = await indexedMailboxes(table);
   console.log(`      ${indexed} of ${mailboxes} mailboxes' indexes are backfilled`);
   return indexed === mailboxes ? undefined : `${mailboxes - indexed} of ${mailboxes} aren't yet. Wait a few minutes, or run duva deploy again to finish them.`;
+});
+// The eraser runs once a day, so mail erased just after a run waits a day, and the hour is slack.
+await check("no search index has held erased mail's text for more than a day", async () => {
+  const table = await stackTable();
+  if (table === undefined) return "the stack has no table";
+  const since = await uncompactedSince(table);
+  if (since !== undefined) console.log(`      the longest wait for compaction is since ${since.toISOString()}`);
+  return since === undefined || Date.now() - since.getTime() < 25 * 60 * 60 * 1000
+    ? undefined
+    : `an index has held erased mail since ${since.toISOString()}. Look for the eraser's and the indexer's errors in their logs.`;
 });
 await check("deleting a draft without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/mailboxes/x/drafts/x`, { method: "DELETE" }), 401));
 await check("labelling threads without credentials answers 401", async () =>

@@ -176,6 +176,26 @@ describe.each(locations)("Search on %s", (_, start) => {
     expect(ids(await search({ terms: words("kayak") })).sort()).toEqual(["kayak-club", "kayak-rental", "kayak-trash"]);
   });
 
+  test("compaction leaves every message found as before, by words, phrases and filters, with its text", async () => {
+    const writer = await engine.writer(mailbox);
+    await writer.removeThreads(["kayak-spam"]);
+    await writer.relabel([{ id: "kayak-club", labels: ["Inbox", "Travel"], unread: true }]);
+    await writer.compact();
+    expect(ids(await search({ terms: words("kayak") })).sort()).toEqual(["kayak-club", "kayak-rental", "kayak-trash"]);
+    expect(ids(await search({ filters: { labels: { include: ["Travel"] }, unread: true } }))).toEqual(["kayak-club"]);
+    expect(ids(await search({ terms: [phrase("förra mötet")] }))).toEqual(["mote-sv"]);
+    expect(ids(await search({ terms: words("hosting invoice april") })).sort()).toEqual(["invoice-april", "invoice-question"]);
+    expect(await engine.texts(mailbox, ["kayak-club"])).toEqual(new Map([["kayak-club", fixture.find(({ id }) => id === "kayak-club")!.text]]));
+  });
+
+  test("an index with nothing removed, or nothing in it, compacts", async () => {
+    await (await engine.writer(mailbox)).compact();
+    expect(ids(await search({ terms: words("kayak") })).sort()).toEqual(["kayak-club", "kayak-rental", "kayak-spam", "kayak-trash"]);
+    const empty = `mailbox-${randomUUID()}`;
+    await (await engine.writer(empty)).compact();
+    expect(await engine.search(empty, { terms: words("kayak"), filters: {}, sort: "relevance", limit: 10 })).toEqual([]);
+  });
+
   test("Swedish words and English words each find their other forms", async () => {
     expect(ids(await search({ terms: words("fakturor") }))).toEqual(["faktura-sv"]);
     expect(ids(await search({ terms: words("möten") }))).toEqual(["mote-sv"]);

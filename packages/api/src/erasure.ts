@@ -4,7 +4,9 @@
 // Its messages, their pointers, the drafts it sent and their raw messages go after that, recorded
 // as work to finish, so a run that stops partway finishes on the next one. The approval records of
 // the agents' sends in it go too if the organization's setting says so when the thread is erased,
-// so turning the setting on doesn't reach back.
+// so turning the setting on doesn't reach back. A thread's messages leave search at once, and the
+// daily run has the indexer compact each mailbox's index, so their text leaves its files within a
+// day (ADR-0007).
 import { BatchGetCommand, type BatchGetCommandOutput, DeleteCommand, GetCommand, PutCommand, QueryCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import { TransactionCanceledException } from "@aws-sdk/client-dynamodb";
 import { InvokeCommand, type LambdaClient } from "@aws-sdk/client-lambda";
@@ -15,6 +17,7 @@ import { inboundPrefix } from "./infrastructure.ts";
 import type { MailBucket } from "./mail-bucket.ts";
 import { asRead, type Cursor, cursorOf, type ErasedLabel, keys, listingsOf, type StoredSummary, threadsPerPage, threadSummary, threadsWithLabel, trash } from "./mail.ts";
 import { eraseApprovals } from "./drafting.ts";
+import { compactIndexes, type IndexQueue } from "./indexing.ts";
 import { allMailboxes, mailboxFeed, organizationSettings, settingsUnchanged } from "./organization.ts";
 import { documents, pk, sk, type TransactItem } from "./table.ts";
 
@@ -248,11 +251,18 @@ async function allItems(table: Table, query: Omit<ConstructorParameters<typeof Q
 /** What invokes the eraser: its daily schedule, or emptying a Trash. */
 export type EraserEvent = Pick<ScheduledEvent, "time"> | { emptyTrash: TrashEmptied };
 
-/** The eraser's handler. Either way it finishes what earlier runs left. */
-export function createEraser({ table, mailBucket }: { table: Table; mailBucket: MailBucket }) {
+/**
+ * The eraser's handler. Either way it finishes what earlier runs left. The daily run then gives
+ * the indexer's queue the compaction of every index, also when erasing raw mail failed.
+ */
+export function createEraser({ table, mailBucket, indexQueue }: { table: Table; mailBucket: MailBucket; indexQueue: IndexQueue }) {
   return async (event: EraserEvent): Promise<void> => {
-    if ("emptyTrash" in event) await emptyTrash(table, mailBucket, event.emptyTrash);
-    else await eraseExpired(table, mailBucket, new Date(event.time));
+    if ("emptyTrash" in event) return emptyTrash(table, mailBucket, event.emptyTrash);
+    try {
+      await eraseExpired(table, mailBucket, new Date(event.time));
+    } finally {
+      await compactIndexes(table, indexQueue, new Date(event.time));
+    }
   };
 }
 

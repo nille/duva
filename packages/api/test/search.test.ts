@@ -353,6 +353,51 @@ test("erased mail is found by no search, at once", async () => {
   expect(await subjects("kayak label:trash")).toEqual([]);
 });
 
+test("a Trash emptied leaves the search index's files at the eraser's next daily run, and the mail kept stays found", async () => {
+  const { duva, grace, params, receive, subjects, label } = await withMailbox();
+  for (const name of ["Lisbon", "Porto", "Faro", "Braga", "Evora"]) await receive({ subject: `Trip to ${name}`, text: `Our itinerary for zqkept${name.toLowerCase()}.` });
+  const erased = await receive({ subject: "Old zqerasedsubject photos", text: "The zqerasedwords from the trip." });
+  await label([erased.id], { add: ["trash"] });
+  await grace.POST("/mailboxes/{mailbox}/trash/empty", { params });
+
+  await duva.erase(new Date());
+
+  const objects = duva.searchObjects();
+  expect(objects.filter((object) => object.includes("zqkeptlisbon"))).not.toEqual([]);
+  expect(objects.filter((object) => object.includes("zqerased"))).toEqual([]);
+  expect((await subjects("itinerary")).sort()).toEqual(["Trip to Braga", "Trip to Evora", "Trip to Faro", "Trip to Lisbon", "Trip to Porto"]);
+});
+
+test("mail the eraser's daily run erases leaves the search index's files in the same run", async () => {
+  const { duva, receive, subjects, label } = await withMailbox();
+  await receive({ subject: "Kayak club", text: "Bring zqkeptpaddles to the jetty." });
+  const erased = await receive({ subject: "Kayak sale", text: "Cheap zqerasedkayaks this week." });
+  await label([erased.id], { add: ["spam"] });
+
+  await duva.erase(new Date(Date.now() + 31 * 24 * 60 * 60 * 1000));
+
+  const objects = duva.searchObjects();
+  expect(objects.filter((object) => object.includes("zqkeptpaddles"))).not.toEqual([]);
+  expect(objects.filter((object) => object.includes("zqerased"))).toEqual([]);
+  expect(await subjects("kayak label:spam")).toEqual([]);
+  expect(await subjects("kayak")).toEqual(["Kayak club"]);
+});
+
+test("mail that arrives while indexing waits for the eraser's daily run is found after it", async () => {
+  const { duva, grace, params, receive, subjects, label } = await withMailbox({ indexingHeld: true });
+  const erased = await receive({ subject: "Old kayak photos", text: "The zqerasedwords from the trip." });
+  await duva.releaseIndexing();
+  await label([erased.id], { add: ["trash"] });
+  await grace.POST("/mailboxes/{mailbox}/trash/empty", { params });
+  await duva.erase(new Date());
+  await receive({ subject: "New kayak photos", text: "The kayak trip, again." });
+
+  await duva.releaseIndexing();
+
+  expect(await subjects("kayak")).toEqual(["New kayak photos"]);
+  expect(duva.searchObjects().filter((object) => object.includes("zqerased"))).toEqual([]);
+});
+
 test("the deploy that brings search makes the mail already there searchable", async () => {
   const { duva, receive, subjects } = await withMailbox({ beforeSearch: true });
   for (const name of ["Lisbon", "Porto", "Faro", "Braga", "Evora"]) await receive({ subject: `Trip to ${name}`, text: "Our trip itinerary." });

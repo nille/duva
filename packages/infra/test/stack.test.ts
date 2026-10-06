@@ -291,7 +291,7 @@ test("the table's stream hands the feeder each new change in a mailbox's change 
   });
 });
 
-test("the indexer reads a FIFO queue, so each mailbox has one writer, and a task that keeps failing goes to a queue of its own", () => {
+test("the indexer reads a FIFO queue, so each mailbox has one writer, which the feeder, setup, the eraser and the indexer give tasks, and a task that keeps failing goes to a queue of its own", () => {
   const [, { Properties: mapping }] = mappingOf("IndexerHandler");
   const queueId = mapping?.EventSourceArn?.["Fn::GetAtt"]?.[0];
   const queue = stack.template.Resources[queueId];
@@ -299,7 +299,7 @@ test("the indexer reads a FIFO queue, so each mailbox has one writer, and a task
   expect(queue?.Properties?.VisibilityTimeout).toBeGreaterThanOrEqual(6 * lambda("IndexerHandler")[1].Properties?.Timeout);
   const failures = stack.template.Resources[queue?.Properties?.RedrivePolicy?.deadLetterTargetArn?.["Fn::GetAtt"]?.[0]];
   expect(failures?.Properties).toMatchObject({ FifoQueue: true, MessageRetentionPeriod: 14 * 24 * 3600 });
-  for (const prefix of ["FeederHandler", "IndexerHandler", "SetupHandler"]) {
+  for (const prefix of ["FeederHandler", "IndexerHandler", "SetupHandler", "EraserHandler"]) {
     expect({ prefix, sends: actions(prefix, "sqs") }).toEqual({ prefix, sends: expect.arrayContaining(["sqs:SendMessage"]) });
     const variables = lambda(prefix)[1].Properties?.Environment?.Variables;
     expect(variables?.[environmentVariables.indexQueue]).toEqual({ Ref: queueId });

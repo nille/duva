@@ -253,7 +253,7 @@ export class DuvaStack extends Stack {
 
     // The eraser erases threads for good: once a day those that have had Trash or Spam for the
     // retention period, and each Trash emptied when the API invokes it. Lambda retries a failed
-    // run, which finishes what it left.
+    // run, which finishes what it left. The daily run also gives the indexer tasks, below.
     const eraser = lambda(
       "EraserHandler",
       "@duva/api/eraser-lambda",
@@ -384,6 +384,9 @@ export class DuvaStack extends Stack {
       }),
     );
     indexQueue.grantSendMessages(feeder);
+    // The eraser's daily run has the indexer compact each mailbox's index, so erased text leaves it.
+    eraser.addEnvironment(environmentVariables.indexQueue, indexQueue.queueUrl);
+    indexQueue.grantSendMessages(eraser);
 
     const handler = lambda("ApiHandler", "@duva/api/lambda", {
       [environmentVariables.version]: version,

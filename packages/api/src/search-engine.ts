@@ -24,6 +24,11 @@ export interface IndexWriter {
   removeThreads(threads: string[]): Promise<void>;
   /** Adds what was written since the last time to the index's own indexes, and deletes old versions. */
   maintain(): Promise<void>;
+  /**
+   * Rewrites the index, so no file holds a removed message's text, and deletes every old version.
+   * A search reading an old version meanwhile fails, and is retried on the new one.
+   */
+  compact(): Promise<void>;
 }
 
 /** What a thread's messages carry of it, since labels and read state sit on threads. */

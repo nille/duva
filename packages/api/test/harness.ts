@@ -5,7 +5,7 @@
 // in LanceDB on local disk, with a stand-in for the indexer's FIFO queue. Tests drive
 // the API only through the generated client, hand mail to SES as a sender's server does, read what
 // SES sent, and put web servers on the internet to see what the unsubscriber sends them.
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -120,6 +120,8 @@ export interface Duva {
   sentTo(): string[][];
   /** The raw messages the mail bucket keeps, received and sent, every version of each. */
   stored(): string[];
+  /** Every object the search bucket keeps, each file of each mailbox's index, as text. */
+  searchObjects(): string[];
   /**
    * Runs the eraser as its daily schedule does, at the time. With `s3DeletesFail`, S3 refuses to
    * delete anything during the run, which then fails, as a run that stops partway does.
@@ -176,7 +178,6 @@ export async function startDuva({
   for (const email of others) await addHumanToOrganization({ table, humans }, { email, by: firstAdmin.id });
 
   const mailBucket = memoryMailBucket();
-  const eraser = createEraser({ table, mailBucket });
   // Trash emptied in a call, which the eraser erases once the call is answered.
   const emptied: TrashEmptied[] = [];
   const inboundLog: string[] = [];
@@ -190,6 +191,7 @@ export async function startDuva({
   // indexer each open them, as two Lambdas do. Backfill steps are small, so a few messages take several.
   const indexes = join(searchIndexes, randomUUID());
   const indexQueue = memoryIndexQueue();
+  const eraser = createEraser({ table, mailBucket, indexQueue });
   const indexer = createIndexer({ table, mailBucket, engine: lanceSearch({ uri: indexes }), queue: indexQueue, backfillMessages: 2 });
   let searchDeployed = !beforeSearch;
   const feeder = createFeeder(indexQueue);
@@ -280,12 +282,14 @@ export async function startDuva({
     releaseSends: () => stream.deliver(),
     releaseIndexing: index,
     stored: () => mailBucket.stored(),
+    searchObjects: () => filesUnder(indexes).map((file) => new TextDecoder().decode(readFileSync(file))),
     async erase(at, { s3DeletesFail = false } = {}) {
       mailBucket.deletesFail = s3DeletesFail;
       try {
         await eraser({ time: at.toISOString() });
       } finally {
         mailBucket.deletesFail = false;
+        if (!indexingHeld) await index();
       }
     },
     webServer: (hostname, options) => internet.webServer(hostname, options),
@@ -313,6 +317,10 @@ export async function startDuva({
     },
   };
 }
+
+/** Every file in the directory and the directories in it, none if it doesn't exist. */
+const filesUnder = (directory: string): string[] =>
+  existsSync(directory) ? readdirSync(directory, { recursive: true, encoding: "utf8" }).map((name) => join(directory, name)).filter((path) => statSync(path).isFile()) : [];
 
 // Where every deployment's search indexes are, each in a directory of its own, until the test file ends.
 const searchIndexes = mkdtempSync(join(tmpdir(), "duva-indexes-"));
