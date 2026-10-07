@@ -207,7 +207,7 @@ test("a recipient the agent sent to from its sponsor's mailbox isn't new from it
   const { duva, ada, grace, settings, limit, send, state } = await withAgent();
   const { data: sponsor } = await ada.GET("/whoami");
   const { data: sponsors } = await grace.POST("/mailboxes", { body: { owner: sponsor!.id, address: "ada@example.com" } });
-  await ada.PATCH("/agents/{agent}/settings", { ...settings, body: { sponsorAccess: "full", approvalAsSponsor: false } });
+  await ada.PATCH("/agents/{agent}/settings", { ...settings, body: { sponsorAccess: "send", approvalAsSponsor: false } });
   await limit({ newRecipientsPerDay: 1 });
   await send("ken@example.net", { path: { mailbox: sponsors!.id } });
 

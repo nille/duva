@@ -9,7 +9,7 @@ This skill describes duva 0.1.0. After updating the CLI, run `duva skill install
 
 ## Authentication
 
-duva calls the Duva deployment that `duva deploy` saved in its config, `~/.config/duva/config.json`. On a machine where nobody ran it, copy that file from one where someone did. An agent calls Duva with the key its sponsor got when creating it. Put the key in the `DUVA_AGENT_KEY` environment variable, and every command acts as that agent. An agent never signs in. If Duva refuses the key, the sponsor may have rotated it, so ask them for the current one. A human signs in with `duva login` instead.
+duva calls the Duva deployment that `duva deploy` saved in its config, `~/.config/duva/config.json`. On a machine where nobody ran it, copy that file from one where someone did. An agent gets its access with `duva login --agent`, which prints a code and a link on stderr for the human who will be its sponsor, then waits up to 10 minutes while they approve it. Run it in the background, or wherever you read its output as it runs, and give the human both. Once they approve, it saves the agent's key, and every command acts as that agent. With `--mailbox` and `--wants`, ask only for the mailboxes and access you need. An agent never signs in as a human. An agent its sponsor created instead has its key in the `DUVA_AGENT_KEY` environment variable, which comes first. If Duva refuses the key, the sponsor may have rotated it or removed the agent, so ask them. A human signs in with `duva login` instead.
 
 ## Output and exit codes
 
@@ -32,7 +32,14 @@ Running it again updates the deployment to this CLI's version.
 
 ## duva login
 
-Sign in as a human through the browser.
+Sign in as a human through the browser, or with --agent ask a human for access as an agent.
+
+With --agent, the CLI prints a code and a link to the web app, and waits up to 10 minutes while the human who will be the agent's sponsor approves it there. Then it saves the agent's key, and every command acts as that agent.
+
+- `--agent` or `--no-agent`: Ask for access as a new agent instead of signing in as a human.
+- `--name`: With --agent, the agent's name. Without it, the agent is named for this computer.
+- `--mailbox` (once for each): With --agent, the address of a mailbox of the human's to ask for. Without it, the agent asks for all of theirs.
+- `--wants`: With --agent, the access to ask for: read, organize, draft or send. Read unless given.
 
 ## duva skill install
 
@@ -224,10 +231,11 @@ Only the agent's sponsor and the agent itself can read them. An agent starts wit
 
 Change an agent's sponsor access, its approval and disclosure-line switches, or its send limits.
 
-Give only the settings to change. A change works at once. Only the agent's sponsor can change them, so not even an admin can. Each change is recorded under you, with the old and new values, in your personal mailbox's change feed, or if you have none, in the agent's. If neither of you has a mailbox, the change is refused. Read lets the agent read your mailbox. Full also lets it organize it, move threads to Trash and back, draft there, and send as you. Lowering access from full, or removing it, withdraws the agent's sends waiting for your approval in your mailbox, recorded in its change feed under you, and fails those approved but not yet gone out. Its drafts and sent messages stay. Send limits go up to the organization's caps, and raising one lets its sends that wait go out as far as the new limit allows.
+Give only the settings to change. A change works at once. Only the agent's sponsor can change them, so not even an admin can. Each change is recorded under you, with the old and new values, in your personal mailbox's change feed, or if you have none, in the agent's. If neither of you has a mailbox, the change is refused. Sponsor access covers the mailboxes of yours that sponsorMailboxes names, or all of them while it is null. Read lets the agent read them, organize also lets it organize them and move threads to Trash and back, draft also lets it draft there, and send also lets it send as you. Lowering access from send, or taking a mailbox out of sponsorMailboxes, withdraws the agent's sends waiting for your approval there, recorded in its change feed under you, and fails those approved but not yet gone out. Its drafts and sent messages stay. Send limits go up to the organization's caps, and raising one lets its sends that wait go out as far as the new limit allows.
 
 - `--agent` (required): The agent's ID.
-- `--sponsorAccess`: The agent's access to its sponsor's personal mailbox. None, the default, gives it none. Read lets it read everything there: threads, labels, drafts, the change feed and attachments. Full also lets it organize, move threads to Trash and back, draft and change any draft there, and send as its sponsor. Only the sponsor empties their Trash.
+- `--sponsorAccess`: The agent's access to its sponsor's personal mailboxes, those sponsorMailboxes names. None, the default, gives it none. Read lets it read everything there: threads, labels, drafts, the change feed and attachments. Organize also lets it organize, decide in the Screener, set threads aside and move them to Trash and back. Draft also lets it write and change any draft there. Send also lets it send as its sponsor. Only the sponsor empties their Trash.
+- `--sponsorMailboxes` or `--no-sponsorMailboxes` (once for each): The IDs of your mailboxes that the agent's sponsor access covers. Null, the default, covers every mailbox you own. The CLI sets it back to null with --no-sponsorMailboxes.
 - `--approvalForOwnMailbox` or `--no-approvalForOwnMailbox`: Whether the agent's sends from its own mailbox wait for its sponsor's approval. On by default.
 - `--approvalAsSponsor` or `--no-approvalAsSponsor`: Whether the agent's sends as its sponsor, from the sponsor's mailbox, wait for the sponsor's approval. On by default.
 - `--disclosureLineForOwnMailbox` or `--no-disclosureLineForOwnMailbox`: Whether mail the agent sends from its own mailbox carries the disclosure's visible line. It always carries the Duva-Agent header. On by default.
@@ -258,6 +266,54 @@ Lists the day's entries a page at a time, newest first. Each is a change as the 
 - `--timeZone`: The time zone days are in, an IANA name such as Europe/Stockholm. Defaults to your timeZone preference, or UTC if you have none.
 - `--limit`: How many entries a page lists at most.
 - `--after`: Where the page starts, the next of the page before it. Leave it out for the first page.
+
+## duva access-requests ask
+
+Ask a human for access as a new agent, and get the code they approve it by.
+
+Answers without sign-in, since the agent has no key yet. Show the code and a link to the web app's #/access/<code> to the human who will be the agent's sponsor, then collect the key with the device code every interval seconds until they approve or decline. The code works for 10 minutes and once. duva login --agent does all of this. An address asks for at most 10 codes in 10 minutes.
+
+- `--name`: The agent's name. Without one, it is named for its host.
+- `--host`: The name of the computer the agent runs on, which the human sees.
+- `--mailboxes` (once for each): The addresses of the mailboxes it asks for. Without them, it asks for every mailbox of the human who approves.
+- `--wants`: The sponsor access the agent asks for, read unless it says.
+
+## duva access-requests collect
+
+Collect the agent's key once a human approved its access request.
+
+Answers without sign-in. Gives the agent and its key once, after the human approved, with 200. While the request waits it answers 202, so ask again after the interval. Once the human declined it answers 403, and once the request expired or its key was collected, 404.
+
+- `--deviceCode` (required): The device code asking for access gave.
+
+## duva access-requests show
+
+Read an agent's access request by the code it shows, to approve or decline it.
+
+Only humans read access requests. It lists each of your mailboxes, with whether the agent asked for it. A human who gives 10 codes in 10 minutes that no request waits with gets 429 until the 10 minutes are over, so codes can't be guessed.
+
+- `--code` (required): The code the agent shows, as BCDF-GHJK. Case and the dash don't matter.
+
+## duva access-requests approve
+
+Approve an agent's access request, which makes you its sponsor and gives it the access you choose.
+
+Only humans approve. Give only what you change from what the agent asked: its name, its sponsor access, the mailboxes of yours it covers, and the approval and disclosure-line switches for its sends as you, both on unless you switch them off. Approving creates the agent, with you as its sponsor, recorded in the organization's change feed, and its settings, recorded in your mailboxes' change feeds. The agent then collects its key once. A request is approved or declined once, within 10 minutes.
+
+- `--code` (required): The code the agent shows, as BCDF-GHJK. Case and the dash don't matter.
+- `--name`: The agent's name, the one it asked for unless you give another.
+- `--sponsorAccess`: The agent's access to its sponsor's personal mailboxes, those sponsorMailboxes names. None, the default, gives it none. Read lets it read everything there: threads, labels, drafts, the change feed and attachments. Organize also lets it organize, decide in the Screener, set threads aside and move them to Trash and back. Draft also lets it write and change any draft there. Send also lets it send as its sponsor. Only the sponsor empties their Trash.
+- `--sponsorMailboxes` (once for each): The IDs of the sponsor's mailboxes that the agent's sponsor access covers, each one the sponsor owns.
+- `--approvalAsSponsor` or `--no-approvalAsSponsor`: Whether the agent's sends as its sponsor, from the sponsor's mailbox, wait for the sponsor's approval. On by default.
+- `--disclosureLineAsSponsor` or `--no-disclosureLineAsSponsor`: Whether mail the agent sends as its sponsor carries the disclosure's visible line. It always carries the Duva-Agent header. On by default.
+
+## duva access-requests decline
+
+Decline an agent's access request, so it gets no key.
+
+Only humans decline. A request is approved or declined once, within 10 minutes.
+
+- `--code` (required): The code the agent shows, as BCDF-GHJK. Case and the dash don't matter.
 
 ## duva addresses list
 
@@ -389,7 +445,7 @@ SES refuses such mail on the domain and its alias domains at once. Mail the catc
 
 List the mailboxes you can read, your own and those of the agents you sponsor.
 
-An agent your sponsor gives read or full sponsor access also finds your sponsor's personal mailbox here, listed with that access.
+An agent your sponsor gives sponsor access also finds your sponsor's personal mailbox here, listed with that access.
 
 ## duva mailboxes create
 
@@ -452,7 +508,7 @@ Lists every thread with a message sent from the mailbox, except those in Spam an
 
 Mark threads in a mailbox read.
 
-Marks each thread read. Read state belongs to the mailbox, so it is the same for each actor who reads it. Each thread that was unread gets a change in the mailbox's change feed, naming you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can mark its threads.
+Marks each thread read. Read state belongs to the mailbox, so it is the same for each actor who reads it. Each thread that was unread gets a change in the mailbox's change feed, naming you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give organize sponsor access or more can mark its threads.
 
 - `--mailbox` (required): The mailbox's ID.
 - `--threads` (required) (once for each): The IDs of the threads.
@@ -461,7 +517,7 @@ Marks each thread read. Read state belongs to the mailbox, so it is the same for
 
 Mark threads in a mailbox unread.
 
-Marks each thread unread, so it stands out until it is read again. Each thread that was read gets a change in the mailbox's change feed, naming you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can mark its threads.
+Marks each thread unread, so it stands out until it is read again. Each thread that was read gets a change in the mailbox's change feed, naming you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give organize sponsor access or more can mark its threads.
 
 - `--mailbox` (required): The mailbox's ID.
 - `--threads` (required) (once for each): The IDs of the threads.
@@ -470,7 +526,7 @@ Marks each thread unread, so it stands out until it is read again. Each thread t
 
 Add labels to threads in a mailbox, and remove them.
 
-Adds and removes the labels on each thread. Archiving removes inbox, and adding inbox moves a thread back to the Inbox, out of Spam, Trash and the Screener. Adding spam or trash takes a thread out of the Inbox. Removing spam (not spam) or trash (restore) puts it back in the Inbox, unless it still has the other, waits in the Screener, or inbox is removed too. Each thread whose labels change gets a change in the mailbox's change feed, naming you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can label its threads.
+Adds and removes the labels on each thread. Archiving removes inbox, and adding inbox moves a thread back to the Inbox, out of Spam, Trash and the Screener. Adding spam or trash takes a thread out of the Inbox. Removing spam (not spam) or trash (restore) puts it back in the Inbox, unless it still has the other, waits in the Screener, or inbox is removed too. Each thread whose labels change gets a change in the mailbox's change feed, naming you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give organize sponsor access or more can label its threads.
 
 - `--mailbox` (required): The mailbox's ID.
 - `--threads` (required) (once for each): The IDs of the threads.
@@ -488,7 +544,7 @@ Read a thread, with each of its messages, oldest first.
 
 Set threads in a mailbox aside until a time, when they come back to the Inbox.
 
-Remind me: each thread leaves the Inbox, if it is there, and waits in Remind me until the time, given as at or as a preset. Then it comes back to the top of the Inbox, unread, with a Back mark naming when it was set aside. New mail in the thread brings it back early. A thread already set aside gets the new time. A thread in Spam or Trash, or waiting in the Screener, can't be set aside. Each thread gets a change in the mailbox's change feed, naming you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can set its threads aside.
+Remind me: each thread leaves the Inbox, if it is there, and waits in Remind me until the time, given as at or as a preset. Then it comes back to the top of the Inbox, unread, with a Back mark naming when it was set aside. New mail in the thread brings it back early. A thread already set aside gets the new time. A thread in Spam or Trash, or waiting in the Screener, can't be set aside. Each thread gets a change in the mailbox's change feed, naming you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give organize sponsor access or more can set its threads aside.
 
 - `--mailbox` (required): The mailbox's ID.
 - `--threads` (required) (once for each): The IDs of the threads.
@@ -550,7 +606,7 @@ Lists the built-in labels inbox, spam and trash first, then the mailbox's own la
 
 Create a label in a mailbox.
 
-Creates a label of the mailbox's own, with a name no other label in it has, in any case. Then add it to threads by its ID. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can create its labels. The change is recorded in the mailbox's change feed, naming you.
+Creates a label of the mailbox's own, with a name no other label in it has, in any case. Then add it to threads by its ID. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give organize sponsor access or more can create its labels. The change is recorded in the mailbox's change feed, naming you.
 
 - `--mailbox` (required): The mailbox's ID.
 - `--name` (required): The label's name.
@@ -559,7 +615,7 @@ Creates a label of the mailbox's own, with a name no other label in it has, in a
 
 Delete one of a mailbox's own labels.
 
-Removes the label from each of its threads, each with a change in the mailbox's change feed, and then deletes it. The threads stay. The built-in labels can't be deleted. If deleting stops partway, delete the label again to finish. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can delete its labels.
+Removes the label from each of its threads, each with a change in the mailbox's change feed, and then deletes it. The threads stay. The built-in labels can't be deleted. If deleting stops partway, delete the label again to finish. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give organize sponsor access or more can delete its labels.
 
 - `--mailbox` (required): The mailbox's ID.
 - `--label` (required): The label's ID.
@@ -568,7 +624,7 @@ Removes the label from each of its threads, each with a change in the mailbox's 
 
 Rename one of a mailbox's own labels.
 
-Gives the label a name no other label in the mailbox has, in any case. Its threads keep it. The built-in labels can't be renamed. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can rename its labels. The change is recorded in the mailbox's change feed, naming you.
+Gives the label a name no other label in the mailbox has, in any case. Its threads keep it. The built-in labels can't be renamed. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give organize sponsor access or more can rename its labels. The change is recorded in the mailbox's change feed, naming you.
 
 - `--mailbox` (required): The mailbox's ID.
 - `--label` (required): The label's ID.
@@ -603,7 +659,7 @@ Turning it off moves every waiting thread to the Inbox. Turning it on lets in ev
 
 Let a sender into a mailbox, moving their waiting threads to the Inbox.
 
-Give an address, or a domain to let in everyone there. A domain covers exactly that domain, not its subdomains, and can't be a public mail provider's, like gmail.com. An address's decision beats its domain's. Their later mail skips the Screener, even while it is off. Letting in a sender the mailbox blocked replaces the block and moves their threads still in Trash to the Inbox. The decision and each thread it moves are recorded in the mailbox's change feed under you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can decide.
+Give an address, or a domain to let in everyone there. A domain covers exactly that domain, not its subdomains, and can't be a public mail provider's, like gmail.com. An address's decision beats its domain's. Their later mail skips the Screener, even while it is off. Letting in a sender the mailbox blocked replaces the block and moves their threads still in Trash to the Inbox. The decision and each thread it moves are recorded in the mailbox's change feed under you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give organize sponsor access or more can decide.
 
 - `--mailbox` (required): The mailbox's ID.
 - `--address`: The sender's email address. Case doesn't matter.
@@ -614,7 +670,7 @@ Give an address, or a domain to let in everyone there. A domain covers exactly t
 
 Block a sender in a mailbox, moving their waiting threads to Trash.
 
-Give an address, or a domain to block everyone there. A domain covers exactly that domain, not its subdomains, and can't be a public mail provider's, like gmail.com. An address's decision beats its domain's. Their later mail that starts a thread goes straight to Trash, even while the Screener is off. Trash is erased after the organization's retention period, counted from when a thread got it. Blocking a sender the mailbox let in replaces that. Blocking also unsubscribes the mailbox from the sender's mail by one-click (RFC 8058), when their newest mail that SES didn't judge to be spam offers it and a DKIM signature that passed covers its unsubscribe headers. For a domain, that is the newest mail from an address there that the mailbox hasn't let in. Duva never unsubscribes by mailto or by a link in the body. The decision, each thread it moves and the unsubscribe's outcome are recorded in the mailbox's change feed under you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can decide.
+Give an address, or a domain to block everyone there. A domain covers exactly that domain, not its subdomains, and can't be a public mail provider's, like gmail.com. An address's decision beats its domain's. Their later mail that starts a thread goes straight to Trash, even while the Screener is off. Trash is erased after the organization's retention period, counted from when a thread got it. Blocking a sender the mailbox let in replaces that. Blocking also unsubscribes the mailbox from the sender's mail by one-click (RFC 8058), when their newest mail that SES didn't judge to be spam offers it and a DKIM signature that passed covers its unsubscribe headers. For a domain, that is the newest mail from an address there that the mailbox hasn't let in. Duva never unsubscribes by mailto or by a link in the body. The decision, each thread it moves and the unsubscribe's outcome are recorded in the mailbox's change feed under you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give organize sponsor access or more can decide.
 
 - `--mailbox` (required): The mailbox's ID.
 - `--address`: The sender's email address. Case doesn't matter.
@@ -633,7 +689,7 @@ Each address and domain, with its decision, when it was made and by whom, newest
 
 Remove a mailbox's decision on a sender, so they are first-time again.
 
-Their later mail waits in the Screener again, unless the mailbox has written to them, or a decision on their domain covers them. Removing a block moves their threads still in Trash to the Inbox. To flip a decision instead, let them in or block them. The removal and each thread it moves are recorded in the mailbox's change feed under you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can remove decisions.
+Their later mail waits in the Screener again, unless the mailbox has written to them, or a decision on their domain covers them. Removing a block moves their threads still in Trash to the Inbox. To flip a decision instead, let them in or block them. The removal and each thread it moves are recorded in the mailbox's change feed under you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give organize sponsor access or more can remove decisions.
 
 - `--mailbox` (required): The mailbox's ID.
 - `--sender` (required): The address or the domain, as the mailbox decided on it. Case doesn't matter.
@@ -660,7 +716,7 @@ Only those who can read the mailbox can list them.
 
 Draft a reply to a message in a mailbox, a reply to all, a forward, or a new message.
 
-A reply goes from the address the original was sent to, plus tag kept, or from the default address if the mailbox no longer has it, to the original's Reply-To or, without one, its From, with the subject carrying a single "Re: " prefix. A reply to your own message goes to its recipients instead. A reply to all also goes to every other recipient of the original, except the mailbox's own addresses. A forward goes from the address the original was sent to, to whoever you give, with the subject carrying a single "Fwd: " prefix, the original's text quoted and its attachments, from the same address a reply would. A new message goes from the mailbox's default address. Give from to choose another of the mailbox's addresses, or a group the mailbox's owner is a local member of, to send as the group. Only its members can, so any other group gets 403. A reply to group mail goes from the member's own address unless you give the group. A mailbox with no address can't draft. A draft can be saved before it has recipients, a subject or text, but it needs a recipient in To to be sent. Only the mailbox's owner can draft in it, and for a human's mailbox the agents they give full sponsor access, whose drafts go from the same addresses as the human's own. Writing a draft is recorded in the mailbox's change feed, naming you.
+A reply goes from the address the original was sent to, plus tag kept, or from the default address if the mailbox no longer has it, to the original's Reply-To or, without one, its From, with the subject carrying a single "Re: " prefix. A reply to your own message goes to its recipients instead. A reply to all also goes to every other recipient of the original, except the mailbox's own addresses. A forward goes from the address the original was sent to, to whoever you give, with the subject carrying a single "Fwd: " prefix, the original's text quoted and its attachments, from the same address a reply would. A new message goes from the mailbox's default address. Give from to choose another of the mailbox's addresses, or a group the mailbox's owner is a local member of, to send as the group. Only its members can, so any other group gets 403. A reply to group mail goes from the member's own address unless you give the group. A mailbox with no address can't draft. A draft can be saved before it has recipients, a subject or text, but it needs a recipient in To to be sent. Only the mailbox's owner can draft in it, and for a human's mailbox the agents they give draft sponsor access or more, whose drafts go from the same addresses as the human's own. Writing a draft is recorded in the mailbox's change feed, naming you.
 
 - `--mailbox` (required): The mailbox's ID.
 - `--answers`: The ID of the message the draft replies to. Without it or forwards, the draft is a new message.
@@ -686,7 +742,7 @@ Only those who can read the mailbox can read it.
 
 Delete a draft.
 
-Deleting a draft that waits for approval withdraws the request. A draft being sent can't be deleted until its send is done. Deleting a sent draft leaves the sent message in its thread. Only the mailbox's owner can delete its drafts, and for a human's mailbox the agents they give full sponsor access, whoever wrote the draft. The deletion, and any withdrawal, is recorded in the mailbox's change feed, naming you.
+Deleting a draft that waits for approval withdraws the request. A draft being sent can't be deleted until its send is done. Deleting a sent draft leaves the sent message in its thread. Only the mailbox's owner can delete its drafts, and for a human's mailbox the agents they give draft sponsor access or more, whoever wrote the draft. The deletion, and any withdrawal, is recorded in the mailbox's change feed, naming you.
 
 - `--mailbox` (required): The mailbox's ID.
 - `--draft` (required): The draft's ID.
@@ -695,7 +751,7 @@ Deleting a draft that waits for approval withdraws the request. A draft being se
 
 Change a draft's From, recipients, subject or text.
 
-Changing a draft that waits for approval withdraws the request, so an approver never approves text they didn't see. Ask to send it again once it is ready. From can be one of the mailbox's addresses, or a group the mailbox's owner is a local member of, and any other group gets 403. Only the mailbox's owner can edit its drafts, and for a human's mailbox the agents they give full sponsor access, whoever wrote the draft. The change, and any withdrawal, is recorded in the mailbox's change feed, naming you.
+Changing a draft that waits for approval withdraws the request, so an approver never approves text they didn't see. Ask to send it again once it is ready. From can be one of the mailbox's addresses, or a group the mailbox's owner is a local member of, and any other group gets 403. Only the mailbox's owner can edit its drafts, and for a human's mailbox the agents they give draft sponsor access or more, whoever wrote the draft. The change, and any withdrawal, is recorded in the mailbox's change feed, naming you.
 
 - `--mailbox` (required): The mailbox's ID.
 - `--draft` (required): The draft's ID.
@@ -710,7 +766,7 @@ Changing a draft that waits for approval withdraws the request, so an approver n
 
 Ask for a draft to be sent.
 
-A human's send from their own mailbox needs no approval, so Duva sends it at once, with no disclosure, also when their agent wrote the draft. An agent's send waits for its sponsor's approval unless the sponsor switched that off, separately for its own mailbox and for its sponsor's. With full sponsor access, an agent sends as its sponsor from the sponsor's mailbox: from the draft's address, under the sponsor's name. Every message an agent sends carries the Duva-Agent header, and a visible line unless its sponsor switched that off for where it sends from. Its send shows where it stands. Bcc recipients get the message, but no header names them. Only the mailbox's owner, and an agent with full sponsor access to it, can ask. The draft needs a recipient in To, and a draft waits for one approval at a time. It goes only from an address the mailbox still has, so a draft from an address since removed fails. A draft from a group goes out from the group's address, as any send does, and only while the mailbox's owner is still a local member: otherwise asking gets 403, and a send asked before fails. Each other local member's mailbox then gets a copy, in the thread of the message it answers, marked with who sent it as the group. External members get none. A send that needs no approval withdraws the request the draft waits for, if it waits. Asking is recorded in the mailbox's change feed. An agent's approved send over its send limits waits, as waitingForLimit, and goes out by itself, oldest first, as the limits allow, or when its sponsor sends it now. Humans have no send limits.
+A human's send from their own mailbox needs no approval, so Duva sends it at once, with no disclosure, also when their agent wrote the draft. An agent's send waits for its sponsor's approval unless the sponsor switched that off, separately for its own mailbox and for its sponsor's. With send sponsor access, an agent sends as its sponsor from the sponsor's mailbox: from the draft's address, under the sponsor's name. Every message an agent sends carries the Duva-Agent header, and a visible line unless its sponsor switched that off for where it sends from. Its send shows where it stands. Bcc recipients get the message, but no header names them. Only the mailbox's owner, and an agent with send sponsor access to it, can ask. The draft needs a recipient in To, and a draft waits for one approval at a time. It goes only from an address the mailbox still has, so a draft from an address since removed fails. A draft from a group goes out from the group's address, as any send does, and only while the mailbox's owner is still a local member: otherwise asking gets 403, and a send asked before fails. Each other local member's mailbox then gets a copy, in the thread of the message it answers, marked with who sent it as the group. External members get none. A send that needs no approval withdraws the request the draft waits for, if it waits. Asking is recorded in the mailbox's change feed. An agent's approved send over its send limits waits, as waitingForLimit, and goes out by itself, oldest first, as the limits allow, or when its sponsor sends it now. Humans have no send limits.
 
 - `--mailbox` (required): The mailbox's ID.
 - `--draft` (required): The draft's ID.

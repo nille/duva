@@ -158,7 +158,7 @@ test("a paused agent's send that needs no approval is held too", async () => {
 test("a paused agent's send as its sponsor, from the sponsor's mailbox, is held too", async () => {
   const { duva, ada, grace, agent, pause, unpause, ask, approve, ids } = await withAgent({ sendsHeld: true });
   const { data: sponsorsMailbox } = await grace.POST("/mailboxes", { body: { owner: (await ids()).ada, address: "ada@example.com" } });
-  await ada.PATCH("/agents/{agent}/settings", { params: { path: { agent: agent.id } }, body: { sponsorAccess: "full" } });
+  await ada.PATCH("/agents/{agent}/settings", { params: { path: { agent: agent.id } }, body: { sponsorAccess: "send" } });
   await approve(await ask("ken@example.org", { path: { mailbox: sponsorsMailbox!.id } }));
   await pause();
 

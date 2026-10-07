@@ -1,6 +1,6 @@
 import type { components } from "@duva/openapi";
 import { jsonBody, type OperationHandler, refusal } from "./api.ts";
-import { sponsorAccessAllows } from "./access.ts";
+import { sponsorAccessAllows, sponsorAccessIn } from "./access.ts";
 import { actorNamed, alertWrites, raiseAlert } from "./alerting.ts";
 import { releaseHeldSends, withdrawPendingApprovals } from "./drafting.ts";
 import type { Table } from "./deployment.ts";
@@ -70,7 +70,7 @@ export const rotateAgentKey: OperationHandler = async (event, deployment, actor)
 };
 
 /** The agent's name from the body, trimmed, or undefined if the body gives none that fits. */
-function nameIn(body: Record<string, unknown> | undefined): string | undefined {
+export function nameIn(body: Record<string, unknown> | undefined): string | undefined {
   const name = body?.name;
   if (typeof name !== "string") return undefined;
   const trimmed = name.trim();
@@ -94,9 +94,14 @@ export const changeAgentSettings: OperationHandler = async (event, deployment, a
   const unknown = Object.keys(body).find((name) => !names.includes(name));
   if (unknown !== undefined) return refusal(400, `An agent has no setting ${JSON.stringify(unknown)}. Its settings are ${names.join(", ")}.`);
   if (Object.keys(body).length === 0) return refusal(400, `Give a setting to change: ${names.join(", ")}.`);
-  const { sponsorAccess, sendsPerHour, newRecipientsPerDay, ...switches } = body;
+  const { sponsorAccess, sponsorMailboxes, sendsPerHour, newRecipientsPerDay, ...switches } = body;
   if (sponsorAccess !== undefined && !sponsorAccesses.includes(sponsorAccess as AgentSettings["sponsorAccess"])) {
     return refusal(400, `Give sponsorAccess as ${sponsorAccesses.slice(0, -1).join(", ")} or ${sponsorAccesses.at(-1)}.`);
+  }
+  if (sponsorMailboxes !== undefined) {
+    const notCovered = await notSponsorsMailboxes(deployment.table, agent, sponsorMailboxes);
+    if (notCovered !== undefined) return notCovered;
+    if (Array.isArray(sponsorMailboxes)) body.sponsorMailboxes = [...new Set(sponsorMailboxes)];
   }
   const notLimit = Object.entries({ sendsPerHour, newRecipientsPerDay }).find(([, value]) => value !== undefined && !isLimit(value));
   if (notLimit !== undefined) return refusal(400, `Give ${notLimit[0]} as a whole number from 1 up to the organization's cap.`);
@@ -106,12 +111,10 @@ export const changeAgentSettings: OperationHandler = async (event, deployment, a
     const settings = await changeStoredSettings(deployment.table, { agent, changes: body as Partial<AgentSettings> });
     // A higher limit may let sends that wait for it go out.
     if (sendsPerHour !== undefined || newRecipientsPerDay !== undefined) await deployment.waitingSends.release(agent.id);
-    // Without full access the agent can't send as its sponsor, so what waits for that is withdrawn.
+    // Where the agent can no longer send as its sponsor, what waits for that is withdrawn.
     // Each change does it, so a change again finishes what one that stopped partway left.
-    if (!sponsorAccessAllows(settings.sponsorAccess, "send")) {
-      const mailboxes = (await ownedMailboxes(deployment.table, agent.sponsor)).map(({ id }) => id);
-      await withdrawPendingApprovals(deployment.table, { agent, mailboxes });
-    }
+    const mailboxes = (await ownedMailboxes(deployment.table, agent.sponsor)).map(({ id }) => id).filter((id) => !sponsorAccessAllows(sponsorAccessIn(settings, id), "send"));
+    if (mailboxes.length > 0) await withdrawPendingApprovals(deployment.table, { agent, mailboxes });
     return { statusCode: 200, body: settings satisfies components["schemas"]["AgentSettings"] };
   } catch (error) {
     if (error instanceof OverCap) {
@@ -126,7 +129,20 @@ export const changeAgentSettings: OperationHandler = async (event, deployment, a
 
 type Pause = components["schemas"]["Pause"];
 
-const sponsorAccesses: AgentSettings["sponsorAccess"][] = ["none", "read", "full"];
+export const sponsorAccesses: AgentSettings["sponsorAccess"][] = ["none", "read", "organize", "draft", "send"];
+
+/**
+ * A refusal if the mailboxes given for sponsorMailboxes aren't null or a list of mailboxes the
+ * agent's sponsor owns, or undefined if they are.
+ */
+export async function notSponsorsMailboxes(table: Table, agent: Pick<Agent, "sponsor">, given: unknown) {
+  if (given === null) return undefined;
+  if (!Array.isArray(given) || given.some((id) => typeof id !== "string")) return refusal(400, "Give sponsorMailboxes as a list of your mailboxes' IDs, or null for all of them.");
+  const owned = new Set((await ownedMailboxes(table, agent.sponsor)).map(({ id }) => id));
+  const other = (given as string[]).find((id) => !owned.has(id));
+  if (other !== undefined) return refusal(400, `${JSON.stringify(other)} isn't one of your mailboxes. List your mailboxes to find their IDs.`);
+  return undefined;
+}
 
 /** The agent the call's path names, or a refusal if there is none. */
 async function agentAsked(event: Parameters<OperationHandler>[0], deployment: Parameters<OperationHandler>[1]): Promise<Agent | ReturnType<typeof refusal>> {

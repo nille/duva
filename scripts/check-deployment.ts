@@ -88,6 +88,19 @@ await check("reading an agent's settings without credentials answers 401", async
 await check("changing an agent's settings without credentials answers 401", async () =>
   expectStatus(await fetch(`${apiUrl}/agents/x/settings`, { method: "PATCH", headers: { "content-type": "application/json" }, body: '{"sponsorAccess":"read"}' }), 401),
 );
+await check("an agent asks for access without sign-in and gets a code, which waits for a human, and reading or approving it needs sign-in", async () => {
+  const asked = await fetch(`${apiUrl}/access-requests`, { method: "POST", headers: { "content-type": "application/json" }, body: '{"name":"check-deployment"}' });
+  if (asked.status !== 201) return `asking answered ${asked.status}`;
+  const { code, deviceCode, interval } = (await asked.json()) as { code: string; deviceCode: string; interval: number };
+  if (!/^[A-Z]{4}-[A-Z]{4}$/.test(code) || interval !== 5) return `asking gave the code ${code} and the interval ${interval}`;
+  const collected = await fetch(`${apiUrl}/access-requests/collect`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ deviceCode }) });
+  if (collected.status !== 202) return `collecting before approval answered ${collected.status}`;
+  return (
+    (await expectStatus(await fetch(`${apiUrl}/access-requests/${code}`), 401)) ??
+    (await expectStatus(await fetch(`${apiUrl}/access-requests/${code}/approve`, { method: "POST" }), 401)) ??
+    (await expectStatus(await fetch(`${apiUrl}/access-requests/${code}/decline`, { method: "POST" }), 401))
+  );
+});
 await check("adding a human without credentials answers 401", async () =>
   expectStatus(await fetch(`${apiUrl}/humans`, { method: "POST", headers: { "content-type": "application/json" }, body: '{"email":"check@example.com"}' }), 401),
 );

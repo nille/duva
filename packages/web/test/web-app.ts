@@ -39,6 +39,8 @@ export interface WebApp {
   duva: Duva;
   /** A page in a fresh browser, with nothing stored, at the web app's address. */
   page: Page;
+  /** The web app's address, as CloudFront serves it. */
+  url: string;
   /** Opens the web app and signs in on managed login as the human at `email`, as they would with the code they were emailed. */
   signIn(email: string): Promise<void>;
   /** Hides the page's tab, as the browser says through the Page Visibility API when the human switches to another tab. */
@@ -67,6 +69,7 @@ export async function startWebApp(options: DuvaOptions & { viewport?: { width: n
   return {
     duva,
     page,
+    url: site.url,
     async signIn(email) {
       await page.goto(site.url);
       await page.getByRole("button", { name: "Sign in" }).click();

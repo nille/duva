@@ -258,7 +258,7 @@ test("a day's timeline is in the reader's time zone", async () => {
 
 test("the timeline has what the agent did in its sponsor's mailbox, and its sends there, but not what the sponsor did there", async () => {
   const { duva, ada, hermes, agent, adasMailbox, adasParams, receive, ask, approve, timeline } = await withAgent();
-  await ada.PATCH("/agents/{agent}/settings", { params: { path: { agent: agent.id } }, body: { sponsorAccess: "full" } });
+  await ada.PATCH("/agents/{agent}/settings", { params: { path: { agent: agent.id } }, body: { sponsorAccess: "send" } });
   await duva.clock(new Date("2026-09-15T10:00:00Z"));
   const organized = await receive("Kvitto", "ada@example.com");
   const ownWork = await receive("Faktura", "ada@example.com");

@@ -1,28 +1,69 @@
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
+import { hostname } from "node:os";
+import { createDuvaClient } from "@duva/client";
 import { finishSignIn, type Session, type SignInConfig, startSignIn } from "@duva/client/sign-in";
 import { agentKeyVariable, callApi } from "./api-commands.ts";
 import { type Command, optionValues } from "./commands.ts";
-import { readConfig, saveSession } from "./config.ts";
+import { readConfig, readSession, saveAgentKey, saveSession } from "./config.ts";
 
 /** How long login waits for the browser to come back. */
 const timeout = 5 * 60_000;
 
 export const login: Command = {
   words: ["login"],
-  summary: "Sign in as a human through the browser.",
-  options: [],
+  summary: "Sign in as a human through the browser, or with --agent ask a human for access as an agent.",
+  description:
+    "With --agent, the CLI prints a code and a link to the web app, and waits up to 10 minutes while the human who will be the agent's sponsor approves it there. Then it saves the agent's key, and every command acts as that agent.",
+  options: [
+    { name: "agent", required: false, type: "boolean", description: "Ask for access as a new agent instead of signing in as a human." },
+    { name: "name", required: false, description: "With --agent, the agent's name. Without it, the agent is named for this computer." },
+    { name: "mailbox", required: false, type: "strings", description: "With --agent, the address of a mailbox of the human's to ask for. Without it, the agent asks for all of theirs." },
+    { name: "wants", required: false, description: "With --agent, the access to ask for: read, organize, draft or send. Read unless given." },
+  ],
   async run(args) {
-    optionValues(login, args);
+    const { agent, name, mailbox, wants } = optionValues(login, args);
     if (process.env[agentKeyVariable]) {
-      throw new Error(`${agentKeyVariable} is set, so the CLI calls Duva as that agent, and an agent never signs in. Unset it to sign in as a human.`);
+      throw new Error(`${agentKeyVariable} is set, so the CLI calls Duva as that agent, and an agent never signs in. Unset it to sign in or ask for access.`);
     }
+    if (agent === true) {
+      const key = await askForAccess({ name, mailboxes: mailbox, wants });
+      // One actor is signed in at a time, so the agent's key takes the place of a human's session.
+      if ((await readSession()) !== undefined) process.stderr.write("The human signed in here is signed out, and the CLI acts as the agent from now on. Run duva login to sign in again.\n");
+      await saveAgentKey(key);
+      return { signedIn: await callApi("whoami") };
+    }
+    if ([name, mailbox, wants].some((value) => value !== undefined)) throw new Error("--name, --mailbox and --wants go with --agent. Add --agent to ask for access as an agent.");
     const { signIn } = await readConfig();
     if (signIn === undefined) throw new Error("No Duva deployment is configured. Run duva deploy first.");
     await saveSession(await signInThroughBrowser(signIn));
     return { signedIn: await callApi("whoami") };
   },
 };
+
+/**
+ * Asks a human for access as a new agent, shows the code and the link to approve it at, and waits
+ * until they approve or decline it, or it expires. Returns the agent's key.
+ */
+async function askForAccess(asked: { name?: unknown; mailboxes?: unknown; wants?: unknown }): Promise<string> {
+  const { apiUrl, webUrl } = await readConfig();
+  if (apiUrl === undefined || webUrl === undefined) throw new Error("No Duva deployment is configured. Copy the CLI's config from a computer where someone ran duva deploy.");
+  const client = createDuvaClient(apiUrl);
+  const unreachable = (error: unknown) => {
+    throw new Error(`Couldn't reach Duva at ${apiUrl}: ${error instanceof Error ? error.message : error}`);
+  };
+  const body = { host: hostname(), ...(asked as Record<string, string | string[] | undefined>) };
+  const { data: started, error, response } = await client.POST("/access-requests", { body: body as never }).catch(unreachable);
+  if (started === undefined) throw new Error(`Duva at ${apiUrl} answered ${response.status}: ${error?.message}`);
+  const until = new Date(started.expiresAt).toLocaleTimeString();
+  process.stderr.write(`To give this agent access, open ${webUrl}/#/access/${started.code} and approve the code ${started.code}. It works until ${until}.\n`);
+  for (;;) {
+    await new Promise((resolve) => setTimeout(resolve, started.interval * 1000));
+    const { data, error, response } = await client.POST("/access-requests/collect", { body: { deviceCode: started.deviceCode } }).catch(unreachable);
+    if (data !== undefined && "key" in data) return data.key;
+    if (response.status !== 202) throw new Error(error?.message ?? `Duva at ${apiUrl} answered ${response.status}.`);
+  }
+}
 
 /**
  * Signs in through managed login in the browser, which comes back to a loopback address the CLI

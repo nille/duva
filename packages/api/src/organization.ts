@@ -231,15 +231,62 @@ export async function allHumans(table: Table): Promise<Human[]> {
 
 /** Adds an agent with the human `sponsor` as its sponsor, and returns it with its key, which only its hash outlives. */
 export async function addAgent(table: Table, { name, sponsor }: { name: string; sponsor: string }): Promise<{ agent: Agent; key: string }> {
-  const agent: Agent = { id: randomUUID(), kind: "agent", name, sponsor, admin: false };
+  const id = randomUUID();
   const key = newAgentKey();
   const hash = agentKeyHash(key);
-  await recordChange(table, sponsor, { type: "actorAdded", added: agent }, [
-    { Put: { TableName: table.name, Item: { ...actorKey(agent.id), ...agent, keyHash: hash }, ...isNew } },
-    { Put: { TableName: table.name, Item: { ...sponsoredKey(sponsor, agent.id) }, ...isNew } },
-    { Put: { TableName: table.name, Item: { ...agentKeyKey(hash), agent: agent.id }, ...isNew } },
-  ]);
+  const agent = await addAgentWith(table, { id, name, sponsor, keyHash: hash, items: [{ Put: { TableName: table.name, Item: { ...agentKeyKey(hash), agent: id }, ...isNew } }] });
   return { agent, key };
+}
+
+/**
+ * Adds an agent with the human `sponsor` as its sponsor and no key yet, with the `items` for its ID
+ * written too, and returns it. It gets its key from issueAgentKey.
+ */
+export function addKeylessAgent(table: Table, { name, sponsor, items }: { name: string; sponsor: string; items: (agent: string) => TransactItem[] }): Promise<Agent> {
+  const id = randomUUID();
+  return addAgentWith(table, { id, name, sponsor, items: items(id) });
+}
+
+async function addAgentWith(table: Table, { id, name, sponsor, keyHash, items }: { id: string; name: string; sponsor: string; keyHash?: string; items: TransactItem[] }): Promise<Agent> {
+  const agent: Agent = { id, kind: "agent", name, sponsor, admin: false };
+  await recordChange(table, sponsor, { type: "actorAdded", added: agent }, [
+    { Put: { TableName: table.name, Item: { ...actorKey(agent.id), ...agent, ...(keyHash !== undefined && { keyHash }) }, ...isNew } },
+    { Put: { TableName: table.name, Item: { ...sponsoredKey(sponsor, agent.id) }, ...isNew } },
+    ...items,
+  ]);
+  return agent;
+}
+
+/**
+ * Gives the agent added without a key its first key, with the `items` written too, and returns it.
+ * Throws KeyChanged if it has one already, as when its sponsor rotated it first, or was removed.
+ */
+export async function issueAgentKey(table: Table, { agent, items }: { agent: string; items: TransactItem[] }): Promise<string> {
+  const key = newAgentKey();
+  const hash = agentKeyHash(key);
+  await documents(table)
+    .send(
+      new TransactWriteCommand({
+        TransactItems: [
+          {
+            Update: {
+              TableName: table.name,
+              Key: actorKey(agent),
+              UpdateExpression: "SET keyHash = :hash",
+              ConditionExpression: `attribute_exists(${pk}) AND attribute_not_exists(keyHash)`,
+              ExpressionAttributeValues: { ":hash": hash },
+            },
+          },
+          { Put: { TableName: table.name, Item: { ...agentKeyKey(hash), agent }, ...isNew } },
+          ...items,
+        ],
+      }),
+    )
+    .catch((error: unknown) => {
+      const changed = error instanceof TransactionCanceledException && error.CancellationReasons?.[0]?.Code === "ConditionalCheckFailed";
+      throw changed ? new KeyChanged() : error;
+    });
+  return key;
 }
 
 /**
@@ -248,8 +295,9 @@ export async function addAgent(table: Table, { name, sponsor }: { name: string; 
  */
 export async function replaceAgentKey(table: Table, { agent, by }: { agent: string; by: string }): Promise<string> {
   const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: actorKey(agent), ConsistentRead: true }));
-  const old = Item?.keyHash as string | undefined;
-  if (old === undefined) throw new Error(`${agent} isn't an agent.`);
+  if (Item?.kind !== "agent") throw new Error(`${agent} isn't an agent.`);
+  // An agent approved through an access request has no key until it collects one.
+  const old = Item.keyHash as string | undefined;
   const key = newAgentKey();
   const hash = agentKeyHash(key);
   const rotation = recordChange(table, by, { type: "agentKeyRotated", agent }, [
@@ -259,11 +307,12 @@ export async function replaceAgentKey(table: Table, { agent, by }: { agent: stri
         TableName: table.name,
         Key: actorKey(agent),
         UpdateExpression: "SET keyHash = :new",
-        ConditionExpression: "keyHash = :old",
-        ExpressionAttributeValues: { ":new": hash, ":old": old },
+        ...(old === undefined
+          ? { ConditionExpression: "attribute_not_exists(keyHash)", ExpressionAttributeValues: { ":new": hash } }
+          : { ConditionExpression: "keyHash = :old", ExpressionAttributeValues: { ":new": hash, ":old": old } }),
       },
     },
-    { Delete: { TableName: table.name, Key: agentKeyKey(old) } },
+    ...(old === undefined ? [] : [{ Delete: { TableName: table.name, Key: agentKeyKey(old) } }]),
     { Put: { TableName: table.name, Item: { ...agentKeyKey(hash), agent }, ...isNew } },
   ]);
   await rotation.catch((error: unknown) => {
@@ -416,6 +465,7 @@ export class NowhereToRecord extends Error {}
 /** What each of an agent's settings is until its sponsor changes it. */
 export const defaultAgentSettings: AgentSettings = {
   sponsorAccess: "none",
+  sponsorMailboxes: null,
   approvalForOwnMailbox: true,
   approvalAsSponsor: true,
   disclosureLineForOwnMailbox: true,
@@ -449,6 +499,8 @@ export const switchesFor = (settings: AgentSettings, asSponsor: boolean) =>
 export async function agentSettings(table: Table, agent: string): Promise<ReadSettings<AgentSettings>> {
   const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: agentSettingsKey(agent), ConsistentRead: true }));
   const settings = Object.fromEntries(Object.entries(defaultAgentSettings).map(([name, value]) => [name, Item?.[name] ?? value])) as AgentSettings;
+  // Send was called full until the levels between read and send came.
+  if ((settings.sponsorAccess as string) === "full") settings.sponsorAccess = "send";
   return { settings, version: (Item?.version as number | undefined) ?? 0 };
 }
 
@@ -481,7 +533,9 @@ export async function changeAgentSettings(
       if ((changes[limit] ?? 0) > cap) throw new OverCap(limit, cap);
     }
     const read = await agentSettings(table, agent.id);
-    const names = (Object.keys(defaultAgentSettings) as (keyof AgentSettings)[]).filter((name) => changes[name] !== undefined && changes[name] !== read.settings[name]);
+    const names = (Object.keys(defaultAgentSettings) as (keyof AgentSettings)[]).filter(
+      (name) => changes[name] !== undefined && JSON.stringify(changes[name]) !== JSON.stringify(read.settings[name]),
+    );
     if (names.length === 0) return read.settings;
     const settings = { ...read.settings, ...changes };
     const change = {
@@ -1215,12 +1269,15 @@ export async function removeAgentFromOrganization(table: Table, { agent, by, ite
   for (let attempt = 1; ; attempt++) {
     const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: actorKey(agent.id), ConsistentRead: true }));
     if (Item === undefined) return;
-    const hash = Item.keyHash as string;
+    // An agent approved through an access request has no key until it collects one.
+    const hash = Item.keyHash as string | undefined;
+    const keyAsRead =
+      hash === undefined ? { ConditionExpression: "attribute_not_exists(keyHash)" } : { ConditionExpression: "keyHash = :hash", ExpressionAttributeValues: { ":hash": hash } };
     try {
       await recordChange(table, by, { type: "actorRemoved", removed: agent }, [
         // A rotation at the same time leaves another key, so the removal reads it again.
-        { Delete: { TableName: table.name, Key: actorKey(agent.id), ConditionExpression: "keyHash = :hash", ExpressionAttributeValues: { ":hash": hash } } },
-        { Delete: { TableName: table.name, Key: agentKeyKey(hash) } },
+        { Delete: { TableName: table.name, Key: actorKey(agent.id), ...keyAsRead } },
+        ...(hash === undefined ? [] : [{ Delete: { TableName: table.name, Key: agentKeyKey(hash) } }]),
         { Delete: { TableName: table.name, Key: sponsoredKey(agent.sponsor, agent.id) } },
         { Delete: { TableName: table.name, Key: agentSettingsKey(agent.id) } },
         ...items,

@@ -585,12 +585,15 @@ paths:
         agent's sponsor can change them, so not even an admin can. Each change is
         recorded under you, with the old and new values, in your personal
         mailbox's change feed, or if you have none, in the agent's. If
-        neither of you has a mailbox, the change is refused. Read lets the
-        agent read your mailbox. Full also lets it organize it, move threads
-        to Trash and back, draft there, and send as you. Lowering access from
-        full, or removing it, withdraws the agent's sends waiting for your
-        approval in your mailbox, recorded in its change feed under you, and
-        fails those approved but not yet gone out. Its drafts and sent
+        neither of you has a mailbox, the change is refused. Sponsor access
+        covers the mailboxes of yours that sponsorMailboxes names, or all of
+        them while it is null. Read lets the agent read them, organize also
+        lets it organize them and move threads to Trash and back, draft also
+        lets it draft there, and send also lets it send as you. Lowering
+        access from send, or taking a mailbox out of sponsorMailboxes,
+        withdraws the agent's sends waiting for your approval there, recorded
+        in its change feed under you, and fails those approved but not yet
+        gone out. Its drafts and sent
         messages stay. Send limits go up to the organization's caps, and
         raising one lets its sends that wait go out as far as the new limit
         allows.
@@ -713,6 +716,162 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+  /access-requests:
+    post:
+      operationId: askForAccess
+      summary: Ask a human for access as a new agent, and get the code they approve it by.
+      description: >
+        Answers without sign-in, since the agent has no key yet. Show the
+        code and a link to the web app's #/access/<code> to the human who
+        will be the agent's sponsor, then collect the key with the device
+        code every interval seconds until they approve or decline. The code
+        works for 10 minutes and once. duva login --agent does all of this.
+        An address asks for at most 10 codes in 10 minutes.
+      x-cli-command: access-requests ask
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccessAsked"
+      responses:
+        "201":
+          description: The request, waiting for a human.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccessRequestStarted"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /access-requests/collect:
+    post:
+      operationId: collectAccess
+      summary: Collect the agent's key once a human approved its access request.
+      description: >
+        Answers without sign-in. Gives the agent and its key once, after the
+        human approved, with 200. While the request waits it answers 202, so
+        ask again after the interval. Once the human declined it answers
+        403, and once the request expired or its key was collected, 404.
+      x-cli-command: access-requests collect
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccessCollected"
+      responses:
+        "200":
+          description: The agent the human approved, and its key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentWithKey"
+        "202":
+          description: The request still waits for a human.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /access-requests/{code}:
+    get:
+      operationId: getAccessRequest
+      summary: Read an agent's access request by the code it shows, to approve or decline it.
+      description: >
+        Only humans read access requests. It lists each of your mailboxes,
+        with whether the agent asked for it. A human who gives 10 codes in
+        10 minutes that no request waits with gets 429 until the 10 minutes
+        are over, so codes can't be guessed.
+      x-cli-command: access-requests show
+      parameters:
+        - $ref: "#/components/parameters/AccessCode"
+      responses:
+        "200":
+          description: The request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccessRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /access-requests/{code}/approve:
+    post:
+      operationId: approveAccessRequest
+      summary: Approve an agent's access request, which makes you its sponsor and gives it the access you choose.
+      description: >
+        Only humans approve. Give only what you change from what the agent
+        asked: its name, its sponsor access, the mailboxes of yours it covers,
+        and the approval and disclosure-line switches for its sends as you,
+        both on unless you switch them off. Approving creates the agent, with
+        you as its sponsor, recorded in the organization's change feed, and
+        its settings, recorded in your mailboxes' change feeds. The agent
+        then collects its key once. A request is approved or declined once,
+        within 10 minutes.
+      x-cli-command: access-requests approve
+      parameters:
+        - $ref: "#/components/parameters/AccessCode"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccessApproval"
+      responses:
+        "201":
+          description: The agent, created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agent"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /access-requests/{code}/decline:
+    post:
+      operationId: declineAccessRequest
+      summary: Decline an agent's access request, so it gets no key.
+      description: Only humans decline. A request is approved or declined once, within 10 minutes.
+      x-cli-command: access-requests decline
+      parameters:
+        - $ref: "#/components/parameters/AccessCode"
+      responses:
+        "200":
+          description: The request, declined.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccessDeclined"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
   /addresses:
     post:
       operationId: addAddress
@@ -1213,7 +1372,7 @@ paths:
       operationId: listMailboxes
       summary: List the mailboxes you can read, your own and those of the agents you sponsor.
       description: >
-        An agent your sponsor gives read or full sponsor access also finds
+        An agent your sponsor gives sponsor access also finds
         your sponsor's personal mailbox here, listed with that access.
       x-cli-command: mailboxes list
       responses:
@@ -1416,7 +1575,7 @@ paths:
         the same for each actor who reads it. Each thread
         that was unread gets a change in the mailbox's change feed, naming
         you. Only the mailbox's owner, for an agent's mailbox its sponsor, and
-        for a human's mailbox the agents they give full sponsor access
+        for a human's mailbox the agents they give organize sponsor access or more
         can mark its threads.
       x-cli-command: threads mark-read
       parameters:
@@ -1450,7 +1609,7 @@ paths:
         Marks each thread unread, so it stands out until it is read again.
         Each thread that was read gets a change in the mailbox's change feed,
         naming you. Only the mailbox's owner, for an agent's mailbox its sponsor, and
-        for a human's mailbox the agents they give full sponsor access
+        for a human's mailbox the agents they give organize sponsor access or more
         can mark its threads.
       x-cli-command: threads mark-unread
       parameters:
@@ -1487,7 +1646,7 @@ paths:
         spam (not spam) or trash (restore) puts it back in the Inbox, unless
         it still has the other, waits in the Screener, or inbox is removed too. Each thread whose labels change gets a change
         in the mailbox's change feed, naming you. Only the mailbox's owner, for an agent's mailbox its sponsor, and
-        for a human's mailbox the agents they give full sponsor access
+        for a human's mailbox the agents they give organize sponsor access or more
         can label its threads.
       x-cli-command: threads label
       parameters:
@@ -1552,8 +1711,8 @@ paths:
         Trash, or waiting in the Screener, can't be set aside. Each thread
         gets a change in the mailbox's change feed, naming you. Only the
         mailbox's owner, for an agent's mailbox its sponsor, and for a
-        human's mailbox the agents they give full sponsor access can set
-        its threads aside.
+        human's mailbox the agents they give organize sponsor access or
+        more can set its threads aside.
       x-cli-command: threads remind
       parameters:
         - $ref: "#/components/parameters/Mailbox"
@@ -1792,7 +1951,7 @@ paths:
         Creates a label of the mailbox's own, with a name no other label in it
         has, in any case. Then add it to threads by its ID. Only
         the mailbox's owner, for an agent's mailbox its sponsor, and
-        for a human's mailbox the agents they give full sponsor access can create its labels. The change is recorded in the
+        for a human's mailbox the agents they give organize sponsor access or more can create its labels. The change is recorded in the
         mailbox's change feed, naming you.
       x-cli-command: labels create
       parameters:
@@ -1828,7 +1987,7 @@ paths:
         Gives the label a name no other label in the mailbox has, in any case.
         Its threads keep it. The built-in labels can't be renamed. Only
         the mailbox's owner, for an agent's mailbox its sponsor, and
-        for a human's mailbox the agents they give full sponsor access can rename its labels. The change
+        for a human's mailbox the agents they give organize sponsor access or more can rename its labels. The change
         is recorded in the mailbox's change feed, naming you.
       x-cli-command: labels rename
       parameters:
@@ -1865,7 +2024,7 @@ paths:
         mailbox's change feed, and then deletes it. The threads stay. The
         built-in labels can't be deleted. If deleting stops partway, delete
         the label again to finish. Only the mailbox's owner, for an agent's mailbox its sponsor, and
-        for a human's mailbox the agents they give full sponsor access can delete its labels.
+        for a human's mailbox the agents they give organize sponsor access or more can delete its labels.
       x-cli-command: labels delete
       parameters:
         - $ref: "#/components/parameters/Mailbox"
@@ -1988,7 +2147,7 @@ paths:
         a sender the mailbox blocked replaces the block and moves their
         threads still in Trash to the Inbox. The decision and each thread it
         moves are recorded in the mailbox's change feed under you. Only the mailbox's owner, for an agent's mailbox its sponsor, and
-        for a human's mailbox the agents they give full sponsor access can
+        for a human's mailbox the agents they give organize sponsor access or more can
         decide.
       x-cli-command: screener let-in
       parameters:
@@ -2034,7 +2193,7 @@ paths:
         in the body. The decision, each thread it moves and the unsubscribe's
         outcome are recorded in the mailbox's change feed under you. Only the
         mailbox's owner, for an agent's mailbox its sponsor, and for a human's
-        mailbox the agents they give full sponsor access can decide.
+        mailbox the agents they give organize sponsor access or more can decide.
       x-cli-command: screener block
       parameters:
         - $ref: "#/components/parameters/Mailbox"
@@ -2093,7 +2252,7 @@ paths:
         decision instead, let them in or block them. The removal and each
         thread it moves are recorded in the mailbox's change feed under you.
         Only the mailbox's owner, for an agent's mailbox its sponsor, and for
-        a human's mailbox the agents they give full sponsor access can remove
+        a human's mailbox the agents they give organize sponsor access or more can remove
         decisions.
       x-cli-command: screener remove
       parameters:
@@ -2179,7 +2338,7 @@ paths:
         A mailbox with no address can't draft. A draft can be saved before it has
         recipients, a subject or text, but it needs a recipient in To to be
         sent. Only the mailbox's owner can draft in it, and for a human's
-        mailbox the agents they give full sponsor access, whose drafts go from
+        mailbox the agents they give draft sponsor access or more, whose drafts go from
         the same addresses as the human's own. Writing a draft is recorded in
         the mailbox's change feed, naming you.
       x-cli-command: drafts create
@@ -2259,7 +2418,7 @@ paths:
         once it is ready. From can be one of the mailbox's addresses, or a
         group the mailbox's owner is a local member of, and any other group
         gets 403. Only the mailbox's owner can edit its drafts, and
-        for a human's mailbox the agents they give full sponsor access,
+        for a human's mailbox the agents they give draft sponsor access or more,
         whoever wrote the draft. The change, and any withdrawal, is recorded
         in the mailbox's change feed, naming you.
       x-cli-command: drafts edit
@@ -2297,7 +2456,7 @@ paths:
         draft being sent can't be deleted until its send is done. Deleting a
         sent draft leaves the sent message in its thread. Only the mailbox's
         owner can delete its drafts, and for a human's mailbox the agents they
-        give full sponsor access, whoever wrote the draft. The deletion,
+        give draft sponsor access or more, whoever wrote the draft. The deletion,
         and any withdrawal, is recorded in the mailbox's change feed, naming you.
       x-cli-command: drafts delete
       parameters:
@@ -2327,13 +2486,13 @@ paths:
         it at once, with no disclosure, also when their agent wrote the draft.
         An agent's send waits for its sponsor's approval unless the sponsor
         switched that off, separately for its own mailbox and for its
-        sponsor's. With full sponsor access, an agent sends as its sponsor from
+        sponsor's. With send sponsor access, an agent sends as its sponsor from
         the sponsor's mailbox: from the draft's address, under the sponsor's
         name. Every message an agent sends carries the Duva-Agent header, and
         a visible line unless its sponsor switched that off for where it sends
         from. Its send shows where it stands. Bcc recipients get the message,
         but no header names them. Only the mailbox's owner, and an agent with
-        full sponsor access to it, can ask. The draft needs a recipient in To,
+        send sponsor access to it, can ask. The draft needs a recipient in To,
         and a draft waits for one approval at a time. It goes only from an
         address the mailbox still has, so a draft from an address since
         removed fails. A draft from a group goes out from the group's
@@ -2768,6 +2927,13 @@ components:
       schema:
         type: string
         examples: ["Europe/Stockholm"]
+    AccessCode:
+      name: code
+      in: path
+      required: true
+      description: The code the agent shows, as BCDF-GHJK. Case and the dash don't matter.
+      schema:
+        type: string
     Agent:
       name: agent
       in: path
@@ -2841,6 +3007,12 @@ components:
             $ref: "#/components/schemas/Error"
     NotFound:
       description: Nothing has the ID the call names.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    TooManyRequests:
+      description: Too many calls like this one in the last 10 minutes. Wait, then try again.
       content:
         application/json:
           schema:
@@ -3065,11 +3237,19 @@ components:
     AgentSettings:
       type: object
       additionalProperties: false
-      required: [sponsorAccess, approvalForOwnMailbox, approvalAsSponsor, disclosureLineForOwnMailbox, disclosureLineAsSponsor, sendsPerHour, newRecipientsPerDay, approvalForSetup]
+      required: [sponsorAccess, sponsorMailboxes, approvalForOwnMailbox, approvalAsSponsor, disclosureLineForOwnMailbox, disclosureLineAsSponsor, sendsPerHour, newRecipientsPerDay, approvalForSetup]
       description: What an agent may do in its sponsor's personal mailbox, which of its sends and setup changes wait for approval, which sends carry the disclosure's visible line, and its send limits.
       properties:
         sponsorAccess:
           $ref: "#/components/schemas/SponsorAccess"
+        sponsorMailboxes:
+          description: >-
+            The IDs of your mailboxes that the agent's sponsor access covers.
+            Null, the default, covers every mailbox you own. The CLI sets it
+            back to null with --no-sponsorMailboxes.
+          anyOf:
+            - $ref: "#/components/schemas/SponsorMailboxes"
+            - type: "null"
         approvalForOwnMailbox:
           $ref: "#/components/schemas/ApprovalForOwnMailbox"
         approvalAsSponsor:
@@ -3091,6 +3271,14 @@ components:
       properties:
         sponsorAccess:
           $ref: "#/components/schemas/SponsorAccess"
+        sponsorMailboxes:
+          description: >-
+            The IDs of your mailboxes that the agent's sponsor access covers.
+            Null, the default, covers every mailbox you own. The CLI sets it
+            back to null with --no-sponsorMailboxes.
+          anyOf:
+            - $ref: "#/components/schemas/SponsorMailboxes"
+            - type: "null"
         approvalForOwnMailbox:
           $ref: "#/components/schemas/ApprovalForOwnMailbox"
         approvalAsSponsor:
@@ -3107,13 +3295,145 @@ components:
           $ref: "#/components/schemas/ApprovalForSetup"
     SponsorAccess:
       type: string
-      enum: [none, read, full]
+      enum: [none, read, organize, draft, send]
       description: >-
-        The agent's access to its sponsor's personal mailbox. None, the
-        default, gives it none. Read lets it read everything there: threads,
-        labels, drafts, the change feed and attachments. Full also lets it
-        organize, move threads to Trash and back, draft and change any draft
-        there, and send as its sponsor. Only the sponsor empties their Trash.
+        The agent's access to its sponsor's personal mailboxes, those
+        sponsorMailboxes names. None, the default, gives it none. Read lets
+        it read everything there: threads, labels, drafts, the change feed
+        and attachments. Organize also lets it organize, decide in the
+        Screener, set threads aside and move them to Trash and back. Draft
+        also lets it write and change any draft there. Send also lets it send
+        as its sponsor. Only the sponsor empties their Trash.
+    SponsorMailboxes:
+      type: array
+      items:
+        type: string
+      uniqueItems: true
+      description: The IDs of the sponsor's mailboxes that the agent's sponsor access covers, each one the sponsor owns.
+    AccessAsked:
+      type: object
+      additionalProperties: false
+      description: What a new agent asks a human for.
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: The agent's name. Without one, it is named for its host.
+          examples: ["Hermes"]
+        host:
+          type: string
+          maxLength: 253
+          description: The name of the computer the agent runs on, which the human sees.
+          examples: ["build-box"]
+        mailboxes:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+          description: The addresses of the mailboxes it asks for. Without them, it asks for every mailbox of the human who approves.
+          examples: [["ada@example.com"]]
+        wants:
+          $ref: "#/components/schemas/AccessWanted"
+    AccessWanted:
+      type: string
+      enum: [read, organize, draft, send]
+      description: The sponsor access the agent asks for, read unless it says.
+    AccessRequestStarted:
+      type: object
+      additionalProperties: false
+      required: [code, deviceCode, expiresAt, interval]
+      properties:
+        code:
+          type: string
+          description: The code to show the human, who approves the request by it.
+          examples: ["BCDF-GHJK"]
+        deviceCode:
+          type: string
+          description: The secret the agent collects its key with. Keep it to yourself.
+        expiresAt:
+          type: string
+          format: date-time
+          description: When the code stops working, 10 minutes from now.
+        interval:
+          type: integer
+          description: How many seconds to wait between tries to collect the key.
+    AccessCollected:
+      type: object
+      additionalProperties: false
+      required: [deviceCode]
+      properties:
+        deviceCode:
+          type: string
+          description: The device code asking for access gave.
+    AccessRequest:
+      type: object
+      additionalProperties: false
+      required: [code, name, from, wants, mailboxes, expiresAt]
+      description: An agent's request for access, as the human who may approve it sees it.
+      properties:
+        code:
+          type: string
+          examples: ["BCDF-GHJK"]
+        name:
+          type: string
+          description: The name the agent asked for.
+        from:
+          type: object
+          additionalProperties: false
+          required: [address]
+          description: Where the agent asked from.
+          properties:
+            address:
+              type: string
+              description: The IP address its request came from.
+              examples: ["203.0.113.7"]
+            host:
+              type: string
+              description: The name it gave for the computer it runs on, which it may have made up.
+        wants:
+          $ref: "#/components/schemas/AccessWanted"
+        mailboxes:
+          type: array
+          description: Each of your mailboxes, with whether the agent asked for it.
+          items:
+            type: object
+            additionalProperties: false
+            required: [mailbox, asked]
+            properties:
+              mailbox:
+                $ref: "#/components/schemas/Mailbox"
+              asked:
+                type: boolean
+        expiresAt:
+          type: string
+          format: date-time
+          description: When the code stops working.
+    AccessApproval:
+      type: object
+      additionalProperties: false
+      description: What you give the agent, where it differs from what it asked.
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: The agent's name, the one it asked for unless you give another.
+        sponsorAccess:
+          $ref: "#/components/schemas/SponsorAccess"
+        sponsorMailboxes:
+          $ref: "#/components/schemas/SponsorMailboxes"
+        approvalAsSponsor:
+          $ref: "#/components/schemas/ApprovalAsSponsor"
+        disclosureLineAsSponsor:
+          $ref: "#/components/schemas/DisclosureLineAsSponsor"
+    AccessDeclined:
+      type: object
+      additionalProperties: false
+      required: [code]
+      properties:
+        code:
+          type: string
     ApprovalForOwnMailbox:
       type: boolean
       description: Whether the agent's sends from its own mailbox wait for its sponsor's approval. On by default.
@@ -3504,7 +3824,7 @@ components:
           examples: [["support@example.com"]]
         sponsorAccess:
           type: string
-          enum: [read, full]
+          enum: [read, organize, draft, send]
           description: For an agent, its sponsor access, present when the mailbox is its sponsor's.
     MailboxWithCounts:
       type: object
@@ -3760,7 +4080,7 @@ components:
           description: >-
             The request was withdrawn while it waited: the draft changed, it
             was sent without approval, or the agent's sponsor access was lowered
-            from full.
+            from send, or no longer covers the mailbox.
           properties:
             type:
               type: string

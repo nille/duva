@@ -59,6 +59,7 @@ type SponsorAccess = components["schemas"]["SponsorAccess"];
 
 const defaults = {
   sponsorAccess: "none" as SponsorAccess,
+  sponsorMailboxes: null as string[] | null,
   approvalForOwnMailbox: true,
   approvalAsSponsor: true,
   disclosureLineForOwnMailbox: true,
@@ -182,7 +183,7 @@ test("nobody but the agent's sponsor changes its settings, not the agent, anothe
   const { ada, grace, hermes, iris, linus, settings } = await withSponsor();
 
   for (const actor of [hermes, ada, grace, iris]) {
-    const { response, error } = await actor.PATCH("/agents/{agent}/settings", { ...settings, body: { sponsorAccess: "full" } });
+    const { response, error } = await actor.PATCH("/agents/{agent}/settings", { ...settings, body: { sponsorAccess: "send" } });
     expect(response.status).toBe(403);
     expect(error).toEqual({ message: "Only the agent's sponsor can change its settings. Ask them to." });
   }
@@ -190,9 +191,10 @@ test("nobody but the agent's sponsor changes its settings, not the agent, anothe
 });
 
 test.each([
-  ["no setting", {}, "Give a setting to change: sponsorAccess, approvalForOwnMailbox, approvalAsSponsor, disclosureLineForOwnMailbox, disclosureLineAsSponsor, sendsPerHour, newRecipientsPerDay, approvalForSetup."],
-  ["a setting agents don't have", { admin: true }, `An agent has no setting "admin". Its settings are sponsorAccess, approvalForOwnMailbox, approvalAsSponsor, disclosureLineForOwnMailbox, disclosureLineAsSponsor, sendsPerHour, newRecipientsPerDay, approvalForSetup.`],
-  ["a sponsor access there isn't", { sponsorAccess: "write" }, "Give sponsorAccess as none, read or full."],
+  ["no setting", {}, "Give a setting to change: sponsorAccess, sponsorMailboxes, approvalForOwnMailbox, approvalAsSponsor, disclosureLineForOwnMailbox, disclosureLineAsSponsor, sendsPerHour, newRecipientsPerDay, approvalForSetup."],
+  ["a setting agents don't have", { admin: true }, `An agent has no setting "admin". Its settings are sponsorAccess, sponsorMailboxes, approvalForOwnMailbox, approvalAsSponsor, disclosureLineForOwnMailbox, disclosureLineAsSponsor, sendsPerHour, newRecipientsPerDay, approvalForSetup.`],
+  ["a sponsor access there isn't", { sponsorAccess: "write" }, "Give sponsorAccess as none, read, organize, draft or send."],
+  ["mailboxes that aren't a list", { sponsorMailboxes: "all" }, "Give sponsorMailboxes as a list of your mailboxes' IDs, or null for all of them."],
   ["a switch that isn't on or off", { approvalAsSponsor: "no" }, "Give approvalAsSponsor as true to turn it on, or false to turn it off."],
 ])("changing an agent's settings with %s gets 400", async (_, body, message) => {
   const { linus, settings } = await withSponsor();
@@ -212,7 +214,7 @@ test("an agent without sponsor access lists only its own mailbox", async () => {
   expect(data).toEqual({ mailboxes: [{ ...hermesMailbox, groups: [] }] });
 });
 
-test.each(["read", "full"] as const)("an agent with %s sponsor access lists its sponsor's mailbox beside its own, with its access", async (access) => {
+test.each(["read", "send"] as const)("an agent with %s sponsor access lists its sponsor's mailbox beside its own, with its access", async (access) => {
   const { hermes, hermesMailbox, linusMailbox, giveAccess } = await withSponsor();
 
   await giveAccess(access);
@@ -268,7 +270,7 @@ function readings(as: DuvaClient, { params, thread, message, draft }: Awaited<Re
   };
 }
 
-test.each(["read", "full"] as const)("an agent with %s sponsor access reads everything its sponsor reads in their mailbox", async (access) => {
+test.each(["read", "send"] as const)("an agent with %s sponsor access reads everything its sponsor reads in their mailbox", async (access) => {
   const fixture = await withSponsor();
   const { duva, linus, hermes, giveAccess } = fixture;
   const placed = await withMail(fixture);
@@ -292,7 +294,7 @@ test("an agent without sponsor access gets 403 for everything in its sponsor's m
   for (const [name, read] of Object.entries(readings(fixture.hermes, placed))) {
     const { response, error } = await read();
     expect(response.status, name).toBe(403);
-    expect(error, name).toEqual({ message: "Your sponsor hasn't given you sponsor access to their mailbox. Ask them for read access." });
+    expect(error, name).toEqual({ message: "Your sponsor hasn't given you sponsor access to this mailbox of theirs. Ask them for read access." });
   }
 });
 
@@ -330,17 +332,17 @@ function changes(as: DuvaClient, { params, thread, draft }: Awaited<ReturnType<t
 }
 
 const readRefusals: Record<keyof ReturnType<typeof changes>, string> = {
-  markRead: "Your sponsor access is read, which doesn't let you organize your sponsor's mailbox. Ask your sponsor for full access.",
-  markUnread: "Your sponsor access is read, which doesn't let you organize your sponsor's mailbox. Ask your sponsor for full access.",
-  archive: "Your sponsor access is read, which doesn't let you organize your sponsor's mailbox. Ask your sponsor for full access.",
-  trash: "Your sponsor access is read, which doesn't let you move threads to Trash or back in your sponsor's mailbox. Ask your sponsor for full access.",
-  createLabel: "Your sponsor access is read, which doesn't let you organize your sponsor's mailbox. Ask your sponsor for full access.",
-  renameLabel: "Your sponsor access is read, which doesn't let you organize your sponsor's mailbox. Ask your sponsor for full access.",
-  deleteLabel: "Your sponsor access is read, which doesn't let you organize your sponsor's mailbox. Ask your sponsor for full access.",
-  writeDraft: "Your sponsor access is read, which doesn't let you write or change drafts in your sponsor's mailbox. Ask your sponsor for full access.",
-  changeDraft: "Your sponsor access is read, which doesn't let you write or change drafts in your sponsor's mailbox. Ask your sponsor for full access.",
-  deleteDraft: "Your sponsor access is read, which doesn't let you write or change drafts in your sponsor's mailbox. Ask your sponsor for full access.",
-  sendDraft: "Your sponsor access is read, which doesn't let you send as your sponsor. Ask your sponsor for full access.",
+  markRead: "Your sponsor access is read, which doesn't let you organize your sponsor's mailbox. Ask your sponsor for organize access.",
+  markUnread: "Your sponsor access is read, which doesn't let you organize your sponsor's mailbox. Ask your sponsor for organize access.",
+  archive: "Your sponsor access is read, which doesn't let you organize your sponsor's mailbox. Ask your sponsor for organize access.",
+  trash: "Your sponsor access is read, which doesn't let you move threads to Trash or back in your sponsor's mailbox. Ask your sponsor for organize access.",
+  createLabel: "Your sponsor access is read, which doesn't let you organize your sponsor's mailbox. Ask your sponsor for organize access.",
+  renameLabel: "Your sponsor access is read, which doesn't let you organize your sponsor's mailbox. Ask your sponsor for organize access.",
+  deleteLabel: "Your sponsor access is read, which doesn't let you organize your sponsor's mailbox. Ask your sponsor for organize access.",
+  writeDraft: "Your sponsor access is read, which doesn't let you write or change drafts in your sponsor's mailbox. Ask your sponsor for draft access.",
+  changeDraft: "Your sponsor access is read, which doesn't let you write or change drafts in your sponsor's mailbox. Ask your sponsor for draft access.",
+  deleteDraft: "Your sponsor access is read, which doesn't let you write or change drafts in your sponsor's mailbox. Ask your sponsor for draft access.",
+  sendDraft: "Your sponsor access is read, which doesn't let you send as your sponsor. Ask your sponsor for send access.",
   emptyTrash: "Only your sponsor can empty their Trash. Ask them to.",
 };
 
@@ -361,11 +363,58 @@ test("an agent with read sponsor access gets 403 changing anything in its sponso
   expect(await everything()).toEqual(before);
 });
 
-test("an agent with full sponsor access organizes its sponsor's mailbox as its sponsor does, each change in the feed naming it", async () => {
+test.each([
+  ["organize", ["writeDraft", "changeDraft", "deleteDraft", "sendDraft"], "draft"],
+  ["draft", ["sendDraft"], "send"],
+] as const)("an agent with %s sponsor access does what it gives, and gets 403 for what it doesn't, saying what's missing", async (access, refused, needed) => {
+  const fixture = await withSponsor();
+  const { hermes, giveAccess } = fixture;
+  const placed = await withMail(fixture);
+  await giveAccess(access);
+
+  for (const [name, change] of Object.entries(changes(hermes, placed))) {
+    const { response, error } = await change();
+    if (name === "emptyTrash") expect(response.status, name).toBe(403);
+    else if ((refused as readonly string[]).includes(name)) {
+      expect(response.status, name).toBe(403);
+      const missing = name === "sendDraft" ? "send as your sponsor" : "write or change drafts in your sponsor's mailbox";
+      expect(error, name).toEqual({ message: `Your sponsor access is ${access}, which doesn't let you ${missing}. Ask your sponsor for ${name === "sendDraft" ? "send" : needed} access.` });
+    } else expect(response.status, name).not.toBe(403);
+  }
+});
+
+test("sponsor access covers only the sponsor's mailboxes it names, so the agent lists and reads those and gets 403 in the others", async () => {
+  const fixture = await withSponsor();
+  const { ada, linusId, linusMailbox, hermes, hermesMailbox, change } = fixture;
+  const { data: work } = await ada.POST("/mailboxes", { body: { owner: linusId, address: "linus.work@example.com" } });
+  const placed = await withMail(fixture);
+
+  await change({ sponsorAccess: "read", sponsorMailboxes: [work!.id] });
+
+  expect((await hermes.GET("/mailboxes")).data).toEqual({ mailboxes: [{ ...hermesMailbox, groups: [] }, { ...work!, groups: [], sponsorAccess: "read" }] });
+  expect((await hermes.GET("/mailboxes/{mailbox}/threads", { params: { path: { mailbox: work!.id } } })).response.status).toBe(200);
+  const { response, error } = await readings(hermes, placed).inbox();
+  expect(response.status).toBe(403);
+  expect(error).toEqual({ message: "Your sponsor hasn't given you sponsor access to this mailbox of theirs. Ask them for read access." });
+  expect(placed.params.path.mailbox).toBe(linusMailbox.id);
+});
+
+test("sponsor access names only the sponsor's own mailboxes, so another's gets 400", async () => {
+  const { linus, hermesMailbox, graceMailbox, settings } = await withSponsor();
+
+  for (const mailbox of [graceMailbox, hermesMailbox]) {
+    const { response, error } = await linus.PATCH("/agents/{agent}/settings", { ...settings, body: { sponsorAccess: "read", sponsorMailboxes: [mailbox.id] } });
+    expect(response.status).toBe(400);
+    expect(error).toEqual({ message: `${JSON.stringify(mailbox.id)} isn't one of your mailboxes. List your mailboxes to find their IDs.` });
+  }
+  expect((await linus.GET("/agents/{agent}/settings", settings)).data).toEqual(defaults);
+});
+
+test("an agent with send sponsor access organizes its sponsor's mailbox as its sponsor does, each change in the feed naming it", async () => {
   const fixture = await withSponsor();
   const { linus, hermes, hermesId, giveAccess } = fixture;
   const { params, thread } = await withMail(fixture);
-  await giveAccess("full");
+  await giveAccess("send");
   const threads = { threads: [thread] };
   const label = (body: { add?: string[]; remove?: string[] }) => hermes.POST("/mailboxes/{mailbox}/threads/labels", { params, body: { ...threads, ...body } });
   const labels = async () => (await linus.GET("/mailboxes/{mailbox}/threads/{thread}", { params: { path: { ...params.path, thread } } })).data!.labels;
@@ -406,11 +455,11 @@ test("an agent with full sponsor access organizes its sponsor's mailbox as its s
   ]);
 });
 
-test("an agent with full sponsor access never empties its sponsor's Trash", async () => {
+test("an agent with send sponsor access never empties its sponsor's Trash", async () => {
   const fixture = await withSponsor();
   const { hermes, giveAccess } = fixture;
   const { params } = await withMail(fixture);
-  await giveAccess("full");
+  await giveAccess("send");
 
   const { response, error } = await hermes.POST("/mailboxes/{mailbox}/trash/empty", { params });
 
@@ -418,11 +467,11 @@ test("an agent with full sponsor access never empties its sponsor's Trash", asyn
   expect(error).toEqual({ message: "Only your sponsor can empty their Trash. Ask them to." });
 });
 
-test("an agent with full sponsor access drafts replies, replies to all, forwards and new mail in its sponsor's mailbox, as its sponsor's own drafts are", async () => {
+test("an agent with send sponsor access drafts replies, replies to all, forwards and new mail in its sponsor's mailbox, as its sponsor's own drafts are", async () => {
   const fixture = await withSponsor();
   const { linus, hermes, hermesId, giveAccess } = fixture;
   const { params, message } = await withMail(fixture);
-  await giveAccess("full");
+  await giveAccess("send");
   const linusAddress = "linus@example.com";
   const drafts: [Record<string, unknown>, Record<string, unknown>][] = [
     [{ answers: message, text: "Tack!" }, { from: linusAddress, to: [{ name: "Grace Hopper", address: "grace@example.org" }], subject: "Re: The report", text: "Tack!" }],
@@ -445,11 +494,11 @@ test("an agent with full sponsor access drafts replies, replies to all, forwards
   expect(feed!.changes.filter((change) => change.type === "draftWritten" && "actor" in change && change.actor === hermesId)).toHaveLength(drafts.length);
 });
 
-test("in the sponsor's mailbox, an agent with full access and its sponsor each change and delete the other's drafts, each change in the feed naming who", async () => {
+test("in the sponsor's mailbox, an agent with send access and its sponsor each change and delete the other's drafts, each change in the feed naming who", async () => {
   const fixture = await withSponsor();
   const { linus, linusId, hermes, hermesId, giveAccess } = fixture;
   const { params, draft: linusDraft } = await withMail(fixture);
-  await giveAccess("full");
+  await giveAccess("send");
   const { data: hermesDraft } = await hermes.POST("/mailboxes/{mailbox}/drafts", { params, body: { to: ["grace@example.org"], text: "Utkast." } });
   const inDraft = (draft: string) => ({ params: { path: { ...params.path, draft } } });
 
@@ -478,7 +527,7 @@ test("a draft in the sponsor's mailbox names the actor who wrote it or changed i
   const fixture = await withSponsor();
   const { linus, linusId, hermes, hermesId, giveAccess } = fixture;
   const { params } = await withMail(fixture);
-  await giveAccess("full");
+  await giveAccess("send");
   const { data: written } = await hermes.POST("/mailboxes/{mailbox}/drafts", { params, body: { to: ["grace@example.org"], text: "Utkast." } });
   const inDraft = { params: { path: { ...params.path, draft: written!.id } } };
 
@@ -494,7 +543,7 @@ test("a draft in the sponsor's mailbox names the actor who wrote it or changed i
 test("the sponsor's edit to a send as them, approving it, makes the draft theirs as changed last", async () => {
   const fixture = await withSponsor();
   const { linus, linusId, hermesId, giveAccess } = fixture;
-  await giveAccess("full");
+  await giveAccess("send");
   const { asked, inDraft } = await withReplyAsSponsor(fixture);
   expect(asked.data!.updatedBy).toBe(hermesId);
 
@@ -503,11 +552,11 @@ test("the sponsor's edit to a send as them, approving it, makes the draft theirs
   expect((await linus.GET("/mailboxes/{mailbox}/drafts/{draft}", inDraft)).data!.updatedBy).toBe(linusId);
 });
 
-test("lowering sponsor access from full to read stops the agent changing anything at once, its drafts staying", async () => {
+test("lowering sponsor access from send to read stops the agent changing anything at once, its drafts staying", async () => {
   const fixture = await withSponsor();
   const { linus, hermes, giveAccess } = fixture;
   const { params, thread } = await withMail(fixture);
-  await giveAccess("full");
+  await giveAccess("send");
   const { data: draft } = await hermes.POST("/mailboxes/{mailbox}/drafts", { params, body: { to: ["grace@example.org"] } });
 
   await giveAccess("read");
@@ -517,11 +566,11 @@ test("lowering sponsor access from full to read stops the agent changing anythin
   expect((await linus.GET("/mailboxes/{mailbox}/drafts/{draft}", { params: { path: { ...params.path, draft: draft!.id } } })).data).toEqual(draft);
 });
 
-test("sponsor access reaches only the sponsor's mailbox, so an agent with full access gets 403 in another human's and another agent's", async () => {
+test("sponsor access reaches only the sponsor's mailbox, so an agent with send access gets 403 in another human's and another agent's", async () => {
   const fixture = await withSponsor();
   const { hermes, graceMailbox, giveAccess, iris, irisId, ada } = fixture;
   const { data: irisMailbox } = await ada.POST("/mailboxes", { body: { owner: irisId, address: "iris@example.com" } });
-  await giveAccess("full");
+  await giveAccess("send");
 
   for (const mailbox of [graceMailbox, irisMailbox!]) {
     const { response, error } = await hermes.GET("/mailboxes/{mailbox}/threads", { params: { path: { mailbox: mailbox.id } } });
@@ -534,7 +583,7 @@ test("sponsor access reaches only the sponsor's mailbox, so an agent with full a
 test("no human reaches another human's mailbox, admins included", async () => {
   const fixture = await withSponsor();
   const { ada, grace, linusMailbox, giveAccess } = fixture;
-  await giveAccess("full");
+  await giveAccess("send");
 
   for (const actor of [ada, grace]) {
     const { response } = await actor.GET("/mailboxes/{mailbox}/threads", { params: { path: { mailbox: linusMailbox.id } } });
@@ -570,10 +619,10 @@ async function withReplyAsSponsor(fixture: Awaited<ReturnType<typeof withSponsor
   return { ...placed, reply: draft!.id, inDraft, asked };
 }
 
-test("an agent with full sponsor access asks to send in its sponsor's mailbox, which waits for the sponsor's approval", async () => {
+test("an agent with send sponsor access asks to send in its sponsor's mailbox, which waits for the sponsor's approval", async () => {
   const fixture = await withSponsor();
   const { duva, linus, linusId, hermesId, linusMailbox, giveAccess } = fixture;
-  await giveAccess("full");
+  await giveAccess("send");
 
   const { reply, asked } = await withReplyAsSponsor(fixture);
 
@@ -589,7 +638,7 @@ test("an agent with full sponsor access asks to send in its sponsor's mailbox, w
 test("a send as the sponsor goes from the sponsor's address, under no name, with the disclosure naming the agent and its sponsor", async () => {
   const fixture = await withSponsor();
   const { duva, linus, giveAccess } = fixture;
-  await giveAccess("full");
+  await giveAccess("send");
   const { asked } = await withReplyAsSponsor(fixture);
 
   const { response } = await linus.POST("/approvals/{approval}/send", { params: { path: { approval: asked.data!.send!.approval! } } });
@@ -608,7 +657,7 @@ test("a send as the sponsor goes from the sponsor's address, under no name, with
 test("a message the agent sent as its sponsor, and its feed entries, name the agent", async () => {
   const fixture = await withSponsor();
   const { linus, linusId, hermesId, giveAccess } = fixture;
-  await giveAccess("full");
+  await giveAccess("send");
   const { params, thread, reply, asked } = await withReplyAsSponsor(fixture);
   const approval = asked.data!.send!.approval!;
 
@@ -627,7 +676,7 @@ test("a message the agent sent as its sponsor, and its feed entries, name the ag
 test("the sponsor edits a send as them before approving it, or rejects it with a note, as for their agent's own mailbox", async () => {
   const fixture = await withSponsor();
   const { duva, linus, hermes, giveAccess } = fixture;
-  await giveAccess("full");
+  await giveAccess("send");
   const { asked, inDraft } = await withReplyAsSponsor(fixture);
 
   const { response: rejected } = await linus.POST("/approvals/{approval}/reject", { params: { path: { approval: asked.data!.send!.approval! } }, body: { note: "Säg mer." } });
@@ -643,7 +692,7 @@ test("the sponsor edits a send as them before approving it, or rejects it with a
 test("with approval of its sends as its sponsor off, an agent's send in its sponsor's mailbox goes out at once", async () => {
   const fixture = await withSponsor();
   const { duva, linus, hermes, change } = fixture;
-  await change({ sponsorAccess: "full", approvalAsSponsor: false });
+  await change({ sponsorAccess: "send", approvalAsSponsor: false });
 
   const { asked, inDraft } = await withReplyAsSponsor(fixture);
 
@@ -658,7 +707,7 @@ test("with approval of its sends as its sponsor off, an agent's send in its spon
 test("approval of the agent's sends as its sponsor stays on when approval of its sends from its own mailbox is off", async () => {
   const fixture = await withSponsor();
   const { duva, change } = fixture;
-  await change({ sponsorAccess: "full", approvalForOwnMailbox: false });
+  await change({ sponsorAccess: "send", approvalForOwnMailbox: false });
 
   const { asked } = await withReplyAsSponsor(fixture);
 
@@ -693,7 +742,7 @@ test.each([
   ["disclosureLineAsSponsor", { own: true, asSponsor: false }],
 ] as const)("turning %s off drops the visible line there only, and the Duva-Agent header stays", async (name, carriesLine) => {
   const { duva, hermes, hermesMailbox, linusMailbox, change } = await withSponsor();
-  await change({ sponsorAccess: "full", approvalForOwnMailbox: false, approvalAsSponsor: false, [name]: false });
+  await change({ sponsorAccess: "send", approvalForOwnMailbox: false, approvalAsSponsor: false, [name]: false });
 
   await sendFrom(hermes, hermesMailbox.id);
   await sendFrom(hermes, linusMailbox.id);
@@ -708,7 +757,7 @@ test.each([
 test("the sponsor sending their agent's draft from their own mailbox sends their own mail, with no approval and no disclosure", async () => {
   const fixture = await withSponsor();
   const { duva, linus, linusId, hermes, giveAccess } = fixture;
-  await giveAccess("full");
+  await giveAccess("send");
   const { params, thread, message } = await withMail(fixture);
   const { data: draft } = await hermes.POST("/mailboxes/{mailbox}/drafts", { params, body: { answers: message, text: "Tack!" } });
 
@@ -727,7 +776,7 @@ test("the sponsor sending their agent's draft from their own mailbox sends their
 test("the sponsor sending their agent's draft that waits for their approval withdraws the request and sends it as their own", async () => {
   const fixture = await withSponsor();
   const { duva, linus, linusId, giveAccess } = fixture;
-  await giveAccess("full");
+  await giveAccess("send");
   const { params, reply, inDraft, asked } = await withReplyAsSponsor(fixture);
   const approval = asked.data!.send!.approval!;
 
@@ -746,7 +795,7 @@ test("the sponsor sending their agent's draft that waits for their approval with
 test.each(["agent", "sponsor"] as const)("in the sponsor's mailbox, the %s changing a draft that waits for approval withdraws the request", async (editor) => {
   const fixture = await withSponsor();
   const { linus, hermes, giveAccess } = fixture;
-  await giveAccess("full");
+  await giveAccess("send");
   const { inDraft, asked } = await withReplyAsSponsor(fixture);
   const approval = asked.data!.send!.approval!;
 
@@ -757,10 +806,10 @@ test.each(["agent", "sponsor"] as const)("in the sponsor's mailbox, the %s chang
   expect((await linus.POST("/approvals/{approval}/send", { params: { path: { approval } } })).response.status).toBe(409);
 });
 
-test.each(["read", "none"] as const)("lowering sponsor access from full to %s withdraws the agent's pending approvals in the sponsor's mailbox, its drafts and sent mail staying", async (lowered) => {
+test.each(["read", "none"] as const)("lowering sponsor access from send to %s withdraws the agent's pending approvals in the sponsor's mailbox, its drafts and sent mail staying", async (lowered) => {
   const fixture = await withSponsor();
   const { duva, linus, linusId, hermes, hermesMailbox, giveAccess } = fixture;
-  await giveAccess("full");
+  await giveAccess("send");
   const { params, thread, reply, inDraft, asked } = await withReplyAsSponsor(fixture);
   const approval = asked.data!.send!.approval!;
   const { data: sentDraft } = await hermes.POST("/mailboxes/{mailbox}/drafts", { params, body: { to: ["grace@example.org"], subject: "Lunch", text: "Hej." } });
@@ -783,10 +832,24 @@ test.each(["read", "none"] as const)("lowering sponsor access from full to %s wi
   expect((await linus.GET("/mailboxes/{mailbox}/drafts", { params })).data!.drafts.map(({ id }) => id)).toEqual(expect.arrayContaining([reply, sentDraft!.id]));
 });
 
-test("lowering sponsor access from full stops the agent's sends as its sponsor that haven't gone out, approved or not needing approval", async () => {
+test("taking a mailbox out of sponsor access withdraws the agent's pending approvals there", async () => {
+  const fixture = await withSponsor();
+  const { ada, linus, linusId, giveAccess, change } = fixture;
+  await giveAccess("send");
+  const { inDraft, asked } = await withReplyAsSponsor(fixture);
+  const approval = asked.data!.send!.approval!;
+  const { data: work } = await ada.POST("/mailboxes", { body: { owner: linusId, address: "linus.work@example.com" } });
+
+  await change({ sponsorMailboxes: [work!.id] });
+
+  expect((await linus.GET("/approvals")).data).toEqual({ approvals: [], setupApprovals: [] });
+  expect((await linus.GET("/mailboxes/{mailbox}/drafts/{draft}", inDraft)).data!.send).toEqual({ approval, state: "withdrawn" });
+});
+
+test("lowering sponsor access from send stops the agent's sends as its sponsor that haven't gone out, approved or not needing approval", async () => {
   const fixture = await withSponsor({ sendsHeld: true });
   const { duva, linus, hermes, hermesMailbox, linusMailbox, change } = fixture;
-  await change({ sponsorAccess: "full", approvalForOwnMailbox: false });
+  await change({ sponsorAccess: "send", approvalForOwnMailbox: false });
   const { inDraft, asked } = await withReplyAsSponsor(fixture);
   await linus.POST("/approvals/{approval}/send", { params: { path: { approval: asked.data!.send!.approval! } } });
   await change({ approvalAsSponsor: false });
@@ -799,18 +862,18 @@ test("lowering sponsor access from full stops the agent's sends as its sponsor t
   const [raw, ...more] = duva.sent();
   expect(more).toEqual([]);
   expect((await parse(raw!)).from).toEqual({ name: "Hermes", address: "hermes@example.com" });
-  const reason = "The agent's sponsor access was lowered from full before this went out, so it wasn't sent. Its sponsor can send it.";
+  const reason = "The agent's sponsor access was lowered from send before this went out, so it wasn't sent. Its sponsor can send it.";
   expect((await hermes.GET("/mailboxes/{mailbox}/drafts/{draft}", inDraft)).data!.send).toMatchObject({ state: "failed", reason });
   expect((await hermes.GET("/mailboxes/{mailbox}/drafts/{draft}", { params: { path: { mailbox: linusMailbox.id, draft: atOnce!.id } } })).data!.send).toMatchObject({ state: "failed", reason });
   expect((await hermes.GET("/mailboxes/{mailbox}/drafts/{draft}", { params: { path: { mailbox: hermesMailbox.id, draft: own!.id } } })).data!.send).toMatchObject({ state: "sent" });
 });
 
-test("an ask to send as the sponsor at the same time as lowering access from full is refused or withdrawn, never left waiting", async () => {
+test("an ask to send as the sponsor at the same time as lowering access from send is refused or withdrawn, never left waiting", async () => {
   const fixture = await withSponsor();
   const { linus, hermes, linusMailbox, giveAccess } = fixture;
 
   for (let round = 0; round < 5; round++) {
-    await giveAccess("full");
+    await giveAccess("send");
     const params = { path: { mailbox: linusMailbox.id } };
     const { data: draft } = await hermes.POST("/mailboxes/{mailbox}/drafts", { params, body: { to: ["grace@example.org"], text: `Round ${round}.` } });
     const [asked] = await Promise.all([hermes.POST("/mailboxes/{mailbox}/drafts/{draft}/send", { params: { path: { ...params.path, draft: draft!.id } } }), giveAccess("read")]);

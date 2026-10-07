@@ -354,7 +354,7 @@ export interface paths {
         head?: never;
         /**
          * Change an agent's sponsor access, its approval and disclosure-line switches, or its send limits.
-         * @description Give only the settings to change. A change works at once. Only the agent's sponsor can change them, so not even an admin can. Each change is recorded under you, with the old and new values, in your personal mailbox's change feed, or if you have none, in the agent's. If neither of you has a mailbox, the change is refused. Read lets the agent read your mailbox. Full also lets it organize it, move threads to Trash and back, draft there, and send as you. Lowering access from full, or removing it, withdraws the agent's sends waiting for your approval in your mailbox, recorded in its change feed under you, and fails those approved but not yet gone out. Its drafts and sent messages stay. Send limits go up to the organization's caps, and raising one lets its sends that wait go out as far as the new limit allows.
+         * @description Give only the settings to change. A change works at once. Only the agent's sponsor can change them, so not even an admin can. Each change is recorded under you, with the old and new values, in your personal mailbox's change feed, or if you have none, in the agent's. If neither of you has a mailbox, the change is refused. Sponsor access covers the mailboxes of yours that sponsorMailboxes names, or all of them while it is null. Read lets the agent read them, organize also lets it organize them and move threads to Trash and back, draft also lets it draft there, and send also lets it send as you. Lowering access from send, or taking a mailbox out of sponsorMailboxes, withdraws the agent's sends waiting for your approval there, recorded in its change feed under you, and fails those approved but not yet gone out. Its drafts and sent messages stay. Send limits go up to the organization's caps, and raising one lets its sends that wait go out as far as the new limit allows.
          */
         patch: operations["changeAgentSettings"];
         trace?: never;
@@ -393,6 +393,106 @@ export interface paths {
         get: operations["getAgentActivityDay"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/access-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask a human for access as a new agent, and get the code they approve it by.
+         * @description Answers without sign-in, since the agent has no key yet. Show the code and a link to the web app's #/access/<code> to the human who will be the agent's sponsor, then collect the key with the device code every interval seconds until they approve or decline. The code works for 10 minutes and once. duva login --agent does all of this. An address asks for at most 10 codes in 10 minutes.
+         */
+        post: operations["askForAccess"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/access-requests/collect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Collect the agent's key once a human approved its access request.
+         * @description Answers without sign-in. Gives the agent and its key once, after the human approved, with 200. While the request waits it answers 202, so ask again after the interval. Once the human declined it answers 403, and once the request expired or its key was collected, 404.
+         */
+        post: operations["collectAccess"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/access-requests/{code}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read an agent's access request by the code it shows, to approve or decline it.
+         * @description Only humans read access requests. It lists each of your mailboxes, with whether the agent asked for it. A human who gives 10 codes in 10 minutes that no request waits with gets 429 until the 10 minutes are over, so codes can't be guessed.
+         */
+        get: operations["getAccessRequest"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/access-requests/{code}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve an agent's access request, which makes you its sponsor and gives it the access you choose.
+         * @description Only humans approve. Give only what you change from what the agent asked: its name, its sponsor access, the mailboxes of yours it covers, and the approval and disclosure-line switches for its sends as you, both on unless you switch them off. Approving creates the agent, with you as its sponsor, recorded in the organization's change feed, and its settings, recorded in your mailboxes' change feeds. The agent then collects its key once. A request is approved or declined once, within 10 minutes.
+         */
+        post: operations["approveAccessRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/access-requests/{code}/decline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decline an agent's access request, so it gets no key.
+         * @description Only humans decline. A request is approved or declined once, within 10 minutes.
+         */
+        post: operations["declineAccessRequest"];
         delete?: never;
         options?: never;
         head?: never;
@@ -596,7 +696,7 @@ export interface paths {
         };
         /**
          * List the mailboxes you can read, your own and those of the agents you sponsor.
-         * @description An agent your sponsor gives read or full sponsor access also finds your sponsor's personal mailbox here, listed with that access.
+         * @description An agent your sponsor gives sponsor access also finds your sponsor's personal mailbox here, listed with that access.
          */
         get: operations["listMailboxes"];
         put?: never;
@@ -706,7 +806,7 @@ export interface paths {
         put?: never;
         /**
          * Mark threads in a mailbox read.
-         * @description Marks each thread read. Read state belongs to the mailbox, so it is the same for each actor who reads it. Each thread that was unread gets a change in the mailbox's change feed, naming you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can mark its threads.
+         * @description Marks each thread read. Read state belongs to the mailbox, so it is the same for each actor who reads it. Each thread that was unread gets a change in the mailbox's change feed, naming you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give organize sponsor access or more can mark its threads.
          */
         post: operations["markThreadsRead"];
         delete?: never;
@@ -726,7 +826,7 @@ export interface paths {
         put?: never;
         /**
          * Mark threads in a mailbox unread.
-         * @description Marks each thread unread, so it stands out until it is read again. Each thread that was read gets a change in the mailbox's change feed, naming you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can mark its threads.
+         * @description Marks each thread unread, so it stands out until it is read again. Each thread that was read gets a change in the mailbox's change feed, naming you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give organize sponsor access or more can mark its threads.
          */
         post: operations["markThreadsUnread"];
         delete?: never;
@@ -746,7 +846,7 @@ export interface paths {
         put?: never;
         /**
          * Add labels to threads in a mailbox, and remove them.
-         * @description Adds and removes the labels on each thread. Archiving removes inbox, and adding inbox moves a thread back to the Inbox, out of Spam, Trash and the Screener. Adding spam or trash takes a thread out of the Inbox. Removing spam (not spam) or trash (restore) puts it back in the Inbox, unless it still has the other, waits in the Screener, or inbox is removed too. Each thread whose labels change gets a change in the mailbox's change feed, naming you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can label its threads.
+         * @description Adds and removes the labels on each thread. Archiving removes inbox, and adding inbox moves a thread back to the Inbox, out of Spam, Trash and the Screener. Adding spam or trash takes a thread out of the Inbox. Removing spam (not spam) or trash (restore) puts it back in the Inbox, unless it still has the other, waits in the Screener, or inbox is removed too. Each thread whose labels change gets a change in the mailbox's change feed, naming you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give organize sponsor access or more can label its threads.
          */
         post: operations["labelThreads"];
         delete?: never;
@@ -783,7 +883,7 @@ export interface paths {
         put?: never;
         /**
          * Set threads in a mailbox aside until a time, when they come back to the Inbox.
-         * @description Remind me: each thread leaves the Inbox, if it is there, and waits in Remind me until the time, given as at or as a preset. Then it comes back to the top of the Inbox, unread, with a Back mark naming when it was set aside. New mail in the thread brings it back early. A thread already set aside gets the new time. A thread in Spam or Trash, or waiting in the Screener, can't be set aside. Each thread gets a change in the mailbox's change feed, naming you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can set its threads aside.
+         * @description Remind me: each thread leaves the Inbox, if it is there, and waits in Remind me until the time, given as at or as a preset. Then it comes back to the top of the Inbox, unread, with a Back mark naming when it was set aside. New mail in the thread brings it back early. A thread already set aside gets the new time. A thread in Spam or Trash, or waiting in the Screener, can't be set aside. Each thread gets a change in the mailbox's change feed, naming you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give organize sponsor access or more can set its threads aside.
          */
         post: operations["remindThreads"];
         delete?: never;
@@ -887,7 +987,7 @@ export interface paths {
         put?: never;
         /**
          * Create a label in a mailbox.
-         * @description Creates a label of the mailbox's own, with a name no other label in it has, in any case. Then add it to threads by its ID. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can create its labels. The change is recorded in the mailbox's change feed, naming you.
+         * @description Creates a label of the mailbox's own, with a name no other label in it has, in any case. Then add it to threads by its ID. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give organize sponsor access or more can create its labels. The change is recorded in the mailbox's change feed, naming you.
          */
         post: operations["createLabel"];
         delete?: never;
@@ -908,14 +1008,14 @@ export interface paths {
         post?: never;
         /**
          * Delete one of a mailbox's own labels.
-         * @description Removes the label from each of its threads, each with a change in the mailbox's change feed, and then deletes it. The threads stay. The built-in labels can't be deleted. If deleting stops partway, delete the label again to finish. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can delete its labels.
+         * @description Removes the label from each of its threads, each with a change in the mailbox's change feed, and then deletes it. The threads stay. The built-in labels can't be deleted. If deleting stops partway, delete the label again to finish. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give organize sponsor access or more can delete its labels.
          */
         delete: operations["deleteLabel"];
         options?: never;
         head?: never;
         /**
          * Rename one of a mailbox's own labels.
-         * @description Gives the label a name no other label in the mailbox has, in any case. Its threads keep it. The built-in labels can't be renamed. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can rename its labels. The change is recorded in the mailbox's change feed, naming you.
+         * @description Gives the label a name no other label in the mailbox has, in any case. Its threads keep it. The built-in labels can't be renamed. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give organize sponsor access or more can rename its labels. The change is recorded in the mailbox's change feed, naming you.
          */
         patch: operations["renameLabel"];
         trace?: never;
@@ -975,7 +1075,7 @@ export interface paths {
         put?: never;
         /**
          * Let a sender into a mailbox, moving their waiting threads to the Inbox.
-         * @description Give an address, or a domain to let in everyone there. A domain covers exactly that domain, not its subdomains, and can't be a public mail provider's, like gmail.com. An address's decision beats its domain's. Their later mail skips the Screener, even while it is off. Letting in a sender the mailbox blocked replaces the block and moves their threads still in Trash to the Inbox. The decision and each thread it moves are recorded in the mailbox's change feed under you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can decide.
+         * @description Give an address, or a domain to let in everyone there. A domain covers exactly that domain, not its subdomains, and can't be a public mail provider's, like gmail.com. An address's decision beats its domain's. Their later mail skips the Screener, even while it is off. Letting in a sender the mailbox blocked replaces the block and moves their threads still in Trash to the Inbox. The decision and each thread it moves are recorded in the mailbox's change feed under you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give organize sponsor access or more can decide.
          */
         post: operations["letInSender"];
         delete?: never;
@@ -995,7 +1095,7 @@ export interface paths {
         put?: never;
         /**
          * Block a sender in a mailbox, moving their waiting threads to Trash.
-         * @description Give an address, or a domain to block everyone there. A domain covers exactly that domain, not its subdomains, and can't be a public mail provider's, like gmail.com. An address's decision beats its domain's. Their later mail that starts a thread goes straight to Trash, even while the Screener is off. Trash is erased after the organization's retention period, counted from when a thread got it. Blocking a sender the mailbox let in replaces that. Blocking also unsubscribes the mailbox from the sender's mail by one-click (RFC 8058), when their newest mail that SES didn't judge to be spam offers it and a DKIM signature that passed covers its unsubscribe headers. For a domain, that is the newest mail from an address there that the mailbox hasn't let in. Duva never unsubscribes by mailto or by a link in the body. The decision, each thread it moves and the unsubscribe's outcome are recorded in the mailbox's change feed under you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can decide.
+         * @description Give an address, or a domain to block everyone there. A domain covers exactly that domain, not its subdomains, and can't be a public mail provider's, like gmail.com. An address's decision beats its domain's. Their later mail that starts a thread goes straight to Trash, even while the Screener is off. Trash is erased after the organization's retention period, counted from when a thread got it. Blocking a sender the mailbox let in replaces that. Blocking also unsubscribes the mailbox from the sender's mail by one-click (RFC 8058), when their newest mail that SES didn't judge to be spam offers it and a DKIM signature that passed covers its unsubscribe headers. For a domain, that is the newest mail from an address there that the mailbox hasn't let in. Duva never unsubscribes by mailto or by a link in the body. The decision, each thread it moves and the unsubscribe's outcome are recorded in the mailbox's change feed under you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give organize sponsor access or more can decide.
          */
         post: operations["blockSender"];
         delete?: never;
@@ -1036,7 +1136,7 @@ export interface paths {
         post?: never;
         /**
          * Remove a mailbox's decision on a sender, so they are first-time again.
-         * @description Their later mail waits in the Screener again, unless the mailbox has written to them, or a decision on their domain covers them. Removing a block moves their threads still in Trash to the Inbox. To flip a decision instead, let them in or block them. The removal and each thread it moves are recorded in the mailbox's change feed under you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can remove decisions.
+         * @description Their later mail waits in the Screener again, unless the mailbox has written to them, or a decision on their domain covers them. Removing a block moves their threads still in Trash to the Inbox. To flip a decision instead, let them in or block them. The removal and each thread it moves are recorded in the mailbox's change feed under you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give organize sponsor access or more can remove decisions.
          */
         delete: operations["removeScreenedSender"];
         options?: never;
@@ -1079,7 +1179,7 @@ export interface paths {
         put?: never;
         /**
          * Draft a reply to a message in a mailbox, a reply to all, a forward, or a new message.
-         * @description A reply goes from the address the original was sent to, plus tag kept, or from the default address if the mailbox no longer has it, to the original's Reply-To or, without one, its From, with the subject carrying a single "Re: " prefix. A reply to your own message goes to its recipients instead. A reply to all also goes to every other recipient of the original, except the mailbox's own addresses. A forward goes from the address the original was sent to, to whoever you give, with the subject carrying a single "Fwd: " prefix, the original's text quoted and its attachments, from the same address a reply would. A new message goes from the mailbox's default address. Give from to choose another of the mailbox's addresses, or a group the mailbox's owner is a local member of, to send as the group. Only its members can, so any other group gets 403. A reply to group mail goes from the member's own address unless you give the group. A mailbox with no address can't draft. A draft can be saved before it has recipients, a subject or text, but it needs a recipient in To to be sent. Only the mailbox's owner can draft in it, and for a human's mailbox the agents they give full sponsor access, whose drafts go from the same addresses as the human's own. Writing a draft is recorded in the mailbox's change feed, naming you.
+         * @description A reply goes from the address the original was sent to, plus tag kept, or from the default address if the mailbox no longer has it, to the original's Reply-To or, without one, its From, with the subject carrying a single "Re: " prefix. A reply to your own message goes to its recipients instead. A reply to all also goes to every other recipient of the original, except the mailbox's own addresses. A forward goes from the address the original was sent to, to whoever you give, with the subject carrying a single "Fwd: " prefix, the original's text quoted and its attachments, from the same address a reply would. A new message goes from the mailbox's default address. Give from to choose another of the mailbox's addresses, or a group the mailbox's owner is a local member of, to send as the group. Only its members can, so any other group gets 403. A reply to group mail goes from the member's own address unless you give the group. A mailbox with no address can't draft. A draft can be saved before it has recipients, a subject or text, but it needs a recipient in To to be sent. Only the mailbox's owner can draft in it, and for a human's mailbox the agents they give draft sponsor access or more, whose drafts go from the same addresses as the human's own. Writing a draft is recorded in the mailbox's change feed, naming you.
          */
         post: operations["createDraft"];
         delete?: never;
@@ -1104,14 +1204,14 @@ export interface paths {
         post?: never;
         /**
          * Delete a draft.
-         * @description Deleting a draft that waits for approval withdraws the request. A draft being sent can't be deleted until its send is done. Deleting a sent draft leaves the sent message in its thread. Only the mailbox's owner can delete its drafts, and for a human's mailbox the agents they give full sponsor access, whoever wrote the draft. The deletion, and any withdrawal, is recorded in the mailbox's change feed, naming you.
+         * @description Deleting a draft that waits for approval withdraws the request. A draft being sent can't be deleted until its send is done. Deleting a sent draft leaves the sent message in its thread. Only the mailbox's owner can delete its drafts, and for a human's mailbox the agents they give draft sponsor access or more, whoever wrote the draft. The deletion, and any withdrawal, is recorded in the mailbox's change feed, naming you.
          */
         delete: operations["deleteDraft"];
         options?: never;
         head?: never;
         /**
          * Change a draft's From, recipients, subject or text.
-         * @description Changing a draft that waits for approval withdraws the request, so an approver never approves text they didn't see. Ask to send it again once it is ready. From can be one of the mailbox's addresses, or a group the mailbox's owner is a local member of, and any other group gets 403. Only the mailbox's owner can edit its drafts, and for a human's mailbox the agents they give full sponsor access, whoever wrote the draft. The change, and any withdrawal, is recorded in the mailbox's change feed, naming you.
+         * @description Changing a draft that waits for approval withdraws the request, so an approver never approves text they didn't see. Ask to send it again once it is ready. From can be one of the mailbox's addresses, or a group the mailbox's owner is a local member of, and any other group gets 403. Only the mailbox's owner can edit its drafts, and for a human's mailbox the agents they give draft sponsor access or more, whoever wrote the draft. The change, and any withdrawal, is recorded in the mailbox's change feed, naming you.
          */
         patch: operations["editDraft"];
         trace?: never;
@@ -1127,7 +1227,7 @@ export interface paths {
         put?: never;
         /**
          * Ask for a draft to be sent.
-         * @description A human's send from their own mailbox needs no approval, so Duva sends it at once, with no disclosure, also when their agent wrote the draft. An agent's send waits for its sponsor's approval unless the sponsor switched that off, separately for its own mailbox and for its sponsor's. With full sponsor access, an agent sends as its sponsor from the sponsor's mailbox: from the draft's address, under the sponsor's name. Every message an agent sends carries the Duva-Agent header, and a visible line unless its sponsor switched that off for where it sends from. Its send shows where it stands. Bcc recipients get the message, but no header names them. Only the mailbox's owner, and an agent with full sponsor access to it, can ask. The draft needs a recipient in To, and a draft waits for one approval at a time. It goes only from an address the mailbox still has, so a draft from an address since removed fails. A draft from a group goes out from the group's address, as any send does, and only while the mailbox's owner is still a local member: otherwise asking gets 403, and a send asked before fails. Each other local member's mailbox then gets a copy, in the thread of the message it answers, marked with who sent it as the group. External members get none. A send that needs no approval withdraws the request the draft waits for, if it waits. Asking is recorded in the mailbox's change feed. An agent's approved send over its send limits waits, as waitingForLimit, and goes out by itself, oldest first, as the limits allow, or when its sponsor sends it now. Humans have no send limits.
+         * @description A human's send from their own mailbox needs no approval, so Duva sends it at once, with no disclosure, also when their agent wrote the draft. An agent's send waits for its sponsor's approval unless the sponsor switched that off, separately for its own mailbox and for its sponsor's. With send sponsor access, an agent sends as its sponsor from the sponsor's mailbox: from the draft's address, under the sponsor's name. Every message an agent sends carries the Duva-Agent header, and a visible line unless its sponsor switched that off for where it sends from. Its send shows where it stands. Bcc recipients get the message, but no header names them. Only the mailbox's owner, and an agent with send sponsor access to it, can ask. The draft needs a recipient in To, and a draft waits for one approval at a time. It goes only from an address the mailbox still has, so a draft from an address since removed fails. A draft from a group goes out from the group's address, as any send does, and only while the mailbox's owner is still a local member: otherwise asking gets 403, and a send asked before fails. Each other local member's mailbox then gets a copy, in the thread of the message it answers, marked with who sent it as the group. External members get none. A send that needs no approval withdraws the request the draft waits for, if it waits. Asking is recorded in the mailbox's change feed. An agent's approved send over its send limits waits, as waitingForLimit, and goes out by itself, oldest first, as the limits allow, or when its sponsor sends it now. Humans have no send limits.
          */
         post: operations["sendDraft"];
         delete?: never;
@@ -1487,6 +1587,8 @@ export interface components {
         /** @description What an agent may do in its sponsor's personal mailbox, which of its sends and setup changes wait for approval, which sends carry the disclosure's visible line, and its send limits. */
         AgentSettings: {
             sponsorAccess: components["schemas"]["SponsorAccess"];
+            /** @description The IDs of your mailboxes that the agent's sponsor access covers. Null, the default, covers every mailbox you own. The CLI sets it back to null with --no-sponsorMailboxes. */
+            sponsorMailboxes: components["schemas"]["SponsorMailboxes"] | null;
             approvalForOwnMailbox: components["schemas"]["ApprovalForOwnMailbox"];
             approvalAsSponsor: components["schemas"]["ApprovalAsSponsor"];
             disclosureLineForOwnMailbox: components["schemas"]["DisclosureLineForOwnMailbox"];
@@ -1498,6 +1600,8 @@ export interface components {
         /** @description The agent's settings changed, each with its new value. */
         AgentSettingsChanges: {
             sponsorAccess?: components["schemas"]["SponsorAccess"];
+            /** @description The IDs of your mailboxes that the agent's sponsor access covers. Null, the default, covers every mailbox you own. The CLI sets it back to null with --no-sponsorMailboxes. */
+            sponsorMailboxes?: components["schemas"]["SponsorMailboxes"] | null;
             approvalForOwnMailbox?: components["schemas"]["ApprovalForOwnMailbox"];
             approvalAsSponsor?: components["schemas"]["ApprovalAsSponsor"];
             disclosureLineForOwnMailbox?: components["schemas"]["DisclosureLineForOwnMailbox"];
@@ -1507,10 +1611,98 @@ export interface components {
             approvalForSetup?: components["schemas"]["ApprovalForSetup"];
         };
         /**
-         * @description The agent's access to its sponsor's personal mailbox. None, the default, gives it none. Read lets it read everything there: threads, labels, drafts, the change feed and attachments. Full also lets it organize, move threads to Trash and back, draft and change any draft there, and send as its sponsor. Only the sponsor empties their Trash.
+         * @description The agent's access to its sponsor's personal mailboxes, those sponsorMailboxes names. None, the default, gives it none. Read lets it read everything there: threads, labels, drafts, the change feed and attachments. Organize also lets it organize, decide in the Screener, set threads aside and move them to Trash and back. Draft also lets it write and change any draft there. Send also lets it send as its sponsor. Only the sponsor empties their Trash.
          * @enum {string}
          */
-        SponsorAccess: "none" | "read" | "full";
+        SponsorAccess: "none" | "read" | "organize" | "draft" | "send";
+        /** @description The IDs of the sponsor's mailboxes that the agent's sponsor access covers, each one the sponsor owns. */
+        SponsorMailboxes: string[];
+        /** @description What a new agent asks a human for. */
+        AccessAsked: {
+            /**
+             * @description The agent's name. Without one, it is named for its host.
+             * @example Hermes
+             */
+            name?: string;
+            /**
+             * @description The name of the computer the agent runs on, which the human sees.
+             * @example build-box
+             */
+            host?: string;
+            /**
+             * @description The addresses of the mailboxes it asks for. Without them, it asks for every mailbox of the human who approves.
+             * @example [
+             *       "ada@example.com"
+             *     ]
+             */
+            mailboxes?: string[];
+            wants?: components["schemas"]["AccessWanted"];
+        };
+        /**
+         * @description The sponsor access the agent asks for, read unless it says.
+         * @enum {string}
+         */
+        AccessWanted: "read" | "organize" | "draft" | "send";
+        AccessRequestStarted: {
+            /**
+             * @description The code to show the human, who approves the request by it.
+             * @example BCDF-GHJK
+             */
+            code: string;
+            /** @description The secret the agent collects its key with. Keep it to yourself. */
+            deviceCode: string;
+            /**
+             * Format: date-time
+             * @description When the code stops working, 10 minutes from now.
+             */
+            expiresAt: string;
+            /** @description How many seconds to wait between tries to collect the key. */
+            interval: number;
+        };
+        AccessCollected: {
+            /** @description The device code asking for access gave. */
+            deviceCode: string;
+        };
+        /** @description An agent's request for access, as the human who may approve it sees it. */
+        AccessRequest: {
+            /** @example BCDF-GHJK */
+            code: string;
+            /** @description The name the agent asked for. */
+            name: string;
+            /** @description Where the agent asked from. */
+            from: {
+                /**
+                 * @description The IP address its request came from.
+                 * @example 203.0.113.7
+                 */
+                address: string;
+                /** @description The name it gave for the computer it runs on, which it may have made up. */
+                host?: string;
+            };
+            wants: components["schemas"]["AccessWanted"];
+            /** @description Each of your mailboxes, with whether the agent asked for it. */
+            mailboxes: {
+                mailbox: components["schemas"]["Mailbox"];
+                asked: boolean;
+            }[];
+            /**
+             * Format: date-time
+             * @description When the code stops working.
+             */
+            expiresAt: string;
+        };
+        /** @description What you give the agent, where it differs from what it asked. */
+        AccessApproval: {
+            /** @description The agent's name, the one it asked for unless you give another. */
+            name?: string;
+            sponsorAccess?: components["schemas"]["SponsorAccess"];
+            sponsorMailboxes?: components["schemas"]["SponsorMailboxes"];
+            approvalAsSponsor?: components["schemas"]["ApprovalAsSponsor"];
+            disclosureLineAsSponsor?: components["schemas"]["DisclosureLineAsSponsor"];
+        };
+        AccessDeclined: {
+            code: string;
+        };
         /** @description Whether the agent's sends from its own mailbox wait for its sponsor's approval. On by default. */
         ApprovalForOwnMailbox: boolean;
         /** @description Whether the agent's changes to the organization's setup, as an admin, wait for its sponsor's approval. On by default. */
@@ -1772,7 +1964,7 @@ export interface components {
              * @description For an agent, its sponsor access, present when the mailbox is its sponsor's.
              * @enum {string}
              */
-            sponsorAccess?: "read" | "full";
+            sponsorAccess?: "read" | "organize" | "draft" | "send";
         };
         /** @description A mailbox, with how many of its threads want attention. */
         MailboxWithCounts: {
@@ -3709,6 +3901,15 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
+        /** @description Too many calls like this one in the last 10 minutes. Wait, then try again. */
+        TooManyRequests: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
     };
     parameters: {
         /** @description The mailbox's ID. */
@@ -3721,6 +3922,8 @@ export interface components {
         Approval: string;
         /** @description The time zone days are in, an IANA name such as Europe/Stockholm. Defaults to your timeZone preference, or UTC if you have none. */
         TimeZone: string;
+        /** @description The code the agent shows, as BCDF-GHJK. Case and the dash don't matter. */
+        AccessCode: string;
         /** @description The agent's ID. */
         Agent: string;
         /** @description The human's ID. */
@@ -4397,6 +4600,155 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    askForAccess: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccessAsked"];
+            };
+        };
+        responses: {
+            /** @description The request, waiting for a human. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessRequestStarted"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    collectAccess: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccessCollected"];
+            };
+        };
+        responses: {
+            /** @description The agent the human approved, and its key. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentWithKey"];
+                };
+            };
+            /** @description The request still waits for a human. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getAccessRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The code the agent shows, as BCDF-GHJK. Case and the dash don't matter. */
+                code: components["parameters"]["AccessCode"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The request. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessRequest"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    approveAccessRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The code the agent shows, as BCDF-GHJK. Case and the dash don't matter. */
+                code: components["parameters"]["AccessCode"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["AccessApproval"];
+            };
+        };
+        responses: {
+            /** @description The agent, created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Agent"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    declineAccessRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The code the agent shows, as BCDF-GHJK. Case and the dash don't matter. */
+                code: components["parameters"]["AccessCode"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The request, declined. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessDeclined"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
         };
     };
     listAddresses: {

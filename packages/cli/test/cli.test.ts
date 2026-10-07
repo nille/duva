@@ -550,7 +550,7 @@ test("the sponsor gives an agent read sponsor access and turns a switch off, and
   const mailboxes = await machine.duva("mailboxes", "list", asAgent);
   const threads = await machine.duva("threads", "list", "--mailbox", mailbox.id, asAgent);
 
-  const expected = { sponsorAccess: "read", approvalForOwnMailbox: true, approvalAsSponsor: false, disclosureLineForOwnMailbox: true, disclosureLineAsSponsor: true, sendsPerHour: 100, newRecipientsPerDay: 50, approvalForSetup: true };
+  const expected = { sponsorAccess: "read", sponsorMailboxes: null, approvalForOwnMailbox: true, approvalAsSponsor: false, disclosureLineForOwnMailbox: true, disclosureLineAsSponsor: true, sendsPerHour: 100, newRecipientsPerDay: 50, approvalForSetup: true };
   expect(refused.exitCode).toBe(1);
   expect(errorIn(refused.stderr)).toMatch(/403.*Ask them for read access/);
   expect(changed.exitCode).toBe(0);
@@ -580,6 +580,77 @@ test("login refuses to sign in while an agent key is set", async () => {
 
   expect(result.exitCode).toBe(1);
   expect(errorIn(result.stderr)).toMatch(/DUVA_AGENT_KEY/);
+});
+
+test("an agent asks for access with login --agent, the human approves the code it prints, and every command then acts as the agent", async () => {
+  const machine = await newMachine();
+  const duva = await startDuva({ domain: "example.com", admin: "ada@example.org" });
+  const server = await duva.listen();
+  onTestFinished(() => server.close());
+  await machine.saveDeployment(server);
+  const ada = duva.signIn("ada@example.org");
+  const { data: adaActor } = await ada.GET("/whoami");
+  const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: adaActor!.id, address: "ada@example.com" } });
+  await ada.POST("/mailboxes", { body: { owner: adaActor!.id, address: "ada.home@example.com" } });
+
+  const login = machine.start("login", "--agent", "--name", "Hermes", "--mailbox", "ada@example.com", "--wants", "organize");
+  const [, link, code] = await login.stderrMatching(/open (\S+) and approve the code (\S+)\. It works until /);
+  const { data: request } = await ada.GET("/access-requests/{code}", { params: { path: { code: code! } } });
+  await ada.POST("/access-requests/{code}/approve", { params: { path: { code: code! } } });
+  const result = await login.done;
+  const mailboxes = await machine.duva("mailboxes", "list");
+
+  expect(link).toBe(`${machine.webUrl}/#/access/${code}`);
+  expect(request).toMatchObject({ name: "Hermes", from: { host: expect.any(String) }, wants: "organize" });
+  expect(result.exitCode).toBe(0);
+  expect(JSON.parse(result.stdout)).toEqual({ signedIn: { id: expect.any(String), kind: "agent", name: "Hermes", sponsor: adaActor!.id, admin: false } });
+  expect(JSON.parse(mailboxes.stdout)).toEqual({ mailboxes: [{ ...mailbox, groups: [], sponsorAccess: "organize" }] });
+});
+
+test("login --agent says so when the human declines, and saves no key", async () => {
+  const machine = await newMachine();
+  const duva = await startDuva({ admin: "ada@example.org" });
+  const server = await duva.listen();
+  onTestFinished(() => server.close());
+  await machine.saveDeployment(server);
+
+  const login = machine.start("login", "--agent");
+  const [, code] = await login.stderrMatching(/approve the code (\S+)\./);
+  await duva.signIn("ada@example.org").POST("/access-requests/{code}/decline", { params: { path: { code: code! } } });
+  const result = await login.done;
+  const whoami = await machine.duva("whoami");
+
+  expect(result.exitCode).toBe(1);
+  expect(errorIn(result.stderr)).toBe(`The human declined the access request ${code}. Ask them why before asking again.`);
+  expect(errorIn(whoami.stderr)).toMatch(/duva login/);
+});
+
+test("once the agent's sponsor removes it, a command with the key login --agent saved says to ask for access again", async () => {
+  const machine = await newMachine();
+  const duva = await startDuva({ admin: "ada@example.org" });
+  const server = await duva.listen();
+  onTestFinished(() => server.close());
+  await machine.saveDeployment(server);
+  const ada = duva.signIn("ada@example.org");
+  const login = machine.start("login", "--agent");
+  const [, code] = await login.stderrMatching(/approve the code (\S+)\./);
+  const { data: agent } = await ada.POST("/access-requests/{code}/approve", { params: { path: { code: code! } } });
+  await login.done;
+
+  await ada.DELETE("/agents/{agent}", { params: { path: { agent: agent!.id } } });
+  const result = await machine.duva("whoami");
+
+  expect(result.exitCode).toBe(1);
+  expect(errorIn(result.stderr)).toMatch(/login --agent/);
+});
+
+test("login takes --name, --mailbox and --wants only with --agent", async () => {
+  const machine = await newMachine();
+
+  const result = await machine.duva("login", "--name", "Hermes");
+
+  expect(result.exitCode).toBe(1);
+  expect(errorIn(result.stderr)).toMatch(/--agent/);
 });
 
 test("an admin gives an agent a mailbox, and the agent catches up on it, lists its Inbox and reads the mail", async () => {
@@ -626,7 +697,7 @@ test("an agent sets a thread aside in its sponsor's Remind me with a preset, lis
   const ada = (JSON.parse((await machine.duva("whoami")).stdout) as { id: string }).id;
   const { agent, key } = JSON.parse((await machine.duva("agents", "create", "--name", "Hermes")).stdout) as { agent: { id: string }; key: string };
   const mailbox = JSON.parse((await machine.duva("mailboxes", "create", "--owner", ada, "--address", "ada@example.com")).stdout) as { id: string };
-  await machine.duva("agents", "change-settings", "--agent", agent.id, "--sponsorAccess", "full");
+  await machine.duva("agents", "change-settings", "--agent", agent.id, "--sponsorAccess", "send");
   await machine.duva("screener", "switch", "--mailbox", mailbox.id, "--no-on");
   await duva.receive("From: Grace <grace@example.org>\r\nTo: ada@example.com\r\nSubject: Hello\r\nDate: Sat, 03 Oct 2026 10:00:00 +0000\r\n\r\nHi Ada.\r\n", { to: ["ada@example.com"] });
   const asAgent = { env: { DUVA_AGENT_KEY: key } };
@@ -1015,8 +1086,14 @@ async function newMachine() {
       if (options !== undefined && ("browserSignsIn" in options || "browserOpens" in options)) {
         env.BROWSER = await browserScript(home, options as Browser, redirectUri);
       }
-      return run(words, env);
+      return run(words, env).done;
     },
+    /** Starts duva, and lets the test read its stderr while it runs. */
+    start(...args: string[]) {
+      return run(args, { PATH: process.env.PATH ?? "", HOME: home });
+    },
+    /** The web app's URL that saveDeployment saves. */
+    webUrl: "https://web.example.com",
     /**
      * Saves a deployment in the CLI's config, as duva deploy does: its API, and its managed login
      * with a loopback redirect on a free port.
@@ -1026,7 +1103,7 @@ async function newMachine() {
       await mkdir(join(home, ".config", "duva"), { recursive: true });
       await writeFile(
         join(home, ".config", "duva", "config.json"),
-        JSON.stringify({ apiUrl: server.url, signIn: { ...server.signIn, redirectUri } }),
+        JSON.stringify({ apiUrl: server.url, webUrl: "https://web.example.com", signIn: { ...server.signIn, redirectUri } }),
       );
     },
   };
@@ -1060,17 +1137,39 @@ function freePort(): Promise<number> {
 const bun = fileURLToPath(new URL("../../../node_modules/.bin/bun", import.meta.url));
 const main = fileURLToPath(new URL("../src/main.ts", import.meta.url));
 
+/**
+ * Runs duva. `done` settles once it exits, and `stderrMatching` once what it wrote to stderr so far
+ * matches, with the match.
+ */
 function run(args: string[], env: Record<string, string>) {
-  return new Promise<{ exitCode: number | null; stdout: string; stderr: string }>((resolve, reject) => {
-    // The machine's working directory is its home.
-    const child = spawn(bun, [main, ...args], { env, cwd: env.HOME });
-    let stdout = "";
-    let stderr = "";
-    child.stdout.on("data", (chunk) => (stdout += chunk));
-    child.stderr.on("data", (chunk) => (stderr += chunk));
+  // The machine's working directory is its home.
+  const child = spawn(bun, [main, ...args], { env, cwd: env.HOME });
+  let stdout = "";
+  let stderr = "";
+  const written: (() => void)[] = [];
+  child.stdout.on("data", (chunk) => (stdout += chunk));
+  child.stderr.on("data", (chunk) => {
+    stderr += chunk;
+    for (const heard of written) heard();
+  });
+  const done = new Promise<{ exitCode: number | null; stdout: string; stderr: string }>((resolve, reject) => {
     child.once("error", reject);
     child.once("close", (exitCode) => resolve({ exitCode, stdout, stderr }));
   });
+  onTestFinished(() => void child.kill());
+  return {
+    done,
+    stderrMatching: (pattern: RegExp) =>
+      new Promise<RegExpExecArray>((resolve, reject) => {
+        const heard = () => {
+          const match = pattern.exec(stderr);
+          if (match !== null) resolve(match);
+        };
+        written.push(heard);
+        heard();
+        void done.then(() => reject(new Error(`duva exited without writing ${pattern} to stderr: ${stderr}`)));
+      }),
+  };
 }
 
 /** The message of the error the CLI printed as JSON on stderr. */

@@ -37,7 +37,7 @@ async function withAgentInSponsorsMailbox() {
   const { data: created } = await ada.POST("/agents", { body: { name: "Hermes" } });
   const { data: hermesMailbox } = await ada.POST("/mailboxes", { body: { owner: created!.agent.id, address: "hermes@example.com" } });
   const settings = { params: { path: { agent: created!.agent.id } } };
-  await ada.PATCH("/agents/{agent}/settings", { ...settings, body: { sponsorAccess: "full" } });
+  await ada.PATCH("/agents/{agent}/settings", { ...settings, body: { sponsorAccess: "send" } });
   const hermes = app.duva.withKey(created!.key);
   const inAdas = { path: { mailbox: adaMailbox!.id } };
   const inHermess = { path: { mailbox: hermesMailbox!.id } };

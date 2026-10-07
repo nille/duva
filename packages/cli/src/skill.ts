@@ -45,7 +45,7 @@ This skill describes duva ${duva.version}. After updating the CLI, run \`duva sk
 
 ## Authentication
 
-duva calls the Duva deployment that \`duva deploy\` saved in its config, \`~/.config/duva/config.json\`. On a machine where nobody ran it, copy that file from one where someone did. An agent calls Duva with the key its sponsor got when creating it. Put the key in the \`${agentKeyVariable}\` environment variable, and every command acts as that agent. An agent never signs in. If Duva refuses the key, the sponsor may have rotated it, so ask them for the current one. A human signs in with \`duva login\` instead.
+duva calls the Duva deployment that \`duva deploy\` saved in its config, \`~/.config/duva/config.json\`. On a machine where nobody ran it, copy that file from one where someone did. An agent gets its access with \`duva login --agent\`, which prints a code and a link on stderr for the human who will be its sponsor, then waits up to 10 minutes while they approve it. Run it in the background, or wherever you read its output as it runs, and give the human both. Once they approve, it saves the agent's key, and every command acts as that agent. With \`--mailbox\` and \`--wants\`, ask only for the mailboxes and access you need. An agent never signs in as a human. An agent its sponsor created instead has its key in the \`${agentKeyVariable}\` environment variable, which comes first. If Duva refuses the key, the sponsor may have rotated it or removed the agent, so ask them. A human signs in with \`duva login\` instead.
 
 ## Output and exit codes
 

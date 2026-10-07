@@ -175,7 +175,7 @@ test("while its agent is paused, a send waiting for the send limit is held until
 
 test("a send waiting for the send limit as the sponsor shows in their draft, with Send now", budget, async () => {
   const { page, signIn, duva, grace, hermes, settings } = await withAgent();
-  await grace.PATCH("/agents/{agent}/settings", { ...settings, body: { sponsorAccess: "full", approvalAsSponsor: false, sendsPerHour: 1 } });
+  await grace.PATCH("/agents/{agent}/settings", { ...settings, body: { sponsorAccess: "send", approvalAsSponsor: false, sendsPerHour: 1 } });
   const { data: mailboxes } = await grace.GET("/mailboxes");
   const own = { path: { mailbox: mailboxes!.mailboxes.find(({ defaultAddress }) => defaultAddress === "grace@example.com")!.id } };
   for (const subject of ["First", "Second"]) {

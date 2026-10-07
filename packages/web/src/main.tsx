@@ -42,6 +42,7 @@ import { hrefOf, MailViews, pathOf, screenedSendersPath, type SearchView, type T
 const Approvals = lazy(() => import("./approvals.tsx").then(({ Approvals }) => ({ default: Approvals })));
 const Alerts = lazy(() => import("./alerts.tsx").then(({ Alerts }) => ({ default: Alerts })));
 const Settings = lazy(() => import("./settings.tsx").then(({ Settings }) => ({ default: Settings })));
+const AccessRequestView = lazy(() => import("./access.tsx").then(({ AccessRequestView }) => ({ default: AccessRequestView })));
 
 // Which input the human used last, so the title focused on arriving at a view is ringed only for
 // someone on the keyboard, who needs to see where they are.
@@ -88,7 +89,8 @@ function App() {
         </p>
       );
     case "signedOut": {
-      const copy = state.ended ? strings.sessionEnded : strings.signedOut;
+      // A link to an access request says what signing in leads to.
+      const copy = state.ended ? strings.sessionEnded : routeOf(location.hash).view === "access" ? strings.signedOutToAccess : strings.signedOut;
       return (
         <main className="door">
           <p className="wordmark">{strings.nav.label}</p>
@@ -116,6 +118,7 @@ function App() {
  */
 type Route =
   | { view: "approvals" | "alerts" }
+  | { view: "access"; code: string }
   | { view: "settings" }
   | { view: "list"; mailbox?: string; list: ThreadsView }
   | { view: "screener"; mailbox?: string; senders: boolean }
@@ -128,6 +131,8 @@ type Route =
 function routeOf(hash: string): Route {
   if (hash === "#/approvals") return { view: "approvals" };
   if (hash === "#/alerts") return { view: "alerts" };
+  const code = /^#\/access\/([^/]+)$/.exec(hash)?.[1];
+  if (code !== undefined) return { view: "access", code: decodeURIComponent(code) };
   if (hash === "#/settings" || hash.startsWith("#/settings/")) return { view: "settings" };
   const [, agent, day] = /^#\/agents\/([^/]+)(?:\/(\d{4}-\d{2}-\d{2}))?$/.exec(hash) ?? [];
   if (agent !== undefined) return { view: "activity", agent: decodeURIComponent(agent), day };
@@ -387,9 +392,11 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
     void listMailboxes(true).then(() => setRechecked((current) => new Set([...current, named])));
   }, [checking, named, listMailboxes]);
   // The views outside the mail.
-  const away = route.view === "approvals" || route.view === "alerts" || route.view === "settings";
+  const away = route.view === "approvals" || route.view === "alerts" || route.view === "settings" || route.view === "access";
   const routeKey = away
-    ? route.view
+    ? route.view === "access"
+      ? `access/${route.code}`
+      : route.view
     : route.view === "activity"
       ? `activity/${route.agent}/${route.day ?? ""}`
       : `${route.view}/${named ?? ""}/${"id" in route ? route.id : route.view === "list" ? pathOf(route.list) : route.view === "search" ? pathOf(route.search) : route.view === "screener" ? String(route.senders) : ""}`;
@@ -825,6 +832,10 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
                 onUnseen={(unseen) => setAlerts((current) => ({ ...current, unseen }))}
                 onSignedOut={onSignedOut}
               />
+            </div>
+          ) : route.view === "access" ? (
+            <div className="panes panes-one">
+              <AccessRequestView key={route.code} client={client} code={route.code} email={actor.email} onApproved={() => void listMailboxes(true)} onSignedOut={onSignedOut} />
             </div>
           ) : route.view === "settings" ? (
             <div className="panes panes-one">

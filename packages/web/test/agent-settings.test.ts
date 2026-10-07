@@ -45,9 +45,8 @@ test("a sponsor who isn't an admin opens Settings from the bar and finds each of
   const hermes = await openAgent(page, "Hermes");
   expect(await hermes.getByRole("radio", { name: /^None/ }).isChecked()).toBe(true);
   const access = hermes.getByRole("group", { name: "Access to your mailbox" });
-  expect(await access.getByRole("radio").count()).toBe(3);
-  expect(await access.getByRole("radio", { name: /^Read/ }).isChecked()).toBe(false);
-  expect(await access.getByRole("radio", { name: /^Full/ }).isChecked()).toBe(false);
+  expect(await access.getByRole("radio").count()).toBe(5);
+  for (const name of [/^Read/, /^Organize/, /^Draft/, /^Send/]) expect(await access.getByRole("radio", { name }).isChecked()).toBe(false);
   for (const name of ["Your approval before it sends as you", "Your approval before it sends from its own mailbox"]) {
     expect(await hermes.getByRole("checkbox", { name: new RegExp(`^${name}`) }).isChecked()).toBe(true);
   }
@@ -74,21 +73,22 @@ test("each agent shows as one line, its access and whether its sends wait for ap
   expect(await agentForm(page, "Iris").getByRole("radio", { name: /^Read/ }).isChecked()).toBe(true);
 });
 
-test("a sponsor gives an agent full access and switches off approval of its sends as them, and both hold", budget, async () => {
+test("a sponsor gives an agent send access and switches off approval of its sends as them, and both hold", budget, async () => {
   const { page, signIn, grace, hermes, iris } = await withSponsor();
   await signIn("grace@example.org");
   await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
   await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "Your agents" }).click();
 
   const form = await openAgent(page, "Hermes");
-  await form.getByRole("radio", { name: /^Full/ }).check();
+  await form.getByRole("radio", { name: /^Send/ }).check();
   await form.getByRole("checkbox", { name: /^Your approval before it sends as you/ }).uncheck();
   await form.getByRole("button", { name: "Save" }).click();
 
   await expect.poll(() => form.getByRole("status").textContent(), wait).toBe("Saved. This applies at once.");
   expect(await form.getByRole("button", { name: "Save" }).isDisabled()).toBe(true);
   expect((await grace.GET("/agents/{agent}/settings", { params: { path: { agent: hermes } } })).data).toEqual({
-    sponsorAccess: "full",
+    sponsorAccess: "send",
+    sponsorMailboxes: null,
     approvalForOwnMailbox: true,
     approvalAsSponsor: false,
     disclosureLineForOwnMailbox: true,
@@ -98,25 +98,25 @@ test("a sponsor gives an agent full access and switches off approval of its send
     approvalForSetup: true,
   });
   expect((await grace.GET("/agents/{agent}/settings", { params: { path: { agent: iris } } })).data?.sponsorAccess).toBe("none");
-  expect((await summaries(page))[0]).toBe("Hermes\nRunning, 100 sends left this hour.\nFull access to your mailbox. Its sends from its own mailbox wait for your approval.");
+  expect((await summaries(page))[0]).toBe("Hermes\nRunning, 100 sends left this hour.\nSends from your mailbox. Its sends from its own mailbox wait for your approval.");
 
   await page.reload();
 
   const reloaded = await openAgent(page, "Hermes");
-  expect(await reloaded.getByRole("radio", { name: /^Full/ }).isChecked()).toBe(true);
+  expect(await reloaded.getByRole("radio", { name: /^Send/ }).isChecked()).toBe(true);
   expect(await reloaded.getByRole("checkbox", { name: /^Your approval before it sends as you/ }).isChecked()).toBe(false);
   expect(await (await openAgent(page, "Iris")).getByRole("radio", { name: /^None/ }).isChecked()).toBe(true);
 });
 
-test("lowering an agent's full access says its sends waiting as the sponsor are withdrawn and its drafts stay", budget, async () => {
+test("lowering an agent's send access says its sends waiting as the sponsor are withdrawn and its drafts stay", budget, async () => {
   const { page, signIn, grace, hermes } = await withSponsor();
-  await grace.PATCH("/agents/{agent}/settings", { params: { path: { agent: hermes } }, body: { sponsorAccess: "full" } });
+  await grace.PATCH("/agents/{agent}/settings", { params: { path: { agent: hermes } }, body: { sponsorAccess: "send" } });
   await signIn("grace@example.org");
   await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
   await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "Your agents" }).click();
 
   const form = await openAgent(page, "Hermes");
-  expect(await form.getByRole("radio", { name: /^Full/ }).isChecked()).toBe(true);
+  expect(await form.getByRole("radio", { name: /^Send/ }).isChecked()).toBe(true);
   const withdrawn = "Saving withdraws its sends as you that wait for your approval. Its drafts stay in your mailbox.";
   expect(await form.innerText()).not.toContain(withdrawn);
 
@@ -126,6 +126,64 @@ test("lowering an agent's full access says its sends waiting as the sponsor are 
   await form.getByRole("button", { name: "Save" }).click();
   await expect.poll(() => form.getByRole("status").textContent(), wait).toBe("Saved. Its sends waiting as you are withdrawn, and its drafts stay.");
   expect((await grace.GET("/agents/{agent}/settings", { params: { path: { agent: hermes } } })).data?.sponsorAccess).toBe("read");
+});
+
+test("a sponsor with two mailboxes chooses which of them an agent's access covers, and organize access holds", budget, async () => {
+  const { page, signIn, duva, grace, hermes } = await withSponsor();
+  const { data: me } = await grace.GET("/whoami");
+  const { data: work } = await duva.signIn("ada@example.org").POST("/mailboxes", { body: { owner: me!.id, address: "grace.work@example.com" } });
+  await signIn("grace@example.org");
+  await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
+  await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "Your agents" }).click();
+
+  const form = await openAgent(page, "Hermes");
+  const covered = form.getByRole("group", { name: "Which of your mailboxes" });
+  expect(await covered.getByRole("checkbox").evaluateAll((boxes) => boxes.map((box) => (box as HTMLInputElement).checked))).toEqual([true, true]);
+  await form.getByRole("radio", { name: /^Organize/ }).check();
+  await covered.getByRole("checkbox", { name: "grace@example.com" }).uncheck();
+  await form.getByRole("button", { name: "Save" }).click();
+
+  await expect.poll(() => form.getByRole("status").textContent(), wait).toBe("Saved. This applies at once.");
+  expect((await grace.GET("/agents/{agent}/settings", { params: { path: { agent: hermes } } })).data).toMatchObject({ sponsorAccess: "organize", sponsorMailboxes: [work!.id] });
+  expect((await summaries(page))[0]).toBe("Hermes\nRunning, 100 sends left this hour.\nOrganizes your mailbox. Its sends wait for your approval.");
+});
+
+test("a sponsor rotates an agent's key, which shows the new key once, and the old key stops working at once", budget, async () => {
+  const app = await startWebApp({ domain: "example.com", admin: "ada@example.org", humans: ["grace@example.org"] });
+  const { page, signIn, duva } = app;
+  const { data: created } = await duva.signIn("grace@example.org").POST("/agents", { body: { name: "Hermes" } });
+  await signIn("grace@example.org");
+  await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
+  await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "Your agents" }).click();
+  await openAgent(page, "Hermes");
+  const key = agentsSheet(page).getByRole("region", { name: "Key" });
+
+  await key.getByRole("button", { name: "Rotate key" }).click();
+
+  const shown = key.getByRole("textbox", { name: "Its new key" });
+  await expect.poll(() => shown.inputValue(), wait).toMatch(/^duva_agent_/);
+  expect(await key.innerText()).toContain("Duva shows it only now.");
+  expect((await duva.withKey(created!.key).GET("/whoami")).response.status).toBe(401);
+  expect((await duva.withKey(await shown.inputValue()).GET("/whoami")).data).toMatchObject({ name: "Hermes" });
+});
+
+test("a sponsor removes an agent from its line after confirming, its line goes and its key stops working", budget, async () => {
+  const { page, signIn, duva, grace } = await withSponsor();
+  const { data: agents } = await grace.GET("/agents");
+  const { data: rotated } = await grace.POST("/agents/{agent}/key", { params: { path: { agent: agents!.agents.find(({ name }) => name === "Hermes")!.id } } });
+  await signIn("grace@example.org");
+  await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
+  await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "Your agents" }).click();
+  await openAgent(page, "Hermes");
+  const remove = agentsSheet(page).getByRole("region", { name: "Remove" });
+
+  await remove.getByRole("button", { name: "Remove" }).click();
+  const asked = remove.getByRole("group", { name: "Remove Hermes" });
+  expect(await asked.innerText()).toContain("Hermes's key stops working, and any mailbox of its own is erased with its mail. This can't be undone.");
+  await asked.getByRole("button", { name: "Remove agent" }).click();
+
+  await expect.poll(() => agentsSheet(page).getByRole("heading", { level: 3 }).allTextContents(), wait).toEqual(["Iris"]);
+  expect((await duva.withKey(rotated!.key).GET("/whoami")).response.status).toBe(401);
 });
 
 test("an admin who sponsors no agents finds no Agents sheet in Settings", budget, async () => {

@@ -4327,7 +4327,7 @@ input[aria-invalid="true"] {
   padding-bottom: var(--space-5);
 }
 
-.settings-head h2 {
+.settings-head :is(h1, h2) {
   max-width: 26ch;
   font: 600 var(--text-display) / 1.06 var(--grotesk);
   letter-spacing: -0.03em;
@@ -4339,12 +4339,12 @@ input[aria-invalid="true"] {
 }
 
 /* A sheet's title takes the focus as its page opens. Only the keyboard sees it, as the orange bar a view's title has. */
-.settings-head h2:focus {
+.settings-head :is(h1, h2):focus {
   position: relative;
   outline: none;
 }
 
-[data-input="keyboard"] .settings-head h2:focus::before {
+[data-input="keyboard"] .settings-head :is(h1, h2):focus::before {
   content: "";
   position: absolute;
   top: 0.1em;
@@ -4397,6 +4397,37 @@ input[aria-invalid="true"] {
   max-width: 60ch;
   font-size: var(--text-sm);
   color: var(--ink-2);
+}
+
+/*
+ * An agent's access request: its diamond before its name in the title, then what it is known by,
+ * the code it shows first, as a label over each value on the plane, and the decision at the foot.
+ */
+.access-title .actor-mark {
+  margin-inline-end: 0.6rem;
+  vertical-align: 0.32em;
+}
+
+.access-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4) var(--space-6);
+  margin: 0 0 var(--space-5);
+}
+
+.access-facts dt {
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--ink-3);
+}
+
+.access-facts dd {
+  margin: var(--space-1) 0 0;
+}
+
+.access-code {
+  font-size: var(--text-lg);
+  font-weight: 700;
 }
 
 /*

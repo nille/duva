@@ -69,7 +69,7 @@ async function withMailbox(server: WebServerOptions = {}) {
   const { data: me } = await grace.GET("/whoami");
   const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: me!.id, address: "grace@example.com" } });
   const { data: iris } = await grace.POST("/agents", { body: { name: "Iris" } });
-  await grace.PATCH("/agents/{agent}/settings", { params: { path: { agent: iris!.agent.id } }, body: { sponsorAccess: "full" } });
+  await grace.PATCH("/agents/{agent}/settings", { params: { path: { agent: iris!.agent.id } }, body: { sponsorAccess: "send" } });
   const params = { path: { mailbox: mailbox!.id } };
   const requests = await duva.webServer("lists.example.org", server);
   const receive = (raw: string, verdicts: Verdicts = {}) => duva.receive(raw, { to: ["grace@example.com"] }, { verdicts });

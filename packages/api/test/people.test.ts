@@ -254,7 +254,7 @@ test("an admin can remove any agent, and other humans and agents can't", async (
 test("removing an agent withdraws its sends waiting for approval in its sponsor's mailbox, and leaves its drafts there", async () => {
   const { grace, hermes, agent, mailbox } = await withGraceAndHermes();
   const params = { path: { mailbox: mailbox.id } };
-  await grace.PATCH("/agents/{agent}/settings", { params: { path: { agent: agent.id } }, body: { sponsorAccess: "full" } });
+  await grace.PATCH("/agents/{agent}/settings", { params: { path: { agent: agent.id } }, body: { sponsorAccess: "send" } });
   const { data: draft } = await hermes.POST("/mailboxes/{mailbox}/drafts", { params, body: { to: ["alan@example.org"], text: "Hej." } });
   await hermes.POST("/mailboxes/{mailbox}/drafts/{draft}/send", { params: { path: { ...params.path, draft: draft!.id } } });
   expect((await grace.GET("/approvals")).data?.approvals).toHaveLength(1);

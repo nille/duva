@@ -1,5 +1,6 @@
 import type { APIGatewayProxyEventV2, APIGatewayProxyStructuredResultV2 } from "aws-lambda";
 import { type Operation, operations, type OperationId } from "@duva/openapi";
+import { approveAccessRequest, askForAccess, collectAccess, declineAccessRequest, getAccessRequest } from "./access-requests.ts";
 import { addAddress, changeMailbox, listAddresses, removeAddress } from "./addresses.ts";
 import { getAgentActivity, getAgentActivityDay } from "./activity.ts";
 import { listApprovalLog } from "./approval-log.ts";
@@ -77,6 +78,11 @@ export const handlers: Record<OperationId, OperationHandler> = {
   changeAgentSettings,
   getAgentActivity,
   getAgentActivityDay,
+  askForAccess,
+  collectAccess,
+  getAccessRequest,
+  approveAccessRequest,
+  declineAccessRequest,
   addAddress,
   listAddresses,
   removeAddress,

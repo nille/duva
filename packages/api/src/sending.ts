@@ -44,7 +44,7 @@ import { copyToOtherMembers, fromStanding } from "./group-mail.ts";
 import { bringBack, findMessage } from "./mail.ts";
 import type { RemindEvent } from "./reminders.ts";
 import { buildMail, disclosureHeader } from "./mime.ts";
-import { sponsorAccessAllows } from "./access.ts";
+import { sponsorAccessAllows, sponsorAccessIn } from "./access.ts";
 import { type Actor, type Agent, agentSettings, agentUnpaused, findActor, findMailbox, organizationDomain, switchesFor } from "./organization.ts";
 
 /** Who SES delivers a message to. Bcc recipients are here only, since no header names them. */
@@ -231,9 +231,9 @@ async function sendOnce(
     asSponsor = (await findMailbox(table, mailbox))?.owner !== actor.id;
     disclosure = { naming: `${actor.name} for ${sponsor.email}`, line: switchesFor(settings, asSponsor).disclosureLine };
     // Lowering its access withdraws the agent's pending approvals, and stops what was asked before.
-    // An ask that read full access just before the lowering can land after its withdrawals, and stops here too.
-    if (asSponsor && !sponsorAccessAllows(settings.sponsorAccess, "send")) {
-      unsendable = "The agent's sponsor access was lowered from full before this went out, so it wasn't sent. Its sponsor can send it.";
+    // An ask that read send access just before the lowering can land after its withdrawals, and stops here too.
+    if (asSponsor && !sponsorAccessAllows(sponsorAccessIn(settings, mailbox), "send")) {
+      unsendable = "The agent's sponsor access was lowered from send before this went out, so it wasn't sent. Its sponsor can send it.";
     }
   }
   // An admin may have removed the address since the draft was asked to send, or its owner from the group.

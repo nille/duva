@@ -531,7 +531,7 @@ export const operations = [
     "path": "/agents/{agent}/settings",
     "routeKey": "PATCH /agents/{agent}/settings",
     "summary": "Change an agent's sponsor access, its approval and disclosure-line switches, or its send limits.",
-    "description": "Give only the settings to change. A change works at once. Only the agent's sponsor can change them, so not even an admin can. Each change is recorded under you, with the old and new values, in your personal mailbox's change feed, or if you have none, in the agent's. If neither of you has a mailbox, the change is refused. Read lets the agent read your mailbox. Full also lets it organize it, move threads to Trash and back, draft there, and send as you. Lowering access from full, or removing it, withdraws the agent's sends waiting for your approval in your mailbox, recorded in its change feed under you, and fails those approved but not yet gone out. Its drafts and sent messages stay. Send limits go up to the organization's caps, and raising one lets its sends that wait go out as far as the new limit allows.",
+    "description": "Give only the settings to change. A change works at once. Only the agent's sponsor can change them, so not even an admin can. Each change is recorded under you, with the old and new values, in your personal mailbox's change feed, or if you have none, in the agent's. If neither of you has a mailbox, the change is refused. Sponsor access covers the mailboxes of yours that sponsorMailboxes names, or all of them while it is null. Read lets the agent read them, organize also lets it organize them and move threads to Trash and back, draft also lets it draft there, and send also lets it send as you. Lowering access from send, or taking a mailbox out of sponsorMailboxes, withdraws the agent's sends waiting for your approval there, recorded in its change feed under you, and fails those approved but not yet gone out. Its drafts and sent messages stay. Send limits go up to the organization's caps, and raising one lets its sends that wait go out as far as the new limit allows.",
     "signIn": true,
     "command": [
       "agents",
@@ -550,7 +550,15 @@ export const operations = [
         "in": "body",
         "type": "string",
         "required": false,
-        "description": "The agent's access to its sponsor's personal mailbox. None, the default, gives it none. Read lets it read everything there: threads, labels, drafts, the change feed and attachments. Full also lets it organize, move threads to Trash and back, draft and change any draft there, and send as its sponsor. Only the sponsor empties their Trash."
+        "description": "The agent's access to its sponsor's personal mailboxes, those sponsorMailboxes names. None, the default, gives it none. Read lets it read everything there: threads, labels, drafts, the change feed and attachments. Organize also lets it organize, decide in the Screener, set threads aside and move them to Trash and back. Draft also lets it write and change any draft there. Send also lets it send as its sponsor. Only the sponsor empties their Trash."
+      },
+      {
+        "name": "sponsorMailboxes",
+        "in": "body",
+        "type": "strings",
+        "required": false,
+        "description": "The IDs of your mailboxes that the agent's sponsor access covers. Null, the default, covers every mailbox you own. The CLI sets it back to null with --no-sponsorMailboxes.",
+        "nullable": true
       },
       {
         "name": "approvalForOwnMailbox",
@@ -693,6 +701,172 @@ export const operations = [
         "type": "string",
         "required": false,
         "description": "Where the page starts, the next of the page before it. Leave it out for the first page."
+      }
+    ]
+  },
+  {
+    "operationId": "askForAccess",
+    "method": "post",
+    "path": "/access-requests",
+    "routeKey": "POST /access-requests",
+    "summary": "Ask a human for access as a new agent, and get the code they approve it by.",
+    "description": "Answers without sign-in, since the agent has no key yet. Show the code and a link to the web app's #/access/<code> to the human who will be the agent's sponsor, then collect the key with the device code every interval seconds until they approve or decline. The code works for 10 minutes and once. duva login --agent does all of this. An address asks for at most 10 codes in 10 minutes.",
+    "signIn": false,
+    "command": [
+      "access-requests",
+      "ask"
+    ],
+    "options": [
+      {
+        "name": "name",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "The agent's name. Without one, it is named for its host."
+      },
+      {
+        "name": "host",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "The name of the computer the agent runs on, which the human sees."
+      },
+      {
+        "name": "mailboxes",
+        "in": "body",
+        "type": "strings",
+        "required": false,
+        "description": "The addresses of the mailboxes it asks for. Without them, it asks for every mailbox of the human who approves."
+      },
+      {
+        "name": "wants",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "The sponsor access the agent asks for, read unless it says."
+      }
+    ]
+  },
+  {
+    "operationId": "collectAccess",
+    "method": "post",
+    "path": "/access-requests/collect",
+    "routeKey": "POST /access-requests/collect",
+    "summary": "Collect the agent's key once a human approved its access request.",
+    "description": "Answers without sign-in. Gives the agent and its key once, after the human approved, with 200. While the request waits it answers 202, so ask again after the interval. Once the human declined it answers 403, and once the request expired or its key was collected, 404.",
+    "signIn": false,
+    "command": [
+      "access-requests",
+      "collect"
+    ],
+    "options": [
+      {
+        "name": "deviceCode",
+        "in": "body",
+        "type": "string",
+        "required": true,
+        "description": "The device code asking for access gave."
+      }
+    ]
+  },
+  {
+    "operationId": "getAccessRequest",
+    "method": "get",
+    "path": "/access-requests/{code}",
+    "routeKey": "GET /access-requests/{code}",
+    "summary": "Read an agent's access request by the code it shows, to approve or decline it.",
+    "description": "Only humans read access requests. It lists each of your mailboxes, with whether the agent asked for it. A human who gives 10 codes in 10 minutes that no request waits with gets 429 until the 10 minutes are over, so codes can't be guessed.",
+    "signIn": true,
+    "command": [
+      "access-requests",
+      "show"
+    ],
+    "options": [
+      {
+        "name": "code",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The code the agent shows, as BCDF-GHJK. Case and the dash don't matter."
+      }
+    ]
+  },
+  {
+    "operationId": "approveAccessRequest",
+    "method": "post",
+    "path": "/access-requests/{code}/approve",
+    "routeKey": "POST /access-requests/{code}/approve",
+    "summary": "Approve an agent's access request, which makes you its sponsor and gives it the access you choose.",
+    "description": "Only humans approve. Give only what you change from what the agent asked: its name, its sponsor access, the mailboxes of yours it covers, and the approval and disclosure-line switches for its sends as you, both on unless you switch them off. Approving creates the agent, with you as its sponsor, recorded in the organization's change feed, and its settings, recorded in your mailboxes' change feeds. The agent then collects its key once. A request is approved or declined once, within 10 minutes.",
+    "signIn": true,
+    "command": [
+      "access-requests",
+      "approve"
+    ],
+    "options": [
+      {
+        "name": "code",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The code the agent shows, as BCDF-GHJK. Case and the dash don't matter."
+      },
+      {
+        "name": "name",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "The agent's name, the one it asked for unless you give another."
+      },
+      {
+        "name": "sponsorAccess",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "The agent's access to its sponsor's personal mailboxes, those sponsorMailboxes names. None, the default, gives it none. Read lets it read everything there: threads, labels, drafts, the change feed and attachments. Organize also lets it organize, decide in the Screener, set threads aside and move them to Trash and back. Draft also lets it write and change any draft there. Send also lets it send as its sponsor. Only the sponsor empties their Trash."
+      },
+      {
+        "name": "sponsorMailboxes",
+        "in": "body",
+        "type": "strings",
+        "required": false,
+        "description": "The IDs of the sponsor's mailboxes that the agent's sponsor access covers, each one the sponsor owns."
+      },
+      {
+        "name": "approvalAsSponsor",
+        "in": "body",
+        "type": "boolean",
+        "required": false,
+        "description": "Whether the agent's sends as its sponsor, from the sponsor's mailbox, wait for the sponsor's approval. On by default."
+      },
+      {
+        "name": "disclosureLineAsSponsor",
+        "in": "body",
+        "type": "boolean",
+        "required": false,
+        "description": "Whether mail the agent sends as its sponsor carries the disclosure's visible line. It always carries the Duva-Agent header. On by default."
+      }
+    ]
+  },
+  {
+    "operationId": "declineAccessRequest",
+    "method": "post",
+    "path": "/access-requests/{code}/decline",
+    "routeKey": "POST /access-requests/{code}/decline",
+    "summary": "Decline an agent's access request, so it gets no key.",
+    "description": "Only humans decline. A request is approved or declined once, within 10 minutes.",
+    "signIn": true,
+    "command": [
+      "access-requests",
+      "decline"
+    ],
+    "options": [
+      {
+        "name": "code",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The code the agent shows, as BCDF-GHJK. Case and the dash don't matter."
       }
     ]
   },
@@ -1092,7 +1266,7 @@ export const operations = [
     "path": "/mailboxes",
     "routeKey": "GET /mailboxes",
     "summary": "List the mailboxes you can read, your own and those of the agents you sponsor.",
-    "description": "An agent your sponsor gives read or full sponsor access also finds your sponsor's personal mailbox here, listed with that access.",
+    "description": "An agent your sponsor gives sponsor access also finds your sponsor's personal mailbox here, listed with that access.",
     "signIn": true,
     "command": [
       "mailboxes",
@@ -1301,7 +1475,7 @@ export const operations = [
     "path": "/mailboxes/{mailbox}/threads/read",
     "routeKey": "POST /mailboxes/{mailbox}/threads/read",
     "summary": "Mark threads in a mailbox read.",
-    "description": "Marks each thread read. Read state belongs to the mailbox, so it is the same for each actor who reads it. Each thread that was unread gets a change in the mailbox's change feed, naming you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can mark its threads.",
+    "description": "Marks each thread read. Read state belongs to the mailbox, so it is the same for each actor who reads it. Each thread that was unread gets a change in the mailbox's change feed, naming you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give organize sponsor access or more can mark its threads.",
     "signIn": true,
     "command": [
       "threads",
@@ -1330,7 +1504,7 @@ export const operations = [
     "path": "/mailboxes/{mailbox}/threads/unread",
     "routeKey": "POST /mailboxes/{mailbox}/threads/unread",
     "summary": "Mark threads in a mailbox unread.",
-    "description": "Marks each thread unread, so it stands out until it is read again. Each thread that was read gets a change in the mailbox's change feed, naming you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can mark its threads.",
+    "description": "Marks each thread unread, so it stands out until it is read again. Each thread that was read gets a change in the mailbox's change feed, naming you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give organize sponsor access or more can mark its threads.",
     "signIn": true,
     "command": [
       "threads",
@@ -1359,7 +1533,7 @@ export const operations = [
     "path": "/mailboxes/{mailbox}/threads/labels",
     "routeKey": "POST /mailboxes/{mailbox}/threads/labels",
     "summary": "Add labels to threads in a mailbox, and remove them.",
-    "description": "Adds and removes the labels on each thread. Archiving removes inbox, and adding inbox moves a thread back to the Inbox, out of Spam, Trash and the Screener. Adding spam or trash takes a thread out of the Inbox. Removing spam (not spam) or trash (restore) puts it back in the Inbox, unless it still has the other, waits in the Screener, or inbox is removed too. Each thread whose labels change gets a change in the mailbox's change feed, naming you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can label its threads.",
+    "description": "Adds and removes the labels on each thread. Archiving removes inbox, and adding inbox moves a thread back to the Inbox, out of Spam, Trash and the Screener. Adding spam or trash takes a thread out of the Inbox. Removing spam (not spam) or trash (restore) puts it back in the Inbox, unless it still has the other, waits in the Screener, or inbox is removed too. Each thread whose labels change gets a change in the mailbox's change feed, naming you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give organize sponsor access or more can label its threads.",
     "signIn": true,
     "command": [
       "threads",
@@ -1431,7 +1605,7 @@ export const operations = [
     "path": "/mailboxes/{mailbox}/threads/remind",
     "routeKey": "POST /mailboxes/{mailbox}/threads/remind",
     "summary": "Set threads in a mailbox aside until a time, when they come back to the Inbox.",
-    "description": "Remind me: each thread leaves the Inbox, if it is there, and waits in Remind me until the time, given as at or as a preset. Then it comes back to the top of the Inbox, unread, with a Back mark naming when it was set aside. New mail in the thread brings it back early. A thread already set aside gets the new time. A thread in Spam or Trash, or waiting in the Screener, can't be set aside. Each thread gets a change in the mailbox's change feed, naming you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can set its threads aside.",
+    "description": "Remind me: each thread leaves the Inbox, if it is there, and waits in Remind me until the time, given as at or as a preset. Then it comes back to the top of the Inbox, unread, with a Back mark naming when it was set aside. New mail in the thread brings it back early. A thread already set aside gets the new time. A thread in Spam or Trash, or waiting in the Screener, can't be set aside. Each thread gets a change in the mailbox's change feed, naming you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give organize sponsor access or more can set its threads aside.",
     "signIn": true,
     "command": [
       "threads",
@@ -1653,7 +1827,7 @@ export const operations = [
     "path": "/mailboxes/{mailbox}/labels",
     "routeKey": "POST /mailboxes/{mailbox}/labels",
     "summary": "Create a label in a mailbox.",
-    "description": "Creates a label of the mailbox's own, with a name no other label in it has, in any case. Then add it to threads by its ID. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can create its labels. The change is recorded in the mailbox's change feed, naming you.",
+    "description": "Creates a label of the mailbox's own, with a name no other label in it has, in any case. Then add it to threads by its ID. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give organize sponsor access or more can create its labels. The change is recorded in the mailbox's change feed, naming you.",
     "signIn": true,
     "command": [
       "labels",
@@ -1682,7 +1856,7 @@ export const operations = [
     "path": "/mailboxes/{mailbox}/labels/{label}",
     "routeKey": "DELETE /mailboxes/{mailbox}/labels/{label}",
     "summary": "Delete one of a mailbox's own labels.",
-    "description": "Removes the label from each of its threads, each with a change in the mailbox's change feed, and then deletes it. The threads stay. The built-in labels can't be deleted. If deleting stops partway, delete the label again to finish. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can delete its labels.",
+    "description": "Removes the label from each of its threads, each with a change in the mailbox's change feed, and then deletes it. The threads stay. The built-in labels can't be deleted. If deleting stops partway, delete the label again to finish. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give organize sponsor access or more can delete its labels.",
     "signIn": true,
     "command": [
       "labels",
@@ -1711,7 +1885,7 @@ export const operations = [
     "path": "/mailboxes/{mailbox}/labels/{label}",
     "routeKey": "PATCH /mailboxes/{mailbox}/labels/{label}",
     "summary": "Rename one of a mailbox's own labels.",
-    "description": "Gives the label a name no other label in the mailbox has, in any case. Its threads keep it. The built-in labels can't be renamed. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can rename its labels. The change is recorded in the mailbox's change feed, naming you.",
+    "description": "Gives the label a name no other label in the mailbox has, in any case. Its threads keep it. The built-in labels can't be renamed. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give organize sponsor access or more can rename its labels. The change is recorded in the mailbox's change feed, naming you.",
     "signIn": true,
     "command": [
       "labels",
@@ -1820,7 +1994,7 @@ export const operations = [
     "path": "/mailboxes/{mailbox}/screener/let-in",
     "routeKey": "POST /mailboxes/{mailbox}/screener/let-in",
     "summary": "Let a sender into a mailbox, moving their waiting threads to the Inbox.",
-    "description": "Give an address, or a domain to let in everyone there. A domain covers exactly that domain, not its subdomains, and can't be a public mail provider's, like gmail.com. An address's decision beats its domain's. Their later mail skips the Screener, even while it is off. Letting in a sender the mailbox blocked replaces the block and moves their threads still in Trash to the Inbox. The decision and each thread it moves are recorded in the mailbox's change feed under you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can decide.",
+    "description": "Give an address, or a domain to let in everyone there. A domain covers exactly that domain, not its subdomains, and can't be a public mail provider's, like gmail.com. An address's decision beats its domain's. Their later mail skips the Screener, even while it is off. Letting in a sender the mailbox blocked replaces the block and moves their threads still in Trash to the Inbox. The decision and each thread it moves are recorded in the mailbox's change feed under you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give organize sponsor access or more can decide.",
     "signIn": true,
     "command": [
       "screener",
@@ -1856,7 +2030,7 @@ export const operations = [
     "path": "/mailboxes/{mailbox}/screener/block",
     "routeKey": "POST /mailboxes/{mailbox}/screener/block",
     "summary": "Block a sender in a mailbox, moving their waiting threads to Trash.",
-    "description": "Give an address, or a domain to block everyone there. A domain covers exactly that domain, not its subdomains, and can't be a public mail provider's, like gmail.com. An address's decision beats its domain's. Their later mail that starts a thread goes straight to Trash, even while the Screener is off. Trash is erased after the organization's retention period, counted from when a thread got it. Blocking a sender the mailbox let in replaces that. Blocking also unsubscribes the mailbox from the sender's mail by one-click (RFC 8058), when their newest mail that SES didn't judge to be spam offers it and a DKIM signature that passed covers its unsubscribe headers. For a domain, that is the newest mail from an address there that the mailbox hasn't let in. Duva never unsubscribes by mailto or by a link in the body. The decision, each thread it moves and the unsubscribe's outcome are recorded in the mailbox's change feed under you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can decide.",
+    "description": "Give an address, or a domain to block everyone there. A domain covers exactly that domain, not its subdomains, and can't be a public mail provider's, like gmail.com. An address's decision beats its domain's. Their later mail that starts a thread goes straight to Trash, even while the Screener is off. Trash is erased after the organization's retention period, counted from when a thread got it. Blocking a sender the mailbox let in replaces that. Blocking also unsubscribes the mailbox from the sender's mail by one-click (RFC 8058), when their newest mail that SES didn't judge to be spam offers it and a DKIM signature that passed covers its unsubscribe headers. For a domain, that is the newest mail from an address there that the mailbox hasn't let in. Duva never unsubscribes by mailto or by a link in the body. The decision, each thread it moves and the unsubscribe's outcome are recorded in the mailbox's change feed under you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give organize sponsor access or more can decide.",
     "signIn": true,
     "command": [
       "screener",
@@ -1914,7 +2088,7 @@ export const operations = [
     "path": "/mailboxes/{mailbox}/screener/senders/{sender}",
     "routeKey": "DELETE /mailboxes/{mailbox}/screener/senders/{sender}",
     "summary": "Remove a mailbox's decision on a sender, so they are first-time again.",
-    "description": "Their later mail waits in the Screener again, unless the mailbox has written to them, or a decision on their domain covers them. Removing a block moves their threads still in Trash to the Inbox. To flip a decision instead, let them in or block them. The removal and each thread it moves are recorded in the mailbox's change feed under you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can remove decisions.",
+    "description": "Their later mail waits in the Screener again, unless the mailbox has written to them, or a decision on their domain covers them. Removing a block moves their threads still in Trash to the Inbox. To flip a decision instead, let them in or block them. The removal and each thread it moves are recorded in the mailbox's change feed under you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give organize sponsor access or more can remove decisions.",
     "signIn": true,
     "command": [
       "screener",
@@ -2001,7 +2175,7 @@ export const operations = [
     "path": "/mailboxes/{mailbox}/drafts",
     "routeKey": "POST /mailboxes/{mailbox}/drafts",
     "summary": "Draft a reply to a message in a mailbox, a reply to all, a forward, or a new message.",
-    "description": "A reply goes from the address the original was sent to, plus tag kept, or from the default address if the mailbox no longer has it, to the original's Reply-To or, without one, its From, with the subject carrying a single \"Re: \" prefix. A reply to your own message goes to its recipients instead. A reply to all also goes to every other recipient of the original, except the mailbox's own addresses. A forward goes from the address the original was sent to, to whoever you give, with the subject carrying a single \"Fwd: \" prefix, the original's text quoted and its attachments, from the same address a reply would. A new message goes from the mailbox's default address. Give from to choose another of the mailbox's addresses, or a group the mailbox's owner is a local member of, to send as the group. Only its members can, so any other group gets 403. A reply to group mail goes from the member's own address unless you give the group. A mailbox with no address can't draft. A draft can be saved before it has recipients, a subject or text, but it needs a recipient in To to be sent. Only the mailbox's owner can draft in it, and for a human's mailbox the agents they give full sponsor access, whose drafts go from the same addresses as the human's own. Writing a draft is recorded in the mailbox's change feed, naming you.",
+    "description": "A reply goes from the address the original was sent to, plus tag kept, or from the default address if the mailbox no longer has it, to the original's Reply-To or, without one, its From, with the subject carrying a single \"Re: \" prefix. A reply to your own message goes to its recipients instead. A reply to all also goes to every other recipient of the original, except the mailbox's own addresses. A forward goes from the address the original was sent to, to whoever you give, with the subject carrying a single \"Fwd: \" prefix, the original's text quoted and its attachments, from the same address a reply would. A new message goes from the mailbox's default address. Give from to choose another of the mailbox's addresses, or a group the mailbox's owner is a local member of, to send as the group. Only its members can, so any other group gets 403. A reply to group mail goes from the member's own address unless you give the group. A mailbox with no address can't draft. A draft can be saved before it has recipients, a subject or text, but it needs a recipient in To to be sent. Only the mailbox's owner can draft in it, and for a human's mailbox the agents they give draft sponsor access or more, whose drafts go from the same addresses as the human's own. Writing a draft is recorded in the mailbox's change feed, naming you.",
     "signIn": true,
     "command": [
       "drafts",
@@ -2115,7 +2289,7 @@ export const operations = [
     "path": "/mailboxes/{mailbox}/drafts/{draft}",
     "routeKey": "DELETE /mailboxes/{mailbox}/drafts/{draft}",
     "summary": "Delete a draft.",
-    "description": "Deleting a draft that waits for approval withdraws the request. A draft being sent can't be deleted until its send is done. Deleting a sent draft leaves the sent message in its thread. Only the mailbox's owner can delete its drafts, and for a human's mailbox the agents they give full sponsor access, whoever wrote the draft. The deletion, and any withdrawal, is recorded in the mailbox's change feed, naming you.",
+    "description": "Deleting a draft that waits for approval withdraws the request. A draft being sent can't be deleted until its send is done. Deleting a sent draft leaves the sent message in its thread. Only the mailbox's owner can delete its drafts, and for a human's mailbox the agents they give draft sponsor access or more, whoever wrote the draft. The deletion, and any withdrawal, is recorded in the mailbox's change feed, naming you.",
     "signIn": true,
     "command": [
       "drafts",
@@ -2144,7 +2318,7 @@ export const operations = [
     "path": "/mailboxes/{mailbox}/drafts/{draft}",
     "routeKey": "PATCH /mailboxes/{mailbox}/drafts/{draft}",
     "summary": "Change a draft's From, recipients, subject or text.",
-    "description": "Changing a draft that waits for approval withdraws the request, so an approver never approves text they didn't see. Ask to send it again once it is ready. From can be one of the mailbox's addresses, or a group the mailbox's owner is a local member of, and any other group gets 403. Only the mailbox's owner can edit its drafts, and for a human's mailbox the agents they give full sponsor access, whoever wrote the draft. The change, and any withdrawal, is recorded in the mailbox's change feed, naming you.",
+    "description": "Changing a draft that waits for approval withdraws the request, so an approver never approves text they didn't see. Ask to send it again once it is ready. From can be one of the mailbox's addresses, or a group the mailbox's owner is a local member of, and any other group gets 403. Only the mailbox's owner can edit its drafts, and for a human's mailbox the agents they give draft sponsor access or more, whoever wrote the draft. The change, and any withdrawal, is recorded in the mailbox's change feed, naming you.",
     "signIn": true,
     "command": [
       "drafts",
@@ -2215,7 +2389,7 @@ export const operations = [
     "path": "/mailboxes/{mailbox}/drafts/{draft}/send",
     "routeKey": "POST /mailboxes/{mailbox}/drafts/{draft}/send",
     "summary": "Ask for a draft to be sent.",
-    "description": "A human's send from their own mailbox needs no approval, so Duva sends it at once, with no disclosure, also when their agent wrote the draft. An agent's send waits for its sponsor's approval unless the sponsor switched that off, separately for its own mailbox and for its sponsor's. With full sponsor access, an agent sends as its sponsor from the sponsor's mailbox: from the draft's address, under the sponsor's name. Every message an agent sends carries the Duva-Agent header, and a visible line unless its sponsor switched that off for where it sends from. Its send shows where it stands. Bcc recipients get the message, but no header names them. Only the mailbox's owner, and an agent with full sponsor access to it, can ask. The draft needs a recipient in To, and a draft waits for one approval at a time. It goes only from an address the mailbox still has, so a draft from an address since removed fails. A draft from a group goes out from the group's address, as any send does, and only while the mailbox's owner is still a local member: otherwise asking gets 403, and a send asked before fails. Each other local member's mailbox then gets a copy, in the thread of the message it answers, marked with who sent it as the group. External members get none. A send that needs no approval withdraws the request the draft waits for, if it waits. Asking is recorded in the mailbox's change feed. An agent's approved send over its send limits waits, as waitingForLimit, and goes out by itself, oldest first, as the limits allow, or when its sponsor sends it now. Humans have no send limits.",
+    "description": "A human's send from their own mailbox needs no approval, so Duva sends it at once, with no disclosure, also when their agent wrote the draft. An agent's send waits for its sponsor's approval unless the sponsor switched that off, separately for its own mailbox and for its sponsor's. With send sponsor access, an agent sends as its sponsor from the sponsor's mailbox: from the draft's address, under the sponsor's name. Every message an agent sends carries the Duva-Agent header, and a visible line unless its sponsor switched that off for where it sends from. Its send shows where it stands. Bcc recipients get the message, but no header names them. Only the mailbox's owner, and an agent with send sponsor access to it, can ask. The draft needs a recipient in To, and a draft waits for one approval at a time. It goes only from an address the mailbox still has, so a draft from an address since removed fails. A draft from a group goes out from the group's address, as any send does, and only while the mailbox's owner is still a local member: otherwise asking gets 403, and a send asked before fails. Each other local member's mailbox then gets a copy, in the thread of the message it answers, marked with who sent it as the group. External members get none. A send that needs no approval withdraws the request the draft waits for, if it waits. Asking is recorded in the mailbox's change feed. An agent's approved send over its send limits waits, as waitingForLimit, and goes out by itself, oldest first, as the limits allow, or when its sponsor sends it now. Humans have no send limits.",
     "signIn": true,
     "command": [
       "drafts",

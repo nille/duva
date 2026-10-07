@@ -13,7 +13,7 @@ import type { Table } from "./deployment.ts";
 import { entryKey, recordChanges } from "./feed.ts";
 import { type SendFeedback, type StoredMessage, storeSentMessage } from "./mail.ts";
 import { startWaiting, stopWaiting, type WaitingSend } from "./limits.ts";
-import { sponsorAccessAllows } from "./access.ts";
+import { sponsorAccessAllows, sponsorAccessIn } from "./access.ts";
 import { listDecision, unlistDecision } from "./decisions.ts";
 import {
   type Actor,
@@ -247,9 +247,9 @@ export class SendNotAllowed extends Error {}
 /**
  * Asks for the draft to be sent, on behalf of the actor. A human's send from their own mailbox
  * needs no approval. An agent's waits for its sponsor's approval while the switch for where it
- * sends from is on: its own mailbox, or its sponsor's, as them, which needs full sponsor access.
+ * sends from is on: its own mailbox, or its sponsor's, as them, which needs send sponsor access there.
  * The ask holds only if the agent's settings are still as read, so a change to them at the same
- * time either comes first or finds the ask. Throws SendNotAllowed once full access is gone,
+ * time either comes first or finds the ask. Throws SendNotAllowed once send access there is gone,
  * NoRecipient without a recipient in To, AlreadyWaiting if an agent's ask that needs approval
  * already waits for one, and AlreadyApproved once it was approved. Returns undefined if the mailbox
  * has no such draft.
@@ -261,7 +261,7 @@ export async function askToSend(table: Table, { mailbox, id, actor }: { mailbox:
     if (actor.kind !== "agent") return sendAtOnce(table, { mailbox: mailbox.id, draft, by: actor.id, held: [] });
     const read = await agentSettings(table, actor.id);
     const asSponsor = mailbox.owner !== actor.id;
-    if (asSponsor && !sponsorAccessAllows(read.settings.sponsorAccess, "send")) throw new SendNotAllowed();
+    if (asSponsor && !sponsorAccessAllows(sponsorAccessIn(read.settings, mailbox.id), "send")) throw new SendNotAllowed();
     const held = [agentSettingsUnchanged(table, actor.id, read)];
     return switchesFor(read.settings, asSponsor).approval
       ? waitForApproval(table, { mailbox: mailbox.id, draft, agent: actor, held })

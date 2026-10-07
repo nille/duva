@@ -1,9 +1,10 @@
 // The Agents sheet in Settings: for each agent the human sponsors, whether it is paused, whether it
-// is an admin, its sends waiting for its send limits, and its settings: its sponsor access to their
-// mailbox, the switches for approval and the disclosure's visible line, and its send limits up to
-// the organization's caps. Each agent is a line saying whether it is paused or an admin, its access
-// and approval and what waits, which opens into a link to its activity, its parts and its form, one
-// at a time. A human who sponsors no agents never sees it.
+// is an admin, its sends waiting for its send limits, its key and its removal, and its settings: its
+// sponsor access to their mailboxes and which of them it covers, the switches for approval and the
+// disclosure's visible line, and its send limits up to the organization's caps. Each agent is a line
+// saying whether it is paused or an admin, its access and approval and what waits, which opens into
+// a link to its activity, its parts and its form, one at a time. A human who sponsors no agents
+// never sees it.
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
@@ -20,7 +21,7 @@ type AgentSettings = components["schemas"]["AgentSettings"];
 type Draft = components["schemas"]["Draft"];
 type Mailbox = components["schemas"]["Mailbox"];
 type SponsorAccess = AgentSettings["sponsorAccess"];
-type Switch = Exclude<keyof AgentSettings, "sponsorAccess" | "sendsPerHour" | "newRecipientsPerDay">;
+type Switch = Exclude<keyof AgentSettings, "sponsorAccess" | "sponsorMailboxes" | "sendsPerHour" | "newRecipientsPerDay">;
 type Limit = "sendsPerHour" | "newRecipientsPerDay";
 
 /** The organization's caps on each limit. */
@@ -34,7 +35,10 @@ type Read =
   | { status: "read"; caps: Caps; names: ReadonlyMap<string, string>; agents: { agent: Agent; settings: AgentSettings; waiting: Waiting[] }[] };
 type Saving = { status: "idle" } | { status: "saving" } | { status: "saved"; lowered: boolean } | { status: "failed"; message: string };
 
-const accesses: SponsorAccess[] = ["none", "read", "full"];
+const accesses: SponsorAccess[] = ["none", "read", "organize", "draft", "send"];
+
+/** Whether two values of a setting are the same, as a list of mailboxes is when it names the same ones. */
+const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
 /**
  * The sheet, with a line for each agent the human sponsors that opens into its parts and form. `me`
@@ -56,12 +60,13 @@ export function AgentSettingsSheet({
   me: string;
   email: string;
   admin: boolean;
-  mailboxes: { mine?: Mailbox; agents: AgentMailbox[] } | undefined;
+  mailboxes: { mine?: Mailbox; own?: Mailbox[]; agents: AgentMailbox[] } | undefined;
   open?: string;
   onChange?: () => void;
   onSignedOut: () => void;
 }) {
   const [read, setRead] = useState<Read>({ status: "loading" });
+  const own = mailboxes === undefined ? [] : (mailboxes.own ?? (mailboxes.mine === undefined ? [] : [mailboxes.mine]));
   // The mailboxes are listed anew with each render, so the sheet reads again only when they are others.
   const listed = useRef(mailboxes);
   listed.current = mailboxes;
@@ -144,10 +149,15 @@ export function AgentSettingsSheet({
             caps={read.caps}
             whoPaused={(by) => (by === me ? copy.pause.you : by === "duva" ? copy.pause.duva : (read.names.get(by) ?? copy.pause.anAdmin))}
             email={email}
+            own={own}
             admin={admin}
             open={open === agent.id}
             readWaiting={async () => (await readWaiting())(agent.id)}
             onChange={onChange}
+            onRemoved={() => {
+              setRead((current) => (current.status === "read" ? { ...current, agents: current.agents.filter((each) => each.agent.id !== agent.id) } : current));
+              onChange?.();
+            }}
             onSignedOut={onSignedOut}
           />
         ))
@@ -168,10 +178,12 @@ function AgentForm({
   caps,
   whoPaused,
   email,
+  own,
   admin,
   open,
   readWaiting,
   onChange,
+  onRemoved,
   onSignedOut,
 }: {
   client: DuvaClient;
@@ -181,10 +193,13 @@ function AgentForm({
   caps: Caps;
   whoPaused: (by: string) => string;
   email: string;
+  /** The human's own mailboxes, which its sponsor access may cover. */
+  own: Mailbox[];
   admin: boolean;
   open: boolean;
   readWaiting: () => Promise<Waiting[]>;
   onChange?: () => void;
+  onRemoved: () => void;
   onSignedOut: () => void;
 }) {
   const [agent, setAgent] = useState(first);
@@ -199,10 +214,14 @@ function AgentForm({
   const stillWaiting = waiting.filter(({ draft }) => !sentNow.has(draft.id)).length;
   const copy = strings.agentSettings;
   const heading = `agent-${agent.id}`;
-  const changed = (Object.keys(chosen) as (keyof AgentSettings)[]).filter((key) => chosen[key] !== saved[key]);
+  const changed = (Object.keys(chosen) as (keyof AgentSettings)[]).filter((key) => !same(chosen[key], saved[key]));
   const invalid = (["sendsPerHour", "newRecipientsPerDay"] as const).some((limit) => wholeNumber(typed[limit], caps[limit]) === undefined);
-  // Only full access lets an agent send as its sponsor, so only lowering it withdraws what waits.
-  const lowers = saved.sponsorAccess === "full" && chosen.sponsorAccess !== "full";
+  // Which of the human's mailboxes its sponsor access covers: all of them while it names none.
+  const covers = (settings: AgentSettings, mailbox: string) => settings.sponsorMailboxes === null || settings.sponsorMailboxes.includes(mailbox);
+  // Only send access lets an agent send as its sponsor, so only lowering it, or taking a mailbox away from it, withdraws what waits.
+  const lowers = saved.sponsorAccess === "send" && (chosen.sponsorAccess !== "send" || own.some(({ id }) => covers(saved, id) && !covers(chosen, id)));
+  // The mailboxes it covers are chosen once there are more than one, or once they were.
+  const choosesMailboxes = own.length > 1 || saved.sponsorMailboxes !== null;
 
   // The line an alert or the index opens comes open, in view, and takes the focus from the sheet's title.
   const details = useRef<HTMLDetailsElement>(null);
@@ -344,6 +363,8 @@ function AgentForm({
           onSignedOut={onSignedOut}
         />
         <AdminPart client={client} agent={agent} sponsorIsAdmin={admin} onChanged={setAgent} onSignedOut={onSignedOut} />
+        <KeyPart client={client} agent={agent} onSignedOut={onSignedOut} />
+        <RemovePart client={client} agent={agent} onRemoved={onRemoved} onSignedOut={onSignedOut} />
         {waiting.length > 0 && (
           <WaitingPart
             client={client}
@@ -379,6 +400,27 @@ function AgentForm({
           ))}
           {lowers && <p className="setting-note">{copy.access.lowering}</p>}
         </fieldset>
+        {choosesMailboxes && (
+          <fieldset>
+            <legend>{copy.access.mailboxes}</legend>
+            <p className="setting-lead">{copy.access.mailboxesLead}</p>
+            {own.map((mailbox) => (
+              <label className="choice" key={mailbox.id}>
+                <input
+                  type="checkbox"
+                  checked={covers(chosen, mailbox.id)}
+                  onChange={(event) => {
+                    const others = own.filter(({ id }) => id !== mailbox.id && covers(chosen, id)).map(({ id }) => id);
+                    choose({ sponsorMailboxes: event.target.checked ? [...others, mailbox.id] : others });
+                  }}
+                />
+                <span className="choice-text">
+                  <span className="choice-name">{strings.mailboxes.address(mailbox)}</span>
+                </span>
+              </label>
+            ))}
+          </fieldset>
+        )}
         <fieldset>
           <legend>{copy.asSponsor.legend}</legend>
           {toggle("approvalAsSponsor", copy.asSponsor.approval, copy.asSponsor.approvalHint)}
@@ -520,6 +562,96 @@ function AdminPart({
   );
 }
 
+/** Rotate key, which shows the new key once, and stops the old one at once. */
+function KeyPart({ client, agent, onSignedOut }: { client: DuvaClient; agent: Agent; onSignedOut: () => void }) {
+  const [state, setState] = useState<{ status: "idle" | "rotating" } | { status: "rotated"; key: string } | { status: "failed"; message: string }>({ status: "idle" });
+  const copy = strings.agentSettings.key;
+  const id = `key-${agent.id}`;
+
+  const rotate = async () => {
+    setState({ status: "rotating" });
+    const { data, response } = await client.POST("/agents/{agent}/key", { params: { path: { agent: agent.id } } }).catch(() => ({ data: undefined, response: undefined }));
+    if (response?.status === 401) return onSignedOut();
+    if (data !== undefined) return setState({ status: "rotated", key: data.key });
+    setState({ status: "failed", message: response === undefined ? copy.unreachable : copy.failed(response.status) });
+  };
+
+  return (
+    <section className="setting-part" aria-labelledby={id}>
+      <h4 id={id}>{copy.title}</h4>
+      <div className="pause-row">
+        <p className="setting-lead">{copy.lead}</p>
+        <button type="button" className="button button-small" disabled={state.status === "rotating"} onClick={() => void rotate()}>
+          {state.status === "rotating" ? copy.rotating : copy.rotate}
+        </button>
+      </div>
+      {state.status === "rotated" && (
+        <div className="agent-key">
+          <label className="setting-field">
+            <span>{copy.newKey}</span>
+            <input type="text" readOnly value={state.key} onFocus={(event) => event.target.select()} />
+          </label>
+          <p className="setting-lead">{copy.shownOnce}</p>
+        </div>
+      )}
+      {state.status === "failed" && (
+        <p className="notice notice-alert" role="alert">
+          {state.message}
+        </p>
+      )}
+    </section>
+  );
+}
+
+/** Remove, which asks first, since it can't be undone. */
+function RemovePart({ client, agent, onRemoved, onSignedOut }: { client: DuvaClient; agent: Agent; onRemoved: () => void; onSignedOut: () => void }) {
+  const [state, setState] = useState<{ status: "idle" | "confirming" | "removing" } | { status: "failed"; message: string }>({ status: "idle" });
+  const copy = strings.agentSettings.remove;
+  const id = `remove-${agent.id}`;
+
+  const remove = async () => {
+    setState({ status: "removing" });
+    const { data, response } = await client.DELETE("/agents/{agent}", { params: { path: { agent: agent.id } } }).catch(() => ({ data: undefined, response: undefined }));
+    if (response?.status === 401) return onSignedOut();
+    if (data !== undefined || response?.status === 404) return onRemoved();
+    setState({ status: "failed", message: response === undefined ? copy.unreachable : copy.failed(response.status) });
+  };
+
+  const asking = state.status === "confirming" || state.status === "removing";
+  return (
+    <section className="setting-part" aria-labelledby={id}>
+      <h4 id={id}>{copy.title}</h4>
+      <div className="pause-row">
+        <p className="setting-lead">{copy.lead}</p>
+        {!asking && (
+          <button type="button" className="button button-small button-quiet" onClick={() => setState({ status: "confirming" })}>
+            {copy.remove}
+          </button>
+        )}
+      </div>
+      {asking && (
+        <div className="confirm" role="group" aria-label={copy.who(agent.name)}>
+          <p>{copy.ask(agent.name)}</p>
+          <div className="confirm-choices">
+            <button type="button" className="button button-small button-reject" disabled={state.status === "removing"} onClick={() => void remove()}>
+              {state.status === "removing" ? copy.removing : copy.confirm}
+            </button>
+            {/* The asking button is gone, so the question takes the focus, on its safe answer. */}
+            <button type="button" className="button button-small button-quiet" autoFocus onClick={() => setState({ status: "idle" })}>
+              {copy.cancel}
+            </button>
+          </div>
+        </div>
+      )}
+      {state.status === "failed" && (
+        <p className="notice notice-alert" role="alert">
+          {state.message}
+        </p>
+      )}
+    </section>
+  );
+}
+
 /**
  * The agent's sends that wait for its send limits, oldest first, each with Send now. While the agent
  * is paused they are held, so Send now is disabled, saying why. `onSent` hears of each draft that
@@ -575,12 +707,12 @@ const PauseIcon = () => (
 
 /**
  * The agent's line: its access, and whether its sends wait for approval, and for an admin its setup
- * changes too. Only an agent with full access sends as its sponsor, so only then does that switch count.
+ * changes too. Only an agent with send access sends as its sponsor, so only then does that switch count.
  */
 function summaryOf(settings: AgentSettings, admin: boolean): string {
   const copy = strings.agentSettings.summary;
   const own = settings.approvalForOwnMailbox;
-  const asSponsor = settings.sponsorAccess === "full" ? settings.approvalAsSponsor : own;
+  const asSponsor = settings.sponsorAccess === "send" ? settings.approvalAsSponsor : own;
   const sends = own && asSponsor ? "all" : !own && !asSponsor ? "none" : own ? "own" : "asSponsor";
   const approval =
     admin && sends === "all" && settings.approvalForSetup

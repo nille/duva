@@ -143,7 +143,7 @@ async function withAgentAtWork(options: Parameters<typeof startWebApp>[0] = {}) 
   await ada.PATCH("/mailboxes/{mailbox}/screener", { params: inAdas, body: { on: false } });
   const { data: created } = await ada.POST("/agents", { body: { name: "Hermes" } });
   await ada.POST("/mailboxes", { body: { owner: created!.agent.id, address: "hermes@example.com" } });
-  await ada.PATCH("/agents/{agent}/settings", { params: { path: { agent: created!.agent.id } }, body: { sponsorAccess: "full" } });
+  await ada.PATCH("/agents/{agent}/settings", { params: { path: { agent: created!.agent.id } }, body: { sponsorAccess: "send" } });
   const hermes = app.duva.withKey(created!.key);
   const toAda = (subject: string, from: string) => note(subject, from).replace("To: Grace <grace@example.com>", "To: ada@example.com");
   await app.duva.receive(toAda("Möte", "Grace Hopper <grace@example.org>"), { to: ["ada@example.com"] });

@@ -1,7 +1,7 @@
 import { createDuvaClient } from "@duva/client";
 import { operations, type Operation, type OperationId } from "@duva/openapi";
 import { type Command, type OptionValues, optionValues } from "./commands.ts";
-import { readConfig } from "./config.ts";
+import { readAgentKey, readConfig } from "./config.ts";
 import { accessToken } from "./session.ts";
 
 /** The environment variable an agent's key reaches the CLI in, in place of a human's session. */
@@ -61,7 +61,7 @@ type Answer = { data?: unknown; error?: unknown; response: Response };
 
 /**
  * Calls the operation on the configured deployment. If it needs sign-in, the call is the agent's
- * whose key is in DUVA_AGENT_KEY, or else the signed-in human's.
+ * whose key is in DUVA_AGENT_KEY, or else the one that logged in, or else the signed-in human's.
  */
 export async function callApi(operationId: OperationId, { query = {}, path = {}, body }: Call = {}): Promise<unknown> {
   const operation = operations.find((candidate) => candidate.operationId === operationId);
@@ -69,7 +69,8 @@ export async function callApi(operationId: OperationId, { query = {}, path = {},
   const { apiUrl, signIn } = await readConfig();
   if (apiUrl === undefined) throw new Error("No Duva deployment is configured. Run duva deploy first.");
 
-  const agentKey = process.env[agentKeyVariable] || undefined;
+  const keyGiven = process.env[agentKeyVariable] || undefined;
+  const agentKey = keyGiven ?? (await readAgentKey());
   const headers = operation.signIn ? { authorization: `Bearer ${agentKey ?? (await accessToken(signIn))}` } : undefined;
   const client = createDuvaClient(apiUrl, { headers });
   const hasBody = operation.options.some((option) => option.in === "body");
@@ -83,7 +84,9 @@ export async function callApi(operationId: OperationId, { query = {}, path = {},
     throw new Error(
       agentKey === undefined
         ? "Duva didn't accept your session. Run duva login to sign in again."
-        : `Duva didn't accept the agent key in ${agentKeyVariable}. It may have been rotated. Ask the agent's sponsor for its current key.`,
+        : keyGiven === undefined
+          ? "Duva didn't accept the agent key duva login --agent saved. Its sponsor may have rotated it or removed the agent. Run duva login --agent to ask for access again."
+          : `Duva didn't accept the agent key in ${agentKeyVariable}. It may have been rotated. Ask the agent's sponsor for its current key.`,
     );
   }
   if (!response.ok) {

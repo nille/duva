@@ -82,7 +82,7 @@ test("the Log beside Waiting lists each decision with how it went, and a sent on
 
 test("a correction to mail the agent sent as the sponsor replies to it in its thread, to all its recipients", budget, async () => {
   const { page, signIn, ada, hermes, agent, own } = await withSponsor();
-  await ada.PATCH("/agents/{agent}/settings", { params: { path: { agent: agent.id } }, body: { sponsorAccess: "full" } });
+  await ada.PATCH("/agents/{agent}/settings", { params: { path: { agent: agent.id } }, body: { sponsorAccess: "send" } });
   const params = { path: { mailbox: own.id } };
   const { data: draft } = await hermes.POST("/mailboxes/{mailbox}/drafts", { params, body: { to: ["grace@example.org"], cc: ["linus@example.net"], subject: "Meeting", text: "Monday works." } });
   const { data: asked } = await hermes.POST("/mailboxes/{mailbox}/drafts/{draft}/send", { params: { path: { ...params.path, draft: draft!.id } } });

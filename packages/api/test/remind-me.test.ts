@@ -116,7 +116,7 @@ test("an agent's preset is counted in its sponsor's time zone, in the sponsor's 
   await linus.PATCH("/preferences", { body: { timeZone: "Europe/Stockholm" } });
   const { data: created } = await linus.POST("/agents", { body: { name: "Hermes" } });
   const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: me!.id, address: "linus@example.com" } });
-  await linus.PATCH("/agents/{agent}/settings", { params: { path: { agent: created!.agent.id } }, body: { sponsorAccess: "full" } });
+  await linus.PATCH("/agents/{agent}/settings", { params: { path: { agent: created!.agent.id } }, body: { sponsorAccess: "send" } });
   const params = { path: { mailbox: mailbox!.id } };
   await linus.PATCH("/mailboxes/{mailbox}/screener", { params, body: { on: false } });
   await duva.receive(note("Kvitto").replace("grace@example.com", "linus@example.com"), { to: ["linus@example.com"] });

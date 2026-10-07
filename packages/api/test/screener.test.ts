@@ -399,7 +399,7 @@ test("switching the Screener on keeps the mailbox's blocks, and switching it to 
 
 test("the owner and an agent's sponsor switch the Screener, and no one else", async () => {
   const { grace, iris, irisId, linus, ada, params, irisParams, turn, screener } = await withScreener();
-  await grace.PATCH("/agents/{agent}/settings", { params: { path: { agent: irisId } }, body: { sponsorAccess: "full" } });
+  await grace.PATCH("/agents/{agent}/settings", { params: { path: { agent: irisId } }, body: { sponsorAccess: "send" } });
 
   const byOwner = await turn(false, grace, params);
   const bySponsor = await turn(true, grace, irisParams);
@@ -428,13 +428,13 @@ test("an agent with full sponsor access screens its sponsor's mailbox, one with 
   const { grace, iris, irisId, linus, ada, params, receive, waiting, letIn, block, screener, changes } = await withScreener();
   await receive(note("mallory@example.net", "First"));
   await receive(note("oscar@example.net", "Second"));
-  const access = (sponsorAccess: "read" | "full") => grace.PATCH("/agents/{agent}/settings", { params: { path: { agent: irisId } }, body: { sponsorAccess } });
+  const access = (sponsorAccess: "read" | "send") => grace.PATCH("/agents/{agent}/settings", { params: { path: { agent: irisId } }, body: { sponsorAccess } });
 
   const withoutAccess = await iris.GET("/mailboxes/{mailbox}/screener", { params });
   await access("read");
   const seen = await screener(iris);
   const readDecides = await letIn("mallory@example.net", iris);
-  await access("full");
+  await access("send");
   const letInByAgent = await letIn("mallory@example.net", iris);
   const blockByAgent = await block("oscar@example.net", iris);
   const others = await Promise.all([letIn("oscar@example.net", linus), block("oscar@example.net", ada), linus.GET("/mailboxes/{mailbox}/screener", { params })]);
@@ -586,7 +586,7 @@ test("the screened senders list gives each address and domain, its decision, whe
   await turn(false);
   await turn(true);
   await letIn({ domain: "example.net" });
-  await grace.PATCH("/agents/{agent}/settings", { params: { path: { agent: irisId } }, body: { sponsorAccess: "full" } });
+  await grace.PATCH("/agents/{agent}/settings", { params: { path: { agent: irisId } }, body: { sponsorAccess: "send" } });
   await block("mallory@example.net", iris);
 
   expect(await senders()).toEqual([
@@ -730,12 +730,12 @@ test("an agent with read sponsor access sees the screened senders, one with full
   const { grace, iris, irisId, linus, params, letIn, senders, remove } = await withScreener();
   await letIn("mallory@example.net");
   await letIn("oscar@example.net");
-  const access = (sponsorAccess: "read" | "full") => grace.PATCH("/agents/{agent}/settings", { params: { path: { agent: irisId } }, body: { sponsorAccess } });
+  const access = (sponsorAccess: "read" | "send") => grace.PATCH("/agents/{agent}/settings", { params: { path: { agent: irisId } }, body: { sponsorAccess } });
 
   await access("read");
   const seen = await senders(iris);
   const readRemoves = await remove("mallory@example.net", iris);
-  await access("full");
+  await access("send");
   const fullRemoves = await remove("mallory@example.net", iris);
   const others = await Promise.all([remove("oscar@example.net", linus), linus.GET("/mailboxes/{mailbox}/screener/senders", { params })]);
 

@@ -7,6 +7,8 @@ export type { Config };
 
 const sessionKey = "duva.session";
 const pendingKey = "duva.pendingSignIn";
+// Where in the web app the human was when they went to sign in, as a link to an access request, to come back to.
+const returnKey = "duva.returnTo";
 
 export async function loadConfig(): Promise<Config> {
   const response = await fetch("/config.json");
@@ -17,6 +19,7 @@ export async function loadConfig(): Promise<Config> {
 export async function signIn(config: Config): Promise<void> {
   const pending = await startSignIn(config.signIn);
   sessionStorage.setItem(pendingKey, JSON.stringify(pending));
+  sessionStorage.setItem(returnKey, location.hash);
   location.assign(pending.authorizeUrl);
 }
 
@@ -34,7 +37,8 @@ export async function signedInClient(config: Config): Promise<DuvaClient | undef
   const pending = sessionStorage.getItem(pendingKey);
   if (pending !== null && (here.searchParams.has("code") || here.searchParams.has("error"))) {
     sessionStorage.removeItem(pendingKey);
-    history.replaceState(null, "", "/");
+    history.replaceState(null, "", `/${sessionStorage.getItem(returnKey) ?? ""}`);
+    sessionStorage.removeItem(returnKey);
     save(await finishSignIn(config.signIn, JSON.parse(pending) as PendingSignIn, here));
   }
 

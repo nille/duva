@@ -17,7 +17,7 @@ An actor that is a person.
 _Avoid_: user
 
 **Agent**:
-An actor that is software. Any human can create one and becomes its sponsor. An agent can own personal mailboxes, which an admin creates, and works in no one else's mailbox but its sponsor's, if its sponsor gives it sponsor access.
+An actor that is software. Any human can create one, or approve one's access request, and becomes its sponsor. An agent can own personal mailboxes, which an admin creates, and works in no one else's mailbox but its sponsor's, if its sponsor gives it sponsor access.
 _Avoid_: bot, assistant
 
 **Mailbox**:
@@ -27,8 +27,12 @@ A store of received and sent mail, reached through one or more addresses, that a
 A mailbox owned by one actor. Admins cannot read it. When the actor is removed, it is handed over or deleted.
 
 **Sponsor access**:
-An agent's access to its sponsor's personal mailbox, which the sponsor gives per agent and which is off by default. Read lets it read everything there. Full also lets it organize, move threads to Trash and back, draft, and send as the sponsor. Only the sponsor empties the Trash. Mail that several people need goes to a group, which gives each member their own copy; no actor works in another human's mailbox.
-_Avoid_: grant, delegation, share
+An agent's access to its sponsor's personal mailboxes, which the sponsor gives per agent and which is off by default. It covers the mailboxes the sponsor chooses, all of theirs unless they choose. Read lets it read everything there. Organize also lets it organize, screen senders, set threads aside and move them to Trash and back. Draft also lets it draft. Send also lets it send as the sponsor, on their behalf with the disclosure's visible line or as them without it. Only the sponsor empties the Trash. Mail that several people need goes to a group, which gives each member their own copy; no actor works in another human's mailbox.
+_Avoid_: grant, delegation, share, full access
+
+**Access request**:
+A self-hosted agent asking a human for access, with a code it shows them and a link to the web app, as `duva login --agent` does. The human sees its name, where it asked from and what it asks for, adjusts its name, mailboxes, sponsor access and approval, then approves, which makes them its sponsor, or declines. The agent then collects its key once. A code works for 10 minutes and once.
+_Avoid_: device flow, pairing, invitation
 
 **Alert**:
 A notice to a sponsor that one of their agents needs them: a failed, bounced or complained-about send, its send limit reached, its key used while paused, or a pause, change or removal by someone else. Alerts show in the web app, and urgent ones are also mailed to the sponsor's own mailbox.
