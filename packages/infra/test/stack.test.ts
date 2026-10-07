@@ -992,9 +992,9 @@ test("Ask your agent posts to the web app's domain under /agent/, where CloudFro
   expect(more).toEqual([]);
   expect(behavior).toMatchObject({ ViewerProtocolPolicy: "redirect-to-https", CachePolicyId: "4135ea2d-6df8-44a3-9df3-4b5a84be39ad" });
   expect(behavior.AllowedMethods).toContain("POST");
-  // Only the human's token, the body's hash and its type reach the Lambda, never the Host, which the signature names.
+  // Only the human's token and the body's type reach the Lambda, never the Host or an Authorization, which the signature takes.
   const policy = stack.template.Resources[behavior.OriginRequestPolicyId.Ref];
-  expect(policy.Properties.OriginRequestPolicyConfig.HeadersConfig).toEqual({ HeaderBehavior: "whitelist", Headers: ["x-duva-token", "x-amz-content-sha256", "content-type"] });
+  expect(policy.Properties.OriginRequestPolicyConfig.HeadersConfig).toEqual({ HeaderBehavior: "whitelist", Headers: ["x-duva-token", "content-type"] });
   const origin = config?.Origins?.find(({ Id }: { Id: string }) => Id === behavior.TargetOriginId);
   expect(JSON.stringify(origin?.DomainName)).toContain(`{"Fn::GetAtt":["${urlId}","FunctionUrl"]}`);
   const access = stack.template.Resources[origin?.OriginAccessControlId?.["Fn::GetAtt"]?.[0]];
@@ -1016,4 +1016,11 @@ test("only the web app's distribution may invoke the conversation Lambda, which 
   expect(actions("ConversationHandler", "lambda")).toEqual([]);
   expect(actions("ConversationHandler", "bedrock")).toEqual([]);
   expect(lambda("ConversationHandler")[1].Properties?.Timeout).toBe(900);
+});
+
+test("no origin request policy lists a header CloudFront refuses there, as those beginning X-Amz- or X-Edge-", () => {
+  // CloudFormation refused x-amz-content-sha256 in one, and CloudFront's guide names both prefixes among the headers it won't add (docs/aws.md).
+  const listed = ofType("AWS::CloudFront::OriginRequestPolicy").flatMap(([, { Properties }]) => (Properties?.OriginRequestPolicyConfig?.HeadersConfig?.Headers ?? []) as string[]);
+  expect(listed).not.toHaveLength(0);
+  expect(listed.filter((header) => /^x-(amz|edge)-/i.test(header))).toEqual([]);
 });

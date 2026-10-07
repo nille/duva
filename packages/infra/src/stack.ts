@@ -692,7 +692,7 @@ export class DuvaStack extends Stack {
     // Ask your agent posts each turn to the web app's domain, under /agent/, where CloudFront signs
     // the request to the conversation Lambda's function URL, which only the distribution may call
     // (docs/aws.md). CloudFront's signature takes the Authorization header, so the human's access
-    // token comes in a header of its own, and a POST carries its body's SHA-256, as OAC asks. The
+    // token comes in a header of its own, and a POST carries its body's SHA-256 to CloudFront, as OAC asks. The
     // Lambda asks the API whose token it is, and streams the run as it goes.
     // The API's URL reaches the conversation Lambda through a parameter, since the API names the
     // distribution in its CORS and the distribution the Lambda's function URL.
@@ -725,7 +725,8 @@ export class DuvaStack extends Stack {
         cachePolicy: CachePolicy.CACHING_DISABLED,
         originRequestPolicy: new OriginRequestPolicy(this, "ConversationRequests", {
           originRequestPolicyName: `Duva-Conversation-${this.region}`,
-          headerBehavior: OriginRequestHeaderBehavior.allowList(tokenHeader, "x-amz-content-sha256", "content-type"),
+          // CloudFront refuses x-amz- headers in a policy. The body's hash reaches the signature without one (docs/aws.md).
+          headerBehavior: OriginRequestHeaderBehavior.allowList(tokenHeader, "content-type"),
           queryStringBehavior: OriginRequestQueryStringBehavior.none(),
           cookieBehavior: OriginRequestCookieBehavior.none(),
         }),
