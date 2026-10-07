@@ -223,7 +223,7 @@ test("in a reply Ctrl+Enter sends it", budget, async () => {
 
   await expect.poll(() => page.getByRole("article").count(), wait).toBe(2);
   expect(await page.getByRole("article").last().innerText()).toContain("Ja, ses där.");
-  expect(await page.getByRole("form").count()).toBe(0);
+  await expect.poll(() => page.getByRole("form").count(), wait).toBe(0);
 });
 
 test("with shortcuts off on You, r, a, f, e, #, !, l, u and Shift+U do nothing in a thread, which shows no caps for them", budget, async () => {
