@@ -1883,55 +1883,190 @@ a.thread:focus-visible {
  */
 
 /*
- * A thread, read: its messages as sheets, oldest first, in one column at the proof's measure. Read
- * and older ones are folded to slugs, set down as slips are, and the newest ends in its replies.
+ * A thread, read in the reading pane: its tools along the top, the subject in the grotesk, then its
+ * letters on the plane at a 72ch measure, each parted from the one before by a seam, with no sheet
+ * under it. Read and older ones fold to slugs, and the newest ends in its replies.
  */
 
 .desk-reading {
-  max-width: calc(68ch + 2 * var(--space-5) + 2 * var(--space-5));
+  --measure: 72ch;
+  container: reading / inline-size;
+}
+
+/* The tools: back to the list, then the thread's actions as quiet keys, each with its cap, and j and k at the right. */
+.reading-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-6);
+  font-size: var(--text-sm);
+  color: var(--ink-2);
 }
 
 .back {
-  margin-bottom: var(--space-3);
   font-size: var(--text-sm);
 }
 
 .back a {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-1);
-  padding: var(--space-1) 0;
-  font-weight: 600;
+  gap: var(--space-2);
+  min-height: 1.875rem;
+  padding: 0 var(--space-2);
+  margin-left: calc(-1 * var(--space-2));
+  border-radius: var(--radius-pill);
+  color: var(--ink-2);
+  font-weight: 500;
   text-decoration: none;
+  transition:
+    background-color 150ms var(--ease-out),
+    color 150ms var(--ease-out);
 }
 
 .back a:hover {
-  text-decoration: underline;
+  background: var(--ink-wash);
+  color: var(--ink);
 }
 
+.reading-tools .reading-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.reading-keys {
+  display: none;
+  align-items: center;
+  gap: var(--space-1);
+  margin-left: auto;
+  color: var(--ink-3);
+  font-size: var(--text-xs);
+}
+
+.reading-keys kbd:last-of-type {
+  margin-right: var(--space-1);
+}
+
+/* j and k move through the list beside the thread, which only a desk shows, where the pane has room to say so. */
+@media (min-width: 64rem) {
+  @container reading (min-width: 56rem) {
+    .reading-keys {
+      display: flex;
+    }
+  }
+}
+
+/* With a keyboard's room, the actions are quiet keys: the cap in place of the icon, then the name. */
+@media (min-width: 48.0625rem) {
+  .back .icon,
+  .reading-tools .reading-actions .icon {
+    display: none;
+  }
+
+  .reading-tools .reading-actions {
+    padding-left: var(--space-3);
+    box-shadow: inset 1px 0 0 var(--seam);
+  }
+
+  .reading-tools .reading-actions .button {
+    gap: var(--space-2);
+    padding: 0 var(--space-2);
+    background: transparent;
+    color: var(--ink-2);
+    font-size: var(--text-sm);
+    font-weight: 500;
+  }
+
+  .reading-tools .reading-actions .button:hover:not(:disabled),
+  .reading-tools .reading-actions .button[aria-expanded="true"] {
+    background: var(--ink-wash);
+    color: var(--ink);
+  }
+
+  /* A pane narrower than the tools' one line keeps them on it: back is its cap and arrow, and the keys sit closer. */
+  @container reading (max-width: 46rem) {
+    .reading-tools {
+      gap: var(--space-2);
+    }
+
+    .back .icon {
+      display: block;
+    }
+
+    .back a {
+      gap: var(--space-1);
+    }
+
+    .back-name {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+
+    .reading-tools .reading-actions {
+      gap: 0;
+      padding-left: var(--space-1);
+    }
+
+    .reading-tools .reading-actions .button {
+      gap: var(--space-1);
+      padding: 0 0.4rem;
+      font-size: var(--text-xs);
+    }
+  }
+}
+
+/* The subject, as the instrument's printed name for what is open. */
 .reading-head {
   display: flex;
-  align-items: flex-start;
   flex-wrap: wrap;
-  gap: var(--space-3) var(--space-4);
-  margin-bottom: var(--space-5);
+  align-items: baseline;
+  gap: var(--space-2) var(--space-4);
+  margin-bottom: var(--space-6);
 }
 
-/* The thread's subject is mail, so it is set in the serif. */
+/* A thread's subject has what the thread holds under it; a draft's title has when it was saved beside it. */
+.reading-head:has(> .reading-meta) {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
 .reading-title {
-  flex: 1 1 20rem;
-  font: 500 var(--text-xl) / 1.25 var(--serif);
-  letter-spacing: -0.01em;
+  max-width: 30ch;
+  font: 600 var(--text-display) / 1.06 var(--grotesk);
+  letter-spacing: -0.03em;
   overflow-wrap: anywhere;
   text-wrap: balance;
 }
 
-.reading-actions {
+.reading-meta {
   display: flex;
-  gap: var(--space-2);
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  color: var(--ink-3);
+  font-size: var(--text-sm);
 }
 
-.reading-head + .notice {
+.reading-meta .reading-labels {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  margin: 0;
+}
+
+.reading-meta .reading-labels::before {
+  content: "·" / "";
+}
+
+.reading-head ~ .notice {
+  max-width: var(--measure);
   margin-bottom: var(--space-4);
 }
 
@@ -1939,32 +2074,33 @@ a.thread:focus-visible {
   list-style: none;
   margin: 0;
   padding: 0;
-  display: grid;
-  gap: var(--space-4);
+  max-width: var(--measure);
 }
 
+/* Each letter lies on the plane, parted from the one before by a seam. */
+.letters > li {
+  min-width: 0;
+  box-shadow: inset 0 1px 0 var(--seam);
+}
+
+/* A letter keeps a clear ring, which the keyboard's focus and a search's find ink in. */
 .letter {
-  padding: var(--space-5);
-  background: var(--paper);
-  border-radius: 2px;
-  box-shadow: var(--sheet-shadow);
+  padding: var(--space-5) 0 var(--space-6);
+  border-radius: var(--radius);
+  outline: 2px solid transparent;
+  outline-offset: var(--space-2);
   scroll-margin-top: var(--space-4);
-  transition: box-shadow 600ms var(--ease-out);
+  transition: outline-color 600ms var(--ease-out);
 }
 
 /* The letter a search found takes focus, which its ring shows only from the keyboard. */
-.letter:focus {
-  outline: none;
-}
-
 .letter:focus-visible {
-  outline: 2px solid var(--pencil);
-  outline-offset: 2px;
+  outline-color: var(--ink);
 }
 
-/* The message a search found, ringed in ink for a moment as the thread opens at it. */
+/* The message a search found, ringed in ink for a moment as the thread opens at it, the ring fading as it goes. */
 .letter-matched {
-  box-shadow: var(--sheet-shadow), 0 0 0 2px var(--pencil);
+  outline-color: var(--ink);
 }
 
 .letter-fresh {
@@ -1972,83 +2108,73 @@ a.thread:focus-visible {
 }
 
 /* A folded letter is a slug: who, the start of what they wrote, and when, on one line. */
-.letters > li {
-  min-width: 0;
-}
-
 .letters .letter-folded {
-  min-width: 0;
   padding: 0;
-  box-shadow: var(--shade);
-}
-
-.letters > li:has(> .letter-folded) + li:has(> .letter-folded) {
-  margin-top: calc(var(--space-2) - var(--space-4));
 }
 
 .letter-slug-title {
   min-width: 0;
   font: inherit;
+  letter-spacing: normal;
 }
 
 .letter-slug {
   display: flex;
-  align-items: baseline;
-  gap: var(--space-3);
+  align-items: center;
+  gap: var(--space-2);
   width: 100%;
   min-height: 2.75rem;
-  padding: var(--space-3) var(--space-5);
+  padding: var(--space-3) 0;
   border: 0;
-  border-radius: 2px;
+  border-radius: var(--radius);
   background: none;
-  color: var(--ink);
-  font: 400 var(--text-sm) / 1.5 var(--sans);
+  color: var(--ink-3);
+  font: 400 var(--text-md) / 1.5 var(--mono);
   text-align: start;
   cursor: pointer;
-  transition: background-color 150ms var(--ease-out);
 }
 
-.letter-slug:hover {
-  background: var(--paper-source);
+.letter-slug:hover .letter-slug-snippet {
+  color: var(--ink-2);
 }
 
 .letter-slug-from {
   flex: 0 1 auto;
   max-width: 16rem;
   overflow: hidden;
-  font-size: var(--text-md);
-  font-weight: 600;
+  color: var(--ink);
+  font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .letter-slug-mark {
   flex: none;
-  font-weight: 600;
+  color: var(--ink-2);
+  font-size: var(--text-sm);
 }
 
-/* The start of the letter is mail, so it keeps the serif, a shade off Ink as a snippet in the Index is. */
 .letter-slug-snippet {
   flex: 1 1 0;
   min-width: 0;
   overflow: hidden;
-  font: 400 var(--text-md) / 1.4 var(--serif);
-  color: var(--ink-2);
   text-overflow: ellipsis;
   white-space: nowrap;
+  transition: color 150ms var(--ease-out);
 }
 
 .letter-slug-date {
   flex: none;
   margin-left: auto;
-  color: var(--ink-2);
+  font-size: var(--text-sm);
 }
 
+/* Who wrote it, by their mark and name, their address a hand lighter, and when at the right. */
 .letter-head {
   display: flex;
   align-items: baseline;
   flex-wrap: wrap;
-  gap: var(--space-1) var(--space-4);
+  gap: var(--space-1) var(--space-2);
 }
 
 .letter-from {
@@ -2057,34 +2183,50 @@ a.thread:focus-visible {
   flex-wrap: wrap;
   gap: 0 var(--space-2);
   min-width: 0;
-  font-size: var(--text-md);
-  font-weight: 650;
+  font: 700 var(--text-md) / 1.5 var(--mono);
+  letter-spacing: normal;
   overflow-wrap: anywhere;
 }
 
 .letter-from .address {
+  color: var(--ink-3);
   font-size: var(--text-sm);
   font-weight: 400;
 }
 
 .letter-meta {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: var(--space-3);
   margin-left: auto;
+  color: var(--ink-3);
   font-size: var(--text-sm);
-  color: var(--ink-2);
   white-space: nowrap;
 }
 
 .letter-sent-mark {
+  color: var(--ink-2);
   font-weight: 600;
+}
+
+/* What an agent sent says so in its blue. */
+.letter-by-agent .letter-sent-mark {
+  color: var(--agent-ink);
+}
+
+/* A message that arrived while the thread is open needs the human, so it is marked in orange. */
+.letter .mark-new {
+  align-self: center;
+  padding: 0.12rem 0.4rem;
+  border-radius: var(--radius-pill);
+  background: var(--call);
   color: var(--ink);
+  font: 600 var(--text-xs) / 1 var(--mono);
 }
 
 /* The sender's own date, when it is far from when the message arrived. */
 .letter-dated::before {
-  content: "·";
+  content: "·" / "";
   margin-right: var(--space-3);
 }
 
@@ -2092,42 +2234,44 @@ a.thread:focus-visible {
   margin: var(--space-2) 0 0;
 }
 
+.letter-fields .field {
+  padding: 0;
+  color: var(--ink-2);
+}
+
+.letter-fields .field dt {
+  color: var(--ink-3);
+}
+
 .letter-fields .field:nth-child(4) {
-  padding-bottom: var(--space-1);
+  padding-bottom: 0;
   border-bottom: 0;
   margin-bottom: 0;
 }
 
-.letter-subject {
-  font-family: var(--serif);
-}
-
 .letter-note {
   margin-top: var(--space-1);
-  font-size: var(--text-sm);
   color: var(--ink-2);
+  font-size: var(--text-sm);
 }
 
-/* The sheet is the proof's measure wide, so the body can take all of it. */
+/* The body is mail, in the mono at the proof's size, a little more open than the interface, under 68ch. */
 .letter-body {
-  max-width: none;
-  margin-top: var(--space-4);
-  padding-top: var(--space-4);
-  border-top: 1px solid var(--rule);
+  max-width: 68ch;
+  margin-top: var(--space-5);
+  line-height: 1.78;
 }
 
-/* HTML mail lies on its own white paper, in its own colors, as tall as the frame's content. */
+/* HTML mail lies on the reader's paper, in its own colors, as tall as the frame's content. */
 .letter-designed {
-  margin-top: var(--space-4);
-  padding-top: var(--space-4);
-  border-top: 1px solid var(--rule);
+  margin-top: var(--space-5);
 }
 
 .letter-designed iframe {
   display: block;
   width: 100%;
   border: 0;
-  background: var(--paper);
+  background: var(--read);
 }
 
 .letter-designed .quote-toggle {
@@ -2141,8 +2285,8 @@ a.thread:focus-visible {
   align-items: baseline;
   gap: 0 var(--space-4);
   margin-top: var(--space-3);
+  color: var(--ink-3);
   font-size: var(--text-sm);
-  color: var(--ink-2);
 }
 
 .letter-view .link {
@@ -2157,7 +2301,7 @@ a.thread:focus-visible {
   display: block;
   margin-top: var(--space-2);
   padding-left: var(--space-3);
-  border-left: 1px solid var(--rule-strong);
+  border-left: 1px solid var(--edge);
   color: var(--ink-2);
 }
 
@@ -2166,9 +2310,9 @@ a.thread:focus-visible {
 }
 
 .letter-attachments {
-  margin-top: var(--space-4);
+  margin-top: var(--space-5);
   padding-top: var(--space-3);
-  border-top: 1px solid var(--rule);
+  border-top: 1px solid var(--seam);
   font-size: var(--text-sm);
 }
 
@@ -2189,7 +2333,7 @@ a.thread:focus-visible {
 
 .letter-attachments .icon {
   margin-top: 0.15em;
-  color: var(--ink-2);
+  color: var(--ink-3);
 }
 
 .attachment-name {
@@ -2198,7 +2342,7 @@ a.thread:focus-visible {
 }
 
 .attachment-meta {
-  color: var(--ink-2);
+  color: var(--ink-3);
 }
 
 /* An attachment's name, as the button that downloads it. */
@@ -2210,23 +2354,67 @@ a.thread:focus-visible {
 }
 
 .letter-attachments .link:disabled {
-  color: var(--ink-2);
+  color: var(--ink-3);
   cursor: progress;
 }
 
-/* The newest letter's replies, at its foot. */
+/* The newest letter's replies, at its foot: Reply in ink, the primary action, then Reply all and Forward, each with its cap. */
 .letter-actions {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
-  margin-top: var(--space-4);
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--rule);
+  margin-top: var(--space-6);
 }
 
-/* A reply is a live sheet at the thread's foot, under the message it answers, headed as Duva speaks. */
+.letter-actions .button kbd {
+  margin-right: calc(-1 * var(--space-2));
+}
+
+/* A reply opens at the thread's foot, under the message it answers. */
 .thread-foot {
-  margin-top: var(--space-4);
+  max-width: var(--measure);
+  margin-top: var(--space-6);
+}
+
+.thread-composing .thread-foot {
+  margin-top: 0;
+}
+
+/* On a computer the thread's tools head it, so the phone's bar at its foot stays away. */
+.thread-bar {
+  display: none;
+}
+
+/* Write is the one action the bar offers, so it takes the ink. */
+.bar-write {
+  flex: none;
+}
+
+/*
+ * The composer: the one raised surface in the reading pane, white with the soft lift. Its header
+ * fields are lines on it parted by seams, the text runs under them in the mono, and the foot holds
+ * Send in ink with its cap, Delete draft, and when it was saved.
+ */
+.letter.compose {
+  display: grid;
+  max-width: var(--measure);
+  padding: 0;
+  border-radius: var(--radius-sheet);
+  background: var(--raise);
+  box-shadow: var(--lift);
+}
+
+/* A reply rises into place under the message it answers, as a key comes up from the plane. */
+.compose-in-thread {
+  animation: raise 320ms var(--ease-out);
+}
+
+@keyframes raise {
+  from {
+    opacity: 0;
+    transform: translateY(0.5rem);
+    box-shadow: none;
+  }
 }
 
 .compose-head {
@@ -2234,37 +2422,21 @@ a.thread:focus-visible {
   flex-wrap: wrap;
   align-items: baseline;
   gap: var(--space-1) var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  box-shadow: inset 0 -1px 0 var(--seam);
 }
 
 .compose-heading {
-  font: 650 var(--text-md) / 1.5 var(--sans);
+  font: 600 var(--text-sm) / 1.5 var(--mono);
+  letter-spacing: normal;
 }
 
-/* On a computer the thread's actions head it, so the phone's bar at its foot stays away. */
-.thread-bar {
-  display: none;
-}
-
-/* Write is the one action the bar offers, so it takes the pencil. */
-.bar-write {
-  flex: none;
-}
-
-/*
- * The composer: a live sheet laid like a letter. Header fields sit on the galley's name column,
- * the subject and the text are set in the proof face, since they become mail, and how the send
- * went sits at the sheet's foot.
- */
-.compose {
-  display: grid;
-  gap: var(--space-4);
+.compose-head .compose-saved {
+  margin-left: auto;
 }
 
 .compose-fields {
   display: grid;
-  gap: var(--space-2);
-  padding-bottom: var(--space-4);
-  border-bottom: 1px solid var(--rule);
 }
 
 .compose-field {
@@ -2272,32 +2444,59 @@ a.thread:focus-visible {
   grid-template-columns: 4.5rem minmax(0, 1fr);
   align-items: center;
   gap: var(--space-3);
+  min-height: 2.75rem;
+  padding: 0 var(--space-4);
+  box-shadow: inset 0 -1px 0 var(--seam);
   font-size: var(--text-sm);
+  transition: box-shadow 150ms var(--ease-out);
 }
 
 .compose-field label,
 .compose-label {
-  color: var(--ink-2);
+  color: var(--ink-3);
+}
+
+/* A line takes the keyboard's orange bar at the composer's edge while the human types in it, and red while it holds what isn't an address. */
+.compose-field:focus-within {
+  box-shadow:
+    inset 2px 0 0 var(--call),
+    inset 0 -1px 0 var(--seam);
+}
+
+.compose-field:has([aria-invalid="true"]) {
+  box-shadow:
+    inset 2px 0 0 var(--alert),
+    inset 0 -1px 0 var(--seam);
+}
+
+.compose-field:has([aria-invalid="true"]) label {
+  color: var(--alert-ink);
+}
+
+.compose .compose-field input,
+.compose .compose-field select {
+  min-height: 2.75rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.compose .compose-field input:focus-visible,
+.compose .compose-field select:focus-visible,
+.compose .compose-body:focus-visible {
+  outline: none;
 }
 
 .compose-from {
-  padding: var(--space-1) 0;
+  padding: var(--space-2) 0;
   overflow-wrap: anywhere;
 }
 
 /* From, when there is a choice: the mailbox's addresses, then its owner's groups, at most a field's width. */
 .compose-from-choice {
   display: grid;
-  gap: var(--space-1);
   min-width: 0;
-}
-
-.compose-field:has(.compose-from-choice) {
-  align-items: start;
-}
-
-.compose-field:has(.compose-from-choice) label {
-  padding-top: var(--space-2);
 }
 
 .compose-from-choice select {
@@ -2306,76 +2505,111 @@ a.thread:focus-visible {
 
 .compose-from-choice .hint {
   margin: 0;
+  padding-bottom: var(--space-2);
 }
 
 /* Sent, From turns read-only as the other fields do, without the arrow that offers a choice. */
 .compose-from-choice select:disabled {
-  border-color: var(--rule);
-  background: var(--paper-source);
-  color: var(--ink);
+  color: var(--ink-2);
   opacity: 1;
   appearance: none;
 }
 
 .compose-copies {
-  margin-top: 0;
+  margin: 0;
 }
 
-.compose-subject {
-  font-family: var(--serif);
-  font-size: var(--text-md);
-}
-
-/* The text runs the sheet's width, which is the proof's measure, and grows as the human writes. */
-.compose-body {
-  min-height: calc(1.6em * 12);
-  font: 400 var(--text-proof) / 1.6 var(--serif);
+/* The text runs the composer's width in the mono, and grows as the human writes. */
+.compose .compose-body {
+  display: block;
+  min-height: calc(1.75em * 9 + 2rem);
+  padding: var(--space-4) var(--space-4);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font: 400 var(--text-proof) / 1.75 var(--mono);
   resize: vertical;
   field-sizing: content;
 }
 
+.compose-body:focus-visible {
+  box-shadow: inset 2px 0 0 var(--call);
+}
+
 input[readonly],
 textarea[readonly] {
-  border-color: var(--rule);
-  background: var(--paper-source);
+  border-color: var(--seam);
+  background: var(--list);
+}
+
+.compose input[readonly],
+.compose textarea[readonly] {
+  background: transparent;
+  color: var(--ink-2);
 }
 
 input[aria-invalid="true"] {
   border-color: var(--alert);
 }
 
-/* "Reply" or "New message" is Duva speaking, so the heading keeps the sans. */
+.compose .letter-attachments {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  box-shadow: inset 0 -1px 0 var(--seam);
+  border-top: 0;
+}
+
+.compose .letter-attachments:first-of-type {
+  box-shadow: inset 0 1px 0 var(--seam);
+}
+
+.compose > .notice {
+  margin: 0 var(--space-4) var(--space-2);
+}
+
+/* A draft open on its own: its title in the grotesk, as a thread's subject, and when it was saved beside it. */
 .compose-title {
   flex: 1 1 auto;
-  font: 650 var(--text-xl) / 1.2 var(--sans);
-  letter-spacing: -0.015em;
+  font: 600 var(--text-display) / 1.06 var(--grotesk);
+  letter-spacing: -0.03em;
 }
 
 .compose-saved {
-  margin-left: auto;
-  align-self: center;
+  color: var(--ink-3);
   font-size: var(--text-xs);
-  color: var(--ink-2);
 }
 
+.desk-reading > .back {
+  margin-bottom: var(--space-6);
+}
+
+.desk-reading > .reading-head:has(> .compose-title) {
+  max-width: var(--measure);
+}
+
+/* How the send went, on the composer above its foot: on its way in Second Ink, sent in green, refused or unclear in red. */
 .compose-outcome {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
   gap: var(--space-2) var(--space-4);
+  padding: var(--space-3) var(--space-4);
   font-size: var(--text-sm);
   font-weight: 600;
 }
 
 /* "Sent." and the link to its thread share a baseline, the check centred on the line beside them. */
 .compose-sent {
-  align-items: baseline;
   gap: var(--space-2) var(--space-3);
+  color: var(--sent-ink);
+}
+
+.compose-sent a {
+  color: var(--ink);
 }
 
 .compose-sent .icon {
   align-self: center;
-  color: var(--sent-ink);
 }
 
 .compose-sent .icon + p {
@@ -2385,6 +2619,11 @@ input[aria-invalid="true"] {
 .compose-on-its-way {
   display: grid;
   gap: var(--space-1);
+  color: var(--ink-2);
+}
+
+.compose-on-its-way > p:first-child {
+  animation: breathe 1.2s ease-in-out infinite alternate;
 }
 
 /* A send that takes long says the human can leave, in Duva's ordinary voice. */
@@ -2393,8 +2632,8 @@ input[aria-invalid="true"] {
   font-weight: 400;
 }
 
-.compose-slip {
-  margin-top: var(--space-2);
+.compose-waiting {
+  color: var(--ink-2);
 }
 
 .compose-reason {
@@ -2403,14 +2642,50 @@ input[aria-invalid="true"] {
 }
 
 .compose-actions {
-  margin-top: var(--space-1);
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4) var(--space-4);
 }
 
-/* How a draft's send stands, before its subject. Only a refused or unclear send speaks in red. */
+.compose-actions .compose-saved {
+  margin-left: auto;
+}
+
+.compose-actions .button-primary kbd {
+  margin-right: calc(-1 * var(--space-2));
+}
+
+/* A new message that went out folds to a slip on the plane: the green check, who it went to, its subject and its thread. */
+.slip.compose-slip {
+  max-width: var(--measure);
+  margin-top: var(--space-2);
+  padding: var(--space-4) 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: inset 0 1px 0 var(--seam);
+}
+
+.compose-title + .compose-slip {
+  margin-top: var(--space-6);
+}
+
+.compose-slip .slip-head {
+  font-weight: 600;
+}
+
+.compose-slip .slip-subject {
+  color: var(--ink-2);
+}
+
+/* How a draft's send stands, before its subject, and the agent that saved it last in its blue. Only a refused or unclear send speaks in red. */
 .draft-state {
   margin-right: var(--space-2);
-  font: 650 var(--text-xs) / 1.5 var(--sans);
   color: var(--ink-2);
+  font: 600 var(--text-xs) / 1.5 var(--mono);
+}
+
+.draft-by {
+  color: var(--agent-ink);
 }
 
 .draft-state-failed,
@@ -2419,12 +2694,35 @@ input[aria-invalid="true"] {
 }
 
 /*
- * Phones: a folded letter's date stays at the right, and the thread's actions move to a bar along
- * the screen's foot, above the tab bar: Reply, Archive and Trash, with the rest behind More.
+ * Phones: one column without a keyboard's caps. A folded letter's date stays at the right, and the
+ * thread's actions move to a bar along the screen's foot, above the tab bar: Reply, Archive and
+ * Trash, with the rest behind More.
  */
 @media (max-width: 48rem) {
-  .letter-slug {
-    padding: var(--space-3) var(--space-4);
+  .desk-reading kbd,
+  .reading-tools .reading-keys {
+    display: none;
+  }
+
+  .reading-tools {
+    margin-bottom: var(--space-4);
+  }
+
+  .reading-title,
+  .compose-title {
+    font-size: var(--text-xl);
+  }
+
+  .letter {
+    padding-bottom: var(--space-5);
+  }
+
+  .letter-meta {
+    margin-left: 0;
+  }
+
+  .letter-fields .field {
+    grid-template-columns: 3.5rem 1fr;
   }
 
   .letter-slug-from {
@@ -2435,16 +2733,37 @@ input[aria-invalid="true"] {
     display: none;
   }
 
+  .compose-field {
+    grid-template-columns: 3.5rem minmax(0, 1fr);
+    padding-inline: var(--space-4);
+  }
+
+  .compose .compose-body {
+    min-height: calc(1.75em * 6 + 2rem);
+    padding-inline: var(--space-4);
+  }
+
+  .compose-head,
+  .compose-outcome,
+  .compose-actions {
+    padding-inline: var(--space-4);
+  }
+
+  .compose-actions .compose-saved {
+    flex-basis: 100%;
+    margin-left: 0;
+  }
+
   /* The bar offers Reply, and More the rest, so the newest letter's own replies step aside. */
   .letter-actions {
     display: none;
   }
 
-  .reading-head .reading-actions {
+  .reading-tools .reading-actions {
     display: none;
   }
 
-  .reading-head .reading-actions-open {
+  .reading-tools .reading-actions-open {
     position: fixed;
     z-index: 3;
     left: var(--space-3);
@@ -2454,9 +2773,9 @@ input[aria-invalid="true"] {
     flex-wrap: wrap;
     gap: var(--space-2);
     padding: var(--space-3);
-    background: var(--paper);
-    border-radius: 2px;
-    box-shadow: var(--sheet-shadow);
+    background: var(--raise);
+    border-radius: var(--radius-sheet);
+    box-shadow: var(--lift);
   }
 
   .reading-actions-open .button,
@@ -2470,7 +2789,7 @@ input[aria-invalid="true"] {
     gap: var(--space-2);
     flex-basis: 100%;
     padding-top: var(--space-2);
-    border-top: 1px solid var(--rule);
+    box-shadow: inset 0 1px 0 var(--seam);
   }
 
   /* The bar stays at the screen's foot however short the thread, so the thread leaves room for it. */
@@ -2488,8 +2807,8 @@ input[aria-invalid="true"] {
     flex-wrap: wrap;
     gap: var(--space-2);
     padding: var(--space-2) var(--space-3);
-    background: var(--paper);
-    border-top: 1px solid var(--rule);
+    background: var(--read);
+    box-shadow: inset 0 1px 0 var(--seam);
   }
 
   .thread-bar .button {
@@ -4174,27 +4493,6 @@ mark {
 
   .search input[type="search"] {
     height: 2.75rem;
-  }
-
-  .compose-field {
-    grid-template-columns: 3.5rem minmax(0, 1fr);
-  }
-
-  .compose-body {
-    min-height: calc(1.6em * 8);
-  }
-
-
-  .letter {
-    padding: var(--space-4);
-  }
-
-  .letter-meta {
-    margin-left: 0;
-  }
-
-  .letter-fields .field {
-    grid-template-columns: 3.5rem 1fr;
   }
 
   .slug,

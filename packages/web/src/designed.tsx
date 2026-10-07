@@ -1,4 +1,4 @@
-// HTML mail, shown as its sender designed it, on white paper in a frame of its own (ADR-0017).
+// HTML mail, shown as its sender designed it, on the reader's paper in a frame of its own (ADR-0017).
 // Duva's API has already removed its scripts, handlers, forms and known trackers. The frame is
 // defence in depth: its sandbox never allows scripts, and its own policy refuses them, so nothing
 // in the mail runs, whatever the sanitizer misses. It shares the page's origin, which without
@@ -10,13 +10,18 @@ import { strings } from "./strings.ts";
 const policy = ["default-src 'none'", "script-src 'none'", "img-src * data:", "font-src * data:", "style-src https: 'unsafe-inline'"].join("; ");
 
 /**
- * The paper the mail lies on, in the page's Proof Paper and Ink, before its own styles, which come
- * after and win. Mail without styles is set in a serif, as text mail is.
+ * The paper the mail lies on, the reader's grey and Ink, before its own styles, which come after
+ * and win. Mail without styles is set in the page's mono, as text mail is, from the faces the page
+ * has loaded, since a frame doesn't share them.
  */
 function paper(): string {
   const page = getComputedStyle(document.documentElement);
   const token = (name: string, otherwise: string) => page.getPropertyValue(name).trim() || otherwise;
-  return `html { color-scheme: light; background: ${token("--paper", "#fff")}; color: ${token("--ink", "#1b2129")}; } body { margin: 0; font: 1.0625rem / 1.6 Georgia, serif; overflow-wrap: break-word; }`;
+  const faces = [...document.styleSheets]
+    .flatMap((sheet) => [...sheet.cssRules])
+    .filter((rule) => rule instanceof CSSFontFaceRule && rule.style.getPropertyValue("font-family").includes("JetBrains Mono"))
+    .map((rule) => rule.cssText);
+  return `${faces.join(" ")} html { color-scheme: light; background: ${token("--read", "#f8f8f6")}; color: ${token("--ink", "#161616")}; } body { margin: 0; font: 0.875rem / 1.7 ${token("--mono", "monospace")}; font-variant-ligatures: contextual common-ligatures; overflow-wrap: break-word; }`;
 }
 
 /** Where a quote the mail cites starts: Gmail's, and Apple Mail's and Thunderbird's. */

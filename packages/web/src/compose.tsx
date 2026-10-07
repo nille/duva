@@ -1,7 +1,8 @@
-// The composer: a draft as a live sheet, laid like a letter, with its header fields on the name
-// column and the text in the proof face. Duva saves it as the human writes, and a human's send
-// from their own mailbox goes out at once, so the sheet's foot says how the send went. A reply
-// opens in its thread, under the message it answers, and a draft opened on its own has a page.
+// The composer: a draft as the one raised surface in the reading pane, its header fields as lines
+// on it and the text under them. Duva saves it as the human writes, and a human's send from their
+// own mailbox goes out at once, so the composer's foot says how the send went. Ctrl+Enter, or
+// Command+Return on a Mac, sends from anywhere in it. A reply opens in its thread, under the message
+// it answers, and a draft opened on its own has the reading pane to itself.
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
@@ -20,6 +21,9 @@ const saveDelay = 800;
 /** How long the composer keeps reading a send that is on its way, and how long before it says the human can leave. */
 const followSendFor = 120_000;
 const leaveAfter = 30_000;
+
+/** Whether the keyboard is a Mac's, where Command and Return send, as Ctrl and Enter do elsewhere. */
+const mac = /Mac|iPhone|iPad/.test(navigator.platform);
 
 /** The fields the human types in, as they typed them, and the address they chose to send from. */
 type Fields = { from: string; to: string; cc: string; bcc: string; subject: string; text: string };
@@ -380,6 +384,8 @@ export function Composer({
       {saving.status === "saving" ? strings.compose.saving : agent !== undefined ? strings.compose.savedBy(agent) : saving.status === "saved" ? strings.compose.saved(clock(saving.at)) : ""}
     </p>
   );
+  // Send and Delete draft lie at the foot, with when it was saved in a thread, until the send is out of the human's hands.
+  const sendable = state !== "sent" && state !== "unclear" && state !== "waitingForLimit";
   const sheet = (
     <form
       ref={sheetRef}
@@ -389,13 +395,18 @@ export function Composer({
         event.preventDefault();
         void send();
       }}
+      onKeyDown={(event) => {
+        if (event.key !== "Enter" || !(mac ? event.metaKey : event.ctrlKey) || event.altKey || event.shiftKey || event.nativeEvent.isComposing) return;
+        event.preventDefault();
+        if (!locked) event.currentTarget.requestSubmit();
+      }}
     >
       {inThread !== undefined && (
         <div className="compose-head">
           <h2 id={`${formId}-title`} className="compose-heading">
             {title}
           </h2>
-          {saved}
+          {!sendable && saved}
         </div>
       )}
       <div className="compose-fields">
@@ -484,14 +495,16 @@ export function Composer({
         </p>
       )}
       <Outcome draft={draft} agent={agent} slow={slow} base={base} sendNow={(draft) => <SendNow client={client} mailbox={mailbox.id} draft={draft} onSent={(sent) => sent !== undefined && setDraft(sent)} onSignedOut={onSignedOut} />} />
-      {state !== "sent" && state !== "unclear" && state !== "waitingForLimit" && (
+      {sendable && (
         <div className="compose-actions actions">
-          <button type="submit" className="button button-primary" disabled={locked}>
+          <button type="submit" className="button button-primary" aria-keyshortcuts={mac ? "Meta+Enter" : "Control+Enter"} disabled={locked}>
             {busy === "sending" || state === "approved" || state === "sending" ? strings.compose.sending : state === "failed" ? strings.compose.sendAgain : strings.compose.send}
+            <kbd aria-hidden="true">{strings.compose.sendKey(mac)}</kbd>
           </button>
           <button type="button" className="button button-quiet" disabled={locked} onClick={() => void remove()}>
             {busy === "deleting" ? strings.compose.deleting : strings.compose.delete}
           </button>
+          {inThread !== undefined && saved}
         </div>
       )}
     </form>

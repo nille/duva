@@ -1,15 +1,16 @@
-// A thread, read: each message a sheet on the desk, oldest first, set in the proof face. Read and
-// older messages fold to a line each, and the thread opens at the first unread one, or the newest.
-// Opening the thread marks it read, for everyone who reads the mailbox. The newest message can be
-// replied to or forwarded, in a sheet at the thread's foot, and attachments downloaded. Opened from
-// a search, it shows the message that matched.
+// A thread, read in the reading pane: its tools along the top, the subject, then each message as a
+// letter on the plane, oldest first, parted from the one before by a seam. Read and older messages
+// fold to a line each, and the thread opens at the first unread one, or the newest. Opening the
+// thread marks it read, for everyone who reads the mailbox. The newest message can be replied to or
+// forwarded, in the composer raised at the thread's foot, and attachments downloaded. Opened from a
+// search, it shows the message that matched.
 import { type ReactNode, type Ref, useCallback, useContext, useEffect, useId, useRef, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
 import { Composer, startDraft } from "./compose.tsx";
 import { PreferencesContext } from "./dates.ts";
 import { DesignedBody } from "./designed.tsx";
-import { Addresses, Attachments, Field, nameOf, Time } from "./mail-parts.tsx";
+import { ActorMark, Addresses, Attachments, Field, nameOf, Time } from "./mail-parts.tsx";
 import { changeFor, type Done, type Label, organize, OrganizeActions, ownLabelsOf, SessionEnded } from "./organize.tsx";
 import { useShortcuts } from "./shortcuts.tsx";
 import { strings } from "./strings.ts";
@@ -293,6 +294,9 @@ export function ThreadView({
   }, [more]);
 
   const canReply = agent === undefined;
+  // A key's cap shows, and its control says it, only while the human's shortcuts are on.
+  const keys = useContext(PreferencesContext).keyboardShortcuts !== "off";
+  const key = (pressed: string) => (keys ? pressed : undefined);
   const thread = reading.status === "read" ? reading.thread : undefined;
   const newest = thread?.messages.at(-1);
   const composing = typeof replying === "object" && replying.draft !== undefined;
@@ -305,8 +309,13 @@ export function ThreadView({
   const trash = moveFor("trash");
   const busy = moving === "busy";
 
+  // Spam is offered where the thread is neither in Spam nor in Trash, as its toolbar offers it.
+  const spam =
+    thread === undefined || thread.labels.includes("spam") || thread.labels.includes("trash") ? undefined : () => void move(thread, { add: ["spam"] }, strings.organize.spammed);
+
   // r, a and f start what Reply, Reply all and Forward start, while the newest message offers them
-  // and no reply is under way, and e and # do what Archive and Trash do, while no move is.
+  // and no reply is under way, e, # and ! do what Archive, Trash and Mark as spam do, while no move
+  // is, Shift+U marks the thread unread, and u goes back to the list, as Escape does.
   const answerable = canReply && !composing && typeof replying !== "object" ? newest : undefined;
   const startOn = (start: Start, offered = true) => (answerable === undefined || !offered ? undefined : () => void reply(answerable, start));
   useShortcuts({
@@ -315,16 +324,43 @@ export function ThreadView({
     f: startOn("forward"),
     e: busy ? undefined : archive,
     "#": busy ? undefined : trash,
+    "!": busy ? undefined : spam,
+    U: thread === undefined || marking === "busy" ? undefined : () => void markUnread(),
+    u: () => (location.hash = back),
   });
 
   return (
     <main className={composing ? "desk desk-reading thread-composing" : "desk desk-reading"} aria-busy={reading.status === "loading"}>
-      <p className="back">
-        <a href={back}>
-          <BackIcon />
-          {backTo}
-        </a>
-      </p>
+      <div className="reading-tools">
+        <p className="back">
+          <a href={back} aria-keyshortcuts={key("u")}>
+            <BackIcon />
+            {keys && <kbd aria-hidden="true">u</kbd>}
+            <span className="back-name">{backTo}</span>
+          </a>
+        </p>
+        {thread !== undefined && (
+          <div id={actionsId} className={more ? "reading-actions reading-actions-open" : "reading-actions"} role="toolbar" aria-label={strings.organize.threadToolbar}>
+            <OrganizeActions client={client} mailbox={mailbox} threads={[thread]} labels={labels} place={{ thread: true }} keys={keys} onDone={organized} onSignedOut={onSignedOut} />
+            <button type="button" className="button button-small" aria-keyshortcuts={key("Shift+U")} disabled={marking === "busy"} onClick={() => void markUnread()}>
+              {keys && <kbd aria-hidden="true">⇧U</kbd>}
+              {marking === "busy" ? strings.thread.markingUnread : strings.thread.markUnread}
+            </button>
+            {more && canReply && newest !== undefined && (
+              <span className="reading-actions-replies">
+                <ReplyButtons message={newest} replying={replying} keys={keys} onReply={(start) => void reply(newest, start)} />
+              </span>
+            )}
+          </div>
+        )}
+        {keys && (
+          <p className="reading-keys" aria-hidden="true">
+            <kbd>j</kbd>
+            <kbd>k</kbd>
+            {strings.thread.nextPrevious}
+          </p>
+        )}
+      </div>
       {reading.status === "loading" ? (
         <div className="letter letter-skeleton" aria-hidden="true">
           <span className="line" style={{ width: "40%" }} />
@@ -346,19 +382,11 @@ export function ThreadView({
             <h1 ref={titleRef} tabIndex={-1} className="view-title reading-title">
               {subject}
             </h1>
-            <div id={actionsId} className={more ? "reading-actions reading-actions-open" : "reading-actions"} role="toolbar" aria-label={strings.organize.threadToolbar}>
-              <OrganizeActions client={client} mailbox={mailbox} threads={[reading.thread]} labels={labels} place={{ thread: true }} onDone={organized} onSignedOut={onSignedOut} />
-              <button type="button" className="button button-small" disabled={marking === "busy"} onClick={() => void markUnread()}>
-                {marking === "busy" ? strings.thread.markingUnread : strings.thread.markUnread}
-              </button>
-              {more && canReply && newest !== undefined && (
-                <span className="reading-actions-replies">
-                  <ReplyButtons message={newest} replying={replying} onReply={(start) => void reply(newest, start)} />
-                </span>
-              )}
+            <div className="reading-meta">
+              <p>{strings.thread.count(reading.thread.messages.length)}</p>
+              <ThreadLabels thread={reading.thread} labels={labels} />
             </div>
           </div>
-          <ThreadLabels thread={reading.thread} labels={labels} />
           {(marking === "failed" || marking === "readFailed") && (
             <p className="notice notice-alert" role="alert">
               {marking === "failed" ? strings.thread.markFailed : strings.thread.markReadFailed}
@@ -394,7 +422,7 @@ export function ThreadView({
                     >
                       {isNewest && canReply && !composing && (
                         <div className="letter-actions">
-                          <ReplyButtons message={message} replying={replying} firstRef={replyRef} onReply={(start) => void reply(message, start)} />
+                          <ReplyButtons message={message} replying={replying} keys={keys} firstRef={replyRef} onReply={(start) => void reply(message, start)} />
                         </div>
                       )}
                     </Letter>
@@ -427,7 +455,7 @@ export function ThreadView({
           {!composing && (
             <div className="thread-bar" role="toolbar" aria-label={strings.thread.bar}>
               {canReply && newest !== undefined && (
-                <button type="button" className="button button-small" disabled={typeof replying === "object"} onClick={() => void reply(newest, "reply")}>
+                <button type="button" className="button button-small button-primary" disabled={typeof replying === "object"} onClick={() => void reply(newest, "reply")}>
                   <ReplyIcon />
                   {typeof replying === "object" && replying.start === "reply" ? strings.thread.starting : strings.thread.reply}
                 </button>
@@ -461,15 +489,18 @@ export function ThreadView({
   );
 }
 
-/** Reply, Reply all when the message has more than one recipient, and Forward, each saying while its draft is being started. */
+/** Reply, Reply all when the message has more than one recipient, and Forward, each saying while its draft is being started, with its key's cap. */
 function ReplyButtons({
   message,
   replying,
+  keys,
   firstRef,
   onReply,
 }: {
   message: Message;
   replying: { start: Start; draft?: string } | "failed" | undefined;
+  /** Whether the human's shortcuts are on, so each button shows its key's cap and says its key. */
+  keys: boolean;
   firstRef?: Ref<HTMLButtonElement>;
   onReply: (start: Start) => void;
 }) {
@@ -477,19 +508,22 @@ function ReplyButtons({
   const busy = starting !== undefined;
   return (
     <>
-      <button ref={firstRef} type="button" className="button button-small" disabled={busy} onClick={() => onReply("reply")}>
+      <button ref={firstRef} type="button" className="button button-primary" aria-keyshortcuts={keys ? "r" : undefined} disabled={busy} onClick={() => onReply("reply")}>
         <ReplyIcon />
         {starting === "reply" ? strings.thread.starting : strings.thread.reply}
+        {keys && <kbd aria-hidden="true">r</kbd>}
       </button>
       {toSeveral(message) && (
-        <button type="button" className="button button-small" disabled={busy} onClick={() => onReply("replyAll")}>
+        <button type="button" className="button" aria-keyshortcuts={keys ? "a" : undefined} disabled={busy} onClick={() => onReply("replyAll")}>
           <ReplyAllIcon />
           {starting === "replyAll" ? strings.thread.starting : strings.thread.replyAll}
+          {keys && <kbd aria-hidden="true">a</kbd>}
         </button>
       )}
-      <button type="button" className="button button-small" disabled={busy} onClick={() => onReply("forward")}>
+      <button type="button" className="button" aria-keyshortcuts={keys ? "f" : undefined} disabled={busy} onClick={() => onReply("forward")}>
         <ForwardIcon />
         {starting === "forward" ? strings.thread.starting : strings.thread.forward}
+        {keys && <kbd aria-hidden="true">f</kbd>}
       </button>
     </>
   );
@@ -531,6 +565,11 @@ function sentMarkOf(message: Message, me: string, agentNames: ReadonlyMap<string
           : strings.thread.sentBy(agent, as);
 }
 
+/** Who sent the message, by shape: an agent the human sponsors, or else a human, as anyone writing from outside is. */
+function actorOf(message: Message, agentNames: ReadonlyMap<string, string>, owner: { id: string } | undefined): "human" | "agent" {
+  return message.sentAs === undefined && message.sentBy !== undefined && (agentNames.has(message.sentBy) || message.sentBy === owner?.id) ? "agent" : "human";
+}
+
 /** The props a letter takes, open or folded. */
 interface LetterProps {
   message: Message;
@@ -562,6 +601,7 @@ function FoldedLetter({ message, ref, me, agentNames, owner, groups, onOpen }: L
     <article ref={ref} className="letter letter-folded" tabIndex={ref === undefined ? undefined : -1} aria-labelledby={fromId}>
       <h2 className="letter-slug-title">
         <button type="button" className="letter-slug" aria-expanded={false} onClick={onOpen}>
+          <ActorMark kind={actorOf(message, agentNames, owner)} />
           <span className="letter-slug-from" id={fromId}>
             {nameOf(message.from)}
           </span>
@@ -611,17 +651,19 @@ function Letter({
   const [switched, setSwitched] = useState<MailView>();
   const view = message.html === undefined ? "text" : (switched ?? mailView);
   const sent = sentMarkOf(message, me, agentNames, owner, groups);
+  const actor = actorOf(message, agentNames, owner);
   // The letter shows when the message arrived, as the lists do, and the sender's own date too when it's far from that.
   const dated = Math.abs(new Date(message.date).getTime() - new Date(message.receivedAt).getTime()) > datedApart;
   return (
     <article
       ref={ref}
-      className={["letter", fresh ? "letter-fresh" : sent && "letter-sent", marked && "letter-matched"].filter(Boolean).join(" ")}
+      className={["letter", fresh ? "letter-fresh" : sent && "letter-sent", sent && actor === "agent" && "letter-by-agent", marked && "letter-matched"].filter(Boolean).join(" ")}
       data-message={message.id}
       tabIndex={-1}
       aria-labelledby={titleId}
     >
       <header className="letter-head">
+        <ActorMark kind={actor} />
         <h2 className="letter-from" id={titleId}>
           {nameOf(message.from)}
           {message.from.name && (

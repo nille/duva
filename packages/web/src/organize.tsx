@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
+import { useShortcuts } from "./shortcuts.tsx";
 import { strings } from "./strings.ts";
 
 export type Label = components["schemas"]["Label"];
@@ -102,6 +103,7 @@ export function changeFor(action: "archive" | "trash", threads: Labelled[], plac
  * Trash, Trash offers restore, and anywhere else archive or move to the Inbox, spam, Trash and
  * labels. `onDone` hears what was done, and whether the threads left where they were, as archiving,
  * Spam, Trash and restoring take them out of a thread's view. `onSignedOut` hears that the session ended.
+ * With `keys`, as in a thread, each button whose action has a key shows its cap, and l opens the labels.
  */
 export function OrganizeActions({
   client,
@@ -109,6 +111,7 @@ export function OrganizeActions({
   threads,
   labels,
   place,
+  keys = false,
   onDone,
   onSignedOut,
 }: {
@@ -117,6 +120,7 @@ export function OrganizeActions({
   threads: Labelled[];
   labels: Label[];
   place: Place;
+  keys?: boolean;
   onDone: (done: Done, moved: boolean) => void;
   onSignedOut: () => void;
 }) {
@@ -144,6 +148,9 @@ export function OrganizeActions({
   };
 
   const t = strings.organize;
+  // The key that does what the button does, said to a screen reader by the button and shown as its cap.
+  const key = (pressed: string) => (keys ? { "aria-keyshortcuts": pressed } : {});
+  const cap = (shown: string) => keys && <kbd aria-hidden="true">{shown}</kbd>;
   return (
     <>
       {where === "trash" ? (
@@ -155,15 +162,17 @@ export function OrganizeActions({
           <button type="button" className="button button-small" disabled={busy} onClick={() => void act({ remove: ["spam"] }, t.notSpammed)}>
             {t.notSpam}
           </button>
-          <button type="button" className="button button-small" disabled={busy} onClick={() => void act({ add: ["trash"] }, t.trashed)}>
+          <button type="button" className="button button-small" disabled={busy} {...key("#")} onClick={() => void act({ add: ["trash"] }, t.trashed)}>
+            {cap("#")}
             {t.trash}
           </button>
         </>
       ) : (
         <>
           {archive !== undefined && (
-            <button type="button" className="button button-small" disabled={busy} onClick={() => void act(archive.change, archive.message)}>
+            <button type="button" className="button button-small" disabled={busy} {...key("e")} onClick={() => void act(archive.change, archive.message)}>
               <ArchiveIcon />
+              {cap("e")}
               {t.archive}
             </button>
           )}
@@ -172,12 +181,14 @@ export function OrganizeActions({
               {t.moveToInbox}
             </button>
           )}
-          <button type="button" className="button button-small" disabled={busy} onClick={() => void act({ add: ["spam"] }, t.spammed)}>
+          <button type="button" className="button button-small" disabled={busy} {...key("!")} onClick={() => void act({ add: ["spam"] }, t.spammed)}>
+            {cap("!")}
             {t.spam}
           </button>
           {trash !== undefined && (
-            <button type="button" className="button button-small" disabled={busy} onClick={() => void act(trash.change, trash.message)}>
+            <button type="button" className="button button-small" disabled={busy} {...key("#")} onClick={() => void act(trash.change, trash.message)}>
               <TrashIcon />
+              {cap("#")}
               {t.trash}
             </button>
           )}
@@ -188,6 +199,7 @@ export function OrganizeActions({
             labels={labels}
             disabled={busy}
             failed={failed}
+            keyed={keys}
             onToggle={(label, add) =>
               void act(add ? { add: [label.id] } : { remove: [label.id] }, add ? t.labelled(label.name) : t.unlabelled(label.name), false)
             }
@@ -216,6 +228,7 @@ function LabelPicker({
   labels,
   disabled,
   failed,
+  keyed,
   onToggle,
   onSignedOut,
 }: {
@@ -225,6 +238,8 @@ function LabelPicker({
   labels: Label[];
   disabled: boolean;
   failed: boolean;
+  /** Whether l opens the labels, as in a thread, with its cap on the button. */
+  keyed: boolean;
   onToggle: (label: Label, add: boolean) => void;
   onSignedOut: () => void;
 }) {
@@ -252,6 +267,7 @@ function LabelPicker({
     setOpen(false);
     button.current?.focus();
   };
+  useShortcuts({ l: keyed && !disabled ? () => setOpen(true) : undefined });
 
   return (
     <div
@@ -264,8 +280,18 @@ function LabelPicker({
         }
       }}
     >
-      <button ref={button} type="button" className="button button-small" aria-expanded={open} aria-controls={panelId} disabled={disabled} onClick={() => setOpen(!open)}>
+      <button
+        ref={button}
+        type="button"
+        className="button button-small"
+        aria-expanded={open}
+        aria-controls={panelId}
+        aria-keyshortcuts={keyed ? "l" : undefined}
+        disabled={disabled}
+        onClick={() => setOpen(!open)}
+      >
         <LabelIcon />
+        {keyed && <kbd aria-hidden="true">l</kbd>}
         {strings.organize.labels}
       </button>
       {open && (

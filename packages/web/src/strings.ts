@@ -171,6 +171,8 @@ export const strings = {
     subject: "Subject",
     message: "Message",
     send: "Send",
+    // The cap on Send, for the key that sends from anywhere in the draft: Command and Return on a Mac, Ctrl and Enter elsewhere.
+    sendKey: (mac: boolean) => (mac ? "⌘↵" : "Ctrl ↵"),
     sendAgain: "Send again",
     delete: "Delete draft",
     deleting: "Deleting…",
@@ -323,6 +325,8 @@ export const strings = {
     markFailed: "Duva couldn't mark the thread unread. Try again.",
     markReadFailed: "Duva couldn't mark the thread read, so it still shows as unread. Open it again to retry.",
     messages: "Messages",
+    count: (count: number) => (count === 1 ? "1 message" : `${count} messages`),
+    nextPrevious: "next, previous",
     isNew: "New",
     from: "From",
     to: "To",

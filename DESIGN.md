@@ -224,11 +224,11 @@ Both are OFL-1.1, noted in THIRD_PARTY_NOTICES.md, and their latin faces are pre
 **Character:** the mono is the instrument's own lettering, even and exact, so mail, lists and controls read as one surface. The grotesk names things, tight and confident, as printed on a device's panel.
 
 ### Hierarchy
-- **Display** (grotesk 600, 2.375rem, 1.06, -0.03em): the door's title, and later a thread's subject.
+- **Display** (grotesk 600, 2.375rem, 1.06, -0.03em): the door's title, a thread's subject and a draft's title (Headline's 1.625rem on a phone).
 - **Headline** (grotesk 700, 1.625rem, 1.05, -0.03em): a view's title, such as "Inbox".
 - **Wordmark** (grotesk 700, 1.375rem, 1, -0.03em): "Duva" at the side column's head and the door.
 - **Body** (mono 400, 0.84375rem, 1.6): default text, with ligatures and tabular figures.
-- **Proof** (mono 400, 0.875rem, 1.6, under 68ch): message bodies.
+- **Proof** (mono 400, 0.875rem, 1.78 in a letter and 1.75 in the composer, under 68ch): message bodies and the text a human writes.
 - **Small** (mono 400 or 600, 0.78125rem): buttons, meta.
 - **Label** (mono 500, 0.6875rem): the side column's group names, the status strip, counts. Sentence case, normal tracking.
 - **Key** (mono 600, 0.65625rem): key caps.
@@ -250,7 +250,7 @@ Spacing follows one scale (0.25, 0.5, 0.75, 1, 1.5, 2 and 3rem). A list's conten
 
 ## Elevation & Depth
 
-Flat by default: depth is tone. The three greys step lighter toward the reader, and white is raised. The open place or view in the side column lies raised as a key pressed in, white with a 1px shade under it (`0 1px 0 rgb(22 22 22 / 0.04)`). Sheets that lie over the page, as the phone's switcher does, carry the soft lift (`0 1px 0 rgb(22 22 22 / 0.03), 0 12px 32px -18px rgb(22 22 22 / 0.22)`). A modal sheet lies over the scrim (`rgb(22 22 22 / 0.24)`).
+Flat by default: depth is tone. The three greys step lighter toward the reader, and white is raised. The open place or view in the side column lies raised as a key pressed in, white with a 1px shade under it (`0 1px 0 rgb(22 22 22 / 0.04)`). The composer, and sheets that lie over the page, as the phone's switcher does, carry the soft lift (`0 1px 0 rgb(22 22 22 / 0.03), 0 12px 32px -18px rgb(22 22 22 / 0.22)`). A modal sheet lies over the scrim (`rgb(22 22 22 / 0.24)`).
 
 ### Named Rules
 **The No Box Rule.** Columns, sections and rows are never boxed. They part by tone, a seam or space. A border is for a field, at 3:1, and a seam is one shade off its ground.
@@ -294,6 +294,23 @@ Actors are marked by shape, so they read without color: a human is a filled dot 
 
 ### Status strip
 - Side Grey along a desk's foot, mono 500 at 0.6875rem in Second Ink, one line: a green light and "Up to date at …" (red, heavier, when Duva can't be reached), each sponsored agent's diamond with whether it is running and how many sends it has left this hour, or that it is paused, then at the end the `?` key for the shortcuts, who is signed in with their dot, and Sign out.
+
+### Letter
+- **The thread's tools** run along the reading pane's top as quiet keys, each its key cap then its name in Second Ink, the ink wash on hover: back to the list (`u`), then, past a seam, Archive (`e`), Mark as spam (`!`), Move to Trash (`#`), Labels (`l`) and Mark unread (`⇧U`). Where the pane has room (56rem), `j` and `k` say at the right that they move through the list. In a pane narrower than one line of them (46rem), back shows as its arrow and cap, its name kept for screen readers, and the keys sit closer.
+- **The subject** is Display, balanced, at most 30ch, with what the thread holds under it in Third Ink: how many messages, then its labels.
+- **Letters** lie on the plane at a 72ch measure, never on a sheet: each is parted from the one before by a seam along its top. A letter's head is the sender's actor mark, their name in mono 700, their address in Third Ink, and at the right who sent it from the mailbox and when, in Third Ink. What an agent sent says so in Agent Ink. To, Cc and a differing subject follow small, on the name column (4.5rem). The body is Proof at 1.78, under 68ch; quoted runs fold behind a link and open under a 1px Edge line.
+- **Slugs:** a read or older letter folds to one line, the mark, the name in ink 500, the start of what it says in Third Ink, cut short, and the date. Hover lifts the snippet to Second Ink.
+- **States:** a message that arrived while the thread is open carries "New" as an orange pill, since it needs the human. The letter a search found is ringed in ink for a moment; a focused letter is ringed only from the keyboard.
+- **Replies** sit under the newest letter: Reply as the primary button, then Reply all and Forward as default buttons, each with its cap at its end (`r`, `a`, `f`).
+- **HTML mail** keeps its own design in its frame, laid on Reader Grey; mail without styles of its own is set in the page's mono, from the faces the page loaded.
+- **Phone:** no caps. Reply, Archive and Trash lie in a bar on Reader Grey along the foot, above the tab bar, with a seam over it; Reply is primary. More raises the rest on a sheet with the soft lift.
+
+### Composer
+- **The one raised surface in the reading pane:** white, 10px, with the soft lift, at the 72ch measure. A reply rises into place under the newest letter (320ms, from 0.5rem below), and a draft opened by itself takes the pane under its Display title, with "Saved at" beside it.
+- **Header fields** are lines on it, each parted by a seam: the label in Third Ink on the name column, the field itself with no border of its own. The line being typed in carries the orange bar (2px, inset) at the composer's edge, red while it holds what isn't an address, with its label in Alert Ink. The text runs under them in Proof at 1.75, with the same bar while it has the cursor.
+- **The foot:** Send in ink with its cap (`Ctrl ↵`, or `⌘↵` on a Mac, which sends from anywhere in the composer), Delete draft quiet, and "Saved at" in Third Ink at the right. A read-only field turns Second Ink.
+- **How the send went** sits above the foot: on its way in Second Ink, breathing; sent in Sent Ink with its check; refused or unclear as an alert notice. A new message that went out folds to a slip on the plane under a seam, its check in Sent Ink, who it went to, its subject and its thread.
+- **In the Drafts list,** a draft's state is said small before its subject, the agent that saved it last in Agent Ink, and only a refused or unclear send in Alert Ink.
 
 ## Do's and Don'ts
 

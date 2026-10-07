@@ -151,10 +151,87 @@ test("in a thread in Trash e and # do nothing, as Archive and Move to Trash aren
   expect(await heading(page)).toBe("Möte");
 });
 
-test("with shortcuts off on You, r, a, f, e and # do nothing in a thread", budget, async () => {
-  const { page } = await withThreadOpen(note("Möte"), { shortcuts: "off" });
+test("in an open thread ! marks it as spam, said in the Inbox it returns to", budget, async () => {
+  const { page } = await withThreadOpen(note("Möte"));
 
-  for (const key of ["r", "a", "f", "e", "#"]) await page.keyboard.press(key);
+  await page.keyboard.press("!");
+
+  await expect.poll(() => heading(page), wait).toBe("Inbox");
+  await expect.poll(() => said(page), wait).toContain("Marked 1 thread as spam.");
+  await expect.poll(() => listed(page), wait).toEqual([]);
+  await openIn(page, /^Spam/, "Möte");
+});
+
+test("in an open thread Shift+U marks it unread and goes back to the list, and u goes back as it is", budget, async () => {
+  const { page, grace, mailbox } = await withThreadOpen(note("Möte"));
+  const unread = async () => (await grace.GET("/mailboxes/{mailbox}/threads", { params: { path: { mailbox: mailbox.id }, query: { label: "inbox" } } })).data!.threads[0]!.unread;
+  await expect.poll(unread, wait).toBe(false);
+
+  await page.keyboard.press("u");
+
+  await expect.poll(() => heading(page), wait).toBe("Inbox");
+  expect(await unread()).toBe(false);
+  await page.getByRole("list", { name: "Threads" }).getByRole("link").first().click();
+  await expect.poll(() => heading(page), wait).toBe("Möte");
+
+  await page.keyboard.press("Shift+U");
+
+  await expect.poll(() => heading(page), wait).toBe("Inbox");
+  await expect.poll(unread, wait).toBe(true);
+});
+
+test("in an open thread l opens its labels", budget, async () => {
+  const { page } = await withThreadOpen(note("Möte"));
+
+  await page.keyboard.press("l");
+
+  const labels = page.getByRole("group", { name: "Labels for this thread" });
+  await expect.poll(() => labels.innerText(), wait).toContain("You have no labels yet.");
+});
+
+test("each of a thread's actions with a key shows its cap and says its key, as Send in a reply does", budget, async () => {
+  const { page } = await withThreadOpen(note("Möte"));
+  const tools = page.getByRole("toolbar", { name: "Thread actions" });
+  const keyOf = async (button: ReturnType<Page["getByRole"]>) => [await button.getAttribute("aria-keyshortcuts"), await button.locator("kbd").innerText()];
+
+  expect(await keyOf(page.getByRole("link", { name: "Inbox", exact: true }))).toEqual(["u", "u"]);
+  expect(await keyOf(tools.getByRole("button", { name: "Archive" }))).toEqual(["e", "e"]);
+  expect(await keyOf(tools.getByRole("button", { name: "Move to Trash" }))).toEqual(["#", "#"]);
+  expect(await keyOf(tools.getByRole("button", { name: "Mark as spam" }))).toEqual(["!", "!"]);
+  expect(await keyOf(tools.getByRole("button", { name: "Labels" }))).toEqual(["l", "l"]);
+  expect(await keyOf(tools.getByRole("button", { name: "Mark unread" }))).toEqual(["Shift+U", "⇧U"]);
+  expect(await keyOf(page.getByRole("button", { name: "Reply", exact: true }))).toEqual(["r", "r"]);
+  expect(await keyOf(page.getByRole("button", { name: "Reply all" }))).toEqual(["a", "a"]);
+  expect(await keyOf(page.getByRole("button", { name: "Forward" }))).toEqual(["f", "f"]);
+  // The cap is no part of the button's name.
+  expect(await tools.getByRole("button", { name: "Archive", exact: true }).count()).toBe(1);
+
+  await page.keyboard.press("r");
+
+  const send = page.getByRole("form", { name: "Reply" }).getByRole("button", { name: "Send", exact: true });
+  await expect.poll(() => send.count(), wait).toBe(1);
+  expect(await keyOf(send)).toEqual(["Control+Enter", "Ctrl ↵"]);
+});
+
+test("in a reply Ctrl+Enter sends it", budget, async () => {
+  const { page } = await withThreadOpen(note("Möte"));
+  await page.keyboard.press("r");
+  await expect.poll(() => cursorIn(page), wait).toBe("Message");
+  await page.keyboard.type("Ja, ses där.");
+
+  await page.keyboard.press("Control+Enter");
+
+  await expect.poll(() => page.getByRole("article").count(), wait).toBe(2);
+  expect(await page.getByRole("article").last().innerText()).toContain("Ja, ses där.");
+  expect(await page.getByRole("form").count()).toBe(0);
+});
+
+test("with shortcuts off on You, r, a, f, e, #, !, l, u and Shift+U do nothing in a thread, which shows no caps for them", budget, async () => {
+  const { page } = await withThreadOpen(note("Möte"), { shortcuts: "off" });
+  expect(await page.getByRole("main").locator("kbd").count()).toBe(0);
+  expect(await page.getByRole("main").locator("[aria-keyshortcuts]").count()).toBe(0);
+
+  for (const key of ["r", "a", "f", "e", "#", "!", "l", "u", "Shift+U"]) await page.keyboard.press(key);
 
   await page.waitForTimeout(1_000);
   expect(await heading(page)).toBe("Möte");

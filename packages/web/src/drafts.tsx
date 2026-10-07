@@ -115,7 +115,7 @@ function DraftRow({ draft, base, open, agent }: { draft: Draft; base: string; op
         </span>
         <span className="thread-text">
           <span className="thread-subject">
-            {by !== undefined && <span className="draft-state">{by}</span>}
+            {by !== undefined && <span className="draft-state draft-by">{by}</span>}
             {state !== undefined && <span className={`draft-state draft-state-${draft.send!.state}`}>{state}</span>}
             {subject}
           </span>

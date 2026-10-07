@@ -441,6 +441,11 @@
         "name": "ease-out",
         "value": "cubic-bezier(0.2, 0.8, 0.2, 1)",
         "purpose": "State transitions: 150ms for color, 120ms for a press."
+      },
+      {
+        "name": "raise",
+        "value": "320ms ease-out, from 0.5rem below and transparent",
+        "purpose": "A reply's composer rising into place under the message it answers."
       }
     ],
     "breakpoints": [
@@ -522,6 +527,22 @@
       "description": "The instrument's display along a desk's foot.",
       "html": "<footer class=\"ds-strip\"><span><i class=\"ds-light\"></i>Up to date at 09:44</span><span>Hermes is running, 2 sends left this hour</span><span class=\"ds-end\"><kbd class=\"ds-key\">?</kbd> Shortcuts</span></footer>",
       "css": ".ds-strip { display: flex; align-items: center; gap: 1.5rem; min-height: 2.125rem; padding: 0 1.4rem; background: var(--side); box-shadow: inset 0 1px 0 var(--seam); color: var(--ink-2); font: 500 0.6875rem/1 var(--mono); } .ds-light { display: inline-block; width: 6px; height: 6px; margin-right: 0.5rem; border-radius: 50%; background: var(--sent); } .ds-end { margin-left: auto; } .ds-key { padding: 0.18rem 0.32rem; border: 1px solid var(--seam); border-bottom-width: 2px; border-radius: 4px; background: var(--raise); font: 600 0.65625rem/1 var(--mono); }"
+    },
+    {
+      "name": "Letter",
+      "kind": "custom",
+      "refersTo": "letter",
+      "description": "A message on the plane at 72ch, parted from the one before by a seam, with its replies.",
+      "html": "<article class=\"ds-letter\"><header class=\"ds-from\"><span class=\"ds-mark\"></span><b>Astrid Lindqvist</b><span>astrid@lindqvist.se</span><time>09:41</time></header><p class=\"ds-body\">Vi tänkte grilla om vädret håller. Kan ni komma vid sex?</p><p class=\"ds-replies\"><button class=\"ds-reply\">Reply <kbd>r</kbd></button></p></article>",
+      "css": ".ds-letter { max-width: 72ch; padding: 1.5rem 0 2rem; box-shadow: inset 0 1px 0 var(--seam); font: 400 0.84375rem/1.6 var(--mono); color: var(--ink); } .ds-from { display: flex; align-items: baseline; gap: 0.5rem; } .ds-from b { font-weight: 700; } .ds-from span, .ds-from time { color: var(--ink-3); font-size: 0.78125rem; } .ds-from time { margin-left: auto; } .ds-mark { width: 0.55rem; height: 0.55rem; border-radius: 50%; background: var(--ink-2); } .ds-body { margin: 1.5rem 0 0; font-size: 0.875rem; line-height: 1.78; } .ds-replies { margin: 2rem 0 0; } .ds-reply { display: inline-flex; align-items: center; gap: 0.5rem; min-height: 2.25rem; padding: 0 1rem; border: 0; border-radius: 999px; background: var(--ink); color: var(--raise); font: 600 0.78125rem/1 var(--mono); } .ds-reply kbd { padding: 0.18rem 0.32rem; border-radius: 4px; background: rgb(255 255 255 / 0.18); font: 600 0.65625rem/1 var(--mono); }"
+    },
+    {
+      "name": "Composer",
+      "kind": "custom",
+      "refersTo": "composer",
+      "description": "The one raised surface in the reading pane: fields as lines, the text in mono, Send in ink with its cap.",
+      "html": "<form class=\"ds-compose\"><p class=\"ds-line\"><span>To</span>astrid@lindqvist.se</p><p class=\"ds-text\">Vi kommer gärna vid sex -> barnen är redan taggade.</p><p class=\"ds-foot\"><button class=\"ds-send\">Send <kbd>Ctrl ↵</kbd></button><span>Saved at 09:46</span></p></form>",
+      "css": ".ds-compose { max-width: 72ch; border-radius: 10px; background: var(--raise); box-shadow: 0 1px 0 rgb(22 22 22 / 0.03), 0 12px 32px -18px rgb(22 22 22 / 0.22); font: 400 0.78125rem/1.5 var(--mono); color: var(--ink); } .ds-line { display: grid; grid-template-columns: 4.5rem 1fr; align-items: center; min-height: 2.75rem; margin: 0; padding: 0 1rem; box-shadow: inset 0 -1px 0 var(--seam); } .ds-line span { color: var(--ink-3); } .ds-text { margin: 0; padding: 1rem 1rem; font-size: 0.875rem; line-height: 1.75; box-shadow: inset 2px 0 0 var(--call); } .ds-foot { display: flex; align-items: center; gap: 0.5rem; margin: 0; padding: 0.75rem 1rem 1rem; } .ds-foot span { margin-left: auto; color: var(--ink-3); font-size: 0.6875rem; } .ds-send { display: inline-flex; align-items: center; gap: 0.5rem; min-height: 2.25rem; padding: 0 1rem; border: 0; border-radius: 999px; background: var(--ink); color: var(--raise); font: 600 0.78125rem/1 var(--mono); } .ds-send kbd { padding: 0.18rem 0.32rem; border-radius: 4px; background: rgb(255 255 255 / 0.18); font: 600 0.65625rem/1 var(--mono); }"
     }
   ],
   "narrative": {
