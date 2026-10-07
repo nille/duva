@@ -1258,7 +1258,7 @@ export interface paths {
         get: operations["getSender"];
         /**
          * Decide where a sender's mail goes in a mailbox, for their mail there and their later mail.
-         * @description inbox puts their mail in the Inbox. feed and paperTrail file it in the Feed or the Paper Trail instead, read. label files it under the mailbox's own label you give, unread, instead of the Inbox. nowhere drops their later mail on arrival, keeping none of it, and erases their threads in the mailbox, Spam and Trash included, for good. Removing nowhere later brings none of it back. Their threads where their mail went before, or waiting in the Screener, move to where it goes now, and keep the labels given by hand. Their later mail skips the Screener, even while it is off. A domain covers exactly that domain, not its subdomains, and can't be a public mail provider's, like gmail.com. An address's decision beats its domain's. Setting nowhere also unsubscribes the mailbox from the sender's mail by one-click (RFC 8058), when their newest mail that SES didn't judge to be spam offers it and a DKIM signature that passed covers its unsubscribe headers, and each message dropped later tries the same. Duva never unsubscribes by mailto or by a link in the body. The decision, each thread it moves or erases and the unsubscribe's outcome are recorded in the mailbox's change feed under you. Only the mailbox's owner and the agents they give organize sponsor access or more can decide, and only the owner or the sponsor can choose nowhere.
+         * @description inbox puts their mail in the Inbox. feed and paperTrail file it in the Feed or the Paper Trail instead, read. label files it under the mailbox's own label you give, unread, instead of the Inbox. nowhere drops their later mail on arrival, keeping none of it, and erases their threads in the mailbox, Spam and Trash included, for good. Removing nowhere later brings none of it back. Their threads where their mail went before, or waiting in the Screener, move to where it goes now, and keep the labels given by hand. Their later mail skips the Screener, even while it is off. A domain covers exactly that domain, not its subdomains, and can't be a public mail provider's, like gmail.com. An address's decision beats its domain's. Setting nowhere also unsubscribes the mailbox from the sender's mail by one-click (RFC 8058), when their newest mail that SES didn't judge to be spam offers it and a DKIM signature that passed covers its unsubscribe headers, and each message dropped later tries the same. If one-click doesn't unsubscribe, the mailbox's mailbox agent goes on by itself, for mail that passed DMARC: on the List-Unsubscribe page in an isolated browser, then by mailing the List-Unsubscribe address, then by an unsubscribe link in the body on the signer's domain, and as a last resort by bouncing their mail as if the address were unknown, until a method works. The sender's sheet shows how it went. The decision, each thread it moves or erases and the one-click's outcome are recorded in the mailbox's change feed under you, and the agent's attempts under it. Only the mailbox's owner and the agents they give organize sponsor access or more can decide, and only the owner or the sponsor can choose nowhere.
          */
         put: operations["setSenderDelivery"];
         post?: never;
@@ -2732,6 +2732,24 @@ export interface components {
             decidedAt: string;
             /** @description The ID of the actor who decided, if one did. Switching the Screener on sends the mailbox's senders' mail to the Inbox under whoever switched it, and setup's under no one. */
             actor?: string;
+            unsubscribe?: components["schemas"]["SenderUnsubscribe"];
+        };
+        /** @description For nowhere, how unsubscribing from the sender's mail went last: by one-click, then by the mailbox agent on the opt-out page, by the unsubscribe address, by a link in the mail, and as a last resort by bouncing their mail. It goes on with each message dropped later, until a method works. */
+        SenderUnsubscribe: {
+            method: components["schemas"]["UnsubscribeMethod"];
+            outcome: components["schemas"]["UnsubscribeOutcome"];
+            reason?: components["schemas"]["UnsubscribeReason"];
+            /** @description The HTTP status the sender's server answered with, when it refused. */
+            status?: number;
+            /** @description What the mailbox agent read on the page, or why the method failed, in its words or Duva's. */
+            detail?: string;
+            /**
+             * Format: date-time
+             * @description When it was tried.
+             */
+            at: string;
+            /** @description The ID of the actor who tried it, the mailbox agent for every method but one-click, if one did. */
+            actor?: string;
         };
         /**
          * @description Where a sender's mail goes. inbox: the Inbox. feed: the Feed, for newsletters, read. paperTrail: the Paper Trail, for receipts and notifications, read. label: a label of the mailbox's own, unread, instead of the Inbox. nowhere: dropped on arrival, keeping none of it.
@@ -2790,15 +2808,20 @@ export interface components {
             status?: number;
         };
         /**
-         * @description unsubscribed: the sender's server took the one-click POST. notOffered: Duva sent nothing, and reason says why. failed: the POST didn't go through, and reason says why.
+         * @description How Duva unsubscribes, in the order it tries. oneClick: the RFC 8058 POST. page: the mailbox agent fills in the https List-Unsubscribe page in an isolated browser. mailto: the mailbox agent mails the List-Unsubscribe address. link: the mailbox agent follows an unsubscribe link in the mail. bounce: SES bounces the message as if the address were unknown.
          * @enum {string}
          */
-        UnsubscribeOutcome: "unsubscribed" | "notOffered" | "failed";
+        UnsubscribeMethod: "oneClick" | "page" | "mailto" | "link" | "bounce";
         /**
-         * @description Why it wasn't unsubscribed. Not offered: noMail, the mailbox has no mail from the sender; spam, SES judged all of it to be spam; noOneClick, the newest has no https List-Unsubscribe with List-Unsubscribe-Post One-Click; notSigned, no DKIM signature that passed covers both headers. Failed: notAllowed, the URL or a redirect isn't http or https on port 80 or 443; notPublic, its host isn't at a public address; unreachable, its server couldn't be reached; timedOut, it didn't answer in time; refused, it answered with neither a success nor a 307 or 308 redirect, and status gives its code; tooManyRedirects, it redirected more than 3 times.
+         * @description unsubscribed: the sender's server took the one-click POST, or their page said the address is unsubscribed. requested: the mailbox agent mailed the unsubscribe address. bounced: SES bounced the message. notOffered: Duva sent nothing, and reason says why. failed: the method didn't work, and reason says why.
          * @enum {string}
          */
-        UnsubscribeReason: "noMail" | "spam" | "noOneClick" | "notSigned" | "notAllowed" | "notPublic" | "unreachable" | "timedOut" | "refused" | "tooManyRedirects";
+        UnsubscribeOutcome: "unsubscribed" | "requested" | "bounced" | "notOffered" | "failed";
+        /**
+         * @description Why it wasn't unsubscribed. Not offered: noMail, the mailbox has no mail from the sender; spam, SES judged all of it to be spam; noOneClick, the newest has no https List-Unsubscribe with List-Unsubscribe-Post One-Click; notSigned, no DKIM signature that passed covers both headers. Failed: notAllowed, the URL or a redirect isn't http or https on port 80 or 443; notPublic, its host isn't at a public address; unreachable, its server couldn't be reached; timedOut, it didn't answer in time; refused, it answered with neither a success nor a 307 or 308 redirect, and status gives its code; tooManyRedirects, it redirected more than 3 times; notDone, the mailbox agent couldn't unsubscribe on the page, and detail says why; notSent, the unsubscribe address couldn't be mailed; tooLate, SES bounces a message only within 24 hours of receiving it; notBounceable, the message didn't pass DMARC, or has no envelope sender to bounce to.
+         * @enum {string}
+         */
+        UnsubscribeReason: "noMail" | "spam" | "noOneClick" | "notSigned" | "notAllowed" | "notPublic" | "unreachable" | "timedOut" | "refused" | "tooManyRedirects" | "notDone" | "notSent" | "tooLate" | "notBounceable";
         UnsubscribeAttempted: components["schemas"]["ChangeBase"] & {
             /** @constant */
             type: "unsubscribeAttempted";
@@ -2810,6 +2833,9 @@ export interface components {
             reason?: components["schemas"]["UnsubscribeReason"];
             /** @description The HTTP status the sender's server answered with, when it refused. */
             status?: number;
+            method?: components["schemas"]["UnsubscribeMethod"];
+            /** @description What the mailbox agent read on the page, or why the method failed. */
+            detail?: string;
         } & {
             /**
              * @description discriminator enum property added by openapi-typescript

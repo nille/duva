@@ -43,7 +43,9 @@ import type { SendEvent } from "../src/limits.ts";
 import { setUpDeliveries, setUpScreeners } from "../src/screening.ts";
 import { type Model, runAgent } from "../src/agent-loop.ts";
 import { type AgentRuntime, type ConversationEvent, createConversation, type PreparedTurn } from "../src/conversation.ts";
-import { createTaskGiver, createTaskRunner, type TaskRef, type TaskRunner } from "../src/tasks.ts";
+import { createTaskGiver, createTaskRunner, type TaskRef, type TaskRunner, type TaskRunnerEvent } from "../src/tasks.ts";
+import { createUnsubscribeRunner } from "../src/unsubscribe-runs.ts";
+import { standInBrowser } from "./browser.ts";
 import { createMcp } from "../src/mcp.ts";
 import { giveMailboxAgents } from "../src/mailbox-agents.ts";
 import type { ReminderDue } from "../src/reminders.ts";
@@ -341,7 +343,13 @@ export async function startDuva({
     roots: [testMarkRoot],
     url: (logo: string) => logoUrl(downloads.url, logo),
   };
-  inbound = createInbound({ table, mailBucket, log: (line) => inboundLog.push(line), outbound: sending.outbound, bounces: ses.bounces, logos, unsubscriber });
+  // What the task giver, the API and the inbound Lambda handed the task runner, which it runs once what handed them is done.
+  const handedTasks: TaskRunnerEvent[] = [];
+  const taskRunner: TaskRunner = {
+    run: async (task) => void handedTasks.push(JSON.parse(JSON.stringify(task)) as TaskRef),
+    unsubscribe: async (job) => void handedTasks.push(JSON.parse(JSON.stringify({ unsubscribe: job })) as TaskRunnerEvent),
+  };
+  inbound = createInbound({ table, mailBucket, log: (line) => inboundLog.push(line), outbound: sending.outbound, bounces: ses.bounces, logos, unsubscriber, tasks: taskRunner });
   const receiving = { rules: ses.rules, bucket: mailBucketName, inboundFunction, suppressionList: sending.suppressionList };
   // Each mailbox's index is a table under the deployment's own directory. The search Lambda and the
   // indexer each open them, as two Lambdas do. Backfill steps are small, so a few messages take several.
@@ -380,9 +388,6 @@ export async function startDuva({
   ]);
   // Agents the API handed the sender in a call, which it invokes once the call is answered.
   const released: string[] = [];
-  // Tasks the task giver and the API handed the task runner, which it runs once what handed them is done.
-  const handedTasks: TaskRef[] = [];
-  const taskRunner: TaskRunner = { run: async (task) => void handedTasks.push(JSON.parse(JSON.stringify(task)) as TaskRef) };
   const tasking = tableStream(database, streamArn, [{ filter: taskGiverFilter, handler: createTaskGiver({ table, runner: taskRunner }), retries: 2, invocations: 1 }]);
   // Download links lead to the web app's domain under /download/, from where CloudFront invokes the
   // download Lambda. Here they lead to the API's own URL, under the same path, once it listens.
@@ -484,15 +489,23 @@ export async function startDuva({
   };
   // The mailbox agents' runtime on AgentCore, which calls the API over HTTPS. Its payload and what
   // it says go through JSON.
+  // It unsubscribes in AgentCore Browser, a stand-in here over the stand-in internet.
+  const browser = standInBrowser(internet.network);
   const runtime: AgentRuntime = async function* (payload) {
-    for await (const event of runAgent(JSON.parse(JSON.stringify(payload)), { model, fetch: api })) yield JSON.parse(JSON.stringify(event));
+    for await (const event of runAgent(JSON.parse(JSON.stringify(payload)), { model, fetch: api, browser: browser.start })) yield JSON.parse(JSON.stringify(event));
   };
   // The conversation Lambda, which runs each turn on AgentCore.
   const conversation = createConversation({ table, region, apiUrl: inProcess, fetch: api, runtime });
   // The task runner, which Lambda invokes asynchronously with each task handed to it, one at a time.
   const runTask = createTaskRunner({ table, region, apiUrl: inProcess, fetch: api, runtime });
+  const unsubscribe = createUnsubscribeRunner({ table, region, apiUrl: inProcess, runtime, bounces: ses.bounces });
   const runHandedTasks = async () => {
-    for (let task = handedTasks.shift(); task !== undefined; task = handedTasks.shift()) await runTask(task);
+    for (let task = handedTasks.shift(); task !== undefined; task = handedTasks.shift()) {
+      if ("unsubscribe" in task) await unsubscribe(task.unsubscribe);
+      else await runTask(task);
+      // What the runner did reaches the sender through the table's stream.
+      if (!sendsHeld) await stream.deliver();
+    }
   };
   // The task giver reads the table's stream, and hands its tasks to the runner, unless tasks are held.
   async function giveTasks() {

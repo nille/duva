@@ -25,11 +25,11 @@ type EmailAddress = components["schemas"]["EmailAddress"];
 export interface Bounces {
   /**
    * Has SES bounce the message it received with the ID back to its sender, for the recipients, each
-   * refused with the explanation. SES sends the bounce from its own MAILER-DAEMON, and
-   * `bounceSender`, which must be on a verified identity, appears nowhere in it (docs/aws.md).
-   * Throws BounceRefused if SES refused to, as past its 24 hours.
+   * refused with the explanation and the enhanced status code, 5.7.1 unless given. SES sends the
+   * bounce from its own MAILER-DAEMON, and `bounceSender`, which must be on a verified identity,
+   * appears nowhere in it (docs/aws.md). Throws BounceRefused if SES refused to, as past its 24 hours.
    */
-  send(bounce: { messageId: string; bounceSender: string; recipients: string[]; explanation: string }): Promise<void>;
+  send(bounce: { messageId: string; bounceSender: string; recipients: string[]; explanation: string; status?: "5.7.1" | "5.1.1" }): Promise<void>;
 }
 
 /** SES refused to bounce the message, and would refuse again. */
@@ -38,15 +38,15 @@ export class BounceRefused extends Error {}
 /** SES's SendBounce. */
 export function sesBounces(ses: SESClient): Bounces {
   return {
-    async send({ messageId, bounceSender, recipients, explanation }) {
+    async send({ messageId, bounceSender, recipients, explanation, status = "5.7.1" }) {
       try {
         await ses.send(
           new SendBounceCommand({
             OriginalMessageId: messageId,
             BounceSender: bounceSender,
             Explanation: explanation,
-            // 5.7.1: delivery not authorized, as RFC 3463 has it.
-            BouncedRecipientInfoList: recipients.map((recipient) => ({ Recipient: recipient, RecipientDsnFields: { Action: "failed", Status: "5.7.1", DiagnosticCode: `smtp; 550 5.7.1 ${explanation}` } })),
+            // As RFC 3463 has them, 5.7.1: delivery not authorized, and 5.1.1: bad destination mailbox address.
+            BouncedRecipientInfoList: recipients.map((recipient) => ({ Recipient: recipient, RecipientDsnFields: { Action: "failed", Status: status, DiagnosticCode: `smtp; 550 ${status} ${explanation}` } })),
           }),
         );
       } catch (error) {
@@ -211,7 +211,7 @@ const claimDays = 15;
  * claimed before, and otherwise a release that undoes the claim if the step then fails. A run that
  * stops between the claim and the step, as on a timeout, leaves it undone.
  */
-async function claim(table: Table, sesMessageId: string, step: string): Promise<(() => Promise<void>) | undefined> {
+export async function claim(table: Table, sesMessageId: string, step: string): Promise<(() => Promise<void>) | undefined> {
   const Key = { [pk]: `received#${sesMessageId}`, [sk]: step };
   try {
     await documents(table).send(new PutCommand({ TableName: table.name, Item: { ...Key, [timeToLiveAttribute]: Math.floor(Date.now() / 1000) + claimDays * 86400 }, ...isNew }));

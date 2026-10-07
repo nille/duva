@@ -177,8 +177,8 @@ test("a group open to the organization bounces mail from outside it, and from a 
   await duva.receive(message("alan@example.com", "staff@example.com", "Inside"), { from: "alan@example.com", to: ["staff@example.com"] });
 
   expect(duva.bounces()).toEqual([
-    { messageId: outside.messageId, to: "linus@example.net", from: "MAILER-DAEMON@eu-north-1.amazonses.com", recipients: ["staff@example.com"], explanation: expect.stringMatching(/organization/) },
-    { messageId: forged.messageId, to: "alan@example.com", from: "MAILER-DAEMON@eu-north-1.amazonses.com", recipients: ["staff@example.com"], explanation: expect.stringMatching(/organization/) },
+    { messageId: outside.messageId, to: "linus@example.net", from: "MAILER-DAEMON@eu-north-1.amazonses.com", recipients: ["staff@example.com"], explanation: expect.stringMatching(/organization/), status: "5.7.1" },
+    { messageId: forged.messageId, to: "alan@example.com", from: "MAILER-DAEMON@eu-north-1.amazonses.com", recipients: ["staff@example.com"], explanation: expect.stringMatching(/organization/), status: "5.7.1" },
   ]);
   expect((await messagesIn(grace, graces)).map(({ subject }) => subject)).toEqual(["Inside"]);
   expect(duva.sentTo()).toEqual([["mia@example.net"]]);
@@ -199,7 +199,7 @@ test("a group open to its members takes mail from them, those of its nested grou
     ["From Alan", "family@example.com"],
     ["From Mia", "family@example.com"],
   ]);
-  expect(duva.bounces()).toEqual([{ messageId: stranger.messageId, to: "linus@example.net", from: "MAILER-DAEMON@eu-north-1.amazonses.com", recipients: ["family@example.com"], explanation: expect.stringMatching(/members/) }]);
+  expect(duva.bounces()).toEqual([{ messageId: stranger.messageId, to: "linus@example.net", from: "MAILER-DAEMON@eu-north-1.amazonses.com", recipients: ["family@example.com"], explanation: expect.stringMatching(/members/), status: "5.7.1" }]);
 });
 
 test("a member's mailbox sends to a members-only group from any of its addresses, but only with a DMARC pass", async () => {

@@ -4,10 +4,16 @@
 import { createServer, type Server } from "node:http";
 import { type Model, type RunPayload, runAgent } from "./agent-loop.ts";
 import { inferenceProfileId } from "./agent-models.ts";
+import { agentCoreBrowser } from "./agentcore-browser.ts";
 import { bedrockModel } from "./bedrock-model.ts";
+import type { Browser } from "./browser.ts";
+import { environmentVariables } from "./infrastructure.ts";
 
-/** The runtime's server, asking the model the payload names. */
-export function createRuntimeServer(modelFor: (payload: RunPayload) => Model = ({ model }) => bedrockModel({ region: model.region, modelId: inferenceProfileId(model.model, model.profile) })): Server {
+/** The runtime's server, asking the model the payload names, and unsubscribing in the browser, AgentCore Browser's that the stack names unless given. */
+export function createRuntimeServer(
+  modelFor: (payload: RunPayload) => Model = ({ model }) => bedrockModel({ region: model.region, modelId: inferenceProfileId(model.model, model.profile) }),
+  browser: Browser | undefined = agentCoreBrowser(process.env[environmentVariables.unsubscribeBrowser] ?? ""),
+): Server {
   // AgentCore reads a busy runtime as one to keep running.
   let running = 0;
   return createServer(async (incoming, outgoing) => {
@@ -22,7 +28,7 @@ export function createRuntimeServer(modelFor: (payload: RunPayload) => Model = (
     outgoing.writeHead(200, { "content-type": "application/x-ndjson" });
     try {
       const payload = JSON.parse(Buffer.concat(chunks).toString()) as RunPayload;
-      for await (const event of runAgent(payload, { model: modelFor(payload) })) outgoing.write(`${JSON.stringify(event)}\n`);
+      for await (const event of runAgent(payload, { model: modelFor(payload), browser })) outgoing.write(`${JSON.stringify(event)}\n`);
     } catch (error) {
       console.error(error);
       outgoing.write(`${JSON.stringify({ type: "end", outcome: "failed" })}\n`);

@@ -4,6 +4,8 @@
 import { type Operation, operations, type OperationId } from "@duva/openapi";
 import type { components } from "@duva/openapi";
 import { costOf, type MailboxAgentModel, type MailboxAgentProfile } from "./agent-models.ts";
+import type { Browser } from "./browser.ts";
+import { runUnsubscribe } from "./unsubscribe-agent.ts";
 
 export type AgentAction = components["schemas"]["AgentAction"];
 
@@ -56,13 +58,16 @@ export interface RunPayload {
   words: string;
   /** For a task a label's prompt gave (ADR-0029), the label's name and its prompt. */
   task?: { label: string; prompt: string };
+  /** For unsubscribing on a sender's page (ADR-0031), its URL and the address to unsubscribe, which is all the run gets. */
+  unsubscribe?: { url: string; address: string };
   /** The time the run starts, as an ISO date. */
   now: string;
 }
 
-/** What a run says as it goes: text as it streams, each action, the tokens of each model call, and how it ended. */
+/** What a run says as it goes: text as it streams, each action, the tokens of each model call, an unsubscribe's verdict, and how it ended. */
 export type RunEvent =
   | { type: "text"; text: string }
+  | { type: "verdict"; unsubscribed: boolean; detail: string }
   | { type: "action"; action: AgentAction }
   | { type: "usage"; inputTokens: number; outputTokens: number }
   | { type: "end"; outcome: NonNullable<components["schemas"]["ConversationTurn"]["outcome"]> };
@@ -158,8 +163,15 @@ function systemPrompt(payload: RunPayload): string {
   ].join("\n");
 }
 
-/** Runs the agent on what its owner asked, saying what it does as it goes. `call` reaches Duva's API. */
-export async function* runAgent(payload: RunPayload, { model, fetch: call = fetch }: { model: Model; fetch?: (request: Request) => Promise<Response> }): AsyncGenerator<RunEvent> {
+/**
+ * Runs the agent on what its owner asked, saying what it does as it goes. `call` reaches Duva's
+ * API. An unsubscribe runs on the page in `browser` instead, with no tool of Duva's.
+ */
+export async function* runAgent(
+  payload: RunPayload,
+  { model, fetch: call = fetch, browser }: { model: Model; fetch?: (request: Request) => Promise<Response>; browser?: Browser },
+): AsyncGenerator<RunEvent> {
+  if (payload.unsubscribe !== undefined) return yield* runUnsubscribe(payload, { model, browser });
   const messages: ModelMessage[] = [
     ...payload.history.map(({ from, text }) => ({ role: from === "human" ? ("user" as const) : ("assistant" as const), content: [{ text }] })),
     { role: "user", content: [{ text: payload.words }] },
@@ -198,7 +210,7 @@ export async function* runAgent(payload: RunPayload, { model, fetch: call = fetc
 }
 
 /** The messages with each role's turns in a row joined, as Converse takes them, alternating. */
-function merged(messages: ModelMessage[]): ModelMessage[] {
+export function merged(messages: ModelMessage[]): ModelMessage[] {
   return messages.reduce<ModelMessage[]>((joined, message) => {
     const last = joined.at(-1);
     if (last?.role === message.role) last.content = [...last.content, ...message.content];

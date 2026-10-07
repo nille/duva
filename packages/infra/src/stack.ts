@@ -1,6 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { Aws, CfnCondition, CfnOutput, CfnParameter, CfnResource, Duration, Fn, RemovalPolicy, Stack, type StackProps } from "aws-cdk-lib";
-import { AgentCoreRuntime, AgentRuntimeArtifact, Runtime as AgentRuntime } from "aws-cdk-lib/aws-bedrockagentcore";
+import { AgentCoreRuntime, AgentRuntimeArtifact, BrowserCustom, BrowserNetworkConfiguration, Runtime as AgentRuntime } from "aws-cdk-lib/aws-bedrockagentcore";
 import { CorsHttpMethod, HttpApi, HttpMethod } from "aws-cdk-lib/aws-apigatewayv2";
 import { HttpLambdaAuthorizer, HttpLambdaResponseType } from "aws-cdk-lib/aws-apigatewayv2-authorizers";
 import { HttpLambdaIntegration } from "aws-cdk-lib/aws-apigatewayv2-integrations";
@@ -683,12 +683,22 @@ export class DuvaStack extends Stack {
     const agentsHere = new CfnCondition(this, "MailboxAgentsCondition", {
       expression: Fn.conditionNot(Fn.conditionOr(...regionsWithoutAgentCore.map((region) => Fn.conditionEquals(Aws.REGION, region)))),
     });
+    // They unsubscribe on senders' pages (ADR-0031) in AgentCore Browser: a fresh browser in a
+    // microVM of its own for each session, wiped when it ends, on AWS's network rather than one of
+    // the account's, recording nothing. It bills only while a session runs, which the runtime
+    // starts and stops (docs/research/unsubscribe-browser-and-bounce.md).
+    const unsubscribeBrowser = new BrowserCustom(this, "UnsubscribeBrowser", {
+      description: "The browser Duva's mailbox agents unsubscribe in",
+      networkConfiguration: BrowserNetworkConfiguration.usingPublicNetwork(),
+    });
     const agentRuntime = new AgentRuntime(this, "MailboxAgents", {
       description: "Duva's mailbox agents",
       agentRuntimeArtifact: AgentRuntimeArtifact.fromCodeAsset({ path: agentCode(), runtime: AgentCoreRuntime.NODE_22, entrypoint: [agentEntryPoint] }),
       lifecycleConfiguration: { idleRuntimeSessionTimeout: Duration.seconds(60), maxLifetime: Duration.hours(1) },
+      environmentVariables: { [environmentVariables.unsubscribeBrowser]: unsubscribeBrowser.browserId },
     });
-    for (const resource of agentRuntime.node.findAll()) if (resource instanceof CfnResource) resource.cfnOptions.condition = agentsHere;
+    unsubscribeBrowser.grantUse(agentRuntime.role);
+    for (const construct of [agentRuntime, unsubscribeBrowser]) for (const resource of construct.node.findAll()) if (resource instanceof CfnResource) resource.cfnOptions.condition = agentsHere;
     // The agents call Claude in the model region the organization chose, through its eu, us or
     // global inference profile, which may send it on to that profile's regions (docs/aws.md). So
     // the role may invoke the models admins can choose through those profiles in any region, and
@@ -802,6 +812,10 @@ export class DuvaStack extends Stack {
     table.grantReadWriteData(taskRunner);
     taskRunner.addToRolePolicy(new PolicyStatement({ actions: ["ssm:GetParameter"], resources: [this.formatArn({ service: "ssm", resource: "parameter", resourceName: apiUrlParameter.slice(1) })] }));
     taskRunner.addToRolePolicy(new PolicyStatement({ actions: ["bedrock-agentcore:InvokeAgentRuntime", "bedrock-agentcore:StopRuntimeSession"], resources: [runtimes, `${runtimes}/*`] }));
+    // It also goes on unsubscribing where one-click didn't (ADR-0031), which the API and the inbound
+    // Lambda hand it, and as a last resort bounces the sender's mail, from the identity of the
+    // organization's domain it was sent to, as the inbound Lambda bounces mail a group refuses.
+    taskRunner.addToRolePolicy(new PolicyStatement({ actions: ["ses:SendBounce"], resources: [identities] }));
     const taskGiver = lambda("TaskGiverHandler", "@duva/api/task-giver-lambda", {
       [environmentVariables.tableName]: table.tableName,
       [environmentVariables.taskRunnerFunction]: taskRunner.functionArn,
@@ -817,8 +831,10 @@ export class DuvaStack extends Stack {
     );
     table.grantReadWriteData(taskGiver);
     taskRunner.grantInvoke(taskGiver);
-    handler.addEnvironment(environmentVariables.taskRunnerFunction, taskRunner.functionArn);
-    taskRunner.grantInvoke(handler);
+    for (const invoker of [handler, inbound]) {
+      invoker.addEnvironment(environmentVariables.taskRunnerFunction, taskRunner.functionArn);
+      taskRunner.grantInvoke(invoker);
+    }
 
     new CfnOutput(this, stackOutputs.apiUrl, { value: api.apiEndpoint, description: "The URL of Duva's API" });
     new CfnOutput(this, stackOutputs.mcpFunction, { value: mcp.functionName, description: "The function API Gateway invokes for Duva's MCP endpoint" });

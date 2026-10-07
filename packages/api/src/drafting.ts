@@ -268,6 +268,16 @@ export async function askToSend(table: Table, { mailbox, id, actor }: { mailbox:
 }
 
 /**
+ * Writes the mailbox agent's mail to a sender's unsubscribe address, and asks to send it at once,
+ * without its owner's approval, since choosing nowhere was their consent and it only unsubscribes
+ * (ADR-0031). The sender sends it as the agent's, with the disclosure, within its send limits.
+ */
+export async function sendUnsubscribeRequest(table: Table, { mailbox, agent, content }: { mailbox: string; agent: string; content: DraftContent }): Promise<Draft> {
+  const { id } = await addDraft(table, { mailbox, by: agent, content });
+  return sendAtOnce(table, { mailbox, draft: (await storedDraft(table, mailbox, id))!, by: agent, held: [] });
+}
+
+/**
  * Approves the draft at once, on behalf of the actor `by`, whose send needs no approval, and the
  * sender sends it. If it waits for an approval, this withdraws it. A failed draft can be sent again.
  */

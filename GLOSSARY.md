@@ -171,8 +171,11 @@ _Avoid_: gatekeeper, allowlist
 Where a screened sender's mail goes in a mailbox: the Inbox, the Feed, the Paper Trail, a label of the mailbox's own instead of the Inbox, or nowhere. It applies to their later mail, whether the Screener is on or not, and to their threads already there: those where their mail went before move to where it goes now, and keep the labels given by hand. Group mail skips it, as it skips the Screener.
 
 **Nowhere**:
-The delivery that drops a sender's mail on arrival, keeping none of it, not even in Trash, and records only that a message from them was dropped. Choosing it erases their threads in the mailbox for good, and unsubscribes from their mail when it offers one-click unsubscribe, as each message dropped later does too. Removing it brings back nothing. Only the mailbox's owner chooses it (ADR-0025).
+The delivery that drops a sender's mail on arrival, keeping none of it, not even in Trash, and records only that a message from them was dropped. Choosing it erases their threads in the mailbox for good, and unsubscribes from their mail, as each message dropped later does too, until one method works: see Unsubscribing. Removing it brings back nothing. Only the mailbox's owner chooses it (ADR-0025).
 _Avoid_: blackhole
+
+**Unsubscribing**:
+What Duva does for a sender sent nowhere, in order, for mail SES didn't judge to be spam: one-click, the RFC 8058 POST; then the mailbox agent, by itself, on the opt-out page the mail names, in an isolated browser where it can type only the mailbox's address; by mailing the unsubscribe address the mail names, without approval; by an unsubscribe link in the body on the signer's domain; and as a last resort by bouncing the sender's mail as if the address were unknown. All but one-click need mail that passed DMARC. The sender's sheet says how it went last (ADR-0031).
 
 **Screened sender**:
 An address or a domain a mailbox has decided a delivery for. A domain covers exactly that domain, never its subdomains, and is never a public mail provider's. An address beats its domain.

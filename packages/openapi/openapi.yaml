@@ -2497,9 +2497,15 @@ paths:
         one-click (RFC 8058), when their newest mail that SES didn't judge to
         be spam offers it and a DKIM signature that passed covers its
         unsubscribe headers, and each message dropped later tries the same.
-        Duva never unsubscribes by mailto or by a link in the body. The
-        decision, each thread it moves or erases and the unsubscribe's
-        outcome are recorded in the mailbox's change feed under you. Only the
+        If one-click doesn't unsubscribe, the mailbox's mailbox agent goes on
+        by itself, for mail that passed DMARC: on the List-Unsubscribe page in
+        an isolated browser, then by mailing the List-Unsubscribe address,
+        then by an unsubscribe link in the body on the signer's domain, and
+        as a last resort by bouncing their mail as if the address were
+        unknown, until a method works. The sender's sheet shows how it went.
+        The decision, each thread it moves or erases and the one-click's
+        outcome are recorded in the mailbox's change feed under you, and the
+        agent's attempts under it. Only the
         mailbox's owner and the agents they give organize sponsor access or more
         can decide, and only the owner or the sponsor can choose nowhere.
       x-cli-command: senders set
@@ -4990,6 +4996,38 @@ components:
         actor:
           type: string
           description: The ID of the actor who decided, if one did. Switching the Screener on sends the mailbox's senders' mail to the Inbox under whoever switched it, and setup's under no one.
+        unsubscribe:
+          $ref: "#/components/schemas/SenderUnsubscribe"
+    SenderUnsubscribe:
+      type: object
+      additionalProperties: false
+      required: [method, outcome, at]
+      description: >
+        For nowhere, how unsubscribing from the sender's mail went last: by
+        one-click, then by the mailbox agent on the opt-out page, by the
+        unsubscribe address, by a link in the mail, and as a last resort by
+        bouncing their mail. It goes on with each message dropped later,
+        until a method works.
+      properties:
+        method:
+          $ref: "#/components/schemas/UnsubscribeMethod"
+        outcome:
+          $ref: "#/components/schemas/UnsubscribeOutcome"
+        reason:
+          $ref: "#/components/schemas/UnsubscribeReason"
+        status:
+          type: integer
+          description: The HTTP status the sender's server answered with, when it refused.
+        detail:
+          type: string
+          description: What the mailbox agent read on the page, or why the method failed, in its words or Duva's.
+        at:
+          type: string
+          format: date-time
+          description: When it was tried.
+        actor:
+          type: string
+          description: The ID of the actor who tried it, the mailbox agent for every method but one-click, if one did.
     Delivery:
       type: string
       enum: [inbox, feed, paperTrail, label, nowhere]
@@ -5072,16 +5110,28 @@ components:
         status:
           type: integer
           description: The HTTP status the sender's server answered with, when it refused.
+    UnsubscribeMethod:
+      type: string
+      enum: [oneClick, page, mailto, link, bounce]
+      description: >
+        How Duva unsubscribes, in the order it tries. oneClick: the RFC 8058
+        POST. page: the mailbox agent fills in the https List-Unsubscribe
+        page in an isolated browser. mailto: the mailbox agent mails the
+        List-Unsubscribe address. link: the mailbox agent follows an
+        unsubscribe link in the mail. bounce: SES bounces the message as if
+        the address were unknown.
     UnsubscribeOutcome:
       type: string
-      enum: [unsubscribed, notOffered, failed]
+      enum: [unsubscribed, requested, bounced, notOffered, failed]
       description: >
-        unsubscribed: the sender's server took the one-click POST. notOffered:
-        Duva sent nothing, and reason says why. failed: the POST didn't go
-        through, and reason says why.
+        unsubscribed: the sender's server took the one-click POST, or their
+        page said the address is unsubscribed. requested: the mailbox agent
+        mailed the unsubscribe address. bounced: SES bounced the message.
+        notOffered: Duva sent nothing, and reason says why. failed: the method
+        didn't work, and reason says why.
     UnsubscribeReason:
       type: string
-      enum: [noMail, spam, noOneClick, notSigned, notAllowed, notPublic, unreachable, timedOut, refused, tooManyRedirects]
+      enum: [noMail, spam, noOneClick, notSigned, notAllowed, notPublic, unreachable, timedOut, refused, tooManyRedirects, notDone, notSent, tooLate, notBounceable]
       description: >
         Why it wasn't unsubscribed. Not offered: noMail, the mailbox has no
         mail from the sender; spam, SES judged all of it to be spam;
@@ -5092,17 +5142,23 @@ components:
         public address; unreachable, its server couldn't be reached; timedOut,
         it didn't answer in time; refused, it answered with neither a
         success nor a 307 or 308 redirect, and status gives its code;
-        tooManyRedirects, it redirected more than 3 times.
+        tooManyRedirects, it redirected more than 3 times; notDone, the
+        mailbox agent couldn't unsubscribe on the page, and detail says why;
+        notSent, the unsubscribe address couldn't be mailed; tooLate, SES
+        bounces a message only within 24 hours of receiving it; notBounceable,
+        the message didn't pass DMARC, or has no envelope sender to bounce to.
     UnsubscribeAttempted:
       allOf:
         - $ref: "#/components/schemas/ChangeBase"
         - type: object
           required: [type, outcome]
           description: >
-            Duva tried to unsubscribe the mailbox from a sender's mail: when an
-            actor chose nowhere for them, by address or by domain, or blocked
-            them before deliveries existed, naming that actor, and when it
-            dropped their message, naming none.
+            Duva tried to unsubscribe the mailbox from a sender's mail: by
+            one-click when an actor chose nowhere for them, by address or by
+            domain, or blocked them before deliveries existed, naming that
+            actor, and when it dropped their message, naming none; and by the
+            later methods, naming the mailbox agent that tried them. Without a
+            method, it was one-click.
           properties:
             type:
               type: string
@@ -5120,6 +5176,11 @@ components:
             status:
               type: integer
               description: The HTTP status the sender's server answered with, when it refused.
+            method:
+              $ref: "#/components/schemas/UnsubscribeMethod"
+            detail:
+              type: string
+              description: What the mailbox agent read on the page, or why the method failed.
     SenderScreened:
       allOf:
         - $ref: "#/components/schemas/ChangeBase"

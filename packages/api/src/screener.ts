@@ -78,7 +78,7 @@ export const setSenderDelivery: OperationHandler = async (event, deployment, act
     also: nowhere ? [senderErasure(deployment.table, { mailbox: mailbox.id, sender, by })] : [],
   });
   if (!nowhere) return { statusCode: 200, body: decided satisfies components["schemas"]["ScreeningDecision"] };
-  const unsubscribe = await unsubscribeFrom(deployment, { mailbox: mailbox.id, sender, by });
+  const unsubscribe = await unsubscribeFrom(deployment, { mailbox: mailbox.id, sender, decided: decided.sender, by });
   await deployment.eraser.eraseSender({ mailbox: mailbox.id, sender, by });
   return { statusCode: 200, body: { ...decided, unsubscribe } satisfies components["schemas"]["ScreeningDecision"] };
 };

@@ -1203,8 +1203,8 @@ export async function noteSentTo(table: Table, mailbox: string, addresses: Itera
 }
 
 /** Where the raw copies of the mail the mailbox received from the addresses `from` takes are, newest first. It is given each in lower case. */
-export async function receivedFrom(table: Table, mailbox: string, from: (address: string) => boolean): Promise<Pick<StoredMessage, "rawKey" | "receivedAt">[]> {
-  const found: Pick<StoredMessage, "rawKey" | "receivedAt">[] = [];
+export async function receivedFrom(table: Table, mailbox: string, from: (address: string) => boolean): Promise<Pick<StoredMessage, "rawKey" | "receivedAt" | "recipient">[]> {
+  const found: Pick<StoredMessage, "rawKey" | "receivedAt" | "recipient">[] = [];
   let start: Record<string, unknown> | undefined;
   do {
     const page = await documents(table).send(
@@ -1217,7 +1217,7 @@ export async function receivedFrom(table: Table, mailbox: string, from: (address
         ExclusiveStartKey: start,
       }),
     );
-    for (const message of (page.Items ?? []) as StoredMessage[]) if (from(message.from.address.toLowerCase())) found.push({ rawKey: message.rawKey, receivedAt: message.receivedAt });
+    for (const message of (page.Items ?? []) as StoredMessage[]) if (from(message.from.address.toLowerCase())) found.push({ rawKey: message.rawKey, receivedAt: message.receivedAt, recipient: message.recipient });
     start = page.LastEvaluatedKey;
   } while (start !== undefined);
   return found.sort((a, b) => b.receivedAt.localeCompare(a.receivedAt));

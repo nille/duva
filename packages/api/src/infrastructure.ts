@@ -66,6 +66,8 @@ export const environmentVariables = {
   schedulerRole: "SCHEDULER_ROLE",
   /** The ARN of the mailbox agents' AgentCore Runtime, which the conversation Lambda invokes for each turn. */
   agentRuntime: "AGENT_RUNTIME",
+  /** The ID of the AgentCore Browser the mailbox agents unsubscribe in, which their runtime starts a session of for each attempt. */
+  unsubscribeBrowser: "UNSUBSCRIBE_BROWSER",
   /** The name of the SSM parameter that holds the URL of Duva's API, which a mailbox agent calls as its tools. */
   apiUrlParameter: "API_URL_PARAMETER",
   /** The URL of managed login, whose authorize and token endpoints MCP clients sign humans in at. */

@@ -63,6 +63,8 @@ const payPerUse = new Set([
   "AWS::SQS::QueuePolicy",
   // AgentCore Runtime bills per second of a session, and nothing without one (docs/research/agentcore.md).
   "AWS::BedrockAgentCore::Runtime",
+  // So does AgentCore Browser (docs/research/unsubscribe-browser-and-bounce.md).
+  "AWS::BedrockAgentCore::BrowserCustom",
   // A standard parameter costs nothing.
   "AWS::SSM::Parameter",
   "AWS::CloudFront::OriginRequestPolicy",
@@ -350,12 +352,13 @@ test("the indexer reads a FIFO queue, so each mailbox has one writer, which the 
   }
 });
 
-test("the inbound Lambda invokes the unsubscriber to unsubscribe from mail it drops and the logo fetcher for senders' logos, and may invoke no other Lambda", () => {
+test("the inbound Lambda invokes the unsubscriber to unsubscribe from mail it drops, the task runner with what one-click left, and the logo fetcher for senders' logos, and may invoke no other Lambda", () => {
   const [unsubscriberId] = lambda("UnsubscriberHandler");
   const [fetcherId] = lambda("LogoFetcherHandler");
+  const [runnerId] = lambda("TaskRunnerHandler");
   const invoking = statements("InboundHandler").filter(({ Action }) => [Action].flat().some((action) => action.startsWith("lambda:")));
   const invoked = JSON.stringify(invoking.map(({ Resource }) => Resource)).match(/Fn::GetAtt":\["(\w+)"/g)?.map((ref) => ref.replace(/^Fn::GetAtt":\["|"$/g, ""));
-  expect(new Set(invoked)).toEqual(new Set([unsubscriberId, fetcherId]));
+  expect(new Set(invoked)).toEqual(new Set([unsubscriberId, fetcherId, runnerId]));
   expect(lambda("InboundHandler")[1].Properties?.Environment?.Variables?.[environmentVariables.unsubscriberFunction]).toEqual({ "Fn::GetAtt": [unsubscriberId, "Arn"] });
 });
 
@@ -971,6 +974,23 @@ test("one AgentCore Runtime serves the mailbox agents, on Node.js 22 from the co
   expect(runtime.Properties?.LifecycleConfiguration).toEqual({ IdleRuntimeSessionTimeout: 60, MaxLifetime: 3600 });
 });
 
+test("the mailbox agents unsubscribe in an AgentCore Browser of the stack's own, on the public network, recording nothing, which only their runtime may use", () => {
+  const browsers = ofType("AWS::BedrockAgentCore::BrowserCustom");
+  expect(browsers).toHaveLength(1);
+  const [[browserId, browser]] = browsers as [[string, Resource]];
+  expect(browser.Properties?.NetworkConfiguration).toEqual({ NetworkMode: "PUBLIC" });
+  expect(browser.Properties?.RecordingConfig).toEqual({ Enabled: false });
+  expect((stack.template.Resources[browserId] as { Condition?: string }).Condition).toBe("MailboxAgentsCondition");
+  const runtime = resources.find(([, { Type }]) => Type === "AWS::BedrockAgentCore::Runtime")!;
+  expect(runtime[1].Properties?.EnvironmentVariables).toEqual({ [environmentVariables.unsubscribeBrowser]: { "Fn::GetAtt": [browserId, "BrowserId"] } });
+  const onBrowser = ofType("AWS::IAM::Policy")
+    .filter(([, { Properties }]) => JSON.stringify(Properties?.PolicyDocument).includes(`"${browserId}"`))
+    .map(([, { Properties }]) => (Properties?.Roles ?? []).map((role: { Ref: string }) => role.Ref));
+  const role = (runtime[1].Properties?.RoleArn as { "Fn::GetAtt": string[] })["Fn::GetAtt"][0]!;
+  expect(onBrowser).toEqual([[role]]);
+  expect(actions("TaskRunnerHandler", "bedrock-agentcore").some((action) => action.includes("Browser"))).toBe(false);
+});
+
 test("where AgentCore isn't, the stack leaves out the runtime and everything it brings", () => {
   const condition = stack.template.Conditions?.MailboxAgentsCondition;
   for (const region of ["af-south-1", "ap-northeast-3", "ap-southeast-3", "il-central-1", "me-south-1"]) expect(JSON.stringify(condition)).toContain(`"${region}"`);
@@ -1037,12 +1057,12 @@ test("only the web app's distribution and, through IAM, the MCP Lambda may invok
   expect(lambda("ConversationHandler")[1].Properties?.Timeout).toBe(900);
 });
 
-test("the table's stream hands the task giver each change that may add a label, and the giver and the API invoke the task runner, which nothing else may", () => {
+test("the table's stream hands the task giver each change that may add a label, and the giver, the API and the inbound Lambda invoke the task runner, which nothing else may", () => {
   const [[tableId]] = ofType("AWS::DynamoDB::GlobalTable") as [[string, Resource]];
   const [, { Properties: mapping }] = mappingOf("TaskGiverHandler");
   expect(mapping).toMatchObject({ EventSourceArn: { "Fn::GetAtt": [tableId, "StreamArn"] }, StartingPosition: "LATEST", FilterCriteria: { Filters: [{ Pattern: JSON.stringify(taskGiverFilter) }] } });
   const [runnerId] = lambda("TaskRunnerHandler");
-  for (const prefix of ["TaskGiverHandler", "ApiHandler"]) {
+  for (const prefix of ["TaskGiverHandler", "ApiHandler", "InboundHandler"]) {
     expect(lambda(prefix)[1].Properties?.Environment?.Variables?.[environmentVariables.taskRunnerFunction]).toEqual({ "Fn::GetAtt": [runnerId, "Arn"] });
     expect(actions(prefix, "lambda")).toContain("lambda:InvokeFunction");
   }
@@ -1057,6 +1077,8 @@ test("the task runner runs the mailbox agent on its runtime for up to 15 minutes
   expect(actions("TaskRunnerHandler", "ssm")).toEqual(["ssm:GetParameter"]);
   expect(actions("TaskRunnerHandler", "lambda")).toEqual([]);
   expect(actions("TaskRunnerHandler", "bedrock")).toEqual([]);
+  // It bounces mail it unsubscribes from as a last resort, and sends nothing itself.
+  expect(actions("TaskRunnerHandler", "ses")).toEqual(["ses:SendBounce"]);
   const configs = ofType("AWS::Lambda::EventInvokeConfig").filter(([, { Properties }]) => JSON.stringify(Properties?.FunctionName).includes(runnerId));
   expect(configs.map(([, { Properties }]) => Properties?.MaximumRetryAttempts)).toEqual([0]);
 });

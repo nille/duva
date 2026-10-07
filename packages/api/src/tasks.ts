@@ -20,6 +20,7 @@ import { newestMessage } from "./mail.ts";
 import { mailboxAgentOf } from "./mailbox-agents.ts";
 import { type Agent, allMailboxes, duva, findActor, findMailbox, type Mailbox, mailboxFeed, mailboxKey } from "./organization.ts";
 import { documents, isNew, pk, sk } from "./table.ts";
+import type { UnsubscribeJob } from "./unsubscribing.ts";
 
 export type Task = components["schemas"]["Task"];
 
@@ -31,18 +32,23 @@ export interface TaskRef {
   label: string;
 }
 
-/** Hands the task runner a task, which it runs if it still waits. The task runner Lambda, invoked asynchronously, or a stand-in in tests. */
+/**
+ * Hands the task runner a task, which it runs if it still waits, or what one-click left of
+ * unsubscribing from a sender (ADR-0031). The task runner Lambda, invoked asynchronously, or a
+ * stand-in in tests.
+ */
 export interface TaskRunner {
   run(task: TaskRef): Promise<void>;
+  unsubscribe(job: UnsubscribeJob): Promise<void>;
 }
+
+/** What the task runner Lambda is invoked with: a task, or an unsubscribe. */
+export type TaskRunnerEvent = TaskRef | { unsubscribe: UnsubscribeJob };
 
 /** The task runner Lambda, invoked asynchronously. Lambda is set to retry none, since a run that started has acted on the mail. */
 export function lambdaTaskRunner(lambda: LambdaClient, functionName: string): TaskRunner {
-  return {
-    async run(task) {
-      await lambda.send(new InvokeCommand({ FunctionName: functionName, InvocationType: "Event", Payload: JSON.stringify(task) }));
-    },
-  };
+  const invoke = (event: TaskRunnerEvent) => lambda.send(new InvokeCommand({ FunctionName: functionName, InvocationType: "Event", Payload: JSON.stringify(event) })).then(() => undefined);
+  return { run: invoke, unsubscribe: (job) => invoke({ unsubscribe: job }) };
 }
 
 // A task sorts under its thread, and nothing else in the mailbox starts with its prefix.

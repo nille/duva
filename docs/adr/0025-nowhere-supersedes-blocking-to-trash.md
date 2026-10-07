@@ -2,7 +2,7 @@
 
 Blocking a sender in the Screener used to move their mail to Trash, where it waited out the retention period. Duva now has deliveries instead, HEY's model: a mailbox decides per sender whether their mail goes to the Inbox, the Feed, the Paper Trail, a label, or nowhere. The Screener's let in became the Inbox and its block became nowhere. Nowhere drops the sender's mail on arrival and keeps none of it: not the message in a thread, not the raw copy in the mail bucket once no other mailbox has it, only a messageDropped change naming the sender's address. Choosing nowhere erases the sender's threads already in the mailbox for good, Spam and Trash included, and removing it later brings back nothing. Nicklas chose this on 2026-10-07 (#113).
 
-Unsubscribing keeps ADR-0016's rules: only by RFC 8058 one-click, never from spam. Duva tries it when an actor chooses nowhere, under that actor, and again for each message it drops later, naming no actor, since arriving mail names none.
+Unsubscribing keeps ADR-0016's rules: only by RFC 8058 one-click, never from spam. ADR-0031 superseded that on 2026-10-08: where one-click doesn't unsubscribe, the mailbox agent goes on. Duva tries it when an actor chooses nowhere, under that actor, and again for each message it drops later, naming no actor, since arriving mail names none.
 
 ## Considered options
 

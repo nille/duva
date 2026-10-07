@@ -15,7 +15,7 @@
 // on x64, and Nova Lite translates in the region; every mailbox's search index is backfilled, naming any whose backfill is stuck, none has held
 // erased mail for more than a day, and no indexer task waits in its failure queue; nothing but IAM
 // may invoke the sender, and no schedule for sends that wait for an agent's limits, or for threads set aside in Remind me, is overdue; Ask your agent's
-// turns reach the conversation Lambda only through the web app's domain, the mailbox agents' AgentCore Runtime is ready and takes only IAM calls, only IAM invokes the task runner, which retries no run, and no task is stuck working, every
+// turns reach the conversation Lambda only through the web app's domain, the mailbox agents' AgentCore Runtime is ready and takes only IAM calls, their unsubscribe browser is ready on the public network and records nothing, the inbound Lambda is given the task runner, only IAM invokes the task runner, which retries no run, and no task is stuck working, every
 // human's mailbox has its mailbox agent, no agent owns a mailbox, and Claude answers from eu-central-1 through the eu profile. Signing in stays
 // with a human. Then prints how many
 // messages Duva dropped on arrival each day of the last 7, by reason. Exits 1 if any check fails.
@@ -45,7 +45,7 @@ import { defaultMailboxAgentModel, inferenceProfileId } from "@duva/api/agent-mo
 import { mailboxesWithoutAgents } from "@duva/api/mailbox-agents";
 import { tasksWorkingSince } from "@duva/api/tasks";
 import { agentsMailboxes } from "@duva/api/removal";
-import { BedrockAgentCoreControlClient, GetAgentRuntimeCommand } from "@aws-sdk/client-bedrock-agentcore-control";
+import { BedrockAgentCoreControlClient, GetAgentRuntimeCommand, GetBrowserCommand } from "@aws-sdk/client-bedrock-agentcore-control";
 import { BedrockRuntimeClient, ConverseCommand } from "@aws-sdk/client-bedrock-runtime";
 import { createHash } from "node:crypto";
 import { sesSuppressionList } from "@duva/api/suppression";
@@ -232,6 +232,17 @@ await check("the mailbox agents' AgentCore Runtime is ready, on Node.js 22, taki
   if (runtime.authorizerConfiguration !== undefined) return `takes ${JSON.stringify(runtime.authorizerConfiguration)}`;
   const runs = runtime.agentRuntimeArtifact?.codeConfiguration?.runtime;
   return runs === "NODE_22" ? undefined : `runs ${runs}`;
+});
+await check("the mailbox agents' unsubscribe browser is ready, on the public network, recording nothing (ADR-0031)", async () => {
+  if (agentRuntime === "") return `AgentCore isn't in ${region}, so mailbox agents unsubscribe without a browser here`;
+  const control = new BedrockAgentCoreControlClient({ region });
+  const runtime = await control.send(new GetAgentRuntimeCommand({ agentRuntimeId: agentRuntime.split("/").at(-1)! }));
+  const browserId = runtime.environmentVariables?.[environmentVariables.unsubscribeBrowser];
+  if (browserId === undefined) return "the runtime names no browser";
+  const browser = await control.send(new GetBrowserCommand({ browserId }));
+  if (browser.status !== "READY") return `is ${browser.status}${browser.failureReason ? `: ${browser.failureReason}` : ""}`;
+  if (browser.networkConfiguration?.networkMode !== "PUBLIC") return `is on ${browser.networkConfiguration?.networkMode}`;
+  return browser.recording?.enabled === true ? "records its sessions" : undefined;
 });
 await check("every human's mailbox has its mailbox agent", async () => {
   const table = await stackTable();
@@ -478,6 +489,13 @@ await check("the inbound Lambda is given the unsubscriber, for each message it d
   const { Environment } = await lambda.send(new GetFunctionConfigurationCommand({ FunctionName: inbound }));
   const given = Environment?.Variables?.[environmentVariables.unsubscriberFunction];
   return given?.endsWith(`:function:${unsubscriberFunction}`) ? undefined : `has ${given ?? "none"}`;
+});
+await check("the inbound Lambda is given the task runner, which goes on unsubscribing where one-click didn't (ADR-0031)", async () => {
+  const [inbound, runner] = await Promise.all([stackResource("AWS::Lambda::Function", "InboundHandler"), stackResource("AWS::Lambda::Function", "TaskRunnerHandler")]);
+  if (inbound === undefined || runner === undefined) return "has no inbound Lambda or task runner";
+  const { Environment } = await lambda.send(new GetFunctionConfigurationCommand({ FunctionName: inbound }));
+  const given = Environment?.Variables?.[environmentVariables.taskRunnerFunction];
+  return given?.endsWith(`:function:${runner}`) ? undefined : `has ${given ?? "none"}`;
 });
 await check("emptying Trash without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/mailboxes/x/trash/empty`, { method: "POST" }), 401));
 await check("sending an approval without credentials answers 401", async () =>

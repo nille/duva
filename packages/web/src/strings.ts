@@ -342,6 +342,19 @@ export const strings = {
     domainThreads: (count: number) => (count === 0 ? "No threads from anyone there yet" : count === 1 ? "1 thread from someone there" : `${count} threads from people there`),
     now: "Their mail goes to",
     nowByDomain: (domain: string) => `as decided for everyone at ${domain}`,
+    /** How unsubscribing from their mail went last, by the mailbox agent unless one-click. */
+    unsubscribe: {
+      page: (agent: string) => `${agent} unsubscribed you on their opt-out page.`,
+      link: (agent: string) => `${agent} unsubscribed you through the link in their mail.`,
+      mailto: (agent: string) => `${agent} sent their unsubscribe address a request.`,
+      bounce: (agent: string) => `${agent} bounced their mail, so their list sees the address as gone.`,
+      pageFailed: (agent: string, why?: string) => `${agent} couldn't unsubscribe you on their page${why === undefined ? "." : `: ${why}`}`,
+      mailtoFailed: (agent: string) => `${agent} couldn't mail their unsubscribe address.`,
+      tooLate: (agent: string) => `${agent} can only bounce mail within a day of its arrival, so it bounces their next message.`,
+      notBounceable: (agent: string) => `${agent} didn't bounce their mail, since it didn't pass DMARC or has nowhere to bounce to.`,
+    },
+    /** The mailbox agent, until its name is read. */
+    agent: "Your mailbox agent",
     goesTo: {
       screener: "The Screener, as a first-time sender's",
       inbox: "The Inbox",
@@ -356,7 +369,7 @@ export const strings = {
       feed: { name: "Feed", hint: "Newsletters, read as a stream. Arrives read." },
       paperTrail: { name: "Paper Trail", hint: "Receipts and notifications. Arrives read." },
       label: { name: "A label", hint: "Filed under one of your labels instead of the Inbox, unread." },
-      nowhere: { name: "Nowhere", hint: "Dropped as it arrives and kept nowhere. Duva unsubscribes where their mail offers one-click." },
+      nowhere: { name: "Nowhere", hint: "Dropped as it arrives and kept nowhere. Duva unsubscribes you, and your mailbox agent tries harder where one-click isn't offered." },
     },
     whichLabel: "Label",
     noLabels: "You have no labels yet. Create one in the side column first.",
@@ -1620,8 +1633,16 @@ function entrySaid(change: ActivityChange, who: string, agent: string, message?:
     }
     case "screenerSwitched":
       return change.on ? [who, ` switched the Screener on.`] : [who, ` switched the Screener off.`];
-    case "unsubscribeAttempted":
-      return change.outcome === "unsubscribed" ? ["Duva", ` unsubscribed from ${sender(change)}.`] : ["Duva", ` couldn't unsubscribe from ${sender(change)}.`];
+    case "unsubscribeAttempted": {
+      const from = sender(change);
+      if (change.method === "page" || change.method === "link") {
+        const where = change.method === "page" ? "their opt-out page" : "the link in their mail";
+        return change.outcome === "unsubscribed" ? [who, ` unsubscribed from ${from} on ${where}.`] : [who, ` couldn't unsubscribe from ${from} on ${where}.`];
+      }
+      if (change.method === "mailto") return change.outcome === "requested" ? [who, ` mailed the unsubscribe address of ${from}.`] : [who, ` couldn't mail the unsubscribe address of ${from}.`];
+      if (change.method === "bounce") return change.outcome === "bounced" ? [who, ` bounced mail from ${from}, so their list sees the address as gone.`] : [who, ` couldn't bounce mail from ${from}.`];
+      return change.outcome === "unsubscribed" ? ["Duva", ` unsubscribed from ${from}.`] : ["Duva", ` couldn't unsubscribe from ${from}.`];
+    }
     case "agentKeyRotated":
       return [who, ` rotated ${agent}'s key.`];
     case "mailboxAdded":

@@ -15,6 +15,7 @@ type SenderSheet = components["schemas"]["SenderSheet"];
 type Delivery = components["schemas"]["Delivery"];
 type ScreeningDecision = components["schemas"]["ScreeningDecision"];
 type Unsubscribe = components["schemas"]["Unsubscribe"];
+type ScreenedSender = components["schemas"]["ScreenedSender"];
 
 /** The address of a sender's sheet, for the address in the letter, or undefined where no sheet opens. */
 export const SenderLinkContext = createContext<((address: string) => string) | undefined>(undefined);
@@ -81,12 +82,28 @@ function unsubscribeSaid({ outcome, reason, status }: Unsubscribe): string {
       return copy.failed(copy[reason]);
     case "refused":
       return copy.failed(copy.refused(status));
+    // Reasons of the mailbox agent's methods, which one-click never gives.
+    case "notDone":
+    case "notSent":
+    case "tooLate":
+    case "notBounceable":
     case undefined:
       return outcome === "failed" ? copy.failed(copy.refused(status)) : copy.noOneClick;
   }
 }
 
-type Reading = { status: "loading" } | { status: "failed"; message: string } | { status: "read"; sheet: SenderSheet; domain?: SenderSheet };
+type Reading = { status: "loading" } | { status: "failed"; message: string } | { status: "read"; sheet: SenderSheet; domain?: SenderSheet; agent?: string };
+
+/** How unsubscribing from their mail went last, as the sheet says it: by one-click as saving says it, and by `agent`, the mailbox agent, the rest. */
+function unsubscribedSaid(unsubscribe: NonNullable<ScreenedSender["unsubscribe"]>, agent: string): string {
+  const copy = strings.sender.unsubscribe;
+  const { method, outcome, reason, detail } = unsubscribe;
+  if (method === "oneClick") return unsubscribeSaid(unsubscribe);
+  if (outcome !== "failed") return copy[method](agent);
+  if (method === "mailto") return copy.mailtoFailed(agent);
+  if (method === "bounce") return reason === "tooLate" ? copy.tooLate(agent) : copy.notBounceable(agent);
+  return copy.pageFailed(agent, detail);
+}
 
 /**
  * The sheet of the sender, an address or a domain for everyone there, in the mailbox, opened from the view at `back`, named
@@ -124,10 +141,12 @@ export function SenderSheetView({
 
   const load = useCallback(async () => {
     const get = (sender: string) => client.GET("/mailboxes/{mailbox}/senders/{sender}", { params: { path: { mailbox: mailbox.id, sender } } }).catch(() => ({ data: undefined, response: undefined }));
-    const [own, atDomain] = await Promise.all([get(sender), address !== undefined && domainChoosable ? get(domain) : Promise.resolve(undefined)]);
+    // The mailbox agent's name says who went on unsubscribing.
+    const agent = client.GET("/mailboxes/{mailbox}/agent", { params: { path: { mailbox: mailbox.id } } }).catch(() => ({ data: undefined }));
+    const [own, atDomain, mailboxAgent] = await Promise.all([get(sender), address !== undefined && domainChoosable ? get(domain) : Promise.resolve(undefined), agent]);
     if (own.response?.status === 401) return onSignedOut();
     if (own.data === undefined) return setReading({ status: "failed", message: own.response === undefined ? strings.sender.unreachable : strings.sender.failed(own.response.status) });
-    setReading({ status: "read", sheet: own.data, domain: atDomain?.data });
+    setReading({ status: "read", sheet: own.data, domain: atDomain?.data, agent: mailboxAgent.data?.agent.name });
   }, [client, mailbox.id, sender, address, domain, domainChoosable, onSignedOut]);
   useEffect(() => {
     void load();
@@ -182,6 +201,7 @@ export function SenderSheetView({
           mailbox={mailbox}
           sheet={reading.sheet}
           domainSheet={reading.domain}
+          agent={reading.agent ?? strings.sender.agent}
           address={address}
           domain={domainChoosable ? domain : undefined}
           labels={labels}
@@ -210,6 +230,7 @@ function DeliveryForm({
   mailbox,
   sheet,
   domainSheet,
+  agent,
   address,
   domain,
   labels,
@@ -220,6 +241,8 @@ function DeliveryForm({
   mailbox: Mailbox;
   sheet: SenderSheet;
   domainSheet?: SenderSheet;
+  /** The mailbox agent's name. */
+  agent: string;
   /** Their address, or undefined on a domain's sheet, which decides for everyone there. */
   address: string | undefined;
   /** Their domain, unless it is a public mail provider's, where no decision covers everyone. */
@@ -278,6 +301,7 @@ function DeliveryForm({
         <span className={`sender-now-place sender-now-${sheet.goesTo}`}>{goesToSaid(sheet, labels)}</span>
         {byDomain && address !== undefined && <span className="hint">{copy.nowByDomain(decided!.domain!)}</span>}
       </p>
+      {decided?.delivery === "nowhere" && decided.unsubscribe !== undefined && <p className="sender-unsubscribe">{unsubscribedSaid(decided.unsubscribe, agent)}</p>}
       {domain !== undefined && address !== undefined && (
         <fieldset>
           <legend>{copy.scope}</legend>

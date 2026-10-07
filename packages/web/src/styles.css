@@ -6962,6 +6962,12 @@ mark {
   color: var(--ink-3);
 }
 
+.sender-unsubscribe {
+  max-width: var(--measure);
+  margin: var(--space-2) 0 0;
+  color: var(--ink-2);
+}
+
 .choice-nowhere:has(input:checked) .hint {
   color: var(--alert-ink);
 }

@@ -20,14 +20,15 @@ import { type Outbound, sentBySystem } from "./sending.ts";
 import { receivedByAny } from "./mail.ts";
 import { receiveScreened } from "./screening.ts";
 import { senderLogo, type SenderLogos } from "./sender-logos.ts";
+import type { TaskRunner } from "./tasks.ts";
 import type { Unsubscriber } from "./unsubscriber.ts";
 import { unsubscribeDropped } from "./unsubscribing.ts";
 
 /**
  * What the inbound handler needs: the table, the mail bucket, its log, which takes one line at a
  * time, SES's sending, for groups' external members, its bounces, for mail a group refuses, what
- * looking up senders' logos needs, and the unsubscriber, for mail it drops since its sender's mail
- * goes nowhere.
+ * looking up senders' logos needs, and the unsubscriber and the task runner, which hands the
+ * mailbox agent the rest, for mail it drops since its sender's mail goes nowhere.
  */
 export function createInbound({
   table,
@@ -37,6 +38,7 @@ export function createInbound({
   bounces,
   logos,
   unsubscriber,
+  tasks,
 }: {
   table: Table;
   mailBucket: MailBucket;
@@ -45,6 +47,7 @@ export function createInbound({
   bounces: Bounces;
   logos: SenderLogos;
   unsubscriber: Unsubscriber;
+  tasks: TaskRunner;
 }) {
   return async (event: SESEvent): Promise<void> => {
     for (const { ses } of event.Records) {
@@ -116,13 +119,17 @@ export function createInbound({
         dmarcPassed && !spam && !fromAgent && parsed.from !== undefined && delivered.size > 0
           ? await senderLogo(table, logos, { domain: domainOf(sender.from), selector: parsed.bimiSelector })
           : undefined;
-      const dropped: string[] = [];
+      const dropped: [string, Recipient][] = [];
       for (const [mailbox, to] of delivered) {
         const received = await receiveScreened(table, { mailbox, sesMessageId: ses.mail.messageId, rawKey, ...to, sender: ses.mail.source, receivedAt: ses.mail.timestamp, parsed, spam, dmarcPassed, fromAgent, logo });
-        if (received === "dropped") dropped.push(mailbox);
+        if (received === "dropped") dropped.push([mailbox, to]);
       }
-      // Unsubscribing from spam would confirm a live address (ADR-0016).
-      if (!spam) for (const mailbox of dropped) await unsubscribeDropped({ table, unsubscriber }, { mailbox, address: sender.from, raw });
+      // Unsubscribing from spam would confirm a live address (ADR-0031).
+      if (!spam) {
+        for (const [mailbox, { recipient }] of dropped) {
+          await unsubscribeDropped({ table, unsubscriber, tasks }, { mailbox, address: sender.from, raw, message: { sesMessageId: ses.mail.messageId, receivedAt: ses.mail.timestamp, recipient, envelopeSender: ses.mail.source } });
+        }
+      }
       // Mail that went nowhere is kept nowhere, once no mailbox it was for has it (ADR-0025). An
       // event processed again finds every mailbox dropped or stored it, and erases it all the same.
       if (delivered.size > 0 && !(await receivedByAny(table, [...delivered.keys()], ses.mail.messageId))) await mailBucket.erase(rawKey);

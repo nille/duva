@@ -34,7 +34,8 @@ async function withNewsletters() {
   const params = { path: { mailbox: mailbox!.id } };
   await grace.PUT("/mailboxes/{mailbox}/senders/{sender}", { params: { path: { ...params.path, sender: "news@example.net" } }, body: { delivery: "inbox" } });
   await app.duva.receive(note("Example News <news@example.net>", "Issue 1", "The first issue, on lighthouses."), { to: ["grace@example.com"] }, { at: new Date("2026-10-06T08:00:00Z") });
-  await app.duva.receive(note("Example News <news@example.net>", "Issue 2", "The second issue, on ferries."), { to: ["grace@example.com"] }, { at: new Date("2026-10-07T08:00:00Z") });
+  // Now, so SES may still bounce it, as it does only for a day after it arrived.
+  await app.duva.receive(note("Example News <news@example.net>", "Issue 2", "The second issue, on ferries."), { to: ["grace@example.com"] });
   const listed = async (label: string) => (await grace.GET("/mailboxes/{mailbox}/threads", { params: { ...params, query: { label } } })).data!.threads.map(({ subject }) => subject);
   await app.signIn("grace@example.org");
   await expect.poll(() => heading(app.page), wait).toBe("Inbox");
@@ -100,7 +101,7 @@ test("the side column lists the Feed and the Paper Trail among the Inbox's views
   await expect.poll(async () => (await side(page).getByRole("link").allTextContents()).slice(0, 5), wait).toEqual(["Inbox", "Screener", "Remind me", "Feed", "Paper Trail"]);
 });
 
-test("choosing nowhere asks once more, saying it can't be undone, and then erases their threads", budget, async () => {
+test("choosing nowhere asks once more, saying it can't be undone, then erases their threads, and the sheet says how the mailbox agent went on unsubscribing", budget, async () => {
   const { page, listed } = await withNewsletters();
   await openSheet(page, "Issue 2");
 
@@ -114,6 +115,8 @@ test("choosing nowhere asks once more, saying it can't be undone, and then erase
   await expect.poll(() => sheet(page).getByRole("status").textContent(), wait).toBe("news@example.net's mail goes nowhere now. Erasing 2 threads. Their mail offers no one-click unsubscribe, so Duva sent none.");
   expect(await listed("inbox")).toEqual([]);
   await expect.poll(() => sheet(page).innerText(), wait).toContain("Nowhere. Their mail is dropped as it arrives");
+  // Their newsletters offer no unsubscribe, so the agent bounced the newest.
+  await expect.poll(() => sheet(page).innerText(), wait).toContain("Mailbox agent bounced their mail, so their list sees the address as gone.");
 });
 
 test("a label delivery files their mail under one of the human's own labels", budget, async () => {

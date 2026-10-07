@@ -4,6 +4,7 @@
 // screened sender in its own partition. A message is screened in the same transaction that stores
 // it, on condition that the switch and the decision on its sender are as read, so a decision or a
 // switch made meanwhile is never missed.
+import { randomUUID } from "node:crypto";
 import { ConditionalCheckFailedException, TransactionCanceledException } from "@aws-sdk/client-dynamodb";
 import { GetCommand, PutCommand, QueryCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import type { components } from "@duva/openapi";
@@ -38,13 +39,14 @@ async function stateOf(table: Table, mailbox: string): Promise<State> {
   return Item?.state as State;
 }
 
-async function decisionOn(table: Table, mailbox: string, sender: Sender): Promise<ScreenedSender | undefined> {
+/** The decision on exactly the address or the domain, if the mailbox has one. */
+export async function decisionOn(table: Table, mailbox: string, sender: Sender): Promise<ScreenedSender | undefined> {
   const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: senderKey(mailbox, sender), ConsistentRead: true }));
   return Item === undefined ? undefined : senderOf(Item);
 }
 
 /** The decision as stored. One from before deliveries let in or blocked, which became the Inbox and nowhere. */
-const senderOf = ({ address, domain, delivery, label, decision, decidedAt, actor }: Record<string, unknown>): ScreenedSender =>
+const senderOf = ({ address, domain, delivery, label, decision, decidedAt, actor, unsubscribe }: Record<string, unknown>): ScreenedSender =>
   ({
     ...(address !== undefined && { address }),
     ...(domain !== undefined && { domain }),
@@ -52,7 +54,81 @@ const senderOf = ({ address, domain, delivery, label, decision, decidedAt, actor
     ...(label !== undefined && { label }),
     decidedAt,
     ...(actor !== undefined && { actor }),
+    ...(unsubscribe !== undefined && { unsubscribe }),
   }) as ScreenedSender;
+
+/**
+ * Notes how unsubscribing from the sender went on their decision, with the change, recorded under
+ * the actor `by`, on condition that it is still the nowhere decided at `decidedAt`. Returns false if
+ * it no longer is, as when the sender was set back to the Inbox meanwhile.
+ */
+export async function noteUnsubscribe(
+  table: Table,
+  { mailbox, sender, decidedAt, unsubscribe, change, by }: { mailbox: string; sender: Sender; decidedAt: string; unsubscribe: NonNullable<ScreenedSender["unsubscribe"]>; change: Record<string, unknown>; by: string | undefined },
+): Promise<boolean> {
+  try {
+    await recordChanges(table, mailboxFeed(mailbox), {
+      by,
+      changes: [{ type: "unsubscribeAttempted", ...change }],
+      items: [
+        {
+          Update: {
+            TableName: table.name,
+            Key: senderKey(mailbox, sender),
+            UpdateExpression: "SET unsubscribe = :unsubscribe",
+            ConditionExpression: "decidedAt = :decidedAt AND (delivery = :nowhere OR decision = :block)",
+            ExpressionAttributeValues: { ":unsubscribe": unsubscribe, ":decidedAt": decidedAt, ":nowhere": "nowhere", ":block": "block" },
+          },
+        },
+      ],
+    });
+    return true;
+  } catch (error) {
+    if (failedAt(error, 2)) return false;
+    throw error;
+  }
+}
+
+/**
+ * Leases unsubscribing from the sender to one run of the mailbox agent until the time, if it is
+ * still the nowhere decided at `decidedAt` and no other run holds an unexpired lease, so two
+ * messages dropped close together never have it mail the unsubscribe address twice. Returns a
+ * function that ends the lease, or undefined if it isn't taken.
+ */
+export async function leaseUnsubscribing(table: Table, { mailbox, sender, decidedAt }: { mailbox: string; sender: Sender; decidedAt: string }, until: Date): Promise<(() => Promise<void>) | undefined> {
+  const lease = randomUUID();
+  try {
+    await documents(table).send(
+      new UpdateCommand({
+        TableName: table.name,
+        Key: senderKey(mailbox, sender),
+        UpdateExpression: "SET unsubscribeLease = :lease",
+        ConditionExpression: "decidedAt = :decidedAt AND (attribute_not_exists(unsubscribeLease) OR unsubscribeLease.#until < :now)",
+        ExpressionAttributeNames: { "#until": "until" },
+        ExpressionAttributeValues: { ":lease": { id: lease, until: until.toISOString() }, ":decidedAt": decidedAt, ":now": new Date().toISOString() },
+      }),
+    );
+  } catch (error) {
+    if (error instanceof ConditionalCheckFailedException) return undefined;
+    throw error;
+  }
+  return async () => {
+    await documents(table)
+      .send(
+        new UpdateCommand({
+          TableName: table.name,
+          Key: senderKey(mailbox, sender),
+          UpdateExpression: "REMOVE unsubscribeLease",
+          ConditionExpression: "unsubscribeLease.id = :lease",
+          ExpressionAttributeValues: { ":lease": lease },
+        }),
+      )
+      .catch((error: unknown) => {
+        // The decision was made again meanwhile, without the lease.
+        if (!(error instanceof ConditionalCheckFailedException)) throw error;
+      });
+  };
+}
 
 /** The label the delivery files mail under, or undefined for nowhere. Mail from a sender without one goes to the Inbox. */
 const placeOf = (decided: ScreenedSender | undefined): string | undefined =>

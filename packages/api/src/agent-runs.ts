@@ -44,7 +44,7 @@ export const runtimeMissing = (region: string) => `Mailbox agents run on Amazon 
 export const noMailboxAgent = "This mailbox has no mailbox agent yet. Ask an admin to run duva deploy, which gives every human's mailbox one.";
 
 /** What every run starts with, before what it is asked. */
-export type RunStart = Omit<RunPayload, "token" | "history" | "words" | "task">;
+export type RunStart = Omit<RunPayload, "token" | "history" | "words" | "task" | "unsubscribe">;
 
 /**
  * What a run of the agent in its owner's mailbox starts with, with the month it counts toward and
@@ -90,18 +90,19 @@ export function capReached(table: Table, agent: Agent, month: string, cap: numbe
 
 /**
  * Runs the agent with a token of its own, which ends with the run, giving its text and actions as
- * they come, and returns what it said and did, and how it ended. Each model call's cost is counted
+ * they come, and returns what it said and did, an unsubscribe's verdict, and how it ended. Each model call's cost is counted
  * as it comes, so a run cut off still counts what it spent, and a run that reaches the cap alerts
  * the agent's sponsor.
  */
 export async function* runMailboxAgent(
   table: Table,
   { agent, payload, runtime, month, cap }: { agent: Agent; payload: Omit<RunPayload, "token">; runtime: AgentRuntime; month: string; cap: number },
-): AsyncGenerator<Extract<RunEvent, { type: "text" | "action" }>, { text: string; actions: AgentAction[]; outcome: RunOutcome }> {
+): AsyncGenerator<Extract<RunEvent, { type: "text" | "action" }>, { text: string; actions: AgentAction[]; outcome: RunOutcome; verdict?: { unsubscribed: boolean; detail: string } }> {
   const token = await issueRunToken(table, agent.id);
   let text = "";
   const actions: AgentAction[] = [];
   let outcome: RunOutcome = "failed";
+  let verdict: { unsubscribed: boolean; detail: string } | undefined;
   let total = 0;
   try {
     for await (const event of runtime({ ...payload, token } as RunPayload, `${agent.id}-${randomUUID()}`)) {
@@ -112,6 +113,7 @@ export async function* runMailboxAgent(
         actions.push(event.action);
         yield event;
       } else if (event.type === "usage") total = await addSpend(table, month, costOf(event, payload.model.model, payload.model.profile));
+      else if (event.type === "verdict") verdict = { unsubscribed: event.unsubscribed, detail: event.detail };
       else outcome = event.outcome;
     }
   } catch (error) {
@@ -121,5 +123,5 @@ export async function* runMailboxAgent(
     await endRunToken(table, token);
   }
   if (outcome === "capReached" || total >= cap) await capReached(table, agent, month, cap);
-  return { text, actions, outcome };
+  return { text, actions, outcome, ...(verdict !== undefined && { verdict }) };
 }

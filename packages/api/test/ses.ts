@@ -49,7 +49,12 @@ export interface Bounce {
   from: string;
   recipients: string[];
   explanation: string;
+  /** The enhanced status code of each recipient's DSN, as RFC 3463 has it. */
+  status: string;
 }
+
+/** How long after receiving a message SES bounces it, in milliseconds. */
+const bounceWindow = 24 * 60 * 60_000;
 
 /** SES's limits on a rule set: rules in it, and recipients in each rule. */
 const maxRules = 200;
@@ -64,8 +69,8 @@ const maxRecipients = 500;
  */
 export function sesReceiving({ verified, region, buckets, functions }: { verified: (domain: string) => Promise<boolean>; region: string; buckets: Map<string, MailBucket>; functions: Map<string, (event: SESEvent) => Promise<void>> }) {
   const rules: ReceiptRule[] = [];
-  // The envelope sender of each message SES accepted, by the ID it gave it, and the bounces it sent.
-  const senders = new Map<string, string>();
+  // The envelope sender of each message SES accepted, and when, by the ID it gave it, and the bounces it sent.
+  const senders = new Map<string, { from: string; at: Date }>();
   const bounced: Bounce[] = [];
 
   const check = (rule: ReceiptRule) => {
@@ -102,12 +107,14 @@ export function sesReceiving({ verified, region, buckets, functions }: { verifie
   };
 
   const bounces: Bounces = {
-    async send({ messageId, bounceSender, recipients, explanation }) {
-      const to = senders.get(messageId);
-      if (to === undefined) throw new BounceRefused(`Message ${messageId} was not received by Amazon SES.`);
+    async send({ messageId, bounceSender, recipients, explanation, status = "5.7.1" }) {
+      const received = senders.get(messageId);
+      if (received === undefined) throw new BounceRefused(`Message ${messageId} was not received by Amazon SES.`);
+      if (Date.now() - received.at.getTime() > bounceWindow) throw new BounceRefused(`Message ${messageId} was received more than 24 hours ago.`);
+      const to = received.from;
       if (!(await verified(bounceSender.split("@")[1]?.toLowerCase() ?? ""))) throw new BounceRefused(`Email address is not verified: ${bounceSender}`);
       if (recipients.length === 0) throw new BounceRefused("Specify at least one BouncedRecipientInfo.");
-      bounced.push({ messageId, to, from: `MAILER-DAEMON@${region}.amazonses.com`, recipients: [...recipients], explanation });
+      bounced.push({ messageId, to, from: `MAILER-DAEMON@${region}.amazonses.com`, recipients: [...recipients], explanation, status });
     },
   };
 
@@ -138,7 +145,7 @@ export function sesReceiving({ verified, region, buckets, functions }: { verifie
 
       const bytes = typeof raw === "string" ? new TextEncoder().encode(raw) : raw;
       const messageId = randomUUID().replaceAll("-", "");
-      senders.set(messageId, envelope.from);
+      senders.set(messageId, { from: envelope.from, at });
       const timestamp = at.toISOString();
       const parsed = await PostalMime.parse(bytes);
       // Each rule acts on the recipients it matches, all with the one message ID.
@@ -200,14 +207,15 @@ export function sesReceiving({ verified, region, buckets, functions }: { verifie
 }
 
 /**
- * The message as SES stores it when its rule scans: headed by its verdicts, and an
- * Authentication-Results with a result for each DKIM signature, which names it by its domain.
+ * The message as SES stores it when its rule scans: headed by its envelope sender, its verdicts,
+ * and an Authentication-Results with a result for each DKIM signature, which names it by its domain.
  */
 function withVerdicts(raw: Uint8Array, parsed: Awaited<ReturnType<typeof PostalMime.parse>>, envelope: Envelope, verdicts: Verdicts): Uint8Array {
   const result = (status: SESReceiptStatus["status"] = "PASS") => ({ PASS: "pass", FAIL: "fail", GRAY: "neutral", PROCESSING_FAILED: "temperror", DISABLED: "none" })[status];
   const signers = parsed.headers.filter(({ key }) => key === "dkim-signature").map(({ value }) => /(?:^|;)\s*d\s*=\s*([^;\s]+)/.exec(value)?.[1]?.toLowerCase() ?? "");
   const fromDomain = parsed.from?.address?.split("@")[1] ?? "";
   const header = [
+    `Return-Path: <${envelope.from}>`,
     `X-SES-Spam-Verdict: ${verdicts.spam ?? "PASS"}`,
     `X-SES-Virus-Verdict: ${verdicts.virus ?? "PASS"}`,
     "Authentication-Results: amazonses.com;",

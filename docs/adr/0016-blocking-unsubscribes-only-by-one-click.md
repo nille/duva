@@ -1,5 +1,7 @@
 # Blocking a sender unsubscribes only by one-click
 
+Superseded by ADR-0031 (2026-10-08): one-click comes first, as here, and where it doesn't unsubscribe, the mailbox agent goes on by the opt-out page, the unsubscribe address, a link in the body, and as a last resort a bounce.
+
 When an actor blocks a sender in the Screener, Duva also tries to unsubscribe the mailbox from that sender's mail, so blocked lists stop sending rather than piling up in Trash. It does so only by RFC 8058 one-click: the blocked mail's `List-Unsubscribe` header has an `https:` URI, its `List-Unsubscribe-Post` says `List-Unsubscribe=One-Click`, and a DKIM signature that passed covers both headers. Duva then sends that one POST from a Lambda, with no cookies or referrer, and records the outcome in the mailbox's change feed under the actor who blocked. Nicklas chose this on 2026-10-06.
 
 ## Considered options

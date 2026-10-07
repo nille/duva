@@ -60,10 +60,11 @@ const fromSender = (i: number) => ({ from: `news-${i}@lists.example.org`, subjec
 /**
  * A deployment on example.com where Grace has her personal mailbox at grace@example.com, with the
  * Screener on, and sponsors the agent Iris, which has send sponsor access. lists.example.org serves
- * the web, answering as given.
+ * the web, answering as given. What the mailbox agent tries after one-click waits, as when Lambda
+ * falls behind, so these tests see one-click alone.
  */
 async function withMailbox(server: WebServerOptions = {}) {
-  const duva = await startDuva({ domain: "example.com", admin: "ada@example.org", humans: ["grace@example.org"] });
+  const duva = await startDuva({ domain: "example.com", admin: "ada@example.org", humans: ["grace@example.org"], tasksHeld: true });
   const ada = duva.signIn("ada@example.org");
   const grace = duva.signIn("grace@example.org");
   const { data: me } = await grace.GET("/whoami");
