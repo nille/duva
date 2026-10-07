@@ -112,3 +112,7 @@ Facts about AWS that shaped Duva's design, each with how it was established. A c
 ## SES SendBounce's From
 
 Observed on 2026-10-06 in the real run of #71: SES SendBounce delivers the DSN From `MAILER-DAEMON@<region>.amazonses.com`, with Return-Path `<>` and a DKIM signature for d=amazonses.com. The `BounceSender` Duva passes (`mailer-daemon@<domain>`) doesn't appear anywhere in the message. SES accepted `RecipientDsnFields` without a `BounceType`, and `ses:SendBounce` on the identity was enough in IAM. The DSN reached the envelope sender within a second.
+
+## API Gateway HTTP API source IP
+
+Observed on 2026-10-07 in the real run of #125: with nothing in front of the HTTP API, `requestContext.http.sourceIp` is the caller's public IP. An agent's access request from this machine showed 87.63.234.185, the machine's public address.
