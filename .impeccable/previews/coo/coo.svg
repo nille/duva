@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><title>Coo</title>
+  <!-- tail -->
+  <path d="M5.2 21.6 2.4 24.4c-.4.4-.1 1.1.5 1l4.6-.7z" fill="#56564f"/>
+  <!-- body -->
+  <ellipse cx="13.6" cy="20.2" rx="9.4" ry="7.3" fill="#8f949b"/>
+  <!-- wing -->
+  <path d="M7.4 19.3c2.9-2.7 7.6-2.9 10.4-.4-1.4 3.6-6.2 5-10.4.4z" fill="#6c7178"/>
+  <path d="M9.2 21.2h5.2M10.4 22.9h3.4" stroke="#56564f" stroke-width=".9" stroke-linecap="round"/>
+  <!-- head -->
+  <g class="head">
+    <circle cx="21.6" cy="11.4" r="5.6" fill="#8f949b"/>
+    <!-- iridescent neck ring, the agent's blue -->
+    <path d="M17.3 14.6c1.7 1.6 4.9 2.2 7.3.9l.6 1.8c-2.9 1.5-6.9.9-9-1.1z" fill="#2e62ff"/>
+    <!-- eye -->
+    <circle cx="23.2" cy="10.3" r="1.55" fill="#f8f8f6"/>
+    <circle cx="23.5" cy="10.4" r=".85" fill="#161616"/>
+    <!-- beak and cere -->
+    <path d="M26.7 11.1 29.6 12.2 26.6 13.1z" fill="#161616"/>
+    <ellipse cx="26.3" cy="11" rx=".9" ry=".6" fill="#f8f8f6"/>
+  </g>
+  <!-- feet -->
+  <path d="M12.2 27.2v2.1M15.6 27.2v2.1" stroke="#e5470d" stroke-width="1.3" stroke-linecap="round"/>
+</svg>
