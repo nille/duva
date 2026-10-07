@@ -8,7 +8,7 @@ Yes. AgentCore Runtime bills nothing while no agent runs, so it keeps ADR-0006's
 
 There are two blockers, and neither is AgentCore's:
 
-- **Claude can't run in the test account.** Claude is sold through AWS Marketplace, and every Marketplace agreement in 925039213717 is terminated seconds after it's accepted (docs/aws.md, Bedrock). A real run of #120 needs that fixed by AWS Support first, or has to use a model that isn't sold through Marketplace.
+- **Claude runs in the test account, called from outside eu-north-1.** The Marketplace agreement fails only in eu-north-1. From eu-central-1, eu-west-1 or eu-west-3 (`eu.` profile) and from us-west-2, Claude answers (docs/aws.md, 2026-10-07). The mailbox agent calls Bedrock in a configured model region.
 - **Claude doesn't run inside eu-north-1.** The `eu.` profiles send requests to six EU regions, so mail leaves Stockholm but stays in the EU.
 
 Recommendation: AgentCore as decided, with four changes. Use one shared Runtime per deployment, not one per mailbox. Run Duva's own Converse tool loop on it, and let Duva mint a short-lived token for each run. Let Duva serve MCP itself rather than through AgentCore Gateway. Skip AgentCore Memory.
