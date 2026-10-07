@@ -8,6 +8,12 @@ import type { components } from "@duva/openapi";
 
 type EmailAddress = components["schemas"]["EmailAddress"];
 
+/**
+ * The header every message an agent sends carries, naming the agent and the human it acts for. Its
+ * name is part of Duva's public behavior, documented in docs/disclosure.md.
+ */
+export const disclosureHeader = "Duva-Agent";
+
 /** What Duva reads from a raw message. */
 export interface ParsedMail {
   messageId?: string;
@@ -21,6 +27,8 @@ export interface ParsedMail {
   from?: EmailAddress;
   to: EmailAddress[];
   cc: EmailAddress[];
+  /** The Duva-Agent header's value, which names the agent that sent it, if it has one (docs/disclosure.md). */
+  disclosure?: string;
   /** Where the sender wants replies, if the message says. */
   replyTo: EmailAddress[];
   subject: string;
@@ -55,6 +63,7 @@ export async function parseMail(raw: Uint8Array): Promise<ParsedMail> {
   const textFromHtml = email.text === undefined || isHtmlDocument(email.text);
   const text = textFromHtml ? htmlToText(email.html ?? email.text ?? "") : email.text!;
   const html = email.html ?? (email.text !== undefined && isHtmlDocument(email.text) ? email.text : undefined);
+  const disclosure = email.headers.find(({ key }) => key === disclosureHeader.toLowerCase())?.value.trim() || undefined;
   const parts = email.attachments.map(({ filename, mimeType, contentId, content }) => ({
     ...(filename !== null && { name: filename }),
     type: mimeType,
@@ -69,6 +78,7 @@ export async function parseMail(raw: Uint8Array): Promise<ParsedMail> {
     to: addresses(email.to),
     cc: addresses(email.cc),
     replyTo: addresses(email.replyTo),
+    ...(disclosure !== undefined && { disclosure }),
     subject: email.subject ?? "",
     date: date === undefined || Number.isNaN(date.getTime()) ? undefined : date.toISOString(),
     text: text.replace(/\r\n?/g, "\n").replace(/\n+$/, ""),

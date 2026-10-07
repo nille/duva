@@ -2642,6 +2642,8 @@ export interface components {
             subject: string;
             /** @description Who sent the thread's first message. */
             from: components["schemas"]["EmailAddress"];
+            /** @description True when Duva knows an agent sent the thread's first message, as its message's fromAgent says. Absent otherwise. */
+            fromAgent?: boolean;
             /**
              * @description The start of the newest message's text, on one line, without quoted lines.
              * @example Here are my notes on the compiler.
@@ -2729,6 +2731,8 @@ export interface components {
             /** @description The ID of the actor who sent the message from the mailbox, if it did. */
             sentBy?: string;
             sentAs?: components["schemas"]["SentAsGroup"];
+            /** @description True when Duva knows an agent sent the message: an agent sent it from this Duva, or it came with the Duva-Agent header from one of the organization's domains with a DMARC pass, as a message an agent sent from another of its mailboxes does. Absent otherwise, and on mail Duva received before it kept this. */
+            fromAgent?: boolean;
             /** @description Who approved the message before it was sent, if an agent sent it. */
             approval?: components["schemas"]["SentApproval"];
             /** @description What SES reported about a message sent from the mailbox, oldest first, if it reported anything. */

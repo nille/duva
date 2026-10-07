@@ -18,12 +18,9 @@ import { hrefOf, type SearchView, type ThreadsView, threadHref, titleOf } from "
 type ThreadSummary = components["schemas"]["ThreadSummary"];
 type ThreadList = components["schemas"]["ThreadList"];
 type Mailbox = components["schemas"]["Mailbox"];
-type EmailAddress = components["schemas"]["EmailAddress"];
 
-/** What the web app knows of who sent a list's threads, and which of them wait for the human. */
+/** What the web app knows of who sent a list's threads, beyond what each says, and which of them wait for the human. */
 export interface Marks {
-  /** The names of the agents the human sponsors, by each address of their mailboxes. */
-  agents: ReadonlyMap<string, string>;
   /** The addresses Duva's own mail comes from. */
   duva: ReadonlySet<string>;
   /** The threads an agent's send waits in for the human to approve, by ID. */
@@ -36,11 +33,10 @@ export interface Waiting {
   forward: boolean;
 }
 
-const noMarks: Marks = { agents: new Map(), duva: new Set(), waiting: new Map() };
+const noMarks: Marks = { duva: new Set(), waiting: new Map() };
 
-/** Who sent mail from the address, as far as the web app knows: an agent the human sponsors, Duva itself, or someone. */
-const actorOf = (address: EmailAddress, marks: Marks) =>
-  marks.agents.has(address.address.toLowerCase()) ? "agent" : marks.duva.has(address.address.toLowerCase()) ? "duva" : "human";
+/** Who sent the thread's first message: an agent, as Duva knows it, Duva itself, or someone. */
+const actorOf = (thread: ThreadSummary, marks: Marks) => (thread.fromAgent ? "agent" : marks.duva.has(thread.from.address.toLowerCase()) ? "duva" : "human");
 
 /** How many threads a page of a view lists. */
 export const pageSize = 25;
@@ -645,7 +641,7 @@ export function ThreadLine({
   const snippetId = useId();
   const { day } = useDates();
   const sender = nameOf(thread.from);
-  const actor = actorOf(thread.from, marks);
+  const actor = actorOf(thread, marks);
   const subject = thread.subject || strings.thread.noSubject;
   const waiting = marks.waiting.get(thread.id);
   const label = [

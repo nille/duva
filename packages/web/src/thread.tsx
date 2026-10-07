@@ -565,8 +565,9 @@ function sentMarkOf(message: Message, me: string, agentNames: ReadonlyMap<string
           : strings.thread.sentBy(agent, as);
 }
 
-/** Who sent the message, by shape: an agent the human sponsors, or else a human, as anyone writing from outside is. */
+/** Who sent the message, by shape: an agent, as Duva knows it or as one the human sponsors, or else a human, as anyone writing from outside is. */
 function actorOf(message: Message, agentNames: ReadonlyMap<string, string>, owner: { id: string } | undefined): "human" | "agent" {
+  if (message.fromAgent) return "agent";
   return message.sentAs === undefined && message.sentBy !== undefined && (agentNames.has(message.sentBy) || message.sentBy === owner?.id) ? "agent" : "human";
 }
 

@@ -173,7 +173,7 @@ export async function copyToOtherMembers({ table, mailBucket }: { table: Table; 
   for (const member of mailboxes) {
     const rawKey = `${sentPrefix}${message}-${member}`;
     await mailBucket.put(rawKey, raw);
-    const copy = { id: randomUUID(), messageId, from, to, cc, recipient, subject, date, receivedAt, rawKey, sentAs };
+    const copy = { id: randomUUID(), messageId, from, to, cc, recipient, subject, date, receivedAt, rawKey, sentAs, ...(sent.fromAgent && { fromAgent: true as const }) };
     await storeGroupCopy(table, { mailbox: member, sent: message, message: copy, text: parsed.text, answers: parsed.answers });
   }
 }

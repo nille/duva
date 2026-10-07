@@ -156,6 +156,7 @@ test("the sent message joins the agent's thread, and a reply to it joins the thr
     date: expect.any(String),
     receivedAt: expect.any(String),
     sentBy: agent.id,
+    fromAgent: true,
     approval: { id: approval, approver: sponsor.id, approvedAt: expect.any(String) },
     text: "Monday works.\n\nSent by Hermes for ada@example.org",
     attachments: [],
@@ -335,4 +336,60 @@ test("a failed send is in the change feed under the agent, with SES's reason", a
   const { data } = await hermes.GET("/mailboxes/{mailbox}/changes", { params });
 
   expect(data?.changes.at(-1)).toMatchObject({ actor: agent.id, type: "sendFailed", draft: draft.id, approval, reason: expect.stringMatching(/not verified/) });
+});
+
+/** Ada's own mailbox at ada@example.com, beside Hermes's, without a Screener, with what lies in it: its threads in All mail, and each one's messages. */
+async function withSponsorsMailbox() {
+  const setup = await withMailbox();
+  const { ada, sponsor } = setup;
+  const { data: own } = await ada.POST("/mailboxes", { body: { owner: sponsor.id, address: "ada@example.com" } });
+  const adaParams = { path: { mailbox: own!.id } };
+  await ada.PATCH("/mailboxes/{mailbox}/screener", { params: adaParams, body: { on: false } });
+  const inAdas = async () => {
+    const { data } = await ada.GET("/mailboxes/{mailbox}/all-mail", { params: adaParams });
+    const threads = data!.threads;
+    const read = await Promise.all(threads.map(({ id }) => ada.GET("/mailboxes/{mailbox}/threads/{thread}", { params: { path: { ...adaParams.path, thread: id } } })));
+    return { threads, messages: read.flatMap(({ data }) => data!.messages) };
+  };
+  return { ...setup, adaParams, inAdas };
+}
+
+test("a message an agent sent says so in the recipient's own mailbox and in the agent's, and its thread says so", async () => {
+  const { duva, ada, hermes, params, ask, inAdas } = await withSponsorsMailbox();
+  const { approval } = await ask({ to: ["ada@example.com"], subject: "Notes", text: "Here are the notes." });
+  await ada.POST("/approvals/{approval}/send", { params: { path: { approval } } });
+
+  await duva.receive(duva.sent()[0]!, { to: ["ada@example.com"] });
+
+  const received = await inAdas();
+  expect(received.threads).toMatchObject([{ subject: "Notes", fromAgent: true }]);
+  expect(received.messages).toMatchObject([{ from: { name: "Hermes", address: "hermes@example.com" }, fromAgent: true }]);
+  const { data: sent } = await hermes.GET("/mailboxes/{mailbox}/sent", { params });
+  expect(sent!.threads).toMatchObject([{ subject: "Notes", fromAgent: true }]);
+  const { data: thread } = await hermes.GET("/mailboxes/{mailbox}/threads/{thread}", { params: { path: { ...params.path, thread: sent!.threads[0]!.id } } });
+  expect(thread!.messages).toMatchObject([{ fromAgent: true }]);
+});
+
+test("the disclosure header counts only on mail from the organization's own domain with a DMARC pass", async () => {
+  const { duva, inAdas } = await withSponsorsMailbox();
+  const mail = (from: string, subject: string) => `From: ${from}\r\nTo: ada@example.com\r\nSubject: ${subject}\r\nDuva-Agent: Hermes for ada@example.org\r\n\r\nHello.\r\n`;
+
+  await duva.receive(mail("Hermes <hermes@example.com>", "Forged"), { to: ["ada@example.com"] }, { verdicts: { dmarc: "FAIL" } });
+  await duva.receive(mail("Hermes <hermes@example.net>", "Elsewhere"), { to: ["ada@example.com"] });
+  await duva.receive("From: Linus <linus@example.com>\r\nTo: ada@example.com\r\nSubject: Lunch\r\n\r\nLunch?\r\n", { to: ["ada@example.com"] });
+  await duva.receive("From: Linus <linus@example.com>\r\nTo: ada@example.com\r\nSubject: Empty\r\nDuva-Agent: \r\n\r\nHello.\r\n", { to: ["ada@example.com"] });
+
+  const { threads, messages } = await inAdas();
+  expect(threads).toHaveLength(4);
+  for (const each of [...threads, ...messages]) expect(each).not.toHaveProperty("fromAgent");
+});
+
+test("the sponsor's own send from their mailbox doesn't say an agent sent it", async () => {
+  const { ada, adaParams, inAdas } = await withSponsorsMailbox();
+  const { data: draft } = await ada.POST("/mailboxes/{mailbox}/drafts", { params: adaParams, body: { to: ["grace@example.org"], subject: "Hi", text: "Hello." } });
+  await ada.POST("/mailboxes/{mailbox}/drafts/{draft}/send", { params: { path: { ...adaParams.path, draft: draft!.id } } });
+
+  const { threads, messages } = await inAdas();
+  expect(threads).toMatchObject([{ subject: "Hi" }]);
+  for (const each of [...threads, ...messages]) expect(each).not.toHaveProperty("fromAgent");
 });

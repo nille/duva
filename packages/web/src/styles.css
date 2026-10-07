@@ -655,8 +655,7 @@ kbd {
   margin-top: var(--space-5);
 }
 
-.view-name,
-.mailbox-name {
+.view-name {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -683,10 +682,13 @@ kbd {
   row-gap: 0;
 }
 
+/* A mailbox's name and address read whole: a long one wraps, at its @ where it can. */
 .mailbox-name {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .mailbox-count {
@@ -701,12 +703,10 @@ kbd {
 
 .mailbox-at {
   grid-column: 1 / -1;
-  overflow: hidden;
   color: var(--ink-3);
   font-size: var(--text-xs);
   line-height: 1.3;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 /* An agent's mailbox is set in from its diamond, so its address lines up under its name. */

@@ -218,6 +218,10 @@ test("a human turns keyboard shortcuts off on You, and then no key acts, ? and /
   expect(await page.evaluate(() => document.activeElement?.getAttribute("type"))).not.toBe("search");
   expect(await heading(page)).toBe("Inbox");
   expect(await listed(page)).toEqual(["Kvitto"]);
+  // Nor does Write show a key it doesn't take.
+  const write = page.getByRole("button", { name: "Write" });
+  expect(await write.getAttribute("aria-keyshortcuts")).toBeNull();
+  expect(await write.locator("kbd").count()).toBe(0);
 });
 
 test("on a phone the shortcuts' sheet fits the screen", budget, async () => {

@@ -38,7 +38,7 @@ import { sentPrefix, systemAddress, timeToLiveAttribute } from "./infrastructure
 import type { MailBucket } from "./mail-bucket.ts";
 import { copyToOtherMembers, fromStanding } from "./group-mail.ts";
 import { findMessage } from "./mail.ts";
-import { buildMail } from "./mime.ts";
+import { buildMail, disclosureHeader } from "./mime.ts";
 import { sponsorAccessAllows } from "./access.ts";
 import { type Actor, type Agent, agentSettings, agentUnpaused, findActor, findMailbox, organizationDomain, switchesFor } from "./organization.ts";
 
@@ -64,12 +64,6 @@ const maxRecipients = 50;
 
 /** SES refused the message, so it wasn't sent. */
 export class Refused extends Error {}
-
-/**
- * The header every message an agent sends carries, naming the agent and the human it acts for. Its
- * name is part of Duva's public behavior, documented in docs/disclosure.md.
- */
-export const disclosureHeader = "Duva-Agent";
 
 /**
  * SES's v2 SendEmail with raw MIME, under Duva's configuration set, which tracks no opens or
@@ -308,7 +302,7 @@ async function sendOnce(
     thread: draft.thread,
     sesMessageId,
     messageId: `<${sesMessageId}@${region}.amazonses.com>`,
-    stored: { from, to: draft.to, cc: draft.cc, bcc: draft.bcc, recipient: draft.from, subject: draft.subject, date: sentAt, receivedAt: sentAt, rawKey },
+    stored: { from, to: draft.to, cc: draft.cc, bcc: draft.bcc, recipient: draft.from, subject: draft.subject, date: sentAt, receivedAt: sentAt, rawKey, ...(actor.kind === "agent" && { fromAgent: true }) },
     approval,
   });
   if (marked) await copyToOtherMembers({ table, mailBucket }, mailbox, message);

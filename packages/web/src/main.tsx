@@ -474,16 +474,15 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
   const searched = away ? first : shown;
   const searching = route.view === "search" ? route.search.search : route.view === "thread" && "search" in route.from ? route.from.search : undefined;
   const doneHere = done !== undefined && done.at === route.hash ? done.done : undefined;
-  // Who sent the mail listed, as far as the human knows: the agents they sponsor, and Duva from its address on the mailbox's domains.
+  // Who sent the mail listed, beyond what each thread says: Duva, from its address on the mailbox's domains.
   const marks = useMemo<Marks>(
     () => ({
-      agents: new Map(listed?.agents.flatMap(({ mailbox, agent }) => mailbox.addresses.map((address) => [address.toLowerCase(), agent] as const))),
       duva: new Set(shown?.addresses.map((address) => `no-reply@${address.slice(address.lastIndexOf("@") + 1).toLowerCase()}`)),
       waiting: new Map(
         asked.filter(({ mailbox }) => mailbox === shown?.id).map(({ thread, agent, forward }) => [thread, { agent: agentNames.get(agent) ?? strings.galley.anAgent, forward }]),
       ),
     }),
-    [listed, shown, asked, agentNames],
+    [shown, asked, agentNames],
   );
   const writing = route.view === "drafts" || route.view === "draft" || route.view === "write";
 
@@ -670,10 +669,10 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
         <header className="bar">
           <p className="wordmark">{strings.nav.label}</p>
           {write !== undefined && (
-            <button type="button" className="button button-primary button-small bar-write" aria-keyshortcuts="c" onClick={write}>
+            <button type="button" className="button button-primary button-small bar-write" aria-keyshortcuts={preferences.keyboardShortcuts === "off" ? undefined : "c"} onClick={write}>
               <WriteIcon />
               {strings.nav.write}
-              <kbd aria-hidden="true">c</kbd>
+              {preferences.keyboardShortcuts !== "off" && <kbd aria-hidden="true">c</kbd>}
             </button>
           )}
           {searched !== undefined && (

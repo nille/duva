@@ -134,8 +134,8 @@ test("on a phone every list fits the screen", budget, async () => {
  * sponsors the agent Hermes, which owns hermes@example.com and works in Ada's mailbox with full
  * sponsor access. Mail from Grace and from Hermes waits in Ada's Inbox.
  */
-async function withAgentAtWork() {
-  const app = await startWebApp({ domain: "example.com", admin: "ada@example.org" });
+async function withAgentAtWork(options: Parameters<typeof startWebApp>[0] = {}) {
+  const app = await startWebApp({ domain: "example.com", admin: "ada@example.org", ...options });
   const ada = app.duva.signIn("ada@example.org");
   const { data: me } = await ada.GET("/whoami");
   const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: me!.id, address: "ada@example.com" } });
@@ -147,7 +147,8 @@ async function withAgentAtWork() {
   const hermes = app.duva.withKey(created!.key);
   const toAda = (subject: string, from: string) => note(subject, from).replace("To: Grace <grace@example.com>", "To: ada@example.com");
   await app.duva.receive(toAda("Möte", "Grace Hopper <grace@example.org>"), { to: ["ada@example.com"] });
-  await app.duva.receive(toAda("Veckorapport", "Hermes <hermes@example.com>"), { to: ["ada@example.com"] });
+  // Hermes's own mail carries the header every message an agent sends does.
+  await app.duva.receive(toAda("Veckorapport", "Hermes <hermes@example.com>").replace("\r\n", "\r\nDuva-Agent: Hermes for ada@example.org\r\n"), { to: ["ada@example.com"] });
   const { data: listed } = await ada.GET("/mailboxes/{mailbox}/threads", { params: inAdas });
   const meeting = listed!.threads.find(({ subject }) => subject === "Möte")!;
   const { data: thread } = await ada.GET("/mailboxes/{mailbox}/threads/{thread}", { params: { path: { ...inAdas.path, thread: meeting.id } } });
@@ -176,10 +177,20 @@ test("a row says when an agent sent it, and a thread whose reply an agent asks t
   const report = row(page, "Veckorapport");
   expect(await report.getByRole("link").getAttribute("aria-label")).toContain("Hermes, an agent, Veckorapport");
   expect(await report.innerText()).not.toContain("Waiting for you");
+  expect(await report.locator(".actor-mark-agent").count()).toBe(1);
+  expect(await meeting.locator(".actor-mark-human").count()).toBe(1);
 
   await ada.POST("/approvals/{approval}/send", { params: { path: { approval } } });
 
   await expect.poll(() => meeting.innerText(), wait).not.toContain("Waiting for you");
+});
+
+test("on a phone a row an agent sent carries its diamond, and a human's their dot", budget, async () => {
+  const { page, signIn } = await withAgentAtWork({ viewport: phone });
+  await signIn("ada@example.org");
+
+  await expect.poll(() => row(page, "Veckorapport").locator(".actor-mark-agent").count(), wait).toBe(1);
+  expect(await row(page, "Möte").locator(".actor-mark-human").count()).toBe(1);
 });
 
 test("new senders waiting in the Screener show as one row at the top of the Inbox, which opens the Screener", budget, async () => {

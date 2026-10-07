@@ -89,6 +89,19 @@ export function MailboxList({
   );
 }
 
+/** An address that may break before its @, so a long one reads whole, its domain on the next line. Text without one is as it is. */
+function breakableBeforeAt(text: string) {
+  const at = text.lastIndexOf("@");
+  if (at <= 0) return text;
+  return (
+    <>
+      {text.slice(0, at)}
+      <wbr />
+      {text.slice(at)}
+    </>
+  );
+}
+
 function MailboxLink({ name, address, unread = 0, current, href, agent = false }: { name: string; address?: string; unread?: number; current: boolean; href: string; agent?: boolean }) {
   const label = [name, address, unread > 0 && strings.mailboxes.unread(unread)].filter(Boolean).join(", ");
   return (
@@ -96,12 +109,12 @@ function MailboxLink({ name, address, unread = 0, current, href, agent = false }
       <a className={unread > 0 ? "mailbox mailbox-unread" : "mailbox"} href={href} aria-label={label} aria-current={current ? "page" : undefined}>
         <span className="mailbox-name">
           {agent && <ActorMark kind="agent" />}
-          {name}
+          <span>{breakableBeforeAt(name)}</span>
         </span>
         <span className="mailbox-count" aria-hidden="true">
           {unread > 0 ? unread : ""}
         </span>
-        {address !== undefined && <span className="mailbox-at">{address}</span>}
+        {address !== undefined && <span className="mailbox-at">{breakableBeforeAt(address)}</span>}
       </a>
     </li>
   );

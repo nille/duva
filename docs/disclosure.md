@@ -12,6 +12,8 @@ Duva-Agent: Hermes for n@nille.dev
 
 The header is always there, also when the sponsor approved the message or edited it before sending, and also when the sponsor switched the visible line off. Software can tell a message came from an agent by the header alone. Its value is free text for people, written as RFC 2047 encoded words when it isn't ASCII.
 
+Duva reads the header too, on mail it receives from the organization's own domains with a DMARC pass, which only Duva sends: such a message, as an agent's mail to a colleague, says `fromAgent` in the recipient's mailbox. From anywhere else the header is anyone's to write, so it counts for nothing.
+
 ## The visible line
 
 By default, the text of every message an agent sends ends with a line that says the same, after a blank line:

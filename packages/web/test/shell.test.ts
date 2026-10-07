@@ -437,3 +437,53 @@ test("the status strip says Duva is up to date, how each sponsored agent stands,
   await strip.getByRole("button", { name: "Shortcuts" }).click();
   expect(await page.getByRole("dialog", { name: "Keyboard shortcuts" }).isVisible()).toBe(true);
 });
+
+/**
+ * Whether each element reads whole: nothing of it is cut off or hidden, and if it wraps, an address
+ * in it wraps at its @, so its domain starts a line of its own.
+ */
+const readWhole = (elements: Element[]) =>
+  elements.map((element) => {
+    const texts: Text[] = [];
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    while (walker.nextNode()) texts.push(walker.currentNode as Text);
+    const linesOf = (text: Text) => {
+      const range = document.createRange();
+      range.selectNodeContents(text);
+      return [...range.getClientRects()];
+    };
+    const lines = texts.flatMap(linesOf);
+    const wrapped = new Set(lines.map(({ top }) => Math.round(top))).size > 1;
+    const domain = texts.find((text) => text.data.startsWith("@"));
+    const startsLine = domain === undefined || !wrapped || Math.round(linesOf(domain)[0]!.left) === Math.round(Math.min(...lines.map(({ left }) => left)));
+    const side = element.closest(".mailboxes")!.getBoundingClientRect();
+    return element.scrollWidth <= element.clientWidth && lines.every(({ right }) => right <= side.right + 0.5) && startsLine;
+  });
+
+test.each([
+  ["a desk", { width: 1280, height: 800 }],
+  ["a phone", phone],
+])("long mailbox addresses read whole beside the mail on %s, wrapping at the @", budget, async (_, viewport) => {
+  const { page, signIn, ada, me } = await withTwoMailboxes({ viewport });
+  await ada.POST("/mailboxes", { body: { owner: me.id, address: "planning-committee@example.com" } });
+  await ada.POST("/mailboxes", { body: { owner: me.id, address: "spare@example.com" } });
+  await ada.DELETE("/addresses/{address}", { params: { path: { address: "spare@example.com" } } });
+  const { data: hermes } = await ada.POST("/agents", { body: { name: "Hermes" } });
+  await ada.POST("/mailboxes", { body: { owner: hermes!.agent.id, address: "hermes-research-assistant@example.com" } });
+  await signIn("ada@example.org");
+  if (viewport === phone) await page.getByRole("button", { name: /Mailboxes and views/ }).click();
+
+  const links = mailboxes(page).getByRole("link");
+  await expect.poll(() => links.count(), wait).toBe(5);
+  expect(await links.allInnerTexts()).toEqual([
+    expect.stringMatching(/^ada@example\.com\s*$/),
+    expect.stringMatching(/^lovelace@example\.com\s*$/),
+    expect.stringMatching(/^planning-committee@example\.com\s*$/),
+    expect.stringMatching(/^Mailbox 4, without an address\s*$/),
+    expect.stringMatching(/^Hermes\s+hermes-research-assistant@example\.com$/),
+  ]);
+  const shown = mailboxes(page).locator(".mailbox-name, .mailbox-at");
+  expect(await shown.count()).toBe(6);
+  expect(await shown.evaluateAll(readWhole)).toEqual(Array(6).fill(true));
+  expect(await fits(page)).toBe(true);
+});

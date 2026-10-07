@@ -85,8 +85,10 @@ export function createInbound({ table, mailBucket, log, outbound, bounces }: { t
         }
       }
       for (const [mailbox, to] of caught) if (!delivered.has(mailbox)) delivered.set(mailbox, to);
+      // Only Duva sends from the organization's domains with a DMARC pass, so there the header is its own.
+      const fromAgent = parsed.disclosure !== undefined && dmarcPassed && domains.has(domainOf(sender.from));
       for (const [mailbox, to] of delivered) {
-        await receiveScreened(table, { mailbox, sesMessageId: ses.mail.messageId, rawKey, ...to, sender: ses.mail.source, receivedAt: ses.mail.timestamp, parsed, spam, dmarcPassed });
+        await receiveScreened(table, { mailbox, sesMessageId: ses.mail.messageId, rawKey, ...to, sender: ses.mail.source, receivedAt: ses.mail.timestamp, parsed, spam, dmarcPassed, fromAgent });
       }
       // Spam goes to no one outside, and a bounce of it would most likely reach someone it forged.
       if (spam) continue;

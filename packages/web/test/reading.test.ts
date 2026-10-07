@@ -186,3 +186,39 @@ test("on a phone a reply opens at the thread's foot, and the bar steps aside whi
   expect(await page.getByRole("toolbar", { name: "Actions" }).count()).toBe(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(phone.width);
 });
+
+test.each([
+  ["a desk", { width: 1280, height: 800 }],
+  ["a phone", phone],
+])("on %s, mail an agent sent carries its diamond in the recipient's own mailbox, folded and open, beside the human's dot", budget, async (_, viewport) => {
+  const app = await withPersonalMailbox({ viewport });
+  const { page, signIn, duva, receive, reply, markRead } = app;
+  // Ada's agent writes to Grace, who doesn't sponsor it, so only the mail itself says an agent sent it.
+  const ada = duva.signIn("ada@example.org");
+  const { data: created } = await ada.POST("/agents", { body: { name: "Hermes" } });
+  const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: created!.agent.id, address: "hermes@example.com" } });
+  await ada.PATCH("/agents/{agent}/settings", { params: { path: { agent: created!.agent.id } }, body: { approvalForOwnMailbox: false } });
+  const hermes = duva.withKey(created!.key);
+  const path = { mailbox: mailbox!.id };
+  const send = async (body: { to?: string[]; subject?: string; answers?: string; text: string }) => {
+    const { data: draft } = await hermes.POST("/mailboxes/{mailbox}/drafts", { params: { path }, body });
+    await hermes.POST("/mailboxes/{mailbox}/drafts/{draft}/send", { params: { path: { ...path, draft: draft!.id } } });
+    await receive(duva.sent().at(-1)!);
+  };
+  await send({ to: ["grace@example.com"], subject: "Anteckningar", text: "Här är anteckningarna." });
+  const { data: sent } = await hermes.GET("/mailboxes/{mailbox}/sent", { params: { path } });
+  const { data: first } = await hermes.GET("/mailboxes/{mailbox}/threads/{thread}", { params: { path: { ...path, thread: sent!.threads[0]!.id } } });
+  await send({ answers: first!.messages[0]!.id, text: "Och en sak till." });
+  await markRead();
+  await reply("Tack.");
+  await signIn("grace@example.org");
+
+  await page.getByRole("link", { name: /Anteckningar/ }).click();
+
+  const letters = page.getByRole("article");
+  await expect.poll(() => letters.count(), wait).toBe(3);
+  const marks = await letters.evaluateAll((all) => all.map((letter) => letter.querySelector(".actor-mark")!.className));
+  expect(marks).toEqual(["actor-mark actor-mark-agent", "actor-mark actor-mark-agent", "actor-mark actor-mark-human"]);
+  // The first is folded to its slug, which carries the diamond too.
+  expect(await letters.nth(0).getByRole("button", { expanded: false }).locator(".actor-mark-agent").count()).toBe(1);
+});
