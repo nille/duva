@@ -98,6 +98,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/organization/mailbox-agent-spend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show what the mailbox agents spent on their model this month, against the organization's spend cap.
+         * @description Counts the model's price for each run's tokens, from the first of the month in UTC. Once it reaches mailboxAgentSpendCap, runs stop and every new one is refused until the month ends or an admin raises the cap. Only admins can read it.
+         */
+        get: operations["getMailboxAgentSpend"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/organization/settings": {
         parameters: {
             query?: never;
@@ -1120,6 +1140,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/mailboxes/{mailbox}/agent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read a mailbox's mailbox agent and your conversation with it.
+         * @description Every human's personal mailbox has a mailbox agent, which Duva hosts and which you sponsor. It works only in that mailbox, with the sponsor access you give it in its settings, and its actions are attributed to it. The web app asks it in "Ask your agent", which streams its answer from the web app's own address, under /agent/. Lists the conversation's turns, oldest first, at most the last 100. Only the mailbox's owner can read it.
+         */
+        get: operations["getMailboxAgent"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mailboxes/{mailbox}/agent/conversation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Start a new conversation with a mailbox's mailbox agent.
+         * @description Deletes every turn of your conversation with it, so it starts again knowing none of it. What it did stays done, in the mailbox's change feed. Only the mailbox's owner can clear it.
+         */
+        delete: operations["clearConversation"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/mailboxes/{mailbox}/screener": {
         parameters: {
             query?: never;
@@ -1587,6 +1647,8 @@ export interface components {
             /** @description Whether the agent may change the organization's setup, which only an agent whose sponsor is an admin can. Its changes wait for its sponsor's approval unless approvalForSetup is off, and it never removes humans or agents, or changes who is an admin. */
             admin: boolean;
             paused?: components["schemas"]["Pause"];
+            /** @description For a mailbox agent, the ID of the human's mailbox it is the mailbox agent of, the only one it works in. Duva hosts it, so it has no key, and it goes with the mailbox. */
+            mailbox?: string;
             /** @description How many more messages the agent's send limits let it send now, counting its sends of the last hour. Its sends that wait for the limits leave none. There only when you list the agents you sponsor. */
             sendsLeftThisHour?: number;
         };
@@ -3028,10 +3090,10 @@ export interface components {
             /** @description The alert's ID. */
             id: string;
             /**
-             * @description What happened: sendFailed, the agent's send failed, SES rejected it, or it's unclear whether it went out; bounced, it hard-bounced; complained, a recipient complained about it; limitReached, its sends wait for its send limits, once per window; pausedBy, limitsChangedBy and removedBy, an admin paused it, lowered its limits with a cap, or removed it; keyUsedWhilePaused, its key was used while it is paused, once per pause; autoPaused, Duva paused it because its mail hurts the domain (ADR-0021).
+             * @description What happened: sendFailed, the agent's send failed, SES rejected it, or it's unclear whether it went out; bounced, it hard-bounced; complained, a recipient complained about it; limitReached, its sends wait for its send limits, once per window; pausedBy, limitsChangedBy and removedBy, an admin paused it, lowered its limits with a cap, or removed it; keyUsedWhilePaused, its key was used while it is paused, once per pause; autoPaused, Duva paused it because its mail hurts the domain (ADR-0021); spendCapReached, a run of its mailbox agent stopped at the organization's spend cap, once a month.
              * @enum {string}
              */
-            kind: "sendFailed" | "bounced" | "complained" | "limitReached" | "pausedBy" | "limitsChangedBy" | "removedBy" | "keyUsedWhilePaused" | "autoPaused";
+            kind: "sendFailed" | "bounced" | "complained" | "limitReached" | "pausedBy" | "limitsChangedBy" | "removedBy" | "keyUsedWhilePaused" | "autoPaused" | "spendCapReached";
             /** @description The ID of the agent the alert is about. */
             agent: string;
             /** @description The agent's name when the alert was raised, kept after it is removed. */
@@ -3900,6 +3962,10 @@ export interface components {
             agentSendsPerHourCap: components["schemas"]["AgentSendsPerHourCap"];
             agentNewRecipientsPerDayCap: components["schemas"]["AgentNewRecipientsPerDayCap"];
             undoWindowSeconds: components["schemas"]["UndoWindowSeconds"];
+            mailboxAgentModel: components["schemas"]["MailboxAgentModel"];
+            mailboxAgentProfile: components["schemas"]["MailboxAgentProfile"];
+            mailboxAgentRegion: components["schemas"]["MailboxAgentRegion"];
+            mailboxAgentSpendCap: components["schemas"]["MailboxAgentSpendCap"];
         };
         /** @description The settings changed, each with its new value. */
         SettingsChanges: {
@@ -3909,6 +3975,10 @@ export interface components {
             agentSendsPerHourCap?: components["schemas"]["AgentSendsPerHourCap"];
             agentNewRecipientsPerDayCap?: components["schemas"]["AgentNewRecipientsPerDayCap"];
             undoWindowSeconds?: components["schemas"]["UndoWindowSeconds"];
+            mailboxAgentModel?: components["schemas"]["MailboxAgentModel"];
+            mailboxAgentProfile?: components["schemas"]["MailboxAgentProfile"];
+            mailboxAgentRegion?: components["schemas"]["MailboxAgentRegion"];
+            mailboxAgentSpendCap?: components["schemas"]["MailboxAgentSpendCap"];
         };
         /** @description How many days Trash and Spam keep a thread, counted from when it got the label, before the eraser erases it for good. 30 by default, and a whole number from 7 to 365. It applies to all Trash and Spam, threads already there included. */
         RetentionDays: number;
@@ -3918,6 +3988,76 @@ export interface components {
         AgentNewRecipientsPerDayCap: number;
         /** @description How many seconds an approved send waits before the sender takes it, so its approver can undo the approval meanwhile. 30 by default, and a whole number from 0 to 120, where 0 sends at once. A change applies to approvals from then on. A human's own sends never wait. */
         UndoWindowSeconds: number;
+        MailboxAgentConversation: {
+            agent: components["schemas"]["Agent"];
+            turns: components["schemas"]["ConversationTurn"][];
+        };
+        /** @description What you asked your mailbox agent, or what it answered and did. */
+        ConversationTurn: {
+            /** @description The turn's ID. */
+            id: string;
+            /**
+             * Format: date-time
+             * @description When the turn began.
+             */
+            at: string;
+            /**
+             * @description Who took the turn, you or the agent.
+             * @enum {string}
+             */
+            from: "human" | "agent";
+            /** @description What was said. */
+            text: string;
+            /** @description What the agent did in the turn, in order. None for yours. */
+            actions: components["schemas"]["AgentAction"][];
+            /**
+             * @description How the agent's turn ended: answered; capReached, it stopped as the mailbox agents reached the organization's spend cap; failed, the model or the runtime failed, so asking again may work.
+             * @enum {string}
+             */
+            outcome?: "answered" | "capReached" | "failed";
+        };
+        /** @description One call the mailbox agent made to Duva's API, as its tool. */
+        AgentAction: {
+            /** @description The operation's ID in this document, such as getThread. */
+            operation: string;
+            /** @description What the operation does, its summary. */
+            what: string;
+            /** @description Whether Duva did it. A refusal says why in message. */
+            ok: boolean;
+            /** @description Duva's refusal, when it refused. */
+            message?: string;
+            /** @description The IDs of the threads it read or changed, if any. */
+            threads?: string[];
+            /** @description The ID of the draft it wrote, changed or asked to send, if any. */
+            draft?: string;
+        };
+        MailboxAgentSpend: {
+            /**
+             * @description The month counted, as YYYY-MM in UTC.
+             * @example 2026-10
+             */
+            month: string;
+            /** @description What the mailbox agents' model calls cost this month, in US dollars. */
+            spent: number;
+            cap: components["schemas"]["MailboxAgentSpendCap"];
+        };
+        /**
+         * @description The Claude model on Amazon Bedrock the mailbox agents think with: Claude Sonnet 5.5, the default, Claude Haiku 4.5, which costs about a half as much, or Claude Opus 5.5, which costs about twice as much.
+         * @enum {string}
+         */
+        MailboxAgentModel: "anthropic.claude-sonnet-5-5" | "anthropic.claude-haiku-4-5-20251001-v1:0" | "anthropic.claude-opus-5-5";
+        /**
+         * @description The inference profile Bedrock runs the model through, which decides where the mail the agents read is processed: eu keeps it in the EU's AWS regions, us in the US's, and global sends it to any region with capacity, for about 10% less. eu by default for a deployment in the EU, us for one in the US, and global elsewhere. eu needs an EU mailboxAgentRegion, us a US one.
+         * @enum {string}
+         */
+        MailboxAgentProfile: "eu" | "us" | "global";
+        /**
+         * @description The AWS region the mailbox agents call Bedrock in, which the profile sends on from. eu-central-1 by default for a deployment in the EU, us-west-2 for one in the US.
+         * @enum {string}
+         */
+        MailboxAgentRegion: "eu-central-1" | "eu-west-1" | "eu-west-3" | "eu-north-1" | "us-east-1" | "us-east-2" | "us-west-2";
+        /** @description The most the mailbox agents may spend on their model a month, in whole US dollars, 20 by default. At the cap a run stops, its agent's sponsor gets an alert, and runs are refused until the month ends or an admin raises it. 0 turns the mailbox agents off. */
+        MailboxAgentSpendCap: number;
         RetentionPreview: {
             retentionDays: components["schemas"]["RetentionDays"];
             /** @description How many threads in Trash and Spam are older than retentionDays now. */
@@ -4249,6 +4389,28 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AgentList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getMailboxAgentSpend: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The month's spend. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MailboxAgentSpend"];
                 };
             };
             401: components["responses"]["Unauthorized"];
@@ -6231,6 +6393,58 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TrashEmptying"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getMailboxAgent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The mailbox's ID. */
+                mailbox: components["parameters"]["Mailbox"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The mailbox agent and the conversation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MailboxAgentConversation"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    clearConversation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The mailbox's ID. */
+                mailbox: components["parameters"]["Mailbox"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The mailbox agent and the conversation, now empty. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MailboxAgentConversation"];
                 };
             };
             401: components["responses"]["Unauthorized"];

@@ -420,6 +420,7 @@ export function Settings({
           <>
             <MailSheet client={client} onSignedOut={onSignedOut} />
             <AgentsSheet client={client} onSignedOut={onSignedOut} />
+            <MailboxAgentsSheet client={client} onSignedOut={onSignedOut} />
           </>
         )}
         {page === "domains" && <DomainsSheet client={client} changes={setupChanges} onChange={setupChanged} onSignedOut={onSignedOut} />}
@@ -656,6 +657,127 @@ function AgentsSheet({ client, onSignedOut }: { client: DuvaClient; onSignedOut:
           />
         </>
       )}
+    </Sheet>
+  );
+}
+
+type MailboxAgentsSettings = Pick<OrganizationSettings, "mailboxAgentModel" | "mailboxAgentProfile" | "mailboxAgentRegion" | "mailboxAgentSpendCap">;
+
+const mailboxAgentModels = ["anthropic.claude-sonnet-5-5", "anthropic.claude-haiku-4-5-20251001-v1:0", "anthropic.claude-opus-5-5"] as const;
+const mailboxAgentProfiles = ["eu", "us", "global"] as const;
+const mailboxAgentRegions = ["eu-central-1", "eu-west-1", "eu-west-3", "eu-north-1", "us-east-1", "us-east-2", "us-west-2"] as const;
+
+/**
+ * The organization's Mailbox agents sheet: the model they think with, where the mail they read is
+ * processed, and their spend cap, with what they spent this month (ADR-0027).
+ */
+function MailboxAgentsSheet({ client, onSignedOut }: { client: DuvaClient; onSignedOut: () => void }) {
+  const { sheet } = useOrganizationSheet<MailboxAgentsSettings>(
+    client,
+    ({ mailboxAgentModel, mailboxAgentProfile, mailboxAgentRegion, mailboxAgentSpendCap }) => ({ mailboxAgentModel, mailboxAgentProfile, mailboxAgentRegion, mailboxAgentSpendCap }),
+    onSignedOut,
+  );
+  const [capText, setCapText] = useState<string>();
+  const [spend, setSpend] = useState<components["schemas"]["MailboxAgentSpend"]>();
+  const saved = sheet.saving.status;
+  useEffect(() => {
+    void client
+      .GET("/organization/mailbox-agent-spend")
+      .then(({ data }) => setSpend(data))
+      .catch(() => undefined);
+  }, [client, saved]);
+  const copy = strings.settings.mailboxAgents;
+  const money = (dollars: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(dollars);
+  return (
+    <Sheet id="mailbox-agents-settings" name={copy.title} lead={copy.lead} sheet={sheet}>
+      {(chosen) => {
+        const text = capText ?? String(chosen.mailboxAgentSpendCap);
+        const capValid = /^\d+$/.test(text.trim()) && Number(text.trim()) <= 10_000;
+        const runs = chosen.mailboxAgentProfile === "global" || chosen.mailboxAgentRegion.startsWith(`${chosen.mailboxAgentProfile}-`);
+        return (
+          <>
+            <fieldset>
+              <legend>{copy.model.legend}</legend>
+              <p className="setting-lead">{copy.model.lead}</p>
+              {mailboxAgentModels.map((model) => (
+                <Choice
+                  key={model}
+                  name="mailboxAgentModel"
+                  checked={chosen.mailboxAgentModel === model}
+                  onChoose={() => sheet.choose({ mailboxAgentModel: model })}
+                  label={copy.model.names[model]}
+                  hint={copy.model.hints[model]}
+                />
+              ))}
+            </fieldset>
+            <fieldset>
+              <legend>{copy.where.legend}</legend>
+              <p className="setting-lead">{copy.where.lead}</p>
+              {mailboxAgentProfiles.map((profile) => (
+                <Choice
+                  key={profile}
+                  name="mailboxAgentProfile"
+                  checked={chosen.mailboxAgentProfile === profile}
+                  onChoose={() => sheet.choose({ mailboxAgentProfile: profile })}
+                  label={copy.where.names[profile]}
+                  hint={copy.where.hints[profile]}
+                />
+              ))}
+              <div className="limits">
+                <div className="limit">
+                  <label htmlFor="mailbox-agent-region" className="limit-name">
+                    {copy.where.region}
+                  </label>
+                  <select
+                    id="mailbox-agent-region"
+                    aria-describedby="mailbox-agent-region-hint"
+                    aria-invalid={!runs}
+                    value={chosen.mailboxAgentRegion}
+                    onChange={(event) => sheet.choose({ mailboxAgentRegion: event.target.value as MailboxAgentsSettings["mailboxAgentRegion"] })}
+                  >
+                    {mailboxAgentRegions.map((region) => (
+                      <option key={region} value={region}>
+                        {region}
+                      </option>
+                    ))}
+                  </select>
+                  <p id="mailbox-agent-region-hint" className={runs ? "hint" : "field-error"}>
+                    {runs ? copy.where.regionHint : copy.where.mismatch(chosen.mailboxAgentProfile)}
+                  </p>
+                </div>
+              </div>
+            </fieldset>
+            <fieldset>
+              <legend>{copy.cap.legend}</legend>
+              {spend !== undefined && <p className="setting-lead">{copy.cap.spent(money(spend.spent), spend.month)}</p>}
+              <div className="limits">
+                <div className="limit">
+                  <label htmlFor="mailbox-agent-cap" className="limit-name">
+                    {copy.cap.label}
+                  </label>
+                  <input
+                    id="mailbox-agent-cap"
+                    type="text"
+                    inputMode="numeric"
+                    aria-invalid={!capValid}
+                    aria-describedby="mailbox-agent-cap-hint"
+                    value={text}
+                    onChange={(event) => {
+                      setCapText(event.target.value);
+                      const value = event.target.value.trim();
+                      if (/^\d+$/.test(value) && Number(value) <= 10_000) sheet.choose({ mailboxAgentSpendCap: Number(value) });
+                    }}
+                  />
+                  <p id="mailbox-agent-cap-hint" className={capValid ? "hint" : "field-error"}>
+                    {capValid ? copy.cap.hint : copy.cap.invalid}
+                  </p>
+                </div>
+              </div>
+            </fieldset>
+            <SaveRow sheet={sheet} saved={strings.settings.saved([])} invalid={!capValid || !runs} />
+          </>
+        );
+      }}
     </Sheet>
   );
 }

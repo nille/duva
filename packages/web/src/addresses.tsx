@@ -81,8 +81,10 @@ export function AddressesSheet({
         // Humans by address, then agents by name, each agent with its sponsor, since two can share a name.
         owners: [
           ...humans.data!.humans.map(({ id, email }) => ({ id, kind: "human" as const, name: email, label: email })).sort((a, b) => byText(a.name, b.name)),
+          // A mailbox agent works in its human's mailbox and owns none (ADR-0027).
           ...agents
-            .data!.agents.map(({ id, name, sponsor }) => ({ id, kind: "agent" as const, name, label: copy.agentWithSponsor(name, humans.data!.humans.find((human) => human.id === sponsor)?.email) }))
+            .data!.agents.filter(({ mailbox }) => mailbox === undefined)
+            .map(({ id, name, sponsor }) => ({ id, kind: "agent" as const, name, label: copy.agentWithSponsor(name, humans.data!.humans.find((human) => human.id === sponsor)?.email) }))
             .sort((a, b) => a.label.localeCompare(b.label)),
         ],
         groups: groups.data!.groups,

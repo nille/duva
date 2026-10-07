@@ -14,7 +14,9 @@
 // of SES's waits in the feedback Lambda's failure queue; nothing but IAM may invoke search, which runs at 10,240 MB
 // on x64, and Nova Lite translates in the region; every mailbox's search index is backfilled, naming any whose backfill is stuck, none has held
 // erased mail for more than a day, and no indexer task waits in its failure queue; nothing but IAM
-// may invoke the sender, and no schedule for sends that wait for an agent's limits, or for threads set aside in Remind me, is overdue. Signing in stays
+// may invoke the sender, and no schedule for sends that wait for an agent's limits, or for threads set aside in Remind me, is overdue; Ask your agent's
+// turns reach the conversation Lambda only through the web app's domain, the mailbox agents' AgentCore Runtime is ready and takes only IAM calls, every
+// human's mailbox has its mailbox agent, and Claude answers from eu-central-1 through the eu profile. Signing in stays
 // with a human. Then prints how many
 // messages Duva dropped on arrival each day of the last 7, by reason. Exits 1 if any check fails.
 import { CloudFormationClient, DescribeStacksCommand, paginateListStackResources } from "@aws-sdk/client-cloudformation";
@@ -36,8 +38,13 @@ import { GetConfigurationSetEventDestinationsCommand, GetEmailIdentityCommand, S
 import { GetQueueAttributesCommand, SQSClient } from "@aws-sdk/client-sqs";
 import { paginateListObjectsV2, S3Client } from "@aws-sdk/client-s3";
 import { indexedMailboxes, uncompactedSince } from "@duva/api/indexing";
-import { alertMailFilter, dropMetric, dropReasons, environmentVariables, hostedLogoHeaders, hostedLogosPath, inboundPrefix, receiptRuleNumber, recipientsPerRule, senderFilter, signInFrom } from "@duva/api/infrastructure";
+import { alertMailFilter, conversationPath, tokenHeader, dropMetric, dropReasons, environmentVariables, hostedLogoHeaders, hostedLogosPath, inboundPrefix, receiptRuleNumber, recipientsPerRule, senderFilter, signInFrom } from "@duva/api/infrastructure";
 import { rulesTake } from "@duva/api/receiving";
+import { defaultMailboxAgentModel, inferenceProfileId } from "@duva/api/agent-models";
+import { mailboxesWithoutAgents } from "@duva/api/mailbox-agents";
+import { BedrockAgentCoreControlClient, GetAgentRuntimeCommand } from "@aws-sdk/client-bedrock-agentcore-control";
+import { BedrockRuntimeClient, ConverseCommand } from "@aws-sdk/client-bedrock-runtime";
+import { createHash } from "node:crypto";
 import { sesSuppressionList } from "@duva/api/suppression";
 import { novaTranslator } from "@duva/api/translation";
 import { stackName, stackOutputs, stackParameters } from "@duva/infra/outputs";
@@ -180,6 +187,51 @@ await check("the download Lambda's policy lets only the web app's distribution i
     JSON.stringify(statement.Principal) === '{"Service":"cloudfront.amazonaws.com"}' && statement.Condition?.ArnLike?.["AWS:SourceArn"]?.endsWith(`:distribution/${distribution}`);
   return distribution !== undefined && Statement.length > 0 && Statement.every(fine) ? undefined : `has ${Policy}`;
 });
+// Ask your agent's turns reach the conversation Lambda only through CloudFront, as download links do.
+const conversationFunction = output(stackOutputs.conversationFunction);
+await check("a turn of Ask your agent with a forged token answers 401 through the web app's domain, signed for the conversation Lambda", async () => {
+  const body = JSON.stringify({ mailbox: "x", words: "Hello?" });
+  const hash = createHash("sha256").update(body).digest("hex");
+  return expectStatus(await fetch(`${webUrl}/${conversationPath}turns`, { method: "POST", headers: { [tokenHeader]: "forged", "content-type": "application/json", "x-amz-content-sha256": hash }, body }), 401);
+});
+await check("the conversation Lambda's function URL takes only signed requests, and refuses one without", async () => {
+  const { AuthType, FunctionUrl } = await lambda.send(new GetFunctionUrlConfigCommand({ FunctionName: conversationFunction }));
+  if (AuthType !== "AWS_IAM") return `has AuthType ${AuthType}`;
+  return expectStatus(await fetch(`${FunctionUrl}${conversationPath}turns`, { method: "POST", body: "{}" }), 403);
+});
+await check("the conversation Lambda's policy lets only the web app's distribution invoke it, and nobody publicly", async () => {
+  const { Policy } = await lambda.send(new GetPolicyCommand({ FunctionName: conversationFunction }));
+  const { Statement = [] } = JSON.parse(Policy ?? "{}") as { Statement?: { Principal?: unknown; Condition?: { ArnLike?: Record<string, string> } }[] };
+  const fine = (statement: (typeof Statement)[number]) =>
+    JSON.stringify(statement.Principal) === '{"Service":"cloudfront.amazonaws.com"}' && statement.Condition?.ArnLike?.["AWS:SourceArn"]?.includes(":distribution/") === true;
+  return Statement.length > 0 && Statement.every(fine) ? undefined : `has ${Policy}`;
+});
+const agentRuntime = output(stackOutputs.agentRuntime);
+await check("the mailbox agents' AgentCore Runtime is ready, on Node.js 22, taking only IAM calls", async () => {
+  if (agentRuntime === "") return `AgentCore Runtime isn't in ${region}, so mailbox agents aren't here`;
+  const runtime = await new BedrockAgentCoreControlClient({ region }).send(new GetAgentRuntimeCommand({ agentRuntimeId: agentRuntime.split("/").at(-1)! }));
+  if (runtime.status !== "READY") return `is ${runtime.status}${runtime.failureReason ? `: ${runtime.failureReason}` : ""}`;
+  if (runtime.authorizerConfiguration !== undefined) return `takes ${JSON.stringify(runtime.authorizerConfiguration)}`;
+  const runs = runtime.agentRuntimeArtifact?.codeConfiguration?.runtime;
+  return runs === "NODE_22" ? undefined : `runs ${runs}`;
+});
+await check("every human's mailbox has its mailbox agent", async () => {
+  const table = await stackTable();
+  if (table === undefined) return "the stack has no table";
+  const without = await mailboxesWithoutAgents(table);
+  return without.length === 0 ? undefined : `${without.map(({ addresses, id }) => addresses[0] ?? id).join(", ")} ${without.length === 1 ? "has" : "have"} none. Run duva deploy again.`;
+});
+await check("Claude answers through the eu profile from eu-central-1, where the mailbox agents call it by default (docs/aws.md)", async () => {
+  const { output: answer } = await new BedrockRuntimeClient({ region: "eu-central-1" }).send(
+    new ConverseCommand({ modelId: inferenceProfileId(defaultMailboxAgentModel, "eu"), messages: [{ role: "user", content: [{ text: "Answer with the word yes." }] }], inferenceConfig: { maxTokens: 5 } }),
+  );
+  const text = answer?.message?.content?.[0]?.text ?? "";
+  return /yes/i.test(text) ? undefined : `answered ${JSON.stringify(text)}`;
+});
+await check("reading a mailbox's mailbox agent without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/mailboxes/x/agent`), 401));
+await check("clearing a conversation without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/mailboxes/x/agent/conversation`, { method: "DELETE" }), 401));
+await check("reading the mailbox agents' spend without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/organization/mailbox-agent-spend`), 401));
+
 const unsubscriberFunction = output(stackOutputs.unsubscriberFunction);
 const missing = (request: Promise<unknown>) =>
   request.then(

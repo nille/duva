@@ -21,6 +21,7 @@ import { createRoot } from "react-dom/client";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
 import { activityHref, AgentActivity, AgentDay } from "./activity.tsx";
+import { AskAgent } from "./ask.tsx";
 import { Composer } from "./compose.tsx";
 import { defaultPreferences, type Preferences, PreferencesContext, useDates } from "./dates.ts";
 import { Drafts } from "./drafts.tsx";
@@ -128,7 +129,7 @@ type Route =
   | { view: "search"; mailbox?: string; search: SearchView }
   | { view: "thread"; mailbox?: string; id: string; from: View; message?: string }
   | { view: "sender"; mailbox?: string; sender: string; from: string }
-  | { view: "drafts" | "write"; mailbox?: string }
+  | { view: "drafts" | "write" | "agent"; mailbox?: string }
   | { view: "draft"; mailbox?: string; id: string }
   | { view: "activity"; agent: string; day?: string };
 
@@ -143,7 +144,7 @@ function routeOf(hash: string): Route {
   const path = hash.replace(/^#\/?/, "");
   const [, mailbox, inMailbox = ""] = /^mailboxes\/([^/]+)\/?(.*)$/.exec(path) ?? [undefined, undefined, path];
   const decoded = mailbox === undefined ? undefined : decodeURIComponent(mailbox);
-  if (inMailbox === "drafts" || inMailbox === "write") return { view: inMailbox, mailbox: decoded };
+  if (inMailbox === "drafts" || inMailbox === "write" || inMailbox === "agent") return { view: inMailbox, mailbox: decoded };
   const draft = /^drafts\/(.+)$/.exec(inMailbox)?.[1];
   if (draft !== undefined) return { view: "draft", mailbox: decoded, id: decodeURIComponent(draft) };
   const [, thread, asked] = /^threads\/([^?]+)(?:\?(.*))?$/.exec(inMailbox) ?? [];
@@ -162,7 +163,7 @@ function routeOf(hash: string): Route {
 
 /** Whether the route is one that links reach without naming a mailbox, so it is in the own mailbox the human was last in. */
 const followsLastMailbox = (route: Route) =>
-  (route.view === "thread" || route.view === "draft" || route.view === "drafts" || route.view === "write") && route.mailbox === undefined;
+  (route.view === "thread" || route.view === "draft" || route.view === "drafts" || route.view === "write" || route.view === "agent") && route.mailbox === undefined;
 
 function useRoute(): Route & { hash: string } {
   const [hash, setHash] = useState(location.hash);
@@ -513,7 +514,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
 
   // What is open from a list, a thread or a draft, lies beside the list it was opened from. Writing
   // and a draft lie beside the list the human was last on in the mailbox, or its Inbox.
-  const reading = route.view === "thread" || route.view === "draft" || route.view === "write" || route.view === "sender";
+  const reading = route.view === "thread" || route.view === "draft" || route.view === "write" || route.view === "sender" || route.view === "agent";
   const lastList = useRef<{ mailbox: string; list: Listing }>(undefined);
   const routeList: Listing | undefined =
     route.view === "list" ? route.list : route.view === "search" ? route.search : route.view === "screener" && !route.senders ? { screener: true } : route.view === "drafts" ? { drafts: true } : undefined;
@@ -629,6 +630,23 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
         onDone={showDoneBeside}
         onSignedOut={onSignedOut}
       />
+    ) : route.view === "agent" ? (
+      shownOwn ? (
+        <AskAgent
+          key={`${shown.id}/agent`}
+          client={client}
+          config={config}
+          mailbox={shown}
+          base={base}
+          back={listing === undefined || "drafts" in listing ? base : hrefOf(listing, base)}
+          backTo={listing === undefined ? strings.views.inbox : "drafts" in listing ? strings.views.drafts : titleOf(listing, labels, agent?.agent)}
+          onSignedOut={onSignedOut}
+        />
+      ) : (
+        <main className="desk">
+          <p className="notice">{strings.ask.notYours}</p>
+        </main>
+      )
     ) : route.view === "draft" || route.view === "write" ? (
       <Composer key={routeKey} client={client} mailbox={shown} base={base} id={route.view === "draft" ? route.id : undefined} agentNames={agentNames} version={version} onSignedOut={onSignedOut} />
     ) : undefined;
@@ -819,6 +837,8 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
                   current={viewed}
                   // A human writes only in their own mailboxes, so only theirs list Drafts.
                   drafts={isOwn(sided.id) ? { current: writing } : undefined}
+                  // Each of the human's own mailboxes has its mailbox agent to ask.
+                  ask={isOwn(sided.id) ? { href: `${sideBase}agent`, current: route.view === "agent" } : undefined}
                   // An agent's mailbox lists the agent's activity too.
                   activity={sideAgent === undefined ? undefined : { href: activityHref(sideAgent.mailbox.owner), current: route.view === "activity" }}
                   // A Screener Duva couldn't read is still listed, so its view can say so and try again.
@@ -841,6 +861,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
           write={write}
           close={route.view === "thread" && shown !== undefined ? () => (location.hash = hrefOf(route.from, base)) : undefined}
           views={shown === undefined ? undefined : { base, drafts: shownOwn }}
+          ask={shownOwn ? () => (location.hash = `${base}agent`) : first === undefined ? undefined : () => (location.hash = "#/agent")}
           sheetOpen={shortcutsOpen}
           onSheet={setShortcutsOpen}
         />

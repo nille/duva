@@ -192,7 +192,8 @@ test("on a phone the bar is one row with the search icon and Write, and the plac
   expect(await page.getByRole("contentinfo", { name: "Status" }).isVisible()).toBe(false);
 
   const places = page.getByRole("navigation", { name: "Duva" }).getByRole("link");
-  expect(await places.allInnerTexts()).toEqual(["Mail", "Settings"]);
+  // She sponsors her mailbox's mailbox agent, so Approvals and Alerts are hers too.
+  expect(await places.allInnerTexts()).toEqual(["Mail", "Approvals", "Alerts", "Settings"]);
   const tabBarHeight = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--tab-bar-height"));
   expect(tabBarHeight).not.toBe("0px");
   for (const place of await places.all()) {

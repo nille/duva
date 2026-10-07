@@ -8,6 +8,7 @@ import { listAlerts, markAlertsSeen } from "./alerts.ts";
 import { getAttachment } from "./attachments.ts";
 import { changeAgent, changeAgentSettings, createAgent, getAgentSettings, listAgents, listOrganizationAgents, pauseAgent, pausedRefusal, removeAgent, rotateAgentKey, unpauseAgent } from "./agents.ts";
 import type { AuthorizerContext } from "./authorizer.ts";
+import { clearConversation, getMailboxAgent, getMailboxAgentSpend } from "./conversation.ts";
 import { addDomain, changeDomain, clearCatchAll, getDomain, listDomains, removeDomain, setCatchAll } from "./domains.ts";
 import { listOrganizationChanges } from "./changes.ts";
 import { createDraft, deleteDraft, editDraft, getDraft, listApprovals, listDrafts, rejectApproval, sendApproval, sendDraft, sendDraftNow, undoApproval } from "./drafts.ts";
@@ -59,6 +60,7 @@ export const handlers: Record<OperationId, OperationHandler> = {
   whoami,
   listOrganizationChanges,
   getOrganizationSettings,
+  getMailboxAgentSpend,
   changeOrganizationSettings,
   previewRetention,
   getPreferences,
@@ -129,6 +131,8 @@ export const handlers: Record<OperationId, OperationHandler> = {
   renameLabel: renameMailboxLabel,
   deleteLabel: deleteMailboxLabel,
   emptyTrash: emptyMailboxTrash,
+  getMailboxAgent,
+  clearConversation,
   getScreener,
   switchScreener,
   listSenders,

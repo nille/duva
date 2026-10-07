@@ -78,6 +78,20 @@ export const operations = [
     "options": []
   },
   {
+    "operationId": "getMailboxAgentSpend",
+    "method": "get",
+    "path": "/organization/mailbox-agent-spend",
+    "routeKey": "GET /organization/mailbox-agent-spend",
+    "summary": "Show what the mailbox agents spent on their model this month, against the organization's spend cap.",
+    "description": "Counts the model's price for each run's tokens, from the first of the month in UTC. Once it reaches mailboxAgentSpendCap, runs stop and every new one is refused until the month ends or an admin raises the cap. Only admins can read it.",
+    "signIn": true,
+    "command": [
+      "organization",
+      "mailbox-agent-spend"
+    ],
+    "options": []
+  },
+  {
     "operationId": "getOrganizationSettings",
     "method": "get",
     "path": "/organization/settings",
@@ -145,6 +159,34 @@ export const operations = [
         "type": "integer",
         "required": false,
         "description": "How many seconds an approved send waits before the sender takes it, so its approver can undo the approval meanwhile. 30 by default, and a whole number from 0 to 120, where 0 sends at once. A change applies to approvals from then on. A human's own sends never wait."
+      },
+      {
+        "name": "mailboxAgentModel",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "The Claude model on Amazon Bedrock the mailbox agents think with: Claude Sonnet 5.5, the default, Claude Haiku 4.5, which costs about a half as much, or Claude Opus 5.5, which costs about twice as much."
+      },
+      {
+        "name": "mailboxAgentProfile",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "The inference profile Bedrock runs the model through, which decides where the mail the agents read is processed: eu keeps it in the EU's AWS regions, us in the US's, and global sends it to any region with capacity, for about 10% less. eu by default for a deployment in the EU, us for one in the US, and global elsewhere. eu needs an EU mailboxAgentRegion, us a US one."
+      },
+      {
+        "name": "mailboxAgentRegion",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "The AWS region the mailbox agents call Bedrock in, which the profile sends on from. eu-central-1 by default for a deployment in the EU, us-west-2 for one in the US."
+      },
+      {
+        "name": "mailboxAgentSpendCap",
+        "in": "body",
+        "type": "integer",
+        "required": false,
+        "description": "The most the mailbox agents may spend on their model a month, in whole US dollars, 20 by default. At the cap a run stops, its agent's sponsor gets an alert, and runs are refused until the month ends or an admin raises it. 0 turns the mailbox agents off."
       }
     ]
   },
@@ -2130,6 +2172,50 @@ export const operations = [
     "command": [
       "threads",
       "empty-trash"
+    ],
+    "options": [
+      {
+        "name": "mailbox",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The mailbox's ID."
+      }
+    ]
+  },
+  {
+    "operationId": "getMailboxAgent",
+    "method": "get",
+    "path": "/mailboxes/{mailbox}/agent",
+    "routeKey": "GET /mailboxes/{mailbox}/agent",
+    "summary": "Read a mailbox's mailbox agent and your conversation with it.",
+    "description": "Every human's personal mailbox has a mailbox agent, which Duva hosts and which you sponsor. It works only in that mailbox, with the sponsor access you give it in its settings, and its actions are attributed to it. The web app asks it in \"Ask your agent\", which streams its answer from the web app's own address, under /agent/. Lists the conversation's turns, oldest first, at most the last 100. Only the mailbox's owner can read it.",
+    "signIn": true,
+    "command": [
+      "mailbox-agent",
+      "get"
+    ],
+    "options": [
+      {
+        "name": "mailbox",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The mailbox's ID."
+      }
+    ]
+  },
+  {
+    "operationId": "clearConversation",
+    "method": "delete",
+    "path": "/mailboxes/{mailbox}/agent/conversation",
+    "routeKey": "DELETE /mailboxes/{mailbox}/agent/conversation",
+    "summary": "Start a new conversation with a mailbox's mailbox agent.",
+    "description": "Deletes every turn of your conversation with it, so it starts again knowing none of it. What it did stays done, in the mailbox's change feed. Only the mailbox's owner can clear it.",
+    "signIn": true,
+    "command": [
+      "mailbox-agent",
+      "clear"
     ],
     "options": [
       {

@@ -60,6 +60,7 @@ export const rotateAgentKey: OperationHandler = async (event, deployment, actor)
   const agent = await agentAsked(event, deployment);
   if ("statusCode" in agent) return agent;
   if (agent.sponsor !== actor?.id) return refusal(403, "Only the agent's sponsor can rotate its key. Ask them to.");
+  if (agent.mailbox !== undefined) return hostedRefusal();
   try {
     const key = await replaceAgentKey(deployment.table, { agent: agent.id, by: actor.id });
     return { statusCode: 200, body: { agent, key } satisfies components["schemas"]["AgentWithKey"] };
@@ -97,6 +98,9 @@ export const changeAgentSettings: OperationHandler = async (event, deployment, a
   const { sponsorAccess, sponsorMailboxes, sendsPerHour, newRecipientsPerDay, ...switches } = body;
   if (sponsorAccess !== undefined && !sponsorAccesses.includes(sponsorAccess as AgentSettings["sponsorAccess"])) {
     return refusal(400, `Give sponsorAccess as ${sponsorAccesses.slice(0, -1).join(", ")} or ${sponsorAccesses.at(-1)}.`);
+  }
+  if (agent.mailbox !== undefined && sponsorMailboxes !== undefined && JSON.stringify(sponsorMailboxes) !== JSON.stringify([agent.mailbox])) {
+    return refusal(400, "A mailbox agent works only in its own mailbox, so its sponsorMailboxes stay that one. Give it the sponsor access it needs there.");
   }
   if (sponsorMailboxes !== undefined) {
     const notCovered = await notSponsorsMailboxes(deployment.table, agent, sponsorMailboxes);
@@ -161,6 +165,7 @@ export const removeAgent: OperationHandler = async (event, deployment, actor) =>
   const agent = await agentAsked(event, deployment);
   if ("statusCode" in agent) return agent;
   if (!sponsorOrAdmin(actor!, agent)) return refusal(403, "Only the agent's sponsor and admins can remove it. Ask its sponsor.");
+  if (agent.mailbox !== undefined) return refusal(409, "A mailbox agent goes only with its mailbox. To stop it, pause it, or give it no sponsor access.");
   const alert = await alertUnlessSponsor(deployment.table, actor!, agent, "removedBy", (who) => ({
     what: `${who} removed ${agent.name}, with its mailboxes.`,
     urgent: `${agent.name} was removed by ${who}`,
@@ -182,6 +187,7 @@ export const changeAgent: OperationHandler = async (event, deployment, actor) =>
   const agent = await agentAsked(event, deployment);
   if ("statusCode" in agent) return agent;
   if (actor!.id !== agent.sponsor) return refusal(403, "Only the agent's sponsor can make it an admin or take it away. Ask them to.");
+  if (agent.mailbox !== undefined) return refusal(409, "A mailbox agent works only in its mailbox, so it can't be an admin.");
   const admin = jsonBody(event)?.admin;
   if (typeof admin !== "boolean") return refusal(400, "Give admin as true to make the agent an admin, or false to take it away.");
   const notAdmin = refusal(403, "Only an admin can make their agent an admin, and you aren't one. Ask an admin to make you one first.");
@@ -239,6 +245,9 @@ async function alertUnlessSponsor(table: Table, actor: Actor, agent: Agent, kind
   if (actor.id === agent.sponsor) return [];
   return alertWrites(table, { kind, agent, by: actor.id, ...did(await actorNamed(table, actor.id)) });
 }
+
+// Duva hosts mailbox agents and gives each run a token of its own, so they have no key (ADR-0027).
+const hostedRefusal = () => refusal(409, "Duva hosts mailbox agents, so they have no key to rotate. Ask yours in the web app's Ask your agent.");
 
 const removedMeanwhile = (agent: Agent) => refusal(404, `The agent ${JSON.stringify(agent.id)} was removed meanwhile.`);
 

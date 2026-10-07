@@ -124,7 +124,7 @@ test("an admin removes a human, handing one mailbox to another human and deletin
   const { data: mailboxes } = await ada.GET("/organization/mailboxes");
   const linus = (await ada.GET("/humans")).data?.humans.find(({ email }) => email === "linus@example.org");
   expect(mailboxes?.mailboxes.map(({ owner, addresses }) => ({ owner, addresses }))).toEqual([{ owner: linus!.id, addresses: ["grace@example.com"] }]);
-  expect((await ada.GET("/organization/agents")).data?.agents.map(({ name }) => name)).toEqual(["Hermes"]);
+  expect((await ada.GET("/organization/agents")).data?.agents.filter(({ mailbox }) => mailbox === undefined).map(({ name }) => name)).toEqual(["Hermes"]);
 });
 
 test("an admin removes an agent after confirming it, said where it was", budget, async () => {
@@ -139,7 +139,7 @@ test("an admin removes an agent after confirming it, said where it was", budget,
 
   await expect.poll(() => grace.getByRole("list", { name: "Agents grace@example.org sponsors" }).getByRole("listitem").allInnerTexts(), wait).toEqual(["Removed Iris."]);
   await expect.poll(() => summary(page, "grace@example.org"), wait).toBe("2 mailboxes. No agents.");
-  expect((await ada.GET("/organization/agents")).data?.agents.map(({ name }) => name)).toEqual(["Hermes"]);
+  expect((await ada.GET("/organization/agents")).data?.agents.filter(({ mailbox }) => mailbox === undefined).map(({ name }) => name)).toEqual(["Hermes"]);
 });
 
 test("on a phone, a human's line and their removal fit the screen", budget, async () => {

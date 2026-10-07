@@ -79,7 +79,8 @@ test("approving makes the human the agent's sponsor with what it asked for, the 
   expect((await grace.GET("/agents/{agent}/settings", { params: { path: { agent: collected.agent.id } } })).data).toMatchObject({ sponsorAccess: "draft", sponsorMailboxes: [work.id] });
   await main.getByRole("link", { name: "Hermes in Your agents" }).click();
   const agents = page.getByRole("region", { name: "Your agents" });
-  await expect.poll(() => agents.getByRole("heading", { level: 3 }).allTextContents(), wait).toEqual(["Hermes"]);
+  // Each of her two mailboxes has its mailbox agent too.
+  await expect.poll(() => agents.getByRole("heading", { level: 3 }).allTextContents(), wait).toEqual(["Hermes", "Mailbox agent", "Mailbox agent"]);
   const line = agents.getByRole("form", { name: "Hermes" });
   await expect.poll(() => line.isVisible(), wait).toBe(true);
   expect(await line.getByRole("radio", { name: /^Draft/ }).isChecked()).toBe(true);
@@ -125,7 +126,7 @@ test("declining says the agent gets no access, and the agent is refused its key"
 
   await expect.poll(() => main.getByRole("heading", { level: 1 }).textContent(), wait).toBe("Hermes gets no access");
   expect((await collect()).response.status).toBe(403);
-  expect((await grace.GET("/agents")).data!.agents).toEqual([]);
+  expect((await grace.GET("/agents")).data!.agents.filter(({ mailbox }) => mailbox === undefined)).toEqual([]);
 });
 
 test("a link whose code expired says it can't be used and to ask the agent again", budget, async () => {

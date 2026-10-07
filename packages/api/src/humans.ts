@@ -17,6 +17,7 @@ import {
   removeHumanFromOrganization,
   sponsoredAgents,
 } from "./organization.ts";
+import { giveMailboxAgent } from "./mailbox-agents.ts";
 import { syncRecipients } from "./receiving.ts";
 import { deleteMailboxes, removeAgentWithMailboxes } from "./removal.ts";
 import { setupOperation, takeSponsoredAdminAway } from "./setup.ts";
@@ -71,7 +72,11 @@ export const removeHuman: OperationHandler = async (event, deployment, actor) =>
 
   for (const agent of agents) await removeAgentWithMailboxes(deployment, { agent, by: actor.id });
   try {
-    for (const mailbox of choices.handOver) await handOverMailbox(deployment.table, { mailbox, to: choices.handTo!.id, by: actor.id });
+    for (const mailbox of choices.handOver) {
+      await handOverMailbox(deployment.table, { mailbox, to: choices.handTo!.id, by: actor.id });
+      // Its mailbox agent went with its sponsor, so the new owner gets one of their own.
+      await giveMailboxAgent(deployment.table, { ...mailbox, owner: choices.handTo!.id });
+    }
   } catch (error) {
     if (!(error instanceof NotAHuman)) throw error;
     return refusal(409, `${choices.handTo!.email} was removed meanwhile. Run the removal again with another human in handTo.`);

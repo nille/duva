@@ -4,6 +4,7 @@ import { jsonBody, type OperationHandler, refusal } from "./api.ts";
 import { threadsPastRetention } from "./erasure.ts";
 import { indexMailboxes } from "./indexing.ts";
 import { type Language, languages } from "./languages.ts";
+import { type MailboxAgentModel, mailboxAgentModels, type MailboxAgentProfile, mailboxAgentProfiles, type MailboxAgentRegion, mailboxAgentRegions, profileRunsIn } from "./agent-models.ts";
 import type { Deployment } from "./deployment.ts";
 import { listed, setupOperation } from "./setup.ts";
 import { agentSettings, allHumans, changeSettings, defaultSettings, limitCaps, lowerLimitsToCaps, organizationSettings, type OrganizationSettings, sponsoredAgents } from "./organization.ts";
@@ -31,10 +32,26 @@ const values: { [Name in keyof OrganizationSettings]: { takes: (value: unknown) 
     takes: (value): value is number => Number.isInteger(value) && (value as number) >= 0 && (value as number) <= 120,
     refusal: "Give undoWindowSeconds as a whole number of seconds from 0 to 120.",
   },
+  mailboxAgentModel: {
+    takes: (value): value is MailboxAgentModel => typeof value === "string" && value in mailboxAgentModels,
+    refusal: `Give mailboxAgentModel as one of ${Object.keys(mailboxAgentModels).join(", ")}.`,
+  },
+  mailboxAgentProfile: {
+    takes: (value): value is MailboxAgentProfile => mailboxAgentProfiles.includes(value as MailboxAgentProfile),
+    refusal: `Give mailboxAgentProfile as ${mailboxAgentProfiles.join(", ")}.`,
+  },
+  mailboxAgentRegion: {
+    takes: (value): value is MailboxAgentRegion => mailboxAgentRegions.includes(value as MailboxAgentRegion),
+    refusal: `Give mailboxAgentRegion as one of ${mailboxAgentRegions.join(", ")}.`,
+  },
+  mailboxAgentSpendCap: {
+    takes: (value): value is number => Number.isInteger(value) && (value as number) >= 0 && (value as number) <= 10_000,
+    refusal: "Give mailboxAgentSpendCap as a whole number of US dollars from 0 to 10000.",
+  },
 };
 
 export const getOrganizationSettings: OperationHandler = async (_event, deployment) => {
-  const { settings } = await organizationSettings(deployment.table);
+  const { settings } = await organizationSettings(deployment.table, deployment.region);
   return { statusCode: 200, body: settings satisfies components["schemas"]["OrganizationSettings"] };
 };
 
@@ -48,12 +65,18 @@ export const changeOrganizationSettings = setupOperation("changeOrganizationSett
   const refused = (Object.keys(body) as (keyof OrganizationSettings)[]).find((name) => !values[name].takes(body[name]));
   if (refused !== undefined) return refusal(400, values[refused].refusal);
   const changes = body as Partial<OrganizationSettings>;
+  const { settings: current } = await organizationSettings(deployment.table, deployment.region);
+  const profile = changes.mailboxAgentProfile ?? current.mailboxAgentProfile;
+  const region = changes.mailboxAgentRegion ?? current.mailboxAgentRegion;
+  if (!profileRunsIn(profile, region)) {
+    return refusal(400, `The ${profile} profile runs only from ${profile === "eu" ? "an EU" : "a US"} region, and ${region} isn't one. Give mailboxAgentRegion as one, or mailboxAgentProfile as global.`);
+  }
   // Kept in one order, so a list is the same list however it was given.
   if (changes.searchLanguages !== undefined) changes.searchLanguages = languages.filter((language) => changes.searchLanguages!.includes(language));
   return {
     preview: await settingsPreview(deployment, changes),
     run: async () => {
-      const settings = await changeSettings(deployment.table, { by: actor.id, changes });
+      const settings = await changeSettings(deployment.table, { by: actor.id, changes, region: deployment.region });
       // Each mailbox's index files mail by language, so the indexer rebuilds those whose languages are
       // no longer the ones mail is indexed in.
       if (changes.searchLanguages !== undefined) await indexMailboxes(deployment.table, deployment.indexQueue);
@@ -74,9 +97,9 @@ export const changeOrganizationSettings = setupOperation("changeOrganizationSett
 
 /** What changing the settings does, a sentence for each that changes. */
 async function settingsPreview(deployment: Deployment, changes: Partial<OrganizationSettings>): Promise<string[]> {
-  const { settings } = await organizationSettings(deployment.table);
+  const { settings } = await organizationSettings(deployment.table, deployment.region);
   const preview: string[] = [];
-  const { retentionDays, erasureErasesApprovals, searchLanguages, undoWindowSeconds } = changes;
+  const { retentionDays, erasureErasesApprovals, searchLanguages, undoWindowSeconds, mailboxAgentModel, mailboxAgentProfile, mailboxAgentRegion, mailboxAgentSpendCap } = changes;
   if (retentionDays !== undefined && retentionDays !== settings.retentionDays) {
     const threads = retentionDays < settings.retentionDays ? await threadsPastRetention(deployment.table, retentionDays, new Date()) : 0;
     preview.push(`Keeps threads in Trash and Spam ${retentionDays} days, instead of ${settings.retentionDays}.`);
@@ -95,6 +118,21 @@ async function settingsPreview(deployment: Deployment, changes: Partial<Organiza
         : `Holds each approved send ${undoWindowSeconds} seconds, so its approver can undo it, instead of ${settings.undoWindowSeconds === 0 ? "sending it at once" : `${settings.undoWindowSeconds} seconds`}.`,
     );
   }
+  if (mailboxAgentModel !== undefined && mailboxAgentModel !== settings.mailboxAgentModel) {
+    preview.push(`Has the mailbox agents think with ${mailboxAgentModels[mailboxAgentModel].name}, instead of ${mailboxAgentModels[settings.mailboxAgentModel].name}.`);
+  }
+  const profile = mailboxAgentProfile ?? settings.mailboxAgentProfile;
+  const region = mailboxAgentRegion ?? settings.mailboxAgentRegion;
+  if (profile !== settings.mailboxAgentProfile || region !== settings.mailboxAgentRegion) {
+    preview.push(`Processes the mail the mailbox agents read ${processedWhere(profile, region)}, instead of ${processedWhere(settings.mailboxAgentProfile, settings.mailboxAgentRegion)}.`);
+  }
+  if (mailboxAgentSpendCap !== undefined && mailboxAgentSpendCap !== settings.mailboxAgentSpendCap) {
+    preview.push(
+      mailboxAgentSpendCap === 0
+        ? "Turns the mailbox agents off, since they may spend nothing."
+        : `Lets the mailbox agents spend up to $${mailboxAgentSpendCap} a month on their model, instead of $${settings.mailboxAgentSpendCap}.`,
+    );
+  }
   for (const [limit, cap] of Object.entries(limitCaps) as [keyof typeof limitCaps, (typeof limitCaps)[keyof typeof limitCaps]][]) {
     const value = changes[cap];
     if (value === undefined || value === settings[cap]) continue;
@@ -108,6 +146,10 @@ async function settingsPreview(deployment: Deployment, changes: Partial<Organiza
   }
   return preview;
 }
+
+/** Where the mail the mailbox agents read is processed, as a preview says it. */
+export const processedWhere = (profile: MailboxAgentProfile, region: MailboxAgentRegion) =>
+  profile === "global" ? `in any AWS region, through ${region}` : `in the ${profile === "eu" ? "EU" : "US"}, through ${region}`;
 
 // What each cap limits, as a preview says it.
 const capNames = { agentSendsPerHourCap: "sends an hour", agentNewRecipientsPerDayCap: "new recipients a day" } as const;

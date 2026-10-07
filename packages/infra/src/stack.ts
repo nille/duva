@@ -1,9 +1,10 @@
 import { fileURLToPath } from "node:url";
-import { CfnCondition, CfnOutput, CfnParameter, Duration, Fn, RemovalPolicy, Stack, type StackProps } from "aws-cdk-lib";
+import { Aws, CfnCondition, CfnOutput, CfnParameter, CfnResource, Duration, Fn, RemovalPolicy, Stack, type StackProps } from "aws-cdk-lib";
+import { AgentCoreRuntime, AgentRuntimeArtifact, Runtime as AgentRuntime } from "aws-cdk-lib/aws-bedrockagentcore";
 import { CorsHttpMethod, HttpApi, HttpMethod } from "aws-cdk-lib/aws-apigatewayv2";
 import { HttpLambdaAuthorizer, HttpLambdaResponseType } from "aws-cdk-lib/aws-apigatewayv2-authorizers";
 import { HttpLambdaIntegration } from "aws-cdk-lib/aws-apigatewayv2-integrations";
-import { AllowedMethods, CachePolicy, Distribution, FunctionUrlOriginAccessControl, ResponseHeadersPolicy, S3OriginAccessControl, ViewerProtocolPolicy } from "aws-cdk-lib/aws-cloudfront";
+import { AllowedMethods, CachePolicy, Distribution, FunctionUrlOriginAccessControl, OriginRequestCookieBehavior, OriginRequestHeaderBehavior, OriginRequestPolicy, OriginRequestQueryStringBehavior, ResponseHeadersPolicy, S3OriginAccessControl, ViewerProtocolPolicy } from "aws-cdk-lib/aws-cloudfront";
 import { FunctionUrlOrigin, S3BucketOrigin } from "aws-cdk-lib/aws-cloudfront-origins";
 import {
   AccountRecovery,
@@ -30,6 +31,7 @@ import { ConfigurationSet, EmailIdentity, EmailSendingEvent, EventDestination, I
 import { Topic } from "aws-cdk-lib/aws-sns";
 import { LambdaSubscription } from "aws-cdk-lib/aws-sns-subscriptions";
 import { Queue, QueueEncryption } from "aws-cdk-lib/aws-sqs";
+import { StringParameter } from "aws-cdk-lib/aws-ssm";
 import type { Construct } from "constructs";
 import {
   embeddingModel,
@@ -39,6 +41,8 @@ import {
   feederFilter,
   hostedLogoHeaders,
   hostedLogosPath,
+  conversationPath,
+  tokenHeader,
   inboundPrefix,
   receiptRuleName,
   searchIndexesPrefix,
@@ -53,6 +57,11 @@ import {
 import { operations } from "@duva/openapi";
 import { cliRedirectUri, stackOutputs, stackParameters } from "./outputs.ts";
 import { searchCode } from "./search-code.ts";
+import { agentCode, agentEntryPoint } from "./agent-code.ts";
+import { inferenceProfileId, type MailboxAgentModel, mailboxAgentModels, mailboxAgentProfiles } from "@duva/api/agent-models";
+
+/** The regions where SES receives mail but AgentCore Runtime doesn't run (docs/research/agentcore.md). */
+export const regionsWithoutAgentCore = ["af-south-1", "ap-northeast-3", "ap-southeast-3", "il-central-1", "me-south-1"];
 
 export interface DuvaStackProps extends StackProps {
   /** The version of Duva the stack deploys. */
@@ -649,7 +658,88 @@ export class DuvaStack extends Stack {
       api.addRoutes({ path: operation.path, methods: [method], integration, authorizer: operation.signIn ? authorizer : undefined });
     }
 
+    // Mailbox agents (ADR-0027). One AgentCore Runtime serves them all, running their own Converse
+    // tool loop, and bills only while a session runs. Each run is a session the conversation Lambda
+    // stops when the run ends, and one left open ends after a minute idle. Only IAM invokes it.
+    // AgentCore isn't in every region where SES receives mail, and without it the stack leaves the
+    // runtime out and the conversation Lambda refuses every turn.
+    const agentsHere = new CfnCondition(this, "MailboxAgentsCondition", {
+      expression: Fn.conditionNot(Fn.conditionOr(...regionsWithoutAgentCore.map((region) => Fn.conditionEquals(Aws.REGION, region)))),
+    });
+    const agentRuntime = new AgentRuntime(this, "MailboxAgents", {
+      description: "Duva's mailbox agents",
+      agentRuntimeArtifact: AgentRuntimeArtifact.fromCodeAsset({ path: agentCode(), runtime: AgentCoreRuntime.NODE_22, entrypoint: [agentEntryPoint] }),
+      lifecycleConfiguration: { idleRuntimeSessionTimeout: Duration.seconds(60), maxLifetime: Duration.hours(1) },
+    });
+    for (const resource of agentRuntime.node.findAll()) if (resource instanceof CfnResource) resource.cfnOptions.condition = agentsHere;
+    // The agents call Claude in the model region the organization chose, through its eu, us or
+    // global inference profile, which may send it on to that profile's regions (docs/aws.md). So
+    // the role may invoke the models admins can choose through those profiles in any region, and
+    // the models themselves only through one of them.
+    const models = Object.keys(mailboxAgentModels) as MailboxAgentModel[];
+    const claudeProfiles = models.flatMap((model) =>
+      mailboxAgentProfiles.map((profile) => this.formatArn({ service: "bedrock", region: "*", resource: "inference-profile", resourceName: inferenceProfileId(model, profile) })),
+    );
+    agentRuntime.addToRolePolicy(new PolicyStatement({ actions: ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"], resources: claudeProfiles }));
+    agentRuntime.addToRolePolicy(
+      new PolicyStatement({
+        actions: ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
+        resources: models.flatMap((model) => [`arn:aws:bedrock:*::foundation-model/${model}`, `arn:aws:bedrock:::foundation-model/${model}`]),
+        conditions: { StringLike: { "bedrock:InferenceProfileArn": claudeProfiles } },
+      }),
+    );
+
+    // Ask your agent posts each turn to the web app's domain, under /agent/, where CloudFront signs
+    // the request to the conversation Lambda's function URL, which only the distribution may call
+    // (docs/aws.md). CloudFront's signature takes the Authorization header, so the human's access
+    // token comes in a header of its own, and a POST carries its body's SHA-256, as OAC asks. The
+    // Lambda asks the API whose token it is, and streams the run as it goes.
+    // The API's URL reaches the conversation Lambda through a parameter, since the API names the
+    // distribution in its CORS and the distribution the Lambda's function URL.
+    const apiUrlParameter = `/${Aws.STACK_NAME}/${this.region}/ApiUrl`;
+    const conversation = lambda(
+      "ConversationHandler",
+      "@duva/api/conversation-lambda",
+      {
+        [environmentVariables.tableName]: table.tableName,
+        [environmentVariables.apiUrlParameter]: apiUrlParameter,
+        [environmentVariables.agentRuntime]: Fn.conditionIf(agentsHere.logicalId, agentRuntime.agentRuntimeArn, "").toString(),
+      },
+      { timeout: Duration.minutes(15) },
+    );
+    table.grantReadWriteData(conversation);
+    new StringParameter(this, "ApiUrlParameter", { parameterName: apiUrlParameter, simpleName: false, stringValue: api.apiEndpoint, description: "The URL of Duva's API" });
+    conversation.addToRolePolicy(new PolicyStatement({ actions: ["ssm:GetParameter"], resources: [this.formatArn({ service: "ssm", resource: "parameter", resourceName: apiUrlParameter.slice(1) })] }));
+    const runtimes = this.formatArn({ service: "bedrock-agentcore", resource: "runtime", resourceName: "*" });
+    conversation.addToRolePolicy(new PolicyStatement({ actions: ["bedrock-agentcore:InvokeAgentRuntime", "bedrock-agentcore:StopRuntimeSession"], resources: [runtimes, `${runtimes}/*`] }));
+    const conversationUrl = conversation.addFunctionUrl({ authType: FunctionUrlAuthType.AWS_IAM, invokeMode: InvokeMode.RESPONSE_STREAM });
+    distribution.addBehavior(
+      `/${conversationPath}*`,
+      FunctionUrlOrigin.withOriginAccessControl(conversationUrl, {
+        originAccessControl: new FunctionUrlOriginAccessControl(this, "ConversationAccess", { originAccessControlName: `Duva-Conversation-${this.region}` }),
+        readTimeout: Duration.seconds(60),
+      }),
+      {
+        allowedMethods: AllowedMethods.ALLOW_ALL,
+        viewerProtocolPolicy: ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+        cachePolicy: CachePolicy.CACHING_DISABLED,
+        originRequestPolicy: new OriginRequestPolicy(this, "ConversationRequests", {
+          originRequestPolicyName: `Duva-Conversation-${this.region}`,
+          headerBehavior: OriginRequestHeaderBehavior.allowList(tokenHeader, "x-amz-content-sha256", "content-type"),
+          queryStringBehavior: OriginRequestQueryStringBehavior.none(),
+          cookieBehavior: OriginRequestCookieBehavior.none(),
+        }),
+      },
+    );
+    conversation.addPermission("CloudFrontInvoke", {
+      principal: new ServicePrincipal("cloudfront.amazonaws.com"),
+      action: "lambda:InvokeFunction",
+      sourceArn: distribution.distributionArn,
+    });
+
     new CfnOutput(this, stackOutputs.apiUrl, { value: api.apiEndpoint, description: "The URL of Duva's API" });
+    new CfnOutput(this, stackOutputs.conversationFunction, { value: conversation.functionName, description: "The function Ask your agent's turns invoke through CloudFront" });
+    new CfnOutput(this, stackOutputs.agentRuntime, { value: Fn.conditionIf(agentsHere.logicalId, agentRuntime.agentRuntimeArn, "").toString(), description: "The mailbox agents' AgentCore Runtime, empty where AgentCore isn't" });
     new CfnOutput(this, stackOutputs.webUrl, { value: webUrl, description: "The URL of Duva's web app" });
     new CfnOutput(this, stackOutputs.webBucket, { value: web.bucketName, description: "The bucket the web app is served from" });
     new CfnOutput(this, stackOutputs.signInUrl, { value: signIn.baseUrl(), description: "The URL of managed login" });

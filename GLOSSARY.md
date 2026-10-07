@@ -17,8 +17,15 @@ An actor that is a person.
 _Avoid_: user
 
 **Agent**:
-An actor that is software. Any human can create one, or approve one's access request, and becomes its sponsor. An agent can own personal mailboxes, which an admin creates, and works in no one else's mailbox but its sponsor's, if its sponsor gives it sponsor access.
+An actor that is software. Any human can create one, or approve one's access request, and becomes its sponsor, and each human's mailbox has its mailbox agent. An agent can own personal mailboxes, which an admin creates, and works in no one else's mailbox but its sponsor's, if its sponsor gives it sponsor access.
 _Avoid_: bot, assistant
+
+**Mailbox agent**:
+The agent Duva itself runs for each human's personal mailbox, created with the mailbox, with its owner as its sponsor. It works only in that mailbox, with the sponsor access its owner gives it, by default up to asking to send, each send waiting for their approval and carrying the disclosure's line. Its owner asks it in Ask your agent, and it acts through Duva's API as itself, so all it does is attributed to it, and it obeys pause, send limits and alerts as any agent does. It has no key: each run gets a token of its own. It owns no mailbox and is never an admin. Admins choose the model it thinks with, where the mail it reads is processed, and what all mailbox agents may spend a month (ADR-0027).
+_Avoid_: assistant, bot, copilot
+
+**Ask your agent**:
+A human's conversation with the mailbox agent of one of their mailboxes, in the web app's reading pane. Each thing they ask, and each answer, is a turn; the agent's turns say what it did, with links to the threads and drafts it touched. The agent reads back the last turns, until the human starts over. A thread of mail is never called a conversation.
 
 **Mailbox**:
 A store of received and sent mail, reached through one or more addresses, that actors read and act on. Every mailbox is a personal mailbox.
@@ -35,7 +42,7 @@ A self-hosted agent asking a human for access, with a code it shows them and a l
 _Avoid_: device flow, pairing, invitation
 
 **Alert**:
-A notice to a sponsor that one of their agents needs them: a failed, bounced or complained-about send, its send limit reached, its key used while paused, or a pause, change or removal by someone else. Alerts show in the web app, and urgent ones are also mailed to the sponsor's own mailbox.
+A notice to a sponsor that one of their agents needs them: a failed, bounced or complained-about send, its send limit reached, its key used while paused, a pause, change or removal by someone else, or a mailbox agent stopped at the organization's spend cap. Alerts show in the web app, and urgent ones are also mailed to the sponsor's own mailbox.
 _Avoid_: notification, warning
 
 **Approval**:

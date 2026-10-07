@@ -8,6 +8,7 @@ import { agentKeyHash, newAgentKey } from "./agent-keys.ts";
 import type { Humans } from "./user-pool.ts";
 import type { Table } from "./deployment.ts";
 import { changesAfter, entryKey, type Feed, recordChanges, recordInFeeds } from "./feed.ts";
+import { defaultMailboxAgentModel, defaultModelRegion } from "./agent-models.ts";
 import { defaultSearchLanguages } from "./languages.ts";
 import { documents, isNew, pk, sk, type TransactItem } from "./table.ts";
 
@@ -242,13 +243,16 @@ export async function addAgent(table: Table, { name, sponsor }: { name: string; 
  * Adds an agent with the human `sponsor` as its sponsor and no key yet, with the `items` for its ID
  * written too, and returns it. It gets its key from issueAgentKey.
  */
-export function addKeylessAgent(table: Table, { name, sponsor, items }: { name: string; sponsor: string; items: (agent: string) => TransactItem[] }): Promise<Agent> {
+export function addKeylessAgent(table: Table, { name, sponsor, mailbox, items }: { name: string; sponsor: string; mailbox?: string; items: (agent: string) => TransactItem[] }): Promise<Agent> {
   const id = randomUUID();
-  return addAgentWith(table, { id, name, sponsor, items: items(id) });
+  return addAgentWith(table, { id, name, sponsor, mailbox, items: items(id) });
 }
 
-async function addAgentWith(table: Table, { id, name, sponsor, keyHash, items }: { id: string; name: string; sponsor: string; keyHash?: string; items: TransactItem[] }): Promise<Agent> {
-  const agent: Agent = { id, kind: "agent", name, sponsor, admin: false };
+async function addAgentWith(
+  table: Table,
+  { id, name, sponsor, mailbox, keyHash, items }: { id: string; name: string; sponsor: string; mailbox?: string; keyHash?: string; items: TransactItem[] },
+): Promise<Agent> {
+  const agent: Agent = { id, kind: "agent", name, sponsor, admin: false, ...(mailbox !== undefined && { mailbox }) };
   await recordChange(table, sponsor, { type: "actorAdded", added: agent }, [
     { Put: { TableName: table.name, Item: { ...actorKey(agent.id), ...agent, ...(keyHash !== undefined && { keyHash }) }, ...isNew } },
     { Put: { TableName: table.name, Item: { ...sponsoredKey(sponsor, agent.id) }, ...isNew } },
@@ -503,6 +507,11 @@ export async function agentSettings(table: Table, agent: string): Promise<ReadSe
   if ((settings.sponsorAccess as string) === "full") settings.sponsorAccess = "send";
   return { settings, version: (Item?.version as number | undefined) ?? 0 };
 }
+
+/** The write of the agent's first settings, for the transaction that adds it. */
+export const firstAgentSettings = (table: Table, agent: string, settings: AgentSettings): TransactItem => ({
+  Put: { TableName: table.name, Item: { ...agentSettingsKey(agent), ...settings, version: 1 }, ...isNew },
+});
 
 /** The check that the agent's settings are still as read, for a write that relies on them. */
 export function agentSettingsUnchanged(table: Table, agent: string, read: ReadSettings<AgentSettings>): TransactItem {
@@ -1088,8 +1097,16 @@ export async function findActor(table: Table, id: string): Promise<Actor | undef
 export function actorOf(item: Record<string, unknown>): Actor {
   const actor = item as Actor;
   if (actor.kind === "agent") {
-    const { id, kind, name, sponsor, admin, paused } = actor;
-    return { id, kind, name, sponsor, admin, ...(paused !== undefined && { paused: { by: paused.by, at: paused.at, ...(paused.reason !== undefined && { reason: paused.reason }) } }) };
+    const { id, kind, name, sponsor, admin, paused, mailbox } = actor;
+    return {
+      id,
+      kind,
+      name,
+      sponsor,
+      admin,
+      ...(paused !== undefined && { paused: { by: paused.by, at: paused.at, ...(paused.reason !== undefined && { reason: paused.reason }) } }),
+      ...(mailbox !== undefined && { mailbox }),
+    };
   }
   return { id: actor.id, kind: actor.kind, email: actor.email, admin: actor.admin };
 }
@@ -1119,6 +1136,9 @@ export const defaultSettings: OrganizationSettings = {
   agentSendsPerHourCap: 100,
   agentNewRecipientsPerDayCap: 50,
   undoWindowSeconds: 30,
+  mailboxAgentModel: defaultMailboxAgentModel,
+  ...defaultModelRegion("eu-north-1"),
+  mailboxAgentSpendCap: 20,
 };
 
 /** Settings as read, with the version a write that relies on them checks. */
@@ -1127,10 +1147,20 @@ export interface ReadSettings<Settings = OrganizationSettings> {
   version: number;
 }
 
-/** The organization's settings, each with its default until an admin changed it. */
-export async function organizationSettings(table: Table): Promise<ReadSettings> {
+/**
+ * The organization's settings, each with its default until an admin changed it. Where the mailbox
+ * agents call their model defaults to what suits the deployment's region, when it is given.
+ */
+export async function organizationSettings(table: Table, region?: string): Promise<ReadSettings> {
+  const { settings, version } = await storedSettings(table);
+  const defaults = { ...defaultSettings, ...(region !== undefined && defaultModelRegion(region)) };
+  return { settings: { ...defaults, ...settings } as OrganizationSettings, version };
+}
+
+/** The settings an admin changed, with the version a write that relies on them checks. */
+async function storedSettings(table: Table): Promise<ReadSettings<Partial<OrganizationSettings>>> {
   const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: settingsKey, ConsistentRead: true }));
-  const settings = Object.fromEntries(Object.entries(defaultSettings).map(([name, value]) => [name, Item?.[name] ?? value])) as OrganizationSettings;
+  const settings = Object.fromEntries(Object.keys(defaultSettings).flatMap((name) => (Item?.[name] === undefined ? [] : [[name, Item[name]]])));
   return { settings, version: (Item?.version as number | undefined) ?? 0 };
 }
 
@@ -1146,20 +1176,21 @@ const atVersion = ({ version }: { version: number }) => (version === 0 ? isNew :
  * the organization's change feed, and returns them all. Giving a setting the value it has records
  * nothing.
  */
-export async function changeSettings(table: Table, { by, changes }: { by: string; changes: Partial<OrganizationSettings> }): Promise<OrganizationSettings> {
+export async function changeSettings(table: Table, { by, changes, region }: { by: string; changes: Partial<OrganizationSettings>; region?: string }): Promise<OrganizationSettings> {
   // recordChange gives the items' cancellation reasons after the counter's and the one change's.
   const settingsReason = 2;
   for (let attempt = 1; ; attempt++) {
-    const read = await organizationSettings(table);
+    const read = await organizationSettings(table, region);
     // A list of languages is a value too, so values are compared as JSON.
     const changed = Object.fromEntries(Object.entries(changes).filter(([name, value]) => JSON.stringify(read.settings[name as keyof OrganizationSettings]) !== JSON.stringify(value)));
     if (Object.keys(changed).length === 0) return read.settings;
-    const settings = { ...read.settings, ...changed };
+    // Only what admins changed is stored, so a default stays the default.
+    const stored = (await storedSettings(table)).settings;
     try {
       await recordChange(table, by, { type: "settingsChanged", settings: changed }, [
-        { Put: { TableName: table.name, Item: { ...settingsKey, ...settings, version: read.version + 1 }, ...atVersion(read) } },
+        { Put: { TableName: table.name, Item: { ...settingsKey, ...stored, ...changed, version: read.version + 1 }, ...atVersion(read) } },
       ]);
-      return settings;
+      return { ...read.settings, ...changed };
     } catch (error) {
       // Another admin changed the settings since they were read, so they are read again.
       const reasons = error instanceof TransactionCanceledException ? (error.CancellationReasons ?? []) : [];

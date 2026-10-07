@@ -61,6 +61,11 @@ const payPerUse = new Set([
   "AWS::SNS::TopicPolicy",
   "AWS::SQS::Queue",
   "AWS::SQS::QueuePolicy",
+  // AgentCore Runtime bills per second of a session, and nothing without one (docs/research/agentcore.md).
+  "AWS::BedrockAgentCore::Runtime",
+  // A standard parameter costs nothing.
+  "AWS::SSM::Parameter",
+  "AWS::CloudFront::OriginRequestPolicy",
 ]);
 
 const outdir = mkdtempSync(join(tmpdir(), "duva-assembly-"));
@@ -159,6 +164,13 @@ test("the mail bucket keeps every version of raw mail", () => {
 function lambda(prefix: string): [string, Resource] {
   const [found, ...others] = resources.filter(([id, { Type }]) => Type === "AWS::Lambda::Function" && id.startsWith(prefix));
   if (found === undefined || others.length > 0) throw new Error(`There isn't exactly one Lambda whose ID starts with ${prefix}`);
+  return found;
+}
+
+/** The ID and resource of the function URL of the Lambda with the ID. */
+function functionUrl(lambdaId: string): [string, Resource] {
+  const found = ofType("AWS::Lambda::Url").find(([, { Properties }]) => JSON.stringify(Properties?.TargetFunctionArn) === JSON.stringify({ "Fn::GetAtt": [lambdaId, "Arn"] }));
+  if (found === undefined) throw new Error(`${lambdaId} has no function URL`);
   return found;
 }
 
@@ -825,9 +837,7 @@ test("the inbound Lambda may publish the drop metric: its role may write its log
 
 test("download links lead to the web app's domain, where CloudFront signs each request to the download Lambda's function URL, which streams its answer", () => {
   const [downloadId] = lambda("DownloadHandler");
-  const urls = ofType("AWS::Lambda::Url");
-  expect(urls).toHaveLength(1);
-  const [[urlId, { Properties: url }]] = urls as [[string, Resource]];
+  const [urlId, { Properties: url }] = functionUrl(downloadId);
   expect(url).toMatchObject({ TargetFunctionArn: { "Fn::GetAtt": [downloadId, "Arn"] }, AuthType: "AWS_IAM", InvokeMode: "RESPONSE_STREAM" });
 
   const [[distributionId, { Properties: distribution }]] = ofType("AWS::CloudFront::Distribution") as [[string, Resource]];
@@ -904,7 +914,7 @@ test("only the API writes the organization's own logos, and only under /bimi/", 
 test("only the web app's distribution may invoke the download Lambda, as its function URL needs", () => {
   const [downloadId] = lambda("DownloadHandler");
   const [[distributionId]] = ofType("AWS::CloudFront::Distribution") as [[string, Resource]];
-  const [[urlId]] = ofType("AWS::Lambda::Url") as [[string, Resource]];
+  const [urlId] = functionUrl(downloadId);
   // The origin names the function by its URL's FunctionArn, which is the function's ARN.
   const permissions = ofType("AWS::Lambda::Permission").filter(([, { Properties }]) =>
     [`{"Fn::GetAtt":["${downloadId}","Arn"]}`, `{"Fn::GetAtt":["${urlId}","FunctionArn"]}`].includes(JSON.stringify(Properties?.FunctionName)),
@@ -929,4 +939,81 @@ test("the download Lambda only reads: the table and raw mail", () => {
 test("the table deletes download links' tickets once they expire, by its time to live", () => {
   const [[, { Properties }]] = ofType("AWS::DynamoDB::GlobalTable") as [[string, Resource]];
   expect(Properties?.TimeToLiveSpecification).toEqual({ AttributeName: timeToLiveAttribute, Enabled: true });
+});
+
+test("one AgentCore Runtime serves the mailbox agents, on Node.js 22 from the code the build bundled, invoked only through IAM, ending a session a minute idle", () => {
+  const runtimes = ofType("AWS::BedrockAgentCore::Runtime");
+  expect(runtimes).toHaveLength(1);
+  const [[, runtime]] = runtimes as [[string, Resource]];
+  expect(runtime.Properties?.AgentRuntimeArtifact?.CodeConfiguration).toMatchObject({ Runtime: "NODE_22", EntryPoint: ["main.js"] });
+  // Without an authorizer configuration, AgentCore takes only SigV4 calls.
+  expect(runtime.Properties?.AuthorizerConfiguration).toBeUndefined();
+  expect(runtime.Properties?.NetworkConfiguration).toEqual({ NetworkMode: "PUBLIC" });
+  expect(runtime.Properties?.LifecycleConfiguration).toEqual({ IdleRuntimeSessionTimeout: 60, MaxLifetime: 3600 });
+});
+
+test("where AgentCore isn't, the stack leaves out the runtime and everything it brings", () => {
+  const condition = stack.template.Conditions?.MailboxAgentsCondition;
+  for (const region of ["af-south-1", "ap-northeast-3", "ap-southeast-3", "il-central-1", "me-south-1"]) expect(JSON.stringify(condition)).toContain(`"${region}"`);
+  const runtime = resources.find(([, { Type }]) => Type === "AWS::BedrockAgentCore::Runtime")!;
+  const role = (runtime[1].Properties?.RoleArn as { "Fn::GetAtt": string[] })["Fn::GetAtt"][0]!;
+  for (const id of [runtime[0], role]) expect((stack.template.Resources[id] as { Condition?: string }).Condition).toBe("MailboxAgentsCondition");
+});
+
+test("the mailbox agents may call only the Claude models admins can choose, through the profiles they can choose, in any region", () => {
+  const runtime = resources.find(([, { Type }]) => Type === "AWS::BedrockAgentCore::Runtime")!;
+  const role = JSON.stringify((runtime[1].Properties?.RoleArn as { "Fn::GetAtt": string[] })["Fn::GetAtt"][0]);
+  const onBedrock = ofType("AWS::IAM::Policy")
+    .filter(([, { Properties }]) => (Properties?.Roles ?? []).some((ref: { Ref?: string }) => JSON.stringify(ref.Ref) === role))
+    .flatMap(([, { Properties }]) => (Properties?.PolicyDocument?.Statement ?? []) as { Action: string | string[]; Resource: unknown; Condition?: unknown }[])
+    .filter(({ Action }) => [Action].flat().some((action) => action.startsWith("bedrock:")));
+  const models = ["anthropic.claude-sonnet-5-5", "anthropic.claude-haiku-4-5-20251001-v1:0", "anthropic.claude-opus-5-5"];
+  const profiles = models.flatMap((model) =>
+    ["eu", "us", "global"].map((profile) => ({ "Fn::Join": ["", ["arn:", { Ref: "AWS::Partition" }, ":bedrock:*:", { Ref: "AWS::AccountId" }, `:inference-profile/${profile}.${model}`]] })),
+  );
+  // IAM's order of a statement's resources means nothing, and CDK sorts them.
+  const sorted = (values: unknown[]) => values.map((value) => JSON.stringify(value)).sort();
+  expect(onBedrock).toHaveLength(2);
+  const [onProfiles, onModels] = onBedrock as { Effect: string; Action: string[]; Resource: unknown[]; Condition?: { StringLike: Record<string, unknown[]> } }[];
+  for (const statement of [onProfiles!, onModels!]) expect(statement).toMatchObject({ Effect: "Allow", Action: ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"] });
+  expect(sorted(onProfiles!.Resource)).toEqual(sorted(profiles));
+  expect(onProfiles!.Condition).toBeUndefined();
+  expect(sorted(onModels!.Resource)).toEqual(sorted(models.flatMap((model) => [`arn:aws:bedrock:*::foundation-model/${model}`, `arn:aws:bedrock:::foundation-model/${model}`])));
+  expect(sorted(onModels!.Condition!.StringLike["bedrock:InferenceProfileArn"]!)).toEqual(sorted(profiles));
+});
+
+test("Ask your agent posts to the web app's domain under /agent/, where CloudFront signs each request to the conversation Lambda's function URL, which streams its answer", () => {
+  const [conversationId] = lambda("ConversationHandler");
+  const [urlId, { Properties: url }] = functionUrl(conversationId);
+  expect(url).toMatchObject({ AuthType: "AWS_IAM", InvokeMode: "RESPONSE_STREAM" });
+  const [[, { Properties: distribution }]] = ofType("AWS::CloudFront::Distribution") as [[string, Resource]];
+  const config = distribution?.DistributionConfig;
+  const [behavior, ...more] = (config?.CacheBehaviors ?? []).filter(({ PathPattern }: { PathPattern: string }) => PathPattern === "/agent/*");
+  expect(more).toEqual([]);
+  expect(behavior).toMatchObject({ ViewerProtocolPolicy: "redirect-to-https", CachePolicyId: "4135ea2d-6df8-44a3-9df3-4b5a84be39ad" });
+  expect(behavior.AllowedMethods).toContain("POST");
+  // Only the human's token, the body's hash and its type reach the Lambda, never the Host, which the signature names.
+  const policy = stack.template.Resources[behavior.OriginRequestPolicyId.Ref];
+  expect(policy.Properties.OriginRequestPolicyConfig.HeadersConfig).toEqual({ HeaderBehavior: "whitelist", Headers: ["x-duva-token", "x-amz-content-sha256", "content-type"] });
+  const origin = config?.Origins?.find(({ Id }: { Id: string }) => Id === behavior.TargetOriginId);
+  expect(JSON.stringify(origin?.DomainName)).toContain(`{"Fn::GetAtt":["${urlId}","FunctionUrl"]}`);
+  const access = stack.template.Resources[origin?.OriginAccessControlId?.["Fn::GetAtt"]?.[0]];
+  expect(access?.Properties?.OriginAccessControlConfig).toMatchObject({ OriginAccessControlOriginType: "lambda", SigningBehavior: "always" });
+});
+
+test("only the web app's distribution may invoke the conversation Lambda, which may invoke the mailbox agents' runtime, stop its sessions and read the API's URL, and invoke no Lambda", () => {
+  const [conversationId] = lambda("ConversationHandler");
+  const [urlId] = functionUrl(conversationId);
+  const permissions = ofType("AWS::Lambda::Permission").filter(([, { Properties }]) =>
+    [`{"Fn::GetAtt":["${conversationId}","Arn"]}`, `{"Fn::GetAtt":["${urlId}","FunctionArn"]}`].includes(JSON.stringify(Properties?.FunctionName)),
+  );
+  expect(permissions.map(([, { Properties }]) => [Properties?.Action, Properties?.Principal]).sort()).toEqual([
+    ["lambda:InvokeFunction", "cloudfront.amazonaws.com"],
+    ["lambda:InvokeFunctionUrl", "cloudfront.amazonaws.com"],
+  ]);
+  expect(actions("ConversationHandler", "bedrock-agentcore").sort()).toEqual(["bedrock-agentcore:InvokeAgentRuntime", "bedrock-agentcore:StopRuntimeSession"]);
+  expect(actions("ConversationHandler", "ssm")).toEqual(["ssm:GetParameter"]);
+  expect(actions("ConversationHandler", "lambda")).toEqual([]);
+  expect(actions("ConversationHandler", "bedrock")).toEqual([]);
+  expect(lambda("ConversationHandler")[1].Properties?.Timeout).toBe(900);
 });

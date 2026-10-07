@@ -7,6 +7,9 @@ import { fileURLToPath } from "node:url";
 import { startDuva } from "@duva/api/harness";
 import { expect, onTestFinished, test, vi } from "vitest";
 
+/** Where the mailbox agents call their model, and what they may spend, in a deployment in eu-north-1 until an admin chooses. */
+const mailboxAgentDefaults = { mailboxAgentModel: "anthropic.claude-sonnet-5-5", mailboxAgentProfile: "eu", mailboxAgentRegion: "eu-central-1", mailboxAgentSpendCap: 20 } as const;
+
 test("deploy refuses a region where SES can't receive mail", async () => {
   const machine = await newMachine();
   await writeFile(join(machine.home, ".aws", "config"), "[default]\nregion = ca-west-1\n");
@@ -177,11 +180,11 @@ test("an admin turns erasure of approval records on with a flag, and off with it
   const on = await machine.duva("organization", "change-settings", "--erasureErasesApprovals");
   const off = await machine.duva("organization", "change-settings", "--no-erasureErasesApprovals");
 
-  expect(JSON.parse(before.stdout)).toEqual({ erasureErasesApprovals: false, retentionDays: 30, searchLanguages: ["English", "Swedish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50, undoWindowSeconds: 0 });
+  expect(JSON.parse(before.stdout)).toEqual({ erasureErasesApprovals: false, retentionDays: 30, searchLanguages: ["English", "Swedish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50, undoWindowSeconds: 0, ...mailboxAgentDefaults });
   expect(on.exitCode).toBe(0);
-  expect(JSON.parse(on.stdout)).toEqual({ erasureErasesApprovals: true, retentionDays: 30, searchLanguages: ["English", "Swedish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50, undoWindowSeconds: 0 });
+  expect(JSON.parse(on.stdout)).toEqual({ erasureErasesApprovals: true, retentionDays: 30, searchLanguages: ["English", "Swedish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50, undoWindowSeconds: 0, ...mailboxAgentDefaults });
   expect(off.exitCode).toBe(0);
-  expect(JSON.parse(off.stdout)).toEqual({ erasureErasesApprovals: false, retentionDays: 30, searchLanguages: ["English", "Swedish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50, undoWindowSeconds: 0 });
+  expect(JSON.parse(off.stdout)).toEqual({ erasureErasesApprovals: false, retentionDays: 30, searchLanguages: ["English", "Swedish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50, undoWindowSeconds: 0, ...mailboxAgentDefaults });
 });
 
 test("an admin previews a retention period and sets it", async () => {
@@ -197,7 +200,7 @@ test("an admin previews a retention period and sets it", async () => {
   expect(preview.exitCode).toBe(0);
   expect(JSON.parse(preview.stdout)).toEqual({ retentionDays: 7, threads: 0 });
   expect(changed.exitCode).toBe(0);
-  expect(JSON.parse(changed.stdout)).toEqual({ erasureErasesApprovals: false, retentionDays: 7, searchLanguages: ["English", "Swedish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50, undoWindowSeconds: 0 });
+  expect(JSON.parse(changed.stdout)).toEqual({ erasureErasesApprovals: false, retentionDays: 7, searchLanguages: ["English", "Swedish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50, undoWindowSeconds: 0, ...mailboxAgentDefaults });
 });
 
 test("an admin gives the search languages to organization change-settings, once for each", async () => {
@@ -210,7 +213,7 @@ test("an admin gives the search languages to organization change-settings, once 
   const result = await machine.duva("organization", "change-settings", "--searchLanguages", "Swedish", "--searchLanguages", "Danish", "--searchLanguages", "English");
 
   expect(result.exitCode).toBe(0);
-  expect(JSON.parse(result.stdout)).toEqual({ erasureErasesApprovals: false, retentionDays: 30, searchLanguages: ["English", "Swedish", "Danish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50, undoWindowSeconds: 0 });
+  expect(JSON.parse(result.stdout)).toEqual({ erasureErasesApprovals: false, retentionDays: 30, searchLanguages: ["English", "Swedish", "Danish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50, undoWindowSeconds: 0, ...mailboxAgentDefaults });
 });
 
 test("organization change-settings with no setting says which there are", async () => {
@@ -458,7 +461,7 @@ test("an admin removes a human from the CLI, first with --dryRun, handing their 
   const dryRun = await machine.duva("humans", "remove", "--human", grace!.id, "--dryRun");
   const removed = await machine.duva("humans", "remove", "--human", grace!.id, "--handTo", linus!.id, "--handOver", mailbox.id);
 
-  expect(JSON.parse(dryRun.stdout)).toMatchObject({ human: grace, mailboxes: [mailbox], agents: [], removed: false });
+  expect(JSON.parse(dryRun.stdout)).toMatchObject({ human: grace, mailboxes: [mailbox], agents: [expect.objectContaining({ name: "Mailbox agent", mailbox: mailbox.id })], removed: false });
   expect(removed.exitCode).toBe(0);
   expect(JSON.parse(removed.stdout)).toMatchObject({ human: grace, removed: true });
   expect((await duva.signIn("linus@example.com").GET("/mailboxes")).data?.mailboxes).toEqual([{ ...mailbox, owner: linus!.id, groups: [] }]);

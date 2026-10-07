@@ -33,6 +33,8 @@ const openAgent = async (page: Page, name: string) => {
 };
 /** The one-line summaries of the agents on the Agents sheet, in order. */
 const summaries = async (page: Page) => (await agentsSheet(page).locator("summary").allInnerTexts()).map((text) => text.replace(/\n+/g, "\n"));
+/** The lines of the agents the human brought themselves, without the mailbox agent each of their mailboxes has. */
+const ownSummaries = async (page: Page) => (await summaries(page)).filter((summary) => !summary.startsWith("Mailbox agent"));
 
 test("a sponsor who isn't an admin opens Settings from the bar and finds each of their agents on the Agents sheet, with no access and every switch on", budget, async () => {
   const { page, signIn } = await withSponsor();
@@ -41,7 +43,8 @@ test("a sponsor who isn't an admin opens Settings from the bar and finds each of
   await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
   await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "Your agents" }).click();
 
-  await expect.poll(() => agentsSheet(page).getByRole("heading", { level: 3 }).allTextContents(), wait).toEqual(["Hermes", "Iris"]);
+  // Her mailbox has its mailbox agent too.
+  await expect.poll(() => agentsSheet(page).getByRole("heading", { level: 3 }).allTextContents(), wait).toEqual(["Hermes", "Iris", "Mailbox agent"]);
   const hermes = await openAgent(page, "Hermes");
   expect(await hermes.getByRole("radio", { name: /^None/ }).isChecked()).toBe(true);
   const access = hermes.getByRole("group", { name: "Access to your mailbox" });
@@ -63,7 +66,7 @@ test("each agent shows as one line, its access and whether its sends wait for ap
   await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
   await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "Your agents" }).click();
 
-  await expect.poll(() => summaries(page), wait).toEqual(["Hermes\nRunning, 100 sends left this hour.\nNo access to your mailbox. Its sends wait for your approval.", "Iris\nRunning, 100 sends left this hour.\nReads your mailbox. Its sends go out without your approval."]);
+  await expect.poll(() => ownSummaries(page), wait).toEqual(["Hermes\nRunning, 100 sends left this hour.\nNo access to your mailbox. Its sends wait for your approval.", "Iris\nRunning, 100 sends left this hour.\nReads your mailbox. Its sends go out without your approval."]);
   expect(await agentsSheet(page).getByRole("form").count()).toBe(0);
 
   await openAgent(page, "Hermes");
@@ -182,7 +185,7 @@ test("a sponsor removes an agent from its line after confirming, its line goes a
   expect(await asked.innerText()).toContain("Hermes's key stops working, and any mailbox of its own is erased with its mail. This can't be undone.");
   await asked.getByRole("button", { name: "Remove agent" }).click();
 
-  await expect.poll(() => agentsSheet(page).getByRole("heading", { level: 3 }).allTextContents(), wait).toEqual(["Iris"]);
+  await expect.poll(() => agentsSheet(page).getByRole("heading", { level: 3 }).allTextContents(), wait).toEqual(["Iris", "Mailbox agent"]);
   expect((await duva.withKey(rotated!.key).GET("/whoami")).response.status).toBe(401);
 });
 
@@ -204,7 +207,7 @@ test("the Agents sheet fits a phone's screen", budget, async () => {
   await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
   await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "Your agents" }).click();
 
-  await expect.poll(() => agentsSheet(page).getByRole("heading", { level: 3 }).count(), wait).toBe(2);
+  await expect.poll(() => agentsSheet(page).getByRole("heading", { level: 3 }).count(), wait).toBe(3);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(phone.width);
   await openAgent(page, "Iris");
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(phone.width);
@@ -253,7 +256,7 @@ test("an agent admin's line says Admin after its name and whether its setup chan
   await signIn("ada@example.org");
   await openYourAgents(page);
 
-  await expect.poll(() => summaries(page), wait).toEqual(["Hermes\nAdmin\nRunning, 100 sends left this hour.\nNo access to your mailbox. Its sends and setup changes wait for your approval."]);
+  await expect.poll(() => ownSummaries(page), wait).toEqual(["Hermes\nAdmin\nRunning, 100 sends left this hour.\nNo access to your mailbox. Its sends and setup changes wait for your approval."]);
   const form = await openAgent(page, "Hermes");
   const approval = form.getByRole("group", { name: "When it changes the setup" }).getByRole("checkbox", { name: /^Your approval before it changes the setup/ });
   expect(await approval.isChecked()).toBe(true);
@@ -282,13 +285,13 @@ test("an admin makes the agent they sponsor an admin on its line, and takes it a
   await page.keyboard.press("Enter");
 
   await expect.poll(async () => (await summaries(page))[0], wait).toMatch(/^Hermes\nAdmin\n/);
-  expect((await ada.GET("/agents")).data!.agents[0]!.admin).toBe(true);
+  expect((await ada.GET("/agents")).data!.agents.find(({ name }) => name === "Hermes")!.admin).toBe(true);
   expect(await agentForm(page, "Hermes").getByRole("group", { name: "When it changes the setup" }).isVisible()).toBe(true);
 
   await part.getByRole("button", { name: "Take admin away" }).click();
 
   await expect.poll(async () => (await summaries(page))[0], wait).not.toMatch(/Admin/);
-  expect((await ada.GET("/agents")).data!.agents[0]!.admin).toBe(false);
+  expect((await ada.GET("/agents")).data!.agents.find(({ name }) => name === "Hermes")!.admin).toBe(false);
   expect(await part.getByRole("button", { name: "Make it an admin" }).isVisible()).toBe(true);
 });
 

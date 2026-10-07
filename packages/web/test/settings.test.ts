@@ -2,6 +2,9 @@ import { expect, onTestFinished, test, vi } from "vitest";
 import type { Page } from "playwright-core";
 import { phone, startWebApp } from "./web-app.ts";
 
+/** Where the mailbox agents call their model, and what they may spend, in a deployment in eu-north-1 until an admin chooses. */
+const mailboxAgentDefaults = { mailboxAgentModel: "anthropic.claude-sonnet-5-5", mailboxAgentProfile: "eu", mailboxAgentRegion: "eu-central-1", mailboxAgentSpendCap: 20 } as const;
+
 // The page under the full suite's load can take seconds to show what changed, so every wait has room, and every test more.
 const wait = { timeout: 10_000 };
 const budget = { timeout: 60_000 };
@@ -95,7 +98,7 @@ test("an admin opens the Organization page and chooses that erasing a thread era
 
   await expect.poll(() => agentsSheet(page).getByRole("status").textContent(), wait).toBe("Saved. This applies to threads erased from now on.");
   const ada = duva.signIn("ada@example.org");
-  expect((await ada.GET("/organization/settings")).data).toEqual({ erasureErasesApprovals: true, retentionDays: 30, searchLanguages: ["English", "Swedish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50, undoWindowSeconds: 0 });
+  expect((await ada.GET("/organization/settings")).data).toEqual({ erasureErasesApprovals: true, retentionDays: 30, searchLanguages: ["English", "Swedish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50, undoWindowSeconds: 0, ...mailboxAgentDefaults });
 
   await page.reload();
 
@@ -167,7 +170,7 @@ test("an admin reads what translating searches does, and adds Danish to the sear
     .poll(() => mailSheet(page).getByRole("status").textContent(), wait)
     .toBe("Saved. Searches use these languages from now on. Each mailbox's search index is being rebuilt, and finds less until it is done.");
   const ada = duva.signIn("ada@example.org");
-  expect((await ada.GET("/organization/settings")).data).toEqual({ erasureErasesApprovals: false, retentionDays: 30, searchLanguages: ["English", "Swedish", "Danish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50, undoWindowSeconds: 0 });
+  expect((await ada.GET("/organization/settings")).data).toEqual({ erasureErasesApprovals: false, retentionDays: 30, searchLanguages: ["English", "Swedish", "Danish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50, undoWindowSeconds: 0, ...mailboxAgentDefaults });
   expect(await mailSheet(page).getByRole("button", { name: "Save" }).isDisabled()).toBe(true);
   expect(await languages.innerText()).not.toContain(rebuilds);
 });

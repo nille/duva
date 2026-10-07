@@ -64,7 +64,15 @@ test("a dry run of removing a human lists their mailboxes, their agents and the 
   const { response, data } = await remove({ dryRun: true });
 
   expect(response.status).toBe(200);
-  expect(data).toEqual({ human: graceActor, mailboxes: [mailbox], agents: [agent], agentMailboxes: [hermesMailbox], removed: false });
+  // The mailbox agent of her mailbox goes with her too.
+  expect(data).toEqual({
+    human: graceActor,
+    mailboxes: [mailbox],
+    agents: expect.arrayContaining([agent, expect.objectContaining({ name: "Mailbox agent", mailbox: mailbox.id })]),
+    agentMailboxes: [hermesMailbox],
+    removed: false,
+  });
+  expect(data!.agents).toHaveLength(2);
   expect((await grace.GET("/whoami")).response.status).toBe(200);
   expect((await hermes.GET("/whoami")).response.status).toBe(200);
   expect((await ada.GET("/humans")).data?.humans).toContainEqual(graceActor);
@@ -206,11 +214,20 @@ test("each change of a removal is in the organization's feed under the admin, an
 
   const { data: after } = await ada.GET("/organization/changes", { params: { query: { after: before!.position } } });
   const stamp = { position: expect.any(Number), at: expect.any(String), actor: adaId };
-  expect(after?.changes).toEqual([
-    { ...stamp, type: "mailboxDeleted", mailbox: hermesMailbox.id },
-    { ...stamp, type: "addressRemoved", address: "hermes@example.com", mailbox: hermesMailbox.id },
-    { ...stamp, type: "actorRemoved", removed: agent },
+  // Her agents go first, the mailbox agent of her mailbox among them, in no particular order, and the
+  // mailbox handed over gets a mailbox agent its new owner sponsors.
+  const removedAgents = after!.changes.slice(0, 4);
+  expect(removedAgents).toEqual(
+    expect.arrayContaining([
+      { ...stamp, type: "mailboxDeleted", mailbox: hermesMailbox.id },
+      { ...stamp, type: "addressRemoved", address: "hermes@example.com", mailbox: hermesMailbox.id },
+      { ...stamp, type: "actorRemoved", removed: agent },
+      { ...stamp, type: "actorRemoved", removed: expect.objectContaining({ name: "Mailbox agent", mailbox: mailbox.id, sponsor: graceActor.id }) },
+    ]),
+  );
+  expect(after?.changes.slice(4)).toEqual([
     { ...stamp, type: "mailboxHandedOver", mailbox: mailbox.id, from: graceActor.id, to: linusId },
+    { ...stamp, actor: linusId, type: "actorAdded", added: expect.objectContaining({ name: "Mailbox agent", mailbox: mailbox.id, sponsor: linusId }) },
     { ...stamp, type: "actorRemoved", removed: graceActor },
   ]);
   expect(before?.changes).toContainEqual(expect.objectContaining({ type: "actorAdded", added: graceActor }));
@@ -229,7 +246,7 @@ test("an agent's sponsor removes it: its key stops working, its mailboxes are er
   expect(keeps(duva, "Hej. Till Hermes.")).toBe(false);
   expect(duva.searchObjects().some((file) => file.includes("Till Hermes"))).toBe(false);
   expect((await duva.receive(note("Efteråt", "hermes@example.com"), { to: ["hermes@example.com"] })).refused).toEqual(["hermes@example.com"]);
-  expect((await grace.GET("/agents")).data).toEqual({ agents: [] });
+  expect((await grace.GET("/agents")).data!.agents.filter(({ mailbox }) => mailbox === undefined)).toEqual([]);
   expect((await grace.GET("/mailboxes")).data?.mailboxes.map(({ id }) => id)).not.toContain(hermesMailbox.id);
   const { data: after } = await ada.GET("/organization/changes", { params: { query: { after: before!.position } } });
   expect(after?.changes.at(-1)).toMatchObject({ type: "actorRemoved", removed: agent, actor: graceActor.id });

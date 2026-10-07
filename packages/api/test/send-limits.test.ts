@@ -95,7 +95,9 @@ test("lowering a cap lowers the agents above it, recorded in the sponsor's mailb
       { position: expect.any(Number), at: expect.any(String), actor: admin!.id, type: "agentSettingsChanged", agent: other!.agent.id, before: { sendsPerHour: 100, newRecipientsPerDay: 50 }, after: { sendsPerHour: 20, newRecipientsPerDay: 10 } },
     ]),
   );
-  expect(feed?.changes).toHaveLength(2);
+  // The mailbox agent of Ada's mailbox is lowered too.
+  expect(feed?.changes).toContainEqual(expect.objectContaining({ type: "agentSettingsChanged", before: { sendsPerHour: 100, newRecipientsPerDay: 50 }, after: { sendsPerHour: 20, newRecipientsPerDay: 10 } }));
+  expect(feed?.changes).toHaveLength(3);
 });
 
 test("a send over the hourly limit waits, and goes out by itself once an hour has passed since the first", async () => {

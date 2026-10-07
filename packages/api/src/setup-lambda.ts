@@ -9,6 +9,7 @@ import { environmentVariables } from "./infrastructure.ts";
 import { listEarlierDecisions } from "./approval-log.ts";
 import { indexMailboxes, sqsIndexQueue } from "./indexing.ts";
 import { timeEarlierLabels } from "./mail.ts";
+import { giveMailboxAgents } from "./mailbox-agents.ts";
 import { setUpOrganization } from "./organization.ts";
 import { setUpDeliveries, setUpScreeners } from "./screening.ts";
 
@@ -27,6 +28,8 @@ export const handler = async () => {
   await setUpDeliveries(table);
   // Humans' mailboxes from before the Screener get it on, with every sender they already have sent to the Inbox.
   await setUpScreeners(table);
+  // Humans' mailboxes from before mailbox agents get theirs.
+  await giveMailboxAgents(table);
   // Decisions on approvals from before the approval log are listed in it, once.
   await listEarlierDecisions(table);
   // Each mailbox's index is backfilled with the mail it has, or its backfill finished if one stopped.

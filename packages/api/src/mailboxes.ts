@@ -8,6 +8,7 @@ import { builtInLabels, createLabel, deleteLabel, hasLabel, listLabels, NameTake
 import { attachmentLinks } from "./attachments.ts";
 import { allMail, type Cursor, cursorOf, inbox, labelThreads, mailboxChanges, markThreads, readThread, spam, threadsMarkedAtOnce, threadsPerPage, sentThreads, threadsWithLabel, trash, unreadWithLabel } from "./mail.ts";
 import { recordEmptying } from "./erasure.ts";
+import { giveMailboxAgent } from "./mailbox-agents.ts";
 import { syncRecipients } from "./receiving.ts";
 import { groupsSentAsBy } from "./group-mail.ts";
 import { actorNamed, setupOperation } from "./setup.ts";
@@ -18,6 +19,7 @@ export const createMailbox = setupOperation("createMailbox", async (event, deplo
   const ownerId = typeof body?.owner === "string" ? body.owner : "";
   const owner = await findActor(deployment.table, ownerId);
   if (owner === undefined) return refusal(400, `There is no human or agent ${JSON.stringify(ownerId)}. Give the ID of the actor that will own the mailbox.`);
+  if (owner.kind === "agent" && owner.mailbox !== undefined) return refusal(400, "A mailbox agent works in its human's mailbox and owns none. Give the ID of a human, or of an agent that runs elsewhere.");
   const address = await addressGiven(deployment, body?.address);
   if (typeof address !== "string") return address;
   // The Screener starts on for a human's mailbox, and off for an agent's.
@@ -27,6 +29,7 @@ export const createMailbox = setupOperation("createMailbox", async (event, deplo
     run: async () => {
       try {
         const mailbox = await addMailbox(deployment.table, { owner: owner.id, address, screener, by: actor.id });
+        await giveMailboxAgent(deployment.table, mailbox);
         await syncRecipients(deployment.table, deployment.receiving);
         return { statusCode: 201, body: mailbox satisfies components["schemas"]["Mailbox"] };
       } catch (error) {

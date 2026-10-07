@@ -288,7 +288,8 @@ test("an admin lowering a cap below the agent's limits is an alert with its new 
 
   await grace.PATCH("/organization/settings", { body: { agentSendsPerHourCap: 20, agentNewRecipientsPerDayCap: 10 } });
 
-  expect((await alerts()).alerts).toMatchObject([
+  // The mailbox agent of Ada's mailbox has its limits lowered too.
+  expect((await alerts()).alerts.filter(({ agentName }) => agentName === "Hermes")).toMatchObject([
     { kind: "limitsChangedBy", urgent: false, by: ids.grace, what: "grace@example.org lowered the organization's caps, so Hermes's limits are now 20 sends an hour and 10 new recipients a day." },
   ]);
   expect(duva.sent()).toHaveLength(before);
@@ -381,7 +382,8 @@ test("an agent lists the alerts about itself, as its sponsor sees them", async (
   const listed = await alerts(hermes);
 
   expect(listed).toMatchObject({ alerts: [{ kind: "limitsChangedBy", agent: agent.id, by: ids.grace }], unseen: 1 });
-  expect((await alerts(ada)).unseen).toBe(3);
+  // The mailbox agent of Ada's mailbox has its limits lowered too.
+  expect((await alerts(ada)).unseen).toBe(4);
   expect((await alerts(ada, { agent: other!.agent.id })).alerts).toMatchObject([
     { kind: "limitsChangedBy", agentName: "Iris" },
     { kind: "pausedBy", agentName: "Iris" },

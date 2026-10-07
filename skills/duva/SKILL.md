@@ -86,6 +86,12 @@ List every agent in the organization, with its sponsor.
 
 For seeing who sponsors which agent, and removing agents. Only admins can list the organization's agents. A human lists the agents they sponsor with agents list.
 
+## duva organization mailbox-agent-spend
+
+Show what the mailbox agents spent on their model this month, against the organization's spend cap.
+
+Counts the model's price for each run's tokens, from the first of the month in UTC. Once it reaches mailboxAgentSpendCap, runs stop and every new one is refused until the month ends or an admin raises the cap. Only admins can read it.
+
 ## duva organization settings
 
 Read the organization's settings.
@@ -104,6 +110,10 @@ Give only the settings to change. A setting applies from when it changes, so tur
 - `--agentSendsPerHourCap`: The most sendsPerHour a sponsor can give an agent. 100 by default. Lowering it lowers each agent above it to it, recorded as a change to the agent's settings under you. Raising it raises no agent.
 - `--agentNewRecipientsPerDayCap`: The most newRecipientsPerDay a sponsor can give an agent. 50 by default. Lowering it lowers each agent above it to it, recorded as a change to the agent's settings under you. Raising it raises no agent.
 - `--undoWindowSeconds`: How many seconds an approved send waits before the sender takes it, so its approver can undo the approval meanwhile. 30 by default, and a whole number from 0 to 120, where 0 sends at once. A change applies to approvals from then on. A human's own sends never wait.
+- `--mailboxAgentModel`: The Claude model on Amazon Bedrock the mailbox agents think with: Claude Sonnet 5.5, the default, Claude Haiku 4.5, which costs about a half as much, or Claude Opus 5.5, which costs about twice as much.
+- `--mailboxAgentProfile`: The inference profile Bedrock runs the model through, which decides where the mail the agents read is processed: eu keeps it in the EU's AWS regions, us in the US's, and global sends it to any region with capacity, for about 10% less. eu by default for a deployment in the EU, us for one in the US, and global elsewhere. eu needs an EU mailboxAgentRegion, us a US one.
+- `--mailboxAgentRegion`: The AWS region the mailbox agents call Bedrock in, which the profile sends on from. eu-central-1 by default for a deployment in the EU, us-west-2 for one in the US.
+- `--mailboxAgentSpendCap`: The most the mailbox agents may spend on their model a month, in whole US dollars, 20 by default. At the cap a run stops, its agent's sponsor gets an alert, and runs are refused until the month ends or an admin raises it. 0 turns the mailbox agents off.
 
 ## duva organization preview-retention
 
@@ -703,6 +713,22 @@ Gives the label a name no other label in the mailbox has, in any case. Its threa
 Empty a mailbox's Trash, erasing every thread in it for good.
 
 Erases each thread that is in Trash when you call, with its messages and their raw copies, every stored version included. Erasing can't be undone. Each erased thread gets a threadErased change in the mailbox's change feed, naming you, with none of its content. Duva erases the threads right after answering, and finishes on its next daily run if that fails. Only the mailbox's owner can empty its Trash, and an agent's sponsor its agent's. An agent never empties its sponsor's Trash, whatever its sponsor access. Without emptying, Trash and Spam are erased after the organization's retention period, counted from when a thread got the label.
+
+- `--mailbox` (required): The mailbox's ID.
+
+## duva mailbox-agent get
+
+Read a mailbox's mailbox agent and your conversation with it.
+
+Every human's personal mailbox has a mailbox agent, which Duva hosts and which you sponsor. It works only in that mailbox, with the sponsor access you give it in its settings, and its actions are attributed to it. The web app asks it in "Ask your agent", which streams its answer from the web app's own address, under /agent/. Lists the conversation's turns, oldest first, at most the last 100. Only the mailbox's owner can read it.
+
+- `--mailbox` (required): The mailbox's ID.
+
+## duva mailbox-agent clear
+
+Start a new conversation with a mailbox's mailbox agent.
+
+Deletes every turn of your conversation with it, so it starts again knowing none of it. What it did stays done, in the mailbox's change feed. Only the mailbox's owner can clear it.
 
 - `--mailbox` (required): The mailbox's ID.
 

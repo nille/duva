@@ -5446,6 +5446,282 @@ input[aria-invalid="true"] {
   }
 }
 
+/*
+ * Ask your agent, in the reading pane: the human's conversation with the mailbox agent, a transcript
+ * on the plane at the letter's measure. Each turn is parted from the one before by a seam and says
+ * who took it by their mark, the agent's diamond in blue. What the agent did runs as a trace above
+ * its words, a line a step, with links to what it touched, and while it writes, a blue cursor stands
+ * at the end of its words. The field to ask in lies raised at the pane's foot.
+ */
+.ask {
+  --measure: 68ch;
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  padding-bottom: 0;
+}
+
+.pane-read > .desk.ask {
+  padding-bottom: 0;
+}
+
+.ask-head {
+  margin-bottom: var(--space-5);
+}
+
+.ask-meta {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  max-width: var(--measure);
+}
+
+.ask-agent {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--ink-2);
+}
+
+.ask-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  margin-top: var(--space-1);
+}
+
+.ask-links a {
+  color: var(--ink);
+  text-underline-offset: 0.2em;
+}
+
+.ask-links .button {
+  margin-left: calc(-1 * var(--space-2));
+}
+
+.ask-empty {
+  display: grid;
+  gap: var(--space-3);
+  max-width: var(--measure);
+  padding: var(--space-5) 0 var(--space-6);
+  box-shadow: inset 0 1px 0 var(--seam);
+}
+
+.ask-empty h2 {
+  margin-top: var(--space-4);
+  font: 600 var(--text-lg) / 1.1 var(--grotesk);
+  letter-spacing: -0.02em;
+}
+
+.ask-empty p {
+  color: var(--ink-2);
+}
+
+.ask-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ask-suggestions .chip {
+  min-height: 2rem;
+  color: var(--ink);
+  background: var(--raise);
+  font: 400 var(--text-sm) / 1.3 var(--mono);
+  text-align: left;
+}
+
+.ask-turns {
+  display: grid;
+  max-width: var(--measure);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ask-turn {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-4) 0 var(--space-5);
+  box-shadow: inset 0 1px 0 var(--seam);
+}
+
+.ask-who {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.ask-name {
+  font-weight: 600;
+}
+
+.ask-turn-agent .ask-name {
+  color: var(--agent-ink);
+}
+
+.ask-time {
+  color: var(--ink-3);
+}
+
+/* What was said, in the mono at the proof's size, as a letter is. */
+.ask-text {
+  font-size: var(--text-proof);
+  line-height: 1.78;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* While the agent writes, a blue cursor stands where its next word goes. */
+.ask-caret {
+  display: inline-block;
+  width: 0.55em;
+  height: 1.1em;
+  margin-left: 0.1em;
+  vertical-align: -0.18em;
+  border-radius: 1px;
+  background: var(--agent);
+  animation: cursor 1s steps(2, jump-none) infinite;
+}
+
+@keyframes cursor {
+  to {
+    opacity: 0;
+  }
+}
+
+.ask-turn-running .ask-time {
+  animation: breathe 1.2s var(--ease-out) infinite alternate;
+}
+
+/* The trace: each step a line in the small mono, on a hairline rail, done ticked in ink, refused crossed in red. */
+.ask-steps {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0 0 var(--space-1);
+  padding: 0 0 0 var(--space-3);
+  list-style: none;
+  box-shadow: inset 1px 0 0 var(--seam);
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+}
+
+.ask-step {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  animation: arrive 260ms var(--ease-out);
+}
+
+.ask-step-icon {
+  flex: none;
+  width: 0.8rem;
+  height: 0.8rem;
+  align-self: center;
+  color: var(--ink-3);
+}
+
+.ask-step a {
+  color: var(--ink);
+  text-underline-offset: 0.2em;
+}
+
+.ask-step .ask-waits {
+  color: var(--call-ink);
+  font-weight: 600;
+}
+
+.ask-step-refused,
+.ask-step-refused .ask-step-icon {
+  color: var(--alert-ink);
+}
+
+.ask-stopped {
+  max-width: var(--measure);
+  background: var(--field);
+  color: var(--ink-2);
+}
+
+.ask-stopped.notice-alert {
+  background: var(--alert-wash);
+  color: var(--alert-ink);
+}
+
+/* The field to ask in stays at the pane's foot as the conversation scrolls by, raised on the plane. */
+.ask-form {
+  position: sticky;
+  bottom: 0;
+  display: grid;
+  gap: var(--space-2);
+  max-width: calc(var(--measure) + 2rem);
+  margin-top: auto;
+  padding: var(--space-4) 0 var(--space-5);
+  background: linear-gradient(to bottom, rgb(248 248 246 / 0) 0, var(--read) var(--space-4));
+}
+
+.ask-field {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-sheet);
+  background: var(--raise);
+  box-shadow: var(--lift);
+}
+
+.ask-field:focus-within {
+  border-color: var(--ink);
+  outline: 2px solid var(--ink);
+}
+
+.ask-field textarea {
+  min-height: 2.75rem;
+  max-height: 12rem;
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  background: transparent;
+  font-size: var(--text-proof);
+  line-height: 1.6;
+  resize: none;
+  field-sizing: content;
+}
+
+.ask-field textarea:focus-visible {
+  outline: none;
+}
+
+.ask-hint {
+  padding: 0 var(--space-2);
+  color: var(--ink-3);
+  font-size: var(--text-xs);
+}
+
+/* In the side column, Ask your agent carries the agent's diamond and its key. */
+.views-ask .view-link .actor-mark {
+  margin: 0 0.1rem;
+}
+
+/* Kept in sight above the field at the foot, which lies over the end of the conversation. */
+.ask-end {
+  scroll-margin-bottom: 9rem;
+}
+
+@media (max-width: 48rem) {
+  .ask-hint {
+    display: none;
+  }
+
+  .ask-form {
+    padding-bottom: calc(var(--space-4) + var(--tab-bar-height));
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   ::view-transition-group(*) {
@@ -6082,6 +6358,9 @@ mark {
 
 /* An agent's line on Your agents opens into a link to its activity, above its parts. */
 .agent-activity {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
   padding: 0 0 var(--space-4);
   font-size: var(--text-sm);
   font-weight: 600;

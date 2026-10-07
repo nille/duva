@@ -30,15 +30,18 @@ import type { RecordType } from "../src/dns-records.ts";
 import { createEraser, type EraserEvent } from "../src/erasure.ts";
 import { createInbound } from "../src/inbound.ts";
 import { createFeeder, createIndexer, type IndexQueue, indexMailboxes, type QueuedTask } from "../src/indexing.ts";
-import { alertMailFilter, feederFilter, hostedLogoHeaders, hostedLogosPath, senderFilter, senderRetries, tableKey, tableStreamView } from "../src/infrastructure.ts";
+import { alertMailFilter, conversationPath, tokenHeader, feederFilter, hostedLogoHeaders, hostedLogosPath, senderFilter, senderRetries, tableKey, tableStreamView } from "../src/infrastructure.ts";
 import { lanceSearch } from "../src/lancedb-search.ts";
 import { createSearcher } from "../src/searching.ts";
 import type { Table } from "../src/deployment.ts";
 import type { MailBucket } from "../src/mail-bucket.ts";
 import { keys, timeEarlierLabels } from "../src/mail.ts";
-import { addHumanToOrganization, organizationSettings, screenerKey, settingsKey, setUpOrganization } from "../src/organization.ts";
+import { addHumanToOrganization, screenerKey, settingsKey, setUpOrganization } from "../src/organization.ts";
 import type { SendEvent } from "../src/limits.ts";
 import { setUpDeliveries, setUpScreeners } from "../src/screening.ts";
+import { type Model, runAgent } from "../src/agent-loop.ts";
+import { type ConversationEvent, createConversation } from "../src/conversation.ts";
+import { giveMailboxAgents } from "../src/mailbox-agents.ts";
 import type { ReminderDue } from "../src/reminders.ts";
 import { createSender } from "../src/sending.ts";
 import type { SuppressionReason } from "../src/suppression.ts";
@@ -116,6 +119,16 @@ export interface DuvaOptions {
    * given, so approved sends go out at once; null leaves Duva's own default.
    */
   undoWindow?: number | null;
+  /**
+   * Whether the deployment runs a version from before mailbox agents until setUp() deploys this
+   * one, so mailboxes created until then have none.
+   */
+  beforeMailboxAgents?: boolean;
+  /**
+   * The model the mailbox agents ask, in place of Claude on Bedrock: a stand-in that answers as a
+   * test scripts it, from what it is asked. Unless given, it answers every turn with "Stand-in answer."
+   */
+  model?: Model;
 }
 
 /** A Duva deployment running in-process, set up as duva deploy sets one up, with its own table and mail bucket. */
@@ -224,6 +237,12 @@ export interface Duva {
   /** Has the indexer's queue lose the next task that takes a step of a backfill, as when SQS drops it as a duplicate. */
   loseBackfillStep(): void;
   /**
+   * Posts a turn of Ask your agent to the conversation Lambda as the web app does, through
+   * CloudFront, as the human at `email`, unless `token` gives their access token, and reads all it
+   * streams back. Each of the agent's runs on AgentCore asks the `model` option's stand-in.
+   */
+  askAgent(email: string, turn: { mailbox: string; words: string }, options?: { token?: string }): Promise<{ status: number; events?: ConversationEvent[]; body?: { message: string } }>;
+  /**
    * Serves the API on localhost, for clients that need a URL, such as the CLI, with a stand-in
    * for managed login at the same URL.
    */
@@ -250,6 +269,8 @@ export async function startDuva({
   beforeSearch = false,
   beforeApprovalLog = false,
   undoWindow = 0,
+  beforeMailboxAgents = false,
+  model = standInModel,
 }: DuvaOptions = {}): Promise<Duva> {
   const { table, streamArn, database } = await createTable();
   const humans = memoryHumans();
@@ -257,10 +278,7 @@ export async function startDuva({
   const setUp = (options: { admin: string }) => setUpOrganization({ table, humans }, { domain, ...options });
   const firstAdmin = await setUp({ admin });
   for (const email of others) await addHumanToOrganization({ table, humans }, { email, by: firstAdmin.id });
-  if (undoWindow !== null) {
-    const { settings } = await organizationSettings(table);
-    await documents(table).send(new PutCommand({ TableName: table.name, Item: { ...settingsKey, ...settings, undoWindowSeconds: undoWindow, version: 1 } }));
-  }
+  if (undoWindow !== null) await documents(table).send(new PutCommand({ TableName: table.name, Item: { ...settingsKey, undoWindowSeconds: undoWindow, version: 1 } }));
 
   const mailBucket = memoryMailBucket();
   // Trash emptied and mailboxes deleted in a call, which the eraser erases once the call is answered.
@@ -398,6 +416,7 @@ export async function startDuva({
   // caught up, unless indexing is held, so tests see the outcome.
   let screenerDeployed = !beforeScreener;
   let approvalLogDeployed = !beforeApprovalLog;
+  let mailboxAgentsDeployed = !beforeMailboxAgents;
   let deliveriesDeployed = !beforeDeliveries;
   const api = async (request: Request) => {
     if (new URL(request.url).pathname.startsWith("/download/")) return downloaded(request);
@@ -409,9 +428,37 @@ export async function startDuva({
     for (let each = handed.shift(); each !== undefined; each = handed.shift()) if (!eraserRunsLost) await eraser(each);
     if (!screenerDeployed) await forgetScreener(table);
     if (!approvalLogDeployed) await forgetApprovalLog(table);
+    if (!mailboxAgentsDeployed) await forgetMailboxAgents(table);
     if (!deliveriesDeployed) await forgetDeliveries(table);
     if (!indexingHeld) await index();
     return response;
+  };
+  // The conversation Lambda, which runs each turn on AgentCore. The runtime there calls the API over
+  // HTTPS, and its payload and what it says go through JSON.
+  const conversation = createConversation({
+    table,
+    region,
+    apiUrl: inProcess,
+    fetch: api,
+    runtime: async function* (payload) {
+      for await (const event of runAgent(JSON.parse(JSON.stringify(payload)), { model, fetch: api })) yield JSON.parse(JSON.stringify(event));
+    },
+  });
+  // CloudFront passes the turn to the function URL, which streams its answer a line at a time.
+  const agentTurn = async (request: Request): Promise<Response> => {
+    const answer = await conversation({ headers: Object.fromEntries(request.headers), body: await request.text() });
+    if (!("events" in answer)) return Response.json(answer.body, { status: answer.statusCode });
+    const lines = answer.events[Symbol.asyncIterator]();
+    return new Response(
+      new ReadableStream({
+        async pull(controller) {
+          const { value, done } = await lines.next();
+          if (done) return controller.close();
+          controller.enqueue(new TextEncoder().encode(`${JSON.stringify(value)}\n`));
+        },
+      }),
+      { headers: { "content-type": "application/x-ndjson" } },
+    );
   };
   const login = managedLogin({ ids: humans.ids, issuer, accessTokenLifetime });
   const client = (headers?: Record<string, string>) => createDuvaClient(inProcess, { fetch: api, headers });
@@ -485,6 +532,8 @@ export async function startDuva({
       deliveriesDeployed = true;
       await setUpDeliveries(table);
       await setUpScreeners(table);
+      mailboxAgentsDeployed = true;
+      await giveMailboxAgents(table);
       approvalLogDeployed = true;
       await listEarlierDecisions(table);
       // The feeder starts with this version, and reads only what is written from then on.
@@ -498,8 +547,14 @@ export async function startDuva({
         if (backfillLost) indexQueue.backfillStepsLost = 0;
       }
     },
+    async askAgent(email, turn, { token = accessToken(email) } = {}) {
+      const response = await agentTurn(new Request(`${inProcess}/${conversationPath}turns`, { method: "POST", headers: { [tokenHeader]: token }, body: JSON.stringify(turn) }));
+      if (!response.ok) return { status: response.status, body: (await response.json()) as { message: string } };
+      const events = (await response.text()).split("\n").filter((line) => line !== "").map((line) => JSON.parse(line) as ConversationEvent);
+      return { status: response.status, events };
+    },
     async listen() {
-      const server = await listen(async (request) => (await login.handle(request)) ?? api(request));
+      const server = await listen(async (request) => (await login.handle(request)) ?? (new URL(request.url).pathname.startsWith(`/${conversationPath}`) ? agentTurn(request) : api(request)));
       downloadUrl = `${server.url}/download/`;
       logosUrl = `${server.url}/${hostedLogosPath}`;
       return { ...server, signIn: { url: server.url, clientId: managedLoginClientId } };
@@ -667,6 +722,33 @@ async function forgetScreener(table: Table) {
   }
 }
 
+/** The model mailbox agents ask unless a test gives one: it answers every turn the same, using no tool. */
+const standInModel: Model = async function* () {
+  yield { text: "Stand-in answer." };
+  yield { usage: { inputTokens: 1000, outputTokens: 10 } };
+};
+
+/** Removes what a version from before mailbox agents didn't write: each mailbox agent, with its settings and its listing. */
+async function forgetMailboxAgents(table: Table) {
+  const { Items = [] } = await table.client.send(
+    new ScanCommand({
+      TableName: table.name,
+      FilterExpression: "#sk = :pointer OR (#sk = :actor AND attribute_exists(mailbox))",
+      ExpressionAttributeNames: { "#sk": tableKey.sortKey },
+      ExpressionAttributeValues: { ":pointer": { S: "mailboxAgent" }, ":actor": { S: "actor" } },
+    }),
+  );
+  for (const item of Items) {
+    const keys =
+      item[tableKey.sortKey]!.S === "actor"
+        ? [item, { [tableKey.partitionKey]: item[tableKey.partitionKey]!, [tableKey.sortKey]: { S: "settings" } }, { [tableKey.partitionKey]: { S: `actor#${item.sponsor!.S}` }, [tableKey.sortKey]: { S: `agent#${item.id!.S}` } }]
+        : [item];
+    for (const key of keys) {
+      await table.client.send(new DeleteItemCommand({ TableName: table.name, Key: { [tableKey.partitionKey]: key[tableKey.partitionKey]!, [tableKey.sortKey]: key[tableKey.sortKey]! } }));
+    }
+  }
+}
+
 /** Removes what a version from before the approval log didn't write: each decision's listing in its approver's log. */
 async function forgetApprovalLog(table: Table) {
   const { Items = [] } = await table.client.send(
@@ -735,7 +817,9 @@ async function listen(api: (request: Request) => Promise<Response>) {
       }),
     );
     outgoing.writeHead(response.status, Object.fromEntries(response.headers));
-    outgoing.end(Buffer.from(await response.arrayBuffer()));
+    // A streamed answer, as the conversation Lambda's, goes out as it comes.
+    if (response.body !== null) for await (const chunk of response.body as unknown as AsyncIterable<Uint8Array>) outgoing.write(chunk);
+    outgoing.end();
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const { port } = server.address() as AddressInfo;

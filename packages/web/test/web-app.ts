@@ -3,7 +3,7 @@
 // what's on screen.
 //
 // One local server plays CloudFront and the deployment's other origins at once. It serves the
-// build and the config.json duva deploy publishes beside it, and passes /api and /oauth2 on to the
+// build and the config.json duva deploy publishes beside it, and passes /api, /oauth2 and /agent on to the
 // harness, so the page reaches the API and managed login without CORS. The browser is Chromium
 // from the system, found at CHROMIUM or a usual path.
 import { execFile } from "node:child_process";
@@ -143,7 +143,8 @@ const types: Record<string, string> = {
 async function serve(root: string, harness: { url: string; signIn: { clientId: string } }, hiddenPollInterval: number) {
   const answer = async (incoming: IncomingMessage, outgoing: ServerResponse) => {
     const url = new URL(incoming.url ?? "/", origin);
-    const passed = url.pathname.startsWith("/api/") ? url.pathname.slice("/api".length) : url.pathname.startsWith("/oauth2/") ? url.pathname : undefined;
+    // CloudFront passes /agent/ on to the conversation Lambda, which streams its answer.
+    const passed = url.pathname.startsWith("/api/") ? url.pathname.slice("/api".length) : url.pathname.startsWith("/oauth2/") || url.pathname.startsWith("/agent/") ? url.pathname : undefined;
     if (passed !== undefined) {
       const chunks: Buffer[] = [];
       for await (const chunk of incoming) chunks.push(chunk);
@@ -155,7 +156,8 @@ async function serve(root: string, harness: { url: string; signIn: { clientId: s
         redirect: "manual",
       });
       outgoing.writeHead(reply.status, Object.fromEntries(reply.headers));
-      outgoing.end(Buffer.from(await reply.arrayBuffer()));
+      if (reply.body !== null) for await (const chunk of reply.body as unknown as AsyncIterable<Uint8Array>) outgoing.write(chunk);
+      outgoing.end();
       return;
     }
     if (url.pathname === "/config.json") {

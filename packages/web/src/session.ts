@@ -69,3 +69,23 @@ async function current(config: Config): Promise<Session | undefined> {
 }
 
 const save = (session: Session) => localStorage.setItem(sessionKey, JSON.stringify(session));
+
+/**
+ * Posts a turn of Ask your agent to the conversation Lambda, on the web app's own domain under
+ * /agent/, where CloudFront signs it for the Lambda. CloudFront's signature takes the Authorization
+ * header, so the access token goes in a header of its own, and the body's SHA-256 with it, which
+ * CloudFront needs to sign a POST. Answers undefined once the session has expired.
+ */
+export async function postTurn(config: Config, turn: { mailbox: string; words: string }, signal?: AbortSignal): Promise<Response | undefined> {
+  const session = await current(config);
+  if (session === undefined) return undefined;
+  const body = JSON.stringify(turn);
+  const hash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(body))), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  // As infrastructure.ts's conversationPath and tokenHeader name them.
+  return fetch("/agent/turns", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-duva-token": session.accessToken, "x-amz-content-sha256": hash },
+    body,
+    signal,
+  });
+}

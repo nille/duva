@@ -35,11 +35,16 @@ async function withAgent(options: Parameters<typeof startWebApp>[0] = {}) {
     const messageId = /^<(.+)@eu-north-1\.amazonses\.com>$/.exec(sent!.send!.messageId ?? "")?.[1];
     return { draft: sent!, messageId };
   };
-  const paused = async () => (await grace.GET("/agents")).data!.agents[0]!.paused;
+  const paused = async () => (await grace.GET("/agents")).data!.agents.find(({ name }) => name === "Hermes")!.paused;
   return { ...app, ada, grace, hermes, agent, settings, params, send, paused };
 }
 
-const agentsSheet = (page: Page) => page.getByRole("region", { name: "Your agents" });
+/** Hermes's line on the Agents sheet, which also lists the mailbox agent of Grace's mailbox. */
+const agentsSheet = (page: Page) =>
+  page
+    .getByRole("region", { name: "Your agents" })
+    .locator("details")
+    .filter({ has: page.getByRole("heading", { level: 3, name: "Hermes" }) });
 /** What the page shows of the element, a line for each block in it. */
 const lines = (text: string) => text.replace(/\n+/g, "\n");
 const summary = (page: Page) => ({ innerText: async () => lines(await agentsSheet(page).locator("summary").innerText()) });

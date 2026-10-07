@@ -1,6 +1,9 @@
 import { expect, onTestFinished, test, vi } from "vitest";
 import { type DuvaOptions, startDuva } from "./harness.ts";
 
+/** Where the mailbox agents call their model, and what they may spend, in a deployment in eu-north-1 until an admin chooses. */
+const mailboxAgentDefaults = { mailboxAgentModel: "anthropic.claude-sonnet-5-5", mailboxAgentProfile: "eu", mailboxAgentRegion: "eu-central-1", mailboxAgentSpendCap: 20 } as const;
+
 const day = 24 * 60 * 60 * 1000;
 // The tests that receive several messages and empty Trash take seconds when the full suite loads DynamoDB Local, so they have room.
 const budget = { timeout: 45_000 };
@@ -194,7 +197,7 @@ test("an admin previews how many threads in every mailbox's Trash and Spam a ret
 
   expect((await preview(7)).data).toEqual({ retentionDays: 7, threads: 4 });
   expect((await preview(30)).data).toEqual({ retentionDays: 30, threads: 0 });
-  expect((await grace.GET("/organization/settings")).data).toEqual({ erasureErasesApprovals: false, retentionDays: 30, searchLanguages: ["English", "Swedish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50, undoWindowSeconds: 0 });
+  expect((await grace.GET("/organization/settings")).data).toEqual({ erasureErasesApprovals: false, retentionDays: 30, searchLanguages: ["English", "Swedish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50, undoWindowSeconds: 0, ...mailboxAgentDefaults });
 });
 
 test("the preview counts what the eraser erases under that period", async () => {

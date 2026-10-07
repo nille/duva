@@ -64,6 +64,10 @@ export const environmentVariables = {
   scheduleGroup: "SCHEDULE_GROUP",
   /** The role EventBridge Scheduler invokes the sender with. */
   schedulerRole: "SCHEDULER_ROLE",
+  /** The ARN of the mailbox agents' AgentCore Runtime, which the conversation Lambda invokes for each turn. */
+  agentRuntime: "AGENT_RUNTIME",
+  /** The name of the SSM parameter that holds the URL of Duva's API, which a mailbox agent calls as its tools. */
+  apiUrlParameter: "API_URL_PARAMETER",
 } as const;
 
 /** What the table's stream shows of each changed item. The sender reads the item itself, so only its new image. */
@@ -132,3 +136,9 @@ export const signInSender = systemAddress;
 
 /** The From of sign-in codes, as Cognito sends them from the sign-in domain. */
 export const signInFrom = (domain: string) => `Duva <${signInSender(domain)}>`;
+
+/** Where on the web app's domain Ask your agent posts each turn, which CloudFront passes to the conversation Lambda. */
+export const conversationPath = "agent/";
+
+/** The header a turn gives the human's access token in, since CloudFront signs the request to the conversation Lambda with its own Authorization. */
+export const tokenHeader = "x-duva-token";

@@ -1,11 +1,13 @@
 // The views of a mailbox's mail: the Inbox, the Screener, Remind me, the Feed, the Paper Trail, Sent, Drafts, All mail, Spam and Trash, an
 // agent's activity in its mailbox, then its own labels, each a link with how many unread threads it has, the Screener with how many senders wait. It is one component, so the side column can hold it.
 // A search's results are a view too, which the bar opens.
-import { useId, useState } from "react";
+import { useContext, useId, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
 import { type Label, NewLabel } from "./organize.tsx";
 import { strings } from "./strings.ts";
+import { PreferencesContext } from "./dates.ts";
+import { ActorMark } from "./mail-parts.tsx";
 
 type Mailbox = components["schemas"]["Mailbox"];
 
@@ -97,6 +99,7 @@ export function MailViews({
   labels,
   current,
   drafts,
+  ask,
   activity,
   screener,
   onLabelCreated,
@@ -109,6 +112,8 @@ export function MailViews({
   current: View | undefined;
   /** Whether Drafts is listed, as it is for the human's own mailboxes only, and whether it's open. */
   drafts?: { current: boolean };
+  /** Where the human asks the mailbox's mailbox agent, as their own mailboxes list it, and whether it's open. */
+  ask?: { href: string; current: boolean };
   /** Where the activity of the agent whose mailbox it is lies, as an agent's mailbox lists it, and whether it's open. */
   activity?: { href: string; current: boolean };
   /** Whether the mailbox's Screener is on, and how many senders wait there, once Duva has said. */
@@ -117,6 +122,7 @@ export function MailViews({
   onSignedOut: () => void;
 }) {
   const [creating, setCreating] = useState(false);
+  const keys = useContext(PreferencesContext).keyboardShortcuts !== "off";
   const headingId = useId();
   const unread = (id: string) => labels.find((label) => label.id === id)?.unread ?? 0;
   const own = labels.filter((label) => !label.builtIn);
@@ -170,6 +176,14 @@ export function MailViews({
         {link({ all: true }, strings.views.allMail, 0)}
         {link({ label: "spam" }, strings.views.spam, 0)}
         {link({ label: "trash" }, strings.views.trash, 0)}
+        {ask !== undefined && (
+          <li className="views-ask">
+            <a href={ask.href} className="view-link" aria-current={ask.current ? "page" : undefined} aria-keyshortcuts={keys ? "Shift+A" : undefined}>
+              <ActorMark kind="agent" />
+              <span className="view-name">{strings.ask.link}</span>
+            </a>
+          </li>
+        )}
         {activity !== undefined && (
           <li className="views-activity">
             <a href={activity.href} className="view-link" aria-current={activity.current ? "page" : undefined}>

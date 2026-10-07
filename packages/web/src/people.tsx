@@ -178,7 +178,8 @@ function HumanLine({
   }, [added]);
   const heading = `human-${human.id}`;
   const mailboxes = mailboxesOf(human.id, people.mailboxes);
-  const agents = people.agents.filter(({ sponsor }) => sponsor === human.id).sort((a, b) => a.name.localeCompare(b.name));
+  // A human's mailbox agents go with their mailboxes, so the sheet lists the agents they brought themselves.
+  const agents = people.agents.filter(({ sponsor, mailbox }) => sponsor === human.id && mailbox === undefined).sort((a, b) => a.name.localeCompare(b.name));
   const lastAdmin = human.admin && !people.humans.some(({ id, admin }) => admin && id !== human.id);
   const summary = copy.summary([...(me ? [copy.you] : []), ...(human.admin ? [copy.admin] : []), copy.mailboxes(mailboxes.length), copy.agents(agents.length)]);
 
@@ -437,7 +438,7 @@ function RemoveHuman({ client, human, people, onRemoved, onSignedOut }: { client
     const removal = { ...state.removal, mailboxes: mailboxesOf(human.id, state.removal.mailboxes) };
     const handedOver = removal.mailboxes.filter((mailbox) => fateOf(mailbox) === "handOver");
     const deleted = removal.mailboxes.filter((mailbox) => fateOf(mailbox) === "delete");
-    const agents = removal.agents.map((agent) => ({ name: agent.name, addresses: removal.agentMailboxes.filter(({ owner }) => owner === agent.id).flatMap(({ addresses }) => addresses) }));
+    const agents = removal.agents.filter(({ mailbox }) => mailbox === undefined).map((agent) => ({ name: agent.name, addresses: removal.agentMailboxes.filter(({ owner }) => owner === agent.id).flatMap(({ addresses }) => addresses) }));
     return (
       <div className="confirm person-remove" role="group" aria-label={copy.removeHumanWho(human.email)}>
         <p>{copy.removeHumanAsk(human.email)}</p>

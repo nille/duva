@@ -31,6 +31,8 @@ export const stackOutputs = {
   searchBucket: "SearchBucket",
   logosBucket: "LogosBucket",
   logosUrl: "LogosUrl",
+  conversationFunction: "ConversationFunction",
+  agentRuntime: "AgentRuntime",
   dkimName: (n: 1 | 2 | 3) => `DkimName${n}`,
   dkimValue: (n: 1 | 2 | 3) => `DkimValue${n}`,
 } as const;
