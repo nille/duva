@@ -1,9 +1,9 @@
-import { createHash } from "node:crypto";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { expect, test } from "vitest";
 import { operations } from "@duva/openapi";
 import type { Model } from "../src/agent-loop.ts";
 import { type DuvaOptions, startDuva } from "./harness.ts";
+import { managedLoginReached, signInSteps } from "./mcp-sign-in.ts";
 
 /**
  * A deployment on example.com where Ada is the first admin and Linus a human with the mailbox
@@ -104,27 +104,6 @@ test("registration takes only redirect URIs Cognito does, and a client that asks
   expect((await client.listTools()).tools.length).toBeGreaterThan(4);
 });
 
-/** A registered client's sign-in, step by step as the human's browser takes it, on the deployment at `url`. */
-async function signInSteps(url: string) {
-  const register = async () =>
-    (await (await fetch(`${url}/mcp/register`, { method: "POST", body: JSON.stringify({ client_name: "Claude Code", redirect_uris: ["http://localhost:1234/callback"], token_endpoint_auth_method: "none" }) })).json()) as {
-      client_id: string;
-    };
-  const verifier = "a".repeat(43);
-  const challenge = createHash("sha256").update(verifier).digest("base64url");
-  const authorize = (client: string, redirect = "http://localhost:1234/callback") =>
-    fetch(`${url}/mcp/authorize?${new URLSearchParams({ client_id: client, redirect_uri: redirect, response_type: "code", code_challenge: challenge, code_challenge_method: "S256", state: "mine" })}`);
-  const consent = async (asking: Response) => /name="consent" value="([^"]+)"/.exec(await asking.text())![1]!;
-  const decide = (consent: string, decision: string) => fetch(`${url}/mcp/authorize`, { method: "POST", body: new URLSearchParams({ consent, decision }), redirect: "manual" });
-  const signIn = async (toLogin: string) => {
-    const signedIn = await fetch(toLogin, { method: "POST", body: new URLSearchParams({ email: "linus@example.org" }), redirect: "manual" });
-    return fetch(signedIn.headers.get("location")!, { redirect: "manual" });
-  };
-  const exchange = (client: string, code: string) =>
-    fetch(`${url}/mcp/token`, { method: "POST", body: new URLSearchParams({ grant_type: "authorization_code", client_id: client, code, redirect_uri: "http://localhost:1234/callback", code_verifier: verifier }) });
-  return { register, authorize, consent, decide, signIn, exchange };
-}
-
 test("a sign-in first asks the human to allow the app, naming it and where it sends them, and goes back only to a redirect URI the app registered", async () => {
   const { duva } = await withMailbox();
   const { url, close } = await duva.listen();
@@ -154,6 +133,16 @@ test("a sign-in first asks the human to allow the app, naming it and where it se
   expect(back.searchParams.get("state")).toBe("mine");
   expect(back.searchParams.get("code")).toEqual(expect.any(String));
   expect(unasked.status).toBe(400);
+});
+
+test("a registered client's sign-in reaches managed login for the MCP app client once the human allows it, as the deployment check sees it, and an unknown client's reaches nothing", async () => {
+  const { duva } = await withMailbox();
+  const { url, close } = await duva.listen();
+
+  const problem = await managedLoginReached(url, url, "duva-test-mcp-client");
+  await close();
+
+  expect(problem).toBeUndefined();
 });
 
 test("a sign-in's code goes only to the app it was given for, once, and a try by another app uses it up", async () => {

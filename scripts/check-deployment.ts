@@ -48,6 +48,7 @@ import { createHash } from "node:crypto";
 import { sesSuppressionList } from "@duva/api/suppression";
 import { novaTranslator } from "@duva/api/translation";
 import { stackName, stackOutputs, stackParameters } from "@duva/infra/outputs";
+import { managedLoginReached } from "@duva/api/mcp-sign-in";
 
 const region = process.env.AWS_REGION;
 if (!region) throw new Error("Set AWS_REGION to the region of the deployment to check.");
@@ -274,20 +275,13 @@ await check("the MCP endpoint refuses a registration with a redirect URI Cognito
   const { error } = (await response.json()) as { error?: string };
   return response.status === 400 && error === "invalid_redirect_uri" ? undefined : `answered ${response.status} ${error}`;
 });
-await check("a registered MCP client's sign-in goes to managed login for the MCP app client, back to the MCP endpoint, and an unknown client's to nowhere", async () => {
-  const registered = await fetch(`${apiUrl}${mcpRegistrationPath}`, { method: "POST", headers: { "content-type": "application/json" }, body: '{"client_name":"Deployment check","redirect_uris":["http://localhost:1/callback"],"token_endpoint_auth_method":"none"}' });
-  const { client_id: client } = (await registered.json()) as { client_id?: string };
-  const query = (id: string) => new URLSearchParams({ client_id: id, redirect_uri: "http://localhost:1/callback", response_type: "code", code_challenge: "A".repeat(43), code_challenge_method: "S256", state: "check" });
-  const started = await fetch(`${apiUrl}${mcpAuthorizePath}?${query(client ?? "")}`, { redirect: "manual" });
-  const unknown = await fetch(`${apiUrl}${mcpAuthorizePath}?${query("0".repeat(32))}`, { redirect: "manual" });
-  const to = new URL(started.headers.get("location") ?? "http://nowhere");
-  const fine =
-    registered.status === 201 &&
-    started.status === 302 &&
-    `${to.origin}${to.pathname}` === `${output(stackOutputs.signInUrl)}/oauth2/authorize` &&
-    to.searchParams.get("redirect_uri") === `${apiUrl}/mcp/callback` &&
-    unknown.status === 400;
-  return fine ? undefined : `registered ${registered.status}, started ${started.status} to ${to.href}, unknown ${unknown.status}`;
+// Each run registers a client, which is only an item in the table, gone 60 days on.
+await check("a registered MCP client's sign-in reaches managed login for the MCP app client once the human allows it, back to the MCP endpoint, and an unknown client's reaches nothing", async () => {
+  // The app client the MCP Lambda signs MCP clients in through.
+  const { Environment } = await lambda.send(new GetFunctionConfigurationCommand({ FunctionName: output(stackOutputs.mcpFunction) }));
+  const appClient = Environment?.Variables?.[environmentVariables.mcpClientId];
+  if (appClient === undefined) return "the MCP Lambda names no app client";
+  return managedLoginReached(apiUrl, output(stackOutputs.signInUrl), appClient);
 });
 await check("the MCP Lambda's policy lets only API Gateway invoke it, for Duva's API, and nobody publicly", async () => {
   const { Policy } = await lambda.send(new GetPolicyCommand({ FunctionName: output(stackOutputs.mcpFunction) }));
