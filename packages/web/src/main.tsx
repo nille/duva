@@ -28,7 +28,7 @@ import { Drafts } from "./drafts.tsx";
 import { approvalChanges, type Connection, draftChanges, type Follow, labelChanges, mailChanges, mailboxSetupChanges, screenerChanges, setupChanges, SignedOut, useFeeds } from "./feed.ts";
 import { type Marks, ThreadIndex } from "./inbox.tsx";
 import { ActorMark } from "./mail-parts.tsx";
-import { type AgentMailbox, MailboxList, mailboxHref, mailboxName, ownInOrder } from "./mailboxes.tsx";
+import { type AgentMailbox, ChevronIcon, MailboxList, MailboxSelector, mailboxHref, mailboxName, ownInOrder } from "./mailboxes.tsx";
 import { type Beside, BesideContext, ListCountContext } from "./panes.tsx";
 import { readScreener, ScreenedSenders, type ScreenerRead, ScreenerView } from "./screener.tsx";
 import { SenderLinkContext, SenderSheetView } from "./sender.tsx";
@@ -741,6 +741,12 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
               {preferences.keyboardShortcuts !== "off" && <kbd aria-hidden="true">c</kbd>}
             </button>
           )}
+            {/* On a desk the open mailbox heads the side column as a selector; a phone's switcher does its work. */}
+            {listed !== undefined && own.length > 0 && (
+              <div className="bar-mailbox">
+                <MailboxSelector own={own} unread={unread} current={sided !== undefined && isOwn(sided.id) ? sided : undefined} />
+              </div>
+            )}
           {searched !== undefined && (
             <>
               <button
@@ -855,6 +861,12 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
               }}
             >
               {columned && listed !== undefined && <MailboxList own={own} agents={listed.agents} unread={unread} current={shown?.id} />}
+              {/* Until agents no longer have mailboxes (#126), a desk lists theirs here, as the selector holds only the human's own. */}
+              {listed !== undefined && listed.agents.length > 0 && (
+                <div className="side-agents">
+                  <MailboxList own={noMailboxes} agents={listed.agents} unread={unread} current={shown?.id} label={strings.mailboxes.agentsLabel} />
+                </div>
+              )}
               {sided !== undefined && (
                 <MailViews
                   client={client}
@@ -1108,19 +1120,13 @@ const ScreenerIcon = () => (
 
 const SettingsIcon = () => (
   <svg className="icon" viewBox="0 0 16 16" aria-hidden="true">
-    <Stroke d="M8 10.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5ZM8 1.75v1.75M8 12.5v1.75M1.75 8H3.5M12.5 8h1.75M3.6 3.6l1.25 1.25M11.15 11.15l1.25 1.25M3.6 12.4l1.25-1.25M11.15 4.85l1.25-1.25" />
+    <Stroke d="M12.8 7.03 14.35 7.23v1.54l-1.55.2-.72 1.74.95 1.24-1.08 1.08-1.24-.95-1.74.72-.2 1.55H7.23l-.2-1.55-1.74-.72-1.24.95-1.08-1.08.95-1.24-.72-1.74-1.55-.2V7.23l1.55-.2.72-1.74-.95-1.24 1.08-1.08 1.24.95 1.74-.72.2-1.55h1.54l.2 1.55 1.74.72 1.24-.95 1.08 1.08-.95 1.24ZM8 10a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z" />
   </svg>
 );
 
 const SearchIcon = () => (
   <svg className="icon" viewBox="0 0 16 16" aria-hidden="true">
     <Stroke d="M7 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10ZM10.75 10.75 14 14" />
-  </svg>
-);
-
-const ChevronIcon = () => (
-  <svg className="icon switcher-chevron" viewBox="0 0 16 16" aria-hidden="true">
-    <Stroke d="M4.5 6.25 8 9.75l3.5-3.5" />
   </svg>
 );
 

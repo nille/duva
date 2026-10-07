@@ -1,6 +1,7 @@
 // The mailboxes a human can read, beside the mail: their own, each by its default address when they
 // have more than one, then each agent's they sponsor, with how many threads in each Inbox are unread.
 // A human with one mailbox who sponsors no agents never sees it. An agent's carries its mark.
+import { useEffect, useId, useRef, useState } from "react";
 import type { components } from "@duva/openapi";
 import { ActorMark } from "./mail-parts.tsx";
 import { strings } from "./strings.ts";
@@ -34,16 +35,18 @@ export function MailboxList({
   agents,
   unread,
   current,
+  label = strings.mailboxes.label,
 }: {
   /** The human's own mailboxes, in the order `ownInOrder` gives. */
   own: Mailbox[];
   agents: AgentMailbox[];
   unread: ReadonlyMap<string, number>;
   current?: string;
+  label?: string;
 }) {
   const several = own.length > 1;
   return (
-    <nav className="mailboxes" aria-label={strings.mailboxes.label}>
+    <nav className="mailboxes" aria-label={label}>
       {several && (
         <p className="mailboxes-group" id="mailboxes-own">
           {strings.mailboxes.yourMailboxes}
@@ -119,3 +122,100 @@ function MailboxLink({ name, address, unread = 0, current, href, agent = false }
     </li>
   );
 }
+
+/**
+ * The open mailbox at the side column's head, as a selector: its name, its address in Second Ink
+ * when the name differs, and a chevron, with the dot when another of the human's own mailboxes has
+ * unread mail. It opens their own mailboxes, as the list beside the mail gives them, and Escape
+ * closes them, back to it. A human with one mailbox sees it named, a link to its Inbox, with nothing to open.
+ */
+export function MailboxSelector({
+  own,
+  unread,
+  current,
+}: {
+  own: Mailbox[];
+  unread: ReadonlyMap<string, number>;
+  /** The mailbox open, if one is. */
+  current?: Mailbox;
+}) {
+  const [open, setOpen] = useState(false);
+  const id = useId();
+  const button = useRef<HTMLButtonElement>(null);
+  const root = useRef<HTMLDivElement>(null);
+  // With none of their own open, as while an agent's is, it asks for one.
+  const shown = current ?? (own.length === 1 ? own[0] : undefined);
+  const name = shown === undefined ? strings.mailboxes.choose : mailboxName(shown, own);
+  const address = shown === undefined ? name : strings.mailboxes.address(shown);
+  const elsewhere = own.some(({ id }) => id !== current?.id && (unread.get(id) ?? 0) > 0);
+  // Opening a mailbox, or anything else, closes the list, as does a click outside it.
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setOpen(false);
+    const outside = (event: PointerEvent) => {
+      if (!root.current?.contains(event.target as Node)) close();
+    };
+    addEventListener("hashchange", close);
+    document.addEventListener("pointerdown", outside);
+    return () => {
+      removeEventListener("hashchange", close);
+      document.removeEventListener("pointerdown", outside);
+    };
+  }, [open]);
+  const named = (
+    <>
+      <span className="selector-name">{name}</span>
+      {address !== name && <span className="selector-address">{breakableBeforeAt(address)}</span>}
+    </>
+  );
+  if (own.length === 1) {
+    const only = own[0]!;
+    const count = unread.get(only.id) ?? 0;
+    return (
+      <a
+        className="selector"
+        href={mailboxHref(only, true)}
+        aria-current={current?.id === only.id ? "page" : undefined}
+        aria-label={[mailboxName(only, own), strings.mailboxes.address(only), count > 0 && strings.mailboxes.unread(count)].filter(Boolean).join(", ")}
+      >
+        {named}
+      </a>
+    );
+  }
+  return (
+    <div
+      ref={root}
+      className="selector-root"
+      onKeyDown={(event) => {
+        if (event.key !== "Escape" || !open) return;
+        // Escape closes the list here, and does nothing else, as closing a thread.
+        event.stopPropagation();
+        setOpen(false);
+        button.current?.focus();
+      }}
+    >
+      <button
+        ref={button}
+        type="button"
+        className="selector"
+        aria-expanded={open}
+        aria-controls={id}
+        aria-label={current === undefined ? name : [name, address !== name && address, elsewhere && strings.views.elsewhere, strings.mailboxes.choose].filter(Boolean).join(", ")}
+        onClick={() => setOpen((shown) => !shown)}
+      >
+        {named}
+        {elsewhere && <span className="switcher-dot" aria-hidden="true" />}
+        <ChevronIcon />
+      </button>
+      <div id={id} className="selector-list" hidden={!open}>
+        {open && <MailboxList own={own} agents={[]} unread={unread} current={current?.id} />}
+      </div>
+    </div>
+  );
+}
+
+export const ChevronIcon = () => (
+  <svg className="icon switcher-chevron" viewBox="0 0 16 16" aria-hidden="true">
+    <path d="M4.5 6.25 8 9.75l3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);

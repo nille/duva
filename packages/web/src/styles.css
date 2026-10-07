@@ -532,13 +532,14 @@ a.wordmark {
   background: var(--side);
 }
 
-/* The bar heads the side column: the wordmark and Write, the search box, then Duva's places. */
+/* The bar heads the side column: the wordmark and Write, the open mailbox, the search box, then Duva's places. */
 .bar {
   grid-area: 1 / 1;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   grid-template-areas:
     "brand write"
+    "mailbox mailbox"
     "search search"
     "places places";
   align-items: center;
@@ -553,6 +554,113 @@ a.wordmark {
 
 .bar-write {
   grid-area: write;
+}
+
+/*
+ * The open mailbox as a selector: its name in ink, heavier, its address under it in Second Ink when
+ * the name differs, and the chevron. Its mailboxes open on a raised sheet under it, over the column,
+ * in the lines the side column lists them in, which then needs no list of its own.
+ */
+.bar-mailbox {
+  grid-area: mailbox;
+  position: relative;
+  min-width: 0;
+}
+
+.selector {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  column-gap: var(--space-2);
+  width: 100%;
+  margin: 0;
+  padding: 0.36rem var(--space-2);
+  border: 0;
+  border-radius: var(--radius);
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+}
+
+button.selector,
+a.selector {
+  cursor: pointer;
+  text-decoration: none;
+  transition: background-color 150ms var(--ease-out);
+}
+
+a.selector:hover,
+button.selector:hover,
+button.selector[aria-expanded="true"] {
+  background: var(--ink-wash);
+}
+
+.selector-name {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.selector-address {
+  grid-row: 2;
+  grid-column: 1;
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.selector .switcher-dot {
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 50%;
+  background: var(--call);
+}
+
+.selector .switcher-chevron {
+  grid-column: 3;
+  grid-row: 1 / span 2;
+  color: var(--ink-2);
+  transition: rotate 150ms var(--ease-out);
+}
+
+.selector[aria-expanded="true"] .switcher-chevron {
+  rotate: 180deg;
+}
+
+.selector-list {
+  position: absolute;
+  z-index: 3;
+  top: calc(100% + var(--space-1));
+  right: 0;
+  left: 0;
+  padding: var(--space-2);
+  border-radius: var(--radius-sheet);
+  background: var(--raise);
+  box-shadow: var(--lift);
+}
+
+.selector-list .mailbox[aria-current="page"] {
+  background: var(--list);
+}
+
+/* On a desk the selector opens the human's mailboxes, so the side column lists only the agents'. */
+.side-agents {
+  display: none;
+}
+
+@media (min-width: 48.0625rem) {
+  .side-nav > .mailboxes {
+    display: none;
+  }
+
+  .side-agents {
+    display: block;
+    margin-bottom: var(--space-5);
+  }
 }
 
 .bar-write kbd {
@@ -1100,6 +1208,10 @@ a.wordmark {
 
   .bar-write {
     order: 2;
+  }
+
+  .bar-mailbox {
+    display: none;
   }
 
   .bar-settings {

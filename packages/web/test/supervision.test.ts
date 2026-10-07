@@ -204,7 +204,7 @@ test("admins see the agents' caps on the Organization page and change them, and 
   const { page, signIn, ada } = await withAgent();
   await signIn("ada@example.org");
   await page.getByRole("link", { name: "Settings", exact: true }).click();
-  await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "Organization" }).click();
+  await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "Mail and agents" }).click();
   const organization = page.getByRole("region", { name: "Agents", exact: true });
   const caps = organization.getByRole("group", { name: "Agents' send limits" });
   await expect.poll(() => caps.getByRole("textbox", { name: "Sends an hour" }).inputValue(), wait).toBe("100");
@@ -219,8 +219,8 @@ test("admins see the agents' caps on the Organization page and change them, and 
   const other = await withAgent();
   await other.signIn("grace@example.org");
   await other.page.getByRole("link", { name: "Settings", exact: true }).click();
-  await expect.poll(() => other.page.getByRole("region", { name: "You" }).isVisible(), wait).toBe(true);
-  expect(await other.page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "Organization" }).count()).toBe(0);
+  await expect.poll(() => other.page.getByRole("region", { name: "Preferences" }).isVisible(), wait).toBe(true);
+  expect(await other.page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "Mail and agents" }).count()).toBe(0);
   expect(await other.page.getByRole("group", { name: "Agents' send limits" }).count()).toBe(0);
 });
 
@@ -308,7 +308,8 @@ test("on a phone, the Alerts view and an agent's line with its limits fit the sc
   await openHermes(page);
   await expect.poll(() => agentsSheet(page).getByRole("button", { name: "Send now" }).isVisible(), wait).toBe(true);
   expect(await fits()).toBe(true);
-  expect((await agentsSheet(page).getByRole("button", { name: "Pause" }).boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  // The box lies at a fraction of a pixel, which can round its height a hair under 44.
+  expect(Math.round((await agentsSheet(page).getByRole("button", { name: "Pause" }).boundingBox())!.height)).toBeGreaterThanOrEqual(44);
   const form = agentsSheet(page).getByRole("form", { name: "Hermes" });
   for (const name of ["Sends an hour", "New recipients a day"]) {
     const field = await form.getByRole("textbox", { name }).boundingBox();

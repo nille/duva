@@ -25,17 +25,19 @@ const entries = (page: Page) => settingsIndex(page).locator(".settings-entry-nam
 
 const withOrganization = () => startWebApp({ domain: "example.com", admin: "ada@example.org", humans: ["grace@example.org"] });
 
-test("an admin's Settings opens on You, with an index of every page in order and the admins' own under their label", budget, async () => {
+test("an admin's Settings opens on Preferences, with an index of every page in order, in two groups: You, and the Organization an admin sets", budget, async () => {
   const { page, signIn } = await withOrganization();
   await signIn("ada@example.org");
 
   await openSettings(page);
 
-  await expect.poll(() => page.getByRole("region", { name: "You" }).isVisible(), wait).toBe(true);
+  await expect.poll(() => page.getByRole("region", { name: "Preferences" }).isVisible(), wait).toBe(true);
   expect(await page.getByRole("heading", { level: 1 }).textContent()).toBe("Settings");
-  expect(await entries(page)).toEqual(["You", "Organization", "Domains", "Addresses", "People", "Groups"]);
-  expect(await settingsIndex(page).getByRole("list", { name: "For admins" }).locator(".settings-entry-name").allTextContents()).toEqual(["Domains", "Addresses", "People", "Groups"]);
-  expect(await settingsIndex(page).getByRole("link", { name: "You", exact: true }).getAttribute("aria-current")).toBe("page");
+  expect(await entries(page)).toEqual(["Preferences", "Mail and agents", "Domains", "Addresses", "People", "Groups"]);
+  // Two plain groups: what is the human's own, and what the organization shares, at the same level.
+  expect(await settingsIndex(page).getByRole("list", { name: "You" }).locator(".settings-entry-name").allTextContents()).toEqual(["Preferences"]);
+  expect(await settingsIndex(page).getByRole("list", { name: "Organization" }).locator(".settings-entry-name").allTextContents()).toEqual(["Mail and agents", "Domains", "Addresses", "People", "Groups"]);
+  expect(await settingsIndex(page).getByRole("link", { name: "Preferences", exact: true }).getAttribute("aria-current")).toBe("page");
   // The domain's receiving and DMARC records aren't in DNS yet, and its entry says so.
   await expect.poll(() => settingsIndex(page).getByRole("link", { name: /^Domains/ }).textContent(), wait).toBe("Domainsexample.com, 2 records missing");
   expect(await page.getByRole("region", { name: "Domains" }).count()).toBe(0);
@@ -43,7 +45,7 @@ test("an admin's Settings opens on You, with an index of every page in order and
   await settingsIndex(page).getByRole("link", { name: /^Domains/ }).click();
 
   await expect.poll(() => page.getByRole("region", { name: "Domains" }).isVisible(), wait).toBe(true);
-  expect(await page.getByRole("region", { name: "You" }).count()).toBe(0);
+  expect(await page.getByRole("region", { name: "Preferences" }).count()).toBe(0);
   expect(await settingsIndex(page).getByRole("link", { name: /^Domains/ }).getAttribute("aria-current")).toBe("page");
   expect(await page.evaluate(() => location.hash)).toBe("#/settings/domains");
 });
@@ -64,9 +66,9 @@ test("each line of the index says what its page holds now, as its link's descrip
       .getByRole("link", { name, exact: true })
       .evaluate((link) => document.getElementById(link.getAttribute("aria-describedby") ?? "")?.textContent);
   await expect.poll(() => state("Groups"), wait).toBe("1 group");
-  expect(await state("You")).toBe("Default clock, mail as designed");
+  expect(await state("Preferences")).toBe("Default clock, mail as designed");
   expect(await state("Screener")).toBe("On");
-  expect(await state("Organization")).toBe("Trash and Spam keep mail 30 days");
+  expect(await state("Mail and agents")).toBe("Trash and Spam keep mail 30 days");
   expect(await state("Domains")).toBe("example.com, 2 records missing");
   expect(await state("Addresses")).toBe("1 mailbox");
   expect(await state("People")).toBe("2 humans");
@@ -76,7 +78,7 @@ test("each line of the index says what its page holds now, as its link's descrip
   await page.getByRole("region", { name: "Screener" }).getByRole("radio", { name: "Off" }).check();
   await page.getByRole("region", { name: "Screener" }).getByRole("button", { name: "Save" }).click();
   await expect.poll(() => page.getByRole("region", { name: "Screener" }).getByRole("status").textContent(), wait).toBe("Saved.");
-  await openPage(page, "You");
+  await openPage(page, "Preferences");
 
   await expect.poll(() => state("Screener"), wait).toBe("Off");
 });
@@ -85,7 +87,7 @@ test("an admin opens the Organization page and chooses that erasing a thread era
   const { page, signIn, duva } = await withOrganization();
   await signIn("ada@example.org");
 
-  await openSettings(page, "Organization");
+  await openSettings(page, "Mail and agents");
 
   const keep = agentsSheet(page).getByRole("radio", { name: /^Keep them/ });
   const erase = agentsSheet(page).getByRole("radio", { name: /^Erase them with the thread/ });
@@ -125,7 +127,7 @@ test("an admin sets how many seconds an approved send waits to be undone, on the
 test("the Mail sheet and the Agents sheet each save only their own settings", budget, async () => {
   const { page, signIn, duva } = await withOrganization();
   await signIn("ada@example.org");
-  await openSettings(page, "Organization");
+  await openSettings(page, "Mail and agents");
   const field = mailSheet(page).getByRole("textbox", { name: "How long Trash and Spam keep mail" });
   await expect.poll(() => field.inputValue(), wait).toBe("30");
 
@@ -143,7 +145,7 @@ test("an admin reads what translating searches does, and adds Danish to the sear
   const { page, signIn, duva } = await withOrganization();
   await signIn("ada@example.org");
 
-  await openSettings(page, "Organization");
+  await openSettings(page, "Mail and agents");
 
   const languages = page.getByRole("group", { name: "Languages your mail is in" });
   const checkbox = (name: string) => languages.getByRole("checkbox", { name: new RegExp(`^${name}`) });
@@ -182,15 +184,15 @@ test("a human who isn't an admin lands on You and reads the organization's reten
   await openSettings(page);
 
   await expect.poll(() => page.getByText("Trash and Spam keep mail 30 days. Admins choose this for everyone.").isVisible(), wait).toBe(true);
-  expect(await page.getByRole("region", { name: "You" }).isVisible()).toBe(true);
-  expect(await entries(page)).toEqual(["You"]);
+  expect(await page.getByRole("region", { name: "Preferences" }).isVisible()).toBe(true);
+  expect(await entries(page)).toEqual(["Preferences"]);
   const text = await page.locator("main").innerText();
   for (const word of ["AWS", "Nova", "Organization", "send limits", "For admins"]) expect(text).not.toContain(word);
 
   await page.evaluate(() => (location.hash = "#/settings/organization"));
 
   await expect.poll(() => page.evaluate(() => location.hash), wait).toBe("#/settings/organization");
-  expect(await page.getByRole("region", { name: "You" }).isVisible()).toBe(true);
+  expect(await page.getByRole("region", { name: "Preferences" }).isVisible()).toBe(true);
   expect(await page.getByRole("region", { name: "Agents", exact: true }).count()).toBe(0);
   expect(await page.getByRole("radio", { name: /^Keep them/ }).count()).toBe(0);
 });
@@ -201,13 +203,13 @@ test("on a phone Settings opens on its index, each page links back to it, and Si
 
   await openSettings(page);
 
-  await expect.poll(() => settingsIndex(page).getByRole("link", { name: "Organization" }).isVisible(), wait).toBe(true);
-  expect(await page.getByRole("region", { name: "You" }).isVisible()).toBe(false);
+  await expect.poll(() => settingsIndex(page).getByRole("link", { name: "Mail and agents" }).isVisible(), wait).toBe(true);
+  expect(await page.getByRole("region", { name: "Preferences" }).isVisible()).toBe(false);
   expect(await page.getByRole("link", { name: "Settings", exact: true }).filter({ visible: true }).count()).toBe(1);
 
-  await openPage(page, "You");
+  await openPage(page, "Preferences");
 
-  await expect.poll(() => page.getByRole("region", { name: "You" }).isVisible(), wait).toBe(true);
+  await expect.poll(() => page.getByRole("region", { name: "Preferences" }).isVisible(), wait).toBe(true);
   expect(await settingsIndex(page).isVisible()).toBe(false);
   expect(await page.getByText("Signed in as ada@example.org.").isVisible()).toBe(true);
   expect(await page.getByRole("main").getByRole("button", { name: "Sign out" }).isVisible()).toBe(true);
@@ -217,8 +219,8 @@ test("on a phone Settings opens on its index, each page links back to it, and Si
 
   await expect.poll(() => settingsIndex(page).isVisible(), wait).toBe(true);
   expect(await page.evaluate(() => document.activeElement?.tagName)).toBe("H1");
-  expect(await page.getByRole("region", { name: "You" }).isVisible()).toBe(false);
-  await openPage(page, "Organization");
+  expect(await page.getByRole("region", { name: "Preferences" }).isVisible()).toBe(false);
+  await openPage(page, "Mail and agents");
   await expect.poll(() => agentsSheet(page).isVisible(), wait).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(phone.width);
 });
@@ -227,9 +229,9 @@ test("opening a page from the index by keyboard takes the focus to its sheet", b
   const { page, signIn } = await withOrganization();
   await signIn("ada@example.org");
   await openSettings(page);
-  await expect.poll(() => page.getByRole("region", { name: "You" }).isVisible(), wait).toBe(true);
+  await expect.poll(() => page.getByRole("region", { name: "Preferences" }).isVisible(), wait).toBe(true);
 
-  await settingsIndex(page).getByRole("link", { name: "Organization" }).focus();
+  await settingsIndex(page).getByRole("link", { name: "Mail and agents" }).focus();
   await page.keyboard.press("Enter");
 
   await expect.poll(() => page.evaluate(() => document.activeElement?.textContent), wait).toBe("Mail");
@@ -297,7 +299,7 @@ async function withGracesInbox() {
   return { ...app, grace };
 }
 
-const you = (page: Page) => page.getByRole("region", { name: "You" });
+const you = (page: Page) => page.getByRole("region", { name: "Preferences" });
 const row = (page: Page, subject: string) => page.getByRole("list", { name: "Threads" }).getByRole("listitem").filter({ hasText: subject }).locator("time");
 const saved = "Saved. This applies from now on.";
 
@@ -359,7 +361,7 @@ test("a human chooses dates with the day first, and their 12-hour time stays", b
   await expect.poll(() => you(page).getByRole("status").textContent(), wait).toBe(saved);
   // The index says the human's choices in words.
   await openPage(page, "Screener");
-  await expect.poll(() => settingsIndex(page).getByRole("link", { name: "You", exact: true }).innerText(), wait).toContain("12-hour clock, dates day first, mail as designed");
+  await expect.poll(() => settingsIndex(page).getByRole("link", { name: "Preferences", exact: true }).innerText(), wait).toContain("12-hour clock, dates day first, mail as designed");
 
   await page.getByRole("navigation").getByRole("link", { name: "Mail", exact: true }).click();
   await expect.poll(() => row(page, "Kvitto").textContent(), wait).toBe("4 Oct");
@@ -383,7 +385,7 @@ async function withOldSpam() {
   onTestFinished(() => void vi.useRealTimers());
   await app.duva.receive(note("Erbjudande"), { to: ["grace@example.com"] }, { verdicts: { spam: "FAIL" } });
   await app.signIn("ada@example.org");
-  await openSettings(app.page, "Organization");
+  await openSettings(app.page, "Mail and agents");
   const field = mailSheet(app.page).getByRole("textbox", { name: "How long Trash and Spam keep mail" });
   await expect.poll(() => field.inputValue(), wait).toBe("30");
   return { ...app, field };

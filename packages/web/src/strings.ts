@@ -36,6 +36,10 @@ export const strings = {
     withoutAddress: (place: number) => `Mailbox ${place}, without an address`,
     agents: "Agents",
     unread: (count: number) => `${count} unread`,
+    /** The selector at the side column's head, which opens the mailboxes. */
+    choose: "Choose a mailbox",
+    /** The agents' mailboxes, which a desk's side column lists apart from the selector. */
+    agentsLabel: "Agents' mailboxes",
     /** The address a mailbox is shown with: its default address, if it has one. */
     address: (mailbox: { defaultAddress?: string }) => mailbox.defaultAddress ?? "No address",
   },
@@ -463,7 +467,7 @@ export const strings = {
     goScreener: "Go to the Screener",
     help: "These shortcuts",
     offBefore: "To turn them off, as for speech input, choose Off on ",
-    offLink: "You in Settings",
+    offLink: "Preferences in Settings",
     offAfter: ".",
     done: "Close",
   },
@@ -555,7 +559,8 @@ export const strings = {
   settings: {
     title: "Settings",
     index: {
-      admins: "For admins",
+      /** The index's two groups: what is the human's own, and what the organization shares. */
+      group: { you: "You", organization: "Organization" },
       back: "Settings",
       paused: "Paused",
       waiting: (count: number) => `${count} waiting`,
@@ -577,7 +582,7 @@ export const strings = {
       humans: (count: number) => (count === 1 ? "1 human" : `${count} humans`),
       groups: (count: number) => (count === 0 ? "No groups yet" : count === 1 ? "1 group" : `${count} groups`),
     },
-    organization: "Organization",
+    organization: "Mail and agents",
     mail: "Mail",
     mailLead: "Admins choose these for everyone in the organization.",
     agents: "Agents",
@@ -677,7 +682,7 @@ export const strings = {
     unreachable: "Duva couldn't be reached, so the settings aren't shown. Check your connection and try again.",
     saveFailed: (status: number) => `Duva couldn't save the setting (error ${status}). Try again in a moment.`,
     saveUnreachable: "Duva couldn't be reached, so the setting isn't saved. Check your connection and try again.",
-    you: "You",
+    you: "Preferences",
     youLead: "You choose these for yourself, and they follow you to every browser you sign in from.",
     hourCycle: {
       legend: "How times show",

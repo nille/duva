@@ -227,7 +227,7 @@ test("a human switches a message to its plain text and back", budget, async () =
 test("a human chooses plain text on the You sheet, and HTML mail shows as text until they switch a message", budget, async () => {
   const { page, grace } = await withMail([newsletter({ html: designed })]);
   await page.getByRole("link", { name: "Settings", exact: true }).click();
-  const you = page.getByRole("region", { name: "You" });
+  const you = page.getByRole("region", { name: "Preferences" });
   await expect.poll(() => you.getByRole("radio", { name: /^As designed/ }).isChecked(), wait).toBe(true);
 
   await you.getByRole("radio", { name: /^Plain text/ }).check();

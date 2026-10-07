@@ -177,15 +177,15 @@ export function ThreadIndex({
     setLoadingOlder(false);
   };
 
-  // Duva counts a label's unread threads, the Inbox's among them, and All mail's are counted once the whole list is shown.
-  // Sent lists what was written from the mailbox, so it counts nothing unread.
+  // The whole list counts its own unread threads. Past the threads shown, Duva's count for a label,
+  // the Inbox's among them, says how many; All mail has none. Sent counts nothing unread.
   const unread =
     listing.status !== "listed" || "sent" in view
       ? 0
-      : "label" in view
-        ? (labels.find(({ id }) => id === view.label)?.unread ?? 0)
         : listing.next === undefined
           ? listing.threads.filter((thread) => thread.unread).length
+        : "label" in view
+          ? (labels.find(({ id }) => id === view.label)?.unread ?? 0)
           : 0;
   useViewTitle(strings.title(title, unread));
   useListCount(unread);

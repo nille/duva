@@ -192,3 +192,23 @@ async function serve(root: string, harness: { url: string; signIn: { clientId: s
     },
   };
 }
+
+/**
+ * The mailboxes a human reads: on a desk their own as the selector at the side column's head opens
+ * them, opening it if it is shown and closed, and their agents' as the side column lists them. On a
+ * phone they are all in the switcher's sheet, which a test opens.
+ */
+export async function mailboxes(page: Page) {
+  const selector = page.getByRole("button", { name: /Choose a mailbox$/ });
+  // The selector shows once Duva has listed the mailboxes.
+  await page
+    .locator(".bar-mailbox")
+    .waitFor({ state: "attached", timeout: 10_000 })
+    .catch(() => undefined);
+  if ((await selector.isVisible()) && (await selector.getAttribute("aria-expanded")) === "false") await selector.click();
+  // With one mailbox of their own, the selector is the link to it.
+  return page
+    .locator(".bar-mailbox:not(:has(button))")
+    .or(page.getByRole("navigation", { name: "Mailboxes" }))
+    .or(page.getByRole("navigation", { name: "Agents' mailboxes" }));
+}

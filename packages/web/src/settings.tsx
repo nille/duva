@@ -368,7 +368,10 @@ export function Settings({
           {copy.title}
         </h1>
         <nav className="settings-index" aria-label={copy.title}>
-          <ul>
+          <h2 className="settings-index-heading" id="settings-group-you">
+            {copy.index.group.you}
+          </h2>
+          <ul aria-labelledby="settings-group-you">
             <li>{entry("you", copy.you)}</li>
             {screened.length > 0 && <li>{entry("screener", copy.screener.title)}</li>}
             {sponsors && (
@@ -383,14 +386,15 @@ export function Settings({
                 )}
               </li>
             )}
-            {admin && <li>{entry("organization", copy.organization)}</li>}
           </ul>
+          {/* What the organization shares is the admins' to set, so only they see its group. */}
           {admin && (
             <>
-              <h2 className="settings-index-heading" id="settings-admins">
-                {copy.index.admins}
+              <h2 className="settings-index-heading" id="settings-group-organization">
+                {copy.index.group.organization}
               </h2>
-              <ul aria-labelledby="settings-admins">
+              <ul aria-labelledby="settings-group-organization">
+                <li>{entry("organization", copy.organization)}</li>
                 <li>{entry("domains", strings.domains.title)}</li>
                 <li>{entry("addresses", strings.addresses.title)}</li>
                 <li>{entry("people", strings.people.title)}</li>

@@ -1,6 +1,6 @@
 import type { Page } from "playwright-core";
 import { expect, test } from "vitest";
-import { phone, startWebApp } from "./web-app.ts";
+import { mailboxes, phone, startWebApp } from "./web-app.ts";
 
 // The page reads the change feeds every 250 ms in these tests, but a page under the full suite's
 // load can still take seconds to show what changed, so every wait has room, and every test more.
@@ -50,7 +50,6 @@ async function withSponsor(options: Parameters<typeof startWebApp>[0] = {}) {
   return { ...app, ada, hermes, params, receive, ask };
 }
 
-const mailboxes = (page: Page) => page.getByRole("navigation", { name: "Mailboxes" });
 
 test("a sponsor finds their agents' mailboxes beside their own, each with its unread count", budget, async () => {
   const { page, signIn, receive } = await withSponsor();
@@ -60,7 +59,7 @@ test("a sponsor finds their agents' mailboxes beside their own, each with its un
 
   await signIn("ada@example.org");
 
-  const links = mailboxes(page).getByRole("link");
+  const links = (await mailboxes(page)).getByRole("link");
   await expect.poll(() => links.count(), wait).toBe(2);
   await expect.poll(() => links.nth(0).getAttribute("aria-label"), wait).toBe("Your mailbox, ada@example.com, 1 unread");
   await expect.poll(() => links.nth(1).getAttribute("aria-label"), wait).toBe("Hermes, hermes@example.com, 2 unread");
@@ -73,13 +72,13 @@ test("a sponsor opens their agent's Inbox and reads its threads as they read the
   await receive(note("hermes@example.com", "Till Hermes", "Kan du svara?"), "hermes@example.com");
   await signIn("ada@example.org");
 
-  await mailboxes(page).getByRole("link", { name: /^Hermes/ }).click();
+  await (await mailboxes(page)).getByRole("link", { name: /^Hermes/ }).click();
 
   await expect.poll(() => page.getByRole("link", { name: /^Unread.*Till Hermes/ }).count(), wait).toBe(1);
   // The side column names the mailbox by its address, so the Inbox's head doesn't repeat it.
-  expect(await mailboxes(page).getByRole("link", { name: /^Hermes/ }).innerText()).toContain("hermes@example.com");
+  expect(await (await mailboxes(page)).getByRole("link", { name: /^Hermes/ }).innerText()).toContain("hermes@example.com");
   expect(await page.getByRole("main").getByText("hermes@example.com").count()).toBe(0);
-  expect(await mailboxes(page).getByRole("link", { name: /^Hermes/ }).getAttribute("aria-current")).toBe("page");
+  expect(await (await mailboxes(page)).getByRole("link", { name: /^Hermes/ }).getAttribute("aria-current")).toBe("page");
 
   await page.getByRole("link", { name: /Till Hermes/ }).click();
 
@@ -87,9 +86,9 @@ test("a sponsor opens their agent's Inbox and reads its threads as they read the
   expect(await page.getByRole("article").innerText()).toContain("Kan du svara?");
   await page.getByRole("link", { name: "Hermes's Inbox" }).click();
   await expect.poll(() => page.getByRole("link", { name: /Till Hermes/ }).getAttribute("aria-label"), wait).not.toMatch(/^Unread/);
-  await expect.poll(() => mailboxes(page).getByRole("link", { name: /^Hermes/ }).getAttribute("aria-label"), wait).toBe("Hermes, hermes@example.com");
+  await expect.poll(async () => (await mailboxes(page)).getByRole("link", { name: /^Hermes/ }).getAttribute("aria-label"), wait).toBe("Hermes, hermes@example.com");
 
-  await mailboxes(page).getByRole("link", { name: /^Your mailbox/ }).click();
+  await (await mailboxes(page)).getByRole("link", { name: /^Your mailbox/ }).click();
 
   await expect.poll(() => page.getByRole("heading", { level: 1 }).textContent(), wait).toBe("Inbox");
   expect(await page.getByRole("link", { name: /Till Hermes/ }).count()).toBe(0);
@@ -106,7 +105,7 @@ test("a message the agent sent is marked as its own, with who approved it and wh
   await ada.POST("/approvals/{approval}/send", { params: { path: { approval: edited } }, body: { text: "Tisdag går bättre." } });
   await signIn("ada@example.org");
 
-  await mailboxes(page).getByRole("link", { name: /^Hermes/ }).click();
+  await (await mailboxes(page)).getByRole("link", { name: /^Hermes/ }).click();
   await page.getByRole("link", { name: /Möte/ }).click();
 
   const letters = page.getByRole("article");
@@ -126,20 +125,20 @@ test("a message the agent sent is marked as its own, with who approved it and wh
 test("new mail in an agent's mailbox appears without reloading, and its unread count follows", budget, async () => {
   const { page, signIn, receive } = await withSponsor();
   await signIn("ada@example.org");
-  await mailboxes(page).getByRole("link", { name: /^Hermes/ }).click();
+  await (await mailboxes(page)).getByRole("link", { name: /^Hermes/ }).click();
   await expect.poll(() => page.getByRole("heading", { name: "Hermes's Inbox is empty" }).count(), wait).toBe(1);
 
   await receive(note("hermes@example.com", "Ny post"), "hermes@example.com");
 
   await expect.poll(() => page.getByRole("link", { name: /^Unread.*Ny post/ }).count(), wait).toBe(1);
-  await expect.poll(() => mailboxes(page).getByRole("link", { name: /^Hermes/ }).getAttribute("aria-label"), wait).toBe("Hermes, hermes@example.com, 1 unread");
+  await expect.poll(async () => (await mailboxes(page)).getByRole("link", { name: /^Hermes/ }).getAttribute("aria-label"), wait).toBe("Hermes, hermes@example.com, 1 unread");
 });
 
 test("Approvals says how many wait from anywhere in the web app, an agent's thread included", budget, async () => {
   const { page, signIn, receive, ask } = await withSponsor();
   await receive(note("hermes@example.com", "Till Hermes"), "hermes@example.com");
   await signIn("ada@example.org");
-  await mailboxes(page).getByRole("link", { name: /^Hermes/ }).click();
+  await (await mailboxes(page)).getByRole("link", { name: /^Hermes/ }).click();
   await page.getByRole("link", { name: /Till Hermes/ }).click();
   await expect.poll(() => page.getByRole("heading", { level: 1 }).textContent(), wait).toBe("Till Hermes");
 
@@ -151,13 +150,14 @@ test("Approvals says how many wait from anywhere in the web app, an agent's thre
 test("while the tab is hidden, the agents' unread counts and the requests waiting for approval stay current", budget, async () => {
   const { page, signIn, receive, ask, hide } = await withSponsor();
   await signIn("ada@example.org");
-  await expect.poll(() => mailboxes(page).getByRole("link", { name: /^Hermes/ }).getAttribute("aria-label"), wait).toBe("Hermes, hermes@example.com");
+  await expect.poll(async () => (await mailboxes(page)).getByRole("link", { name: /^Hermes/ }).getAttribute("aria-label"), wait).toBe("Hermes, hermes@example.com");
 
   await hide();
   await receive(note("hermes@example.com", "Ny post"), "hermes@example.com");
   await ask({ to: ["grace@example.org"], subject: "Hej", text: "Hej Grace." });
 
-  await expect.poll(() => mailboxes(page).getByRole("link", { name: /^Hermes/ }).getAttribute("aria-label"), wait).toBe("Hermes, hermes@example.com, 1 unread");
+  await expect.poll(async () => (await mailboxes(page)).getByRole("link", { name: /^Hermes/ }).getAttribute("aria-label"), wait).toBe("Hermes, hermes@example.com, 1 unread");
+  await page.keyboard.press("Escape");
   await expect.poll(() => page.getByRole("link", { name: /Approvals/ }).innerText(), wait).toMatch(/Approvals\s*1/);
   await page.getByRole("link", { name: /Approvals/ }).click();
   await expect.poll(() => page.title(), wait).toBe("Approvals (1) · Duva");
@@ -186,7 +186,9 @@ test("a human who sponsors no agents sees only their own mailbox", budget, async
   await signIn("grace@example.org");
 
   await expect.poll(() => page.getByRole("heading", { level: 1 }).textContent(), wait).toBe("Inbox");
-  expect(await mailboxes(page).count()).toBe(0);
+  // The side column's head names the mailbox, and lists no others.
+  expect(await page.getByRole("navigation", { name: /^(Mailboxes|Agents' mailboxes)$/ }).count()).toBe(0);
+  expect(await page.locator(".bar-mailbox").getByRole("link").getAttribute("aria-label")).toBe("Your mailbox, grace@example.com");
 });
 
 test("a sponsor without a mailbox of their own still reaches their agents' mailboxes", budget, async () => {
@@ -198,7 +200,7 @@ test("a sponsor without a mailbox of their own still reaches their agents' mailb
   await signIn("ada@example.org");
 
   await expect.poll(() => page.getByRole("heading", { name: "You don't have a mailbox yet" }).count(), wait).toBe(1);
-  await mailboxes(page).getByRole("link", { name: /^Hermes/ }).click();
+  await (await mailboxes(page)).getByRole("link", { name: /^Hermes/ }).click();
   await expect.poll(() => page.getByRole("heading", { name: "Hermes's Inbox is empty" }).count(), wait).toBe(1);
 });
 
@@ -209,9 +211,9 @@ test("the mailboxes fit a phone's screen", budget, async () => {
   await signIn("ada@example.org");
   await page.getByRole("button", { name: /Mailboxes and views/ }).click();
 
-  await expect.poll(() => mailboxes(page).getByRole("link", { name: /^Hermes/ }).isVisible(), wait).toBe(true);
+  await expect.poll(async () => (await mailboxes(page)).getByRole("link", { name: /^Hermes/ }).isVisible(), wait).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(phone.width);
-  await mailboxes(page).getByRole("link", { name: /^Hermes/ }).click();
+  await (await mailboxes(page)).getByRole("link", { name: /^Hermes/ }).click();
   await expect.poll(() => page.getByRole("link", { name: /Till Hermes/ }).isVisible(), wait).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(phone.width);
 });
@@ -222,7 +224,7 @@ test("in an agent's mailbox the sponsor reads its Sent and has no replies, and i
   await receive(note("hermes@example.com", "Till Hermes"), "hermes@example.com");
   await signIn("ada@example.org");
 
-  await mailboxes(page).getByRole("link", { name: /^Hermes/ }).click();
+  await (await mailboxes(page)).getByRole("link", { name: /^Hermes/ }).click();
   await page.getByRole("navigation", { name: "Mail" }).getByRole("link", { name: "Sent" }).click();
   await expect.poll(() => page.getByRole("heading", { level: 1 }).textContent(), wait).toBe("Hermes's Sent");
   await expect.poll(() => page.getByRole("list", { name: "Threads" }).getByRole("listitem").allInnerTexts(), wait).toEqual([expect.stringContaining("Från Hermes")]);
@@ -230,9 +232,9 @@ test("in an agent's mailbox the sponsor reads its Sent and has no replies, and i
   await expect.poll(() => page.getByRole("article").count(), wait).toBe(1);
   expect(await page.getByRole("button", { name: /^Reply/ }).count()).toBe(0);
 
-  await mailboxes(page).getByRole("link", { name: /^Your mailbox/ }).click();
+  await (await mailboxes(page)).getByRole("link", { name: /^Your mailbox/ }).click();
   await page.getByRole("button", { name: "Write" }).click();
   await expect.poll(() => page.getByRole("heading", { level: 1 }).textContent(), wait).toBe("New message");
-  expect(await mailboxes(page).getByRole("link", { name: /^Your mailbox/ }).getAttribute("aria-current")).toBe("page");
+  expect(await (await mailboxes(page)).getByRole("link", { name: /^Your mailbox/ }).getAttribute("aria-current")).toBe("page");
   expect(await page.getByText("ada@example.com", { exact: true }).first().isVisible()).toBe(true);
 });

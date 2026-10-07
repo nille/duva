@@ -1,6 +1,6 @@
 import type { Page } from "playwright-core";
 import { expect, test } from "vitest";
-import { phone, startWebApp } from "./web-app.ts";
+import { mailboxes, phone, startWebApp } from "./web-app.ts";
 
 // The page reads the change feeds every 250 ms in these tests, but a page under the full suite's
 // load can still take seconds to show what changed, so every wait has room, and every test more.
@@ -59,7 +59,7 @@ test("a sponsor opens their agent's page from the side column, with a summary fo
   const { page, signIn } = await withActivity();
   await signIn("ada@example.org");
 
-  await page.getByRole("navigation", { name: "Mailboxes" }).getByRole("link", { name: /^Hermes/ }).click();
+  await (await mailboxes(page)).getByRole("link", { name: /^Hermes/ }).click();
   await page.getByRole("navigation", { name: "Mail" }).getByRole("link", { name: "Activity" }).click();
 
   await expect.poll(() => page.getByRole("heading", { level: 1 }).textContent(), wait).toBe("Hermes's activity");
@@ -84,7 +84,7 @@ test("a sponsor opens their agent's page from the side column, with a summary fo
 test("from the keyboard, a fold of quiet days opens and its days are the next stops", budget, async () => {
   const { page, signIn } = await withActivity();
   await signIn("ada@example.org");
-  await page.getByRole("navigation", { name: "Mailboxes" }).getByRole("link", { name: /^Hermes/ }).click();
+  await (await mailboxes(page)).getByRole("link", { name: /^Hermes/ }).click();
   await page.getByRole("navigation", { name: "Mail" }).getByRole("link", { name: "Activity" }).click();
   await expect.poll(() => days(page).count(), wait).toBe(1);
 
@@ -113,7 +113,7 @@ test("a sponsor reaches each agent's page from the Agents sheet", budget, async 
 test("opening a day shows its timeline, newest first, each entry linking to its thread", budget, async () => {
   const { page, signIn } = await withActivity();
   await signIn("ada@example.org");
-  await page.getByRole("navigation", { name: "Mailboxes" }).getByRole("link", { name: /^Hermes/ }).click();
+  await (await mailboxes(page)).getByRole("link", { name: /^Hermes/ }).click();
   await page.getByRole("navigation", { name: "Mail" }).getByRole("link", { name: "Activity" }).click();
 
   await days(page).first().click();
@@ -159,7 +159,7 @@ test("opening a day shows its timeline, newest first, each entry linking to its 
 test("on a desk a day's timeline opens beside the days, its day marked as the one open, and a quiet day inside its fold", budget, async () => {
   const { page, signIn } = await withActivity();
   await signIn("ada@example.org");
-  await page.getByRole("navigation", { name: "Mailboxes" }).getByRole("link", { name: /^Hermes/ }).click();
+  await (await mailboxes(page)).getByRole("link", { name: /^Hermes/ }).click();
   await page.getByRole("navigation", { name: "Mail" }).getByRole("link", { name: "Activity" }).click();
   await expect.poll(() => days(page).count(), wait).toBe(1);
   expect(await page.getByRole("heading", { level: 2, name: "No day open" }).isVisible()).toBe(true);
@@ -196,7 +196,7 @@ test("on a phone a day's timeline takes the screen alone, with the way back to t
 test("a day the agent did nothing says so", budget, async () => {
   const { page, signIn } = await withActivity();
   await signIn("ada@example.org");
-  await page.getByRole("navigation", { name: "Mailboxes" }).getByRole("link", { name: /^Hermes/ }).click();
+  await (await mailboxes(page)).getByRole("link", { name: /^Hermes/ }).click();
   await page.getByRole("navigation", { name: "Mail" }).getByRole("link", { name: "Activity" }).click();
 
   await fold(page).click();
@@ -210,7 +210,7 @@ test("on a phone, each day and each entry fits the screen", budget, async () => 
   const { page, signIn } = await withActivity({ viewport: phone });
   await signIn("ada@example.org");
   await page.getByRole("button", { name: /Mailboxes and views/ }).click();
-  await page.getByRole("navigation", { name: "Mailboxes" }).getByRole("link", { name: /^Hermes/ }).click();
+  await (await mailboxes(page)).getByRole("link", { name: /^Hermes/ }).click();
   await expect.poll(() => page.getByRole("heading", { level: 1 }).textContent(), wait).toBe("Hermes's Inbox");
   await page.getByRole("button", { name: /Mailboxes and views/ }).click();
   await page.getByRole("navigation", { name: "Mail" }).getByRole("link", { name: "Activity" }).click();

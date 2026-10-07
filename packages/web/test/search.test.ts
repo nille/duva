@@ -1,6 +1,6 @@
 import type { Page } from "playwright-core";
 import { expect, test } from "vitest";
-import { phone, startWebApp } from "./web-app.ts";
+import { mailboxes, phone, startWebApp } from "./web-app.ts";
 
 // The page reads the change feeds every 250 ms in these tests, but a page under the full suite's
 // load can still take seconds to show what changed, so every wait has room, and every test more.
@@ -294,7 +294,7 @@ test("a sponsor viewing their agent's mailbox searches that mailbox", budget, as
   const { page, signIn } = app;
   await signIn("ada@example.org");
 
-  await page.getByRole("navigation", { name: "Mailboxes" }).getByRole("link", { name: /^Hermes/ }).click();
+  await (await mailboxes(page)).getByRole("link", { name: /^Hermes/ }).click();
   await expect.poll(() => page.getByRole("heading", { level: 1 }).textContent(), wait).toBe("Hermes's Inbox");
   await search(page, "biljetter", searchBox(page, "Search Hermes's mail"));
 

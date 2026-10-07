@@ -195,7 +195,7 @@ test("an admin who sponsors no agents finds no Agents sheet in Settings", budget
 
   await page.getByRole("link", { name: "Settings", exact: true }).click();
 
-  await expect.poll(() => page.getByRole("region", { name: "You" }).isVisible(), wait).toBe(true);
+  await expect.poll(() => page.getByRole("region", { name: "Preferences" }).isVisible(), wait).toBe(true);
   expect(await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "Your agents" }).count()).toBe(0);
   expect(await agentsSheet(page).count()).toBe(0);
 });

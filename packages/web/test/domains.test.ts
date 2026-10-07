@@ -287,7 +287,7 @@ test("a human who isn't an admin sees neither the Domains sheet nor the Addresse
 
   await page.getByRole("link", { name: "Settings", exact: true }).click();
 
-  await expect.poll(() => page.getByRole("region", { name: "You" }).isVisible(), wait).toBe(true);
+  await expect.poll(() => page.getByRole("region", { name: "Preferences" }).isVisible(), wait).toBe(true);
   expect(await page.getByRole("region", { name: "Domains" }).count()).toBe(0);
   expect(await page.getByRole("region", { name: "Addresses" }).count()).toBe(0);
 });

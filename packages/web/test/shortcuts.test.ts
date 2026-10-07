@@ -175,7 +175,7 @@ test("c writes a new message, and ? lists every shortcut on a sheet that Escape 
     expect(listedKeys).toContain(what);
   // Each key shows as a printed cap, and a chord as its keys in turn.
   expect(await sheet(page).locator("kbd").allInnerTexts()).toEqual(expect.arrayContaining(["j", "x", "!", "Shift", "U", "z", "g", "i"]));
-  expect(await sheet(page).getByRole("link", { name: "You in Settings" }).getAttribute("href")).toBe("#/settings/you");
+  expect(await sheet(page).getByRole("link", { name: "Preferences in Settings" }).getAttribute("href")).toBe("#/settings/you");
   await page.keyboard.press("Escape");
   await expect.poll(() => sheet(page).count(), wait).toBe(0);
   expect(await focused(page)).toBe("Kvitto");
@@ -199,7 +199,7 @@ test("keys typed in a field stay there, and shortcuts don't act on them", budget
 test("a human turns keyboard shortcuts off on You, and then no key acts, ? and / included", budget, async () => {
   const { page, grace } = await withThreads(["Kvitto"]);
   await page.getByRole("link", { name: "Settings", exact: true }).click();
-  const you = page.getByRole("region", { name: "You" });
+  const you = page.getByRole("region", { name: "Preferences" });
   const shortcuts = you.getByRole("group", { name: "Keyboard shortcuts" });
   await expect.poll(() => shortcuts.getByRole("radio", { name: /^On/ }).isChecked(), wait).toBe(true);
 

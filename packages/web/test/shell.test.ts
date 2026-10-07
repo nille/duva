@@ -1,6 +1,6 @@
 import type { Page } from "playwright-core";
 import { expect, test } from "vitest";
-import { phone, startWebApp } from "./web-app.ts";
+import { mailboxes, phone, startWebApp } from "./web-app.ts";
 
 // The page reads the change feeds every 250 ms in these tests, but a page under the full suite's
 // load can still take seconds to show what changed, so every wait has room, and every test more.
@@ -39,7 +39,6 @@ async function withTwoMailboxes(options: Parameters<typeof startWebApp>[0] = {})
   return { ...app, ada, me: me!, lovelace: ids[0]!, receive };
 }
 
-const mailboxes = (page: Page) => page.getByRole("navigation", { name: "Mailboxes" });
 const views = (page: Page) => page.getByRole("navigation", { name: "Mail" });
 const title = (page: Page) => page.getByRole("heading", { level: 1 }).textContent();
 const fits = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth);
@@ -51,7 +50,7 @@ test("a human's own mailboxes are each listed by their address with their unread
   await receive("lovelace@example.com", "Igen till Lovelace");
   await signIn("ada@example.org");
 
-  const links = mailboxes(page).getByRole("link");
+  const links = (await mailboxes(page)).getByRole("link");
   await expect.poll(() => links.count(), wait).toBe(2);
   // The order doesn't follow the order they were made in.
   await expect.poll(() => links.nth(0).getAttribute("aria-label"), wait).toBe("ada@example.com, 1 unread");
@@ -62,7 +61,7 @@ test("a human's own mailboxes are each listed by their address with their unread
 
   await expect.poll(() => page.getByRole("link", { name: /Igen till Lovelace/ }).count(), wait).toBe(1);
   expect(await page.getByRole("link", { name: /Till Ada/ }).count()).toBe(0);
-  expect(await links.nth(1).getAttribute("aria-current")).toBe("page");
+  expect(await (await mailboxes(page)).getByRole("link").nth(1).getAttribute("aria-current")).toBe("page");
   expect(await views(page).getByRole("link", { name: "Drafts" }).count()).toBe(1);
   expect(page.url()).toContain(`#/mailboxes/${lovelace}/`);
 
@@ -75,7 +74,7 @@ test("a human's own mailboxes are each listed by their address with their unread
 test("a human writes from their second mailbox, and the draft lies in its Drafts, not the first's", budget, async () => {
   const { page, signIn, ada, lovelace } = await withTwoMailboxes();
   await signIn("ada@example.org");
-  await mailboxes(page).getByRole("link", { name: /^lovelace@/ }).click();
+  await (await mailboxes(page)).getByRole("link", { name: /^lovelace@/ }).click();
   await expect.poll(() => page.url(), wait).toContain(`#/mailboxes/${lovelace}/`);
 
   await page.getByRole("button", { name: "Write" }).click();
@@ -96,9 +95,9 @@ test("a human writes from their second mailbox, and the draft lies in its Drafts
   await expect.poll(() => drafts.allInnerTexts(), wait).toEqual([expect.stringContaining("Från Lovelace")]);
   await drafts.first().getByRole("link").click();
   await expect.poll(() => page.getByLabel("Message", { exact: true }).inputValue(), wait).toBe("Hej.");
-  expect(await mailboxes(page).getByRole("link", { name: /^lovelace@/ }).getAttribute("aria-current")).toBe("page");
+  expect(await (await mailboxes(page)).getByRole("link", { name: /^lovelace@/ }).getAttribute("aria-current")).toBe("page");
 
-  await mailboxes(page).getByRole("link", { name: /^ada@/ }).click();
+  await (await mailboxes(page)).getByRole("link", { name: /^ada@/ }).click();
   await views(page).getByRole("link", { name: "Drafts" }).click();
   await expect.poll(() => page.getByText("No drafts").count(), wait).toBe(1);
 });
@@ -123,7 +122,7 @@ test("a mailbox an admin gives the human shows beside the mail without a reload,
     if (request.method() === "GET" && new URL(request.url()).pathname === "/api/mailboxes") listed += 1;
   });
   await signIn("ada@example.org");
-  await expect.poll(() => mailboxes(page).getByRole("link").count(), wait).toBe(2);
+  await expect.poll(async () => (await mailboxes(page)).getByRole("link").count(), wait).toBe(2);
   await expect.poll(() => page.getByRole("contentinfo", { name: "Status" }).getByText(/^Up to date/).count(), wait).toBe(1);
   const opened = listed;
 
@@ -133,7 +132,7 @@ test("a mailbox an admin gives the human shows beside the mail without a reload,
 
   await ada.POST("/mailboxes", { body: { owner: me.id, address: "countess@example.com" } });
 
-  await expect.poll(() => mailboxes(page).getByRole("link").allInnerTexts(), wait).toEqual([
+  await expect.poll(async () => (await mailboxes(page)).getByRole("link").allInnerTexts(), wait).toEqual([
     expect.stringContaining("ada@example.com"),
     expect.stringContaining("countess@example.com"),
     expect.stringContaining("lovelace@example.com"),
@@ -147,12 +146,12 @@ test("going back to a thread of the first mailbox opens it there, after the huma
   await page.getByRole("link", { name: /Till Ada/ }).click();
   await expect.poll(() => title(page), wait).toBe("Till Ada");
 
-  await mailboxes(page).getByRole("link", { name: /^lovelace@/ }).click();
-  await expect.poll(() => mailboxes(page).getByRole("link", { name: /^lovelace@/ }).getAttribute("aria-current"), wait).toBe("page");
+  await (await mailboxes(page)).getByRole("link", { name: /^lovelace@/ }).click();
+  await expect.poll(async () => (await mailboxes(page)).getByRole("link", { name: /^lovelace@/ }).getAttribute("aria-current"), wait).toBe("page");
   await page.goBack();
 
   await expect.poll(() => title(page), wait).toBe("Till Ada");
-  expect(await mailboxes(page).getByRole("link", { name: /^ada@/ }).getAttribute("aria-current")).toBe("page");
+  expect(await (await mailboxes(page)).getByRole("link", { name: /^ada@/ }).getAttribute("aria-current")).toBe("page");
 });
 
 test("a member opens a mailbox an admin gave them since the page opened, and it is theirs", budget, async () => {
@@ -169,7 +168,7 @@ test("a member opens a mailbox an admin gave them since the page opened, and it 
 
   await expect.poll(() => page.getByRole("main").getByText("hopper@example.com").first().isVisible(), wait).toBe(true);
   expect(await page.getByText("isn't yours to read").count()).toBe(0);
-  expect(await mailboxes(page).getByRole("link").count()).toBe(2);
+  expect(await (await mailboxes(page)).getByRole("link").count()).toBe(2);
 });
 
 test("on a phone the bar is one row with the search icon and Write, and the places lie in a tab bar at the foot", budget, async () => {
@@ -245,7 +244,7 @@ test("on a phone one switcher names the view and the mailbox, and opens the mail
   const switcher = page.getByRole("button", { name: /Mailboxes and views/ });
 
   await expect.poll(() => switcher.getAttribute("aria-label"), wait).toBe("Inbox, ada@example.com, New mail in another mailbox, Mailboxes and views");
-  expect(await mailboxes(page).isVisible()).toBe(false);
+  expect(await (await mailboxes(page)).isVisible()).toBe(false);
   expect(await views(page).isVisible()).toBe(false);
 
   await switcher.click();
@@ -262,7 +261,7 @@ test("on a phone one switcher names the view and the mailbox, and opens the mail
   expect(await switcher.getAttribute("aria-expanded")).toBe("false");
 
   await switcher.click();
-  await mailboxes(page).getByRole("link", { name: /^lovelace@/ }).click();
+  await (await mailboxes(page)).getByRole("link", { name: /^lovelace@/ }).click();
   await expect.poll(() => switcher.getAttribute("aria-label"), wait).toBe("Inbox, lovelace@example.com, Mailboxes and views");
   await page.getByRole("link", { name: /Till Lovelace/ }).click();
 
@@ -434,7 +433,7 @@ test("the status strip says Duva is up to date, how each sponsored agent stands,
   expect(await strip.innerText()).toContain("ada@example.org, admin");
   expect(await strip.getByRole("button", { name: "Sign out" }).isVisible()).toBe(true);
   // The agent's mailbox carries its diamond beside the mail too.
-  expect(await mailboxes(page).getByRole("link", { name: /^Hermes/ }).locator(".actor-mark-agent").count()).toBe(1);
+  expect(await (await mailboxes(page)).getByRole("link", { name: /^Hermes/ }).locator(".actor-mark-agent").count()).toBe(1);
 
   await ada.POST("/agents/{agent}/pause", { params: { path: { agent: hermes!.agent.id } } });
 
@@ -478,7 +477,7 @@ test.each([
   await signIn("ada@example.org");
   if (viewport === phone) await page.getByRole("button", { name: /Mailboxes and views/ }).click();
 
-  const links = mailboxes(page).getByRole("link");
+  const links = (await mailboxes(page)).getByRole("link");
   await expect.poll(() => links.count(), wait).toBe(5);
   expect(await links.allInnerTexts()).toEqual([
     expect.stringMatching(/^ada@example\.com\s*$/),
@@ -487,7 +486,7 @@ test.each([
     expect.stringMatching(/^Mailbox 4, without an address\s*$/),
     expect.stringMatching(/^Hermes\s+hermes-research-assistant@example\.com$/),
   ]);
-  const shown = mailboxes(page).locator(".mailbox-name, .mailbox-at");
+  const shown = (await mailboxes(page)).locator(".mailbox-name, .mailbox-at");
   expect(await shown.count()).toBe(6);
   expect(await shown.evaluateAll(readWhole)).toEqual(Array(6).fill(true));
   expect(await fits(page)).toBe(true);
@@ -496,7 +495,7 @@ test.each([
 test("every corner the stylesheet rounds is one of the radius tokens", budget, async () => {
   const { page, signIn } = await withTwoMailboxes();
   await signIn("ada@example.org");
-  await expect.poll(() => mailboxes(page).getByRole("link").count(), wait).toBe(2);
+  await expect.poll(async () => (await mailboxes(page)).getByRole("link").count(), wait).toBe(2);
 
   const radii = await page.evaluate(() => {
     const found: string[] = [];
@@ -596,3 +595,52 @@ for (const [size, viewport] of [
     await expect.poll(() => title(page), wait).toBe("Inbox");
   });
 }
+
+test("on a desk the open mailbox heads the side column as a selector, which opens the mailboxes, switches, and closes on Escape", budget, async () => {
+  const { page, signIn, receive } = await withTwoMailboxes();
+  await receive("lovelace@example.com", "Till Lovelace");
+  await signIn("ada@example.org");
+  const selector = page.getByRole("button", { name: /Choose a mailbox$/ });
+  await expect.poll(() => selector.getAttribute("aria-label"), wait).toBe("ada@example.com, New mail in another mailbox, Choose a mailbox");
+  // The side column lists the mailboxes only when the selector opens them.
+  expect(await page.getByRole("navigation", { name: "Mailboxes" }).count()).toBe(0);
+
+  await selector.click();
+  const list = page.getByRole("navigation", { name: "Mailboxes" });
+  await expect.poll(() => list.getByRole("link").count(), wait).toBe(2);
+  await page.keyboard.press("Escape");
+  expect(await list.count()).toBe(0);
+  expect(await selector.evaluate((button) => button === document.activeElement)).toBe(true);
+
+  await selector.press("Enter");
+  await list.getByRole("link", { name: /^lovelace@/ }).focus();
+  await page.keyboard.press("Enter");
+
+  await expect.poll(() => page.getByRole("link", { name: /Till Lovelace/ }).count(), wait).toBe(1);
+  await expect.poll(() => selector.getAttribute("aria-label"), wait).toMatch(/^lovelace@example\.com, /);
+  expect(await list.count()).toBe(0);
+});
+
+test("on a phone the switcher switches mailbox", budget, async () => {
+  const { page, signIn, receive } = await withTwoMailboxes({ viewport: phone });
+  await receive("lovelace@example.com", "Till Lovelace");
+  await signIn("ada@example.org");
+  await page.getByRole("button", { name: /Mailboxes and views$/ }).click();
+
+  await page.getByRole("navigation", { name: "Mailboxes" }).getByRole("link", { name: /^lovelace@/ }).click();
+
+  await expect.poll(() => page.getByRole("link", { name: /Till Lovelace/ }).count(), wait).toBe(1);
+  await expect.poll(() => page.getByRole("button", { name: /Mailboxes and views$/ }).getAttribute("aria-label"), wait).toMatch(/^Inbox, lovelace@example\.com/);
+});
+
+test("a human with one mailbox sees it named at the side column's head, with nothing to open", budget, async () => {
+  const app = await startWebApp({ domain: "example.com", admin: "ada@example.org" });
+  const ada = app.duva.signIn("ada@example.org");
+  const { data: me } = await ada.GET("/whoami");
+  await ada.POST("/mailboxes", { body: { owner: me!.id, address: "ada@example.com" } });
+  await app.signIn("ada@example.org");
+
+  await expect.poll(() => app.page.locator(".bar-mailbox").innerText(), wait).toMatch(/^Your mailbox\s+ada@example\.com$/);
+  expect(await app.page.getByRole("button", { name: /Choose a mailbox$/ }).count()).toBe(0);
+  expect(await app.page.locator(".bar-mailbox .switcher-chevron").count()).toBe(0);
+});
