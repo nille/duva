@@ -28,7 +28,7 @@ async function withDomains({ inDns = true, ...options }: { viewport?: { width: n
 
 async function openSettings({ page, signIn }: WebApp) {
   await signIn("ada@example.org");
-  await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
+  await page.getByRole("link", { name: "Settings", exact: true }).click();
   await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: /^Domains/ }).click();
   await expect.poll(() => domains(page).getByRole("heading", { level: 3 }).count(), wait).toBeGreaterThan(0);
 }
@@ -285,7 +285,7 @@ test("a human who isn't an admin sees neither the Domains sheet nor the Addresse
   const { page, signIn } = await withDomains();
   await signIn("grace@example.org");
 
-  await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
+  await page.getByRole("link", { name: "Settings", exact: true }).click();
 
   await expect.poll(() => page.getByRole("region", { name: "You" }).isVisible(), wait).toBe(true);
   expect(await page.getByRole("region", { name: "Domains" }).count()).toBe(0);

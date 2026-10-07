@@ -471,6 +471,8 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
     });
   }, [client, sided, version, relabelled, onSignedOut]);
   const shownScreener: ScreenerRead = screener !== undefined && screener.mailbox === sided?.id ? screener.read : { status: "loading" };
+  // How many senders wait in its Screener, which the Screener's place counts.
+  const screening = shownScreener.status === "read" ? shownScreener.screener.senders.length : 0;
 
   // Something done to the mail changes the labels' counts, so they are read again at once.
   const showDone = (what: Done | undefined) => {
@@ -729,7 +731,9 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
       </a>
       <div className={shell}>
         <header className="bar">
-          <p className="wordmark">{strings.nav.label}</p>
+            <a className="wordmark" href={hrefOf({ label: "inbox" }, sideBase)}>
+              {strings.nav.label}
+            </a>
           {write !== undefined && (
             <button type="button" className="button button-primary button-small bar-write" aria-keyshortcuts={preferences.keyboardShortcuts === "off" ? undefined : "c"} onClick={write}>
               <WriteIcon />
@@ -761,12 +765,33 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
               </div>
             </>
           )}
+            {/* On a phone Settings is a gear in the top row; on a desk it is in the status strip. */}
+            <a href="#/settings" className="bar-settings" aria-label={strings.nav.settings} aria-current={route.view === "settings" ? "page" : undefined}>
+              <SettingsIcon />
+            </a>
           <nav aria-label={strings.nav.label}>
             {/* The mail's own views are in the side column, so the places name only the mail as a whole. */}
-            <a href={away ? sideBase : base} aria-current={away ? undefined : "page"}>
+              <a href={away ? sideBase : base} className="place-mail" aria-current={away || route.view === "screener" ? undefined : "page"}>
               <MailIcon />
               {strings.nav.mail}
             </a>
+              {/* Screening is the commonest decision, so the Screener of the mailbox beside is a place of its own. */}
+              {sided !== undefined && (
+                <a
+                  href={hrefOf({ screener: true }, sideBase)}
+                  className="place-screener"
+                  aria-current={route.view === "screener" ? "page" : undefined}
+                  aria-label={`${strings.nav.screener}${screening > 0 ? strings.nav.waiting(screening) : ""}`}
+                >
+                  <ScreenerIcon />
+                  {strings.nav.screener}
+                  {screening > 0 && (
+                    <span className="nav-count nav-count-quiet" aria-hidden="true">
+                      {screening}
+                    </span>
+                  )}
+                </a>
+              )}
             {sponsor && (
               <a href="#/approvals" className="place-approvals" aria-current={route.view === "approvals" ? "page" : undefined}>
                 <ApprovalsIcon />
@@ -796,10 +821,6 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
                 )}
               </a>
             )}
-            <a href="#/settings" aria-current={route.view === "settings" ? "page" : undefined}>
-              <SettingsIcon />
-              {strings.nav.settings}
-            </a>
           </nav>
         </header>
         {(sided !== undefined || columned) && (
@@ -935,6 +956,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
           onShortcuts={preferences.keyboardShortcuts === "off" ? undefined : () => setShortcutsOpen(true)}
           email={actor.email}
           admin={actor.admin}
+            settings={route.view === "settings"}
           onSignOut={() => signOut(config)}
         />
       </div>
@@ -964,6 +986,7 @@ function Strip({
   onShortcuts,
   email,
   admin,
+  settings,
   onSignOut,
 }: {
   connection: Connection;
@@ -971,6 +994,8 @@ function Strip({
   onShortcuts?: () => void;
   email: string;
   admin: boolean;
+  /** Whether Settings is open, which its entry then shows. */
+  settings: boolean;
   onSignOut: () => void;
 }) {
   const { clock } = useDates();
@@ -999,6 +1024,10 @@ function Strip({
             {strings.strip.shortcuts}
           </button>
         )}
+        <a href="#/settings" className="strip-settings" aria-current={settings ? "page" : undefined}>
+          <SettingsIcon />
+          {strings.nav.settings}
+        </a>
         <span className="strip-who">
           <ActorMark kind="human" />
           {strings.signedInAs(email, admin)}
@@ -1071,9 +1100,15 @@ const AlertsIcon = () => (
   </svg>
 );
 
-const SettingsIcon = () => (
+const ScreenerIcon = () => (
   <svg className="icon nav-icon" viewBox="0 0 16 16" aria-hidden="true">
-    <Stroke d="M2.5 5h6M11.5 5h2M2.5 11h2M7.5 11h6M10 3.5v3M6 9.5v3" />
+    <Stroke d="M2.5 3.5h11L9.25 8.75v4.25l-2.5-1.25v-3Z" />
+  </svg>
+);
+
+const SettingsIcon = () => (
+  <svg className="icon" viewBox="0 0 16 16" aria-hidden="true">
+    <Stroke d="M8 10.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5ZM8 1.75v1.75M8 12.5v1.75M1.75 8H3.5M12.5 8h1.75M3.6 3.6l1.25 1.25M11.15 11.15l1.25 1.25M3.6 12.4l1.25-1.25M11.15 4.85l1.25-1.25" />
   </svg>
 );
 

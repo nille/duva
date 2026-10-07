@@ -50,7 +50,7 @@ const lines = (text: string) => text.replace(/\n+/g, "\n");
 const summary = (page: Page) => ({ innerText: async () => lines(await agentsSheet(page).locator("summary").innerText()) });
 /** Opens Settings from the bar, and Hermes's line on the Agents sheet, as the sponsor does. */
 const openHermes = async (page: Page) => {
-  await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
+  await page.getByRole("link", { name: "Settings", exact: true }).click();
   await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "Your agents" }).click();
   await agentsSheet(page).getByRole("heading", { level: 3, name: "Hermes" }).click();
   await expect.poll(() => agentsSheet(page).getByRole("form", { name: "Hermes" }).isVisible(), wait).toBe(true);
@@ -86,7 +86,7 @@ test("an agent Duva paused says so on its line, with why, and one an admin pause
   const { messageId } = await send("ken@example.net");
   await duva.sendingEvent(messageId!, { type: "Complaint" });
   await signIn("grace@example.org");
-  await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
+  await page.getByRole("link", { name: "Settings", exact: true }).click();
   await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "Your agents" }).click();
 
   await expect.poll(() => summary(page).innerText(), wait).toMatch(/^Hermes\nPaused\nPaused by Duva since \d\d:\d\d [AP]M\. A recipient complained about its mail\./);
@@ -131,7 +131,7 @@ test("a send waiting for the send limit shows on its agent's line, and Send now 
   const { draft } = await send("lou@example.net", "Second");
   expect(draft.send?.state).toBe("waitingForLimit");
   await signIn("grace@example.org");
-  await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
+  await page.getByRole("link", { name: "Settings", exact: true }).click();
   await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "Your agents" }).click();
 
   await expect.poll(() => summary(page).innerText(), wait).toMatch(/1 send waits for the send limit\./);
@@ -203,7 +203,7 @@ test("a send waiting for the send limit as the sponsor shows in their draft, wit
 test("admins see the agents' caps on the Organization page and change them, and other humans don't see them", budget, async () => {
   const { page, signIn, ada } = await withAgent();
   await signIn("ada@example.org");
-  await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
+  await page.getByRole("link", { name: "Settings", exact: true }).click();
   await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "Organization" }).click();
   const organization = page.getByRole("region", { name: "Agents", exact: true });
   const caps = organization.getByRole("group", { name: "Agents' send limits" });
@@ -218,7 +218,7 @@ test("admins see the agents' caps on the Organization page and change them, and 
 
   const other = await withAgent();
   await other.signIn("grace@example.org");
-  await other.page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
+  await other.page.getByRole("link", { name: "Settings", exact: true }).click();
   await expect.poll(() => other.page.getByRole("region", { name: "You" }).isVisible(), wait).toBe(true);
   expect(await other.page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "Organization" }).count()).toBe(0);
   expect(await other.page.getByRole("group", { name: "Agents' send limits" }).count()).toBe(0);

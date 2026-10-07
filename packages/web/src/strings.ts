@@ -43,6 +43,7 @@ export const strings = {
   nav: {
     label: "Duva",
     mail: "Mail",
+    screener: "Screener",
     approvals: "Approvals",
     alerts: "Alerts",
     settings: "Settings",
@@ -459,6 +460,7 @@ export const strings = {
     goDrafts: "Go to Drafts",
     goAll: "Go to All mail",
     ask: "Ask your agent",
+    goScreener: "Go to the Screener",
     help: "These shortcuts",
     offBefore: "To turn them off, as for speech input, choose Off on ",
     offLink: "You in Settings",

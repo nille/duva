@@ -84,6 +84,8 @@
   /* The side column, and the list beside what is open from it, on a desk. */
   --side-width: 15rem;
   --list-width: clamp(20rem, 28vw, 31rem);
+  /* The room at the window's side edges, a desk's side column's inset, which grows gently on wide screens. */
+  --gutter: clamp(1rem, 1rem + (100vw - 80rem) * 0.0117, 2.5rem);
   /* The phone's tab bar, which anything kept at the screen's foot sits above. There is none on a desk. */
   --tab-bar-height: 0px;
 
@@ -499,15 +501,31 @@ kbd {
   letter-spacing: -0.03em;
 }
 
+/* In the bar the wordmark is the way to the Inbox, set as the wordmark still. */
+a.wordmark {
+  justify-self: start;
+  color: var(--ink);
+  text-decoration: none;
+}
+
 /*
  * The shell. On a desk it is one plane across the full width: the side column with the bar at its
  * head, the list and what is open beside it, and the status strip along the foot. Each column
  * scrolls by itself, so the list keeps its place while a thread is read.
  */
 
+/* On very wide screens the list column grows too, up to 40rem. */
+@media (min-width: 120rem) {
+  :root {
+    --list-width: clamp(31rem, 31rem + (100vw - 120rem) * 0.12, 40rem);
+  }
+}
+
 .shell {
   display: grid;
-  grid-template-columns: var(--side-width) minmax(0, 1fr);
+  /* The side column widens by what the gutter adds to its inset, so its lines keep their width. */
+  --side-column: calc(var(--side-width) + var(--gutter) - var(--space-4));
+  grid-template-columns: var(--side-column) minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr) auto;
   height: 100vh;
   height: 100dvh;
@@ -525,7 +543,7 @@ kbd {
     "places places";
   align-items: center;
   gap: var(--space-4) var(--space-2);
-  padding: 1.35rem var(--space-4) var(--space-3);
+  padding: 1.35rem var(--space-4) var(--space-3) var(--gutter);
 }
 
 .bar .wordmark {
@@ -629,7 +647,7 @@ kbd {
  * mail. Inside it, the view says where the human is, so Mail and the mailbox open are only set in
  * ink, heavier.
  */
-.bar nav a[aria-current="page"]:not([href^="#/mailboxes"], [href="#/"]),
+.bar nav a[aria-current="page"]:not(.place-mail),
 .view-link[aria-current="page"] {
   background: var(--raise);
   box-shadow: var(--pressed);
@@ -638,6 +656,17 @@ kbd {
 .bar nav a[aria-current="page"],
 .mailbox[aria-current="page"] .mailbox-name {
   font-weight: 700;
+}
+
+/* Senders waiting in the Screener are counted quietly, in Second Ink, since screening is everyday work. */
+.nav-count.nav-count-quiet {
+  background: none;
+  color: var(--ink-2);
+}
+
+/* Settings is a gear in the phone's top row, and in the status strip on a desk. */
+.bar-settings {
+  display: none;
 }
 
 /* What waits for the sponsor needs them, so Approvals lies on the orange wash with its count in orange. */
@@ -673,7 +702,7 @@ kbd {
   min-width: 0;
   min-height: 0;
   overflow: auto;
-  padding: var(--space-3) var(--space-4) var(--space-5);
+  padding: var(--space-3) var(--space-4) var(--space-5) var(--gutter);
   scrollbar-width: thin;
 }
 
@@ -864,7 +893,7 @@ kbd {
   gap: var(--space-5);
   min-width: 0;
   min-height: 2.125rem;
-  padding: 0 1.4rem;
+  padding: 0 max(1.4rem, var(--gutter));
   background: var(--side);
   box-shadow: inset 0 1px 0 var(--seam);
   color: var(--ink-2);
@@ -936,6 +965,23 @@ kbd {
 
 .strip-keys:hover {
   color: var(--ink);
+}
+
+.strip-settings {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: inherit;
+  text-decoration: none;
+}
+
+.strip-settings:hover,
+.strip-settings[aria-current="page"] {
+  color: var(--ink);
+}
+
+.strip-settings[aria-current="page"] {
+  font-weight: 700;
 }
 
 .strip .button-small {
@@ -1054,6 +1100,27 @@ kbd {
 
   .bar-write {
     order: 2;
+  }
+
+  .bar-settings {
+    display: inline-flex;
+    order: 1;
+    align-items: center;
+    justify-content: center;
+    width: 2.75rem;
+    min-height: 2.75rem;
+    border-radius: var(--radius-pill);
+    color: var(--ink);
+  }
+
+  .bar-settings[aria-current="page"],
+  .bar-settings:hover {
+    background: var(--ink-wash);
+  }
+
+  .bar-settings .icon {
+    width: 1.25rem;
+    height: 1.25rem;
   }
 
   .bar-write kbd {
@@ -1651,6 +1718,7 @@ kbd {
  */
 .galley {
   max-width: 64rem;
+  margin-inline: auto;
 }
 
 .galley-fresh {
@@ -2632,13 +2700,34 @@ a.thread:focus-visible {
 
 /*
  * A thread, read in the reading pane: its tools along the top, the subject in the grotesk, then its
- * letters on the plane at a 72ch measure, each parted from the one before by a seam, with no sheet
+ * letters on the plane at an 88ch measure, centered on a desk, each parted from the one before by a seam, with no sheet
  * under it. Read and older ones fold to slugs, and the newest ends in its replies.
  */
 
 .desk-reading {
-  --measure: 72ch;
+  --measure: 88ch;
   container: reading / inline-size;
+}
+
+/*
+ * On a desk the thread's column, its tools, subject, letters and composer, widens with the pane to
+ * the measure and lies centered in it, but never so far right that it leaves the screen's center
+ * line: its middle stays within a quarter measure of it, so on a wide screen the mail sits near
+ * the screen's middle. `--pane-x` is where the pane starts. The pane's left inset gives back what
+ * the gutter took from it.
+ */
+@media (min-width: 48.0625rem) {
+  :is(.pane-read, .panes-one) > .desk-reading {
+    --pane-x: var(--side-column);
+    padding-right: max(var(--space-7), (100% - var(--measure)) / 2);
+    padding-left: max(var(--space-7) - var(--gutter) + var(--space-4), min((100% - var(--measure)) / 2, 50vw - var(--measure) / 4 - var(--pane-x)));
+  }
+}
+
+@media (min-width: 64rem) {
+  .pane-read > .desk-reading {
+    --pane-x: calc(var(--side-column) + var(--list-width));
+  }
 }
 
 /* The tools: back to the list, then the thread's actions as quiet keys, each with its cap, and j and k at the right. */
@@ -3032,9 +3121,9 @@ a.thread:focus-visible {
   font-size: var(--text-sm);
 }
 
-/* The body is mail, in the mono at the proof's size, a little more open than the interface, under 68ch. */
+/* The body is mail, in the mono at the proof's size, a little more open than the interface, under 80ch. */
 .letter-body {
-  max-width: 68ch;
+  max-width: 80ch;
   margin-top: var(--space-5);
   line-height: 1.78;
 }

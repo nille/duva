@@ -24,7 +24,7 @@ async function withPeople(options: { viewport?: { width: number; height: number 
   await ada.POST("/mailboxes", { body: { owner: iris!.agent.id, address: "iris@example.com" } });
   const { page } = app;
   await app.signIn("ada@example.org");
-  await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
+  await page.getByRole("link", { name: "Settings", exact: true }).click();
   await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "People" }).click();
   await expect.poll(() => line(page, "grace@example.org").count(), wait).toBe(1);
   return { ...app, ada, iris: iris!.agent };

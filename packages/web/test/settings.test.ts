@@ -16,7 +16,7 @@ const settingsIndex = (page: Page) => page.getByRole("navigation", { name: "Sett
 const openPage = (page: Page, name: string) => settingsIndex(page).getByRole("link", { name, exact: true }).click();
 /** Opens Settings from the bar, then the page from its index. */
 const openSettings = async (page: Page, name?: string) => {
-  await page.getByRole("navigation", { name: "Duva" }).getByRole("link", { name: "Settings" }).click();
+  await page.getByRole("link", { name: "Settings", exact: true }).click();
   if (name !== undefined) await openPage(page, name);
 };
 

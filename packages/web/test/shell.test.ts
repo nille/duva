@@ -106,7 +106,7 @@ test("a human writes from their second mailbox, and the draft lies in its Drafts
 test("the Screener sheet in Settings lists every mailbox of the human's own", budget, async () => {
   const { page, signIn } = await withTwoMailboxes();
   await signIn("ada@example.org");
-  await page.getByRole("navigation", { name: "Duva" }).getByRole("link", { name: "Settings" }).click();
+  await page.getByRole("link", { name: "Settings", exact: true }).click();
   await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "Screener" }).click();
 
   const sheet = page.getByRole("region", { name: "Screener" });
@@ -177,10 +177,11 @@ test("on a phone the bar is one row with the search icon and Write, and the plac
   await signIn("ada@example.org");
   const write = page.getByRole("button", { name: "Write" });
   const searchIcon = page.getByRole("button", { name: "Search" });
+  const settings = page.getByRole("banner").getByRole("link", { name: "Settings", exact: true });
   await expect.poll(() => write.isVisible(), wait).toBe(true);
 
   const wordmark = (await page.locator(".bar .wordmark").boundingBox())!;
-  for (const control of [write, searchIcon]) {
+  for (const control of [write, searchIcon, settings]) {
     const box = (await control.boundingBox())!;
     expect(Math.abs(box.y + box.height / 2 - (wordmark.y + wordmark.height / 2))).toBeLessThan(4);
     expect(box.height).toBeGreaterThanOrEqual(44);
@@ -196,7 +197,7 @@ test("on a phone the bar is one row with the search icon and Write, and the plac
 
   const places = page.getByRole("navigation", { name: "Duva" }).getByRole("link");
   // She sponsors her mailbox's mailbox agent, so Approvals and Alerts are hers too.
-  expect(await places.allInnerTexts()).toEqual(["Mail", "Approvals", "Alerts", "Settings"]);
+  expect(await places.allInnerTexts()).toEqual(["Mail", "Screener", "Approvals", "Alerts"]);
   const tabBarHeight = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--tab-bar-height"));
   expect(tabBarHeight).not.toBe("0px");
   for (const place of await places.all()) {
@@ -337,7 +338,7 @@ test("the text's and the headings' faces are fetched with the page, and Settings
   const preloaded = await page.locator('link[rel="preload"][as="font"]').evaluateAll((links) => links.map((link) => link.getAttribute("href")));
   expect(preloaded).toEqual([expect.stringMatching(/familjen-grotesk-latin-wght-normal/), expect.stringMatching(/jetbrains-mono-latin-wght-normal/)]);
   const opening = scripts.length;
-  await page.getByRole("navigation", { name: "Duva" }).getByRole("link", { name: "Settings" }).click();
+  await page.getByRole("link", { name: "Settings", exact: true }).click();
   await expect.poll(() => title(page), wait).toBe("Settings");
   expect(scripts.length).toBeGreaterThan(opening);
 });
@@ -515,3 +516,83 @@ test("every corner the stylesheet rounds is one of the radius tokens", budget, a
   const untokened = radii.filter((radius) => !radius.split(/\s+(?![^(]*\))/).every((corner) => /^(0(px)?|50%|var\(--radius(-[a-z]+)?\))$/.test(corner)));
   expect(untokened).toEqual([]);
 });
+
+/** Where the open thread's parts lie, and how wide 72 of the letters' characters are, which was the column's measure before. */
+async function readingAt(width: number) {
+  const { page, signIn, receive } = await withTwoMailboxes({ viewport: { width, height: 900 } });
+  await receive("ada@example.com", "Till Ada");
+  await signIn("ada@example.org");
+  await page.getByRole("link", { name: /Till Ada/ }).click();
+  await expect.poll(() => page.getByRole("article").count(), wait).toBe(1);
+  const box = async (selector: string) => (await page.locator(selector).first().boundingBox())!;
+  const narrowest = await page.locator(".letters").evaluate((letters) => {
+    const probe = letters.appendChild(document.createElement("span"));
+    probe.textContent = "0".repeat(72);
+    const width = probe.getBoundingClientRect().width;
+    probe.remove();
+    return width;
+  });
+  return { page, letters: await box(".letters"), tools: await box(".reading-tools"), pane: await box(".pane-read"), list: await box(".pane-list"), place: await box(".bar nav a"), narrowest };
+}
+
+test("at 1280 px the thread's column is no narrower than its old measure, and the side edge keeps its inset", budget, async () => {
+  const { letters, tools, place, narrowest } = await readingAt(1280);
+  expect(letters.width).toBeGreaterThanOrEqual(narrowest - 1);
+  expect(Math.abs(tools.x - letters.x)).toBeLessThan(1);
+  expect(Math.round(place.x)).toBe(16);
+});
+
+test("at 1920 px the thread's column is wider, its tools aligned with it, and it leans toward the screen's center", budget, async () => {
+  const { letters, tools, pane, narrowest } = await readingAt(1920);
+  expect(letters.width).toBeGreaterThan(narrowest);
+  expect(Math.abs(tools.x - letters.x)).toBeLessThan(1);
+  const [left, right] = [letters.x - pane.x, pane.x + pane.width - (letters.x + letters.width)];
+  expect(left).toBeLessThanOrEqual(right + 1);
+});
+
+test("at 2560 px the thread's column lies in the pane's middle part, spanning the screen's center line", budget, async () => {
+  const { letters, pane } = await readingAt(2560);
+  expect(letters.x).toBeGreaterThan(pane.x + 64);
+  expect(letters.x).toBeLessThan(1280);
+  expect(letters.x + letters.width).toBeGreaterThan(1280);
+});
+
+test("at 3840 px the thread's column spans the screen's center line, the list column is wider, and the side edge has more room", budget, async () => {
+  const { letters, tools, list, place } = await readingAt(3840);
+  expect(letters.x).toBeLessThan(1920);
+  expect(letters.x + letters.width).toBeGreaterThan(1920);
+  expect(Math.abs(tools.x - letters.x)).toBeLessThan(1);
+  expect(list.width).toBeGreaterThan(31 * 16);
+  expect(list.width).toBeLessThanOrEqual(40 * 16);
+  expect(place.x).toBeGreaterThanOrEqual(36);
+});
+
+test("on a desk Settings is in the status strip, not among the places, and shows as current there while open", budget, async () => {
+  const { page, signIn } = await withTwoMailboxes();
+  await signIn("ada@example.org");
+  const places = page.getByRole("navigation", { name: "Duva" }).getByRole("link");
+  await expect.poll(() => places.allInnerTexts(), wait).toEqual(["Mail", "Screener"]);
+  const settings = page.getByRole("contentinfo", { name: "Status" }).getByRole("link", { name: "Settings", exact: true });
+
+  await settings.click();
+
+  await expect.poll(() => title(page), wait).toBe("Settings");
+  expect(await settings.getAttribute("aria-current")).toBe("page");
+  expect(await places.evaluateAll((links) => links.filter((link) => link.hasAttribute("aria-current")).length)).toBe(0);
+});
+
+for (const [size, viewport] of [
+  ["a desk", { width: 1280, height: 800 }],
+  ["a phone", phone],
+] as const) {
+  test(`on ${size} the wordmark is a link to the Inbox`, budget, async () => {
+    const { page, signIn } = await withTwoMailboxes({ viewport });
+    await signIn("ada@example.org");
+    await page.getByRole("link", { name: "Settings", exact: true }).click();
+    await expect.poll(() => title(page), wait).toBe("Settings");
+
+    await page.getByRole("banner").getByRole("link", { name: "Duva", exact: true }).click();
+
+    await expect.poll(() => title(page), wait).toBe("Inbox");
+  });
+}

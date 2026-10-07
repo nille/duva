@@ -336,3 +336,35 @@ test("a row's box shows at once on a phone, and on a desk whose pointer can't ho
   await touch.page.mouse.move(640, 790);
   await expect.poll(() => edgeOf(touch.page, "Kvitto"), wait).toBe(edge);
 });
+
+for (const [size, viewport] of [
+  ["a desk", desk],
+  ["a phone", phone],
+] as const) {
+  test(`on ${size} the Screener is a place after Mail, counting the senders waiting, and opens the mailbox's Screener`, budget, async () => {
+    const { page } = await withLists(["Kvitto"], { viewport });
+    const places = page.getByRole("navigation", { name: "Duva" }).getByRole("link");
+    await expect.poll(() => places.count(), wait).toBe(2);
+    expect(await places.nth(0).textContent()).toBe("Mail");
+    // Its count shows beside its name, and a screen reader hears how many wait.
+    await expect.poll(() => page.getByRole("navigation", { name: "Duva" }).getByRole("link", { name: "Screener, 1 waiting", exact: true }).count(), wait).toBe(1);
+    expect(await places.nth(1).locator(".nav-count").textContent()).toBe("1");
+
+    await places.nth(1).click();
+
+    await expect.poll(() => heading(page), wait).toBe("Screener");
+    expect(await places.nth(1).getAttribute("aria-current")).toBe("page");
+    expect(await places.nth(0).getAttribute("aria-current")).toBeNull();
+    expect(await page.getByText("linus@example.net").first().isVisible()).toBe(true);
+  });
+}
+
+test("g then s opens the Screener, and the ? sheet lists it", budget, async () => {
+  const { page } = await withLists(["Kvitto"]);
+  await page.keyboard.press("g");
+  await page.keyboard.press("s");
+  await expect.poll(() => heading(page), wait).toBe("Screener");
+
+  await page.keyboard.press("?");
+  await expect.poll(() => page.getByRole("dialog").innerText(), wait).toContain("Go to the Screener");
+});

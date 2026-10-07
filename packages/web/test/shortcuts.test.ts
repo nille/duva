@@ -198,7 +198,7 @@ test("keys typed in a field stay there, and shortcuts don't act on them", budget
 
 test("a human turns keyboard shortcuts off on You, and then no key acts, ? and / included", budget, async () => {
   const { page, grace } = await withThreads(["Kvitto"]);
-  await page.getByRole("navigation", { name: "Duva" }).getByRole("link", { name: "Settings" }).click();
+  await page.getByRole("link", { name: "Settings", exact: true }).click();
   const you = page.getByRole("region", { name: "You" });
   const shortcuts = you.getByRole("group", { name: "Keyboard shortcuts" });
   await expect.poll(() => shortcuts.getByRole("radio", { name: /^On/ }).isChecked(), wait).toBe(true);

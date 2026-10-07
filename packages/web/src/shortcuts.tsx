@@ -20,7 +20,7 @@ const typedInField = (target: EventTarget | null) =>
   target instanceof Element && target.closest("textarea, select, [contenteditable]:not([contenteditable=false]), input:not([type=checkbox], [type=radio], [type=button], [type=submit], [type=reset])") !== null;
 
 /** The chords, as g then i, and how long the second key has to finish one after the first. */
-const chordsKnown = new Set(["g i", "g t", "g d", "g a"]);
+const chordsKnown = new Set(["g i", "g t", "g d", "g a", "g s"]);
 const chordStarts = new Set(Array.from(chordsKnown, (chord) => chord.split(" ")[0]!));
 const chordTime = 1_500;
 
@@ -251,6 +251,7 @@ export function Shortcuts({
     "g t": views && go(hrefOf({ sent: true }, views.base)),
     "g d": views?.drafts === true ? go(`${views.base}drafts`) : undefined,
     "g a": views && go(hrefOf({ all: true }, views.base)),
+    "g s": views && go(hrefOf({ screener: true }, views.base)),
     A: ask,
   });
   return sheetOpen ? <ShortcutsSheet onClose={() => onSheet(false)} /> : null;
@@ -319,6 +320,7 @@ function ShortcutsSheet({ onClose }: { onClose: () => void }) {
         [[chord("g", "t")], copy.goSent],
         [[chord("g", "d")], copy.goDrafts],
         [[chord("g", "a")], copy.goAll],
+        [[chord("g", "s")], copy.goScreener],
         [[key("Shift", "A")], copy.ask],
         [[key("?")], copy.help],
       ],

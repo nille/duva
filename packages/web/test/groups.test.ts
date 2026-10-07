@@ -22,7 +22,7 @@ async function withTeam(options: { viewport?: { width: number; height: number } 
   await ada.POST("/groups", { body: { address: "team@example.com", members: ["grace@example.com", "hermes@example.com", "linus@example.net"] } });
   const { page } = app;
   await app.signIn("ada@example.org");
-  await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
+  await page.getByRole("link", { name: "Settings", exact: true }).click();
   await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "Groups" }).click();
   await expect.poll(() => line(page, "team@example.com").count(), wait).toBe(1);
   return { ...app, ada };

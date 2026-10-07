@@ -283,7 +283,7 @@ test("a human switches the Screener for their own mailbox and their agents' on t
   const { data: irisMailbox } = await ada.POST("/mailboxes", { body: { owner: iris!.agent.id, address: "iris@example.com" } });
   await signIn("grace@example.org");
 
-  await page.getByRole("navigation", { name: "Duva" }).getByRole("link", { name: "Settings" }).click();
+  await page.getByRole("link", { name: "Settings", exact: true }).click();
   await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "Screener" }).click();
 
   const sheet = page.getByRole("region", { name: "Screener" });

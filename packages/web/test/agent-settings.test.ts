@@ -40,7 +40,7 @@ test("a sponsor who isn't an admin opens Settings from the bar and finds each of
   const { page, signIn } = await withSponsor();
   await signIn("grace@example.org");
 
-  await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
+  await page.getByRole("link", { name: "Settings", exact: true }).click();
   await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "Your agents" }).click();
 
   // Her mailbox has its mailbox agent too.
@@ -63,7 +63,7 @@ test("each agent shows as one line, its access and whether its sends wait for ap
   const { page, signIn, grace, iris } = await withSponsor();
   await grace.PATCH("/agents/{agent}/settings", { params: { path: { agent: iris } }, body: { sponsorAccess: "read", approvalForOwnMailbox: false } });
   await signIn("grace@example.org");
-  await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
+  await page.getByRole("link", { name: "Settings", exact: true }).click();
   await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "Your agents" }).click();
 
   await expect.poll(() => ownSummaries(page), wait).toEqual(["Hermes\nRunning, 100 sends left this hour.\nNo access to your mailbox. Its sends wait for your approval.", "Iris\nRunning, 100 sends left this hour.\nReads your mailbox. Its sends go out without your approval."]);
@@ -79,7 +79,7 @@ test("each agent shows as one line, its access and whether its sends wait for ap
 test("a sponsor gives an agent send access and switches off approval of its sends as them, and both hold", budget, async () => {
   const { page, signIn, grace, hermes, iris } = await withSponsor();
   await signIn("grace@example.org");
-  await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
+  await page.getByRole("link", { name: "Settings", exact: true }).click();
   await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "Your agents" }).click();
 
   const form = await openAgent(page, "Hermes");
@@ -115,7 +115,7 @@ test("lowering an agent's send access says its sends waiting as the sponsor are 
   const { page, signIn, grace, hermes } = await withSponsor();
   await grace.PATCH("/agents/{agent}/settings", { params: { path: { agent: hermes } }, body: { sponsorAccess: "send" } });
   await signIn("grace@example.org");
-  await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
+  await page.getByRole("link", { name: "Settings", exact: true }).click();
   await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "Your agents" }).click();
 
   const form = await openAgent(page, "Hermes");
@@ -193,7 +193,7 @@ test("an admin who sponsors no agents finds no Agents sheet in Settings", budget
   const { page, signIn } = await startWebApp({ domain: "example.com", admin: "ada@example.org" });
   await signIn("ada@example.org");
 
-  await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
+  await page.getByRole("link", { name: "Settings", exact: true }).click();
 
   await expect.poll(() => page.getByRole("region", { name: "You" }).isVisible(), wait).toBe(true);
   expect(await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "Your agents" }).count()).toBe(0);
@@ -204,7 +204,7 @@ test("the Agents sheet fits a phone's screen", budget, async () => {
   const { page, signIn } = await withSponsor({ viewport: phone });
   await signIn("grace@example.org");
 
-  await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
+  await page.getByRole("link", { name: "Settings", exact: true }).click();
   await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "Your agents" }).click();
 
   await expect.poll(() => agentsSheet(page).getByRole("heading", { level: 3 }).count(), wait).toBe(3);
@@ -217,7 +217,7 @@ test("under Your agents in the index each agent is a link saying whether it is p
   const { page, signIn, grace, hermes } = await withSponsor();
   await grace.POST("/agents/{agent}/pause", { params: { path: { agent: hermes } } });
   await signIn("grace@example.org");
-  await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
+  await page.getByRole("link", { name: "Settings", exact: true }).click();
   const index = page.getByRole("navigation", { name: "Settings" });
 
   await expect.poll(() => index.getByRole("link", { name: /^(Hermes|Iris)/ }).allInnerTexts(), wait).toEqual(["Hermes\nPaused", "Iris\nRunning"]);
@@ -246,7 +246,7 @@ async function withAdminSponsor(options: Parameters<typeof startWebApp>[0] = {})
 
 /** Opens Settings from the bar, and Your agents from its index. */
 const openYourAgents = async (page: Page) => {
-  await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
+  await page.getByRole("link", { name: "Settings", exact: true }).click();
   await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "Your agents" }).click();
 };
 
@@ -347,7 +347,7 @@ test("on a phone, the link to an agent's activity lines up with its line and its
 test("on a phone, Your agents gives the focus to its title, and an agent opened from the index to its line, as other pages do", budget, async () => {
   const { page, signIn } = await withSponsor({ viewport: phone });
   await signIn("grace@example.org");
-  await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
+  await page.getByRole("link", { name: "Settings", exact: true }).click();
   const index = page.getByRole("navigation", { name: "Settings" });
 
   await index.getByRole("link", { name: "Your agents" }).click();
@@ -364,7 +364,7 @@ test("on a phone, Your agents gives the focus to its title, and an agent opened 
 test("on a wide screen too, Your agents gives the focus to its title, and an agent's sub-entry to its line", budget, async () => {
   const { page, signIn } = await withSponsor();
   await signIn("grace@example.org");
-  await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
+  await page.getByRole("link", { name: "Settings", exact: true }).click();
   const index = page.getByRole("navigation", { name: "Settings" });
 
   await index.getByRole("link", { name: "Your agents" }).click();

@@ -23,7 +23,7 @@ async function withMailboxes(options: { viewport?: { width: number; height: numb
   const { data: athena } = await ada.POST("/agents", { body: { name: "Athena" } });
   const { page } = app;
   await app.signIn("ada@example.org");
-  await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
+  await page.getByRole("link", { name: "Settings", exact: true }).click();
   await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "Addresses" }).click();
   await expect.poll(() => line(page, "grace@example.com").count(), wait).toBe(1);
   await line(page, "grace@example.com").getByRole("heading").click();
