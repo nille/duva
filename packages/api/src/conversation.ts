@@ -11,7 +11,7 @@ import { actorNamed } from "./alerting.ts";
 import { type OperationHandler, refusal } from "./api.ts";
 import type { Table } from "./deployment.ts";
 import { mailboxAgentOf } from "./mailbox-agents.ts";
-import { type Actor, type Agent, findMailbox, type Human, type Mailbox, organizationSettings } from "./organization.ts";
+import { type Actor, type Agent, findMailbox, type Human, isAdmin, type Mailbox, organizationSettings } from "./organization.ts";
 import { tokenHeader } from "./infrastructure.ts";
 import { documents, pk, sk } from "./table.ts";
 
@@ -186,7 +186,7 @@ export const clearConversation: OperationHandler = async (event, deployment, act
 };
 
 export const getMailboxAgentSpend: OperationHandler = async (_event, deployment, actor) => {
-  if (!actor?.admin) return refusal(403, "Only admins can read what the mailbox agents spent. Ask an admin.");
+  if (!isAdmin(actor)) return refusal(403, "Only admins can read what the mailbox agents spent. Ask an admin.");
   const month = monthOf(new Date());
   const { settings } = await organizationSettings(deployment.table, deployment.region);
   return { statusCode: 200, body: { month, spent: await spentIn(deployment.table, month), cap: settings.mailboxAgentSpendCap } satisfies components["schemas"]["MailboxAgentSpend"] };

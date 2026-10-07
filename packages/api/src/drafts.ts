@@ -33,7 +33,6 @@ import {
 } from "./drafting.ts";
 import { attachmentLinks } from "./attachments.ts";
 import { fromStanding, groupsSentAsBy } from "./group-mail.ts";
-import { pendingSetupApprovals } from "./setup.ts";
 import { findMessage } from "./mail.ts";
 import { mailboxFor } from "./access.ts";
 import { type Actor, aliasDomains, findActor, isAddressOf, type Mailbox } from "./organization.ts";
@@ -281,7 +280,6 @@ export const listApprovals: OperationHandler = async (_event, deployment, actor)
     statusCode: 200,
     body: {
       approvals: await Promise.all(approvals.map((approval) => withOriginal(deployment, approval))),
-      setupApprovals: await pendingSetupApprovals(deployment.table, actor!.id),
     } satisfies components["schemas"]["ApprovalList"],
   };
 };
@@ -336,6 +334,10 @@ async function decidable(event: Parameters<OperationHandler>[0], deployment: Dep
   if (approval === undefined) return refusal(404, `There is no approval ${JSON.stringify(id)}. List the approvals waiting for you to find its ID.`);
   if (actor.kind === "agent") return refusal(403, "Agents can't decide approvals, their own included. The agent's sponsor decides.");
   if (approval.approver !== actor.id) return refusal(403, "Only the approver can decide this approval. The agent's sponsor is its approver.");
+  // Its draft stays in its sponsor's mailbox, but no agent is left to send it as.
+  if ((await findActor(deployment.table, approval.agent))?.kind !== "agent") {
+    return refusal(409, "The agent was removed, so its sends can't be decided any more. Send the draft yourself if you still want it to go.");
+  }
   return approval;
 }
 

@@ -1,6 +1,6 @@
 import type { Page } from "playwright-core";
 import { expect, test } from "vitest";
-import { mailboxes, phone, startWebApp } from "./web-app.ts";
+import { phone, startWebApp } from "./web-app.ts";
 
 // The page reads the change feeds every 250 ms in these tests, but a page under the full suite's
 // load can still take seconds to show what changed, so every wait has room, and every test more.
@@ -257,52 +257,32 @@ test("removing a decision makes the sender first-time again, and says where thei
   expect((await grace.GET("/mailboxes/{mailbox}/senders", { params })).data!.senders).toEqual([]);
 });
 
-test("a sponsor sends a waiting sender's mail to the Inbox in their agent's mailbox from its Screener", budget, async () => {
-  const { page, signIn, ada, grace, duva } = await withScreener();
-  const { data: iris } = await grace.POST("/agents", { body: { name: "Iris" } });
-  const { data: irisMailbox } = await ada.POST("/mailboxes", { body: { owner: iris!.agent.id, address: "iris@example.com" } });
-  const params = { path: { mailbox: irisMailbox!.id } };
-  // An agent's mailbox starts with the Screener off.
-  await grace.PATCH("/mailboxes/{mailbox}/screener", { params, body: { on: true } });
-  await duva.receive(["From: Carol <carol@example.net>", "To: iris@example.com", "Subject: Pitch", "Message-ID: <pitch@example.net>", "", "Hej Iris."].join("\r\n"), { to: ["iris@example.com"] });
-  await signIn("grace@example.org");
-
-  await (await mailboxes(page)).getByRole("link", { name: /Iris/ }).click();
-  await screenerLink(page).click();
-
-  await expect.poll(() => page.getByRole("heading", { level: 1 }).textContent(), wait).toBe("Iris's Screener");
-  await sender(page, "carol@example.net").getByRole("button", { name: "Inbox" }).click();
-  await expect.poll(() => doneLine(page).textContent(), wait).toBe("carol@example.net's mail goes to the Inbox now. Moved 1 thread.");
-  const { data: inbox } = await grace.GET("/mailboxes/{mailbox}/threads", { params: { ...params, query: { label: "inbox" } } });
-  expect(inbox!.threads.map(({ subject }) => subject)).toEqual(["Pitch"]);
-});
-
-test("a human switches the Screener for their own mailbox and their agents' on the Settings view", budget, async () => {
-  const { page, signIn, ada, grace, params } = await withScreener();
-  const { data: iris } = await grace.POST("/agents", { body: { name: "Iris" } });
-  const { data: irisMailbox } = await ada.POST("/mailboxes", { body: { owner: iris!.agent.id, address: "iris@example.com" } });
+test("a human switches the Screener for each of their own mailboxes on the Settings view", budget, async () => {
+  const { page, signIn, ada, grace, graceId, params } = await withScreener();
+  const { data: second } = await ada.POST("/mailboxes", { body: { owner: graceId, address: "hopper@example.com" } });
+  await grace.POST("/agents", { body: { name: "Iris" } });
   await signIn("grace@example.org");
 
   await page.getByRole("link", { name: "Settings", exact: true }).click();
   await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "Screener" }).click();
 
   const sheet = page.getByRole("region", { name: "Screener" });
-  const yours = sheet.getByRole("group", { name: /^Your mailbox/ });
-  const irises = sheet.getByRole("group", { name: /^Iris/ });
-  await expect.poll(() => yours.getByRole("radio", { name: /^On/ }).isChecked(), wait).toBe(true);
-  expect(await irises.getByRole("radio", { name: /^Off/ }).isChecked()).toBe(true);
-  // What On and Off mean is said once, in the sheet's lead, and each mailbox is one line.
+  const first = sheet.getByRole("group", { name: /grace@example\.com/ });
+  const other = sheet.getByRole("group", { name: /hopper@example\.com/ });
+  await expect.poll(() => first.getByRole("radio", { name: /^On/ }).isChecked(), wait).toBe(true);
+  expect(await other.getByRole("radio", { name: /^On/ }).isChecked()).toBe(true);
+  // Agents own no mailboxes, so only the human's own are listed, each one line, and what On and Off mean is said once, in the sheet's lead.
+  expect(await sheet.getByRole("group").count()).toBe(2);
   expect((await sheet.innerText()).match(/first-time senders/g)).toHaveLength(1);
-  expect((await yours.innerText()).replace(/\n+/g, "\n")).toBe("Your mailbox\ngrace@example.com\nOn\nOff");
+  expect((await first.innerText()).replace(/\n+/g, "\n")).toBe("Your mailbox\ngrace@example.com\nOn\nOff");
 
-  await irises.getByRole("radio", { name: /^On/ }).check();
-  await yours.getByRole("radio", { name: /^Off/ }).check();
+  await other.getByRole("radio", { name: /^Off/ }).check();
   expect(await sheet.innerText()).toContain("Mail waiting in your mailbox's Screener moves to the Inbox when you save.");
   await sheet.getByRole("button", { name: "Save" }).click();
 
   await expect.poll(() => sheet.getByRole("status").textContent(), wait).toBe("Saved.");
-  expect((await grace.GET("/mailboxes/{mailbox}/screener", { params })).data!.on).toBe(false);
-  expect((await grace.GET("/mailboxes/{mailbox}/screener", { params: { path: { mailbox: irisMailbox!.id } } })).data!.on).toBe(true);
+  expect((await grace.GET("/mailboxes/{mailbox}/screener", { params })).data!.on).toBe(true);
+  expect((await grace.GET("/mailboxes/{mailbox}/screener", { params: { path: { mailbox: second!.id } } })).data!.on).toBe(false);
 });
 
 test("at phone width the Screener's senders and their choices fit the screen", budget, async () => {

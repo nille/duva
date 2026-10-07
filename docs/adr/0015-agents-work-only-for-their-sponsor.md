@@ -19,3 +19,5 @@ Mail an agent sends as its sponsor goes out as the sponsor's: from the sponsor's
 - Approvals are always the agent's sponsor's, so the approver never has to be chosen.
 - A human who leaves takes nobody's access with them, but a group member's copies stay with each member.
 - Replying as a group is for the groups slice.
+
+Superseded in part by ADR-0030 (2026-10-07): an agent has no mailboxes of its own, so it works only in its sponsor's, and the access check has two relations, the owner and the agent in its sponsor's mailboxes. The switches for its sends from its own mailbox are gone.

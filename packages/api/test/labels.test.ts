@@ -376,24 +376,20 @@ test("only those who can read the mailbox can label its threads and change its l
   expect(statuses).toEqual([403, 403, 403, 403]);
 });
 
-test("an agent organizes its own mailbox, and its sponsor may too, under their own name", async () => {
-  const duva = await startDuva({ domain: "example.com", admin: "ada@example.org" });
-  const ada = duva.signIn("ada@example.org");
-  const { data: me } = await ada.GET("/whoami");
-  const { data: created } = await ada.POST("/agents", { body: { name: "Hermes" } });
-  const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: created!.agent.id, address: "hermes@example.com" } });
-  const params = { path: { mailbox: mailbox!.id } };
-  await duva.receive(await mail("plain"), { to: ["hermes@example.com"] });
+test("an agent with organize sponsor access organizes its sponsor's mailbox beside them, each under their own name", async () => {
+  const { duva, grace, graceId, params, receive, label } = await withPersonalMailbox();
+  const { data: created } = await grace.POST("/agents", { body: { name: "Hermes" } });
+  await grace.PATCH("/agents/{agent}/settings", { params: { path: { agent: created!.agent.id } }, body: { sponsorAccess: "organize" } });
+  const thread = await receive(await mail("plain"));
   const hermes = duva.withKey(created!.key);
-  const [thread] = (await hermes.GET("/mailboxes/{mailbox}/threads", { params })).data!.threads;
   const { data: done } = await hermes.POST("/mailboxes/{mailbox}/labels", { params, body: { name: "Klart" } });
 
-  await hermes.POST("/mailboxes/{mailbox}/threads/labels", { params, body: { threads: [thread!.id], add: [done!.id], remove: ["inbox"] } });
-  await ada.POST("/mailboxes/{mailbox}/threads/labels", { params, body: { threads: [thread!.id], add: ["trash"] } });
+  await hermes.POST("/mailboxes/{mailbox}/threads/labels", { params, body: { threads: [thread], add: [done!.id], remove: ["inbox"] } });
+  await label([thread], { add: ["trash"] });
 
-  expect((await hermes.GET("/mailboxes/{mailbox}/threads", { params: { ...params, query: { label: "trash" } } })).data?.threads).toMatchObject([{ id: thread!.id, labels: [done!.id, "trash"] }]);
-  const { data: changes } = await hermes.GET("/mailboxes/{mailbox}/changes", { params });
-  expect(changes?.changes.filter(({ type }) => type === "threadLabelsChanged").map((change) => ("actor" in change ? change.actor : undefined))).toEqual([created!.agent.id, me!.id]);
+  expect((await hermes.GET("/mailboxes/{mailbox}/threads", { params: { ...params, query: { label: "trash" } } })).data?.threads).toMatchObject([{ id: thread, labels: [done!.id, "trash"] }]);
+  const { data: changes } = await grace.GET("/mailboxes/{mailbox}/changes", { params });
+  expect(changes?.changes.filter(({ type }) => type === "threadLabelsChanged").map((change) => ("actor" in change ? change.actor : undefined))).toEqual([created!.agent.id, graceId]);
 });
 
 test("restoring a thread while removing inbox too puts it back archived, as it was before Trash", async () => {

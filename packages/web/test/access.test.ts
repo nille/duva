@@ -75,7 +75,7 @@ test("approving makes the human the agent's sponsor with what it asked for, the 
 
   await expect.poll(() => main.getByRole("heading", { level: 1 }).textContent(), wait).toBe("Hermes has access");
   const collected = await collectKey();
-  expect(collected.agent).toEqual({ id: expect.any(String), kind: "agent", name: "Hermes", sponsor: graceId, admin: false });
+  expect(collected.agent).toEqual({ id: expect.any(String), kind: "agent", name: "Hermes", sponsor: graceId });
   expect((await grace.GET("/agents/{agent}/settings", { params: { path: { agent: collected.agent.id } } })).data).toMatchObject({ sponsorAccess: "draft", sponsorMailboxes: [work.id] });
   await main.getByRole("link", { name: "Hermes in Your agents" }).click();
   const agents = page.getByRole("region", { name: "Your agents" });

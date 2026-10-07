@@ -2,16 +2,17 @@ import { expect, test } from "vitest";
 import { startDuva } from "./harness.ts";
 
 /**
- * A deployment on example.com where ada, the first admin, sponsors the agent Hermes, which owns
- * the mailbox hermes@example.com and sends from it without approval.
+ * A deployment on example.com where ada, the first admin, has a personal mailbox at ada@example.com
+ * and sponsors the agent Hermes, which she gives send sponsor access there, to send as her without
+ * approval. Grace is another human.
  */
 async function withAgent() {
-  const duva = await startDuva({ domain: "example.com", admin: "ada@example.org" });
+  const duva = await startDuva({ domain: "example.com", admin: "ada@example.org", humans: ["grace@example.org"] });
   const ada = duva.signIn("ada@example.org");
   const { data: created } = await ada.POST("/agents", { body: { name: "Hermes" } });
   const agent = created!.agent;
-  const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: agent.id, address: "hermes@example.com" } });
-  await ada.PATCH("/agents/{agent}/settings", { params: { path: { agent: agent.id } }, body: { approvalForOwnMailbox: false } });
+  const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: (await ada.GET("/whoami")).data!.id, address: "ada@example.com" } });
+  await ada.PATCH("/agents/{agent}/settings", { params: { path: { agent: agent.id } }, body: { sponsorAccess: "send", approvalAsSponsor: false } });
   const hermes = duva.withKey(created!.key);
   const own = mailbox!.id;
 
@@ -75,7 +76,7 @@ test("a group's address leaves SES's suppression list when an admin creates the 
   const { duva, ada, bounced, delivered } = await withAgent();
   await bounced(["team@example.com", "ken@example.net"]);
 
-  await ada.POST("/groups", { body: { address: "team@example.com", members: ["hermes@example.com"] } });
+  await ada.POST("/groups", { body: { address: "team@example.com", members: ["ada@example.com"] } });
 
   expect(suppressed(duva)).toEqual(["ken@example.net"]);
   expect(await delivered("team@example.com")).toBe(true);
@@ -84,17 +85,17 @@ test("a group's address leaves SES's suppression list when an admin creates the 
 test("a new mailbox's address leaves SES's suppression list", async () => {
   const { duva, ada, bounced } = await withAgent();
   await bounced(["grace@example.com"]);
-  const { data: agent } = await ada.POST("/agents", { body: { name: "Grace" } });
+  const { data: grace } = await duva.signIn("grace@example.org").GET("/whoami");
 
-  await ada.POST("/mailboxes", { body: { owner: agent!.agent.id, address: "grace@example.com" } });
+  await ada.POST("/mailboxes", { body: { owner: grace!.id, address: "grace@example.com" } });
 
   expect(suppressed(duva)).toEqual([]);
 });
 
 test("the addresses an alias domain mirrors leave SES's suppression list when an admin adds the alias domain", async () => {
   const { duva, ada, bounced } = await withAgent();
-  await ada.POST("/groups", { body: { address: "team@example.com", members: ["hermes@example.com"] } });
-  await bounced(["hermes@example.se", "team@example.se", "nobody@example.se"]);
+  await ada.POST("/groups", { body: { address: "team@example.com", members: ["ada@example.com"] } });
+  await bounced(["ada@example.se", "team@example.se", "nobody@example.se"]);
 
   await ada.POST("/domains", { body: { domain: "example.se", aliasOf: "example.com" } });
 
@@ -103,7 +104,7 @@ test("the addresses an alias domain mirrors leave SES's suppression list when an
 
 test("a hard bounce of one of the organization's addresses takes it off SES's suppression list, and the feedback says it was local", async () => {
   const { duva, ada, own, bounced, delivered } = await withAgent();
-  await ada.POST("/groups", { body: { address: "team@example.com", members: ["hermes@example.com"] } });
+  await ada.POST("/groups", { body: { address: "team@example.com", members: ["ada@example.com"] } });
   const at = new Date();
 
   const { draft } = await bounced(["Team@example.com", "ken@example.net"], at);
@@ -118,7 +119,7 @@ test("a hard bounce of one of the organization's addresses takes it off SES's su
 
 test("a hard bounce of one of the organization's addresses that SNS delivers twice is recorded once", async () => {
   const { duva, ada, own, send } = await withAgent();
-  await ada.POST("/groups", { body: { address: "team@example.com", members: ["hermes@example.com"] } });
+  await ada.POST("/groups", { body: { address: "team@example.com", members: ["ada@example.com"] } });
   const { draft, messageId } = await send(["team@example.com"]);
 
   await duva.sendingEvent(messageId, { type: "Bounce", bounceType: "Permanent" }, { deliveries: 2 });
@@ -130,11 +131,11 @@ test("a hard bounce of one of the organization's addresses that SNS delivers twi
 
 test("hard bounces of the organization's own addresses never pause the agent, while its other recipients' still count", async () => {
   const { ada, bounced, paused } = await withAgent();
-  await ada.POST("/groups", { body: { address: "team@example.com", members: ["hermes@example.com"] } });
+  await ada.POST("/groups", { body: { address: "team@example.com", members: ["ada@example.com"] } });
   const start = Date.UTC(2026, 9, 6, 12, 0);
   const minute = (n: number) => new Date(start + n * 60_000);
 
-  for (const n of [0, 1, 2, 3, 4, 5]) await bounced(["team@example.com", "hermes@example.com"], minute(n));
+  for (const n of [0, 1, 2, 3, 4, 5]) await bounced(["team@example.com", "ada@example.com"], minute(n));
   expect(await paused()).toBeUndefined();
 
   for (const n of [10, 11, 12, 13]) await bounced(["team@example.com", `gone-${n}@example.net`], minute(n));

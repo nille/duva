@@ -16,7 +16,7 @@
 // erased mail for more than a day, and no indexer task waits in its failure queue; nothing but IAM
 // may invoke the sender, and no schedule for sends that wait for an agent's limits, or for threads set aside in Remind me, is overdue; Ask your agent's
 // turns reach the conversation Lambda only through the web app's domain, the mailbox agents' AgentCore Runtime is ready and takes only IAM calls, only IAM invokes the task runner, which retries no run, and no task is stuck working, every
-// human's mailbox has its mailbox agent, and Claude answers from eu-central-1 through the eu profile. Signing in stays
+// human's mailbox has its mailbox agent, no agent owns a mailbox, and Claude answers from eu-central-1 through the eu profile. Signing in stays
 // with a human. Then prints how many
 // messages Duva dropped on arrival each day of the last 7, by reason. Exits 1 if any check fails.
 import { CloudFormationClient, DescribeStacksCommand, paginateListStackResources } from "@aws-sdk/client-cloudformation";
@@ -44,6 +44,7 @@ import { rulesTake } from "@duva/api/receiving";
 import { defaultMailboxAgentModel, inferenceProfileId } from "@duva/api/agent-models";
 import { mailboxesWithoutAgents } from "@duva/api/mailbox-agents";
 import { tasksWorkingSince } from "@duva/api/tasks";
+import { agentsMailboxes } from "@duva/api/removal";
 import { BedrockAgentCoreControlClient, GetAgentRuntimeCommand } from "@aws-sdk/client-bedrock-agentcore-control";
 import { BedrockRuntimeClient, ConverseCommand } from "@aws-sdk/client-bedrock-runtime";
 import { createHash } from "node:crypto";
@@ -237,6 +238,12 @@ await check("every human's mailbox has its mailbox agent", async () => {
   if (table === undefined) return "the stack has no table";
   const without = await mailboxesWithoutAgents(table);
   return without.length === 0 ? undefined : `${without.map(({ addresses, id }) => addresses[0] ?? id).join(", ")} ${without.length === 1 ? "has" : "have"} none. Run duva deploy again.`;
+});
+await check("no agent owns a mailbox, since setup erased those they owned (ADR-0030)", async () => {
+  const table = await stackTable();
+  if (table === undefined) return "the stack has no table";
+  const owned = await agentsMailboxes(table);
+  return owned.length === 0 ? undefined : `${owned.map(({ mailbox, agent }) => `${agent.name}'s ${mailbox.addresses[0] ?? mailbox.id}`).join(", ")} ${owned.length === 1 ? "is" : "are"} left. Run duva deploy again.`;
 });
 await check("Claude answers through the eu profile from eu-central-1, where the mailbox agents call it by default (docs/aws.md)", async () => {
   const { output: answer } = await new BedrockRuntimeClient({ region: "eu-central-1" }).send(

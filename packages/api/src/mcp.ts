@@ -16,7 +16,7 @@ import { actionsRead, type ConversationTurn, type PreparedTurn, prepareTurn, tur
 import type { Table } from "./deployment.ts";
 import { authorizationServerPath, mcpAuthorizePath, mcpCallbackPath, mcpPath, mcpRegistrationPath, mcpTokenPath, protectedResourcePaths, timeToLiveAttribute } from "./infrastructure.ts";
 import { mailboxAgentOf } from "./mailbox-agents.ts";
-import { type Agent, agentSettings, findHumanBySignIn, type Human, type Mailbox, ownedMailboxes, switchesFor } from "./organization.ts";
+import { type Agent, agentSettings, findHumanBySignIn, type Human, type Mailbox, ownedMailboxes } from "./organization.ts";
 import { endRunToken, issueRunToken } from "./run-tokens.ts";
 import { documents, isNew, pk, sk } from "./table.ts";
 
@@ -254,7 +254,7 @@ export function createMcp(deployment: McpDeployment) {
         await Promise.all(
           mailboxes.map(async ({ mailbox, agent }) => {
             const { settings } = await agentSettings(table, agent.id);
-            return { id: mailbox.id, address: mailbox.defaultAddress ?? mailbox.addresses[0], addresses: mailbox.addresses, agentAccess: sponsorAccessIn(settings, mailbox.id), sendsWaitForApproval: switchesFor(settings, true).approval };
+            return { id: mailbox.id, address: mailbox.defaultAddress ?? mailbox.addresses[0], addresses: mailbox.addresses, agentAccess: sponsorAccessIn(settings, mailbox.id), sendsWaitForApproval: settings.approvalAsSponsor };
           }),
         ),
       );

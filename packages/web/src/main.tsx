@@ -2,12 +2,12 @@
 // organize, write and send their mail. On a desk the mail lies on one plane: the side column, with
 // the wordmark, Write, search, Duva's places and the mail's views, then the list, and what is open
 // from it beside the list, with a status strip along the foot. A human with more than one mailbox
-// finds each listed in the side column above the views, as sponsors find their agents' mailboxes too.
-// Sponsors reach the Approvals view from the places, where they decide what the agents they sponsor ask
-// to send and the setup changes their agent admins ask for, and the Alerts view, where they read what
-// their agents need them for, each with its count. Mail from first-time senders waits in each
-// mailbox's Screener, beside its views. Each agent's activity, a summary a day that opens into the
-// day's timeline, is reached from its mailbox's views and from Settings. Every human reaches Settings
+// chooses among their own at the side column's head. Agents own no mailboxes: they work in their
+// sponsors' with sponsor access. Sponsors reach the Approvals view from the places, where they decide
+// what the agents they sponsor ask to send, and the Alerts view, where they read what their agents
+// need them for, each with its count. Mail from first-time senders waits in each mailbox's Screener,
+// beside its views. Each agent's activity, a summary a day that opens into the day's timeline, is
+// reached from Your agents in Settings and from the status strip. Every human reaches Settings
 // from the places too, where they choose how times and dates show and switch their Screeners, admins
 // the organization's settings and sponsors their agents', which they pause and limit there. The search
 // box searches the mailbox open, or the human's own. On phones the bar is one row, the places lie in
@@ -25,10 +25,10 @@ import { AskAgent } from "./ask.tsx";
 import { Composer } from "./compose.tsx";
 import { defaultPreferences, type Preferences, PreferencesContext, useDates } from "./dates.ts";
 import { Drafts } from "./drafts.tsx";
-import { approvalChanges, type Connection, draftChanges, type Follow, labelChanges, mailChanges, mailboxSetupChanges, screenerChanges, setupChanges, SignedOut, useFeeds } from "./feed.ts";
+import { approvalChanges, type Connection, draftChanges, type Follow, labelChanges, mailChanges, mailboxSetupChanges, screenerChanges, SignedOut, useFeeds } from "./feed.ts";
 import { type Marks, ThreadIndex } from "./inbox.tsx";
 import { ActorMark } from "./mail-parts.tsx";
-import { type AgentMailbox, ChevronIcon, MailboxList, MailboxSelector, mailboxHref, mailboxName, ownInOrder } from "./mailboxes.tsx";
+import { ChevronIcon, MailboxList, MailboxSelector, mailboxHref, mailboxName, ownInOrder } from "./mailboxes.tsx";
 import { type Beside, BesideContext, ListCountContext, takeOpenedBeside } from "./panes.tsx";
 import { readScreener, ScreenedSenders, type ScreenerRead, ScreenerView } from "./screener.tsx";
 import { SenderLinkContext, SenderSheetView } from "./sender.tsx";
@@ -117,8 +117,8 @@ function App() {
  * links to them may not say. A thread knows the view it was opened from, to go back there, and from
  * a search, the message that matched. A sender's sheet knows the view, or the screened senders, it
  * was opened from, at the path `from`. A mailbox's screened senders are reached from its Screener. An
- * agent's activity is in the mail, beside its mailbox's views, if it has a mailbox, and opens into
- * one day. Settings reads which of its pages is open from the rest of the hash.
+ * agent's activity lies across the plane, and opens into one day. Settings reads which of its pages
+ * is open from the rest of the hash.
  */
 type Route =
   | { view: "approvals" | "alerts" }
@@ -176,13 +176,10 @@ function useRoute(): Route & { hash: string } {
 }
 
 /**
- * The mailboxes the human reads: their own, in the order `ownInOrder` gives, and their agents', with
- * the names of the agents they sponsor, by ID, mailbox or not.
+ * The mailboxes the human reads, their own, in the order `ownInOrder` gives, with the names of the
+ * agents they sponsor, by ID.
  */
-type Mailboxes =
-  | { status: "loading" }
-  | { status: "failed" }
-  | { status: "listed"; own: Mailbox[]; agents: AgentMailbox[]; agentNames: ReadonlyMap<string, string>; sponsorsAgents: boolean };
+type Mailboxes = { status: "loading" } | { status: "failed" } | { status: "listed"; own: Mailbox[]; agentNames: ReadonlyMap<string, string>; sponsorsAgents: boolean };
 
 /** The signed-in app: the bar, and the view the route names, kept current by following the change feeds. */
 function SignedIn({ config, client, actor, onSignedOut }: { config: Config; client: DuvaClient; actor: Human; onSignedOut: () => void }) {
@@ -229,21 +226,18 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
       const { data, response } = await client.GET("/mailboxes").catch(() => ({ data: undefined, response: undefined }));
       if (response?.status === 401) return onSignedOut();
       if (data === undefined) return quietly ? undefined : setMailboxes({ status: "failed" });
-      const theirs = data.mailboxes.filter((mailbox) => mailbox.owner !== actor.id);
-      // The other mailboxes a human can read are those of agents they sponsor, which are named for them.
-      // A sponsor's agents may have no mailbox, and the sponsor still sets their settings.
+      // The agents the human sponsors are named where they act, and listed in the status strip.
       const { data: sponsored } = await client.GET("/agents").catch(() => ({ data: undefined }));
       if (sponsored !== undefined) {
         sponsoredRead.current = Date.now();
         setSponsored(sponsored.agents);
       }
       const names = new Map(sponsored?.agents.map((agent) => [agent.id, agent.name]));
-      const agents = theirs.map((mailbox) => ({ mailbox, agent: names.get(mailbox.owner) ?? mailbox.defaultAddress ?? mailbox.id })).sort((a, b) => a.agent.localeCompare(b.agent));
       const own = ownInOrder(
         data.mailboxes.filter((mailbox) => mailbox.owner === actor.id),
         actor.email,
       );
-      setMailboxes({ status: "listed", own, agents, agentNames: names, sponsorsAgents: agents.length > 0 || (sponsored?.agents.length ?? 0) > 0 });
+      setMailboxes({ status: "listed", own, agentNames: names, sponsorsAgents: (sponsored?.agents.length ?? 0) > 0 });
     },
     [client, actor.id, actor.email, onSignedOut],
   );
@@ -269,13 +263,12 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
     },
     [client],
   );
-  // The side column lists the mailboxes when the human has more than one of their own, or sponsors an agent with one.
-  const columned = mailboxes.status === "listed" && (mailboxes.own.length > 1 || mailboxes.agents.length > 0);
+  // The side column lists the mailboxes when the human has more than one of their own.
+  const columned = mailboxes.status === "listed" && mailboxes.own.length > 1;
   // The column lists every mailbox's count once they are listed, and the feeds keep them current.
   useEffect(() => {
     if (mailboxes.status !== "listed" || !columned) return;
-    const ids = [...mailboxes.own.map(({ id }) => id), ...mailboxes.agents.map(({ mailbox }) => mailbox.id)];
-    countUnread(ids).catch((error: unknown) => {
+    countUnread(mailboxes.own.map(({ id }) => id)).catch((error: unknown) => {
       if (error instanceof SignedOut) onSignedOut();
     });
   }, [mailboxes, columned, countUnread, onSignedOut]);
@@ -291,23 +284,23 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
   }, []);
 
   const listed = mailboxes.status === "listed" ? mailboxes : undefined;
-  const followed = useMemo(() => (listed === undefined ? [] : [...listed.own.map(({ id }) => id), ...listed.agents.map(({ mailbox }) => mailbox.id)]), [listed]);
+  const followed = useMemo(() => (listed === undefined ? [] : listed.own.map(({ id }) => id)), [listed]);
   useFeeds(client, {
     mailboxes: followed,
     interval: config.pollInterval,
     hiddenInterval: config.hiddenPollInterval,
-    // Only admins read the organization's feed, and only an admin sponsors an agent admin, whose setup changes it records.
+    // Only admins read the organization's feed, which says when the mailboxes changed.
     organization: actor.admin,
     async onChanges(changes, first, organization, gone) {
       for (const listener of [...followers.current]) await listener(changes, organization);
       // The mailboxes were listed when the app opened, so they are listed again only when an admin's
       // feed says they changed, or one of them can't be read anymore.
       if (!first && (gone || organization.some((change) => mailboxSetupChanges.has(change.type)))) await listMailboxes(true);
-      if (first || changes.some(({ change }) => approvalChanges.has(change.type)) || organization.some((change) => setupChanges.has(change.type))) {
+      if (first || changes.some(({ change }) => approvalChanges.has(change.type))) {
         const { data, response } = await client.GET("/approvals");
         if (response.status === 401) throw new SignedOut();
         if (data !== undefined) {
-          setWaiting(data.approvals.length + data.setupApprovals.length);
+          setWaiting(data.approvals.length);
           setAsked(
             data.approvals.flatMap(({ mailbox, agent, draft }) =>
               draft.thread === undefined ? [] : [{ mailbox, thread: draft.thread, agent, forward: draft.forwards !== undefined }],
@@ -381,19 +374,14 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
     };
   }, [client, unplacedDraft, own]);
   const placingDraft = unplacedDraft !== undefined && draftHome?.draft !== unplacedDraft;
-  // The mailbox the route names, if it names one. An agent's activity is beside its mailbox, if it has one.
-  const named =
-    "mailbox" in route
-      ? (route.mailbox ?? (follows ? ((unplacedDraft !== undefined ? draftHome?.mailbox : undefined) ?? lastOwn.current) : undefined))
-      : route.view === "activity"
-        ? listed?.agents.find(({ mailbox }) => mailbox.owner === route.agent)?.mailbox.id
-        : undefined;
+  // The mailbox the route names, if it names one.
+  const named = "mailbox" in route ? (route.mailbox ?? (follows ? ((unplacedDraft !== undefined ? draftHome?.mailbox : undefined) ?? lastOwn.current) : undefined)) : undefined;
   useEffect(() => {
     if (several && follows && !placingDraft) location.replace(`#/mailboxes/${encodeURIComponent(named ?? first!.id)}/${route.hash.replace(/^#\/?/, "")}`);
   }, [several, follows, placingDraft, named, first, route.hash]);
   // A mailbox the list doesn't have, as one an admin gave the human since, is looked for again once
   // before the web app says it isn't theirs.
-  const known = named === undefined || isOwn(named) || listed?.agents.some(({ mailbox }) => mailbox.id === named) === true;
+  const known = named === undefined || isOwn(named);
   const [rechecked, setRechecked] = useState<ReadonlySet<string>>(new Set());
   const checking = listed !== undefined && !known && named !== undefined && !rechecked.has(named);
   useEffect(() => {
@@ -437,15 +425,12 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
   const sponsor = listed?.sponsorsAgents === true || (waiting ?? 0) > 0;
   const alerted = sponsor || alerts.newest !== undefined;
   // The mailbox the route is in, the human's first own if it names none.
-  const agent = named !== undefined ? listed?.agents.find(({ mailbox }) => mailbox.id === named) : undefined;
-  const shown = away ? undefined : named === undefined ? first : (agent?.mailbox ?? own.find(({ id }) => id === named));
-  const shownOwn = shown !== undefined && isOwn(shown.id);
+  const shown = away ? undefined : named === undefined ? first : own.find(({ id }) => id === named);
   const base = shown === undefined ? "#/" : mailboxHref(shown, !several && shown.id === first?.id);
   // Outside the mail, the side column keeps the views of the mailbox last open, or the first own.
   const lastShown = useRef<Mailbox>(undefined);
   if (shown !== undefined) lastShown.current = shown;
   const sided = shown ?? (away ? (lastShown.current ?? first) : undefined);
-  const sideAgent = sided === undefined ? undefined : listed?.agents.find(({ mailbox }) => mailbox.id === sided.id);
   const sideBase = sided === undefined ? "#/" : mailboxHref(sided, !several && sided.id === first?.id);
   const version = sided === undefined ? 0 : (versions.get(sided.id) ?? 0);
 
@@ -545,7 +530,6 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
         client={client}
         mailbox={shown}
         base={base}
-        agent={agent?.agent}
         me={actor.id}
         agentNames={agentNames}
         labels={labels}
@@ -563,7 +547,6 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
         client={client}
         mailbox={shown}
         base={base}
-        agent={agent?.agent}
         read={shownScreener}
         labels={labels}
         connection={connection}
@@ -592,14 +575,12 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
         client={client}
         mailbox={shown}
         base={base}
-        agent={agent?.agent}
         view={listing}
         labels={labels}
         version={version + acted}
         connection={connection}
         marks={marks}
         screener={shownScreener.status === "read" ? shownScreener.screener.senders.length : 0}
-        prompts={shownOwn}
         done={reading ? undefined : doneHere}
         onDone={showDone}
         onSignedOut={onSignedOut}
@@ -615,11 +596,10 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
         id={route.id}
         matched={route.message}
         me={actor.id}
-        agent={agent?.agent}
         agentNames={agentNames}
         labels={labels}
         back={hrefOf(route.from, base)}
-        backTo={titleOf(route.from, labels, agent?.agent)}
+        backTo={titleOf(route.from, labels)}
         version={version}
         onDone={showDoneBeside}
         onSignedOut={onSignedOut}
@@ -632,28 +612,22 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
         sender={route.sender}
         labels={labels}
         back={fromSenders ? `${base}${screenedSendersPath}` : hrefOf(senderFrom!, base)}
-        backTo={fromSenders ? strings.screened.title : titleOf(senderFrom!, labels, agent?.agent)}
+        backTo={fromSenders ? strings.screened.title : titleOf(senderFrom!, labels)}
         version={version}
         onDone={showDoneBeside}
         onSignedOut={onSignedOut}
       />
     ) : route.view === "agent" ? (
-      shownOwn ? (
-        <AskAgent
+      <AskAgent
           key={`${shown.id}/agent`}
           client={client}
           config={config}
           mailbox={shown}
           base={base}
           back={listing === undefined || "drafts" in listing ? base : hrefOf(listing, base)}
-          backTo={listing === undefined ? strings.views.inbox : "drafts" in listing ? strings.views.drafts : titleOf(listing, labels, agent?.agent)}
+          backTo={listing === undefined ? strings.views.inbox : "drafts" in listing ? strings.views.drafts : titleOf(listing, labels)}
           onSignedOut={onSignedOut}
         />
-      ) : (
-        <main className="desk">
-          <p className="notice">{strings.ask.notYours}</p>
-        </main>
-      )
     ) : route.view === "draft" || route.view === "write" ? (
       <Composer key={routeKey} client={client} mailbox={shown} base={base} id={route.view === "draft" ? route.id : undefined} agentNames={agentNames} version={version} onSignedOut={onSignedOut} />
     ) : undefined;
@@ -670,7 +644,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
         me={actor.id}
         agentNames={agentNames}
         version={version}
-        prompt={shownOwn ? labels.find(({ id }) => id === "feed") : undefined}
+        prompt={labels.find(({ id }) => id === "feed")}
         onDone={showDone}
         onSignedOut={onSignedOut}
       />
@@ -698,11 +672,6 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
             <>
               <h1 id="empty-title">{strings.inbox.noMailboxTitle}</h1>
               <p>{strings.inbox.noMailboxLead}</p>
-              {sponsor && (
-                <p>
-                  <a href="#/approvals">{strings.inbox.noMailboxSponsor}</a>
-                </p>
-              )}
             </>
           ) : (
             <>
@@ -717,13 +686,13 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
   // What the phone's switcher names: the view open, and the mailbox it is in.
   const viewName =
     route.view === "activity" ? strings.activity.link : writing ? strings.views.drafts : viewed === undefined ? undefined : titleOf(viewed, labels);
-  const mailboxShown = shown !== undefined ? mailboxName(shown, own, agent?.agent) : route.view === "activity" ? agentNames.get(route.agent) : undefined;
+  const mailboxShown = shown !== undefined ? mailboxName(shown, own) : undefined;
   // Whether a mailbox the switcher hides has unread mail.
   const unreadElsewhere = columned && [...unread].some(([id, count]) => id !== shown?.id && count > 0);
   const switcherId = useId();
   const switcherRef = useRef<HTMLButtonElement>(null);
   // Write writes in the own mailbox open, or the first one anywhere else.
-  const write = first === undefined ? undefined : () => (location.hash = shownOwn ? `${base}write` : "#/write");
+  const write = first === undefined ? undefined : () => (location.hash = shown !== undefined ? `${base}write` : "#/write");
   const shell = ["shell", away && "shell-away", reading && "shell-reading"].filter(Boolean).join(" ");
   // A sender in a letter opens their sheet beside the view the letter was opened from.
   const senderFromPath = viewed === undefined ? "" : pathOf(viewed);
@@ -779,7 +748,6 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
                   client={client}
                   mailbox={searched}
                   base={away ? mailboxHref(searched, !several) : base}
-                  agent={away ? undefined : agent?.agent}
                   labels={away ? [] : labels}
                   current={searching}
                 />
@@ -875,13 +843,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
                 switcherRef.current?.focus();
               }}
             >
-              {columned && listed !== undefined && <MailboxList own={own} agents={listed.agents} unread={unread} current={shown?.id} />}
-              {/* Until agents no longer have mailboxes (#126), a desk lists theirs here, as the selector holds only the human's own. */}
-              {listed !== undefined && listed.agents.length > 0 && (
-                <div className="side-agents">
-                  <MailboxList own={noMailboxes} agents={listed.agents} unread={unread} current={shown?.id} label={strings.mailboxes.agentsLabel} />
-                </div>
-              )}
+              {columned && <MailboxList own={own} unread={unread} current={shown?.id} />}
               {sided !== undefined && (
                 <MailViews
                   client={client}
@@ -889,12 +851,9 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
                   base={sideBase}
                   labels={labels}
                   current={viewed}
-                  // A human writes only in their own mailboxes, so only theirs list Drafts.
-                  drafts={isOwn(sided.id) ? { current: writing } : undefined}
-                  // Each of the human's own mailboxes has its mailbox agent to ask.
-                  ask={isOwn(sided.id) ? { href: `${sideBase}agent`, current: route.view === "agent" } : undefined}
-                  // An agent's mailbox lists the agent's activity too.
-                  activity={sideAgent === undefined ? undefined : { href: activityHref(sideAgent.mailbox.owner), current: route.view === "activity" }}
+                  drafts={{ current: writing }}
+                  // Each of the human's mailboxes has its mailbox agent to ask.
+                  ask={{ href: `${sideBase}agent`, current: route.view === "agent" }}
                   // A Screener Duva couldn't read is still listed, so its view can say so and try again.
                   screener={
                     shownScreener.status === "read"
@@ -915,8 +874,8 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
         <Shortcuts
           write={write}
           close={route.view === "thread" && shown !== undefined ? () => (location.hash = hrefOf(route.from, base)) : undefined}
-          views={shown === undefined ? undefined : { base, drafts: shownOwn }}
-          ask={shownOwn ? () => (location.hash = `${base}agent`) : first === undefined ? undefined : () => (location.hash = "#/agent")}
+          views={shown === undefined ? undefined : { base, drafts: true }}
+          ask={shown !== undefined ? () => (location.hash = `${base}agent`) : first === undefined ? undefined : () => (location.hash = "#/agent")}
           sheetOpen={shortcutsOpen}
           onSheet={setShortcutsOpen}
         />
@@ -935,7 +894,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
             <div className="panes panes-one">
               <Alerts
                 client={client}
-                mailboxes={listed === undefined ? [] : [...own, ...listed.agents.map(({ mailbox }) => mailbox)]}
+                mailboxes={own}
                 mine={first?.id}
                 agents={new Set(agentNames.keys())}
                 version={alerts.version}
@@ -954,7 +913,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
                 me={actor.id}
                 admin={actor.admin}
                 email={actor.email}
-                mailboxes={listed === undefined ? undefined : { mine: first, own, agents: listed.agents }}
+                mailboxes={listed === undefined ? undefined : { mine: first, own }}
                 onPreferences={setPreferences}
                 onSignedOut={onSignedOut}
               />
@@ -984,6 +943,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
           email={actor.email}
           admin={actor.admin}
             settings={route.view === "settings"}
+          activity={route.view === "activity" ? route.agent : undefined}
           onSignOut={() => signOut(config)}
         />
       </div>
@@ -1004,7 +964,7 @@ function UpToDate({ connection }: { connection: Connection }) {
 
 /**
  * The status strip along a desk's foot: whether Duva is up to date, how each agent the human
- * sponsors stands, the key that lists the shortcuts while they are on, Settings, and who is signed
+ * sponsors stands, each a link to its activity, the key that lists the shortcuts while they are on, Settings, and who is signed
  * in, with Sign out.
  */
 function Strip({
@@ -1014,6 +974,7 @@ function Strip({
   email,
   admin,
   settings,
+  activity,
   onSignOut,
 }: {
   connection: Connection;
@@ -1023,6 +984,8 @@ function Strip({
   admin: boolean;
   /** Whether Settings is open, which its entry then shows. */
   settings: boolean;
+  /** The agent whose activity is open, if one is. */
+  activity?: string;
   onSignOut: () => void;
 }) {
   const { clock } = useDates();
@@ -1037,9 +1000,16 @@ function Strip({
       {agents.length > 0 && (
         <ul className="strip-agents">
           {agents.map((agent) => (
-            <li key={agent.id} className={agent.paused === undefined ? "strip-agent" : "strip-agent strip-agent-paused"}>
-              <ActorMark kind="agent" />
-              {agent.paused === undefined ? strings.strip.running(agent.name, agent.sendsLeftThisHour) : strings.strip.paused(agent.name)}
+            <li key={agent.id}>
+              {/* Each agent opens its activity. */}
+              <a
+                href={activityHref(agent.id)}
+                className={agent.paused === undefined ? "strip-agent" : "strip-agent strip-agent-paused"}
+                aria-current={activity === agent.id ? "page" : undefined}
+              >
+                <ActorMark kind="agent" />
+                {agent.paused === undefined ? strings.strip.running(agent.name, agent.sendsLeftThisHour) : strings.strip.paused(agent.name)}
+              </a>
             </li>
           ))}
         </ul>

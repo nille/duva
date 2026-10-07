@@ -24,8 +24,7 @@ const note = (subject: string, text = "Hej.") =>
 
 /**
  * The web app for a deployment where Ada, the admin, has a personal mailbox at ada@example.com
- * and sponsors the agent Hermes, which owns hermes@example.com and has full sponsor access to
- * Ada's mailbox.
+ * and sponsors the agent Hermes, which has full sponsor access to it.
  */
 async function withAgentInSponsorsMailbox() {
   const app = await startWebApp({ domain: "example.com", admin: "ada@example.org" });
@@ -35,12 +34,10 @@ async function withAgentInSponsorsMailbox() {
   // Mail from first-time senders would wait in the Screener, which these tests leave out.
   await app.duva.signIn("ada@example.org").PATCH("/mailboxes/{mailbox}/screener", { params: { path: { mailbox: adaMailbox!.id } }, body: { on: false } });
   const { data: created } = await ada.POST("/agents", { body: { name: "Hermes" } });
-  const { data: hermesMailbox } = await ada.POST("/mailboxes", { body: { owner: created!.agent.id, address: "hermes@example.com" } });
   const settings = { params: { path: { agent: created!.agent.id } } };
   await ada.PATCH("/agents/{agent}/settings", { ...settings, body: { sponsorAccess: "send" } });
   const hermes = app.duva.withKey(created!.key);
   const inAdas = { path: { mailbox: adaMailbox!.id } };
-  const inHermess = { path: { mailbox: hermesMailbox!.id } };
 
   /** Grace's message reaches Ada, and answers its ID in Duva. */
   const receive = async (raw: string) => {
@@ -55,7 +52,7 @@ async function withAgentInSponsorsMailbox() {
     const { data: asked } = await actor.POST("/mailboxes/{mailbox}/drafts/{draft}/send", { params: { path: { ...params.path, draft: draft!.id } } });
     return asked!.send!.approval;
   };
-  return { ...app, ada, hermes, settings, inAdas, inHermess, receive, ask };
+  return { ...app, ada, hermes, settings, inAdas, receive, ask };
 }
 
 test("in the sponsor's own mailbox, a message their agent sent as them names the agent, and theirs says they sent it", budget, async () => {
@@ -107,39 +104,35 @@ test("a draft the agent wrote or changed last in its sponsor's mailbox names it,
 /** Opens the request about the subject in Approvals' reading pane, from its row in the queue. */
 const openRow = (page: Page, subject: string) => page.getByRole("list", { name: "Approvals" }).getByRole("button").filter({ hasText: subject }).click();
 
-test("Approvals marks a send as the sponsor apart from the agent's sends from its own mailbox", budget, async () => {
-  const { page, signIn, hermes, inAdas, inHermess, ask } = await withAgentInSponsorsMailbox();
+test("Approvals says an agent's send goes as the sponsor, from their mailbox", budget, async () => {
+  const { page, signIn, hermes, inAdas, ask } = await withAgentInSponsorsMailbox();
   await ask(hermes, inAdas, { to: ["grace@example.org"], subject: "Som Ada", text: "Hej Grace." });
-  await ask(hermes, inHermess, { to: ["grace@example.org"], subject: "Som Hermes", text: "Hej Grace." });
   await signIn("ada@example.org");
 
   await page.getByRole("link", { name: /Approvals/ }).click();
 
   const asAda = page.getByRole("article", { name: /Som Ada/ });
-  const asHermes = page.getByRole("article", { name: /Som Hermes/ });
   await openRow(page, "Som Ada");
   await expect.poll(() => asAda.innerText(), wait).toContain("As you, from ada@example.com");
-  await openRow(page, "Som Hermes");
-  await expect.poll(() => asHermes.isVisible(), wait).toBe(true);
-  expect(await asHermes.innerText()).not.toContain("As you");
-  expect(await asHermes.innerText()).toContain("From its own mailbox, hermes@example.com");
 });
 
-test("on Approvals, a send carries the disclosure's line only if its sponsor left it on for where it sends from", budget, async () => {
-  const { page, signIn, ada, hermes, settings, inAdas, inHermess, ask } = await withAgentInSponsorsMailbox();
+test("on Approvals, a send carries the disclosure's line only if its sponsor left it on for that agent", budget, async () => {
+  const { page, signIn, duva, ada, hermes, settings, inAdas, ask } = await withAgentInSponsorsMailbox();
   await ada.PATCH("/agents/{agent}/settings", { ...settings, body: { disclosureLineAsSponsor: false } });
-  await ask(hermes, inAdas, { to: ["grace@example.org"], subject: "Som Ada", text: "Hej Grace." });
-  await ask(hermes, inHermess, { to: ["grace@example.org"], subject: "Som Hermes", text: "Hej Grace." });
+  const { data: created } = await ada.POST("/agents", { body: { name: "Iris" } });
+  await ada.PATCH("/agents/{agent}/settings", { params: { path: { agent: created!.agent.id } }, body: { sponsorAccess: "send" } });
+  await ask(hermes, inAdas, { to: ["grace@example.org"], subject: "Från Hermes", text: "Hej Grace." });
+  await ask(duva.withKey(created!.key), inAdas, { to: ["grace@example.org"], subject: "Från Iris", text: "Hej Grace." });
   await signIn("ada@example.org");
 
   await page.getByRole("link", { name: /Approvals/ }).click();
 
-  const asAda = page.getByRole("article", { name: /Som Ada/ });
-  const asHermes = page.getByRole("article", { name: /Som Hermes/ });
-  await openRow(page, "Som Ada");
-  await expect.poll(() => asAda.innerText(), wait).toContain("Duva adds no line to it");
-  expect(await asAda.innerText()).not.toContain("Sent by Hermes for ada@example.org");
-  await openRow(page, "Som Hermes");
-  await expect.poll(() => asHermes.isVisible(), wait).toBe(true);
-  expect(await asHermes.innerText()).toContain("Sent by Hermes for ada@example.org");
+  const fromHermes = page.getByRole("article", { name: /Från Hermes/ });
+  const fromIris = page.getByRole("article", { name: /Från Iris/ });
+  await openRow(page, "Från Hermes");
+  await expect.poll(() => fromHermes.innerText(), wait).toContain("Duva adds no line to it");
+  expect(await fromHermes.innerText()).not.toContain("Sent by Hermes for ada@example.org");
+  await openRow(page, "Från Iris");
+  await expect.poll(() => fromIris.isVisible(), wait).toBe(true);
+  expect(await fromIris.innerText()).toContain("Sent by Iris for ada@example.org");
 });

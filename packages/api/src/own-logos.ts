@@ -13,9 +13,8 @@ import type { Deployment, Table } from "./deployment.ts";
 import type { Dns } from "./dns-records.ts";
 import { domainAsked } from "./domains.ts";
 import { hostedLogosPath } from "./infrastructure.ts";
-import { type Actor, actorOf, type Human, aliasDomains, findActor, findMailbox, isAddressOf, type Mailbox } from "./organization.ts";
+import { type Actor, actorOf, type Human, aliasDomains, findActor, findMailbox, isAddressOf, isAdmin, type Mailbox } from "./organization.ts";
 import { dmarcPolicy, tagsOf } from "./sender-logos.ts";
-import { setupOperation } from "./setup.ts";
 import { convertedLogo, longestUpload } from "./svg-tiny-ps.ts";
 import { allItems } from "./erasure.ts";
 import { documents, pk, sk } from "./table.ts";
@@ -157,14 +156,14 @@ function uploaded(event: Parameters<OperationHandler>[0]): string | ReturnType<t
 }
 
 export const getDomainLogo: OperationHandler = async (event, deployment, actor) => {
-  if (!actor?.admin) return onlyAdmins("read");
+  if (!isAdmin(actor)) return onlyAdmins("read");
   const domain = await domainAsked(event, deployment);
   if ("statusCode" in domain) return domain;
   return { statusCode: 200, body: await domainLogoView(deployment, domain.domain) };
 };
 
-export const setDomainLogo = setupOperation("setDomainLogo", async (event, deployment, actor) => {
-  if (!actor.admin) return onlyAdmins("set");
+export const setDomainLogo: OperationHandler = async (event, deployment, actor) => {
+  if (!isAdmin(actor)) return onlyAdmins("set");
   const domain = await domainAsked(event, deployment);
   if ("statusCode" in domain) return domain;
   const given = uploaded(event);
@@ -174,37 +173,23 @@ export const setDomainLogo = setupOperation("setDomainLogo", async (event, deplo
   const { svg } = converted;
   const stored = await storedDomainLogo(deployment.table, domain.domain);
   const view = viewing(deployment, domain.domain);
-  if (stored?.svg === svg) return { preview: [], run: view };
-  const url = servedAt(deployment.hostedLogos, domainLogoPath(domain.domain));
-  return {
-    preview: [
-      `Sets ${domain.domain}'s logo, which Duva serves at ${url} for receivers that honor BIMI.`,
-      ...(stored?.certificate === undefined ? [] : ["Removes its mark certificate, which vouches for the logo it carries."]),
-    ],
-    run: async () => {
-      await deployment.hostedLogos.put(domainLogoPath(domain.domain), svg, svgType);
-      await documents(deployment.table).send(new PutCommand({ TableName: deployment.table.name, Item: { ...domainLogoKey(domain.domain), svg, by: actor.id, at: new Date().toISOString() } }));
-      if (stored?.certificate !== undefined && "hosted" in stored.certificate) await deployment.hostedLogos.remove(certificatePath(domain.domain));
-      return view();
-    },
-  };
-});
+  if (stored?.svg === svg) return view();
+  await deployment.hostedLogos.put(domainLogoPath(domain.domain), svg, svgType);
+  await documents(deployment.table).send(new PutCommand({ TableName: deployment.table.name, Item: { ...domainLogoKey(domain.domain), svg, by: actor!.id, at: new Date().toISOString() } }));
+  if (stored?.certificate !== undefined && "hosted" in stored.certificate) await deployment.hostedLogos.remove(certificatePath(domain.domain));
+  return view();
+};
 
-export const removeDomainLogo = setupOperation("removeDomainLogo", async (event, deployment, actor) => {
-  if (!actor.admin) return onlyAdmins("remove");
+export const removeDomainLogo: OperationHandler = async (event, deployment, actor) => {
+  if (!isAdmin(actor)) return onlyAdmins("remove");
   const domain = await domainAsked(event, deployment);
   if ("statusCode" in domain) return domain;
   const stored = await storedDomainLogo(deployment.table, domain.domain);
   const view = viewing(deployment, domain.domain);
-  if (stored === undefined) return { preview: [], run: view };
-  return {
-    preview: [`Removes ${domain.domain}'s logo${stored.certificate === undefined ? "" : " and its mark certificate"}, so Duva no longer serves it. Remove its default._bimi record from DNS too.`],
-    run: async () => {
-      await forgetDomainLogo(deployment, domain.domain);
-      return view();
-    },
-  };
-});
+  if (stored === undefined) return view();
+  await forgetDomainLogo(deployment, domain.domain);
+  return view();
+};
 
 /** Stops serving the domain's logo and mark certificate, and forgets them, as when the domain is removed. */
 export async function forgetDomainLogo({ table, hostedLogos }: Deployment, domain: string): Promise<void> {
@@ -213,8 +198,8 @@ export async function forgetDomainLogo({ table, hostedLogos }: Deployment, domai
   await documents(table).send(new DeleteCommand({ TableName: table.name, Key: domainLogoKey(domain) }));
 }
 
-export const setLogoCertificate = setupOperation("setLogoCertificate", async (event, deployment, actor) => {
-  if (!actor.admin) return onlyAdmins("change");
+export const setLogoCertificate: OperationHandler = async (event, deployment, actor) => {
+  if (!isAdmin(actor)) return onlyAdmins("change");
   const domain = await domainAsked(event, deployment);
   if ("statusCode" in domain) return domain;
   const { url, pem } = jsonBody(event) ?? {};
@@ -223,17 +208,12 @@ export const setLogoCertificate = setupOperation("setLogoCertificate", async (ev
   if (stored === undefined) return refusal(409, `${domain.domain} has no logo, and a mark certificate vouches for one. Set the logo it was issued for first.`);
   const view = viewing(deployment, domain.domain);
   const write = (certificate: StoredDomainLogo["certificate"]) =>
-    documents(deployment.table).send(new PutCommand({ TableName: deployment.table.name, Item: { ...domainLogoKey(domain.domain), ...stored, certificate, by: actor.id, at: new Date().toISOString() } }));
+    documents(deployment.table).send(new PutCommand({ TableName: deployment.table.name, Item: { ...domainLogoKey(domain.domain), ...stored, certificate, by: actor!.id, at: new Date().toISOString() } }));
   if (url !== undefined) {
     if (typeof url !== "string" || !/^https:\/\//i.test(url) || !URL.canParse(url)) return refusal(400, `${JSON.stringify(url)} isn't an https URL. Receivers fetch the certificate only over https.`);
-    return {
-      preview: [`Gives the mark certificate at ${url} in ${domain.domain}'s BIMI record, so update the record in DNS.`],
-      run: async () => {
-        await write({ url });
-        if (stored.certificate !== undefined && "hosted" in stored.certificate) await deployment.hostedLogos.remove(certificatePath(domain.domain));
-        return view();
-      },
-    };
+    await write({ url });
+    if (stored.certificate !== undefined && "hosted" in stored.certificate) await deployment.hostedLogos.remove(certificatePath(domain.domain));
+    return view();
   }
   if (typeof pem !== "string") return refusal(400, "Give pem as the text of the certificate's PEM file.");
   // A subdomain's certificate may name the domain whose DMARC record covers it.
@@ -244,34 +224,23 @@ export const setLogoCertificate = setupOperation("setLogoCertificate", async (ev
       `The certificate doesn't vouch for ${domain.domain}'s logo. A VMC or CMC must lead to a Mark Verifying Authority, be current, name ${domain.domain}, and carry the very logo Duva serves, so set the logo it was issued for first.`,
     );
   }
-  const certificateUrl = servedAt(deployment.hostedLogos, certificatePath(domain.domain));
-  return {
-    preview: [`Serves the mark certificate at ${certificateUrl}, and gives it in ${domain.domain}'s BIMI record, so update the record in DNS.`],
-    run: async () => {
-      await deployment.hostedLogos.put(certificatePath(domain.domain), pem, pemType);
-      await write({ hosted: true });
-      return view();
-    },
-  };
-});
+  await deployment.hostedLogos.put(certificatePath(domain.domain), pem, pemType);
+  await write({ hosted: true });
+  return view();
+};
 
-export const removeLogoCertificate = setupOperation("removeLogoCertificate", async (event, deployment, actor) => {
-  if (!actor.admin) return onlyAdmins("change");
+export const removeLogoCertificate: OperationHandler = async (event, deployment, actor) => {
+  if (!isAdmin(actor)) return onlyAdmins("change");
   const domain = await domainAsked(event, deployment);
   if ("statusCode" in domain) return domain;
   const stored = await storedDomainLogo(deployment.table, domain.domain);
   const view = viewing(deployment, domain.domain);
-  if (stored?.certificate === undefined) return { preview: [], run: view };
+  if (stored?.certificate === undefined) return view();
   const { certificate, ...logo } = stored;
-  return {
-    preview: [`Removes the mark certificate from ${domain.domain}'s logo, so update its BIMI record in DNS.`],
-    run: async () => {
-      await documents(deployment.table).send(new PutCommand({ TableName: deployment.table.name, Item: { ...domainLogoKey(domain.domain), ...logo, by: actor.id, at: new Date().toISOString() } }));
-      if ("hosted" in certificate) await deployment.hostedLogos.remove(certificatePath(domain.domain));
-      return view();
-    },
-  };
-});
+  await documents(deployment.table).send(new PutCommand({ TableName: deployment.table.name, Item: { ...domainLogoKey(domain.domain), ...logo, by: actor!.id, at: new Date().toISOString() } }));
+  if ("hosted" in certificate) await deployment.hostedLogos.remove(certificatePath(domain.domain));
+  return view();
+};
 
 /** The mailbox the call's path names, if the actor is the human who owns it, or a refusal. */
 async function ownMailbox(event: Parameters<OperationHandler>[0], deployment: Deployment, actor: Actor, doing: string): Promise<{ mailbox: Mailbox; owner: Human } | ReturnType<typeof refusal>> {

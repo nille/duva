@@ -24,10 +24,10 @@ Sent by Hermes for n@nille.dev
 
 Humans have no names in Duva yet, so the line names the sponsor by their email address.
 
-The sponsor can switch the line off for each agent, separately for mail from the agent's own mailbox (`disclosureLineForOwnMailbox`) and mail it sends as the sponsor (`disclosureLineAsSponsor`). Both are on by default.
+The sponsor can switch the line off for each agent (`disclosureLineAsSponsor`). It is on by default.
 
 ## Sends as the sponsor
 
-An agent with full sponsor access sends as its sponsor, from the sponsor's personal mailbox. That mail goes out as the sponsor's: from the sponsor's address, the one the original was sent to for a reply, else the mailbox's default address, and under the sponsor's name, which is no name until humans have names. It carries the header, and the line unless `disclosureLineAsSponsor` is off. Mail from the agent's own mailbox goes out under the agent's name.
+Agents own no mailboxes (ADR-0030), so an agent with send sponsor access sends as its sponsor, from the sponsor's personal mailbox. That mail goes out as the sponsor's: from the sponsor's address, the one the original was sent to for a reply, else the mailbox's default address, and under the sponsor's name, which is no name until humans have names. It carries the header, and the line unless `disclosureLineAsSponsor` is off.
 
 Disclosure follows the actor who asks to send. A draft an agent wrote that its sponsor sends is the sponsor's own mail, and carries neither the header nor the line.

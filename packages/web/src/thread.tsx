@@ -55,8 +55,7 @@ const bareSubject = (subject: string) =>
     .toLowerCase();
 
 /**
- * The thread with the ID in the mailbox, the human's own or, with the agent's name, an agent's
- * they sponsor, where the human has no replies. `agentNames` names the agents they sponsor by ID,
+ * The thread with the ID in the human's mailbox. `agentNames` names the agents they sponsor by ID,
  * for the messages those agents sent. `version` counts the changes to the mailbox the app has
  * seen, so the thread is read again when it grows, and replies that arrive while it's open show.
  * `back` is the view it was opened from, named `backTo`, where archiving, Spam, Trash and restoring
@@ -69,7 +68,6 @@ export function ThreadView({
   id,
   matched,
   me,
-  agent,
   agentNames,
   labels,
   back,
@@ -84,7 +82,6 @@ export function ThreadView({
   id: string;
   matched?: string;
   me: string;
-  agent?: string;
   agentNames: ReadonlyMap<string, string>;
   labels: Label[];
   back: string;
@@ -295,7 +292,6 @@ export function ThreadView({
     return () => removeEventListener("keydown", close);
   }, [more]);
 
-  const canReply = agent === undefined;
   // A key's cap shows, and its control says it, only while the human's shortcuts are on.
   const keys = useContext(PreferencesContext).keyboardShortcuts !== "off";
   const key = (pressed: string) => (keys ? pressed : undefined);
@@ -318,7 +314,7 @@ export function ThreadView({
   // r, a and f start what Reply, Reply all and Forward start, while the newest message offers them
   // and no reply is under way, e, # and ! do what Archive, Trash and Mark as spam do, while no move
   // is, Shift+U marks the thread unread, and u goes back to the list, as Escape does.
-  const answerable = canReply && !composing && typeof replying !== "object" ? newest : undefined;
+  const answerable = !composing && typeof replying !== "object" ? newest : undefined;
   const startOn = (start: Start, offered = true) => (answerable === undefined || !offered ? undefined : () => void reply(answerable, start));
   useShortcuts({
     r: startOn("reply"),
@@ -348,7 +344,7 @@ export function ThreadView({
               {keys && <kbd aria-hidden="true">⇧U</kbd>}
               {marking === "busy" ? strings.thread.markingUnread : strings.thread.markUnread}
             </button>
-            {more && canReply && newest !== undefined && (
+            {more && newest !== undefined && (
               <span className="reading-actions-replies">
                 <ReplyButtons message={newest} replying={replying} keys={keys} onReply={(start) => void reply(newest, start)} />
               </span>
@@ -410,7 +406,6 @@ export function ThreadView({
                 ref: letterRef,
                 me,
                 agentNames,
-                owner: agent === undefined ? undefined : { id: mailbox.owner, name: agent },
                 groups: mailbox.groups ?? [],
               };
               return (
@@ -424,7 +419,7 @@ export function ThreadView({
                       downloading={typeof downloading === "object" && downloading.message === message.id ? downloading.index : undefined}
                       onDownload={(index) => void download(message, index)}
                     >
-                      {isNewest && canReply && !composing && (
+                      {isNewest && !composing && (
                         <div className="letter-actions">
                           <ReplyButtons message={message} replying={replying} keys={keys} firstRef={replyRef} onReply={(start) => void reply(message, start)} />
                         </div>
@@ -458,7 +453,7 @@ export function ThreadView({
           )}
           {!composing && (
             <div className="thread-bar" role="toolbar" aria-label={strings.thread.bar}>
-              {canReply && newest !== undefined && (
+              {newest !== undefined && (
                 <button type="button" className="button button-small button-primary" disabled={typeof replying === "object"} onClick={() => void reply(newest, "reply")}>
                   <ReplyIcon />
                   {typeof replying === "object" && replying.start === "reply" ? strings.thread.starting : strings.thread.reply}
@@ -561,8 +556,8 @@ function ThreadLabels({ thread, labels }: { thread: Thread; labels: Label[] }) {
 }
 
 /** Who sent the message from the mailbox, if anyone did: the human, an agent they sponsor by name, or another member as a group. */
-function sentMarkOf(message: Message, me: string, agentNames: ReadonlyMap<string, string>, owner: { id: string; name: string } | undefined, groups: string[]): string | undefined {
-  const agent = message.sentBy === undefined ? undefined : (agentNames.get(message.sentBy) ?? (message.sentBy === owner?.id ? owner.name : undefined));
+function sentMarkOf(message: Message, me: string, agentNames: ReadonlyMap<string, string>, groups: string[]): string | undefined {
+  const agent = message.sentBy === undefined ? undefined : agentNames.get(message.sentBy);
   // A message sent from the mailbox as a group says which (ADR-0019).
   const from = message.from.address.toLowerCase();
   const as = message.sentBy !== undefined && groups.includes(from) ? from : undefined;
@@ -578,9 +573,9 @@ function sentMarkOf(message: Message, me: string, agentNames: ReadonlyMap<string
 }
 
 /** Who sent the message, by shape: an agent, as Duva knows it or as one the human sponsors, or else a human, as anyone writing from outside is. */
-function actorOf(message: Message, agentNames: ReadonlyMap<string, string>, owner: { id: string } | undefined): "human" | "agent" {
+function actorOf(message: Message, agentNames: ReadonlyMap<string, string>): "human" | "agent" {
   if (message.fromAgent) return "agent";
-  return message.sentAs === undefined && message.sentBy !== undefined && (agentNames.has(message.sentBy) || message.sentBy === owner?.id) ? "agent" : "human";
+  return message.sentAs === undefined && message.sentBy !== undefined && agentNames.has(message.sentBy) ? "agent" : "human";
 }
 
 /** The props a letter takes, open or folded. */
@@ -590,8 +585,6 @@ interface LetterProps {
   ref?: Ref<HTMLElement>;
   me: string;
   agentNames: ReadonlyMap<string, string>;
-  /** In an agent's mailbox, the agent, by the name the mailbox list gave it, for when its name isn't among `agentNames`. */
-  owner?: { id: string; name: string };
   /** The groups the mailbox's owner can send as, so a message sent as one says so. */
   groups: string[];
 }
@@ -607,14 +600,14 @@ const snippetOf = (text: string) =>
     .slice(0, 200);
 
 /** A read or older message folded to a line, as a slug: who sent it, the start of what it says, and when it arrived. It opens on click or Enter. */
-function FoldedLetter({ message, ref, me, agentNames, owner, groups, onOpen }: LetterProps & { onOpen: () => void }) {
+function FoldedLetter({ message, ref, me, agentNames, groups, onOpen }: LetterProps & { onOpen: () => void }) {
   const fromId = useId();
-  const sent = sentMarkOf(message, me, agentNames, owner, groups);
+  const sent = sentMarkOf(message, me, agentNames, groups);
   return (
     <article ref={ref} className="letter letter-folded" tabIndex={ref === undefined ? undefined : -1} aria-labelledby={fromId}>
       <h2 className="letter-slug-title">
         <button type="button" className="letter-slug" aria-expanded={false} onClick={onOpen}>
-          <SenderMark kind={actorOf(message, agentNames, owner)} logo={message.logo} name={nameOf(message.from)} />
+          <SenderMark kind={actorOf(message, agentNames)} logo={message.logo} name={nameOf(message.from)} />
           <span className="letter-slug-from" id={fromId}>
             {nameOf(message.from)}
           </span>
@@ -642,7 +635,6 @@ export function Letter({
   marked = false,
   me,
   agentNames,
-  owner,
   groups,
   threadSubject,
   fresh,
@@ -664,8 +656,8 @@ export function Letter({
   const { mailView } = useContext(PreferencesContext);
   const [switched, setSwitched] = useState<MailView>();
   const view = message.html === undefined ? "text" : (switched ?? mailView);
-  const sent = sentMarkOf(message, me, agentNames, owner, groups);
-  const actor = actorOf(message, agentNames, owner);
+  const sent = sentMarkOf(message, me, agentNames, groups);
+  const actor = actorOf(message, agentNames);
   // The letter shows when the message arrived, as the lists do, and the sender's own date too when it's far from that.
   const dated = Math.abs(new Date(message.date).getTime() - new Date(message.receivedAt).getTime()) > datedApart;
   return (

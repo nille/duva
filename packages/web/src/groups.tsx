@@ -7,7 +7,7 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
 import { ChevronIcon, Choice } from "./setting-parts.tsx";
-import { attempt, byText, change, isAgents, type Mailboxes, ownerName } from "./setup.ts";
+import { attempt, byText, change, type Mailboxes, ownerName } from "./setup.ts";
 import { strings } from "./strings.ts";
 
 type Group = components["schemas"]["Group"];
@@ -141,8 +141,7 @@ function memberWho(address: string, organization: Organization): string {
   if (organization.groups.some((group) => group.address === own)) return copy.memberOf.group;
   const mailbox = organization.mailboxes.find(({ addresses }) => addresses.includes(own));
   if (mailbox === undefined) return "";
-  const owner = ownerName(mailbox, organization);
-  return isAgents(mailbox, organization) ? copy.memberOf.agent(owner) : copy.memberOf.human(owner);
+  return copy.memberOf.human(ownerName(mailbox, organization));
 }
 
 function GroupLine({

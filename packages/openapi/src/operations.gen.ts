@@ -348,7 +348,7 @@ export const operations = [
     "path": "/humans/{human}/remove",
     "routeKey": "POST /humans/{human}/remove",
     "summary": "Remove a human, handing over or deleting each of their mailboxes, and remove the agents they sponsor.",
-    "description": "Only admins can remove humans. Run it first with dryRun to see the human's mailboxes, their agents and the agents' mailboxes. Then say what happens to each of the human's mailboxes: handOver gives it to the human handTo, as another personal mailbox of theirs with its addresses and mail, and delete erases it. The agents are removed, so their keys stop working, and their mailboxes are erased. Erasing a mailbox erases its mail everywhere Duva keeps it, as emptying Trash does, and its approval records only if the organization's settings say so. Its addresses are freed at once. The human's Cognito user is deleted and their sessions stop working. The organization always keeps one admin, so the last admin can't be removed. Each change is recorded in the organization's change feed under you, and older entries keep naming the human and their agents by ID.",
+    "description": "Only admins can remove humans. Run it first with dryRun to see the human's mailboxes and their agents. Then say what happens to each of the human's mailboxes: handOver gives it to the human handTo, as another personal mailbox of theirs with its addresses and mail, and delete erases it. The agents are removed, so their keys stop working. Erasing a mailbox erases its mail everywhere Duva keeps it, as emptying Trash does, and its approval records only if the organization's settings say so. Its addresses are freed at once. The human's Cognito user is deleted and their sessions stop working. The organization always keeps one admin, so the last admin can't be removed. Each change is recorded in the organization's change feed under you, and older entries keep naming the human and their agents by ID.",
     "signIn": true,
     "command": [
       "humans",
@@ -433,8 +433,8 @@ export const operations = [
     "method": "delete",
     "path": "/agents/{agent}",
     "routeKey": "DELETE /agents/{agent}",
-    "summary": "Remove an agent, which stops its key working and erases its mailboxes.",
-    "description": "Only the agent's sponsor and human admins can remove it, never an agent, not even an agent admin. Its sends and setup changes waiting for approval are withdrawn. Its mailboxes are erased everywhere Duva keeps their mail, as emptying Trash does, and their approval records only if the organization's settings say so. Their addresses are freed at once. The removal is recorded in the organization's change feed under you.",
+    "summary": "Remove an agent, which stops its key working.",
+    "description": "Only the agent's sponsor and human admins can remove it, never an agent. Its sends waiting for approval are withdrawn. The removal is recorded in the organization's change feed under you.",
     "signIn": true,
     "command": [
       "agents",
@@ -447,35 +447,6 @@ export const operations = [
         "type": "string",
         "required": true,
         "description": "The agent's ID."
-      }
-    ]
-  },
-  {
-    "operationId": "changeAgent",
-    "method": "patch",
-    "path": "/agents/{agent}",
-    "routeKey": "PATCH /agents/{agent}",
-    "summary": "Make an agent you sponsor an admin, or take it away.",
-    "description": "Only the agent's sponsor can, and only while they are an admin themselves to make it one. No agent can change who is an admin. An agent admin's changes to the setup wait for your approval unless you switch approvalForSetup off in its settings, and it never removes humans or agents, or changes who is an admin. It stops being an admin when you do, and its setup changes still waiting are withdrawn. The change is recorded in the organization's change feed under you.",
-    "signIn": true,
-    "command": [
-      "agents",
-      "change"
-    ],
-    "options": [
-      {
-        "name": "agent",
-        "in": "path",
-        "type": "string",
-        "required": true,
-        "description": "The agent's ID."
-      },
-      {
-        "name": "admin",
-        "in": "body",
-        "type": "boolean",
-        "required": true,
-        "description": "Whether the agent may change the organization's setup, with its sponsor's approval unless switched off."
       }
     ]
   },
@@ -507,7 +478,7 @@ export const operations = [
     "path": "/agents/{agent}/pause",
     "routeKey": "POST /agents/{agent}/pause",
     "summary": "Pause an agent, which refuses its key and holds its approved sends until it is unpaused.",
-    "description": "Only the agent's sponsor and admins can pause it. While it is paused, every call with its key is refused with 403, its approvals wait but can't be sent, and its sends already approved are held. Mail to its mailboxes keeps arriving. Pausing is recorded under you in the change feed of each of the agent's mailboxes and in the organization's. Pausing a paused agent changes nothing.",
+    "description": "Only the agent's sponsor and admins can pause it. While it is paused, every call with its key is refused with 403, its approvals wait but can't be sent, and its sends already approved are held. Pausing is recorded under you in the organization's change feed. Pausing a paused agent changes nothing.",
     "signIn": true,
     "command": [
       "agents",
@@ -529,7 +500,7 @@ export const operations = [
     "path": "/agents/{agent}/unpause",
     "routeKey": "POST /agents/{agent}/unpause",
     "summary": "Unpause an agent, which lets its key work again and sends what it held.",
-    "description": "Only the agent's sponsor and human admins can unpause it, never an agent. Its sends held while it was paused go out, those from each mailbox oldest first, so look at them first. Unpausing is recorded under you in the change feed of each of the agent's mailboxes and in the organization's. Unpausing an agent that isn't paused changes nothing.",
+    "description": "Only the agent's sponsor and human admins can unpause it, never an agent. Its sends held while it was paused go out, those from each mailbox oldest first, so look at them first. Unpausing is recorded under you in the organization's change feed. Unpausing an agent that isn't paused changes nothing.",
     "signIn": true,
     "command": [
       "agents",
@@ -573,7 +544,7 @@ export const operations = [
     "path": "/agents/{agent}/settings",
     "routeKey": "PATCH /agents/{agent}/settings",
     "summary": "Change an agent's sponsor access, its approval and disclosure-line switches, or its send limits.",
-    "description": "Give only the settings to change. A change works at once. Only the agent's sponsor can change them, so not even an admin can. Each change is recorded under you, with the old and new values, in your personal mailbox's change feed, or if you have none, in the agent's. If neither of you has a mailbox, the change is refused. Sponsor access covers the mailboxes of yours that sponsorMailboxes names, or all of them while it is null. Read lets the agent read them, organize also lets it organize them and move threads to Trash and back, draft also lets it draft there, and send also lets it send as you. Lowering access from send, or taking a mailbox out of sponsorMailboxes, withdraws the agent's sends waiting for your approval there, recorded in its change feed under you, and fails those approved but not yet gone out. Its drafts and sent messages stay. Send limits go up to the organization's caps, and raising one lets its sends that wait go out as far as the new limit allows.",
+    "description": "Give only the settings to change. A change works at once. Only the agent's sponsor can change them, so not even an admin can. Each change is recorded under you, with the old and new values, in the change feed of each of your personal mailboxes. If you have none, the change is refused. Sponsor access covers the mailboxes of yours that sponsorMailboxes names, or all of them while it is null. Read lets the agent read them, organize also lets it organize them and move threads to Trash and back, draft also lets it draft there, and send also lets it send as you. Lowering access from send, or taking a mailbox out of sponsorMailboxes, withdraws the agent's sends waiting for your approval there, recorded in its change feed under you, and fails those approved but not yet gone out. Its drafts and sent messages stay. Send limits go up to the organization's caps, and raising one lets its sends that wait go out as far as the new limit allows.",
     "signIn": true,
     "command": [
       "agents",
@@ -603,25 +574,11 @@ export const operations = [
         "nullable": true
       },
       {
-        "name": "approvalForOwnMailbox",
-        "in": "body",
-        "type": "boolean",
-        "required": false,
-        "description": "Whether the agent's sends from its own mailbox wait for its sponsor's approval. On by default."
-      },
-      {
         "name": "approvalAsSponsor",
         "in": "body",
         "type": "boolean",
         "required": false,
         "description": "Whether the agent's sends as its sponsor, from the sponsor's mailbox, wait for the sponsor's approval. On by default."
-      },
-      {
-        "name": "disclosureLineForOwnMailbox",
-        "in": "body",
-        "type": "boolean",
-        "required": false,
-        "description": "Whether mail the agent sends from its own mailbox carries the disclosure's visible line. It always carries the Duva-Agent header. On by default."
       },
       {
         "name": "disclosureLineAsSponsor",
@@ -635,7 +592,7 @@ export const operations = [
         "in": "body",
         "type": "integer",
         "required": false,
-        "description": "How many messages the agent sends in any hour, from all its mailboxes and as its sponsor. 100 by default, and up to the organization's agentSendsPerHourCap. A send counts when it goes out, and one over the limit waits."
+        "description": "How many messages the agent sends in any hour, from all its sponsor's mailboxes. 100 by default, and up to the organization's agentSendsPerHourCap. A send counts when it goes out, and one over the limit waits."
       },
       {
         "name": "newRecipientsPerDay",
@@ -643,13 +600,6 @@ export const operations = [
         "type": "integer",
         "required": false,
         "description": "How many new recipients the agent sends to in any 24 hours: addresses it hasn't sent to before, from any mailbox. 50 by default, and up to the organization's agentNewRecipientsPerDayCap. A send counts when it goes out, and one over the limit waits. A message with more new recipients than the whole limit waits until its sponsor sends it now."
-      },
-      {
-        "name": "approvalForSetup",
-        "in": "body",
-        "type": "boolean",
-        "required": false,
-        "description": "Whether the agent's changes to the organization's setup, as an admin, wait for its sponsor's approval. On by default."
       }
     ]
   },
@@ -658,8 +608,8 @@ export const operations = [
     "method": "get",
     "path": "/agents/{agent}/activity",
     "routeKey": "GET /agents/{agent}/activity",
-    "summary": "Read an agent's daily summaries, how much it sent, had approved or rejected, received, organized and screened each day.",
-    "description": "Gives every day from from to to, newest first, each day in your time zone, days without activity included. Leave both out for the last 30 days. Activity reaches back to the agent's start: what happened in its mailboxes, what it did in its sponsor's mailbox, and the organization's changes to it. Only the agent's sponsor and admins can read it.",
+    "summary": "Read an agent's daily summaries, how much it sent, had approved or rejected, organized and screened each day.",
+    "description": "Gives every day from from to to, newest first, each day in your time zone, days without activity included. Leave both out for the last 30 days. Activity reaches back to the agent's start: what it did in its sponsor's mailboxes, and the organization's changes to it. Only the agent's sponsor and admins can read it.",
     "signIn": true,
     "command": [
       "agents",
@@ -701,7 +651,7 @@ export const operations = [
     "method": "get",
     "path": "/agents/{agent}/activity/{day}",
     "routeKey": "GET /agents/{agent}/activity/{day}",
-    "summary": "Read an agent's timeline for one day, everything it did and what happened in its mailboxes, newest first.",
+    "summary": "Read an agent's timeline for one day, everything it did and what was done to it, newest first.",
     "description": "Lists the day's entries a page at a time, newest first. Each is a change as the change feed recorded it, with the mailbox it was in and its thread, where it has them. To read the next page, call again with the answer's next as after, until an answer has no next. Only the agent's sponsor and admins can read it. An admin who isn't the sponsor reads no part of what the mail says, so the changes leave out approvers' edits and notes, label names, and senders' and recipients' addresses.",
     "signIn": true,
     "command": [
@@ -1511,7 +1461,7 @@ export const operations = [
     "method": "get",
     "path": "/mailboxes",
     "routeKey": "GET /mailboxes",
-    "summary": "List the mailboxes you can read, your own and those of the agents you sponsor.",
+    "summary": "List the mailboxes you can read, your own, or as an agent your sponsor's that your sponsor access covers.",
     "description": "An agent your sponsor gives sponsor access also finds your sponsor's personal mailbox here, listed with that access.",
     "signIn": true,
     "command": [
@@ -1525,8 +1475,8 @@ export const operations = [
     "method": "post",
     "path": "/mailboxes",
     "routeKey": "POST /mailboxes",
-    "summary": "Create a personal mailbox for a human or an agent, with an address on one of the organization's standalone domains.",
-    "description": "Only admins can create mailboxes. The address becomes the mailbox's default address, and mail to it is accepted from then on. An admin can't read a personal mailbox they don't own, even one they created, unless they sponsor the agent that owns it. Creating the mailbox and its address are changes to the organization's setup, recorded in its change feed.",
+    "summary": "Create a personal mailbox for a human, with an address on one of the organization's standalone domains.",
+    "description": "Only admins can create mailboxes. The address becomes the mailbox's default address, and mail to it is accepted from then on. An admin can't read a personal mailbox they don't own, even one they created. Agents own no mailboxes, so the owner is a human. Creating the mailbox and its address are changes to the organization's setup, recorded in its change feed.",
     "signIn": true,
     "command": [
       "mailboxes",
@@ -1538,7 +1488,7 @@ export const operations = [
         "in": "body",
         "type": "string",
         "required": true,
-        "description": "The ID of the human or agent that owns the mailbox."
+        "description": "The ID of the human who owns the mailbox. Agents own none."
       },
       {
         "name": "address",
@@ -1555,7 +1505,7 @@ export const operations = [
     "path": "/mailboxes/{mailbox}",
     "routeKey": "GET /mailboxes/{mailbox}",
     "summary": "Read a mailbox you can read, with how many threads in its Inbox are unread.",
-    "description": "Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give sponsor access can read it.",
+    "description": "Only the mailbox's owner and the agents they give sponsor access can read it.",
     "signIn": true,
     "command": [
       "mailboxes",
@@ -1606,7 +1556,7 @@ export const operations = [
     "path": "/mailboxes/{mailbox}/changes",
     "routeKey": "GET /mailboxes/{mailbox}/changes",
     "summary": "List the changes in a mailbox after a position in its change feed.",
-    "description": "Lists up to 100 changes, oldest first, leaving out the arrivals of mail judged to be spam unless asked for them. To catch up, call again with the position the answer ends at until it lists no more. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give sponsor access can read it.",
+    "description": "Lists up to 100 changes, oldest first, leaving out the arrivals of mail judged to be spam unless asked for them. To catch up, call again with the position the answer ends at until it lists no more. Only the mailbox's owner and the agents they give sponsor access can read it.",
     "signIn": true,
     "command": [
       "mailboxes",
@@ -1721,7 +1671,7 @@ export const operations = [
     "path": "/mailboxes/{mailbox}/threads/read",
     "routeKey": "POST /mailboxes/{mailbox}/threads/read",
     "summary": "Mark threads in a mailbox read.",
-    "description": "Marks each thread read. Read state belongs to the mailbox, so it is the same for each actor who reads it. Each thread that was unread gets a change in the mailbox's change feed, naming you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give organize sponsor access or more can mark its threads.",
+    "description": "Marks each thread read. Read state belongs to the mailbox, so it is the same for each actor who reads it. Each thread that was unread gets a change in the mailbox's change feed, naming you. Only the mailbox's owner and the agents they give organize sponsor access or more can mark its threads.",
     "signIn": true,
     "command": [
       "threads",
@@ -1750,7 +1700,7 @@ export const operations = [
     "path": "/mailboxes/{mailbox}/threads/unread",
     "routeKey": "POST /mailboxes/{mailbox}/threads/unread",
     "summary": "Mark threads in a mailbox unread.",
-    "description": "Marks each thread unread, so it stands out until it is read again. Each thread that was read gets a change in the mailbox's change feed, naming you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give organize sponsor access or more can mark its threads.",
+    "description": "Marks each thread unread, so it stands out until it is read again. Each thread that was read gets a change in the mailbox's change feed, naming you. Only the mailbox's owner and the agents they give organize sponsor access or more can mark its threads.",
     "signIn": true,
     "command": [
       "threads",
@@ -1779,7 +1729,7 @@ export const operations = [
     "path": "/mailboxes/{mailbox}/threads/labels",
     "routeKey": "POST /mailboxes/{mailbox}/threads/labels",
     "summary": "Add labels to threads in a mailbox, and remove them.",
-    "description": "Adds and removes the labels on each thread. Archiving removes inbox, and adding inbox moves a thread back to the Inbox, out of Spam, Trash and the Screener. Adding spam or trash takes a thread out of the Inbox. Removing spam (not spam) or trash (restore) puts it back in the Inbox, unless it still has the other, waits in the Screener, or inbox is removed too. Each thread whose labels change gets a change in the mailbox's change feed, naming you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give organize sponsor access or more can label its threads.",
+    "description": "Adds and removes the labels on each thread. Archiving removes inbox, and adding inbox moves a thread back to the Inbox, out of Spam, Trash and the Screener. Adding spam or trash takes a thread out of the Inbox. Removing spam (not spam) or trash (restore) puts it back in the Inbox, unless it still has the other, waits in the Screener, or inbox is removed too. Each thread whose labels change gets a change in the mailbox's change feed, naming you. Only the mailbox's owner and the agents they give organize sponsor access or more can label its threads.",
     "signIn": true,
     "command": [
       "threads",
@@ -1851,7 +1801,7 @@ export const operations = [
     "path": "/mailboxes/{mailbox}/threads/remind",
     "routeKey": "POST /mailboxes/{mailbox}/threads/remind",
     "summary": "Set threads in a mailbox aside until a time, when they come back to the Inbox.",
-    "description": "Remind me: each thread leaves the Inbox, if it is there, and waits in Remind me until the time, given as at or as a preset. Then it comes back to the top of the Inbox, unread, with a Back mark naming when it was set aside. New mail in the thread brings it back early. A thread already set aside gets the new time. A thread in Spam or Trash, or waiting in the Screener, can't be set aside. Each thread gets a change in the mailbox's change feed, naming you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give organize sponsor access or more can set its threads aside.",
+    "description": "Remind me: each thread leaves the Inbox, if it is there, and waits in Remind me until the time, given as at or as a preset. Then it comes back to the top of the Inbox, unread, with a Back mark naming when it was set aside. New mail in the thread brings it back early. A thread already set aside gets the new time. A thread in Spam or Trash, or waiting in the Screener, can't be set aside. Each thread gets a change in the mailbox's change feed, naming you. Only the mailbox's owner and the agents they give organize sponsor access or more can set its threads aside.",
     "signIn": true,
     "command": [
       "threads",
@@ -2073,7 +2023,7 @@ export const operations = [
     "path": "/mailboxes/{mailbox}/labels",
     "routeKey": "POST /mailboxes/{mailbox}/labels",
     "summary": "Create a label in a mailbox.",
-    "description": "Creates a label of the mailbox's own, with a name no other label in it has, in any case. Then add it to threads by its ID. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give organize sponsor access or more can create its labels. The change is recorded in the mailbox's change feed, naming you.",
+    "description": "Creates a label of the mailbox's own, with a name no other label in it has, in any case. Then add it to threads by its ID. Only the mailbox's owner and the agents they give organize sponsor access or more can create its labels. The change is recorded in the mailbox's change feed, naming you.",
     "signIn": true,
     "command": [
       "labels",
@@ -2102,7 +2052,7 @@ export const operations = [
     "path": "/mailboxes/{mailbox}/labels/{label}",
     "routeKey": "DELETE /mailboxes/{mailbox}/labels/{label}",
     "summary": "Delete one of a mailbox's own labels.",
-    "description": "Removes the label from each of its threads, each with a change in the mailbox's change feed, and then deletes it. The threads stay. Senders whose mail was filed under it go to the Inbox from then on. The built-in labels can't be deleted. If deleting stops partway, delete the label again to finish. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give organize sponsor access or more can delete its labels.",
+    "description": "Removes the label from each of its threads, each with a change in the mailbox's change feed, and then deletes it. The threads stay. Senders whose mail was filed under it go to the Inbox from then on. The built-in labels can't be deleted. If deleting stops partway, delete the label again to finish. Only the mailbox's owner and the agents they give organize sponsor access or more can delete its labels.",
     "signIn": true,
     "command": [
       "labels",
@@ -2131,7 +2081,7 @@ export const operations = [
     "path": "/mailboxes/{mailbox}/labels/{label}",
     "routeKey": "PATCH /mailboxes/{mailbox}/labels/{label}",
     "summary": "Rename one of a mailbox's own labels.",
-    "description": "Gives the label a name no other label in the mailbox has, in any case. Its threads keep it. The built-in labels can't be renamed. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give organize sponsor access or more can rename its labels. The change is recorded in the mailbox's change feed, naming you.",
+    "description": "Gives the label a name no other label in the mailbox has, in any case. Its threads keep it. The built-in labels can't be renamed. Only the mailbox's owner and the agents they give organize sponsor access or more can rename its labels. The change is recorded in the mailbox's change feed, naming you.",
     "signIn": true,
     "command": [
       "labels",
@@ -2320,7 +2270,7 @@ export const operations = [
     "path": "/mailboxes/{mailbox}/screener",
     "routeKey": "PATCH /mailboxes/{mailbox}/screener",
     "summary": "Switch a mailbox's Screener on or off.",
-    "description": "Turning it off moves every waiting thread to the Inbox. Turning it on decides the Inbox for every address mail in the mailbox is from, except mail in Spam and addresses at a domain decided on, so no sender the mailbox already has waits. A human's mailbox starts with it on, an agent's with it off. Switching is recorded in the mailbox's change feed under you. Only the mailbox's owner, and an agent's sponsor for its agent's mailbox, can switch it.",
+    "description": "Turning it off moves every waiting thread to the Inbox. Turning it on decides the Inbox for every address mail in the mailbox is from, except mail in Spam and addresses at a domain decided on, so no sender the mailbox already has waits. A mailbox starts with it on. Switching is recorded in the mailbox's change feed under you. Only the mailbox's owner can switch it.",
     "signIn": true,
     "command": [
       "screener",
@@ -2400,7 +2350,7 @@ export const operations = [
     "path": "/mailboxes/{mailbox}/senders/{sender}",
     "routeKey": "PUT /mailboxes/{mailbox}/senders/{sender}",
     "summary": "Decide where a sender's mail goes in a mailbox, for their mail there and their later mail.",
-    "description": "inbox puts their mail in the Inbox. feed and paperTrail file it in the Feed or the Paper Trail instead, read. label files it under the mailbox's own label you give, unread, instead of the Inbox. nowhere drops their later mail on arrival, keeping none of it, and erases their threads in the mailbox, Spam and Trash included, for good. Removing nowhere later brings none of it back. Their threads where their mail went before, or waiting in the Screener, move to where it goes now, and keep the labels given by hand. Their later mail skips the Screener, even while it is off. A domain covers exactly that domain, not its subdomains, and can't be a public mail provider's, like gmail.com. An address's decision beats its domain's. Setting nowhere also unsubscribes the mailbox from the sender's mail by one-click (RFC 8058), when their newest mail that SES didn't judge to be spam offers it and a DKIM signature that passed covers its unsubscribe headers, and each message dropped later tries the same. Duva never unsubscribes by mailto or by a link in the body. The decision, each thread it moves or erases and the unsubscribe's outcome are recorded in the mailbox's change feed under you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give organize sponsor access or more can decide, and only the owner or the sponsor can choose nowhere.",
+    "description": "inbox puts their mail in the Inbox. feed and paperTrail file it in the Feed or the Paper Trail instead, read. label files it under the mailbox's own label you give, unread, instead of the Inbox. nowhere drops their later mail on arrival, keeping none of it, and erases their threads in the mailbox, Spam and Trash included, for good. Removing nowhere later brings none of it back. Their threads where their mail went before, or waiting in the Screener, move to where it goes now, and keep the labels given by hand. Their later mail skips the Screener, even while it is off. A domain covers exactly that domain, not its subdomains, and can't be a public mail provider's, like gmail.com. An address's decision beats its domain's. Setting nowhere also unsubscribes the mailbox from the sender's mail by one-click (RFC 8058), when their newest mail that SES didn't judge to be spam offers it and a DKIM signature that passed covers its unsubscribe headers, and each message dropped later tries the same. Duva never unsubscribes by mailto or by a link in the body. The decision, each thread it moves or erases and the unsubscribe's outcome are recorded in the mailbox's change feed under you. Only the mailbox's owner and the agents they give organize sponsor access or more can decide, and only the owner or the sponsor can choose nowhere.",
     "signIn": true,
     "command": [
       "senders",
@@ -2443,7 +2393,7 @@ export const operations = [
     "path": "/mailboxes/{mailbox}/senders/{sender}",
     "routeKey": "DELETE /mailboxes/{mailbox}/senders/{sender}",
     "summary": "Remove a mailbox's decision on a sender, so they are first-time again.",
-    "description": "Their later mail waits in the Screener again, unless the mailbox has written to them, or a decision on their domain covers them. Their threads where their mail went move to where it goes now, the Inbox unless their domain's decision says otherwise. Mail nowhere dropped doesn't come back. The removal and each thread it moves are recorded in the mailbox's change feed under you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give organize sponsor access or more can remove decisions.",
+    "description": "Their later mail waits in the Screener again, unless the mailbox has written to them, or a decision on their domain covers them. Their threads where their mail went move to where it goes now, the Inbox unless their domain's decision says otherwise. Mail nowhere dropped doesn't come back. The removal and each thread it moves are recorded in the mailbox's change feed under you. Only the mailbox's owner and the agents they give organize sponsor access or more can remove decisions.",
     "signIn": true,
     "command": [
       "senders",
@@ -2472,7 +2422,7 @@ export const operations = [
     "path": "/mailboxes/{mailbox}/messages/{message}/attachments/{attachment}",
     "routeKey": "GET /mailboxes/{mailbox}/messages/{message}/attachments/{attachment}",
     "summary": "Get a short-lived link that downloads one of a message's attachments.",
-    "description": "Duva takes the attachment from the stored message when the link is followed, so nothing is stored twice. The link works for 5 minutes, for whoever follows it, so keep it to yourself. Only those who can read the mailbox get one: its owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give sponsor access.",
+    "description": "Duva takes the attachment from the stored message when the link is followed, so nothing is stored twice. The link works for 5 minutes, for whoever follows it, so keep it to yourself. Only those who can read the mailbox get one: its owner and the agents they give sponsor access.",
     "signIn": true,
     "command": [
       "attachments",
@@ -2744,7 +2694,7 @@ export const operations = [
     "path": "/mailboxes/{mailbox}/drafts/{draft}/send",
     "routeKey": "POST /mailboxes/{mailbox}/drafts/{draft}/send",
     "summary": "Ask for a draft to be sent.",
-    "description": "A human's send from their own mailbox needs no approval, so Duva sends it at once, with no disclosure, also when their agent wrote the draft. An agent's send waits for its sponsor's approval unless the sponsor switched that off, separately for its own mailbox and for its sponsor's. With send sponsor access, an agent sends as its sponsor from the sponsor's mailbox: from the draft's address, under the sponsor's name. Every message an agent sends carries the Duva-Agent header, and a visible line unless its sponsor switched that off for where it sends from. Its send shows where it stands. Bcc recipients get the message, but no header names them. Only the mailbox's owner, and an agent with send sponsor access to it, can ask. The draft needs a recipient in To, and a draft waits for one approval at a time. It goes only from an address the mailbox still has, so a draft from an address since removed fails. A draft from a group goes out from the group's address, as any send does, and only while the mailbox's owner is still a local member: otherwise asking gets 403, and a send asked before fails. Each other local member's mailbox then gets a copy, in the thread of the message it answers, marked with who sent it as the group. External members get none. A send that needs no approval withdraws the request the draft waits for, if it waits. Asking is recorded in the mailbox's change feed. An agent's approved send over its send limits waits, as waitingForLimit, and goes out by itself, oldest first, as the limits allow, or when its sponsor sends it now. Humans have no send limits.",
+    "description": "A human's send from their own mailbox needs no approval, so Duva sends it at once, with no disclosure, also when their agent wrote the draft. An agent's send waits for its sponsor's approval unless the sponsor switched that off. With send sponsor access, an agent sends as its sponsor from the sponsor's mailbox: from the draft's address, under the sponsor's name. Every message an agent sends carries the Duva-Agent header, and a visible line unless its sponsor switched that off. Its send shows where it stands. Bcc recipients get the message, but no header names them. Only the mailbox's owner, and an agent with send sponsor access to it, can ask. The draft needs a recipient in To, and a draft waits for one approval at a time. It goes only from an address the mailbox still has, so a draft from an address since removed fails. A draft from a group goes out from the group's address, as any send does, and only while the mailbox's owner is still a local member: otherwise asking gets 403, and a send asked before fails. Each other local member's mailbox then gets a copy, in the thread of the message it answers, marked with who sent it as the group. External members get none. A send that needs no approval withdraws the request the draft waits for, if it waits. Asking is recorded in the mailbox's change feed. An agent's approved send over its send limits waits, as waitingForLimit, and goes out by itself, oldest first, as the limits allow, or when its sponsor sends it now. Humans have no send limits.",
     "signIn": true,
     "command": [
       "drafts",
@@ -2859,8 +2809,8 @@ export const operations = [
     "method": "get",
     "path": "/approvals",
     "routeKey": "GET /approvals",
-    "summary": "List the approvals waiting for you, newest first, sends with their drafts and setup changes with their previews.",
-    "description": "An agent's sends wait for its sponsor, from its own mailbox and as its sponsor from theirs, so a sponsor sees those of every agent they sponsor. Each approval's mailbox tells which. The setup changes of agents they made admins wait for them too, each with a preview of what it does.",
+    "summary": "List the sends waiting for your approval, newest first, each with its draft.",
+    "description": "An agent's sends wait for its sponsor, from the sponsor's own mailboxes, so a sponsor sees those of every agent they sponsor. Each approval's mailbox tells which.",
     "signIn": true,
     "command": [
       "approvals",
@@ -2988,79 +2938,6 @@ export const operations = [
         "type": "string",
         "required": true,
         "description": "The approval's ID."
-      }
-    ]
-  },
-  {
-    "operationId": "getSetupApproval",
-    "method": "get",
-    "path": "/setup-approvals/{approval}",
-    "routeKey": "GET /setup-approvals/{approval}",
-    "summary": "Read a setup change an agent admin asked for, and what became of it.",
-    "description": "Only the agent that asked and its sponsor, who decides, can read it.",
-    "signIn": true,
-    "command": [
-      "setup-approvals",
-      "get"
-    ],
-    "options": [
-      {
-        "name": "approval",
-        "in": "path",
-        "type": "string",
-        "required": true,
-        "description": "The approval's ID."
-      }
-    ]
-  },
-  {
-    "operationId": "approveSetup",
-    "method": "post",
-    "path": "/setup-approvals/{approval}/approve",
-    "routeKey": "POST /setup-approvals/{approval}/approve",
-    "summary": "Approve a setup change your agent admin asked for, which makes it as the agent.",
-    "description": "Duva works out the change's effect again first. If it would now do something other than its preview says, the approval waits with the new preview, and approving is refused with 409, so read it and approve again. A change that can't be made now, as when its address was taken meanwhile, is refused with 409 and keeps waiting, for you to reject. Only the agent's sponsor decides, never an agent, and only once. While the agent is paused, it can't be approved. The decision is recorded in the organization's change feed under you, and the change under the agent.",
-    "signIn": true,
-    "command": [
-      "setup-approvals",
-      "approve"
-    ],
-    "options": [
-      {
-        "name": "approval",
-        "in": "path",
-        "type": "string",
-        "required": true,
-        "description": "The approval's ID."
-      }
-    ]
-  },
-  {
-    "operationId": "rejectSetup",
-    "method": "post",
-    "path": "/setup-approvals/{approval}/reject",
-    "routeKey": "POST /setup-approvals/{approval}/reject",
-    "summary": "Reject a setup change your agent admin asked for, with a note the agent sees.",
-    "description": "Nothing changes. Only the agent's sponsor decides, never an agent, and only once. The decision is recorded in the organization's change feed under you.",
-    "signIn": true,
-    "command": [
-      "setup-approvals",
-      "reject"
-    ],
-    "options": [
-      {
-        "name": "approval",
-        "in": "path",
-        "type": "string",
-        "required": true,
-        "description": "The approval's ID."
-      },
-      {
-        "name": "note",
-        "in": "body",
-        "type": "string",
-        "required": true,
-        "description": "What the agent should change."
       }
     ]
   }

@@ -176,8 +176,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/OrganizationSettings"
-        "202":
-          $ref: "#/components/responses/SetupAsked"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -284,8 +282,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Human"
-        "202":
-          $ref: "#/components/responses/SetupAsked"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -351,11 +347,11 @@ paths:
       summary: Remove a human, handing over or deleting each of their mailboxes, and remove the agents they sponsor.
       description: >
         Only admins can remove humans. Run it first with dryRun to see the
-        human's mailboxes, their agents and the agents' mailboxes. Then say
+        human's mailboxes and their agents. Then say
         what happens to each of the human's mailboxes: handOver gives it to
         the human handTo, as another personal mailbox of theirs with its
         addresses and mail, and delete erases it. The agents are removed, so
-        their keys stop working, and their mailboxes are erased. Erasing a
+        their keys stop working. Erasing a
         mailbox erases its mail everywhere Duva keeps it, as emptying Trash
         does, and its approval records only if the organization's settings
         say so. Its addresses are freed at once. The human's Cognito user is
@@ -431,58 +427,19 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
   /agents/{agent}:
-    patch:
-      operationId: changeAgent
-      summary: Make an agent you sponsor an admin, or take it away.
-      description: >
-        Only the agent's sponsor can, and only while they are an admin
-        themselves to make it one. No agent can change who is an admin. An
-        agent admin's changes to the setup wait for your approval unless you
-        switch approvalForSetup off in its settings, and it never removes
-        humans or agents, or changes who is an admin. It stops being an admin when you
-        do, and its setup changes still waiting are withdrawn. The change is
-        recorded in the organization's change feed under you.
-      x-cli-command: agents change
-      parameters:
-        - $ref: "#/components/parameters/Agent"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/AgentChanges"
-      responses:
-        "200":
-          description: The agent, changed.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Agent"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
     delete:
       operationId: removeAgent
-      summary: Remove an agent, which stops its key working and erases its mailboxes.
+      summary: Remove an agent, which stops its key working.
       description: >
         Only the agent's sponsor and human admins can remove it, never an
-        agent, not even an agent admin. Its sends and setup changes waiting
-        for approval are withdrawn. Its mailboxes are erased everywhere Duva
-        keeps their mail, as emptying Trash does, and their approval records
-        only if the organization's settings say so. Their addresses are freed
-        at once. The removal is recorded in the organization's change feed
-        under you.
+        agent. Its sends waiting for approval are withdrawn. The removal is
+        recorded in the organization's change feed under you.
       x-cli-command: agents remove
       parameters:
         - $ref: "#/components/parameters/Agent"
       responses:
         "200":
-          description: The agent, removed, and the mailboxes erased with it.
+          description: The agent, removed.
           content:
             application/json:
               schema:
@@ -525,10 +482,9 @@ paths:
       description: >
         Only the agent's sponsor and admins can pause it. While it is paused,
         every call with its key is refused with 403, its approvals wait but
-        can't be sent, and its sends already approved are held. Mail to its
-        mailboxes keeps arriving. Pausing is recorded under you in the change
-        feed of each of the agent's mailboxes and in the organization's.
-        Pausing a paused agent changes nothing.
+        can't be sent, and its sends already approved are held. Pausing is
+        recorded under you in the organization's change feed. Pausing a paused
+        agent changes nothing.
       x-cli-command: agents pause
       parameters:
         - $ref: "#/components/parameters/Agent"
@@ -539,8 +495,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Agent"
-        "202":
-          $ref: "#/components/responses/SetupAsked"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -555,9 +509,8 @@ paths:
         Only the agent's sponsor and human admins can unpause it, never an
         agent. Its sends held while it was paused go out, those from each
         mailbox oldest first, so look at them first.
-        Unpausing is recorded under you in the change feed of each of the
-        agent's mailboxes and in the organization's. Unpausing an agent that
-        isn't paused changes nothing.
+        Unpausing is recorded under you in the organization's change feed.
+        Unpausing an agent that isn't paused changes nothing.
       x-cli-command: agents unpause
       parameters:
         - $ref: "#/components/parameters/Agent"
@@ -604,9 +557,9 @@ paths:
       description: >
         Give only the settings to change. A change works at once. Only the
         agent's sponsor can change them, so not even an admin can. Each change is
-        recorded under you, with the old and new values, in your personal
-        mailbox's change feed, or if you have none, in the agent's. If
-        neither of you has a mailbox, the change is refused. Sponsor access
+        recorded under you, with the old and new values, in the change feed
+        of each of your personal mailboxes. If you have none, the change is
+        refused. Sponsor access
         covers the mailboxes of yours that sponsorMailboxes names, or all of
         them while it is null. Read lets the agent read them, organize also
         lets it organize them and move threads to Trash and back, draft also
@@ -647,13 +600,12 @@ paths:
   /agents/{agent}/activity:
     get:
       operationId: getAgentActivity
-      summary: Read an agent's daily summaries, how much it sent, had approved or rejected, received, organized and screened each day.
+      summary: Read an agent's daily summaries, how much it sent, had approved or rejected, organized and screened each day.
       description: >
         Gives every day from from to to, newest first, each day in your time
         zone, days without activity included. Leave both out for the last 30
-        days. Activity reaches back to the agent's start: what happened in its
-        mailboxes, what it did in its sponsor's mailbox, and the organization's
-        changes to it. Only the agent's sponsor and admins can read it.
+        days. Activity reaches back to the agent's start: what it did in its
+        sponsor's mailboxes, and the organization's changes to it. Only the agent's sponsor and admins can read it.
       x-cli-command: agents activity
       parameters:
         - $ref: "#/components/parameters/Agent"
@@ -688,7 +640,7 @@ paths:
   /agents/{agent}/activity/{day}:
     get:
       operationId: getAgentActivityDay
-      summary: Read an agent's timeline for one day, everything it did and what happened in its mailboxes, newest first.
+      summary: Read an agent's timeline for one day, everything it did and what was done to it, newest first.
       description: >
         Lists the day's entries a page at a time, newest first. Each is a
         change as the change feed recorded it, with the mailbox it was in and
@@ -918,8 +870,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Address"
-        "202":
-          $ref: "#/components/responses/SetupAsked"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -973,8 +923,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Address"
-        "202":
-          $ref: "#/components/responses/SetupAsked"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -1010,8 +958,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Group"
-        "202":
-          $ref: "#/components/responses/SetupAsked"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -1081,8 +1027,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Group"
-        "202":
-          $ref: "#/components/responses/SetupAsked"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -1110,8 +1054,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Group"
-        "202":
-          $ref: "#/components/responses/SetupAsked"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -1149,8 +1091,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Domain"
-        "202":
-          $ref: "#/components/responses/SetupAsked"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -1229,8 +1169,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Domain"
-        "202":
-          $ref: "#/components/responses/SetupAsked"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -1275,8 +1213,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DomainRemoval"
-        "202":
-          $ref: "#/components/responses/SetupAsked"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -1314,8 +1250,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Domain"
-        "202":
-          $ref: "#/components/responses/SetupAsked"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -1344,8 +1278,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Domain"
-        "202":
-          $ref: "#/components/responses/SetupAsked"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -1404,8 +1336,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DomainLogo"
-        "202":
-          $ref: "#/components/responses/SetupAsked"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -1431,8 +1361,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DomainLogo"
-        "202":
-          $ref: "#/components/responses/SetupAsked"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -1466,8 +1394,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DomainLogo"
-        "202":
-          $ref: "#/components/responses/SetupAsked"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -1494,8 +1420,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DomainLogo"
-        "202":
-          $ref: "#/components/responses/SetupAsked"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -1585,12 +1509,12 @@ paths:
   /mailboxes:
     post:
       operationId: createMailbox
-      summary: Create a personal mailbox for a human or an agent, with an address on one of the organization's standalone domains.
+      summary: Create a personal mailbox for a human, with an address on one of the organization's standalone domains.
       description: >
         Only admins can create mailboxes. The address becomes the mailbox's
         default address, and mail to it is accepted from then on. An admin
-        can't read a personal mailbox they don't own, even one they created,
-        unless they sponsor the agent that owns it. Creating the
+        can't read a personal mailbox they don't own, even one they created.
+        Agents own no mailboxes, so the owner is a human. Creating the
         mailbox and its address are changes to the organization's setup,
         recorded in its change feed.
       x-cli-command: mailboxes create
@@ -1607,8 +1531,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Mailbox"
-        "202":
-          $ref: "#/components/responses/SetupAsked"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -1619,7 +1541,7 @@ paths:
           $ref: "#/components/responses/Conflict"
     get:
       operationId: listMailboxes
-      summary: List the mailboxes you can read, your own and those of the agents you sponsor.
+      summary: List the mailboxes you can read, your own, or as an agent your sponsor's that your sponsor access covers.
       description: >
         An agent your sponsor gives sponsor access also finds
         your sponsor's personal mailbox here, listed with that access.
@@ -1638,8 +1560,8 @@ paths:
       operationId: getMailbox
       summary: Read a mailbox you can read, with how many threads in its Inbox are unread.
       description: >
-        Only the mailbox's owner, for an agent's mailbox its sponsor, and
-        for a human's mailbox the agents they give sponsor access can read it.
+        Only the mailbox's owner and the
+        agents they give sponsor access can read it.
       x-cli-command: mailboxes get
       parameters:
         - $ref: "#/components/parameters/Mailbox"
@@ -1680,8 +1602,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Mailbox"
-        "202":
-          $ref: "#/components/responses/SetupAsked"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -1698,8 +1618,7 @@ paths:
         Lists up to 100 changes, oldest first, leaving out the arrivals of
         mail judged to be spam unless asked for them. To catch up, call again with
         the position the answer ends at until it lists no more. Only the
-        mailbox's owner, for an agent's mailbox its sponsor, and for a human's
-        mailbox the agents they give sponsor access can read it.
+        mailbox's owner and the agents they give sponsor access can read it.
       x-cli-command: mailboxes changes
       parameters:
         - $ref: "#/components/parameters/Mailbox"
@@ -1823,8 +1742,8 @@ paths:
         Marks each thread read. Read state belongs to the mailbox, so it is
         the same for each actor who reads it. Each thread
         that was unread gets a change in the mailbox's change feed, naming
-        you. Only the mailbox's owner, for an agent's mailbox its sponsor, and
-        for a human's mailbox the agents they give organize sponsor access or more
+        you. Only the mailbox's owner and the
+        agents they give organize sponsor access or more
         can mark its threads.
       x-cli-command: threads mark-read
       parameters:
@@ -1857,8 +1776,8 @@ paths:
       description: >
         Marks each thread unread, so it stands out until it is read again.
         Each thread that was read gets a change in the mailbox's change feed,
-        naming you. Only the mailbox's owner, for an agent's mailbox its sponsor, and
-        for a human's mailbox the agents they give organize sponsor access or more
+        naming you. Only the mailbox's owner and the
+        agents they give organize sponsor access or more
         can mark its threads.
       x-cli-command: threads mark-unread
       parameters:
@@ -1894,8 +1813,8 @@ paths:
         Trash and the Screener. Adding spam or trash takes a thread out of the Inbox. Removing
         spam (not spam) or trash (restore) puts it back in the Inbox, unless
         it still has the other, waits in the Screener, or inbox is removed too. Each thread whose labels change gets a change
-        in the mailbox's change feed, naming you. Only the mailbox's owner, for an agent's mailbox its sponsor, and
-        for a human's mailbox the agents they give organize sponsor access or more
+        in the mailbox's change feed, naming you. Only the mailbox's owner and the
+        agents they give organize sponsor access or more
         can label its threads.
       x-cli-command: threads label
       parameters:
@@ -1959,8 +1878,7 @@ paths:
         A thread already set aside gets the new time. A thread in Spam or
         Trash, or waiting in the Screener, can't be set aside. Each thread
         gets a change in the mailbox's change feed, naming you. Only the
-        mailbox's owner, for an agent's mailbox its sponsor, and for a
-        human's mailbox the agents they give organize sponsor access or
+        mailbox's owner and the agents they give organize sponsor access or
         more can set its threads aside.
       x-cli-command: threads remind
       parameters:
@@ -2199,8 +2117,8 @@ paths:
       description: >
         Creates a label of the mailbox's own, with a name no other label in it
         has, in any case. Then add it to threads by its ID. Only
-        the mailbox's owner, for an agent's mailbox its sponsor, and
-        for a human's mailbox the agents they give organize sponsor access or more can create its labels. The change is recorded in the
+        the mailbox's owner and the
+        agents they give organize sponsor access or more can create its labels. The change is recorded in the
         mailbox's change feed, naming you.
       x-cli-command: labels create
       parameters:
@@ -2235,8 +2153,8 @@ paths:
       description: >
         Gives the label a name no other label in the mailbox has, in any case.
         Its threads keep it. The built-in labels can't be renamed. Only
-        the mailbox's owner, for an agent's mailbox its sponsor, and
-        for a human's mailbox the agents they give organize sponsor access or more can rename its labels. The change
+        the mailbox's owner and the
+        agents they give organize sponsor access or more can rename its labels. The change
         is recorded in the mailbox's change feed, naming you.
       x-cli-command: labels rename
       parameters:
@@ -2273,8 +2191,8 @@ paths:
         mailbox's change feed, and then deletes it. The threads stay. Senders
         whose mail was filed under it go to the Inbox from then on. The
         built-in labels can't be deleted. If deleting stops partway, delete
-        the label again to finish. Only the mailbox's owner, for an agent's mailbox its sponsor, and
-        for a human's mailbox the agents they give organize sponsor access or more can delete its labels.
+        the label again to finish. Only the mailbox's owner and the
+        agents they give organize sponsor access or more can delete its labels.
       x-cli-command: labels delete
       parameters:
         - $ref: "#/components/parameters/Mailbox"
@@ -2481,10 +2399,9 @@ paths:
         Turning it off moves every waiting thread to the Inbox. Turning it on
         decides the Inbox for every address mail in the mailbox is from,
         except mail in Spam and addresses at a domain decided on, so no
-        sender the mailbox already has waits. A human's mailbox
-        starts with it on, an agent's with it off. Switching is recorded in
-        the mailbox's change feed under you. Only the mailbox's owner, and
-        an agent's sponsor for its agent's mailbox, can switch it.
+        sender the mailbox already has waits. A mailbox starts with it on.
+        Switching is recorded in the mailbox's change feed under you. Only
+        the mailbox's owner can switch it.
       x-cli-command: screener switch
       parameters:
         - $ref: "#/components/parameters/Mailbox"
@@ -2583,8 +2500,7 @@ paths:
         Duva never unsubscribes by mailto or by a link in the body. The
         decision, each thread it moves or erases and the unsubscribe's
         outcome are recorded in the mailbox's change feed under you. Only the
-        mailbox's owner, for an agent's mailbox its sponsor, and for a
-        human's mailbox the agents they give organize sponsor access or more
+        mailbox's owner and the agents they give organize sponsor access or more
         can decide, and only the owner or the sponsor can choose nowhere.
       x-cli-command: senders set
       parameters:
@@ -2620,8 +2536,8 @@ paths:
         threads where their mail went move to where it goes now, the Inbox
         unless their domain's decision says otherwise. Mail nowhere dropped
         doesn't come back. The removal and each thread it moves are recorded
-        in the mailbox's change feed under you. Only the mailbox's owner, for
-        an agent's mailbox its sponsor, and for a human's mailbox the agents
+        in the mailbox's change feed under you. Only the mailbox's owner and the
+        agents
         they give organize sponsor access or more can remove decisions.
       x-cli-command: senders remove
       parameters:
@@ -2648,8 +2564,8 @@ paths:
         Duva takes the attachment from the stored message when the link is
         followed, so nothing is stored twice. The link works for 5 minutes,
         for whoever follows it, so keep it to yourself. Only those who can read
-        the mailbox get one: its owner, for an agent's mailbox its sponsor, and
-        for a human's mailbox the agents they give sponsor access.
+        the mailbox get one: its owner and the
+        agents they give sponsor access.
       x-cli-command: attachments link
       parameters:
         - $ref: "#/components/parameters/Mailbox"
@@ -2849,12 +2765,11 @@ paths:
         A human's send from their own mailbox needs no approval, so Duva sends
         it at once, with no disclosure, also when their agent wrote the draft.
         An agent's send waits for its sponsor's approval unless the sponsor
-        switched that off, separately for its own mailbox and for its
-        sponsor's. With send sponsor access, an agent sends as its sponsor from
-        the sponsor's mailbox: from the draft's address, under the sponsor's
-        name. Every message an agent sends carries the Duva-Agent header, and
-        a visible line unless its sponsor switched that off for where it sends
-        from. Its send shows where it stands. Bcc recipients get the message,
+        switched that off. With send sponsor access, an agent sends as its
+        sponsor from the sponsor's mailbox: from the draft's address, under
+        the sponsor's name. Every message an agent sends carries the
+        Duva-Agent header, and a visible line unless its sponsor switched that
+        off. Its send shows where it stands. Bcc recipients get the message,
         but no header names them. Only the mailbox's owner, and an agent with
         send sponsor access to it, can ask. The draft needs a recipient in To,
         and a draft waits for one approval at a time. It goes only from an
@@ -2996,13 +2911,11 @@ paths:
   /approvals:
     get:
       operationId: listApprovals
-      summary: List the approvals waiting for you, newest first, sends with their drafts and setup changes with their previews.
+      summary: List the sends waiting for your approval, newest first, each with its draft.
       description: >
-        An agent's sends wait for its sponsor, from its own mailbox and as its
-        sponsor from theirs, so a sponsor sees those of every agent they
-        sponsor. Each approval's mailbox tells which. The setup changes of
-        agents they made admins wait for them too, each with a preview of what
-        it does.
+        An agent's sends wait for its sponsor, from the sponsor's own
+        mailboxes, so a sponsor sees those of every agent they sponsor. Each
+        approval's mailbox tells which.
       x-cli-command: approvals list
       responses:
         "200":
@@ -3167,93 +3080,6 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
-  /setup-approvals/{approval}:
-    get:
-      operationId: getSetupApproval
-      summary: Read a setup change an agent admin asked for, and what became of it.
-      description: Only the agent that asked and its sponsor, who decides, can read it.
-      x-cli-command: setup-approvals get
-      parameters:
-        - $ref: "#/components/parameters/Approval"
-      responses:
-        "200":
-          description: The setup approval.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/SetupApproval"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-  /setup-approvals/{approval}/approve:
-    post:
-      operationId: approveSetup
-      summary: Approve a setup change your agent admin asked for, which makes it as the agent.
-      description: >
-        Duva works out the change's effect again first. If it would now do
-        something other than its preview says, the approval waits with the
-        new preview, and approving is refused with 409, so read it and
-        approve again. A change that can't be made now, as when its address
-        was taken meanwhile, is refused with 409 and keeps waiting, for you
-        to reject. Only the agent's sponsor decides, never an agent, and only
-        once. While the agent is paused, it can't be approved. The decision
-        is recorded in the organization's change feed under you, and the
-        change under the agent.
-      x-cli-command: setup-approvals approve
-      parameters:
-        - $ref: "#/components/parameters/Approval"
-      responses:
-        "200":
-          description: The setup approval, approved, with what the change answered.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/SetupApproval"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-  /setup-approvals/{approval}/reject:
-    post:
-      operationId: rejectSetup
-      summary: Reject a setup change your agent admin asked for, with a note the agent sees.
-      description: >
-        Nothing changes. Only the agent's sponsor decides, never an agent,
-        and only once. The decision is recorded in the organization's change
-        feed under you.
-      x-cli-command: setup-approvals reject
-      parameters:
-        - $ref: "#/components/parameters/Approval"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/Rejection"
-      responses:
-        "200":
-          description: The setup approval, rejected.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/SetupApproval"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
 components:
   parameters:
     Sender:
@@ -3346,15 +3172,6 @@ components:
       scheme: bearer
       description: An agent's key, which starts with duva_agent_.
   responses:
-    SetupAsked:
-      description: >-
-        You are an agent admin, so the change waits for your sponsor's
-        approval, which runs it as you. Read the setup approval to see what
-        became of it.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/SetupApproval"
     BadRequest:
       description: The request is malformed.
       content:
@@ -3480,7 +3297,7 @@ components:
     HumanRemoval:
       type: object
       additionalProperties: false
-      required: [human, mailboxes, agents, agentMailboxes, removed]
+      required: [human, mailboxes, agents, removed]
       description: A human's removal, and what goes with them.
       properties:
         human:
@@ -3495,19 +3312,17 @@ components:
           description: The agents the human sponsors, removed with them.
           items:
             $ref: "#/components/schemas/Agent"
-        agentMailboxes:
-          type: array
-          description: The agents' mailboxes, erased with them.
-          items:
-            $ref: "#/components/schemas/Mailbox"
         removed:
           type: boolean
           description: Whether the human was removed, which a dry run leaves undone.
     Agent:
       type: object
       additionalProperties: false
-      required: [id, kind, name, sponsor, admin]
-      description: An actor that is software, which calls Duva with its key.
+      required: [id, kind, name, sponsor]
+      description: >-
+        An actor that is software, which calls Duva with its key. It owns no
+        mailbox and is never an admin: it works only in its sponsor's
+        mailboxes, with the sponsor access they give it (ADR-0030).
       properties:
         id:
           type: string
@@ -3522,13 +3337,6 @@ components:
         sponsor:
           type: string
           description: The ID of the human who answers for the agent.
-        admin:
-          type: boolean
-          description: >-
-            Whether the agent may change the organization's setup, which only
-            an agent whose sponsor is an admin can. Its changes wait for its
-            sponsor's approval unless approvalForSetup is off, and it never
-            removes humans or agents, or changes who is an admin.
         paused:
           $ref: "#/components/schemas/Pause"
         mailbox:
@@ -3574,14 +3382,6 @@ components:
           maxLength: 64
           description: The agent's name.
           examples: ["Hermes"]
-    AgentChanges:
-      type: object
-      additionalProperties: false
-      required: [admin]
-      properties:
-        admin:
-          type: boolean
-          description: Whether the agent may change the organization's setup, with its sponsor's approval unless switched off.
     AgentWithKey:
       type: object
       additionalProperties: false
@@ -3605,20 +3405,15 @@ components:
     AgentRemoval:
       type: object
       additionalProperties: false
-      required: [agent, mailboxes]
+      required: [agent]
       properties:
         agent:
           $ref: "#/components/schemas/Agent"
-        mailboxes:
-          type: array
-          description: The agent's mailboxes, erased with it.
-          items:
-            $ref: "#/components/schemas/Mailbox"
     AgentSettings:
       type: object
       additionalProperties: false
-      required: [sponsorAccess, sponsorMailboxes, approvalForOwnMailbox, approvalAsSponsor, disclosureLineForOwnMailbox, disclosureLineAsSponsor, sendsPerHour, newRecipientsPerDay, approvalForSetup]
-      description: What an agent may do in its sponsor's personal mailbox, which of its sends and setup changes wait for approval, which sends carry the disclosure's visible line, and its send limits.
+      required: [sponsorAccess, sponsorMailboxes, approvalAsSponsor, disclosureLineAsSponsor, sendsPerHour, newRecipientsPerDay]
+      description: What an agent may do in its sponsor's personal mailboxes, whether its sends there wait for approval and carry the disclosure's visible line, and its send limits.
       properties:
         sponsorAccess:
           $ref: "#/components/schemas/SponsorAccess"
@@ -3630,20 +3425,14 @@ components:
           anyOf:
             - $ref: "#/components/schemas/SponsorMailboxes"
             - type: "null"
-        approvalForOwnMailbox:
-          $ref: "#/components/schemas/ApprovalForOwnMailbox"
         approvalAsSponsor:
           $ref: "#/components/schemas/ApprovalAsSponsor"
-        disclosureLineForOwnMailbox:
-          $ref: "#/components/schemas/DisclosureLineForOwnMailbox"
         disclosureLineAsSponsor:
           $ref: "#/components/schemas/DisclosureLineAsSponsor"
         sendsPerHour:
           $ref: "#/components/schemas/SendsPerHour"
         newRecipientsPerDay:
           $ref: "#/components/schemas/NewRecipientsPerDay"
-        approvalForSetup:
-          $ref: "#/components/schemas/ApprovalForSetup"
     AgentSettingsChanges:
       type: object
       additionalProperties: false
@@ -3659,20 +3448,14 @@ components:
           anyOf:
             - $ref: "#/components/schemas/SponsorMailboxes"
             - type: "null"
-        approvalForOwnMailbox:
-          $ref: "#/components/schemas/ApprovalForOwnMailbox"
         approvalAsSponsor:
           $ref: "#/components/schemas/ApprovalAsSponsor"
-        disclosureLineForOwnMailbox:
-          $ref: "#/components/schemas/DisclosureLineForOwnMailbox"
         disclosureLineAsSponsor:
           $ref: "#/components/schemas/DisclosureLineAsSponsor"
         sendsPerHour:
           $ref: "#/components/schemas/SendsPerHour"
         newRecipientsPerDay:
           $ref: "#/components/schemas/NewRecipientsPerDay"
-        approvalForSetup:
-          $ref: "#/components/schemas/ApprovalForSetup"
     SponsorAccess:
       type: string
       enum: [none, read, organize, draft, send]
@@ -3814,18 +3597,9 @@ components:
       properties:
         code:
           type: string
-    ApprovalForOwnMailbox:
-      type: boolean
-      description: Whether the agent's sends from its own mailbox wait for its sponsor's approval. On by default.
-    ApprovalForSetup:
-      type: boolean
-      description: Whether the agent's changes to the organization's setup, as an admin, wait for its sponsor's approval. On by default.
     ApprovalAsSponsor:
       type: boolean
       description: Whether the agent's sends as its sponsor, from the sponsor's mailbox, wait for the sponsor's approval. On by default.
-    DisclosureLineForOwnMailbox:
-      type: boolean
-      description: Whether mail the agent sends from its own mailbox carries the disclosure's visible line. It always carries the Duva-Agent header. On by default.
     DisclosureLineAsSponsor:
       type: boolean
       description: Whether mail the agent sends as its sponsor carries the disclosure's visible line. It always carries the Duva-Agent header. On by default.
@@ -3834,8 +3608,8 @@ components:
       minimum: 1
       maximum: 10000
       description: >-
-        How many messages the agent sends in any hour, from all its mailboxes
-        and as its sponsor. 100 by default, and up to the organization's
+        How many messages the agent sends in any hour, from all its sponsor's
+        mailboxes. 100 by default, and up to the organization's
         agentSendsPerHourCap. A send counts when it goes out, and one over
         the limit waits.
     NewRecipientsPerDay:
@@ -4268,7 +4042,7 @@ components:
       properties:
         owner:
           type: string
-          description: The ID of the human or agent that owns the mailbox.
+          description: The ID of the human who owns the mailbox. Agents own none.
         address:
           type: string
           description: The mailbox's first address, its default address, on one of the organization's standalone domains, without a plus tag.
@@ -5117,7 +4891,7 @@ components:
         - $ref: "#/components/schemas/ChangeBase"
         - type: object
           required: [type, agent, before, after]
-          description: The sponsor changed an agent's settings, or an admin lowered a cap below its send limits. Recorded in the sponsor's personal mailbox, or the agent's if the sponsor has none.
+          description: The sponsor changed an agent's settings, or an admin lowered a cap below its send limits. Recorded in each of the sponsor's personal mailboxes.
           properties:
             type:
               type: string
@@ -5894,55 +5668,12 @@ components:
     ApprovalList:
       type: object
       additionalProperties: false
-      required: [approvals, setupApprovals]
+      required: [approvals]
       properties:
         approvals:
           type: array
           items:
             $ref: "#/components/schemas/Approval"
-        setupApprovals:
-          type: array
-          description: The setup changes your agent admins asked for that wait for you, newest first.
-          items:
-            $ref: "#/components/schemas/SetupApproval"
-    SetupApproval:
-      type: object
-      additionalProperties: false
-      required: [id, state, agent, approver, operation, preview, askedAt]
-      description: A change to the organization's setup an agent admin asked for, waiting for or decided by its sponsor.
-      properties:
-        id:
-          type: string
-          description: The setup approval's ID.
-        state:
-          type: string
-          enum: [pending, withdrawn, rejected, approved]
-          description: Withdrawn when the agent stopped being an admin, or was removed, before it was decided.
-        agent:
-          type: string
-          description: The ID of the agent that asked.
-        approver:
-          type: string
-          description: The ID of the human who decides, the agent's sponsor.
-        operation:
-          $ref: "#/components/schemas/SetupOperation"
-        preview:
-          type: array
-          items:
-            type: string
-          description: What the change does, as Duva works it out from the setup as it is now.
-          examples: [["Gives the mailbox of ada@example.com the address sales@example.com."]]
-        askedAt:
-          type: string
-          format: date-time
-        decidedAt:
-          type: string
-          format: date-time
-        note:
-          type: string
-          description: The sponsor's note, if they rejected it.
-        result:
-          $ref: "#/components/schemas/SetupResult"
     ApprovalLog:
       type: object
       additionalProperties: false
@@ -6028,36 +5759,6 @@ components:
         reason:
           type: string
           description: Why it failed.
-    SetupOperation:
-      type: object
-      additionalProperties: false
-      required: [operationId]
-      description: The call the agent made, which approving makes again as the agent.
-      properties:
-        operationId:
-          type: string
-          description: The operation's ID in this document.
-          examples: ["addAddress"]
-        path:
-          type: object
-          additionalProperties:
-            type: string
-          description: Its path parameters.
-        body:
-          type: object
-          additionalProperties: true
-          description: Its JSON body.
-    SetupResult:
-      type: object
-      additionalProperties: false
-      required: [status, body]
-      description: What the change answered once approved, as it would have answered the agent.
-      properties:
-        status:
-          type: integer
-          description: The HTTP status code.
-        body:
-          description: The JSON body.
     Rejection:
       type: object
       additionalProperties: false
@@ -6485,7 +6186,7 @@ components:
           description: >-
             True when Duva knows an agent sent the message: an agent sent it from this Duva, or it
             came with the Duva-Agent header from one of the organization's domains with a DMARC
-            pass, as a message an agent sent from another of its mailboxes does. Absent otherwise,
+            pass, as a message an agent sent from another of its sponsor's mailboxes does. Absent otherwise,
             and on mail Duva received before it kept this.
         logo:
           description: >-
@@ -6665,11 +6366,7 @@ components:
         - $ref: "#/components/schemas/AdminChanged"
         - $ref: "#/components/schemas/MailboxHandedOver"
         - $ref: "#/components/schemas/MailboxDeleted"
-        - $ref: "#/components/schemas/AgentAdminChanged"
-        - $ref: "#/components/schemas/SetupAsked"
-        - $ref: "#/components/schemas/SetupApproved"
-        - $ref: "#/components/schemas/SetupRejected"
-        - $ref: "#/components/schemas/SetupWithdrawn"
+        - $ref: "#/components/schemas/RetiredChange"
       discriminator:
         propertyName: type
         mapping:
@@ -6694,11 +6391,11 @@ components:
           adminChanged: "#/components/schemas/AdminChanged"
           mailboxHandedOver: "#/components/schemas/MailboxHandedOver"
           mailboxDeleted: "#/components/schemas/MailboxDeleted"
-          agentAdminChanged: "#/components/schemas/AgentAdminChanged"
-          setupAsked: "#/components/schemas/SetupAsked"
-          setupApproved: "#/components/schemas/SetupApproved"
-          setupRejected: "#/components/schemas/SetupRejected"
-          setupWithdrawn: "#/components/schemas/SetupWithdrawn"
+          agentAdminChanged: "#/components/schemas/RetiredChange"
+          setupAsked: "#/components/schemas/RetiredChange"
+          setupApproved: "#/components/schemas/RetiredChange"
+          setupRejected: "#/components/schemas/RetiredChange"
+          setupWithdrawn: "#/components/schemas/RetiredChange"
     ChangeBase:
       type: object
       required: [position, at, actor]
@@ -6796,7 +6493,7 @@ components:
         - $ref: "#/components/schemas/ChangeBase"
         - type: object
           required: [type, agent]
-          description: An agent was paused. Recorded in the change feed of each of the agent's mailboxes and in the organization's.
+          description: An agent was paused.
           properties:
             type:
               type: string
@@ -6809,7 +6506,7 @@ components:
         - $ref: "#/components/schemas/ChangeBase"
         - type: object
           required: [type, agent]
-          description: An agent was unpaused. Recorded in the change feed of each of the agent's mailboxes and in the organization's.
+          description: An agent was unpaused.
           properties:
             type:
               type: string
@@ -6913,93 +6610,24 @@ components:
             mailbox:
               type: string
               description: The ID of the mailbox.
-    AgentAdminChanged:
+    RetiredChange:
       allOf:
         - $ref: "#/components/schemas/ChangeBase"
         - type: object
-          required: [type, agent, admin]
-          description: An agent was made an admin, or stopped being one, as when its sponsor stopped being one.
+          required: [type]
+          additionalProperties: true
+          description: >-
+            A change of a kind Duva no longer records, kept as it was
+            recorded: an agent made an admin or no longer one, or an agent
+            admin's setup change asked for, approved, rejected or withdrawn,
+            from before agents stopped being admins (ADR-0030).
           properties:
             type:
               type: string
-              const: agentAdminChanged
+              enum: [agentAdminChanged, setupAsked, setupApproved, setupRejected, setupWithdrawn]
             agent:
               type: string
               description: The ID of the agent.
-            admin:
-              type: boolean
-              description: Whether the agent is an admin now.
-    SetupAsked:
-      allOf:
-        - $ref: "#/components/schemas/ChangeBase"
-        - type: object
-          required: [type, approval, operation, preview]
-          description: An agent admin asked to change the setup, which waits for its sponsor's approval.
-          properties:
-            type:
-              type: string
-              const: setupAsked
-            approval:
-              type: string
-              description: The ID of the setup approval.
-            operation:
-              $ref: "#/components/schemas/SetupOperation"
-            preview:
-              type: array
-              items:
-                type: string
-              description: What the change would do, as Duva worked it out then.
-    SetupApproved:
-      allOf:
-        - $ref: "#/components/schemas/ChangeBase"
-        - type: object
-          required: [type, approval, agent]
-          description: The sponsor approved an agent admin's setup change, which is made next under the agent.
-          properties:
-            type:
-              type: string
-              const: setupApproved
-            approval:
-              type: string
-              description: The ID of the setup approval.
-            agent:
-              type: string
-              description: The ID of the agent that asked.
-    SetupRejected:
-      allOf:
-        - $ref: "#/components/schemas/ChangeBase"
-        - type: object
-          required: [type, approval, agent, note]
-          description: The sponsor rejected an agent admin's setup change.
-          properties:
-            type:
-              type: string
-              const: setupRejected
-            approval:
-              type: string
-              description: The ID of the setup approval.
-            agent:
-              type: string
-              description: The ID of the agent that asked.
-            note:
-              type: string
-              description: The sponsor's note.
-    SetupWithdrawn:
-      allOf:
-        - $ref: "#/components/schemas/ChangeBase"
-        - type: object
-          required: [type, approval, agent]
-          description: An agent admin's setup change was withdrawn before it was decided, since the agent stopped being an admin or was removed.
-          properties:
-            type:
-              type: string
-              const: setupWithdrawn
-            approval:
-              type: string
-              description: The ID of the setup approval.
-            agent:
-              type: string
-              description: The ID of the agent that asked.
     AddressRemoved:
       allOf:
         - $ref: "#/components/schemas/ChangeBase"
@@ -7336,7 +6964,7 @@ components:
     ActivitySummary:
       type: object
       additionalProperties: false
-      required: [day, sent, approved, rejected, received, organized, screened, alerts]
+      required: [day, sent, approved, rejected, organized, screened, alerts]
       description: How much an agent did in one day.
       properties:
         day:
@@ -7352,15 +6980,12 @@ components:
         rejected:
           type: integer
           description: Its sends its sponsor rejected.
-        received:
-          type: integer
-          description: The messages that arrived in its mailboxes, spam included.
         organized:
           type: integer
           description: The times it marked threads read or unread, changed their labels, or created, renamed or deleted a label.
         screened:
           type: integer
-          description: The times it let a sender in, blocked one, removed a decision on one, or switched a Screener.
+          description: The times it let a sender in, blocked one, or removed a decision on one.
         alerts:
           type: integer
           description: The alerts about it its sponsor got that day.
@@ -7390,9 +7015,9 @@ components:
       additionalProperties: false
       required: [change]
       description: >
-        One change in an agent's activity: in one of its mailboxes, by it in
-        its sponsor's mailbox or about its sends there, or in the
-        organization's setup about it or by it.
+        One change in an agent's activity: by it in one of its sponsor's
+        mailboxes or about its sends there, or in the organization's setup
+        about it or by it.
       properties:
         mailbox:
           type: string

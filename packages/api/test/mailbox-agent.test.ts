@@ -58,21 +58,10 @@ test("a human's new mailbox gets a mailbox agent its owner sponsors, which may r
   const { response, data } = await linus.GET("/mailboxes/{mailbox}/agent", { params });
 
   expect(response.status).toBe(200);
-  expect(data).toEqual({ agent: { id: expect.any(String), kind: "agent", name: "Mailbox agent", sponsor: linusId, admin: false, mailbox: mailbox.id }, turns: [] });
+  expect(data).toEqual({ agent: { id: expect.any(String), kind: "agent", name: "Mailbox agent", sponsor: linusId, mailbox: mailbox.id }, turns: [] });
   expect((await linus.GET("/agents")).data!.agents).toEqual([{ ...data!.agent, sendsLeftThisHour: 100 }]);
   const { data: settings } = await linus.GET("/agents/{agent}/settings", { params: { path: { agent: data!.agent.id } } });
   expect(settings).toMatchObject({ sponsorAccess: "send", sponsorMailboxes: [mailbox.id], approvalAsSponsor: true, disclosureLineAsSponsor: true });
-});
-
-test("an agent's mailbox gets no mailbox agent", async () => {
-  const { ada, linus } = await withMailbox();
-  const { data: created } = await linus.POST("/agents", { body: { name: "Hermes" } });
-  const { data: hermesMailbox } = await ada.POST("/mailboxes", { body: { owner: created!.agent.id, address: "hermes@example.com" } });
-
-  const { response } = await linus.GET("/mailboxes/{mailbox}/agent", { params: { path: { mailbox: hermesMailbox!.id } } });
-
-  expect(response.status).toBe(403);
-  expect((await linus.GET("/agents")).data!.agents.filter(({ mailbox }) => mailbox !== undefined)).toHaveLength(1);
 });
 
 test("mailboxes from before mailbox agents get theirs at the setup after the deploy that brings them", async () => {
@@ -96,7 +85,7 @@ test("a mailbox handed over gets a mailbox agent its new owner sponsors", async 
   expect((await grace.GET("/agents")).data!.agents).toEqual([expect.objectContaining({ id: data!.agent.id, mailbox: mailbox.id })]);
 });
 
-test("a mailbox agent works only in its mailbox, has no key, is never an admin, and goes only with its mailbox", async () => {
+test("a mailbox agent works only in its mailbox, has no key, owns no mailbox, and goes only with its mailbox", async () => {
   const { linus, ada, agent } = await withMailbox();
   const path = { params: { path: { agent: (await agent()).id } } };
   const { data: other } = await ada.POST("/mailboxes", { body: { owner: (await linus.GET("/whoami")).data!.id, address: "linus.other@example.com" } });
@@ -104,18 +93,16 @@ test("a mailbox agent works only in its mailbox, has no key, is never an admin, 
   const moved = await linus.PATCH("/agents/{agent}/settings", { ...path, body: { sponsorMailboxes: [other!.id] } });
   const all = await linus.PATCH("/agents/{agent}/settings", { ...path, body: { sponsorMailboxes: null } });
   const rotated = await linus.POST("/agents/{agent}/key", path);
-  const admin = await linus.PATCH("/agents/{agent}", { ...path, body: { admin: true } });
   const removed = await linus.DELETE("/agents/{agent}", path);
 
   expect(moved.response.status).toBe(400);
   expect(all.response.status).toBe(400);
   expect(rotated.response.status).toBe(409);
   expect((rotated.error as { message: string }).message).toMatch(/no key/);
-  expect(admin.response.status).toBe(409);
   expect(removed.response.status).toBe(409);
   const owned = await ada.POST("/mailboxes", { body: { owner: (await agent()).id, address: "agent@example.com" } });
   expect(owned.response.status).toBe(400);
-  expect((owned.error as { message: string }).message).toBe("A mailbox agent works in its human's mailbox and owns none. Give the ID of a human, or of an agent that runs elsewhere.");
+  expect((owned.error as { message: string }).message).toBe("Agents own no mailboxes. Give the ID of a human, and have them give the agent sponsor access to theirs.");
   expect((await linus.PATCH("/agents/{agent}/settings", { ...path, body: { sponsorAccess: "read" } })).response.status).toBe(200);
 });
 

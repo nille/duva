@@ -2,25 +2,30 @@ import { expect, test } from "vitest";
 import { startDuva } from "./harness.ts";
 
 /**
- * A deployment on example.com where ada, the first admin, sponsors the agent Hermes, which owns a
- * mailbox at hermes@example.com. Grace is another human.
+ * A deployment on example.com where ada, the first admin, has a personal mailbox at ada@example.com,
+ * without a Screener, and sponsors the agent Hermes, which she gives send sponsor access there.
+ * Grace is another human.
  */
 async function withMailbox() {
   const duva = await startDuva({ domain: "example.com", admin: "ada@example.org", humans: ["grace@example.org"] });
   const ada = duva.signIn("ada@example.org");
+  const { data: sponsor } = await ada.GET("/whoami");
   const { data: created } = await ada.POST("/agents", { body: { name: "Hermes" } });
-  const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: created!.agent.id, address: "hermes@example.com" } });
-  const hermes = duva.withKey(created!.key);
+  const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: sponsor!.id, address: "ada@example.com" } });
   const params = { path: { mailbox: mailbox!.id } };
+  // Mail from first-time senders would wait in the Screener, which these tests leave out.
+  await ada.PATCH("/mailboxes/{mailbox}/screener", { params, body: { on: false } });
+  await ada.PATCH("/agents/{agent}/settings", { params: { path: { agent: created!.agent.id } }, body: { sponsorAccess: "send" } });
+  const hermes = duva.withKey(created!.key);
 
   /** Receives the message for the mailbox, and returns its thread and message as the agent reads them. */
-  const receive = async (raw: string, to = "hermes@example.com") => {
+  const receive = async (raw: string, to = "ada@example.com") => {
     await duva.receive(raw, { to: [to] });
     const { data: list } = await hermes.GET("/mailboxes/{mailbox}/threads", { params });
     const { data: thread } = await hermes.GET("/mailboxes/{mailbox}/threads/{thread}", { params: { path: { ...params.path, thread: list!.threads[0]!.id } } });
     return { thread: thread!, message: thread!.messages[0]! };
   };
-  return { duva, ada, hermes, agent: created!.agent, key: created!.key, mailbox: mailbox!, params, receive };
+  return { duva, ada, hermes, agent: created!.agent, sponsor: sponsor!, key: created!.key, mailbox: mailbox!, params, receive };
 }
 
 /** A message from Grace, with the headers given, as her mail server sends it. */
@@ -29,7 +34,7 @@ const fromGrace = (headers: string, text = "Can we meet on Monday?") =>
 
 test("the agent drafts a reply, from the address the original was sent to, plus tag kept, to its From, with Re: before the subject", async () => {
   const { hermes, agent, params, receive } = await withMailbox();
-  const { thread, message } = await receive(fromGrace("To: hermes+meetings@example.com\r\nSubject: Meeting\r\n"), "hermes+meetings@example.com");
+  const { thread, message } = await receive(fromGrace("To: ada+meetings@example.com\r\nSubject: Meeting\r\n"), "ada+meetings@example.com");
 
   const { response, data } = await hermes.POST("/mailboxes/{mailbox}/drafts", { params, body: { answers: message.id, text: "Monday works." } });
 
@@ -38,7 +43,7 @@ test("the agent drafts a reply, from the address the original was sent to, plus 
     id: expect.any(String),
     answers: message.id,
     thread: thread.id,
-    from: "hermes+meetings@example.com",
+    from: "ada+meetings@example.com",
     to: [{ name: "Grace Hopper", address: "grace@example.org" }],
     cc: [],
     bcc: [],
@@ -51,12 +56,12 @@ test("the agent drafts a reply, from the address the original was sent to, plus 
 
 test("a reply goes to the original's Reply-To when it has one, and its subject keeps a single Re:", async () => {
   const { hermes, params, receive } = await withMailbox();
-  const { message } = await receive(fromGrace("To: hermes@example.com\r\nReply-To: Team <team@example.org>, lead@example.org\r\nSubject: RE: Re:Meeting\r\n"));
+  const { message } = await receive(fromGrace("To: ada@example.com\r\nReply-To: Team <team@example.org>, lead@example.org\r\nSubject: RE: Re:Meeting\r\n"));
 
   const { data } = await hermes.POST("/mailboxes/{mailbox}/drafts", { params, body: { answers: message.id, text: "Monday works." } });
 
   expect(data).toMatchObject({
-    from: "hermes@example.com",
+    from: "ada@example.com",
     to: [{ name: "Team", address: "team@example.org" }, { address: "lead@example.org" }],
     subject: "Re: Meeting",
   });
@@ -73,7 +78,7 @@ test("the agent drafts a new message, which goes from the mailbox's default addr
   expect(response.status).toBe(201);
   expect(data).toEqual({
     id: expect.any(String),
-    from: "hermes@example.com",
+    from: "ada@example.com",
     to: [{ address: "grace@example.org" }],
     cc: [],
     bcc: [],
@@ -105,7 +110,7 @@ test("an agent's draft without a recipient in To can't be asked to send", async 
 
   expect(response.status).toBe(400);
   expect(error?.message).toMatch(/recipient in To/);
-  expect((await ada.GET("/approvals")).data).toEqual({ approvals: [], setupApprovals: [] });
+  expect((await ada.GET("/approvals")).data).toEqual({ approvals: [] });
 });
 
 test("a reply to a message the mailbox doesn't have is refused", async () => {
@@ -116,15 +121,20 @@ test("a reply to a message the mailbox doesn't have is refused", async () => {
   expect(response.status).toBe(404);
 });
 
-test("only the mailbox's owner drafts in it, not its sponsor or another agent", async () => {
+test("only the mailbox's owner and the agents it gives draft sponsor access draft in it, not another human or agent", async () => {
   const { duva, ada, params } = await withMailbox();
   const { data: iris } = await ada.POST("/agents", { body: { name: "Iris" } });
+  await ada.PATCH("/agents/{agent}/settings", { params: { path: { agent: iris!.agent.id } }, body: { sponsorAccess: "draft" } });
+  const grace = duva.signIn("grace@example.org");
+  const { data: linus } = await grace.POST("/agents", { body: { name: "Linus" } });
   const body = { to: ["grace@example.org"], subject: "Hello", text: "Hej." };
 
-  const bySponsor = await ada.POST("/mailboxes/{mailbox}/drafts", { params, body });
+  const byOwner = await ada.POST("/mailboxes/{mailbox}/drafts", { params, body });
   const byAgent = await duva.withKey(iris!.key).POST("/mailboxes/{mailbox}/drafts", { params, body });
+  const byHuman = await grace.POST("/mailboxes/{mailbox}/drafts", { params, body });
+  const byOtherAgent = await duva.withKey(linus!.key).POST("/mailboxes/{mailbox}/drafts", { params, body });
 
-  expect([bySponsor.response.status, byAgent.response.status]).toEqual([403, 403]);
+  expect([byOwner.response.status, byAgent.response.status, byHuman.response.status, byOtherAgent.response.status]).toEqual([201, 201, 403, 403]);
 });
 
 test("writing a draft is in the mailbox's change feed, naming the agent", async () => {
@@ -133,14 +143,14 @@ test("writing a draft is in the mailbox's change feed, naming the agent", async 
   const { data: draft } = await hermes.POST("/mailboxes/{mailbox}/drafts", { params, body: { to: ["grace@example.org"], subject: "Hello", text: "Hej." } });
 
   const { data } = await hermes.GET("/mailboxes/{mailbox}/changes", { params });
-  expect(data?.changes).toEqual([{ position: 1, at: expect.any(String), actor: agent.id, type: "draftWritten", draft: draft!.id }]);
+  expect(data?.changes.slice(-1)).toEqual([{ position: 3, at: expect.any(String), actor: agent.id, type: "draftWritten", draft: draft!.id }]);
 });
 
 /** The agent's reply to a message from Grace, drafted and asked to send. */
 async function withAskedReply() {
   const setup = await withMailbox();
   const { hermes, params, receive } = setup;
-  const { message } = await receive(fromGrace("To: hermes@example.com\r\nSubject: Meeting\r\n"));
+  const { message } = await receive(fromGrace("To: ada@example.com\r\nSubject: Meeting\r\n"));
   const { data: draft } = await hermes.POST("/mailboxes/{mailbox}/drafts", { params, body: { answers: message.id, text: "Monday works." } });
   const draftParams = { path: { ...params.path, draft: draft!.id } };
   const asked = await hermes.POST("/mailboxes/{mailbox}/drafts/{draft}/send", { params: draftParams });
@@ -163,19 +173,18 @@ test("asking to send a draft waits for the sponsor's approval, showing the draft
         mailbox: mailbox.id,
         agent: agent.id,
         approver: sponsor!.id,
-        draft: { id: draft.id, answers: original.id, thread: draft.thread, from: "hermes@example.com", to: draft.to, cc: [], bcc: [], subject: "Re: Meeting", text: "Monday works." },
+        draft: { id: draft.id, answers: original.id, thread: draft.thread, from: "ada@example.com", to: draft.to, cc: [], bcc: [], subject: "Re: Meeting", text: "Monday works." },
         original,
         askedAt: expect.any(String),
       },
     ],
-    setupApprovals: [],
   });
 });
 
 test("the message an asked reply answers is shown with its HTML served, without its trackers", async () => {
   const { ada, hermes, params, receive } = await withMailbox();
   const html = `<p>Kan vi ses på <b>måndag</b>?</p><img src="https://u123.ct.sendgrid.net/wf/open?upn=xyz" alt=""><script>track("open");</script>`;
-  const { message } = await receive(fromGrace("To: hermes@example.com\r\nSubject: Meeting\r\nContent-Type: text/html; charset=utf-8\r\n", html));
+  const { message } = await receive(fromGrace("To: ada@example.com\r\nSubject: Meeting\r\nContent-Type: text/html; charset=utf-8\r\n", html));
   const { data: draft } = await hermes.POST("/mailboxes/{mailbox}/drafts", { params, body: { answers: message.id, text: "Monday works." } });
   await hermes.POST("/mailboxes/{mailbox}/drafts/{draft}/send", { params: { path: { ...params.path, draft: draft!.id } } });
 
@@ -206,14 +215,13 @@ test("a draft waits for one approval at a time", async () => {
 test("the sponsor lists the pending approvals of every agent they sponsor, newest first, and nobody else sees them", async () => {
   const { duva, ada, hermes, params } = await withMailbox();
   const { data: iris } = await ada.POST("/agents", { body: { name: "Iris" } });
-  const { data: irisMailbox } = await ada.POST("/mailboxes", { body: { owner: iris!.agent.id, address: "iris@example.com" } });
+  await ada.PATCH("/agents/{agent}/settings", { params: { path: { agent: iris!.agent.id } }, body: { sponsorAccess: "send" } });
   const asIris = duva.withKey(iris!.key);
-  const irisParams = { path: { mailbox: irisMailbox!.id } };
   const body = { to: ["grace@example.org"], subject: "Hello", text: "Hej." };
   const { data: first } = await hermes.POST("/mailboxes/{mailbox}/drafts", { params, body });
   await hermes.POST("/mailboxes/{mailbox}/drafts/{draft}/send", { params: { path: { ...params.path, draft: first!.id } } });
-  const { data: second } = await asIris.POST("/mailboxes/{mailbox}/drafts", { params: irisParams, body });
-  await asIris.POST("/mailboxes/{mailbox}/drafts/{draft}/send", { params: { path: { ...irisParams.path, draft: second!.id } } });
+  const { data: second } = await asIris.POST("/mailboxes/{mailbox}/drafts", { params, body });
+  await asIris.POST("/mailboxes/{mailbox}/drafts/{draft}/send", { params: { path: { ...params.path, draft: second!.id } } });
 
   const { data } = await ada.GET("/approvals");
   const byGrace = await duva.signIn("grace@example.org").GET("/approvals");
@@ -221,8 +229,8 @@ test("the sponsor lists the pending approvals of every agent they sponsor, newes
 
   expect(data?.approvals.map(({ draft }) => draft.id)).toEqual([second!.id, first!.id]);
   expect(data?.approvals[0]).not.toHaveProperty("original");
-  expect(byGrace.data).toEqual({ approvals: [], setupApprovals: [] });
-  expect(byAgent.data).toEqual({ approvals: [], setupApprovals: [] });
+  expect(byGrace.data).toEqual({ approvals: [] });
+  expect(byAgent.data).toEqual({ approvals: [] });
 });
 
 test("asking to send is in the mailbox's change feed, naming the agent", async () => {
@@ -230,7 +238,7 @@ test("asking to send is in the mailbox's change feed, naming the agent", async (
 
   const { data } = await hermes.GET("/mailboxes/{mailbox}/changes", { params });
 
-  expect(data?.changes.slice(-1)).toEqual([{ position: 3, at: expect.any(String), actor: agent.id, type: "approvalAsked", draft: draft.id, approval }]);
+  expect(data?.changes.slice(-1)).toEqual([{ position: 5, at: expect.any(String), actor: agent.id, type: "approvalAsked", draft: draft.id, approval }]);
 });
 
 test("the agent edits a draft", async () => {
@@ -252,7 +260,7 @@ test("changing a draft that waits for approval withdraws the request, so the spo
   const { data } = await hermes.PATCH("/mailboxes/{mailbox}/drafts/{draft}", { params: draftParams, body: { text: "Tuesday works better." } });
 
   expect(data?.send).toEqual({ approval, state: "withdrawn" });
-  expect((await ada.GET("/approvals")).data).toEqual({ approvals: [], setupApprovals: [] });
+  expect((await ada.GET("/approvals")).data).toEqual({ approvals: [] });
   const decision = await ada.POST("/approvals/{approval}/reject", { params: { path: { approval } }, body: { note: "Too late." } });
   expect(decision.response.status).toBe(409);
   expect(decision.error?.message).toMatch(/withdrawn/);
@@ -330,6 +338,8 @@ test("the mailbox's change feed records each step, naming its actor", async () =
 
   const second = again!.send!.approval!;
   expect(data?.changes.map(({ position, at, ...change }) => change)).toEqual([
+    { actor: sponsor!.id, type: "screenerSwitched", on: false },
+    { actor: sponsor!.id, type: "agentSettingsChanged", agent: agent.id, before: { sponsorAccess: "none" }, after: { sponsorAccess: "send" } },
     { type: "messageReceived", thread: draft.thread, message: draft.answers },
     { actor: agent.id, type: "draftWritten", draft: draft.id },
     { actor: agent.id, type: "approvalAsked", draft: draft.id, approval },
@@ -339,17 +349,6 @@ test("the mailbox's change feed records each step, naming its actor", async () =
     { actor: agent.id, type: "draftChanged", draft: draft.id },
     { actor: agent.id, type: "approvalWithdrawn", draft: draft.id, approval: second },
   ]);
-});
-
-test("only the mailbox's owner edits or asks to send its drafts, and its sponsor reads them", async () => {
-  const { ada, draftParams, params } = await withAskedReply();
-
-  const edit = await ada.PATCH("/mailboxes/{mailbox}/drafts/{draft}", { params: draftParams, body: { text: "Mine now." } });
-  const ask = await ada.POST("/mailboxes/{mailbox}/drafts/{draft}/send", { params: draftParams });
-  const read = await ada.GET("/mailboxes/{mailbox}/drafts", { params });
-
-  expect([edit.response.status, ask.response.status, read.response.status]).toEqual([403, 403, 200]);
-  expect(read.data?.drafts).toHaveLength(1);
 });
 
 test("a change and a decision at the same time leave the draft either withdrawn or rejected, as the decision says", async () => {
@@ -364,5 +363,5 @@ test("a change and a decision at the same time leave the draft either withdrawn 
   const { data: draft } = await hermes.GET("/mailboxes/{mailbox}/drafts/{draft}", { params: draftParams });
   expect(draft?.text).toBe("Tuesday works.");
   expect(draft?.send?.state).toBe(decision.response.status === 200 ? "rejected" : "withdrawn");
-  expect((await ada.GET("/approvals")).data).toEqual({ approvals: [], setupApprovals: [] });
+  expect((await ada.GET("/approvals")).data).toEqual({ approvals: [] });
 });

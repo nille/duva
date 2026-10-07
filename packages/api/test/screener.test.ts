@@ -22,8 +22,8 @@ const note = (from: string, subject: string, { to = "grace@example.com", inReply
 
 /**
  * A deployment on example.com where Ada is the first admin. Grace is a human with a personal
- * mailbox at grace@example.com, and sponsors the agent Iris, which has hers at iris@example.com.
- * Linus is another human.
+ * mailbox at grace@example.com, and sponsors the agent Iris, which has no sponsor access until a
+ * test gives it some. Linus is another human.
  */
 async function withScreener(options: DuvaOptions = {}) {
   const duva = await startDuva({ domain: "example.com", admin: "ada@example.org", humans: ["grace@example.org", "linus@example.org"], ...options });
@@ -32,31 +32,29 @@ async function withScreener(options: DuvaOptions = {}) {
   const { data: me } = await grace.GET("/whoami");
   const { data: created } = await grace.POST("/agents", { body: { name: "Iris" } });
   const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: me!.id, address: "grace@example.com" } });
-  const { data: irisMailbox } = await ada.POST("/mailboxes", { body: { owner: created!.agent.id, address: "iris@example.com" } });
   const params = { path: { mailbox: mailbox!.id } };
-  const irisParams = { path: { mailbox: irisMailbox!.id } };
 
-  /** Hands SES the message for the mailbox at `to`, and answers the arrival as its change feed records it. */
-  const receive = async (raw: string, { to = "grace@example.com", spam = false, dmarc }: { to?: string; spam?: boolean; dmarc?: "FAIL" | "GRAY" } = {}) => {
-    await duva.receive(raw, { to: [to] }, { verdicts: { ...(spam && { spam: "FAIL" }), ...(dmarc !== undefined && { dmarc }) } });
-    const { data } = await grace.GET("/mailboxes/{mailbox}/changes", { params: { ...(to === "grace@example.com" ? params : irisParams), query: { spam: true } } });
+  /** Hands SES the message for Grace's mailbox, and answers the arrival as its change feed records it. */
+  const receive = async (raw: string, { spam = false, dmarc }: { spam?: boolean; dmarc?: "FAIL" | "GRAY" } = {}) => {
+    await duva.receive(raw, { to: ["grace@example.com"] }, { verdicts: { ...(spam && { spam: "FAIL" }), ...(dmarc !== undefined && { dmarc }) } });
+    const { data } = await grace.GET("/mailboxes/{mailbox}/changes", { params: { ...params, query: { spam: true } } });
     return data!.changes.findLast((change) => change.type === "messageReceived" || change.type === "messageDropped") as { type: string; thread: string; message: string; screened?: string; delivered?: string; spam?: boolean };
   };
   /** The IDs of the threads the listing of the mailbox lists, newest first. */
-  const listed = async (label: string, at = params) => (await grace.GET("/mailboxes/{mailbox}/threads", { params: { ...at, query: { label } } })).data!.threads.map(({ id }) => id);
-  const allMail = async (at = params) => (await grace.GET("/mailboxes/{mailbox}/all-mail", { params: at })).data!.threads.map(({ id }) => id);
-  const screener = async (client: DuvaClient = grace, at = params) => (await client.GET("/mailboxes/{mailbox}/screener", { params: at })).data!;
+  const listed = async (label: string) => (await grace.GET("/mailboxes/{mailbox}/threads", { params: { ...params, query: { label } } })).data!.threads.map(({ id }) => id);
+  const allMail = async () => (await grace.GET("/mailboxes/{mailbox}/all-mail", { params })).data!.threads.map(({ id }) => id);
+  const screener = async (client: DuvaClient = grace) => (await client.GET("/mailboxes/{mailbox}/screener", { params })).data!;
   /** The addresses of the senders waiting in the Screener, newest first. */
-  const waiting = async (at = params) => (await screener(grace, at)).senders.map(({ address }) => address);
+  const waiting = async () => (await screener()).senders.map(({ address }) => address);
   /** Decides where mail from the address or domain goes in the mailbox. */
-  const decide = (sender: string, delivery: Delivery, client: DuvaClient = grace, at = params) =>
-    client.PUT("/mailboxes/{mailbox}/senders/{sender}", { params: { path: { ...at.path, sender } }, body: { delivery } });
-  const letIn = (sender: string, client: DuvaClient = grace, at = params) => decide(sender, "inbox", client, at);
+  const decide = (sender: string, delivery: Delivery, client: DuvaClient = grace) =>
+    client.PUT("/mailboxes/{mailbox}/senders/{sender}", { params: { path: { ...params.path, sender } }, body: { delivery } });
+  const letIn = (sender: string, client: DuvaClient = grace) => decide(sender, "inbox", client);
   const senders = async (client: DuvaClient = grace) => (await client.GET("/mailboxes/{mailbox}/senders", { params })).data!.senders;
   const remove = (decided: string, client: DuvaClient = grace) => client.DELETE("/mailboxes/{mailbox}/senders/{sender}", { params: { path: { ...params.path, sender: decided } } });
-  const turn = (on: boolean, client: DuvaClient = grace, at = params) => client.PATCH("/mailboxes/{mailbox}/screener", { params: at, body: { on } });
+  const turn = (on: boolean, client: DuvaClient = grace) => client.PATCH("/mailboxes/{mailbox}/screener", { params, body: { on } });
   /** The mailbox's changes, from the start. */
-  const changes = async (at = params) => (await grace.GET("/mailboxes/{mailbox}/changes", { params: { ...at, query: { spam: true } } })).data!.changes;
+  const changes = async () => (await grace.GET("/mailboxes/{mailbox}/changes", { params: { ...params, query: { spam: true } } })).data!.changes;
   /** Grace writes a message to the recipients and sends it from her mailbox. */
   const send = async (to: string[]) => {
     const { data: draft } = await grace.POST("/mailboxes/{mailbox}/drafts", { params, body: { to, subject: "Hej", text: "Hej." } });
@@ -73,7 +71,6 @@ async function withScreener(options: DuvaOptions = {}) {
     linus: duva.signIn("linus@example.org"),
     mailbox: mailbox!,
     params,
-    irisParams,
     receive,
     listed,
     allMail,
@@ -290,17 +287,6 @@ test("the screener state can't be added or removed as a label", async () => {
   expect(response.status).toBe(400);
 });
 
-test("a human's mailbox starts with the Screener on, and an agent's with it off", async () => {
-  const { grace, irisParams, receive, listed, screener } = await withScreener();
-
-  const arrival = await receive(note("mallory@example.net", "Hi Iris", { to: "iris@example.com" }), { to: "iris@example.com" });
-
-  expect((await screener()).on).toBe(true);
-  expect((await screener(grace, irisParams)).on).toBe(false);
-  expect(arrival.screened).toBeUndefined();
-  expect(await listed("inbox", irisParams)).toEqual([arrival.thread]);
-});
-
 test("switching the Screener off moves waiting threads to the Inbox, and later first-time senders' mail goes there too", async () => {
   const { graceId, receive, listed, screener, turn, changes } = await withScreener();
   const waited = await receive(note("mallory@example.net", "First"));
@@ -331,59 +317,58 @@ test("a delivery holds while the Screener is off", async () => {
 });
 
 test("switching the Screener on sends every sender already in the mailbox to the Inbox, except those in Spam", async () => {
-  const { grace, graceId, irisParams, receive, listed, waiting, screener, turn, changes } = await withScreener();
-  const iris = { to: "iris@example.com" };
-  await receive(note("Mallory <mallory@example.net>", "One", iris), iris);
-  await receive(note("mallory@example.net", "Two", iris), iris);
-  await receive(note("oscar@example.net", "Three", iris), iris);
-  await receive(note("spammer@example.net", "Four", iris), { ...iris, spam: true });
+  const { graceId, receive, listed, waiting, screener, turn, changes } = await withScreener();
+  await turn(false);
+  await receive(note("Mallory <mallory@example.net>", "One"));
+  await receive(note("mallory@example.net", "Two"));
+  await receive(note("oscar@example.net", "Three"));
+  await receive(note("spammer@example.net", "Four"), { spam: true });
 
-  const { response, data } = await turn(true, grace, irisParams);
-  const known = await receive(note("oscar@example.net", "Five", iris), iris);
-  const spammer = await receive(note("spammer@example.net", "Six", iris), iris);
-  const stranger = await receive(note("stranger@example.net", "Seven", iris), iris);
+  const { response, data } = await turn(true);
+  const known = await receive(note("oscar@example.net", "Five"));
+  const spammer = await receive(note("spammer@example.net", "Six"));
+  const stranger = await receive(note("stranger@example.net", "Seven"));
 
   expect(response.status).toBe(200);
   expect(data).toEqual({ on: true, senders: [], decided: 2 });
   expect(known.screened).toBeUndefined();
-  expect(await listed("inbox", irisParams)).toContain(known.thread);
+  expect(await listed("inbox")).toContain(known.thread);
   expect([spammer.screened, stranger.screened]).toEqual(["waiting", "waiting"]);
-  expect(await waiting(irisParams)).toEqual(["stranger@example.net", "spammer@example.net"]);
-  expect((await screener(grace, irisParams)).decided).toBe(2);
-  expect((await changes(irisParams)).filter(({ type }) => type === "screenerSwitched")).toEqual([
-    { position: 5, at: expect.any(String), actor: graceId, type: "screenerSwitched", on: true, letIn: 2 },
+  expect(await waiting()).toEqual(["stranger@example.net", "spammer@example.net"]);
+  expect((await screener()).decided).toBe(2);
+  expect((await changes()).filter(({ type }) => type === "screenerSwitched")).toEqual([
+    { position: 1, at: expect.any(String), actor: graceId, type: "screenerSwitched", on: false },
+    { position: 6, at: expect.any(String), actor: graceId, type: "screenerSwitched", on: true, letIn: 2 },
   ]);
 });
 
 test("switching the Screener on keeps the mailbox's deliveries, and switching it to what it is records nothing", async () => {
-  const { grace, irisParams, receive, listed, decide, turn, changes } = await withScreener();
-  const iris = { to: "iris@example.com" };
-  await decide("news@example.net", "paperTrail", grace, irisParams);
-  await receive(note("oscar@example.net", "One", iris), iris);
+  const { receive, listed, decide, turn, changes } = await withScreener();
+  await turn(false);
+  await decide("news@example.net", "paperTrail");
+  await receive(note("oscar@example.net", "One"));
 
-  await turn(true, grace, irisParams);
-  await turn(true, grace, irisParams);
-  await turn(false, grace, irisParams);
-  await turn(false, grace, irisParams);
-  const filed = await receive(note("news@example.net", "Two", iris), iris);
+  await turn(true);
+  await turn(true);
+  await turn(false);
+  await turn(false);
+  const filed = await receive(note("news@example.net", "Two"));
 
   expect(filed.delivered).toBe("paperTrail");
-  expect(await listed("paperTrail", irisParams)).toEqual([filed.thread]);
-  expect((await changes(irisParams)).filter(({ type }) => type === "screenerSwitched").map((change) => (change as { on: boolean }).on)).toEqual([true, false]);
+  expect(await listed("paperTrail")).toEqual([filed.thread]);
+  expect((await changes()).filter(({ type }) => type === "screenerSwitched").map((change) => (change as { on: boolean }).on)).toEqual([false, true, false]);
 });
 
-test("the owner and an agent's sponsor switch the Screener, and no one else", async () => {
-  const { grace, iris, irisId, linus, ada, params, irisParams, turn, screener } = await withScreener();
+test("only the owner switches the Screener, not their agent with send sponsor access, another human or an admin", async () => {
+  const { grace, iris, irisId, linus, ada, turn, screener } = await withScreener();
   await grace.PATCH("/agents/{agent}/settings", { params: { path: { agent: irisId } }, body: { sponsorAccess: "send" } });
 
-  const byOwner = await turn(false, grace, params);
-  const bySponsor = await turn(true, grace, irisParams);
-  const byAgentInOwn = await turn(false, iris, irisParams);
-  const byAgentInSponsors = await turn(true, iris, params);
-  const byOther = await turn(true, linus, params);
-  const byAdmin = await turn(true, ada, params);
+  const byOwner = await turn(false);
+  const byAgentInSponsors = await turn(true, iris);
+  const byOther = await turn(true, linus);
+  const byAdmin = await turn(true, ada);
 
-  expect([byOwner, bySponsor, byAgentInOwn].map(({ response }) => response.status)).toEqual([200, 200, 200]);
+  expect(byOwner.response.status).toBe(200);
   expect(byAgentInSponsors.response.status).toBe(403);
   expect(byAgentInSponsors.error?.message).toMatch(/Only your sponsor can switch their Screener/);
   expect([byOther, byAdmin].map(({ response }) => response.status)).toEqual([403, 403]);
@@ -426,12 +411,10 @@ test("an agent with organize sponsor access or more screens its sponsor's mailbo
   ]);
 });
 
-test("the first setup with the Screener switches it on for humans' mailboxes, sending their senders to the Inbox, and leaves agents' off", async () => {
-  const { duva, irisParams, receive, listed, waiting, screener, send, changes } = await withScreener({ beforeScreener: true });
-  const iris = { to: "iris@example.com" };
+test("the first setup with the Screener switches it on for humans' mailboxes, sending their senders to the Inbox", async () => {
+  const { duva, receive, listed, waiting, screener, send, changes } = await withScreener({ beforeScreener: true });
   await receive(note("Mallory <mallory@example.net>", "Before"));
   await receive(note("spammer@example.net", "Spam before"), { spam: true });
-  await receive(note("oscar@example.net", "Iris before", iris), iris);
   await send(["bob@example.net"]);
   const beforeSetUp = await receive(note("stranger@example.net", "Before setup"));
 
@@ -440,7 +423,6 @@ test("the first setup with the Screener switches it on for humans' mailboxes, se
   const sentTo = await receive(note("bob@example.net", "Reply as new"));
   const firstTime = await receive(note("newcomer@example.net", "Hello"));
   const spammer = await receive(note("spammer@example.net", "Not spam now"));
-  const toIris = await receive(note("newcomer@example.net", "Hi Iris", iris), iris);
 
   expect(beforeSetUp.screened).toBeUndefined();
   expect([known.screened, sentTo.screened]).toEqual([undefined, undefined]);
@@ -449,8 +431,6 @@ test("the first setup with the Screener switches it on for humans' mailboxes, se
   expect(await waiting()).toEqual(["spammer@example.net", "newcomer@example.net"]);
   expect(await screener()).toMatchObject({ on: true, decided: 2 });
   expect((await changes()).filter(({ type }) => type === "screenerSwitched")).toEqual([{ position: expect.any(Number), at: expect.any(String), type: "screenerSwitched", on: true, letIn: 2 }]);
-  expect(toIris.screened).toBeUndefined();
-  expect(await screener(undefined, irisParams)).toMatchObject({ on: false, decided: 0 });
 });
 
 test("setup again leaves the Screener as the owner switched it", async () => {

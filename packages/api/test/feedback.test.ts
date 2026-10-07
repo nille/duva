@@ -3,9 +3,9 @@ import type { DuvaClient } from "@duva/client";
 import { type DuvaOptions, startDuva } from "./harness.ts";
 
 /**
- * A deployment on example.com where ada sponsors the agent Hermes, which owns the mailboxes
- * hermes@example.com and hermes.news@example.com and sends from them without approval. Grace is
- * the first admin, and has a mailbox at grace@example.com.
+ * A deployment on example.com where ada has the mailboxes ada@example.com and ada.news@example.com
+ * and sponsors the agent Hermes, which she gives send sponsor access to both, to send as her
+ * without approval. Grace is the first admin, and has a mailbox at grace@example.com.
  */
 async function withAgent(options: DuvaOptions = {}) {
   const duva = await startDuva({ domain: "example.com", admin: "grace@example.org", humans: ["ada@example.org"], ...options });
@@ -13,11 +13,12 @@ async function withAgent(options: DuvaOptions = {}) {
   const grace = duva.signIn("grace@example.org");
   const { data: created } = await ada.POST("/agents", { body: { name: "Hermes" } });
   const agent = created!.agent;
-  const { data: own } = await grace.POST("/mailboxes", { body: { owner: agent.id, address: "hermes@example.com" } });
-  const { data: news } = await grace.POST("/mailboxes", { body: { owner: agent.id, address: "hermes.news@example.com" } });
+  const sponsor = (await ada.GET("/whoami")).data!.id;
+  const { data: own } = await grace.POST("/mailboxes", { body: { owner: sponsor, address: "ada@example.com" } });
+  const { data: news } = await grace.POST("/mailboxes", { body: { owner: sponsor, address: "ada.news@example.com" } });
   const { data: graces } = await grace.POST("/mailboxes", { body: { owner: (await grace.GET("/whoami")).data!.id, address: "grace@example.com" } });
   const hermes = duva.withKey(created!.key);
-  await ada.PATCH("/agents/{agent}/settings", { params: { path: { agent: agent.id } }, body: { approvalForOwnMailbox: false } });
+  await ada.PATCH("/agents/{agent}/settings", { params: { path: { agent: agent.id } }, body: { sponsorAccess: "send", approvalAsSponsor: false } });
 
   /**
    * The actor drafts a message to the recipients from the mailbox and sends it, and gets back the
@@ -78,11 +79,12 @@ test("a soft bounce, a complaint and a reject are recorded on the message in the
   ]);
 });
 
-test("a complaint about an agent's mail pauses the agent, recorded under Duva, saying why", async () => {
-  const { duva, ada, hermes, agent, own, send, paused } = await withAgent();
+test("a complaint about an agent's mail pauses the agent, recorded under Duva in the organization's change feed, saying why", async () => {
+  const { duva, ada, grace, hermes, agent, own, send, paused } = await withAgent();
   const params = { path: { mailbox: own } };
   const { messageId } = await send(hermes, own, ["ken@example.net"]);
   const { data: before } = await ada.GET("/mailboxes/{mailbox}/changes", { params });
+  const { data: organizationBefore } = await grace.GET("/organization/changes");
 
   await duva.sendingEvent(messageId, { type: "Complaint" });
 
@@ -91,10 +93,12 @@ test("a complaint about an agent's mail pauses the agent, recorded under Duva, s
   expect(response.status).toBe(403);
   expect(error?.message).toMatch(/^This agent is paused by Duva\./);
   const { data: feed } = await ada.GET("/mailboxes/{mailbox}/changes", { params: { ...params, query: { after: before!.position } } });
-  expect(feed?.changes).toMatchObject([{ type: "feedbackReceived" }, { type: "agentPaused", actor: "duva", agent: agent.id }]);
+  expect(feed?.changes).toMatchObject([{ type: "feedbackReceived" }]);
+  const { data: organizationFeed } = await grace.GET("/organization/changes", { params: { query: { after: organizationBefore!.position } } });
+  expect(organizationFeed?.changes).toMatchObject([{ type: "agentPaused", actor: "duva", agent: agent.id }]);
 });
 
-test("five hard bounces within an hour, across the agent's mailboxes, pause it, and four don't", async () => {
+test("five hard bounces within an hour, across its sponsor's mailboxes, pause it, and four don't", async () => {
   const { duva, hermes, own, news, send, paused } = await withAgent();
   const start = Date.UTC(2026, 9, 6, 12, 0);
   const bounce = async (mailbox: string, minute: number) => {
@@ -132,9 +136,9 @@ test("a complaint SNS delivers again after the sponsor unpaused the agent doesn'
   expect(await paused()).toBeUndefined();
 });
 
-test("a complaint about mail an agent sent as its group is recorded on the send and pauses the agent", async () => {
+test("a complaint about mail an agent sent as its sponsor's group is recorded on the send and pauses the agent", async () => {
   const { duva, ada, grace, hermes, own, send, paused } = await withAgent();
-  await grace.POST("/groups", { body: { address: "team@example.com", members: ["hermes@example.com", "grace@example.com"] } });
+  await grace.POST("/groups", { body: { address: "team@example.com", members: ["ada@example.com", "grace@example.com"] } });
   const { draft, messageId } = await send(hermes, own, ["ken@example.net"], "team@example.com");
 
   await duva.sendingEvent(messageId, { type: "Complaint" });

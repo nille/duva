@@ -10,7 +10,7 @@ export const attachmentsDownload: Command = {
   words: ["attachments", "download"],
   summary: "Download one of a message's attachments to a file, and say where it went.",
   description:
-    "Without --file, the attachment goes in the working directory under its own name. An existing file is never overwritten. Only those who can read the mailbox can download from it: its owner and, for an agent's mailbox, its sponsor.",
+    "Without --file, the attachment goes in the working directory under its own name. An existing file is never overwritten. Only those who can read the mailbox can download from it: its owner, and the agents they give sponsor access.",
   options: [
     { name: "mailbox", required: true, description: "The mailbox's ID." },
     { name: "message", required: true, description: "The message's ID." },

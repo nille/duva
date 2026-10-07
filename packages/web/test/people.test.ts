@@ -7,9 +7,9 @@ const wait = { timeout: 10_000 };
 const budget = { timeout: 60_000 };
 
 /**
- * The web app for a deployment on example.com, where Ada is the admin and sponsors Hermes, an agent
- * without a mailbox. Grace is a human with mailboxes at grace@example.com and grace.old@example.com,
- * and sponsors Iris, an agent with a mailbox at iris@example.com. Linus is a human without one.
+ * The web app for a deployment on example.com, where Ada is the admin and sponsors the agent Hermes.
+ * Grace is a human with mailboxes at grace@example.com and grace.old@example.com, and sponsors the
+ * agent Iris. Linus is a human without a mailbox. Agents own none.
  * Signed in as Ada on Settings.
  */
 async function withPeople(options: { viewport?: { width: number; height: number } } = {}) {
@@ -21,7 +21,6 @@ async function withPeople(options: { viewport?: { width: number; height: number 
   await ada.POST("/mailboxes", { body: { owner: graceActor!.id, address: "grace.old@example.com" } });
   await ada.POST("/agents", { body: { name: "Hermes" } });
   const { data: iris } = await grace.POST("/agents", { body: { name: "Iris" } });
-  await ada.POST("/mailboxes", { body: { owner: iris!.agent.id, address: "iris@example.com" } });
   const { page } = app;
   await app.signIn("ada@example.org");
   await page.getByRole("link", { name: "Settings", exact: true }).click();
@@ -48,7 +47,7 @@ test("an admin sees each human with their mailboxes, whether they're an admin, a
 
   const grace = line(page, "grace@example.org");
   expect(await grace.getByRole("list", { name: "Mailboxes of grace@example.org" }).getByRole("listitem").allInnerTexts()).toEqual(["grace.old@example.com", "grace@example.com"]);
-  expect(await grace.getByRole("list", { name: "Agents grace@example.org sponsors" }).getByRole("listitem").allInnerTexts()).toEqual([expect.stringMatching(/^Iris\s+iris@example\.com\s+Remove$/)]);
+  expect(await grace.getByRole("list", { name: "Agents grace@example.org sponsors" }).getByRole("listitem").allInnerTexts()).toEqual([expect.stringMatching(/^Iris\s+Remove$/)]);
 });
 
 test("an admin adds a human, whose line opens with no mailbox, offering to give them one", budget, async () => {
@@ -110,7 +109,7 @@ test("an admin removes a human, handing one mailbox to another human and deletin
   await grace.getByRole("button", { name: "Remove human" }).click();
   const confirm = grace.getByRole("group", { name: "Remove grace@example.org" });
   await expect.poll(() => confirm.innerText(), wait).toContain("grace@example.org can't sign in from now on.");
-  expect(await confirm.innerText()).toContain("Iris, the agent they sponsor, is removed too, and its mailbox iris@example.com erased with its mail.");
+  expect(await confirm.innerText()).toContain("Iris, the agent they sponsor, is removed too.");
   await confirm.getByRole("group", { name: "grace.old@example.com" }).getByRole("radio", { name: /^Delete/ }).check();
   await confirm.getByRole("combobox", { name: "Hand over to" }).selectOption("linus@example.org");
   expect(await confirm.innerText()).toContain("grace.old@example.com is erased with its mail. This can't be undone.");
@@ -134,7 +133,7 @@ test("an admin removes an agent after confirming it, said where it was", budget,
 
   await grace.getByRole("button", { name: "Remove Iris" }).click();
   const confirm = grace.getByRole("group", { name: "Remove Iris" });
-  expect(await confirm.innerText()).toContain("Iris's key stops working, and its mailbox iris@example.com is erased with its mail. This can't be undone.");
+  expect(await confirm.innerText()).toContain("Iris's key stops working. This can't be undone.");
   await confirm.getByRole("button", { name: "Remove agent" }).click();
 
   await expect.poll(() => grace.getByRole("list", { name: "Agents grace@example.org sponsors" }).getByRole("listitem").allInnerTexts(), wait).toEqual(["Removed Iris."]);
@@ -179,23 +178,13 @@ test("a human just added is given a mailbox from their line, in the Addresses sh
   expect(screener?.senders.map(({ address }) => address)).toEqual(["customer@example.edu"]);
 });
 
-test("an agent without a mailbox is given one from its sponsor's line", budget, async () => {
-  const { page, ada } = await withPeople();
+test("an agent's row on its sponsor's line offers no mailbox, since agents own none", budget, async () => {
+  const { page } = await withPeople();
   await open(page, "ada@example.org");
   const agents = line(page, "ada@example.org").getByRole("list", { name: "Agents ada@example.org sponsors" });
 
-  await agents.getByRole("button", { name: "Give Hermes a mailbox" }).click();
-
-  await expect.poll(() => create(page).getByRole("combobox", { name: "For" }).locator("option:checked").textContent(), wait).toBe("Hermes, ada@example.org's agent");
-  await create(page).getByRole("textbox", { name: "Address" }).fill("hermes@example.com");
-  await create(page).getByRole("button", { name: "Add mailbox" }).click();
-  await expect.poll(() => page.getByText("Added a mailbox for Hermes at hermes@example.com.").isVisible(), wait).toBe(true);
-  await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "People" }).click();
-  await open(page, "ada@example.org");
-
-  await expect.poll(() => agents.getByRole("listitem").allInnerTexts(), wait).toEqual([expect.stringMatching(/^Hermes\s+hermes@example\.com\s+Remove$/)]);
-  const hermes = (await ada.GET("/organization/agents")).data!.agents.find(({ name }) => name === "Hermes")!;
-  expect((await ada.GET("/organization/mailboxes")).data?.mailboxes.filter(({ owner }) => owner === hermes.id).map(({ addresses }) => addresses)).toEqual([["hermes@example.com"]]);
+  await expect.poll(() => agents.getByRole("listitem").allInnerTexts(), wait).toEqual([expect.stringMatching(/^Hermes\s+Remove$/)]);
+  expect(await agents.getByRole("button", { name: "Give Hermes a mailbox" }).count()).toBe(0);
 });
 
 test("Remove human lines up with the parts above it", budget, async () => {

@@ -7,9 +7,9 @@ const wait = { timeout: 10_000 };
 const budget = { timeout: 60_000 };
 
 /**
- * The web app for a deployment on example.com and example.net, where Ada is the admin, Grace a
- * human with a mailbox at grace@example.com, Linus a human without one, Hermes Ada's agent, with a
- * mailbox at hermes@example.com, and Athena Ada's agent without one. Signed in as Ada on Settings,
+ * The web app for a deployment on example.com and example.net, where Ada is the admin, with a
+ * mailbox at ada@example.com, Grace a human with one at grace@example.com, Linus a human without
+ * one, and Athena Ada's agent, which owns none, as no agent does. Signed in as Ada on Settings,
  * with Grace's mailbox's line open.
  */
 async function withMailboxes(options: { viewport?: { width: number; height: number } } = {}) {
@@ -18,16 +18,16 @@ async function withMailboxes(options: { viewport?: { width: number; height: numb
   await ada.POST("/domains", { body: { domain: "example.net" } });
   const { data: grace } = await app.duva.signIn("grace@example.org").GET("/whoami");
   const { data: graces } = await ada.POST("/mailboxes", { body: { owner: grace!.id, address: "grace@example.com" } });
-  const { data: hermes } = await ada.POST("/agents", { body: { name: "Hermes" } });
-  await ada.POST("/mailboxes", { body: { owner: hermes!.agent.id, address: "hermes@example.com" } });
-  const { data: athena } = await ada.POST("/agents", { body: { name: "Athena" } });
+  const { data: me } = await ada.GET("/whoami");
+  await ada.POST("/mailboxes", { body: { owner: me!.id, address: "ada@example.com" } });
+  await ada.POST("/agents", { body: { name: "Athena" } });
   const { page } = app;
   await app.signIn("ada@example.org");
   await page.getByRole("link", { name: "Settings", exact: true }).click();
   await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "Addresses" }).click();
   await expect.poll(() => line(page, "grace@example.com").count(), wait).toBe(1);
   await line(page, "grace@example.com").getByRole("heading").click();
-  return { ...app, ada, graces: graces!, athena: athena!.agent };
+  return { ...app, ada, graces: graces! };
 }
 
 const sheet = (page: Page) => page.getByRole("region", { name: "Addresses" });
@@ -41,14 +41,14 @@ const create = (page: Page) => sheet(page).getByRole("form", { name: "Add a mail
 /** A first-time sender's note to the address. */
 const note = (to: string) => ["From: Customer <customer@example.edu>", `To: ${to}`, "Subject: Hello", "Message-ID: <hello@example.edu>", "", "Are you there?"].join("\r\n");
 
-test("an admin sees each mailbox by its default address with its owner under it, humans' first, then agents'", budget, async () => {
+test("an admin sees each mailbox by its default address with its owner under it, by owner", budget, async () => {
   const { page } = await withMailboxes();
 
   const titles = await sheet(page).locator("summary").getByRole("heading").allTextContents();
 
-  expect(titles).toEqual(["grace@example.com", "hermes@example.com"]);
+  expect(titles).toEqual(["ada@example.com", "grace@example.com"]);
+  expect(await summary(page, "ada@example.com")).toBe("ada@example.org");
   expect(await summary(page, "grace@example.com")).toBe("grace@example.org");
-  expect(await summary(page, "hermes@example.com")).toBe("Hermes, an agent");
 });
 
 test("an admin gives a mailbox another address on another domain, and makes it the default", budget, async () => {
@@ -74,10 +74,10 @@ test("an admin gives a mailbox another address on another domain, and makes it t
 test("an address Duva refuses says why under the field", budget, async () => {
   const { page } = await withMailboxes();
 
-  await line(page, "grace@example.com").getByRole("textbox", { name: "New address" }).fill("hermes@example.com");
+  await line(page, "grace@example.com").getByRole("textbox", { name: "New address" }).fill("ada@example.com");
   await line(page, "grace@example.com").getByRole("button", { name: "Add address" }).click();
 
-  await expect.poll(() => line(page, "grace@example.com").getByRole("alert").textContent(), wait).toBe("hermes@example.com is taken. Give another address.");
+  await expect.poll(() => line(page, "grace@example.com").getByRole("alert").textContent(), wait).toBe("ada@example.com is taken. Give another address.");
   expect(await line(page, "grace@example.com").getByRole("textbox", { name: "New address" }).getAttribute("aria-invalid")).toBe("true");
 });
 
@@ -99,9 +99,9 @@ test("an admin removes an address after confirming it, and the mailbox's next ad
 
 test("removing an address that's a member of groups says which groups it leaves", budget, async () => {
   const { page, ada } = await withMailboxes();
-  await ada.POST("/groups", { body: { address: "team@example.com", members: ["grace@example.com", "hermes@example.com"] } });
+  await ada.POST("/groups", { body: { address: "team@example.com", members: ["grace@example.com", "ada@example.com"] } });
   await ada.POST("/groups", { body: { address: "all@example.com", members: ["Grace@Example.com"] } });
-  await ada.POST("/groups", { body: { address: "agents@example.com", members: ["hermes@example.com"] } });
+  await ada.POST("/groups", { body: { address: "admins@example.com", members: ["ada@example.com"] } });
   await page.reload();
   await line(page, "grace@example.com").getByRole("heading").click();
 
@@ -113,9 +113,9 @@ test("removing an address that's a member of groups says which groups it leaves"
   await expect.poll(() => summary(page, "Without an address"), wait).toMatch(/^grace@example\.org/);
   const { data } = await ada.GET("/groups");
   expect(data?.groups.map(({ address, members }) => [address, members])).toEqual([
-    ["agents@example.com", ["hermes@example.com"]],
+    ["admins@example.com", ["ada@example.com"]],
     ["all@example.com", []],
-    ["team@example.com", ["hermes@example.com"]],
+    ["team@example.com", ["ada@example.com"]],
   ]);
 });
 
@@ -203,11 +203,11 @@ test("an owner's two mailboxes never look the same", budget, async () => {
   await ada.DELETE("/addresses/{address}", { params: { path: { address: "grace.second@example.com" } } });
   await page.reload();
 
-  await expect.poll(() => sheet(page).locator("summary").getByRole("heading").allTextContents(), wait).toEqual(["grace@example.com", "Mailbox 2, without an address", "hermes@example.com"]);
+  await expect.poll(() => sheet(page).locator("summary").getByRole("heading").allTextContents(), wait).toEqual(["ada@example.com", "grace@example.com", "Mailbox 2, without an address"]);
   expect(await sheet(page).locator(".line-summary-text").allTextContents()).toEqual([
+    "ada@example.org",
     "grace@example.org. Mailbox 1 of 2.",
     "grace@example.org. Mailbox 2 of 2. It gets and sends no mail until it has one.",
-    "Hermes, an agent",
   ]);
 });
 
@@ -222,13 +222,12 @@ test("on a phone, a mailbox's addresses fit the screen", budget, async () => {
 test("an admin creates a mailbox for a human who has none, whose line opens with it, and mail to its address reaches them", budget, async () => {
   const { page, duva } = await withMailboxes();
 
+  // Agents own no mailboxes, so only humans are offered.
   expect(await create(page).getByRole("combobox", { name: "For" }).locator("option").allTextContents()).toEqual([
-    "Choose a human or an agent",
+    "Choose a human",
     "ada@example.org",
     "grace@example.org",
     "linus@example.org",
-    "Athena, ada@example.org's agent",
-    "Hermes, ada@example.org's agent",
   ]);
   await create(page).getByRole("combobox", { name: "For" }).selectOption({ label: "linus@example.org" });
   await create(page).getByRole("textbox", { name: "Address" }).fill("Linus@Example.com");
@@ -248,31 +247,15 @@ test("an admin creates a mailbox for a human who has none, whose line opens with
   expect(screener?.senders.map(({ address }) => address)).toEqual(["customer@example.edu"]);
 });
 
-test("an admin creates a mailbox for an agent, and mail to its address reaches its Inbox", budget, async () => {
-  const { page, duva, ada, athena } = await withMailboxes();
-
-  await create(page).getByRole("combobox", { name: "For" }).selectOption({ label: "Athena, ada@example.org's agent" });
-  await create(page).getByRole("textbox", { name: "Address" }).fill("athena@example.net");
-  await create(page).getByRole("button", { name: "Add mailbox" }).click();
-
-  await expect.poll(() => said(page, "athena@example.net"), wait).toBe("Added a mailbox for Athena at athena@example.net.");
-  expect(await summary(page, "athena@example.net")).toBe("Athena, an agent");
-
-  expect((await duva.receive(note("athena@example.net"), { to: ["athena@example.net"] })).refused).toEqual([]);
-  const mailbox = (await ada.GET("/mailboxes")).data!.mailboxes.find(({ owner }) => owner === athena.id)!;
-  const { data: inbox } = await ada.GET("/mailboxes/{mailbox}/threads", { params: { path: { mailbox: mailbox.id } } });
-  expect(inbox?.threads.map(({ subject }) => subject)).toEqual(["Hello"]);
-});
-
 test("an address in use or invalid for a new mailbox says why under the field, and no mailbox is created", budget, async () => {
   const { page, ada } = await withMailboxes();
   const address = create(page).getByRole("textbox", { name: "Address" });
   await create(page).getByRole("combobox", { name: "For" }).selectOption({ label: "linus@example.org" });
 
-  await address.fill("hermes@example.com");
+  await address.fill("ada@example.com");
   await create(page).getByRole("button", { name: "Add mailbox" }).click();
 
-  await expect.poll(() => create(page).getByRole("alert").textContent(), wait).toBe("hermes@example.com is taken. Give another address.");
+  await expect.poll(() => create(page).getByRole("alert").textContent(), wait).toBe("ada@example.com is taken. Give another address.");
   expect(await address.getAttribute("aria-invalid")).toBe("true");
 
   await address.fill("linus@example.org");

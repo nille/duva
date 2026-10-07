@@ -229,8 +229,9 @@ function LogEntry({ entry, me, own, client, onChanged, onSignedOut }: { entry: E
   };
   const sendAfterAll = () => act("sending", () => client.POST("/approvals/{approval}/send", { params: { path: { approval: entry.approval } } }));
   // Mail the agent sent as the sponsor lies in their own mailbox, where the correction replies to it
-  // in its thread, to all its recipients. Mail from the agent's own mailbox gets a new message from
-  // the sponsor's, to the same recipients. Either opens as a draft, to be written.
+  // in its thread, to all its recipients. Mail from a mailbox no longer theirs, as one an agent owned
+  // before agents owned none, gets a new message from the sponsor's, to the same recipients. Either
+  // opens as a draft, to be written.
   const asSponsor = own?.has(entry.mailbox) === true;
   const from = asSponsor ? entry.mailbox : own === undefined ? undefined : [...own][0];
   const correct = () => {

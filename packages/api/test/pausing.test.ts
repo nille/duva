@@ -3,19 +3,21 @@ import { expect, test } from "vitest";
 import { type DuvaOptions, startDuva } from "./harness.ts";
 
 /**
- * A deployment on example.com where ada sponsors the agent Hermes, which owns a mailbox at
- * hermes@example.com. Grace is the first admin, and Ken another human.
+ * A deployment on example.com where ada has a personal mailbox at ada@example.com and sponsors the
+ * agent Hermes, which she gives send sponsor access there. Grace is the first admin, and Ken
+ * another human.
  */
 async function withAgent(options: DuvaOptions = {}) {
   const duva = await startDuva({ domain: "example.com", admin: "grace@example.org", humans: ["ada@example.org", "ken@example.org"], ...options });
   const ada = duva.signIn("ada@example.org");
   const grace = duva.signIn("grace@example.org");
   const { data: created } = await ada.POST("/agents", { body: { name: "Hermes" } });
-  const { data: mailbox } = await grace.POST("/mailboxes", { body: { owner: created!.agent.id, address: "hermes@example.com" } });
+  const { data: mailbox } = await grace.POST("/mailboxes", { body: { owner: (await ada.GET("/whoami")).data!.id, address: "ada@example.com" } });
   const hermes = duva.withKey(created!.key);
   const agent = created!.agent;
   const params = { path: { mailbox: mailbox!.id } };
   const agentParams = { params: { path: { agent: agent.id } } };
+  await ada.PATCH("/agents/{agent}/settings", { ...agentParams, body: { sponsorAccess: "send" } });
   const pause = (by = ada) => by.POST("/agents/{agent}/pause", agentParams);
   const unpause = (by = ada) => by.POST("/agents/{agent}/unpause", agentParams);
 
@@ -56,7 +58,7 @@ test("the sponsor sees their agent paused in the list of agents they sponsor", a
 
   const { data } = await ada.GET("/agents");
 
-  expect(data?.agents).toEqual([{ ...agent, paused: { by: (await ids()).ada, at: expect.any(String) }, sendsLeftThisHour: 100 }]);
+  expect(data?.agents.find(({ id }) => id === agent.id)).toEqual({ ...agent, paused: { by: (await ids()).ada, at: expect.any(String) }, sendsLeftThisHour: 100 });
 });
 
 test("unpausing lets the agent's key work again", async () => {
@@ -143,7 +145,7 @@ test("a send approved before the pause is held until the agent is unpaused, then
 
 test("a paused agent's send that needs no approval is held too", async () => {
   const { duva, ada, agent, pause, unpause, ask } = await withAgent({ sendsHeld: true });
-  await ada.PATCH("/agents/{agent}/settings", { params: { path: { agent: agent.id } }, body: { approvalForOwnMailbox: false } });
+  await ada.PATCH("/agents/{agent}/settings", { params: { path: { agent: agent.id } }, body: { approvalAsSponsor: false } });
   await ask("ken@example.org");
   await pause();
 
@@ -155,25 +157,8 @@ test("a paused agent's send that needs no approval is held too", async () => {
   expect(await recipients(duva.sent())).toEqual([["ken@example.org"]]);
 });
 
-test("a paused agent's send as its sponsor, from the sponsor's mailbox, is held too", async () => {
-  const { duva, ada, grace, agent, pause, unpause, ask, approve, ids } = await withAgent({ sendsHeld: true });
-  const { data: sponsorsMailbox } = await grace.POST("/mailboxes", { body: { owner: (await ids()).ada, address: "ada@example.com" } });
-  await ada.PATCH("/agents/{agent}/settings", { params: { path: { agent: agent.id } }, body: { sponsorAccess: "send" } });
-  await approve(await ask("ken@example.org", { path: { mailbox: sponsorsMailbox!.id } }));
-  await pause();
-
-  await duva.releaseSends();
-  expect(duva.sent()).toEqual([]);
-
-  await unpause();
-  await duva.releaseSends();
-  expect(await recipients(duva.sent())).toEqual([["ken@example.org"]]);
-});
-
 test("the sponsor's own sends go out while their agent is paused", async () => {
-  const { duva, ada, pause, ids, grace } = await withAgent();
-  const { data: own } = await grace.POST("/mailboxes", { body: { owner: (await ids()).ada, address: "ada@example.com" } });
-  const params = { path: { mailbox: own!.id } };
+  const { duva, ada, params, pause } = await withAgent();
   await pause();
 
   const { data: draft } = await ada.POST("/mailboxes/{mailbox}/drafts", { params, body: { to: ["ken@example.org"], subject: "Hello", text: "Hej." } });
@@ -182,12 +167,14 @@ test("the sponsor's own sends go out while their agent is paused", async () => {
   expect(await recipients(duva.sent())).toEqual([["ken@example.org"]]);
 });
 
-test("mail to a paused agent's mailbox keeps arriving", async () => {
+test("mail to the sponsor's mailbox keeps arriving while their agent is paused, and the agent reads it once unpaused", async () => {
   const { duva, ada, hermes, params, pause, unpause } = await withAgent();
+  // Mail from a first-time sender would wait in the Screener, which this test leaves out.
+  await ada.PATCH("/mailboxes/{mailbox}/screener", { params, body: { on: false } });
   await pause();
 
-  await duva.receive("From: Ken <ken@example.org>\r\nTo: hermes@example.com\r\nSubject: Still there?\r\nMessage-ID: <still@example.org>\r\n\r\nHej.\r\n", {
-    to: ["hermes@example.com"],
+  await duva.receive("From: Ken <ken@example.org>\r\nTo: ada@example.com\r\nSubject: Still there?\r\nMessage-ID: <still@example.org>\r\n\r\nHej.\r\n", {
+    to: ["ada@example.com"],
   });
 
   expect((await ada.GET("/mailboxes/{mailbox}/threads", { params })).data?.threads).toMatchObject([{ subject: "Still there?" }]);
@@ -195,7 +182,7 @@ test("mail to a paused agent's mailbox keeps arriving", async () => {
   expect((await hermes.GET("/mailboxes/{mailbox}/threads", { params })).data?.threads).toMatchObject([{ subject: "Still there?" }]);
 });
 
-test("pausing and unpausing are in the agent's mailboxes' change feeds and the organization's, under who did it, and pausing again records nothing", async () => {
+test("pausing and unpausing are in the organization's change feed, under who did it, never in the sponsor's mailbox's, and pausing again records nothing", async () => {
   const { ada, grace, agent, params, pause, unpause, ids } = await withAgent();
   const { ada: sponsor, grace: admin } = await ids();
   const { data: mailboxBefore } = await ada.GET("/mailboxes/{mailbox}/changes", { params });
@@ -208,7 +195,7 @@ test("pausing and unpausing are in the agent's mailboxes' change feeds and the o
   const entry = (actor: string, type: string) => ({ position: expect.any(Number), at: expect.any(String), actor, type, agent: agent.id });
   const expected = [entry(sponsor, "agentPaused"), entry(admin, "agentUnpaused")];
   const { data: mailboxFeed } = await ada.GET("/mailboxes/{mailbox}/changes", { params: { ...params, query: { after: mailboxBefore!.position } } });
-  expect(mailboxFeed?.changes).toEqual(expected);
+  expect(mailboxFeed?.changes).toEqual([]);
   const { data: organizationFeed } = await grace.GET("/organization/changes", { params: { query: { after: organizationBefore!.position } } });
   expect(organizationFeed?.changes).toEqual(expected);
 });

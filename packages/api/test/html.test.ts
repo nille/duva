@@ -3,27 +3,27 @@ import { expect, test } from "vitest";
 import { startDuva } from "./harness.ts";
 
 /**
- * A deployment on example.com where ada, the first admin, sponsors the agent Hermes, which owns a
- * mailbox at hermes@example.com. `read` hands SES the message for Hermes and returns it as Hermes
- * reads it.
+ * A deployment on example.com where ada, the first admin, has a mailbox at hermes@example.com, with
+ * the Screener off so a first-time sender's mail lands in the Inbox. `read` hands SES the message
+ * for the mailbox and returns it as Ada reads it.
  */
 async function withMailbox() {
   const duva = await startDuva({ domain: "example.com", admin: "ada@example.org" });
   const ada = duva.signIn("ada@example.org");
-  const { data: created } = await ada.POST("/agents", { body: { name: "Hermes" } });
-  const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: created!.agent.id, address: "hermes@example.com" } });
-  const hermes = duva.withKey(created!.key);
+  const { data: me } = await ada.GET("/whoami");
+  const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: me!.id, address: "hermes@example.com" } });
   const params = { path: { mailbox: mailbox!.id } };
+  await ada.PATCH("/mailboxes/{mailbox}/screener", { params, body: { on: false } });
   const read = async (raw: string) => {
     await duva.receive(raw, { to: ["hermes@example.com"] });
-    const { data: list } = await hermes.GET("/mailboxes/{mailbox}/threads", { params });
-    const { data: thread } = await hermes.GET("/mailboxes/{mailbox}/threads/{thread}", { params: { path: { ...params.path, thread: list!.threads[0]!.id } } });
+    const { data: list } = await ada.GET("/mailboxes/{mailbox}/threads", { params });
+    const { data: thread } = await ada.GET("/mailboxes/{mailbox}/threads/{thread}", { params: { path: { ...params.path, thread: list!.threads[0]!.id } } });
     return thread!.messages[0]!;
   };
-  return { duva, hermes, params, read };
+  return { duva, params, read };
 }
 
-/** The header fields of a made-up newsletter from Lindvallens IF to Hermes. */
+/** The header fields of a made-up newsletter from Lindvallens IF to hermes@example.com. */
 const fromLindvallen = [
   "From: Lindvallens IF <nyheter@lindvallen.example.net>",
   "To: hermes@example.com",

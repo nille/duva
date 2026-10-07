@@ -5,20 +5,21 @@ const start = Date.parse("2026-10-07T10:00:00Z");
 const seconds = (count: number) => count * 1000;
 
 /**
- * A deployment on example.com, at 10:00 on 7 October 2026, where Ada, the first admin, sponsors
- * the agent Hermes, which owns a mailbox at hermes@example.com. Grace is another human. The
- * organization's undo window is Duva's default unless given.
+ * A deployment on example.com, at 10:00 on 7 October 2026, where Ada, the first admin, has a
+ * personal mailbox at ada@example.com and sponsors the agent Hermes, which she gives send sponsor
+ * access there. Grace is another human. The organization's undo window is Duva's default unless given.
  */
 async function withAgent(options: DuvaOptions = {}) {
   const duva = await startDuva({ domain: "example.com", admin: "ada@example.org", humans: ["grace@example.org"], undoWindow: null, ...options });
   await duva.clock(new Date(start));
   const ada = duva.signIn("ada@example.org");
   const grace = duva.signIn("grace@example.org");
+  const { data: me } = await ada.GET("/whoami");
   const { data: created } = await ada.POST("/agents", { body: { name: "Hermes" } });
-  const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: created!.agent.id, address: "hermes@example.com" } });
+  const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: me!.id, address: "ada@example.com" } });
+  await ada.PATCH("/agents/{agent}/settings", { params: { path: { agent: created!.agent.id } }, body: { sponsorAccess: "send" } });
   const hermes = duva.withKey(created!.key);
   const params = { path: { mailbox: mailbox!.id } };
-  const { data: me } = await ada.GET("/whoami");
 
   /** Hermes drafts a message to Grace and asks to send it, and returns the draft and the approval it waits for. */
   const ask = async (text = "Monday works.") => {
@@ -169,9 +170,7 @@ test("a send held after its window while the agent is paused still counts as app
 });
 
 test("a human's own send never waits for the undo window", async () => {
-  const { duva, ada, adaId } = await withAgent();
-  const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: adaId, address: "ada@example.com" } });
-  const params = { path: { mailbox: mailbox!.id } };
+  const { duva, ada, params } = await withAgent();
   const { data: draft } = await ada.POST("/mailboxes/{mailbox}/drafts", { params, body: { to: ["grace@example.org"], subject: "Lunch", text: "Noon?" } });
 
   await ada.POST("/mailboxes/{mailbox}/drafts/{draft}/send", { params: { path: { ...params.path, draft: draft!.id } } });

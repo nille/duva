@@ -17,3 +17,5 @@ Sponsor access grows from None, Read and Full to None, Read, Organize, Draft and
 - An approved agent has no key until it collects one, so Duva never stores a key it hasn't shown. It collects it once, up to an hour after its code expired. Its sponsor can rotate or remove it meanwhile, and then the request gives no key.
 - The CLI keeps one actor signed in, so on a computer where a human was signed in, `duva login --agent` signs them out, and says so.
 - Stored sponsor access of Full reads as Send, and an agent whose sponsor never chose mailboxes keeps access to all of theirs.
+
+Since ADR-0030 (2026-10-07) agents own no mailboxes, so an agent's sends are always as its sponsor, and only the switches for those remain.

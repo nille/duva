@@ -6,23 +6,27 @@ import { startDuva } from "./harness.ts";
 type Mailbox = components["schemas"]["Mailbox"];
 
 /**
- * A deployment on example.com where ada, the first admin, sponsors the agent Hermes, which owns a
- * mailbox at hermes@example.com. Grace is a human with a mailbox at grace@example.com.
+ * A deployment on example.com where ada, the first admin, has a mailbox at ada@example.com, and
+ * sponsors the agent Hermes, which has send sponsor access to it. Grace is a human with a mailbox
+ * at grace@example.com.
  */
 async function withMailboxes() {
   const duva = await startDuva({ domain: "example.com", admin: "ada@example.org", humans: ["grace@example.org"] });
   const ada = duva.signIn("ada@example.org");
   const grace = duva.signIn("grace@example.org");
+  const { data: adaId } = await ada.GET("/whoami");
+  const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: adaId!.id, address: "ada@example.com" } });
   const { data: created } = await ada.POST("/agents", { body: { name: "Hermes" } });
-  const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: created!.agent.id, address: "hermes@example.com" } });
+  await ada.PATCH("/agents/{agent}/settings", { params: { path: { agent: created!.agent.id } }, body: { sponsorAccess: "send" } });
   const { data: me } = await grace.GET("/whoami");
   const { data: gracesMailbox } = await ada.POST("/mailboxes", { body: { owner: me!.id, address: "grace@example.com" } });
   const hermes = duva.withKey(created!.key);
   const params = { path: { mailbox: mailbox!.id } };
   const graces = { path: { mailbox: gracesMailbox!.id } };
-  // Grace's mail goes straight to her Inbox.
+  // Ada's and Grace's mail goes straight to their Inboxes.
+  await ada.PATCH("/mailboxes/{mailbox}/screener", { params, body: { on: false } });
   await grace.PATCH("/mailboxes/{mailbox}/screener", { params: graces, body: { on: false } });
-  return { duva, ada, grace, hermes, key: created!.key, mailbox: mailbox as Mailbox, params, gracesMailbox: gracesMailbox as Mailbox, graces };
+  return { duva, ada, grace, hermes, mailbox: mailbox as Mailbox, params, gracesMailbox: gracesMailbox as Mailbox, graces };
 }
 
 const message = (to: string, subject = "Hello") => `From: linus@example.net\r\nTo: ${to}\r\nSubject: ${subject}\r\nMessage-ID: <${subject}@example.net>\r\n\r\nHej.\r\n`;
@@ -47,12 +51,12 @@ test("an admin gives a mailbox another address, and mail to it, plus-tagged too,
 test("a mailbox lists its addresses, the earliest first, with its default address", async () => {
   const { ada, mailbox } = await withMailboxes();
 
-  expect(mailbox).toEqual({ id: expect.any(String), kind: "personal", owner: expect.any(String), defaultAddress: "hermes@example.com", addresses: ["hermes@example.com"] });
+  expect(mailbox).toEqual({ id: expect.any(String), kind: "personal", owner: expect.any(String), defaultAddress: "ada@example.com", addresses: ["ada@example.com"] });
   await ada.POST("/addresses", { body: { address: "post@example.com", mailbox: mailbox.id } });
   await ada.POST("/addresses", { body: { address: "agent@example.com", mailbox: mailbox.id } });
 
   const { data } = await ada.GET("/mailboxes/{mailbox}", { params: { path: { mailbox: mailbox.id } } });
-  expect(data).toMatchObject({ defaultAddress: "hermes@example.com", addresses: ["hermes@example.com", "post@example.com", "agent@example.com"] });
+  expect(data).toMatchObject({ defaultAddress: "ada@example.com", addresses: ["ada@example.com", "post@example.com", "agent@example.com"] });
 });
 
 test("an admin lists every address in the organization, with the mailbox it delivers to", async () => {
@@ -63,15 +67,15 @@ test("an admin lists every address in the organization, with the mailbox it deli
 
   expect(data).toEqual({
     addresses: [
+      { address: "ada@example.com", mailbox: mailbox.id },
       { address: "grace@example.com", mailbox: gracesMailbox.id },
-      { address: "hermes@example.com", mailbox: mailbox.id },
       { address: "support@example.com", mailbox: gracesMailbox.id },
     ],
   });
 });
 
-test("only an admin adds, removes, lists and chooses addresses, so not even the mailbox's owner", async () => {
-  const { grace, hermes, mailbox, gracesMailbox, graces } = await withMailboxes();
+test("only an admin adds, removes, lists and chooses addresses, so not even the mailbox's owner or an admin's agent", async () => {
+  const { ada, grace, hermes, mailbox, gracesMailbox, graces } = await withMailboxes();
 
   for (const actor of [grace, hermes]) {
     const added = await actor.POST("/addresses", { body: { address: "support@example.com", mailbox: gracesMailbox.id } });
@@ -81,18 +85,18 @@ test("only an admin adds, removes, lists and chooses addresses, so not even the 
     expect([added, removed, listed, chosen].map(({ response }) => response.status)).toEqual([403, 403, 403, 403]);
     expect(added.error?.message).toMatch(/admin/);
   }
-  expect((await hermes.GET("/mailboxes/{mailbox}", { params: { path: { mailbox: mailbox.id } } })).data?.addresses).toEqual(["hermes@example.com"]);
+  expect((await ada.GET("/mailboxes/{mailbox}", { params: { path: { mailbox: mailbox.id } } })).data?.addresses).toEqual(["ada@example.com"]);
 });
 
 test("an address in use is refused, whichever mailbox has it", async () => {
   const { ada, mailbox, gracesMailbox } = await withMailboxes();
 
-  const theirs = await ada.POST("/addresses", { body: { address: "Hermes@example.com", mailbox: gracesMailbox.id } });
-  const own = await ada.POST("/addresses", { body: { address: "hermes@example.com", mailbox: mailbox.id } });
+  const theirs = await ada.POST("/addresses", { body: { address: "Ada@example.com", mailbox: gracesMailbox.id } });
+  const own = await ada.POST("/addresses", { body: { address: "ada@example.com", mailbox: mailbox.id } });
   const asMailbox = await ada.POST("/mailboxes", { body: { owner: mailbox.owner, address: "grace@example.com" } });
 
   expect([theirs, own, asMailbox].map(({ response }) => response.status)).toEqual([409, 409, 409]);
-  expect(theirs.error?.message).toMatch(/hermes@example.com is taken/);
+  expect(theirs.error?.message).toMatch(/ada@example.com is taken/);
 });
 
 test.each([
@@ -134,7 +138,7 @@ test("new mail goes from the default address the admin chooses", async () => {
 test("the default address is one of the mailbox's addresses", async () => {
   const { ada, graces } = await withMailboxes();
 
-  const { response, error } = await ada.PATCH("/mailboxes/{mailbox}", { params: graces, body: { defaultAddress: "hermes@example.com" } });
+  const { response, error } = await ada.PATCH("/mailboxes/{mailbox}", { params: graces, body: { defaultAddress: "ada@example.com" } });
 
   expect(response.status).toBe(400);
   expect(error?.message).toMatch(/grace@example.com/);
@@ -185,7 +189,7 @@ test("removing an address refuses its mail at once, and the mail the mailbox has
 });
 
 test("a removed address can be given to another mailbox at once, and its mail reaches that one", async () => {
-  const { duva, ada, hermes, grace, params, graces, mailbox, gracesMailbox } = await withMailboxes();
+  const { duva, ada, grace, params, graces, mailbox, gracesMailbox } = await withMailboxes();
   await ada.POST("/addresses", { body: { address: "support@example.com", mailbox: gracesMailbox.id } });
 
   await ada.DELETE("/addresses/{address}", { params: { path: { address: "support@example.com" } } });
@@ -193,7 +197,7 @@ test("a removed address can be given to another mailbox at once, and its mail re
 
   expect(response.status).toBe(201);
   await duva.receive(message("support@example.com"), { to: ["support@example.com"] });
-  expect((await hermes.GET("/mailboxes/{mailbox}/threads", { params })).data?.threads).toHaveLength(1);
+  expect((await ada.GET("/mailboxes/{mailbox}/threads", { params })).data?.threads).toHaveLength(1);
   expect((await grace.GET("/mailboxes/{mailbox}/threads", { params: graces })).data?.threads).toEqual([]);
 });
 
@@ -317,20 +321,20 @@ test("choosing the address that is already the default records nothing", async (
 });
 
 test("past 500 addresses, as many as an SES receipt rule takes, Duva's rules share them, and an emptied rule goes", async () => {
-  const { duva, ada, hermes, grace, mailbox, params, graces } = await withMailboxes();
+  const { duva, ada, grace, mailbox, params, graces } = await withMailboxes();
   const addresses = Array.from({ length: 499 }, (_, index) => `extra-${index}@example.com`);
   for (let start = 0; start < addresses.length; start += 5) {
     await Promise.all(addresses.slice(start, start + 5).map((address) => ada.POST("/addresses", { body: { address, mailbox: mailbox.id } })));
   }
-  // With hermes@ and grace@, the organization has 501 addresses.
+  // With ada@ and grace@, the organization has 501 addresses.
   const rules = duva.receiptRules();
   expect(rules.map(({ Recipients = [] }) => Recipients.length).sort()).toEqual([1, 500]);
   expect(new Set(rules.flatMap(({ Recipients = [] }) => Recipients)).size).toBe(501);
   expect(rules.every(({ Actions }) => Actions?.length === 2)).toBe(true);
   const [lone] = rules.find(({ Recipients = [] }) => Recipients.length === 1)!.Recipients!;
-  // Hermes's mailbox has an address in each rule, and each rule hands the message to the inbound Lambda.
-  expect((await duva.receive(message(lone!), { to: ["hermes@example.com", lone!, "grace@example.com"] })).refused).toEqual([]);
-  expect((await hermes.GET("/mailboxes/{mailbox}/threads", { params })).data?.threads).toHaveLength(1);
+  // Ada's mailbox has an address in each rule, and each rule hands the message to the inbound Lambda.
+  expect((await duva.receive(message(lone!), { to: ["ada@example.com", lone!, "grace@example.com"] })).refused).toEqual([]);
+  expect((await ada.GET("/mailboxes/{mailbox}/threads", { params })).data?.threads).toHaveLength(1);
   expect((await grace.GET("/mailboxes/{mailbox}/threads", { params: graces })).data?.threads).toHaveLength(1);
 
   await ada.DELETE("/addresses/{address}", { params: { path: { address: lone! } } });

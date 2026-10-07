@@ -1,18 +1,11 @@
-// The mailboxes a human can read, beside the mail: their own, each by its default address when they
-// have more than one, then each agent's they sponsor, with how many threads in each Inbox are unread.
-// A human with one mailbox who sponsors no agents never sees it. An agent's carries its mark.
+// The mailboxes a human reads, beside the mail: their own, each by its default address when they
+// have more than one, with how many threads in each Inbox are unread. Agents own no mailboxes, so
+// none is listed for them. A human with one mailbox never sees the list.
 import { useEffect, useId, useRef, useState } from "react";
 import type { components } from "@duva/openapi";
-import { ActorMark } from "./mail-parts.tsx";
 import { strings } from "./strings.ts";
 
 type Mailbox = components["schemas"]["Mailbox"];
-
-/** An agent's mailbox, with the agent's name. */
-export interface AgentMailbox {
-  mailbox: Mailbox;
-  agent: string;
-}
 
 /** Where the mailbox's Inbox is in the web app: at the start when it is `atStart`, as the human's only own mailbox is. */
 export const mailboxHref = (mailbox: Mailbox, atStart: boolean) => (atStart ? "#/" : `#/mailboxes/${encodeURIComponent(mailbox.id)}/`);
@@ -26,27 +19,23 @@ export function ownInOrder(own: Mailbox[], email: string): Mailbox[] {
   return [...own].sort((a, b) => rank(a) - rank(b) || (a.defaultAddress ?? "").localeCompare(b.defaultAddress ?? "") || a.id.localeCompare(b.id));
 }
 
-/** What a mailbox is called beside the mail: an agent's by the agent's name, the human's own by its address, or as "Your mailbox" when it is their only one. */
-export const mailboxName = (mailbox: Mailbox, own: Mailbox[], agent?: string) =>
-  agent ?? (own.length === 1 ? strings.mailboxes.yours : (mailbox.defaultAddress ?? strings.mailboxes.withoutAddress(own.indexOf(mailbox) + 1)));
+/** What a mailbox is called beside the mail: by its address, or as "Your mailbox" when it is the human's only one. */
+export const mailboxName = (mailbox: Mailbox, own: Mailbox[]) =>
+  own.length === 1 ? strings.mailboxes.yours : (mailbox.defaultAddress ?? strings.mailboxes.withoutAddress(own.indexOf(mailbox) + 1));
 
 export function MailboxList({
   own,
-  agents,
   unread,
   current,
-  label = strings.mailboxes.label,
 }: {
   /** The human's own mailboxes, in the order `ownInOrder` gives. */
   own: Mailbox[];
-  agents: AgentMailbox[];
   unread: ReadonlyMap<string, number>;
   current?: string;
-  label?: string;
 }) {
   const several = own.length > 1;
   return (
-    <nav className="mailboxes" aria-label={label}>
+    <nav className="mailboxes" aria-label={strings.mailboxes.label}>
       {several && (
         <p className="mailboxes-group" id="mailboxes-own">
           {strings.mailboxes.yourMailboxes}
@@ -68,26 +57,6 @@ export function MailboxList({
           ))}
         </ul>
       )}
-      {agents.length > 0 && (
-        <>
-          <p className="mailboxes-group" id="mailboxes-agents">
-            {strings.mailboxes.agents}
-          </p>
-          <ul aria-labelledby="mailboxes-agents">
-            {agents.map(({ mailbox, agent }) => (
-              <MailboxLink
-                key={mailbox.id}
-                name={agent}
-                address={strings.mailboxes.address(mailbox)}
-                unread={unread.get(mailbox.id)}
-                current={current === mailbox.id}
-                href={mailboxHref(mailbox, false)}
-                agent
-              />
-            ))}
-          </ul>
-        </>
-      )}
     </nav>
   );
 }
@@ -105,13 +74,12 @@ function breakableBeforeAt(text: string) {
   );
 }
 
-function MailboxLink({ name, address, unread = 0, current, href, agent = false }: { name: string; address?: string; unread?: number; current: boolean; href: string; agent?: boolean }) {
+function MailboxLink({ name, address, unread = 0, current, href }: { name: string; address?: string; unread?: number; current: boolean; href: string }) {
   const label = [name, address, unread > 0 && strings.mailboxes.unread(unread)].filter(Boolean).join(", ");
   return (
     <li>
       <a className={unread > 0 ? "mailbox mailbox-unread" : "mailbox"} href={href} aria-label={label} aria-current={current ? "page" : undefined}>
         <span className="mailbox-name">
-          {agent && <ActorMark kind="agent" />}
           <span>{breakableBeforeAt(name)}</span>
         </span>
         <span className="mailbox-count" aria-hidden="true">
@@ -143,7 +111,7 @@ export function MailboxSelector({
   const id = useId();
   const button = useRef<HTMLButtonElement>(null);
   const root = useRef<HTMLDivElement>(null);
-  // With none of their own open, as while an agent's is, it asks for one.
+  // With none of their own open, it asks for one.
   const shown = current ?? (own.length === 1 ? own[0] : undefined);
   const name = shown === undefined ? strings.mailboxes.choose : mailboxName(shown, own);
   const address = shown === undefined ? name : strings.mailboxes.address(shown);
@@ -208,7 +176,7 @@ export function MailboxSelector({
         <ChevronIcon />
       </button>
       <div id={id} className="selector-list" hidden={!open}>
-        {open && <MailboxList own={own} agents={[]} unread={unread} current={current?.id} />}
+        {open && <MailboxList own={own} unread={unread} current={current?.id} />}
       </div>
     </div>
   );

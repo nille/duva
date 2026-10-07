@@ -114,19 +114,13 @@ test("only those who read the mailbox get a link: an admin or another human gets
   expect(byGrace.error).toEqual({ message: expect.stringMatching(/owner/) });
 });
 
-test("a sponsor downloads an attachment their agent received", async () => {
-  const { duva, ada } = await withHumansMailbox();
-  const linus = duva.signIn("linus@example.org");
+test("an agent with read sponsor access downloads an attachment its sponsor received", async () => {
+  const { duva, linus, receive, link } = await withHumansMailbox();
   const { data: agent } = await linus.POST("/agents", { body: { name: "Hermes" } });
-  const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: agent!.agent.id, address: "hermes@example.com" } });
-  await duva.receive(await mail("attachment"), { to: ["hermes@example.com"] });
-  const params = { path: { mailbox: mailbox!.id } };
-  const { data: list } = await linus.GET("/mailboxes/{mailbox}/threads", { params });
-  const { data: thread } = await linus.GET("/mailboxes/{mailbox}/threads/{thread}", { params: { path: { ...params.path, thread: list!.threads[0]!.id } } });
+  await linus.PATCH("/agents/{agent}/settings", { params: { path: { agent: agent!.agent.id } }, body: { sponsorAccess: "read" } });
+  const message = await receive(await mail("attachment"));
 
-  const { data } = await linus.GET("/mailboxes/{mailbox}/messages/{message}/attachments/{attachment}", {
-    params: { path: { ...params.path, message: thread!.messages[0]!.id, attachment: 0 } },
-  });
+  const { data } = await link(message.id, 0, duva.withKey(agent!.key));
 
   expect(await (await duva.download(data!.url)).text()).toBe("Hello, PDF!");
 });
@@ -251,23 +245,19 @@ test("a forward's MIME names attachments in both RFC 2231 and RFC 2047, so every
 });
 
 test("an agent's forward waits for its sponsor's approval, which shows the attachments, and goes out with them", async () => {
-  const { duva, ada } = await withHumansMailbox();
-  const linus = duva.signIn("linus@example.org");
+  const { duva, linus, params, receive } = await withHumansMailbox();
   const { data: created } = await linus.POST("/agents", { body: { name: "Hermes" } });
-  const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: created!.agent.id, address: "hermes@example.com" } });
-  await duva.receive(await mail("attachment"), { to: ["hermes@example.com"] });
+  await linus.PATCH("/agents/{agent}/settings", { params: { path: { agent: created!.agent.id } }, body: { sponsorAccess: "send" } });
   const hermes = duva.withKey(created!.key);
-  const params = { path: { mailbox: mailbox!.id } };
-  const { data: list } = await hermes.GET("/mailboxes/{mailbox}/threads", { params });
-  const { data: thread } = await hermes.GET("/mailboxes/{mailbox}/threads/{thread}", { params: { path: { ...params.path, thread: list!.threads[0]!.id } } });
-  const { data: draft } = await hermes.POST("/mailboxes/{mailbox}/drafts", { params, body: { forwards: thread!.messages[0]!.id, to: ["iris@example.net"] } });
+  const message = await receive(await mail("attachment"));
+  const { data: draft } = await hermes.POST("/mailboxes/{mailbox}/drafts", { params, body: { forwards: message.id, to: ["iris@example.net"] } });
 
   const { data: asked } = await hermes.POST("/mailboxes/{mailbox}/drafts/{draft}/send", { params: { path: { ...params.path, draft: draft!.id } } });
   const { data: approvals } = await linus.GET("/approvals");
 
   expect(asked!.send?.state).toBe("waiting");
   expect(duva.sent()).toEqual([]);
-  expect(approvals!.approvals[0]!.draft).toMatchObject({ forwards: thread!.messages[0]!.id, attachments: [{ name: "report.pdf", type: "application/pdf", size: 11 }, { type: "text/csv", size: 8 }] });
+  expect(approvals!.approvals[0]!.draft).toMatchObject({ forwards: message.id, attachments: [{ name: "report.pdf", type: "application/pdf", size: 11 }, { type: "text/csv", size: 8 }] });
 
   await linus.POST("/approvals/{approval}/send", { params: { path: { approval: approvals!.approvals[0]!.id } }, body: {} });
 

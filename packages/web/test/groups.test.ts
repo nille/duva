@@ -7,9 +7,9 @@ const wait = { timeout: 10_000 };
 const budget = { timeout: 60_000 };
 
 /**
- * The web app for a deployment on example.com, where Ada is the admin and sponsors Hermes, an agent
- * with a mailbox at hermes@example.com, and Grace is a human with one at grace@example.com. The
- * group team@example.com has Grace, Hermes and linus@example.net as members. Signed in as Ada on
+ * The web app for a deployment on example.com, where Ada is the admin and Grace is a human with
+ * mailboxes at grace@example.com and hopper@example.com. The group team@example.com has both of
+ * Grace's mailboxes and linus@example.net as members. Signed in as Ada on
  * Settings.
  */
 async function withTeam(options: { viewport?: { width: number; height: number } } = {}) {
@@ -17,9 +17,8 @@ async function withTeam(options: { viewport?: { width: number; height: number } 
   const ada = app.duva.signIn("ada@example.org");
   const { data: grace } = await app.duva.signIn("grace@example.org").GET("/whoami");
   await ada.POST("/mailboxes", { body: { owner: grace!.id, address: "grace@example.com" } });
-  const { data: hermes } = await ada.POST("/agents", { body: { name: "Hermes" } });
-  await ada.POST("/mailboxes", { body: { owner: hermes!.agent.id, address: "hermes@example.com" } });
-  await ada.POST("/groups", { body: { address: "team@example.com", members: ["grace@example.com", "hermes@example.com", "linus@example.net"] } });
+  await ada.POST("/mailboxes", { body: { owner: grace!.id, address: "hopper@example.com" } });
+  await ada.POST("/groups", { body: { address: "team@example.com", members: ["grace@example.com", "hopper@example.com", "linus@example.net"] } });
   const { page } = app;
   await app.signIn("ada@example.org");
   await page.getByRole("link", { name: "Settings", exact: true }).click();
@@ -43,7 +42,7 @@ test("an admin sees each group with its members, local or external, and who can 
 
   expect(await members(page, "team@example.com")).toEqual([
     expect.stringMatching(/^grace@example\.com\s+grace@example\.org's mailbox\s+Remove$/),
-    expect.stringMatching(/^hermes@example\.com\s+Hermes's mailbox, an agent\s+Remove$/),
+    expect.stringMatching(/^hopper@example\.com\s+grace@example\.org's mailbox\s+Remove$/),
     expect.stringMatching(/^linus@example\.net\s+External address\s+Remove$/),
   ]);
   expect(await line(page, "team@example.com").getByRole("radio", { name: /^Anyone/ }).isChecked()).toBe(true);
@@ -111,7 +110,7 @@ test("an admin adds a member and removes another, each said in its row", budget,
   await team.getByRole("button", { name: "Remove linus@example.net from the group" }).click();
 
   await expect.poll(() => members(page, "team@example.com"), wait).toContain("Removed linus@example.net. It gets no copies from now on.");
-  expect((await ada.GET("/groups/{group}", { params: { path: { group: "team@example.com" } } })).data?.members).toEqual(["grace@example.com", "hermes@example.com", "margaret@example.net"]);
+  expect((await ada.GET("/groups/{group}", { params: { path: { group: "team@example.com" } } })).data?.members).toEqual(["grace@example.com", "hopper@example.com", "margaret@example.net"]);
 });
 
 test("an admin lets only the group's members send to it, and sends external members' replies to the group", budget, async () => {

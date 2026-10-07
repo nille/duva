@@ -7,3 +7,5 @@ When an admin removes a human, the agents they sponsor are removed with them, an
 - The removal shows which agents and mailboxes go with the human, and asks for confirmation.
 - An agent's erased mailboxes are erased as Empty Trash does, everywhere Duva keeps mail. Its approval records follow the organization's setting (ADR-0014).
 - Someone who wants to keep an agent's work hands it over before the removal: a sponsor can forward or export it, and agent handover may come later.
+
+Since ADR-0030 (2026-10-07) agents own no mailboxes, so an agent removed with its sponsor has none to erase.

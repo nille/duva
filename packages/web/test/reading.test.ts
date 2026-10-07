@@ -193,11 +193,12 @@ test.each([
 ])("on %s, mail an agent sent carries its diamond in the recipient's own mailbox, folded and open, beside the human's dot", budget, async (_, viewport) => {
   const app = await withPersonalMailbox({ viewport });
   const { page, signIn, duva, receive, reply, markRead } = app;
-  // Ada's agent writes to Grace, who doesn't sponsor it, so only the mail itself says an agent sent it.
+  // Ada's agent writes to Grace as Ada, and Grace doesn't sponsor it, so only the mail itself says an agent sent it.
   const ada = duva.signIn("ada@example.org");
+  const { data: me } = await ada.GET("/whoami");
+  const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: me!.id, address: "ada@example.com" } });
   const { data: created } = await ada.POST("/agents", { body: { name: "Hermes" } });
-  const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: created!.agent.id, address: "hermes@example.com" } });
-  await ada.PATCH("/agents/{agent}/settings", { params: { path: { agent: created!.agent.id } }, body: { approvalForOwnMailbox: false } });
+  await ada.PATCH("/agents/{agent}/settings", { params: { path: { agent: created!.agent.id } }, body: { sponsorAccess: "send", approvalAsSponsor: false } });
   const hermes = duva.withKey(created!.key);
   const path = { mailbox: mailbox!.id };
   const send = async (body: { to?: string[]; subject?: string; answers?: string; text: string }) => {

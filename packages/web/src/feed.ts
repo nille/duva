@@ -17,9 +17,6 @@ export interface MailboxChange {
 /** The changes that alter what the Approvals view shows: a request, its decision, or how its send went. */
 export const approvalChanges = new Set<Change["type"]>(["approvalAsked", "approvalWithdrawn", "approvalDecided", "approvalUndone", "messageSent", "sendFailed", "sendUnclear"]);
 
-/** The organization's changes that alter what the Approvals view shows: an agent admin's setup change asked for or decided. */
-export const setupChanges = new Set<OrganizationChange["type"]>(["setupAsked", "setupApproved", "setupRejected", "setupWithdrawn"]);
-
 /** The changes that alter what a mailbox's threads show: mail in or out, read state, labels, Remind me and erasure. */
 export const mailChanges = new Set<Change["type"]>(["messageReceived", "messageSent", "threadRead", "threadUnread", "threadLabelsChanged", "reminderSet", "reminderCancelled", "threadBack", "threadErased"]);
 

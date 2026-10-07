@@ -18,8 +18,7 @@ const note = (subject: string, to: string) =>
 
 /**
  * A deployment on example.com where the admin Ada added the humans Grace and Linus. Grace has a
- * personal mailbox at grace@example.com, with a message in it, and sponsors the agent Hermes,
- * which owns hermes@example.com, with a message in it too.
+ * personal mailbox at grace@example.com, with a message in it, and sponsors the agent Hermes.
  */
 async function withGraceAndHermes(options: DuvaOptions = {}) {
   const duva = await startDuva({ domain: "example.com", admin: "ada@example.org", humans: ["grace@example.org", "linus@example.org"], ...options });
@@ -33,9 +32,7 @@ async function withGraceAndHermes(options: DuvaOptions = {}) {
   // Mail from first-time senders would wait in the Screener, which these tests leave out.
   await grace.PATCH("/mailboxes/{mailbox}/screener", { params: { path: { mailbox: mailbox!.id } }, body: { on: false } });
   const { data: created } = await grace.POST("/agents", { body: { name: "Hermes" } });
-  const { data: hermesMailbox } = await ada.POST("/mailboxes", { body: { owner: created!.agent.id, address: "hermes@example.com" } });
   await duva.receive(note("Till Grace", "grace@example.com"), { to: ["grace@example.com"] });
-  await duva.receive(note("Till Hermes", "hermes@example.com"), { to: ["hermes@example.com"] });
   const hermes = duva.withKey(created!.key);
   const remove = (body: components["schemas"]["HumanRemovalChoices"]) =>
     ada.POST("/humans/{human}/remove", { params: { path: { human: graceActor!.id } }, body });
@@ -50,7 +47,6 @@ async function withGraceAndHermes(options: DuvaOptions = {}) {
     linusId: linusActor!.id,
     agent: created!.agent,
     mailbox: mailbox!,
-    hermesMailbox: hermesMailbox!,
     remove,
   };
 }
@@ -58,8 +54,8 @@ async function withGraceAndHermes(options: DuvaOptions = {}) {
 /** Whether the mail bucket keeps a raw message with the text. */
 const keeps = (duva: Awaited<ReturnType<typeof startDuva>>, text: string) => duva.stored().some((raw) => raw.includes(text));
 
-test("a dry run of removing a human lists their mailboxes, their agents and the agents' mailboxes, and removes nothing", async () => {
-  const { duva, ada, grace, hermes, graceActor, agent, mailbox, hermesMailbox, remove } = await withGraceAndHermes();
+test("a dry run of removing a human lists their mailboxes and their agents, and removes nothing", async () => {
+  const { duva, ada, grace, hermes, graceActor, agent, mailbox, remove } = await withGraceAndHermes();
 
   const { response, data } = await remove({ dryRun: true });
 
@@ -69,18 +65,17 @@ test("a dry run of removing a human lists their mailboxes, their agents and the 
     human: graceActor,
     mailboxes: [mailbox],
     agents: expect.arrayContaining([agent, expect.objectContaining({ name: "Mailbox agent", mailbox: mailbox.id })]),
-    agentMailboxes: [hermesMailbox],
     removed: false,
   });
   expect(data!.agents).toHaveLength(2);
   expect((await grace.GET("/whoami")).response.status).toBe(200);
   expect((await hermes.GET("/whoami")).response.status).toBe(200);
   expect((await ada.GET("/humans")).data?.humans).toContainEqual(graceActor);
-  expect(keeps(duva, "Hej. Till Hermes.")).toBe(true);
+  expect(keeps(duva, "Hej. Till Grace.")).toBe(true);
 });
 
 test("a mailbox handed over becomes another personal mailbox of the human it goes to, with its address and mail", async () => {
-  const { duva, linus, linusId, mailbox, hermesMailbox, remove } = await withGraceAndHermes();
+  const { duva, linus, linusId, mailbox, remove } = await withGraceAndHermes();
 
   const { data } = await remove({ handTo: linusId, handOver: [mailbox.id], delete: [] });
   await duva.receive(note("Efteråt", "grace@example.com"), { to: ["grace@example.com"] });
@@ -90,7 +85,6 @@ test("a mailbox handed over becomes another personal mailbox of the human it goe
   expect((await linus.GET("/mailboxes")).data).toEqual({ mailboxes: [handed] });
   const { data: threads } = await linus.GET("/mailboxes/{mailbox}/threads", { params: { path: { mailbox: mailbox.id } } });
   expect(threads?.threads.map(({ subject }) => subject)).toEqual(["Efteråt", "Till Grace"]);
-  expect(data?.agentMailboxes).toEqual([hermesMailbox]);
 });
 
 test("a mailbox deleted with its human is erased everywhere Duva keeps its mail, and mail to its address is refused", async () => {
@@ -107,16 +101,12 @@ test("a mailbox deleted with its human is erased everywhere Duva keeps its mail,
   expect((await linus.GET("/mailboxes")).data).toEqual({ mailboxes: [{ ...kept, groups: [] }] });
 });
 
-test("removing a human removes the agents they sponsor: their keys stop working and their mailboxes are erased", async () => {
-  const { duva, hermes, mailbox, hermesMailbox, remove } = await withGraceAndHermes();
+test("removing a human removes the agents they sponsor, whose keys stop working", async () => {
+  const { hermes, mailbox, remove } = await withGraceAndHermes();
 
   await remove({ delete: [mailbox.id] });
 
   expect((await hermes.GET("/whoami")).response.status).toBe(401);
-  expect(keeps(duva, "Hej. Till Hermes.")).toBe(false);
-  expect(duva.searchObjects().some((file) => file.includes("Till Hermes"))).toBe(false);
-  expect((await duva.receive(note("Efteråt", "hermes@example.com"), { to: ["hermes@example.com"] })).refused).toEqual(["hermes@example.com"]);
-  expect((await duva.signIn("ada@example.org").GET("/mailboxes/{mailbox}", { params: { path: { mailbox: hermesMailbox.id } } })).response.status).toBe(404);
 });
 
 test("a removed human's sessions stop working at once, and they are no longer among the humans", async () => {
@@ -157,7 +147,7 @@ test("a removal must say what happens to each of the human's mailboxes, once, an
   expect(notHers.error?.message).toMatch(/dryRun/);
   expect(toAgent.error?.message).toMatch(/another human/);
   expect((await grace.GET("/whoami")).response.status).toBe(200);
-  expect(keeps(duva, "Hej. Till Hermes.")).toBe(true);
+  expect(keeps(duva, "Hej. Till Grace.")).toBe(true);
 });
 
 test("only an admin can remove a human", async () => {
@@ -207,7 +197,7 @@ test("an admin can remove another admin, and themselves while another admin is l
 });
 
 test("each change of a removal is in the organization's feed under the admin, and older entries keep naming the removed by ID", async () => {
-  const { ada, adaId, graceActor, linusId, agent, mailbox, hermesMailbox, remove } = await withGraceAndHermes();
+  const { ada, adaId, graceActor, linusId, agent, mailbox, remove } = await withGraceAndHermes();
   const { data: before } = await ada.GET("/organization/changes");
 
   await remove({ handTo: linusId, handOver: [mailbox.id] });
@@ -216,16 +206,14 @@ test("each change of a removal is in the organization's feed under the admin, an
   const stamp = { position: expect.any(Number), at: expect.any(String), actor: adaId };
   // Her agents go first, the mailbox agent of her mailbox among them, in no particular order, and the
   // mailbox handed over gets a mailbox agent its new owner sponsors.
-  const removedAgents = after!.changes.slice(0, 4);
+  const removedAgents = after!.changes.slice(0, 2);
   expect(removedAgents).toEqual(
     expect.arrayContaining([
-      { ...stamp, type: "mailboxDeleted", mailbox: hermesMailbox.id },
-      { ...stamp, type: "addressRemoved", address: "hermes@example.com", mailbox: hermesMailbox.id },
       { ...stamp, type: "actorRemoved", removed: agent },
       { ...stamp, type: "actorRemoved", removed: expect.objectContaining({ name: "Mailbox agent", mailbox: mailbox.id, sponsor: graceActor.id }) },
     ]),
   );
-  expect(after?.changes.slice(4)).toEqual([
+  expect(after?.changes.slice(2)).toEqual([
     { ...stamp, type: "mailboxHandedOver", mailbox: mailbox.id, from: graceActor.id, to: linusId },
     { ...stamp, actor: linusId, type: "actorAdded", added: expect.objectContaining({ name: "Mailbox agent", mailbox: mailbox.id, sponsor: linusId }) },
     { ...stamp, type: "actorRemoved", removed: graceActor },
@@ -234,20 +222,16 @@ test("each change of a removal is in the organization's feed under the admin, an
   expect(before?.changes).toContainEqual(expect.objectContaining({ type: "actorAdded", added: agent, actor: graceActor.id }));
 });
 
-test("an agent's sponsor removes it: its key stops working, its mailboxes are erased, and the removal is in the feed under them", async () => {
-  const { duva, ada, grace, hermes, graceActor, agent, hermesMailbox } = await withGraceAndHermes();
+test("an agent's sponsor removes it: its key stops working, and the removal is in the feed under them", async () => {
+  const { ada, grace, hermes, graceActor, agent } = await withGraceAndHermes();
   const { data: before } = await ada.GET("/organization/changes");
 
   const { response, data } = await grace.DELETE("/agents/{agent}", { params: { path: { agent: agent.id } } });
 
   expect(response.status).toBe(200);
-  expect(data).toEqual({ agent, mailboxes: [hermesMailbox] });
+  expect(data).toEqual({ agent });
   expect((await hermes.GET("/whoami")).response.status).toBe(401);
-  expect(keeps(duva, "Hej. Till Hermes.")).toBe(false);
-  expect(duva.searchObjects().some((file) => file.includes("Till Hermes"))).toBe(false);
-  expect((await duva.receive(note("Efteråt", "hermes@example.com"), { to: ["hermes@example.com"] })).refused).toEqual(["hermes@example.com"]);
   expect((await grace.GET("/agents")).data!.agents.filter(({ mailbox }) => mailbox === undefined)).toEqual([]);
-  expect((await grace.GET("/mailboxes")).data?.mailboxes.map(({ id }) => id)).not.toContain(hermesMailbox.id);
   const { data: after } = await ada.GET("/organization/changes", { params: { query: { after: before!.position } } });
   expect(after?.changes.at(-1)).toMatchObject({ type: "actorRemoved", removed: agent, actor: graceActor.id });
 });
@@ -263,6 +247,7 @@ test("an admin can remove any agent, and other humans and agents can't", async (
   expect(byHuman.response.status).toBe(403);
   expect(byHuman.error?.message).toMatch(/sponsor/);
   expect(byItself.response.status).toBe(403);
+  expect(byItself.error?.message).toBe("Agents can't remove agents. Ask the agent's sponsor or an admin.");
   expect(byAdmin.response.status).toBe(200);
   expect((await hermes.GET("/whoami")).response.status).toBe(401);
   expect((await ada.DELETE("/agents/{agent}", params)).response.status).toBe(404);
@@ -359,9 +344,13 @@ test("only an admin can change who is an admin, and only of a human", async () =
   expect(notOnOrOff.response.status).toBe(400);
 });
 
-/** Hermes replies to the message in its mailbox and Grace approves the reply, then Hermes drafts another, which Grace rejects. Answers both approvals. */
-async function hermesSends({ grace, hermes, hermesMailbox }: Awaited<ReturnType<typeof withGraceAndHermes>>) {
-  const params = { path: { mailbox: hermesMailbox.id } };
+/**
+ * Grace gives Hermes send sponsor access, Hermes replies to the message in her mailbox and Grace
+ * approves the reply, then Hermes drafts another, which Grace rejects. Answers both approvals.
+ */
+async function hermesSends({ grace, hermes, agent, mailbox }: Awaited<ReturnType<typeof withGraceAndHermes>>) {
+  await grace.PATCH("/agents/{agent}/settings", { params: { path: { agent: agent.id } }, body: { sponsorAccess: "send" } });
+  const params = { path: { mailbox: mailbox.id } };
   const { data: threads } = await hermes.GET("/mailboxes/{mailbox}/threads", { params });
   const { data: thread } = await hermes.GET("/mailboxes/{mailbox}/threads/{thread}", { params: { path: { ...params.path, thread: threads!.threads[0]!.id } } });
   const ask = async (body: { answers?: string; to?: string[]; text: string }) => {
@@ -373,8 +362,8 @@ async function hermesSends({ grace, hermes, hermesMailbox }: Awaited<ReturnType<
   await grace.POST("/approvals/{approval}/send", { params: { path: { approval: sent } }, body: { text: "Ja, gärna. Hälsningar, Grace." } });
   const rejected = await ask({ to: ["alan@example.org"], text: "Hej igen." });
   await grace.POST("/approvals/{approval}/reject", { params: { path: { approval: rejected } }, body: { note: "Inte nu." } });
-  /** Whether the approval can still be read: deciding it again is refused as decided, rather than as missing. */
-  const kept = async (approval: string) => (await grace.POST("/approvals/{approval}/send", { params: { path: { approval } } })).response.status === 409;
+  /** Whether the approval can still be read: rejecting it again is refused as decided, rather than as missing. */
+  const kept = async (approval: string) => (await grace.POST("/approvals/{approval}/reject", { params: { path: { approval } }, body: { note: "Igen." } })).response.status === 409;
   return { sent, rejected, kept };
 }
 
@@ -386,18 +375,19 @@ test("by default an agent's approval records stay when it is removed", async () 
 
   expect(await kept(sent)).toBe(true);
   expect(await kept(rejected)).toBe(true);
-  expect(keeps(fixture.duva, "Ja, gärna.")).toBe(false);
 });
 
-test("with erasure of approval records on, an agent's approval records are erased with its mailboxes", async () => {
+test("once an agent is removed, its sponsor can't send its rejected draft after all, which stays in their mailbox", async () => {
   const fixture = await withGraceAndHermes();
-  const { sent, rejected, kept } = await hermesSends(fixture);
-  await fixture.ada.PATCH("/organization/settings", { body: { erasureErasesApprovals: true } });
-
+  const { rejected } = await hermesSends(fixture);
   await fixture.grace.DELETE("/agents/{agent}", { params: { path: { agent: fixture.agent.id } } });
+  const sentBefore = fixture.duva.sent().length;
 
-  expect(await kept(sent)).toBe(false);
-  expect(await kept(rejected)).toBe(false);
+  const { response, error } = await fixture.grace.POST("/approvals/{approval}/send", { params: { path: { approval: rejected } }, body: {} });
+
+  expect(response.status).toBe(409);
+  expect(error).toEqual({ message: "The agent was removed, so its sends can't be decided any more. Send the draft yourself if you still want it to go." });
+  expect(fixture.duva.sent()).toHaveLength(sentBefore);
 });
 
 test("a deleted mailbox whose erasure failed is erased by the eraser's next daily run", async () => {
@@ -408,7 +398,6 @@ test("a deleted mailbox whose erasure failed is erased by the eraser's next dail
   await duva.erase(new Date());
 
   expect(keeps(duva, "Hej. Till Grace.")).toBe(false);
-  expect(keeps(duva, "Hej. Till Hermes.")).toBe(false);
   expect(duva.searchObjects().some((file) => file.includes("Till Grace"))).toBe(false);
 });
 

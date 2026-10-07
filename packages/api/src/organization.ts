@@ -21,6 +21,9 @@ export type OrganizationSettings = components["schemas"]["OrganizationSettings"]
 export type AgentSettings = components["schemas"]["AgentSettings"];
 export type Group = components["schemas"]["Group"];
 export type CatchAll = components["schemas"]["CatchAll"];
+
+/** Whether the actor is an admin, which only a human can be (ADR-0030). */
+export const isAdmin = (actor: Actor | undefined): boolean => actor?.kind === "human" && actor.admin;
 /** A change as its maker describes it, before the feed gives it a position, a time and its actor. */
 type ChangeDetails = OrganizationChange extends infer Change ? (Change extends unknown ? Omit<Change, "position" | "at" | "actor"> : never) : never;
 
@@ -252,7 +255,7 @@ async function addAgentWith(
   table: Table,
   { id, name, sponsor, mailbox, keyHash, items }: { id: string; name: string; sponsor: string; mailbox?: string; keyHash?: string; items: TransactItem[] },
 ): Promise<Agent> {
-  const agent: Agent = { id, kind: "agent", name, sponsor, admin: false, ...(mailbox !== undefined && { mailbox }) };
+  const agent: Agent = { id, kind: "agent", name, sponsor, ...(mailbox !== undefined && { mailbox }) };
   await recordChange(table, sponsor, { type: "actorAdded", added: agent }, [
     { Put: { TableName: table.name, Item: { ...actorKey(agent.id), ...agent, ...(keyHash !== undefined && { keyHash }) }, ...isNew } },
     { Put: { TableName: table.name, Item: { ...sponsoredKey(sponsor, agent.id) }, ...isNew } },
@@ -345,10 +348,9 @@ export async function findAgentByKey(table: Table, key: string): Promise<Agent |
 export const duva = "duva";
 
 /**
- * Pauses the agent, on behalf of the actor `by`, or Duva, saying why if Duva did, with the `items` written too, and returns
- * it. The pause is one change in the change feed of each of the agent's mailboxes and in the
- * organization's. Pausing a paused agent records nothing, and writes no items. Returns undefined
- * if the agent was removed.
+ * Pauses the agent, on behalf of the actor `by`, or Duva, saying why if Duva did, with the `items`
+ * written too, and returns it. The pause is one change in the organization's change feed. Pausing
+ * a paused agent records nothing, and writes no items. Returns undefined if the agent was removed.
  */
 export function pauseAgent(table: Table, { agent, by, reason, items = [] }: { agent: Agent; by: string; reason?: string; items?: TransactItem[] }): Promise<Agent | undefined> {
   const paused = { by, at: new Date().toISOString(), ...(reason !== undefined && { reason }) };
@@ -361,8 +363,7 @@ export function pauseAgent(table: Table, { agent, by, reason, items = [] }: { ag
 
 /**
  * Unpauses the agent, on behalf of the actor `by`, and returns it. The unpause is one change in
- * the change feed of each of the agent's mailboxes and in the organization's. Unpausing an agent
- * that isn't paused records nothing. Its held sends are released apart from this. Returns
+ * the organization's change feed. Unpausing an agent that isn't paused records nothing. Its held sends are released apart from this. Returns
  * undefined if the agent was removed.
  */
 export function unpauseAgent(table: Table, { agent, by }: { agent: Agent; by: string }): Promise<Agent | undefined> {
@@ -385,13 +386,8 @@ async function changePause(
     const current = await findActor(table, agent.id);
     if (current?.kind !== "agent") return undefined;
     if (done(current)) return current;
-    const mailboxes = await ownedMailboxes(table, agent.id);
-    const change = { type, agent: agent.id };
     try {
-      await recordInFeeds(table, [organizationFeed, ...mailboxes.map(({ id }) => mailboxFeed(id))].map((feed) => ({ feed, changes: [change] })), {
-        by,
-        items: [{ Update: { TableName: table.name, Key: actorKey(agent.id), ...update } }, ...items],
-      });
+      await recordChange(table, by, { type, agent: agent.id }, [{ Update: { TableName: table.name, Key: actorKey(agent.id), ...update } }, ...items]);
     } catch (error) {
       // A pause or unpause at the same time got there first, so the agent is read again.
       if (!(error instanceof TransactionCanceledException) || attempt === 10) throw error;
@@ -401,52 +397,9 @@ async function changePause(
   }
 }
 
-/**
- * Makes the agent an admin, or takes it away, on behalf of the actor `by`, and returns it as it is
- * then. Making it one holds only while its sponsor is an admin, and throws SponsorNotAdmin if they
- * aren't. Giving the flag the value it has records nothing. Returns undefined if the agent was removed.
- */
-export async function changeAgentAdmin(table: Table, { agent, admin, by }: { agent: Agent; admin: boolean; by: string }): Promise<Agent | undefined> {
-  for (let attempt = 1; ; attempt++) {
-    const current = await findActor(table, agent.id);
-    if (current?.kind !== "agent") return undefined;
-    if (current.admin === admin) return current;
-    try {
-      await recordChange(table, by, { type: "agentAdminChanged", agent: agent.id, admin }, [
-        {
-          Update: {
-            TableName: table.name,
-            Key: actorKey(agent.id),
-            UpdateExpression: "SET admin = :admin",
-            ConditionExpression: "admin = :was",
-            ExpressionAttributeValues: { ":admin": admin, ":was": current.admin },
-          },
-        },
-        // The sponsor's admin taken away at the same time clears the agent's after this, or makes this fail.
-        ...(admin ? [{ ConditionCheck: { TableName: table.name, Key: actorKey(agent.sponsor), ConditionExpression: "admin = :admin", ExpressionAttributeValues: { ":admin": true } } }] : []),
-      ]);
-      return { ...current, admin };
-    } catch (error) {
-      // The agent's own item and the sponsor's check come after the feed's counter and the one change.
-      const reasons = error instanceof TransactionCanceledException ? (error.CancellationReasons ?? []) : [];
-      if (reasons[3]?.Code === "ConditionalCheckFailed") throw new SponsorNotAdmin();
-      // Another change to the flag, or the agent's removal, got there first, so the agent is read again.
-      if (reasons[2]?.Code !== "ConditionalCheckFailed" || attempt === 10) throw error;
-    }
-  }
-}
-
-/** The agent's sponsor isn't an admin, so the agent can't be one. */
-export class SponsorNotAdmin extends Error {}
-
 /** The check that the agent isn't paused, for a write that would let its mail go out. */
 export function agentUnpaused(table: Table, agent: string): TransactItem {
   return { ConditionCheck: { TableName: table.name, Key: actorKey(agent), ConditionExpression: "attribute_not_exists(paused)" } };
-}
-
-/** The check that the agent is an admin and isn't paused, for a write that makes its setup change. */
-export function agentAdminUnpaused(table: Table, agent: string): TransactItem {
-  return { ConditionCheck: { TableName: table.name, Key: actorKey(agent), ConditionExpression: "attribute_not_exists(paused) AND admin = :admin", ExpressionAttributeValues: { ":admin": true } } };
 }
 
 /** The agents the actor sponsors. */
@@ -463,20 +416,17 @@ export async function sponsoredAgents(table: Table, sponsor: string): Promise<Ag
   return agents.filter((agent): agent is Agent => agent?.kind === "agent");
 }
 
-/** Neither the agent nor its sponsor has a mailbox, whose change feed would record a change to the agent's settings. */
+/** The agent's sponsor has no mailbox, whose change feed would record a change to the agent's settings. */
 export class NowhereToRecord extends Error {}
 
 /** What each of an agent's settings is until its sponsor changes it. */
 export const defaultAgentSettings: AgentSettings = {
   sponsorAccess: "none",
   sponsorMailboxes: null,
-  approvalForOwnMailbox: true,
   approvalAsSponsor: true,
-  disclosureLineForOwnMailbox: true,
   disclosureLineAsSponsor: true,
   sendsPerHour: 100,
   newRecipientsPerDay: 50,
-  approvalForSetup: true,
 };
 
 /** Each of an agent's send limits, with the organization's setting that caps it. */
@@ -493,13 +443,11 @@ export class OverCap extends Error {
   }
 }
 
-/** The agent's approval and disclosure-line switches for where it sends from: its own mailbox, or its sponsor's, as them. */
-export const switchesFor = (settings: AgentSettings, asSponsor: boolean) =>
-  asSponsor
-    ? { approval: settings.approvalAsSponsor, disclosureLine: settings.disclosureLineAsSponsor }
-    : { approval: settings.approvalForOwnMailbox, disclosureLine: settings.disclosureLineForOwnMailbox };
-
-/** The agent's settings, each with its default until its sponsor changed it, with the version a write that relies on them checks. */
+/**
+ * The agent's settings, each with its default until its sponsor changed it, with the version a
+ * write that relies on them checks. Settings from before agents owned no mailboxes and were no
+ * admins (ADR-0030), such as approvalForSetup, are left out.
+ */
 export async function agentSettings(table: Table, agent: string): Promise<ReadSettings<AgentSettings>> {
   const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: agentSettingsKey(agent), ConsistentRead: true }));
   const settings = Object.fromEntries(Object.entries(defaultAgentSettings).map(([name, value]) => [name, Item?.[name] ?? value])) as AgentSettings;
@@ -521,18 +469,17 @@ export function agentSettingsUnchanged(table: Table, agent: string, read: ReadSe
 /**
  * Changes the agent's settings, on behalf of its sponsor, or of the admin `by` who lowered a cap
  * below its send limits, and returns them all. The ones whose value changes are one change, with
- * their old and new values, in the change feed of each of the sponsor's mailboxes, or if the
- * sponsor has none, of each of the agent's. Giving a setting the value it has records nothing.
- * Throws OverCap for a send limit over the organization's cap, which holds only while the caps
- * are still as read, and NowhereToRecord if neither has a mailbox for the sponsor's change. The
+ * their old and new values, in the change feed of each of the sponsor's mailboxes. Giving a
+ * setting the value it has records nothing. Throws OverCap for a send limit over the
+ * organization's cap, which holds only while the caps are still as read, and NowhereToRecord if
+ * the sponsor has no mailbox for their change. The
  * `items` of the change, given its settings as they are after it, are written with it.
  */
 export async function changeAgentSettings(
   table: Table,
   { agent, changes, by = agent.sponsor, items = () => [] }: { agent: Agent; changes: Partial<AgentSettings>; by?: string; items?: (after: AgentSettings) => TransactItem[] },
 ): Promise<AgentSettings> {
-  const sponsorsMailboxes = await ownedMailboxes(table, agent.sponsor);
-  const mailboxes = sponsorsMailboxes.length > 0 ? sponsorsMailboxes : await ownedMailboxes(table, agent.id);
+  const mailboxes = await ownedMailboxes(table, agent.sponsor);
   // A cap's lowering is in the organization's change feed even when no mailbox's has it.
   if (mailboxes.length === 0 && by === agent.sponsor) throw new NowhereToRecord();
   for (let attempt = 1; ; attempt++) {
@@ -739,11 +686,11 @@ export async function recordSignInDomain(table: Table, { domain, by }: { domain:
 }
 
 /**
- * Adds a personal mailbox owned by the actor `owner`, with the address as its default address and
- * its Screener on if `screener`, on behalf of the actor `by`. Throws AddressTaken if another
- * mailbox has the address.
+ * Adds a personal mailbox owned by the human `owner`, with the address as its default address and
+ * its Screener on, on behalf of the actor `by`. Throws AddressTaken if another mailbox has the
+ * address.
  */
-export async function addMailbox(table: Table, { owner, address, screener, by }: { owner: string; address: string; screener: boolean; by: string }): Promise<Mailbox> {
+export async function addMailbox(table: Table, { owner, address, by }: { owner: string; address: string; by: string }): Promise<Mailbox> {
   const mailbox: Mailbox = { id: randomUUID(), kind: "personal", owner, defaultAddress: address, addresses: [address] };
   await recordChanges(table, organizationFeed, {
     by,
@@ -756,7 +703,7 @@ export async function addMailbox(table: Table, { owner, address, screener, by }:
       { Put: { TableName: table.name, Item: { ...mailboxKey(mailbox.id), ...mailbox, position: 0 }, ...isNew } },
       { Put: { TableName: table.name, Item: { ...ownedKey(owner, mailbox.id) }, ...isNew } },
       { Put: { TableName: table.name, Item: { ...addressKey(address), address, mailbox: mailbox.id }, ...isNew } },
-      { Put: { TableName: table.name, Item: { ...screenerKey(mailbox.id), state: screener ? "on" : "off" } } },
+      { Put: { TableName: table.name, Item: { ...screenerKey(mailbox.id), state: "on" } } },
       { Put: { TableName: table.name, Item: mailboxListedKey(mailbox.id) } },
     ],
   }).catch((error: unknown) => {
@@ -1097,13 +1044,13 @@ export async function findActor(table: Table, id: string): Promise<Actor | undef
 export function actorOf(item: Record<string, unknown>): Actor {
   const actor = item as Actor;
   if (actor.kind === "agent") {
-    const { id, kind, name, sponsor, admin, paused, mailbox } = actor;
+    // An agent stored before agents were never admins (ADR-0030) may still carry admin, which is left out.
+    const { id, kind, name, sponsor, paused, mailbox } = actor;
     return {
       id,
       kind,
       name,
       sponsor,
-      admin,
       ...(paused !== undefined && { paused: { by: paused.by, at: paused.at, ...(paused.reason !== undefined && { reason: paused.reason }) } }),
       ...(mailbox !== undefined && { mailbox }),
     };
@@ -1294,7 +1241,7 @@ export async function deleteMailbox(table: Table, { mailbox, by, items }: { mail
 
 /**
  * Removes the agent, on behalf of the actor `by`, so its key stops working at once, with the
- * `items` written too. Its mailboxes are deleted beforehand.
+ * `items` written too.
  */
 export async function removeAgentFromOrganization(table: Table, { agent, by, items = [] }: { agent: Agent; by: string; items?: TransactItem[] }): Promise<void> {
   for (let attempt = 1; ; attempt++) {

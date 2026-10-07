@@ -307,25 +307,6 @@ test("emptying the Trash of a mailbox that doesn't exist gets 404", async () => 
   expect(response.status).toBe(404);
 });
 
-test("an agent's sponsor empties its Trash, under their own name", async () => {
-  const duva = await startDuva({ domain: "example.com", admin: "ada@example.org" });
-  const ada = duva.signIn("ada@example.org");
-  const { data: me } = await ada.GET("/whoami");
-  const { data: created } = await ada.POST("/agents", { body: { name: "Hermes" } });
-  const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: created!.agent.id, address: "hermes@example.com" } });
-  const params = { path: { mailbox: mailbox!.id } };
-  await duva.receive(note("Kvitto", { to: "hermes@example.com" }), { to: ["hermes@example.com"] });
-  const { data: inbox } = await ada.GET("/mailboxes/{mailbox}/threads", { params });
-  const thread = inbox!.threads[0]!.id;
-  await ada.POST("/mailboxes/{mailbox}/threads/labels", { params, body: { threads: [thread], add: ["trash"] } });
-
-  const { response } = await ada.POST("/mailboxes/{mailbox}/trash/empty", { params });
-
-  expect(response.status).toBe(202);
-  const { data: changes } = await ada.GET("/mailboxes/{mailbox}/changes", { params });
-  expect(changes!.changes.at(-1)).toMatchObject({ type: "threadErased", thread, actor: me!.id });
-});
-
 test("erased mail can't be found: a reply to it starts a new thread in the Inbox", async () => {
   const { receive, label, listed, read, emptyTrash } = await withPersonalMailbox();
   const thread = await receive(note("Kvitto"));
@@ -453,21 +434,25 @@ test("a Trash whose emptying failed is erased by the eraser's next daily run, un
 });
 
 /**
- * A deployment where the admin Ada sponsors the agent Hermes, which owns hermes@example.com and
- * has a thread from Ada there. `answer` has Hermes reply in it and Ada approve the reply with her
- * edit, and answers the approval. Grace is another human.
+ * A deployment where the admin Ada has a personal mailbox at ada@example.com and sponsors the
+ * agent Hermes, which has send sponsor access there. `receive` brings a thread there. `answer`
+ * has Hermes reply in it and Ada approve the reply with her edit, and answers the approval. Grace
+ * is another human.
  */
 async function withAgentSend() {
   const duva = await startDuva({ domain: "example.com", admin: "ada@example.org", humans: ["grace@example.org"] });
   const ada = duva.signIn("ada@example.org");
   const { data: me } = await ada.GET("/whoami");
-  const { data: created } = await ada.POST("/agents", { body: { name: "Hermes" } });
-  const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: created!.agent.id, address: "hermes@example.com" } });
-  const hermes = duva.withKey(created!.key);
+  const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: me!.id, address: "ada@example.com" } });
   const params = { path: { mailbox: mailbox!.id } };
-  /** Receives a message with the subject for Hermes, and answers its thread and message. */
+  // Mail from first-time senders would wait in the Screener, which these tests leave out.
+  await ada.PATCH("/mailboxes/{mailbox}/screener", { params, body: { on: false } });
+  const { data: created } = await ada.POST("/agents", { body: { name: "Hermes" } });
+  await ada.PATCH("/agents/{agent}/settings", { params: { path: { agent: created!.agent.id } }, body: { sponsorAccess: "send" } });
+  const hermes = duva.withKey(created!.key);
+  /** Receives a message with the subject in Ada's mailbox, and answers its thread and message. */
   const receive = async (subject: string) => {
-    await duva.receive(note(subject, { to: "hermes@example.com" }), { to: ["hermes@example.com"] });
+    await duva.receive(note(subject, { to: "ada@example.com" }), { to: ["ada@example.com"] });
     const { data: changes } = await ada.GET("/mailboxes/{mailbox}/changes", { params });
     const { thread } = changes!.changes.findLast((change) => change.type === "messageReceived") as { thread: string };
     const { data: read } = await ada.GET("/mailboxes/{mailbox}/threads/{thread}", { params: { path: { ...params.path, thread } } });
@@ -485,7 +470,7 @@ async function withAgentSend() {
     await ada.POST("/approvals/{approval}/send", { params: { path: { approval } }, body: { text: "Ja, gärna. Hälsningar, Ada." } });
     return approval;
   };
-  /** Ada puts the thread in Trash and empties it, as Hermes's sponsor. */
+  /** Ada puts the thread in Trash and empties it. */
   const eraseNow = async (thread: string) => {
     await ada.POST("/mailboxes/{mailbox}/threads/labels", { params, body: { threads: [thread], add: ["trash"] } });
     await ada.POST("/mailboxes/{mailbox}/trash/empty", { params });

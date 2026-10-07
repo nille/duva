@@ -17,7 +17,7 @@ type ActivitySummary = components["schemas"]["ActivitySummary"];
 type ActivityEntry = components["schemas"]["ActivityEntry"];
 
 /** The kinds a summary counts, in the order a day says them. */
-const kinds = ["sent", "approved", "rejected", "received", "organized", "screened", "alerts"] as const satisfies readonly (keyof ActivitySummary & keyof typeof strings.activity.counts)[];
+const kinds = ["sent", "approved", "rejected", "organized", "screened", "alerts"] as const satisfies readonly (keyof ActivitySummary & keyof typeof strings.activity.counts)[];
 
 /** A row of the days: a day of its own, or a run of days with nothing counted, folded into one. */
 type Run = { day: ActivitySummary } | { quiet: ActivitySummary[] };
@@ -368,7 +368,7 @@ export function AgentDay({
             {read.read.entries.map(({ mailbox, thread, change }) => {
               const actor = "actor" in change ? change.actor : undefined;
               const linked = mailbox === undefined || thread === undefined ? undefined : threads.get(`${mailbox}/${thread}`);
-              const message = linked !== undefined && "messages" in linked && "message" in change ? linked.messages.get(change.message) : undefined;
+              const message = linked !== undefined && "messages" in linked && "message" in change && typeof change.message === "string" ? linked.messages.get(change.message) : undefined;
               const [by, rest] = copy.entry(change, who(actor), name, message);
               const mark = markOf(actor, by);
               const time = clock(new Date(change.at), zone);

@@ -27,7 +27,6 @@ import {
   mailboxKey,
   organizationSettings,
   ownedMailboxes,
-  switchesFor,
 } from "./organization.ts";
 import { documents, isNew, pk, sk, type TransactItem } from "./table.ts";
 
@@ -246,8 +245,8 @@ export class SendNotAllowed extends Error {}
 
 /**
  * Asks for the draft to be sent, on behalf of the actor. A human's send from their own mailbox
- * needs no approval. An agent's waits for its sponsor's approval while the switch for where it
- * sends from is on: its own mailbox, or its sponsor's, as them, which needs send sponsor access there.
+ * needs no approval. An agent sends as its sponsor, from their mailbox, which needs send sponsor
+ * access there, and its send waits for its sponsor's approval while that switch is on.
  * The ask holds only if the agent's settings are still as read, so a change to them at the same
  * time either comes first or finds the ask. Throws SendNotAllowed once send access there is gone,
  * NoRecipient without a recipient in To, AlreadyWaiting if an agent's ask that needs approval
@@ -260,10 +259,9 @@ export async function askToSend(table: Table, { mailbox, id, actor }: { mailbox:
     if (draft === undefined) return undefined;
     if (actor.kind !== "agent") return sendAtOnce(table, { mailbox: mailbox.id, draft, by: actor.id, held: [] });
     const read = await agentSettings(table, actor.id);
-    const asSponsor = mailbox.owner !== actor.id;
-    if (asSponsor && !sponsorAccessAllows(sponsorAccessIn(read.settings, mailbox.id), "send")) throw new SendNotAllowed();
+    if (!sponsorAccessAllows(sponsorAccessIn(read.settings, mailbox.id), "send")) throw new SendNotAllowed();
     const held = [agentSettingsUnchanged(table, actor.id, read)];
-    return switchesFor(read.settings, asSponsor).approval
+    return read.settings.approvalAsSponsor
       ? waitForApproval(table, { mailbox: mailbox.id, draft, agent: actor, held })
       : sendAtOnce(table, { mailbox: mailbox.id, draft, by: actor.id, held });
   });
@@ -823,14 +821,13 @@ export function sendNow(table: Table, { mailbox, id, agent, by }: { mailbox: str
 }
 
 /**
- * Releases the agent's sends that the sender held while it was paused, in its own mailboxes and
- * its sponsor's, where it sends as them: each
- * draft still approved for the agent is written again, the first approved first, so the table's stream
+ * Releases the agent's sends that the sender held while it was paused, in its sponsor's mailboxes,
+ * where it sends as them: each draft still approved for the agent is written again, the first approved first, so the table's stream
  * hands it to the sender once more. Run again, it finishes what an earlier run left. The stream
  * keeps order within a mailbox, so sends from different mailboxes may go out in either order.
  */
 export async function releaseHeldSends(table: Table, agent: Agent): Promise<void> {
-  const mailboxes = [...(await ownedMailboxes(table, agent.id)), ...(await ownedMailboxes(table, agent.sponsor))].map(({ id }) => id);
+  const mailboxes = (await ownedMailboxes(table, agent.sponsor)).map(({ id }) => id);
   const held: { mailbox: string; draft: StoredDraft; approvedAt: string }[] = [];
   for (const mailbox of mailboxes) {
     let start: Record<string, unknown> | undefined;

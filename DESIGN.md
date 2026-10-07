@@ -305,7 +305,7 @@ Actors are marked by shape, so they read without color: a human is a filled dot 
 
 ### Navigation
 - **Desk:** the places and views are rows in the side column, mono at body size, 6px rows with the ink wash on hover. The view open, and a place outside the mail, lie raised white; Mail and the mailbox open are set heavier instead, since the view says where the human is. Approvals lies on the orange wash while something waits, with its count as an orange pill; unseen alerts are counted in Alert Red text. Unread counts are in Call Orange text, the Screener's in Third Ink.
-- **The mailbox selector** heads the side column under the wordmark and Write: the open mailbox's name in ink, heavier, its address under it in Second Ink when the name differs, a chevron, and the orange dot while another of the human's mailboxes has unread mail. It opens a raised white sheet over the column, 10px with the soft lift, listing the human's own mailboxes, each with its unread count; Enter or a click opens one, and Escape closes it, back to the selector. With one mailbox it names it, a link to its Inbox, with no chevron. Agents don't own mailboxes in it; until their mailboxes go (#126), a desk lists them under the places, each with its diamond. On a phone the switcher does its work.
+- **The mailbox selector** heads the side column under the wordmark and Write: the open mailbox's name in ink, heavier, its address under it in Second Ink when the name differs, a chevron, and the orange dot while another of the human's mailboxes has unread mail. It opens a raised white sheet over the column, 10px with the soft lift, listing the human's own mailboxes, each with its unread count; Enter or a click opens one, and Escape closes it, back to the selector. With one mailbox it names it, a link to its Inbox, with no chevron. Agents own no mailboxes, so none is in it: an agent is reached from Your agents and the status strip. On a phone the switcher does its work.
 - **The Screener** is a place of its own after Mail, since screening is the commonest decision: it opens the Screener of the mailbox the side column shows, and counts its waiting senders in Second Ink, without a pill, as everyday work. It stays among the mailbox's views and at the Inbox's top too.
 - **Settings** sits apart from the places. On a desk it is a quiet gear and "Settings" in the status strip, before who is signed in, in ink and heavier while open, when the side column marks no place; on a phone it is the gear in the top row.
 - **Phone:** the places lie in a tab bar on Side Grey along the foot, icon over name, the current one in ink with an ink line at the bar's edge, a waiting count at the icon's shoulder.
@@ -377,7 +377,7 @@ Actors are marked by shape, so they read without color: a human is a filled dot 
 - **Under 64rem** Settings takes one column: at `#/settings` the index alone, and a page's sheets alone with the way back to it.
 
 ### An agent's line
-- On Your agents each agent is a line that opens: its diamond and name, a pause or being an admin marked beside it in a seam-outlined pill, then whether it runs, with the green light and the sends its limits leave it this hour, or who paused it and since when, in ink at 600. What the line says and opens into is set in by the diamond, so it lines up under the name.
+- On Your agents each agent is a line that opens: its diamond and name, a pause marked beside it in a seam-outlined pill, then whether it runs, with the green light and the sends its limits leave it this hour, or who paused it and since when, in ink at 600. What the line says and opens into is set in by the diamond, so it lines up under the name.
 - Its parts come first: Pause with what pausing does, Admin, and its sends waiting for the send limit as rows parted by seams, each with Send now. Its send limits are short numeric fields side by side, with the organization's cap under each.
 
 ### An agent's activity
@@ -395,8 +395,8 @@ Actors are marked by shape, so they read without color: a human is a filled dot 
 ### Queue
 - Approvals and Alerts lay out as a mail view does: a queue of rows in the list column, and the one open lying beside it in the reading pane. The first that waits opens by itself on a desk and stays open as others arrive above it, until the human chooses another. Narrower than a desk, the queue and what is open take the column in turn, with "All approvals" or "All alerts" leading back to the row it came from.
 - A row is a button: the actor's diamond and name, the kind tag, when, then the subject, in Ink at 600 while it waits for a decision and in Second Ink once it is decided or approved, with its recipients in Third Ink. What waits for a decision carries the orange dot; the open row carries the orange edge on Reader Grey. Choosing a row moves the focus to the title of what it opened.
-- **Kind tags** are printed tags, 4px, mono 700 at 0.65625rem: Send on Call Orange in ink, Setup on Agent Blue in white, Held on Field Grey in Second Ink. A decided row's tag gives up its fill for a seam outline, and its line says how it went, green once sent.
-- Chips over the queue show one kind (All, Sends, Setup changes, Held), only where more than one kind waits.
+- **Kind tags** are printed tags, 4px, mono 700 at 0.65625rem: Send on Call Orange in ink, Held on Field Grey in Second Ink. A decided row's tag gives up its fill for a seam outline, and its line says how it went, green once sent.
+- Chips over the queue show one kind (All, Sends, Held), only where more than one kind waits.
 
 ### Galley
 - A send waiting for approval, in the reading pane: who asks, by the diamond, in Second Ink, then the subject in Display grotesk, then where it sends from and when it was asked. A send as the sponsor says so in Ink at 600.
@@ -405,10 +405,7 @@ Actors are marked by shape, so they read without color: a human is a filled dot 
 - The decision lies under both after a seam: **Send** is the call button with its `s` key cap, then Edit and Reject (quiet). Editing marks up the draft in place, and says what the sponsor's version changes. Rejecting asks for a note first.
 
 ### Slip
-- A decided request folds into a slip where its galley lay, by a view transition: the state icon (Second Ink while it settles, Sent Green once sent or made, Third Ink when rejected, Alert Red when it failed), the headline in the grotesk with the agent's name, the subject in the mono, and what became of it. No wash and no box. A send that waits for the limit keeps Send now on its slip.
-
-### Setup proof
-- A setup change an agent admin asks for, in the galley's frame: the first line of what it would do as the title, a size down at Headline; the call it made on the plane, its command and values exact in the mono, each ID named with the ID under it in Third Ink; and what it would do raised beside it. Approve is the call button.
+- A decided request folds into a slip where its galley lay, by a view transition: the state icon (Second Ink while it settles, Sent Green once sent, Third Ink when rejected, Alert Red when it failed), the headline in the grotesk with the agent's name, the subject in the mono, and what became of it. No wash and no box. A send that waits for the limit keeps Send now on its slip.
 
 ### Held sends
 - A send approved that hasn't gone out opens in the galley's frame: why it waits as the title's first line ("Waiting for the send limit", or "Held while Hermes is paused"), its subject, the lead saying what happens next, and the draft raised alone. One waiting for the limit offers Send now; one held while its agent is paused links to the agent's line at Pause.

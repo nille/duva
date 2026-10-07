@@ -16,9 +16,9 @@ const note = (to: string, subject: string) =>
   ].join("\r\n");
 
 /**
- * A deployment on example.com where Ada sponsors the agent Hermes, which owns a mailbox at
- * hermes@example.com, and Ada has her own at ada@example.com. Grace is the first admin, and Ken
- * another human.
+ * A deployment on example.com where Ada sponsors the agent Hermes, which has send sponsor access
+ * to her mailbox at ada@example.com, its Screener off. Grace is the first admin, and Ken another
+ * human.
  */
 async function withAgent(options: DuvaOptions = {}) {
   const duva = await startDuva({ domain: "example.com", admin: "grace@example.org", humans: ["ada@example.org", "ken@example.org"], ...options });
@@ -26,25 +26,29 @@ async function withAgent(options: DuvaOptions = {}) {
   const grace = duva.signIn("grace@example.org");
   const { data: created } = await ada.POST("/agents", { body: { name: "Hermes" } });
   const agent = created!.agent;
-  const { data: mailbox } = await grace.POST("/mailboxes", { body: { owner: agent.id, address: "hermes@example.com" } });
   const { data: adaId } = await ada.GET("/whoami");
-  const { data: adasMailbox } = await grace.POST("/mailboxes", { body: { owner: adaId!.id, address: "ada@example.com" } });
-  await ada.PATCH("/mailboxes/{mailbox}/screener", { params: { path: { mailbox: adasMailbox!.id } }, body: { on: false } });
-  const hermes = duva.withKey(created!.key);
+  const { data: mailbox } = await grace.POST("/mailboxes", { body: { owner: adaId!.id, address: "ada@example.com" } });
   const params = { path: { mailbox: mailbox!.id } };
-  const adasParams = { path: { mailbox: adasMailbox!.id } };
+  await ada.PATCH("/mailboxes/{mailbox}/screener", { params, body: { on: false } });
+  await ada.PATCH("/agents/{agent}/settings", { params: { path: { agent: agent.id } }, body: { sponsorAccess: "send" } });
+  const hermes = duva.withKey(created!.key);
 
-  /** Receives a message at the address, and answers its thread's ID. */
-  const receive = async (subject: string, to = "hermes@example.com") => {
-    await duva.receive(note(to, subject), { to: [to] });
-    const reader = to === "hermes@example.com" ? hermes : ada;
-    const { data } = await reader.GET("/mailboxes/{mailbox}/changes", { params: to === "hermes@example.com" ? params : adasParams });
+  /** Receives a message in Ada's mailbox, and answers its thread's ID. */
+  const receive = async (subject: string) => {
+    await duva.receive(note("ada@example.com", subject), { to: ["ada@example.com"] });
+    const { data } = await ada.GET("/mailboxes/{mailbox}/changes", { params });
     return (data!.changes.findLast((change) => change.type === "messageReceived") as { thread: string }).thread;
   };
-  /** Hermes drafts a message to the recipient in the mailbox and asks to send it, and answers the draft and the approval it waits for. */
-  const ask = async (to: string, mailbox = params) => {
-    const { data: draft } = await hermes.POST("/mailboxes/{mailbox}/drafts", { params: mailbox, body: { to: [to], subject: "Hello", text: "Hej." } });
-    const { data: asked } = await hermes.POST("/mailboxes/{mailbox}/drafts/{draft}/send", { params: { path: { ...mailbox.path, draft: draft!.id } } });
+  /** Receives a message in Ada's mailbox, which Hermes marks read, and answers its thread's ID. */
+  const organize = async (subject: string) => {
+    const thread = await receive(subject);
+    await hermes.POST("/mailboxes/{mailbox}/threads/read", { params, body: { threads: [thread] } });
+    return thread;
+  };
+  /** Hermes drafts a message to the recipient in Ada's mailbox and asks to send it, and answers the draft and the approval it waits for. */
+  const ask = async (to: string) => {
+    const { data: draft } = await hermes.POST("/mailboxes/{mailbox}/drafts", { params, body: { to: [to], subject: "Hello", text: "Hej." } });
+    const { data: asked } = await hermes.POST("/mailboxes/{mailbox}/drafts/{draft}/send", { params: { path: { ...params.path, draft: draft!.id } } });
     return { draft: draft!.id, approval: asked!.send!.approval! };
   };
   const approve = (approval: string) => ada.POST("/approvals/{approval}/send", { params: { path: { approval } } });
@@ -55,26 +59,26 @@ async function withAgent(options: DuvaOptions = {}) {
   /** One day of the agent's timeline, as the reader reads it. */
   const timeline = async (day: string, query: { timeZone?: string; limit?: number; after?: string } = {}, reader = ada) =>
     reader.GET("/agents/{agent}/activity/{day}", { params: { path: { agent: agent.id, day }, query } });
-  return { duva, ada, grace, ken: duva.signIn("ken@example.org"), hermes, agent, adaId: adaId!.id, mailbox: mailbox!, adasMailbox: adasMailbox!, params, adasParams, receive, ask, approve, reject, summaries, timeline };
+  return { duva, ada, grace, ken: duva.signIn("ken@example.org"), hermes, agent, adaId: adaId!.id, mailbox: mailbox!, params, receive, organize, ask, approve, reject, summaries, timeline };
 }
 
 /** A day of a summary with nothing in it. */
-const quiet = (day: string) => ({ day, sent: 0, approved: 0, rejected: 0, received: 0, organized: 0, screened: 0, alerts: 0 });
+const quiet = (day: string) => ({ day, sent: 0, approved: 0, rejected: 0, organized: 0, screened: 0, alerts: 0 });
 
-test("the sponsor reads their agent's daily summaries, newest first, each day's mail counted on the day it arrived in their time zone", async () => {
-  const { duva, receive, summaries } = await withAgent();
+test("the sponsor reads their agent's daily summaries, newest first, each day's work counted on the day it was done in their time zone", async () => {
+  const { duva, organize, summaries } = await withAgent();
   // 01:30 on 6 October in Stockholm, still 5 October in UTC.
   await duva.clock(new Date("2026-10-05T23:30:00Z"));
-  await receive("Kvitto");
-  await receive("Faktura");
+  await organize("Kvitto");
+  await organize("Faktura");
 
   const { response, data } = await summaries({ from: "2026-10-04", to: "2026-10-06", timeZone: "Europe/Stockholm" });
 
   expect(response.status).toBe(200);
-  expect(data).toEqual({ timeZone: "Europe/Stockholm", days: [{ ...quiet("2026-10-06"), received: 2 }, quiet("2026-10-05"), quiet("2026-10-04")] });
+  expect(data).toEqual({ timeZone: "Europe/Stockholm", days: [{ ...quiet("2026-10-06"), organized: 2 }, quiet("2026-10-05"), quiet("2026-10-04")] });
   expect((await summaries({ from: "2026-10-04", to: "2026-10-06" })).data).toEqual({
     timeZone: "UTC",
-    days: [quiet("2026-10-06"), { ...quiet("2026-10-05"), received: 2 }, quiet("2026-10-04")],
+    days: [quiet("2026-10-06"), { ...quiet("2026-10-05"), organized: 2 }, quiet("2026-10-04")],
   });
 });
 
@@ -90,7 +94,7 @@ test("a day's summary counts the agent's sends that went out, and those its spon
   expect(data?.days).toEqual([{ ...quiet("2026-10-06"), sent: 2, approved: 2, rejected: 1 }]);
 });
 
-test("a day's summary counts what the agent organized and screened itself, and leaves out what its sponsor did in its mailbox", async () => {
+test("a day's summary counts what the agent organized and screened itself, and leaves out what its sponsor did in their mailbox", async () => {
   const { duva, ada, hermes, params, receive, summaries } = await withAgent();
   await duva.clock(new Date("2026-10-06T10:00:00Z"));
   const thread = await receive("Kvitto");
@@ -98,13 +102,13 @@ test("a day's summary counts what the agent organized and screened itself, and l
   await hermes.POST("/mailboxes/{mailbox}/threads/labels", { params, body: { threads: [thread], remove: ["inbox"] } });
   await hermes.POST("/mailboxes/{mailbox}/labels", { params, body: { name: "Kvitton" } });
   await hermes.PUT("/mailboxes/{mailbox}/senders/{sender}", { params: { path: { ...params.path, sender: "mallory@example.net" } }, body: { delivery: "paperTrail" } });
-  await hermes.PATCH("/mailboxes/{mailbox}/screener", { params, body: { on: true } });
+  await hermes.PUT("/mailboxes/{mailbox}/senders/{sender}", { params: { path: { ...params.path, sender: "eve@example.net" } }, body: { delivery: "feed" } });
   await ada.POST("/mailboxes/{mailbox}/threads/unread", { params, body: { threads: [thread] } });
   await ada.PUT("/mailboxes/{mailbox}/senders/{sender}", { params: { path: { ...params.path, sender: "linus@example.org" } }, body: { delivery: "inbox" } });
 
   const { data } = await summaries({ from: "2026-10-06", to: "2026-10-06" });
 
-  expect(data?.days).toEqual([{ ...quiet("2026-10-06"), received: 1, organized: 3, screened: 2 }]);
+  expect(data?.days).toEqual([{ ...quiet("2026-10-06"), organized: 3, screened: 2 }]);
 });
 
 test("a day's summary counts the alerts about the agent its sponsor got, on the day in the reader's time zone, and none about their other agents", async () => {
@@ -123,54 +127,54 @@ test("a day's summary counts the alerts about the agent its sponsor got, on the 
 });
 
 test("the sponsor's days are in their time zone preference, and a call's time zone beats it", async () => {
-  const { duva, ada, receive, summaries } = await withAgent();
+  const { duva, ada, organize, summaries } = await withAgent();
   await duva.clock(new Date("2026-10-05T23:30:00Z"));
-  await receive("Kvitto");
+  await organize("Kvitto");
   await ada.PATCH("/preferences", { body: { timeZone: "Europe/Stockholm" } });
 
   const { data } = await summaries({ from: "2026-10-05", to: "2026-10-06" });
 
-  expect(data).toEqual({ timeZone: "Europe/Stockholm", days: [{ ...quiet("2026-10-06"), received: 1 }, quiet("2026-10-05")] });
+  expect(data).toEqual({ timeZone: "Europe/Stockholm", days: [{ ...quiet("2026-10-06"), organized: 1 }, quiet("2026-10-05")] });
   expect((await summaries({ from: "2026-10-05", to: "2026-10-06", timeZone: "America/New_York" })).data).toEqual({
     timeZone: "America/New_York",
-    days: [quiet("2026-10-06"), { ...quiet("2026-10-05"), received: 1 }],
+    days: [quiet("2026-10-06"), { ...quiet("2026-10-05"), organized: 1 }],
   });
 });
 
 test("without from and to, the summaries cover the last 30 days, today first", async () => {
-  const { duva, receive, summaries } = await withAgent();
+  const { duva, organize, summaries } = await withAgent();
   await duva.clock(new Date("2026-09-07T12:00:00Z"));
-  await receive("Too old");
+  await organize("Too old");
   await duva.clock(new Date("2026-09-08T12:00:00Z"));
-  await receive("Oldest");
+  await organize("Oldest");
   await duva.clock(new Date("2026-10-07T12:00:00Z"));
-  await receive("Newest");
+  await organize("Newest");
 
   // A session signed in today would have expired by then.
   const { data } = await summaries({}, duva.signIn("ada@example.org"));
 
   expect(data?.days).toHaveLength(30);
-  expect(data?.days[0]).toEqual({ ...quiet("2026-10-07"), received: 1 });
-  expect(data?.days[29]).toEqual({ ...quiet("2026-09-08"), received: 1 });
+  expect(data?.days[0]).toEqual({ ...quiet("2026-10-07"), organized: 1 });
+  expect(data?.days[29]).toEqual({ ...quiet("2026-09-08"), organized: 1 });
 });
 
 test("activity reaches back to the agent's start, so a day long ago is still counted", async () => {
-  const { duva, receive, summaries } = await withAgent();
+  const { duva, organize, summaries } = await withAgent();
   await duva.clock(new Date("2024-01-15T12:00:00Z"));
-  await receive("Gammalt");
+  await organize("Gammalt");
   await duva.clock(new Date("2026-10-06T12:00:00Z"));
 
   const { data } = await summaries({ from: "2024-01-15", to: "2024-01-15" });
 
-  expect(data?.days).toEqual([{ ...quiet("2024-01-15"), received: 1 }]);
+  expect(data?.days).toEqual([{ ...quiet("2024-01-15"), organized: 1 }]);
 });
 
 test("an admin reads an agent's summaries, and another human or the agent itself gets 403", async () => {
-  const { duva, grace, ken, hermes, receive, summaries, timeline } = await withAgent();
+  const { duva, grace, ken, hermes, organize, summaries, timeline } = await withAgent();
   await duva.clock(new Date("2026-10-06T10:00:00Z"));
-  await receive("Kvitto");
+  await organize("Kvitto");
 
-  expect((await summaries({ from: "2026-10-06", to: "2026-10-06" }, grace)).data?.days).toEqual([{ ...quiet("2026-10-06"), received: 1 }]);
+  expect((await summaries({ from: "2026-10-06", to: "2026-10-06" }, grace)).data?.days).toEqual([{ ...quiet("2026-10-06"), organized: 1 }]);
   for (const reader of [ken, hermes]) {
     for (const read of [summaries({}, reader), timeline("2026-10-06", {}, reader)]) {
       const { response, error } = await read;
@@ -209,7 +213,7 @@ test.each([
 const outline = (entries: { mailbox?: string; thread?: string; change: { type: string } }[] | undefined) =>
   entries?.map(({ mailbox, thread, change }) => ({ type: change.type, ...(mailbox !== undefined && { mailbox }), ...(thread !== undefined && { thread }) }));
 
-test("a day's timeline lists what happened in the agent's mailbox newest first, each with its mailbox and thread", async () => {
+test("a day's timeline lists what the agent did in its sponsor's mailbox newest first, each with its mailbox and thread", async () => {
   const { duva, hermes, mailbox, params, receive, ask, approve, timeline } = await withAgent();
   await duva.clock(new Date("2026-09-15T10:00:00Z"));
   const received = await receive("Kvitto");
@@ -229,7 +233,6 @@ test("a day's timeline lists what happened in the agent's mailbox newest first, 
     { type: "approvalAsked", mailbox: mailbox.id, thread: sent },
     { type: "draftWritten", mailbox: mailbox.id, thread: sent },
     { type: "threadLabelsChanged", mailbox: mailbox.id, thread: received },
-    { type: "messageReceived", mailbox: mailbox.id, thread: received },
   ]);
   expect(data?.entries[4]?.change).toMatchObject({ type: "threadLabelsChanged", actor: (await hermes.GET("/whoami")).data!.id, added: [], removed: ["inbox"] });
 });
@@ -247,25 +250,24 @@ test("a draft not sent yet that replies in a thread has that thread in the timel
 });
 
 test("a day's timeline is in the reader's time zone", async () => {
-  const { duva, receive, timeline } = await withAgent();
+  const { duva, organize, timeline } = await withAgent();
   await duva.clock(new Date("2026-09-14T23:30:00Z"));
-  await receive("Kvitto");
+  await organize("Kvitto");
 
-  expect((await timeline("2026-09-15", { timeZone: "Europe/Stockholm" })).data?.entries.map(({ change }) => change.type)).toEqual(["messageReceived"]);
+  expect((await timeline("2026-09-15", { timeZone: "Europe/Stockholm" })).data?.entries.map(({ change }) => change.type)).toEqual(["threadRead"]);
   expect((await timeline("2026-09-15")).data?.entries).toEqual([]);
-  expect((await timeline("2026-09-14")).data?.entries.map(({ change }) => change.type)).toEqual(["messageReceived"]);
+  expect((await timeline("2026-09-14")).data?.entries.map(({ change }) => change.type)).toEqual(["threadRead"]);
 });
 
 test("the timeline has what the agent did in its sponsor's mailbox, and its sends there, but not what the sponsor did there", async () => {
-  const { duva, ada, hermes, agent, adasMailbox, adasParams, receive, ask, approve, timeline } = await withAgent();
-  await ada.PATCH("/agents/{agent}/settings", { params: { path: { agent: agent.id } }, body: { sponsorAccess: "send" } });
+  const { duva, ada, hermes, mailbox: adasMailbox, params: adasParams, receive, ask, approve, timeline } = await withAgent();
   await duva.clock(new Date("2026-09-15T10:00:00Z"));
-  const organized = await receive("Kvitto", "ada@example.com");
-  const ownWork = await receive("Faktura", "ada@example.com");
+  const organized = await receive("Kvitto");
+  const ownWork = await receive("Faktura");
   await hermes.POST("/mailboxes/{mailbox}/threads/read", { params: adasParams, body: { threads: [organized] } });
   await ada.POST("/mailboxes/{mailbox}/threads/read", { params: adasParams, body: { threads: [ownWork] } });
   await ada.POST("/mailboxes/{mailbox}/drafts", { params: adasParams, body: { to: ["linus@example.org"], text: "Ada's own." } });
-  await approve((await ask("linus@example.org", adasParams)).approval);
+  await approve((await ask("linus@example.org")).approval);
   const sent = (await ada.GET("/mailboxes/{mailbox}/sent", { params: adasParams })).data!.threads[0]!.id;
 
   const { data } = await timeline("2026-09-15");
@@ -280,7 +282,7 @@ test("the timeline has what the agent did in its sponsor's mailbox, and its send
 });
 
 test("the timeline has the agent's pauses once, its key rotations and changes to its settings, from the organization's feed and its sponsor's mailbox", async () => {
-  const { duva, ada, grace, agent, adasMailbox, timeline } = await withAgent();
+  const { duva, ada, grace, agent, mailbox: adasMailbox, timeline } = await withAgent();
   const agentParams = { params: { path: { agent: agent.id } } };
   // Ada has a second mailbox, whose feed records the change to the settings too.
   const { data: second } = await grace.POST("/mailboxes", { body: { owner: (await ada.GET("/whoami")).data!.id, address: "ada.lovelace@example.com" } });
@@ -367,10 +369,10 @@ test.each([5, 20, 100])("a change to the agent's settings in two of its sponsor'
 });
 
 test("a long timeline is read a page at a time, newest first, without repeats", async () => {
-  const { duva, receive, timeline } = await withAgent();
+  const { duva, organize, timeline } = await withAgent();
   await duva.clock(new Date("2026-09-15T10:00:00Z"));
   const threads = [];
-  for (const subject of ["Ett", "Två", "Tre", "Fyra", "Fem"]) threads.push(await receive(subject));
+  for (const subject of ["Ett", "Två", "Tre", "Fyra", "Fem"]) threads.push(await organize(subject));
 
   const first = (await timeline("2026-09-15", { limit: 2 })).data!;
   const second = (await timeline("2026-09-15", { limit: 2, after: first.next })).data!;

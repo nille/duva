@@ -949,6 +949,7 @@ export async function mailboxChanges(table: Table, mailbox: string, after: numbe
 }
 
 // DynamoDB keeps no attribute order, so the settings in a change to an agent's are listed in the order the contract lists them.
+// Settings agents no longer have, from when they owned mailboxes and could be admins (ADR-0030), are left out.
 function inContractOrder(change: Record<string, unknown>): Record<string, unknown> {
   if (change.type !== "agentSettingsChanged") return change;
   const ordered = (settings: Record<string, unknown>) => Object.fromEntries(Object.keys(defaultAgentSettings).filter((name) => name in settings).map((name) => [name, settings[name]]));

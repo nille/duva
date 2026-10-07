@@ -202,8 +202,8 @@ test("an admin removes a domain after a confirmation listing its addresses and t
   await ada.POST("/domains", { body: { domain: "example.net" } });
   await ada.POST("/domains", { body: { domain: "example.dk", aliasOf: "example.net" } });
   await ada.POST("/addresses", { body: { address: "grace@example.net", mailbox: graceMailbox.id } });
-  const { data: hermes } = await ada.POST("/agents", { body: { name: "Hermes" } });
-  await ada.POST("/mailboxes", { body: { owner: hermes!.agent.id, address: "hermes@example.net" } });
+  const { data: me } = await ada.GET("/whoami");
+  await ada.POST("/mailboxes", { body: { owner: me!.id, address: "ada@example.net" } });
   await settings();
   await line(page, "example.net").getByRole("heading").click();
 
@@ -213,8 +213,8 @@ test("an admin removes a domain after a confirmation listing its addresses and t
   await expect.poll(() => confirm.isVisible(), wait).toBe(true);
   const asked = await confirm.innerText();
   expect(asked).toContain("Remove example.net and its alias domains example.dk?");
-  for (const address of ["grace@example.net", "grace@example.dk", "hermes@example.net", "hermes@example.dk"]) expect(asked).toContain(address);
-  expect(asked).toContain("Hermes is left without an address");
+  for (const address of ["grace@example.net", "grace@example.dk", "ada@example.net", "ada@example.dk"]) expect(asked).toContain(address);
+  expect(asked).toContain("ada@example.org is left without an address");
   await confirm.getByRole("button", { name: "Cancel" }).click();
   expect(await line(page, "example.net").count()).toBe(1);
 
@@ -227,7 +227,7 @@ test("an admin removes a domain after a confirmation listing its addresses and t
   // The Addresses sheet follows.
   await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "Addresses" }).click();
   const titles = page.getByRole("region", { name: "Addresses" }).locator("summary").getByRole("heading");
-  await expect.poll(() => titles.allTextContents(), wait).toEqual(["grace@example.com", "Without an address"]);
+  await expect.poll(() => titles.allTextContents(), wait).toEqual(["Without an address", "grace@example.com"]);
 });
 
 test("the domain sign-in codes come from can't be removed until an admin sends them from another domain SES has verified", budget, async () => {

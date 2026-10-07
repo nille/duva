@@ -7,20 +7,23 @@ type Mailbox = components["schemas"]["Mailbox"];
 /**
  * A deployment on example.com, with example.se its alias domain, where ada, the first admin, has
  * grace as another human, with a mailbox at grace@example.com whose Screener is on, as a human's
- * is by default, and hermes, ada's agent, with a mailbox at hermes@example.com.
+ * is by default, and katherine as a third, with a mailbox at katherine@example.com whose Screener
+ * she has switched off.
  */
 async function withCatchAllCandidates() {
-  const duva = await startDuva({ domain: "example.com", admin: "ada@example.org", humans: ["grace@example.org"] });
+  const duva = await startDuva({ domain: "example.com", admin: "ada@example.org", humans: ["grace@example.org", "katherine@example.org"] });
   const ada = duva.signIn("ada@example.org");
   const grace = duva.signIn("grace@example.org");
+  const katherine = duva.signIn("katherine@example.org");
   await ada.POST("/domains", { body: { domain: "example.se", aliasOf: "example.com" } });
   const { data: me } = await grace.GET("/whoami");
   const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: me!.id, address: "grace@example.com" } });
-  const { data: agent } = await ada.POST("/agents", { body: { name: "Hermes" } });
-  const { data: hermesMailbox } = await ada.POST("/mailboxes", { body: { owner: agent!.agent.id, address: "hermes@example.com" } });
+  const { data: katherineId } = await katherine.GET("/whoami");
+  const { data: katherineMailbox } = await ada.POST("/mailboxes", { body: { owner: katherineId!.id, address: "katherine@example.com" } });
   const graces = { path: { mailbox: mailbox!.id } };
-  const hermess = { path: { mailbox: hermesMailbox!.id } };
-  return { duva, ada, grace, hermes: duva.withKey(agent!.key), agent: agent!.agent, mailbox: mailbox as Mailbox, graces, hermess };
+  const katherines = { path: { mailbox: katherineMailbox!.id } };
+  await katherine.PATCH("/mailboxes/{mailbox}/screener", { params: katherines, body: { on: false } });
+  return { duva, ada, grace, katherine, katherineId: katherineId!.id, mailbox: mailbox as Mailbox, graces, katherines };
 }
 
 const message = (from: string, to: string, subject = "Hello") => `From: ${from}\r\nTo: ${to}\r\nSubject: ${subject}\r\nMessage-ID: <${subject.replaceAll(" ", "-")}@mail.test>\r\n\r\nHej.\r\n`;
@@ -75,12 +78,12 @@ test("with a mailbox as the catch-all, mail to unknown and removed addresses on 
 });
 
 test("mail to the organization's own addresses still reaches their mailboxes, not the catch-all", async () => {
-  const { duva, ada, grace, mailbox, graces, hermes, hermess } = await withCatchAllCandidates();
+  const { duva, ada, grace, mailbox, graces, katherine, katherines } = await withCatchAllCandidates();
   await ada.PUT("/domains/{domain}/catch-all", onExampleCom({ mailbox: mailbox.id }));
 
-  await duva.receive(message("linus@example.net", "hermes@example.com, nobody@example.com"), { to: ["hermes@example.com", "nobody@example.com"] });
+  await duva.receive(message("linus@example.net", "katherine@example.com, nobody@example.com"), { to: ["katherine@example.com", "nobody@example.com"] });
 
-  expect(await messagesIn(hermes, hermess)).toHaveLength(1);
+  expect(await messagesIn(katherine, katherines)).toHaveLength(1);
   expect(await waiting(grace, graces)).toEqual(["Hello"]);
 });
 
@@ -119,14 +122,14 @@ test("with a group as the catch-all, its members get the mail marked with the gr
 });
 
 test("a member mailing a catch-all group, from an alias domain's mirror of its address, gets no copy of its own mail", async () => {
-  const { duva, ada, grace, hermes, graces, hermess } = await withCatchAllCandidates();
+  const { duva, ada, grace, katherine, graces, katherines } = await withCatchAllCandidates();
   await grace.PATCH("/mailboxes/{mailbox}/screener", { params: graces, body: { on: false } });
-  await ada.POST("/groups", { body: { address: "support@example.com", members: ["grace@example.com", "hermes@example.com"] } });
+  await ada.POST("/groups", { body: { address: "support@example.com", members: ["grace@example.com", "katherine@example.com"] } });
   await ada.PUT("/domains/{domain}/catch-all", onExampleCom({ group: "support@example.com" }));
 
   await duva.receive(message("grace@example.se", "help@example.com", "From Grace"), { from: "bounces@mail.example.net", to: ["help@example.com"] });
 
-  expect((await messagesIn(hermes, hermess)).map(({ subject }) => subject)).toEqual(["From Grace"]);
+  expect((await messagesIn(katherine, katherines)).map(({ subject }) => subject)).toEqual(["From Grace"]);
   expect(await messagesIn(grace, graces)).toEqual([]);
 });
 
@@ -154,14 +157,14 @@ test("clearing the catch-all refuses mail to unknown addresses again", async () 
   ]);
 });
 
-test("removing the agent whose mailbox is the catch-all, or deleting the group that is, clears the catch-all", async () => {
-  const { duva, ada, agent, hermess } = await withCatchAllCandidates();
+test("removing the human whose mailbox is the catch-all, erasing the mailbox, or deleting the group that is, clears the catch-all", async () => {
+  const { duva, ada, katherineId, katherines } = await withCatchAllCandidates();
   await ada.POST("/domains", { body: { domain: "example.net" } });
   await ada.POST("/groups", { body: { address: "support@example.com", members: ["grace@example.com"] } });
-  await ada.PUT("/domains/{domain}/catch-all", onExampleCom({ mailbox: hermess.path.mailbox }));
+  await ada.PUT("/domains/{domain}/catch-all", onExampleCom({ mailbox: katherines.path.mailbox }));
   await ada.PUT("/domains/{domain}/catch-all", { params: { path: { domain: "example.net" } }, body: { group: "support@example.com" } });
 
-  await ada.DELETE("/agents/{agent}", { params: { path: { agent: agent.id } } });
+  await ada.POST("/humans/{human}/remove", { params: { path: { human: katherineId } }, body: { delete: [katherines.path.mailbox] } });
   await ada.DELETE("/groups/{group}", { params: { path: { group: "support@example.com" } } });
 
   const { data } = await ada.GET("/domains");
@@ -178,7 +181,7 @@ test("while a catch-all is set, the receipt rules list its domain and alias doma
   const whileSet = listed();
   await ada.DELETE("/domains/{domain}/catch-all", { params: { path: { domain: "example.com" } } });
 
-  const addresses = ["grace@example.com", "grace@example.fi", "grace@example.se", "hermes@example.com", "hermes@example.fi", "hermes@example.se"];
+  const addresses = ["grace@example.com", "grace@example.fi", "grace@example.se", "katherine@example.com", "katherine@example.fi", "katherine@example.se"];
   expect(whileSet).toEqual([...addresses, "example.com", "example.fi", "example.se"].sort());
   expect(listed()).toEqual(addresses);
 });

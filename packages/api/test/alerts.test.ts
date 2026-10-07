@@ -7,9 +7,9 @@ const minutes = (count: number) => count * 60 * 1000;
 const hours = (count: number) => minutes(count * 60);
 
 /**
- * A deployment on example.com where ada sponsors the agent Hermes, which owns a mailbox at
- * hermes@example.com and sends from it without approval. Ada has a mailbox at ada@example.com,
- * unless `sponsorMailbox` is off. Grace is the first admin, and Ken another human. Sessions
+ * A deployment on example.com where ada sponsors the agent Hermes, which sends from her mailbox at
+ * ada@example.com with send sponsor access and without approval. Ada has no mailbox if `sponsorMailbox`
+ * is off, and the mailbox has no Screener. Grace is the first admin, and Ken another human. Sessions
  * outlast the hours these tests let pass.
  */
 async function withAgent({ sponsorMailbox = true, ...options }: DuvaOptions & { sponsorMailbox?: boolean } = {}) {
@@ -19,12 +19,16 @@ async function withAgent({ sponsorMailbox = true, ...options }: DuvaOptions & { 
   const ids = { ada: (await ada.GET("/whoami")).data!.id, grace: (await grace.GET("/whoami")).data!.id };
   const { data: created } = await ada.POST("/agents", { body: { name: "Hermes" } });
   const agent = created!.agent;
-  const { data: mailbox } = await grace.POST("/mailboxes", { body: { owner: agent.id, address: "hermes@example.com" } });
-  if (sponsorMailbox) await grace.POST("/mailboxes", { body: { owner: ids.ada, address: "ada@example.com" } });
   const hermes = duva.withKey(created!.key);
   const settings = { params: { path: { agent: agent.id } } };
-  await ada.PATCH("/agents/{agent}/settings", { ...settings, body: { approvalForOwnMailbox: false } });
-  const params = { path: { mailbox: mailbox!.id } };
+  let params = { path: { mailbox: "" } };
+  if (sponsorMailbox) {
+    const { data: mailbox } = await grace.POST("/mailboxes", { body: { owner: ids.ada, address: "ada@example.com" } });
+    params = { path: { mailbox: mailbox!.id } };
+    // Mail from first-time senders would wait in the Screener, which these tests leave out.
+    await ada.PATCH("/mailboxes/{mailbox}/screener", { params, body: { on: false } });
+    await ada.PATCH("/agents/{agent}/settings", { ...settings, body: { sponsorAccess: "send", approvalAsSponsor: false } });
+  }
 
   /** Hermes drafts a message to the recipients and sends it, and gets back the draft as it is then, and the ID SES gave it if SES sent it. */
   const send = async (to: string[] | string, by: DuvaClient = hermes, from = params) => {
@@ -165,8 +169,7 @@ test("soft bounces raise no alert, and a reject is a failed send", async () => {
 
 test("a human's bounces and complaints raise no alert", async () => {
   const { duva, ada, send, alerts } = await withAgent();
-  const mine = { path: { mailbox: (await ada.GET("/mailboxes")).data!.mailboxes.find(({ defaultAddress }) => defaultAddress === "ada@example.com")!.id } };
-  const { messageId } = await send("ken@example.net", ada, mine);
+  const { messageId } = await send("ken@example.net", ada);
 
   await duva.sendingEvent(messageId!, { type: "Complaint" });
 
@@ -303,7 +306,7 @@ test("an admin's removal of an agent is an urgent alert, and the sponsor keeps t
   await grace.DELETE("/agents/{agent}", settings);
 
   expect((await alerts()).alerts).toMatchObject([
-    { kind: "removedBy", urgent: true, by: ids.grace, agent: agent.id, agentName: "Hermes", what: "grace@example.org removed Hermes, with its mailboxes." },
+    { kind: "removedBy", urgent: true, by: ids.grace, agent: agent.id, agentName: "Hermes", what: "grace@example.org removed Hermes." },
     { kind: "pausedBy", agent: agent.id },
   ]);
   expect((await mailed(before)).map(({ subject }) => subject)).toEqual(["Hermes was removed by grace@example.org"]);

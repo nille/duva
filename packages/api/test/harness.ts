@@ -27,7 +27,9 @@ import { createDownloads, downloadLinkLifetime as linkLifetime } from "../src/at
 import { createAuthorizer } from "../src/authorizer.ts";
 import type { Humans, SignInSender } from "../src/user-pool.ts";
 import type { RecordType } from "../src/dns-records.ts";
-import { createEraser, type EraserEvent } from "../src/erasure.ts";
+import { createEraser, type Eraser, type EraserEvent } from "../src/erasure.ts";
+import { syncRecipients } from "../src/receiving.ts";
+import { eraseAgentsMailboxes } from "../src/removal.ts";
 import { createInbound } from "../src/inbound.ts";
 import { createFeeder, createIndexer, type IndexQueue, indexMailboxes, type QueuedTask } from "../src/indexing.ts";
 import { alertMailFilter, conversationPath, mcpRoutes, tokenHeader, feederFilter, taskGiverFilter, hostedLogoHeaders, hostedLogosPath, senderFilter, senderRetries, tableKey, tableStreamView } from "../src/infrastructure.ts";
@@ -36,7 +38,7 @@ import { createSearcher } from "../src/searching.ts";
 import type { Table } from "../src/deployment.ts";
 import type { MailBucket } from "../src/mail-bucket.ts";
 import { keys, timeEarlierLabels } from "../src/mail.ts";
-import { addHumanToOrganization, screenerKey, settingsKey, setUpOrganization } from "../src/organization.ts";
+import { addHumanToOrganization, addMailbox, screenerKey, settingsKey, setUpOrganization } from "../src/organization.ts";
 import type { SendEvent } from "../src/limits.ts";
 import { setUpDeliveries, setUpScreeners } from "../src/screening.ts";
 import { type Model, runAgent } from "../src/agent-loop.ts";
@@ -240,6 +242,12 @@ export interface Duva {
    * indexer's queue loses each backfill's next step, as when Lambda gives up on it.
    */
   setUp(options: { admin: string; backfillLost?: boolean }): Promise<void>;
+  /**
+   * Gives the agent a mailbox of its own at the address, with mail to it accepted, as an admin
+   * could before agents owned none (ADR-0030), so a test sees what the setup after the deploy
+   * that stops it does. Returns the mailbox's ID.
+   */
+  agentMailbox(agent: string, address: string): Promise<string>;
   /** Lets the indexer read its queue when indexingHeld, and waits until it has caught up. */
   releaseIndexing(): Promise<void>;
   /** Has the indexer's queue lose the next task that takes a step of a backfill, as when SQS drops it as a duplicate. */
@@ -406,6 +414,11 @@ export async function startDuva({
     if (object === undefined) return new Response("<Error><Code>AccessDenied</Code></Error>", { status: 403, headers: { "content-type": "application/xml" } });
     return new Response(object.body, { headers: { "content-type": object.type, "cache-control": object.cacheControl, ...hostedLogoHeaders } });
   };
+  const apiEraser: Eraser = {
+    emptyTrash: async (emptyTrash) => void handed.push({ emptyTrash }),
+    eraseMailbox: async (eraseMailbox) => void handed.push({ eraseMailbox }),
+    eraseSender: async (eraseSender) => void handed.push({ eraseSender }),
+  };
   const gatewayed = gateway(
     createApi({
       version,
@@ -419,11 +432,7 @@ export async function startDuva({
       receiving,
       downloads,
       unsubscriber,
-      eraser: {
-        emptyTrash: async (emptyTrash) => void handed.push({ emptyTrash }),
-        eraseMailbox: async (eraseMailbox) => void handed.push({ eraseMailbox }),
-        eraseSender: async (eraseSender) => void handed.push({ eraseSender }),
-      },
+      eraser: apiEraser,
       // The API invokes the search Lambda and waits for it, so the search goes through JSON.
       searcher: async (request) => JSON.parse(JSON.stringify(await searcher(JSON.parse(JSON.stringify(request))))),
       indexQueue,
@@ -599,6 +608,8 @@ export async function startDuva({
     setUp: async ({ backfillLost = false, ...options }) => {
       await setUp(options);
       await timeEarlierLabels(table);
+      await eraseAgentsMailboxes({ table, eraser: apiEraser, receiving });
+      for (let each = handed.shift(); each !== undefined; each = handed.shift()) if (!eraserRunsLost) await eraser(each);
       screenerDeployed = true;
       deliveriesDeployed = true;
       await setUpDeliveries(table);
@@ -621,6 +632,11 @@ export async function startDuva({
     async releaseTasks() {
       await tasking.deliver();
       await runHandedTasks();
+    },
+    async agentMailbox(agent, address) {
+      const { id } = await addMailbox(table, { owner: agent, address, by: firstAdmin.id });
+      await syncRecipients(table, receiving);
+      return id;
     },
     async askAgent(email, turn, { token = accessToken(email) } = {}) {
       const response = await agentTurn(new Request(`${inProcess}/${conversationPath}turns`, { method: "POST", headers: { [tokenHeader]: token }, body: JSON.stringify(turn) }));

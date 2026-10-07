@@ -81,20 +81,16 @@ test("the mailbox's owner gives a label a prompt, which the label lists, and rem
 });
 
 test("only the mailbox's owner gives its labels prompts, and only the Feed, the Paper Trail and its own labels take one", async () => {
-  const { duva, ada, linus, grace, params, receipts, prompt } = await withMailbox();
+  const { duva, linus, grace, params, receipts, prompt } = await withMailbox();
   const at = (label: string) => ({ params: { path: { ...params.path, label } }, body: { prompt: "Do it." } });
   const { data: hermes } = await linus.POST("/agents", { body: { name: "Hermes" } });
   await linus.PATCH("/agents/{agent}/settings", { params: { path: { agent: hermes!.agent.id } }, body: { sponsorAccess: "send" } });
-  const { data: iris } = await grace.POST("/agents", { body: { name: "Iris" } });
-  const { data: irisMailbox } = await ada.POST("/mailboxes", { body: { owner: iris!.agent.id, address: "iris@example.com" } });
-  const { data: irisLabel } = await grace.POST("/mailboxes/{mailbox}/labels", { params: { path: { mailbox: irisMailbox!.id } }, body: { name: "Work" } });
 
   const byGrace = await grace.PUT("/mailboxes/{mailbox}/labels/{label}/prompt", at(receipts));
   const byAgent = await duva.withKey(hermes!.key).PUT("/mailboxes/{mailbox}/labels/{label}/prompt", at(receipts));
   const inbox = await prompt("inbox", "Do it.");
   const missing = await prompt("no-such-label", "Do it.");
   const empty = await prompt(receipts, "   ");
-  const noAgent = await duva.withKey(iris!.key).PUT("/mailboxes/{mailbox}/labels/{label}/prompt", { params: { path: { mailbox: irisMailbox!.id, label: irisLabel!.id } }, body: { prompt: "Do it." } });
 
   expect(byGrace.response.status).toBe(403);
   expect(byAgent.response.status).toBe(403);
@@ -103,7 +99,6 @@ test("only the mailbox's owner gives its labels prompts, and only the Feed, the 
   expect((inbox.error as { message: string }).message).toBe("Inbox can't carry a prompt. Give the Feed, the Paper Trail or one of the mailbox's own labels one.");
   expect(missing.response.status).toBe(404);
   expect(empty.response.status).toBe(400);
-  expect(noAgent.response.status).toBe(403);
   expect((await prompt("paperTrail", "File it.")).response.status).toBe(200);
   expect((await linus.GET("/mailboxes/{mailbox}/labels", { params })).data!.labels.filter((label) => label.prompt !== undefined).map(({ id }) => id)).toEqual(["paperTrail"]);
 });

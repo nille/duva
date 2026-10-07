@@ -53,7 +53,7 @@ Every command prints JSON on stdout and exits with 0. When a command fails, it p
 
 ## Approval
 
-By default, an agent's send from its own mailbox waits for its sponsor's approval. Asking to send succeeds once the request is waiting, before any mail goes out. The sponsor then sends the draft as it is, edits and sends it, or rejects it with a note you can read. Changing the draft withdraws a waiting request. The mailbox's change feed records each step.
+An agent owns no mailbox. It works in its sponsor's mailboxes, as far as the sponsor access they gave it reaches, and sends as its sponsor. By default, an agent's send waits for its sponsor's approval. Asking to send succeeds once the request is waiting, before any mail goes out. The sponsor then sends the draft as it is, edits and sends it, or rejects it with a note you can read. Changing the draft withdraws a waiting request. The mailbox's change feed records each step.
 `;
 
 function section(command: Command): string {

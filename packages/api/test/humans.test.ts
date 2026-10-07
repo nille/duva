@@ -201,7 +201,6 @@ test("only the human reads their mailbox: the admin who created it, other humans
   await duva.receive(await mail("plain"), { to: ["linus@example.com"] });
   const thread = (await duva.signIn("linus@example.org").GET("/mailboxes/{mailbox}/threads", { params })).data!.threads[0]!.id;
   const { data: agent } = await ada.POST("/agents", { body: { name: "Hermes" } });
-  await ada.POST("/mailboxes", { body: { owner: agent!.agent.id, address: "hermes@example.com" } });
 
   for (const outsider of [ada, duva.signIn("grace@example.org"), duva.withKey(agent!.key)]) {
     const changes = await outsider.GET("/mailboxes/{mailbox}/changes", { params });

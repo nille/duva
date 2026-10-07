@@ -5,27 +5,43 @@ import { startDuva } from "./harness.ts";
 /** A fixture in test/mail, as the sender's server sends it. */
 const mail = (name: string) => readFile(new URL(`mail/${name}.eml`, import.meta.url));
 
+type Duva = Awaited<ReturnType<typeof startDuva>>;
+
 /**
- * A deployment on example.com where ada, the first admin, sponsors the agent Hermes, which owns a
- * mailbox at hermes@example.com.
+ * Has Ada, the first admin, create a mailbox at the address for the human signed in with `email`,
+ * who switches its Screener off, so mail from first-time senders lands in the Inbox.
+ */
+async function mailboxFor(duva: Duva, email: string, address: string) {
+  const owner = duva.signIn(email);
+  const { data: me } = await owner.GET("/whoami");
+  const { data: mailbox } = await duva.signIn("ada@example.org").POST("/mailboxes", { body: { owner: me!.id, address } });
+  await owner.PATCH("/mailboxes/{mailbox}/screener", { params: { path: { mailbox: mailbox!.id } }, body: { on: false } });
+  return mailbox!;
+}
+
+/** The position of switching the Screener off, the first change in a mailbox's feed from mailboxFor(). */
+const switchedOff = 1;
+
+/**
+ * A deployment on example.com where ada, the first admin, has a mailbox at hermes@example.com, with
+ * the Screener off. Grace is another human. `sinceSwitch` reads the change feed past the switch.
  */
 async function withMailbox() {
   const duva = await startDuva({ domain: "example.com", admin: "ada@example.org", humans: ["grace@example.org"] });
   const ada = duva.signIn("ada@example.org");
-  const { data: created } = await ada.POST("/agents", { body: { name: "Hermes" } });
-  const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: created!.agent.id, address: "hermes@example.com" } });
-  const hermes = duva.withKey(created!.key);
-  const params = { path: { mailbox: mailbox!.id } };
-  return { duva, ada, hermes, mailbox: mailbox!, params };
+  const mailbox = await mailboxFor(duva, "ada@example.org", "hermes@example.com");
+  const params = { path: { mailbox: mailbox.id } };
+  const sinceSwitch = { ...params, query: { after: switchedOff } };
+  return { duva, ada, mailbox, params, sinceSwitch };
 }
 
 test("creating the first address creates Duva's receipt rule: its recipients, scanning, then S3 and the inbound Lambda", async () => {
   const duva = await startDuva({ domain: "example.com", admin: "ada@example.org" });
   const ada = duva.signIn("ada@example.org");
-  const { data } = await ada.POST("/agents", { body: { name: "Hermes" } });
+  const { data: me } = await ada.GET("/whoami");
   expect(duva.receiptRules()).toEqual([]);
 
-  await ada.POST("/mailboxes", { body: { owner: data!.agent.id, address: "hermes@example.com" } });
+  await ada.POST("/mailboxes", { body: { owner: me!.id, address: "hermes@example.com" } });
 
   const [rule, ...others] = duva.receiptRules();
   expect(others).toEqual([]);
@@ -38,51 +54,51 @@ test("creating the first address creates Duva's receipt rule: its recipients, sc
 
 test("mail to each later address is accepted, with no redeploy", async () => {
   const { duva, ada } = await withMailbox();
-  const { data: iris } = await ada.POST("/agents", { body: { name: "Iris" } });
+  const { data: grace } = await duva.signIn("grace@example.org").GET("/whoami");
 
-  await ada.POST("/mailboxes", { body: { owner: iris!.agent.id, address: "iris@example.com" } });
+  await ada.POST("/mailboxes", { body: { owner: grace!.id, address: "grace@example.com" } });
 
-  const { refused } = await duva.receive(await mail("plain"), { to: ["hermes@example.com", "iris@example.com", "nobody@example.com"] });
+  const { refused } = await duva.receive(await mail("plain"), { to: ["hermes@example.com", "grace@example.com", "nobody@example.com"] });
   expect(refused).toEqual(["nobody@example.com"]);
 });
 
 test("mail to addresses created at the same time is accepted for each", async () => {
-  const duva = await startDuva({ domain: "example.com", admin: "ada@example.org" });
+  const names = ["ada", "grace", "babbage", "lovelace"];
+  const duva = await startDuva({ domain: "example.com", admin: "ada@example.org", humans: names.slice(1).map((name) => `${name}@example.org`) });
   const ada = duva.signIn("ada@example.org");
-  const names = ["hermes", "iris", "babbage", "lovelace"];
-  const agents = await Promise.all(names.map(async (name) => (await ada.POST("/agents", { body: { name } })).data!.agent));
+  const humans = await Promise.all(names.map(async (name) => (await duva.signIn(`${name}@example.org`).GET("/whoami")).data!));
 
-  await Promise.all(agents.map((agent, index) => ada.POST("/mailboxes", { body: { owner: agent.id, address: `${names[index]}@example.com` } })));
+  await Promise.all(humans.map((human, index) => ada.POST("/mailboxes", { body: { owner: human.id, address: `${names[index]}@example.com` } })));
 
   const { refused } = await duva.receive(await mail("plain"), { to: names.map((name) => `${name}@example.com`) });
   expect(refused).toEqual([]);
 });
 
 test("mail to an address that doesn't exist is refused during delivery", async () => {
-  const { duva, hermes, params } = await withMailbox();
+  const { duva, ada, params } = await withMailbox();
 
   const { refused } = await duva.receive(await mail("plain"), { to: ["nobody@example.com"] });
 
   expect(refused).toEqual(["nobody@example.com"]);
-  expect((await hermes.GET("/mailboxes/{mailbox}/threads", { params })).data).toEqual({ threads: [] });
+  expect((await ada.GET("/mailboxes/{mailbox}/threads", { params })).data).toEqual({ threads: [] });
 });
 
 test("of a message's recipients, only those that don't exist are refused", async () => {
-  const { duva, hermes, params } = await withMailbox();
+  const { duva, ada, params } = await withMailbox();
 
   const { refused } = await duva.receive(await mail("plain"), { to: ["nobody@example.com", "hermes@example.com"] });
 
   expect(refused).toEqual(["nobody@example.com"]);
-  expect((await hermes.GET("/mailboxes/{mailbox}/threads", { params })).data?.threads).toHaveLength(1);
+  expect((await ada.GET("/mailboxes/{mailbox}/threads", { params })).data?.threads).toHaveLength(1);
 });
 
-test("mail to the agent's address lands in its Inbox as a new thread", async () => {
-  const { duva, hermes, params } = await withMailbox();
+test("mail to the mailbox's address lands in its Inbox as a new thread", async () => {
+  const { duva, ada, params } = await withMailbox();
 
   const { refused } = await duva.receive(await mail("plain"), { to: ["hermes@example.com"] });
 
   expect(refused).toEqual([]);
-  const { data } = await hermes.GET("/mailboxes/{mailbox}/threads", { params });
+  const { data } = await ada.GET("/mailboxes/{mailbox}/threads", { params });
   expect(data).toEqual({
     threads: [
       {
@@ -99,13 +115,13 @@ test("mail to the agent's address lands in its Inbox as a new thread", async () 
   });
 });
 
-test("the agent reads a message: sender, recipients, subject, date and plain-text body", async () => {
-  const { duva, hermes, params } = await withMailbox();
+test("the owner reads a message: sender, recipients, subject, date and plain-text body", async () => {
+  const { duva, ada, params } = await withMailbox();
   await duva.receive(await mail("plain"), { to: ["hermes@example.com"] });
-  const { data: list } = await hermes.GET("/mailboxes/{mailbox}/threads", { params });
+  const { data: list } = await ada.GET("/mailboxes/{mailbox}/threads", { params });
   const thread = list!.threads[0]!;
 
-  const { data } = await hermes.GET("/mailboxes/{mailbox}/threads/{thread}", { params: { path: { ...params.path, thread: thread.id } } });
+  const { data } = await ada.GET("/mailboxes/{mailbox}/threads/{thread}", { params: { path: { ...params.path, thread: thread.id } } });
 
   expect(data).toEqual({
     id: thread.id,
@@ -130,13 +146,13 @@ test("the agent reads a message: sender, recipients, subject, date and plain-tex
   });
 });
 
-/** Receives the fixture for the agent, and lists and reads the one thread and message it becomes. */
+/** Receives the fixture for Ada's mailbox, and lists and reads the one thread and message it becomes. */
 async function receiveAndRead(name: string, to = "hermes@example.com") {
-  const { duva, hermes, params } = await withMailbox();
+  const { duva, ada, params } = await withMailbox();
   await duva.receive(await mail(name), { to: [to] });
-  const { data: list } = await hermes.GET("/mailboxes/{mailbox}/threads", { params });
+  const { data: list } = await ada.GET("/mailboxes/{mailbox}/threads", { params });
   const thread = list!.threads[0]!;
-  const { data } = await hermes.GET("/mailboxes/{mailbox}/threads/{thread}", { params: { path: { ...params.path, thread: thread.id } } });
+  const { data } = await ada.GET("/mailboxes/{mailbox}/threads/{thread}", { params: { path: { ...params.path, thread: thread.id } } });
   return { thread, message: data!.messages[0]! };
 }
 
@@ -183,75 +199,74 @@ test("a plus tag is matched without regard to case, and kept as it was sent", as
 });
 
 test("each message becomes a new thread, and the Inbox lists the newest first", async () => {
-  const { duva, hermes, params } = await withMailbox();
+  const { duva, ada, params } = await withMailbox();
   await duva.receive(await mail("plain"), { to: ["hermes@example.com"] });
   await duva.receive(await mail("plus-tagged"), { to: ["hermes+news@example.com"] });
   await duva.receive(await mail("attachment"), { to: ["hermes@example.com"] });
 
-  const { data } = await hermes.GET("/mailboxes/{mailbox}/threads", { params });
+  const { data } = await ada.GET("/mailboxes/{mailbox}/threads", { params });
 
   expect(data?.threads.map(({ subject }) => subject)).toEqual(["The report", "October news", "Compiler notes"]);
 });
 
 test("a message processed twice shows up once", async () => {
-  const { duva, hermes, params } = await withMailbox();
+  const { duva, ada, params, sinceSwitch } = await withMailbox();
 
   await duva.receive(await mail("plain"), { to: ["hermes@example.com"] }, { invocations: 2 });
 
-  expect((await hermes.GET("/mailboxes/{mailbox}/threads", { params })).data?.threads).toHaveLength(1);
-  expect((await hermes.GET("/mailboxes/{mailbox}/changes", { params })).data?.changes).toHaveLength(1);
+  expect((await ada.GET("/mailboxes/{mailbox}/threads", { params })).data?.threads).toHaveLength(1);
+  expect((await ada.GET("/mailboxes/{mailbox}/changes", { params: sinceSwitch })).data?.changes).toHaveLength(1);
 });
 
 test("messages arriving at the same time each get their own place in the mailbox's change feed", async () => {
-  const { duva, hermes, params } = await withMailbox();
+  const { duva, ada, params, sinceSwitch } = await withMailbox();
 
   await Promise.all(["plain", "html-only", "attachment", "plus-tagged"].map(async (name) => duva.receive(await mail(name), { to: ["hermes+x@example.com"] })));
 
-  const { data } = await hermes.GET("/mailboxes/{mailbox}/changes", { params });
-  expect(data?.changes.map(({ position }) => position)).toEqual([1, 2, 3, 4]);
-  expect((await hermes.GET("/mailboxes/{mailbox}/threads", { params })).data?.threads).toHaveLength(4);
+  const { data } = await ada.GET("/mailboxes/{mailbox}/changes", { params: sinceSwitch });
+  expect(data?.changes.map(({ position }) => position)).toEqual([2, 3, 4, 5]);
+  expect((await ada.GET("/mailboxes/{mailbox}/threads", { params })).data?.threads).toHaveLength(4);
 });
 
 test("one message to two mailboxes lands in each", async () => {
-  const { duva, ada, hermes, params } = await withMailbox();
-  const { data: iris } = await ada.POST("/agents", { body: { name: "Iris" } });
-  const { data: irisMailbox } = await ada.POST("/mailboxes", { body: { owner: iris!.agent.id, address: "iris@example.com" } });
+  const { duva, ada, params } = await withMailbox();
+  const graceMailbox = await mailboxFor(duva, "grace@example.org", "grace@example.com");
 
-  await duva.receive(await mail("plain"), { to: ["hermes@example.com", "iris@example.com"] });
+  await duva.receive(await mail("plain"), { to: ["hermes@example.com", "grace@example.com"] });
 
-  expect((await hermes.GET("/mailboxes/{mailbox}/threads", { params })).data?.threads).toHaveLength(1);
-  const irisThreads = await duva.withKey(iris!.key).GET("/mailboxes/{mailbox}/threads", { params: { path: { mailbox: irisMailbox!.id } } });
-  expect(irisThreads.data?.threads).toHaveLength(1);
+  expect((await ada.GET("/mailboxes/{mailbox}/threads", { params })).data?.threads).toHaveLength(1);
+  const graceThreads = await duva.signIn("grace@example.org").GET("/mailboxes/{mailbox}/threads", { params: { path: { mailbox: graceMailbox.id } } });
+  expect(graceThreads.data?.threads).toHaveLength(1);
 });
 
-test("the agent catches up on its mailbox's change feed and sees each arrival once, naming no actor", async () => {
-  const { duva, hermes, params } = await withMailbox();
+test("the owner catches up on the mailbox's change feed and sees each arrival once, naming no actor", async () => {
+  const { duva, ada, params, sinceSwitch } = await withMailbox();
   await duva.receive(await mail("plain"), { to: ["hermes@example.com"] });
 
-  const { data: first } = await hermes.GET("/mailboxes/{mailbox}/changes", { params });
+  const { data: first } = await ada.GET("/mailboxes/{mailbox}/changes", { params: sinceSwitch });
   await duva.receive(await mail("attachment"), { to: ["hermes@example.com"] });
-  const { data: next } = await hermes.GET("/mailboxes/{mailbox}/changes", { params: { ...params, query: { after: first!.position } } });
-  const { data: none } = await hermes.GET("/mailboxes/{mailbox}/changes", { params: { ...params, query: { after: next!.position } } });
+  const { data: next } = await ada.GET("/mailboxes/{mailbox}/changes", { params: { ...params, query: { after: first!.position } } });
+  const { data: none } = await ada.GET("/mailboxes/{mailbox}/changes", { params: { ...params, query: { after: next!.position } } });
 
-  const { data: list } = await hermes.GET("/mailboxes/{mailbox}/threads", { params });
+  const { data: list } = await ada.GET("/mailboxes/{mailbox}/threads", { params });
   const [report, notes] = list!.threads;
   const messageIn = async (thread: string) =>
-    (await hermes.GET("/mailboxes/{mailbox}/threads/{thread}", { params: { path: { ...params.path, thread } } })).data!.messages[0]!.id;
+    (await ada.GET("/mailboxes/{mailbox}/threads/{thread}", { params: { path: { ...params.path, thread } } })).data!.messages[0]!.id;
   expect(first).toEqual({
-    changes: [{ position: 1, at: expect.any(String), type: "messageReceived", thread: notes!.id, message: await messageIn(notes!.id) }],
-    position: 1,
-  });
-  expect(next).toEqual({
-    changes: [{ position: 2, at: expect.any(String), type: "messageReceived", thread: report!.id, message: await messageIn(report!.id) }],
+    changes: [{ position: 2, at: expect.any(String), type: "messageReceived", thread: notes!.id, message: await messageIn(notes!.id) }],
     position: 2,
   });
-  expect(none).toEqual({ changes: [], position: 2 });
+  expect(next).toEqual({
+    changes: [{ position: 3, at: expect.any(String), type: "messageReceived", thread: report!.id, message: await messageIn(report!.id) }],
+    position: 3,
+  });
+  expect(none).toEqual({ changes: [], position: 3 });
 });
 
 test("the mailbox's change feed refuses a position that isn't one", async () => {
-  const { hermes, params } = await withMailbox();
+  const { ada, params } = await withMailbox();
 
-  const { response, error } = await hermes.GET("/mailboxes/{mailbox}/changes", {
+  const { response, error } = await ada.GET("/mailboxes/{mailbox}/changes", {
     params: { ...params, query: { after: "first" as unknown as number } },
   });
 
@@ -260,9 +275,9 @@ test("the mailbox's change feed refuses a position that isn't one", async () => 
 });
 
 test("the mailbox's change feed refuses a spam value that isn't true or false", async () => {
-  const { hermes, params } = await withMailbox();
+  const { ada, params } = await withMailbox();
 
-  const { response, error } = await hermes.GET("/mailboxes/{mailbox}/changes", {
+  const { response, error } = await ada.GET("/mailboxes/{mailbox}/changes", {
     params: { ...params, query: { spam: "yes" as unknown as boolean } },
   });
 
@@ -270,28 +285,31 @@ test("the mailbox's change feed refuses a spam value that isn't true or false", 
   expect(error?.message).toMatch(/isn't true or false/);
 });
 
-test("the sponsor catches up on, lists and reads the agent's mailbox the same way", async () => {
-  const { duva, ada, hermes, params } = await withMailbox();
+test("an agent with read sponsor access catches up on, lists and reads its sponsor's mailbox as the sponsor does", async () => {
+  const { duva, ada, params } = await withMailbox();
+  const { data: created } = await ada.POST("/agents", { body: { name: "Hermes" } });
+  await ada.PATCH("/agents/{agent}/settings", { params: { path: { agent: created!.agent.id } }, body: { sponsorAccess: "read" } });
+  const hermes = duva.withKey(created!.key);
   await duva.receive(await mail("plain"), { to: ["hermes@example.com"] });
 
-  const changes = await ada.GET("/mailboxes/{mailbox}/changes", { params });
-  const threads = await ada.GET("/mailboxes/{mailbox}/threads", { params });
+  const changes = await hermes.GET("/mailboxes/{mailbox}/changes", { params });
+  const threads = await hermes.GET("/mailboxes/{mailbox}/threads", { params });
   const thread = { params: { path: { ...params.path, thread: threads.data!.threads[0]!.id } } };
   const read = await ada.GET("/mailboxes/{mailbox}/threads/{thread}", thread);
 
-  expect(changes.data).toEqual((await hermes.GET("/mailboxes/{mailbox}/changes", { params })).data);
-  expect(threads.data).toEqual((await hermes.GET("/mailboxes/{mailbox}/threads", { params })).data);
-  expect(read.data).toEqual((await hermes.GET("/mailboxes/{mailbox}/threads/{thread}", thread)).data);
+  expect(changes.data).toEqual((await ada.GET("/mailboxes/{mailbox}/changes", { params })).data);
+  expect(threads.data).toEqual((await ada.GET("/mailboxes/{mailbox}/threads", { params })).data);
+  expect(read.data).toEqual((await ada.GET("/mailboxes/{mailbox}/threads/{thread}", thread)).data);
 });
 
-test("no other human or agent can reach the mailbox, not even another agent with the same sponsor", async () => {
-  const { duva, hermes, params } = await withMailbox();
+test("no other human or agent can reach the mailbox, not even the owner's own agent without sponsor access", async () => {
+  const { duva, ada, params } = await withMailbox();
   await duva.receive(await mail("plain"), { to: ["hermes@example.com"] });
-  const thread = (await hermes.GET("/mailboxes/{mailbox}/threads", { params })).data!.threads[0]!.id;
-  // Grace is a human who isn't the sponsor. Iris is Grace's agent, and Babbage is another of Ada's.
+  const thread = (await ada.GET("/mailboxes/{mailbox}/threads", { params })).data!.threads[0]!.id;
+  // Grace is a human who isn't the owner. Iris is Grace's agent, and Babbage is Ada's, given no sponsor access.
   const grace = duva.signIn("grace@example.org");
   const { data: iris } = await grace.POST("/agents", { body: { name: "Iris" } });
-  const { data: babbage } = await duva.signIn("ada@example.org").POST("/agents", { body: { name: "Babbage" } });
+  const { data: babbage } = await ada.POST("/agents", { body: { name: "Babbage" } });
 
   for (const outsider of [grace, duva.withKey(iris!.key), duva.withKey(babbage!.key)]) {
     const changes = await outsider.GET("/mailboxes/{mailbox}/changes", { params });
@@ -301,45 +319,42 @@ test("no other human or agent can reach the mailbox, not even another agent with
   }
 });
 
-test("an admin who sponsors none of the mailbox's agents can't reach it", async () => {
+test("an admin can't reach another human's mailbox, not even one the admin created", async () => {
   const duva = await startDuva({ domain: "example.com", admin: "ada@example.org", humans: ["grace@example.org"] });
-  const grace = duva.signIn("grace@example.org");
-  const { data: iris } = await grace.POST("/agents", { body: { name: "Iris" } });
-  const ada = duva.signIn("ada@example.org");
-  const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: iris!.agent.id, address: "iris@example.com" } });
-  await duva.receive(await mail("plain"), { to: ["iris@example.com"] });
+  const mailbox = await mailboxFor(duva, "grace@example.org", "grace@example.com");
+  await duva.receive(await mail("plain"), { to: ["grace@example.com"] });
 
-  const { response, error } = await ada.GET("/mailboxes/{mailbox}/threads", { params: { path: { mailbox: mailbox!.id } } });
+  const { response, error } = await duva.signIn("ada@example.org").GET("/mailboxes/{mailbox}/threads", { params: { path: { mailbox: mailbox.id } } });
 
   expect(response.status).toBe(403);
   expect(error?.message).toMatch(/owner/);
 });
 
 test("reading a mailbox or thread that doesn't exist answers 404", async () => {
-  const { hermes, params } = await withMailbox();
+  const { ada, params } = await withMailbox();
 
-  const mailbox = await hermes.GET("/mailboxes/{mailbox}/threads", { params: { path: { mailbox: "nowhere" } } });
-  const thread = await hermes.GET("/mailboxes/{mailbox}/threads/{thread}", { params: { path: { ...params.path, thread: "nothing" } } });
+  const mailbox = await ada.GET("/mailboxes/{mailbox}/threads", { params: { path: { mailbox: "nowhere" } } });
+  const thread = await ada.GET("/mailboxes/{mailbox}/threads/{thread}", { params: { path: { ...params.path, thread: "nothing" } } });
 
   expect([mailbox.response.status, thread.response.status]).toEqual([404, 404]);
 });
 
-/** The mailbox's Inbox, and each of its threads as the agent reads it, in the Inbox's order. */
-async function inboxOf(hermes: Awaited<ReturnType<typeof withMailbox>>["hermes"], mailbox: string) {
-  const { data } = await hermes.GET("/mailboxes/{mailbox}/threads", { params: { path: { mailbox } } });
+/** The mailbox's Inbox, and each of its threads as the owner reads it, in the Inbox's order. */
+async function inboxOf(owner: Awaited<ReturnType<typeof withMailbox>>["ada"], mailbox: string) {
+  const { data } = await owner.GET("/mailboxes/{mailbox}/threads", { params: { path: { mailbox } } });
   const threads = await Promise.all(
-    data!.threads.map(async ({ id }) => (await hermes.GET("/mailboxes/{mailbox}/threads/{thread}", { params: { path: { mailbox, thread: id } } })).data!),
+    data!.threads.map(async ({ id }) => (await owner.GET("/mailboxes/{mailbox}/threads/{thread}", { params: { path: { mailbox, thread: id } } })).data!),
   );
   return { summaries: data!.threads, threads };
 }
 
 test("a reply whose In-Reply-To names a message in the mailbox joins that message's thread", async () => {
-  const { duva, hermes, mailbox } = await withMailbox();
+  const { duva, ada, mailbox } = await withMailbox();
   await duva.receive(await mail("plain"), { to: ["hermes@example.com"] });
 
   await duva.receive(await mail("reply"), { to: ["hermes@example.com"] });
 
-  const { summaries, threads } = await inboxOf(hermes, mailbox.id);
+  const { summaries, threads } = await inboxOf(ada, mailbox.id);
   expect(summaries).toEqual([
     {
       id: expect.any(String),
@@ -359,23 +374,23 @@ test("a reply whose In-Reply-To names a message in the mailbox joins that messag
 });
 
 test("a reply joins its thread through References alone, even when the message it answers never arrived", async () => {
-  const { duva, hermes, mailbox } = await withMailbox();
+  const { duva, ada, mailbox } = await withMailbox();
   await duva.receive(await mail("plain"), { to: ["hermes@example.com"] });
 
   // It answers notes-2, Ada's reply, which the mailbox never got, and also names notes-1 in References.
   await duva.receive(await mail("references-only"), { to: ["hermes@example.com"] });
 
-  const { threads } = await inboxOf(hermes, mailbox.id);
+  const { threads } = await inboxOf(ada, mailbox.id);
   expect(threads.map(({ messages }) => messages.map(({ messageId }) => messageId))).toEqual([["<notes-1@example.org>", "<notes-3@example.org>"]]);
 });
 
 test("a message that answers nothing in the mailbox starts a new thread, even with an existing thread's subject", async () => {
-  const { duva, hermes, mailbox } = await withMailbox();
+  const { duva, ada, mailbox } = await withMailbox();
   await duva.receive(await mail("plain"), { to: ["hermes@example.com"] });
 
   await duva.receive(await mail("same-subject"), { to: ["hermes@example.com"] });
 
-  const { summaries } = await inboxOf(hermes, mailbox.id);
+  const { summaries } = await inboxOf(ada, mailbox.id);
   expect(summaries.map(({ subject, messages }) => ({ subject, messages }))).toEqual([
     { subject: "Compiler notes", messages: 1 },
     { subject: "Compiler notes", messages: 1 },
@@ -383,35 +398,34 @@ test("a message that answers nothing in the mailbox starts a new thread, even wi
 });
 
 test("a reply to a message in another mailbox starts a new thread", async () => {
-  const { duva, ada, hermes, mailbox } = await withMailbox();
-  const { data: iris } = await ada.POST("/agents", { body: { name: "Iris" } });
-  await ada.POST("/mailboxes", { body: { owner: iris!.agent.id, address: "iris@example.com" } });
-  await duva.receive(await mail("plain"), { to: ["iris@example.com"] });
+  const { duva, ada, mailbox } = await withMailbox();
+  await mailboxFor(duva, "grace@example.org", "grace@example.com");
+  await duva.receive(await mail("plain"), { to: ["grace@example.com"] });
 
   await duva.receive(await mail("reply"), { to: ["hermes@example.com"] });
 
-  const { summaries } = await inboxOf(hermes, mailbox.id);
+  const { summaries } = await inboxOf(ada, mailbox.id);
   expect(summaries.map(({ subject, messages }) => ({ subject, messages }))).toEqual([{ subject: "Re: Compiler notes", messages: 1 }]);
 });
 
 test("a reply that arrives before the message it answers starts its own thread, and the two stay apart", async () => {
-  const { duva, hermes, mailbox } = await withMailbox();
+  const { duva, ada, mailbox } = await withMailbox();
   await duva.receive(await mail("reply"), { to: ["hermes@example.com"] });
 
   await duva.receive(await mail("plain"), { to: ["hermes@example.com"] });
 
-  const { threads } = await inboxOf(hermes, mailbox.id);
+  const { threads } = await inboxOf(ada, mailbox.id);
   expect(threads.map(({ messages }) => messages.map(({ messageId }) => messageId))).toEqual([["<notes-1@example.org>"], ["<notes-2@example.org>"]]);
 });
 
 test("a thread with a new reply moves to the top of the Inbox", async () => {
-  const { duva, hermes, mailbox } = await withMailbox();
+  const { duva, ada, mailbox } = await withMailbox();
   await duva.receive(await mail("plain"), { to: ["hermes@example.com"] });
   await duva.receive(await mail("attachment"), { to: ["hermes@example.com"] });
 
   await duva.receive(await mail("reply"), { to: ["hermes@example.com"] });
 
-  const { summaries } = await inboxOf(hermes, mailbox.id);
+  const { summaries } = await inboxOf(ada, mailbox.id);
   expect(summaries.map(({ subject, messages }) => ({ subject, messages }))).toEqual([
     { subject: "Compiler notes", messages: 2 },
     { subject: "The report", messages: 1 },
@@ -419,14 +433,14 @@ test("a thread with a new reply moves to the top of the Inbox", async () => {
 });
 
 test("the change feed records a reply's arrival in the thread it joined", async () => {
-  const { duva, hermes, mailbox, params } = await withMailbox();
+  const { duva, ada, mailbox, params, sinceSwitch } = await withMailbox();
   await duva.receive(await mail("plain"), { to: ["hermes@example.com"] });
 
   await duva.receive(await mail("reply"), { to: ["hermes@example.com"] });
 
-  const { threads } = await inboxOf(hermes, mailbox.id);
+  const { threads } = await inboxOf(ada, mailbox.id);
   const [first, reply] = threads[0]!.messages;
-  const { data } = await hermes.GET("/mailboxes/{mailbox}/changes", { params });
+  const { data } = await ada.GET("/mailboxes/{mailbox}/changes", { params: sinceSwitch });
   expect(data?.changes).toMatchObject([
     { type: "messageReceived", thread: threads[0]!.id, message: first!.id },
     { type: "messageReceived", thread: threads[0]!.id, message: reply!.id },
@@ -434,52 +448,52 @@ test("the change feed records a reply's arrival in the thread it joined", async 
 });
 
 test("a reply processed twice joins its thread once", async () => {
-  const { duva, hermes, mailbox } = await withMailbox();
+  const { duva, ada, mailbox } = await withMailbox();
   await duva.receive(await mail("plain"), { to: ["hermes@example.com"] });
 
   await duva.receive(await mail("reply"), { to: ["hermes@example.com"] }, { invocations: 2 });
 
-  const { summaries, threads } = await inboxOf(hermes, mailbox.id);
+  const { summaries, threads } = await inboxOf(ada, mailbox.id);
   expect(summaries.map(({ messages }) => messages)).toEqual([2]);
   expect(threads[0]!.messages).toHaveLength(2);
 });
 
 test("replies arriving at the same time all join the thread", async () => {
-  const { duva, hermes, mailbox } = await withMailbox();
+  const { duva, ada, mailbox } = await withMailbox();
   await duva.receive(await mail("plain"), { to: ["hermes@example.com"] });
 
   await Promise.all(["reply", "references-only", "reply", "references-only"].map(async (name) => duva.receive(await mail(name), { to: ["hermes@example.com"] })));
 
-  const { summaries, threads } = await inboxOf(hermes, mailbox.id);
+  const { summaries, threads } = await inboxOf(ada, mailbox.id);
   expect(summaries.map(({ messages }) => messages)).toEqual([5]);
   expect(threads[0]!.messages).toHaveLength(5);
 });
 
-/** What the agent can see of its mailbox: its Inbox, its Spam and its change feed, spam arrivals included. */
-async function everythingIn(hermes: Awaited<ReturnType<typeof withMailbox>>["hermes"], mailbox: string) {
+/** What the owner can see of the mailbox: its Inbox, its Spam and its change feed past the Screener switch, spam arrivals included. */
+async function everythingIn(owner: Awaited<ReturnType<typeof withMailbox>>["ada"], mailbox: string) {
   const params = { path: { mailbox } };
-  const inbox = (await hermes.GET("/mailboxes/{mailbox}/threads", { params })).data!.threads;
-  const spam = (await hermes.GET("/mailboxes/{mailbox}/threads", { params: { ...params, query: { label: "spam" } } })).data!.threads;
-  const changes = (await hermes.GET("/mailboxes/{mailbox}/changes", { params: { ...params, query: { spam: true } } })).data!.changes;
+  const inbox = (await owner.GET("/mailboxes/{mailbox}/threads", { params })).data!.threads;
+  const spam = (await owner.GET("/mailboxes/{mailbox}/threads", { params: { ...params, query: { label: "spam" } } })).data!.threads;
+  const changes = (await owner.GET("/mailboxes/{mailbox}/changes", { params: { ...params, query: { after: switchedOff, spam: true } } })).data!.changes;
   return { inbox, spam, changes };
 }
 
 test("mail carrying a virus is accepted, then dropped, and nothing of it reaches the mailbox or its change feed", async () => {
-  const { duva, hermes, mailbox } = await withMailbox();
+  const { duva, ada, mailbox } = await withMailbox();
 
   const { refused } = await duva.receive(await mail("plain"), { to: ["hermes@example.com"] }, { verdicts: { virus: "FAIL" } });
 
   expect(refused).toEqual([]);
-  expect(await everythingIn(hermes, mailbox.id)).toEqual({ inbox: [], spam: [], changes: [] });
+  expect(await everythingIn(ada, mailbox.id)).toEqual({ inbox: [], spam: [], changes: [] });
 });
 
 test("mail that fails DMARC from a domain whose policy is reject is dropped", async () => {
-  const { duva, hermes, mailbox } = await withMailbox();
+  const { duva, ada, mailbox } = await withMailbox();
 
   const { refused } = await duva.receive(await mail("plain"), { to: ["hermes@example.com"] }, { verdicts: { dmarc: "FAIL", dmarcPolicy: "reject" } });
 
   expect(refused).toEqual([]);
-  expect(await everythingIn(hermes, mailbox.id)).toEqual({ inbox: [], spam: [], changes: [] });
+  expect(await everythingIn(ada, mailbox.id)).toEqual({ inbox: [], spam: [], changes: [] });
 });
 
 test("Duva never bounces dropped mail: its only actions store the message and hand it to the inbound Lambda", async () => {
@@ -491,14 +505,14 @@ test("Duva never bounces dropped mail: its only actions store the message and ha
 });
 
 test("dropped mail processed twice is still dropped, and the second time doesn't fail", async () => {
-  const { duva, hermes, mailbox } = await withMailbox();
+  const { duva, ada, mailbox } = await withMailbox();
 
   await duva.receive(await mail("plain"), { to: ["hermes@example.com"] }, { invocations: 2, verdicts: { virus: "FAIL" } });
   await duva.receive(await mail("attachment"), { to: ["hermes@example.com"] });
 
-  const { inbox, changes } = await everythingIn(hermes, mailbox.id);
+  const { inbox, changes } = await everythingIn(ada, mailbox.id);
   expect(inbox.map(({ subject }) => subject)).toEqual(["The report"]);
-  expect(changes.map(({ position }) => position)).toEqual([1]);
+  expect(changes.map(({ position }) => position)).toEqual([2]);
 });
 
 /** The drops the inbound Lambda logged, as CloudWatch reads them. */
@@ -563,11 +577,11 @@ test("dropped mail processed twice is counted once", async () => {
 });
 
 test.each(["quarantine", "none"] as const)("mail that fails DMARC from a domain whose policy is %s lands in the Inbox as usual", async (dmarcPolicy) => {
-  const { duva, hermes, mailbox } = await withMailbox();
+  const { duva, ada, mailbox } = await withMailbox();
 
   await duva.receive(await mail("plain"), { to: ["hermes@example.com"] }, { verdicts: { dmarc: "FAIL", dmarcPolicy } });
 
-  const { inbox, spam } = await everythingIn(hermes, mailbox.id);
+  const { inbox, spam } = await everythingIn(ada, mailbox.id);
   expect(inbox.map(({ subject, labels }) => ({ subject, labels }))).toEqual([{ subject: "Compiler notes", labels: ["inbox"] }]);
   expect(spam).toEqual([]);
   expect(drops(duva)).toEqual([]);
@@ -581,86 +595,86 @@ test.each([
   ["dmarc", "GRAY"],
   ["dmarc", "PROCESSING_FAILED"],
 ] as const)("a %s verdict of %s counts as a pass, and the mail lands in the Inbox", async (verdict, status) => {
-  const { duva, hermes, mailbox } = await withMailbox();
+  const { duva, ada, mailbox } = await withMailbox();
 
   await duva.receive(await mail("plain"), { to: ["hermes@example.com"] }, { verdicts: { [verdict]: status } });
 
-  const { inbox, spam } = await everythingIn(hermes, mailbox.id);
+  const { inbox, spam } = await everythingIn(ada, mailbox.id);
   expect(inbox.map(({ subject }) => subject)).toEqual(["Compiler notes"]);
   expect(spam).toEqual([]);
 });
 
 test("mail judged to be spam is kept under the Spam label, out of the Inbox, and can still be read", async () => {
-  const { duva, hermes, mailbox } = await withMailbox();
+  const { duva, ada, mailbox } = await withMailbox();
 
   await duva.receive(await mail("plain"), { to: ["hermes@example.com"] }, { verdicts: { spam: "FAIL" } });
 
-  const { inbox, spam } = await everythingIn(hermes, mailbox.id);
+  const { inbox, spam } = await everythingIn(ada, mailbox.id);
   expect(inbox).toEqual([]);
   expect(spam).toEqual([{ id: expect.any(String), subject: "Compiler notes", from: { name: "Grace Hopper", address: "grace@example.org" }, snippet: expect.stringContaining("Hej Hermes"), labels: ["spam"], unread: true, latestAt: expect.any(String), messages: 1 }]);
-  const { data: thread } = await hermes.GET("/mailboxes/{mailbox}/threads/{thread}", { params: { path: { mailbox: mailbox.id, thread: spam[0]!.id } } });
+  const { data: thread } = await ada.GET("/mailboxes/{mailbox}/threads/{thread}", { params: { path: { mailbox: mailbox.id, thread: spam[0]!.id } } });
   expect(thread).toMatchObject({ labels: ["spam"], messages: [{ messageId: "<notes-1@example.org>", text: expect.stringContaining("Hej Hermes") }] });
 });
 
 test("catching up on the change feed leaves spam arrivals out, and passes them, unless the caller asks for them", async () => {
-  const { duva, hermes, mailbox, params } = await withMailbox();
+  const { duva, ada, mailbox, params, sinceSwitch } = await withMailbox();
   await duva.receive(await mail("plain"), { to: ["hermes@example.com"] }, { verdicts: { spam: "FAIL" } });
   await duva.receive(await mail("attachment"), { to: ["hermes@example.com"] });
   await duva.receive(await mail("html-only"), { to: ["hermes@example.com"] }, { verdicts: { spam: "FAIL" } });
 
-  const { data: withoutSpam } = await hermes.GET("/mailboxes/{mailbox}/changes", { params });
-  const { data: withSpam } = await hermes.GET("/mailboxes/{mailbox}/changes", { params: { ...params, query: { spam: true } } });
+  const { data: withoutSpam } = await ada.GET("/mailboxes/{mailbox}/changes", { params: sinceSwitch });
+  const { data: withSpam } = await ada.GET("/mailboxes/{mailbox}/changes", { params: { ...params, query: { after: switchedOff, spam: true } } });
 
-  const { inbox, spam } = await everythingIn(hermes, mailbox.id);
+  const { inbox, spam } = await everythingIn(ada, mailbox.id);
   const [html, notes] = spam;
-  expect(withoutSpam).toEqual({ changes: [{ position: 2, at: expect.any(String), type: "messageReceived", thread: inbox[0]!.id, message: expect.any(String) }], position: 3 });
+  expect(withoutSpam).toEqual({ changes: [{ position: 3, at: expect.any(String), type: "messageReceived", thread: inbox[0]!.id, message: expect.any(String) }], position: 4 });
   expect(withSpam?.changes).toEqual([
-    { position: 1, at: expect.any(String), type: "messageReceived", thread: notes!.id, message: expect.any(String), spam: true },
-    { position: 2, at: expect.any(String), type: "messageReceived", thread: inbox[0]!.id, message: expect.any(String) },
-    { position: 3, at: expect.any(String), type: "messageReceived", thread: html!.id, message: expect.any(String), spam: true },
+    { position: 2, at: expect.any(String), type: "messageReceived", thread: notes!.id, message: expect.any(String), spam: true },
+    { position: 3, at: expect.any(String), type: "messageReceived", thread: inbox[0]!.id, message: expect.any(String) },
+    { position: 4, at: expect.any(String), type: "messageReceived", thread: html!.id, message: expect.any(String), spam: true },
   ]);
-  expect(withSpam?.position).toBe(3);
+  expect(withSpam?.position).toBe(4);
 });
 
 test("catching up reads past a run of spam longer than a page, so the mail after it isn't missed", async () => {
-  const { duva, hermes, params } = await withMailbox();
+  const { duva, ada, params, sinceSwitch } = await withMailbox();
   for (let sent = 0; sent < 101; sent++) await duva.receive(await mail("plain"), { to: ["hermes@example.com"] }, { verdicts: { spam: "FAIL" } });
   await duva.receive(await mail("attachment"), { to: ["hermes@example.com"] });
 
-  const { data: page } = await hermes.GET("/mailboxes/{mailbox}/changes", { params });
-  const { data: after } = await hermes.GET("/mailboxes/{mailbox}/changes", { params: { ...params, query: { after: page!.position } } });
+  const { data: page } = await ada.GET("/mailboxes/{mailbox}/changes", { params: sinceSwitch });
+  const { data: after } = await ada.GET("/mailboxes/{mailbox}/changes", { params: { ...params, query: { after: page!.position } } });
 
-  expect(page?.changes.map(({ position }) => position)).toEqual([102]);
-  expect(page?.position).toBe(102);
-  expect(after).toEqual({ changes: [], position: 102 });
+  expect(page?.changes.map(({ position }) => position)).toEqual([103]);
+  expect(page?.position).toBe(103);
+  expect(after).toEqual({ changes: [], position: 103 });
 }, 60_000);
 
 test("spam that replies to a thread in the Inbox starts its own thread under Spam, and the Inbox thread is unchanged", async () => {
-  const { duva, hermes, mailbox } = await withMailbox();
+  const { duva, ada, mailbox } = await withMailbox();
   await duva.receive(await mail("plain"), { to: ["hermes@example.com"] });
 
   await duva.receive(await mail("reply"), { to: ["hermes@example.com"] }, { verdicts: { spam: "FAIL" } });
 
-  const { inbox, spam } = await everythingIn(hermes, mailbox.id);
+  const { inbox, spam } = await everythingIn(ada, mailbox.id);
   expect(inbox.map(({ subject, labels, messages }) => ({ subject, labels, messages }))).toEqual([{ subject: "Compiler notes", labels: ["inbox"], messages: 1 }]);
   expect(spam.map(({ subject, labels, messages }) => ({ subject, labels, messages }))).toEqual([{ subject: "Re: Compiler notes", labels: ["spam"], messages: 1 }]);
 });
 
 test("a reply to spam starts its own thread in the Inbox, so the spam stays apart", async () => {
-  const { duva, hermes, mailbox } = await withMailbox();
+  const { duva, ada, mailbox } = await withMailbox();
   await duva.receive(await mail("plain"), { to: ["hermes@example.com"] }, { verdicts: { spam: "FAIL" } });
 
   await duva.receive(await mail("reply"), { to: ["hermes@example.com"] });
 
-  const { inbox, spam } = await everythingIn(hermes, mailbox.id);
+  const { inbox, spam } = await everythingIn(ada, mailbox.id);
   expect(inbox.map(({ subject, labels, messages }) => ({ subject, labels, messages }))).toEqual([{ subject: "Re: Compiler notes", labels: ["inbox"], messages: 1 }]);
   expect(spam.map(({ subject, labels, messages }) => ({ subject, labels, messages }))).toEqual([{ subject: "Compiler notes", labels: ["spam"], messages: 1 }]);
 });
 
 test("virus and DMARC verdicts are acted on before spam: spam carrying a virus is dropped", async () => {
-  const { duva, hermes, mailbox } = await withMailbox();
+  const { duva, ada, mailbox } = await withMailbox();
 
   await duva.receive(await mail("plain"), { to: ["hermes@example.com"] }, { verdicts: { spam: "FAIL", virus: "FAIL" } });
 
-  expect(await everythingIn(hermes, mailbox.id)).toEqual({ inbox: [], spam: [], changes: [] });
+  expect(await everythingIn(ada, mailbox.id)).toEqual({ inbox: [], spam: [], changes: [] });
 });

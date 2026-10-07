@@ -6,21 +6,23 @@ const minutes = (count: number) => count * 60 * 1000;
 const hours = (count: number) => minutes(count * 60);
 
 /**
- * A deployment on example.com where ada sponsors the agent Hermes, which owns a mailbox at
- * hermes@example.com and sends from it without approval, unless `approval` is on. Grace is the
- * first admin, and Ken another human. Sessions outlast the hours these tests let pass.
+ * A deployment on example.com where ada has a personal mailbox at ada@example.com and sponsors the
+ * agent Hermes, which she gives send sponsor access there, to send as her without approval, unless
+ * `approval` is on. Grace is the first admin, and Ken another human. Sessions outlast the hours
+ * these tests let pass.
  */
 async function withAgent({ approval = false, ...options }: DuvaOptions & { approval?: boolean } = {}) {
   const duva = await startDuva({ domain: "example.com", admin: "grace@example.org", humans: ["ada@example.org", "ken@example.org"], accessTokenLifetime: 7 * 24 * 60 * 60, ...options });
   const ada = duva.signIn("ada@example.org");
   const grace = duva.signIn("grace@example.org");
+  const { data: sponsor } = await ada.GET("/whoami");
   const { data: created } = await ada.POST("/agents", { body: { name: "Hermes" } });
-  const { data: mailbox } = await grace.POST("/mailboxes", { body: { owner: created!.agent.id, address: "hermes@example.com" } });
+  const { data: mailbox } = await grace.POST("/mailboxes", { body: { owner: sponsor!.id, address: "ada@example.com" } });
   const hermes = duva.withKey(created!.key);
   const agent = created!.agent;
   const params = { path: { mailbox: mailbox!.id } };
   const settings = { params: { path: { agent: agent.id } } };
-  if (!approval) await ada.PATCH("/agents/{agent}/settings", { ...settings, body: { approvalForOwnMailbox: false } });
+  await ada.PATCH("/agents/{agent}/settings", { ...settings, body: { sponsorAccess: "send", approvalAsSponsor: approval } });
   const limit = (body: { sendsPerHour?: number; newRecipientsPerDay?: number }, by = ada) => by.PATCH("/agents/{agent}/settings", { ...settings, body });
 
   /** Drafts a message to the recipients and asks to send it, from the mailbox given, and returns the draft as asked. */
@@ -35,7 +37,7 @@ async function withAgent({ approval = false, ...options }: DuvaOptions & { appro
   const start = Date.now();
   /** Moves the clock to the time after the test started. */
   const after = (time: number) => duva.clock(new Date(start + time));
-  return { duva, ada, grace, ken: duva.signIn("ken@example.org"), hermes, agent, params, settings, limit, send, state, sendNow, after };
+  return { duva, ada, sponsor: sponsor!, grace, ken: duva.signIn("ken@example.org"), hermes, agent, params, settings, limit, send, state, sendNow, after };
 }
 
 /** Who SES sent each message to, in the order it accepted them. */
@@ -76,19 +78,17 @@ test("an admin raises the caps, and the sponsor can then give the agent more", a
 });
 
 test("lowering a cap lowers the agents above it, recorded in the sponsor's mailbox's change feed under the admin, and leaves those below it", async () => {
-  const { ada, grace, settings, limit } = await withAgent();
-  const { data: sponsor } = await ada.GET("/whoami");
+  const { ada, grace, params, settings, limit } = await withAgent();
   const { data: admin } = await grace.GET("/whoami");
-  const { data: own } = await grace.POST("/mailboxes", { body: { owner: sponsor!.id, address: "ada@example.com" } });
   await limit({ newRecipientsPerDay: 5 });
   const { data: other } = await ada.POST("/agents", { body: { name: "Iris" } });
-  const { data: before } = await ada.GET("/mailboxes/{mailbox}/changes", { params: { path: { mailbox: own!.id } } });
+  const { data: before } = await ada.GET("/mailboxes/{mailbox}/changes", { params });
 
   await grace.PATCH("/organization/settings", { body: { agentSendsPerHourCap: 20, agentNewRecipientsPerDayCap: 10 } });
 
   expect((await ada.GET("/agents/{agent}/settings", settings)).data).toMatchObject({ sendsPerHour: 20, newRecipientsPerDay: 5 });
   expect((await ada.GET("/agents/{agent}/settings", { params: { path: { agent: other!.agent.id } } })).data).toMatchObject({ sendsPerHour: 20, newRecipientsPerDay: 10 });
-  const { data: feed } = await ada.GET("/mailboxes/{mailbox}/changes", { params: { path: { mailbox: own!.id }, query: { after: before!.position } } });
+  const { data: feed } = await ada.GET("/mailboxes/{mailbox}/changes", { params: { ...params, query: { after: before!.position } } });
   expect(feed?.changes).toEqual(
     expect.arrayContaining([
       { position: expect.any(Number), at: expect.any(String), actor: admin!.id, type: "agentSettingsChanged", agent: settings.params.path.agent, before: { sendsPerHour: 100 }, after: { sendsPerHour: 20 } },
@@ -118,27 +118,28 @@ test("a send over the hourly limit waits, and goes out by itself once an hour ha
 
 test("the agents a sponsor lists say how many sends each has left in the rolling hour", async () => {
   const { ada, grace, limit, send, after } = await withAgent();
-  const left = async () => (await ada.GET("/agents")).data?.agents.map(({ name, sendsLeftThisHour }) => [name, sendsLeftThisHour]);
+  // Ada's list holds her mailbox's mailbox agent too.
+  const left = async () => (await ada.GET("/agents")).data?.agents.find(({ name }) => name === "Hermes")?.sendsLeftThisHour;
   await limit({ sendsPerHour: 3 });
-  expect(await left()).toEqual([["Hermes", 3]]);
+  expect(await left()).toBe(3);
 
   await send("one@example.net");
   await after(minutes(30));
   await send("two@example.net");
-  expect(await left()).toEqual([["Hermes", 1]]);
+  expect(await left()).toBe(1);
   await send("three@example.net");
   await send("four@example.net");
   // The fourth waits, so none are left.
-  expect(await left()).toEqual([["Hermes", 0]]);
+  expect(await left()).toBe(0);
 
   await after(hours(1) + minutes(1));
   // The first left the hour, and the one that waited went out in its place.
-  expect(await left()).toEqual([["Hermes", 0]]);
+  expect(await left()).toBe(0);
   await after(hours(1) + minutes(31));
   // The second and third left it too, so only the fourth counts.
-  expect(await left()).toEqual([["Hermes", 2]]);
+  expect(await left()).toBe(2);
   // An admin's list of the organization's agents doesn't say.
-  expect((await grace.GET("/organization/agents")).data?.agents.map(({ sendsLeftThisHour }) => sendsLeftThisHour)).toEqual([undefined]);
+  expect((await grace.GET("/organization/agents")).data?.agents.map(({ sendsLeftThisHour }) => sendsLeftThisHour)).toEqual([undefined, undefined]);
 });
 
 test("sends that wait go out oldest first, as many as the rolling hour allows", async () => {
@@ -205,13 +206,11 @@ test("a send to more new recipients than the day has left waits, and one to reci
   expect((await recipients(duva.sent())).slice(2)).toEqual(["three@example.net"]);
 });
 
-test("a recipient the agent sent to from its sponsor's mailbox isn't new from its own", async () => {
-  const { duva, ada, grace, settings, limit, send, state } = await withAgent();
-  const { data: sponsor } = await ada.GET("/whoami");
-  const { data: sponsors } = await grace.POST("/mailboxes", { body: { owner: sponsor!.id, address: "ada@example.com" } });
-  await ada.PATCH("/agents/{agent}/settings", { ...settings, body: { sponsorAccess: "send", approvalAsSponsor: false } });
+test("a recipient the agent sent to from one of its sponsor's mailboxes isn't new from another", async () => {
+  const { duva, grace, sponsor, limit, send, state } = await withAgent();
+  const { data: other } = await grace.POST("/mailboxes", { body: { owner: sponsor.id, address: "ada.team@example.com" } });
   await limit({ newRecipientsPerDay: 1 });
-  await send("ken@example.net", { path: { mailbox: sponsors!.id } });
+  await send("ken@example.net", { path: { mailbox: other!.id } });
 
   const again = await send("ken@example.net");
   const another = await send("linus@example.net");
@@ -249,8 +248,7 @@ test("a message to more new recipients than the whole daily limit waits for its 
 });
 
 test("the sponsor sends a waiting message now, past the limit, recorded in the mailbox's change feed, and it counts toward the limit", async () => {
-  const { duva, ada, limit, send, state, sendNow, params, after } = await withAgent();
-  const { data: sponsor } = await ada.GET("/whoami");
+  const { duva, ada, sponsor, limit, send, state, sendNow, params, after } = await withAgent();
   await limit({ sendsPerHour: 1 });
   await send("first@example.net");
   const second = await send("second@example.net");
@@ -265,7 +263,7 @@ test("the sponsor sends a waiting message now, past the limit, recorded in the m
   expect(await recipients(duva.sent())).toEqual(["first@example.net", "second@example.net"]);
   expect(await state(third.id)).toBe("waitingForLimit");
   const { data: feed } = await ada.GET("/mailboxes/{mailbox}/changes", { params: { ...params, query: { after: before!.position } } });
-  expect(feed?.changes).toContainEqual({ position: expect.any(Number), at: expect.any(String), actor: sponsor!.id, type: "sentNow", draft: second.id });
+  expect(feed?.changes).toContainEqual({ position: expect.any(Number), at: expect.any(String), actor: sponsor.id, type: "sentNow", draft: second.id });
   // The second went out half an hour after the first, so the third waits until an hour after the second.
   await after(hours(1) + minutes(1));
   expect(duva.sent()).toHaveLength(2);
@@ -321,11 +319,8 @@ test("a paused agent's sends that wait stay waiting until it is unpaused, then g
 });
 
 test("humans have no send limits", async () => {
-  const { duva, ada, grace } = await withAgent();
-  const { data: sponsor } = await ada.GET("/whoami");
-  const { data: own } = await grace.POST("/mailboxes", { body: { owner: sponsor!.id, address: "ada@example.com" } });
+  const { duva, ada, grace, params } = await withAgent();
   await grace.PATCH("/organization/settings", { body: { agentSendsPerHourCap: 1, agentNewRecipientsPerDayCap: 1 } });
-  const params = { path: { mailbox: own!.id } };
 
   for (const to of ["one@example.net", "two@example.net", "three@example.net"]) {
     const { data: draft } = await ada.POST("/mailboxes/{mailbox}/drafts", { params, body: { to: [to], subject: "Hello", text: "Hej." } });

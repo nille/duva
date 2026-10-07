@@ -194,22 +194,20 @@ test("each change of read state is in the mailbox's change feed under the human,
   ]);
 });
 
-test("the sponsor marks threads in their agent's mailbox, under their own name", async () => {
-  const duva = await startDuva({ domain: "example.com", admin: "ada@example.org" });
-  const ada = duva.signIn("ada@example.org");
-  const { data: me } = await ada.GET("/whoami");
-  const { data: created } = await ada.POST("/agents", { body: { name: "Hermes" } });
-  const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: created!.agent.id, address: "hermes@example.com" } });
-  const params = { path: { mailbox: mailbox!.id } };
-  await duva.receive(await mail("plain"), { to: ["hermes@example.com"] });
+test("an agent with organize sponsor access marks threads in its sponsor's mailbox, under its own name", async () => {
+  const { duva, grace, params, receive, inbox } = await withPersonalMailbox();
+  const { data: created } = await grace.POST("/agents", { body: { name: "Hermes" } });
+  await grace.PATCH("/agents/{agent}/settings", { params: { path: { agent: created!.agent.id } }, body: { sponsorAccess: "organize" } });
+  await receive(await mail("plain"));
   const hermes = duva.withKey(created!.key);
-  const { data: list } = await hermes.GET("/mailboxes/{mailbox}/threads", { params });
+  const [thread] = await inbox();
 
-  await ada.POST("/mailboxes/{mailbox}/threads/read", { params, body: { threads: [list!.threads[0]!.id] } });
+  const { response } = await hermes.POST("/mailboxes/{mailbox}/threads/read", { params, body: { threads: [thread!.id] } });
 
-  expect((await hermes.GET("/mailboxes/{mailbox}/threads", { params })).data?.threads[0]?.unread).toBe(false);
-  const { data: changes } = await hermes.GET("/mailboxes/{mailbox}/changes", { params });
-  expect(changes?.changes.at(-1)).toMatchObject({ type: "threadRead", actor: me!.id });
+  expect(response.status).toBe(200);
+  expect((await inbox())[0]?.unread).toBe(false);
+  const { data: changes } = await grace.GET("/mailboxes/{mailbox}/changes", { params });
+  expect(changes?.changes.at(-1)).toMatchObject({ type: "threadRead", actor: created!.agent.id });
 });
 
 test("marking a thread the mailbox doesn't have answers 404 and marks none of the others", async () => {

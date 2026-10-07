@@ -9,8 +9,8 @@ const budget = { timeout: 60_000 };
 
 /**
  * The web app for a deployment where Grace, who isn't an admin, has a personal mailbox at
- * grace@example.com and sponsors the agent Hermes, which owns a mailbox at hermes@example.com and
- * sends from it without her approval. Ada is the admin.
+ * grace@example.com and sponsors the agent Hermes, which has send access to it and sends as her
+ * without her approval. Ada is the admin.
  */
 async function withAgent(options: Parameters<typeof startWebApp>[0] = {}) {
   const app = await startWebApp({ domain: "example.com", admin: "ada@example.org", humans: ["grace@example.org"], ...options });
@@ -21,11 +21,10 @@ async function withAgent(options: Parameters<typeof startWebApp>[0] = {}) {
   await grace.PATCH("/mailboxes/{mailbox}/screener", { params: { path: { mailbox: graceMailbox!.id } }, body: { on: false } });
   const { data: created } = await grace.POST("/agents", { body: { name: "Hermes" } });
   const agent = created!.agent;
-  const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: agent.id, address: "hermes@example.com" } });
   const hermes = app.duva.withKey(created!.key);
   const settings = { params: { path: { agent: agent.id } } };
-  await grace.PATCH("/agents/{agent}/settings", { ...settings, body: { approvalForOwnMailbox: false } });
-  const params = { path: { mailbox: mailbox!.id } };
+  await grace.PATCH("/agents/{agent}/settings", { ...settings, body: { sponsorAccess: "send", approvalAsSponsor: false } });
+  const params = { path: { mailbox: graceMailbox!.id } };
 
   /** Hermes drafts a message to the recipient and sends it, and gets back the draft as it is then, and the ID SES gave it if SES sent it. */
   const send = async (to: string, subject = "Hello", by: DuvaClient = hermes) => {
@@ -319,7 +318,7 @@ test("on a phone, the Alerts view and an agent's line with its limits fit the sc
 
 test("a send the sponsor approves over its agent's send limit says it waits, and Send now sends it", budget, async () => {
   const { page, signIn, duva, grace, settings, send } = await withAgent();
-  await grace.PATCH("/agents/{agent}/settings", { ...settings, body: { approvalForOwnMailbox: true, sendsPerHour: 1 } });
+  await grace.PATCH("/agents/{agent}/settings", { ...settings, body: { approvalAsSponsor: true, sendsPerHour: 1 } });
   await send("ken@example.net", "First");
   await send("lou@example.net", "Second");
   await signIn("grace@example.org");
@@ -391,7 +390,7 @@ test("the urgent pause alert links to the held sends and to the agent's line at 
   const { messageId } = await send("ken@example.net", "Complained about");
   await send("lou@example.net", "Held back");
   // A send waiting for approval would otherwise open first.
-  await grace.PATCH("/agents/{agent}/settings", { ...settings, body: { approvalForOwnMailbox: true } });
+  await grace.PATCH("/agents/{agent}/settings", { ...settings, body: { approvalAsSponsor: true } });
   await send("max@example.net", "Asks first");
   await duva.sendingEvent(messageId!, { type: "Complaint" });
   await signIn("grace@example.org");
@@ -438,18 +437,17 @@ const tabTo = async (page: Page, target: ReturnType<Page["getByRole"]>) => {
 };
 
 test("on a phone, the sends waiting for the send limit and those held fit the screen, and the keyboard reaches Send now and the agent's line", budget, async () => {
-  const { page, signIn, duva, grace, ada, settings, send } = await withAgent({ viewport: phone });
+  const { page, signIn, duva, grace, settings, params, send } = await withAgent({ viewport: phone });
   await grace.PATCH("/agents/{agent}/settings", { ...settings, body: { sendsPerHour: 1 } });
   await send("ken@example.net", "First");
   await send("lou@example.net", "Waiting for a long while before it may go out to everyone it names");
   const { data: other } = await grace.POST("/agents", { body: { name: "Iris" } });
-  const { data: irisMailbox } = await ada.POST("/mailboxes", { body: { owner: other!.agent.id, address: "iris@example.com" } });
   const iris = { params: { path: { agent: other!.agent.id } } };
-  await grace.PATCH("/agents/{agent}/settings", { ...iris, body: { approvalForOwnMailbox: false, sendsPerHour: 1 } });
+  await grace.PATCH("/agents/{agent}/settings", { ...iris, body: { sponsorAccess: "send", approvalAsSponsor: false, sendsPerHour: 1 } });
   const irisKey = duva.withKey(other!.key);
   for (const subject of ["Iris first", "Iris held"]) {
-    const { data: draft } = await irisKey.POST("/mailboxes/{mailbox}/drafts", { params: { path: { mailbox: irisMailbox!.id } }, body: { to: ["max@example.net"], subject, text: "Hej." } });
-    await irisKey.POST("/mailboxes/{mailbox}/drafts/{draft}/send", { params: { path: { mailbox: irisMailbox!.id, draft: draft!.id } } });
+    const { data: draft } = await irisKey.POST("/mailboxes/{mailbox}/drafts", { params, body: { to: ["max@example.net"], subject, text: "Hej." } });
+    await irisKey.POST("/mailboxes/{mailbox}/drafts/{draft}/send", { params: { path: { ...params.path, draft: draft!.id } } });
   }
   await grace.POST("/agents/{agent}/pause", iris);
   await signIn("grace@example.org");
@@ -485,7 +483,7 @@ test("on a phone, the sends waiting for the send limit and those held fit the sc
 
 test("s sends the draft open in the reading pane as written, and the queue's row says so", budget, async () => {
   const { page, signIn, duva, grace, settings, send } = await withAgent();
-  await grace.PATCH("/agents/{agent}/settings", { ...settings, body: { approvalForOwnMailbox: true } });
+  await grace.PATCH("/agents/{agent}/settings", { ...settings, body: { approvalAsSponsor: true } });
   await send("ken@example.net", "Snabbt");
   await signIn("grace@example.org");
   await approvalsLink(page).click();

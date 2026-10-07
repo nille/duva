@@ -1,6 +1,6 @@
 // Settings, a page per sheet, with an index of them in the list column, each line saying what its
 // page holds now, and the open page's sheets beside it in the reading pane: the human's own
-// preferences, which only they choose, the Screener of their mailboxes and their agents', a
+// preferences, which only they choose, the Screener of their mailboxes, a
 // sponsor's agents, where they pause each, set its limits and send what waits for them, and the
 // organization's settings, which admins choose for everyone. Then, for admins only, the
 // organization's domains, its mailboxes' addresses, its people and its groups. On a phone the index
@@ -17,7 +17,6 @@ import { datesFor, type Preferences, PreferencesContext } from "./dates.ts";
 import { DomainsSheet } from "./domains.tsx";
 import { GroupsSheet } from "./groups.tsx";
 import { ActorMark } from "./mail-parts.tsx";
-import type { AgentMailbox } from "./mailboxes.tsx";
 import { MyLogoSheet } from "./logos.tsx";
 import { PeopleSheet } from "./people.tsx";
 import { loadConfig, signOut } from "./session.ts";
@@ -153,7 +152,6 @@ type EntryState = { text: string; code?: "call" | "sent" };
 function useIndex({
   client,
   admin,
-  me,
   mailboxes,
   hash,
   changes,
@@ -161,7 +159,6 @@ function useIndex({
 }: {
   client: DuvaClient;
   admin: boolean;
-  me: string;
   mailboxes: Mailbox[] | undefined;
   hash: string;
   changes: number;
@@ -191,11 +188,11 @@ function useIndex({
       ]);
       if (!current) return;
       if ([list, domains, settings, organizationMailboxes, humans, groups, ...screeners].some(({ response }) => response?.status === 401)) return onSignedOut();
-      // An agent's sends wait in its own mailboxes, and in the human's when it sends as them. A list Duva can't give now counts none.
+      // An agent's sends wait in the human's mailboxes, where it sends as them. A list Duva can't give now counts none.
       const drafts = await Promise.all(
         mailboxes.map(async (mailbox) => {
           const { data } = await quietly(client.GET("/mailboxes/{mailbox}/drafts", { params: { path: { mailbox: mailbox.id } } }));
-          return (data?.drafts ?? []).filter((draft) => draft.send?.state === "waitingForLimit").map((draft) => (mailbox.owner === me ? draft.updatedBy : mailbox.owner));
+          return (data?.drafts ?? []).filter((draft) => draft.send?.state === "waitingForLimit").map((draft) => draft.updatedBy);
         }),
       );
       if (!current) return;
@@ -231,14 +228,13 @@ function useIndex({
     return () => {
       current = false;
     };
-  }, [client, admin, me, mailboxesKey, hash, changes, onSignedOut]);
+  }, [client, admin, mailboxesKey, hash, changes, onSignedOut]);
   return { agents, states };
 }
 
 /**
  * The settings view. Its page is in the address's hash, after `#/settings`, so a link, such as an
- * alert's to an agent's line, opens it. `mailboxes` are the human's own and their agents', once
- * they are listed: `own` lists every mailbox of the human's, if they have more than `mine`.
+ * alert's to an agent's line, opens it. `mailboxes` are the human's own, once they are listed: `own` lists every mailbox of the human's, if they have more than `mine`.
  */
 export function Settings({
   client,
@@ -256,7 +252,7 @@ export function Settings({
   email: string;
   /** The agent whose line on the Agents page opens first, if the hash doesn't say. */
   agent?: string;
-  mailboxes: { mine?: Mailbox; own?: Mailbox[]; agents: AgentMailbox[] } | undefined;
+  mailboxes: { mine?: Mailbox; own?: Mailbox[] } | undefined;
   onPreferences: (preferences: Preferences) => void;
   onSignedOut: () => void;
 }) {
@@ -264,15 +260,14 @@ export function Settings({
   const asked = pageOf(hash);
   const preferences = useContext(PreferencesContext);
   const own = mailboxes === undefined ? [] : (mailboxes.own ?? (mailboxes.mine === undefined ? [] : [mailboxes.mine]));
-  const screened = mailboxes === undefined ? [] : [...own.map((mailbox) => ({ mailbox })), ...mailboxes.agents];
   // A pause or a send on the Your agents page changes what the index says of the agent.
   const [agentChanges, setAgentChanges] = useState(0);
   const agentChanged = useCallback(() => setAgentChanges((count) => count + 1), []);
-  const index = useIndex({ client, admin, me, mailboxes: mailboxes === undefined ? undefined : screened.map(({ mailbox }) => mailbox), hash, changes: agentChanges, onSignedOut });
-  const sponsors = (mailboxes?.agents.length ?? 0) > 0 || (index.agents?.length ?? 0) > 0;
+  const index = useIndex({ client, admin, mailboxes: mailboxes === undefined ? undefined : own, hash, changes: agentChanges, onSignedOut });
+  const sponsors = (index.agents?.length ?? 0) > 0;
   // Pages a human can't open, such as an admin's for a member, or one with nothing on it, open You instead.
   const canOpen = (page: Page) =>
-    adminPages.includes(page) ? admin : page === "screener" ? mailboxes === undefined || screened.length > 0 : page === "agents" ? sponsors || index.agents === undefined : true;
+    adminPages.includes(page) ? admin : page === "screener" ? mailboxes === undefined || own.length > 0 : page === "agents" ? sponsors || index.agents === undefined : true;
   const page = asked.page !== undefined && canOpen(asked.page) ? asked.page : "you";
   const agent = asked.agent ?? agentAsked;
 
@@ -374,7 +369,7 @@ export function Settings({
           </h2>
           <ul aria-labelledby="settings-group-you">
             <li>{entry("you", copy.you)}</li>
-            {screened.length > 0 && <li>{entry("screener", copy.screener.title)}</li>}
+            {own.length > 0 && <li>{entry("screener", copy.screener.title)}</li>}
             {sponsors && (
               <li>
                 {entry("agents", strings.agentSettings.title)}
@@ -413,8 +408,8 @@ export function Settings({
           </a>
         </p>
         {page === "you" && <YouPage client={client} admin={admin} email={email} mailboxes={own} onPreferences={onPreferences} onSignedOut={onSignedOut} />}
-        {page === "screener" && screened.length > 0 && (
-          <ScreenerSheet key={screened.map(({ mailbox }) => mailbox.id).join()} client={client} mailboxes={screened} onSignedOut={onSignedOut} />
+        {page === "screener" && own.length > 0 && (
+          <ScreenerSheet key={own.map(({ id }) => id).join()} client={client} mailboxes={own} onSignedOut={onSignedOut} />
         )}
         {page === "agents" && <AgentSettingsSheet client={client} me={me} email={email} admin={admin} mailboxes={mailboxes} open={agent} onChange={agentChanged} onSignedOut={onSignedOut} />}
         {page === "organization" && (
@@ -1085,17 +1080,14 @@ function YouSheet({ client, onPreferences, onSignedOut }: { client: DuvaClient; 
   );
 }
 
-/**
- * Whether each mailbox's Screener is on, by mailbox ID: the human's own, without an agent's name,
- * and each agent's they sponsor.
- */
-function ScreenerSheet({ client, mailboxes, onSignedOut }: { client: DuvaClient; mailboxes: { mailbox: Mailbox; agent?: string }[]; onSignedOut: () => void }) {
+/** Whether each of the human's mailboxes' Screener is on, by mailbox ID. */
+function ScreenerSheet({ client, mailboxes, onSignedOut }: { client: DuvaClient; mailboxes: Mailbox[]; onSignedOut: () => void }) {
   const copy = strings.settings.screener;
   const sheet = useSheet<Record<string, boolean>>({
     read: async () => {
-      const each = await Promise.all(mailboxes.map(({ mailbox }) => client.GET("/mailboxes/{mailbox}/screener", { params: { path: { mailbox: mailbox.id } } })));
+      const each = await Promise.all(mailboxes.map((mailbox) => client.GET("/mailboxes/{mailbox}/screener", { params: { path: { mailbox: mailbox.id } } })));
       const unread = each.find(({ data }) => data === undefined);
-      return { data: unread === undefined ? Object.fromEntries(each.map(({ data }, index) => [mailboxes[index]!.mailbox.id, data!.on])) : undefined, response: (unread ?? each[0]!).response };
+      return { data: unread === undefined ? Object.fromEntries(each.map(({ data }, index) => [mailboxes[index]!.id, data!.on])) : undefined, response: (unread ?? each[0]!).response };
     },
     // Switching a Screener to what it is changes nothing, so every one is switched as chosen, one at a time, stopping at a failure.
     write: async (chosen) => {
@@ -1117,14 +1109,13 @@ function ScreenerSheet({ client, mailboxes, onSignedOut }: { client: DuvaClient;
       {(chosen) => (
         <>
           <ul className="screener-lines">
-            {mailboxes.map(({ mailbox, agent }) => {
+            {mailboxes.map((mailbox) => {
               const releasing = sheet.read.status === "read" && sheet.read.values[mailbox.id] === true && chosen[mailbox.id] === false;
-              const name = agent ?? copy.yours;
               return (
                 <li key={mailbox.id}>
                   <fieldset className="screener-line" aria-labelledby={`screener-${mailbox.id}-name`}>
                     <div className="screener-line-name" id={`screener-${mailbox.id}-name`}>
-                      <span className="screener-line-owner">{name}</span>
+                      <span className="screener-line-owner">{copy.yours}</span>
                       <span className="screener-line-address">{strings.mailboxes.address(mailbox)}</span>
                     </div>
                     <div className="switch">
@@ -1135,7 +1126,7 @@ function ScreenerSheet({ client, mailboxes, onSignedOut }: { client: DuvaClient;
                         </label>
                       ))}
                     </div>
-                    {releasing && <p className="setting-note" role="status">{copy.releasing(agent === undefined ? copy.yourMailbox : copy.agentMailbox(agent))}</p>}
+                    {releasing && <p className="setting-note" role="status">{copy.releasing}</p>}
                   </fieldset>
                 </li>
               );

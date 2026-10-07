@@ -3,25 +3,22 @@
 // each made the default or removed there, and a field to add another. Removing one says which groups
 // it leaves. A mailbox without an address says so, and an owner's mailboxes say which of theirs each
 // is, so two never look the same. What a change did is said in its address's row, or in place of the
-// row it removed. Adding a mailbox for any human or agent closes the sheet, and the People sheet
-// opens it with the owner chosen.
+// row it removed. Adding a mailbox for any human closes the sheet, and the People sheet opens it with
+// the owner chosen. Agents own no mailboxes, so none is added for one.
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
 import { ChevronIcon } from "./setting-parts.tsx";
-import { type Answer, attempt, byOwner, byText, change, isAgents, type Mailboxes, ownerName } from "./setup.ts";
+import { type Answer, attempt, byOwner, byText, change, type Mailboxes, ownerName } from "./setup.ts";
 import { strings } from "./strings.ts";
 
 type Mailbox = components["schemas"]["Mailbox"];
-type Actor = components["schemas"]["Actor"];
 type Group = components["schemas"]["Group"];
 
-/** An actor a mailbox can be created for: their name, a human's address or an agent's, and what the form calls them. */
+/** A human a mailbox can be created for, by their address. */
 interface Owner {
   id: string;
-  kind: Actor["kind"];
   name: string;
-  label: string;
 }
 
 type Read = { status: "loading" } | { status: "failed"; message: string } | { status: "read"; listed: Mailboxes; domains: string[]; owners: Owner[]; groups: Group[] };
@@ -60,14 +57,13 @@ export function AddressesSheet({
   const load = useCallback(
     async (again = false) => {
       if (!again) setRead({ status: "loading" });
-      const [mailboxes, domains, humans, agents, groups] = await Promise.all([
+      const [mailboxes, domains, humans, groups] = await Promise.all([
         attempt(client.GET("/organization/mailboxes")),
         attempt(client.GET("/domains")),
         attempt(client.GET("/humans")),
-        attempt(client.GET("/organization/agents")),
         attempt(client.GET("/groups")),
       ]);
-      const answers = [mailboxes, domains, humans, agents, groups];
+      const answers = [mailboxes, domains, humans, groups];
       if (answers.some(({ response }) => response?.status === 401)) return onSignedOut();
       const unread = answers.find(({ data }) => data === undefined);
       if (unread !== undefined) {
@@ -78,15 +74,7 @@ export function AddressesSheet({
         status: "read",
         listed: mailboxes.data!,
         domains: domains.data!.domains.filter(({ kind }) => kind === "standalone").map(({ domain }) => domain),
-        // Humans by address, then agents by name, each agent with its sponsor, since two can share a name.
-        owners: [
-          ...humans.data!.humans.map(({ id, email }) => ({ id, kind: "human" as const, name: email, label: email })).sort((a, b) => byText(a.name, b.name)),
-          // A mailbox agent works in its human's mailbox and owns none (ADR-0027).
-          ...agents
-            .data!.agents.filter(({ mailbox }) => mailbox === undefined)
-            .map(({ id, name, sponsor }) => ({ id, kind: "agent" as const, name, label: copy.agentWithSponsor(name, humans.data!.humans.find((human) => human.id === sponsor)?.email) }))
-            .sort((a, b) => a.label.localeCompare(b.label)),
-        ],
+        owners: humans.data!.humans.map(({ id, email }) => ({ id, name: email })).sort((a, b) => byText(a.name, b.name)),
         groups: groups.data!.groups,
       });
     },
@@ -127,7 +115,6 @@ export function AddressesSheet({
               client={client}
               mailbox={mailbox}
               owner={ownerName(mailbox, read.listed)}
-              agent={isAgents(mailbox, read.listed)}
               place={owners.length > 1 ? { at: owners.indexOf(mailbox) + 1, of: owners.length } : undefined}
               domains={read.domains}
               groups={read.groups}
@@ -159,7 +146,6 @@ function MailboxLine({
   client,
   mailbox,
   owner,
-  agent,
   place,
   domains,
   groups,
@@ -170,7 +156,6 @@ function MailboxLine({
   client: DuvaClient;
   mailbox: Mailbox;
   owner: string;
-  agent: boolean;
   /** Which of its owner's mailboxes it is, when they have several. */
   place?: { at: number; of: number };
   domains: string[];
@@ -201,7 +186,7 @@ function MailboxLine({
       <summary>
         <div className="line-summary">
           <h3 id={heading}>{title}</h3>
-          <p className="line-summary-text">{copy.line({ owner, agent, place, addresses: addresses.length })}</p>
+          <p className="line-summary-text">{copy.line({ owner, place, addresses: addresses.length })}</p>
         </div>
         <ChevronIcon />
       </summary>
@@ -390,7 +375,7 @@ function AddAddress({ client, mailbox, domains, onAdded, onSignedOut }: { client
 }
 
 /**
- * Adding a mailbox for a human or an agent, with its first address. The People sheet's `giving`
+ * Adding a mailbox for a human, with its first address. The People sheet's `giving`
  * chooses the owner and puts the cursor in the address field.
  */
 function AddMailbox({
@@ -432,14 +417,6 @@ function AddMailbox({
     setAddress("");
     onCreated(answer.data, owners.find(({ id }) => id === owner)?.name ?? owner);
   };
-  const named = (kind: Actor["kind"]) =>
-    owners
-      .filter((each) => each.kind === kind)
-      .map(({ id, label }) => (
-        <option key={id} value={id}>
-          {label}
-        </option>
-      ));
   return (
     <form
       ref={form}
@@ -460,8 +437,11 @@ function AddMailbox({
           <option value="" disabled>
             {copy.chooseOwner}
           </option>
-          <optgroup label={copy.humans}>{named("human")}</optgroup>
-          {owners.some(({ kind }) => kind === "agent") && <optgroup label={copy.agents}>{named("agent")}</optgroup>}
+          {owners.map(({ id, name }) => (
+            <option key={id} value={id}>
+              {name}
+            </option>
+          ))}
         </select>
       </label>
       <label className="setting-field">

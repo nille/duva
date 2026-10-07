@@ -47,7 +47,7 @@ import { buildMail, disclosureHeader } from "./mime.ts";
 import type { Dns } from "./dns-records.ts";
 import { bimiSelectorHeader } from "./own-logos.ts";
 import { sponsorAccessAllows, sponsorAccessIn } from "./access.ts";
-import { type Actor, type Agent, agentSettings, agentUnpaused, findActor, findMailbox, organizationDomain, switchesFor } from "./organization.ts";
+import { type Actor, type Agent, agentSettings, agentUnpaused, findActor, findMailbox, organizationDomain } from "./organization.ts";
 
 /** Who SES delivers a message to. Bcc recipients are here only, since no header names them. */
 export interface Destination {
@@ -222,21 +222,19 @@ async function sendOnce(
   // A paused agent's sends are held, approved, until unpausing releases them.
   if (actor.kind === "agent" && actor.paused !== undefined) return "held";
   // An agent's mail carries the disclosure header, naming the agent and the human it acts for, and
-  // the visible line unless its sponsor switched it off for where it sends from. A human's carries
-  // neither. An agent sends as its sponsor from the sponsor's mailbox, under the sponsor's name.
+  // the visible line unless its sponsor switched it off. A human's carries neither. An agent sends
+  // as its sponsor from the sponsor's mailbox, under the sponsor's name.
   let disclosure: { naming: string; line: boolean } | undefined;
-  let asSponsor = false;
   // Why the draft can't be sent, if it can't, which fails it before anything is stored.
   let unsendable: string | undefined;
   if (actor.kind === "agent") {
     const sponsor = await findActor(table, actor.sponsor);
     if (sponsor?.kind !== "human") throw new Error(`The sponsor ${actor.sponsor} of agent ${actor.id} is missing.`);
     const { settings } = await agentSettings(table, actor.id);
-    asSponsor = (await findMailbox(table, mailbox))?.owner !== actor.id;
-    disclosure = { naming: `${actor.name} for ${sponsor.email}`, line: switchesFor(settings, asSponsor).disclosureLine };
+    disclosure = { naming: `${actor.name} for ${sponsor.email}`, line: settings.disclosureLineAsSponsor };
     // Lowering its access withdraws the agent's pending approvals, and stops what was asked before.
     // An ask that read send access just before the lowering can land after its withdrawals, and stops here too.
-    if (asSponsor && !sponsorAccessAllows(sponsorAccessIn(settings, mailbox), "send")) {
+    if (!sponsorAccessAllows(sponsorAccessIn(settings, mailbox), "send")) {
       unsendable = "The agent's sponsor access was lowered from send before this went out, so it wasn't sent. Its sponsor can send it.";
     }
   }
@@ -285,7 +283,7 @@ async function sendOnce(
   }
   // Going out or failing, it no longer waits.
   if (waiting !== undefined) counted.push(stopWaiting(table, waiting.agent, waiting));
-  const from = actor.kind === "agent" && !asSponsor ? { name: actor.name, address: draft.from } : { address: draft.from };
+  const from = { address: draft.from };
   const parent = original?.message.messageId;
   const text = disclosure?.line ? `${draft.text}\n\nSent by ${disclosure.naming}` : draft.text;
   // Mail from a human's own address names the selector of their mailbox's own logo, once DNS has its record.

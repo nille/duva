@@ -90,7 +90,7 @@ test("approving makes the human the agent's sponsor with the access it asked for
   const { response, data: agent } = await linus.POST("/access-requests/{code}/approve", inCode(asked.code));
 
   expect(response.status).toBe(201);
-  expect(agent).toEqual({ id: expect.any(String), kind: "agent", name: "Hermes", sponsor: linusId, admin: false });
+  expect(agent).toEqual({ id: expect.any(String), kind: "agent", name: "Hermes", sponsor: linusId });
   expect((await linus.GET("/agents")).data!.agents.filter(({ mailbox }) => mailbox === undefined)).toEqual([expect.objectContaining({ id: agent!.id, name: "Hermes" })]);
   expect((await linus.GET("/agents/{agent}/settings", { params: { path: { agent: agent!.id } } })).data).toMatchObject({
     sponsorAccess: "draft",

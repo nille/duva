@@ -6,7 +6,8 @@ const seconds = (count: number) => count * 1000;
 
 /**
  * A deployment on example.com, at 10:00 on 7 October 2026, where Ada, the first admin, sponsors
- * the agent Hermes, which owns a mailbox at hermes@example.com. Grace is another human. Approved sends go at once unless the options give an undo window.
+ * the agent Hermes and gives it send sponsor access to her personal mailbox at ada@example.com. Grace is another human.
+ * Approved sends go at once unless the options give an undo window.
  */
 async function withAgent(options: DuvaOptions = {}) {
   const duva = await startDuva({ domain: "example.com", admin: "ada@example.org", humans: ["grace@example.org"], ...options });
@@ -15,10 +16,11 @@ async function withAgent(options: DuvaOptions = {}) {
   const grace = duva.signIn("grace@example.org");
   const { data: created } = await ada.POST("/agents", { body: { name: "Hermes" } });
   const agent = created!.agent;
-  const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: agent.id, address: "hermes@example.com" } });
+  const { data: me } = await ada.GET("/whoami");
+  const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: me!.id, address: "ada@example.com" } });
+  await ada.PATCH("/agents/{agent}/settings", { params: { path: { agent: agent.id } }, body: { sponsorAccess: "send" } });
   const hermes = duva.withKey(created!.key);
   const params = { path: { mailbox: mailbox!.id } };
-  const { data: me } = await ada.GET("/whoami");
 
   /** Hermes drafts a message to the recipient and asks to send it, and returns the draft and the approval it waits for. */
   const ask = async (subject: string, to = "grace@example.org") => {

@@ -10,6 +10,7 @@ import {
   handOverMailbox,
   type Human,
   HumanExists,
+  isAdmin,
   LastAdmin,
   type Mailbox,
   NotAHuman,
@@ -19,11 +20,10 @@ import {
 } from "./organization.ts";
 import { giveMailboxAgent } from "./mailbox-agents.ts";
 import { syncRecipients } from "./receiving.ts";
-import { deleteMailboxes, removeAgentWithMailboxes } from "./removal.ts";
-import { setupOperation, takeSponsoredAdminAway } from "./setup.ts";
+import { deleteMailboxes, removeAgentWithApprovals } from "./removal.ts";
 
-export const addHuman = setupOperation("addHuman", async (event, deployment, actor) => {
-  if (!actor.admin) return refusal(403, "Only admins can add humans. Ask an admin to add them.");
+export const addHuman: OperationHandler = async (event, deployment, actor) => {
+  if (!isAdmin(actor)) return refusal(403, "Only admins can add humans. Ask an admin to add them.");
   const body = jsonBody(event);
   const given = typeof body?.email === "string" ? body.email.trim() : "";
   // Addresses are kept in lower case, so one human never gets two actors by case alone.
@@ -33,35 +33,27 @@ export const addHuman = setupOperation("addHuman", async (event, deployment, act
   }
   const exists = () => refusal(409, `${email} is already a human in the organization. List the humans to find their ID.`);
   if ((await allHumans(deployment.table)).some((human) => human.email === email)) return exists();
-  return {
-    preview: [`Adds the human ${email}, who can then sign in.`],
-    run: async () => {
-      try {
-        const human = await addHumanToOrganization(deployment, { email, by: actor.id });
-        return { statusCode: 201, body: human satisfies components["schemas"]["Human"] };
-      } catch (error) {
-        if (!(error instanceof HumanExists)) throw error;
-        return exists();
-      }
-    },
-  };
-});
+  try {
+    const human = await addHumanToOrganization(deployment, { email, by: actor!.id });
+    return { statusCode: 201, body: human satisfies components["schemas"]["Human"] };
+  } catch (error) {
+    if (!(error instanceof HumanExists)) throw error;
+    return exists();
+  }
+};
 
 export const listHumans: OperationHandler = async (_event, deployment, actor) => {
-  if (!actor?.admin) return refusal(403, "Only admins can list the organization's humans. Ask an admin who has access.");
+  if (!isAdmin(actor)) return refusal(403, "Only admins can list the organization's humans. Ask an admin who has access.");
   return { statusCode: 200, body: { humans: await allHumans(deployment.table) } satisfies components["schemas"]["HumanList"] };
 };
 
 export const removeHuman: OperationHandler = async (event, deployment, actor) => {
-  // Not even with approval, so people stay in charge of people.
-  if (actor?.kind === "agent") return refusal(403, "Agents can't remove humans, even with approval. Ask a human admin.");
-  if (!actor?.admin) return refusal(403, "Only admins can remove humans. Ask an admin to remove them.");
+  if (!isAdmin(actor)) return refusal(403, "Only admins can remove humans. Ask an admin to remove them.");
   const human = await humanAsked(event, deployment);
   if ("statusCode" in human) return human;
   const mailboxes = await ownedMailboxes(deployment.table, human.id);
   const agents = await sponsoredAgents(deployment.table, human.id);
-  const agentMailboxes = (await Promise.all(agents.map(({ id }) => ownedMailboxes(deployment.table, id)))).flat();
-  const removal = (removed: boolean) => ({ statusCode: 200, body: { human, mailboxes, agents, agentMailboxes, removed } satisfies components["schemas"]["HumanRemoval"] });
+  const removal = (removed: boolean) => ({ statusCode: 200, body: { human, mailboxes, agents, removed } satisfies components["schemas"]["HumanRemoval"] });
   const body = jsonBody(event) ?? {};
   if (body.dryRun === true) return removal(false);
 
@@ -70,10 +62,10 @@ export const removeHuman: OperationHandler = async (event, deployment, actor) =>
   const lastAdmin = lastAdminRefusal(human);
   if (human.admin && !(await allHumans(deployment.table)).some(({ id, admin }) => admin && id !== human.id)) return lastAdmin;
 
-  for (const agent of agents) await removeAgentWithMailboxes(deployment, { agent, by: actor.id });
+  for (const agent of agents) await removeAgentWithApprovals(deployment.table, { agent, by: actor!.id });
   try {
     for (const mailbox of choices.handOver) {
-      await handOverMailbox(deployment.table, { mailbox, to: choices.handTo!.id, by: actor.id });
+      await handOverMailbox(deployment.table, { mailbox, to: choices.handTo!.id, by: actor!.id });
       // Its mailbox agent went with its sponsor, so the new owner gets one of their own.
       await giveMailboxAgent(deployment.table, { ...mailbox, owner: choices.handTo!.id });
     }
@@ -81,10 +73,10 @@ export const removeHuman: OperationHandler = async (event, deployment, actor) =>
     if (!(error instanceof NotAHuman)) throw error;
     return refusal(409, `${choices.handTo!.email} was removed meanwhile. Run the removal again with another human in handTo.`);
   }
-  await deleteMailboxes(deployment, { mailboxes: choices.delete, by: actor.id });
+  await deleteMailboxes(deployment, { mailboxes: choices.delete, by: actor!.id });
   await syncRecipients(deployment.table, deployment.receiving);
   try {
-    await removeHumanFromOrganization(deployment.table, { human, by: actor.id });
+    await removeHumanFromOrganization(deployment.table, { human, by: actor!.id });
   } catch (error) {
     if (error instanceof LastAdmin) return lastAdmin;
     throw error;
@@ -128,16 +120,13 @@ async function choicesIn(
 }
 
 export const changeHuman: OperationHandler = async (event, deployment, actor) => {
-  if (actor?.kind === "agent") return refusal(403, "Agents can't change who is an admin, even with approval. Ask a human admin.");
-  if (!actor?.admin) return refusal(403, "Only admins can change who is an admin. Ask an admin to.");
+  if (!isAdmin(actor)) return refusal(403, "Only admins can change who is an admin. Ask an admin to.");
   const human = await humanAsked(event, deployment);
   if ("statusCode" in human) return human;
   const admin = jsonBody(event)?.admin;
   if (typeof admin !== "boolean") return refusal(400, "Give admin as true to make the human an admin, or false to take it away.");
   try {
-    const changed = await changeAdmin(deployment.table, { human, admin, by: actor.id });
-    // No agent outranks its sponsor. Each change does it, so a change again finishes what one that stopped partway left.
-    if (!admin) await takeSponsoredAdminAway(deployment.table, { human: human.id, by: actor.id });
+    const changed = await changeAdmin(deployment.table, { human, admin, by: actor!.id });
     return { statusCode: 200, body: changed satisfies components["schemas"]["Human"] };
   } catch (error) {
     if (!(error instanceof LastAdmin)) throw error;

@@ -5,9 +5,7 @@ import { threadsPastRetention } from "./erasure.ts";
 import { indexMailboxes } from "./indexing.ts";
 import { type Language, languages } from "./languages.ts";
 import { type MailboxAgentModel, mailboxAgentModels, type MailboxAgentProfile, mailboxAgentProfiles, type MailboxAgentRegion, mailboxAgentRegions, profileRunsIn } from "./agent-models.ts";
-import type { Deployment } from "./deployment.ts";
-import { listed, setupOperation } from "./setup.ts";
-import { agentSettings, allHumans, changeSettings, defaultSettings, limitCaps, lowerLimitsToCaps, organizationSettings, type OrganizationSettings, sponsoredAgents } from "./organization.ts";
+import { changeSettings, defaultSettings, isAdmin, lowerLimitsToCaps, organizationSettings, type OrganizationSettings } from "./organization.ts";
 
 /** Whether the value is a send limit or a cap on one: a whole number from 1 to 10,000. */
 export const isLimit = (value: unknown): value is number => Number.isInteger(value) && (value as number) >= 1 && (value as number) <= 10_000;
@@ -55,8 +53,8 @@ export const getOrganizationSettings: OperationHandler = async (_event, deployme
   return { statusCode: 200, body: settings satisfies components["schemas"]["OrganizationSettings"] };
 };
 
-export const changeOrganizationSettings = setupOperation("changeOrganizationSettings", async (event, deployment, actor) => {
-  if (!actor.admin) return refusal(403, "Only admins can change the organization's settings. Ask an admin to change them.");
+export const changeOrganizationSettings: OperationHandler = async (event, deployment, actor) => {
+  if (!isAdmin(actor)) return refusal(403, "Only admins can change the organization's settings. Ask an admin to change them.");
   const body = jsonBody(event) ?? {};
   const names = Object.keys(defaultSettings);
   const unknown = Object.keys(body).find((name) => !names.includes(name));
@@ -73,89 +71,25 @@ export const changeOrganizationSettings = setupOperation("changeOrganizationSett
   }
   // Kept in one order, so a list is the same list however it was given.
   if (changes.searchLanguages !== undefined) changes.searchLanguages = languages.filter((language) => changes.searchLanguages!.includes(language));
-  return {
-    preview: await settingsPreview(deployment, changes),
-    run: async () => {
-      const settings = await changeSettings(deployment.table, { by: actor.id, changes, region: deployment.region });
-      // Each mailbox's index files mail by language, so the indexer rebuilds those whose languages are
-      // no longer the ones mail is indexed in.
-      if (changes.searchLanguages !== undefined) await indexMailboxes(deployment.table, deployment.indexQueue);
-      // Each change to a cap does it, so a change again finishes what one that stopped partway left.
-      // Each agent whose limits it lowers is an alert to its sponsor, unless they lowered it themselves.
-      if ("agentSendsPerHourCap" in body || "agentNewRecipientsPerDayCap" in body) {
-        const who = await actorNamed(deployment.table, actor.id);
-        await lowerLimitsToCaps(deployment.table, actor.id, (agent, after) =>
-          agent.sponsor === actor.id
-            ? []
-            : alertItems(deployment.table, { kind: "limitsChangedBy", agent, by: actor.id, what: `${who} lowered the organization's caps, so ${agent.name}'s limits are now ${limitsRead(after)}.` }),
-        );
-      }
-      return { statusCode: 200, body: settings satisfies components["schemas"]["OrganizationSettings"] };
-    },
-  };
-});
-
-/** What changing the settings does, a sentence for each that changes. */
-async function settingsPreview(deployment: Deployment, changes: Partial<OrganizationSettings>): Promise<string[]> {
-  const { settings } = await organizationSettings(deployment.table, deployment.region);
-  const preview: string[] = [];
-  const { retentionDays, erasureErasesApprovals, searchLanguages, undoWindowSeconds, mailboxAgentModel, mailboxAgentProfile, mailboxAgentRegion, mailboxAgentSpendCap } = changes;
-  if (retentionDays !== undefined && retentionDays !== settings.retentionDays) {
-    const threads = retentionDays < settings.retentionDays ? await threadsPastRetention(deployment.table, retentionDays, new Date()) : 0;
-    preview.push(`Keeps threads in Trash and Spam ${retentionDays} days, instead of ${settings.retentionDays}.`);
-    if (threads > 0) preview.push(`${threads === 1 ? "1 thread there is older than that, which the eraser erases" : `${threads} threads there are older than that, which the eraser erases`} for good.`);
-  }
-  if (erasureErasesApprovals !== undefined && erasureErasesApprovals !== settings.erasureErasesApprovals) {
-    preview.push(`Erasing a thread ${erasureErasesApprovals ? "also erases" : "keeps"} the approval records of the agents' sends in it.`);
-  }
-  if (searchLanguages !== undefined && searchLanguages.join() !== settings.searchLanguages.join()) {
-    preview.push(`Searches mail in ${listed(searchLanguages)}, instead of ${listed(settings.searchLanguages)}, which rebuilds every mailbox's search index.`);
-  }
-  if (undoWindowSeconds !== undefined && undoWindowSeconds !== settings.undoWindowSeconds) {
-    preview.push(
-      undoWindowSeconds === 0
-        ? `Sends each approved send at once, so it can't be undone, instead of after ${settings.undoWindowSeconds} seconds.`
-        : `Holds each approved send ${undoWindowSeconds} seconds, so its approver can undo it, instead of ${settings.undoWindowSeconds === 0 ? "sending it at once" : `${settings.undoWindowSeconds} seconds`}.`,
+  const settings = await changeSettings(deployment.table, { by: actor!.id, changes, region: deployment.region });
+  // Each mailbox's index files mail by language, so the indexer rebuilds those whose languages are
+  // no longer the ones mail is indexed in.
+  if (changes.searchLanguages !== undefined) await indexMailboxes(deployment.table, deployment.indexQueue);
+  // Each change to a cap does it, so a change again finishes what one that stopped partway left.
+  // Each agent whose limits it lowers is an alert to its sponsor, unless they lowered it themselves.
+  if ("agentSendsPerHourCap" in body || "agentNewRecipientsPerDayCap" in body) {
+    const who = await actorNamed(deployment.table, actor!.id);
+    await lowerLimitsToCaps(deployment.table, actor!.id, (agent, after) =>
+      agent.sponsor === actor!.id
+        ? []
+        : alertItems(deployment.table, { kind: "limitsChangedBy", agent, by: actor!.id, what: `${who} lowered the organization's caps, so ${agent.name}'s limits are now ${limitsRead(after)}.` }),
     );
   }
-  if (mailboxAgentModel !== undefined && mailboxAgentModel !== settings.mailboxAgentModel) {
-    preview.push(`Has the mailbox agents think with ${mailboxAgentModels[mailboxAgentModel].name}, instead of ${mailboxAgentModels[settings.mailboxAgentModel].name}.`);
-  }
-  const profile = mailboxAgentProfile ?? settings.mailboxAgentProfile;
-  const region = mailboxAgentRegion ?? settings.mailboxAgentRegion;
-  if (profile !== settings.mailboxAgentProfile || region !== settings.mailboxAgentRegion) {
-    preview.push(`Processes the mail the mailbox agents read ${processedWhere(profile, region)}, instead of ${processedWhere(settings.mailboxAgentProfile, settings.mailboxAgentRegion)}.`);
-  }
-  if (mailboxAgentSpendCap !== undefined && mailboxAgentSpendCap !== settings.mailboxAgentSpendCap) {
-    preview.push(
-      mailboxAgentSpendCap === 0
-        ? "Turns the mailbox agents off, since they may spend nothing."
-        : `Lets the mailbox agents spend up to $${mailboxAgentSpendCap} a month on their model, instead of $${settings.mailboxAgentSpendCap}.`,
-    );
-  }
-  for (const [limit, cap] of Object.entries(limitCaps) as [keyof typeof limitCaps, (typeof limitCaps)[keyof typeof limitCaps]][]) {
-    const value = changes[cap];
-    if (value === undefined || value === settings[cap]) continue;
-    preview.push(`Caps each agent's ${capNames[cap]} at ${value}, instead of ${settings[cap]}.`);
-    if (value > settings[cap]) continue;
-    const above: string[] = [];
-    for (const human of await allHumans(deployment.table)) {
-      for (const agent of await sponsoredAgents(deployment.table, human.id)) if ((await agentSettings(deployment.table, agent.id)).settings[limit] > value) above.push(agent.name);
-    }
-    if (above.length > 0) preview.push(`It lowers the ${capNames[cap]} of ${listed(above)} to ${value}.`);
-  }
-  return preview;
-}
-
-/** Where the mail the mailbox agents read is processed, as a preview says it. */
-export const processedWhere = (profile: MailboxAgentProfile, region: MailboxAgentRegion) =>
-  profile === "global" ? `in any AWS region, through ${region}` : `in the ${profile === "eu" ? "EU" : "US"}, through ${region}`;
-
-// What each cap limits, as a preview says it.
-const capNames = { agentSendsPerHourCap: "sends an hour", agentNewRecipientsPerDayCap: "new recipients a day" } as const;
+  return { statusCode: 200, body: settings satisfies components["schemas"]["OrganizationSettings"] };
+};
 
 export const previewRetention: OperationHandler = async (event, deployment, actor) => {
-  if (!actor?.admin) return refusal(403, "Only admins can preview the retention period. Ask an admin.");
+  if (!isAdmin(actor)) return refusal(403, "Only admins can preview the retention period. Ask an admin.");
   const given = event.queryStringParameters?.retentionDays ?? "";
   const retentionDays = /^\d+$/.test(given) ? Number(given) : undefined;
   if (!values.retentionDays.takes(retentionDays)) return refusal(400, values.retentionDays.refusal);

@@ -4,7 +4,7 @@ import { expect, test } from "vitest";
 import type { components } from "@duva/openapi";
 import { startDuva } from "./harness.ts";
 
-/** What a human admin's change to a domain's logo answers, which only an agent admin's waits for approval instead. */
+/** What an admin's change to a domain's logo answers. */
 type DomainLogo = components["schemas"]["DomainLogo"];
 
 /** The tests' logo, square SVG Tiny PS, and the VMC the tests' Mark Verifying Authority issued for example.org carrying it. */
@@ -234,15 +234,14 @@ test("a mailbox whose selector another mailbox has gets one of its own, and keep
   expect(again!.selector).toBe("grace");
 });
 
-test("only the human who owns a mailbox sets its logo, so an agent's mailbox shows the domain's", async () => {
+test("only the human who owns a mailbox sets its logo, not an admin or their agent with send sponsor access", async () => {
   const { ada, grace, mailbox, duva } = await withDomain();
-  const { data: created } = await ada.POST("/agents", { body: { name: "Hermes" } });
-  const { data: hermesBox } = await ada.POST("/mailboxes", { body: { owner: created!.agent.id, address: "hermes@example.org" } });
+  const { data: created } = await grace.POST("/agents", { body: { name: "Hermes" } });
+  await grace.PATCH("/agents/{agent}/settings", { params: { path: { agent: created!.agent.id } }, body: { sponsorAccess: "send" } });
   const hermes = duva.withKey(created!.key);
 
   expect((await ada.PUT("/mailboxes/{mailbox}/logo", { params: { path: { mailbox: mailbox.id } }, body: { svg: logo } })).response.status).toBe(403);
-  expect((await hermes.PUT("/mailboxes/{mailbox}/logo", { params: { path: { mailbox: hermesBox!.id } }, body: { svg: logo } })).response.status).toBe(403);
-  expect((await ada.PUT("/mailboxes/{mailbox}/logo", { params: { path: { mailbox: hermesBox!.id } }, body: { svg: logo } })).response.status).toBe(403);
+  expect((await hermes.PUT("/mailboxes/{mailbox}/logo", { params: { path: { mailbox: mailbox.id } }, body: { svg: logo } })).response.status).toBe(403);
   expect((await grace.GET("/mailboxes/{mailbox}/logo", { params: { path: { mailbox: "nope" } } })).response.status).toBe(404);
 });
 

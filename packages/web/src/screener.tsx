@@ -40,8 +40,7 @@ export async function readScreener(client: DuvaClient, mailbox: string, onSigned
 const atOnce: Delivery[] = ["inbox", "feed", "paperTrail", "nowhere"];
 
 /**
- * The Screener of the mailbox whose Inbox is at `base`, as the web app last read it, in the
- * human's own mailbox or, with the agent's name, an agent's they sponsor. `done` is what the human
+ * The Screener of the human's mailbox whose Inbox is at `base`, as the web app last read it. `done` is what the human
  * last did here, and `onDone` hears each decision, after which the Screener is read again. The head
  * speaks of the connection only when Duva can't be reached.
  */
@@ -49,7 +48,6 @@ export function ScreenerView({
   client,
   mailbox,
   base,
-  agent,
   read,
   labels,
   connection,
@@ -61,7 +59,6 @@ export function ScreenerView({
   client: DuvaClient;
   mailbox: Mailbox;
   base: string;
-  agent?: string;
   read: ScreenerRead;
   labels: Label[];
   connection: ConnectionState;
@@ -70,7 +67,7 @@ export function ScreenerView({
   onRetry: () => void;
   onSignedOut: () => void;
 }) {
-  const title = agent === undefined ? strings.screener.title : strings.screener.agentTitle(agent);
+  const title = strings.screener.title;
   // Mail waiting here calls for no attention, so the tab's title counts nothing.
   useViewTitle(strings.title(title));
   const { open } = useBeside();
@@ -252,7 +249,6 @@ export function ScreenedSenders({
   client,
   mailbox,
   base,
-  agent,
   me,
   agentNames,
   labels,
@@ -265,7 +261,6 @@ export function ScreenedSenders({
   client: DuvaClient;
   mailbox: Mailbox;
   base: string;
-  agent?: string;
   me: string;
   agentNames: ReadonlyMap<string, string>;
   labels: Label[];
@@ -278,7 +273,7 @@ export function ScreenedSenders({
   const [listed, setListed] = useState<Listed>({ status: "loading" });
   const [query, setQuery] = useState("");
   const findId = useId();
-  const title = agent === undefined ? strings.screened.title : strings.screened.agentTitle(agent);
+  const title = strings.screened.title;
   useViewTitle(strings.title(title));
 
   const load = useCallback(async () => {

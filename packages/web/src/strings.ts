@@ -34,12 +34,9 @@ export const strings = {
     yourMailboxes: "Your mailboxes",
     /** A human's own mailbox that has no address, by its place among theirs, so two never look the same. */
     withoutAddress: (place: number) => `Mailbox ${place}, without an address`,
-    agents: "Agents",
     unread: (count: number) => `${count} unread`,
     /** The selector at the side column's head, which opens the mailboxes. */
     choose: "Choose a mailbox",
-    /** The agents' mailboxes, which a desk's side column lists apart from the selector. */
-    agentsLabel: "Agents' mailboxes",
     /** The address a mailbox is shown with: its default address, if it has one. */
     address: (mailbox: { defaultAddress?: string }) => mailbox.defaultAddress ?? "No address",
   },
@@ -83,7 +80,6 @@ export const strings = {
 
   inbox: {
     title: "Inbox",
-    agentTitle: (agent: string) => `${agent}'s Inbox`,
     threads: "Threads",
     unread: (count: number) => `${count} unread`,
     unreadMark: "Unread",
@@ -104,23 +100,21 @@ export const strings = {
     loadingOlder: "Loading older threads…",
     arrived: (count: number) => (count === 1 ? "1 new thread" : `${count} new threads`),
     emptyTitle: "Your Inbox is empty",
-    agentEmptyTitle: (agent: string) => `${agent}'s Inbox is empty`,
     emptyLead: (address: string | undefined) =>
       address === undefined
         ? "This mailbox has no address, so no new mail reaches it. An admin can give it one."
         : `Mail to ${address} appears here. This page checks for new mail by itself, so there's no need to reload it.`,
     noMailboxTitle: "You don't have a mailbox yet",
     noMailboxLead: "Ask an admin to give you one. Your mail appears here once you have it.",
-    noMailboxSponsor: "You can still decide what your agents ask to send in Approvals.",
     unknownMailboxTitle: "This mailbox isn't yours to read",
-    unknownMailboxLead: "You can read your own mailbox, and those of the agents you sponsor.",
+    unknownMailboxLead: "You can read only your own mailboxes.",
     failed: (status: number) => `Duva couldn't list your threads (error ${status}). Try again in a moment.`,
     unreachable: "Duva couldn't be reached, so your threads aren't listed. Check your connection and try again.",
     retry: "Try again",
   },
 
   search: {
-    box: (agent?: string) => (agent === undefined ? "Search your mail" : `Search ${agent}'s mail`),
+    box: "Search your mail",
     title: "Search results",
     words: (q: string) => `“${q}”`,
     results: "Results",
@@ -155,9 +149,6 @@ export const strings = {
     title: "Sent",
     emptyTitle: "Nothing sent yet",
     emptyLead: "Threads you send mail in appear here, newest first. Write a message, or reply to one in your Inbox.",
-    agentTitle: (agent: string) => `${agent}'s Sent`,
-    agentEmptyTitle: (agent: string) => `${agent} hasn't sent anything yet`,
-    agentEmptyLead: (agent: string) => `Threads ${agent} sends mail in appear here, newest first, once you approve its sends.`,
   },
 
   drafts: {
@@ -320,7 +311,6 @@ export const strings = {
     unreachable: "Duva couldn't be reached, so your agent didn't get that. Check your connection and ask again.",
     loadFailed: "Duva couldn't load what you asked your agent before. Try again in a moment.",
     retry: "Try again",
-    notYours: "Only your own mailboxes have a mailbox agent you can ask.",
   },
 
   feed: {
@@ -755,9 +745,7 @@ export const strings = {
       yours: "Your mailbox",
       on: "On",
       off: "Off",
-      releasing: (mailbox: string) => `Mail waiting in ${mailbox} Screener moves to the Inbox when you save.`,
-      yourMailbox: "your mailbox's",
-      agentMailbox: (agent: string) => `${agent}'s`,
+      releasing: "Mail waiting in your mailbox's Screener moves to the Inbox when you save.",
       saved: "Saved.",
       failed: (status: number) => `Duva couldn't read the Screener settings (error ${status}). Try again in a moment.`,
       unreachable: "Duva couldn't be reached, so the Screener settings aren't shown. Check your connection and try again.",
@@ -900,8 +888,8 @@ export const strings = {
     /** A mailbox's title when it has no default address, with which of its owner's it is when they have several. */
     without: (at?: number) => (at === undefined ? "Without an address" : `Mailbox ${at}, without an address`),
     /** The line under a mailbox's title: its owner, which of theirs it is, and its other addresses, or that it has none. */
-    line: ({ owner, agent, place, addresses }: { owner: string; agent: boolean; place?: { at: number; of: number }; addresses: number }) => {
-      const parts = [agent ? `${owner}, an agent` : owner];
+    line: ({ owner, place, addresses }: { owner: string; place?: { at: number; of: number }; addresses: number }) => {
+      const parts = [owner];
       if (place !== undefined) parts.push(`Mailbox ${place.at} of ${place.of}`);
       if (addresses === 0) parts.push("It gets and sends no mail until it has one");
       if (addresses > 1) parts.push(addresses === 2 ? "1 more address" : `${addresses - 1} more addresses`);
@@ -930,12 +918,9 @@ export const strings = {
     adding: "Adding…",
     added: (address: string) => `Added ${address}.`,
     addMailbox: "Add a mailbox",
-    addMailboxLead: "For a human or an agent, with its first address, which becomes its default. Its line opens to add more.",
+    addMailboxLead: "For a human, with its first address, which becomes its default. Its line opens to add more.",
     owner: "For",
-    chooseOwner: "Choose a human or an agent",
-    humans: "Humans",
-    agents: "Agents",
-    agentWithSponsor: (name: string, sponsor?: string) => (sponsor === undefined ? name : `${name}, ${sponsor}'s agent`),
+    chooseOwner: "Choose a human",
     address: "Address",
     addMailboxButton: "Add mailbox",
     addedMailbox: (owner: string, address: string) => `Added a mailbox for ${owner} at ${address}.`,
@@ -961,21 +946,16 @@ export const strings = {
     mailboxesOf: (email: string) => `Mailboxes of ${email}`,
     noMailbox: "No mailbox yet.",
     giveMailbox: "Give them a mailbox",
-    giveAgentMailbox: "Give it a mailbox",
     giveMailboxWho: (name: string) => `Give ${name} a mailbox`,
     mailboxWithout: (ordinal: number) => `Mailbox ${ordinal}, without an address`,
     moreAddresses: (count: number) => (count === 1 ? "and 1 more address" : `and ${count} more addresses`),
     agentsTitle: "Agents",
     agentsOf: (email: string) => `Agents ${email} sponsors`,
     noAgents: "They sponsor no agents.",
-    agentNoMailbox: "No mailbox",
     paused: "Paused",
     remove: "Remove",
     removeAgentWho: (name: string) => `Remove ${name}`,
-    removeAgentAsk: (name: string, addresses: string[]) =>
-      addresses.length === 0
-        ? `${name}'s key stops working. This can't be undone.`
-        : `${name}'s key stops working, and its ${addresses.length === 1 ? "mailbox" : "mailboxes"} ${list(addresses)} ${addresses.length === 1 ? "is" : "are"} erased with ${addresses.length === 1 ? "its" : "their"} mail. This can't be undone.`,
+    removeAgentAsk: (name: string) => `${name}'s key stops working. This can't be undone.`,
     removeAgent: "Remove agent",
     removedAgent: (name: string) => `Removed ${name}.`,
     removeHuman: "Remove human",
@@ -989,14 +969,8 @@ export const strings = {
     handTo: "Hand over to",
     noOneToHandTo: "No other human can take a mailbox, so each is deleted.",
     erased: (names: string[]) => `${list(names)} ${names.length === 1 ? "is" : "are"} erased with ${names.length === 1 ? "its" : "their"} mail. This can't be undone.`,
-    agentsGo: (agents: { name: string; addresses: string[] }[]) => {
-      const named = list(agents.map(({ name }) => name));
-      const addresses = agents.flatMap((agent) => agent.addresses);
-      const removed = agents.length === 1 ? `${named}, the agent they sponsor, is removed too` : `${named}, the agents they sponsor, are removed too`;
-      return addresses.length === 0
-        ? `${removed}.`
-        : `${removed}, and ${addresses.length === 1 ? "its mailbox" : "their mailboxes"} ${list(addresses)} erased with ${addresses.length === 1 ? "its" : "their"} mail.`;
-    },
+    agentsGo: (agents: string[]) =>
+      agents.length === 1 ? `${list(agents)}, the agent they sponsor, is removed too.` : `${list(agents)}, the agents they sponsor, are removed too.`,
     removedHuman: (email: string, handTo: string | undefined, handedOver: string[]) =>
       handTo === undefined || handedOver.length === 0 ? `Removed ${email}.` : `Removed ${email}. ${handTo} has ${list(handedOver)} now.`,
     cancel: "Cancel",
@@ -1022,7 +996,6 @@ export const strings = {
     noMembers: "No members. Mail to the group reaches no one until it has some.",
     memberOf: {
       human: (email: string) => `${email}'s mailbox`,
-      agent: (name: string) => `${name}'s mailbox, an agent`,
       group: "A group",
       external: "External address",
     },
@@ -1076,7 +1049,6 @@ export const strings = {
 
   screener: {
     title: "Screener",
-    agentTitle: (agent: string) => `${agent}'s Screener`,
     waiting: (count: number) => (count === 1 ? ", 1 sender waiting" : `, ${count} senders waiting`),
     lead: "Mail from senders you haven't decided on or written to waits here, out of the Inbox and the unread counts, until you choose where their mail goes.",
     off: "The Screener is off, so mail from first-time senders goes to the Inbox.",
@@ -1116,7 +1088,6 @@ export const strings = {
 
   screened: {
     title: "Screened senders",
-    agentTitle: (agent: string) => `${agent}'s screened senders`,
     back: "Screener",
     lead: "The addresses and domains you decided on, by where their mail goes. A decision on an address beats one on its domain. Open one to change it.",
     find: "Find a sender",
@@ -1221,7 +1192,7 @@ export const strings = {
       lead: "Removing it stops its key at once. Its drafts and sends in your mailbox stay.",
       remove: "Remove",
       who: (name: string) => `Remove ${name}`,
-      ask: (name: string) => `${name}'s key stops working, and any mailbox of its own is erased with its mail. This can't be undone.`,
+      ask: (name: string) => `${name}'s key stops working. This can't be undone.`,
       confirm: "Remove agent",
       removing: "Removing…",
       cancel: "Cancel",
@@ -1233,16 +1204,6 @@ export const strings = {
       approval: "Your approval before it sends as you",
       approvalHint: "Its sends from your mailbox wait for you in Approvals. Off, they go out at once.",
     },
-    ownMailbox: {
-      legend: "When it sends from its own mailbox",
-      approval: "Your approval before it sends from its own mailbox",
-      approvalHint: "Its sends wait for you in Approvals. Off, they go out at once.",
-    },
-    setup: {
-      legend: "When it changes the setup",
-      approval: "Your approval before it changes the setup",
-      approvalHint: "Its changes to domains, addresses, groups and settings wait for you in Approvals. Off, Duva makes them at once.",
-    },
     summary: {
       access: {
         none: "No access to your mailbox.",
@@ -1253,17 +1214,12 @@ export const strings = {
       },
       allWait: "Its sends wait for your approval.",
       noneWait: "Its sends go out without your approval.",
-      ownWait: "Its sends from its own mailbox wait for your approval.",
-      asSponsorWait: "Its sends as you wait for your approval.",
-      allAndSetupWait: "Its sends and setup changes wait for your approval.",
-      setupWaits: "Its setup changes wait for your approval.",
-      setupGoes: "Its setup changes go through without your approval.",
     },
     line: "Add a line saying an agent sent it",
     lineHint: (agent: string, sponsor: string) => `The text ends with "Sent by ${agent} for ${sponsor}". A header always says so too, for software.`,
     saved: "Saved. This applies at once.",
     savedLowered: "Saved. Its sends waiting as you are withdrawn, and its drafts stay.",
-    noMailbox: "Duva can save this once you or the agent has a mailbox. Ask an admin to create one.",
+    noMailbox: "Duva can save this once you have a mailbox. Ask an admin to create one for you.",
     limits: {
       legend: "Send limits",
       lead: "How much it may send. A send over a limit waits, and goes out by itself as the limit allows.",
@@ -1273,19 +1229,6 @@ export const strings = {
       upTo: (cap: number) => `Up to ${cap}, the organization's cap.`,
       invalid: (cap: number) => `Give a whole number from 1 to ${cap}.`,
     },
-    admin: {
-      title: "Admin",
-      mark: "Admin",
-      isNot: "An agent admin may change the organization's setup: domains, addresses, groups and settings. It never removes humans or agents, or changes who is an admin.",
-      is: "It may change the organization's setup. Taking this away withdraws its setup changes that wait for you.",
-      onlyAdmins: "Only an admin can make an agent an admin. An agent admin may change the organization's setup.",
-      make: "Make it an admin",
-      making: "Making it an admin…",
-      takeAway: "Take admin away",
-      takingAway: "Taking admin away…",
-      failed: (status: number) => `Duva couldn't change whether it is an admin (error ${status}). Try again in a moment.`,
-      unreachable: "Duva couldn't be reached, so nothing changed. Check your connection and try again.",
-    },
     pause: {
       title: "Running or paused",
       mark: "Paused",
@@ -1293,7 +1236,7 @@ export const strings = {
       unpause: "Unpause",
       pausing: "Pausing…",
       unpausing: "Unpausing…",
-      running: "Pausing refuses its key at once and holds its approved sends until you unpause it. Mail to it keeps arriving.",
+      running: "Pausing refuses its key at once and holds its approved sends until you unpause it.",
       held: "Its key is refused, and its approved sends are held. Unpausing sends them, oldest first, so look at them first.",
       by: (who: string, when: string) => `Paused by ${who} since ${when}.`,
       /** An agent's line while it runs, with how many more its send limits let it send this hour, when Duva says. */
@@ -1328,7 +1271,6 @@ export const strings = {
       sent: (count: number) => `${count} sent`,
       approved: (count: number) => `${count} approved`,
       rejected: (count: number) => `${count} rejected`,
-      received: (count: number) => `${count} received`,
       organized: (count: number) => `${count} organized`,
       screened: (count: number) => `${count} screened`,
       alerts: (count: number) => (count === 1 ? "1 alert" : `${count} alerts`),
@@ -1336,7 +1278,7 @@ export const strings = {
     nothing: "Nothing counted",
     dayLabel: (day: string, counted: string) => `${day}: ${counted}`,
     timeline: "Timeline",
-    dayLead: (agent: string, timeZone: string) => `Everything ${agent} did and what happened in its mailboxes, newest first, in ${timeZone} time.`,
+    dayLead: (agent: string, timeZone: string) => `Everything ${agent} did and what was done to it, newest first, in ${timeZone} time.`,
     empty: "Nothing happened that day.",
     more: "Show more",
     loadingMore: "Loading more…",
@@ -1357,7 +1299,7 @@ export const strings = {
     quietLabel: (from: string, to: string) => `${from} to ${to}, nothing counted`,
     /** What the reading pane beside the days says while no day is open. */
     pickTitle: "No day open",
-    pickLead: (agent: string) => `Open a day to see its timeline: everything ${agent} did, and what happened in its mailboxes.`,
+    pickLead: (agent: string) => `Open a day to see its timeline: everything ${agent} did, and what was done to it.`,
   },
 
   sendNow: {
@@ -1407,7 +1349,7 @@ export const strings = {
     title: "Approvals",
     waiting: (count: number) => (count === 1 ? "1 waiting" : `${count} waiting`),
     noneWaiting: "Nothing is waiting for you",
-    emptyLead: "When an agent you sponsor asks to send mail, or an agent admin asks to change the setup, it appears here. You approve it, edit a draft first, or reject it with a note.",
+    emptyLead: "When an agent you sponsor asks to send mail, it appears here. You approve it, edit it first, or reject it with a note.",
     emptyPolling: "This page checks for new requests by itself, so there's no need to reload it.",
     noneToDecide: "Nothing waits for your decision",
     limitTitle: "Waiting for the send limit",
@@ -1416,8 +1358,8 @@ export const strings = {
     heldLead: (agent: string) => `Approved. Unpausing ${agent} sends these, oldest first, so look at them before you do.`,
     to: (addresses: string) => `To ${addresses}`,
     show: "Show",
-    chips: { all: "All", send: "Sends", setup: "Setup changes", held: "Held" },
-    kinds: { send: "Send", setup: "Setup", held: "Held" },
+    chips: { all: "All", send: "Sends", held: "Held" },
+    kinds: { send: "Send", held: "Held" },
     back: "All approvals",
     lists: "Which list",
     waitingList: "Waiting",
@@ -1470,26 +1412,6 @@ export const strings = {
     tooLate: "Too late to undo: the undo window is over. A send held after it stays approved.",
   },
 
-  setupGalley: {
-    asks: (agent: string) => `${agent} asks to change the setup`,
-    call: "The call it made",
-    command: "Command",
-    yourMailbox: (address: string) => `Your mailbox, ${address}`,
-    mailboxOf: (owner: string, address: string) => `${owner}'s mailbox, ${address}`,
-    noAddress: "without an address",
-    preview: "What it would do",
-    previewHint: (agent: string) => `Duva works this out from the setup as it is now. Approving makes the change as ${agent}.`,
-    previewChanged: (agent: string) => `The setup changed since ${agent} asked, so the change would now do what is shown. Read it again, then approve.`,
-    approve: "Approve",
-    approving: "Approving…",
-    approved: "You approved it",
-    slipSubject: (agent: string) => `${agent}'s setup change`,
-    made: (agent: string) => `Made as ${agent} asked.`,
-    notMade: (reason: string) => `Duva couldn't make it: ${reason}`,
-    unchanged: (agent: string) => `Nothing changed. ${agent} sees your note.`,
-    withdrawn: (agent: string) => `${agent} stopped being an admin, so its change was withdrawn.`,
-  },
-
   galley: {
     asks: (agent: string) => `${agent} asks to send`,
     askedAt: (time: string) => `Asked ${time}`,
@@ -1518,7 +1440,6 @@ export const strings = {
     disclosureNote: "Duva adds this line, so recipients can tell an agent wrote it.",
     noDisclosureLine: (agent: string) => `Duva adds no line to it, as you chose for ${agent}. A header still tells recipients' software that an agent wrote it.`,
     asYou: (address: string) => `As you, from ${address}`,
-    fromOwnMailbox: (address: string) => `From its own mailbox, ${address}`,
   },
 
   decide: {
@@ -1681,16 +1602,6 @@ function entrySaid(change: ActivityChange, who: string, agent: string, message?:
       return change.outcome === "unsubscribed" ? ["Duva", ` unsubscribed from ${sender(change)}.`] : ["Duva", ` couldn't unsubscribe from ${sender(change)}.`];
     case "agentKeyRotated":
       return [who, ` rotated ${agent}'s key.`];
-    case "agentAdminChanged":
-      return change.admin ? [who, ` made ${agent} an admin.`] : [who, ` took ${agent}'s admin away.`];
-    case "setupAsked":
-      return [who, ` asked to change the setup: ${change.preview.join(" ")}`];
-    case "setupApproved":
-      return [who, ` approved a setup change ${agent} asked for.`];
-    case "setupRejected":
-      return [who, ` rejected a setup change ${agent} asked for: “${change.note}”`];
-    case "setupWithdrawn":
-      return ["Duva", ` withdrew a setup change ${agent} asked for, since ${agent} is no longer an admin.`];
     case "mailboxAdded":
       return change.mailbox.defaultAddress === undefined ? [who, ` added a mailbox.`] : [who, ` added a mailbox at ${change.mailbox.defaultAddress}.`];
     case "addressAdded":
@@ -1701,6 +1612,7 @@ function entrySaid(change: ActivityChange, who: string, agent: string, message?:
       return [who, ` added ${change.added.kind === "agent" ? `the agent ${change.added.name}` : change.added.email}.`];
     case "actorRemoved":
       return [who, ` removed ${change.removed.kind === "agent" ? `the agent ${change.removed.name}` : change.removed.email}.`];
+    // Kinds Duva no longer records, such as an agent admin's setup changes, still read from old feeds.
     default:
       return [who, ` changed the organization's setup.`];
   }

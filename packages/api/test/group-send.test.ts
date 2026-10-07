@@ -6,27 +6,30 @@ type Client = ReturnType<Awaited<ReturnType<typeof startDuva>>["signIn"]>;
 type Params = { path: { mailbox: string } };
 
 /**
- * A deployment on example.com where ada, the first admin, sponsors the agent Hermes, which owns a
- * mailbox at hermes@example.com. Grace is a human with a mailbox at grace@example.com, and ada has
- * one at ada@example.com. The group team@example.com has Grace, Hermes and the external
- * linus@example.net as members, and ada isn't one.
+ * A deployment on example.com where ada, the first admin, has a mailbox at ada@example.com. Grace
+ * is a human with a mailbox at grace@example.com, and Joan one with a mailbox at joan@example.com,
+ * who sponsors the agent Hermes and gives it send sponsor access there. The group team@example.com
+ * has Grace, Joan and the external linus@example.net as members, and ada isn't one.
  */
 async function withTeam(options: DuvaOptions = {}) {
-  const duva = await startDuva({ domain: "example.com", admin: "ada@example.org", humans: ["grace@example.org"], ...options });
+  const duva = await startDuva({ domain: "example.com", admin: "ada@example.org", humans: ["grace@example.org", "joan@example.org"], ...options });
   const ada = duva.signIn("ada@example.org");
   const grace = duva.signIn("grace@example.org");
-  const { data: created } = await ada.POST("/agents", { body: { name: "Hermes" } });
-  const { data: hermesMailbox } = await ada.POST("/mailboxes", { body: { owner: created!.agent.id, address: "hermes@example.com" } });
+  const joan = duva.signIn("joan@example.org");
   const { data: me } = await grace.GET("/whoami");
-  const { data: sponsor } = await ada.GET("/whoami");
+  const { data: sponsor } = await joan.GET("/whoami");
+  const { data: admin } = await ada.GET("/whoami");
   const { data: gracesMailbox } = await ada.POST("/mailboxes", { body: { owner: me!.id, address: "grace@example.com" } });
-  const { data: adasMailbox } = await ada.POST("/mailboxes", { body: { owner: sponsor!.id, address: "ada@example.com" } });
-  await ada.POST("/groups", { body: { address: "team@example.com", members: ["grace@example.com", "hermes@example.com", "linus@example.net"] } });
+  const { data: joansMailbox } = await ada.POST("/mailboxes", { body: { owner: sponsor!.id, address: "joan@example.com" } });
+  const { data: adasMailbox } = await ada.POST("/mailboxes", { body: { owner: admin!.id, address: "ada@example.com" } });
+  const { data: created } = await joan.POST("/agents", { body: { name: "Hermes" } });
+  await joan.PATCH("/agents/{agent}/settings", { params: { path: { agent: created!.agent.id } }, body: { sponsorAccess: "send" } });
+  await ada.POST("/groups", { body: { address: "team@example.com", members: ["grace@example.com", "joan@example.com", "linus@example.net"] } });
   const hermes = duva.withKey(created!.key);
-  const hermess = { path: { mailbox: hermesMailbox!.id } };
+  const joans = { path: { mailbox: joansMailbox!.id } };
   const graces = { path: { mailbox: gracesMailbox!.id } };
   const adas = { path: { mailbox: adasMailbox!.id } };
-  return { duva, ada, grace, hermes, hermess, graces, adas, graceId: me!.id, agentId: created!.agent.id };
+  return { duva, ada, grace, joan, hermes, joans, graces, adas, graceId: me!.id, agentId: created!.agent.id };
 }
 
 /** A customer's question to the team, received, and the copy of it in Grace's mailbox. */
@@ -86,7 +89,7 @@ test("a reply to group mail goes from the member's own address unless they choos
 });
 
 test("a member's reply as the group goes out from the group, and each other local member gets a copy in the thread naming the sender", async () => {
-  const { grace, hermes, graces, hermess, graceId, question, sentAfter, sentToAfter } = await withQuestion();
+  const { grace, joan, graces, joans, graceId, question, sentAfter, sentToAfter } = await withQuestion();
 
   const { sent } = await draftAndSend(grace, graces, { answers: question.id, from: "team@example.com", text: "We'll fix it today." });
 
@@ -98,7 +101,7 @@ test("a member's reply as the group goes out from the group, and each other loca
   expect(mail.inReplyTo).toBe("<question@example.net>");
   // External members get no copy of what a member sends as the group.
   expect(sentToAfter()).toEqual([["customer@example.net"]]);
-  const copies = await messagesIn(hermes, hermess);
+  const copies = await messagesIn(joan, joans);
   expect(copies).toHaveLength(2);
   expect(copies[1]).toMatchObject({
     messageId: mail.messageId,
@@ -116,7 +119,7 @@ test("a member's reply as the group goes out from the group, and each other loca
 });
 
 test("the customer's answer to a reply sent as the group joins each member's thread", async () => {
-  const { duva, grace, hermes, graces, hermess, question, sentAfter } = await withQuestion();
+  const { duva, grace, joan, graces, joans, question, sentAfter } = await withQuestion();
   await draftAndSend(grace, graces, { answers: question.id, from: "team@example.com", text: "We'll fix it today." });
   const { messageId } = await parse(sentAfter()[0]!);
 
@@ -125,96 +128,96 @@ test("the customer's answer to a reply sent as the group joins each member's thr
     { to: ["team@example.com"] },
   );
 
-  for (const [client, params] of [[grace, graces], [hermes, hermess]] as const) {
+  for (const [client, params] of [[grace, graces], [joan, joans]] as const) {
     expect((await messagesIn(client, params)).map(({ text }) => text.trim())).toEqual(["My invoice is wrong.", "We'll fix it today.", "Thanks!"]);
   }
 });
 
 test("a member the message also goes to directly gets it once, as SES delivers it", async () => {
-  const { duva, grace, hermes, graces, hermess, question, sentAfter } = await withQuestion();
+  const { duva, grace, joan, graces, joans, question, sentAfter } = await withQuestion();
 
-  await draftAndSend(grace, graces, { answers: question.id, from: "team@example.com", cc: ["hermes@example.com"], text: "We'll fix it today." });
-  await duva.receive(sentAfter()[0]!, { from: "bounces@mail.example.com", to: ["hermes@example.com"] });
+  await draftAndSend(grace, graces, { answers: question.id, from: "team@example.com", cc: ["joan@example.com"], text: "We'll fix it today." });
+  await duva.receive(sentAfter()[0]!, { from: "bounces@mail.example.com", to: ["joan@example.com"] });
 
-  const messages = await messagesIn(hermes, hermess);
+  const messages = await messagesIn(joan, joans);
   expect(messages.map(({ text }) => text.trim())).toEqual(["My invoice is wrong.", "We'll fix it today."]);
   expect(messages[1]).not.toHaveProperty("sentAs");
 });
 
 test("a reply to another member's copy goes to its recipients, and a reply to all leaves the group out", async () => {
-  const { grace, hermes, graces, hermess, question } = await withQuestion();
+  const { grace, joan, graces, joans, question } = await withQuestion();
   await draftAndSend(grace, graces, { answers: question.id, from: "team@example.com", text: "We'll fix it today." });
-  const [, copy] = await messagesIn(hermes, hermess);
-  const [received] = await messagesIn(hermes, hermess);
+  const [, copy] = await messagesIn(joan, joans);
+  const [received] = await messagesIn(joan, joans);
 
-  const { data: reply } = await hermes.POST("/mailboxes/{mailbox}/drafts", { params: hermess, body: { answers: copy!.id } });
-  const { data: all } = await hermes.POST("/mailboxes/{mailbox}/drafts", { params: hermess, body: { answers: received!.id, replyAll: true, from: "team@example.com" } });
+  const { data: reply } = await joan.POST("/mailboxes/{mailbox}/drafts", { params: joans, body: { answers: copy!.id } });
+  const { data: all } = await joan.POST("/mailboxes/{mailbox}/drafts", { params: joans, body: { answers: received!.id, replyAll: true, from: "team@example.com" } });
 
-  expect(reply).toMatchObject({ from: "hermes@example.com", to: [{ name: "Customer", address: "customer@example.net" }], cc: [] });
+  expect(reply).toMatchObject({ from: "joan@example.com", to: [{ name: "Customer", address: "customer@example.net" }], cc: [] });
   expect(all).toMatchObject({ from: "team@example.com", to: [{ name: "Customer", address: "customer@example.net" }], cc: [] });
 });
 
 test("a new message sent as the group starts a thread in each other member's All mail, out of their Inbox", async () => {
-  const { grace, hermes, graces, hermess } = await withTeam();
+  const { grace, joan, graces, joans } = await withTeam();
 
   await draftAndSend(grace, graces, { from: "team@example.com", to: ["customer@example.net"], subject: "Planned outage", text: "On Sunday." });
 
-  expect(await messagesIn(hermes, hermess)).toEqual([]);
-  expect((await messagesIn(hermes, hermess, "all")).map(({ subject, sentAs }) => ({ subject, group: sentAs?.group }))).toEqual([
+  expect(await messagesIn(joan, joans)).toEqual([]);
+  expect((await messagesIn(joan, joans, "all")).map(({ subject, sentAs }) => ({ subject, group: sentAs?.group }))).toEqual([
     { subject: "Planned outage", group: "team@example.com" },
   ]);
 });
 
 test("an agent that is a member sends as the group with its sponsor's approval, and with the disclosure", async () => {
-  const { ada, grace, hermes, graces, hermess, agentId, sentAfter } = await withQuestion();
-  const [question] = await messagesIn(hermes, hermess);
+  const { joan, grace, hermes, graces, joans, agentId, sentAfter } = await withQuestion();
+  const [question] = await messagesIn(hermes, joans);
 
-  const { sent } = await draftAndSend(hermes, hermess, { answers: question!.id, from: "team@example.com", text: "Looking into it." });
+  const { sent } = await draftAndSend(hermes, joans, { answers: question!.id, from: "team@example.com", text: "Looking into it." });
 
   expect(sent.data?.send?.state).toBe("waiting");
   expect(sentAfter()).toEqual([]);
-  await ada.POST("/approvals/{approval}/send", { params: { path: { approval: sent.data!.send!.approval! } } });
+  await joan.POST("/approvals/{approval}/send", { params: { path: { approval: sent.data!.send!.approval! } } });
   const mail = await parse(sentAfter()[0]!);
-  expect(mail.from).toEqual({ name: "Hermes", address: "team@example.com" });
-  expect(mail.headers.find(({ key }) => key === "duva-agent")?.value).toBe("Hermes for ada@example.org");
-  expect(mail.text).toBe("Looking into it.\n\nSent by Hermes for ada@example.org\n");
+  expect(mail.from).toEqual({ name: "", address: "team@example.com" });
+  expect(mail.headers.find(({ key }) => key === "duva-agent")?.value).toBe("Hermes for joan@example.org");
+  expect(mail.text).toBe("Looking into it.\n\nSent by Hermes for joan@example.org\n");
   const copies = await messagesIn(grace, graces);
-  expect(copies[1]).toMatchObject({ from: { name: "Hermes", address: "team@example.com" }, sentAs: { group: "team@example.com", by: agentId, name: "Hermes" } });
+  expect(copies[1]).toMatchObject({ from: { address: "team@example.com" }, sentAs: { group: "team@example.com", by: agentId, name: "Hermes" } });
 });
 
 test("a paused agent's send as the group is held, with no copies, until it is unpaused", async () => {
-  const { duva, ada, grace, hermes, graces, hermess, agentId, sentAfter } = await withQuestion({ sendsHeld: true });
+  const { duva, joan, grace, hermes, graces, joans, agentId, sentAfter } = await withQuestion({ sendsHeld: true });
   await duva.releaseSends();
-  const [question] = await messagesIn(hermes, hermess);
-  const { sent } = await draftAndSend(hermes, hermess, { answers: question!.id, from: "team@example.com", text: "Looking into it." });
-  await ada.POST("/approvals/{approval}/send", { params: { path: { approval: sent.data!.send!.approval! } } });
+  const [question] = await messagesIn(hermes, joans);
+  const { sent } = await draftAndSend(hermes, joans, { answers: question!.id, from: "team@example.com", text: "Looking into it." });
+  await joan.POST("/approvals/{approval}/send", { params: { path: { approval: sent.data!.send!.approval! } } });
   const agent = { params: { path: { agent: agentId } } };
-  await ada.POST("/agents/{agent}/pause", agent);
+  await joan.POST("/agents/{agent}/pause", agent);
 
   await duva.releaseSends();
   expect(sentAfter()).toEqual([]);
   expect(await messagesIn(grace, graces)).toHaveLength(1);
 
-  await ada.POST("/agents/{agent}/unpause", agent);
+  await joan.POST("/agents/{agent}/unpause", agent);
   await duva.releaseSends();
   expect((await parse(sentAfter()[0]!)).from?.address).toBe("team@example.com");
   expect((await messagesIn(grace, graces))[1]).toMatchObject({ sentAs: { group: "team@example.com", by: agentId, name: "Hermes" } });
 });
 
 test("an agent's send as the group counts toward its send limits, waits over them with no copies, and its sponsor sends it now", async () => {
-  const { ada, grace, hermes, graces, hermess, agentId, sentAfter } = await withQuestion();
-  await ada.PATCH("/agents/{agent}/settings", { params: { path: { agent: agentId } }, body: { sendsPerHour: 1 } });
-  const approve = (draft: { send?: { approval?: string } }) => ada.POST("/approvals/{approval}/send", { params: { path: { approval: draft.send!.approval! } } });
-  const [question] = await messagesIn(hermes, hermess);
-  await approve((await draftAndSend(hermes, hermess, { to: ["ken@example.net"], subject: "Hello", text: "Hej." })).sent.data!);
+  const { joan, grace, hermes, graces, joans, agentId, sentAfter } = await withQuestion();
+  await joan.PATCH("/agents/{agent}/settings", { params: { path: { agent: agentId } }, body: { sendsPerHour: 1 } });
+  const approve = (draft: { send?: { approval?: string } }) => joan.POST("/approvals/{approval}/send", { params: { path: { approval: draft.send!.approval! } } });
+  const [question] = await messagesIn(hermes, joans);
+  await approve((await draftAndSend(hermes, joans, { to: ["ken@example.net"], subject: "Hello", text: "Hej." })).sent.data!);
 
-  const { draft, sent } = await draftAndSend(hermes, hermess, { answers: question!.id, from: "team@example.com", text: "Looking into it." });
+  const { draft, sent } = await draftAndSend(hermes, joans, { answers: question!.id, from: "team@example.com", text: "Looking into it." });
   await approve(sent.data!);
 
-  expect((await hermes.GET("/mailboxes/{mailbox}/drafts/{draft}", { params: { path: { ...hermess.path, draft: draft.id } } })).data?.send?.state).toBe("waitingForLimit");
+  expect((await hermes.GET("/mailboxes/{mailbox}/drafts/{draft}", { params: { path: { ...joans.path, draft: draft.id } } })).data?.send?.state).toBe("waitingForLimit");
   expect(sentAfter()).toHaveLength(1);
   expect(await messagesIn(grace, graces)).toHaveLength(1);
-  await ada.POST("/mailboxes/{mailbox}/drafts/{draft}/send-now", { params: { path: { ...hermess.path, draft: draft.id } } });
+  await joan.POST("/mailboxes/{mailbox}/drafts/{draft}/send-now", { params: { path: { ...joans.path, draft: draft.id } } });
   expect((await parse(sentAfter()[1]!)).from?.address).toBe("team@example.com");
   expect((await messagesIn(grace, graces))[1]).toMatchObject({ sentAs: { group: "team@example.com", by: agentId, name: "Hermes" } });
 });
@@ -240,7 +243,7 @@ test("a draft from the group goes out only while its owner is still a member", a
   const { draft } = await draftAndSend(grace, graces, { answers: question.id, from: "team@example.com", text: "Fixed." });
   const { data: later } = await grace.POST("/mailboxes/{mailbox}/drafts", { params: graces, body: { answers: question.id, from: "team@example.com", text: "Fixed again." } });
 
-  await ada.PATCH("/groups/{group}", { params: { path: { group: "team@example.com" } }, body: { members: ["hermes@example.com"] } });
+  await ada.PATCH("/groups/{group}", { params: { path: { group: "team@example.com" } }, body: { members: ["joan@example.com"] } });
   await duva.releaseSends();
   const refused = await grace.POST("/mailboxes/{mailbox}/drafts/{draft}/send", { params: { path: { ...graces.path, draft: later!.id } } });
 
@@ -251,16 +254,16 @@ test("a draft from the group goes out only while its owner is still a member", a
 });
 
 test("each member gets one copy, however often Lambda runs the sender", async () => {
-  const { grace, hermes, graces, hermess, question } = await withQuestion({ senderInvocations: 2 });
+  const { grace, joan, graces, joans, question } = await withQuestion({ senderInvocations: 2 });
 
   await draftAndSend(grace, graces, { answers: question.id, from: "team@example.com", text: "We'll fix it today." });
 
-  expect(await messagesIn(hermes, hermess)).toHaveLength(2);
+  expect(await messagesIn(joan, joans)).toHaveLength(2);
 });
 
 test("a member erasing their copy leaves the sent message and the other copies", async () => {
-  const { duva, ada, grace, hermes, graces, hermess, adas, question } = await withQuestion();
-  await ada.PATCH("/groups/{group}", { params: { path: { group: "team@example.com" } }, body: { members: ["grace@example.com", "hermes@example.com", "ada@example.com"] } });
+  const { duva, ada, grace, joan, graces, joans, adas, question } = await withQuestion();
+  await ada.PATCH("/groups/{group}", { params: { path: { group: "team@example.com" } }, body: { members: ["grace@example.com", "joan@example.com", "ada@example.com"] } });
   await draftAndSend(grace, graces, { answers: question.id, from: "team@example.com", text: "We'll fix it today." });
   const stored = duva.stored().filter((raw) => raw.includes("We'll fix it today."));
   const [thread] = (await ada.GET("/mailboxes/{mailbox}/all-mail", { params: adas })).data!.threads;
@@ -271,5 +274,5 @@ test("a member erasing their copy leaves the sent message and the other copies",
   expect(stored).toHaveLength(3);
   expect(duva.stored().filter((raw) => raw.includes("We'll fix it today."))).toHaveLength(2);
   expect((await messagesIn(grace, graces)).map(({ text }) => text.trim())).toContain("We'll fix it today.");
-  expect((await messagesIn(hermes, hermess)).map(({ text }) => text.trim())).toContain("We'll fix it today.");
+  expect((await messagesIn(joan, joans)).map(({ text }) => text.trim())).toContain("We'll fix it today.");
 });

@@ -291,9 +291,9 @@ test("a sponsor reaches Approvals from the bar, which says how many wait", budge
   // Mail from first-time senders would wait in the Screener, which these tests leave out.
   await duva.signIn("ada@example.org").PATCH("/mailboxes/{mailbox}/screener", { params: { path: { mailbox: adaMailbox!.id } }, body: { on: false } });
   const { data: created } = await ada.POST("/agents", { body: { name: "Hermes" } });
-  const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: created!.agent.id, address: "hermes@example.com" } });
+  await ada.PATCH("/agents/{agent}/settings", { params: { path: { agent: created!.agent.id } }, body: { sponsorAccess: "send" } });
   const hermes = duva.withKey(created!.key);
-  const params = { path: { mailbox: mailbox!.id } };
+  const params = { path: { mailbox: adaMailbox!.id } };
   const { data: draft } = await hermes.POST("/mailboxes/{mailbox}/drafts", { params, body: { to: ["grace@example.org"], subject: "Hej", text: "Hej Grace." } });
   await hermes.POST("/mailboxes/{mailbox}/drafts/{draft}/send", { params: { path: { ...params.path, draft: draft!.id } } });
 

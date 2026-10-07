@@ -94,11 +94,10 @@ function warm(client: DuvaClient, mailbox: string) {
 }
 
 /**
- * The bar's search box, for the mailbox whose Inbox is at `base`, the human's own or, with the
- * agent's name, an agent's they sponsor. `current` is the search open now, or the one the thread
+ * The bar's search box, for the human's mailbox whose Inbox is at `base`. `current` is the search open now, or the one the thread
  * shown was opened from, which the box shows. `labels` are the mailbox's, for the filter menu.
  */
-export function SearchBox({ client, mailbox, base, agent, labels, current }: { client: DuvaClient; mailbox: Mailbox; base: string; agent?: string; labels: Label[]; current?: SearchView["search"] }) {
+export function SearchBox({ client, mailbox, base, labels, current }: { client: DuvaClient; mailbox: Mailbox; base: string; labels: Label[]; current?: SearchView["search"] }) {
   const [value, setValue] = useState(current?.q ?? "");
   // The filters chosen in the menu while it is open.
   const [chosen, setChosen] = useState<Filters>();
@@ -160,8 +159,8 @@ export function SearchBox({ client, mailbox, base, agent, labels, current }: { c
         <input
           ref={box}
           type="search"
-          aria-label={strings.search.box(agent)}
-          placeholder={strings.search.box(agent)}
+          aria-label={strings.search.box}
+          placeholder={strings.search.box}
           value={value}
           autoComplete="off"
           enterKeyHint="search"
@@ -261,8 +260,7 @@ type Finding =
   | { status: "found"; results: SearchResult[]; next?: string };
 
 /**
- * A search's results in the mailbox whose Inbox is at `base`, the human's own or, with the agent's
- * name, an agent's they sponsor. Duva's words show when it refuses the search, as for a filter it
+ * A search's results in the human's mailbox whose Inbox is at `base`. Duva's words show when it refuses the search, as for a filter it
  * doesn't know. The human picks results to organize them as a list's threads, and `done` is what
  * they last did, said with a way to undo it, which `onDone` hears.
  */

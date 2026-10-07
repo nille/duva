@@ -29,7 +29,7 @@ export const mailboxAgentSettings = (mailbox: string): AgentSettings => ({ ...de
 // Which agent is a mailbox's mailbox agent, in the mailbox's partition.
 const pointerKey = (mailbox: string) => ({ [pk]: mailboxKey(mailbox)[pk]!, [sk]: "mailboxAgent" });
 
-/** The mailbox's mailbox agent, or undefined if it has none, as an agent's mailbox doesn't. */
+/** The mailbox's mailbox agent, or undefined if it has none, as before the setup that gives it one. */
 export async function mailboxAgentOf(table: Table, mailbox: string): Promise<Agent | undefined> {
   const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: pointerKey(mailbox), ConsistentRead: true }));
   if (Item === undefined) return undefined;

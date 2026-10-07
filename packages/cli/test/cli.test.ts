@@ -307,11 +307,11 @@ test("a human creates an agent, and the agent calls Duva with its key from the e
 
   expect(created.exitCode).toBe(0);
   expect(JSON.parse(created.stdout)).toEqual({
-    agent: { id: expect.any(String), kind: "agent", name: "Hermes", sponsor: ada.id, admin: false },
+    agent: { id: expect.any(String), kind: "agent", name: "Hermes", sponsor: ada.id },
     key: expect.stringMatching(/^duva_agent_/),
   });
   expect(whoami.exitCode).toBe(0);
-  expect(JSON.parse(whoami.stdout)).toEqual({ id: agent.id, kind: "agent", name: "Hermes", sponsor: ada.id, admin: false });
+  expect(JSON.parse(whoami.stdout)).toEqual({ id: agent.id, kind: "agent", name: "Hermes", sponsor: ada.id });
 });
 
 test("the sponsor rotates an agent's key, and the agent's old key is refused", async () => {
@@ -366,7 +366,7 @@ test("the sponsor reads their agent's daily summaries and a day's timeline from 
   const timeline = await machine.duva("agents", "timeline", "--agent", agent.id, "--day", today, "--timeZone", "UTC");
 
   expect(summaries.exitCode).toBe(0);
-  expect(JSON.parse(summaries.stdout)).toEqual({ timeZone: "UTC", days: [{ day: today, sent: 0, approved: 0, rejected: 0, received: 0, organized: 0, screened: 0, alerts: 0 }] });
+  expect(JSON.parse(summaries.stdout)).toEqual({ timeZone: "UTC", days: [{ day: today, sent: 0, approved: 0, rejected: 0, organized: 0, screened: 0, alerts: 0 }] });
   expect(timeline.exitCode).toBe(0);
   expect((JSON.parse(timeline.stdout) as { entries: { change: { type: string } }[] }).entries.map(({ change }) => change.type)).toEqual(["agentPaused", "actorAdded"]);
 });
@@ -392,15 +392,8 @@ test("the sponsor lists their agents' alerts with the unseen count, and marks on
 
 test("the sponsor limits an agent to one send an hour, and sends its second message now from the CLI", async () => {
   const machine = await newMachine();
-  const duva = await startDuva({ domain: "example.com", admin: "ada@example.org" });
-  const server = await duva.listen();
-  onTestFinished(() => server.close());
-  await machine.saveDeployment(server);
-  await machine.duva("login", { browserSignsIn: "ada@example.org" });
-  const { agent, key } = JSON.parse((await machine.duva("agents", "create", "--name", "Hermes")).stdout) as { agent: { id: string }; key: string };
-  const mailbox = JSON.parse((await machine.duva("mailboxes", "create", "--owner", agent.id, "--address", "hermes@example.com")).stdout) as { id: string };
-  const limited = await machine.duva("agents", "change-settings", "--agent", agent.id, "--sendsPerHour", "1", "--no-approvalForOwnMailbox");
-  const asAgent = { env: { DUVA_AGENT_KEY: key } };
+  const { duva, agent, mailbox, asAgent } = await agentInSponsorsMailbox(machine, "send");
+  const limited = await machine.duva("agents", "change-settings", "--agent", agent.id, "--sendsPerHour", "1", "--no-approvalAsSponsor");
   const send = async (to: string) => {
     const draft = JSON.parse((await machine.duva("drafts", "create", "--mailbox", mailbox.id, "--to", to, "--subject", "Hello", "--text", "Hej.", asAgent)).stdout) as { id: string };
     await machine.duva("drafts", "send", "--mailbox", mailbox.id, "--draft", draft.id, asAgent);
@@ -412,39 +405,11 @@ test("the sponsor limits an agent to one send an hour, and sends its second mess
   const waiting = await machine.duva("drafts", "get", "--mailbox", mailbox.id, "--draft", second);
   const now = await machine.duva("drafts", "send-now", "--mailbox", mailbox.id, "--draft", second);
 
-  expect(JSON.parse(limited.stdout)).toMatchObject({ sendsPerHour: 1, approvalForOwnMailbox: false });
+  expect(JSON.parse(limited.stdout)).toMatchObject({ sendsPerHour: 1, approvalAsSponsor: false });
   expect(JSON.parse(waiting.stdout)).toMatchObject({ send: { state: "waitingForLimit" } });
   expect(now.exitCode).toBe(0);
   expect(JSON.parse(now.stdout)).toMatchObject({ id: second, send: { state: "approved" } });
   expect(duva.sentTo()).toEqual([["grace@example.org"], ["linus@example.org"]]);
-});
-
-test("an admin makes their agent an admin, which asks to add an address, and the admin approves it from the CLI", async () => {
-  const machine = await newMachine();
-  const server = await (await startDuva({ domain: "example.com", admin: "ada@example.com", humans: ["grace@example.com"] })).listen();
-  onTestFinished(() => server.close());
-  await machine.saveDeployment(server);
-  await machine.duva("login", { browserSignsIn: "ada@example.com" });
-  const { agent, key } = JSON.parse((await machine.duva("agents", "create", "--name", "Hermes")).stdout) as { agent: { id: string }; key: string };
-  const mailbox = JSON.parse((await machine.duva("mailboxes", "create", "--owner", agent.id, "--address", "hermes@example.com")).stdout) as { id: string };
-  const asAgent = { env: { DUVA_AGENT_KEY: key } };
-
-  const made = await machine.duva("agents", "change", "--agent", agent.id, "--admin");
-  const asked = await machine.duva("addresses", "add", "--address", "sales@example.com", "--mailbox", mailbox.id, asAgent);
-  const { id } = JSON.parse(asked.stdout) as { id: string };
-  const approved = await machine.duva("setup-approvals", "approve", "--approval", id);
-  const grace = JSON.parse((await machine.duva("humans", "list")).stdout).humans.find(({ email }: { email: string }) => email === "grace@example.com");
-  const removal = await machine.duva("humans", "remove", "--human", grace.id, asAgent);
-  const unmade = await machine.duva("agents", "change", "--agent", agent.id, "--no-admin");
-
-  expect(JSON.parse(made.stdout)).toEqual({ ...agent, admin: true });
-  expect(asked.exitCode).toBe(0);
-  expect(JSON.parse(asked.stdout)).toMatchObject({ state: "pending", preview: ["Gives Hermes's mailbox at hermes@example.com the address sales@example.com."] });
-  expect(JSON.parse(approved.stdout)).toMatchObject({ state: "approved", result: { status: 201 } });
-  expect(JSON.parse((await machine.duva("addresses", "list")).stdout).addresses.map(({ address }: { address: string }) => address)).toContain("sales@example.com");
-  expect(removal.exitCode).toBe(1);
-  expect(errorIn(removal.stderr)).toMatch(/403.*Agents can't remove humans/);
-  expect(JSON.parse(unmade.stdout)).toEqual(agent);
 });
 
 test("an admin removes a human from the CLI, first with --dryRun, handing their mailbox to another human", async () => {
@@ -572,7 +537,7 @@ test("the sponsor gives an agent read sponsor access and turns a switch off, and
   const mailboxes = await machine.duva("mailboxes", "list", asAgent);
   const threads = await machine.duva("threads", "list", "--mailbox", mailbox.id, asAgent);
 
-  const expected = { sponsorAccess: "read", sponsorMailboxes: null, approvalForOwnMailbox: true, approvalAsSponsor: false, disclosureLineForOwnMailbox: true, disclosureLineAsSponsor: true, sendsPerHour: 100, newRecipientsPerDay: 50, approvalForSetup: true };
+  const expected = { sponsorAccess: "read", sponsorMailboxes: null, approvalAsSponsor: false, disclosureLineAsSponsor: true, sendsPerHour: 100, newRecipientsPerDay: 50 };
   expect(refused.exitCode).toBe(1);
   expect(errorIn(refused.stderr)).toMatch(/403.*Ask them for read access/);
   expect(changed.exitCode).toBe(0);
@@ -625,7 +590,7 @@ test("an agent asks for access with login --agent, the human approves the code i
   expect(link).toBe(`${machine.webUrl}/#/access/${code}`);
   expect(request).toMatchObject({ name: "Hermes", from: { host: expect.any(String) }, wants: "organize" });
   expect(result.exitCode).toBe(0);
-  expect(JSON.parse(result.stdout)).toEqual({ signedIn: { id: expect.any(String), kind: "agent", name: "Hermes", sponsor: adaActor!.id, admin: false } });
+  expect(JSON.parse(result.stdout)).toEqual({ signedIn: { id: expect.any(String), kind: "agent", name: "Hermes", sponsor: adaActor!.id } });
   expect(JSON.parse(mailboxes.stdout)).toEqual({ mailboxes: [{ ...mailbox, groups: [], sponsorAccess: "organize" }] });
 });
 
@@ -675,37 +640,29 @@ test("login takes --name, --mailbox and --wants only with --agent", async () => 
   expect(errorIn(result.stderr)).toMatch(/--agent/);
 });
 
-test("an admin gives an agent a mailbox, and the agent catches up on it, lists its Inbox and reads the mail", async () => {
+test("an agent with read sponsor access catches up on its sponsor's mailbox, lists its Inbox and reads the mail", async () => {
   const machine = await newMachine();
-  const duva = await startDuva({ domain: "example.com", admin: "ada@example.org" });
-  const server = await duva.listen();
-  onTestFinished(() => server.close());
-  await machine.saveDeployment(server);
-  await machine.duva("login", { browserSignsIn: "ada@example.org" });
-  const { agent, key } = JSON.parse((await machine.duva("agents", "create", "--name", "Hermes")).stdout) as { agent: { id: string }; key: string };
+  const { duva, ada, mailbox, asAgent } = await agentInSponsorsMailbox(machine, "read", { screener: false });
+  const { position } = JSON.parse((await machine.duva("mailboxes", "changes", "--mailbox", mailbox.id)).stdout) as { position: number };
 
-  const created = await machine.duva("mailboxes", "create", "--owner", agent.id, "--address", "hermes@example.com");
-  const mailbox = JSON.parse(created.stdout) as { id: string };
   await duva.receive(
-    "From: Grace <grace@example.org>\r\nTo: hermes+cli@example.com\r\nSubject: Hello\r\nDate: Sat, 03 Oct 2026 10:00:00 +0000\r\n\r\nHi Hermes.\r\n",
-    { to: ["hermes+cli@example.com"] },
+    "From: Grace <grace@example.org>\r\nTo: ada+cli@example.com\r\nSubject: Hello\r\nDate: Sat, 03 Oct 2026 10:00:00 +0000\r\n\r\nHi Ada.\r\n",
+    { to: ["ada+cli@example.com"] },
   );
-  const asAgent = { env: { DUVA_AGENT_KEY: key } };
   const mailboxes = await machine.duva("mailboxes", "list", asAgent);
-  const changes = await machine.duva("mailboxes", "changes", "--mailbox", mailbox.id, "--after", "0", asAgent);
+  const changes = await machine.duva("mailboxes", "changes", "--mailbox", mailbox.id, "--after", String(position), asAgent);
   const threads = await machine.duva("threads", "list", "--mailbox", mailbox.id, asAgent);
   const { thread } = (JSON.parse(changes.stdout) as { changes: { thread: string }[] }).changes[0]!;
   const read = await machine.duva("threads", "get", "--mailbox", mailbox.id, "--thread", thread, asAgent);
 
-  expect(created.exitCode).toBe(0);
-  expect(mailbox).toEqual({ id: expect.any(String), kind: "personal", owner: agent.id, defaultAddress: "hermes@example.com", addresses: ["hermes@example.com"] });
-  expect(JSON.parse(mailboxes.stdout)).toEqual({ mailboxes: [{ ...mailbox, groups: [] }] });
-  expect(JSON.parse(changes.stdout)).toEqual({ changes: [{ position: 1, at: expect.any(String), type: "messageReceived", thread, message: expect.any(String) }], position: 1 });
+  expect(mailbox).toEqual({ id: expect.any(String), kind: "personal", owner: ada, defaultAddress: "ada@example.com", addresses: ["ada@example.com"] });
+  expect(JSON.parse(mailboxes.stdout)).toEqual({ mailboxes: [{ ...mailbox, groups: [], sponsorAccess: "read" }] });
+  expect(JSON.parse(changes.stdout)).toEqual({ changes: [{ position: position + 1, at: expect.any(String), type: "messageReceived", thread, message: expect.any(String) }], position: position + 1 });
   expect(JSON.parse(threads.stdout)).toMatchObject({ threads: [{ id: thread, subject: "Hello", labels: ["inbox"] }] });
   expect(read.exitCode).toBe(0);
   expect(JSON.parse(read.stdout)).toMatchObject({
     id: thread,
-    messages: [{ from: { name: "Grace", address: "grace@example.org" }, recipient: "hermes+cli@example.com", plusTag: "cli", text: "Hi Hermes." }],
+    messages: [{ from: { name: "Grace", address: "grace@example.org" }, recipient: "ada+cli@example.com", plusTag: "cli", text: "Hi Ada." }],
   });
 });
 
@@ -768,18 +725,11 @@ test("a human gives a label a prompt, and a thread given the label shows the mai
   expect(JSON.parse(inbox.stderr).error).toMatch(/answered 400 Bad Request: Inbox can't carry a prompt\. Give the Feed, the Paper Trail or one of the mailbox's own labels one\.$/);
 });
 
-test("an agent searches its mailbox, and a search that can't be read says what to do", async () => {
+test("an agent searches its sponsor's mailbox, and a search that can't be read says what to do", async () => {
   const machine = await newMachine();
-  const duva = await startDuva({ domain: "example.com", admin: "ada@example.org" });
-  const server = await duva.listen();
-  onTestFinished(() => server.close());
-  await machine.saveDeployment(server);
-  await machine.duva("login", { browserSignsIn: "ada@example.org" });
-  const { agent, key } = JSON.parse((await machine.duva("agents", "create", "--name", "Hermes")).stdout) as { agent: { id: string }; key: string };
-  const mailbox = JSON.parse((await machine.duva("mailboxes", "create", "--owner", agent.id, "--address", "hermes@example.com")).stdout) as { id: string };
-  await duva.receive("From: Grace <grace@example.org>\r\nTo: hermes@example.com\r\nSubject: Ferry\r\n\r\nThe ferry leaves at noon.\r\n", { to: ["hermes@example.com"] });
-  await duva.receive("From: Linus <linus@example.org>\r\nTo: hermes@example.com\r\nSubject: Lunch\r\n\r\nLunch at noon?\r\n", { to: ["hermes@example.com"] });
-  const asAgent = { env: { DUVA_AGENT_KEY: key } };
+  const { duva, mailbox, asAgent } = await agentInSponsorsMailbox(machine, "read", { screener: false });
+  await duva.receive("From: Grace <grace@example.org>\r\nTo: ada@example.com\r\nSubject: Ferry\r\n\r\nThe ferry leaves at noon.\r\n", { to: ["ada@example.com"] });
+  await duva.receive("From: Linus <linus@example.org>\r\nTo: ada@example.com\r\nSubject: Lunch\r\n\r\nLunch at noon?\r\n", { to: ["ada@example.com"] });
 
   const found = await machine.duva("search", "--mailbox", mailbox.id, "--q", "noon from:grace", asAgent);
   const refused = await machine.duva("search", "--mailbox", mailbox.id, "--q", "noon size:large", asAgent);
@@ -794,21 +744,15 @@ test("an agent searches its mailbox, and a search that can't be read says what t
 
 test("mailboxes changes leaves spam arrivals out unless it's given --spam", async () => {
   const machine = await newMachine();
-  const duva = await startDuva({ domain: "example.com", admin: "ada@example.org" });
-  const server = await duva.listen();
-  onTestFinished(() => server.close());
-  await machine.saveDeployment(server);
-  await machine.duva("login", { browserSignsIn: "ada@example.org" });
-  const { agent, key } = JSON.parse((await machine.duva("agents", "create", "--name", "Hermes")).stdout) as { agent: { id: string }; key: string };
-  const mailbox = JSON.parse((await machine.duva("mailboxes", "create", "--owner", agent.id, "--address", "hermes@example.com")).stdout) as { id: string };
-  await duva.receive("From: Mallory <mallory@example.net>\r\nTo: hermes@example.com\r\nSubject: Prize\r\n\r\nYou won.\r\n", { to: ["hermes@example.com"] }, { verdicts: { spam: "FAIL" } });
-  const asAgent = { env: { DUVA_AGENT_KEY: key } };
+  const { duva, mailbox, asAgent } = await agentInSponsorsMailbox(machine, "read");
+  const { position } = JSON.parse((await machine.duva("mailboxes", "changes", "--mailbox", mailbox.id)).stdout) as { position: number };
+  await duva.receive("From: Mallory <mallory@example.net>\r\nTo: ada@example.com\r\nSubject: Prize\r\n\r\nYou won.\r\n", { to: ["ada@example.com"] }, { verdicts: { spam: "FAIL" } });
 
-  const without = await machine.duva("mailboxes", "changes", "--mailbox", mailbox.id, asAgent);
-  const withSpam = await machine.duva("mailboxes", "changes", "--mailbox", mailbox.id, "--spam", asAgent);
+  const without = await machine.duva("mailboxes", "changes", "--mailbox", mailbox.id, "--after", String(position), asAgent);
+  const withSpam = await machine.duva("mailboxes", "changes", "--mailbox", mailbox.id, "--after", String(position), "--spam", asAgent);
 
-  expect(JSON.parse(without.stdout)).toEqual({ changes: [], position: 1 });
-  expect(JSON.parse(withSpam.stdout)).toMatchObject({ changes: [{ position: 1, type: "messageReceived", spam: true }], position: 1 });
+  expect(JSON.parse(without.stdout)).toEqual({ changes: [], position: position + 1 });
+  expect(JSON.parse(withSpam.stdout)).toEqual({ changes: [expect.objectContaining({ position: position + 1, type: "messageReceived", spam: true })], position: position + 1 });
 });
 
 test("a human sends a waiting sender's mail to the Inbox from the CLI, and switches the Screener off with --no-on", async () => {
@@ -861,9 +805,9 @@ test("mailboxes create says why an address is refused", async () => {
   onTestFinished(() => server.close());
   await machine.saveDeployment(server);
   await machine.duva("login", { browserSignsIn: "ada@example.org" });
-  const { agent } = JSON.parse((await machine.duva("agents", "create", "--name", "Hermes")).stdout) as { agent: { id: string } };
+  const { id: ada } = JSON.parse((await machine.duva("whoami")).stdout) as { id: string };
 
-  const result = await machine.duva("mailboxes", "create", "--owner", agent.id, "--address", "hermes@example.net");
+  const result = await machine.duva("mailboxes", "create", "--owner", ada, "--address", "ada@example.net");
 
   expect(result.exitCode).toBe(1);
   expect(result.stdout).toBe("");
@@ -915,18 +859,12 @@ test("skill install again replaces the old copy", async () => {
 
 test("the agent drafts a reply and asks to send it, and the sponsor lists it and rejects it with a note", async () => {
   const machine = await newMachine();
-  const duva = await startDuva({ domain: "example.com", admin: "ada@example.org" });
-  const server = await duva.listen();
-  onTestFinished(() => server.close());
-  await machine.saveDeployment(server);
-  await machine.duva("login", { browserSignsIn: "ada@example.org" });
-  const { agent, key } = JSON.parse((await machine.duva("agents", "create", "--name", "Hermes")).stdout) as { agent: { id: string }; key: string };
-  const mailbox = JSON.parse((await machine.duva("mailboxes", "create", "--owner", agent.id, "--address", "hermes@example.com")).stdout) as { id: string };
-  await duva.receive("From: Grace <grace@example.org>\r\nTo: hermes@example.com\r\nSubject: Meeting\r\n\r\nMonday?\r\n", { to: ["hermes@example.com"] });
-  const asAgent = { env: { DUVA_AGENT_KEY: key } };
-  const changes = JSON.parse((await machine.duva("mailboxes", "changes", "--mailbox", mailbox.id, asAgent)).stdout) as { changes: { message: string }[] };
+  const { duva, mailbox, asAgent } = await agentInSponsorsMailbox(machine, "send", { screener: false });
+  await duva.receive("From: Grace <grace@example.org>\r\nTo: ada@example.com\r\nSubject: Meeting\r\n\r\nMonday?\r\n", { to: ["ada@example.com"] });
+  const changes = JSON.parse((await machine.duva("mailboxes", "changes", "--mailbox", mailbox.id, asAgent)).stdout) as { changes: { type: string; message: string }[] };
+  const received = changes.changes.find(({ type }) => type === "messageReceived")!;
 
-  const drafted = await machine.duva("drafts", "create", "--mailbox", mailbox.id, "--answers", changes.changes[0]!.message, "--text", "Monday works.", asAgent);
+  const drafted = await machine.duva("drafts", "create", "--mailbox", mailbox.id, "--answers", received.message, "--text", "Monday works.", asAgent);
   const draft = JSON.parse(drafted.stdout) as { id: string };
   const asked = await machine.duva("drafts", "send", "--mailbox", mailbox.id, "--draft", draft.id, asAgent);
   const listed = await machine.duva("approvals", "list");
@@ -935,7 +873,7 @@ test("the agent drafts a reply and asks to send it, and the sponsor lists it and
   const read = await machine.duva("drafts", "get", "--mailbox", mailbox.id, "--draft", draft.id, asAgent);
 
   expect(drafted.exitCode).toBe(0);
-  expect(draft).toMatchObject({ from: "hermes@example.com", to: [{ name: "Grace", address: "grace@example.org" }], subject: "Re: Meeting", text: "Monday works." });
+  expect(draft).toMatchObject({ from: "ada@example.com", to: [{ name: "Grace", address: "grace@example.org" }], subject: "Re: Meeting", text: "Monday works." });
   expect(JSON.parse(asked.stdout)).toMatchObject({ send: { state: "waiting" } });
   expect(approvals).toMatchObject([{ state: "pending", draft: { id: draft.id, text: "Monday works." }, original: { subject: "Meeting", text: "Monday?" } }]);
   expect(rejected.exitCode).toBe(0);
@@ -944,14 +882,7 @@ test("the agent drafts a reply and asks to send it, and the sponsor lists it and
 
 test("the sponsor sends a pending draft from the CLI, as is or with their own text, and the agent sees it sent", async () => {
   const machine = await newMachine();
-  const duva = await startDuva({ domain: "example.com", admin: "ada@example.org" });
-  const server = await duva.listen();
-  onTestFinished(() => server.close());
-  await machine.saveDeployment(server);
-  await machine.duva("login", { browserSignsIn: "ada@example.org" });
-  const { agent, key } = JSON.parse((await machine.duva("agents", "create", "--name", "Hermes")).stdout) as { agent: { id: string }; key: string };
-  const mailbox = JSON.parse((await machine.duva("mailboxes", "create", "--owner", agent.id, "--address", "hermes@example.com")).stdout) as { id: string };
-  const asAgent = { env: { DUVA_AGENT_KEY: key } };
+  const { duva, mailbox, asAgent } = await agentInSponsorsMailbox(machine, "send");
   const ask = async (text: string) => {
     const draft = JSON.parse((await machine.duva("drafts", "create", "--mailbox", mailbox.id, "--to", "grace@example.org", "--subject", "Hello", "--text", text, asAgent)).stdout) as { id: string };
     const asked = JSON.parse((await machine.duva("drafts", "send", "--mailbox", mailbox.id, "--draft", draft.id, asAgent)).stdout) as { send: { approval: string } };
@@ -973,14 +904,7 @@ test("the sponsor sends a pending draft from the CLI, as is or with their own te
 
 test("the sponsor undoes an approved send from the CLI during the undo window, and reads each decision in the approval log", async () => {
   const machine = await newMachine();
-  const duva = await startDuva({ domain: "example.com", admin: "ada@example.org", undoWindow: null });
-  const server = await duva.listen();
-  onTestFinished(() => server.close());
-  await machine.saveDeployment(server);
-  await machine.duva("login", { browserSignsIn: "ada@example.org" });
-  const { agent, key } = JSON.parse((await machine.duva("agents", "create", "--name", "Hermes")).stdout) as { agent: { id: string }; key: string };
-  const mailbox = JSON.parse((await machine.duva("mailboxes", "create", "--owner", agent.id, "--address", "hermes@example.com")).stdout) as { id: string };
-  const asAgent = { env: { DUVA_AGENT_KEY: key } };
+  const { duva, mailbox, asAgent } = await agentInSponsorsMailbox(machine, "send", { undoWindow: null });
   const draft = JSON.parse((await machine.duva("drafts", "create", "--mailbox", mailbox.id, "--to", "grace@example.org", "--subject", "Hello", "--text", "Hej.", asAgent)).stdout) as { id: string };
   const { send } = JSON.parse((await machine.duva("drafts", "send", "--mailbox", mailbox.id, "--draft", draft.id, asAgent)).stdout) as { send: { approval: string } };
 
@@ -1001,14 +925,7 @@ test("the sponsor undoes an approved send from the CLI during the undo window, a
 
 test("an admin sets the undo window from the CLI, and a sponsor sends a rejected draft after all", async () => {
   const machine = await newMachine();
-  const duva = await startDuva({ domain: "example.com", admin: "ada@example.org", undoWindow: null });
-  const server = await duva.listen();
-  onTestFinished(() => server.close());
-  await machine.saveDeployment(server);
-  await machine.duva("login", { browserSignsIn: "ada@example.org" });
-  const { agent, key } = JSON.parse((await machine.duva("agents", "create", "--name", "Hermes")).stdout) as { agent: { id: string }; key: string };
-  const mailbox = JSON.parse((await machine.duva("mailboxes", "create", "--owner", agent.id, "--address", "hermes@example.com")).stdout) as { id: string };
-  const asAgent = { env: { DUVA_AGENT_KEY: key } };
+  const { duva, mailbox, asAgent } = await agentInSponsorsMailbox(machine, "send", { undoWindow: null });
   const draft = JSON.parse((await machine.duva("drafts", "create", "--mailbox", mailbox.id, "--to", "grace@example.org", "--subject", "Hello", "--text", "Hej.", asAgent)).stdout) as { id: string };
   const { send } = JSON.parse((await machine.duva("drafts", "send", "--mailbox", mailbox.id, "--draft", draft.id, asAgent)).stdout) as { send: { approval: string } };
 
@@ -1025,27 +942,20 @@ test("an admin sets the undo window from the CLI, and a sponsor sends a rejected
 
 test("drafts create takes a new message's recipients as --to, once for each", async () => {
   const machine = await newMachine();
-  const duva = await startDuva({ domain: "example.com", admin: "ada@example.org" });
-  const server = await duva.listen();
-  onTestFinished(() => server.close());
-  await machine.saveDeployment(server);
-  await machine.duva("login", { browserSignsIn: "ada@example.org" });
-  const { agent, key } = JSON.parse((await machine.duva("agents", "create", "--name", "Hermes")).stdout) as { agent: { id: string }; key: string };
-  const mailbox = JSON.parse((await machine.duva("mailboxes", "create", "--owner", agent.id, "--address", "hermes@example.com")).stdout) as { id: string };
+  const { mailbox, asAgent } = await agentInSponsorsMailbox(machine, "draft");
 
   const result = await machine.duva(
-    "drafts", "create", "--mailbox", mailbox.id, "--to", "grace@example.org", "--to", "ada@example.org", "--subject", "Hello", "--text", "Hej.",
-    { env: { DUVA_AGENT_KEY: key } },
+    "drafts", "create", "--mailbox", mailbox.id, "--to", "grace@example.org", "--to", "linus@example.org", "--subject", "Hello", "--text", "Hej.", asAgent,
   );
 
   expect(result.exitCode).toBe(0);
-  expect(JSON.parse(result.stdout)).toMatchObject({ from: "hermes@example.com", to: [{ address: "grace@example.org" }, { address: "ada@example.org" }] });
+  expect(JSON.parse(result.stdout)).toMatchObject({ from: "ada@example.com", to: [{ address: "grace@example.org" }, { address: "linus@example.org" }] });
 });
 
-/** A message to Hermes with one attachment, whose name is in Swedish. */
+/** A message to Ada with one attachment, whose name is in Swedish. */
 const withAttachment = [
   "From: Grace <grace@example.org>",
-  "To: hermes@example.com",
+  "To: ada@example.com",
   "Subject: Rapporten",
   "MIME-Version: 1.0",
   'Content-Type: multipart/mixed; boundary="part"',
@@ -1063,19 +973,12 @@ const withAttachment = [
   "--part--",
 ].join("\r\n");
 
-/** A deployment where the agent Hermes, which Ada sponsors, got a message with an attachment. */
+/** A deployment where Ada got a message with an attachment, and her agent Hermes can read her mailbox. */
 async function withAgentAttachment(machine: Awaited<ReturnType<typeof newMachine>>) {
-  const duva = await startDuva({ domain: "example.com", admin: "ada@example.org" });
-  const server = await duva.listen();
-  onTestFinished(() => server.close());
-  await machine.saveDeployment(server);
-  await machine.duva("login", { browserSignsIn: "ada@example.org" });
-  const { agent, key } = JSON.parse((await machine.duva("agents", "create", "--name", "Hermes")).stdout) as { agent: { id: string }; key: string };
-  const mailbox = JSON.parse((await machine.duva("mailboxes", "create", "--owner", agent.id, "--address", "hermes@example.com")).stdout) as { id: string };
-  await duva.receive(withAttachment, { to: ["hermes@example.com"] });
-  const asAgent = { env: { DUVA_AGENT_KEY: key } };
-  const changes = JSON.parse((await machine.duva("mailboxes", "changes", "--mailbox", mailbox.id, asAgent)).stdout) as { changes: { message: string }[] };
-  return { mailbox: mailbox.id, message: changes.changes[0]!.message, asAgent };
+  const { duva, mailbox, asAgent } = await agentInSponsorsMailbox(machine, "read", { screener: false });
+  await duva.receive(withAttachment, { to: ["ada@example.com"] });
+  const changes = JSON.parse((await machine.duva("mailboxes", "changes", "--mailbox", mailbox.id, asAgent)).stdout) as { changes: { type: string; message: string }[] };
+  return { mailbox: mailbox.id, message: changes.changes.find(({ type }) => type === "messageReceived")!.message, asAgent };
 }
 
 test("attachments download saves an attachment in the working directory under its name, and says where it wrote it", async () => {
@@ -1113,6 +1016,25 @@ test("approvals reject asks for the note when it's missing", async () => {
   expect(result.exitCode).toBe(1);
   expect(errorIn(result.stderr)).toMatch(/--note/);
 });
+
+/**
+ * A deployment where Ada, signed in on the machine, owns the mailbox ada@example.com, and gives her
+ * agent Hermes the sponsor access asked for. With screener: false, she has switched the mailbox's
+ * Screener off, so mail from first-time senders goes to the Inbox.
+ */
+async function agentInSponsorsMailbox(machine: Awaited<ReturnType<typeof newMachine>>, sponsorAccess: string, { screener = true, ...options }: { screener?: boolean; undoWindow?: null } = {}) {
+  const duva = await startDuva({ domain: "example.com", admin: "ada@example.org", ...options });
+  const server = await duva.listen();
+  onTestFinished(() => server.close());
+  await machine.saveDeployment(server);
+  await machine.duva("login", { browserSignsIn: "ada@example.org" });
+  const { id: ada } = JSON.parse((await machine.duva("whoami")).stdout) as { id: string };
+  const mailbox = JSON.parse((await machine.duva("mailboxes", "create", "--owner", ada, "--address", "ada@example.com")).stdout) as { id: string };
+  const { agent, key } = JSON.parse((await machine.duva("agents", "create", "--name", "Hermes")).stdout) as { agent: { id: string }; key: string };
+  await machine.duva("agents", "change-settings", "--agent", agent.id, "--sponsorAccess", sponsorAccess);
+  if (!screener) await machine.duva("screener", "switch", "--mailbox", mailbox.id, "--no-on");
+  return { duva, ada, agent, mailbox, asAgent: { env: { DUVA_AGENT_KEY: key } } };
+}
 
 /**
  * A machine with nothing configured: no AWS settings and no Duva config. Like the environment,

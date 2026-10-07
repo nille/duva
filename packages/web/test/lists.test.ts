@@ -131,8 +131,7 @@ test("on a phone every list fits the screen", budget, async () => {
 
 /**
  * The web app for a deployment where Ada, the admin, has a personal mailbox at ada@example.com and
- * sponsors the agent Hermes, which owns hermes@example.com and works in Ada's mailbox with full
- * sponsor access. Mail from Grace and from Hermes waits in Ada's Inbox.
+ * sponsors the agent Hermes, which works in Ada's mailbox with full sponsor access. Mail from Grace and from Hermes waits in Ada's Inbox.
  */
 async function withAgentAtWork(options: Parameters<typeof startWebApp>[0] = {}) {
   const app = await startWebApp({ domain: "example.com", admin: "ada@example.org", ...options });
@@ -142,12 +141,11 @@ async function withAgentAtWork(options: Parameters<typeof startWebApp>[0] = {}) 
   const inAdas = { path: { mailbox: mailbox!.id } };
   await ada.PATCH("/mailboxes/{mailbox}/screener", { params: inAdas, body: { on: false } });
   const { data: created } = await ada.POST("/agents", { body: { name: "Hermes" } });
-  await ada.POST("/mailboxes", { body: { owner: created!.agent.id, address: "hermes@example.com" } });
   await ada.PATCH("/agents/{agent}/settings", { params: { path: { agent: created!.agent.id } }, body: { sponsorAccess: "send" } });
   const hermes = app.duva.withKey(created!.key);
   const toAda = (subject: string, from: string) => note(subject, from).replace("To: Grace <grace@example.com>", "To: ada@example.com");
   await app.duva.receive(toAda("Möte", "Grace Hopper <grace@example.org>"), { to: ["ada@example.com"] });
-  // Hermes's own mail carries the header every message an agent sends does.
+  // Mail an agent sent, here one Hermes wrote elsewhere, carries the header every message an agent sends does.
   await app.duva.receive(toAda("Veckorapport", "Hermes <hermes@example.com>").replace("\r\n", "\r\nDuva-Agent: Hermes for ada@example.org\r\n"), { to: ["ada@example.com"] });
   const { data: listed } = await ada.GET("/mailboxes/{mailbox}/threads", { params: inAdas });
   const meeting = listed!.threads.find(({ subject }) => subject === "Möte")!;

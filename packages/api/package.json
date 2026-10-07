@@ -26,6 +26,7 @@
     "./dns-records": "./src/dns-records.ts",
     "./indexing": "./src/indexing.ts",
     "./mailbox-agents": "./src/mailbox-agents.ts",
+    "./removal": "./src/removal.ts",
     "./tasks": "./src/tasks.ts",
     "./agent-models": "./src/agent-models.ts",
     "./translation": "./src/translation.ts",

@@ -17,11 +17,11 @@ An actor that is a person.
 _Avoid_: user
 
 **Agent**:
-An actor that is software. Any human can create one, or approve one's access request, and becomes its sponsor, and each human's mailbox has its mailbox agent. An agent can own personal mailboxes, which an admin creates, and works in no one else's mailbox but its sponsor's, if its sponsor gives it sponsor access.
+An actor that is software. Any human can create one, or approve one's access request, and becomes its sponsor, and each human's mailbox has its mailbox agent. An agent owns no mailbox and is never an admin: it works only in its sponsor's personal mailboxes, with the sponsor access its sponsor gives it (ADR-0030). Any agent but a mailbox agent runs outside Duva, self-hosted, and calls it with its key.
 _Avoid_: bot, assistant
 
 **Mailbox agent**:
-The agent Duva itself runs for each human's personal mailbox, created with the mailbox, with its owner as its sponsor. It works only in that mailbox, with the sponsor access its owner gives it, by default up to asking to send, each send waiting for their approval and carrying the disclosure's line. Its owner asks it in Ask your agent or through the MCP endpoint, and it acts through Duva's API as itself, so all it does is attributed to it, and it obeys pause, send limits and alerts as any agent does. It has no key: each run gets a token of its own. It owns no mailbox and is never an admin. Admins choose the model it thinks with, where the mail it reads is processed, and what all mailbox agents may spend a month (ADR-0027).
+The agent Duva itself runs for each human's personal mailbox, created with the mailbox, with its owner as its sponsor. It works only in that mailbox, with the sponsor access its owner gives it, by default up to asking to send, each send waiting for their approval and carrying the disclosure's line. Its owner asks it in Ask your agent or through the MCP endpoint, and it acts through Duva's API as itself, so all it does is attributed to it, and it obeys pause, send limits and alerts as any agent does. It has no key: each run gets a token of its own. Admins choose the model it thinks with, where the mail it reads is processed, and what all mailbox agents may spend a month (ADR-0027).
 _Avoid_: assistant, bot, copilot
 
 **Ask your agent**:
@@ -39,7 +39,7 @@ _Avoid_: connector. The web app calls them AI apps, to humans.
 A store of received and sent mail, reached through one or more addresses, that actors read and act on. Every mailbox is a personal mailbox.
 
 **Personal mailbox**:
-A mailbox owned by one actor. Admins cannot read it. When the actor is removed, it is handed over or deleted.
+A mailbox owned by one human. Admins cannot read it. When the human is removed, it is handed over or deleted.
 
 **Sponsor access**:
 An agent's access to its sponsor's personal mailboxes, which the sponsor gives per agent and which is off by default. It covers the mailboxes the sponsor chooses, all of theirs unless they choose. Read lets it read everything there. Organize also lets it organize, screen senders, set threads aside and move them to Trash and back. Draft also lets it draft. Send also lets it send as the sponsor, on their behalf with the disclosure's visible line or as them without it. Only the sponsor empties the Trash. Mail that several people need goes to a group, which gives each member their own copy; no actor works in another human's mailbox.
@@ -54,7 +54,7 @@ A notice to a sponsor that one of their agents needs them: a failed, bounced or 
 _Avoid_: notification, warning
 
 **Approval**:
-Sign-off before an action takes effect. An agent's send from its own mailbox, its send from its sponsor's mailbox, and a setup change by an agent admin need it from the agent's sponsor; each can be switched off for that agent on its own.
+Sign-off from an agent's sponsor before the agent's send from the sponsor's mailbox goes out. The sponsor can switch it off for that agent.
 
 **Undo window**:
 How long an agent's approved send waits before it goes out, so its approver can undo the approval, which puts it back among the requests that wait, as the agent asked it. Admins set it for the organization, from 0 to 120 seconds, 30 by default (ADR-0022). A send held after the window, while its agent is paused or by its send limits, stays approved. A human's own sends never wait.
@@ -63,24 +63,24 @@ How long an agent's approved send waits before it goes out, so its approver can 
 A sponsor's record of every decision on their agents' sends, newest first: who decided, when, and how it went, sent, failed or rejected with its note. It reaches as far back as approval records are kept (ADR-0014). From it a sponsor undoes a send during its undo window, sends a rejected one after all while its draft is as the agent asked it, or writes a correction to the recipients of mail that went out, which can't be called back.
 
 **Admin**:
-An actor allowed to change the organization's setup: domains, addresses, groups, actors and settings. Admins can't read personal mailboxes. An agent can be an admin only if its sponsor is one, and stops being one when its sponsor does. An agent admin never removes humans or agents, or changes who is admin.
+A human allowed to change the organization's setup: domains, addresses, groups, actors and settings. Admins can't read personal mailboxes. Only humans are admins; no agent is one.
 
 **Preference**:
 A choice a human makes for themselves about how Duva shows things to them, such as how times and dates read in the web app, the time zone their agents' activity is counted in, or whether mail shows as designed or as plain text. It follows them to every browser, and no one else sees or changes it. An agent has none; its sponsor changes its settings.
 _Avoid_: user setting, profile
 
 **Sponsor**:
-The human who answers for an agent, at first the one who created it. The sponsor acts as owner of the agent's personal mailboxes, gets the agent's alerts, can pause it or rotate its key, and approves its sends and setup changes. Admins can pause an agent too, and Duva pauses one by itself when its mail draws a complaint or many bounces (ADR-0021). When the sponsor is removed, their agents are removed too, and their mailboxes erased.
+The human who answers for an agent, at first the one who created it or approved its access request. The sponsor gives it sponsor access to their mailboxes, gets its alerts, can pause it or rotate its key, and approves its sends. Admins can pause an agent too, and Duva pauses one by itself when its mail draws a complaint or many bounces (ADR-0021). When the sponsor is removed, their agents are removed too.
 _Avoid_: owner (for agents), operator, creator
 
 **Disclosure**:
-The mark on mail an agent sends: always a header, even after a human approved it, and by default a visible line naming the agent and whom it acts for, its sponsor. The sponsor can turn the line off for that agent, separately for mail from its own mailbox and mail it sends as the sponsor. Disclosure follows the actor who sends: a draft an agent wrote that its sponsor sends carries none.
+The mark on mail an agent sends: always a header, even after a human approved it, and by default a visible line naming the agent and whom it acts for, its sponsor. The sponsor can turn the line off for that agent. Disclosure follows the actor who sends: a draft an agent wrote that its sponsor sends carries none.
 
 **Send limit**:
 How much an agent may send per hour, and to how many new recipients per day: 100 and 50 to start. A sponsor sets their agent's limits up to the organization's cap, which admins set. Mail over the limit waits and goes out by itself as the limit allows, or when the sponsor sends it now. Humans have none.
 
 **Activity**:
-What an agent did, and what happened in its mailboxes, day by day: a daily summary of how much it sent, had approved or rejected, received, organized and screened, which opens into the day's timeline. It is read from change feeds, so it reaches back to the agent's start. Only its sponsor and admins read it, and an admin who isn't the sponsor reads none of what the mail says.
+What an agent did, and what was done to it, day by day: a daily summary of how much it sent, had approved or rejected, organized and screened, which opens into the day's timeline. It is read from change feeds, so it reaches back to the agent's start. Only its sponsor and admins read it, and an admin who isn't the sponsor reads none of what the mail says.
 _Avoid_: log, audit. The approval log is the record of a sponsor's decisions.
 
 ## Domains and addresses
@@ -160,14 +160,14 @@ A built-in label for mail judged to be spam. Threads with it are out of the Inbo
 A built-in label for deleted threads. Trash and Spam are erased for good after the organization's retention period, 30 days by default and 7 to 365, counted from when each thread got the label. Only the mailbox owner can empty Trash early.
 
 **Screener**:
-Where mail from a mailbox's first-time senders waits until an actor who may organize the mailbox decides the sender's delivery. A first-time sender is one the mailbox hasn't decided on and hasn't sent mail to; senders on the organization's own domains, and messages joining a thread the mailbox already has, never wait. Letting a sender in is choosing the Inbox, and blocking them is choosing nowhere. On by default for humans' personal mailboxes, off for agents'; the mailbox's owner switches it.
+Where mail from a mailbox's first-time senders waits until an actor who may organize the mailbox decides the sender's delivery. A first-time sender is one the mailbox hasn't decided on and hasn't sent mail to; senders on the organization's own domains, and messages joining a thread the mailbox already has, never wait. Letting a sender in is choosing the Inbox, and blocking them is choosing nowhere. On by default; the mailbox's owner switches it.
 _Avoid_: gatekeeper, allowlist
 
 **Delivery**:
 Where a screened sender's mail goes in a mailbox: the Inbox, the Feed, the Paper Trail, a label of the mailbox's own instead of the Inbox, or nowhere. It applies to their later mail, whether the Screener is on or not, and to their threads already there: those where their mail went before move to where it goes now, and keep the labels given by hand. Group mail skips it, as it skips the Screener.
 
 **Nowhere**:
-The delivery that drops a sender's mail on arrival, keeping none of it, not even in Trash, and records only that a message from them was dropped. Choosing it erases their threads in the mailbox for good, and unsubscribes from their mail when it offers one-click unsubscribe, as each message dropped later does too. Removing it brings back nothing. Only the mailbox's owner, or an agent's sponsor, chooses it (ADR-0025).
+The delivery that drops a sender's mail on arrival, keeping none of it, not even in Trash, and records only that a message from them was dropped. Choosing it erases their threads in the mailbox for good, and unsubscribes from their mail when it offers one-click unsubscribe, as each message dropped later does too. Removing it brings back nothing. Only the mailbox's owner chooses it (ADR-0025).
 _Avoid_: blackhole
 
 **Screened sender**:

@@ -9,7 +9,7 @@ const budget = { timeout: 60_000 };
 
 /**
  * The web app for a deployment on example.com where Ada, the admin, has a mailbox at
- * ada@example.com and sponsors the agent Hermes, which owns hermes@example.com.
+ * ada@example.com and sponsors the agent Hermes, which has send access to it.
  */
 async function withSponsor(options: Parameters<typeof startWebApp>[0] = {}) {
   const app = await startWebApp({ domain: "example.com", admin: "ada@example.org", ...options });
@@ -17,9 +17,9 @@ async function withSponsor(options: Parameters<typeof startWebApp>[0] = {}) {
   const { data: me } = await ada.GET("/whoami");
   const { data: own } = await ada.POST("/mailboxes", { body: { owner: me!.id, address: "ada@example.com" } });
   const { data: created } = await ada.POST("/agents", { body: { name: "Hermes" } });
-  const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: created!.agent.id, address: "hermes@example.com" } });
+  await ada.PATCH("/agents/{agent}/settings", { params: { path: { agent: created!.agent.id } }, body: { sponsorAccess: "send" } });
   const hermes = app.duva.withKey(created!.key);
-  const params = { path: { mailbox: mailbox!.id } };
+  const params = { path: { mailbox: own!.id } };
   /** Hermes drafts a message to Grace and Linus and asks to send it, and answers the approval it waits for. */
   const ask = async (subject: string) => {
     const { data: draft } = await hermes.POST("/mailboxes/{mailbox}/drafts", { params, body: { to: ["grace@example.org"], cc: ["linus@example.net"], subject, text: "Monday works." } });
@@ -77,12 +77,11 @@ test("the Log beside Waiting lists each decision with how it went, and a sent on
 
   await expect.poll(() => page.url(), wait).toMatch(new RegExp(`#/mailboxes/${own.id}/drafts/`));
   const { data: drafts } = await ada.GET("/mailboxes/{mailbox}/drafts", { params: { path: { mailbox: own.id } } });
-  expect(drafts?.drafts).toMatchObject([{ from: "ada@example.com", to: [{ address: "grace@example.org" }], cc: [{ address: "linus@example.net" }], subject: "Re: Meeting" }]);
+  expect(drafts?.drafts.filter(({ subject }) => subject === "Re: Meeting")).toMatchObject([{ from: "ada@example.com", to: [{ address: "grace@example.org" }], cc: [{ address: "linus@example.net" }] }]);
 });
 
 test("a correction to mail the agent sent as the sponsor replies to it in its thread, to all its recipients", budget, async () => {
-  const { page, signIn, ada, hermes, agent, own } = await withSponsor();
-  await ada.PATCH("/agents/{agent}/settings", { params: { path: { agent: agent.id } }, body: { sponsorAccess: "send" } });
+  const { page, signIn, ada, hermes, own } = await withSponsor();
   const params = { path: { mailbox: own.id } };
   const { data: draft } = await hermes.POST("/mailboxes/{mailbox}/drafts", { params, body: { to: ["grace@example.org"], cc: ["linus@example.net"], subject: "Meeting", text: "Monday works." } });
   const { data: asked } = await hermes.POST("/mailboxes/{mailbox}/drafts/{draft}/send", { params: { path: { ...params.path, draft: draft!.id } } });

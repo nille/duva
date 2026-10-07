@@ -11,7 +11,7 @@ import type { Table } from "./deployment.ts";
 import { domainOf } from "./email-address.ts";
 import { recordChanges } from "./feed.ts";
 import { type Arrival, correspondents, dropMessage, hasSentTo, inbox, listBySender, moveDelivered, noteSentTo, receiveMessage, screener, type Screening, ScreeningChanged, spam, threadsFrom, type ThreadSummary, trash, waitingThreads } from "./mail.ts";
-import { allDomains, allMailboxes, findActor, findMailbox, mailboxFeed, mailboxKey, screenerKey } from "./organization.ts";
+import { allDomains, allMailboxes, mailboxFeed, mailboxKey, screenerKey } from "./organization.ts";
 import { documents, pk, sk, type TransactItem } from "./table.ts";
 
 export type Screener = components["schemas"]["Screener"];
@@ -400,25 +400,14 @@ async function switchOn(table: Table, mailbox: string, by: string | undefined): 
 }
 
 /**
- * Gives each mailbox from before the Screener its switch: on for a human's, letting in its senders
- * as switching on does, and off for an agent's. Finishes switching on any mailbox where that
- * stopped partway. Mailboxes that have a switch keep it as it is.
+ * Gives each mailbox from before the Screener its switch, on, letting in its senders as switching
+ * on does. Finishes switching on any mailbox where that stopped partway. Mailboxes that have a
+ * switch keep it as it is.
  */
 export async function setUpScreeners(table: Table): Promise<void> {
   for (const mailbox of await allMailboxes(table)) {
     const state = await stateOf(table, mailbox);
-    if (state === "turningOn") await switchOn(table, mailbox, undefined);
-    if (state !== undefined) continue;
-    const owner = await findActor(table, (await findMailbox(table, mailbox))?.owner ?? "");
-    if (owner?.kind === "human") {
-      await switchOn(table, mailbox, undefined);
-      continue;
-    }
-    await documents(table)
-      .send(new PutCommand(stateWrite(table, mailbox, "off", undefined)))
-      .catch((error: unknown) => {
-        if (!(error instanceof ConditionalCheckFailedException)) throw error;
-      });
+    if (state === "turningOn" || state === undefined) await switchOn(table, mailbox, undefined);
   }
 }
 

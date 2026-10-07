@@ -1,7 +1,7 @@
 // An agent's activity: its daily summaries, and each day's timeline. Both come from change feeds,
-// read whole each time: those of the agent's mailboxes, its sponsor's for what concerns the agent,
-// and the organization's for changes to it or by it, with the alerts about it its sponsor got. So
-// they reach back to the agent's start and need no storage of their own.
+// read whole each time: those of its sponsor's mailboxes for what concerns the agent, and the
+// organization's for changes to it or by it, with the alerts about it its sponsor got. So they
+// reach back to the agent's start and need no storage of their own.
 import type { components } from "@duva/openapi";
 import { type OperationHandler, refusal } from "./api.ts";
 import { alertTimes } from "./alerting.ts";
@@ -9,7 +9,7 @@ import type { Table } from "./deployment.ts";
 import { findDraft } from "./drafting.ts";
 import { changesPerPage } from "./feed.ts";
 import { mailboxChanges } from "./mail.ts";
-import { type Actor, type Agent, findActor, organizationChanges, ownedMailboxes } from "./organization.ts";
+import { type Actor, type Agent, findActor, isAdmin, organizationChanges, ownedMailboxes } from "./organization.ts";
 import { timeZoneNamed, timeZoneOf } from "./preferences.ts";
 import { threadTasks } from "./tasks.ts";
 
@@ -34,7 +34,9 @@ const entriesPerPage = 100;
 /** The changes Duva counts as organizing, when the agent makes them. */
 const organizing = new Set<Change["type"]>(["threadRead", "threadUnread", "threadLabelsChanged", "reminderSet", "reminderCancelled", "labelCreated", "labelRenamed", "labelDeleted"]);
 /** The changes Duva counts as screening, when the agent makes them. */
-const screening = new Set<Change["type"]>(["senderScreened", "screenedSenderRemoved", "senderDeliverySet", "senderDeliveryRemoved", "screenerSwitched"]);
+const screening = new Set<Change["type"]>(["senderScreened", "screenedSenderRemoved", "senderDeliverySet", "senderDeliveryRemoved"]);
+/** The changes of kinds Duva no longer records, from when agents could be admins (ADR-0030), which are no part of activity. */
+const retired = new Set<Change["type"]>(["agentAdminChanged", "setupAsked", "setupApproved", "setupRejected", "setupWithdrawn"]);
 
 /** Every change in a feed, read a page at a time from the start. */
 async function wholeFeed<Read extends { position: number }>(read: (after: number) => Promise<Read[]>): Promise<Read[]> {
@@ -50,13 +52,12 @@ const field = (change: Change, name: string) => (change as unknown as Record<str
 
 /** Every entry in the agent's activity, in no particular order. */
 async function activityOf(table: Table, agent: Agent): Promise<Entry[]> {
-  const [own, sponsors] = await Promise.all([ownedMailboxes(table, agent.id), ownedMailboxes(table, agent.sponsor)]);
-  const ownIds = new Set(own.map(({ id }) => id));
+  const sponsors = await ownedMailboxes(table, agent.sponsor);
   const entries: Entry[] = [];
   const add = (mailbox: string | undefined, change: Change) =>
     entries.push({ mailbox, change, key: `${change.at}|${mailbox ?? "organization"}|${String(change.position).padStart(12, "0")}` });
-  // A change to the agent's settings is in each of its sponsor's mailboxes, or each of its own,
-  // with the same time and actor, and counts once.
+  // A change to the agent's settings is in each of its sponsor's mailboxes, with the same time and
+  // actor, and counts once.
   const settingsChanged = new Set<string>();
   const once = (change: Change) => {
     if (change.type !== "agentSettingsChanged") return true;
@@ -66,18 +67,13 @@ async function activityOf(table: Table, agent: Agent): Promise<Entry[]> {
     return true;
   };
   const feeds = await Promise.all([
-    ...[...own, ...sponsors].map(({ id }) => wholeFeed(async (after) => (await mailboxChanges(table, id, after, true)).changes)),
+    ...sponsors.map(({ id }) => wholeFeed(async (after) => (await mailboxChanges(table, id, after, true)).changes)),
     wholeFeed((after) => organizationChanges(table, after)),
   ]);
   const organization = feeds.pop()!;
-  [...own, ...sponsors].forEach(({ id }, index) => {
+  sponsors.forEach(({ id }, index) => {
     const changes = feeds[index]!;
-    if (ownIds.has(id)) {
-      // The organization's feed has each pause once, where its mailboxes' have it once each.
-      for (const change of changes) if (change.type !== "agentPaused" && change.type !== "agentUnpaused" && once(change)) add(id, change);
-      return;
-    }
-    // In its sponsor's mailbox: what the agent did, its drafts' lives, and changes to the agent.
+    // What the agent did, its drafts' lives, and changes to the agent.
     const drafts = new Set(changes.filter((change) => change.type === "draftWritten" && change.actor === agent.id).map((change) => field(change, "draft")));
     for (const change of changes) {
       const concerns = ("actor" in change && change.actor === agent.id) || field(change, "agent") === agent.id || drafts.has(field(change, "draft"));
@@ -85,10 +81,9 @@ async function activityOf(table: Table, agent: Agent): Promise<Entry[]> {
     }
   });
   for (const change of organization) {
-    const about = [field(change, "agent"), (field(change, "added") as Actor | undefined)?.id, (field(change, "removed") as Actor | undefined)?.id, field(change, "from")];
-    const mailbox = field(change, "mailbox");
-    const itsMailbox = typeof mailbox === "string" ? ownIds.has(mailbox) : (mailbox as { owner?: string } | undefined)?.owner === agent.id;
-    if (field(change, "actor") === agent.id || about.includes(agent.id) || itsMailbox) add(undefined, change);
+    if (retired.has(change.type)) continue;
+    const about = [field(change, "agent"), (field(change, "added") as Actor | undefined)?.id, (field(change, "removed") as Actor | undefined)?.id];
+    if (field(change, "actor") === agent.id || about.includes(agent.id)) add(undefined, change);
   }
   return entries;
 }
@@ -120,7 +115,7 @@ async function activityAsked(
   const id = event.pathParameters?.agent ?? "";
   const agent = await findActor(table, id);
   if (agent?.kind !== "agent") return refusal(404, `There is no agent ${JSON.stringify(id)}. List the agents you sponsor to find its ID.`);
-  if (actor.id !== agent.sponsor && !actor.admin) return refusal(403, "Only the agent's sponsor and admins can read its activity. Ask its sponsor.");
+  if (actor.id !== agent.sponsor && !isAdmin(actor)) return refusal(403, "Only the agent's sponsor and admins can read its activity. Ask its sponsor.");
   const asked = event.queryStringParameters?.timeZone;
   if (asked !== undefined) {
     const timeZone = timeZoneNamed(asked);
@@ -146,7 +141,7 @@ export const getAgentActivity: OperationHandler = async (event, deployment, acto
 
   const days = new Map<string, Summary>();
   for (let number = to; number >= from; number--) {
-    const summary = { day: dayOfNumber(number), sent: 0, approved: 0, rejected: 0, received: 0, organized: 0, screened: 0, alerts: 0 };
+    const summary = { day: dayOfNumber(number), sent: 0, approved: 0, rejected: 0, organized: 0, screened: 0, alerts: 0 };
     days.set(summary.day, summary);
   }
   for (const { change } of await activityOf(deployment.table, agent)) {
@@ -155,7 +150,6 @@ export const getAgentActivity: OperationHandler = async (event, deployment, acto
     const byAgent = "actor" in change && change.actor === agent.id;
     if (change.type === "messageSent" && byAgent) summary.sent++;
     else if (change.type === "approvalDecided") summary[change.decision]++;
-    else if (change.type === "messageReceived") summary.received++;
     else if (organizing.has(change.type) && byAgent) summary.organized++;
     else if (screening.has(change.type) && byAgent) summary.screened++;
   }

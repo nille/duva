@@ -6,7 +6,7 @@ import { getAgentActivity, getAgentActivityDay } from "./activity.ts";
 import { listApprovalLog } from "./approval-log.ts";
 import { listAlerts, markAlertsSeen } from "./alerts.ts";
 import { getAttachment } from "./attachments.ts";
-import { changeAgent, changeAgentSettings, createAgent, getAgentSettings, listAgents, listOrganizationAgents, pauseAgent, pausedRefusal, removeAgent, rotateAgentKey, unpauseAgent } from "./agents.ts";
+import { changeAgentSettings, createAgent, getAgentSettings, listAgents, listOrganizationAgents, pauseAgent, pausedRefusal, removeAgent, rotateAgentKey, unpauseAgent } from "./agents.ts";
 import type { AuthorizerContext } from "./authorizer.ts";
 import { clearConversation, getMailboxAgent, getMailboxAgentSpend } from "./conversation.ts";
 import { addDomain, changeDomain, clearCatchAll, getDomain, listDomains, removeDomain, setCatchAll } from "./domains.ts";
@@ -44,7 +44,6 @@ import { searchMailbox } from "./search.ts";
 import { getScreener, getSender, listSenders, removeSenderDelivery, setSenderDelivery, switchScreener } from "./screener.ts";
 import { changeOrganizationSettings, getOrganizationSettings, previewRetention } from "./settings.ts";
 import { getStatus } from "./status.ts";
-import { approveSetup, getSetupApproval, rejectSetup } from "./setup.ts";
 import { whoami } from "./whoami.ts";
 
 /**
@@ -73,7 +72,6 @@ export const handlers: Record<OperationId, OperationHandler> = {
   removeHuman,
   createAgent,
   listAgents,
-  changeAgent,
   listOrganizationAgents,
   removeAgent,
   rotateAgentKey,
@@ -158,9 +156,6 @@ export const handlers: Record<OperationId, OperationHandler> = {
   sendApproval,
   rejectApproval,
   undoApproval,
-  getSetupApproval,
-  approveSetup,
-  rejectSetup,
 };
 
 const operationByRouteKey = new Map<string, Operation>(operations.map((operation) => [operation.routeKey, operation]));

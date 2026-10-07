@@ -1,5 +1,5 @@
-// The views of a mailbox's mail: the Inbox, the Screener, Remind me, the Feed, the Paper Trail, Sent, Drafts, All mail, Spam and Trash, an
-// agent's activity in its mailbox, then its own labels, each a link with how many unread threads it has, the Screener with how many senders wait. It is one component, so the side column can hold it.
+// The views of a mailbox's mail: the Inbox, the Screener, Remind me, the Feed, the Paper Trail, Sent, Drafts, All mail, Spam and Trash, its
+// mailbox agent to ask, then its own labels, each a link with how many unread threads it has, the Screener with how many senders wait. It is one component, so the side column can hold it.
 // A search's results are a view too, which the bar opens.
 import { useContext, useId, useState } from "react";
 import type { DuvaClient } from "@duva/client";
@@ -73,14 +73,13 @@ export function viewOf(path: string): View | undefined {
   return label === undefined ? undefined : { label: decodeURIComponent(label) };
 }
 
-/** What the view is called, an agent's Inbox by the agent's name. */
-export function titleOf(view: View, labels: Label[], agent?: string): string {
-  if ("screener" in view) return agent === undefined ? strings.screener.title : strings.screener.agentTitle(agent);
+/** What the view is called. */
+export function titleOf(view: View, labels: Label[]): string {
+  if ("screener" in view) return strings.screener.title;
   if ("search" in view) return strings.search.title;
   if ("all" in view) return strings.views.allMail;
   if ("reminders" in view) return strings.views.reminders;
-  if ("sent" in view) return agent === undefined ? strings.sent.title : strings.sent.agentTitle(agent);
-  if (view.label === "inbox" && agent !== undefined) return strings.inbox.agentTitle(agent);
+  if ("sent" in view) return strings.sent.title;
   return labels.find((label) => label.id === view.label)?.name ?? builtInName(view.label) ?? strings.views.unknownLabel;
 }
 
@@ -100,7 +99,6 @@ export function MailViews({
   current,
   drafts,
   ask,
-  activity,
   screener,
   onLabelCreated,
   onSignedOut,
@@ -110,12 +108,10 @@ export function MailViews({
   base: string;
   labels: Label[];
   current: View | undefined;
-  /** Whether Drafts is listed, as it is for the human's own mailboxes only, and whether it's open. */
-  drafts?: { current: boolean };
-  /** Where the human asks the mailbox's mailbox agent, as their own mailboxes list it, and whether it's open. */
-  ask?: { href: string; current: boolean };
-  /** Where the activity of the agent whose mailbox it is lies, as an agent's mailbox lists it, and whether it's open. */
-  activity?: { href: string; current: boolean };
+  /** Whether Drafts is open. */
+  drafts: { current: boolean };
+  /** Where the human asks the mailbox's mailbox agent, and whether it's open. */
+  ask: { href: string; current: boolean };
   /** Whether the mailbox's Screener is on, and how many senders wait there, once Duva has said. */
   screener?: { on: boolean; waiting: number };
   onLabelCreated: (label: Label) => void;
@@ -166,31 +162,20 @@ export function MailViews({
         {link({ label: "feed" }, strings.views.feed, 0)}
         {link({ label: "paperTrail" }, strings.views.paperTrail, 0)}
         {link({ sent: true }, strings.views.sent, 0)}
-        {drafts !== undefined && (
-          <li>
-            <a href={`${base}drafts`} className="view-link" aria-current={drafts.current ? "page" : undefined}>
-              <span className="view-name">{strings.views.drafts}</span>
-            </a>
-          </li>
-        )}
+        <li>
+          <a href={`${base}drafts`} className="view-link" aria-current={drafts.current ? "page" : undefined}>
+            <span className="view-name">{strings.views.drafts}</span>
+          </a>
+        </li>
         {link({ all: true }, strings.views.allMail, 0)}
         {link({ label: "spam" }, strings.views.spam, 0)}
         {link({ label: "trash" }, strings.views.trash, 0)}
-        {ask !== undefined && (
-          <li className="views-ask">
-            <a href={ask.href} className="view-link" aria-current={ask.current ? "page" : undefined} aria-keyshortcuts={keys ? "Shift+A" : undefined}>
-              <ActorMark kind="agent" />
-              <span className="view-name">{strings.ask.link}</span>
-            </a>
-          </li>
-        )}
-        {activity !== undefined && (
-          <li className="views-activity">
-            <a href={activity.href} className="view-link" aria-current={activity.current ? "page" : undefined}>
-              <span className="view-name">{strings.activity.link}</span>
-            </a>
-          </li>
-        )}
+        <li className="views-ask">
+          <a href={ask.href} className="view-link" aria-current={ask.current ? "page" : undefined} aria-keyshortcuts={keys ? "Shift+A" : undefined}>
+            <ActorMark kind="agent" />
+            <span className="view-name">{strings.ask.link}</span>
+          </a>
+        </li>
       </ul>
       <h2 className="views-heading" id={headingId}>
         {strings.views.yourLabels}

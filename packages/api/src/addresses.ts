@@ -10,17 +10,15 @@ import {
   addressTarget,
   allAddresses,
   allDomains,
-  allGroups,
   chooseDefaultAddress,
   findGroup,
   findMailbox,
+  isAdmin,
   NotItsAddress,
   removeAddress as removeStoredAddress,
   removeMember,
 } from "./organization.ts";
 import { maxAddresses, ruleRecipients, syncRecipients } from "./receiving.ts";
-import { domainOf } from "./email-address.ts";
-import { listed, mailboxNamed, setupOperation } from "./setup.ts";
 
 const onlyAdmins = () => refusal(403, "Only admins can change the organization's addresses. Ask an admin to.");
 
@@ -67,35 +65,30 @@ export async function addressTaken(deployment: Deployment, address: string) {
   return refusal(409, `${address} is taken. Give another address.`);
 }
 
-export const addAddress = setupOperation("addAddress", async (event, deployment, actor) => {
-  if (!actor.admin) return onlyAdmins();
+export const addAddress: OperationHandler = async (event, deployment, actor) => {
+  if (!isAdmin(actor)) return onlyAdmins();
   const body = jsonBody(event);
   const address = await addressGiven(deployment, body?.address);
   if (typeof address !== "string") return address;
   const mailbox = typeof body?.mailbox === "string" ? await findMailbox(deployment.table, body.mailbox) : undefined;
   if (mailbox === undefined) return refusal(400, `There is no mailbox ${JSON.stringify(body?.mailbox ?? "")}. Give the ID of the mailbox the address is for.`);
-  return {
-    preview: [`Gives ${await mailboxNamed(deployment.table, mailbox)} the address ${address}.`],
-    run: async () => {
-      try {
-        await addStoredAddress(deployment.table, { mailbox: mailbox.id, address, by: actor.id });
-      } catch (error) {
-        if (error instanceof AddressTaken) return addressTaken(deployment, address);
-        throw error;
-      }
-      await syncRecipients(deployment.table, deployment.receiving);
-      return { statusCode: 201, body: { address, mailbox: mailbox.id } satisfies components["schemas"]["Address"] };
-    },
-  };
-});
+  try {
+    await addStoredAddress(deployment.table, { mailbox: mailbox.id, address, by: actor!.id });
+  } catch (error) {
+    if (error instanceof AddressTaken) return addressTaken(deployment, address);
+    throw error;
+  }
+  await syncRecipients(deployment.table, deployment.receiving);
+  return { statusCode: 201, body: { address, mailbox: mailbox.id } satisfies components["schemas"]["Address"] };
+};
 
 export const listAddresses: OperationHandler = async (_event, deployment, actor) => {
-  if (!actor?.admin) return refusal(403, "Only admins can list the organization's addresses.");
+  if (!isAdmin(actor)) return refusal(403, "Only admins can list the organization's addresses.");
   return { statusCode: 200, body: { addresses: await allAddresses(deployment.table) } satisfies components["schemas"]["AddressList"] };
 };
 
-export const removeAddress = setupOperation("removeAddress", async (event, deployment, actor) => {
-  if (!actor.admin) return onlyAdmins();
+export const removeAddress: OperationHandler = async (event, deployment, actor) => {
+  if (!isAdmin(actor)) return onlyAdmins();
   const address = (event.pathParameters?.address ?? "").trim().toLowerCase();
   if ((await findGroup(deployment.table, address)) !== undefined) return refusal(409, `${address} is a group's address. Delete the group to remove it.`);
   const notFound = () => refusal(404, `The organization has no address ${JSON.stringify(address)}. List its addresses to find it.`);
@@ -106,28 +99,16 @@ export const removeAddress = setupOperation("removeAddress", async (event, deplo
     await syncRecipients(deployment.table, deployment.receiving);
     return notFound();
   }
-  const domain = (await allDomains(deployment.table)).find((each) => each.domain === domainOf(address));
-  const left = mailbox.addresses.filter((each) => each !== address);
-  const groups = (await allGroups(deployment.table)).filter(({ members }) => members.includes(address)).map((group) => group.address);
-  return {
-    preview: [
-      `Removes the address ${address} from ${await mailboxNamed(deployment.table, mailbox)}. Mail to it ${domain?.catchAll === undefined ? "is refused" : `goes to ${domain.domain}'s catch-all`} from then on.`,
-      ...(mailbox.defaultAddress !== address ? [] : left.length === 0 ? ["The mailbox is left with no address, so it receives and sends no new mail."] : [`The mailbox's default address becomes ${left[0]}.`]),
-      ...(groups.length === 0 ? [] : [`It stops being a member of ${listed(groups.map((group) => `the group ${group}`))}.`]),
-    ],
-    run: async () => {
-      const removed = await removeStoredAddress(deployment.table, { address, by: actor.id });
-      // Done even when it's gone, in case SES failed when it was removed.
-      await syncRecipients(deployment.table, deployment.receiving);
-      if (removed === undefined) return notFound();
-      await removeMember(deployment.table, { address, by: actor.id });
-      return { statusCode: 200, body: removed satisfies components["schemas"]["Address"] };
-    },
-  };
-});
+  const removed = await removeStoredAddress(deployment.table, { address, by: actor!.id });
+  // Done even when it's gone, in case SES failed when it was removed.
+  await syncRecipients(deployment.table, deployment.receiving);
+  if (removed === undefined) return notFound();
+  await removeMember(deployment.table, { address, by: actor!.id });
+  return { statusCode: 200, body: removed satisfies components["schemas"]["Address"] };
+};
 
-export const changeMailbox = setupOperation("changeMailbox", async (event, deployment, actor) => {
-  if (!actor.admin) return refusal(403, "Only admins can choose a mailbox's default address. Ask an admin to.");
+export const changeMailbox: OperationHandler = async (event, deployment, actor) => {
+  if (!isAdmin(actor)) return refusal(403, "Only admins can choose a mailbox's default address. Ask an admin to.");
   const id = event.pathParameters?.mailbox ?? "";
   const mailbox = await findMailbox(deployment.table, id);
   if (mailbox === undefined) return refusal(404, `There is no mailbox ${JSON.stringify(id)}. List the organization's addresses to find its ID.`);
@@ -138,16 +119,11 @@ export const changeMailbox = setupOperation("changeMailbox", async (event, deplo
       ? refusal(400, "The mailbox has no address. Add one, and it becomes the default address.")
       : refusal(400, `${JSON.stringify(address)} isn't one of the mailbox's addresses, which are ${mailbox.addresses.join(", ")}. Give one of them as defaultAddress.`);
   if (!mailbox.addresses.includes(address)) return notItsAddress();
-  return {
-    preview: address === mailbox.defaultAddress ? [] : [`Makes ${address} the default address of ${await mailboxNamed(deployment.table, mailbox)}, which new mail goes out from.`],
-    run: async () => {
-      try {
-        const changed = await chooseDefaultAddress(deployment.table, { mailbox: id, address, by: actor.id });
-        return { statusCode: 200, body: changed satisfies components["schemas"]["Mailbox"] };
-      } catch (error) {
-        if (!(error instanceof NotItsAddress)) throw error;
-        return notItsAddress();
-      }
-    },
-  };
-});
+  try {
+    const changed = await chooseDefaultAddress(deployment.table, { mailbox: id, address, by: actor!.id });
+    return { statusCode: 200, body: changed satisfies components["schemas"]["Mailbox"] };
+  } catch (error) {
+    if (!(error instanceof NotItsAddress)) throw error;
+    return notItsAddress();
+  }
+};

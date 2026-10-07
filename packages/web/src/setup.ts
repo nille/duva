@@ -5,7 +5,6 @@ import { strings } from "./strings.ts";
 
 type Mailbox = components["schemas"]["Mailbox"];
 type Actor = components["schemas"]["Actor"];
-type SetupApproval = components["schemas"]["SetupApproval"];
 
 export interface Answer<Data> {
   data?: Data;
@@ -19,19 +18,18 @@ export const attempt = <Data>(call: Promise<Answer<Data>>): Promise<Answer<Data>
 /**
  * Makes the change the call asks for. Answers what Duva answered, or why it failed in words: Duva's
  * own reason for a refusal, which says what to do, or the error. Answers nothing when the session
- * has ended, after `onSignedOut`. Only an agent admin's change waits for approval, so a human's
- * answer is never a setup approval.
+ * has ended, after `onSignedOut`.
  */
-export async function change<Data>(call: Promise<Answer<Data | SetupApproval>>, onSignedOut: () => void): Promise<{ data: Exclude<Data, SetupApproval> } | { failed: string } | undefined> {
+export async function change<Data>(call: Promise<Answer<Data>>, onSignedOut: () => void): Promise<{ data: Data } | { failed: string } | undefined> {
   const answer = await attempt(call);
-  if (answer.data !== undefined) return { data: answer.data as Exclude<Data, SetupApproval> };
+  if (answer.data !== undefined) return { data: answer.data };
   if (answer.response === undefined) return { failed: strings.setup.unreachable };
   const status = answer.response.status;
   if (status === 401) return void onSignedOut();
   return { failed: status >= 400 && status < 500 && answer.error?.message !== undefined ? answer.error.message : strings.setup.failed(status) };
 }
 
-/** The organization's mailboxes, and the actors that own them. */
+/** The organization's mailboxes, and the humans that own them. */
 export interface Mailboxes {
   mailboxes: Mailbox[];
   owners: Actor[];
@@ -40,10 +38,7 @@ export interface Mailboxes {
 /** The actor that owns the mailbox. */
 const ownerOf = (mailbox: Mailbox, { owners }: Mailboxes) => owners.find(({ id }) => id === mailbox.owner);
 
-/** Whether an agent owns the mailbox. */
-export const isAgents = (mailbox: Mailbox, listed: Mailboxes) => ownerOf(mailbox, listed)?.kind === "agent";
-
-/** The name a mailbox goes by: its owner's, a human's address or an agent's name. */
+/** The name a mailbox goes by: its owner's address. */
 export function ownerName(mailbox: Mailbox, listed: Mailboxes): string {
   const owner = ownerOf(mailbox, listed);
   return owner === undefined ? (mailbox.defaultAddress ?? mailbox.id) : owner.kind === "human" ? owner.email : owner.name;
@@ -56,8 +51,7 @@ export const byText = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 export const ownersOrder = (a: Mailbox, b: Mailbox) =>
   (a.defaultAddress === undefined ? 1 : 0) - (b.defaultAddress === undefined ? 1 : 0) || byText(a.defaultAddress ?? a.id, b.defaultAddress ?? b.id);
 
-/** The mailboxes humans' first, by address, then agents', by name, and each owner's in their order. */
+/** The mailboxes by their owners' addresses, and each owner's in their order. */
 export function byOwner(listed: Mailboxes): Mailbox[] {
-  const rank = (mailbox: Mailbox) => (isAgents(mailbox, listed) ? 1 : 0);
-  return [...listed.mailboxes].sort((a, b) => rank(a) - rank(b) || ownerName(a, listed).localeCompare(ownerName(b, listed)) || ownersOrder(a, b));
+  return [...listed.mailboxes].sort((a, b) => ownerName(a, listed).localeCompare(ownerName(b, listed)) || ownersOrder(a, b));
 }

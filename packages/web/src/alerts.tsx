@@ -135,8 +135,8 @@ export function Alerts({
       const message = alert.message === undefined ? "" : `?message=${encodeURIComponent(alert.message)}`;
       return [{ href: `${mailboxHref(mailbox, mailbox.id === mine)}threads/${encodeURIComponent(alert.thread)}${message}`, name: copy.openMessage }];
     }
-    // Only a mailbox's owner writes there, so only the human's own drafts open.
-    if (mailbox !== undefined && mailbox.id === mine && alert.draft !== undefined) return [{ href: `#/drafts/${encodeURIComponent(alert.draft)}`, name: copy.openDraft }];
+    // The mailboxes are the human's own, so the draft opens wherever it is among them.
+    if (mailbox !== undefined && alert.draft !== undefined) return [{ href: `#/drafts/${encodeURIComponent(alert.draft)}`, name: copy.openDraft }];
     if (!agents.has(alert.agent)) return [];
     if (!pauses.has(alert.kind)) return [{ href: agentHref(alert.agent), name: copy.openAgent(alert.agentName) }];
     return [...(paused.has(alert.agent) ? [{ href: "#/approvals", name: copy.heldSends }] : []), { href: agentHref(alert.agent), name: copy.openAtPause(alert.agentName) }];

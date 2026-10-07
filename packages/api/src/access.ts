@@ -1,17 +1,14 @@
 // Who may do what in a mailbox. Every mailbox operation asks this one check, which answers from
-// three relations (ADR-0015): the owner, the sponsor in its agent's mailbox, and the agent in the
-// sponsor's mailboxes its sponsor access covers. No other actor reaches a mailbox.
+// two relations (ADR-0015, ADR-0030): the owner, a human, and the agent in its sponsor's mailboxes
+// its sponsor access covers. No other actor reaches a mailbox.
 import { type OperationHandler, refusal } from "./api.ts";
 import type { Deployment } from "./deployment.ts";
 import type { components } from "@duva/openapi";
 import { groupsSentAsBy } from "./group-mail.ts";
-import { type Actor, type AgentSettings, agentSettings, findActor, findMailbox, type Mailbox, ownedMailboxes, sponsoredAgents } from "./organization.ts";
+import { type Actor, type AgentSettings, agentSettings, findMailbox, type Mailbox, ownedMailboxes } from "./organization.ts";
 
 /** What an operation does in a mailbox, which the actor needs to be allowed. */
 export type Ability = "read" | "organize" | "trash" | "draft" | "send" | "emptyTrash" | "erase" | "switchScreener";
-
-// The sponsor acts as owner of its agent's mailbox, except that the agent drafts and sends there itself.
-const sponsorAbilities: Ability[] = ["read", "organize", "trash", "emptyTrash", "erase", "switchScreener"];
 
 type SponsorAccess = AgentSettings["sponsorAccess"];
 
@@ -54,7 +51,7 @@ export async function mailboxFor(
   const id = event.pathParameters?.mailbox ?? "";
   const mailbox = await findMailbox(deployment.table, id);
   if (mailbox === undefined) return refusal(404, `There is no mailbox ${JSON.stringify(id)}. List the mailboxes you can read to find its ID.`);
-  if (mailbox.owner === actor.id) return mailbox;
+  if (actor.kind === "human" && mailbox.owner === actor.id) return mailbox;
   if (actor.kind === "agent" && mailbox.owner === actor.sponsor) {
     const sponsorAccess = sponsorAccessIn((await agentSettings(deployment.table, actor.id)).settings, mailbox.id);
     if (sponsorAccessAllows(sponsorAccess, ability)) return mailbox;
@@ -65,33 +62,22 @@ export async function mailboxFor(
     const { words, access } = abilityWords[ability];
     return refusal(403, `Your sponsor access is ${sponsorAccess}, which doesn't let you ${words}. Ask your sponsor for ${access} access.`);
   }
-  const owner = await findActor(deployment.table, mailbox.owner);
-  if (owner?.kind === "agent" && owner.sponsor === actor.id) {
-    if (sponsorAbilities.includes(ability)) return mailbox;
-    return refusal(403, "Only the mailbox's owner can write drafts in it and ask to send them. For an agent's mailbox, the agent's sponsor decides its sends in approvals.");
-  }
-  return refusal(403, "Only the mailbox's owner can read it, its sponsor if an agent owns it, and the agents its owner gives sponsor access.");
+  return refusal(403, "Only the mailbox's owner can read it, and the agents its owner gives sponsor access.");
 }
 
 /**
- * The mailboxes the actor can read: its own, then for a human those of the agents they sponsor,
- * and for an agent with sponsor access its sponsor's, with that access. Each lists the groups its
- * owner can send as.
+ * The mailboxes the actor can read: a human's own, or an agent's sponsor's that its sponsor
+ * access covers, with that access. Each lists the groups its owner can send as.
  */
 export async function mailboxesReadBy(deployment: Deployment, actor: Actor): Promise<components["schemas"]["ListedMailbox"][]> {
-  const agents = actor.kind === "human" ? await sponsoredAgents(deployment.table, actor.id) : [];
-  const owners = [actor.id, ...agents.map(({ id }) => id)];
   const owned = async (owner: string) => {
     const groups = await groupsSentAsBy(deployment.table, owner);
     return (await ownedMailboxes(deployment.table, owner)).map((mailbox) => ({ ...mailbox, groups }));
   };
-  const mailboxes: components["schemas"]["ListedMailbox"][] = (await Promise.all(owners.map(owned))).flat();
-  if (actor.kind === "agent") {
-    const { settings } = await agentSettings(deployment.table, actor.id);
-    for (const mailbox of await owned(actor.sponsor)) {
-      const sponsorAccess = sponsorAccessIn(settings, mailbox.id);
-      if (sponsorAccess !== "none") mailboxes.push({ ...mailbox, sponsorAccess });
-    }
-  }
-  return mailboxes;
+  if (actor.kind === "human") return owned(actor.id);
+  const { settings } = await agentSettings(deployment.table, actor.id);
+  return (await owned(actor.sponsor)).flatMap((mailbox) => {
+    const sponsorAccess = sponsorAccessIn(settings, mailbox.id);
+    return sponsorAccess === "none" ? [] : [{ ...mailbox, sponsorAccess }];
+  });
 }

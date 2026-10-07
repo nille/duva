@@ -281,26 +281,26 @@ test("opening a result shows its thread at the message that matched, and the way
   await expect.poll(() => subjects(page), wait).toEqual(["Resplan"]);
 });
 
-test("a sponsor viewing their agent's mailbox searches that mailbox", budget, async () => {
+test("a human viewing another of their own mailboxes searches that mailbox", budget, async () => {
   const app = await startWebApp({ domain: "example.com", admin: "ada@example.org" });
   const ada = app.duva.signIn("ada@example.org");
   const { data: me } = await ada.GET("/whoami");
-  const { data: adaMailbox } = await ada.POST("/mailboxes", { body: { owner: me!.id, address: "ada@example.com" } });
-  await ada.PATCH("/mailboxes/{mailbox}/screener", { params: { path: { mailbox: adaMailbox!.id } }, body: { on: false } });
-  const { data: created } = await ada.POST("/agents", { body: { name: "Hermes" } });
-  await ada.POST("/mailboxes", { body: { owner: created!.agent.id, address: "hermes@example.com" } });
+  for (const address of ["ada@example.com", "lovelace@example.com"]) {
+    const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: me!.id, address } });
+    await ada.PATCH("/mailboxes/{mailbox}/screener", { params: { path: { mailbox: mailbox!.id } }, body: { on: false } });
+  }
   await app.duva.receive(note("Biljetter till Ada", "Biljetterna är bokade.", { to: "ada@example.com" }), { to: ["ada@example.com"] });
-  await app.duva.receive(note("Biljetter till Hermes", "Biljetterna är bokade.", { to: "hermes@example.com" }), { to: ["hermes@example.com"] });
+  await app.duva.receive(note("Biljetter till Lovelace", "Biljetterna är bokade.", { to: "lovelace@example.com" }), { to: ["lovelace@example.com"] });
   const { page, signIn } = app;
   await signIn("ada@example.org");
 
-  await (await mailboxes(page)).getByRole("link", { name: /^Hermes/ }).click();
-  await expect.poll(() => page.getByRole("heading", { level: 1 }).textContent(), wait).toBe("Hermes's Inbox");
-  await search(page, "biljetter", searchBox(page, "Search Hermes's mail"));
+  await (await mailboxes(page)).getByRole("link", { name: /^lovelace@example\.com/ }).click();
+  await expect.poll(() => page.getByRole("link", { name: /Biljetter till Lovelace/ }).count(), wait).toBe(1);
+  await search(page, "biljetter");
 
-  await expect.poll(() => subjects(page), wait).toEqual(["Biljetter till Hermes"]);
+  await expect.poll(() => subjects(page), wait).toEqual(["Biljetter till Lovelace"]);
   await results(page).first().getByRole("link").click();
-  await expect.poll(() => page.getByRole("heading", { level: 1 }).textContent(), wait).toBe("Biljetter till Hermes");
+  await expect.poll(() => page.getByRole("heading", { level: 1 }).textContent(), wait).toBe("Biljetter till Lovelace");
 });
 
 test("on a phone the search box opens from its icon onto a row of its own, and its results fit the screen", budget, async () => {

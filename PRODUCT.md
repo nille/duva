@@ -16,7 +16,7 @@ The humans of one organization, such as a family or a small company. Each deploy
 
 - **Everyday members** use the web app daily for their own mail. They must never need to know about AWS, DNS, CLIs or how agents work.
 - **Admins** are technical. One deploys Duva into the organization's AWS account with `duva deploy`, and admins change the setup: domains, addresses, groups and actors.
-- **Sponsors** are humans who created an agent and answer for it. They approve its sends and its setup changes, see what it did, and can pause it or rotate its key.
+- **Sponsors** are humans who created an agent and answer for it. They give it sponsor access to their mailboxes, approve its sends, see what it did, and can pause it or rotate its key.
 
 Agents are actors too, equal to humans (ADR-0001), but they work through the CLI and the API, never the web app. The first real deployment is Nicklas's own, where he is admin and sponsor of his agents.
 
@@ -24,11 +24,11 @@ Agents are actors too, equal to humans (ADR-0001), but they work through the CLI
 
 Duva is a self-hosted mailbox platform on Amazon SES where humans and agents both receive, read and send mail. The web app is the humans' daily mail client. Supervising agents, through approvals and a record of what they did, lives inside it, never in a separate console.
 
-Success means an organization can let agents own mailboxes and answer mail on its own domains, with a human signing off before anything goes out, all inside its own AWS account, at close to zero cost while idle. The first milestone is an agent's reply waiting for its sponsor's approval (issue #1).
+Success means an organization can let agents answer mail on its own domains, each in its sponsor's mailbox, with a human signing off before anything goes out, all inside its own AWS account, at close to zero cost while idle. The first milestone is an agent's reply waiting for its sponsor's approval (issue #1).
 
 ## Positioning
 
-- Agents are actors with their own mailboxes, and every action is attributed to exactly one actor. The usual model treats an agent as an API client acting as a human.
+- Agents are actors with their own identity, working in their sponsors' mailboxes, and every action is attributed to exactly one actor. The usual model treats an agent as an API client acting as a human.
 - Human sign-off is part of the model. An agent's sends wait for approval, and every message an agent sends carries the disclosure, so recipients can tell.
 - Each organization runs Duva in its own AWS account. An idle deployment costs close to nothing (ADR-0006), and the code is open source under MIT (ADR-0012).
 - Mail is reached only through Duva's own clients. There is no IMAP, SMTP or JMAP access (ADR-0008).
@@ -45,9 +45,9 @@ Success means an organization can let agents own mailboxes and answer mail on it
 
 - Interface copy uses the terms in GLOSSARY.md and never the ones it lists to avoid: thread, never conversation; label, never folder; human, never user; sponsor, never owner, for an agent.
 - Mail is organized with labels. Inbox, Spam and Trash are built in, and Trash and Spam are erased after the organization's retention period, 30 days by default.
-- The Screener holds mail from first-time senders. It is on by default for humans' personal mailboxes and off for agents'.
+- The Screener holds mail from first-time senders. It is on by default.
 - Tracking protection removes known trackers from HTML mail and is always on. Other remote content loads directly (ADR-0017). Each human chooses whether mail shows as HTML or text.
-- Admins can't read personal mailboxes. A sponsor has full access to their agent's personal mailboxes, and an agent works in its sponsor's mailbox only with sponsor access (ADR-0015).
+- Admins can't read personal mailboxes. Agents own none: an agent works in its sponsor's mailboxes only with sponsor access (ADR-0015, ADR-0030).
 - Every message an agent sends carries a disclosure header, also after a human approved or edited it, and by default a visible line such as "Sent by Hermes for Nicklas".
 - There is no end-to-end encryption (ADR-0011).
 - The interface is in English for now. All strings live in one place, so Swedish or Danish can be added later without a rewrite.

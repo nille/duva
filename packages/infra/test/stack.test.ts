@@ -680,6 +680,24 @@ test("setup adds humans to the user pool, and may take no other Cognito action",
   expect(lambda("SetupHandler")[1].Properties?.Environment?.Variables?.[environmentVariables.userPoolId]).toEqual({ Ref: userPoolId });
 });
 
+test("setup erases the mailboxes agents owned before they owned none: it hands them to the eraser, and takes their addresses out of Duva's receipt rules", () => {
+  const [eraserId] = lambda("EraserHandler");
+  const setupRole = lambda("SetupHandler")[1].Properties?.Role?.["Fn::GetAtt"]?.[0];
+  expect(invokers(eraserId)).toContain(setupRole);
+  expect(actions("SetupHandler", "ses").sort()).toEqual([
+    "ses:CreateReceiptRule",
+    "ses:DeleteReceiptRule",
+    "ses:DeleteSuppressedDestination",
+    "ses:DescribeReceiptRuleSet",
+    "ses:ListSuppressedDestinations",
+    "ses:UpdateReceiptRule",
+  ]);
+  const variables = lambda("SetupHandler")[1].Properties?.Environment?.Variables;
+  expect(variables?.[environmentVariables.eraserFunction]).toEqual({ "Fn::GetAtt": [eraserId, "Arn"] });
+  expect(variables?.[environmentVariables.receiptRuleSet]).toEqual({ Ref: ruleSetId });
+  expect(variables?.[environmentVariables.inboundFunction]).toEqual({ "Fn::GetAtt": [lambda("InboundHandler")[0], "Arn"] });
+});
+
 test("setup has minutes to move every human to the user pool, one at a time", () => {
   expect(lambda("SetupHandler")[1].Properties?.Timeout).toBe(300);
 });

@@ -1,18 +1,24 @@
 // The end-to-end run on a real deployment, on demand rather than on every commit:
 //
-//   AWS_REGION=eu-north-1 npm run end-to-end
+//   AWS_REGION=eu-north-1 DUVA_TEST_HUMAN_CODES_KEY=<key> npm run end-to-end
 //
 // npm run end-to-end builds first. The script re-deploys the deployment in the region with the
 // duva binary the build made, then has a second agent mail the first through real SES. The first
 // agent catches up on its change feed, reads the message and replies, both agents using the binary
-// with their keys, and the sponsor approves each send through the API. The reply must land in the
-// second agent's mailbox, in the thread of the original, with the disclosure. The raw copies SES
-// stored show its verdicts and the headers the recipient saw. Last, one message goes to a known and
-// an unknown address at once, straight to SES's inbound SMTP endpoint, and check-deployment.ts runs.
+// with their keys, and their sponsor approves each send through the API. The reply must land in
+// the mailbox the second agent works in, in the thread of the original, with the disclosure. The
+// raw copies SES stored show its verdicts and the headers the recipient saw. Last, one message goes
+// to a known and an unknown address at once, straight to SES's inbound SMTP endpoint, and
+// check-deployment.ts runs.
 //
-// The sponsor is the human signed in to the CLI's config (duva login), an admin. The two agents
-// and their mailboxes are made on the first run and reused after, with new keys each run. Reports
-// each step as passed or failed, then what the run found. Exits 1 if any step fails.
+// The sponsor is the test human, DUVA_TEST_HUMAN or rr23codes@ on the domain, whom the script signs
+// in with an emailed code. It reads the code from the test human's own mailbox with the key in
+// DUVA_TEST_HUMAN_CODES_KEY, of an agent of theirs with read sponsor access there. Agents own no
+// mailboxes (ADR-0030), so each of the two agents works in a test mailbox the test human owns, with
+// send sponsor access to that one only. The admin signed in to the CLI's config (duva login)
+// creates those mailboxes. The agents and the mailboxes are made on the first run and reused after,
+// with new keys each run. Reports each step as passed or failed, then what the run found. Exits 1
+// if any step fails.
 //
 // A step that fails skips the steps that need it. A step that only checks what came of earlier ones
 // fails alone.
@@ -25,6 +31,7 @@ import { hostname } from "node:os";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { CloudFormationClient, DescribeStacksCommand } from "@aws-sdk/client-cloudformation";
+import { CognitoIdentityProviderClient, InitiateAuthCommand, RespondToAuthChallengeCommand } from "@aws-sdk/client-cognito-identity-provider";
 import { GetObjectCommand, ListObjectsV2Command, S3Client } from "@aws-sdk/client-s3";
 import { DescribeReceiptRuleSetCommand, SESClient } from "@aws-sdk/client-ses";
 import { inboundPrefix, sentPrefix } from "@duva/api/infrastructure";
@@ -105,14 +112,50 @@ const deployed = await step("duva deploy re-deploys the deployment, with its DNS
   return { domain: result.domain.name };
 });
 
-// The sponsor, through the API.
-const sponsor = await step("the sponsor is signed in to the CLI's config as an admin", async () => {
+// The admin, through the API, who creates the test mailboxes.
+const admin = await step("an admin is signed in to the CLI's config", async () => {
   const { apiUrl, signIn } = await readConfig();
   if (apiUrl === undefined) throw new Error("No Duva deployment is configured. Run duva deploy first.");
+  if (signIn === undefined) throw new Error("The CLI's config has no sign-in. Run duva deploy first.");
   const client = createDuvaClient(apiUrl, { headers: { authorization: `Bearer ${await accessToken(signIn)}` } });
   const human = answer(await client.GET("/whoami"));
   if (human.kind !== "human" || !human.admin) throw new Error(`the CLI is signed in as ${JSON.stringify(human)}, who isn't an admin`);
-  return { client, email: human.email };
+  return { client, apiUrl, clientId: signIn.clientId };
+});
+
+// The sponsor, the test human, through the API.
+const sponsor = await step("the test human signs in with a code emailed to their own mailbox, which their agent reads", async () => {
+  const email = process.env.DUVA_TEST_HUMAN ?? `rr23codes@${deployed.domain}`;
+  const codesKey = process.env.DUVA_TEST_HUMAN_CODES_KEY;
+  if (!codesKey) throw new Error(`Set DUVA_TEST_HUMAN_CODES_KEY to the key of an agent of ${email}'s with read sponsor access to the mailbox their sign-in codes land in.`);
+  const codes = createDuvaClient(admin.apiUrl, { headers: { authorization: `Bearer ${codesKey}` } });
+  const { mailboxes } = answer(await codes.GET("/mailboxes"));
+  if (mailboxes.length === 0) throw new Error(`the agent with DUVA_TEST_HUMAN_CODES_KEY reads no mailbox of ${email}'s`);
+  const before = await Promise.all(mailboxes.map(async ({ id }) => answer(await codes.GET("/mailboxes/{mailbox}/changes", { params: { path: { mailbox: id } } })).position));
+  const cognito = new CognitoIdentityProviderClient({ region });
+  const started = await cognito.send(new InitiateAuthCommand({ ClientId: admin.clientId, AuthFlow: "USER_AUTH", AuthParameters: { USERNAME: email, PREFERRED_CHALLENGE: "EMAIL_OTP" } }));
+  const code = await until(`a sign-in code arriving for ${email}`, async () => {
+    for (const [index, { id }] of mailboxes.entries()) {
+      const params = { path: { mailbox: id } };
+      const { changes } = answer(await codes.GET("/mailboxes/{mailbox}/changes", { params: { ...params, query: { after: before[index]!, spam: true } } }));
+      for (const change of changes) {
+        if (change.type !== "messageReceived") continue;
+        const thread = answer(await codes.GET("/mailboxes/{mailbox}/threads/{thread}", { params: { path: { mailbox: id, thread: change.thread } } }));
+        const found = thread.messages.find((message) => message.id === change.message)?.text.match(/\b(\d{6,8})\b/);
+        if (found) return found[1];
+      }
+    }
+    return undefined;
+  });
+  const signedIn = await cognito.send(
+    new RespondToAuthChallengeCommand({ ClientId: admin.clientId, ChallengeName: "EMAIL_OTP", Session: started.Session, ChallengeResponses: { USERNAME: email, EMAIL_OTP_CODE: code } }),
+  );
+  const token = signedIn.AuthenticationResult?.AccessToken;
+  if (token === undefined) throw new Error(`Cognito answered the code with ${signedIn.ChallengeName ?? "no token"}`);
+  const client = createDuvaClient(admin.apiUrl, { headers: { authorization: `Bearer ${token}` } });
+  const human = answer(await client.GET("/whoami"));
+  if (human.kind !== "human") throw new Error(`the code signed in ${JSON.stringify(human)}`);
+  return { client, id: human.id, email: human.email };
 });
 
 interface Agent {
@@ -120,10 +163,10 @@ interface Agent {
   key: string;
   mailbox: string;
   address: string;
-  /** Where the agent has caught up to in its mailbox's change feed. */
+  /** Where the agent has caught up to in its mailbox's change feed. The mailbox is a test mailbox of the sponsor's. */
   position: number;
 }
-const agents = await step("the sponsor has two agents, each with a mailbox on the domain and a new key", async () => {
+const agents = await step("the test human has two agents, each with send sponsor access to a test mailbox of theirs on the domain, and a new key", async () => {
   const { client } = sponsor;
   const { agents } = answer(await client.GET("/agents"));
   const { mailboxes } = answer(await client.GET("/mailboxes"));
@@ -133,10 +176,11 @@ const agents = await step("the sponsor has two agents, each with a mailbox on th
       ? answer(await client.POST("/agents/{agent}/key", { params: { path: { agent: existing.id } } }))
       : answer(await client.POST("/agents", { body: { name } }));
     const address = `${name.toLowerCase().replaceAll(" ", "-")}@${deployed.domain}`;
-    const mailbox =
-      // A human's change never waits for approval, so the answer is the mailbox.
-      mailboxes.find(({ owner }) => owner === agent.id) ?? (answer(await client.POST("/mailboxes", { body: { owner: agent.id, address } })) as Schemas["Mailbox"]);
-    return { name, key, mailbox: mailbox.id, address: mailbox.defaultAddress ?? address, position: 0 };
+    // Only admins create mailboxes, and only for humans.
+    const mailbox = mailboxes.find(({ addresses }) => addresses.includes(address)) ?? answer(await admin.client.POST("/mailboxes", { body: { owner: sponsor.id, address } }));
+    // Only this one of the test human's mailboxes, so the agent reads none of their other mail.
+    answer(await client.PATCH("/agents/{agent}/settings", { params: { path: { agent: agent.id } }, body: { sponsorAccess: "send", sponsorMailboxes: [mailbox.id] } }));
+    return { name, key, mailbox: mailbox.id, address, position: 0 };
   };
   return { first: await agentNamed(agentNames.first), second: await agentNamed(agentNames.second) };
 });
@@ -176,7 +220,7 @@ const reply = await step("the first agent drafts a reply and asks to send it, an
   return await sendApproved(agents.first, draft);
 });
 
-const replyReceived = await step("the reply lands in the second agent's mailbox, in the thread of the original, with the disclosure line", async () => {
+const replyReceived = await step("the reply lands in the mailbox the second agent works in, in the thread of the original, with the disclosure line", async () => {
   const [arrival] = await arrivals(agents.second, ({ messageId }) => messageId === reply.messageId);
   const { thread, message, spam } = arrival!;
   if (spam) throw new Error("SES judged it to be spam");
@@ -294,7 +338,7 @@ async function until<T>(what: string, attempt: () => Promise<T | undefined>): Pr
   }
 }
 
-/** The changes in the agent's mailbox since it last caught up, read with the binary until it lists no more. */
+/** The changes in the mailbox the agent works in since it last caught up, read with the binary until it lists no more. */
 async function catchUp(agent: Agent, { spam = false } = {}): Promise<Schemas["MailboxChange"][]> {
   const changes: Schemas["MailboxChange"][] = [];
   for (;;) {
@@ -306,7 +350,7 @@ async function catchUp(agent: Agent, { spam = false } = {}): Promise<Schemas["Ma
 }
 
 /**
- * The mail that arrives in the agent's mailbox, as the agent catches up and reads each new message's
+ * The mail that arrives in the mailbox the agent works in, as the agent catches up and reads each new message's
  * thread, until a message matches. Then waits a little longer, so a second copy would show.
  */
 async function arrivals(agent: Agent, matches: (message: Schemas["Message"]) => boolean) {

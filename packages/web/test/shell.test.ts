@@ -422,7 +422,6 @@ test("the status strip says Duva is up to date, how each sponsored agent stands,
   const { data: me } = await ada.GET("/whoami");
   await ada.POST("/mailboxes", { body: { owner: me!.id, address: "ada@example.com" } });
   const { data: hermes } = await ada.POST("/agents", { body: { name: "Hermes" } });
-  await ada.POST("/mailboxes", { body: { owner: hermes!.agent.id, address: "hermes@example.com" } });
   await ada.PATCH("/agents/{agent}/settings", { params: { path: { agent: hermes!.agent.id } }, body: { sendsPerHour: 2 } });
   const { page } = app;
   await app.signIn("ada@example.org");
@@ -432,8 +431,10 @@ test("the status strip says Duva is up to date, how each sponsored agent stands,
   await expect.poll(() => strip.innerText(), wait).toContain("Hermes is running, 2 sends left this hour");
   expect(await strip.innerText()).toContain("ada@example.org, admin");
   expect(await strip.getByRole("button", { name: "Sign out" }).isVisible()).toBe(true);
-  // The agent's mailbox carries its diamond beside the mail too.
-  expect(await (await mailboxes(page)).getByRole("link", { name: /^Hermes/ }).locator(".actor-mark-agent").count()).toBe(1);
+  // Each agent is a link to its activity, with its diamond.
+  const running = strip.getByRole("link", { name: /^Hermes is running/ });
+  expect(await running.getAttribute("href")).toBe(`#/agents/${hermes!.agent.id}`);
+  expect(await running.locator(".actor-mark-agent").count()).toBe(1);
 
   await ada.POST("/agents/{agent}/pause", { params: { path: { agent: hermes!.agent.id } } });
 
@@ -472,23 +473,20 @@ test.each([
   await ada.POST("/mailboxes", { body: { owner: me.id, address: "planning-committee@example.com" } });
   await ada.POST("/mailboxes", { body: { owner: me.id, address: "spare@example.com" } });
   await ada.DELETE("/addresses/{address}", { params: { path: { address: "spare@example.com" } } });
-  const { data: hermes } = await ada.POST("/agents", { body: { name: "Hermes" } });
-  await ada.POST("/mailboxes", { body: { owner: hermes!.agent.id, address: "hermes-research-assistant@example.com" } });
   await signIn("ada@example.org");
   if (viewport === phone) await page.getByRole("button", { name: /Mailboxes and views/ }).click();
 
   const links = (await mailboxes(page)).getByRole("link");
-  await expect.poll(() => links.count(), wait).toBe(5);
+  await expect.poll(() => links.count(), wait).toBe(4);
   expect(await links.allInnerTexts()).toEqual([
     expect.stringMatching(/^ada@example\.com\s*$/),
     expect.stringMatching(/^lovelace@example\.com\s*$/),
     expect.stringMatching(/^planning-committee@example\.com\s*$/),
     expect.stringMatching(/^Mailbox 4, without an address\s*$/),
-    expect.stringMatching(/^Hermes\s+hermes-research-assistant@example\.com$/),
   ]);
   const shown = (await mailboxes(page)).locator(".mailbox-name, .mailbox-at");
-  expect(await shown.count()).toBe(6);
-  expect(await shown.evaluateAll(readWhole)).toEqual(Array(6).fill(true));
+  expect(await shown.count()).toBe(4);
+  expect(await shown.evaluateAll(readWhole)).toEqual(Array(4).fill(true));
   expect(await fits(page)).toBe(true);
 });
 

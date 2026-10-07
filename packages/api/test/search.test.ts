@@ -376,12 +376,12 @@ test("only those who can read the mailbox search it", async () => {
     const { response, error } = await search("secret", client);
     expect({ status: response.status, error }).toEqual({
       status: 403,
-      error: { message: "Only the mailbox's owner can read it, its sponsor if an agent owns it, and the agents its owner gives sponsor access." },
+      error: { message: "Only the mailbox's owner can read it, and the agents its owner gives sponsor access." },
     });
   }
 });
 
-test("a sponsor searches its agent's mailbox, and an agent its sponsor's with sponsor access", async () => {
+test("an agent searches its sponsor's mailbox only with sponsor access", async () => {
   const duva = await startDuva({ domain: "example.com", admin: "ada@example.org", humans: ["linus@example.org"] });
   const ada = duva.signIn("ada@example.org");
   const linus = duva.signIn("linus@example.org");
@@ -389,16 +389,13 @@ test("a sponsor searches its agent's mailbox, and an agent its sponsor's with sp
   const { data: created } = await linus.POST("/agents", { body: { name: "Hermes" } });
   const hermes = duva.withKey(created!.key);
   const { data: linusMailbox } = await ada.POST("/mailboxes", { body: { owner: linusActor!.id, address: "linus@example.com" } });
-  const { data: hermesMailbox } = await ada.POST("/mailboxes", { body: { owner: created!.agent.id, address: "hermes@example.com" } });
   await linus.PATCH("/mailboxes/{mailbox}/screener", { params: { path: { mailbox: linusMailbox!.id } }, body: { on: false } });
   await duva.receive(message({ to: "linus@example.com", subject: "For Linus", text: "Ferry times." }), { to: ["linus@example.com"] });
-  await duva.receive(message({ to: "hermes@example.com", subject: "For Hermes", text: "Ferry times." }), { to: ["hermes@example.com"] });
   const found = async (client: DuvaClient, mailbox: string) => {
     const { data, response } = await client.GET("/mailboxes/{mailbox}/search", { params: { path: { mailbox }, query: { q: "ferry" } } });
     return data?.results.map(({ thread }) => thread.subject) ?? response.status;
   };
 
-  expect(await found(linus, hermesMailbox!.id)).toEqual(["For Hermes"]);
   expect(await found(hermes, linusMailbox!.id)).toBe(403);
   await linus.PATCH("/agents/{agent}/settings", { params: { path: { agent: created!.agent.id } }, body: { sponsorAccess: "read" } });
   expect(await found(hermes, linusMailbox!.id)).toEqual(["For Linus"]);

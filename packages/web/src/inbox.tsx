@@ -52,8 +52,7 @@ type Listing =
 class ListingFailed extends Error {}
 
 /**
- * The view's threads, in the human's own mailbox or, with the agent's name, an agent's they
- * sponsor, whose Inbox is at `base` in the web app. `version` counts the changes to the mailbox the
+ * The view's threads, in the human's mailbox whose Inbox is at `base` in the web app. `version` counts the changes to the mailbox the
  * app has seen, so the listing reads its pages again when it changes. `done` is what the human last did, said at the head with
  * a way to undo it, and `onDone` hears each new thing they do. Only the Inbox says when Duva last
  * checked for mail, on a phone, where there is no status strip, and every view says when it couldn't.
@@ -63,14 +62,12 @@ export function ThreadIndex({
   client,
   mailbox,
   base,
-  agent,
   view,
   labels,
   version,
   connection,
   marks = noMarks,
   screener = 0,
-  prompts = false,
   done,
   onDone,
   onSignedOut,
@@ -78,9 +75,6 @@ export function ThreadIndex({
   client: DuvaClient;
   mailbox: Mailbox;
   base: string;
-  agent?: string;
-  /** Whether the mailbox is the human's own, whose labels' prompts give its mailbox agent tasks. */
-  prompts?: boolean;
   view: ThreadsView;
   labels: Label[];
   version: number;
@@ -97,7 +91,7 @@ export function ThreadIndex({
   const [announcement, setAnnouncement] = useState("");
   const listingRef = useRef(listing);
   listingRef.current = listing;
-  const title = titleOf(view, labels, agent);
+  const title = titleOf(view, labels);
   const label = "label" in view ? view.label : undefined;
 
   const page = useCallback(
@@ -222,7 +216,7 @@ export function ThreadIndex({
   });
 
   const ownLabel = label === undefined ? undefined : labels.find((each) => each.id === label && !each.builtIn);
-  const prompted = label === undefined || !prompts ? undefined : labels.find((each) => each.id === label && (!each.builtIn || promptedBuiltIns.includes(each.id)));
+  const prompted = label === undefined ? undefined : labels.find((each) => each.id === label && (!each.builtIn || promptedBuiltIns.includes(each.id)));
 
   return (
     <ViewMain className="desk" aria-busy={listing.status === "loading"}>
@@ -283,7 +277,7 @@ export function ThreadIndex({
           </button>
         </div>
       ) : listing.threads.length === 0 ? (
-        <Empty client={client} view={view} mailbox={mailbox} agent={agent} />
+        <Empty client={client} view={view} mailbox={mailbox} />
       ) : (
         <div className="index">
           <ol className="threads" aria-label={strings.inbox.threads} ref={list}>
@@ -425,7 +419,7 @@ export function DoneLine({ done, onDone, onUndone }: { done: Done | undefined; o
 }
 
 /** What an empty view says, in its own words. Spam and Trash say how long they keep a thread, as the organization's settings do. */
-function Empty({ client, view, mailbox, agent }: { client: DuvaClient; view: ThreadsView; mailbox: Mailbox; agent?: string }) {
+function Empty({ client, view, mailbox }: { client: DuvaClient; view: ThreadsView; mailbox: Mailbox }) {
   const kept = "label" in view && (view.label === "spam" || view.label === "trash");
   const [retentionDays, setRetentionDays] = useState<number>();
   useEffect(() => {
@@ -445,11 +439,9 @@ function Empty({ client, view, mailbox, agent }: { client: DuvaClient; view: Thr
       : "reminders" in view
         ? strings.views.empty.reminders
       : "sent" in view
-        ? agent === undefined
-          ? { title: strings.sent.emptyTitle, lead: strings.sent.emptyLead }
-          : { title: strings.sent.agentEmptyTitle(agent), lead: strings.sent.agentEmptyLead(agent) }
+        ? { title: strings.sent.emptyTitle, lead: strings.sent.emptyLead }
         : view.label === "inbox"
-        ? { title: agent === undefined ? strings.inbox.emptyTitle : strings.inbox.agentEmptyTitle(agent), lead: strings.inbox.emptyLead(mailbox.defaultAddress) }
+        ? { title: strings.inbox.emptyTitle, lead: strings.inbox.emptyLead(mailbox.defaultAddress) }
         : view.label === "spam"
           ? { title: strings.views.empty.spam.title, lead: strings.views.empty.spam.lead(retentionDays) }
           : view.label === "trash"

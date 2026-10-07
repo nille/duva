@@ -129,7 +129,7 @@ test("a human's send goes out at once, with no approval, and records the Message
   expect(asked.response.status).toBe(202);
   expect(asked.data?.send).toEqual({ state: "approved" });
   expect(draft.send).toEqual({ state: "sent", thread: expect.any(String), message: expect.any(String), messageId: expect.stringMatching(/@eu-north-1\.amazonses\.com>$/) });
-  expect((await ada.GET("/approvals")).data).toEqual({ approvals: [], setupApprovals: [] });
+  expect((await ada.GET("/approvals")).data).toEqual({ approvals: [] });
   expect(duva.sent().map((raw) => raw.match(/^Message-ID: (.+)$/m)?.[1])).toEqual([draft.send!.messageId]);
 });
 
@@ -304,7 +304,9 @@ test("an agent's draft with Cc and Bcc still waits for its sponsor, who sees eve
   const duva = await startDuva({ domain: "example.com", admin: "ada@example.org" });
   const ada = duva.signIn("ada@example.org");
   const { data: created } = await ada.POST("/agents", { body: { name: "Hermes" } });
-  const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: created!.agent.id, address: "hermes@example.com" } });
+  const { data: sponsor } = await ada.GET("/whoami");
+  const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: sponsor!.id, address: "ada@example.com" } });
+  await ada.PATCH("/agents/{agent}/settings", { params: { path: { agent: created!.agent.id } }, body: { sponsorAccess: "send" } });
   const hermes = duva.withKey(created!.key);
   const params = { path: { mailbox: mailbox!.id } };
   const { data: written } = await hermes.POST("/mailboxes/{mailbox}/drafts", { params, body: { to: ["grace@example.org"], cc: ["ada@example.org"], bcc: ["iris@example.net"], subject: "Hej", text: "Hej Grace." } });
@@ -325,7 +327,9 @@ test("an approver can't change a draft's Cc or Bcc", async () => {
   const duva = await startDuva({ domain: "example.com", admin: "ada@example.org" });
   const ada = duva.signIn("ada@example.org");
   const { data: created } = await ada.POST("/agents", { body: { name: "Hermes" } });
-  const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: created!.agent.id, address: "hermes@example.com" } });
+  const { data: sponsor } = await ada.GET("/whoami");
+  const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: sponsor!.id, address: "ada@example.com" } });
+  await ada.PATCH("/agents/{agent}/settings", { params: { path: { agent: created!.agent.id } }, body: { sponsorAccess: "send" } });
   const hermes = duva.withKey(created!.key);
   const params = { path: { mailbox: mailbox!.id } };
   const { data: written } = await hermes.POST("/mailboxes/{mailbox}/drafts", { params, body: { to: ["grace@example.org"], subject: "Hej", text: "Hej Grace." } });
@@ -342,7 +346,9 @@ test("deleting an agent's draft that waits for approval withdraws the request", 
   const duva = await startDuva({ domain: "example.com", admin: "ada@example.org" });
   const ada = duva.signIn("ada@example.org");
   const { data: created } = await ada.POST("/agents", { body: { name: "Hermes" } });
-  const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: created!.agent.id, address: "hermes@example.com" } });
+  const { data: sponsor } = await ada.GET("/whoami");
+  const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: sponsor!.id, address: "ada@example.com" } });
+  await ada.PATCH("/agents/{agent}/settings", { params: { path: { agent: created!.agent.id } }, body: { sponsorAccess: "send" } });
   const hermes = duva.withKey(created!.key);
   const params = { path: { mailbox: mailbox!.id } };
   const { data: written } = await hermes.POST("/mailboxes/{mailbox}/drafts", { params, body: { to: ["grace@example.org"], subject: "Hej", text: "Hej Grace." } });
@@ -351,7 +357,7 @@ test("deleting an agent's draft that waits for approval withdraws the request", 
 
   await hermes.DELETE("/mailboxes/{mailbox}/drafts/{draft}", { params: draftParams });
 
-  expect((await ada.GET("/approvals")).data).toEqual({ approvals: [], setupApprovals: [] });
+  expect((await ada.GET("/approvals")).data).toEqual({ approvals: [] });
   const decision = await ada.POST("/approvals/{approval}/send", { params: { path: { approval: asked!.send!.approval! } } });
   expect(decision.response.status).toBe(409);
   const { data: feed } = await hermes.GET("/mailboxes/{mailbox}/changes", { params });

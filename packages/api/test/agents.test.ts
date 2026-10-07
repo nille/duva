@@ -10,7 +10,7 @@ test("a human creates an agent, becomes its sponsor, and gets its key once", asy
 
   expect(response.status).toBe(201);
   expect(data).toEqual({
-    agent: { id: expect.any(String), kind: "agent", name: "Hermes", sponsor: sponsor?.id, admin: false },
+    agent: { id: expect.any(String), kind: "agent", name: "Hermes", sponsor: sponsor?.id },
     key: expect.stringMatching(/^duva_agent_[A-Za-z0-9_-]{43}$/),
   });
   const { data: listed } = await ada.GET("/agents");

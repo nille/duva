@@ -2,7 +2,7 @@ import type { components } from "@duva/openapi";
 import { jsonBody, type OperationHandler, refusal } from "./api.ts";
 import { mailboxesReadBy, mailboxFor } from "./access.ts";
 import type { Deployment } from "./deployment.ts";
-import { AddressTaken, addMailbox, allMailboxes, findActor, findMailbox } from "./organization.ts";
+import { AddressTaken, addMailbox, allMailboxes, findActor, findMailbox, isAdmin } from "./organization.ts";
 import { addressGiven, addressTaken } from "./addresses.ts";
 import { builtInLabels, changeLabelPrompt, createLabel, deleteLabel, hasLabel, labelWithId, listLabels, longestPrompt, NameTaken, promptedBuiltIns, renameLabel } from "./labels.ts";
 import { noMailboxAgent } from "./agent-runs.ts";
@@ -13,34 +13,27 @@ import { giveMailboxAgent, mailboxAgentOf } from "./mailbox-agents.ts";
 import { threadTasks } from "./tasks.ts";
 import { syncRecipients } from "./receiving.ts";
 import { groupsSentAsBy } from "./group-mail.ts";
-import { actorNamed, setupOperation } from "./setup.ts";
 
-export const createMailbox = setupOperation("createMailbox", async (event, deployment, actor) => {
-  if (!actor.admin) return refusal(403, "Only admins can create mailboxes. Ask an admin to create one.");
+export const createMailbox: OperationHandler = async (event, deployment, actor) => {
+  if (!isAdmin(actor)) return refusal(403, "Only admins can create mailboxes. Ask an admin to create one.");
   const body = jsonBody(event);
   const ownerId = typeof body?.owner === "string" ? body.owner : "";
   const owner = await findActor(deployment.table, ownerId);
-  if (owner === undefined) return refusal(400, `There is no human or agent ${JSON.stringify(ownerId)}. Give the ID of the actor that will own the mailbox.`);
-  if (owner.kind === "agent" && owner.mailbox !== undefined) return refusal(400, "A mailbox agent works in its human's mailbox and owns none. Give the ID of a human, or of an agent that runs elsewhere.");
+  // Agents work in their sponsors' mailboxes, with sponsor access, and own none (ADR-0030).
+  if (owner?.kind === "agent") return refusal(400, "Agents own no mailboxes. Give the ID of a human, and have them give the agent sponsor access to theirs.");
+  if (owner === undefined) return refusal(400, `There is no human ${JSON.stringify(ownerId)}. Give the ID of the human who will own the mailbox.`);
   const address = await addressGiven(deployment, body?.address);
   if (typeof address !== "string") return address;
-  // The Screener starts on for a human's mailbox, and off for an agent's.
-  const screener = owner.kind === "human";
-  return {
-    preview: [`Creates a mailbox at ${address} for ${actorNamed(owner)}, with its Screener ${screener ? "on" : "off"}.`],
-    run: async () => {
-      try {
-        const mailbox = await addMailbox(deployment.table, { owner: owner.id, address, screener, by: actor.id });
-        await giveMailboxAgent(deployment.table, mailbox);
-        await syncRecipients(deployment.table, deployment.receiving);
-        return { statusCode: 201, body: mailbox satisfies components["schemas"]["Mailbox"] };
-      } catch (error) {
-        if (!(error instanceof AddressTaken)) throw error;
-        return addressTaken(deployment, address);
-      }
-    },
-  };
-});
+  try {
+    const mailbox = await addMailbox(deployment.table, { owner: owner.id, address, by: actor!.id });
+    await giveMailboxAgent(deployment.table, mailbox);
+    await syncRecipients(deployment.table, deployment.receiving);
+    return { statusCode: 201, body: mailbox satisfies components["schemas"]["Mailbox"] };
+  } catch (error) {
+    if (!(error instanceof AddressTaken)) throw error;
+    return addressTaken(deployment, address);
+  }
+};
 
 export const listMailboxes: OperationHandler = async (_event, deployment, actor) => ({
   statusCode: 200,
@@ -48,7 +41,7 @@ export const listMailboxes: OperationHandler = async (_event, deployment, actor)
 });
 
 export const listOrganizationMailboxes: OperationHandler = async (_event, deployment, actor) => {
-  if (!actor?.admin) return refusal(403, "Only admins can list the organization's mailboxes. Ask an admin who has access.");
+  if (!isAdmin(actor)) return refusal(403, "Only admins can list the organization's mailboxes. Ask an admin who has access.");
   const mailboxes = (await Promise.all((await allMailboxes(deployment.table)).map((id) => findMailbox(deployment.table, id)))).filter((mailbox) => mailbox !== undefined);
   const owners = await Promise.all([...new Set(mailboxes.map(({ owner }) => owner))].map((id) => findActor(deployment.table, id)));
   return {

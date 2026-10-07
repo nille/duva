@@ -8,7 +8,7 @@ import { costOf } from "./agent-models.ts";
 import { raiseAlert } from "./alerting.ts";
 import type { Table } from "./deployment.ts";
 import { sponsorAccessIn } from "./access.ts";
-import { type Agent, agentSettings, type Mailbox, organizationSettings, switchesFor } from "./organization.ts";
+import { type Agent, agentSettings, type Mailbox, organizationSettings } from "./organization.ts";
 import { endRunToken, issueRunToken } from "./run-tokens.ts";
 import { documents, pk, sk } from "./table.ts";
 
@@ -73,7 +73,7 @@ export async function startRun(
     address: mailbox.defaultAddress ?? mailbox.addresses[0] ?? "",
     owner,
     access,
-    approval: switchesFor(given, true).approval,
+    approval: given.approvalAsSponsor,
     model: { model: settings.mailboxAgentModel, profile: settings.mailboxAgentProfile, region: settings.mailboxAgentRegion },
     budget: cap - spent,
     now: new Date().toISOString(),

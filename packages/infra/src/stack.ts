@@ -632,6 +632,10 @@ export class DuvaStack extends Stack {
         [environmentVariables.domain]: domain,
         [environmentVariables.admin]: admin,
         [environmentVariables.indexQueue]: indexQueue.queueUrl,
+        [environmentVariables.eraserFunction]: eraser.functionArn,
+        [environmentVariables.mailBucket]: mail.bucketName,
+        [environmentVariables.receiptRuleSet]: receiving.receiptRuleSetName,
+        [environmentVariables.inboundFunction]: inbound.functionArn,
       },
       { timeout: Duration.minutes(5) },
     );
@@ -639,6 +643,16 @@ export class DuvaStack extends Stack {
     // It starts each mailbox's backfill.
     indexQueue.grantSendMessages(setup);
     humans.grant(setup, "cognito-idp:AdminCreateUser", "cognito-idp:AdminGetUser");
+    // It erases the mailboxes agents owned before they owned none (ADR-0030), handing each to the
+    // eraser and taking their addresses out of the receipt rules, as the API does. IAM has no
+    // resource type for receipt rules or the suppression list, so these can't be limited.
+    eraser.grantInvoke(setup);
+    setup.addToRolePolicy(
+      new PolicyStatement({
+        actions: ["ses:DescribeReceiptRuleSet", "ses:CreateReceiptRule", "ses:UpdateReceiptRule", "ses:DeleteReceiptRule", "ses:ListSuppressedDestinations", "ses:DeleteSuppressedDestination"],
+        resources: ["*"],
+      }),
+    );
 
     // With no identity sources, API Gateway runs the authorizer on every call and answers 401
     // when it fails with "Unauthorized". It caches nothing, so a session ends when its token does.
