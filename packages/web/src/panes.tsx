@@ -46,3 +46,15 @@ export function useViewTitle(title: string) {
     if (!beside) document.title = title;
   }, [title, beside]);
 }
+
+/** Takes how many of the list's threads are unread, which the phone's switcher says as the list's head. */
+export const ListCountContext = createContext<(count: number) => void>(() => undefined);
+
+/** Says how many of the list's threads are unread to the phone's switcher, until the list closes. */
+export function useListCount(count: number) {
+  const say = useContext(ListCountContext);
+  useEffect(() => {
+    say(count);
+    return () => say(0);
+  }, [say, count]);
+}

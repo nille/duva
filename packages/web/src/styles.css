@@ -72,6 +72,7 @@
   --space-6: 2rem;
   --space-7: 3rem;
 
+  --radius-mark: 2px;
   --radius-key: 4px;
   --radius: 6px;
   --radius-field: 7px;
@@ -380,7 +381,7 @@ kbd {
 
 .actor-mark-agent {
   border: 1.6px solid var(--agent);
-  border-radius: 2px;
+  border-radius: var(--radius-mark);
   transform: rotate(45deg) scale(0.82);
 }
 
@@ -776,8 +777,9 @@ kbd {
   padding: 0 var(--space-2);
 }
 
-/* The phone's switcher for the mailbox and view, which a desk doesn't need. */
-.switcher {
+/* The phone's switcher for the mailbox and view, and what its sheet says, which a desk doesn't need. */
+.switcher,
+.side-state {
   display: none;
 }
 
@@ -979,7 +981,7 @@ kbd {
   bottom: 0.1em;
   left: calc(-1 * var(--space-3));
   width: 3px;
-  border-radius: 2px;
+  border-radius: var(--radius-mark);
   background: var(--call);
 }
 
@@ -1122,7 +1124,7 @@ kbd {
     right: 22%;
     left: 22%;
     height: 2px;
-    border-radius: 0 0 2px 2px;
+    border-radius: 0 0 var(--radius-mark) var(--radius-mark);
     background: var(--ink);
   }
 
@@ -1193,6 +1195,35 @@ kbd {
     font-size: var(--text-sm);
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  /* The list's unread count, which its head says on a desk. */
+  .switcher-count {
+    flex: none;
+    color: var(--ink-3);
+    font-size: var(--text-sm);
+  }
+
+  /* The switcher is a list's head, so the list names itself and counts its unread only for screen readers. */
+  .list-head > :is(.view-title, .count) {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .list-head:not(:has(> :not(.view-title, .count))) {
+    margin: 0;
+  }
+
+  /* There is no status strip on a phone, so the switcher's sheet says when Duva was last up to date. */
+  .side-state {
+    display: block;
+    padding: var(--space-1) var(--space-3);
+    color: var(--ink-2);
+    font-size: var(--text-xs);
   }
 
   /* Unread mail in a mailbox the switcher hides, marked with the orange dot, as an unread thread is. */
@@ -2094,7 +2125,7 @@ kbd {
 
 .mark-new {
   padding: 0.125rem var(--space-2);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--pencil);
   color: var(--paper);
   font-size: var(--text-xs);
@@ -2185,7 +2216,7 @@ kbd {
   gap: var(--space-3);
   padding: var(--space-4) var(--space-5);
   background: var(--paper);
-  border-radius: 2px;
+  border-radius: var(--radius-mark);
   box-shadow: var(--shade);
 }
 
@@ -2543,7 +2574,7 @@ a.thread:focus-visible {
 .letter-skeleton .line {
   display: block;
   height: 0.75rem;
-  border-radius: 2px;
+  border-radius: var(--radius-mark);
   background: var(--seam);
   animation: breathe 1.6s ease-in-out infinite alternate;
 }
@@ -2567,7 +2598,6 @@ a.thread:focus-visible {
   display: flex;
   flex-wrap: wrap;
   gap: 0.35rem;
-  margin: calc(-1 * var(--space-1)) 0 var(--space-3);
 }
 
 /* New senders waiting in the Screener lie raised at the Inbox's top, one slip, with the way there. */
@@ -3654,10 +3684,11 @@ input[aria-invalid="true"] {
 }
 
 /*
- * The toolbar heading the rows: the box that picks them all, level with each row's, and once any
- * is picked, how many and what to do with them. It stays at the column's top as the rows scroll.
+ * The line heading the rows, with no band between: the box that picks them all, level with each
+ * row's, then the chips, and once any is picked, how many and what to do with them in the chips'
+ * place. It runs to the column's edges and stays at the column's top as the rows scroll.
  */
-.index-tools {
+.list-line {
   position: sticky;
   top: 0;
   z-index: 1;
@@ -3665,23 +3696,27 @@ input[aria-invalid="true"] {
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2) var(--space-4);
-  min-height: 2.25rem;
-  padding: var(--space-1) 1.4rem;
+  min-height: 2.75rem;
+  margin-inline: -1.4rem;
+  padding: var(--space-2) 1.4rem;
   background: var(--list);
   box-shadow: inset 0 -1px 0 var(--seam);
 }
 
-.index-tools:has(.index-actions) {
-  padding-block: var(--space-2);
+.index-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
 }
 
-/* Where the list lies on the reader's grey, as alone or on a phone, its toolbar does too. */
-.panes-one .index-tools {
+/* Where the list lies on the reader's grey, as alone or on a phone, its head line does too. */
+.panes-one .list-line {
   background: var(--read);
 }
 
 @media (max-width: 48rem) {
-  .index-tools {
+  .list-line {
     background: var(--read);
   }
 }
@@ -3778,11 +3813,22 @@ input[aria-invalid="true"] {
   padding: 0.98rem 0 0 1.4rem;
 }
 
+/*
+ * On a desk a row's box lies quiet, in Second Ink at low contrast, until its row is under the
+ * pointer or focused, or any row is picked. A pointer that can't hover always sees it.
+ */
+@media (min-width: 48.0625rem) and (hover: hover) {
+  .threads:not(:has(.pick input:is(:checked, :indeterminate))) .thread-row:not(:hover, :focus-within) > .pick input {
+    border-color: color-mix(in srgb, var(--ink-2) 28%, transparent);
+    background: transparent;
+  }
+}
+
 .label-name {
   flex: none;
   padding: 0 var(--space-2);
   border: 1px solid var(--rule-strong);
-  border-radius: 4px;
+  border-radius: var(--radius-key);
   font: 600 var(--text-xs) / 1.4 var(--sans);
   color: var(--ink-2);
 }
@@ -3795,7 +3841,7 @@ input[aria-invalid="true"] {
   gap: var(--space-1);
   padding: 0 var(--space-2) 0 var(--space-1);
   border: 1px solid var(--rule-strong);
-  border-radius: 4px;
+  border-radius: var(--radius-key);
   font: 600 var(--text-xs) / 1.4 var(--sans);
   color: var(--ink-2);
 }
@@ -4382,7 +4428,7 @@ input[aria-invalid="true"] {
   bottom: 0.1em;
   left: calc(-1 * var(--space-3));
   width: 3px;
-  border-radius: 2px;
+  border-radius: var(--radius-mark);
   background: var(--call);
 }
 

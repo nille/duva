@@ -330,11 +330,7 @@ export function Settings({
   const [giving, setGiving] = useState<Giving>();
 
   const copy = strings.settings;
-  // Today in the afternoon, so You's line shows the time as the human chose it.
-  const today = new Date();
-  today.setHours(14, 30, 0, 0);
-  const dates = datesFor(preferences);
-  const states: Partial<Record<Page, EntryState>> = { you: { text: copy.index.you(dates.clock(today), dates.date(today), preferences.mailView === "html") }, ...index.states };
+  const states: Partial<Record<Page, EntryState>> = { you: { text: copy.index.you(preferences) }, ...index.states };
   // A line is named by its page alone, and says what the page holds now as its description.
   const line = (key: string, href: string, name: string, current: boolean, state?: EntryState, agent?: IndexedAgent) => {
     const stateId = `settings-state-${key}`;

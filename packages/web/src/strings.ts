@@ -78,7 +78,7 @@ export const strings = {
     title: "Inbox",
     agentTitle: (agent: string) => `${agent}'s Inbox`,
     threads: "Threads",
-    unread: (count: number, more: boolean) => (more ? `At least ${count} unread` : `${count} unread`),
+    unread: (count: number) => `${count} unread`,
     unreadMark: "Unread",
     agentSender: (agent: string) => `${agent}, an agent`,
     verifiedSender: (sender: string) => `${sender}, verified logo`,
@@ -560,7 +560,12 @@ export const strings = {
       recordsMissing: (domain: string, records: number) => `${domain}, ${records === 1 ? "1 record" : `${records} records`} missing`,
       domainsMissing: (domains: number) => `${domains} domains have records missing`,
       /** What each page holds now, as its line in the index says it. */
-      you: (time: string, date: string, html: boolean) => `${time}, ${date}, mail ${html ? "as designed" : "as plain text"}`,
+      you: ({ hourCycle, dateFormat, mailView }: { hourCycle: string; dateFormat: string; mailView: string }) =>
+        [
+          hourCycle === "h12" ? "12-hour clock" : hourCycle === "h23" ? "24-hour clock" : "Default clock",
+          ...(dateFormat === "iso" ? ["dates year first"] : dateFormat === "dayMonth" ? ["dates day first"] : dateFormat === "monthDay" ? ["dates month first"] : []),
+          mailView === "html" ? "mail as designed" : "mail as plain text",
+        ].join(", "),
       screener: (on: number, of: number) => (of === 1 ? (on === 1 ? "On" : "Off") : on === of ? `On for all ${of} mailboxes` : on === 0 ? `Off for all ${of} mailboxes` : `On for ${on} of ${of} mailboxes`),
       agents: (count: number) => (count === 1 ? "1 agent" : `${count} agents`),
       running: "Running",

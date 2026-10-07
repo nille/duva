@@ -73,6 +73,7 @@ typography:
     fontWeight: 600
     lineHeight: 1
 rounded:
+  mark: "2px"
   key: "4px"
   row: "6px"
   field: "7px"
@@ -261,7 +262,7 @@ Both are OFL-1.1, noted in THIRD_PARTY_NOTICES.md, and their latin faces are pre
 
 On a desk (from 64rem) the page is one grid the full width and height of the window. The side column (15rem) holds the bar at its head, the wordmark and Write, the search box, and Duva's places (Mail, Approvals, Alerts, Settings), then the mailboxes, the open mailbox's views and its labels. Beside it lies the list (`clamp(20rem, 28vw, 31rem)`), then what is open from it filling the rest, and the status strip (2.125rem) runs along the foot under all three. Each column scrolls by itself, so the list keeps its place while a thread or a draft is read beside it. Views that aren't a list of mail, such as Approvals, take the list's and the reader's width together. Settings and an agent's activity lay out their own list and reading pane there: Settings' index, or the agent's days, at the list's width, and the open sheet, or the day's timeline, beside it, each column scrolling by itself.
 
-From 48rem to 64rem the side column stays, and what is open takes the one column beside it, as the list does while nothing is open. Under 48rem the phone has one top row (the wordmark, the search icon and Write), one column, a switcher at the view's head that opens the mailboxes and views, and the tab bar of places along the foot. There is no status strip on a phone, and Sign out is in Settings.
+From 48rem to 64rem the side column stays, and what is open takes the one column beside it, as the list does while nothing is open. Under 48rem the phone has one top row (the wordmark, the search icon and Write), one column, a switcher at the view's head that opens the mailboxes and views, and the tab bar of places along the foot. The switcher is a list's head: one line with the view, the mailbox and the unread count, so the list doesn't name itself again but for screen readers. There is no status strip on a phone, so the switcher's sheet says when Duva was last up to date, and Sign out is in Settings.
 
 A list's row has one form at every width: who and when on the first line, the subject and snippet on the second. Only what fits changes (a container query on the list column gives a row's labels less room under 40rem).
 
@@ -276,7 +277,7 @@ Flat by default: depth is tone. The three greys step lighter toward the reader, 
 
 ## Shapes
 
-Small, exact radii, and pills for what is pressed. Key caps 4px, with a heavier 2px lower edge; rows and places 6px; fields 7px; sheets laid over the page 10px; buttons, chips and counts are pills.
+Small, exact radii, and pills for what is pressed. Marks 2px, as the agent's diamond, the keyboard's focus bar and a skeleton's lines are; key caps 4px, with a heavier 2px lower edge; rows and places 6px; fields 7px; sheets laid over the page 10px; buttons, chips and counts are pills.
 
 Actors are marked by shape, so they read without color: a human is a filled dot in Second Ink, an agent a diamond outlined in Agent Blue, Duva itself a ring in Third Ink, each 0.55rem. A sender whose domain publishes a logo Duva shows (ADR-0023) has their logo there instead: a 0.875rem square, 3px radius, edged by a 1px seam ring, centred on the mark's place and taking only its room, so names line up and lines keep their height. A verified logo carries a 0.55rem ink disc with a white tick at its lower right. An agent always keeps its diamond.
 
@@ -321,10 +322,11 @@ Actors are marked by shape, so they read without color: a human is a filled dot 
 - **Remind me's picker** hangs from the button as the labels' does, a white sheet with the soft lift, from the toolbar's inset in a list: when the threads set aside come back and Cancel reminder over a seam, then the presets as lines, each its name at 600 and at the right the time it gives in Third Ink, tabular, with the ink wash on hover, then "Another time" as a date and time field with Set.
 - **Actor marks:** an agent the human sponsors, known by its mailbox's addresses, takes the diamond; Duva's own mail, from its system address, the ring; everyone else the dot, or their sender logo, in rows, letters, slugs and the Screener, falling back to the dot when the logo won't load.
 - **Open and picked:** the open row lies on Reader Grey with the orange edge across the whole row; a picked row on Field Grey, and a row under the pointer on the ink wash.
-- **Checkboxes:** small square keys, 0.875rem (1.25rem on a phone), edged at 3:1 in Edge, filled ink with a white tick when picked and a dash while some are.
-- **The toolbar** heads the rows and stays at the column's top as they scroll: the box that picks them all, level with the rows' boxes, then once any is picked how many, and the small actions, each with its key cap.
+- **Checkboxes:** small square keys, 0.875rem (1.25rem on a phone), edged at 3:1 in Edge, filled ink with a white tick when picked and a dash while some are. On a desk with a pointer that hovers, a row's box lies quiet, edged in Second Ink at low contrast, until its row is under the pointer or focused, or any row is picked; with a pointer that can't hover, and on a phone, it always shows.
+- **The list's head line** heads the rows, with no band between: the box that picks them all, level with the rows' boxes, then the chips, and once any is picked how many and the small actions, each with its key cap, in the chips' place. It stays at the column's top as the rows scroll. The Screener's row and what was just done lie above it.
+- **The count** beside a list's title says its unread threads plainly, "21 unread": Duva's own count for the Inbox and a label, and for All mail, Spam and Trash the threads listed, once the whole list is.
 - **Chips** under the head of the Inbox, a label and All mail: All, Unread and each of the human's own labels. Each but All is the search that narrows the list to them, newest first, so Duva filters it; on those results the chips stay, the one chosen in ink.
-- **The Screener's row:** while new senders wait, one raised white slip at the Inbox's top says how many, with "Screen them".
+- **The Screener's row:** while new senders wait, one raised white slip at the Inbox's top, under its title, says how many, with "Screen them".
 - **What was just done** is said in Ink above the rows, with Undo and its `z` cap.
 - **The Screener:** each waiting sender is a row: their dot, name (mono 700) and address, their mail as lines set in under the name, then where their mail goes as small keys: Inbox as the primary, Feed, Paper Trail and Nowhere as defaults, and More, quiet, for their sheet. Nowhere asks in place before it erases, its Erase and send nowhere the `call` button. Screened senders names its groups by delivery (Inbox, Feed, Paper Trail, Labels, Nowhere) as labels (mono 500, Third Ink), and each decision is a row whose address opens its sheet.
 

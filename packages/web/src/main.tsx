@@ -29,7 +29,7 @@ import { approvalChanges, type Connection, draftChanges, type Follow, labelChang
 import { type Marks, ThreadIndex } from "./inbox.tsx";
 import { ActorMark } from "./mail-parts.tsx";
 import { type AgentMailbox, MailboxList, mailboxHref, mailboxName, ownInOrder } from "./mailboxes.tsx";
-import { type Beside, BesideContext } from "./panes.tsx";
+import { type Beside, BesideContext, ListCountContext } from "./panes.tsx";
 import { readScreener, ScreenedSenders, type ScreenerRead, ScreenerView } from "./screener.tsx";
 import { SenderLinkContext, SenderSheetView } from "./sender.tsx";
 import { SearchBox, SearchResults } from "./search.tsx";
@@ -203,6 +203,8 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
   const [done, setDone] = useState<{ done: Done; at: string }>();
   // Times and dates show as the browser's language does until the human's preferences are read.
   const [preferences, setPreferences] = useState<Preferences>(defaultPreferences);
+  // How many of the list open are unread, which the phone's switcher says.
+  const [listCount, setListCount] = useState(0);
   // On phones, whether the search field and the mailboxes and views are open.
   const [searchOpen, setSearchOpen] = useState(false);
   const [switching, setSwitching] = useState(false);
@@ -714,6 +716,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
   return (
     <PreferencesContext value={preferences}>
       <SenderLinkContext value={senderLink}>
+        <ListCountContext value={setListCount}>
       <a
         className="skip"
         href={route.hash || "#/"}
@@ -809,11 +812,14 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
                 className="switcher"
                 aria-expanded={switching}
                 aria-controls={switcherId}
-                aria-label={[viewName, mailboxShown, unreadElsewhere && strings.views.elsewhere, strings.views.switcher].filter(Boolean).join(", ")}
+                      aria-label={[viewName, mailboxShown, listCount > 0 && strings.inbox.unread(listCount), unreadElsewhere && strings.views.elsewhere, strings.views.switcher]
+                        .filter(Boolean)
+                        .join(", ")}
                 onClick={() => setSwitching((open) => !open)}
               >
                 <span className="switcher-view">{viewName ?? mailboxShown}</span>
                 {viewName !== undefined && mailboxShown !== undefined && <span className="switcher-mailbox">{mailboxShown}</span>}
+                      {listCount > 0 && <span className="switcher-count">{strings.inbox.unread(listCount)}</span>}
                 {unreadElsewhere && <span className="switcher-dot" aria-hidden="true" />}
                 <ChevronIcon />
               </button>
@@ -853,6 +859,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
                   onSignedOut={onSignedOut}
                 />
               )}
+                    <UpToDate connection={connection} />
             </div>
           </aside>
         )}
@@ -931,6 +938,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
           onSignOut={() => signOut(config)}
         />
       </div>
+        </ListCountContext>
       </SenderLinkContext>
     </PreferencesContext>
   );
@@ -944,6 +952,12 @@ type Listing = View | { drafts: true };
  * sponsors stands, the key that lists the shortcuts while they are on, and who is signed in, with
  * Sign out.
  */
+/** When Duva was last up to date, which the phone's switcher says on its sheet, since a phone has no status strip. */
+function UpToDate({ connection }: { connection: Connection }) {
+  const { clock } = useDates();
+  return connection?.ok ? <p className="side-state">{strings.connection.upToDate(clock(connection.at))}</p> : null;
+}
+
 function Strip({
   connection,
   agents,

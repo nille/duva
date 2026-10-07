@@ -4,7 +4,7 @@
 import { type FormEvent, type ReactNode, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
-import { chipOf, DoneLine, IndexTools, ListChips, type Marks, SkeletonIndex, ThreadRow, usePicking } from "./inbox.tsx";
+import { chipOf, DoneLine, ListChips, ListLine, type Marks, SkeletonIndex, ThreadRow, usePicking } from "./inbox.tsx";
 import { type Done, type Label, OrganizeActions, ownLabelsOf, useKeyed } from "./organize.tsx";
 import { useBeside, useViewTitle, ViewMain, ViewTitle } from "./panes.tsx";
 import { useShortcuts, useThreadKeys } from "./shortcuts.tsx";
@@ -406,11 +406,27 @@ export function SearchResults({
           {sortLink("newest", strings.search.newest)}
         </nav>
       </div>
-      {chip !== undefined && <ListChips base={base} scope={chip.scope} labels={labels} q={chip.q} />}
       <p className="visually-hidden" role="status">
         {finding.status === "found" ? (finding.results.length > 0 ? strings.search.found(finding.results.length, finding.next !== undefined) : strings.search.emptyTitle) : ""}
       </p>
       <DoneLine done={done} onDone={onDone} onUndone={() => void again()} />
+      <ListLine
+        picking={finding.status === "found" && finding.results.length > 0 ? picking : undefined}
+        more={finding.status === "found" && finding.next !== undefined}
+        chips={chip !== undefined && <ListChips base={base} scope={chip.scope} labels={labels} q={chip.q} />}
+      >
+        <OrganizeActions
+          client={client}
+          mailbox={mailbox}
+          threads={picking.picked}
+          labels={labels}
+          place={place}
+          labelsAsked={picking.labelsAsked}
+          remindAsked={picking.remindAsked}
+          onDone={organized}
+          onSignedOut={onSignedOut}
+        />
+      </ListLine>
       {finding.status === "loading" ? (
         <SkeletonIndex />
       ) : finding.status === "failed" ? (
@@ -435,19 +451,6 @@ export function SearchResults({
         </section>
       ) : (
         <div className="index">
-          <IndexTools picking={picking} more={finding.next !== undefined}>
-            <OrganizeActions
-              client={client}
-              mailbox={mailbox}
-              threads={picking.picked}
-              labels={labels}
-              place={place}
-              labelsAsked={picking.labelsAsked}
-              remindAsked={picking.remindAsked}
-              onDone={organized}
-              onSignedOut={onSignedOut}
-            />
-          </IndexTools>
           <ol className="threads results" aria-label={strings.search.results} ref={list}>
             {finding.results.map((result) => (
               <ResultRow

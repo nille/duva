@@ -11,7 +11,7 @@ import type { Connection as ConnectionState } from "./feed.ts";
 import { useDates } from "./dates.ts";
 import { ActorMark, Connection, nameOf, SenderMark, Time } from "./mail-parts.tsx";
 import { Cap, ClockIcon, type Done, type Label, type Labelled, labelRefusal, OrganizeActions, ownLabelsOf, type Place, useKeyed } from "./organize.tsx";
-import { useBeside, useViewTitle, ViewMain, ViewTitle } from "./panes.tsx";
+import { useBeside, useListCount, useViewTitle, ViewMain, ViewTitle } from "./panes.tsx";
 import { useShortcuts, useThreadKeys } from "./shortcuts.tsx";
 import { strings } from "./strings.ts";
 import { hrefOf, type SearchView, type ThreadsView, threadHref, titleOf } from "./views.tsx";
@@ -177,9 +177,18 @@ export function ThreadIndex({
     setLoadingOlder(false);
   };
 
+  // Duva counts a label's unread threads, the Inbox's among them, and All mail's are counted once the whole list is shown.
   // Sent lists what was written from the mailbox, so it counts nothing unread.
-  const unread = listing.status === "listed" && !("sent" in view) ? listing.threads.filter((thread) => thread.unread).length : 0;
+  const unread =
+    listing.status !== "listed" || "sent" in view
+      ? 0
+      : "label" in view
+        ? (labels.find(({ id }) => id === view.label)?.unread ?? 0)
+        : listing.next === undefined
+          ? listing.threads.filter((thread) => thread.unread).length
+          : 0;
   useViewTitle(strings.title(title, unread));
+  useListCount(unread);
 
   const { open } = useBeside();
   const threads = listing.status === "listed" ? listing.threads : noThreads;
@@ -212,7 +221,7 @@ export function ThreadIndex({
 
   return (
     <ViewMain className="desk" aria-busy={listing.status === "loading"}>
-      <div className="desk-head">
+      <div className="desk-head list-head">
         {ownLabel === undefined ? (
           <ViewTitle tabIndex={-1} className="view-title">
             {title}
@@ -220,7 +229,7 @@ export function ThreadIndex({
         ) : (
           <LabelHead client={client} mailbox={mailbox} base={base} label={ownLabel} onDone={onDone} onSignedOut={onSignedOut} />
         )}
-        {listing.status === "listed" && unread > 0 && <p className="count">{strings.inbox.unread(unread, listing.next !== undefined)}</p>}
+        {unread > 0 && <p className="count">{strings.inbox.unread(unread)}</p>}
         {label === "trash" && threads.length > 0 && (
           <EmptyTrash
             client={client}
@@ -234,14 +243,30 @@ export function ThreadIndex({
             onSignedOut={onSignedOut}
           />
         )}
-        {(connection?.ok === false || ("label" in view && view.label === "inbox")) && <Connection state={connection} unreachable={strings.connection.mailUnreachable} />}
+        {connection?.ok === false && <Connection state={connection} unreachable={strings.connection.mailUnreachable} />}
       </div>
-      {scopeOf(view) !== undefined && <ListChips base={base} scope={scopeOf(view)!} labels={labels} />}
       {"label" in view && view.label === "inbox" && screener > 0 && <ScreenerWaiting count={screener} href={hrefOf({ screener: true }, base)} />}
       <p className="visually-hidden" role="status">
         {announcement}
       </p>
       <DoneLine done={done} onDone={onDone} onUndone={() => void load({ arrivals: false })} />
+      <ListLine
+        picking={listing.status === "listed" && listing.threads.length > 0 ? picking : undefined}
+        more={listing.status === "listed" && listing.next !== undefined}
+        chips={scopeOf(view) !== undefined && <ListChips base={base} scope={scopeOf(view)!} labels={labels} />}
+      >
+        <OrganizeActions
+          client={client}
+          mailbox={mailbox}
+          threads={picking.picked}
+          labels={labels}
+          place={place}
+          labelsAsked={picking.labelsAsked}
+          remindAsked={picking.remindAsked}
+          onDone={organized}
+          onSignedOut={onSignedOut}
+        />
+      </ListLine>
       {listing.status === "loading" ? (
         <SkeletonIndex />
       ) : listing.status === "failed" ? (
@@ -255,19 +280,6 @@ export function ThreadIndex({
         <Empty client={client} view={view} mailbox={mailbox} agent={agent} />
       ) : (
         <div className="index">
-          <IndexTools picking={picking} more={listing.next !== undefined}>
-            <OrganizeActions
-              client={client}
-              mailbox={mailbox}
-              threads={picking.picked}
-              labels={labels}
-              place={place}
-              labelsAsked={picking.labelsAsked}
-              remindAsked={picking.remindAsked}
-              onDone={organized}
-              onSignedOut={onSignedOut}
-            />
-          </IndexTools>
           <ol className="threads" aria-label={strings.inbox.threads} ref={list}>
             {listing.threads.map((thread) => (
               <ThreadRow
@@ -344,13 +356,17 @@ export function usePicking<Thread extends Labelled>(threads: Thread[]) {
 }
 
 /**
- * The toolbar heading a list's rows: a checkbox that picks every thread shown, and once any is
- * picked, how many, with the actions. While more threads than those shown follow, it says that
- * picking all picks only those shown.
+ * The line heading a list's rows: the toolbar with a checkbox that picks every thread shown, while
+ * there are rows, then the chips, if the list takes them. Once any thread is picked, the toolbar
+ * says how many, with the actions in the chips' place. While more threads than those shown follow,
+ * it says that picking all picks only those shown.
  */
-export function IndexTools({ picking, more, children }: { picking: ReturnType<typeof usePicking>; more: boolean; children: ReactNode }) {
-  const count = picking.picked.length;
+export function ListLine({ picking, more, chips, children }: { picking?: ReturnType<typeof usePicking>; more: boolean; chips?: ReactNode; children: ReactNode }) {
+  const count = picking?.picked.length ?? 0;
+  if (picking === undefined && !chips) return null;
   return (
+    <div className="list-line">
+      {picking !== undefined && (
     <div className="index-tools" role="toolbar" aria-label={strings.organize.toolbar}>
       <label className="pick pick-all">
         <input
@@ -365,6 +381,9 @@ export function IndexTools({ picking, more, children }: { picking: ReturnType<ty
         {count > 0 && <span className="pick-count">{picking.all && more ? strings.organize.selectedShown(count) : strings.organize.selected(count)}</span>}
       </label>
       {count > 0 && <div className="index-actions">{children}</div>}
+    </div>
+      )}
+      {count === 0 && chips}
     </div>
   );
 }

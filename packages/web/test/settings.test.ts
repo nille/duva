@@ -64,7 +64,7 @@ test("each line of the index says what its page holds now, as its link's descrip
       .getByRole("link", { name, exact: true })
       .evaluate((link) => document.getElementById(link.getAttribute("aria-describedby") ?? "")?.textContent);
   await expect.poll(() => state("Groups"), wait).toBe("1 group");
-  expect(await state("You")).toMatch(/^02:30 PM, [A-Z][a-z]{2} \d{1,2}, \d{4}, mail as designed$/);
+  expect(await state("You")).toBe("Default clock, mail as designed");
   expect(await state("Screener")).toBe("On");
   expect(await state("Organization")).toBe("Trash and Spam keep mail 30 days");
   expect(await state("Domains")).toBe("example.com, 2 records missing");
@@ -357,6 +357,9 @@ test("a human chooses dates with the day first, and their 12-hour time stays", b
   await you(page).getByRole("radio", { name: /^Day first/ }).check();
   await you(page).getByRole("button", { name: "Save" }).click();
   await expect.poll(() => you(page).getByRole("status").textContent(), wait).toBe(saved);
+  // The index says the human's choices in words.
+  await openPage(page, "Screener");
+  await expect.poll(() => settingsIndex(page).getByRole("link", { name: "You", exact: true }).innerText(), wait).toContain("12-hour clock, dates day first, mail as designed");
 
   await page.getByRole("navigation").getByRole("link", { name: "Mail", exact: true }).click();
   await expect.poll(() => row(page, "Kvitto").textContent(), wait).toBe("4 Oct");

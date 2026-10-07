@@ -124,7 +124,7 @@ test("a mailbox an admin gives the human shows beside the mail without a reload,
   });
   await signIn("ada@example.org");
   await expect.poll(() => mailboxes(page).getByRole("link").count(), wait).toBe(2);
-  await expect.poll(() => page.getByText(/^Up to date/).count(), wait).toBe(1);
+  await expect.poll(() => page.getByRole("contentinfo", { name: "Status" }).getByText(/^Up to date/).count(), wait).toBe(1);
   const opened = listed;
 
   // The feeds are read every 250 ms here, so a second is several reads.
@@ -187,9 +187,12 @@ test("on a phone the bar is one row with the search icon and Write, and the plac
   }
   expect(await page.getByRole("button", { name: "Sign out" }).isVisible()).toBe(false);
   expect(await page.getByRole("searchbox").isVisible()).toBe(false);
-  // There is no status strip on a phone, so the Inbox says when Duva last checked.
-  await expect.poll(() => page.getByRole("main").getByText(/^Up to date at/).isVisible(), wait).toBe(true);
+  // There is no status strip on a phone, so the switcher's sheet says when Duva last checked, and the Inbox doesn't.
   expect(await page.getByRole("contentinfo", { name: "Status" }).isVisible()).toBe(false);
+  await page.getByRole("button", { name: /Mailboxes and views/ }).click();
+  await expect.poll(() => page.getByRole("complementary").getByText(/^Up to date at/).isVisible(), wait).toBe(true);
+  expect(await page.getByRole("main").getByText(/Up to date/).count()).toBe(0);
+  await page.getByRole("button", { name: /Mailboxes and views/ }).click();
 
   const places = page.getByRole("navigation", { name: "Duva" }).getByRole("link");
   // She sponsors her mailbox's mailbox agent, so Approvals and Alerts are hers too.
@@ -487,4 +490,28 @@ test.each([
   expect(await shown.count()).toBe(6);
   expect(await shown.evaluateAll(readWhole)).toEqual(Array(6).fill(true));
   expect(await fits(page)).toBe(true);
+});
+
+test("every corner the stylesheet rounds is one of the radius tokens", budget, async () => {
+  const { page, signIn } = await withTwoMailboxes();
+  await signIn("ada@example.org");
+  await expect.poll(() => mailboxes(page).getByRole("link").count(), wait).toBe(2);
+
+  const radii = await page.evaluate(() => {
+    const found: string[] = [];
+    const walk = (rules: CSSRuleList) => {
+      for (const rule of Array.from(rules)) {
+        if (rule instanceof CSSStyleRule) {
+          const radius = rule.style.getPropertyValue("border-radius");
+          if (radius !== "") found.push(radius);
+        }
+        if ("cssRules" in rule) walk((rule as CSSGroupingRule).cssRules);
+      }
+    };
+    for (const sheet of Array.from(document.styleSheets)) walk(sheet.cssRules);
+    return found;
+  });
+  expect(radii.length).toBeGreaterThan(40);
+  const untokened = radii.filter((radius) => !radius.split(/\s+(?![^(]*\))/).every((corner) => /^(0(px)?|50%|var\(--radius(-[a-z]+)?\))$/.test(corner)));
+  expect(untokened).toEqual([]);
 });

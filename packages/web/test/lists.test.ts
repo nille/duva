@@ -235,3 +235,104 @@ test("the Inbox's chips show its unread threads, or those with a label, and All 
   await expect.poll(() => heading(page), wait).toBe("Inbox");
   await expect.poll(subjects, wait).toHaveLength(3);
 });
+
+const desk = { width: 1280, height: 800 };
+const toolbar = (page: Page) => page.getByRole("toolbar", { name: "Selected threads" });
+const rows = (page: Page) => page.getByRole("list", { name: "Threads" }).getByRole("listitem");
+const middle = (box: { y: number; height: number }) => box.y + box.height / 2;
+
+for (const [size, viewport] of [
+  ["a desk", desk],
+  ["a phone", phone],
+] as const) {
+  test(`on ${size} the box that picks every thread lies on the chips' line, the rows start right under it, and picking puts the actions there`, budget, async () => {
+    const { page } = await withLists(["Kvitto", "Lunch"], { viewport });
+    await expect.poll(() => rows(page).count(), wait).toBe(2);
+    const all = toolbar(page).getByRole("checkbox", { name: "Select the threads shown" });
+    const chips = page.getByRole("navigation", { name: "Show" });
+
+    const [box, line, first] = [(await all.boundingBox())!, (await chips.boundingBox())!, (await rows(page).first().boundingBox())!];
+    expect(Math.abs(middle(box) - middle(line))).toBeLessThan(4);
+    const head = (await page.locator(".list-line").boundingBox())!;
+    expect(Math.abs(first.y - (head.y + head.height))).toBeLessThan(1);
+
+    await all.check();
+    const archive = toolbar(page).getByRole("button", { name: "Archive" });
+    await expect.poll(() => archive.isVisible(), wait).toBe(true);
+    expect(await chips.count()).toBe(0);
+    // The actions run on from the box, wrapping within the head line where the column is narrow.
+    const [acted, after, below] = [(await archive.boundingBox())!, (await page.locator(".list-line").boundingBox())!, (await rows(page).first().boundingBox())!];
+    expect(acted.y).toBeGreaterThanOrEqual(after.y);
+    expect(acted.y + acted.height).toBeLessThanOrEqual(after.y + after.height);
+    expect(Math.abs(below.y - (after.y + after.height))).toBeLessThan(1);
+  });
+}
+
+test("on a desk the Inbox's head says how many threads are unread as Duva counts them, past the threads shown", budget, async () => {
+  const { page } = await withLists(Array.from({ length: 26 }, (_, number) => `Brev ${number + 1}`));
+  await expect.poll(() => rows(page).count(), wait).toBe(25);
+
+  await expect.poll(() => page.locator(".desk-head").getByText(/unread/).textContent(), wait).toBe("26 unread");
+});
+
+test("on a phone the switcher is the list's one head: the view, the mailbox and the unread count on one line", budget, async () => {
+  const { page } = await withLists(Array.from({ length: 26 }, (_, number) => `Brev ${number + 1}`), { viewport: phone });
+  await expect.poll(() => rows(page).count(), wait).toBe(25);
+  const switcher = page.getByRole("button", { name: /Mailboxes and views/ });
+
+  await expect.poll(() => switcher.getAttribute("aria-label"), wait).toBe("Inbox, Your mailbox, 26 unread, Mailboxes and views");
+  const parts = await switcher.locator(":scope > span").evaluateAll((spans) => spans.map((span) => [span.textContent, span.getBoundingClientRect()] as const));
+  expect(parts.map(([text]) => text)).toEqual(["Inbox", "Your mailbox", "26 unread"]);
+  for (const [, box] of parts) expect(Math.abs(middle(box) - middle(parts[0]![1]))).toBeLessThan(2);
+  // The list names itself and counts its unread only for screen readers.
+  for (const quiet of [page.getByRole("heading", { level: 1, name: "Inbox" }), page.locator(".desk-head").getByText("26 unread")]) {
+    expect((await quiet.boundingBox())!.height).toBeLessThanOrEqual(1);
+  }
+  expect(await page.getByRole("main").getByText(/Up to date/).count()).toBe(0);
+  // Under the switcher come the Screener's row and the rows' head line, with no head of the list's own between.
+  const [head, slip] = [(await switcher.boundingBox())!, (await page.getByRole("region", { name: "Screener" }).boundingBox())!];
+  expect(slip.y - (head.y + head.height)).toBeLessThan(24);
+});
+
+/** The color of the edge of the box that picks the thread on the row. */
+const edgeOf = (page: Page, subject: string) =>
+  rows(page)
+    .filter({ hasText: subject })
+    .getByRole("checkbox")
+    .evaluate((box) => getComputedStyle(box).borderTopColor);
+const edge = "rgb(132, 132, 124)";
+
+test("on a desk a row's box lies quiet until its row is under the pointer or focused, or a thread is picked", budget, async () => {
+  const { page } = await withLists(["Kvitto", "Lunch"]);
+  await expect.poll(() => rows(page).count(), wait).toBe(2);
+  await page.mouse.move(640, 790);
+  await expect.poll(() => edgeOf(page, "Kvitto"), wait).not.toBe(edge);
+  expect(await edgeOf(page, "Lunch")).not.toBe(edge);
+
+  await rows(page).filter({ hasText: "Kvitto" }).hover();
+  await expect.poll(() => edgeOf(page, "Kvitto"), wait).toBe(edge);
+  expect(await edgeOf(page, "Lunch")).not.toBe(edge);
+
+  await page.mouse.move(640, 790);
+  await rows(page).filter({ hasText: "Lunch" }).getByRole("link").focus();
+  await expect.poll(() => edgeOf(page, "Lunch"), wait).toBe(edge);
+  expect(await edgeOf(page, "Kvitto")).not.toBe(edge);
+
+  await rows(page).filter({ hasText: "Lunch" }).getByRole("checkbox").check();
+  await page.mouse.move(640, 790);
+  await page.locator("body").evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await expect.poll(() => edgeOf(page, "Kvitto"), wait).toBe(edge);
+});
+
+test("a row's box shows at once on a phone, and on a desk whose pointer can't hover", budget, async () => {
+  const { page } = await withLists(["Kvitto"], { viewport: phone });
+  await expect.poll(() => rows(page).count(), wait).toBe(1);
+  expect(await edgeOf(page, "Kvitto")).toBe(edge);
+
+  const touch = await withLists(["Kvitto"]);
+  const session = await touch.page.context().newCDPSession(touch.page);
+  await session.send("Emulation.setTouchEmulationEnabled", { enabled: true });
+  await expect.poll(() => rows(touch.page).count(), wait).toBe(1);
+  await touch.page.mouse.move(640, 790);
+  await expect.poll(() => edgeOf(touch.page, "Kvitto"), wait).toBe(edge);
+});
