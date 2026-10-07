@@ -20,8 +20,8 @@ export const approvalChanges = new Set<Change["type"]>(["approvalAsked", "approv
 /** The organization's changes that alter what the Approvals view shows: an agent admin's setup change asked for or decided. */
 export const setupChanges = new Set<OrganizationChange["type"]>(["setupAsked", "setupApproved", "setupRejected", "setupWithdrawn"]);
 
-/** The changes that alter what a mailbox's threads show: mail in or out, read state, labels and erasure. */
-export const mailChanges = new Set<Change["type"]>(["messageReceived", "messageSent", "threadRead", "threadUnread", "threadLabelsChanged", "threadErased"]);
+/** The changes that alter what a mailbox's threads show: mail in or out, read state, labels, Remind me and erasure. */
+export const mailChanges = new Set<Change["type"]>(["messageReceived", "messageSent", "threadRead", "threadUnread", "threadLabelsChanged", "reminderSet", "reminderCancelled", "threadBack", "threadErased"]);
 
 /** The changes to a mailbox's Screener: its decisions on senders, and switching it. */
 export const screenerChanges = new Set<Change["type"]>(["senderScreened", "screenedSenderRemoved", "screenerSwitched"]);

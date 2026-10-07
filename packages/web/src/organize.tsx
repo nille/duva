@@ -1,19 +1,20 @@
 // Organizing threads with labels: archiving, Spam, Trash and the human's own labels, on one thread
-// or several. Every change can be undone at once, since it only moves labels.
+// or several, and setting them aside in Remind me. Every change but cancelling a reminder can be undone at once.
 import { useContext, useEffect, useId, useRef, useState } from "react";
 import type { DuvaClient } from "@duva/client";
-import type { components } from "@duva/openapi";
-import { PreferencesContext } from "./dates.ts";
+import { clockValue, type components, fromClockValue, presetAt, reminderPresets, soonestReminder } from "@duva/openapi";
+import { PreferencesContext, useDates } from "./dates.ts";
 import { useShortcuts } from "./shortcuts.tsx";
 import { strings } from "./strings.ts";
 
 export type Label = components["schemas"]["Label"];
 type Mailbox = components["schemas"]["Mailbox"];
 
-/** A thread as organizing needs it: its ID and labels. */
+/** A thread as organizing needs it: its ID and labels, and its reminder while it is set aside. */
 export interface Labelled {
   id: string;
   labels: string[];
+  reminder?: { at: string };
 }
 
 /** What a human did to threads, said once it's done, and how to take it back. */
@@ -127,7 +128,8 @@ export function changeFor(
  * Spam, Trash and restoring take them out of a thread's view. `onSignedOut` hears that the session ended.
  * Each button whose action has a key shows its cap, in a list and, with `keys`, in a thread, where l
  * opens the labels too. In a list, each time `labelsAsked` grows past 0 the labels open, as l asks
- * there, and they open at once if it is past 0 when the buttons first show.
+ * there, and they open at once if it is past 0 when the buttons first show. Remind me, offered
+ * where Archive is or the threads are set aside, opens with b as the labels do with l.
  */
 export function OrganizeActions({
   client,
@@ -137,6 +139,7 @@ export function OrganizeActions({
   place,
   keys = false,
   labelsAsked = 0,
+  remindAsked = 0,
   onDone,
   onSignedOut,
 }: {
@@ -149,6 +152,8 @@ export function OrganizeActions({
   keys?: boolean;
   /** How many times the labels were asked for by their key, which opens them each time it grows. */
   labelsAsked?: number;
+  /** How many times Remind me was asked for by its key, as `labelsAsked` counts the labels'. */
+  remindAsked?: number;
   onDone: (done: Done, moved: boolean) => void;
   onSignedOut: () => void;
 }) {
@@ -220,6 +225,19 @@ export function OrganizeActions({
               <Cap name={keyed("#")} />
               {t.trash}
             </button>
+          )}
+          {(archive !== undefined || threads.some((thread) => thread.reminder !== undefined)) && (
+            <RemindPicker
+              client={client}
+              mailbox={mailbox}
+              threads={threads}
+              disabled={busy}
+              asked={remindAsked}
+              keyName={keyed("b")}
+              bound={keys}
+              onDone={onDone}
+              onSignedOut={onSignedOut}
+            />
           )}
           <LabelPicker
             client={client}
@@ -379,6 +397,213 @@ function LabelPicker({
   );
 }
 
+/**
+ * Sets the threads aside in Remind me, and answers what was done with how to undo it, or undefined
+ * if Duva couldn't. Undoing sets those already set aside back to their time, and cancels the
+ * others' reminders, leaving out of the Inbox those that weren't in it. Throws SessionEnded if the
+ * session has ended.
+ */
+export async function remindAt(client: DuvaClient, mailbox: string, threads: Labelled[], at: Date, message: string): Promise<Done | undefined> {
+  const params = { path: { mailbox } };
+  const call = async (answer: Promise<{ data?: { threads: Labelled[] }; response: Response }>) => {
+    const { data, response } = await answer.catch(() => ({ data: undefined, response: undefined }));
+    if (response?.status === 401) throw new SessionEnded();
+    return data?.threads;
+  };
+  const set = await call(client.POST("/mailboxes/{mailbox}/threads/remind", { params, body: { threads: threads.map(({ id }) => id), at: at.toISOString() } }));
+  if (set === undefined) return undefined;
+  const undo = async () => {
+    for (const was of threads.filter((thread) => thread.reminder !== undefined)) {
+      if ((await call(client.POST("/mailboxes/{mailbox}/threads/remind", { params, body: { threads: [was.id], at: was.reminder!.at } }))) === undefined) return false;
+    }
+    const fresh = threads.filter((thread) => thread.reminder === undefined);
+    if (fresh.length === 0) return true;
+    if ((await call(client.POST("/mailboxes/{mailbox}/threads/remind/cancel", { params, body: { threads: fresh.map(({ id }) => id) } }))) === undefined) return false;
+    const archived = fresh.filter((thread) => !thread.labels.includes("inbox")).map(({ id }) => id);
+    return archived.length === 0 || (await relabel(client, mailbox, archived, { remove: ["inbox"] })) !== undefined;
+  };
+  return { message, undo };
+}
+
+/** Cancels the threads' reminders, which puts them back in the Inbox, and answers what was done, or undefined if Duva couldn't. */
+async function cancelReminders(client: DuvaClient, mailbox: string, threads: Labelled[]): Promise<Done | undefined> {
+  const set = threads.filter((thread) => thread.reminder !== undefined);
+  const { data, response } = await client
+    .POST("/mailboxes/{mailbox}/threads/remind/cancel", { params: { path: { mailbox } }, body: { threads: set.map(({ id }) => id) } })
+    .catch(() => ({ data: undefined, response: undefined }));
+  if (response?.status === 401) throw new SessionEnded();
+  if (data === undefined) return undefined;
+  return { message: strings.remind.cancelled(set.length) };
+}
+
+/** The browser's time zone, which the presets count in unless the human chose another. */
+const browserTimeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+/**
+ * A button that opens Remind me for the threads: the presets, each with the time it gives, counted
+ * in the human's time zone, a time of their own on that zone's clock, and for threads already set aside, when they come
+ * back and cancelling it. Choosing one sets them aside, which takes them out of the Inbox.
+ */
+function RemindPicker({
+  client,
+  mailbox,
+  threads,
+  disabled,
+  asked,
+  keyName,
+  bound,
+  onDone,
+  onSignedOut,
+}: {
+  client: DuvaClient;
+  mailbox: Mailbox;
+  threads: Labelled[];
+  disabled: boolean;
+  asked: number;
+  keyName?: string;
+  /** Whether b itself opens Remind me, as in a thread. A list's keys ask through `asked`. */
+  bound: boolean;
+  onDone: (done: Done, moved: boolean) => void;
+  onSignedOut: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [state, setState] = useState<"idle" | "busy" | "failed" | "past">("idle");
+  const preferences = useContext(PreferencesContext);
+  const { when } = useDates();
+  const [own, setOwn] = useState("");
+  const panelId = useId();
+  const fieldId = useId();
+  const errorId = useId();
+  const wrapper = useRef<HTMLDivElement>(null);
+  const button = useRef<HTMLButtonElement>(null);
+  const t = strings.remind;
+  const now = new Date();
+  const timeZone = preferences.timeZone ?? browserTimeZone();
+  const set = threads.filter((thread) => thread.reminder !== undefined);
+  // Only one time is said, the soonest of those set aside, as several threads may each have their own.
+  const soonest = set.map((thread) => thread.reminder!.at).sort()[0];
+
+  useEffect(() => {
+    if (asked > 0) setOpen(true);
+  }, [asked]);
+  useEffect(() => {
+    if (!open) return;
+    setState("idle");
+    setOwn(clockValue(presetAt("tomorrowMorning", new Date(), timeZone), timeZone));
+    wrapper.current?.querySelector<HTMLButtonElement>(".remind-preset")?.focus();
+    const away = (event: PointerEvent) => {
+      if (!wrapper.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", away);
+    return () => document.removeEventListener("pointerdown", away);
+  }, [open, timeZone]);
+  useShortcuts({ b: bound && !disabled ? () => setOpen(true) : undefined });
+
+  const close = () => {
+    setOpen(false);
+    button.current?.focus();
+  };
+
+  const act = async (perform: () => Promise<Done | undefined>) => {
+    setState("busy");
+    try {
+      const done = await perform();
+      if (done === undefined) return setState("failed");
+      setOpen(false);
+      onDone(done, true);
+    } catch (error) {
+      if (!(error instanceof SessionEnded)) throw error;
+      onSignedOut();
+    }
+  };
+  const remind = (at: Date) => act(() => remindAt(client, mailbox.id, threads, at, t.setAside(threads.length, when(at))));
+
+  return (
+    <div
+      className="picker"
+      ref={wrapper}
+      onKeyDown={(event) => {
+        if (event.key === "Escape" && open) {
+          event.stopPropagation();
+          close();
+        }
+      }}
+    >
+      <button
+        ref={button}
+        type="button"
+        className="button button-small"
+        aria-expanded={open}
+        aria-controls={panelId}
+        aria-keyshortcuts={keyName}
+        disabled={disabled}
+        onClick={() => setOpen(!open)}
+      >
+        <ClockIcon />
+        <Cap name={keyName} />
+        {t.button}
+      </button>
+      {open && (
+        <div className="picker-panel remind-panel" id={panelId} role="group" aria-label={t.for(threads.length)}>
+          {soonest !== undefined && (
+            <p className="remind-now">
+              <span>{set.length === threads.length ? t.until(when(new Date(soonest))) : t.someUntil(set.length, when(new Date(soonest)))}</span>
+              <button type="button" className="link" disabled={state === "busy"} onClick={() => void act(() => cancelReminders(client, mailbox.id, threads))}>
+                {t.cancel}
+              </button>
+            </p>
+          )}
+          <ul className="remind-presets">
+            {reminderPresets.map((preset) => {
+              const at = presetAt(preset, now, timeZone);
+              return (
+                <li key={preset}>
+                  <button type="button" className="remind-preset" disabled={state === "busy"} onClick={() => void remind(at)}>
+                    <span className="remind-preset-name">{t.presets[preset]}</span>
+                    <span className="remind-preset-at">{when(at)}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+          <form
+            className="remind-own"
+            // The picker says itself when a time is past, in its words.
+            noValidate
+            onSubmit={(event) => {
+              event.preventDefault();
+              const at = fromClockValue(own, timeZone);
+              if (at === undefined || at.getTime() < Date.now() + soonestReminder) return setState("past");
+              void remind(at);
+            }}
+          >
+            <label htmlFor={fieldId}>{t.own}</label>
+            <div className="remind-own-row">
+              <input
+                id={fieldId}
+                type="datetime-local"
+                value={own}
+                min={clockValue(new Date(), timeZone)}
+                aria-invalid={state === "past"}
+                aria-describedby={state === "past" ? errorId : undefined}
+                onChange={(event) => setOwn(event.target.value)}
+              />
+              <button type="submit" className="button button-small" disabled={state === "busy"}>
+                {t.set}
+              </button>
+            </div>
+          </form>
+          {(state === "past" || state === "failed") && (
+            <p className="field-error" id={errorId} role="alert">
+              {state === "past" ? t.past : t.failed}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** A form that creates a label in the mailbox, telling the human if the name is taken. */
 export function NewLabel({
   client,
@@ -478,6 +703,12 @@ const ArchiveIcon = () => (
 const TrashIcon = () => (
   <svg className="icon" viewBox="0 0 16 16" aria-hidden="true">
     <path d="M2.5 4.5h11M6 4.5V3h4v1.5M4 4.5l.7 8.5h6.6l.7-8.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+export const ClockIcon = () => (
+  <svg className="icon" viewBox="0 0 16 16" aria-hidden="true">
+    <path d="M8 2.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11ZM8 5v3.2l2.2 1.4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 );
 

@@ -534,6 +534,13 @@ export class DuvaStack extends Stack {
     // Unpausing an agent, and raising its limits, hand the sender what waits, without waiting.
     handler.addEnvironment(environmentVariables.senderFunction, sender.functionArn);
     sender.grantInvoke(handler);
+    // Setting a thread aside in Remind me schedules the sender to bring it back, in the same group with the same role.
+    senderSchedules.grants.writeSchedules(handler);
+    handler.addToRolePolicy(
+      new PolicyStatement({ actions: ["iam:PassRole"], resources: [schedulerRole.roleArn], conditions: { StringEquals: { "iam:PassedToService": "scheduler.amazonaws.com" } } }),
+    );
+    handler.addEnvironment(environmentVariables.scheduleGroup, senderSchedules.scheduleGroupName);
+    handler.addEnvironment(environmentVariables.schedulerRole, schedulerRole.roleArn);
 
     // SNS invokes the feedback Lambda, without waiting, with each event SES publishes, and only SNS
     // may, for this topic. Lambda retries a failed event twice, then leaves it in the failure queue.

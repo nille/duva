@@ -1,6 +1,7 @@
 // A view's threads, newest first, a page at a time, in the list column: the Inbox, a label's, Sent,
-// All mail, Spam or Trash. Each row says who sent it by their mark, unread threads carry the orange
-// dot, and a thread an agent's send waits in says it waits for the human. Chips show a view's unread
+// All mail, Spam or Trash, or Remind me's, the soonest back first. Each row says who sent it by their
+// mark, unread threads carry the orange dot, a thread back from Remind me carries its Back mark, and
+// a thread an agent's send waits in says it waits for the human. Chips show a view's unread
 // threads or those with a label, the Inbox says when new senders wait in the Screener, and the human
 // picks threads to organize several at once.
 import { type ReactNode, useCallback, useEffect, useId, useRef, useState } from "react";
@@ -9,7 +10,7 @@ import type { components } from "@duva/openapi";
 import type { Connection as ConnectionState } from "./feed.ts";
 import { useDates } from "./dates.ts";
 import { ActorMark, Connection, nameOf, Time } from "./mail-parts.tsx";
-import { Cap, type Done, type Label, type Labelled, labelRefusal, OrganizeActions, ownLabelsOf, type Place, useKeyed } from "./organize.tsx";
+import { Cap, ClockIcon, type Done, type Label, type Labelled, labelRefusal, OrganizeActions, ownLabelsOf, type Place, useKeyed } from "./organize.tsx";
 import { useBeside, useViewTitle, ViewMain, ViewTitle } from "./panes.tsx";
 import { useShortcuts, useThreadKeys } from "./shortcuts.tsx";
 import { strings } from "./strings.ts";
@@ -103,7 +104,9 @@ export function ThreadIndex({
         ? client.GET("/mailboxes/{mailbox}/threads", { params: { path, query: { ...query, label } } })
         : "sent" in view
           ? client.GET("/mailboxes/{mailbox}/sent", { params: { path, query } })
-          : client.GET("/mailboxes/{mailbox}/all-mail", { params: { path, query } })
+          : "reminders" in view
+            ? client.GET("/mailboxes/{mailbox}/reminders", { params: { path, query } })
+            : client.GET("/mailboxes/{mailbox}/all-mail", { params: { path, query } })
       ).catch(() => ({ data: undefined, response: undefined }));
       if (response?.status === 401) {
         onSignedOut();
@@ -113,7 +116,7 @@ export function ThreadIndex({
       return data;
     },
     // The view's kind, not the object, so a new route to the same view reads nothing again.
-    [client, mailbox.id, label, "sent" in view, onSignedOut],
+    [client, mailbox.id, label, "sent" in view, "reminders" in view, onSignedOut],
   );
 
   // How many pages the human asked to see, and which read is the latest, so an older one that ends later is dropped.
@@ -150,8 +153,10 @@ export function ThreadIndex({
       const before = listingRef.current;
       const shown = before.status === "listed" ? before.threads : [];
       const known = new Set(shown.map(({ id }) => id));
-      const oldest = shown.at(-1)?.latestAt ?? "";
-      const arrived = before.status === "listed" && arrivals ? threads.filter(({ id, latestAt }) => !known.has(id) && latestAt >= oldest).map(({ id }) => id) : [];
+      // A thread back from Remind me lists at when it came back, so it arrives as new mail does.
+      const placeOf = ({ latestAt, back }: ThreadSummary) => (back !== undefined && back.at > latestAt ? back.at : latestAt);
+      const oldest = shown.at(-1) === undefined ? "" : placeOf(shown.at(-1)!);
+      const arrived = before.status === "listed" && arrivals ? threads.filter((thread) => !known.has(thread.id) && placeOf(thread) >= oldest).map(({ id }) => id) : [];
       if (arrived.length > 0) setAnnouncement(strings.inbox.arrived(arrived.length));
       setListing({ status: "listed", threads, next, pages: read, fresh: new Set(arrived) });
       return true;
@@ -189,7 +194,19 @@ export function ThreadIndex({
   };
 
   const list = useRef<HTMLOListElement>(null);
-  useThreadKeys({ list, client, mailbox, threads, picked: picking.picked, place, onPick: picking.toggle, onLabels: picking.askLabels, onDone: organized, onSignedOut });
+  useThreadKeys({
+    list,
+    client,
+    mailbox,
+    threads,
+    picked: picking.picked,
+    place,
+    onPick: picking.toggle,
+    onLabels: picking.askLabels,
+    onRemind: picking.askRemind,
+    onDone: organized,
+    onSignedOut,
+  });
 
   const ownLabel = label === undefined ? undefined : labels.find((each) => each.id === label && !each.builtIn);
 
@@ -246,6 +263,7 @@ export function ThreadIndex({
               labels={labels}
               place={place}
               labelsAsked={picking.labelsAsked}
+              remindAsked={picking.remindAsked}
               onDone={organized}
               onSignedOut={onSignedOut}
             />
@@ -262,6 +280,7 @@ export function ThreadIndex({
                 href={threadHref(thread.id, view, base)}
                 snippet={thread.snippet}
                 marks={marks}
+                comesBack={"reminders" in view}
                 fresh={listing.fresh.has(thread.id)}
                 open={thread.id === open}
                 selected={picking.selected.has(thread.id)}
@@ -287,11 +306,12 @@ const noThreads: ThreadSummary[] = [];
 /**
  * The threads of a list the human picked, to organize several at once. Threads that leave the list
  * are no longer picked. `labelsAsked` counts the times l asked for the labels of those picked, from
- * when the first was picked, and `askLabels` asks again.
+ * when the first was picked, and `askLabels` asks again, as `remindAsked` and `askRemind` do for b and Remind me.
  */
 export function usePicking<Thread extends Labelled>(threads: Thread[]) {
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [labelsAsked, setLabelsAsked] = useState(0);
+  const [remindAsked, setRemindAsked] = useState(0);
   useEffect(() => {
     const listed = new Set(threads.map(({ id }) => id));
     setSelected((current) => (Array.from(current).every((id) => listed.has(id)) ? current : new Set(Array.from(current).filter((id) => listed.has(id)))));
@@ -299,13 +319,17 @@ export function usePicking<Thread extends Labelled>(threads: Thread[]) {
   const picked = threads.filter(({ id }) => selected.has(id));
   // The labels' buttons go with the last thread picked, so asking for them starts over with the next.
   useEffect(() => {
-    if (picked.length === 0) setLabelsAsked(0);
+    if (picked.length > 0) return;
+    setLabelsAsked(0);
+    setRemindAsked(0);
   }, [picked.length]);
   return {
     selected,
     picked,
     labelsAsked,
     askLabels: () => setLabelsAsked((current) => current + 1),
+    remindAsked,
+    askRemind: () => setRemindAsked((current) => current + 1),
     all: threads.length > 0 && picked.length === threads.length,
     some: picked.length > 0 && picked.length < threads.length,
     toggle: (id: string) =>
@@ -393,6 +417,8 @@ function Empty({ client, view, mailbox, agent }: { client: DuvaClient; view: Thr
   const copy =
     "all" in view
       ? strings.views.empty.all
+      : "reminders" in view
+        ? strings.views.empty.reminders
       : "sent" in view
         ? agent === undefined
           ? { title: strings.sent.emptyTitle, lead: strings.sent.emptyLead }
@@ -589,6 +615,7 @@ export function ThreadRow({
   href,
   snippet,
   marks = noMarks,
+  comesBack = false,
   fresh = false,
   open = false,
   selected,
@@ -599,6 +626,8 @@ export function ThreadRow({
   href: string;
   snippet: ReactNode;
   marks?: Marks;
+  /** Whether the row says when the thread comes back, as Remind me lists it, in place of when its mail arrived. */
+  comesBack?: boolean;
   fresh?: boolean;
   /** Whether the thread is open beside the list. */
   open?: boolean;
@@ -612,7 +641,7 @@ export function ThreadRow({
         <input type="checkbox" checked={selected} onChange={onToggle} />
         <span className="visually-hidden">{strings.organize.select(thread.subject || strings.thread.noSubject)}</span>
       </label>
-      <ThreadLine thread={thread} labels={labels} href={href} snippet={snippet} marks={marks} open={open} />
+      <ThreadLine thread={thread} labels={labels} href={href} snippet={snippet} marks={marks} comesBack={comesBack} open={open} />
     </li>
   );
 }
@@ -620,8 +649,9 @@ export function ThreadRow({
 /**
  * A thread as a line of the list, a link to it: the orange dot when unread, who sent it by their
  * mark and name, the groups and labels it carries, and the date, then its subject and snippet on
- * one line, after "Waiting for you" and the agent's name when an agent's send waits in it. A
- * search's results give a snippet of their own, with the words found marked.
+ * one line, after "Waiting for you" and the agent's name when an agent's send waits in it, or the
+ * Back mark and when it was set aside once it came back from Remind me. With `comesBack`, the date
+ * is when the thread comes back. A search's results give a snippet of their own, with the words found marked.
  */
 export function ThreadLine({
   thread,
@@ -629,6 +659,7 @@ export function ThreadLine({
   href,
   snippet,
   marks = noMarks,
+  comesBack = false,
   open = false,
 }: {
   thread: ThreadSummary;
@@ -636,10 +667,13 @@ export function ThreadLine({
   href: string;
   snippet: ReactNode;
   marks?: Marks;
+  comesBack?: boolean;
   open?: boolean;
 }) {
   const snippetId = useId();
-  const { day } = useDates();
+  const { day, when } = useDates();
+  const back = thread.back;
+  const returns = comesBack && thread.reminder !== undefined ? new Date(thread.reminder.at) : undefined;
   const sender = nameOf(thread.from);
   const actor = actorOf(thread, marks);
   const subject = thread.subject || strings.thread.noSubject;
@@ -649,10 +683,11 @@ export function ThreadLine({
     actor === "agent" ? strings.inbox.agentSender(sender) : sender,
     subject,
     waiting !== undefined && strings.inbox.waitsFor(waiting.agent, waiting.forward),
+    back !== undefined && strings.remind.backLabel(day(new Date(back.setAsideAt))),
     thread.messages > 1 && strings.inbox.messages(thread.messages),
     thread.groups !== undefined && strings.inbox.toGroups(thread.groups),
     labels.length > 0 && strings.inbox.labelled(labels),
-    day(new Date(thread.latestAt)),
+    returns === undefined ? day(new Date(thread.latestAt)) : strings.remind.comesBack(when(returns)),
   ]
     .filter(Boolean)
     .join(", ");
@@ -680,14 +715,26 @@ export function ThreadLine({
           ))}
         </span>
       )}
-      <span className="thread-date">
-        <Time at={thread.latestAt} short />
-      </span>
+      {returns === undefined ? (
+        <span className="thread-date">
+          <Time at={thread.latestAt} short />
+        </span>
+      ) : (
+        <span className="thread-date thread-returns">
+          <ClockIcon />
+          <time dateTime={returns.toISOString()}>{when(returns)}</time>
+        </span>
+      )}
       <span className="thread-text">
         <span className="thread-line-head">
           {waiting !== undefined && (
             <span className="thread-waiting" aria-hidden="true">
               <span className="thread-waiting-you">{strings.inbox.waitingForYou}</span> <span className="thread-waiting-agent">{waiting.agent}</span>
+            </span>
+          )}
+          {back !== undefined && (
+            <span className="thread-back" aria-hidden="true">
+              <span className="thread-back-mark">{strings.remind.back}</span> <span className="thread-back-when">{strings.remind.setAsideOn(day(new Date(back.setAsideAt)))}</span>
             </span>
           )}
           <span className="thread-subject">{subject}</span>

@@ -1,5 +1,5 @@
 // Keyboard shortcuts, as Gmail has them wherever Duva has the action: single keys that move through a
-// list, pick, open, archive, trash, spam, label and mark its threads read or unread, reply to,
+// list, pick, open, archive, trash, spam, label, set aside and mark its threads read or unread, reply to,
 // forward or leave the thread open, undo what was just done, write and search, g and a letter to
 // go to a view, and ? for a sheet listing them all. None acts while the human types in a field. A
 // stray key, or a word said to speech input, would set them off, so a human can turn them all off
@@ -83,8 +83,8 @@ export function useShortcuts(keys: Record<string, (() => void) | undefined>) {
  * focus, or the one that last had it. e archives, # moves to Trash and ! marks as spam the threads
  * picked or, with none picked, the thread at the cursor, which stays where it was when the human
  * comes back to the list from a thread, where the list offers that, and says so as its buttons do.
- * Shift+I and Shift+U mark them read and unread, and l asks `onLabels` to open the labels for them,
- * picking the cursor's thread first if none is. Beside an open thread, those keys are the thread's,
+ * Shift+I and Shift+U mark them read and unread, l asks `onLabels` to open the labels for them,
+ * and b `onRemind` to open Remind me, picking the cursor's thread first if none is. Beside an open thread, those keys are the thread's,
  * and while the list is out of sight, as when the thread takes the column, no key is its. If the
  * cursor's thread leaves the list, the cursor moves on to the next thread, or the one before it at the end.
  */
@@ -97,6 +97,7 @@ export function useThreadKeys<Thread extends Labelled>({
   place,
   onPick,
   onLabels,
+  onRemind,
   onDone,
   onSignedOut,
 }: {
@@ -110,6 +111,8 @@ export function useThreadKeys<Thread extends Labelled>({
   onPick: (id: string) => void;
   /** Opens the labels for the threads picked, once the thread at the cursor is picked if none was. */
   onLabels: () => void;
+  /** Opens Remind me for the threads picked, as onLabels opens the labels. */
+  onRemind: () => void;
   onDone: (done: Done, moved: boolean) => void;
   onSignedOut: () => void;
 }) {
@@ -203,6 +206,11 @@ export function useThreadKeys<Thread extends Labelled>({
       if (picked.length === 0) onPick(cursor.current!);
       onLabels();
     }),
+    b: own(() => {
+      if (picked.length === 0 && atCursor().length === 0) return;
+      if (picked.length === 0) onPick(cursor.current!);
+      onRemind();
+    }),
   });
 }
 
@@ -276,6 +284,7 @@ function ShortcutsSheet({ onClose }: { onClose: () => void }) {
         [[key("#")], copy.trash],
         [[key("!")], copy.spam],
         [[key("l")], copy.labels],
+        [[key("b")], copy.remind],
         [[key("Shift", "I")], copy.markRead],
         [[key("Shift", "U")], copy.markUnread],
       ],
@@ -290,6 +299,7 @@ function ShortcutsSheet({ onClose }: { onClose: () => void }) {
         [[key("#")], copy.trash],
         [[key("!")], copy.spam],
         [[key("l")], copy.labels],
+        [[key("b")], copy.remind],
         [[key("Shift", "U")], copy.markUnread],
         [[key("u"), key("Esc")], copy.back],
         [[key("Ctrl", "Enter"), key("⌘", "Enter")], copy.send],

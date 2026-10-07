@@ -21,6 +21,8 @@ import { lambdaSearcher } from "./searching.ts";
 import { sesSuppressionList } from "./suppression.ts";
 import { lambdaUnsubscriber } from "./unsubscriber.ts";
 import { lambdaWaitingSends } from "./limits.ts";
+import { SchedulerClient } from "@aws-sdk/client-scheduler";
+import { eventBridgeReminders } from "./reminders.ts";
 
 const mailBucket = required(environmentVariables.mailBucket);
 const lambda = new LambdaClient({});
@@ -49,5 +51,10 @@ export const handler = createApi({
   searcher: lambdaSearcher(lambda, required(environmentVariables.searchFunction)),
   indexQueue: sqsIndexQueue(new SQSClient({}), required(environmentVariables.indexQueue)),
   waitingSends: lambdaWaitingSends(lambda, required(environmentVariables.senderFunction)),
+  reminders: eventBridgeReminders(new SchedulerClient({}), {
+    group: required(environmentVariables.scheduleGroup),
+    sender: required(environmentVariables.senderFunction),
+    role: required(environmentVariables.schedulerRole),
+  }),
   downloads: { url: required(environmentVariables.downloadUrl), lifetime: downloadLinkLifetime },
 });

@@ -10,6 +10,7 @@ import type { Receiving } from "./receiving.ts";
 import type { Searcher } from "./searching.ts";
 import type { Unsubscriber } from "./unsubscriber.ts";
 import type { WaitingSends } from "./limits.ts";
+import type { Reminders } from "./reminders.ts";
 
 /** Duva's one DynamoDB table. */
 export interface Table {
@@ -44,4 +45,6 @@ export interface Deployment {
   indexQueue: IndexQueue;
   /** Hands the sender an agent whose sends wait for its limits, once something lets them go. */
   waitingSends: WaitingSends;
+  /** Has the sender bring back each thread set aside in Remind me when its time comes. */
+  reminders: Reminders;
 }

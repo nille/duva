@@ -199,11 +199,11 @@ test("on a phone the views open from one switcher above the threads, and organiz
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(phone.width);
 });
 
-test("the side column holds every view of the mail, Sent and Drafts beside the labels, and the bar names the mail as a whole, beside Settings", budget, async () => {
+test("the side column holds every view of the mail, Remind me, Sent and Drafts beside the labels, and the bar names the mail as a whole, beside Settings", budget, async () => {
   const { page, views, open } = await withThreads(["Kvitto"]);
 
   const names = () => views.getByRole("link").evaluateAll((links) => links.map((link) => link.querySelector(".view-name")?.textContent));
-  await expect.poll(names, wait).toEqual(["Inbox", "Sent", "Drafts", "All mail", "Spam", "Trash"]);
+  await expect.poll(names, wait).toEqual(["Inbox", "Remind me", "Sent", "Drafts", "All mail", "Spam", "Trash"]);
   expect(await page.getByRole("navigation", { name: "Duva" }).getByRole("link").allInnerTexts()).toEqual(["Mail", "Settings"]);
 
   await open("Sent");

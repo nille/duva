@@ -10,7 +10,9 @@
 // sender sends what waits, oldest first, when it is handed the agent, at a time it scheduled or
 // once the API changed what holds them. An agent's send that fails, and its limits reached, are
 // alerts to its sponsor. The sender also mails each urgent alert to its sponsor, from Duva, and
-// records that it did, so the inbound handler knows the mail for Duva's own when it arrives.
+// records that it did, so the inbound handler knows the mail for Duva's own when it arrives. And
+// when a thread set aside in Remind me is due, EventBridge Scheduler hands it to the sender, which
+// brings it back.
 import { randomUUID } from "node:crypto";
 import { SendEmailCommand, SESv2ServiceException, type SESv2Client } from "@aws-sdk/client-sesv2";
 import type { DynamoDBStreamEvent } from "aws-lambda";
@@ -37,7 +39,8 @@ import { documents, pk, sk, type TransactItem } from "./table.ts";
 import { sentPrefix, systemAddress, timeToLiveAttribute } from "./infrastructure.ts";
 import type { MailBucket } from "./mail-bucket.ts";
 import { copyToOtherMembers, fromStanding } from "./group-mail.ts";
-import { findMessage } from "./mail.ts";
+import { bringBack, findMessage } from "./mail.ts";
+import type { RemindEvent } from "./reminders.ts";
 import { buildMail, disclosureHeader } from "./mime.ts";
 import { sponsorAccessAllows } from "./access.ts";
 import { type Actor, type Agent, agentSettings, agentUnpaused, findActor, findMailbox, organizationDomain, switchesFor } from "./organization.ts";
@@ -107,9 +110,14 @@ interface Sender {
 }
 
 export function createSender(sender: Sender) {
-  return async (event: DynamoDBStreamEvent | ReleaseEvent): Promise<void> => {
+  return async (event: DynamoDBStreamEvent | ReleaseEvent | RemindEvent): Promise<void> => {
     if ("release" in event) {
       await release(sender, event.release);
+      return;
+    }
+    // A thread set aside in Remind me is due back.
+    if ("remind" in event) {
+      await bringBack(sender.table, event.remind);
       return;
     }
     for (const record of event.Records) {

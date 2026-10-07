@@ -1419,6 +1419,121 @@ export const operations = [
     ]
   },
   {
+    "operationId": "remindThreads",
+    "method": "post",
+    "path": "/mailboxes/{mailbox}/threads/remind",
+    "routeKey": "POST /mailboxes/{mailbox}/threads/remind",
+    "summary": "Set threads in a mailbox aside until a time, when they come back to the Inbox.",
+    "description": "Remind me: each thread leaves the Inbox, if it is there, and waits in Remind me until the time, given as at or as a preset. Then it comes back to the top of the Inbox, unread, with a Back mark naming when it was set aside. New mail in the thread brings it back early. A thread already set aside gets the new time. A thread in Spam or Trash, or waiting in the Screener, can't be set aside. Each thread gets a change in the mailbox's change feed, naming you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can set its threads aside.",
+    "signIn": true,
+    "command": [
+      "threads",
+      "remind"
+    ],
+    "options": [
+      {
+        "name": "mailbox",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The mailbox's ID."
+      },
+      {
+        "name": "threads",
+        "in": "body",
+        "type": "strings",
+        "required": true,
+        "description": "The IDs of the threads."
+      },
+      {
+        "name": "at",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "When the threads come back, to the second, at least a minute from now."
+      },
+      {
+        "name": "preset",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "A time counted from now, in the time zone: laterToday is three hours from now, on the hour after, tomorrowMorning is 8:00 tomorrow, and nextWeek is 8:00 next Monday."
+      },
+      {
+        "name": "timeZone",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "The time zone a preset is counted in, as an IANA name. Left out, it is your time zone preference, for an agent its sponsor's, or UTC if they chose none."
+      }
+    ]
+  },
+  {
+    "operationId": "cancelReminders",
+    "method": "post",
+    "path": "/mailboxes/{mailbox}/threads/remind/cancel",
+    "routeKey": "POST /mailboxes/{mailbox}/threads/remind/cancel",
+    "summary": "Cancel the reminders of threads in a mailbox, which puts them back in the Inbox.",
+    "description": "Each thread set aside in Remind me goes back to the Inbox now, at its own place and without a Back mark. Threads not set aside are left as they are. Each thread whose reminder is cancelled gets a change in the mailbox's change feed, naming you. Only those who can set the mailbox's threads aside can cancel their reminders.",
+    "signIn": true,
+    "command": [
+      "threads",
+      "cancel-reminder"
+    ],
+    "options": [
+      {
+        "name": "mailbox",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The mailbox's ID."
+      },
+      {
+        "name": "threads",
+        "in": "body",
+        "type": "strings",
+        "required": true,
+        "description": "The IDs of the threads."
+      }
+    ]
+  },
+  {
+    "operationId": "listReminders",
+    "method": "get",
+    "path": "/mailboxes/{mailbox}/reminders",
+    "routeKey": "GET /mailboxes/{mailbox}/reminders",
+    "summary": "List the threads set aside in a mailbox's Remind me, the soonest back first.",
+    "description": "Lists the threads waiting in Remind me a page at a time, the one that comes back soonest first, each with its reminder. To read the next page, call again with the answer's next as after, until an answer has no next.",
+    "signIn": true,
+    "command": [
+      "threads",
+      "reminders"
+    ],
+    "options": [
+      {
+        "name": "mailbox",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The mailbox's ID."
+      },
+      {
+        "name": "limit",
+        "in": "query",
+        "type": "integer",
+        "required": false,
+        "description": "How many threads a page lists at most."
+      },
+      {
+        "name": "after",
+        "in": "query",
+        "type": "string",
+        "required": false,
+        "description": "Where the page starts, the next of the page before it. Leave it out for the first page."
+      }
+    ]
+  },
+  {
     "operationId": "listAllMail",
     "method": "get",
     "path": "/mailboxes/{mailbox}/all-mail",

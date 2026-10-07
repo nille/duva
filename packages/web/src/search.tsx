@@ -379,7 +379,7 @@ export function SearchResults({
     void again();
   };
   const list = useRef<HTMLOListElement>(null);
-  useThreadKeys({ list, client, mailbox, threads, picked: picking.picked, place, onPick: picking.toggle, onLabels: picking.askLabels, onDone: organized, onSignedOut });
+  useThreadKeys({ list, client, mailbox, threads, picked: picking.picked, place, onPick: picking.toggle, onLabels: picking.askLabels, onRemind: picking.askRemind, onDone: organized, onSignedOut });
   // A search a list's chip makes shows the chips, that one current.
   const chip = chipOf(view, labels, base);
 
@@ -443,6 +443,7 @@ export function SearchResults({
               labels={labels}
               place={place}
               labelsAsked={picking.labelsAsked}
+              remindAsked={picking.remindAsked}
               onDone={organized}
               onSignedOut={onSignedOut}
             />

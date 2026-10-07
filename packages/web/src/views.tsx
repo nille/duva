@@ -1,4 +1,4 @@
-// The views of a mailbox's mail: the Inbox, the Screener, Sent, Drafts, All mail, Spam and Trash, an
+// The views of a mailbox's mail: the Inbox, the Screener, Remind me, Sent, Drafts, All mail, Spam and Trash, an
 // agent's activity in its mailbox, then its own labels, each a link with how many unread threads it has, the Screener with how many senders wait. It is one component, so the side column can hold it.
 // A search's results are a view too, which the bar opens.
 import { useId, useState } from "react";
@@ -9,8 +9,8 @@ import { strings } from "./strings.ts";
 
 type Mailbox = components["schemas"]["Mailbox"];
 
-/** A listing of threads: a label's, Sent, or All mail. */
-export type ThreadsView = { label: string } | { sent: true } | { all: true };
+/** A listing of threads: a label's, Sent, All mail, or Remind me's threads set aside. */
+export type ThreadsView = { label: string } | { sent: true } | { all: true } | { reminders: true };
 
 /** A search of the mailbox: what to search for, and whether best or newest first. */
 export type SearchView = { search: { q: string; sort: "relevance" | "newest" } };
@@ -27,6 +27,7 @@ export function pathOf(view: View): string {
   }
   if ("all" in view) return "all";
   if ("sent" in view) return "sent";
+  if ("reminders" in view) return "reminders";
   if (view.label === "inbox") return "";
   if (view.label === "spam" || view.label === "trash") return view.label;
   return `labels/${encodeURIComponent(view.label)}`;
@@ -51,6 +52,7 @@ export function viewOf(path: string): View | undefined {
   if (path === "screener") return { screener: true };
   if (path === "all") return { all: true };
   if (path === "sent") return { sent: true };
+  if (path === "reminders") return { reminders: true };
   const search = /^search\?(.*)$/.exec(path)?.[1];
   if (search !== undefined) {
     const asked = new URLSearchParams(search);
@@ -66,6 +68,7 @@ export function titleOf(view: View, labels: Label[], agent?: string): string {
   if ("screener" in view) return agent === undefined ? strings.screener.title : strings.screener.agentTitle(agent);
   if ("search" in view) return strings.search.title;
   if ("all" in view) return strings.views.allMail;
+  if ("reminders" in view) return strings.views.reminders;
   if ("sent" in view) return agent === undefined ? strings.sent.title : strings.sent.agentTitle(agent);
   if (view.label === "inbox" && agent !== undefined) return strings.inbox.agentTitle(agent);
   return labels.find((label) => label.id === view.label)?.name ?? builtInName(view.label) ?? strings.views.unknownLabel;
@@ -145,6 +148,7 @@ export function MailViews({
             </a>
           </li>
         )}
+        {link({ reminders: true }, strings.views.reminders, 0)}
         {link({ sent: true }, strings.views.sent, 0)}
         {drafts !== undefined && (
           <li>

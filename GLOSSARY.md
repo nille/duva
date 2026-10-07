@@ -110,6 +110,10 @@ _Avoid_: folder, tag, category
 **Inbox**:
 A built-in label for threads that want attention. New mail adds it; archiving removes it.
 
+**Remind me**:
+Setting a thread aside until a time, chosen as later today, tomorrow morning, next week or an exact time, in the human's time zone. The thread leaves the Inbox and waits in Remind me until then, when it comes back to the top of the Inbox, unread, with a Back mark naming when it was set aside, which it keeps until it leaves the Inbox. New mail in the thread brings it back early. Cancelling puts it back in the Inbox at once, at its own place and without the mark.
+_Avoid_: snooze, bubble up
+
 **Spam**:
 A built-in label for mail judged to be spam. Threads with it are out of the Inbox and left out of agents' results unless they ask.
 

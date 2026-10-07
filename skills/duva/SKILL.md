@@ -483,6 +483,37 @@ Read a thread, with each of its messages, oldest first.
 - `--mailbox` (required): The mailbox's ID.
 - `--thread` (required): The thread's ID.
 
+## duva threads remind
+
+Set threads in a mailbox aside until a time, when they come back to the Inbox.
+
+Remind me: each thread leaves the Inbox, if it is there, and waits in Remind me until the time, given as at or as a preset. Then it comes back to the top of the Inbox, unread, with a Back mark naming when it was set aside. New mail in the thread brings it back early. A thread already set aside gets the new time. A thread in Spam or Trash, or waiting in the Screener, can't be set aside. Each thread gets a change in the mailbox's change feed, naming you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can set its threads aside.
+
+- `--mailbox` (required): The mailbox's ID.
+- `--threads` (required) (once for each): The IDs of the threads.
+- `--at`: When the threads come back, to the second, at least a minute from now.
+- `--preset`: A time counted from now, in the time zone: laterToday is three hours from now, on the hour after, tomorrowMorning is 8:00 tomorrow, and nextWeek is 8:00 next Monday.
+- `--timeZone`: The time zone a preset is counted in, as an IANA name. Left out, it is your time zone preference, for an agent its sponsor's, or UTC if they chose none.
+
+## duva threads cancel-reminder
+
+Cancel the reminders of threads in a mailbox, which puts them back in the Inbox.
+
+Each thread set aside in Remind me goes back to the Inbox now, at its own place and without a Back mark. Threads not set aside are left as they are. Each thread whose reminder is cancelled gets a change in the mailbox's change feed, naming you. Only those who can set the mailbox's threads aside can cancel their reminders.
+
+- `--mailbox` (required): The mailbox's ID.
+- `--threads` (required) (once for each): The IDs of the threads.
+
+## duva threads reminders
+
+List the threads set aside in a mailbox's Remind me, the soonest back first.
+
+Lists the threads waiting in Remind me a page at a time, the one that comes back soonest first, each with its reminder. To read the next page, call again with the answer's next as after, until an answer has no next.
+
+- `--mailbox` (required): The mailbox's ID.
+- `--limit`: How many threads a page lists at most.
+- `--after`: Where the page starts, the next of the page before it. Leave it out for the first page.
+
 ## duva threads all-mail
 
 List every thread in a mailbox except those in Spam and Trash, newest first.

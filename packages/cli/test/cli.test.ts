@@ -616,6 +616,37 @@ test("an admin gives an agent a mailbox, and the agent catches up on it, lists i
   });
 });
 
+test("an agent sets a thread aside in its sponsor's Remind me with a preset, lists Remind me, changes the time and cancels it", async () => {
+  const machine = await newMachine();
+  const duva = await startDuva({ domain: "example.com", admin: "ada@example.org" });
+  const server = await duva.listen();
+  onTestFinished(() => server.close());
+  await machine.saveDeployment(server);
+  await machine.duva("login", { browserSignsIn: "ada@example.org" });
+  const ada = (JSON.parse((await machine.duva("whoami")).stdout) as { id: string }).id;
+  const { agent, key } = JSON.parse((await machine.duva("agents", "create", "--name", "Hermes")).stdout) as { agent: { id: string }; key: string };
+  const mailbox = JSON.parse((await machine.duva("mailboxes", "create", "--owner", ada, "--address", "ada@example.com")).stdout) as { id: string };
+  await machine.duva("agents", "change-settings", "--agent", agent.id, "--sponsorAccess", "full");
+  await machine.duva("screener", "switch", "--mailbox", mailbox.id, "--no-on");
+  await duva.receive("From: Grace <grace@example.org>\r\nTo: ada@example.com\r\nSubject: Hello\r\nDate: Sat, 03 Oct 2026 10:00:00 +0000\r\n\r\nHi Ada.\r\n", { to: ["ada@example.com"] });
+  const asAgent = { env: { DUVA_AGENT_KEY: key } };
+  const thread = (JSON.parse((await machine.duva("threads", "list", "--mailbox", mailbox.id, asAgent)).stdout) as { threads: { id: string }[] }).threads[0]!.id;
+  const later = new Date(Math.ceil(Date.now() / 1000) * 1000 + 3 * 86_400_000).toISOString();
+
+  const set = await machine.duva("threads", "remind", "--mailbox", mailbox.id, "--threads", thread, "--preset", "tomorrowMorning", "--timeZone", "UTC", asAgent);
+  const listed = await machine.duva("threads", "reminders", "--mailbox", mailbox.id, asAgent);
+  const changed = await machine.duva("threads", "remind", "--mailbox", mailbox.id, "--threads", thread, "--at", later, asAgent);
+  const cancelled = await machine.duva("threads", "cancel-reminder", "--mailbox", mailbox.id, "--threads", thread, asAgent);
+
+  expect(set.exitCode).toBe(0);
+  expect(JSON.parse(set.stdout)).toMatchObject({ threads: [{ id: thread, labels: [], reminder: { at: expect.stringMatching(/T08:00:00\.000Z$/) } }] });
+  expect(JSON.parse(listed.stdout)).toMatchObject({ threads: [{ id: thread, reminder: { at: expect.stringMatching(/T08:00:00\.000Z$/) } }] });
+  expect(JSON.parse(changed.stdout)).toMatchObject({ threads: [{ id: thread, reminder: { at: later } }] });
+  expect(cancelled.exitCode).toBe(0);
+  expect(JSON.parse(cancelled.stdout)).toEqual({ threads: [expect.not.objectContaining({ reminder: expect.anything() })] });
+  expect(JSON.parse(cancelled.stdout)).toMatchObject({ threads: [{ id: thread, labels: ["inbox"] }] });
+});
+
 test("an agent searches its mailbox, and a search that can't be read says what to do", async () => {
   const machine = await newMachine();
   const duva = await startDuva({ domain: "example.com", admin: "ada@example.org" });

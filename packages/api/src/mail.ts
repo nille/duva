@@ -53,11 +53,20 @@ const messageKey = (mailbox: string, thread: string, receivedAt: string, message
   [pk]: partition(mailbox),
   [sk]: `${threadPrefix(thread)}message#${receivedAt}#${message}`,
 });
-// Each listing lists its threads newest first, each with its summary: each label, Sent and All mail.
-const listingKey = (mailbox: string, listing: Listing, latestAt: string, thread: string) => ({
+// Each listing lists its threads by their place, each with its summary: each label, Sent, All mail and Remind me.
+const listingKey = (mailbox: string, listing: Listing, place: string, thread: string) => ({
   [pk]: `${partition(mailbox)}#${listing}`,
-  [sk]: `${latestAt}#${thread}`,
+  [sk]: `${place}#${thread}`,
 });
+/**
+ * The thread's place in the listing: in Remind me when it comes back, and elsewhere when its
+ * newest message arrived, or when it came back from Remind me if that was later, so it comes back
+ * to the top.
+ */
+const placeIn = (listing: Listing, { latestAt, reminder, back }: ThreadSummary): string =>
+  listing === reminders ? reminder!.at : back !== undefined && back.at > latestAt ? back.at : latestAt;
+/** The thread's entry in the listing, at its place there. */
+const entryIn = (mailbox: string, listing: Listing, summary: ThreadSummary) => listingKey(mailbox, listing, placeIn(listing, summary), summary.id);
 // A page of a listing's threads ends at an entry, whose sort key is the next page's cursor.
 const labelPosition = /^\d{4}-\d\d-\d\dT[\d:.]+Z#[\w-]+$/;
 const cursorAt = (position: string) => Buffer.from(position).toString("base64url");
@@ -78,7 +87,7 @@ const labelledKey = (labelledAt: string, mailbox: string, thread: string, label:
 // A thread's own item's sort key, which no message's matches, gives back its thread's ID.
 const threadOf = (sortKey: string) => /^thread#(.+)#thread$/.exec(sortKey)?.[1];
 
-export const keys = { partition, threadPrefix, threadKey, threadOf, messageIdKey, messageRefKey, receivedKey, labelledKey, listingKey, sentToKey };
+export const keys = { partition, threadPrefix, threadKey, threadOf, messageIdKey, messageRefKey, receivedKey, labelledKey, entryIn, sentToKey };
 
 /** A message SES received for one of the mailbox's addresses. */
 export interface Arrival {
@@ -351,6 +360,9 @@ async function storeMessage(
             ...((sent || joined.sent) && { sent: true }),
           };
     timeErasedLabels(joined, summary);
+    // New mail brings a thread set aside back early.
+    const early = joined?.reminder !== undefined && label !== undefined;
+    if (early) comeBack(summary, new Date());
     const items = [
       once(thread),
       put({ ...threadKey(mailbox, thread), ...summary }, joined === undefined ? isNew : asRead(joined)),
@@ -363,7 +375,8 @@ async function storeMessage(
       ...checks,
     ];
     try {
-      await recordChanges(table, mailboxFeed(mailbox), { by, changes: [change(thread, joined !== undefined)], items });
+      const changes = [change(thread, joined !== undefined), ...(early ? [{ type: "threadBack", thread, setAsideAt: joined.reminder!.setAt, early: true }] : [])];
+      await recordChanges(table, mailboxFeed(mailbox), { by, changes, items });
       return true;
     } catch (error) {
       const reasons = error instanceof TransactionCanceledException ? (error.CancellationReasons ?? []) : [];
@@ -380,10 +393,15 @@ async function storeMessage(
  * The condition that a thread is as it was read, so changes made together each count. Threads
  * stored before read state existed have none, and are read.
  */
-export function asRead({ messages, labels, unread }: ThreadSummary) {
+export function asRead({ messages, labels, unread, reminder }: ThreadSummary) {
   return {
-    ConditionExpression: `messages = :messages AND labels = :labels AND ${unread ? "unread = :unread" : "(unread = :unread OR attribute_not_exists(unread))"}`,
-    ExpressionAttributeValues: { ":messages": messages, ":labels": labels, ":unread": unread },
+    ConditionExpression: [
+      "messages = :messages AND labels = :labels",
+      unread ? "unread = :unread" : "(unread = :unread OR attribute_not_exists(unread))",
+      reminder === undefined ? "attribute_not_exists(reminder)" : "reminder.#at = :reminderAt",
+    ].join(" AND "),
+    ...(reminder !== undefined && { ExpressionAttributeNames: { "#at": "at" } }),
+    ExpressionAttributeValues: { ":messages": messages, ":labels": labels, ":unread": unread, ...(reminder !== undefined && { ":reminderAt": reminder.at }) },
   };
 }
 
@@ -421,6 +439,83 @@ export function labelThreads(
   });
 }
 
+/**
+ * Sets each thread aside in Remind me until the time, to the second: it leaves the Inbox if it is
+ * there, and one already set aside gets the new time, keeping when it was first set aside. Records
+ * the reminder in the mailbox's change feed attributed to the actor `by`, with its leaving the
+ * Inbox. Returns the threads as they are now, in the order given, or the IDs the mailbox has no
+ * thread for, or else those in Spam or Trash or waiting in the Screener, and changes none, if there are any.
+ */
+export async function setThreadsAside(
+  table: Table,
+  { mailbox, threads, at, by }: { mailbox: string; threads: string[]; at: Date; by: string },
+): Promise<{ threads: ThreadSummary[] } | { missing: string[] } | { hidden: string[] }> {
+  const found = await Promise.all(threads.map((thread) => threadSummary(table, mailbox, thread)));
+  const shut = found.filter((summary): summary is StoredSummary => summary !== undefined && hidden(summary)).map(({ id }) => id);
+  if (shut.length > 0 && !found.includes(undefined)) return { hidden: shut };
+  const until = toTheSecond(at);
+  const setAt = toTheSecond(new Date());
+  return changeThreads(table, { mailbox, threads, by }, (current) => {
+    // Moved to Spam or Trash meanwhile, it stays there.
+    if (hidden(current) || current.reminder?.at === until) return undefined;
+    const labels = current.labels.filter((label) => label !== inbox);
+    const { back: _, ...summary } = current;
+    return {
+      summary: { ...summary, labels, reminder: { at: until, setAt: current.reminder?.setAt ?? setAt } },
+      change: [
+        { type: "reminderSet", thread: current.id, until },
+        ...(labels.length < current.labels.length ? [{ type: "threadLabelsChanged", thread: current.id, added: [], removed: [inbox] }] : []),
+      ],
+    };
+  });
+}
+
+/**
+ * Cancels each thread's reminder, which puts it back in the Inbox at its own place, recorded in
+ * the mailbox's change feed attributed to the actor `by`. Threads not set aside are left as they
+ * are. Returns the threads as they are now, in the order given, or the IDs the mailbox has no
+ * thread for instead, changing none, if there are any.
+ */
+export function endReminders(table: Table, { mailbox, threads, by }: { mailbox: string; threads: string[]; by: string }): Promise<{ threads: ThreadSummary[] } | { missing: string[] }> {
+  return changeThreads(table, { mailbox, threads, by }, (current) => {
+    if (current.reminder === undefined) return undefined;
+    const { reminder: _, ...summary } = current;
+    const added = current.labels.includes(inbox) ? [] : [inbox];
+    return {
+      summary: { ...summary, labels: [...current.labels, ...added] },
+      change: [
+        { type: "reminderCancelled", thread: current.id },
+        ...(added.length > 0 ? [{ type: "threadLabelsChanged", thread: current.id, added, removed: [] }] : []),
+      ],
+    };
+  });
+}
+
+/**
+ * Brings the thread back from Remind me, if it is still set aside until the time `at`, as its
+ * reminder's schedule asks when the time comes: to the top of the Inbox, unread, with its Back
+ * mark. Records it in the mailbox's change feed, naming no actor.
+ */
+export async function bringBack(table: Table, { mailbox, thread, at }: { mailbox: string; thread: string; at: string }): Promise<void> {
+  await changeThreads(table, { mailbox, threads: [thread], by: undefined }, (current) => {
+    const { reminder } = current;
+    if (reminder?.at !== at) return undefined;
+    const summary = { ...current, unread: true };
+    comeBack(summary, new Date(at));
+    return { summary, change: { type: "threadBack", thread: current.id, setAsideAt: reminder.setAt } };
+  });
+}
+
+/** Has the thread set aside come back at the time: to the Inbox with its Back mark, its reminder ended. */
+function comeBack(summary: StoredSummary, at: Date) {
+  if (!summary.labels.includes(inbox)) summary.labels = [...summary.labels, inbox];
+  summary.back = { at: toTheSecond(at), setAsideAt: summary.reminder!.setAt };
+  delete summary.reminder;
+}
+
+/** The time as an ISO string, to the second, as schedules run. */
+const toTheSecond = (at: Date) => new Date(Math.floor(at.getTime() / 1000) * 1000).toISOString();
+
 /** The labels after adding and removing those given, with the built-in labels' rules. */
 function relabelled(labels: string[], add: string[], remove: string[]): string[] {
   const out = new Set([...remove, ...(add.includes(inbox) ? [spam, trash, screener] : []), ...(add.includes(spam) || add.includes(trash) ? [inbox] : [])]);
@@ -430,15 +525,16 @@ function relabelled(labels: string[], add: string[], remove: string[]): string[]
 }
 
 /**
- * Changes each thread as `change` says, in its own transaction with the change in the mailbox's
- * change feed attributed to the actor `by`, and leaves those it answers undefined for as they are.
- * Returns the threads as they are now, in the order given, or the IDs the mailbox has no thread
- * for instead, changing none, if there are any.
+ * Changes each thread as `change` says, in its own transaction with the changes in the mailbox's
+ * change feed attributed to the actor `by`, or to none, and leaves those it answers undefined for
+ * as they are. A thread that leaves the Inbox loses its Back mark, and one set aside that is moved
+ * to the Inbox, Spam or Trash has its reminder end. Returns the threads as they are now, in the
+ * order given, or the IDs the mailbox has no thread for instead, changing none, if there are any.
  */
 async function changeThreads(
   table: Table,
-  { mailbox, threads, by }: { mailbox: string; threads: string[]; by: string },
-  change: (current: StoredSummary) => { summary: StoredSummary; change: object } | undefined,
+  { mailbox, threads, by }: { mailbox: string; threads: string[]; by: string | undefined },
+  change: (current: StoredSummary) => { summary: StoredSummary; change: object | object[] } | undefined,
 ): Promise<{ threads: ThreadSummary[] } | { missing: string[] }> {
   const found = await Promise.all(threads.map((thread) => threadSummary(table, mailbox, thread)));
   const missing = threads.filter((_, index) => found[index] === undefined);
@@ -450,13 +546,19 @@ async function changeThreads(
     for (let attempt = 1; ; attempt++) {
       const next = change(current!);
       if (next === undefined) break;
+      const changes = [next.change].flat();
       timeErasedLabels(current, next.summary);
       // Out of Trash, a thread is no longer there by a block, so trashed again it is there by hand.
       if (!next.summary.labels.includes(trash)) delete next.summary.trashedByBlock;
+      if (!next.summary.labels.includes(inbox)) delete next.summary.back;
+      if (next.summary.reminder !== undefined && [inbox, spam, trash].some((label) => next.summary.labels.includes(label))) {
+        delete next.summary.reminder;
+        changes.push({ type: "reminderCancelled", thread: current!.id });
+      }
       try {
         await recordChanges(table, mailboxFeed(mailbox), {
           by,
-          changes: [next.change],
+          changes,
           items: [
             { Put: { TableName: table.name, Item: { ...threadKey(mailbox, current!.id), ...next.summary }, ...asRead(current!) } },
             ...listingWrites(table, mailbox, current, next.summary),
@@ -479,17 +581,24 @@ async function changeThreads(
   return { threads: changed.map(summaryOf) };
 }
 
-/** A listing a thread can be in: one of its labels, Sent if the mailbox sent in it, or All mail. */
-type Listing = `label#${string}` | "sent" | "all";
+/** A listing a thread can be in: one of its labels, Sent if the mailbox sent in it, All mail, or Remind me while it is set aside. */
+type Listing = `label#${string}` | "sent" | "all" | typeof reminders;
+
+/** The listing of the threads set aside in Remind me, soonest back first. */
+const reminders = "reminders";
 
 /** Whether the thread is in Spam or Trash, or waits in the Screener, which leaves it out of every listing but those. */
 const hidden = ({ labels }: ThreadSummary) => labels.includes(spam) || labels.includes(trash) || labels.includes(screener);
 
-/** The listings the thread is in: each of its labels, Sent if the mailbox sent in it, and All mail unless it is in Spam or Trash or waits in the Screener. */
+/**
+ * The listings the thread is in: each of its labels, Sent if the mailbox sent in it, All mail
+ * unless it is in Spam or Trash or waits in the Screener, and Remind me while it is set aside.
+ */
 export const listingsOf = (summary: StoredSummary): Listing[] => [
   ...summary.labels.map((label) => `label#${label}` as const),
   ...(summary.sent ? (["sent"] as const) : []),
   ...(hidden(summary) ? [] : (["all"] as const)),
+  ...(summary.reminder === undefined ? [] : ([reminders] as const)),
 ];
 
 /**
@@ -499,10 +608,10 @@ export const listingsOf = (summary: StoredSummary): Listing[] => [
  */
 function listingWrites(table: Table, mailbox: string, was: StoredSummary | undefined, is: StoredSummary): TransactItem[] {
   const listings = listingsOf(is);
-  const left = was === undefined ? [] : listingsOf(was).filter((listing) => was.latestAt !== is.latestAt || !listings.includes(listing));
+  const left = was === undefined ? [] : listingsOf(was).filter((listing) => !listings.includes(listing) || placeIn(listing, was) !== placeIn(listing, is));
   return [
-    ...left.map((listing) => ({ Delete: { TableName: table.name, Key: listingKey(mailbox, listing, was!.latestAt, is.id) } })),
-    ...listings.map((listing) => ({ Put: { TableName: table.name, Item: { ...listingKey(mailbox, listing, is.latestAt, is.id), ...is } } })),
+    ...left.map((listing) => ({ Delete: { TableName: table.name, Key: entryIn(mailbox, listing, was!) } })),
+    ...listings.map((listing) => ({ Put: { TableName: table.name, Item: { ...entryIn(mailbox, listing, is), ...is } } })),
   ];
 }
 
@@ -612,6 +721,9 @@ export const sentThreads = (table: Table, mailbox: string, page: { limit: number
 /** A page of All mail, as threadsListed gives it. */
 export const allMail = (table: Table, mailbox: string, page: { limit: number; after?: Cursor }) => threadsListed(table, mailbox, "all", page);
 
+/** A page of Remind me, the threads set aside, soonest back first, as threadsListed gives it. */
+export const threadsSetAside = (table: Table, mailbox: string, page: { limit: number; after?: Cursor }) => threadsListed(table, mailbox, reminders, page);
+
 /**
  * The labels whose threads the listing leaves out: Spam's and Trash's leave out none, the
  * Screener's those in Spam and Trash, and every other listing those too and those that wait.
@@ -619,7 +731,7 @@ export const allMail = (table: Table, mailbox: string, page: { limit: number; af
 const leftOutBy = (listing: Listing): string[] => (listing === `label#${spam}` || listing === `label#${trash}` ? [] : listing === `label#${screener}` ? [spam, trash] : [spam, trash, screener]);
 
 /**
- * A page of the threads in the listing, newest first, at most `limit` of them, after the page that
+ * A page of the threads in the listing, newest first, or Remind me's soonest back first, at most `limit` of them, after the page that
  * gave `after` as its next, leaving out those the listing leaves out unless `withHidden`. The page
  * has a next if more threads follow.
  */
@@ -641,7 +753,7 @@ async function threadsListed(
         TableName: table.name,
         KeyConditionExpression: `${pk} = :listing`,
         ExpressionAttributeValues: { ":listing": partition },
-        ScanIndexForward: false,
+        ScanIndexForward: listing === reminders,
         Limit: limit + 1 - items.length,
         ExclusiveStartKey: start,
       }),
@@ -715,7 +827,8 @@ export async function readThread(table: Table, mailBucket: MailBucket, mailbox: 
   if (thread === undefined || thread.erasing === true) return undefined;
   const stored = items.filter((item) => item !== thread);
   const messages = await Promise.all(stored.map(async (item) => (await readMessage(mailBucket, item as StoredMessage, linkTo)).message));
-  return { id, subject: thread.subject, labels: thread.labels, unread: thread.unread ?? false, messages };
+  const { reminder, back } = summaryOf(thread as ThreadSummary);
+  return { id, subject: thread.subject, labels: thread.labels, unread: thread.unread ?? false, ...(reminder !== undefined && { reminder }), ...(back !== undefined && { back }), messages };
 }
 
 /**
@@ -837,7 +950,7 @@ async function servedHtml(html: string, parts: Part[], linkTo: (attachment: numb
 }
 
 // Threads stored before snippets and read state existed have neither, and are read.
-export const summaryOf = ({ id, subject, from, fromAgent, snippet, labels, unread, latestAt, messages, groups }: ThreadSummary): ThreadSummary => ({
+export const summaryOf = ({ id, subject, from, fromAgent, snippet, labels, unread, latestAt, messages, groups, reminder, back }: ThreadSummary): ThreadSummary => ({
   id,
   subject,
   from: addressOf(from),
@@ -848,6 +961,8 @@ export const summaryOf = ({ id, subject, from, fromAgent, snippet, labels, unrea
   latestAt,
   messages,
   ...(groups !== undefined && { groups }),
+  ...(reminder !== undefined && { reminder }),
+  ...(back !== undefined && { back }),
 });
 
 /** The start of the text on one line, without quoted lines, URLs or tokens, cut after snippetLength characters. */

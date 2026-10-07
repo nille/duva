@@ -3,6 +3,7 @@ import { operations } from "./operations.gen.ts";
 export { operations };
 // Kept here, beside the contract that refuses them, so the web app knows not to offer them.
 export { isPublicMailProvider } from "./mail-providers.ts";
+export { clockValue, fromClockValue, presetAt, reminderPresets, soonestReminder } from "./reminder-presets.ts";
 export type { components, paths } from "./schema.gen.ts";
 
 /**

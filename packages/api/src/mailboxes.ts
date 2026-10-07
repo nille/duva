@@ -85,7 +85,7 @@ function pageAsked(event: Parameters<OperationHandler>[0]): { limit: number; aft
 }
 
 /** A handler that answers a page of the threads `list` gives, for those who can read the mailbox. */
-const listing =
+export const listing =
   (list: (table: Deployment["table"], mailbox: string, page: { limit: number; after?: Cursor }, event: Parameters<OperationHandler>[0]) => Promise<components["schemas"]["ThreadList"]>): OperationHandler =>
   async (event, deployment, actor) => {
     const mailbox = await mailboxFor(event, deployment, actor!, "read");
@@ -100,7 +100,7 @@ export const listSentThreads = listing(sentThreads);
 export const listAllMail = listing(allMail);
 
 /** The thread IDs in the call's body, without repeats, or a refusal if it doesn't give 1 to threadsMarkedAtOnce of them. */
-function threadsGiven(body: Record<string, unknown> | undefined): string[] | ReturnType<typeof refusal> {
+export function threadsGiven(body: Record<string, unknown> | undefined): string[] | ReturnType<typeof refusal> {
   const threads = body?.threads;
   if (!Array.isArray(threads) || threads.length === 0 || threads.length > threadsMarkedAtOnce || !threads.every((thread) => typeof thread === "string")) {
     return refusal(400, `Give threads as a list of 1 to ${threadsMarkedAtOnce} thread IDs.`);
@@ -108,7 +108,7 @@ function threadsGiven(body: Record<string, unknown> | undefined): string[] | Ret
   return [...new Set(threads)];
 }
 
-const noThread = (missing: string[]) =>
+export const noThread = (missing: string[]) =>
   refusal(404, `The mailbox has no thread ${missing.map((id) => JSON.stringify(id)).join(", ")}, so no thread was changed. List its threads to find their IDs.`);
 
 /** Marks the threads in the call's body unread, or read, as their mailbox's reader asks. */

@@ -8,7 +8,7 @@ import { type ReactNode, type Ref, useCallback, useContext, useEffect, useId, us
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
 import { Composer, startDraft } from "./compose.tsx";
-import { PreferencesContext } from "./dates.ts";
+import { PreferencesContext, useDates } from "./dates.ts";
 import { DesignedBody } from "./designed.tsx";
 import { ActorMark, Addresses, Attachments, Field, nameOf, Time } from "./mail-parts.tsx";
 import { changeFor, type Done, type Label, organize, OrganizeActions, ownLabelsOf, SessionEnded } from "./organize.tsx";
@@ -385,6 +385,7 @@ export function ThreadView({
             <div className="reading-meta">
               <p>{strings.thread.count(reading.thread.messages.length)}</p>
               <ThreadLabels thread={reading.thread} labels={labels} />
+              <SetAside thread={reading.thread} />
             </div>
           </div>
           {(marking === "failed" || marking === "readFailed") && (
@@ -527,6 +528,14 @@ function ReplyButtons({
       </button>
     </>
   );
+}
+
+/** When the thread set aside comes back, or that it came back and when it was set aside. */
+function SetAside({ thread }: { thread: Thread }) {
+  const { when, day } = useDates();
+  if (thread.reminder !== undefined) return <p className="reading-remind">{strings.remind.threadUntil(when(new Date(thread.reminder.at)))}</p>;
+  if (thread.back !== undefined) return <p className="reading-remind reading-back">{strings.remind.threadBack(day(new Date(thread.back.setAsideAt)))}</p>;
+  return null;
 }
 
 /** Where the thread is: Spam or Trash, and the human's own labels on it. */

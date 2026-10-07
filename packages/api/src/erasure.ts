@@ -178,7 +178,7 @@ async function eraseThread(table: Table, { mailbox, thread, by, due }: { mailbox
     erasesApprovals = settings.settings.erasureErasesApprovals;
     const items: TransactItem[] = [
       { Put: { TableName: table.name, Item: { ...keys.threadKey(mailbox, thread), erasing: true }, ...asTimed(summary) } },
-      ...listingsOf(summary).map((listing) => ({ Delete: { TableName: table.name, Key: keys.listingKey(mailbox, listing, summary.latestAt, thread) } })),
+      ...listingsOf(summary).map((listing) => ({ Delete: { TableName: table.name, Key: keys.entryIn(mailbox, listing, summary) } })),
       ...Object.entries(summary.labelledAt ?? {}).map(([label, at]) => ({
         Delete: { TableName: table.name, Key: keys.labelledKey(at, mailbox, thread, label as ErasedLabel) },
       })),
@@ -210,7 +210,7 @@ function asTimed(summary: StoredSummary) {
   const read = asRead(summary);
   return summary.labelledAt === undefined
     ? { ...read, ConditionExpression: `${read.ConditionExpression} AND attribute_not_exists(labelledAt)` }
-    : { ConditionExpression: `${read.ConditionExpression} AND labelledAt = :labelledAt`, ExpressionAttributeValues: { ...read.ExpressionAttributeValues, ":labelledAt": summary.labelledAt } };
+    : { ...read, ConditionExpression: `${read.ConditionExpression} AND labelledAt = :labelledAt`, ExpressionAttributeValues: { ...read.ExpressionAttributeValues, ":labelledAt": summary.labelledAt } };
 }
 
 /** How many messages one transaction erases: each takes up to four deletes and the raw message's entry. */

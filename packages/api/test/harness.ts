@@ -34,6 +34,7 @@ import type { MailBucket } from "../src/mail-bucket.ts";
 import { keys, timeEarlierLabels } from "../src/mail.ts";
 import { addHumanToOrganization, screenerKey, setUpOrganization } from "../src/organization.ts";
 import { setUpScreeners } from "../src/screening.ts";
+import type { ReminderDue } from "../src/reminders.ts";
 import { createSender } from "../src/sending.ts";
 import type { SuppressionReason } from "../src/suppression.ts";
 import { postOneClick } from "../src/unsubscriber.ts";
@@ -260,9 +261,11 @@ export async function startDuva({
     await indexQueue.drain(indexer);
   };
   const searcher = createSearcher(lanceSearch({ uri: indexes, embedder: titan, translator: recordedNova() }));
-  // EventBridge Scheduler's one-time schedules, each invoking the sender with an agent at a time.
-  const schedules: { agent: string; at: Date }[] = [];
-  const sender = createSender({ table, mailBucket, outbound: sending.outbound, region, schedules: { releaseAt: async (agent, at) => void schedules.push({ agent, at }) } });
+  // EventBridge Scheduler's one-time schedules, each invoking the sender at a time, with an agent
+  // whose sends wait or a thread due back from Remind me.
+  const schedules: { event: Parameters<typeof sender>[0]; at: Date }[] = [];
+  const sender = createSender({ table, mailBucket, outbound: sending.outbound, region, schedules: { releaseAt: async (agent, at) => void schedules.push({ event: { release: agent }, at }) } });
+  const reminders = { remindAt: async (due: ReminderDue) => void schedules.push({ event: { remind: due }, at: new Date(due.at) }) };
   const stream = tableStream(database, streamArn, [
     { filter: senderFilter, handler: sender, retries: senderRetries, invocations: senderInvocations },
     { filter: alertMailFilter, handler: sender, retries: senderRetries, invocations: senderInvocations },
@@ -304,6 +307,7 @@ export async function startDuva({
       searcher: async (request) => JSON.parse(JSON.stringify(await searcher(JSON.parse(JSON.stringify(request))))),
       indexQueue,
       waitingSends: { release: async (agent) => void released.push(agent) },
+      reminders,
     }),
     createAuthorizer({ table, verifyAccessToken: issuer.verify }),
   );
@@ -366,7 +370,7 @@ export async function startDuva({
         if (due === undefined) break;
         schedules.splice(schedules.indexOf(due), 1);
         setClock(due.at);
-        await sender({ release: due.agent });
+        await sender(due.event);
         if (!sendsHeld) await stream.deliver();
       }
       setClock(at);

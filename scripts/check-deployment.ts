@@ -13,7 +13,7 @@
 // of SES's waits in the feedback Lambda's failure queue; nothing but IAM may invoke search, which runs at 10,240 MB
 // on x64, and Nova Lite translates in the region; every mailbox's search index is backfilled, naming any whose backfill is stuck, none has held
 // erased mail for more than a day, and no indexer task waits in its failure queue; nothing but IAM
-// may invoke the sender, and no schedule for sends that wait for an agent's limits is overdue. Signing in stays
+// may invoke the sender, and no schedule for sends that wait for an agent's limits, or for threads set aside in Remind me, is overdue. Signing in stays
 // with a human. Then prints how many
 // messages Duva dropped on arrival each day of the last 7, by reason. Exits 1 if any check fails.
 import { CloudFormationClient, DescribeStacksCommand, paginateListStackResources } from "@aws-sdk/client-cloudformation";
@@ -181,7 +181,7 @@ await check("listing alerts without credentials answers 401", async () => expect
 await check("marking alerts seen without credentials answers 401", async () =>
   expectStatus(await fetch(`${apiUrl}/alerts/seen`, { method: "POST", headers: { "content-type": "application/json" }, body: '{"alerts":["x"]}' }), 401),
 );
-await check("no schedule for sends that wait for an agent's limits is more than an hour overdue", async () => {
+await check("no schedule for sends that wait for an agent's limits, or for a thread due back from Remind me, is more than an hour overdue", async () => {
   const group = await stackResource("AWS::Scheduler::ScheduleGroup", "SenderSchedules");
   if (group === undefined) return "the schedule group isn't in the stack";
   const overdue: string[] = [];
@@ -244,6 +244,13 @@ await check("deleting a draft without credentials answers 401", async () => expe
 await check("labelling threads without credentials answers 401", async () =>
   expectStatus(await fetch(`${apiUrl}/mailboxes/x/threads/labels`, { method: "POST", headers: { "content-type": "application/json" }, body: '{"threads":["x"],"add":["trash"]}' }), 401),
 );
+await check("setting threads aside in Remind me without credentials answers 401", async () =>
+  expectStatus(await fetch(`${apiUrl}/mailboxes/x/threads/remind`, { method: "POST", headers: { "content-type": "application/json" }, body: '{"threads":["x"],"preset":"nextWeek"}' }), 401),
+);
+await check("cancelling reminders without credentials answers 401", async () =>
+  expectStatus(await fetch(`${apiUrl}/mailboxes/x/threads/remind/cancel`, { method: "POST", headers: { "content-type": "application/json" }, body: '{"threads":["x"]}' }), 401),
+);
+await check("listing Remind me without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/mailboxes/x/reminders`), 401));
 await check("listing All mail without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/mailboxes/x/all-mail`), 401));
 await check("reading a human's preferences without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/preferences`), 401));
 await check("changing a human's preferences without credentials answers 401", async () =>

@@ -31,7 +31,7 @@ const defaultDays = 30;
 const entriesPerPage = 100;
 
 /** The changes Duva counts as organizing, when the agent makes them. */
-const organizing = new Set<Change["type"]>(["threadRead", "threadUnread", "threadLabelsChanged", "labelCreated", "labelRenamed", "labelDeleted"]);
+const organizing = new Set<Change["type"]>(["threadRead", "threadUnread", "threadLabelsChanged", "reminderSet", "reminderCancelled", "labelCreated", "labelRenamed", "labelDeleted"]);
 /** The changes Duva counts as screening, when the agent makes them. */
 const screening = new Set<Change["type"]>(["senderScreened", "screenedSenderRemoved", "screenerSwitched"]);
 

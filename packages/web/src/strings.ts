@@ -215,6 +215,7 @@ export const strings = {
     sent: "Sent",
     drafts: "Drafts",
     allMail: "All mail",
+    reminders: "Remind me",
     spam: "Spam",
     trash: "Trash",
     yourLabels: "Your labels",
@@ -226,6 +227,7 @@ export const strings = {
     elsewhere: "New mail in another mailbox",
     empty: {
       all: { title: "No mail yet", lead: "Every thread is listed here, archived ones too, except those in Spam and Trash." },
+      reminders: { title: "Nothing set aside", lead: "Set a thread aside with Remind me, and it waits here until its time, then comes back to the top of your Inbox." },
       spam: {
         title: "No spam",
         lead: (days?: number) => `Mail judged to be spam when it arrived, and threads you mark as spam, are listed here, out of your Inbox. Each is erased for good ${keptFor(days)}.`,
@@ -267,6 +269,29 @@ export const strings = {
     failed: "Duva couldn't change the threads. Try again.",
   },
 
+  remind: {
+    button: "Remind me",
+    for: (count: number) => (count === 1 ? "Remind me about this thread" : `Remind me about ${count} threads`),
+    presets: { laterToday: "Later today", tomorrowMorning: "Tomorrow morning", nextWeek: "Next week" },
+    own: "Another time",
+    set: "Set",
+    until: (when: string) => `Back ${when}.`,
+    someUntil: (count: number, when: string) => `${count} set aside, the first back ${when}.`,
+    cancel: "Cancel reminder",
+    setAside: (count: number, when: string) => `Set ${threads(count)} aside until ${when}.`,
+    cancelled: (count: number) => `Moved ${threads(count)} back to the Inbox.`,
+    past: "Choose a time at least a minute from now.",
+    failed: "Duva couldn't set the threads aside. Try again.",
+    /** A thread's mark once it came back, and when it was set aside. */
+    back: "Back",
+    setAsideOn: (day: string) => `set aside ${day}`,
+    backLabel: (day: string) => `back from Remind me, set aside ${day}`,
+    /** In Remind me, when each thread comes back. */
+    comesBack: (when: string) => `back ${when}`,
+    threadUntil: (when: string) => `Set aside until ${when}`,
+    threadBack: (day: string) => `Back, set aside ${day}`,
+  },
+
   shortcuts: {
     title: "Keyboard shortcuts",
     lead: "They are Gmail's, wherever Duva has the action, and none works while you type in a field.",
@@ -283,6 +308,7 @@ export const strings = {
     trash: "Move to Trash",
     spam: "Mark as spam",
     labels: "Labels",
+    remind: "Remind me",
     markRead: "Mark read",
     markUnread: "Mark unread",
     reply: "Reply",

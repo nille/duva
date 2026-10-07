@@ -33,6 +33,7 @@ import {
 import type { Deployment } from "./deployment.ts";
 import { type Actor, actorOf } from "./organization.ts";
 import { changePreferences, getPreferences } from "./preferences.ts";
+import { cancelReminders, listReminders, remindThreads } from "./reminders.ts";
 import { searchMailbox } from "./search.ts";
 import { blockSender, getScreener, letInSender, listScreenedSenders, removeScreenedSender, switchScreener } from "./screener.ts";
 import { changeOrganizationSettings, getOrganizationSettings, previewRetention } from "./settings.ts";
@@ -102,6 +103,9 @@ export const handlers: Record<OperationId, OperationHandler> = {
   markThreadsUnread,
   labelThreads: labelMailboxThreads,
   getThread,
+  remindThreads,
+  cancelReminders,
+  listReminders,
   listAllMail,
   searchMailbox,
   listLabels: listMailboxLabels,

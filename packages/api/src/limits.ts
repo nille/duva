@@ -218,26 +218,43 @@ export interface Schedules {
  * deleted once it ran. A schedule's name holds the agent and the second, so asking twice for the
  * same time makes one.
  */
-export function eventBridgeSchedules(scheduler: SchedulerClient, { group, sender, role }: { group: string; sender: string; role: string }): Schedules {
+export function eventBridgeSchedules(scheduler: SchedulerClient, schedule: ScheduleGroup): Schedules {
   return {
-    async releaseAt(agent, at) {
-      // A time that has passed by the time Scheduler reads it may be refused, so it is never sooner than 10 s from now.
-      const second = Math.ceil(Math.max(at.getTime(), Date.now() + 10_000) / 1000);
-      try {
-        await scheduler.send(
-          new CreateScheduleCommand({
-            Name: `release-${agent}-${second}`,
-            GroupName: group,
-            ScheduleExpression: `at(${new Date(second * 1000).toISOString().slice(0, 19)})`,
-            ScheduleExpressionTimezone: "UTC",
-            FlexibleTimeWindow: { Mode: "OFF" },
-            ActionAfterCompletion: "DELETE",
-            Target: { Arn: sender, RoleArn: role, Input: JSON.stringify({ release: agent } satisfies ReleaseEvent) },
-          }),
-        );
-      } catch (error) {
-        if (!(error instanceof ConflictException)) throw error;
-      }
-    },
+    releaseAt: (agent, at) => scheduleOnce(scheduler, schedule, { name: (second) => `release-${agent}-${second}`, at, input: { release: agent } satisfies ReleaseEvent }),
   };
+}
+
+/** Duva's schedule group, the sender its schedules invoke, and the role EventBridge Scheduler invokes it with. */
+export interface ScheduleGroup {
+  group: string;
+  sender: string;
+  role: string;
+}
+
+/**
+ * Has EventBridge Scheduler invoke the sender with the input once, at the time, in a schedule
+ * deleted once it ran, named for the second. A name already taken is taken as scheduled.
+ */
+export async function scheduleOnce(
+  scheduler: SchedulerClient,
+  { group, sender, role }: ScheduleGroup,
+  { name, at, input }: { name: (second: number) => string; at: Date; input: object },
+): Promise<void> {
+  // A time that has passed by the time Scheduler reads it may be refused, so it is never sooner than 10 s from now.
+  const second = Math.ceil(Math.max(at.getTime(), Date.now() + 10_000) / 1000);
+  try {
+    await scheduler.send(
+      new CreateScheduleCommand({
+        Name: name(second),
+        GroupName: group,
+        ScheduleExpression: `at(${new Date(second * 1000).toISOString().slice(0, 19)})`,
+        ScheduleExpressionTimezone: "UTC",
+        FlexibleTimeWindow: { Mode: "OFF" },
+        ActionAfterCompletion: "DELETE",
+        Target: { Arn: sender, RoleArn: role, Input: JSON.stringify(input) },
+      }),
+    );
+  } catch (error) {
+    if (!(error instanceof ConflictException)) throw error;
+  }
 }

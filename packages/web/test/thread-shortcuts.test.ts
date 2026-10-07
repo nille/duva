@@ -246,7 +246,7 @@ test("the ? sheet lists the keys of a thread", budget, async () => {
   const sheet = page.getByRole("dialog", { name: "Keyboard shortcuts" });
   const thread = sheet.getByRole("region", { name: "In a thread" });
   await expect.poll(() => thread.isVisible(), wait).toBe(true);
-  expect(await thread.getByRole("term").allInnerTexts()).toEqual(["r", "a", "f", "e", "#", "!", "l", "Shift + U", "u or Esc", "Ctrl + Enter or ⌘ + Enter"]);
+  expect(await thread.getByRole("term").allInnerTexts()).toEqual(["r", "a", "f", "e", "#", "!", "l", "b", "Shift + U", "u or Esc", "Ctrl + Enter or ⌘ + Enter"]);
   expect(await thread.getByRole("definition").allInnerTexts()).toEqual([
     "Reply",
     "Reply all",
@@ -255,6 +255,7 @@ test("the ? sheet lists the keys of a thread", budget, async () => {
     "Move to Trash",
     "Mark as spam",
     "Labels",
+    "Remind me",
     "Mark unread",
     "Back to the list",
     "Send what you write",

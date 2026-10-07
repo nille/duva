@@ -772,6 +772,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/mailboxes/{mailbox}/threads/remind": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set threads in a mailbox aside until a time, when they come back to the Inbox.
+         * @description Remind me: each thread leaves the Inbox, if it is there, and waits in Remind me until the time, given as at or as a preset. Then it comes back to the top of the Inbox, unread, with a Back mark naming when it was set aside. New mail in the thread brings it back early. A thread already set aside gets the new time. A thread in Spam or Trash, or waiting in the Screener, can't be set aside. Each thread gets a change in the mailbox's change feed, naming you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give full sponsor access can set its threads aside.
+         */
+        post: operations["remindThreads"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mailboxes/{mailbox}/threads/remind/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel the reminders of threads in a mailbox, which puts them back in the Inbox.
+         * @description Each thread set aside in Remind me goes back to the Inbox now, at its own place and without a Back mark. Threads not set aside are left as they are. Each thread whose reminder is cancelled gets a change in the mailbox's change feed, naming you. Only those who can set the mailbox's threads aside can cancel their reminders.
+         */
+        post: operations["cancelReminders"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mailboxes/{mailbox}/reminders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the threads set aside in a mailbox's Remind me, the soonest back first.
+         * @description Lists the threads waiting in Remind me a page at a time, the one that comes back soonest first, each with its reminder. To read the next page, call again with the answer's next as after, until an answer has no next.
+         */
+        get: operations["listReminders"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/mailboxes/{mailbox}/all-mail": {
         parameters: {
             query?: never;
@@ -1726,7 +1786,7 @@ export interface components {
             position: number;
         };
         /** @description A change in a mailbox. */
-        MailboxChange: components["schemas"]["MessageReceived"] | components["schemas"]["DraftWritten"] | components["schemas"]["DraftChanged"] | components["schemas"]["DraftDeleted"] | components["schemas"]["SendAsked"] | components["schemas"]["ApprovalAsked"] | components["schemas"]["ApprovalWithdrawn"] | components["schemas"]["ApprovalDecided"] | components["schemas"]["MessageSent"] | components["schemas"]["SendWaitingForLimit"] | components["schemas"]["SentNow"] | components["schemas"]["SendFailed"] | components["schemas"]["SendUnclear"] | components["schemas"]["FeedbackReceived"] | components["schemas"]["ThreadRead"] | components["schemas"]["ThreadUnread"] | components["schemas"]["ThreadLabelsChanged"] | components["schemas"]["LabelCreated"] | components["schemas"]["LabelRenamed"] | components["schemas"]["LabelDeleted"] | components["schemas"]["ThreadErased"] | components["schemas"]["AgentSettingsChanged"] | components["schemas"]["AgentPaused"] | components["schemas"]["AgentUnpaused"] | components["schemas"]["SenderScreened"] | components["schemas"]["ScreenerSwitched"] | components["schemas"]["ScreenedSenderRemoved"] | components["schemas"]["UnsubscribeAttempted"];
+        MailboxChange: components["schemas"]["MessageReceived"] | components["schemas"]["DraftWritten"] | components["schemas"]["DraftChanged"] | components["schemas"]["DraftDeleted"] | components["schemas"]["SendAsked"] | components["schemas"]["ApprovalAsked"] | components["schemas"]["ApprovalWithdrawn"] | components["schemas"]["ApprovalDecided"] | components["schemas"]["MessageSent"] | components["schemas"]["SendWaitingForLimit"] | components["schemas"]["SentNow"] | components["schemas"]["SendFailed"] | components["schemas"]["SendUnclear"] | components["schemas"]["FeedbackReceived"] | components["schemas"]["ThreadRead"] | components["schemas"]["ThreadUnread"] | components["schemas"]["ThreadLabelsChanged"] | components["schemas"]["ReminderSet"] | components["schemas"]["ReminderCancelled"] | components["schemas"]["ThreadBack"] | components["schemas"]["LabelCreated"] | components["schemas"]["LabelRenamed"] | components["schemas"]["LabelDeleted"] | components["schemas"]["ThreadErased"] | components["schemas"]["AgentSettingsChanged"] | components["schemas"]["AgentPaused"] | components["schemas"]["AgentUnpaused"] | components["schemas"]["SenderScreened"] | components["schemas"]["ScreenerSwitched"] | components["schemas"]["ScreenedSenderRemoved"] | components["schemas"]["UnsubscribeAttempted"];
         /** @description Mail arrived. No actor made this change, so it names none. */
         MessageReceived: {
             /** @description The change's position in the mailbox's feed, counting from 1. */
@@ -2020,6 +2080,62 @@ export interface components {
              * @enum {string}
              */
             type: "threadLabelsChanged";
+        };
+        ReminderSet: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "reminderSet";
+            /** @description The ID of the thread. */
+            thread: string;
+            /**
+             * Format: date-time
+             * @description When the thread comes back.
+             */
+            until: string;
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "reminderSet";
+        };
+        ReminderCancelled: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "reminderCancelled";
+            /** @description The ID of the thread. */
+            thread: string;
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "reminderCancelled";
+        };
+        /** @description A thread set aside in Remind me came back to the top of the Inbox, unread, with its Back mark, at its time or early with new mail. No actor made this change, so it names none. */
+        ThreadBack: {
+            /** @description The change's position in the mailbox's feed, counting from 1. */
+            position: number;
+            /**
+             * Format: date-time
+             * @description When the thread came back.
+             */
+            at: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "threadBack";
+            /** @description The ID of the thread. */
+            thread: string;
+            /**
+             * Format: date-time
+             * @description When the thread was set aside.
+             */
+            setAsideAt: string;
+            /**
+             * @description Present when new mail in the thread brought it back before its time, in the messageReceived change just before.
+             * @constant
+             */
+            early?: true;
         };
         LabelCreated: components["schemas"]["ChangeBase"] & {
             /** @constant */
@@ -2589,6 +2705,54 @@ export interface components {
              */
             remove?: string[];
         };
+        /** @description The threads to set aside, and when they come back. Give exactly one of at and preset. */
+        ThreadsReminder: {
+            /** @description The IDs of the threads. */
+            threads: string[];
+            /**
+             * Format: date-time
+             * @description When the threads come back, to the second, at least a minute from now.
+             * @example 2026-10-08T08:00:00+02:00
+             */
+            at?: string;
+            preset?: components["schemas"]["ReminderPreset"];
+            /**
+             * @description The time zone a preset is counted in, as an IANA name. Left out, it is your time zone preference, for an agent its sponsor's, or UTC if they chose none.
+             * @example Europe/Stockholm
+             */
+            timeZone?: string;
+        };
+        /**
+         * @description A time counted from now, in the time zone: laterToday is three hours from now, on the hour after, tomorrowMorning is 8:00 tomorrow, and nextWeek is 8:00 next Monday.
+         * @enum {string}
+         */
+        ReminderPreset: "laterToday" | "tomorrowMorning" | "nextWeek";
+        /** @description When a thread set aside in Remind me comes back. */
+        Reminder: {
+            /**
+             * Format: date-time
+             * @description When the thread comes back to the Inbox.
+             */
+            at: string;
+            /**
+             * Format: date-time
+             * @description When the thread was first set aside. Changing the time keeps it.
+             */
+            setAt: string;
+        };
+        /** @description The Back mark of a thread that came back from Remind me, which it keeps until it leaves the Inbox. */
+        Back: {
+            /**
+             * Format: date-time
+             * @description When the thread came back. It lists at this time, unless newer mail lists it later.
+             */
+            at: string;
+            /**
+             * Format: date-time
+             * @description When the thread was set aside.
+             */
+            setAsideAt: string;
+        };
         Label: {
             /**
              * @description The label's ID, which threads list among their labels. The built-in labels' are inbox, spam and trash.
@@ -2672,6 +2836,10 @@ export interface components {
              *     ]
              */
             groups?: string[];
+            /** @description Present while the thread is set aside in Remind me. */
+            reminder?: components["schemas"]["Reminder"];
+            /** @description Present when the thread came back from Remind me and is still in the Inbox. */
+            back?: components["schemas"]["Back"];
         };
         Thread: {
             /** @description The thread's ID. */
@@ -2687,6 +2855,10 @@ export interface components {
             labels: string[];
             /** @description Whether any message in the thread is unread. Reading the thread doesn't change it. Mark the thread read for that. */
             unread: boolean;
+            /** @description Present while the thread is set aside in Remind me. */
+            reminder?: components["schemas"]["Reminder"];
+            /** @description Present when the thread came back from Remind me and is still in the Inbox. */
+            back?: components["schemas"]["Back"];
             messages: components["schemas"]["Message"][];
         };
         Message: {
@@ -4832,6 +5004,101 @@ export interface operations {
                     "application/json": components["schemas"]["Thread"];
                 };
             };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    remindThreads: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The mailbox's ID. */
+                mailbox: components["parameters"]["Mailbox"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ThreadsReminder"];
+            };
+        };
+        responses: {
+            /** @description The threads, as they are now. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThreadList"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    cancelReminders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The mailbox's ID. */
+                mailbox: components["parameters"]["Mailbox"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ThreadIds"];
+            };
+        };
+        responses: {
+            /** @description The threads, as they are now. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThreadList"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listReminders: {
+        parameters: {
+            query?: {
+                /** @description How many threads a page lists at most. */
+                limit?: number;
+                /** @description Where the page starts, the next of the page before it. Leave it out for the first page. */
+                after?: string;
+            };
+            header?: never;
+            path: {
+                /** @description The mailbox's ID. */
+                mailbox: components["parameters"]["Mailbox"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of the threads set aside. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThreadList"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];

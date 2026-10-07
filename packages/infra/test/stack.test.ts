@@ -456,6 +456,19 @@ test("the sender schedules itself in its own schedule group, and EventBridge Sch
   expect(passes).toEqual([expect.objectContaining({ Resource: { "Fn::GetAtt": [roleId, "Arn"] }, Condition: { StringEquals: { "iam:PassedToService": "scheduler.amazonaws.com" } } })]);
 });
 
+test("the API schedules threads set aside in Remind me in the sender's schedule group, with the role EventBridge Scheduler invokes the sender with", () => {
+  const [[, group]] = ofType("AWS::Scheduler::ScheduleGroup") as [[string, Resource]];
+  const [senderId] = lambda("SenderHandler");
+  const variables = lambda("ApiHandler")[1].Properties?.Environment?.Variables;
+  expect(variables?.[environmentVariables.scheduleGroup]).toEqual(group.Properties?.Name);
+  expect(variables?.[environmentVariables.senderFunction]).toEqual({ "Fn::GetAtt": [senderId, "Arn"] });
+  const roleId = lambda("SenderHandler")[1].Properties?.Environment?.Variables?.[environmentVariables.schedulerRole]?.["Fn::GetAtt"]?.[0];
+  expect(variables?.[environmentVariables.schedulerRole]).toEqual({ "Fn::GetAtt": [roleId, "Arn"] });
+  expect(actions("ApiHandler", "scheduler")).toContain("scheduler:CreateSchedule");
+  const passes = statements("ApiHandler").filter(({ Action }) => [Action].flat().includes("iam:PassRole"));
+  expect(passes).toContainEqual(expect.objectContaining({ Resource: { "Fn::GetAtt": [roleId, "Arn"] }, Condition: { StringEquals: { "iam:PassedToService": "scheduler.amazonaws.com" } } }));
+});
+
 test("the inbound Lambda re-sends groups' mail through SES under Duva's configuration set, and bounces what a group refuses, only from the organization's domains' identities in this account and region", () => {
   expect([...new Set(actions("InboundHandler", "ses"))].sort()).toEqual(["ses:SendBounce", "ses:SendEmail", "ses:SendRawEmail"]);
   const [[setId]] = ofType("AWS::SES::ConfigurationSet") as [[string, Resource]];
