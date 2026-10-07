@@ -78,6 +78,20 @@ async function check(name: string, run: () => Promise<string | undefined>) {
 const expectStatus = async (response: Response, status: number) =>
   response.status === status ? undefined : `answered ${response.status}: ${(await response.text()).slice(0, 200)}`;
 
+// The stack's table, found once, inside the checks that need it.
+let found: Promise<string | undefined> | undefined;
+const stackTable = async () => {
+  found ??= (async () => {
+    for await (const { StackResourceSummaries = [] } of paginateListStackResources({ client: cloudFormation }, { StackName: stackName })) {
+      const id = StackResourceSummaries.find(({ ResourceType }) => ResourceType === "AWS::DynamoDB::GlobalTable")?.PhysicalResourceId;
+      if (id !== undefined) return id;
+    }
+    return undefined;
+  })();
+  const name = await found;
+  return name === undefined ? undefined : { client: new DynamoDBClient({ region }), name };
+};
+
 await check("status answers without sign-in, for the region", async () => {
   const response = await fetch(`${apiUrl}/status`);
   const body = (await response.json()) as { region?: string };
@@ -309,19 +323,6 @@ await check("Nova Lite translates a search's words in the deployment's region, a
   const translated = await novaTranslator().translate("kvitto", "English");
   return translated?.toLowerCase().includes("receipt") ? undefined : `translated "kvitto" into English as ${JSON.stringify(translated)}`;
 });
-// The stack's table, found once, inside the checks that need it.
-let found: Promise<string | undefined> | undefined;
-const stackTable = async () => {
-  found ??= (async () => {
-    for await (const { StackResourceSummaries = [] } of paginateListStackResources({ client: cloudFormation }, { StackName: stackName })) {
-      const id = StackResourceSummaries.find(({ ResourceType }) => ResourceType === "AWS::DynamoDB::GlobalTable")?.PhysicalResourceId;
-      if (id !== undefined) return id;
-    }
-    return undefined;
-  })();
-  const name = await found;
-  return name === undefined ? undefined : { client: new DynamoDBClient({ region }), name };
-};
 await check("every mailbox's search index is backfilled", async () => {
   const table = await stackTable();
   if (table === undefined) return "the stack has no table";
