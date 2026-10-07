@@ -30,7 +30,7 @@ import type { RecordType } from "../src/dns-records.ts";
 import { createEraser, type EraserEvent } from "../src/erasure.ts";
 import { createInbound } from "../src/inbound.ts";
 import { createFeeder, createIndexer, type IndexQueue, indexMailboxes, type QueuedTask } from "../src/indexing.ts";
-import { alertMailFilter, feederFilter, senderFilter, senderRetries, tableKey, tableStreamView } from "../src/infrastructure.ts";
+import { alertMailFilter, feederFilter, hostedLogoHeaders, hostedLogosPath, senderFilter, senderRetries, tableKey, tableStreamView } from "../src/infrastructure.ts";
 import { lanceSearch } from "../src/lancedb-search.ts";
 import { createSearcher } from "../src/searching.ts";
 import type { Table } from "../src/deployment.ts";
@@ -44,6 +44,7 @@ import { createSender } from "../src/sending.ts";
 import type { SuppressionReason } from "../src/suppression.ts";
 import { fetchForLogo, logoUrl } from "../src/sender-logos.ts";
 import { postOneClick } from "../src/unsubscriber.ts";
+import { type HostedLogos, logoCacheControl } from "../src/own-logos.ts";
 import { dynamodbLocal } from "./dynamodb-local.ts";
 import { gateway } from "./gateway.ts";
 import { managedLogin, managedLoginClientId } from "./managed-login.ts";
@@ -202,7 +203,11 @@ export interface Duva {
    * port 80 and https on 443. Returns the requests it gets, as they arrive.
    */
   webServer(hostname: string, options?: WebServerOptions): Promise<ReceivedRequest[]>;
-  /** Follows a download link or a sender logo's URL, as a browser does, and gives what the download Lambda answered through CloudFront. */
+  /**
+   * Follows a download link or a sender logo's URL, as a browser does, and gives what the download
+   * Lambda answered through CloudFront, or the URL of one of the organization's own logos, and gives
+   * what CloudFront served from the logos bucket.
+   */
   download(url: string): Promise<Response>;
   /**
    * Moves Duva to a new user pool, as the deploy of #30 did. No human can sign in there, and every
@@ -315,6 +320,7 @@ export async function startDuva({
     mailBucket,
     outbound: sending.outbound,
     region,
+    dns,
     schedules: { releaseAt: async (agent, at) => void schedules.push({ event: { release: agent }, at }), sendAt: async (draft, at) => void schedules.push({ event: { send: draft }, at }) },
   });
   const reminders = { remindAt: async (due: ReminderDue) => void schedules.push({ event: { remind: due }, at: new Date(due.at) }) };
@@ -337,6 +343,28 @@ export async function startDuva({
   const downloaded = async (request: Request) => {
     const { statusCode, headers, body } = await download(new URL(request.url).pathname);
     return new Response(body, { status: statusCode, headers });
+  };
+  // The organization's own logos are in the logos bucket, which CloudFront serves under the web
+  // app's domain at /bimi/. Here they are under the API's own URL, at the same path, once it listens.
+  let logosUrl = `${inProcess}/${hostedLogosPath}`;
+  const logoObjects = new Map<string, { body: string; type: string; cacheControl: string }>();
+  const hostedLogos: HostedLogos = {
+    get url() {
+      return logosUrl;
+    },
+    async put(path, body, type) {
+      logoObjects.set(`${hostedLogosPath}${path}`, { body, type, cacheControl: logoCacheControl });
+    },
+    async remove(path) {
+      logoObjects.delete(`${hostedLogosPath}${path}`);
+    },
+    roots: [testMarkRoot],
+  };
+  // S3 answers 403 for a key it doesn't have, to CloudFront's origin access control, which may not list the bucket.
+  const hosted = (request: Request) => {
+    const object = logoObjects.get(new URL(request.url).pathname.slice(1));
+    if (object === undefined) return new Response("<Error><Code>AccessDenied</Code></Error>", { status: 403, headers: { "content-type": "application/xml" } });
+    return new Response(object.body, { headers: { "content-type": object.type, "cache-control": object.cacheControl, ...hostedLogoHeaders } });
   };
   const gatewayed = gateway(
     createApi({
@@ -361,6 +389,7 @@ export async function startDuva({
       indexQueue,
       waitingSends: { release: async (agent) => void released.push(agent) },
       reminders,
+      hostedLogos,
     }),
     createAuthorizer({ table, verifyAccessToken: issuer.verify }),
   );
@@ -372,6 +401,7 @@ export async function startDuva({
   let deliveriesDeployed = !beforeDeliveries;
   const api = async (request: Request) => {
     if (new URL(request.url).pathname.startsWith("/download/")) return downloaded(request);
+    if (new URL(request.url).pathname.startsWith(`/${hostedLogosPath}`)) return hosted(request);
     const response = await gatewayed(request);
     if (!sendsHeld) await stream.deliver();
     for (let agent = released.shift(); agent !== undefined; agent = released.shift()) await sender({ release: agent });
@@ -471,6 +501,7 @@ export async function startDuva({
     async listen() {
       const server = await listen(async (request) => (await login.handle(request)) ?? api(request));
       downloadUrl = `${server.url}/download/`;
+      logosUrl = `${server.url}/${hostedLogosPath}`;
       return { ...server, signIn: { url: server.url, clientId: managedLoginClientId } };
     },
   };

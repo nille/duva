@@ -382,6 +382,7 @@ Actors are marked by shape, so they read without color: a human is a filled dot 
 
 ### The admin sheets
 - Domains, Addresses, People and Groups share the grammar: each domain, mailbox, human or group is a line parted by seams, its name at 600 and what it holds in Second Ink, which opens into its parts, each named at 600. Lines open one at a time, rising into place as the chevron turns. Adding closes the sheet after a seam.
+- **A domain's Logo** shows the logo as receivers do, a 4rem square with a 3px radius beside the same in a circle, each on white with the seam ring, then Upload and Remove, its BIMI record as a DNS record (Matches in green with its tick, Found in Second Ink, Missing in orange), the mark certificate and the mailboxes' own logos, each part named at 600 after a seam. While the domain doesn't enforce DMARC, a notice on the orange wash, in ink, says what enforcing changes. My logo on You is the same for the human's own mailboxes.
 - **DNS records** are rows parted by seams: what the record is for and its type, its status as a function code (Verified in green with its tick, Missing in orange with its light), then its name and value, each raised white with a seam edge, as a field that can't be typed in, and Copy beside it.
 - A domain mail can't arrive at says so in its line in Alert Red's text hand.
 - A line opened from the index or by its address takes the focus for a screen reader, and only the keyboard's focus rings it.

@@ -17,6 +17,7 @@ import { DomainsSheet } from "./domains.tsx";
 import { GroupsSheet } from "./groups.tsx";
 import { ActorMark } from "./mail-parts.tsx";
 import type { AgentMailbox } from "./mailboxes.tsx";
+import { MyLogoSheet } from "./logos.tsx";
 import { PeopleSheet } from "./people.tsx";
 import { loadConfig, signOut } from "./session.ts";
 import { strings } from "./strings.ts";
@@ -410,7 +411,7 @@ export function Settings({
             {copy.index.back}
           </a>
         </p>
-        {page === "you" && <YouPage client={client} admin={admin} email={email} onPreferences={onPreferences} onSignedOut={onSignedOut} />}
+        {page === "you" && <YouPage client={client} admin={admin} email={email} mailboxes={own} onPreferences={onPreferences} onSignedOut={onSignedOut} />}
         {page === "screener" && screened.length > 0 && (
           <ScreenerSheet key={screened.map(({ mailbox }) => mailbox.id).join()} client={client} mailboxes={screened} onSignedOut={onSignedOut} />
         )}
@@ -443,10 +444,25 @@ export function Settings({
 }
 
 /**
- * The You page: the human's preferences, then who is signed in, with Sign out, and for a human who
- * isn't an admin, the one organization setting that touches their mail, in a sentence.
+ * The You page: the human's preferences and their own logo, then who is signed in, with Sign out,
+ * and for a human who isn't an admin, the one organization setting that touches their mail, in a sentence.
  */
-function YouPage({ client, admin, email, onPreferences, onSignedOut }: { client: DuvaClient; admin: boolean; email: string; onPreferences: (preferences: Preferences) => void; onSignedOut: () => void }) {
+function YouPage({
+  client,
+  admin,
+  email,
+  mailboxes,
+  onPreferences,
+  onSignedOut,
+}: {
+  client: DuvaClient;
+  admin: boolean;
+  email: string;
+  /** The human's own mailboxes, whose own logos they set. */
+  mailboxes: Mailbox[];
+  onPreferences: (preferences: Preferences) => void;
+  onSignedOut: () => void;
+}) {
   const [retention, setRetention] = useState<number>();
   useEffect(() => {
     if (admin) return;
@@ -462,6 +478,7 @@ function YouPage({ client, admin, email, onPreferences, onSignedOut }: { client:
   return (
     <>
       <YouSheet client={client} onPreferences={onPreferences} onSignedOut={onSignedOut} />
+      <MyLogoSheet client={client} mailboxes={mailboxes} onSignedOut={onSignedOut} />
       <div className="settings-aside">
         {retention !== undefined && <p>{strings.settings.organizationSummary(retention)}</p>}
         <div className="settings-signed-in">

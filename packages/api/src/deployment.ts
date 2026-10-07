@@ -11,6 +11,7 @@ import type { Searcher } from "./searching.ts";
 import type { Unsubscriber } from "./unsubscriber.ts";
 import type { WaitingSends } from "./limits.ts";
 import type { Reminders } from "./reminders.ts";
+import type { HostedLogos } from "./own-logos.ts";
 
 /** Duva's one DynamoDB table. */
 export interface Table {
@@ -47,4 +48,6 @@ export interface Deployment {
   waitingSends: WaitingSends;
   /** Has the sender bring back each thread set aside in Remind me when its time comes. */
   reminders: Reminders;
+  /** Serves the organization's own logos, and the mark certificates attached to them. */
+  hostedLogos: HostedLogos;
 }

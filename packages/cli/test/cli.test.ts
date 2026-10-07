@@ -518,6 +518,25 @@ test("an admin sets a domain's catch-all from the CLI, and clears it", async () 
   expect(JSON.parse(cleared.stdout).catchAll).toBeUndefined();
 });
 
+test("an admin sets a domain's logo from the CLI with an SVG file's text, and the record it needs comes back, with the URL Duva serves it at", async () => {
+  const machine = await newMachine();
+  const duva = await startDuva({ domain: "example.com", admin: "ada@example.org" });
+  const server = await duva.listen();
+  onTestFinished(() => server.close());
+  await machine.saveDeployment(server);
+  await machine.duva("login", { browserSignsIn: "ada@example.org" });
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10" fill="#0b5fff"/></svg>';
+
+  const set = await machine.duva("domains", "set-logo", "--domain", "example.com", "--svg", svg);
+  const picture = await machine.duva("domains", "set-logo", "--domain", "example.com", "--svg", "GIF89a");
+
+  const { logo, record } = JSON.parse(set.stdout) as { logo: { url: string }; record: { name: string; value: string; status: string } };
+  expect(record).toEqual({ name: "default._bimi.example.com", value: `v=BIMI1; l=${logo.url};`, status: "missing" });
+  expect((await duva.download(logo.url)).headers.get("content-type")).toBe("image/svg+xml");
+  expect(picture.exitCode).toBe(1);
+  expect(errorIn(picture.stderr)).toMatch(/isn't an SVG file/);
+});
+
 test("agents list shows the agents the signed-in human sponsors", async () => {
   const machine = await newMachine();
   const server = await (await startDuva({ admin: "ada@example.com" })).listen();

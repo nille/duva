@@ -34,6 +34,7 @@ import {
 } from "./mailboxes.ts";
 import type { Deployment } from "./deployment.ts";
 import { type Actor, actorOf } from "./organization.ts";
+import { getDomainLogo, getMailboxLogo, removeDomainLogo, removeLogoCertificate, removeMailboxLogo, setDomainLogo, setLogoCertificate, setMailboxLogo } from "./own-logos.ts";
 import { changePreferences, getPreferences } from "./preferences.ts";
 import { cancelReminders, listReminders, remindThreads } from "./reminders.ts";
 import { searchMailbox } from "./search.ts";
@@ -98,6 +99,14 @@ export const handlers: Record<OperationId, OperationHandler> = {
   removeDomain,
   setCatchAll,
   clearCatchAll,
+  getDomainLogo,
+  setDomainLogo,
+  removeDomainLogo,
+  setLogoCertificate,
+  removeLogoCertificate,
+  getMailboxLogo,
+  setMailboxLogo,
+  removeMailboxLogo,
   createMailbox,
   listMailboxes,
   listOrganizationMailboxes,

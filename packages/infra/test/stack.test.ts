@@ -3,7 +3,7 @@
 import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { alertMailFilter, embeddingModel, environmentVariables, feederFilter, senderFilter, senderRetries, timeToLiveAttribute, translationModel } from "@duva/api/infrastructure";
+import { alertMailFilter, embeddingModel, environmentVariables, feederFilter, hostedLogoHeaders, senderFilter, senderRetries, timeToLiveAttribute, translationModel } from "@duva/api/infrastructure";
 import { operations } from "@duva/openapi";
 import { buildSync } from "esbuild";
 import { afterAll, expect, test } from "vitest";
@@ -27,6 +27,8 @@ const payPerUse = new Set([
   "AWS::ApiGatewayV2::Stage",
   "AWS::CloudFront::Distribution",
   "AWS::CloudFront::OriginAccessControl",
+  // A response headers policy costs nothing of its own.
+  "AWS::CloudFront::ResponseHeadersPolicy",
   // The Essentials plan is paid per monthly active human, past a free tier.
   "AWS::Cognito::ManagedLoginBranding",
   "AWS::Cognito::UserPool",
@@ -196,7 +198,9 @@ test("the inbound Lambda can erase raw mail for good, every version of it, and o
   const scoped = JSON.stringify(erasing);
   expect(scoped).toContain('"/inbound/*"');
   expect(scoped).toContain('{"StringLike":{"s3:prefix":"inbound/*"}}');
-  expect(actions("ApiHandler", "s3").filter((action) => /Delete/.test(action))).toEqual([]);
+  // The API deletes only the organization's own logos, never raw mail.
+  const apiDeletes = statements("ApiHandler").filter(({ Action, Resource }) => !JSON.stringify(Resource).includes('"Logos') && [Action].flat().some((action) => /^s3:.*Delete/.test(action)));
+  expect(apiDeletes).toEqual([]);
 });
 
 test("the eraser runs once a day, and has 15 minutes for a run", () => {
@@ -844,6 +848,42 @@ test("download links lead to the web app's domain, where CloudFront signs each r
   expect(lambda("ApiHandler")[1].Properties?.Environment?.Variables?.[environmentVariables.downloadUrl]).toEqual({
     "Fn::Join": ["", ["https://", { "Fn::GetAtt": [distributionId, "DomainName"] }, "/download/"]],
   });
+});
+
+test("the organization's own logos are served under /bimi/ on the web app's domain, from a bucket of their own that only the distribution reads, with headers that keep an SVG from running anything", () => {
+  const [[distributionId, { Properties: distribution }]] = ofType("AWS::CloudFront::Distribution") as [[string, Resource]];
+  const config = distribution?.DistributionConfig;
+  const behaviors = (config?.CacheBehaviors ?? []).filter(({ PathPattern }: { PathPattern: string }) => PathPattern === "/bimi/*");
+  expect(behaviors).toHaveLength(1);
+  const [behavior] = behaviors;
+  // AWS's CachingOptimized policy, which keeps each logo as long as its Cache-Control says.
+  expect(behavior).toMatchObject({ AllowedMethods: ["GET", "HEAD"], ViewerProtocolPolicy: "redirect-to-https", CachePolicyId: "658327ea-f89d-4fab-a63d-7e88639e58f6" });
+  const headers = stack.template.Resources[behavior.ResponseHeadersPolicyId?.Ref]?.Properties?.ResponseHeadersPolicyConfig?.CustomHeadersConfig?.Items;
+  expect(headers).toEqual(Object.entries(hostedLogoHeaders).map(([Header, Value]) => ({ Header, Value, Override: true })));
+
+  const origin = config?.Origins?.find(({ Id }: { Id: string }) => Id === behavior.TargetOriginId);
+  const bucketId = origin?.DomainName?.["Fn::GetAtt"]?.[0];
+  expect(bucketId).toMatch(/^Logos/);
+  expect(origin?.OriginAccessControlId).toBeDefined();
+  expect(stack.template.Resources[bucketId]?.Properties?.PublicAccessBlockConfiguration).toEqual({ BlockPublicAcls: true, BlockPublicPolicy: true, IgnorePublicAcls: true, RestrictPublicBuckets: true });
+  const readers = ofType("AWS::S3::BucketPolicy")
+    .filter(([, { Properties }]) => Properties?.Bucket?.Ref === bucketId)
+    .flatMap(([, { Properties }]) => Properties?.PolicyDocument?.Statement ?? [])
+    .filter(({ Effect }: { Effect: string }) => Effect === "Allow");
+  expect(readers).toHaveLength(1);
+  expect(readers[0]).toMatchObject({ Action: "s3:GetObject", Principal: { Service: "cloudfront.amazonaws.com" } });
+  expect(JSON.stringify(readers[0].Condition)).toContain(`distribution/",{"Ref":"${distributionId}"}`);
+
+  expect(lambda("ApiHandler")[1].Properties?.Environment?.Variables?.[environmentVariables.logosUrl]).toEqual({
+    "Fn::Join": ["", ["https://", { "Fn::GetAtt": [distributionId, "DomainName"] }, "/bimi/"]],
+  });
+});
+
+test("only the API writes the organization's own logos, and only under /bimi/", () => {
+  const writes = (prefix: string) => statements(prefix).filter(({ Action, Resource }) => JSON.stringify(Resource).includes('"Logos') && [Action].flat().some((action) => /^s3:(Put|Delete)/.test(action)));
+  expect(writes("ApiHandler")).not.toHaveLength(0);
+  for (const { Resource } of writes("ApiHandler")) expect(JSON.stringify(Resource)).toContain('"/bimi/*"');
+  for (const [id] of ofType("AWS::Lambda::Function").filter(([id]) => !id.startsWith("ApiHandler"))) expect({ id, writes: writes(id) }).toEqual({ id, writes: [] });
 });
 
 test("only the web app's distribution may invoke the download Lambda, as its function URL needs", () => {

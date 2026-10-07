@@ -687,6 +687,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/domains/{domain}/logo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show a domain's BIMI logo, its default._bimi record with its status, and every mailbox's logo on the domain.
+         * @description Receivers that honor BIMI show the domain's logo beside its mail once DNS has the record and the domain's DMARC policy is quarantine or reject. Each record's status is looked up when you ask. Each mailbox that has a logo of its own is listed with its selector, its owner and the record it needs on the domain. Only admins can read it.
+         */
+        get: operations["getDomainLogo"];
+        /**
+         * Set a domain's BIMI logo, which Duva converts to SVG Tiny PS and serves at a public URL.
+         * @description The logo's URL stays the same when you set another logo, so its record does too. Setting another logo removes its mark certificate, since that vouches for the logo it carries. Only admins can set it, and it is a change to the organization's setup.
+         */
+        put: operations["setDomainLogo"];
+        post?: never;
+        /**
+         * Remove a domain's BIMI logo, and its mark certificate, so Duva no longer serves them.
+         * @description Remove the domain's default._bimi record from DNS too, since receivers find nothing at its URL from then on. Only admins can remove it, and it is a change to the organization's setup.
+         */
+        delete: operations["removeDomainLogo"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/domains/{domain}/logo/certificate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Attach a VMC or CMC to a domain's logo, by its URL or as a PEM file Duva serves.
+         * @description Receivers such as Gmail show a logo only with a mark certificate, a VMC or CMC from a Mark Verifying Authority, which the record's a= tag gives. Give its https URL, or its PEM, the certificate and the ones that issued it. Duva serves a PEM only if it vouches for the domain and for the very logo Duva serves, and takes a URL as given. Only admins can attach one, and it is a change to the organization's setup.
+         */
+        put: operations["setLogoCertificate"];
+        post?: never;
+        /**
+         * Remove the VMC or CMC from a domain's logo.
+         * @description The logo stays. Only admins can remove the certificate, and it is a change to the organization's setup.
+         */
+        delete: operations["removeLogoCertificate"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mailboxes/{mailbox}/logo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show your mailbox's own BIMI logo, its selector, and the record each of its domains needs.
+         * @description Only some receivers honor a mailbox's own logo. Others show the domain's. Once DNS has the record on the domain a message comes from, Duva adds BIMI-Selector to the mail the mailbox sends from its own addresses. Only the human who owns the mailbox can read it.
+         */
+        get: operations["getMailboxLogo"];
+        /**
+         * Set your mailbox's own BIMI logo, in place of the domain's, which Duva converts to SVG Tiny PS and serves at a public URL.
+         * @description Duva gives the mailbox a selector the first time. Ask an admin to add the records the answer lists, one for each domain the mailbox sends from. The logo's URL stays the same when you set another logo. Only the human who owns the mailbox can set it.
+         */
+        put: operations["setMailboxLogo"];
+        post?: never;
+        /**
+         * Remove your mailbox's own logo, so its mail shows the domain's again.
+         * @description Duva stops adding BIMI-Selector to its mail and serving the logo. The records for its selector can go from DNS. Only the human who owns the mailbox can remove it.
+         */
+        delete: operations["removeMailboxLogo"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/mailboxes": {
         parameters: {
             query?: never;
@@ -1855,6 +1935,82 @@ export interface components {
             mailboxesLeftWithoutAddress: string[];
             /** @description Whether the domains were removed, which a dry run leaves undone. */
             removed: boolean;
+        };
+        LogoUpload: {
+            /** @description The logo, as the text of an SVG file. Duva converts it to SVG Tiny PS, the profile BIMI asks for: square, titled, and with nothing that runs or fetches, of at most 32 KB. A logo that is SVG Tiny PS already is served byte for byte, so a mark certificate issued for it matches. A picture such as a PNG can't be converted. From the CLI, give a file's text, as --svg "$(cat logo.svg)". */
+            svg: string;
+        };
+        /** @description Either the certificate's https URL, or its PEM. */
+        LogoCertificateUpload: {
+            /**
+             * @description Where the VMC or CMC is served, over https.
+             * @example https://example.com/bimi/vmc.pem
+             */
+            url?: string;
+            /** @description The VMC or CMC in PEM, followed by the certificates that issued it. From the CLI, give a file's text, as --pem "$(cat vmc.pem)". */
+            pem?: string;
+        };
+        /** @description A logo Duva serves for the organization, as SVG Tiny PS. */
+        HostedLogo: {
+            /**
+             * Format: uri
+             * @description Where Duva serves it, to anyone, as image/svg+xml. It stays the same when the logo changes.
+             * @example https://d111111abcdef8.cloudfront.net/bimi/domains/example.com.svg
+             */
+            url: string;
+            /** @description The SVG Duva serves. */
+            svg: string;
+        };
+        /** @description The VMC or CMC the logo's record gives. */
+        LogoCertificate: {
+            /** Format: uri */
+            url: string;
+            /** @description Whether Duva serves it, from a PEM it checked vouches for the domain and its logo. */
+            hosted: boolean;
+        };
+        /** @description A TXT record a BIMI logo needs in DNS. */
+        BimiRecord: {
+            /** @example default._bimi.example.com */
+            name: string;
+            /** @example v=BIMI1; l=https://d111111abcdef8.cloudfront.net/bimi/domains/example.com.svg; */
+            value: string;
+            /**
+             * @description missing while DNS has no BIMI record at the name, found when it has one that differs from the value, and matches when it has the value.
+             * @enum {string}
+             */
+            status: "missing" | "found" | "matches";
+            /** @description The BIMI records DNS has at the name, when they differ from the value. */
+            found?: string[];
+        };
+        /** @description A mailbox's own logo, under its selector, with the record it needs on the domain. */
+        SelectorLogo: {
+            /** @example grace */
+            selector: string;
+            /** @description The mailbox's ID. */
+            mailbox: string;
+            owner: components["schemas"]["Actor"];
+            logo: components["schemas"]["HostedLogo"];
+            record: components["schemas"]["BimiRecord"];
+        };
+        DomainLogo: {
+            domain: string;
+            logo?: components["schemas"]["HostedLogo"];
+            certificate?: components["schemas"]["LogoCertificate"];
+            /** @description The default._bimi record, once the domain has a logo. */
+            record?: components["schemas"]["BimiRecord"];
+            /** @description Whether the domain's DMARC policy, its own or a parent domain's, is quarantine or reject for all its mail, which BIMI needs. Receivers show no logo until it is. */
+            dmarcEnforced: boolean;
+            /** @description Each mailbox on the domain with a logo of its own, by selector. */
+            selectors: components["schemas"]["SelectorLogo"][];
+        };
+        MailboxLogo: {
+            /** @description The mailbox's ID. */
+            mailbox: string;
+            /** @description The mailbox's selector, which Duva gives it with its first logo, and which its mail names in BIMI-Selector. */
+            selector?: string;
+            logo?: components["schemas"]["HostedLogo"];
+            /** @description The record each domain the mailbox's addresses are on needs, for an admin to add. */
+            records: components["schemas"]["BimiRecord"][];
         };
         MailboxChanges: {
             /**
@@ -5212,6 +5368,234 @@ export interface operations {
             };
             202: components["responses"]["SetupAsked"];
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getDomainLogo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The domain. Case doesn't matter. */
+                domain: components["parameters"]["Domain"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The domain's logo. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomainLogo"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    setDomainLogo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The domain. Case doesn't matter. */
+                domain: components["parameters"]["Domain"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LogoUpload"];
+            };
+        };
+        responses: {
+            /** @description The domain's logo, set. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomainLogo"];
+                };
+            };
+            202: components["responses"]["SetupAsked"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    removeDomainLogo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The domain. Case doesn't matter. */
+                domain: components["parameters"]["Domain"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The domain, without a logo. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomainLogo"];
+                };
+            };
+            202: components["responses"]["SetupAsked"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    setLogoCertificate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The domain. Case doesn't matter. */
+                domain: components["parameters"]["Domain"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LogoCertificateUpload"];
+            };
+        };
+        responses: {
+            /** @description The domain's logo, with its certificate. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomainLogo"];
+                };
+            };
+            202: components["responses"]["SetupAsked"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    removeLogoCertificate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The domain. Case doesn't matter. */
+                domain: components["parameters"]["Domain"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The domain's logo, without a certificate. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomainLogo"];
+                };
+            };
+            202: components["responses"]["SetupAsked"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getMailboxLogo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The mailbox's ID. */
+                mailbox: components["parameters"]["Mailbox"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The mailbox's logo. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MailboxLogo"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    setMailboxLogo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The mailbox's ID. */
+                mailbox: components["parameters"]["Mailbox"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LogoUpload"];
+            };
+        };
+        responses: {
+            /** @description The mailbox's logo, set. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MailboxLogo"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    removeMailboxLogo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The mailbox's ID. */
+                mailbox: components["parameters"]["Mailbox"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The mailbox, without a logo. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MailboxLogo"];
+                };
+            };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];

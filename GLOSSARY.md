@@ -162,7 +162,11 @@ The logo a sender's domain publishes through BIMI, which Duva shows in place of 
 _Avoid_: avatar, brand icon
 
 **Selector**:
-The name of one of a domain's BIMI records, so a domain can publish several logos. A message names its selector in its BIMI-Selector header; without one, it is default.
+The name of one of a domain's BIMI records, so a domain can publish several logos. A message names its selector in its BIMI-Selector header; without one, it is default. Duva gives a human's mailbox a selector of its own with its own logo (ADR-0026).
+
+**Own logo**:
+A logo the organization publishes through BIMI: each domain's default, which admins set, or a human's own logo for their mailbox, which some receivers show in place of the domain's. Duva converts it to SVG Tiny PS and serves it at a public URL that stays the same, and lists the TXT record it needs, but never changes DNS.
+_Avoid_: avatar, brand icon
 
 **Search**:
 Finding threads in one mailbox by words and meaning together, with filters such as from: and label:. It covers subjects, senders, recipients, message text and attachment names, Sent included, and leaves out Spam and Trash unless asked. An actor searches only mailboxes it can read.

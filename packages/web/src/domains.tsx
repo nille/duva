@@ -3,9 +3,11 @@
 // can't arrive, which opens into the DNS records to add, each with its status and copy buttons, then
 // where sign-in codes come from, the catch-all and removing it. Adding a domain comes last. Duva
 // shows the records and checks them, but changes no one's DNS (ADR-0018).
-import { type KeyboardEvent, type ReactNode, useCallback, useEffect, useId, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useId, useRef, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
+import { CheckIcon, CopyButton, type Field, moveCopyFocus } from "./dns-parts.tsx";
+import { DomainLogoPart } from "./logos.tsx";
 import { ChevronIcon, Choice } from "./setting-parts.tsx";
 import { attempt, byOwner, change, ownerName } from "./setup.ts";
 import { strings } from "./strings.ts";
@@ -147,13 +149,15 @@ function DomainLine({
   useEffect(() => {
     if (open && details.current !== null) details.current.open = true;
   }, [open]);
+  // The logo is read once the line first opens, since each read looks its records up in DNS.
+  const [opened, setOpened] = useState(open);
   const heading = `domain-${domain.domain}`;
   const summary = summaryOf(domain, organization);
   const aliases = organization.domains.filter(({ aliasOf }) => aliasOf === domain.domain).map(({ domain }) => domain);
   const signInDomain = organization.domains.find(({ signIn }) => signIn)?.domain;
 
   return (
-    <details className="setting-line" name="domains" ref={details}>
+    <details className="setting-line" name="domains" ref={details} onToggle={(event) => setOpened(event.currentTarget.open)}>
       <summary>
         <div className="line-summary">
           <h3 id={heading}>{domain.domain}</h3>
@@ -163,6 +167,7 @@ function DomainLine({
       </summary>
       <div className="setting" role="group" aria-labelledby={heading}>
         <Records client={client} domain={domain} onChecked={onChecked} onSignedOut={onSignedOut} />
+        <DomainLogoPart client={client} domain={domain.domain} opened={opened} onSignedOut={onSignedOut} />
         <Part title={copy.signIn}>
           <SignIn client={client} domain={domain} current={signInDomain} onChanged={onChanged} onSignedOut={onSignedOut} />
         </Part>
@@ -227,14 +232,6 @@ function Records({ client, domain, onChecked, onSignedOut }: { client: DuvaClien
   // Which copy button is the stop: the record's index, and whether it copies the name or the value.
   const [tabStop, setTabStop] = useState<{ at: number; field: Field }>({ at: 0, field: "name" });
   const keysHint = useId();
-  const moveFocus = (event: KeyboardEvent<HTMLUListElement>) => {
-    const buttons = [...event.currentTarget.querySelectorAll<HTMLButtonElement>(".copy-button")];
-    const at = buttons.indexOf(event.target as HTMLButtonElement);
-    const to = { ArrowDown: at + 1, ArrowRight: at + 1, ArrowUp: at - 1, ArrowLeft: at - 1, Home: 0, End: buttons.length - 1 }[event.key];
-    if (at < 0 || to === undefined) return;
-    event.preventDefault();
-    buttons[Math.min(Math.max(to, 0), buttons.length - 1)]?.focus();
-  };
   const check = async () => {
     setChecking({ status: "checking" });
     const answer = await change(client.GET("/domains/{domain}", { params: { path: { domain: domain.domain } } }), onSignedOut);
@@ -246,7 +243,7 @@ function Records({ client, domain, onChecked, onSignedOut }: { client: DuvaClien
   return (
     <Part title={copy.records}>
       <p className="setting-lead">{domain.ses.verified ? copy.recordsVerifiedLead : copy.recordsLead}</p>
-      <ul className="dns-records" onKeyDown={moveFocus}>
+      <ul className="dns-records" onKeyDown={moveCopyFocus}>
         {domain.records.map((record, index) => (
           <RecordLine
             key={`${record.purpose} ${record.type} ${record.name} ${record.value}`}
@@ -276,9 +273,6 @@ function Records({ client, domain, onChecked, onSignedOut }: { client: DuvaClien
     </Part>
   );
 }
-
-/** What of a record a copy button copies. */
-type Field = "name" | "value";
 
 /**
  * A record, with a copy button for its name and one for its value. `tabStop` says which of them is
@@ -311,41 +305,6 @@ function RecordLine({ record, tabStop, keysHint, onFocus }: { record: DnsRecord;
       </dl>
       {record.found !== undefined && <p className="hint">{copy.foundInstead(record.found)}</p>}
     </li>
-  );
-}
-
-/** A button that copies the text, and says so for two seconds. Only the records' stop is in the Tab order. */
-function CopyButton({ text, tabStop, keysHint, onFocus }: { text: string; tabStop: boolean; keysHint: string; onFocus: () => void }) {
-  const [state, setState] = useState<"idle" | "copied" | "failed">("idle");
-  useEffect(() => {
-    if (state !== "copied") return;
-    const shown = setTimeout(() => setState("idle"), 2000);
-    return () => clearTimeout(shown);
-  }, [state]);
-  return (
-    <>
-      <button
-        type="button"
-        className="button button-small copy-button"
-        tabIndex={tabStop ? 0 : -1}
-        aria-describedby={keysHint}
-        onFocus={onFocus}
-        aria-label={state === "copied" ? copy.copiedWhat(text) : copy.copyWhat(text)}
-        onClick={() =>
-          void navigator.clipboard.writeText(text).then(
-            () => setState("copied"),
-            () => setState("failed"),
-          )
-        }
-      >
-        {state === "copied" ? copy.copied : copy.copy}
-      </button>
-      {state === "failed" && (
-        <span className="field-error" role="alert">
-          {copy.copyFailed}
-        </span>
-      )}
-    </>
   );
 }
 
@@ -619,9 +578,3 @@ function AddDomain({ client, standalone, onAdded, onSignedOut }: { client: DuvaC
     </form>
   );
 }
-
-const CheckIcon = () => (
-  <svg className="icon" viewBox="0 0 16 16" aria-hidden="true">
-    <path d="m3.5 8.5 3 3 6-7" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-  </svg>
-);

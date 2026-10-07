@@ -44,6 +44,8 @@ import { copyToOtherMembers, fromStanding } from "./group-mail.ts";
 import { bringBack, findMessage } from "./mail.ts";
 import type { RemindEvent } from "./reminders.ts";
 import { buildMail, disclosureHeader } from "./mime.ts";
+import type { Dns } from "./dns-records.ts";
+import { bimiSelectorHeader } from "./own-logos.ts";
 import { sponsorAccessAllows, sponsorAccessIn } from "./access.ts";
 import { type Actor, type Agent, agentSettings, agentUnpaused, findActor, findMailbox, organizationDomain, switchesFor } from "./organization.ts";
 
@@ -109,6 +111,8 @@ interface Sender {
   region: string;
   /** Where the sender asks to be handed an agent again, once its limits allow what waits. */
   schedules: Schedules;
+  /** DNS, where the sender looks for the record of a mailbox's own logo before naming its selector. */
+  dns: Dns;
 }
 
 export function createSender(sender: Sender) {
@@ -174,7 +178,7 @@ type Waiting = WaitingSend & { agent: string };
 
 /** One try at sending the draft. `again` says an earlier try found another write in its way. */
 async function sendOnce(
-  { table, mailBucket, outbound, region, schedules }: Sender,
+  { table, mailBucket, outbound, region, schedules, dns }: Sender,
   { mailbox, draft: id }: { mailbox: string; draft: string },
   waiting: Waiting | undefined,
   again: boolean,
@@ -203,7 +207,7 @@ async function sendOnce(
   }
   // A run that had it wait, then stopped before sending what waits, left the agent's queue to this one.
   if (waiting === undefined && status.state === "waitingForLimit") {
-    await release({ table, mailBucket, outbound, region, schedules }, by);
+    await release({ table, mailBucket, outbound, region, schedules, dns }, by);
     return "done";
   }
   if (status.state !== expected) return "done";
@@ -269,7 +273,7 @@ async function sendOnce(
       // alert can't join the wait's transaction, whose check that none was raised this window
       // would cancel the wait, so a run that stops in between raises none.
       if (allowed !== undefined) await limitReached(table, { agent: actor, mailbox, draft, window, limits, allowed, now: date });
-      await release({ table, mailBucket, outbound, region, schedules }, actor.id);
+      await release({ table, mailBucket, outbound, region, schedules, dns }, actor.id);
       return "done";
     }
     if (allowed === "never") return "waitsForSponsor";
@@ -284,6 +288,8 @@ async function sendOnce(
   const from = actor.kind === "agent" && !asSponsor ? { name: actor.name, address: draft.from } : { address: draft.from };
   const parent = original?.message.messageId;
   const text = disclosure?.line ? `${draft.text}\n\nSent by ${disclosure.naming}` : draft.text;
+  // Mail from a human's own address names the selector of their mailbox's own logo, once DNS has its record.
+  const selector = sendsFrom === undefined || unsendable !== undefined ? undefined : await bimiSelectorHeader(table, dns, sendsFrom, draft.from);
   const raw = buildMail({
     // SES replaces it with one of its own, which is the one recorded (docs/aws.md).
     messageId: `<${message}@${draft.from.slice(draft.from.lastIndexOf("@") + 1)}>`,
@@ -294,7 +300,7 @@ async function sendOnce(
     date,
     inReplyTo: parent,
     references: parent === undefined ? [] : [...(original?.references ?? []).filter((reference) => reference !== parent), parent],
-    headers: disclosure === undefined ? [] : [[disclosureHeader, disclosure.naming]],
+    headers: [...(disclosure === undefined ? [] : [[disclosureHeader, disclosure.naming] as [string, string]]), ...(selector === undefined ? [] : [selector])],
     text,
     attachments: forwarded?.parts ?? [],
   });

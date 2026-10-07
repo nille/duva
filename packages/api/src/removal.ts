@@ -3,6 +3,7 @@
 import type { Deployment } from "./deployment.ts";
 import { withdrawPendingApprovals } from "./drafting.ts";
 import { mailboxErasure } from "./erasure.ts";
+import { forgetMailboxLogo } from "./own-logos.ts";
 import { withdrawSetupApprovals } from "./setup.ts";
 import { type Agent, deleteMailbox, type Mailbox, ownedMailboxes, removeAgentFromOrganization } from "./organization.ts";
 import type { TransactItem } from "./table.ts";
@@ -16,6 +17,7 @@ export async function deleteMailboxes(deployment: Deployment, { mailboxes, by }:
     const deleted = { mailbox: mailbox.id, by };
     await deleteMailbox(deployment.table, { mailbox: mailbox.id, by, items: [mailboxErasure(deployment.table, deleted)] });
     await deployment.eraser.eraseMailbox(deleted);
+    await forgetMailboxLogo(deployment, mailbox.id);
   }
 }
 

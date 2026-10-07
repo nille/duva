@@ -11,6 +11,7 @@ import { required } from "./environment.ts";
 import { environmentVariables } from "./infrastructure.ts";
 import { eventBridgeSchedules } from "./limits.ts";
 import { s3MailBucket } from "./mail-bucket.ts";
+import { realDns } from "./dns-records.ts";
 import { createSender, sesOutbound } from "./sending.ts";
 
 const table = { client: new DynamoDBClient({}), name: required(environmentVariables.tableName) };
@@ -23,4 +24,4 @@ const schedule = { group: required(environmentVariables.scheduleGroup), role: re
 
 export const handler = (event: Parameters<ReturnType<typeof createSender>>[0], context: Context) =>
   // The schedules invoke this function, which the CDK app can't name in its own environment.
-  createSender({ table, mailBucket, region, outbound, schedules: eventBridgeSchedules(scheduler, { ...schedule, sender: context.invokedFunctionArn }) })(event);
+  createSender({ table, mailBucket, region, outbound, dns: realDns, schedules: eventBridgeSchedules(scheduler, { ...schedule, sender: context.invokedFunctionArn }) })(event);

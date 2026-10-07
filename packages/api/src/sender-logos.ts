@@ -123,7 +123,7 @@ async function txt(dns: Dns, name: string): Promise<string[]> {
 }
 
 /** A record's tags, by name in lower case. */
-const tagsOf = (record: string) =>
+export const tagsOf = (record: string) =>
   new Map(
     record.split(";").flatMap((tag) => {
       const equals = tag.indexOf("=");

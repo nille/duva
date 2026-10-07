@@ -27,6 +27,7 @@ import {
   type Address,
   type CatchAll,
 } from "./organization.ts";
+import { forgetDomainLogo } from "./own-logos.ts";
 import { maxAddresses, ruleRecipients, syncRecipients } from "./receiving.ts";
 import { listed, mailboxNamed, setupOperation } from "./setup.ts";
 
@@ -74,7 +75,7 @@ async function domainView(deployment: Deployment, { domain, aliasOf, catchAll }:
 }
 
 /** The organization's domain the call's path names, or a refusal if it has none. */
-async function domainAsked(event: Parameters<OperationHandler>[0], deployment: Deployment): Promise<OrganizationDomain | ReturnType<typeof refusal>> {
+export async function domainAsked(event: Parameters<OperationHandler>[0], deployment: Deployment): Promise<OrganizationDomain | ReturnType<typeof refusal>> {
   const given = event.pathParameters?.domain ?? "";
   const name = asciiDomain(given);
   const domain = (await allDomains(deployment.table)).find((each) => each.domain === name);
@@ -217,6 +218,7 @@ export const removeDomain = setupOperation("removeDomain", async (event, deploym
       for (const each of lateAliases) await deployment.identities.delete(each);
       if (lateAliases.length > 0) await removeDomains(deployment.table, { domains: lateAliases, by: actor.id });
       removed.push(...lateAliases);
+      for (const each of removed) await forgetDomainLogo(deployment, each);
       for (const each of (await allAddresses(deployment.table)).filter(({ address }) => onRemoved(address))) await remove(each);
       // Whoever gets an address that went later isn't a group's member through it.
       for (const { address } of addresses) await removeMember(deployment.table, { address, by: actor.id });

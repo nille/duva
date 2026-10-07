@@ -9,6 +9,18 @@ export const tableKey = {
 /** The attribute whose time, in seconds since the epoch, the table's time to live deletes an item after. */
 export const timeToLiveAttribute = "expires";
 
+/**
+ * Where the organization's own logos are, under the web app's domain and in the logos bucket, which
+ * CloudFront serves there (ADR-0026).
+ */
+export const hostedLogosPath = "bimi/";
+
+/**
+ * The headers CloudFront adds to each logo and mark certificate it serves, so an SVG opened on the
+ * web app's domain runs nothing and is never taken for another type.
+ */
+export const hostedLogoHeaders = { "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox", "x-content-type-options": "nosniff" } as const;
+
 /** The environment variables the CDK app gives the API's Lambdas. Each Lambda gets those it reads. */
 export const environmentVariables = {
   version: "DUVA_VERSION",
@@ -36,6 +48,10 @@ export const environmentVariables = {
   configurationSet: "CONFIGURATION_SET",
   /** The URL of the download Lambda, which download links and senders' logos lead to. */
   downloadUrl: "DOWNLOAD_URL",
+  /** The bucket the organization's own logos are in, which CloudFront serves at the URL below. */
+  logosBucket: "LOGOS_BUCKET",
+  /** The URL the organization's own logos are served under, on the web app's domain. */
+  logosUrl: "LOGOS_URL",
   /** The search Lambda, which the API invokes for each search. */
   searchFunction: "SEARCH_FUNCTION",
   /** Where the mailboxes' search indexes are, as s3://bucket/prefix. */

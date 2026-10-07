@@ -441,6 +441,74 @@ SES refuses such mail on the domain and its alias domains at once. Mail the catc
 
 - `--domain` (required): The domain. Case doesn't matter.
 
+## duva domains get-logo
+
+Show a domain's BIMI logo, its default._bimi record with its status, and every mailbox's logo on the domain.
+
+Receivers that honor BIMI show the domain's logo beside its mail once DNS has the record and the domain's DMARC policy is quarantine or reject. Each record's status is looked up when you ask. Each mailbox that has a logo of its own is listed with its selector, its owner and the record it needs on the domain. Only admins can read it.
+
+- `--domain` (required): The domain. Case doesn't matter.
+
+## duva domains set-logo
+
+Set a domain's BIMI logo, which Duva converts to SVG Tiny PS and serves at a public URL.
+
+The logo's URL stays the same when you set another logo, so its record does too. Setting another logo removes its mark certificate, since that vouches for the logo it carries. Only admins can set it, and it is a change to the organization's setup.
+
+- `--domain` (required): The domain. Case doesn't matter.
+- `--svg` (required): The logo, as the text of an SVG file. Duva converts it to SVG Tiny PS, the profile BIMI asks for: square, titled, and with nothing that runs or fetches, of at most 32 KB. A logo that is SVG Tiny PS already is served byte for byte, so a mark certificate issued for it matches. A picture such as a PNG can't be converted. From the CLI, give a file's text, as --svg "$(cat logo.svg)".
+
+## duva domains remove-logo
+
+Remove a domain's BIMI logo, and its mark certificate, so Duva no longer serves them.
+
+Remove the domain's default._bimi record from DNS too, since receivers find nothing at its URL from then on. Only admins can remove it, and it is a change to the organization's setup.
+
+- `--domain` (required): The domain. Case doesn't matter.
+
+## duva domains set-logo-certificate
+
+Attach a VMC or CMC to a domain's logo, by its URL or as a PEM file Duva serves.
+
+Receivers such as Gmail show a logo only with a mark certificate, a VMC or CMC from a Mark Verifying Authority, which the record's a= tag gives. Give its https URL, or its PEM, the certificate and the ones that issued it. Duva serves a PEM only if it vouches for the domain and for the very logo Duva serves, and takes a URL as given. Only admins can attach one, and it is a change to the organization's setup.
+
+- `--domain` (required): The domain. Case doesn't matter.
+- `--url`: Where the VMC or CMC is served, over https.
+- `--pem`: The VMC or CMC in PEM, followed by the certificates that issued it. From the CLI, give a file's text, as --pem "$(cat vmc.pem)".
+
+## duva domains remove-logo-certificate
+
+Remove the VMC or CMC from a domain's logo.
+
+The logo stays. Only admins can remove the certificate, and it is a change to the organization's setup.
+
+- `--domain` (required): The domain. Case doesn't matter.
+
+## duva mailboxes get-logo
+
+Show your mailbox's own BIMI logo, its selector, and the record each of its domains needs.
+
+Only some receivers honor a mailbox's own logo. Others show the domain's. Once DNS has the record on the domain a message comes from, Duva adds BIMI-Selector to the mail the mailbox sends from its own addresses. Only the human who owns the mailbox can read it.
+
+- `--mailbox` (required): The mailbox's ID.
+
+## duva mailboxes set-logo
+
+Set your mailbox's own BIMI logo, in place of the domain's, which Duva converts to SVG Tiny PS and serves at a public URL.
+
+Duva gives the mailbox a selector the first time. Ask an admin to add the records the answer lists, one for each domain the mailbox sends from. The logo's URL stays the same when you set another logo. Only the human who owns the mailbox can set it.
+
+- `--mailbox` (required): The mailbox's ID.
+- `--svg` (required): The logo, as the text of an SVG file. Duva converts it to SVG Tiny PS, the profile BIMI asks for: square, titled, and with nothing that runs or fetches, of at most 32 KB. A logo that is SVG Tiny PS already is served byte for byte, so a mark certificate issued for it matches. A picture such as a PNG can't be converted. From the CLI, give a file's text, as --svg "$(cat logo.svg)".
+
+## duva mailboxes remove-logo
+
+Remove your mailbox's own logo, so its mail shows the domain's again.
+
+Duva stops adding BIMI-Selector to its mail and serving the logo. The records for its selector can go from DNS. Only the human who owns the mailbox can remove it.
+
+- `--mailbox` (required): The mailbox's ID.
+
 ## duva mailboxes list
 
 List the mailboxes you can read, your own and those of the agents you sponsor.

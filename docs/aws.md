@@ -23,6 +23,7 @@ Facts about AWS that shaped Duva's design, each with how it was established. A c
 ## CloudFront
 
 - **Names are global to the account.** Two regions' stacks collided on the origin access control's CDK default name, so every CloudFront name carries the region. _Real run, 2026-10-03._
+- **An S3 origin with origin access control serves a public path without a public bucket or a Lambda.** The organization's own logos are in a bucket with every public access blocked, whose policy lets only `cloudfront.amazonaws.com` for the web app's distribution `s3:GetObject`, and CloudFront serves them under `/bimi/` with the content type and Cache-Control each object was put with (ADR-0026). Without `s3:ListBucket`, a missing key answers 403, not 404. A response headers policy adds the Content-Security-Policy and `nosniff`. The CachingOptimized policy keeps an object as long as its Cache-Control says, within a day by default. _[Restrict access to an Amazon S3 origin](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-restricting-access-to-s3.html); not yet seen in a real run._
 
 ## SES
 

@@ -3,7 +3,7 @@ import { CfnCondition, CfnOutput, CfnParameter, Duration, Fn, RemovalPolicy, Sta
 import { CorsHttpMethod, HttpApi, HttpMethod } from "aws-cdk-lib/aws-apigatewayv2";
 import { HttpLambdaAuthorizer, HttpLambdaResponseType } from "aws-cdk-lib/aws-apigatewayv2-authorizers";
 import { HttpLambdaIntegration } from "aws-cdk-lib/aws-apigatewayv2-integrations";
-import { AllowedMethods, CachePolicy, Distribution, FunctionUrlOriginAccessControl, S3OriginAccessControl, ViewerProtocolPolicy } from "aws-cdk-lib/aws-cloudfront";
+import { AllowedMethods, CachePolicy, Distribution, FunctionUrlOriginAccessControl, ResponseHeadersPolicy, S3OriginAccessControl, ViewerProtocolPolicy } from "aws-cdk-lib/aws-cloudfront";
 import { FunctionUrlOrigin, S3BucketOrigin } from "aws-cdk-lib/aws-cloudfront-origins";
 import {
   AccountRecovery,
@@ -37,6 +37,8 @@ import {
   environmentVariables,
   alertMailFilter,
   feederFilter,
+  hostedLogoHeaders,
+  hostedLogosPath,
   inboundPrefix,
   receiptRuleName,
   searchIndexesPrefix,
@@ -155,6 +157,31 @@ export class DuvaStack extends Stack {
       defaultRootObject: "index.html",
     });
     const webUrl = `https://${distribution.distributionDomainName}`;
+
+    // The organization's own logos, and the mark certificates attached to them, are public, for
+    // receivers that honor BIMI to fetch (ADR-0026). The API puts them in a bucket of their own,
+    // which only CloudFront reads, through the web app's origin access control, and serves under
+    // /bimi/ on the web app's domain, so no Lambda serves them. The headers keep an SVG opened
+    // there from running anything.
+    const logos = new Bucket(this, "Logos", {
+      encryption: BucketEncryption.S3_MANAGED,
+      blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
+      enforceSSL: true,
+      removalPolicy: RemovalPolicy.RETAIN_ON_UPDATE_OR_DELETE,
+    });
+    distribution.addBehavior(`/${hostedLogosPath}*`, S3BucketOrigin.withOriginAccessControl(logos, { originAccessControl: webAccess }), {
+      allowedMethods: AllowedMethods.ALLOW_GET_HEAD,
+      viewerProtocolPolicy: ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+      // Each logo says how long to keep it, so another logo shows within minutes.
+      cachePolicy: CachePolicy.CACHING_OPTIMIZED,
+      responseHeadersPolicy: new ResponseHeadersPolicy(this, "LogoHeaders", {
+        responseHeadersPolicyName: `Duva-Logos-${this.region}`,
+        customHeadersBehavior: {
+          customHeaders: Object.entries(hostedLogoHeaders).map(([header, value]) => ({ header, value, override: true })),
+        },
+      }),
+    });
+    const logosUrl = `${webUrl}/${hostedLogosPath}`;
 
     // Humans sign in through managed login with a code emailed to them. Only Duva adds humans, and
     // without a password. Cognito requires PASSWORD among the first factors, so it is listed, but
@@ -452,8 +479,13 @@ export class DuvaStack extends Stack {
       [environmentVariables.searchFunction]: searcher.functionArn,
       [environmentVariables.configurationSet]: sending.configurationSetName,
       [environmentVariables.indexQueue]: indexQueue.queueUrl,
+      [environmentVariables.logosBucket]: logos.bucketName,
+      [environmentVariables.logosUrl]: logosUrl,
     });
     table.grantReadWriteData(handler);
+    // Admins and humans set the organization's own logos, which the API puts in the logos bucket.
+    logos.grantPut(handler, `${hostedLogosPath}*`);
+    logos.grantDelete(handler, `${hostedLogosPath}*`);
     // Each search waits for the search Lambda's answer.
     searcher.grantInvoke(handler);
     // Changing the search languages has the indexer rebuild the indexes that file mail in others (#67).
@@ -633,6 +665,8 @@ export class DuvaStack extends Stack {
     new CfnOutput(this, stackOutputs.logoFetcherFunction, { value: logoFetcher.functionName, description: "The function that fetches senders' logos" });
     new CfnOutput(this, stackOutputs.searchFunction, { value: searcher.functionName, description: "The function that runs searches, which only the API invokes" });
     new CfnOutput(this, stackOutputs.indexFailures, { value: indexFailures.queueUrl, description: "The queue of the indexer's tasks that failed" });
+    new CfnOutput(this, stackOutputs.logosBucket, { value: logos.bucketName, description: "The bucket the organization's own logos are in, which CloudFront serves" });
+    new CfnOutput(this, stackOutputs.logosUrl, { value: logosUrl, description: "Where the organization's own logos are served, on the web app's domain" });
     new CfnOutput(this, stackOutputs.searchBucket, { value: search.bucketName, description: "The bucket the mailboxes' search indexes are in" });
     new CfnOutput(this, stackOutputs.inboundFailures, { value: inboundFailures.queueUrl, description: "The queue of received mail that failed processing" });
     ([1, 2, 3] as const).forEach((n, index) => {

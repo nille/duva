@@ -23,6 +23,9 @@ import { lambdaUnsubscriber } from "./unsubscriber.ts";
 import { lambdaWaitingSends } from "./limits.ts";
 import { SchedulerClient } from "@aws-sdk/client-scheduler";
 import { eventBridgeReminders } from "./reminders.ts";
+import { X509Certificate } from "node:crypto";
+import { markRoots } from "./mark-roots.ts";
+import { s3HostedLogos } from "./own-logos.ts";
 
 const mailBucket = required(environmentVariables.mailBucket);
 const lambda = new LambdaClient({});
@@ -57,4 +60,10 @@ export const handler = createApi({
     role: required(environmentVariables.schedulerRole),
   }),
   downloads: { url: required(environmentVariables.downloadUrl), lifetime: downloadLinkLifetime },
+  hostedLogos: s3HostedLogos(
+    new S3Client({}),
+    required(environmentVariables.logosBucket),
+    required(environmentVariables.logosUrl),
+    markRoots.map((pem) => new X509Certificate(pem)),
+  ),
 });

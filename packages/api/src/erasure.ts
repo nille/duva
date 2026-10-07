@@ -330,7 +330,7 @@ async function finishErasures(table: Table, mailBucket: MailBucket, indexQueue: 
 const receivedAs = (rawKey: string): string[] => (rawKey.startsWith(inboundPrefix) ? [rawKey.slice(inboundPrefix.length)] : []);
 
 /** Every item the query finds, all its pages read. */
-async function allItems(table: Table, query: Omit<ConstructorParameters<typeof QueryCommand>[0], "TableName">): Promise<Record<string, unknown>[]> {
+export async function allItems(table: Table, query: Omit<ConstructorParameters<typeof QueryCommand>[0], "TableName">): Promise<Record<string, unknown>[]> {
   const items: Record<string, unknown>[] = [];
   let start: Record<string, unknown> | undefined;
   do {

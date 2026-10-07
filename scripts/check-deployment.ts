@@ -4,7 +4,8 @@
 //
 // Runs the checks of a real run that need no human: the API answers, refuses calls without valid
 // credentials, and lets the web app call it; download links go through the web app's domain, and
-// only its distribution may invoke the download Lambda; nothing but IAM may invoke the
+// only its distribution may invoke the download Lambda; the organization's own logos are served to
+// anyone there, as SVG or PEM, from a bucket only CloudFront reads; nothing but IAM may invoke the
 // unsubscriber and the logo fetcher, which refuse addresses that aren't public; the web app is served with the config
 // deploy published; the user pool takes sign-in names in any case, sends its codes from a domain
 // SES has verified, and still offers emailed codes, and no pool the stack retired is left; once an address exists, SES's receipt rules list each address, and each domain with a catch-all, once, and none is on SES's
@@ -33,8 +34,9 @@ import { paginateListSchedules, SchedulerClient } from "@aws-sdk/client-schedule
 import { DescribeReceiptRuleSetCommand, SESClient } from "@aws-sdk/client-ses";
 import { GetConfigurationSetEventDestinationsCommand, GetEmailIdentityCommand, SESv2Client } from "@aws-sdk/client-sesv2";
 import { GetQueueAttributesCommand, SQSClient } from "@aws-sdk/client-sqs";
+import { paginateListObjectsV2, S3Client } from "@aws-sdk/client-s3";
 import { indexedMailboxes, uncompactedSince } from "@duva/api/indexing";
-import { alertMailFilter, dropMetric, dropReasons, environmentVariables, inboundPrefix, receiptRuleNumber, recipientsPerRule, senderFilter, signInFrom } from "@duva/api/infrastructure";
+import { alertMailFilter, dropMetric, dropReasons, environmentVariables, hostedLogoHeaders, hostedLogosPath, inboundPrefix, receiptRuleNumber, recipientsPerRule, senderFilter, signInFrom } from "@duva/api/infrastructure";
 import { rulesTake } from "@duva/api/receiving";
 import { sesSuppressionList } from "@duva/api/suppression";
 import { novaTranslator } from "@duva/api/translation";
@@ -130,6 +132,34 @@ await check("a download link Duva never gave answers 404 through the web app's d
   const response = await fetch(`${output(stackOutputs.downloadUrl)}${"A".repeat(43)}`);
   const text = await response.text();
   return response.status === 404 && /expired/.test(text) ? undefined : `answered ${response.status}: ${text.slice(0, 200)}`;
+});
+// The organization's own logos are public, served by CloudFront from a bucket only it reads (ADR-0026).
+const logosBucket = output(stackOutputs.logosBucket);
+const logosUrl = output(stackOutputs.logosUrl);
+const hostedKeys: string[] = [];
+for await (const { Contents = [] } of paginateListObjectsV2({ client: new S3Client({ region }) }, { Bucket: logosBucket, Prefix: hostedLogosPath })) hostedKeys.push(...Contents.map(({ Key }) => Key!));
+await check(`the organization's own logos, ${hostedKeys.length} files, are served to anyone under ${logosUrl}, each with its content type and headers that keep it from running anything`, async () => {
+  const types = { ".svg": "image/svg+xml", ".pem": "application/pem-certificate-chain" };
+  const problems: string[] = [];
+  for (const key of hostedKeys) {
+    const url = `${logosUrl}${key.slice(hostedLogosPath.length)}`;
+    const response = await fetch(url);
+    const wanted = Object.entries(types).find(([ending]) => key.endsWith(ending))?.[1];
+    const headers = Object.entries(hostedLogoHeaders).every(([name, value]) => response.headers.get(name) === value);
+    if (response.status !== 200 || response.headers.get("content-type") !== wanted || !headers) {
+      problems.push(`${url} answered ${response.status} as ${response.headers.get("content-type")}, with content-security-policy ${response.headers.get("content-security-policy")}`);
+    }
+  }
+  // With nothing hosted yet, CloudFront still reaches the bucket, which answers that it has no such logo.
+  if (hostedKeys.length === 0) {
+    const response = await fetch(`${logosUrl}domains/check.invalid.svg`);
+    if (response.status !== 403 || !(await response.text()).includes("AccessDenied")) problems.push(`a logo no one set answered ${response.status}`);
+  }
+  return problems.length === 0 ? undefined : problems.join("; ");
+});
+await check("the logos bucket answers no one but CloudFront", async () => {
+  const key = hostedKeys[0] ?? `${hostedLogosPath}domains/check.invalid.svg`;
+  return expectStatus(await fetch(`https://${logosBucket}.s3.${region}.amazonaws.com/${key}`), 403);
 });
 // The account disables a Lambda anyone may invoke (docs/aws.md), so only CloudFront may call this one.
 const lambda = new LambdaClient({ region });
