@@ -12,6 +12,7 @@ import { PreferencesContext, useDates } from "./dates.ts";
 import { DesignedBody } from "./designed.tsx";
 import { Addresses, Attachments, Field, nameOf, SenderMark, Time } from "./mail-parts.tsx";
 import { changeFor, type Done, type Label, organize, OrganizeActions, ownLabelsOf, SessionEnded } from "./organize.tsx";
+import { useSenderLink } from "./sender.tsx";
 import { useShortcuts } from "./shortcuts.tsx";
 import { strings } from "./strings.ts";
 
@@ -633,7 +634,7 @@ function FoldedLetter({ message, ref, me, agentNames, owner, groups, onOpen }: L
  * they sponsor, named. Its subject shows only when it differs from the thread's. `downloading` says
  * which of its attachments is on its way, if one is.
  */
-function Letter({
+export function Letter({
   message,
   ref,
   marked = false,
@@ -656,6 +657,7 @@ function Letter({
   children?: ReactNode;
 }) {
   const titleId = useId();
+  const senderLink = useSenderLink();
   // A message with HTML shows as the human prefers until they switch it.
   const { mailView } = useContext(PreferencesContext);
   const [switched, setSwitched] = useState<MailView>();
@@ -675,12 +677,13 @@ function Letter({
       <header className="letter-head">
         <SenderMark kind={actor} logo={message.logo} name={nameOf(message.from)} />
         <h2 className="letter-from" id={titleId}>
-          {nameOf(message.from)}
-          {message.from.name && (
-            <>
-              {" "}
-              <span className="address">{message.from.address}</span>
-            </>
+          {senderLink === undefined || message.sentBy !== undefined ? (
+            <From from={message.from} />
+          ) : (
+            // Who sent it opens their sheet, where the human decides where their mail goes.
+            <button type="button" className="letter-sender" onClick={() => (location.hash = senderLink(message.from.address))}>
+              <From from={message.from} />
+            </button>
           )}
         </h2>
         <p className="letter-meta">
@@ -733,6 +736,19 @@ function Letter({
     </article>
   );
 }
+
+/** Who sent a message: their name, then their address, or the address alone. */
+const From = ({ from }: { from: Message["from"] }) => (
+  <>
+    {nameOf(from)}
+    {from.name && (
+      <>
+        {" "}
+        <span className="address">{from.address}</span>
+      </>
+    )}
+  </>
+);
 
 /** Who approved an agent's message before it went out, and what they changed. */
 function approvalNote({ approver, edits }: NonNullable<Message["approval"]>, me: string): string {

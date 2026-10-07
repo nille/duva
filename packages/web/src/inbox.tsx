@@ -429,7 +429,9 @@ function Empty({ client, view, mailbox, agent }: { client: DuvaClient; view: Thr
           ? { title: strings.views.empty.spam.title, lead: strings.views.empty.spam.lead(retentionDays) }
           : view.label === "trash"
             ? { title: strings.views.empty.trash.title, lead: strings.views.empty.trash.lead(retentionDays) }
-            : strings.views.empty.label;
+            : view.label === "feed" || view.label === "paperTrail"
+              ? strings.views.empty[view.label]
+              : strings.views.empty.label;
   return (
     <section className="empty" aria-labelledby="empty-title">
       <h2 id="empty-title">{copy.title}</h2>

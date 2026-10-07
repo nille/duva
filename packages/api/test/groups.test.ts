@@ -381,7 +381,7 @@ test("a thread of group mail is listed with the groups its mail came through", a
     { to: ["support@example.com"] },
   );
   await duva.receive(message("linus@example.net", "grace@example.com", "To Grace"), { to: ["grace@example.com"] });
-  await grace.POST("/mailboxes/{mailbox}/screener/let-in", { params: graces, body: { address: "linus@example.net" } });
+  await grace.PUT("/mailboxes/{mailbox}/senders/{sender}", { params: { path: { ...graces.path, sender: "linus@example.net" } }, body: { delivery: "inbox" } });
 
   const { data } = await grace.GET("/mailboxes/{mailbox}/threads", { params: { ...graces, query: { label: "inbox" } } });
 

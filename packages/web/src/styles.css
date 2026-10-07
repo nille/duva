@@ -2910,6 +2910,35 @@ a.thread:focus-visible {
   font-weight: 400;
 }
 
+/* Who sent a letter is a key into their sheet: it reads as the name it is, and its seam inks on hover. */
+.letter-sender {
+  display: inline-flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0 var(--space-2);
+  min-width: 0;
+  margin: 0 calc(-1 * var(--space-1));
+  padding: 0 var(--space-1);
+  border: 0;
+  border-radius: var(--radius-key);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  text-decoration: underline;
+  text-decoration-color: var(--seam);
+  text-underline-offset: 0.25em;
+  cursor: pointer;
+  transition:
+    background-color 150ms var(--ease-out),
+    text-decoration-color 150ms var(--ease-out);
+}
+
+.letter-sender:hover {
+  background: var(--ink-wash);
+  text-decoration-color: var(--ink);
+}
+
 .letter-meta {
   display: flex;
   align-items: baseline;
@@ -6195,4 +6224,147 @@ mark {
   .pause-row .button {
     width: 100%;
   }
+}
+
+/*
+ * A sender's sheet, in the reading pane: who, how many threads, where their mail goes now as one
+ * line read off the instrument, then the choices. Nowhere's hint reads in Alert Red's hand, since it
+ * erases.
+ */
+.sender .reading-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.sender .reading-title .actor-mark {
+  flex: none;
+}
+
+.sender-form {
+  max-width: var(--measure);
+}
+
+.sender-now {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+}
+
+.sender-now-label {
+  color: var(--ink-3);
+  font: 500 var(--text-xs) / 1 var(--mono);
+}
+
+.sender-now-place {
+  font: 700 var(--text-xl) / 1.1 var(--grotesk);
+  letter-spacing: -0.03em;
+}
+
+.sender-now-nowhere {
+  color: var(--alert-ink);
+}
+
+.sender-now .hint {
+  margin: 0;
+  color: var(--ink-3);
+}
+
+.choice-nowhere:has(input:checked) .hint {
+  color: var(--alert-ink);
+}
+
+.sender-label {
+  max-width: 20rem;
+  margin-top: var(--space-2);
+}
+
+.sender-confirm {
+  padding-top: var(--space-5);
+  box-shadow: inset 0 1px 0 var(--seam);
+}
+
+.sender-confirm p {
+  max-width: 60ch;
+  margin: 0 0 var(--space-3);
+  color: var(--alert-ink);
+  font-weight: 600;
+}
+
+/* The Screener's choice for a waiting sender: the Inbox pressed first, then the other places, and More for their sheet. */
+.waiting-choices {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.screened-name[aria-current="true"] {
+  text-decoration-color: var(--call);
+  text-decoration-thickness: 2px;
+}
+
+/*
+ * The Feed as a stream across the plane: each newsletter open in full under the one before, in one
+ * column at the letter's measure, its subject a link into its thread.
+ */
+.stream {
+  --measure: 72ch;
+}
+
+.stream .desk-head {
+  max-width: var(--measure);
+  margin-inline: auto;
+}
+
+.stream-order {
+  margin: 0;
+  color: var(--ink-3);
+  font-size: var(--text-sm);
+}
+
+.stream-items {
+  list-style: none;
+  max-width: var(--measure);
+  margin: 0 auto;
+  padding: 0;
+}
+
+.stream-item {
+  padding-top: var(--space-6);
+  box-shadow: inset 0 1px 0 var(--seam);
+}
+
+.stream-subject {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  margin: 0;
+  font: 700 var(--text-lg) / 1.15 var(--grotesk);
+  letter-spacing: -0.03em;
+}
+
+.stream-subject a {
+  color: inherit;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.stream-subject a:hover {
+  text-decoration: underline;
+  text-decoration-color: var(--edge);
+}
+
+/* A newsletter is to the mailbox, so the stream leaves out whom each was to. */
+.stream .letter-fields {
+  display: none;
+}
+
+.stream .letter {
+  padding-top: var(--space-3);
+}
+
+.stream-more {
+  max-width: var(--measure);
+  margin: var(--space-5) auto;
 }

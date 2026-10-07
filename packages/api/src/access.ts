@@ -8,15 +8,15 @@ import { groupsSentAsBy } from "./group-mail.ts";
 import { type Actor, type AgentSettings, agentSettings, findActor, findMailbox, type Mailbox, ownedMailboxes, sponsoredAgents } from "./organization.ts";
 
 /** What an operation does in a mailbox, which the actor needs to be allowed. */
-export type Ability = "read" | "organize" | "trash" | "draft" | "send" | "emptyTrash" | "switchScreener";
+export type Ability = "read" | "organize" | "trash" | "draft" | "send" | "emptyTrash" | "erase" | "switchScreener";
 
 // The sponsor acts as owner of its agent's mailbox, except that the agent drafts and sends there itself.
-const sponsorAbilities: Ability[] = ["read", "organize", "trash", "emptyTrash", "switchScreener"];
+const sponsorAbilities: Ability[] = ["read", "organize", "trash", "emptyTrash", "erase", "switchScreener"];
 
 type SponsorAccess = AgentSettings["sponsorAccess"];
 
 // What each sponsor access lets the agent do, each all the one before does and more. Send lets it do
-// all a sponsor does in their own mailbox but empty Trash.
+// all a sponsor does in their own mailbox but empty Trash, erase a sender's mail and switch the Screener.
 const sponsorAccessAbilities: Record<SponsorAccess, Ability[]> = {
   none: [],
   read: ["read"],
@@ -26,7 +26,7 @@ const sponsorAccessAbilities: Record<SponsorAccess, Ability[]> = {
 };
 
 // What the agent's refusal says it can't do, for each ability sponsor access can give, and the access that gives it.
-const abilityWords: Record<Exclude<Ability, "emptyTrash" | "switchScreener">, { words: string; access: SponsorAccess }> = {
+const abilityWords: Record<Exclude<Ability, "emptyTrash" | "erase" | "switchScreener">, { words: string; access: SponsorAccess }> = {
   read: { words: "read your sponsor's mailbox", access: "read" },
   organize: { words: "organize your sponsor's mailbox", access: "organize" },
   trash: { words: "move threads to Trash or back in your sponsor's mailbox", access: "organize" },
@@ -59,6 +59,7 @@ export async function mailboxFor(
     const sponsorAccess = sponsorAccessIn((await agentSettings(deployment.table, actor.id)).settings, mailbox.id);
     if (sponsorAccessAllows(sponsorAccess, ability)) return mailbox;
     if (ability === "emptyTrash") return refusal(403, "Only your sponsor can empty their Trash. Ask them to.");
+    if (ability === "erase") return refusal(403, "Only your sponsor can send a sender's mail nowhere, since that erases it. Ask them to, or choose another delivery.");
     if (ability === "switchScreener") return refusal(403, "Only your sponsor can switch their Screener. Ask them to.");
     if (sponsorAccess === "none") return refusal(403, "Your sponsor hasn't given you sponsor access to this mailbox of theirs. Ask them for read access.");
     const { words, access } = abilityWords[ability];

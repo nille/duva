@@ -1,6 +1,6 @@
 // The Lambda entry point SES invokes for each message it receives. It re-sends groups' mail to
-// their external members and bounces what a group refuses, through SES, and looks up senders' logos
-// in DNS, fetching them through the logo fetcher Lambda. The CDK app sets the environment.
+// their external members and bounces what a group refuses, through SES, looks up senders' logos in
+// DNS, fetching them through the logo fetcher Lambda, and invokes the unsubscriber for mail it drops. The CDK app sets the environment.
 import { X509Certificate } from "node:crypto";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { LambdaClient } from "@aws-sdk/client-lambda";
@@ -16,6 +16,7 @@ import { s3MailBucket } from "./mail-bucket.ts";
 import { markRoots } from "./mark-roots.ts";
 import { lambdaLogoFetcher, logoUrl } from "./sender-logos.ts";
 import { sesOutbound } from "./sending.ts";
+import { lambdaUnsubscriber } from "./unsubscriber.ts";
 
 export const handler = createInbound({
   table: { client: new DynamoDBClient({}), name: required(environmentVariables.tableName) },
@@ -31,4 +32,5 @@ export const handler = createInbound({
     roots: markRoots.map((pem) => new X509Certificate(pem)),
     url: (logo) => logoUrl(required(environmentVariables.downloadUrl), logo),
   },
+  unsubscriber: lambdaUnsubscriber(new LambdaClient({}), required(environmentVariables.unsubscriberFunction)),
 });

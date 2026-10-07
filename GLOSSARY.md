@@ -118,7 +118,13 @@ A name on a thread. A thread can carry many labels.
 _Avoid_: folder, tag, category
 
 **Inbox**:
-A built-in label for threads that want attention. New mail adds it; archiving removes it.
+A built-in label for threads that want attention. New mail adds it, unless its sender's delivery files it elsewhere; archiving removes it. A thread lies in at most one of the Inbox, the Feed and the Paper Trail.
+
+**Feed**:
+A built-in label for newsletters, read as a stream. A sender's delivery files their mail here instead of the Inbox, and it arrives read, so it counts nothing unread.
+
+**Paper Trail**:
+A built-in label for receipts and notifications. A sender's delivery files their mail here instead of the Inbox, and it arrives read.
 
 **Remind me**:
 Setting a thread aside until a time, chosen as later today, tomorrow morning, next week or an exact time, in the human's time zone. The thread leaves the Inbox and waits in Remind me until then, when it comes back to the top of the Inbox, unread, with a Back mark naming when it was set aside, which it keeps until it leaves the Inbox. New mail in the thread brings it back early. Cancelling puts it back in the Inbox at once, at its own place and without the mark.
@@ -131,11 +137,18 @@ A built-in label for mail judged to be spam. Threads with it are out of the Inbo
 A built-in label for deleted threads. Trash and Spam are erased for good after the organization's retention period, 30 days by default and 7 to 365, counted from when each thread got the label. Only the mailbox owner can empty Trash early.
 
 **Screener**:
-Where mail from a mailbox's first-time senders waits until an actor who may organize the mailbox lets the sender in or blocks them. A first-time sender is one the mailbox hasn't let in and hasn't sent mail to; senders on the organization's own domains, and messages joining a thread the mailbox already has, never wait. Letting in moves the sender's waiting threads to the Inbox; blocking moves them to Trash, and later mail from them goes straight there. Removing a block, or letting the sender in, brings back to the Inbox only the threads the block put in Trash, never those trashed by hand. On by default for humans' personal mailboxes, off for agents'; the mailbox's owner switches it.
+Where mail from a mailbox's first-time senders waits until an actor who may organize the mailbox decides the sender's delivery. A first-time sender is one the mailbox hasn't decided on and hasn't sent mail to; senders on the organization's own domains, and messages joining a thread the mailbox already has, never wait. Letting a sender in is choosing the Inbox, and blocking them is choosing nowhere. On by default for humans' personal mailboxes, off for agents'; the mailbox's owner switches it.
 _Avoid_: gatekeeper, allowlist
 
+**Delivery**:
+Where a screened sender's mail goes in a mailbox: the Inbox, the Feed, the Paper Trail, a label of the mailbox's own instead of the Inbox, or nowhere. It applies to their later mail, whether the Screener is on or not, and to their threads already there: those where their mail went before move to where it goes now, and keep the labels given by hand. Group mail skips it, as it skips the Screener.
+
+**Nowhere**:
+The delivery that drops a sender's mail on arrival, keeping none of it, not even in Trash, and records only that a message from them was dropped. Choosing it erases their threads in the mailbox for good, and unsubscribes from their mail when it offers one-click unsubscribe, as each message dropped later does too. Removing it brings back nothing. Only the mailbox's owner, or an agent's sponsor, chooses it (ADR-0025).
+_Avoid_: blackhole
+
 **Screened sender**:
-An address or a domain a mailbox has let in or blocked. A domain covers exactly that domain, never its subdomains, and is never a public mail provider's. An address beats its domain. Blocking a sender also unsubscribes from their mail when it offers one-click unsubscribe.
+An address or a domain a mailbox has decided a delivery for. A domain covers exactly that domain, never its subdomains, and is never a public mail provider's. An address beats its domain.
 _Avoid_: contact, rule
 
 **Tracking protection**:

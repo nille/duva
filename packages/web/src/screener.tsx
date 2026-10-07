@@ -1,38 +1,29 @@
 // The Screener, where mail from a mailbox's first-time senders waits: each sender, by their mark,
-// with their mail, newest first, to let in or block by their address or, except at public mail
-// providers, everyone at their domain. Screened senders lists the decisions, to flip or remove them.
+// with their mail, newest first, and where their mail goes from here: the Inbox, the Feed, the
+// Paper Trail or nowhere at once, or more on their sheet, as a label or everyone at their domain.
+// Screened senders lists the decisions by where they send mail, each opening its sheet.
 import { useCallback, useEffect, useId, useState } from "react";
 import type { DuvaClient } from "@duva/client";
-import { type components, isPublicMailProvider } from "@duva/openapi";
+import type { components } from "@duva/openapi";
 import type { Connection as ConnectionState } from "./feed.ts";
 import { Connection, SenderMark, Time } from "./mail-parts.tsx";
-import type { Done } from "./organize.tsx";
+import type { Done, Label } from "./organize.tsx";
 import { useBeside, useViewTitle, ViewMain, ViewTitle } from "./panes.tsx";
+import { decideDelivery } from "./sender.tsx";
 import { strings } from "./strings.ts";
-import { hrefOf, pathOf, screenedSendersPath } from "./views.tsx";
+import { hrefOf, pathOf, screenedSendersPath, senderHref } from "./views.tsx";
 
 type Mailbox = components["schemas"]["Mailbox"];
 type Screener = components["schemas"]["Screener"];
 type WaitingSender = components["schemas"]["WaitingSender"];
 type ScreenedSender = components["schemas"]["ScreenedSender"];
-type ScreeningDecision = components["schemas"]["ScreeningDecision"];
-type Decision = components["schemas"]["ScreeningDecisionKind"];
-type Unsubscribe = components["schemas"]["Unsubscribe"];
+type Delivery = components["schemas"]["Delivery"];
 
 /** The mailbox's Screener as the web app last read it. */
 export type ScreenerRead = { status: "loading" } | { status: "failed"; message: string } | { status: "read"; screener: Screener };
 
-/** An address, or a domain for everyone there. */
-type Sender = { address: string } | { domain: string };
-
 /** The address or domain a mailbox decided on. */
-const senderOf = (sender: ScreenedSender): Sender => (sender.address !== undefined ? { address: sender.address } : { domain: sender.domain ?? "" });
-
-/** The address or the domain itself. */
-const valueOf = (sender: Sender) => ("address" in sender ? sender.address : sender.domain);
-
-/** What saving a decision came to: what to say it did, or why it failed. */
-type Saved = { done: Done } | { failed: string };
+const valueOf = (sender: ScreenedSender) => sender.address ?? sender.domain ?? "";
 
 /** Reads the mailbox's Screener as the web app keeps it, or calls `onSignedOut` and answers undefined if the session has ended. */
 export async function readScreener(client: DuvaClient, mailbox: string, onSignedOut: () => void): Promise<ScreenerRead | undefined> {
@@ -45,49 +36,8 @@ export async function readScreener(client: DuvaClient, mailbox: string, onSigned
   return { status: "read", screener: data };
 }
 
-/** Lets the sender in or blocks them, and answers what to say it did. */
-async function decide(client: DuvaClient, mailbox: string, decision: Decision, sender: Sender, onSignedOut: () => void): Promise<Saved | undefined> {
-  const params = { path: { mailbox } };
-  const { data, response } = await (decision === "letIn"
-    ? client.POST("/mailboxes/{mailbox}/screener/let-in", { params, body: sender })
-    : client.POST("/mailboxes/{mailbox}/screener/block", { params, body: sender })
-  ).catch(() => ({ data: undefined, response: undefined }));
-  if (response?.status === 401) {
-    onSignedOut();
-    return undefined;
-  }
-  if (data === undefined) return { failed: response === undefined ? strings.screener.decideUnreachable : strings.screener.decideFailed(response.status) };
-  return { done: { message: decisionSaid(decision, data) } };
-}
-
-/** What a decision did: who it is on, the threads it moved, and for a block how unsubscribing went. */
-function decisionSaid(decision: Decision, { sender, threads, unsubscribe }: ScreeningDecision): string {
-  const who = strings.screener.who(sender);
-  if (decision === "letIn") return strings.screener.letInDone(who, threads.length);
-  return [strings.screener.blockDone(who, threads.length), unsubscribe && unsubscribeSaid(unsubscribe)].filter(Boolean).join(" ");
-}
-
-function unsubscribeSaid({ outcome, reason, status }: Unsubscribe): string {
-  const copy = strings.screener.unsubscribe;
-  if (outcome === "unsubscribed") return copy.unsubscribed;
-  switch (reason) {
-    case "noMail":
-    case "spam":
-    case "noOneClick":
-    case "notSigned":
-      return copy[reason];
-    case "notAllowed":
-    case "notPublic":
-    case "unreachable":
-    case "timedOut":
-    case "tooManyRedirects":
-      return copy.failed(copy[reason]);
-    case "refused":
-      return copy.failed(copy.refused(status));
-    case undefined:
-      return outcome === "failed" ? copy.failed(copy.refused(status)) : copy.noOneClick;
-  }
-}
+/** The deliveries a waiting sender's line offers at once. A label, or everyone at their domain, is chosen on their sheet. */
+const atOnce: Delivery[] = ["inbox", "feed", "paperTrail", "nowhere"];
 
 /**
  * The Screener of the mailbox whose Inbox is at `base`, as the web app last read it, in the
@@ -101,6 +51,7 @@ export function ScreenerView({
   base,
   agent,
   read,
+  labels,
   connection,
   done,
   onDone,
@@ -112,6 +63,7 @@ export function ScreenerView({
   base: string;
   agent?: string;
   read: ScreenerRead;
+  labels: Label[];
   connection: ConnectionState;
   done: Done | undefined;
   onDone: (done: Done) => void;
@@ -142,7 +94,7 @@ export function ScreenerView({
         {screener !== undefined && (
           <p className="screener-screened">
             <a href={`${base}${screenedSendersPath}`}>{strings.screener.screened}</a>
-            <span>{strings.screener.screenedCounts(screener.letIn, screener.blocked)}</span>
+            <span>{strings.screener.screenedCounts(screener.decided)}</span>
           </p>
         )}
       </div>
@@ -164,7 +116,7 @@ export function ScreenerView({
       ) : (
         <ol className="waiting" aria-label={strings.screener.senders}>
           {read.screener.senders.map((sender) => (
-            <Waiting key={sender.address} client={client} mailbox={mailbox} base={base} sender={sender} open={open} onDone={onDone} onSignedOut={onSignedOut} />
+            <Waiting key={sender.address} client={client} mailbox={mailbox} base={base} sender={sender} labels={labels} open={open} onDone={onDone} onSignedOut={onSignedOut} />
           ))}
         </ol>
       )}
@@ -172,12 +124,16 @@ export function ScreenerView({
   );
 }
 
-/** A waiting sender: who they are, their mail, and letting them in or blocking them, asked once in place for an address or a domain. */
+/**
+ * A waiting sender: who they are, their mail, and where their mail goes from here, chosen at once,
+ * nowhere only once asked in place, or on their sheet.
+ */
 function Waiting({
   client,
   mailbox,
   base,
   sender,
+  labels,
   open,
   onDone,
   onSignedOut,
@@ -186,25 +142,26 @@ function Waiting({
   mailbox: Mailbox;
   base: string;
   sender: WaitingSender;
+  labels: Label[];
   /** The thread open beside the Screener, whose line it marks. */
   open?: string;
   onDone: (done: Done) => void;
   onSignedOut: () => void;
 }) {
-  const [asking, setAsking] = useState<Decision>();
+  const [asking, setAsking] = useState(false);
   const [state, setState] = useState<{ status: "idle" | "busy" } | { status: "failed"; message: string }>({ status: "idle" });
   const headingId = useId();
   const name = sender.name || sender.address;
-  const domain = sender.address.slice(sender.address.lastIndexOf("@") + 1).toLowerCase();
-  const from = encodeURIComponent(pathOf({ screener: true }));
+  const from = pathOf({ screener: true });
+  const copy = strings.sender.choices;
 
-  const save = async (decision: Decision, target: Sender) => {
+  const save = async (delivery: Delivery) => {
     setState({ status: "busy" });
-    const saved = await decide(client, mailbox.id, decision, target, onSignedOut);
+    const saved = await decideDelivery(client, { mailbox: mailbox.id, sender: { address: sender.address.toLowerCase() }, delivery, labels, onSignedOut });
     if (saved === undefined) return;
     if ("failed" in saved) return setState({ status: "failed", message: saved.failed });
     // The sender leaves the Screener once it is read again, and stays busy until then, so nothing is decided twice.
-    setAsking(undefined);
+    setAsking(false);
     onDone(saved.done);
   };
 
@@ -218,7 +175,7 @@ function Waiting({
       <ol className="waiting-threads" aria-label={strings.screener.mailFrom(name)}>
         {sender.threads.map((thread) => (
           <li key={thread.id}>
-            <a className="waiting-thread" href={`${base}threads/${encodeURIComponent(thread.id)}?from=${from}`} aria-current={thread.id === open ? "true" : undefined}>
+            <a className="waiting-thread" href={`${base}threads/${encodeURIComponent(thread.id)}?from=${encodeURIComponent(from)}`} aria-current={thread.id === open ? "true" : undefined}>
               <span className="waiting-subject">{thread.subject || strings.thread.noSubject}</span>
               {thread.snippet !== "" && (
                 <span className="waiting-snippet" lang="">
@@ -233,38 +190,41 @@ function Waiting({
         ))}
       </ol>
       <div className="waiting-actions">
-        {asking === undefined ? (
-          <>
-            <button type="button" className="button button-small" disabled={state.status === "busy"} onClick={() => setAsking("letIn")}>
-              {strings.screener.letIn}
-            </button>
-            <button type="button" className="button button-small" disabled={state.status === "busy"} onClick={() => setAsking("block")}>
-              {strings.screener.block}
-            </button>
-          </>
-        ) : (
-          <div className="confirm" role="group" aria-label={asking === "letIn" ? strings.screener.letInWho(name) : strings.screener.blockWho(name)}>
-            <p>{asking === "letIn" ? strings.screener.letInAsk : strings.screener.blockAsk}</p>
+        {asking ? (
+          <div className="confirm" role="group" aria-label={strings.sender.nowhereConfirm}>
+            <p>{strings.screener.nowhereAsk(sender.threads.length)}</p>
             <div className="confirm-choices">
-              <button type="button" className="button button-small" disabled={state.status === "busy"} onClick={() => void save(asking, { address: sender.address })}>
-                {strings.screener.thisAddress}
+              <button type="button" className="button button-small button-call" disabled={state.status === "busy"} onClick={() => void save("nowhere")}>
+                {strings.sender.nowhereConfirm}
               </button>
-              {!isPublicMailProvider(domain) && (
-                <button type="button" className="button button-small" disabled={state.status === "busy"} onClick={() => void save(asking, { domain })}>
-                  {strings.screener.everyoneAt(domain)}
-                </button>
-              )}
               <button
                 type="button"
                 className="button button-small button-quiet"
                 onClick={() => {
-                  setAsking(undefined);
+                  setAsking(false);
                   setState({ status: "idle" });
                 }}
               >
                 {strings.screener.cancel}
               </button>
             </div>
+          </div>
+        ) : (
+          <div className="waiting-choices" role="group" aria-label={strings.screener.sendTo(name)}>
+            {atOnce.map((delivery) => (
+              <button
+                key={delivery}
+                type="button"
+                className={delivery === "inbox" ? "button button-small button-primary" : "button button-small"}
+                disabled={state.status === "busy"}
+                onClick={() => (delivery === "nowhere" ? setAsking(true) : void save(delivery))}
+              >
+                {copy[delivery].name}
+              </button>
+            ))}
+            <a className="button button-small button-quiet" href={senderHref(sender.address.toLowerCase(), from, base)} aria-label={strings.screener.moreFor(name)}>
+              {strings.screener.more}
+            </a>
           </div>
         )}
         {state.status === "failed" && (
@@ -279,10 +239,14 @@ function Waiting({
 
 type Listed = { status: "loading" } | { status: "failed"; message: string } | { status: "listed"; senders: ScreenedSender[] };
 
+/** The deliveries the screened senders are grouped by, in the order the list shows them. */
+const groups: Delivery[] = ["inbox", "feed", "paperTrail", "label", "nowhere"];
+
 /**
- * The senders the mailbox let in and blocked, each newest first, to flip or remove. `version`
- * counts the changes to the mailbox the app has seen, so the list is read again when it grows.
- * `me` is the human's ID and `agentNames` names the agents they sponsor, to say who decided.
+ * The senders the mailbox decided on, grouped by where their mail goes, each newest first, to open
+ * on their sheet or remove. `version` counts the changes to the mailbox the app has seen, so the
+ * list is read again when it grows. `me` is the human's ID and `agentNames` names the agents they
+ * sponsor, to say who decided. `open` is the sender whose sheet lies beside it.
  */
 export function ScreenedSenders({
   client,
@@ -291,7 +255,9 @@ export function ScreenedSenders({
   agent,
   me,
   agentNames,
+  labels,
   version,
+  open,
   done,
   onDone,
   onSignedOut,
@@ -302,7 +268,9 @@ export function ScreenedSenders({
   agent?: string;
   me: string;
   agentNames: ReadonlyMap<string, string>;
+  labels: Label[];
   version: number;
+  open?: string;
   done: Done | undefined;
   onDone: (done: Done) => void;
   onSignedOut: () => void;
@@ -311,12 +279,10 @@ export function ScreenedSenders({
   const [query, setQuery] = useState("");
   const findId = useId();
   const title = agent === undefined ? strings.screened.title : strings.screened.agentTitle(agent);
-  useEffect(() => {
-    document.title = strings.title(title);
-  }, [title]);
+  useViewTitle(strings.title(title));
 
   const load = useCallback(async () => {
-    const { data, response } = await client.GET("/mailboxes/{mailbox}/screener/senders", { params: { path: { mailbox: mailbox.id } } }).catch(() => ({ data: undefined, response: undefined }));
+    const { data, response } = await client.GET("/mailboxes/{mailbox}/senders", { params: { path: { mailbox: mailbox.id } } }).catch(() => ({ data: undefined, response: undefined }));
     if (response?.status === 401) return onSignedOut();
     if (data === undefined) return setListed({ status: "failed", message: response === undefined ? strings.screened.unreachable : strings.screened.failed(response.status) });
     setListed({ status: "listed", senders: data.senders });
@@ -331,23 +297,26 @@ export function ScreenedSenders({
   };
 
   const wanted = query.trim().toLowerCase();
-  const shown = listed.status === "listed" ? listed.senders.filter((sender) => valueOf(senderOf(sender)).includes(wanted)) : [];
-  const group = (decision: Decision) => {
-    const senders = shown.filter((sender) => sender.decision === decision);
-    const name = decision === "letIn" ? strings.screened.letIn : strings.screened.blocked;
+  const shown = listed.status === "listed" ? listed.senders.filter((sender) => valueOf(sender).includes(wanted)) : [];
+  const group = (delivery: Delivery) => {
+    const senders = shown.filter((sender) => sender.delivery === delivery);
+    const name = strings.screened.groups[delivery];
     return (
-      <section className="screened-group" aria-labelledby={`screened-${decision}`}>
-        <h2 id={`screened-${decision}`}>{name}</h2>
+      <section className="screened-group" aria-labelledby={`screened-${delivery}`} key={delivery}>
+        <h2 id={`screened-${delivery}`}>{name}</h2>
         {senders.length === 0 ? (
-          <p className="hint">{wanted !== "" ? strings.screened.noneFound : decision === "letIn" ? strings.screened.noneLetIn : strings.screened.noneBlocked}</p>
+          <p className="hint">{wanted !== "" ? strings.screened.noneFound : strings.screened.none}</p>
         ) : (
           <ul className="screened" aria-label={name}>
             {senders.map((sender) => (
               <Screened
-                key={valueOf(senderOf(sender))}
+                key={valueOf(sender)}
                 client={client}
                 mailbox={mailbox}
                 sender={sender}
+                href={senderHref(valueOf(sender), screenedSendersPath, base)}
+                open={open === valueOf(sender)}
+                place={sender.delivery === "label" ? labels.find(({ id }) => id === sender.label)?.name : undefined}
                 by={sender.actor === undefined ? undefined : sender.actor === me ? strings.screened.you : agentNames.get(sender.actor)}
                 onDone={changed}
                 onSignedOut={onSignedOut}
@@ -360,14 +329,14 @@ export function ScreenedSenders({
   };
 
   return (
-    <main className="desk" aria-busy={listed.status === "loading"}>
+    <ViewMain className="desk" aria-busy={listed.status === "loading"}>
       <p className="back">
         <a href={hrefOf({ screener: true }, base)}>{strings.screened.back}</a>
       </p>
       <div className="desk-head">
-        <h1 tabIndex={-1} className="view-title">
+        <ViewTitle tabIndex={-1} className="view-title">
           {title}
-        </h1>
+        </ViewTitle>
       </div>
       <div className="screener-lead">
         <p>{strings.screened.lead}</p>
@@ -389,20 +358,22 @@ export function ScreenedSenders({
               <label htmlFor={findId}>{strings.screened.find}</label>
               <input id={findId} type="search" value={query} autoComplete="off" onChange={(event) => setQuery(event.target.value)} />
             </div>
-            {group("block")}
-            {group("letIn")}
+            {groups.map(group)}
           </div>
         )
       )}
-    </main>
+    </ViewMain>
   );
 }
 
-/** A screened sender: who, the decision, when and by whom, then flipping it or removing it, a block only once asked in place. */
+/** A screened sender: who, opening their sheet, the label their mail is filed under, when and by whom it was decided, then removing it. */
 function Screened({
   client,
   mailbox,
   sender,
+  href,
+  open,
+  place,
   by,
   onDone,
   onSignedOut,
@@ -410,80 +381,44 @@ function Screened({
   client: DuvaClient;
   mailbox: Mailbox;
   sender: ScreenedSender;
+  href: string;
+  open: boolean;
+  place: string | undefined;
   by: string | undefined;
   onDone: (done: Done) => void;
   onSignedOut: () => void;
 }) {
-  const [asking, setAsking] = useState(false);
   const [state, setState] = useState<{ status: "idle" | "busy" } | { status: "failed"; message: string }>({ status: "idle" });
-  const target = senderOf(sender);
   const who = strings.screener.who(sender);
-  const flipped: Decision = sender.decision === "letIn" ? "block" : "letIn";
-
-  const flip = async () => {
-    setState({ status: "busy" });
-    const saved = await decide(client, mailbox.id, flipped, target, onSignedOut);
-    if (saved === undefined) return;
-    if ("failed" in saved) return setState({ status: "failed", message: saved.failed });
-    setState({ status: "idle" });
-    onDone(saved.done);
-  };
 
   const remove = async () => {
     setState({ status: "busy" });
     const { data, response } = await client
-      .DELETE("/mailboxes/{mailbox}/screener/senders/{sender}", { params: { path: { mailbox: mailbox.id, sender: valueOf(target) } } })
+      .DELETE("/mailboxes/{mailbox}/senders/{sender}", { params: { path: { mailbox: mailbox.id, sender: valueOf(sender) } } })
       .catch(() => ({ data: undefined, response: undefined }));
     if (response?.status === 401) return onSignedOut();
     if (data === undefined) return setState({ status: "failed", message: response === undefined ? strings.screener.decideUnreachable : strings.screener.decideFailed(response.status) });
     setState({ status: "idle" });
-    setAsking(false);
-    onDone({ message: sender.decision === "block" ? strings.screened.removedBlock(who, data.threads.length) : strings.screened.removedLetIn(who) });
+    onDone({ message: strings.screened.removed(who, data.threads.length) });
   };
 
   return (
     <li className="screened-sender">
       <div className="screened-who">
-        <span className="screened-name">{sender.address ?? strings.screened.everyoneAt(sender.domain ?? "")}</span>
+        <a className="screened-name" href={href} aria-current={open ? "true" : undefined}>
+          {sender.address ?? strings.screened.everyoneAt(sender.domain ?? "")}
+        </a>
         <span className="hint">
-          {strings.screened.decided(sender.decision)} <Time at={sender.decidedAt} short />
+          {place !== undefined && `${place}. `}
+          {strings.screened.decided} <Time at={sender.decidedAt} short />
           {by !== undefined && ` ${strings.screened.by(by)}`}
         </span>
       </div>
-      {asking ? (
-        <div className="confirm" role="group" aria-label={strings.screened.removeBlock}>
-          <p>{strings.screened.removeAsk(who)}</p>
-          <div className="confirm-choices">
-            <button type="button" className="button button-small" disabled={state.status === "busy"} onClick={() => void remove()}>
-              {strings.screened.removeBlock}
-            </button>
-            <button
-              type="button"
-              className="button button-small button-quiet"
-              onClick={() => {
-                setAsking(false);
-                setState({ status: "idle" });
-              }}
-            >
-              {strings.screener.cancel}
-            </button>
-          </div>
-        </div>
-      ) : (
-        <div className="screened-actions">
-          <button type="button" className="button button-small" disabled={state.status === "busy"} onClick={() => void flip()}>
-            {flipped === "letIn" ? strings.screener.letIn : strings.screener.block}
-          </button>
-          <button
-            type="button"
-            className="button button-small button-quiet"
-            disabled={state.status === "busy"}
-            onClick={() => (sender.decision === "block" ? setAsking(true) : void remove())}
-          >
-            {strings.screened.remove}
-          </button>
-        </div>
-      )}
+      <div className="screened-actions">
+        <button type="button" className="button button-small button-quiet" disabled={state.status === "busy"} onClick={() => void remove()}>
+          {strings.screened.remove}
+        </button>
+      </div>
       {state.status === "failed" && (
         <p className="field-error" role="alert">
           {state.message}

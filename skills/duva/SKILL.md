@@ -598,7 +598,7 @@ Finds the threads whose messages have every word in q, or mean what its words sa
 
 List a mailbox's labels, with how many unread threads each has.
 
-Lists the built-in labels inbox, spam and trash first, then the mailbox's own labels by name. Only those who can read the mailbox can list its labels.
+Lists the built-in labels inbox, feed, paperTrail, spam and trash first, then the mailbox's own labels by name. Only those who can read the mailbox can list its labels.
 
 - `--mailbox` (required): The mailbox's ID.
 
@@ -615,7 +615,7 @@ Creates a label of the mailbox's own, with a name no other label in it has, in a
 
 Delete one of a mailbox's own labels.
 
-Removes the label from each of its threads, each with a change in the mailbox's change feed, and then deletes it. The threads stay. The built-in labels can't be deleted. If deleting stops partway, delete the label again to finish. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give organize sponsor access or more can delete its labels.
+Removes the label from each of its threads, each with a change in the mailbox's change feed, and then deletes it. The threads stay. Senders whose mail was filed under it go to the Inbox from then on. The built-in labels can't be deleted. If deleting stops partway, delete the label again to finish. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give organize sponsor access or more can delete its labels.
 
 - `--mailbox` (required): The mailbox's ID.
 - `--label` (required): The label's ID.
@@ -642,7 +642,7 @@ Erases each thread that is in Trash when you call, with its messages and their r
 
 Read a mailbox's Screener, with the first-time senders whose mail waits there.
 
-Lists each sender whose mail waits, newest first, with their waiting threads, newest first. Mail waiting in the Screener is in no other listing and no unread count. Says whether the Screener is on, and how many senders the mailbox has let in and blocked. Only those who can read the mailbox can read its Screener.
+Lists each sender whose mail waits, newest first, with their waiting threads, newest first. Mail waiting in the Screener is in no other listing and no unread count. Says whether the Screener is on, and how many senders the mailbox has decided where mail goes for. Deciding where a waiting sender's mail goes takes their threads out of it. Only those who can read the mailbox can read its Screener.
 
 - `--mailbox` (required): The mailbox's ID.
 
@@ -650,49 +650,51 @@ Lists each sender whose mail waits, newest first, with their waiting threads, ne
 
 Switch a mailbox's Screener on or off.
 
-Turning it off moves every waiting thread to the Inbox. Turning it on lets in every address mail in the mailbox is from, except mail in Spam, so no sender the mailbox already has waits. A human's mailbox starts with it on, an agent's with it off. Switching is recorded in the mailbox's change feed under you. Only the mailbox's owner, and an agent's sponsor for its agent's mailbox, can switch it.
+Turning it off moves every waiting thread to the Inbox. Turning it on decides the Inbox for every address mail in the mailbox is from, except mail in Spam and addresses at a domain decided on, so no sender the mailbox already has waits. A human's mailbox starts with it on, an agent's with it off. Switching is recorded in the mailbox's change feed under you. Only the mailbox's owner, and an agent's sponsor for its agent's mailbox, can switch it.
 
 - `--mailbox` (required): The mailbox's ID.
 - `--on` or `--no-on` (required): True to switch the Screener on, false to switch it off.
 
-## duva screener let-in
+## duva senders list
 
-Let a sender into a mailbox, moving their waiting threads to the Inbox.
+List the senders a mailbox has decided where mail goes for.
 
-Give an address, or a domain to let in everyone there. A domain covers exactly that domain, not its subdomains, and can't be a public mail provider's, like gmail.com. An address's decision beats its domain's. Their later mail skips the Screener, even while it is off. Letting in a sender the mailbox blocked replaces the block and moves their threads still in Trash to the Inbox. The decision and each thread it moves are recorded in the mailbox's change feed under you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give organize sponsor access or more can decide.
-
-- `--mailbox` (required): The mailbox's ID.
-- `--address`: The sender's email address. Case doesn't matter.
-- `--domain`: The domain, for everyone at exactly that domain, not its subdomains. Case doesn't matter. Public mail providers' domains, like gmail.com, are refused.
-
-
-## duva screener block
-
-Block a sender in a mailbox, moving their waiting threads to Trash.
-
-Give an address, or a domain to block everyone there. A domain covers exactly that domain, not its subdomains, and can't be a public mail provider's, like gmail.com. An address's decision beats its domain's. Their later mail that starts a thread goes straight to Trash, even while the Screener is off. Trash is erased after the organization's retention period, counted from when a thread got it. Blocking a sender the mailbox let in replaces that. Blocking also unsubscribes the mailbox from the sender's mail by one-click (RFC 8058), when their newest mail that SES didn't judge to be spam offers it and a DKIM signature that passed covers its unsubscribe headers. For a domain, that is the newest mail from an address there that the mailbox hasn't let in. Duva never unsubscribes by mailto or by a link in the body. The decision, each thread it moves and the unsubscribe's outcome are recorded in the mailbox's change feed under you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give organize sponsor access or more can decide.
-
-- `--mailbox` (required): The mailbox's ID.
-- `--address`: The sender's email address. Case doesn't matter.
-- `--domain`: The domain, for everyone at exactly that domain, not its subdomains. Case doesn't matter. Public mail providers' domains, like gmail.com, are refused.
-
-
-## duva screener senders
-
-List the senders a mailbox has let in or blocked.
-
-Each address and domain, with its decision, when it was made and by whom, newest first. Only those who can read the mailbox can list them.
+Each address and domain, with its delivery, when it was set and by whom, newest first. Only those who can read the mailbox can list them.
 
 - `--mailbox` (required): The mailbox's ID.
 
-## duva screener remove
+## duva senders get
+
+Read a sender's sheet in a mailbox, with where their mail goes now.
+
+Says how many threads the mailbox has from them, Spam and Trash included, their name as their newest thread gives it, where their new mail goes now, and the decision that sends it there: the mailbox's on their address, or else on their domain. Only those who can read the mailbox can read it.
+
+- `--mailbox` (required): The mailbox's ID.
+- `--sender` (required): The sender's address, like grace@example.org, or a domain, like example.org, for everyone at exactly that domain. Case doesn't matter.
+
+
+## duva senders set
+
+Decide where a sender's mail goes in a mailbox, for their mail there and their later mail.
+
+inbox puts their mail in the Inbox. feed and paperTrail file it in the Feed or the Paper Trail instead, read. label files it under the mailbox's own label you give, unread, instead of the Inbox. nowhere drops their later mail on arrival, keeping none of it, and erases their threads in the mailbox, Spam and Trash included, for good. Removing nowhere later brings none of it back. Their threads where their mail went before, or waiting in the Screener, move to where it goes now, and keep the labels given by hand. Their later mail skips the Screener, even while it is off. A domain covers exactly that domain, not its subdomains, and can't be a public mail provider's, like gmail.com. An address's decision beats its domain's. Setting nowhere also unsubscribes the mailbox from the sender's mail by one-click (RFC 8058), when their newest mail that SES didn't judge to be spam offers it and a DKIM signature that passed covers its unsubscribe headers, and each message dropped later tries the same. Duva never unsubscribes by mailto or by a link in the body. The decision, each thread it moves or erases and the unsubscribe's outcome are recorded in the mailbox's change feed under you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give organize sponsor access or more can decide, and only the owner or the sponsor can choose nowhere.
+
+- `--mailbox` (required): The mailbox's ID.
+- `--sender` (required): The sender's address, like grace@example.org, or a domain, like example.org, for everyone at exactly that domain. Case doesn't matter.
+
+- `--delivery` (required): Where a sender's mail goes. inbox: the Inbox. feed: the Feed, for newsletters, read. paperTrail: the Paper Trail, for receipts and notifications, read. label: a label of the mailbox's own, unread, instead of the Inbox. nowhere: dropped on arrival, keeping none of it.
+
+- `--label`: For label, the ID of the mailbox's own label to file their mail under.
+
+## duva senders remove
 
 Remove a mailbox's decision on a sender, so they are first-time again.
 
-Their later mail waits in the Screener again, unless the mailbox has written to them, or a decision on their domain covers them. Removing a block moves their threads still in Trash to the Inbox. To flip a decision instead, let them in or block them. The removal and each thread it moves are recorded in the mailbox's change feed under you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give organize sponsor access or more can remove decisions.
+Their later mail waits in the Screener again, unless the mailbox has written to them, or a decision on their domain covers them. Their threads where their mail went move to where it goes now, the Inbox unless their domain's decision says otherwise. Mail nowhere dropped doesn't come back. The removal and each thread it moves are recorded in the mailbox's change feed under you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give organize sponsor access or more can remove decisions.
 
 - `--mailbox` (required): The mailbox's ID.
-- `--sender` (required): The address or the domain, as the mailbox decided on it. Case doesn't matter.
+- `--sender` (required): The sender's address, like grace@example.org, or a domain, like example.org, for everyone at exactly that domain. Case doesn't matter.
+
 
 ## duva attachments link
 

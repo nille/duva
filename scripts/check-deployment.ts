@@ -34,7 +34,7 @@ import { DescribeReceiptRuleSetCommand, SESClient } from "@aws-sdk/client-ses";
 import { GetConfigurationSetEventDestinationsCommand, GetEmailIdentityCommand, SESv2Client } from "@aws-sdk/client-sesv2";
 import { GetQueueAttributesCommand, SQSClient } from "@aws-sdk/client-sqs";
 import { indexedMailboxes, uncompactedSince } from "@duva/api/indexing";
-import { alertMailFilter, dropMetric, dropReasons, inboundPrefix, receiptRuleNumber, recipientsPerRule, senderFilter, signInFrom } from "@duva/api/infrastructure";
+import { alertMailFilter, dropMetric, dropReasons, environmentVariables, inboundPrefix, receiptRuleNumber, recipientsPerRule, senderFilter, signInFrom } from "@duva/api/infrastructure";
 import { rulesTake } from "@duva/api/receiving";
 import { sesSuppressionList } from "@duva/api/suppression";
 import { novaTranslator } from "@duva/api/translation";
@@ -296,15 +296,21 @@ await check("reading a mailbox's Screener without credentials answers 401", asyn
 await check("switching a mailbox's Screener without credentials answers 401", async () =>
   expectStatus(await fetch(`${apiUrl}/mailboxes/x/screener`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ on: false }) }), 401),
 );
-for (const decision of ["let-in", "block"]) {
-  await check(`screening a sender (${decision}) without credentials answers 401`, async () =>
-    expectStatus(await fetch(`${apiUrl}/mailboxes/x/screener/${decision}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ address: "a@example.org" }) }), 401),
-  );
-}
-await check("listing a mailbox's screened senders without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/mailboxes/x/screener/senders`), 401));
-await check("removing a screened sender without credentials answers 401", async () =>
-  expectStatus(await fetch(`${apiUrl}/mailboxes/x/screener/senders/a%40example.org`, { method: "DELETE" }), 401),
+await check("reading a sender's sheet without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/mailboxes/x/senders/a%40example.org`), 401));
+await check("deciding where a sender's mail goes without credentials answers 401", async () =>
+  expectStatus(await fetch(`${apiUrl}/mailboxes/x/senders/a%40example.org`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ delivery: "feed" }) }), 401),
 );
+await check("listing a mailbox's senders without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/mailboxes/x/senders`), 401));
+await check("removing a decision on a sender without credentials answers 401", async () =>
+  expectStatus(await fetch(`${apiUrl}/mailboxes/x/senders/a%40example.org`, { method: "DELETE" }), 401),
+);
+await check("the inbound Lambda is given the unsubscriber, for each message it drops since its sender's mail goes nowhere", async () => {
+  const inbound = await stackResource("AWS::Lambda::Function", "InboundHandler");
+  if (inbound === undefined) return "has no inbound Lambda";
+  const { Environment } = await lambda.send(new GetFunctionConfigurationCommand({ FunctionName: inbound }));
+  const given = Environment?.Variables?.[environmentVariables.unsubscriberFunction];
+  return given?.endsWith(`:function:${unsubscriberFunction}`) ? undefined : `has ${given ?? "none"}`;
+});
 await check("emptying Trash without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/mailboxes/x/trash/empty`, { method: "POST" }), 401));
 await check("sending an approval without credentials answers 401", async () =>
   expectStatus(await fetch(`${apiUrl}/approvals/x/send`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }), 401),

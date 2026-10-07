@@ -3,7 +3,7 @@
 // mail bucket, and is read from there.
 import { randomUUID } from "node:crypto";
 import { TransactionCanceledException } from "@aws-sdk/client-dynamodb";
-import { GetCommand, PutCommand, QueryCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
+import { BatchGetCommand, type BatchGetCommandOutput, GetCommand, PutCommand, QueryCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import type { components } from "@duva/openapi";
 import type { Table } from "./deployment.ts";
 import { changesAfter, changesPerPage, recordChanges } from "./feed.ts";
@@ -26,6 +26,12 @@ export type { StoredMessage };
 
 /** The label new mail gets. */
 export const inbox = "inbox";
+/** The label for newsletters, which a sender's delivery files their mail under instead of the Inbox. */
+export const feed = "feed";
+/** The label for receipts and notifications, likewise. */
+export const paperTrail = "paperTrail";
+/** The labels that say where a thread lies: one at most, which adding another replaces. */
+const places = [inbox, feed, paperTrail];
 /** The label mail SES judged to be spam gets instead. */
 export const spam = "spam";
 /** The label deleted threads get. */
@@ -76,6 +82,8 @@ const messageIdKey = (mailbox: string, messageId: string) => ({ [pk]: partition(
 const messageRefKey = (mailbox: string, message: string) => ({ [pk]: partition(mailbox), [sk]: `message#${message}` });
 // Each SES message is stored once per mailbox, however often SES's event is processed.
 const receivedKey = (mailbox: string, sesMessageId: string) => ({ [pk]: partition(mailbox), [sk]: `received#${sesMessageId}` });
+// Each SES message whose sender's mail goes nowhere is dropped once per mailbox, likewise.
+const droppedKey = (mailbox: string, sesMessageId: string) => ({ [pk]: partition(mailbox), [sk]: `dropped#${sesMessageId}` });
 // Each message another member sent as a group is copied to the mailbox once, by the sent message's ID in Duva.
 const copiedKey = (mailbox: string, message: string) => ({ [pk]: partition(mailbox), [sk]: `copied#${message}` });
 // Each address the mailbox has sent to is noted, in lower case, so mail from it skips the Screener.
@@ -111,17 +119,21 @@ export interface Arrival {
   fromAgent: boolean;
   /** The sender's logo, if their domain publishes one Duva shows (ADR-0023). */
   logo?: components["schemas"]["SenderLogo"];
-  /** Where the message goes if it starts a thread, as the Screener decided, and the writes that hold only while that decision does. */
+  /** Where the message goes, as the Screener decided, and the writes that hold only while that decision does. */
   screening?: Screening;
 }
 
 /**
- * Where a message that starts a thread goes, as the mailbox's Screener decides: the Inbox, or
- * waiting in the Screener, or Trash for a blocked sender. Its items go in the same transaction as
- * the message, and a condition among them that fails throws ScreeningChanged.
+ * Where a message goes, as the mailbox's Screener decides from its sender's delivery: the label a
+ * thread it starts gets, the Inbox or the Screener or where the delivery files it, and the one a
+ * thread it joins gets. `screened` and `delivered` say what its arrival's change says. Its items go in the same transaction as the
+ * message, and a condition among them that fails throws ScreeningChanged.
  */
 export interface Screening {
-  label: typeof inbox | typeof screener | typeof trash;
+  label: string;
+  joined: string;
+  screened?: "waiting";
+  delivered?: components["schemas"]["Delivery"];
   items: TransactItem[];
 }
 
@@ -133,13 +145,11 @@ export type ErasedLabel = typeof spam | typeof trash;
 const erasedLabels: ErasedLabel[] = [spam, trash];
 
 /**
- * A thread's summary as stored, with whether the mailbox sent in it, when it got Spam and Trash if
- * it has them, and whether a block on its sender put it in Trash, on arrival or from the Screener,
- * so lifting the block restores only those. Threads stored before Sent existed don't say, those
- * that got Spam or Trash before erasure existed have no time for it, and those a block put in Trash
- * before blocks were marked aren't marked.
+ * A thread's summary as stored, with whether the mailbox sent in it and when it got Spam and Trash
+ * if it has them. Threads stored before Sent existed don't say, and those that got Spam or Trash
+ * before erasure existed have no time for it.
  */
-export type StoredSummary = ThreadSummary & { sent?: boolean; labelledAt?: Partial<Record<ErasedLabel, string>>; trashedByBlock?: boolean };
+export type StoredSummary = ThreadSummary & { sent?: boolean; labelledAt?: Partial<Record<ErasedLabel, string>> };
 
 /** How many of the messages a reply names are looked up, newest first, to find its thread. */
 const answersLookedUp = 100;
@@ -177,17 +187,16 @@ interface StoredMessage {
 
 /**
  * Stores the message in the thread of the first message it answers that the mailbox has, in the
- * order of ParsedMail's answers, and gives the thread the Inbox label, or as a new thread with the
- * label its screening gives, the Inbox without one. Spam is kept apart instead: it starts its own
- * thread with the Spam label, and no reply joins that thread. Records its arrival in the mailbox's
- * change feed, naming no actor. Returns false if the mailbox already has it, and throws
- * ScreeningChanged if a condition of its screening failed.
+ * order of ParsedMail's answers, or as a new thread, with the label its screening gives either,
+ * the Inbox without one. Spam is kept apart instead: it starts its own thread with the Spam label,
+ * and no reply joins that thread. Records its arrival in the mailbox's change feed, naming no
+ * actor. Returns false if the mailbox already has it, and throws ScreeningChanged if a condition
+ * of its screening failed.
  */
 export async function receiveMessage(table: Table, arrival: Arrival): Promise<boolean> {
-  const { mailbox, sesMessageId, rawKey, recipient, plusTag, group, sender, receivedAt, parsed, screening } = arrival;
-  const started = screening?.label ?? inbox;
-  const label = (joined: boolean) => (arrival.spam ? spam : joined ? inbox : started);
-  const screened = { [screener]: "waiting", [trash]: "blocked", [inbox]: undefined }[started];
+  const { mailbox, sesMessageId, rawKey, recipient, plusTag, group, sender, receivedAt, parsed } = arrival;
+  const screening = arrival.spam ? undefined : arrival.screening;
+  const label = (joined: boolean) => (arrival.spam ? spam : ((joined ? screening?.joined : screening?.label) ?? inbox));
   const { Item: received } = await documents(table).send(new GetCommand({ TableName: table.name, Key: receivedKey(mailbox, sesMessageId), ConsistentRead: true }));
   if (received !== undefined) return false;
 
@@ -213,7 +222,8 @@ export async function receiveMessage(table: Table, arrival: Arrival): Promise<bo
     text: parsed.text,
     thread: async () => (arrival.spam ? undefined : threadAnswered(table, mailbox, parsed.answers)),
     label,
-    unread: true,
+    // Mail makes its thread unread, unless the thread lies only in the Feed or the Paper Trail, which are read as they come.
+    unread: (labels) => labels.includes(inbox) || !labels.some((label) => label === feed || label === paperTrail),
     findable: !arrival.spam,
     by: undefined,
     change: (thread, joined) => ({
@@ -221,12 +231,37 @@ export async function receiveMessage(table: Table, arrival: Arrival): Promise<bo
       thread,
       message: message.id,
       ...(arrival.spam ? { spam: true } : {}),
-      ...(!arrival.spam && !joined && screened !== undefined && { screened }),
+      ...(!joined && screening?.screened !== undefined && { screened: screening.screened }),
+      ...(screening?.delivered !== undefined && { delivered: screening.delivered }),
     }),
     once: () => ({ Put: { TableName: table.name, Item: receivedKey(mailbox, sesMessageId), ...isNew } }),
-    checks: arrival.spam ? [] : (screening?.items ?? []),
-    trashedByBlock: !arrival.spam && started === trash,
+    checks: screening?.items ?? [],
   });
+}
+
+/**
+ * Drops the message from the address, whose mail goes nowhere, keeping none of it, and records
+ * the drop in the mailbox's change feed, naming no actor, in one transaction with the checks.
+ * Returns false if the mailbox already dropped or stored it, and throws ScreeningChanged if a
+ * check's condition failed.
+ */
+export async function dropMessage(table: Table, { mailbox, sesMessageId, address, checks }: { mailbox: string; sesMessageId: string; address: string; checks: TransactItem[] }): Promise<boolean> {
+  const { Item: received } = await documents(table).send(new GetCommand({ TableName: table.name, Key: receivedKey(mailbox, sesMessageId), ConsistentRead: true }));
+  if (received !== undefined) return false;
+  try {
+    await recordChanges(table, mailboxFeed(mailbox), {
+      by: undefined,
+      changes: [{ type: "messageDropped", address }],
+      items: [{ Put: { TableName: table.name, Item: droppedKey(mailbox, sesMessageId), ...isNew } }, ...checks],
+    });
+    return true;
+  } catch (error) {
+    // recordChanges gives the items' cancellation reasons after the counter's and the one change's.
+    const reasons = error instanceof TransactionCanceledException ? (error.CancellationReasons ?? []) : [];
+    if (reasons[2]?.Code === "ConditionalCheckFailed") return false;
+    if (reasons.slice(3).some((reason) => reason.Code === "ConditionalCheckFailed")) throw new ScreeningChanged();
+    throw error;
+  }
 }
 
 /**
@@ -301,20 +336,19 @@ export async function sentFromMailbox(table: Table, mailbox: string, messageId: 
  * gives for either if it gives one, in one transaction with the write `once` gives for the thread,
  * the checks, and the change in the mailbox's change feed. If `findable`, its Message-ID points at
  * it, so replies to it join its thread. If `unread` is given, the thread becomes unread or read. If
- * `sent`, Sent lists the thread from then on. If `trashedByBlock`, a new thread is marked as put in
- * Trash by a block. If the message is the thread's newest, its text gives the thread's snippet. `also`
+ * `sent`, Sent lists the thread from then on. If the message is the thread's newest, its text gives the thread's snippet. `also`
  * gives unconditional writes that go with it. Returns false if that write's condition failed, since then the
  * message is already stored, and throws ScreeningChanged if a check's did.
  */
 async function storeMessage(
   table: Table,
-  { mailbox, message, text, thread: find, label: labelFor, unread, findable, sent, by, change, once, also = [], checks = [], trashedByBlock }: {
+  { mailbox, message, text, thread: find, label: labelFor, unread, findable, sent, by, change, once, also = [], checks = [] }: {
     mailbox: string;
     message: StoredMessage;
     text: string;
     thread: () => Promise<StoredSummary | undefined>;
     label?: (joined: boolean) => string;
-    unread?: boolean;
+    unread?: boolean | ((labels: string[]) => boolean);
     findable: boolean;
     sent?: boolean;
     by: string | undefined;
@@ -322,7 +356,6 @@ async function storeMessage(
     once: (thread: string) => TransactItem;
     also?: TransactItem[];
     checks?: TransactItem[];
-    trashedByBlock?: boolean;
   },
 ): Promise<boolean> {
   const { id, receivedAt } = message;
@@ -347,24 +380,24 @@ async function storeMessage(
             ...(message.logo !== undefined && { logo: message.logo }),
             snippet: snippetOf(text),
             labels: label === undefined ? [] : [label],
-            unread: unread ?? false,
+            unread: false,
             latestAt: receivedAt,
             messages: 1,
             ...(groups !== undefined && { groups }),
             ...(sent && { sent }),
-            ...(trashedByBlock && { trashedByBlock }),
           }
         : {
             ...joined,
             snippet: newest ? snippetOf(text) : joined.snippet,
-            // New mail brings a thread back to the Inbox, unless it is in Spam or Trash or waits in the Screener.
-            labels: label === undefined || joined.labels.includes(label) || hidden(joined) ? joined.labels : [...joined.labels, label],
-            unread: unread ?? joined.unread,
+            // New mail brings a thread back to where it goes, unless it is in Spam or Trash, waits in the Screener or lies somewhere already.
+            labels: label === undefined || joined.labels.includes(label) || hidden(joined) || (places.includes(label) && joined.labels.some((each) => places.includes(each))) ? joined.labels : [...joined.labels, label],
+            unread: joined.unread,
             latestAt: newest ? receivedAt : joined.latestAt,
             messages: joined.messages + 1,
             ...(groups !== undefined && { groups }),
             ...((sent || joined.sent) && { sent: true }),
           };
+    summary.unread = typeof unread === "function" ? unread(summary.labels) : (unread ?? summary.unread);
     timeErasedLabels(joined, summary);
     // New mail brings a thread set aside back early.
     const early = joined?.reminder !== undefined && label !== undefined;
@@ -428,7 +461,8 @@ export function markThreads(
 /**
  * Adds and removes the labels on each thread, with the built-in labels' rules: Spam and Trash
  * each take a thread out of the Inbox, removing one puts it back unless it has the other, waits in
- * the Screener or the Inbox is removed too, and the Inbox takes it out of all three. Records a change in the mailbox's change feed attributed to the actor
+ * the Screener, lies in the Feed or the Paper Trail, or the Inbox is removed too, the Inbox takes it
+ * out of all three, and the Inbox, the Feed and the Paper Trail each take it out of the others. Records a change in the mailbox's change feed attributed to the actor
  * `by` for each thread whose labels change, and returns the threads as they are now, in the order
  * given. Returns the IDs the mailbox has no thread for instead, and labels none, if there are any.
  */
@@ -524,10 +558,16 @@ const toTheSecond = (at: Date) => new Date(Math.floor(at.getTime() / 1000) * 100
 
 /** The labels after adding and removing those given, with the built-in labels' rules. */
 function relabelled(labels: string[], add: string[], remove: string[]): string[] {
-  const out = new Set([...remove, ...(add.includes(inbox) ? [spam, trash, screener] : []), ...(add.includes(spam) || add.includes(trash) ? [inbox] : [])]);
+  const placed = places.filter((place) => add.includes(place));
+  const out = new Set([
+    ...remove,
+    ...(add.includes(inbox) ? [spam, trash, screener] : []),
+    ...(placed.length > 0 ? places.filter((place) => !placed.includes(place)) : []),
+    ...(add.includes(spam) || add.includes(trash) ? [inbox] : []),
+  ]);
   const next = [...labels.filter((label) => !out.has(label)), ...add.filter((label) => !labels.includes(label))];
   const restored = labels.some((label) => (label === spam || label === trash) && !next.includes(label));
-  return restored && !remove.includes(inbox) && ![spam, trash, screener, inbox].some((label) => next.includes(label)) ? [...next, inbox] : [...new Set(next)];
+  return restored && !remove.includes(inbox) && ![spam, trash, screener, ...places].some((label) => next.includes(label)) ? [...next, inbox] : [...new Set(next)];
 }
 
 /**
@@ -554,8 +594,6 @@ async function changeThreads(
       if (next === undefined) break;
       const changes = [next.change].flat();
       timeErasedLabels(current, next.summary);
-      // Out of Trash, a thread is no longer there by a block, so trashed again it is there by hand.
-      if (!next.summary.labels.includes(trash)) delete next.summary.trashedByBlock;
       if (!next.summary.labels.includes(inbox)) delete next.summary.back;
       if (next.summary.reminder !== undefined && [inbox, spam, trash].some((label) => next.summary.labels.includes(label))) {
         delete next.summary.reminder;
@@ -587,25 +625,38 @@ async function changeThreads(
   return { threads: changed.map(summaryOf) };
 }
 
-/** A listing a thread can be in: one of its labels, Sent if the mailbox sent in it, All mail, or Remind me while it is set aside. */
-type Listing = `label#${string}` | "sent" | "all" | typeof reminders;
+/**
+ * A listing a thread can be in: one of its labels, Sent if the mailbox sent in it, All mail, Remind
+ * me while it is set aside, or the threads from an address or from everyone at a domain, by the
+ * thread's first message, in lower case.
+ */
+type Listing = `label#${string}` | "sent" | "all" | typeof reminders | `from#${string}` | `from-domain#${string}`;
 
 /** The listing of the threads set aside in Remind me, soonest back first. */
 const reminders = "reminders";
+
+/** The listing of the threads from the address, or from everyone at exactly the domain. */
+export const fromListing = (sender: { address: string } | { domain: string }): Listing => ("address" in sender ? `from#${sender.address}` : `from-domain#${sender.domain}`);
 
 /** Whether the thread is in Spam or Trash, or waits in the Screener, which leaves it out of every listing but those. */
 const hidden = ({ labels }: ThreadSummary) => labels.includes(spam) || labels.includes(trash) || labels.includes(screener);
 
 /**
  * The listings the thread is in: each of its labels, Sent if the mailbox sent in it, All mail
- * unless it is in Spam or Trash or waits in the Screener, and Remind me while it is set aside.
+ * unless it is in Spam or Trash or waits in the Screener, Remind me while it is set aside, and
+ * those of the address and the domain it is from.
  */
-export const listingsOf = (summary: StoredSummary): Listing[] => [
-  ...summary.labels.map((label) => `label#${label}` as const),
-  ...(summary.sent ? (["sent"] as const) : []),
-  ...(hidden(summary) ? [] : (["all"] as const)),
-  ...(summary.reminder === undefined ? [] : ([reminders] as const)),
-];
+export const listingsOf = (summary: StoredSummary): Listing[] => {
+  const address = summary.from.address.toLowerCase();
+  return [
+    ...summary.labels.map((label) => `label#${label}` as const),
+    ...(summary.sent ? (["sent"] as const) : []),
+    ...(hidden(summary) ? [] : (["all"] as const)),
+    ...(summary.reminder === undefined ? [] : ([reminders] as const)),
+    fromListing({ address }),
+    fromListing({ domain: address.slice(address.lastIndexOf("@") + 1) }),
+  ];
+};
 
 /**
  * The writes that move the thread's entries in its listings from how it was to how it is: an entry
@@ -702,7 +753,6 @@ export async function threadSummary(table: Table, mailbox: string, thread: strin
     ...summaryOf(Item as ThreadSummary),
     ...(Item.sent === true && { sent: true }),
     ...(Item.labelledAt !== undefined && { labelledAt: Item.labelledAt }),
-    ...(Item.trashedByBlock === true && { trashedByBlock: true }),
   };
 }
 
@@ -991,7 +1041,13 @@ export async function hasSentTo(table: Table, mailbox: string, address: string):
 export const waitingThreads = (table: Table, mailbox: string) => threadsLabelled(table, mailbox, screener);
 
 /** Every thread with the label, newest first, those in Spam and Trash and waiting in the Screener too. */
-export async function threadsLabelled(table: Table, mailbox: string, label: string): Promise<ThreadSummary[]> {
+export const threadsLabelled = (table: Table, mailbox: string, label: string) => everyThreadIn(table, mailbox, `label#${label}`);
+
+/** Every thread from the address, or from everyone at exactly the domain, newest first, those in Spam and Trash and waiting in the Screener too. */
+export const threadsFrom = (table: Table, mailbox: string, sender: { address: string } | { domain: string }) => everyThreadIn(table, mailbox, fromListing(sender));
+
+/** Every thread in the listing, newest first, those it leaves out of a page too. */
+async function everyThreadIn(table: Table, mailbox: string, listing: Listing): Promise<ThreadSummary[]> {
   const threads: ThreadSummary[] = [];
   let start: Record<string, unknown> | undefined;
   do {
@@ -999,7 +1055,7 @@ export async function threadsLabelled(table: Table, mailbox: string, label: stri
       new QueryCommand({
         TableName: table.name,
         KeyConditionExpression: `${pk} = :listing`,
-        ExpressionAttributeValues: { ":listing": listingKey(mailbox, `label#${label}`, "", "")[pk] },
+        ExpressionAttributeValues: { ":listing": listingKey(mailbox, listing, "", "")[pk] },
         ScanIndexForward: false,
         ConsistentRead: true,
         ExclusiveStartKey: start,
@@ -1012,40 +1068,29 @@ export async function threadsLabelled(table: Table, mailbox: string, label: stri
 }
 
 /**
- * Takes each waiting thread out of the Screener, to the Inbox unless it is in Spam or Trash, or to
- * Trash, marked as put there by a block unless it was there already, with a change in the
- * mailbox's change feed attributed to the actor `by` for each, and returns the threads as they
- * are now, in the order given. A thread erased meanwhile is left out.
+ * Moves each thread from where its sender's mail went to `to`, the label where it goes now: one
+ * waiting in the Screener, or with the label `from` unless that is undefined, as for mail that went
+ * nowhere. A thread in Spam or Trash only leaves the Screener, and every other label stays. Records
+ * a change in the mailbox's change feed attributed to the actor `by` for each, and returns the
+ * threads moved as they are now, in the order given. A thread erased meanwhile is left out.
  */
-export async function releaseWaiting(table: Table, { mailbox, threads, to, by }: { mailbox: string; threads: string[]; to: typeof inbox | typeof trash; by: string }): Promise<ThreadSummary[]> {
-  const found = (await Promise.all(threads.map((thread) => threadSummary(table, mailbox, thread)))).filter((summary) => summary !== undefined);
-  const released = await changeThreads(table, { mailbox, threads: found.map(({ id }) => id), by }, (current) => {
-    if (!current.labels.includes(screener)) return undefined;
-    const kept = current.labels.filter((label) => label !== screener);
-    const labels = to === trash ? relabelled(kept, [trash], []) : kept.includes(spam) || kept.includes(trash) ? kept : [...kept, inbox];
+export async function moveDelivered(
+  table: Table,
+  { mailbox, threads, from, to, by }: { mailbox: string; threads: string[]; from: string | undefined; to: string; by: string },
+): Promise<ThreadSummary[]> {
+  const waits = (summary: ThreadSummary) => summary.labels.includes(screener);
+  const thrown = (summary: ThreadSummary) => summary.labels.includes(spam) || summary.labels.includes(trash);
+  const moves = (summary: ThreadSummary | undefined): summary is StoredSummary => summary !== undefined && (waits(summary) || (from !== undefined && summary.labels.includes(from) && !thrown(summary)));
+  const found = (await Promise.all(threads.map((thread) => threadSummary(table, mailbox, thread)))).filter(moves);
+  const moved = await changeThreads(table, { mailbox, threads: found.map(({ id }) => id), by }, (current) => {
+    if (!moves(current)) return undefined;
+    const kept = current.labels.filter((label) => label !== screener && (thrown(current) || label !== from));
+    const labels = thrown(current) || kept.includes(to) ? kept : [...kept, to];
     const added = labels.filter((label) => !current.labels.includes(label));
     const removed = current.labels.filter((label) => !labels.includes(label));
-    return { summary: { ...current, labels, ...(added.includes(trash) && { trashedByBlock: true }) }, change: { type: "threadLabelsChanged", thread: current.id, added, removed } };
+    return { summary: { ...current, labels }, change: { type: "threadLabelsChanged", thread: current.id, added, removed } };
   });
-  return "threads" in released ? released.threads : [];
-}
-
-/**
- * Takes each thread a block put in Trash out of it, back to the Inbox as removing the label does,
- * with a change in the mailbox's change feed attributed to the actor `by` for each, and returns
- * those threads as they are now, in the order given. A thread erased meanwhile, or in Trash by
- * hand, is left out.
- */
-export async function restoreBlocked(table: Table, { mailbox, threads, by }: { mailbox: string; threads: string[]; by: string }): Promise<ThreadSummary[]> {
-  const blocked = (summary: StoredSummary | undefined): summary is StoredSummary => summary !== undefined && summary.labels.includes(trash) && summary.trashedByBlock === true;
-  const found = (await Promise.all(threads.map((thread) => threadSummary(table, mailbox, thread)))).filter(blocked);
-  const restored = await changeThreads(table, { mailbox, threads: found.map(({ id }) => id), by }, (current) => {
-    if (!blocked(current)) return undefined;
-    const labels = relabelled(current.labels, [], [trash]);
-    const added = labels.filter((label) => !current.labels.includes(label));
-    return { summary: { ...current, labels }, change: { type: "threadLabelsChanged", thread: current.id, added, removed: [trash] } };
-  });
-  return "threads" in restored ? restored.threads : [];
+  return "threads" in moved ? moved.threads : [];
 }
 
 /**
@@ -1156,4 +1201,48 @@ export async function receivedFrom(table: Table, mailbox: string, from: (address
     start = page.LastEvaluatedKey;
   } while (start !== undefined);
   return found.sort((a, b) => b.receivedAt.localeCompare(a.receivedAt));
+}
+
+/** Whether any of the mailboxes has the message with the ID SES gave it. */
+export async function receivedByAny(table: Table, mailboxes: string[], sesMessageId: string): Promise<boolean> {
+  for (let index = 0; index < mailboxes.length; index += 100) {
+    let wanted: Record<string, unknown>[] | undefined = mailboxes.slice(index, index + 100).map((mailbox) => receivedKey(mailbox, sesMessageId));
+    while (wanted !== undefined && wanted.length > 0) {
+      const read: BatchGetCommandOutput = await documents(table).send(new BatchGetCommand({ RequestItems: { [table.name]: { Keys: wanted, ConsistentRead: true } } }));
+      if ((read.Responses?.[table.name] ?? []).length > 0) return true;
+      wanted = read.UnprocessedKeys?.[table.name]?.Keys;
+    }
+  }
+  return false;
+}
+
+/**
+ * Lists each of the mailbox's threads by the address and the domain it is from, as threads stored
+ * before those listings existed aren't, each on condition that it is still as read. A thread changed
+ * meanwhile was listed by that change.
+ */
+export async function listBySender(table: Table, mailbox: string): Promise<void> {
+  // Every thread is in All mail, or else in Spam, Trash or the Screener.
+  const seen = new Set<string>();
+  for (const listing of ["all", `label#${spam}`, `label#${trash}`, `label#${screener}`] as const) {
+    for (const { id } of await everyThreadIn(table, mailbox, listing)) {
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const summary = await threadSummary(table, mailbox, id);
+      if (summary === undefined) continue;
+      const bySender = listingsOf(summary).filter((each) => each.startsWith("from"));
+      await documents(table)
+        .send(
+          new TransactWriteCommand({
+            TransactItems: [
+              { ConditionCheck: { TableName: table.name, Key: threadKey(mailbox, id), ...asRead(summary) } },
+              ...bySender.map((each) => ({ Put: { TableName: table.name, Item: { ...entryIn(mailbox, each, summary), ...summary } } })),
+            ],
+          }),
+        )
+        .catch((error: unknown) => {
+          if (!(error instanceof TransactionCanceledException)) throw error;
+        });
+    }
+  }
 }

@@ -24,7 +24,7 @@ export const setupChanges = new Set<OrganizationChange["type"]>(["setupAsked", "
 export const mailChanges = new Set<Change["type"]>(["messageReceived", "messageSent", "threadRead", "threadUnread", "threadLabelsChanged", "reminderSet", "reminderCancelled", "threadBack", "threadErased"]);
 
 /** The changes to a mailbox's Screener: its decisions on senders, and switching it. */
-export const screenerChanges = new Set<Change["type"]>(["senderScreened", "screenedSenderRemoved", "screenerSwitched"]);
+export const screenerChanges = new Set<Change["type"]>(["senderScreened", "screenedSenderRemoved", "senderDeliverySet", "senderDeliveryRemoved", "screenerSwitched"]);
 
 /** The changes to a mailbox's own labels. */
 export const labelChanges = new Set<Change["type"]>(["labelCreated", "labelRenamed", "labelDeleted"]);

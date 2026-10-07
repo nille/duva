@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AddressInfo } from "node:net";
 import { randomUUID, X509Certificate } from "node:crypto";
-import { CreateTableCommand, DeleteItemCommand, ScanCommand } from "@aws-sdk/client-dynamodb";
+import { CreateTableCommand, DeleteItemCommand, PutItemCommand, ScanCommand } from "@aws-sdk/client-dynamodb";
 import type { ReceiptRule } from "@aws-sdk/client-ses";
 import type { SESEvent, SNSEvent } from "aws-lambda";
 import PostalMime from "postal-mime";
@@ -38,7 +38,7 @@ import type { MailBucket } from "../src/mail-bucket.ts";
 import { keys, timeEarlierLabels } from "../src/mail.ts";
 import { addHumanToOrganization, organizationSettings, screenerKey, settingsKey, setUpOrganization } from "../src/organization.ts";
 import type { SendEvent } from "../src/limits.ts";
-import { setUpScreeners } from "../src/screening.ts";
+import { setUpDeliveries, setUpScreeners } from "../src/screening.ts";
 import type { ReminderDue } from "../src/reminders.ts";
 import { createSender } from "../src/sending.ts";
 import type { SuppressionReason } from "../src/suppression.ts";
@@ -93,6 +93,11 @@ export interface DuvaOptions {
    * its mailboxes have no Screener, and what they send isn't noted for it.
    */
   beforeScreener?: boolean;
+  /**
+   * Whether the deployment runs a version from before deliveries until setUp() deploys this one:
+   * its mailboxes let senders in or block them, and list no thread by whom it is from.
+   */
+  beforeDeliveries?: boolean;
   /** Whether the indexer reads its queue only at releaseIndexing(), as when Lambda falls behind. */
   indexingHeld?: boolean;
   /**
@@ -235,6 +240,7 @@ export async function startDuva({
   downloadLinkLifetime = linkLifetime,
   sendsHeld = false,
   beforeScreener = false,
+  beforeDeliveries = false,
   indexingHeld = false,
   beforeSearch = false,
   beforeApprovalLog = false,
@@ -263,6 +269,8 @@ export async function startDuva({
   let feedback: (event: SNSEvent) => Promise<void> = async () => {};
   const sending = sesSending({ region, verified: identities.verified, sandbox, answersLost: sesAnswersLost, subscriber: (event) => feedback(event) });
   feedback = createFeedback({ table, suppressionList: sending.suppressionList });
+  // The API and the inbound Lambda invoke the unsubscriber Lambda and wait for it, so its answer goes through JSON.
+  const unsubscriber = { post: async (url: string) => JSON.parse(JSON.stringify(await postOneClick(internet.network, url))) };
   // SES invokes the inbound Lambda, which bounces through SES, so the two are tied once both exist.
   let inbound: (event: SESEvent) => Promise<void> = async () => {};
   const ses = sesReceiving({ verified: identities.verified, region, buckets: new Map([[mailBucketName, mailBucket]]), functions: new Map([[inboundFunction, (event) => inbound(event)]]) });
@@ -278,7 +286,7 @@ export async function startDuva({
     roots: [testMarkRoot],
     url: (logo: string) => logoUrl(downloads.url, logo),
   };
-  inbound = createInbound({ table, mailBucket, log: (line) => inboundLog.push(line), outbound: sending.outbound, bounces: ses.bounces, logos });
+  inbound = createInbound({ table, mailBucket, log: (line) => inboundLog.push(line), outbound: sending.outbound, bounces: ses.bounces, logos, unsubscriber });
   const receiving = { rules: ses.rules, bucket: mailBucketName, inboundFunction, suppressionList: sending.suppressionList };
   // Each mailbox's index is a table under the deployment's own directory. The search Lambda and the
   // indexer each open them, as two Lambdas do. Backfill steps are small, so a few messages take several.
@@ -330,8 +338,6 @@ export async function startDuva({
     const { statusCode, headers, body } = await download(new URL(request.url).pathname);
     return new Response(body, { status: statusCode, headers });
   };
-  // The API invokes the unsubscriber Lambda and waits for it, so its answer goes through JSON.
-  const unsubscriber = { post: async (url: string) => JSON.parse(JSON.stringify(await postOneClick(internet.network, url))) };
   const gatewayed = gateway(
     createApi({
       version,
@@ -345,7 +351,11 @@ export async function startDuva({
       receiving,
       downloads,
       unsubscriber,
-      eraser: { emptyTrash: async (emptyTrash) => void handed.push({ emptyTrash }), eraseMailbox: async (eraseMailbox) => void handed.push({ eraseMailbox }) },
+      eraser: {
+        emptyTrash: async (emptyTrash) => void handed.push({ emptyTrash }),
+        eraseMailbox: async (eraseMailbox) => void handed.push({ eraseMailbox }),
+        eraseSender: async (eraseSender) => void handed.push({ eraseSender }),
+      },
       // The API invokes the search Lambda and waits for it, so the search goes through JSON.
       searcher: async (request) => JSON.parse(JSON.stringify(await searcher(JSON.parse(JSON.stringify(request))))),
       indexQueue,
@@ -359,6 +369,7 @@ export async function startDuva({
   // caught up, unless indexing is held, so tests see the outcome.
   let screenerDeployed = !beforeScreener;
   let approvalLogDeployed = !beforeApprovalLog;
+  let deliveriesDeployed = !beforeDeliveries;
   const api = async (request: Request) => {
     if (new URL(request.url).pathname.startsWith("/download/")) return downloaded(request);
     const response = await gatewayed(request);
@@ -368,6 +379,7 @@ export async function startDuva({
     for (let each = handed.shift(); each !== undefined; each = handed.shift()) if (!eraserRunsLost) await eraser(each);
     if (!screenerDeployed) await forgetScreener(table);
     if (!approvalLogDeployed) await forgetApprovalLog(table);
+    if (!deliveriesDeployed) await forgetDeliveries(table);
     if (!indexingHeld) await index();
     return response;
   };
@@ -391,6 +403,7 @@ export async function startDuva({
     },
     async receive(raw, { from, to }, options) {
       const received = await ses.receive(raw, { from: from ?? (await senderOf(raw)), to }, options);
+      if (!deliveriesDeployed) await forgetDeliveries(table);
       if (!indexingHeld) await index();
       return received;
     },
@@ -439,6 +452,8 @@ export async function startDuva({
       await setUp(options);
       await timeEarlierLabels(table);
       screenerDeployed = true;
+      deliveriesDeployed = true;
+      await setUpDeliveries(table);
       await setUpScreeners(table);
       approvalLogDeployed = true;
       await listEarlierDecisions(table);
@@ -633,6 +648,24 @@ async function forgetApprovalLog(table: Table) {
   );
   for (const item of Items) {
     await table.client.send(new DeleteItemCommand({ TableName: table.name, Key: { [tableKey.partitionKey]: item[tableKey.partitionKey]!, [tableKey.sortKey]: item[tableKey.sortKey]! } }));
+  }
+}
+
+/**
+ * Takes away what deliveries added, as a deployment from before them has it: each decision is a
+ * let-in or a block, as the Inbox and nowhere were, and no thread is listed by whom it is from.
+ */
+async function forgetDeliveries(table: Table) {
+  const { Items = [] } = await table.client.send(new ScanCommand({ TableName: table.name }));
+  for (const item of Items) {
+    const [partition, sort] = [item[tableKey.partitionKey]!.S!, item[tableKey.sortKey]!.S!];
+    const Key = { [tableKey.partitionKey]: item[tableKey.partitionKey]!, [tableKey.sortKey]: item[tableKey.sortKey]! };
+    if (/#from(-domain)?#/.test(partition) || sort === "senders-listed") {
+      await table.client.send(new DeleteItemCommand({ TableName: table.name, Key }));
+    } else if (sort.startsWith("screened#") && item.delivery !== undefined) {
+      const { delivery, label, ...rest } = item;
+      await table.client.send(new PutItemCommand({ TableName: table.name, Item: { ...rest, decision: { S: delivery.S === "nowhere" ? "block" : "letIn" } } }));
+    }
   }
 }
 

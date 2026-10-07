@@ -32,7 +32,7 @@ async function withLists(subjects: string[], options: Parameters<typeof startWeb
   const { data: me } = await grace.GET("/whoami");
   const { data: mailbox } = await app.duva.signIn("ada@example.org").POST("/mailboxes", { body: { owner: me!.id, address: "grace@example.com" } });
   const params = { path: { mailbox: mailbox!.id } };
-  await grace.POST("/mailboxes/{mailbox}/screener/let-in", { params, body: { address: "ada@example.org" } });
+  await grace.PUT("/mailboxes/{mailbox}/senders/{sender}", { params: { path: { ...params.path, sender: "ada@example.org" } }, body: { delivery: "inbox" } });
   for (const subject of subjects) await app.duva.receive(note(subject), { to: ["grace@example.com"] });
   await app.duva.receive(note("Hello from Linus", "Linus <linus@example.net>"), { to: ["grace@example.com"] });
   await app.signIn("grace@example.org");
@@ -203,8 +203,7 @@ test("new senders waiting in the Screener show as one row at the top of the Inbo
   await waiting.getByRole("link", { name: "Screen them" }).click();
   await expect.poll(() => heading(page), wait).toBe("Screener");
 
-  await page.getByRole("button", { name: "Let in" }).click();
-  await page.getByRole("button", { name: "This address" }).click();
+  await page.getByRole("group", { name: /^Send mail from/ }).getByRole("button", { name: "Inbox" }).click();
   await go(page, "#/", "Inbox");
   await expect.poll(() => page.getByRole("list", { name: "Threads" }).getByRole("listitem").count(), wait).toBe(2);
   await expect.poll(() => waiting.count(), wait).toBe(0);

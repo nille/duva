@@ -203,7 +203,7 @@ test("the side column holds every view of the mail, Remind me, Sent and Drafts b
   const { page, views, open } = await withThreads(["Kvitto"]);
 
   const names = () => views.getByRole("link").evaluateAll((links) => links.map((link) => link.querySelector(".view-name")?.textContent));
-  await expect.poll(names, wait).toEqual(["Inbox", "Remind me", "Sent", "Drafts", "All mail", "Spam", "Trash"]);
+  await expect.poll(names, wait).toEqual(["Inbox", "Remind me", "Feed", "Paper Trail", "Sent", "Drafts", "All mail", "Spam", "Trash"]);
   expect(await page.getByRole("navigation", { name: "Duva" }).getByRole("link").allInnerTexts()).toEqual(["Mail", "Settings"]);
 
   await open("Sent");

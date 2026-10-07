@@ -28,7 +28,7 @@ export const environmentVariables = {
   inboundFunction: "INBOUND_FUNCTION",
   /** The eraser Lambda, which the API invokes for each Trash emptied. */
   eraserFunction: "ERASER_FUNCTION",
-  /** The unsubscriber Lambda, which the API invokes for each one-click unsubscribe. */
+  /** The unsubscriber Lambda, which the API and the inbound Lambda invoke for each one-click unsubscribe. */
   unsubscriberFunction: "UNSUBSCRIBER_FUNCTION",
   /** The logo fetcher Lambda, which the inbound Lambda invokes to fetch each sender's logo. */
   logoFetcherFunction: "LOGO_FETCHER_FUNCTION",

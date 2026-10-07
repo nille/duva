@@ -1925,7 +1925,7 @@ paths:
       operationId: listLabels
       summary: List a mailbox's labels, with how many unread threads each has.
       description: >
-        Lists the built-in labels inbox, spam and trash first, then the
+        Lists the built-in labels inbox, feed, paperTrail, spam and trash first, then the
         mailbox's own labels by name. Only those who can read the mailbox can
         list its labels.
       x-cli-command: labels list
@@ -2021,7 +2021,8 @@ paths:
       summary: Delete one of a mailbox's own labels.
       description: >
         Removes the label from each of its threads, each with a change in the
-        mailbox's change feed, and then deletes it. The threads stay. The
+        mailbox's change feed, and then deletes it. The threads stay. Senders
+        whose mail was filed under it go to the Inbox from then on. The
         built-in labels can't be deleted. If deleting stops partway, delete
         the label again to finish. Only the mailbox's owner, for an agent's mailbox its sponsor, and
         for a human's mailbox the agents they give organize sponsor access or more can delete its labels.
@@ -2083,7 +2084,9 @@ paths:
         Lists each sender whose mail waits, newest first, with their waiting
         threads, newest first. Mail waiting in the Screener is in no other
         listing and no unread count. Says whether the Screener is on, and how
-        many senders the mailbox has let in and blocked. Only those who can
+        many senders the mailbox has decided where mail goes for. Deciding
+        where a waiting sender's mail goes takes their threads out of it.
+        Only those who can
         read the mailbox can read its Screener.
       x-cli-command: screener get
       parameters:
@@ -2106,8 +2109,9 @@ paths:
       summary: Switch a mailbox's Screener on or off.
       description: >
         Turning it off moves every waiting thread to the Inbox. Turning it on
-        lets in every address mail in the mailbox is from, except mail in
-        Spam, so no sender the mailbox already has waits. A human's mailbox
+        decides the Inbox for every address mail in the mailbox is from,
+        except mail in Spam and addresses at a domain decided on, so no
+        sender the mailbox already has waits. A human's mailbox
         starts with it on, an agent's with it off. Switching is recorded in
         the mailbox's change feed under you. Only the mailbox's owner, and
         an agent's sponsor for its agent's mailbox, can switch it.
@@ -2135,97 +2139,14 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
-  /mailboxes/{mailbox}/screener/let-in:
-    post:
-      operationId: letInSender
-      summary: Let a sender into a mailbox, moving their waiting threads to the Inbox.
-      description: >
-        Give an address, or a domain to let in everyone there. A domain covers
-        exactly that domain, not its subdomains, and can't be a public mail
-        provider's, like gmail.com. An address's decision beats its domain's.
-        Their later mail skips the Screener, even while it is off. Letting in
-        a sender the mailbox blocked replaces the block and moves their
-        threads still in Trash to the Inbox. The decision and each thread it
-        moves are recorded in the mailbox's change feed under you. Only the mailbox's owner, for an agent's mailbox its sponsor, and
-        for a human's mailbox the agents they give organize sponsor access or more can
-        decide.
-      x-cli-command: screener let-in
-      parameters:
-        - $ref: "#/components/parameters/Mailbox"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/SenderToScreen"
-      responses:
-        "200":
-          description: The decision, with the threads it moved.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ScreeningDecision"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-  /mailboxes/{mailbox}/screener/block:
-    post:
-      operationId: blockSender
-      summary: Block a sender in a mailbox, moving their waiting threads to Trash.
-      description: >
-        Give an address, or a domain to block everyone there. A domain covers
-        exactly that domain, not its subdomains, and can't be a public mail
-        provider's, like gmail.com. An address's decision beats its domain's.
-        Their later mail that starts a thread goes straight to Trash, even
-        while the Screener is off. Trash is erased after the organization's
-        retention period, counted from when a thread got it. Blocking a
-        sender the mailbox let in replaces that. Blocking also
-        unsubscribes the mailbox from the sender's mail by one-click (RFC
-        8058), when their newest mail that SES didn't judge to be spam offers
-        it and a DKIM signature that passed covers its unsubscribe headers.
-        For a domain, that is the newest mail from an address there that the
-        mailbox hasn't let in. Duva never unsubscribes by mailto or by a link
-        in the body. The decision, each thread it moves and the unsubscribe's
-        outcome are recorded in the mailbox's change feed under you. Only the
-        mailbox's owner, for an agent's mailbox its sponsor, and for a human's
-        mailbox the agents they give organize sponsor access or more can decide.
-      x-cli-command: screener block
-      parameters:
-        - $ref: "#/components/parameters/Mailbox"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/SenderToScreen"
-      responses:
-        "200":
-          description: The decision, with the threads it moved.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ScreeningDecision"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-  /mailboxes/{mailbox}/screener/senders:
+  /mailboxes/{mailbox}/senders:
     get:
-      operationId: listScreenedSenders
-      summary: List the senders a mailbox has let in or blocked.
+      operationId: listSenders
+      summary: List the senders a mailbox has decided where mail goes for.
       description: >
-        Each address and domain, with its decision, when it was made and by
+        Each address and domain, with its delivery, when it was set and by
         whom, newest first. Only those who can read the mailbox can list them.
-      x-cli-command: screener senders
+      x-cli-command: senders list
       parameters:
         - $ref: "#/components/parameters/Mailbox"
       responses:
@@ -2241,28 +2162,101 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
-  /mailboxes/{mailbox}/screener/senders/{sender}:
+  /mailboxes/{mailbox}/senders/{sender}:
+    get:
+      operationId: getSender
+      summary: Read a sender's sheet in a mailbox, with where their mail goes now.
+      description: >
+        Says how many threads the mailbox has from them, Spam and Trash
+        included, their name as their newest thread gives it, where their
+        new mail goes now, and the decision that sends it there: the
+        mailbox's on their address, or else on their domain. Only those who
+        can read the mailbox can read it.
+      x-cli-command: senders get
+      parameters:
+        - $ref: "#/components/parameters/Mailbox"
+        - $ref: "#/components/parameters/Sender"
+      responses:
+        "200":
+          description: The sender's sheet.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SenderSheet"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      operationId: setSenderDelivery
+      summary: Decide where a sender's mail goes in a mailbox, for their mail there and their later mail.
+      description: >
+        inbox puts their mail in the Inbox. feed and paperTrail file it in the
+        Feed or the Paper Trail instead, read. label files it under the
+        mailbox's own label you give, unread, instead of the Inbox. nowhere
+        drops their later mail on arrival, keeping none of it, and erases
+        their threads in the mailbox, Spam and Trash included, for good.
+        Removing nowhere later brings none of it back. Their threads where
+        their mail went before, or waiting in the Screener, move to where it
+        goes now, and keep the labels given by hand. Their later mail skips
+        the Screener, even while it is off. A domain covers exactly that
+        domain, not its subdomains, and can't be a public mail provider's,
+        like gmail.com. An address's decision beats its domain's. Setting
+        nowhere also unsubscribes the mailbox from the sender's mail by
+        one-click (RFC 8058), when their newest mail that SES didn't judge to
+        be spam offers it and a DKIM signature that passed covers its
+        unsubscribe headers, and each message dropped later tries the same.
+        Duva never unsubscribes by mailto or by a link in the body. The
+        decision, each thread it moves or erases and the unsubscribe's
+        outcome are recorded in the mailbox's change feed under you. Only the
+        mailbox's owner, for an agent's mailbox its sponsor, and for a
+        human's mailbox the agents they give organize sponsor access or more
+        can decide, and only the owner or the sponsor can choose nowhere.
+      x-cli-command: senders set
+      parameters:
+        - $ref: "#/components/parameters/Mailbox"
+        - $ref: "#/components/parameters/Sender"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SenderDelivery"
+      responses:
+        "200":
+          description: The decision, with the threads it moved.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScreeningDecision"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
     delete:
-      operationId: removeScreenedSender
+      operationId: removeSenderDelivery
       summary: Remove a mailbox's decision on a sender, so they are first-time again.
       description: >
         Their later mail waits in the Screener again, unless the mailbox has
-        written to them, or a decision on their domain covers them. Removing
-        a block moves their threads still in Trash to the Inbox. To flip a
-        decision instead, let them in or block them. The removal and each
-        thread it moves are recorded in the mailbox's change feed under you.
-        Only the mailbox's owner, for an agent's mailbox its sponsor, and for
-        a human's mailbox the agents they give organize sponsor access or more can remove
-        decisions.
-      x-cli-command: screener remove
+        written to them, or a decision on their domain covers them. Their
+        threads where their mail went move to where it goes now, the Inbox
+        unless their domain's decision says otherwise. Mail nowhere dropped
+        doesn't come back. The removal and each thread it moves are recorded
+        in the mailbox's change feed under you. Only the mailbox's owner, for
+        an agent's mailbox its sponsor, and for a human's mailbox the agents
+        they give organize sponsor access or more can remove decisions.
+      x-cli-command: senders remove
       parameters:
         - $ref: "#/components/parameters/Mailbox"
-        - name: sender
-          in: path
-          required: true
-          description: The address or the domain, as the mailbox decided on it. Case doesn't matter.
-          schema:
-            type: string
+        - $ref: "#/components/parameters/Sender"
       responses:
         "200":
           description: The decision removed, with the threads it moved.
@@ -2892,6 +2886,16 @@ paths:
           $ref: "#/components/responses/Conflict"
 components:
   parameters:
+    Sender:
+      name: sender
+      in: path
+      required: true
+      description: >
+        The sender's address, like grace@example.org, or a domain, like
+        example.org, for everyone at exactly that domain. Case doesn't
+        matter.
+      schema:
+        type: string
     Mailbox:
       name: mailbox
       in: path
@@ -3939,6 +3943,9 @@ components:
         - $ref: "#/components/schemas/ScreenerSwitched"
         - $ref: "#/components/schemas/ScreenedSenderRemoved"
         - $ref: "#/components/schemas/UnsubscribeAttempted"
+        - $ref: "#/components/schemas/SenderDeliverySet"
+        - $ref: "#/components/schemas/SenderDeliveryRemoved"
+        - $ref: "#/components/schemas/MessageDropped"
       discriminator:
         propertyName: type
         mapping:
@@ -3974,6 +3981,9 @@ components:
           screenerSwitched: "#/components/schemas/ScreenerSwitched"
           screenedSenderRemoved: "#/components/schemas/ScreenedSenderRemoved"
           unsubscribeAttempted: "#/components/schemas/UnsubscribeAttempted"
+          senderDeliverySet: "#/components/schemas/SenderDeliverySet"
+          senderDeliveryRemoved: "#/components/schemas/SenderDeliveryRemoved"
+          messageDropped: "#/components/schemas/MessageDropped"
     MessageReceived:
       type: object
       additionalProperties: false
@@ -4006,8 +4016,11 @@ components:
           description: >
             Present when the mail started a thread that skipped the Inbox:
             waiting when its sender is first-time, so it waits in the
-            Screener, and blocked when the mailbox blocked its sender, so it
-            went to Trash.
+            Screener, and blocked when the mailbox had blocked its sender,
+            before deliveries existed, so it went to Trash.
+        delivered:
+          $ref: "#/components/schemas/Delivery"
+          description: Present when its sender's delivery filed it outside the Inbox, in the Feed, the Paper Trail or a label.
     DraftWritten:
       allOf:
         - $ref: "#/components/schemas/ChangeBase"
@@ -4492,8 +4505,8 @@ components:
     Screener:
       type: object
       additionalProperties: false
-      required: [on, senders, letIn, blocked]
-      description: Where mail from a mailbox's first-time senders waits until an actor lets the sender in or blocks them.
+      required: [on, senders, decided]
+      description: Where mail from a mailbox's first-time senders waits until an actor decides where their mail goes.
       properties:
         "on":
           type: boolean
@@ -4503,14 +4516,10 @@ components:
           description: The senders whose mail waits, newest first.
           items:
             $ref: "#/components/schemas/WaitingSender"
-        letIn:
+        decided:
           type: integer
-          description: How many addresses and domains the mailbox has let in.
+          description: How many addresses and domains the mailbox has decided where mail goes for.
           examples: [42]
-        blocked:
-          type: integer
-          description: How many addresses and domains the mailbox has blocked.
-          examples: [3]
     WaitingSender:
       type: object
       additionalProperties: false
@@ -4542,27 +4551,21 @@ components:
         "on":
           type: boolean
           description: True to switch the Screener on, false to switch it off.
-    SenderToScreen:
+    SenderDelivery:
       type: object
       additionalProperties: false
-      description: An address or a domain. Give one of them.
+      required: [delivery]
       properties:
-        address:
+        delivery:
+          $ref: "#/components/schemas/Delivery"
+        label:
           type: string
-          description: The sender's email address. Case doesn't matter.
-          examples: ["grace@example.org"]
-        domain:
-          type: string
-          description: >
-            The domain, for everyone at exactly that domain, not its
-            subdomains. Case doesn't matter. Public mail providers' domains,
-            like gmail.com, are refused.
-          examples: ["example.org"]
+          description: For label, the ID of the mailbox's own label to file their mail under.
     ScreenedSender:
       type: object
       additionalProperties: false
-      required: [decision, decidedAt]
-      description: An address or a domain a mailbox has let in or blocked. It has one of address and domain.
+      required: [delivery, decidedAt]
+      description: An address or a domain a mailbox has decided where mail goes for. It has one of address and domain.
       properties:
         address:
           type: string
@@ -4572,19 +4575,26 @@ components:
           type: string
           description: The domain, in lower case. It covers exactly that domain, and an address's own decision beats it.
           examples: ["example.org"]
-        decision:
-          $ref: "#/components/schemas/ScreeningDecisionKind"
+        delivery:
+          $ref: "#/components/schemas/Delivery"
+        label:
+          type: string
+          description: For label, the ID of the label their mail is filed under.
         decidedAt:
           type: string
           format: date-time
           description: When it was decided.
         actor:
           type: string
-          description: The ID of the actor who decided, if one did. Switching the Screener on lets in the mailbox's senders under whoever switched it, and setup's under no one.
-    ScreeningDecisionKind:
+          description: The ID of the actor who decided, if one did. Switching the Screener on sends the mailbox's senders' mail to the Inbox under whoever switched it, and setup's under no one.
+    Delivery:
       type: string
-      enum: [letIn, block]
-      description: letIn lets the sender's mail into the Inbox. block sends it to Trash.
+      enum: [inbox, feed, paperTrail, label, nowhere]
+      description: >
+        Where a sender's mail goes. inbox: the Inbox. feed: the Feed, for
+        newsletters, read. paperTrail: the Paper Trail, for receipts and
+        notifications, read. label: a label of the mailbox's own, unread,
+        instead of the Inbox. nowhere: dropped on arrival, keeping none of it.
     ScreeningDecision:
       type: object
       additionalProperties: false
@@ -4597,9 +4607,46 @@ components:
           description: The threads it moved, as they are now, newest first.
           items:
             $ref: "#/components/schemas/ThreadSummary"
+        erasing:
+          type: integer
+          description: For nowhere, how many of the sender's threads are being erased for good.
         unsubscribe:
           $ref: "#/components/schemas/Unsubscribe"
-          description: For a block, how unsubscribing from the sender's mail went.
+          description: For nowhere, how unsubscribing from the sender's mail went.
+    SenderSheet:
+      type: object
+      additionalProperties: false
+      required: [threads, goesTo]
+      description: A sender in a mailbox, an address or a domain. It has one of address and domain.
+      properties:
+        address:
+          type: string
+          description: The sender's address, in lower case.
+          examples: ["grace@example.org"]
+        domain:
+          type: string
+          description: The domain, in lower case.
+          examples: ["example.org"]
+        name:
+          type: string
+          description: For an address, the sender's name as their newest thread gives it, if it gives one.
+          examples: ["Grace Hopper"]
+        threads:
+          type: integer
+          description: How many threads in the mailbox they started, Spam and Trash included. For a domain, everyone's there.
+          examples: [12]
+        goesTo:
+          type: string
+          enum: [screener, inbox, feed, paperTrail, label, nowhere]
+          description: >
+            Where their new mail goes now, as a delivery says, or screener when
+            it waits in the Screener for a first-time sender.
+        label:
+          type: string
+          description: When goesTo is label, the ID of the label.
+        decided:
+          $ref: "#/components/schemas/ScreenedSender"
+          description: The decision that sends their mail where it goes, the mailbox's on their address or else on their domain, if it has one.
     ScreenedSenderList:
       type: object
       additionalProperties: false
@@ -4607,7 +4654,7 @@ components:
       properties:
         senders:
           type: array
-          description: The addresses and domains the mailbox let in or blocked, newest decision first.
+          description: The addresses and domains the mailbox decided on, newest decision first.
           items:
             $ref: "#/components/schemas/ScreenedSender"
     Unsubscribe:
@@ -4648,17 +4695,21 @@ components:
         - $ref: "#/components/schemas/ChangeBase"
         - type: object
           required: [type, outcome]
-          description: Blocking a sender, by address or by domain, tried to unsubscribe the mailbox from their mail.
+          description: >
+            Duva tried to unsubscribe the mailbox from a sender's mail: when an
+            actor chose nowhere for them, by address or by domain, or blocked
+            them before deliveries existed, naming that actor, and when it
+            dropped their message, naming none.
           properties:
             type:
               type: string
               const: unsubscribeAttempted
             address:
               type: string
-              description: The sender's address, in lower case, if the block is on an address.
+              description: The sender's address, in lower case, if the decision is on an address or a message was dropped.
             domain:
               type: string
-              description: The domain, in lower case, if the block is on a domain.
+              description: The domain, in lower case, if the decision is on a domain.
             outcome:
               $ref: "#/components/schemas/UnsubscribeOutcome"
             reason:
@@ -4671,7 +4722,7 @@ components:
         - $ref: "#/components/schemas/ChangeBase"
         - type: object
           required: [type, decision]
-          description: An actor let a sender in or blocked them, by address or by domain. Each thread the decision moved has its own threadLabelsChanged.
+          description: An actor let a sender in or blocked them, by address or by domain, before deliveries replaced that. Each thread the decision moved has its own threadLabelsChanged.
           properties:
             type:
               type: string
@@ -4683,13 +4734,15 @@ components:
               type: string
               description: The domain, in lower case, if the decision is on a domain.
             decision:
-              $ref: "#/components/schemas/ScreeningDecisionKind"
+              type: string
+              enum: [letIn, block]
+              description: letIn let the sender's mail into the Inbox, and block sent it to Trash.
     ScreenedSenderRemoved:
       allOf:
         - $ref: "#/components/schemas/ChangeBase"
         - type: object
           required: [type, decision]
-          description: An actor removed the mailbox's decision on a sender, who is first-time again. Each thread it moved has its own threadLabelsChanged.
+          description: An actor removed the mailbox's decision on a sender, who is first-time again, before deliveries replaced letting in and blocking. Each thread it moved has its own threadLabelsChanged.
           properties:
             type:
               type: string
@@ -4701,8 +4754,67 @@ components:
               type: string
               description: The domain, in lower case, if the decision was on a domain.
             decision:
-              $ref: "#/components/schemas/ScreeningDecisionKind"
+              type: string
+              enum: [letIn, block]
               description: The decision it was.
+    SenderDeliverySet:
+      allOf:
+        - $ref: "#/components/schemas/ChangeBase"
+        - type: object
+          required: [type, delivery]
+          description: An actor decided where a sender's mail goes, by address or by domain. Each thread the decision moved or erased has its own change.
+          properties:
+            type:
+              type: string
+              const: senderDeliverySet
+            address:
+              type: string
+              description: The sender's address, in lower case, if the decision is on an address.
+            domain:
+              type: string
+              description: The domain, in lower case, if the decision is on a domain.
+            delivery:
+              $ref: "#/components/schemas/Delivery"
+            label:
+              type: string
+              description: For label, the ID of the label.
+    SenderDeliveryRemoved:
+      allOf:
+        - $ref: "#/components/schemas/ChangeBase"
+        - type: object
+          required: [type, delivery]
+          description: An actor removed the mailbox's decision on a sender, who is first-time again. Each thread it moved has its own threadLabelsChanged.
+          properties:
+            type:
+              type: string
+              const: senderDeliveryRemoved
+            address:
+              type: string
+              description: The sender's address, in lower case, if the decision was on an address.
+            domain:
+              type: string
+              description: The domain, in lower case, if the decision was on a domain.
+            delivery:
+              $ref: "#/components/schemas/Delivery"
+              description: The delivery it was.
+            label:
+              type: string
+              description: For label, the ID of the label it was.
+    MessageDropped:
+      allOf:
+        - $ref: "#/components/schemas/ChangeBase"
+        - type: object
+          required: [type, address]
+          description: >
+            Mail arrived from a sender whose mail goes nowhere, and Duva
+            dropped it without keeping any of it. Arriving mail names no actor.
+          properties:
+            type:
+              type: string
+              const: messageDropped
+            address:
+              type: string
+              description: The sender's address, in lower case.
     ScreenerSwitched:
       type: object
       additionalProperties: false
@@ -4731,7 +4843,7 @@ components:
           description: Whether it is on now.
         letIn:
           type: integer
-          description: When switched on, how many of the mailbox's senders that weren't let in yet it let in.
+          description: When switched on, how many of the mailbox's senders without a decision yet it sent to the Inbox.
     TrashEmptying:
       type: object
       additionalProperties: false
@@ -5442,7 +5554,7 @@ components:
       properties:
         id:
           type: string
-          description: The label's ID, which threads list among their labels. The built-in labels' are inbox, spam and trash.
+          description: The label's ID, which threads list among their labels. The built-in labels' are inbox, feed, paperTrail, spam and trash.
           examples: ["inbox"]
         name:
           type: string

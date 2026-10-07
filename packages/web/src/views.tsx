@@ -1,4 +1,4 @@
-// The views of a mailbox's mail: the Inbox, the Screener, Remind me, Sent, Drafts, All mail, Spam and Trash, an
+// The views of a mailbox's mail: the Inbox, the Screener, Remind me, the Feed, the Paper Trail, Sent, Drafts, All mail, Spam and Trash, an
 // agent's activity in its mailbox, then its own labels, each a link with how many unread threads it has, the Screener with how many senders wait. It is one component, so the side column can hold it.
 // A search's results are a view too, which the bar opens.
 import { useId, useState } from "react";
@@ -29,12 +29,19 @@ export function pathOf(view: View): string {
   if ("sent" in view) return "sent";
   if ("reminders" in view) return "reminders";
   if (view.label === "inbox") return "";
-  if (view.label === "spam" || view.label === "trash") return view.label;
+  if (view.label === "spam" || view.label === "trash" || view.label === "feed") return view.label;
+  if (view.label === "paperTrail") return "paper-trail";
   return `labels/${encodeURIComponent(view.label)}`;
 }
 
 /** Where a mailbox's screened senders are, after the mailbox's place in the hash, reached from its Screener. */
 export const screenedSendersPath = "screener/senders";
+
+/**
+ * The address of the sheet of the sender with the address in the mailbox whose Inbox is at `base`,
+ * opened from the view, or the screened senders, at the path `from`.
+ */
+export const senderHref = (address: string, from: string, base: string) => `${base}senders/${encodeURIComponent(address)}?${new URLSearchParams({ from })}`;
 
 /** The address of the view in the mailbox whose Inbox is at `base`. */
 export const hrefOf = (view: View, base: string) => `${base}${pathOf(view)}`;
@@ -58,7 +65,8 @@ export function viewOf(path: string): View | undefined {
     const asked = new URLSearchParams(search);
     return { search: { q: asked.get("q") ?? "", sort: asked.get("sort") === "newest" ? "newest" : "relevance" } };
   }
-  if (path === "spam" || path === "trash") return { label: path };
+  if (path === "spam" || path === "trash" || path === "feed") return { label: path };
+  if (path === "paper-trail") return { label: "paperTrail" };
   const label = /^labels\/(.+)$/.exec(path)?.[1];
   return label === undefined ? undefined : { label: decodeURIComponent(label) };
 }
@@ -74,12 +82,12 @@ export function titleOf(view: View, labels: Label[], agent?: string): string {
   return labels.find((label) => label.id === view.label)?.name ?? builtInName(view.label) ?? strings.views.unknownLabel;
 }
 
-const builtInName = (label: string) => ({ inbox: strings.views.inbox, spam: strings.views.spam, trash: strings.views.trash })[label];
+const builtInName = (label: string) => ({ inbox: strings.views.inbox, feed: strings.views.feed, paperTrail: strings.views.paperTrail, spam: strings.views.spam, trash: strings.views.trash })[label];
 
 /**
  * The mailbox's views as links, the one open marked current, with a form at the foot to create a
- * label. Only the Inbox and the mailbox's own labels count their unread threads, so Sent, Spam,
- * Trash and All mail never call for attention. The Screener, listed while it is on or something
+ * label. Only the Inbox and the mailbox's own labels count their unread threads, so the Feed, the
+ * Paper Trail, Sent, Spam, Trash and All mail never call for attention. The Screener, listed while it is on or something
  * waits there, quietly counts the senders who wait.
  */
 export function MailViews({
@@ -149,6 +157,8 @@ export function MailViews({
           </li>
         )}
         {link({ reminders: true }, strings.views.reminders, 0)}
+        {link({ label: "feed" }, strings.views.feed, 0)}
+        {link({ label: "paperTrail" }, strings.views.paperTrail, 0)}
         {link({ sent: true }, strings.views.sent, 0)}
         {drafts !== undefined && (
           <li>

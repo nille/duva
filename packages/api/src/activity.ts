@@ -33,7 +33,7 @@ const entriesPerPage = 100;
 /** The changes Duva counts as organizing, when the agent makes them. */
 const organizing = new Set<Change["type"]>(["threadRead", "threadUnread", "threadLabelsChanged", "reminderSet", "reminderCancelled", "labelCreated", "labelRenamed", "labelDeleted"]);
 /** The changes Duva counts as screening, when the agent makes them. */
-const screening = new Set<Change["type"]>(["senderScreened", "screenedSenderRemoved", "screenerSwitched"]);
+const screening = new Set<Change["type"]>(["senderScreened", "screenedSenderRemoved", "senderDeliverySet", "senderDeliveryRemoved", "screenerSwitched"]);
 
 /** Every change in a feed, read a page at a time from the start. */
 async function wholeFeed<Read extends { position: number }>(read: (after: number) => Promise<Read[]>): Promise<Read[]> {
@@ -171,7 +171,7 @@ export const getAgentActivity: OperationHandler = async (event, deployment, acto
  * isn't the sponsor reads. Any other field is left out, so a field added later stays out until
  * it is listed here.
  */
-const mailFree = new Set(["position", "at", "actor", "type", "thread", "message", "draft", "approval", "decision", "label", "added", "removed", "spam", "screened", "agent", "before", "after", "on", "letIn", "outcome", "status", "feedback"]);
+const mailFree = new Set(["position", "at", "actor", "type", "thread", "message", "draft", "approval", "decision", "label", "added", "removed", "spam", "screened", "delivery", "delivered", "agent", "before", "after", "on", "letIn", "outcome", "status", "feedback"]);
 /** The fields of what SES reported about a send that say nothing of its recipients. */
 const feedbackFree = new Set(["kind", "at", "reason"]);
 

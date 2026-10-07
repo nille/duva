@@ -10,7 +10,7 @@ import { listEarlierDecisions } from "./approval-log.ts";
 import { indexMailboxes, sqsIndexQueue } from "./indexing.ts";
 import { timeEarlierLabels } from "./mail.ts";
 import { setUpOrganization } from "./organization.ts";
-import { setUpScreeners } from "./screening.ts";
+import { setUpDeliveries, setUpScreeners } from "./screening.ts";
 
 const table = { client: new DynamoDBClient({}), name: required(environmentVariables.tableName) };
 const humans = cognitoHumans(new CognitoIdentityProviderClient({}), required(environmentVariables.userPoolId));
@@ -23,7 +23,9 @@ export const handler = async () => {
   );
   // Threads in Spam and Trash from before erasure existed count their retention period from now.
   await timeEarlierLabels(table);
-  // Humans' mailboxes from before the Screener get it on, with every sender they already have let in.
+  // Decisions from before deliveries become deliveries, and threads are listed by whom they are from.
+  await setUpDeliveries(table);
+  // Humans' mailboxes from before the Screener get it on, with every sender they already have sent to the Inbox.
   await setUpScreeners(table);
   // Decisions on approvals from before the approval log are listed in it, once.
   await listEarlierDecisions(table);

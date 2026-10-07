@@ -1,4 +1,4 @@
-// A mailbox's labels: the built-in Inbox, Spam and Trash, and the labels the mailbox's readers make.
+// A mailbox's labels: the built-in Inbox, Feed, Paper Trail, Spam and Trash, and the labels the mailbox's readers make.
 // Threads list their labels by ID, so renaming a label leaves its threads as they are.
 import { randomUUID } from "node:crypto";
 import { TransactionCanceledException } from "@aws-sdk/client-dynamodb";
@@ -6,7 +6,8 @@ import { GetCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
 import type { components } from "@duva/openapi";
 import type { Table } from "./deployment.ts";
 import { recordChanges } from "./feed.ts";
-import { type Cursor, cursorOf, inbox, labelThreads, spam, threadsMarkedAtOnce, threadsWithLabel, trash, unreadWithLabel } from "./mail.ts";
+import { type Cursor, cursorOf, feed, inbox, labelThreads, paperTrail, spam, threadsMarkedAtOnce, threadsWithLabel, trash, unreadWithLabel } from "./mail.ts";
+import { forgetLabel } from "./screening.ts";
 import { mailboxFeed, mailboxKey } from "./organization.ts";
 import { documents, isNew, pk, sk } from "./table.ts";
 
@@ -15,6 +16,8 @@ export type Label = components["schemas"]["Label"];
 /** The built-in labels, in the order they are listed. */
 export const builtInLabels = [
   { id: inbox, name: "Inbox" },
+  { id: feed, name: "Feed" },
+  { id: paperTrail, name: "Paper Trail" },
   { id: spam, name: "Spam" },
   { id: trash, name: "Trash" },
 ];
@@ -34,6 +37,11 @@ export class NameTaken extends Error {}
 async function ownLabel(table: Table, mailbox: string, id: string): Promise<{ id: string; name: string } | undefined> {
   const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: labelKey(mailbox, id), ConsistentRead: true }));
   return Item === undefined ? undefined : { id: Item.id as string, name: Item.name as string };
+}
+
+/** Whether the mailbox has a label of its own with the ID. */
+export async function hasOwnLabel(table: Table, mailbox: string, id: string): Promise<boolean> {
+  return (await ownLabel(table, mailbox, id)) !== undefined;
 }
 
 /** Whether the mailbox has a label with the ID, built in or its own. */
@@ -127,7 +135,7 @@ export async function renameLabel(table: Table, { mailbox, label, name, by }: { 
 
 /**
  * Removes the mailbox's own label from each of its threads, each recorded in the change feed under
- * the actor `by`, and then deletes it, recorded too. Returns the label as it was, or undefined if
+ * the actor `by`, and then deletes it, recorded too. Senders whose mail was filed under it get the Inbox. Returns the label as it was, or undefined if
  * the mailbox has no such label of its own. A deletion that stops partway finishes when run again.
  * A thread labelled while the label is being deleted can keep it, since labelling doesn't check
  * the label in the same transaction.
@@ -142,6 +150,8 @@ export async function deleteLabel(table: Table, { mailbox, label, by }: { mailbo
     if (page.threads.length > 0) await labelThreads(table, { mailbox, threads: page.threads.map(({ id }) => id), add: [], remove: [label], by });
     after = page.next === undefined ? undefined : cursorOf(page.next);
   } while (after !== undefined);
+  // Before the label goes, so deleting it again finishes this too if it stops partway.
+  await forgetLabel(table, { mailbox, label, by });
   await recordChanges(table, mailboxFeed(mailbox), {
     by,
     changes: [{ type: "labelDeleted", label }],

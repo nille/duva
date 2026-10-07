@@ -30,13 +30,15 @@ import { ActorMark } from "./mail-parts.tsx";
 import { type AgentMailbox, MailboxList, mailboxHref, mailboxName, ownInOrder } from "./mailboxes.tsx";
 import { type Beside, BesideContext } from "./panes.tsx";
 import { readScreener, ScreenedSenders, type ScreenerRead, ScreenerView } from "./screener.tsx";
+import { SenderLinkContext, SenderSheetView } from "./sender.tsx";
 import { SearchBox, SearchResults } from "./search.tsx";
 import { Shortcuts } from "./shortcuts.tsx";
 import { type Config, loadConfig, signedInClient, signIn, signOut } from "./session.ts";
 import { strings } from "./strings.ts";
 import type { Done, Label } from "./organize.tsx";
+import { FeedStream } from "./stream.tsx";
 import { ThreadView } from "./thread.tsx";
-import { hrefOf, MailViews, pathOf, screenedSendersPath, type SearchView, type ThreadsView, titleOf, type View, viewOf } from "./views.tsx";
+import { hrefOf, MailViews, pathOf, screenedSendersPath, type SearchView, senderHref, type ThreadsView, titleOf, type View, viewOf } from "./views.tsx";
 
 // Views only some humans open, or open seldom, load when first opened, so the mail opens sooner.
 const Approvals = lazy(() => import("./approvals.tsx").then(({ Approvals }) => ({ default: Approvals })));
@@ -112,7 +114,8 @@ function App() {
  * without a server. A listing without a mailbox is in the human's first own mailbox. A thread or a
  * draft without one, and Drafts and writing, are in the own mailbox the human was last in, since
  * links to them may not say. A thread knows the view it was opened from, to go back there, and from
- * a search, the message that matched. A mailbox's screened senders are reached from its Screener. An
+ * a search, the message that matched. A sender's sheet knows the view, or the screened senders, it
+ * was opened from, at the path `from`. A mailbox's screened senders are reached from its Screener. An
  * agent's activity is in the mail, beside its mailbox's views, if it has a mailbox, and opens into
  * one day. Settings reads which of its pages is open from the rest of the hash.
  */
@@ -124,6 +127,7 @@ type Route =
   | { view: "screener"; mailbox?: string; senders: boolean }
   | { view: "search"; mailbox?: string; search: SearchView }
   | { view: "thread"; mailbox?: string; id: string; from: View; message?: string }
+  | { view: "sender"; mailbox?: string; sender: string; from: string }
   | { view: "drafts" | "write"; mailbox?: string }
   | { view: "draft"; mailbox?: string; id: string }
   | { view: "activity"; agent: string; day?: string };
@@ -147,6 +151,8 @@ function routeOf(hash: string): Route {
     const params = new URLSearchParams(asked);
     return { view: "thread", mailbox: decoded, id: decodeURIComponent(thread), from: viewOf(params.get("from") ?? "") ?? { label: "inbox" }, message: params.get("message") ?? undefined };
   }
+  const [, sender, from] = /^senders\/([^?]+)(?:\?(.*))?$/.exec(inMailbox) ?? [];
+  if (sender !== undefined) return { view: "sender", mailbox: decoded, sender: decodeURIComponent(sender), from: new URLSearchParams(from).get("from") ?? "" };
   if (inMailbox === screenedSendersPath) return { view: "screener", mailbox: decoded, senders: true };
   const list = viewOf(inMailbox) ?? { label: "inbox" };
   if ("screener" in list) return { view: "screener", mailbox: decoded, senders: false };
@@ -399,7 +405,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
       : route.view
     : route.view === "activity"
       ? `activity/${route.agent}/${route.day ?? ""}`
-      : `${route.view}/${named ?? ""}/${"id" in route ? route.id : route.view === "list" ? pathOf(route.list) : route.view === "search" ? pathOf(route.search) : route.view === "screener" ? String(route.senders) : ""}`;
+      : `${route.view}/${named ?? ""}/${"id" in route ? route.id : route.view === "sender" ? route.sender : route.view === "list" ? pathOf(route.list) : route.view === "search" ? pathOf(route.search) : route.view === "screener" ? String(route.senders) : ""}`;
   // A screen reader follows the human to the view they opened, and the page starts at its top.
   const navigated = useRef(false);
   useEffect(() => {
@@ -474,8 +480,12 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
     showDone(what);
     setActed((current) => current + 1);
   };
-  // The view the side column marks open: the one listed, or the one a thread was opened from.
-  const viewed: View | undefined = route.view === "list" ? route.list : route.view === "thread" ? route.from : route.view === "screener" ? { screener: true } : route.view === "search" ? route.search : undefined;
+  // A sender's sheet lies beside the screened senders it was opened from, or a view.
+  const fromSenders = route.view === "sender" && route.from === screenedSendersPath;
+  const senderFrom: View | undefined = route.view !== "sender" ? undefined : fromSenders ? { screener: true } : (viewOf(route.from) ?? { label: "inbox" });
+  // The view the side column marks open: the one listed, or the one a thread or a sheet was opened from.
+  const viewed: View | undefined =
+    route.view === "list" ? route.list : route.view === "thread" ? route.from : route.view === "screener" ? { screener: true } : route.view === "search" ? route.search : senderFrom;
   // The search box searches the mailbox open, or the human's first own outside the mail, and shows
   // the search open or the one the thread shown was opened from.
   const searched = away ? first : shown;
@@ -503,7 +513,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
 
   // What is open from a list, a thread or a draft, lies beside the list it was opened from. Writing
   // and a draft lie beside the list the human was last on in the mailbox, or its Inbox.
-  const reading = route.view === "thread" || route.view === "draft" || route.view === "write";
+  const reading = route.view === "thread" || route.view === "draft" || route.view === "write" || route.view === "sender";
   const lastList = useRef<{ mailbox: string; list: Listing }>(undefined);
   const routeList: Listing | undefined =
     route.view === "list" ? route.list : route.view === "search" ? route.search : route.view === "screener" && !route.senders ? { screener: true } : route.view === "drafts" ? { drafts: true } : undefined;
@@ -511,7 +521,8 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
   const listing: Listing | undefined =
     shown === undefined
       ? undefined
-      : (routeList ?? (route.view === "thread" ? route.from : reading ? (lastList.current?.mailbox === shown.id ? lastList.current.list : { label: "inbox" }) : undefined));
+      : (routeList ??
+        (route.view === "thread" ? route.from : senderFrom !== undefined && !fromSenders ? senderFrom : reading ? (lastList.current?.mailbox === shown.id ? lastList.current.list : { label: "inbox" }) : undefined));
   const openId = "id" in route ? route.id : undefined;
   const besideList = useMemo<Beside>(() => ({ beside: reading, thread: route.view === "thread", open: openId }), [reading, route.view, openId]);
   // A list the human goes to starts at its top, and keeps its place while what is open beside it changes.
@@ -521,7 +532,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
   }, [listKey]);
 
   const list =
-    shown === undefined ? undefined : route.view === "screener" && route.senders ? (
+    shown === undefined ? undefined : (route.view === "screener" && route.senders) || fromSenders ? (
       <ScreenedSenders
         key={`${shown.id}/senders`}
         client={client}
@@ -530,7 +541,9 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
         agent={agent?.agent}
         me={actor.id}
         agentNames={agentNames}
+        labels={labels}
         version={version}
+        open={route.view === "sender" ? route.sender : undefined}
         done={doneHere}
         onDone={showDone}
         onSignedOut={onSignedOut}
@@ -545,6 +558,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
         base={base}
         agent={agent?.agent}
         read={shownScreener}
+        labels={labels}
         connection={connection}
         done={reading ? undefined : doneHere}
         onDone={showDone}
@@ -602,13 +616,29 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
         onDone={showDoneBeside}
         onSignedOut={onSignedOut}
       />
+    ) : route.view === "sender" ? (
+      <SenderSheetView
+        key={`${shown.id}/sender/${route.sender}`}
+        client={client}
+        mailbox={shown}
+        sender={route.sender}
+        labels={labels}
+        back={fromSenders ? `${base}${screenedSendersPath}` : hrefOf(senderFrom!, base)}
+        backTo={fromSenders ? strings.screened.title : titleOf(senderFrom!, labels, agent?.agent)}
+        version={version}
+        onDone={showDoneBeside}
+        onSignedOut={onSignedOut}
+      />
     ) : route.view === "draft" || route.view === "write" ? (
       <Composer key={routeKey} client={client} mailbox={shown} base={base} id={route.view === "draft" ? route.id : undefined} agentNames={agentNames} version={version} onSignedOut={onSignedOut} />
     ) : undefined;
 
-  // What lies on the plane when it isn't a list and what is open from it.
+  // What lies on the plane when it isn't a list and what is open from it. The Feed is read as a
+  // stream across the plane while nothing is open from it.
   const elsewhere =
-    route.view === "activity" ? (
+    shown !== undefined && route.view === "list" && "label" in route.list && route.list.label === "feed" ? (
+      <FeedStream key={`${shown.id}/stream`} client={client} mailbox={shown} base={base} me={actor.id} agentNames={agentNames} version={version} onSignedOut={onSignedOut} />
+    ) : route.view === "activity" ? (
       route.day === undefined ? (
         <AgentActivity key={route.agent} client={client} agent={route.agent} name={agentNames.get(route.agent)} timeZone={preferences.timeZone} onSignedOut={onSignedOut} />
       ) : (
@@ -659,9 +689,13 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
   // Write writes in the own mailbox open, or the first one anywhere else.
   const write = first === undefined ? undefined : () => (location.hash = shownOwn ? `${base}write` : "#/write");
   const shell = ["shell", away && "shell-away", reading && "shell-reading"].filter(Boolean).join(" ");
+  // A sender in a letter opens their sheet beside the view the letter was opened from.
+  const senderFromPath = viewed === undefined ? "" : pathOf(viewed);
+  const senderLink = useMemo(() => (shown === undefined ? undefined : (address: string) => senderHref(address.toLowerCase(), senderFromPath, base)), [shown, senderFromPath, base]);
 
   return (
     <PreferencesContext value={preferences}>
+      <SenderLinkContext value={senderLink}>
       <a
         className="skip"
         href={route.hash || "#/"}
@@ -876,6 +910,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
           onSignOut={() => signOut(config)}
         />
       </div>
+      </SenderLinkContext>
     </PreferencesContext>
   );
 }

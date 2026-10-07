@@ -7,8 +7,9 @@
 // so turning the setting on doesn't reach back. A thread's messages leave search at once, and the
 // daily run has the indexer compact each mailbox's index, so their text leaves its files within a
 // day (ADR-0007). A deleted mailbox is erased the same way, thread by thread, and then everything
-// else it holds but its change feed, and its index is dropped (ADR-0020).
-import { BatchGetCommand, type BatchGetCommandOutput, DeleteCommand, GetCommand, PutCommand, QueryCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
+// else it holds but its change feed, and its index is dropped (ADR-0020). So are the threads of a
+// sender whose mail goes nowhere (ADR-0025).
+import { DeleteCommand, GetCommand, PutCommand, QueryCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import { TransactionCanceledException } from "@aws-sdk/client-dynamodb";
 import { InvokeCommand, type LambdaClient } from "@aws-sdk/client-lambda";
 import type { ScheduledEvent } from "aws-lambda";
@@ -16,10 +17,11 @@ import type { Table } from "./deployment.ts";
 import { recordChanges } from "./feed.ts";
 import { inboundPrefix } from "./infrastructure.ts";
 import type { MailBucket } from "./mail-bucket.ts";
-import { asRead, type Cursor, cursorOf, type ErasedLabel, keys, listingsOf, type StoredSummary, threadsPerPage, threadSummary, threadsWithLabel, trash } from "./mail.ts";
+import { asRead, type Cursor, cursorOf, type ErasedLabel, keys, listingsOf, receivedByAny, type StoredSummary, threadsFrom, threadsPerPage, threadSummary, threadsWithLabel, trash } from "./mail.ts";
 import { eraseApprovals } from "./drafting.ts";
 import { compactIndexes, type IndexQueue } from "./indexing.ts";
 import { allMailboxes, mailboxFeed, mailboxKey, type OrganizationSettings, organizationSettings, settingsUnchanged } from "./organization.ts";
+import { deliveryFor, type Sender } from "./screening.ts";
 import { documents, pk, sk, type TransactItem } from "./table.ts";
 
 // Each thread being erased is listed until its messages are gone, and each of their raw messages,
@@ -30,6 +32,8 @@ const rawErasureKey = (mailbox: string, rawKey: string) => ({ [pk]: "erasure#raw
 const emptiedKey = ({ mailbox, before }: TrashEmptied) => ({ [pk]: "erasure#emptied", [sk]: `${mailbox}#${before}` });
 // Each mailbox deleted is listed until its mail is erased, likewise.
 const deletedKey = (mailbox: string) => ({ [pk]: "erasure#mailboxes", [sk]: mailbox });
+// Each sender whose mail goes nowhere is listed until their threads are erased, likewise.
+const senderErasureKey = ({ mailbox, sender }: SenderErased) => ({ [pk]: "erasure#senders", [sk]: `${mailbox}#${"address" in sender ? sender.address : sender.domain}` });
 
 /** What the eraser is handed to do besides its daily run: the Trash the actor `by` emptied at `before`. */
 export interface TrashEmptied {
@@ -44,10 +48,18 @@ export interface MailboxDeleted {
   by: string;
 }
 
+/** What the eraser is handed when the actor `by` sends a sender's mail nowhere: the threads from them. */
+export interface SenderErased {
+  mailbox: string;
+  sender: Sender;
+  by: string;
+}
+
 /** Hands the eraser work without waiting for it. */
 export interface Eraser {
   emptyTrash(emptied: TrashEmptied): Promise<void>;
   eraseMailbox(deleted: MailboxDeleted): Promise<void>;
+  eraseSender(erased: SenderErased): Promise<void>;
 }
 
 /**
@@ -110,6 +122,25 @@ export async function emptyTrash(table: Table, mailBucket: MailBucket, indexQueu
  * the eraser's daily run erases it if the run it is handed fails.
  */
 export const mailboxErasure = (table: Table, deleted: MailboxDeleted): TransactItem => ({ Put: { TableName: table.name, Item: { ...deletedKey(deleted.mailbox), ...deleted } } });
+
+/**
+ * The write that lists the sender for the eraser, in the transaction that sends their mail
+ * nowhere, so the eraser's daily run erases their threads if the run it is handed fails.
+ */
+export const senderErasure = (table: Table, erased: SenderErased): TransactItem => ({ Put: { TableName: table.name, Item: { ...senderErasureKey(erased), ...erased } } });
+
+/**
+ * Erases each thread from the sender whose mail still goes nowhere as it is erased, naming the
+ * actor `by`, as emptying Trash does, and then forgets the sender.
+ */
+async function eraseSender(table: Table, erased: SenderErased): Promise<void> {
+  const { mailbox, sender, by } = erased;
+  for (const { id, from } of await threadsFrom(table, mailbox, sender)) {
+    if ((await deliveryFor(table, mailbox, from.address.toLowerCase()))?.delivery !== "nowhere") continue;
+    await eraseThread(table, { mailbox, thread: id, by, due: () => true });
+  }
+  await documents(table).send(new DeleteCommand({ TableName: table.name, Key: senderErasureKey(erased) }));
+}
 
 /**
  * Erases all the deleted mailbox's mail, as emptying Trash does, naming the actor `by`: each
@@ -267,13 +298,16 @@ async function eraseMessages(table: Table, mailbox: string, thread: string, eras
 }
 
 /**
- * Finishes the Trash emptied, the mailboxes deleted and the threads that earlier runs left being
+ * Finishes the Trash emptied, the senders sent nowhere, the mailboxes deleted and the threads that earlier runs left being
  * erased, and erases each listed raw message, every version of it, unless another mailbox still
  * has it, as one message SES received for two mailboxes is stored once.
  */
 async function finishErasures(table: Table, mailBucket: MailBucket, indexQueue: IndexQueue) {
   for (const item of await allItems(table, { KeyConditionExpression: `${pk} = :emptied`, ExpressionAttributeValues: { ":emptied": emptiedKey({ mailbox: "", before: "", by: "" })[pk] } })) {
     await eraseTrash(table, item as unknown as TrashEmptied);
+  }
+  for (const item of await allItems(table, { KeyConditionExpression: `${pk} = :senders`, ExpressionAttributeValues: { ":senders": senderErasureKey({ mailbox: "", sender: { domain: "" }, by: "" })[pk] } })) {
+    await eraseSender(table, item as unknown as SenderErased);
   }
   for (const item of await allItems(table, { KeyConditionExpression: `${pk} = :deleted`, ExpressionAttributeValues: { ":deleted": deletedKey("")[pk] } })) {
     await eraseMailbox(table, indexQueue, item as unknown as MailboxDeleted);
@@ -286,24 +320,10 @@ async function finishErasures(table: Table, mailBucket: MailBucket, indexQueue: 
   const mailboxes = await allMailboxes(table);
   for (const item of raw) {
     const rawKey = item.rawKey as string;
-    if (!(await receivedElsewhere(table, mailboxes, rawKey))) await mailBucket.erase(rawKey);
+    const [sesMessageId] = receivedAs(rawKey);
+    if (sesMessageId === undefined || !(await receivedByAny(table, mailboxes, sesMessageId))) await mailBucket.erase(rawKey);
     await documents(table).send(new DeleteCommand({ TableName: table.name, Key: { [pk]: item[pk], [sk]: item[sk] } }));
   }
-}
-
-/** Whether any of the mailboxes still has the raw message, which only received ones can share. */
-async function receivedElsewhere(table: Table, mailboxes: string[], rawKey: string): Promise<boolean> {
-  const [sesMessageId] = receivedAs(rawKey);
-  if (sesMessageId === undefined) return false;
-  for (let index = 0; index < mailboxes.length; index += 100) {
-    let wanted: Record<string, unknown>[] | undefined = mailboxes.slice(index, index + 100).map((mailbox) => keys.receivedKey(mailbox, sesMessageId));
-    while (wanted !== undefined && wanted.length > 0) {
-      const read: BatchGetCommandOutput = await documents(table).send(new BatchGetCommand({ RequestItems: { [table.name]: { Keys: wanted, ConsistentRead: true } } }));
-      if ((read.Responses?.[table.name] ?? []).length > 0) return true;
-      wanted = read.UnprocessedKeys?.[table.name]?.Keys;
-    }
-  }
-  return false;
 }
 
 /** The ID SES gave the message stored at the raw key, if SES received it, or none for a sent one. */
@@ -321,8 +341,8 @@ async function allItems(table: Table, query: Omit<ConstructorParameters<typeof Q
   return items;
 }
 
-/** What invokes the eraser: its daily schedule, emptying a Trash, or deleting a mailbox. */
-export type EraserEvent = Pick<ScheduledEvent, "time"> | { emptyTrash: TrashEmptied } | { eraseMailbox: MailboxDeleted };
+/** What invokes the eraser: its daily schedule, emptying a Trash, deleting a mailbox, or sending a sender's mail nowhere. */
+export type EraserEvent = Pick<ScheduledEvent, "time"> | { emptyTrash: TrashEmptied } | { eraseMailbox: MailboxDeleted } | { eraseSender: SenderErased };
 
 /**
  * The eraser's handler. Either way it finishes what earlier runs left. The daily run then gives
@@ -331,8 +351,8 @@ export type EraserEvent = Pick<ScheduledEvent, "time"> | { emptyTrash: TrashEmpt
 export function createEraser({ table, mailBucket, indexQueue }: { table: Table; mailBucket: MailBucket; indexQueue: IndexQueue }) {
   return async (event: EraserEvent): Promise<void> => {
     if ("emptyTrash" in event) return emptyTrash(table, mailBucket, indexQueue, event.emptyTrash);
-    // The deleted mailbox is listed, so finishing what is listed erases it.
-    if ("eraseMailbox" in event) return finishErasures(table, mailBucket, indexQueue);
+    // The deleted mailbox and the sender are listed, so finishing what is listed erases them.
+    if ("eraseMailbox" in event || "eraseSender" in event) return finishErasures(table, mailBucket, indexQueue);
     try {
       await eraseExpired(table, mailBucket, indexQueue, new Date(event.time));
     } finally {
@@ -349,5 +369,6 @@ export function lambdaEraser(lambda: LambdaClient, functionName: string): Eraser
   return {
     emptyTrash: (emptyTrash) => invoke({ emptyTrash }),
     eraseMailbox: (eraseMailbox) => invoke({ eraseMailbox }),
+    eraseSender: (eraseSender) => invoke({ eraseSender }),
   };
 }

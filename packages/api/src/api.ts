@@ -37,7 +37,7 @@ import { type Actor, actorOf } from "./organization.ts";
 import { changePreferences, getPreferences } from "./preferences.ts";
 import { cancelReminders, listReminders, remindThreads } from "./reminders.ts";
 import { searchMailbox } from "./search.ts";
-import { blockSender, getScreener, letInSender, listScreenedSenders, removeScreenedSender, switchScreener } from "./screener.ts";
+import { getScreener, getSender, listSenders, removeSenderDelivery, setSenderDelivery, switchScreener } from "./screener.ts";
 import { changeOrganizationSettings, getOrganizationSettings, previewRetention } from "./settings.ts";
 import { getStatus } from "./status.ts";
 import { approveSetup, getSetupApproval, rejectSetup } from "./setup.ts";
@@ -122,10 +122,10 @@ export const handlers: Record<OperationId, OperationHandler> = {
   emptyTrash: emptyMailboxTrash,
   getScreener,
   switchScreener,
-  letInSender,
-  blockSender,
-  listScreenedSenders,
-  removeScreenedSender,
+  listSenders,
+  getSender,
+  setSenderDelivery,
+  removeSenderDelivery,
   getAttachment,
   createDraft,
   listDrafts,

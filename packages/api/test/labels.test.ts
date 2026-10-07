@@ -201,6 +201,8 @@ test("a human creates a label, adds it to threads and lists them, and labels lis
   const { data: labels } = await grace.GET("/mailboxes/{mailbox}/labels", { params });
   expect(labels?.labels).toEqual([
     { id: "inbox", name: "Inbox", builtIn: true, unread: 1 },
+    { id: "feed", name: "Feed", builtIn: true, unread: 0 },
+    { id: "paperTrail", name: "Paper Trail", builtIn: true, unread: 0 },
     { id: "spam", name: "Spam", builtIn: true, unread: 0 },
     { id: "trash", name: "Trash", builtIn: true, unread: 0 },
     { id: receipts!.id, name: "Kvitton", builtIn: false, unread: 1 },
@@ -219,6 +221,8 @@ test("a thread in Trash is left out of the human's own labels and their unread c
   const { data: labels } = await grace.GET("/mailboxes/{mailbox}/labels", { params });
   expect(labels?.labels.map(({ name, unread }) => ({ name, unread }))).toEqual([
     { name: "Inbox", unread: 0 },
+    { name: "Feed", unread: 0 },
+    { name: "Paper Trail", unread: 0 },
     { name: "Spam", unread: 0 },
     { name: "Trash", unread: 1 },
     { name: "Resor", unread: 0 },
@@ -235,7 +239,7 @@ test("the human's own labels are listed by name, whatever its case, after the bu
 
   const { data } = await grace.GET("/mailboxes/{mailbox}/labels", { params });
 
-  expect(data?.labels.map(({ name }) => name)).toEqual(["Inbox", "Spam", "Trash", "arkiv", "Familj", "Resor"]);
+  expect(data?.labels.map(({ name }) => name)).toEqual(["Inbox", "Feed", "Paper Trail", "Spam", "Trash", "arkiv", "Familj", "Resor"]);
 });
 
 test("a label's name is unique in the mailbox in any case, and can't be a built-in label's", async () => {
@@ -287,7 +291,7 @@ test("deleting a label removes it from its threads, those in Trash too, and the 
     { id: kept, labels: ["inbox"] },
   ]);
   const { data: labels } = await grace.GET("/mailboxes/{mailbox}/labels", { params });
-  expect(labels?.labels.map(({ id }) => id)).toEqual(["inbox", "spam", "trash"]);
+  expect(labels?.labels.map(({ id }) => id)).toEqual(["inbox", "feed", "paperTrail", "spam", "trash"]);
   expect((await grace.POST("/mailboxes/{mailbox}/labels", { params, body: { name: "Kvitton" } })).response.status).toBe(201);
 });
 

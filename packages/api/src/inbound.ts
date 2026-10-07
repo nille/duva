@@ -17,13 +17,17 @@ import { parseMail } from "./mime.ts";
 import { bounceOnce, type Bounces, type Expanded, expand, type GroupRefusal, isOwnMail, refusalOf, resendToExternalMembers, type Sender, sentByMember } from "./group-mail.ts";
 import { addressTarget, allDomains, type CatchAll, catchAllTarget, type Group } from "./organization.ts";
 import { type Outbound, sentBySystem } from "./sending.ts";
+import { receivedByAny } from "./mail.ts";
 import { receiveScreened } from "./screening.ts";
 import { senderLogo, type SenderLogos } from "./sender-logos.ts";
+import type { Unsubscriber } from "./unsubscriber.ts";
+import { unsubscribeDropped } from "./unsubscribing.ts";
 
 /**
  * What the inbound handler needs: the table, the mail bucket, its log, which takes one line at a
- * time, SES's sending, for groups' external members, its bounces, for mail a group refuses, and
- * what looking up senders' logos needs.
+ * time, SES's sending, for groups' external members, its bounces, for mail a group refuses, what
+ * looking up senders' logos needs, and the unsubscriber, for mail it drops since its sender's mail
+ * goes nowhere.
  */
 export function createInbound({
   table,
@@ -32,6 +36,7 @@ export function createInbound({
   outbound,
   bounces,
   logos,
+  unsubscriber,
 }: {
   table: Table;
   mailBucket: MailBucket;
@@ -39,6 +44,7 @@ export function createInbound({
   outbound: Outbound;
   bounces: Bounces;
   logos: SenderLogos;
+  unsubscriber: Unsubscriber;
 }) {
   return async (event: SESEvent): Promise<void> => {
     for (const { ses } of event.Records) {
@@ -110,13 +116,21 @@ export function createInbound({
         dmarcPassed && !spam && !fromAgent && parsed.from !== undefined && delivered.size > 0
           ? await senderLogo(table, logos, { domain: domainOf(sender.from), selector: parsed.bimiSelector })
           : undefined;
+      const dropped: string[] = [];
       for (const [mailbox, to] of delivered) {
-        await receiveScreened(table, { mailbox, sesMessageId: ses.mail.messageId, rawKey, ...to, sender: ses.mail.source, receivedAt: ses.mail.timestamp, parsed, spam, dmarcPassed, fromAgent, logo });
+        const received = await receiveScreened(table, { mailbox, sesMessageId: ses.mail.messageId, rawKey, ...to, sender: ses.mail.source, receivedAt: ses.mail.timestamp, parsed, spam, dmarcPassed, fromAgent, logo });
+        if (received === "dropped") dropped.push(mailbox);
       }
+      // Unsubscribing from spam would confirm a live address (ADR-0016).
+      if (!spam) for (const mailbox of dropped) await unsubscribeDropped({ table, unsubscriber }, { mailbox, address: sender.from, raw });
+      // Mail that went nowhere is kept nowhere, once no mailbox it was for has it (ADR-0025). An
+      // event processed again finds every mailbox dropped or stored it, and erases it all the same.
+      if (delivered.size > 0 && !(await receivedByAny(table, [...delivered.keys()], ses.mail.messageId))) await mailBucket.erase(rawKey);
       // Spam goes to no one outside, and a bounce of it would most likely reach someone it forged.
-      if (spam) continue;
-      await resendToExternalMembers({ table, outbound, log }, { sesMessageId: ses.mail.messageId, raw, parsed, envelopeSender: ses.mail.source, groups: taken });
-      if (refused.length > 0) await bounceOnce({ table, bounces, log }, { sesMessageId: ses.mail.messageId, refused });
+      if (!spam) {
+        await resendToExternalMembers({ table, outbound, log }, { sesMessageId: ses.mail.messageId, raw, parsed, envelopeSender: ses.mail.source, groups: taken });
+        if (refused.length > 0) await bounceOnce({ table, bounces, log }, { sesMessageId: ses.mail.messageId, refused });
+      }
     }
   };
 }

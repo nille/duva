@@ -337,10 +337,13 @@ export class DuvaStack extends Stack {
     });
     const downloadUrl = `${webUrl}/download/`;
 
-    // Blocking a sender unsubscribes by one-click: one POST to a URL from someone's mail. So it goes
-    // from a Lambda of its own, which nothing but the API may invoke, through IAM, and whose role may
-    // do nothing but write its log (ADR-0016). Its POST gives up well within its time.
+    // Sending a sender's mail nowhere unsubscribes by one-click: one POST to a URL from someone's
+    // mail. So it goes from a Lambda of its own, which nothing but the API and the inbound Lambda,
+    // for each message it drops, may invoke, through IAM, and whose role may do nothing but write its
+    // log (ADR-0016, ADR-0025). Its POST gives up well within its time.
     const unsubscriber = lambda("UnsubscriberHandler", "@duva/api/unsubscriber-lambda", {}, { memorySize: 256 });
+    unsubscriber.grantInvoke(inbound);
+    inbound.addEnvironment(environmentVariables.unsubscriberFunction, unsubscriber.functionArn);
 
     // A sender's logo, and its mark certificate, come from URLs in the sender's DNS, so the inbound
     // Lambda fetches them through a Lambda of its own, which only it may invoke, through IAM, and
@@ -459,7 +462,7 @@ export class DuvaStack extends Stack {
     mail.grantRead(handler);
     // Emptying Trash hands the eraser the threads, without waiting.
     eraser.grantInvoke(handler);
-    // Blocking a sender waits for the unsubscriber's POST.
+    // Sending a sender's mail nowhere waits for the unsubscriber's POST.
     unsubscriber.grantInvoke(handler);
     // Admins add humans, who can then sign in, and remove them, who then can't.
     humans.grant(handler, "cognito-idp:AdminCreateUser", "cognito-idp:AdminGetUser", "cognito-idp:AdminDeleteUser");

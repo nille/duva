@@ -217,6 +217,8 @@ export const strings = {
   views: {
     label: "Mail",
     inbox: "Inbox",
+    feed: "Feed",
+    paperTrail: "Paper Trail",
     sent: "Sent",
     drafts: "Drafts",
     allMail: "All mail",
@@ -239,7 +241,65 @@ export const strings = {
       },
       trash: { title: "Trash is empty", lead: (days?: number) => `Threads you move to Trash are listed here until you restore them. Each is erased for good ${keptFor(days)}.` },
       label: { title: "No threads have this label", lead: "Pick threads in any view, then add the label to them with Labels." },
+      feed: { title: "The Feed is empty", lead: "Newsletters lie here, read as a stream, out of your Inbox. Open a sender in a letter and choose the Feed for their mail." },
+      paperTrail: { title: "The Paper Trail is empty", lead: "Receipts and notifications lie here, out of your Inbox. Open a sender in a letter and choose the Paper Trail for their mail." },
     },
+  },
+
+  feed: {
+    stream: "Newest first",
+    more: "Show older",
+    failed: (status: number) => `Duva couldn't read the Feed (error ${status}). Try again in a moment.`,
+    unreachable: "Duva couldn't be reached, so the Feed isn't shown. Check your connection and try again.",
+    openThread: "Open the thread",
+  },
+
+  sender: {
+    open: (who: string) => `Where mail from ${who} goes`,
+    back: "Back",
+    threads: (count: number) => (count === 0 ? "No threads from them here yet" : count === 1 ? "1 thread from them here" : `${count} threads from them here`),
+    domainThreads: (count: number) => (count === 0 ? "No threads from anyone there yet" : count === 1 ? "1 thread from someone there" : `${count} threads from people there`),
+    now: "Their mail goes to",
+    nowByDomain: (domain: string) => `as decided for everyone at ${domain}`,
+    goesTo: {
+      screener: "The Screener, as a first-time sender's",
+      inbox: "The Inbox",
+      feed: "The Feed",
+      paperTrail: "The Paper Trail",
+      label: (name: string) => `The label ${name}`,
+      nowhere: "Nowhere. Their mail is dropped as it arrives",
+    },
+    choose: "Send their mail to",
+    choices: {
+      inbox: { name: "Inbox", hint: "Mail that wants your attention." },
+      feed: { name: "Feed", hint: "Newsletters, read as a stream. Arrives read." },
+      paperTrail: { name: "Paper Trail", hint: "Receipts and notifications. Arrives read." },
+      label: { name: "A label", hint: "Filed under one of your labels instead of the Inbox, unread." },
+      nowhere: { name: "Nowhere", hint: "Dropped as it arrives and kept nowhere. Duva unsubscribes where their mail offers one-click." },
+    },
+    whichLabel: "Label",
+    noLabels: "You have no labels yet. Create one in the side column first.",
+    scope: "For",
+    thisAddress: (address: string) => `Just ${address}`,
+    everyoneAt: (domain: string) => `Everyone at ${domain}`,
+    save: "Save",
+    saving: "Saving…",
+    moves: "Their threads where their mail goes now move with it, and keep the labels you gave them.",
+    nowhereAsk: (count: number) =>
+      count === 0
+        ? "Their later mail is dropped as it arrives. This can't be undone: what is dropped can't come back."
+        : `This erases ${count === 1 ? "their thread" : `their ${count} threads`} here for good, Spam and Trash included, and drops their later mail. This can't be undone.`,
+    nowhereConfirm: "Erase and send nowhere",
+    leaveNowhere: "Mail Duva dropped while it went nowhere can't come back.",
+    cancel: "Cancel",
+    failed: (status: number) => `Duva couldn't read the sender (error ${status}). Try again in a moment.`,
+    unreachable: "Duva couldn't be reached, so the sender isn't shown. Check your connection and try again.",
+    saveFailed: (status: number) => `Duva couldn't save where their mail goes (error ${status}). Try again in a moment.`,
+    saveUnreachable: "Duva couldn't be reached, so nothing changed. Check your connection and try again.",
+    nowhereRefused: "Only the mailbox's owner can send a sender's mail nowhere, since that erases it.",
+    saved: (who: string, to: string, moved: number) => (moved === 0 ? `${who}'s mail goes to ${to} now.` : `${who}'s mail goes to ${to} now. Moved ${threads(moved)}.`),
+    savedNowhere: (who: string, erasing: number) => (erasing === 0 ? `${who}'s mail goes nowhere now.` : `${who}'s mail goes nowhere now. Erasing ${threads(erasing)}.`),
+    places: { inbox: "the Inbox", feed: "the Feed", paperTrail: "the Paper Trail", label: (name: string) => name, nowhere: "nowhere" },
   },
 
   organize: {
@@ -820,21 +880,17 @@ export const strings = {
     title: "Screener",
     agentTitle: (agent: string) => `${agent}'s Screener`,
     waiting: (count: number) => (count === 1 ? ", 1 sender waiting" : `, ${count} senders waiting`),
-    lead: "Mail from senders you haven't let in or written to waits here, out of the Inbox and the unread counts, until you let them in or block them.",
+    lead: "Mail from senders you haven't decided on or written to waits here, out of the Inbox and the unread counts, until you choose where their mail goes.",
     off: "The Screener is off, so mail from first-time senders goes to the Inbox.",
     switchOn: "Switch it on in Settings",
     senders: "Waiting senders",
     mailFrom: (sender: string) => `Mail from ${sender}`,
     screened: "Screened senders",
-    screenedCounts: (letIn: number, blocked: number) => `${letIn} let in, ${blocked} blocked`,
-    letIn: "Let in",
-    block: "Block",
-    letInWho: (sender: string) => `Let in ${sender}`,
-    blockWho: (sender: string) => `Block ${sender}`,
-    letInAsk: "Their mail moves to the Inbox, and their later mail goes there too.",
-    blockAsk: "Their mail moves to Trash, their later mail goes straight there, and Duva unsubscribes where their mail offers one-click.",
-    thisAddress: "This address",
-    everyoneAt: (domain: string) => `Everyone at ${domain}`,
+    screenedCounts: (decided: number) => (decided === 1 ? "1 decided" : `${decided} decided`),
+    sendTo: (sender: string) => `Send mail from ${sender} to`,
+    more: "More…",
+    moreFor: (sender: string) => `More choices for ${sender}`,
+    nowhereAsk: (count: number) => `This erases ${count === 1 ? "their waiting thread" : `their ${count} waiting threads`} for good and drops their later mail. This can't be undone.`,
     cancel: "Cancel",
     emptyTitle: "No one is waiting",
     emptyLead: "Mail from first-time senders waits here. This page checks for new mail by itself, so there's no need to reload it.",
@@ -844,8 +900,6 @@ export const strings = {
     decideUnreachable: "Duva couldn't be reached, so the decision isn't saved. Check your connection and try again.",
     /** Who a decision is on: an address, or everyone at a domain. */
     who: (sender: { address?: string; domain?: string }) => sender.address ?? `everyone at ${sender.domain}`,
-    letInDone: (who: string, moved: number) => (moved === 0 ? `Let in ${who}.` : `Let in ${who}. Moved ${threads(moved)} to the Inbox.`),
-    blockDone: (who: string, moved: number) => (moved === 0 ? `Blocked ${who}.` : `Blocked ${who}. Moved ${threads(moved)} to Trash.`),
     unsubscribe: {
       unsubscribed: "Unsubscribed from their mail.",
       noMail: "There's no mail from them to unsubscribe from.",
@@ -866,22 +920,17 @@ export const strings = {
     title: "Screened senders",
     agentTitle: (agent: string) => `${agent}'s screened senders`,
     back: "Screener",
-    lead: "The addresses and domains you let in or blocked. A decision on an address beats one on its domain.",
+    lead: "The addresses and domains you decided on, by where their mail goes. A decision on an address beats one on its domain. Open one to change it.",
     find: "Find a sender",
-    letIn: "Let in",
-    blocked: "Blocked",
-    noneLetIn: "No senders let in.",
-    noneBlocked: "No senders blocked.",
+    groups: { inbox: "Inbox", feed: "Feed", paperTrail: "Paper Trail", label: "Labels", nowhere: "Nowhere" },
+    none: "None.",
     noneFound: "No screened sender matches.",
     everyoneAt: (domain: string) => `Everyone at ${domain}`,
-    decided: (decision: "letIn" | "block") => (decision === "letIn" ? "Let in" : "Blocked"),
+    decided: "Decided",
     by: (who: string) => `by ${who}`,
     you: "you",
     remove: "Remove",
-    removeBlock: "Remove block",
-    removeAsk: (who: string) => `Remove the block on ${who}? Their threads still in Trash come back to the Inbox.`,
-    removedBlock: (who: string, moved: number) => (moved === 0 ? `Removed the block on ${who}.` : `Removed the block on ${who}. Moved ${threads(moved)} to the Inbox.`),
-    removedLetIn: (who: string) => `Removed ${who}. They're first-time senders again, and their mail stays where it is.`,
+    removed: (who: string, moved: number) => (moved === 0 ? `Removed ${who}. They're first-time senders again.` : `Removed ${who}. They're first-time senders again. Moved ${threads(moved)} to the Inbox.`),
     failed: (status: number) => `Duva couldn't list the screened senders (error ${status}). Try again in a moment.`,
     unreachable: "Duva couldn't be reached, so the screened senders aren't listed. Check your connection and try again.",
   },
@@ -1330,8 +1379,16 @@ function entrySaid(change: ActivityChange, who: string, agent: string, message?:
       // Until the thread is read, or once it is gone, the sender is "Someone".
       const from = message?.from ?? "Someone";
       const wrote = ` wrote to ${message?.recipient ?? agent}`;
-      return change.spam ? [from, `${wrote}, and it went to Spam.`] : change.screened === "waiting" ? [from, `${wrote}, and it waits in the Screener.`] : change.screened === "blocked" ? [from, `, a blocked sender,${wrote}, so it went to Trash.`] : [from, `${wrote}.`];
+      if (change.spam) return [from, `${wrote}, and it went to Spam.`];
+      if (change.screened === "waiting") return [from, `${wrote}, and it waits in the Screener.`];
+      if (change.screened === "blocked") return [from, `, a blocked sender,${wrote}, so it went to Trash.`];
+      if (change.delivered === "feed") return [from, `${wrote}, and it went to the Feed.`];
+      if (change.delivered === "paperTrail") return [from, `${wrote}, and it went to the Paper Trail.`];
+      if (change.delivered === "label") return [from, `${wrote}, and it was filed under a label.`];
+      return [from, `${wrote}.`];
     }
+    case "messageDropped":
+      return ["Duva", ` dropped a message from ${change.address ?? "a sender whose mail goes nowhere"}.`];
     case "draftWritten":
       return [who, ` started a draft.`];
     case "draftChanged":
@@ -1397,6 +1454,12 @@ function entrySaid(change: ActivityChange, who: string, agent: string, message?:
       return change.decision === "letIn" ? [who, ` let in ${sender(change)}.`] : [who, ` blocked ${sender(change)}.`];
     case "screenedSenderRemoved":
       return [who, ` removed the decision on ${sender(change)}.`];
+    case "senderDeliveryRemoved":
+      return [who, ` removed where mail from ${sender(change)} goes, so they're first-time again.`];
+    case "senderDeliverySet": {
+      const to = { inbox: "the Inbox", feed: "the Feed", paperTrail: "the Paper Trail", label: "a label", nowhere: "nowhere" }[change.delivery];
+      return [who, ` sent mail from ${sender(change)} to ${to}.`];
+    }
     case "screenerSwitched":
       return change.on ? [who, ` switched the Screener on.`] : [who, ` switched the Screener off.`];
     case "unsubscribeAttempted":

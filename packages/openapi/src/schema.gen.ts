@@ -981,7 +981,7 @@ export interface paths {
         };
         /**
          * List a mailbox's labels, with how many unread threads each has.
-         * @description Lists the built-in labels inbox, spam and trash first, then the mailbox's own labels by name. Only those who can read the mailbox can list its labels.
+         * @description Lists the built-in labels inbox, feed, paperTrail, spam and trash first, then the mailbox's own labels by name. Only those who can read the mailbox can list its labels.
          */
         get: operations["listLabels"];
         put?: never;
@@ -1008,7 +1008,7 @@ export interface paths {
         post?: never;
         /**
          * Delete one of a mailbox's own labels.
-         * @description Removes the label from each of its threads, each with a change in the mailbox's change feed, and then deletes it. The threads stay. The built-in labels can't be deleted. If deleting stops partway, delete the label again to finish. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give organize sponsor access or more can delete its labels.
+         * @description Removes the label from each of its threads, each with a change in the mailbox's change feed, and then deletes it. The threads stay. Senders whose mail was filed under it go to the Inbox from then on. The built-in labels can't be deleted. If deleting stops partway, delete the label again to finish. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give organize sponsor access or more can delete its labels.
          */
         delete: operations["deleteLabel"];
         options?: never;
@@ -1049,7 +1049,7 @@ export interface paths {
         };
         /**
          * Read a mailbox's Screener, with the first-time senders whose mail waits there.
-         * @description Lists each sender whose mail waits, newest first, with their waiting threads, newest first. Mail waiting in the Screener is in no other listing and no unread count. Says whether the Screener is on, and how many senders the mailbox has let in and blocked. Only those who can read the mailbox can read its Screener.
+         * @description Lists each sender whose mail waits, newest first, with their waiting threads, newest first. Mail waiting in the Screener is in no other listing and no unread count. Says whether the Screener is on, and how many senders the mailbox has decided where mail goes for. Deciding where a waiting sender's mail goes takes their threads out of it. Only those who can read the mailbox can read its Screener.
          */
         get: operations["getScreener"];
         put?: never;
@@ -1059,52 +1059,12 @@ export interface paths {
         head?: never;
         /**
          * Switch a mailbox's Screener on or off.
-         * @description Turning it off moves every waiting thread to the Inbox. Turning it on lets in every address mail in the mailbox is from, except mail in Spam, so no sender the mailbox already has waits. A human's mailbox starts with it on, an agent's with it off. Switching is recorded in the mailbox's change feed under you. Only the mailbox's owner, and an agent's sponsor for its agent's mailbox, can switch it.
+         * @description Turning it off moves every waiting thread to the Inbox. Turning it on decides the Inbox for every address mail in the mailbox is from, except mail in Spam and addresses at a domain decided on, so no sender the mailbox already has waits. A human's mailbox starts with it on, an agent's with it off. Switching is recorded in the mailbox's change feed under you. Only the mailbox's owner, and an agent's sponsor for its agent's mailbox, can switch it.
          */
         patch: operations["switchScreener"];
         trace?: never;
     };
-    "/mailboxes/{mailbox}/screener/let-in": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Let a sender into a mailbox, moving their waiting threads to the Inbox.
-         * @description Give an address, or a domain to let in everyone there. A domain covers exactly that domain, not its subdomains, and can't be a public mail provider's, like gmail.com. An address's decision beats its domain's. Their later mail skips the Screener, even while it is off. Letting in a sender the mailbox blocked replaces the block and moves their threads still in Trash to the Inbox. The decision and each thread it moves are recorded in the mailbox's change feed under you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give organize sponsor access or more can decide.
-         */
-        post: operations["letInSender"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/mailboxes/{mailbox}/screener/block": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Block a sender in a mailbox, moving their waiting threads to Trash.
-         * @description Give an address, or a domain to block everyone there. A domain covers exactly that domain, not its subdomains, and can't be a public mail provider's, like gmail.com. An address's decision beats its domain's. Their later mail that starts a thread goes straight to Trash, even while the Screener is off. Trash is erased after the organization's retention period, counted from when a thread got it. Blocking a sender the mailbox let in replaces that. Blocking also unsubscribes the mailbox from the sender's mail by one-click (RFC 8058), when their newest mail that SES didn't judge to be spam offers it and a DKIM signature that passed covers its unsubscribe headers. For a domain, that is the newest mail from an address there that the mailbox hasn't let in. Duva never unsubscribes by mailto or by a link in the body. The decision, each thread it moves and the unsubscribe's outcome are recorded in the mailbox's change feed under you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give organize sponsor access or more can decide.
-         */
-        post: operations["blockSender"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/mailboxes/{mailbox}/screener/senders": {
+    "/mailboxes/{mailbox}/senders": {
         parameters: {
             query?: never;
             header?: never;
@@ -1112,10 +1072,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List the senders a mailbox has let in or blocked.
-         * @description Each address and domain, with its decision, when it was made and by whom, newest first. Only those who can read the mailbox can list them.
+         * List the senders a mailbox has decided where mail goes for.
+         * @description Each address and domain, with its delivery, when it was set and by whom, newest first. Only those who can read the mailbox can list them.
          */
-        get: operations["listScreenedSenders"];
+        get: operations["listSenders"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1124,21 +1084,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/mailboxes/{mailbox}/screener/senders/{sender}": {
+    "/mailboxes/{mailbox}/senders/{sender}": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get?: never;
-        put?: never;
+        /**
+         * Read a sender's sheet in a mailbox, with where their mail goes now.
+         * @description Says how many threads the mailbox has from them, Spam and Trash included, their name as their newest thread gives it, where their new mail goes now, and the decision that sends it there: the mailbox's on their address, or else on their domain. Only those who can read the mailbox can read it.
+         */
+        get: operations["getSender"];
+        /**
+         * Decide where a sender's mail goes in a mailbox, for their mail there and their later mail.
+         * @description inbox puts their mail in the Inbox. feed and paperTrail file it in the Feed or the Paper Trail instead, read. label files it under the mailbox's own label you give, unread, instead of the Inbox. nowhere drops their later mail on arrival, keeping none of it, and erases their threads in the mailbox, Spam and Trash included, for good. Removing nowhere later brings none of it back. Their threads where their mail went before, or waiting in the Screener, move to where it goes now, and keep the labels given by hand. Their later mail skips the Screener, even while it is off. A domain covers exactly that domain, not its subdomains, and can't be a public mail provider's, like gmail.com. An address's decision beats its domain's. Setting nowhere also unsubscribes the mailbox from the sender's mail by one-click (RFC 8058), when their newest mail that SES didn't judge to be spam offers it and a DKIM signature that passed covers its unsubscribe headers, and each message dropped later tries the same. Duva never unsubscribes by mailto or by a link in the body. The decision, each thread it moves or erases and the unsubscribe's outcome are recorded in the mailbox's change feed under you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give organize sponsor access or more can decide, and only the owner or the sponsor can choose nowhere.
+         */
+        put: operations["setSenderDelivery"];
         post?: never;
         /**
          * Remove a mailbox's decision on a sender, so they are first-time again.
-         * @description Their later mail waits in the Screener again, unless the mailbox has written to them, or a decision on their domain covers them. Removing a block moves their threads still in Trash to the Inbox. To flip a decision instead, let them in or block them. The removal and each thread it moves are recorded in the mailbox's change feed under you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give organize sponsor access or more can remove decisions.
+         * @description Their later mail waits in the Screener again, unless the mailbox has written to them, or a decision on their domain covers them. Their threads where their mail went move to where it goes now, the Inbox unless their domain's decision says otherwise. Mail nowhere dropped doesn't come back. The removal and each thread it moves are recorded in the mailbox's change feed under you. Only the mailbox's owner, for an agent's mailbox its sponsor, and for a human's mailbox the agents they give organize sponsor access or more can remove decisions.
          */
-        delete: operations["removeScreenedSender"];
+        delete: operations["removeSenderDelivery"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2018,7 +1986,7 @@ export interface components {
             position: number;
         };
         /** @description A change in a mailbox. */
-        MailboxChange: components["schemas"]["MessageReceived"] | components["schemas"]["DraftWritten"] | components["schemas"]["DraftChanged"] | components["schemas"]["DraftDeleted"] | components["schemas"]["SendAsked"] | components["schemas"]["ApprovalAsked"] | components["schemas"]["ApprovalWithdrawn"] | components["schemas"]["ApprovalDecided"] | components["schemas"]["ApprovalUndone"] | components["schemas"]["MessageSent"] | components["schemas"]["SendWaitingForLimit"] | components["schemas"]["SentNow"] | components["schemas"]["SendFailed"] | components["schemas"]["SendUnclear"] | components["schemas"]["FeedbackReceived"] | components["schemas"]["ThreadRead"] | components["schemas"]["ThreadUnread"] | components["schemas"]["ThreadLabelsChanged"] | components["schemas"]["ReminderSet"] | components["schemas"]["ReminderCancelled"] | components["schemas"]["ThreadBack"] | components["schemas"]["LabelCreated"] | components["schemas"]["LabelRenamed"] | components["schemas"]["LabelDeleted"] | components["schemas"]["ThreadErased"] | components["schemas"]["AgentSettingsChanged"] | components["schemas"]["AgentPaused"] | components["schemas"]["AgentUnpaused"] | components["schemas"]["SenderScreened"] | components["schemas"]["ScreenerSwitched"] | components["schemas"]["ScreenedSenderRemoved"] | components["schemas"]["UnsubscribeAttempted"];
+        MailboxChange: components["schemas"]["MessageReceived"] | components["schemas"]["DraftWritten"] | components["schemas"]["DraftChanged"] | components["schemas"]["DraftDeleted"] | components["schemas"]["SendAsked"] | components["schemas"]["ApprovalAsked"] | components["schemas"]["ApprovalWithdrawn"] | components["schemas"]["ApprovalDecided"] | components["schemas"]["ApprovalUndone"] | components["schemas"]["MessageSent"] | components["schemas"]["SendWaitingForLimit"] | components["schemas"]["SentNow"] | components["schemas"]["SendFailed"] | components["schemas"]["SendUnclear"] | components["schemas"]["FeedbackReceived"] | components["schemas"]["ThreadRead"] | components["schemas"]["ThreadUnread"] | components["schemas"]["ThreadLabelsChanged"] | components["schemas"]["ReminderSet"] | components["schemas"]["ReminderCancelled"] | components["schemas"]["ThreadBack"] | components["schemas"]["LabelCreated"] | components["schemas"]["LabelRenamed"] | components["schemas"]["LabelDeleted"] | components["schemas"]["ThreadErased"] | components["schemas"]["AgentSettingsChanged"] | components["schemas"]["AgentPaused"] | components["schemas"]["AgentUnpaused"] | components["schemas"]["SenderScreened"] | components["schemas"]["ScreenerSwitched"] | components["schemas"]["ScreenedSenderRemoved"] | components["schemas"]["UnsubscribeAttempted"] | components["schemas"]["SenderDeliverySet"] | components["schemas"]["SenderDeliveryRemoved"] | components["schemas"]["MessageDropped"];
         /** @description Mail arrived. No actor made this change, so it names none. */
         MessageReceived: {
             /** @description The change's position in the mailbox's feed, counting from 1. */
@@ -2043,10 +2011,12 @@ export interface components {
              */
             spam?: true;
             /**
-             * @description Present when the mail started a thread that skipped the Inbox: waiting when its sender is first-time, so it waits in the Screener, and blocked when the mailbox blocked its sender, so it went to Trash.
+             * @description Present when the mail started a thread that skipped the Inbox: waiting when its sender is first-time, so it waits in the Screener, and blocked when the mailbox had blocked its sender, before deliveries existed, so it went to Trash.
              * @enum {string}
              */
             screened?: "waiting" | "blocked";
+            /** @description Present when its sender's delivery filed it outside the Inbox, in the Feed, the Paper Trail or a label. */
+            delivered?: components["schemas"]["Delivery"];
         };
         DraftWritten: components["schemas"]["ChangeBase"] & {
             /** @constant */
@@ -2458,22 +2428,17 @@ export interface components {
              */
             type: "agentSettingsChanged";
         };
-        /** @description Where mail from a mailbox's first-time senders waits until an actor lets the sender in or blocks them. */
+        /** @description Where mail from a mailbox's first-time senders waits until an actor decides where their mail goes. */
         Screener: {
             /** @description Whether mail from first-time senders waits here. Mail that is already waiting stays until it is decided. */
             on: boolean;
             /** @description The senders whose mail waits, newest first. */
             senders: components["schemas"]["WaitingSender"][];
             /**
-             * @description How many addresses and domains the mailbox has let in.
+             * @description How many addresses and domains the mailbox has decided where mail goes for.
              * @example 42
              */
-            letIn: number;
-            /**
-             * @description How many addresses and domains the mailbox has blocked.
-             * @example 3
-             */
-            blocked: number;
+            decided: number;
         };
         /** @description A first-time sender, with their mail that waits in the Screener. */
         WaitingSender: {
@@ -2499,20 +2464,12 @@ export interface components {
             /** @description True to switch the Screener on, false to switch it off. */
             on: boolean;
         };
-        /** @description An address or a domain. Give one of them. */
-        SenderToScreen: {
-            /**
-             * @description The sender's email address. Case doesn't matter.
-             * @example grace@example.org
-             */
-            address?: string;
-            /**
-             * @description The domain, for everyone at exactly that domain, not its subdomains. Case doesn't matter. Public mail providers' domains, like gmail.com, are refused.
-             * @example example.org
-             */
-            domain?: string;
+        SenderDelivery: {
+            delivery: components["schemas"]["Delivery"];
+            /** @description For label, the ID of the mailbox's own label to file their mail under. */
+            label?: string;
         };
-        /** @description An address or a domain a mailbox has let in or blocked. It has one of address and domain. */
+        /** @description An address or a domain a mailbox has decided where mail goes for. It has one of address and domain. */
         ScreenedSender: {
             /**
              * @description The address, in lower case.
@@ -2524,29 +2481,65 @@ export interface components {
              * @example example.org
              */
             domain?: string;
-            decision: components["schemas"]["ScreeningDecisionKind"];
+            delivery: components["schemas"]["Delivery"];
+            /** @description For label, the ID of the label their mail is filed under. */
+            label?: string;
             /**
              * Format: date-time
              * @description When it was decided.
              */
             decidedAt: string;
-            /** @description The ID of the actor who decided, if one did. Switching the Screener on lets in the mailbox's senders under whoever switched it, and setup's under no one. */
+            /** @description The ID of the actor who decided, if one did. Switching the Screener on sends the mailbox's senders' mail to the Inbox under whoever switched it, and setup's under no one. */
             actor?: string;
         };
         /**
-         * @description letIn lets the sender's mail into the Inbox. block sends it to Trash.
+         * @description Where a sender's mail goes. inbox: the Inbox. feed: the Feed, for newsletters, read. paperTrail: the Paper Trail, for receipts and notifications, read. label: a label of the mailbox's own, unread, instead of the Inbox. nowhere: dropped on arrival, keeping none of it.
          * @enum {string}
          */
-        ScreeningDecisionKind: "letIn" | "block";
+        Delivery: "inbox" | "feed" | "paperTrail" | "label" | "nowhere";
         ScreeningDecision: {
             sender: components["schemas"]["ScreenedSender"];
             /** @description The threads it moved, as they are now, newest first. */
             threads: components["schemas"]["ThreadSummary"][];
-            /** @description For a block, how unsubscribing from the sender's mail went. */
+            /** @description For nowhere, how many of the sender's threads are being erased for good. */
+            erasing?: number;
+            /** @description For nowhere, how unsubscribing from the sender's mail went. */
             unsubscribe?: components["schemas"]["Unsubscribe"];
         };
+        /** @description A sender in a mailbox, an address or a domain. It has one of address and domain. */
+        SenderSheet: {
+            /**
+             * @description The sender's address, in lower case.
+             * @example grace@example.org
+             */
+            address?: string;
+            /**
+             * @description The domain, in lower case.
+             * @example example.org
+             */
+            domain?: string;
+            /**
+             * @description For an address, the sender's name as their newest thread gives it, if it gives one.
+             * @example Grace Hopper
+             */
+            name?: string;
+            /**
+             * @description How many threads in the mailbox they started, Spam and Trash included. For a domain, everyone's there.
+             * @example 12
+             */
+            threads: number;
+            /**
+             * @description Where their new mail goes now, as a delivery says, or screener when it waits in the Screener for a first-time sender.
+             * @enum {string}
+             */
+            goesTo: "screener" | "inbox" | "feed" | "paperTrail" | "label" | "nowhere";
+            /** @description When goesTo is label, the ID of the label. */
+            label?: string;
+            /** @description The decision that sends their mail where it goes, the mailbox's on their address or else on their domain, if it has one. */
+            decided?: components["schemas"]["ScreenedSender"];
+        };
         ScreenedSenderList: {
-            /** @description The addresses and domains the mailbox let in or blocked, newest decision first. */
+            /** @description The addresses and domains the mailbox decided on, newest decision first. */
             senders: components["schemas"]["ScreenedSender"][];
         };
         Unsubscribe: {
@@ -2568,9 +2561,9 @@ export interface components {
         UnsubscribeAttempted: components["schemas"]["ChangeBase"] & {
             /** @constant */
             type: "unsubscribeAttempted";
-            /** @description The sender's address, in lower case, if the block is on an address. */
+            /** @description The sender's address, in lower case, if the decision is on an address or a message was dropped. */
             address?: string;
-            /** @description The domain, in lower case, if the block is on a domain. */
+            /** @description The domain, in lower case, if the decision is on a domain. */
             domain?: string;
             outcome: components["schemas"]["UnsubscribeOutcome"];
             reason?: components["schemas"]["UnsubscribeReason"];
@@ -2590,7 +2583,11 @@ export interface components {
             address?: string;
             /** @description The domain, in lower case, if the decision is on a domain. */
             domain?: string;
-            decision: components["schemas"]["ScreeningDecisionKind"];
+            /**
+             * @description letIn let the sender's mail into the Inbox, and block sent it to Trash.
+             * @enum {string}
+             */
+            decision: "letIn" | "block";
         } & {
             /**
              * @description discriminator enum property added by openapi-typescript
@@ -2605,14 +2602,64 @@ export interface components {
             address?: string;
             /** @description The domain, in lower case, if the decision was on a domain. */
             domain?: string;
-            /** @description The decision it was. */
-            decision: components["schemas"]["ScreeningDecisionKind"];
+            /**
+             * @description The decision it was.
+             * @enum {string}
+             */
+            decision: "letIn" | "block";
         } & {
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
             type: "screenedSenderRemoved";
+        };
+        SenderDeliverySet: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "senderDeliverySet";
+            /** @description The sender's address, in lower case, if the decision is on an address. */
+            address?: string;
+            /** @description The domain, in lower case, if the decision is on a domain. */
+            domain?: string;
+            delivery: components["schemas"]["Delivery"];
+            /** @description For label, the ID of the label. */
+            label?: string;
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "senderDeliverySet";
+        };
+        SenderDeliveryRemoved: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "senderDeliveryRemoved";
+            /** @description The sender's address, in lower case, if the decision was on an address. */
+            address?: string;
+            /** @description The domain, in lower case, if the decision was on a domain. */
+            domain?: string;
+            /** @description The delivery it was. */
+            delivery: components["schemas"]["Delivery"];
+            /** @description For label, the ID of the label it was. */
+            label?: string;
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "senderDeliveryRemoved";
+        };
+        MessageDropped: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "messageDropped";
+            /** @description The sender's address, in lower case. */
+            address: string;
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "messageDropped";
         };
         /** @description The Screener was switched on or off. Switching it off moves each waiting thread to the Inbox, each with its own threadLabelsChanged. Setup switching it on for a mailbox that had it before the Screener existed names no actor. */
         ScreenerSwitched: {
@@ -2632,7 +2679,7 @@ export interface components {
             type: "screenerSwitched";
             /** @description Whether it is on now. */
             on: boolean;
-            /** @description When switched on, how many of the mailbox's senders that weren't let in yet it let in. */
+            /** @description When switched on, how many of the mailbox's senders without a decision yet it sent to the Inbox. */
             letIn?: number;
         };
         TrashEmptying: {
@@ -3062,7 +3109,7 @@ export interface components {
         };
         Label: {
             /**
-             * @description The label's ID, which threads list among their labels. The built-in labels' are inbox, spam and trash.
+             * @description The label's ID, which threads list among their labels. The built-in labels' are inbox, feed, paperTrail, spam and trash.
              * @example inbox
              */
             id: string;
@@ -3912,6 +3959,8 @@ export interface components {
         };
     };
     parameters: {
+        /** @description The sender's address, like grace@example.org, or a domain, like example.org, for everyone at exactly that domain. Case doesn't matter. */
+        Sender: string;
         /** @description The mailbox's ID. */
         Mailbox: string;
         /** @description The draft's ID. */
@@ -5862,69 +5911,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
-    letInSender: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description The mailbox's ID. */
-                mailbox: components["parameters"]["Mailbox"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SenderToScreen"];
-            };
-        };
-        responses: {
-            /** @description The decision, with the threads it moved. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ScreeningDecision"];
-                };
-            };
-            400: components["responses"]["BadRequest"];
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-        };
-    };
-    blockSender: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description The mailbox's ID. */
-                mailbox: components["parameters"]["Mailbox"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SenderToScreen"];
-            };
-        };
-        responses: {
-            /** @description The decision, with the threads it moved. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ScreeningDecision"];
-                };
-            };
-            400: components["responses"]["BadRequest"];
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-        };
-    };
-    listScreenedSenders: {
+    listSenders: {
         parameters: {
             query?: never;
             header?: never;
@@ -5950,15 +5937,77 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
-    removeScreenedSender: {
+    getSender: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 /** @description The mailbox's ID. */
                 mailbox: components["parameters"]["Mailbox"];
-                /** @description The address or the domain, as the mailbox decided on it. Case doesn't matter. */
-                sender: string;
+                /** @description The sender's address, like grace@example.org, or a domain, like example.org, for everyone at exactly that domain. Case doesn't matter. */
+                sender: components["parameters"]["Sender"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The sender's sheet. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SenderSheet"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    setSenderDelivery: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The mailbox's ID. */
+                mailbox: components["parameters"]["Mailbox"];
+                /** @description The sender's address, like grace@example.org, or a domain, like example.org, for everyone at exactly that domain. Case doesn't matter. */
+                sender: components["parameters"]["Sender"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SenderDelivery"];
+            };
+        };
+        responses: {
+            /** @description The decision, with the threads it moved. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScreeningDecision"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    removeSenderDelivery: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The mailbox's ID. */
+                mailbox: components["parameters"]["Mailbox"];
+                /** @description The sender's address, like grace@example.org, or a domain, like example.org, for everyone at exactly that domain. Case doesn't matter. */
+                sender: components["parameters"]["Sender"];
             };
             cookie?: never;
         };

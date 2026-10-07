@@ -333,8 +333,17 @@ test("the indexer reads a FIFO queue, so each mailbox has one writer, which the 
   }
 });
 
+test("the inbound Lambda invokes the unsubscriber to unsubscribe from mail it drops and the logo fetcher for senders' logos, and may invoke no other Lambda", () => {
+  const [unsubscriberId] = lambda("UnsubscriberHandler");
+  const [fetcherId] = lambda("LogoFetcherHandler");
+  const invoking = statements("InboundHandler").filter(({ Action }) => [Action].flat().some((action) => action.startsWith("lambda:")));
+  const invoked = JSON.stringify(invoking.map(({ Resource }) => Resource)).match(/Fn::GetAtt":\["(\w+)"/g)?.map((ref) => ref.replace(/^Fn::GetAtt":\["|"$/g, ""));
+  expect(new Set(invoked)).toEqual(new Set([unsubscriberId, fetcherId]));
+  expect(lambda("InboundHandler")[1].Properties?.Environment?.Variables?.[environmentVariables.unsubscriberFunction]).toEqual({ "Fn::GetAtt": [unsubscriberId, "Arn"] });
+});
+
 // The unsubscriber sends a POST to a URL from someone's mail, so it may reach nothing of Duva's (ADR-0016).
-test("the unsubscriber can be invoked only by the API, through IAM, and may do nothing but write its log", () => {
+test("the unsubscriber can be invoked only by the API and the inbound Lambda, through IAM, and may do nothing but write its log", () => {
   const [unsubscriberId, { Properties }] = lambda("UnsubscriberHandler");
   const naming = (type: string) => ofType(type).filter(([, resource]) => JSON.stringify(resource.Properties).includes(`"${unsubscriberId}"`));
   expect(naming("AWS::Lambda::Permission")).toEqual([]);

@@ -97,10 +97,10 @@ test("a day's summary counts what the agent organized and screened itself, and l
   await hermes.POST("/mailboxes/{mailbox}/threads/read", { params, body: { threads: [thread] } });
   await hermes.POST("/mailboxes/{mailbox}/threads/labels", { params, body: { threads: [thread], remove: ["inbox"] } });
   await hermes.POST("/mailboxes/{mailbox}/labels", { params, body: { name: "Kvitton" } });
-  await hermes.POST("/mailboxes/{mailbox}/screener/block", { params, body: { address: "mallory@example.net" } });
+  await hermes.PUT("/mailboxes/{mailbox}/senders/{sender}", { params: { path: { ...params.path, sender: "mallory@example.net" } }, body: { delivery: "paperTrail" } });
   await hermes.PATCH("/mailboxes/{mailbox}/screener", { params, body: { on: true } });
   await ada.POST("/mailboxes/{mailbox}/threads/unread", { params, body: { threads: [thread] } });
-  await ada.POST("/mailboxes/{mailbox}/screener/let-in", { params, body: { address: "linus@example.org" } });
+  await ada.PUT("/mailboxes/{mailbox}/senders/{sender}", { params: { path: { ...params.path, sender: "linus@example.org" } }, body: { delivery: "inbox" } });
 
   const { data } = await summaries({ from: "2026-10-06", to: "2026-10-06" });
 
@@ -307,7 +307,7 @@ test("an admin who isn't the sponsor reads the timeline without what the mail sa
   await duva.clock(new Date("2026-09-15T10:00:00Z"));
   await receive("Kvitto");
   await hermes.POST("/mailboxes/{mailbox}/labels", { params, body: { name: "Kvitton" } });
-  await hermes.POST("/mailboxes/{mailbox}/screener/block", { params, body: { address: "mallory@example.net" } });
+  await hermes.PUT("/mailboxes/{mailbox}/senders/{sender}", { params: { path: { ...params.path, sender: "mallory@example.net" } }, body: { delivery: "paperTrail" } });
   await reject((await ask("linus@example.org")).approval);
 
   const sponsors = (await timeline("2026-09-15")).data!.entries.map(({ change }) => change);
@@ -315,13 +315,13 @@ test("an admin who isn't the sponsor reads the timeline without what the mail sa
 
   expect(sponsors.find(({ type }) => type === "approvalDecided")).toMatchObject({ decision: "rejected", note: "Not now." });
   expect(sponsors.find(({ type }) => type === "labelCreated")).toMatchObject({ name: "Kvitton" });
-  expect(sponsors.find(({ type }) => type === "senderScreened")).toMatchObject({ address: "mallory@example.net" });
+  expect(sponsors.find(({ type }) => type === "senderDeliverySet")).toMatchObject({ address: "mallory@example.net" });
   expect(admins.map(({ type }) => type)).toEqual(sponsors.map(({ type }) => type));
   const decided = admins.find(({ type }) => type === "approvalDecided");
   expect(decided).toMatchObject({ decision: "rejected" });
   expect(decided).not.toHaveProperty("note");
   expect(admins.find(({ type }) => type === "labelCreated")).not.toHaveProperty("name");
-  expect(admins.find(({ type }) => type === "senderScreened")).toEqual(expect.not.objectContaining({ address: expect.anything() }));
+  expect(admins.find(({ type }) => type === "senderDeliverySet")).toEqual(expect.not.objectContaining({ address: expect.anything() }));
 });
 
 test("an admin who isn't the sponsor reads no approver's edits, no bounced recipients and no reason SES gave for refusing a send", async () => {

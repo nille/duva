@@ -1,4 +1,4 @@
-// Unsubscribing on block (ADR-0016): only by RFC 8058 one-click, from the sender's newest mail that
+// Unsubscribing from mail that goes nowhere (ADR-0016, ADR-0025): only by RFC 8058 one-click, from the sender's newest mail that
 // SES didn't judge to be spam, and only when a DKIM signature that SES found passing covers both
 // unsubscribe headers, so no one but the signer can have put the URL there. Never by mailto, and
 // never by a link in the body. SES heads each raw copy it stores with its verdicts, the spam verdict
@@ -16,10 +16,10 @@ const messagesRead = 10;
 
 /**
  * Unsubscribes the mailbox from the sender's mail by one-click, if their newest mail that SES
- * didn't judge to be spam offers it, on behalf of the actor `by`, who blocked the sender. For a
- * domain, that is the newest mail from an address on exactly that domain, except those the mailbox
- * let in, since their own decision beats the block. Records the outcome in the mailbox's change
- * feed, and returns it.
+ * didn't judge to be spam offers it, on behalf of the actor `by`, who sent their mail nowhere. For
+ * a domain, that is the newest mail from an address on exactly that domain, except those with a
+ * delivery of their own, since their own decision beats the domain's. Records the outcome in the
+ * mailbox's change feed, and returns it.
  */
 export async function unsubscribeFrom(
   { table, mailBucket, unsubscriber }: { table: Table; mailBucket: MailBucket; unsubscriber: Unsubscriber },
@@ -31,10 +31,21 @@ export async function unsubscribeFrom(
   return outcome;
 }
 
-/** Whether an address is on exactly the domain, and the mailbox hasn't let it in. */
+/**
+ * Unsubscribes the mailbox by one-click from the mail of the address, whose message it dropped, if
+ * the raw message offers it, naming no actor, as arriving mail names none. Records the outcome in
+ * the mailbox's change feed. The caller leaves out spam. An unsubscriber that can't be invoked
+ * fails it as unreachable, so the drop goes on to erase the message.
+ */
+export async function unsubscribeDropped({ table, unsubscriber }: { table: Table; unsubscriber: Unsubscriber }, { mailbox, address, raw }: { mailbox: string; address: string; raw: Uint8Array }): Promise<void> {
+  const outcome: Unsubscribe = (await unsubscribeBy(unsubscriber, raw).catch(() => ({ outcome: "failed", reason: "unreachable" }) as const)) ?? { outcome: "notOffered", reason: "spam" };
+  await recordChanges(table, mailboxFeed(mailbox), { by: undefined, changes: [{ type: "unsubscribeAttempted", address, ...outcome }], items: [] });
+}
+
+/** Whether an address is on exactly the domain, and the mailbox hasn't decided on it. */
 async function onDomain(table: Table, mailbox: string, domain: string): Promise<(address: string) => boolean> {
-  const letIn = new Set((await screenedSenders(table, mailbox)).flatMap((decided) => ("address" in decided && decided.decision === "letIn" ? [decided.address] : [])));
-  return (address) => address.slice(address.lastIndexOf("@") + 1) === domain && !letIn.has(address);
+  const decided = new Set((await screenedSenders(table, mailbox)).flatMap((each) => (each.address !== undefined ? [each.address] : [])));
+  return (address) => address.slice(address.lastIndexOf("@") + 1) === domain && !decided.has(address);
 }
 
 async function unsubscribe(mailBucket: MailBucket, unsubscriber: Unsubscriber, received: { rawKey: string }[]): Promise<Unsubscribe> {
@@ -42,15 +53,19 @@ async function unsubscribe(mailBucket: MailBucket, unsubscriber: Unsubscriber, r
   for (const { rawKey } of received.slice(0, messagesRead)) {
     const raw = await mailBucket.get(rawKey);
     if (raw === undefined) continue;
-    const offer = oneClickOffered(fieldsOf(raw));
-    if (offer === "spam") {
-      sawSpam = true;
-      continue;
-    }
-    if (offer === "noOneClick" || offer === "notSigned") return { outcome: "notOffered", reason: offer };
-    return unsubscriber.post(offer.url);
+    const outcome = await unsubscribeBy(unsubscriber, raw);
+    if (outcome !== undefined) return outcome;
+    sawSpam = true;
   }
   return { outcome: "notOffered", reason: sawSpam ? "spam" : "noMail" };
+}
+
+/** Unsubscribes by the one-click the raw message offers, or says why it offers none, or undefined if SES judged it to be spam. */
+async function unsubscribeBy(unsubscriber: Unsubscriber, raw: Uint8Array): Promise<Unsubscribe | undefined> {
+  const offer = oneClickOffered(fieldsOf(raw));
+  if (offer === "spam") return undefined;
+  if (offer === "noOneClick" || offer === "notSigned") return { outcome: "notOffered", reason: offer };
+  return unsubscriber.post(offer.url);
 }
 
 /** A header field: its name in lower case, and its value unfolded. */

@@ -349,7 +349,7 @@ test("erased mail leaves every listing and its labels' counts", async () => {
   const { data: labels } = await grace.GET("/mailboxes/{mailbox}/labels", { params });
   expect(labelled!.threads).toEqual([]);
   expect(allMail!.threads).toEqual([]);
-  expect(labels!.labels.map(({ unread }) => unread)).toEqual([0, 0, 0, 0]);
+  expect(labels!.labels.map(({ unread }) => unread)).toEqual([0, 0, 0, 0, 0, 0]);
 });
 
 test("erasing a thread erases its raw messages, received and sent, and the drafts it sent", async () => {

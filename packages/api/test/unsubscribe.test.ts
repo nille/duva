@@ -52,14 +52,14 @@ const newsletter = (
 
 /**
  * A newsletter's From and Subject for the ith of several senders at lists.example.org, so that one
- * mailbox can block each in turn: a test of many cases starts one deployment, not one for each,
+ * mailbox can sendNowhere each in turn: a test of many cases starts one deployment, not one for each,
  * which under load takes a second or more.
  */
 const fromSender = (i: number) => ({ from: `news-${i}@lists.example.org`, subject: `News ${i}` });
 
 /**
  * A deployment on example.com where Grace has her personal mailbox at grace@example.com, with the
- * Screener on, and sponsors the agent Iris, which has full sponsor access. lists.example.org serves
+ * Screener on, and sponsors the agent Iris, which has send sponsor access. lists.example.org serves
  * the web, answering as given.
  */
 async function withMailbox(server: WebServerOptions = {}) {
@@ -73,22 +73,23 @@ async function withMailbox(server: WebServerOptions = {}) {
   const params = { path: { mailbox: mailbox!.id } };
   const requests = await duva.webServer("lists.example.org", server);
   const receive = (raw: string, verdicts: Verdicts = {}) => duva.receive(raw, { to: ["grace@example.com"] }, { verdicts });
-  /** Blocks the address given (news by default) as the client given (Grace by default), and answers how unsubscribing went. */
-  const block = async ({ client = grace, address = news } = {}) => {
-    const { data, response } = await client.POST("/mailboxes/{mailbox}/screener/block", { params, body: { address } });
+  /** Sends the mail of the address or domain given (news by default) nowhere, and answers how unsubscribing went. */
+  const sendNowhere = async ({ sender = news } = {}) => {
+    const { data, response } = await nowhere(sender);
     expect(response.status).toBe(200);
     return data!.unsubscribe;
   };
+  const nowhere = (sender: string, client = grace) => client.PUT("/mailboxes/{mailbox}/senders/{sender}", { params: { path: { ...params.path, sender } }, body: { delivery: "nowhere" } });
   const changes = async () => (await grace.GET("/mailboxes/{mailbox}/changes", { params: { ...params, query: { spam: true } } })).data!.changes;
-  const letIn = () => grace.POST("/mailboxes/{mailbox}/screener/let-in", { params, body: { address: "news@lists.example.org" } });
-  return { duva, grace, letIn, graceId: me!.id, iris: duva.withKey(iris!.key), irisId: iris!.agent.id, params, requests, receive, block, changes };
+  const letIn = () => grace.PUT("/mailboxes/{mailbox}/senders/{sender}", { params: { path: { ...params.path, sender: "news@lists.example.org" } }, body: { delivery: "inbox" } });
+  return { duva, grace, letIn, nowhere, graceId: me!.id, iris: duva.withKey(iris!.key), irisId: iris!.agent.id, params, requests, receive, sendNowhere, changes };
 }
 
-test("blocking a sender whose newest mail offers one-click, under a passing DKIM signature, unsubscribes with one POST", async () => {
-  const { receive, block, requests, changes, graceId } = await withMailbox();
+test("sending a sender's mail nowhere, when their newest mail offers one-click under a passing DKIM signature, unsubscribes with one POST", async () => {
+  const { receive, sendNowhere, requests, changes, graceId } = await withMailbox();
   await receive(newsletter("https://lists.example.org/unsubscribe?u=grace&l=news"));
 
-  expect(await block()).toEqual({ outcome: "unsubscribed" });
+  expect(await sendNowhere()).toEqual({ outcome: "unsubscribed" });
 
   expect(requests).toEqual([
     {
@@ -100,24 +101,26 @@ test("blocking a sender whose newest mail offers one-click, under a passing DKIM
   ]);
   expect(requests[0]!.headers).not.toHaveProperty("cookie");
   expect(requests[0]!.headers).not.toHaveProperty("referer");
-  // After the block, and the thread it moved to Trash.
+  // After the decision, and before the eraser erases the thread.
   expect((await changes()).slice(-3)).toEqual([
-    expect.objectContaining({ type: "senderScreened", address: "news@lists.example.org", decision: "block", actor: graceId }),
-    expect.objectContaining({ type: "threadLabelsChanged", actor: graceId }),
+    expect.objectContaining({ type: "senderDeliverySet", address: "news@lists.example.org", delivery: "nowhere", actor: graceId }),
     expect.objectContaining({ type: "unsubscribeAttempted", address: "news@lists.example.org", outcome: "unsubscribed", actor: graceId }),
+    expect.objectContaining({ type: "threadErased", actor: graceId }),
   ]);
 });
 
-test("an agent with full sponsor access that blocks a sender unsubscribes under its own name", async () => {
-  const { receive, block, iris, irisId, changes } = await withMailbox();
+test("an agent with send sponsor access can't send a sender's mail nowhere, since that erases it, so it unsubscribes from nothing", async () => {
+  const { receive, nowhere, iris, requests } = await withMailbox();
   await receive(newsletter("https://lists.example.org/unsubscribe"));
 
-  expect(await block({ client: iris })).toEqual({ outcome: "unsubscribed" });
+  const { response, error } = await nowhere(news, iris);
 
-  expect((await changes()).at(-1)).toEqual(expect.objectContaining({ type: "unsubscribeAttempted", outcome: "unsubscribed", actor: irisId }));
+  expect(response.status).toBe(403);
+  expect(error?.message).toMatch(/Only your sponsor can send a sender's mail nowhere/);
+  expect(requests).toEqual([]);
 });
 
-test("letting a sender in unsubscribes from nothing", async () => {
+test("sending a sender's mail to the Inbox unsubscribes from nothing", async () => {
   const { receive, letIn, requests, changes } = await withMailbox();
   await receive(newsletter("https://lists.example.org/unsubscribe"));
 
@@ -129,31 +132,31 @@ test("letting a sender in unsubscribes from nothing", async () => {
 });
 
 test("unsubscribing takes the sender's newest mail, also when it waits no longer", async () => {
-  const { duva, receive, block, letIn, requests } = await withMailbox();
+  const { duva, receive, sendNowhere, letIn, requests } = await withMailbox();
   const other = await duva.webServer("other.example.org");
   await duva.receive(newsletter("https://other.example.org/old", { subject: "Old" }), { to: ["grace@example.com"] }, { at: new Date("2026-10-01T09:00:00Z") });
   await receive(newsletter("https://lists.example.org/new", { subject: "New" }));
   await letIn();
 
-  expect(await block()).toEqual({ outcome: "unsubscribed" });
+  expect(await sendNowhere()).toEqual({ outcome: "unsubscribed" });
 
   expect(requests.map(({ url }) => url)).toEqual(["https://lists.example.org/new"]);
   expect(other).toEqual([]);
 });
 
 test("when the sender's newest mail offers no one-click, nothing is sent, even if older mail offered it", async () => {
-  const { duva, receive, block, requests, changes } = await withMailbox();
+  const { duva, receive, sendNowhere, requests, changes } = await withMailbox();
   await duva.receive(newsletter("https://lists.example.org/old", { subject: "Old" }), { to: ["grace@example.com"] }, { at: new Date("2026-10-01T09:00:00Z") });
   await receive(newsletter("https://lists.example.org/new", { subject: "New", post: "" }));
 
-  expect(await block()).toEqual({ outcome: "notOffered", reason: "noOneClick" });
+  expect(await sendNowhere()).toEqual({ outcome: "notOffered", reason: "noOneClick" });
 
   expect(requests).toEqual([]);
-  expect((await changes()).at(-1)).toEqual(expect.objectContaining({ type: "unsubscribeAttempted", outcome: "notOffered", reason: "noOneClick" }));
+  expect((await changes()).findLast(({ type }) => type === "unsubscribeAttempted")).toEqual(expect.objectContaining({ type: "unsubscribeAttempted", outcome: "notOffered", reason: "noOneClick" }));
 });
 
 test("one-click needs an https List-Unsubscribe and List-Unsubscribe-Post as RFC 8058 has it, each once: mailto and http aren't enough", async () => {
-  const { receive, block, requests } = await withMailbox();
+  const { receive, sendNowhere, requests } = await withMailbox();
   for (const [i, offer] of [
     { unsubscribe: "<mailto:leave@lists.example.org>" },
     { unsubscribe: "<http://lists.example.org/unsubscribe>" },
@@ -166,13 +169,13 @@ test("one-click needs an https List-Unsubscribe and List-Unsubscribe-Post as RFC
     const sender = fromSender(i);
     await receive(newsletter("https://lists.example.org/unsubscribe", { ...offer, ...sender }));
 
-    expect({ offer, unsubscribe: await block({ address: sender.from }) }).toEqual({ offer, unsubscribe: { outcome: "notOffered", reason: "noOneClick" } });
+    expect({ offer, unsubscribe: await sendNowhere({ sender: sender.from }) }).toEqual({ offer, unsubscribe: { outcome: "notOffered", reason: "noOneClick" } });
     expect(requests).toEqual([]);
   }
 });
 
 test("one-click needs a DKIM signature that covers both headers and that SES found passing", async () => {
-  const { receive, block, requests } = await withMailbox();
+  const { receive, sendNowhere, requests } = await withMailbox();
   for (const [i, [offer, verdicts]] of ([
     [{ signatures: {} }, {}],
     [{ signatures: { "lists.example.org": "From:To:Subject:List-Unsubscribe" } }, {}],
@@ -185,115 +188,115 @@ test("one-click needs a DKIM signature that covers both headers and that SES fou
     const sender = fromSender(i);
     await receive(newsletter("https://lists.example.org/unsubscribe", { ...offer, ...sender }), verdicts);
 
-    expect({ offer, verdicts, unsubscribe: await block({ address: sender.from }) }).toEqual({ offer, verdicts, unsubscribe: { outcome: "notOffered", reason: "notSigned" } });
+    expect({ offer, verdicts, unsubscribe: await sendNowhere({ sender: sender.from }) }).toEqual({ offer, verdicts, unsubscribe: { outcome: "notOffered", reason: "notSigned" } });
     expect(requests).toEqual([]);
   }
 });
 
 test("a passing signature from another domain that covers both headers is enough, as when a mailing service signs", async () => {
-  const { receive, block } = await withMailbox();
+  const { receive, sendNowhere } = await withMailbox();
   await receive(newsletter("https://lists.example.org/unsubscribe", { signatures: { "lists.example.org": "From:To:Subject", "mailer.example.net": covering } }), {
     dkim: { "lists.example.org": "FAIL" },
   });
 
-  expect(await block()).toEqual({ outcome: "unsubscribed" });
+  expect(await sendNowhere()).toEqual({ outcome: "unsubscribed" });
 });
 
 test("Duva never unsubscribes from mail SES judged to be spam, even in a thread taken out of Spam", async () => {
-  const { receive, block, requests, grace, params } = await withMailbox();
+  const { receive, sendNowhere, requests, grace, params } = await withMailbox();
   await receive(newsletter("https://lists.example.org/unsubscribe"), { spam: "FAIL" });
   const { data } = await grace.GET("/mailboxes/{mailbox}/threads", { params: { ...params, query: { label: "spam" } } });
   await grace.POST("/mailboxes/{mailbox}/threads/labels", { params, body: { threads: [data!.threads[0]!.id], add: ["inbox"], remove: ["spam"] } });
 
-  expect(await block()).toEqual({ outcome: "notOffered", reason: "spam" });
+  expect(await sendNowhere()).toEqual({ outcome: "notOffered", reason: "spam" });
 
   expect(requests).toEqual([]);
 });
 
 test("unsubscribing skips the sender's spam for their newest mail that isn't", async () => {
-  const { duva, receive, block, requests } = await withMailbox();
+  const { duva, receive, sendNowhere, requests } = await withMailbox();
   await duva.receive(newsletter("https://lists.example.org/real", { subject: "Real" }), { to: ["grace@example.com"] }, { at: new Date("2026-10-01T09:00:00Z") });
   await receive(newsletter("https://lists.example.org/spam", { subject: "Spam" }), { spam: "FAIL" });
 
-  expect(await block()).toEqual({ outcome: "unsubscribed" });
+  expect(await sendNowhere()).toEqual({ outcome: "unsubscribed" });
 
   expect(requests.map(({ url }) => url)).toEqual(["https://lists.example.org/real"]);
 });
 
-test("blocking a sender the mailbox has no mail from unsubscribes from nothing", async () => {
-  const { block, requests } = await withMailbox();
+test("sending the mail of a sender the mailbox has no mail from nowhere unsubscribes from nothing", async () => {
+  const { sendNowhere, requests } = await withMailbox();
 
-  expect(await block()).toEqual({ outcome: "notOffered", reason: "noMail" });
+  expect(await sendNowhere()).toEqual({ outcome: "notOffered", reason: "noMail" });
   expect(requests).toEqual([]);
 });
 
 test("the POST goes only to http or https on port 80 or 443", async () => {
-  const { receive, block, requests } = await withMailbox();
+  const { receive, sendNowhere, requests } = await withMailbox();
   for (const [i, url] of ["https://lists.example.org:8443/unsubscribe", "https://lists.example.org:22/unsubscribe"].entries()) {
     const sender = fromSender(i);
     await receive(newsletter(url, sender));
 
-    expect({ url, unsubscribe: await block({ address: sender.from }) }).toEqual({ url, unsubscribe: { outcome: "failed", reason: "notAllowed" } });
+    expect({ url, unsubscribe: await sendNowhere({ sender: sender.from }) }).toEqual({ url, unsubscribe: { outcome: "failed", reason: "notAllowed" } });
     expect(requests).toEqual([]);
   }
 });
 
 test("the POST goes only to a public address: never a private, shared, loopback or link-local one", async () => {
-  const { duva, receive, block } = await withMailbox();
+  const { duva, receive, sendNowhere } = await withMailbox();
   for (const [i, address] of ["10.0.0.7", "172.16.4.1", "192.168.1.1", "100.64.0.1", "127.0.0.1", "169.254.169.254", "0.0.0.0", "::1", "fd00::7", "fe80::1", "::ffff:10.0.0.7", "::127.0.0.1", "64:ff9b::a00:7"].entries()) {
     const requests = await duva.webServer("lists.example.org", { addresses: [address] });
     const sender = fromSender(i);
     await receive(newsletter("https://lists.example.org/unsubscribe", sender));
 
-    expect({ address, unsubscribe: await block({ address: sender.from }) }).toEqual({ address, unsubscribe: { outcome: "failed", reason: "notPublic" } });
+    expect({ address, unsubscribe: await sendNowhere({ sender: sender.from }) }).toEqual({ address, unsubscribe: { outcome: "failed", reason: "notPublic" } });
     expect(requests).toEqual([]);
   }
 });
 
 test("a host name that resolves to a public and a private address is refused", async () => {
-  const { receive, block, requests } = await withMailbox({ addresses: ["93.184.215.10", "10.0.0.7"] });
+  const { receive, sendNowhere, requests } = await withMailbox({ addresses: ["93.184.215.10", "10.0.0.7"] });
   await receive(newsletter("https://lists.example.org/unsubscribe"));
 
-  expect(await block()).toEqual({ outcome: "failed", reason: "notPublic" });
+  expect(await sendNowhere()).toEqual({ outcome: "failed", reason: "notPublic" });
   expect(requests).toEqual([]);
 });
 
 test("a URL that names an address that isn't public is refused", async () => {
-  const { receive, block } = await withMailbox();
+  const { receive, sendNowhere } = await withMailbox();
   for (const [i, url] of ["https://127.0.0.1/unsubscribe", "https://169.254.169.254/latest/meta-data/", "https://[::1]/unsubscribe", "https://10.0.0.7/unsubscribe"].entries()) {
     const sender = fromSender(i);
     await receive(newsletter(url, sender));
 
-    expect({ url, unsubscribe: await block({ address: sender.from }) }).toEqual({ url, unsubscribe: { outcome: "failed", reason: "notPublic" } });
+    expect({ url, unsubscribe: await sendNowhere({ sender: sender.from }) }).toEqual({ url, unsubscribe: { outcome: "failed", reason: "notPublic" } });
   }
 });
 
 test("a redirect is checked as the URL was: to an address that isn't public, nothing more is sent", async () => {
-  const { duva, receive, block, requests } = await withMailbox({ answer: () => new Response(null, { status: 307, headers: { location: "http://intranet.example.net/admin" } }) });
+  const { duva, receive, sendNowhere, requests } = await withMailbox({ answer: () => new Response(null, { status: 307, headers: { location: "http://intranet.example.net/admin" } }) });
   const intranet = await duva.webServer("intranet.example.net", { addresses: ["10.0.0.7"] });
   await receive(newsletter("https://lists.example.org/unsubscribe"));
 
-  expect(await block()).toEqual({ outcome: "failed", reason: "notPublic" });
+  expect(await sendNowhere()).toEqual({ outcome: "failed", reason: "notPublic" });
 
   expect(requests).toHaveLength(1);
   expect(intranet).toEqual([]);
 });
 
 test("a redirect to a port other than 80 or 443 is refused", async () => {
-  const { receive, block } = await withMailbox({ answer: () => new Response(null, { status: 308, headers: { location: "https://lists.example.org:6379/" } }) });
+  const { receive, sendNowhere } = await withMailbox({ answer: () => new Response(null, { status: 308, headers: { location: "https://lists.example.org:6379/" } }) });
   await receive(newsletter("https://lists.example.org/unsubscribe"));
 
-  expect(await block()).toEqual({ outcome: "failed", reason: "notAllowed" });
+  expect(await sendNowhere()).toEqual({ outcome: "failed", reason: "notAllowed" });
 });
 
 test("a 307 or 308 repeats the POST at the new URL, without the cookies the first answer set", async () => {
-  const { duva, receive, block, requests } = await withMailbox({
+  const { duva, receive, sendNowhere, requests } = await withMailbox({
     answer: () => new Response(null, { status: 308, headers: { location: "https://esp.example.net/one-click?u=grace", "set-cookie": "session=abc" } }),
   });
   const esp = await duva.webServer("esp.example.net");
   await receive(newsletter("https://lists.example.org/unsubscribe"));
 
-  expect(await block()).toEqual({ outcome: "unsubscribed" });
+  expect(await sendNowhere()).toEqual({ outcome: "unsubscribed" });
 
   expect(requests).toHaveLength(1);
   expect(esp).toEqual([expect.objectContaining({ method: "POST", url: "https://esp.example.net/one-click?u=grace", body: "List-Unsubscribe=One-Click" })]);
@@ -302,89 +305,111 @@ test("a 307 or 308 repeats the POST at the new URL, without the cookies the firs
 });
 
 test("another redirect isn't followed, and doesn't unsubscribe, since it may lead to a page that asks to confirm", async () => {
-  const { duva, receive, block } = await withMailbox();
+  const { duva, receive, sendNowhere } = await withMailbox();
   for (const [i, status] of [301, 302, 303].entries()) {
     await duva.webServer("lists.example.org", { answer: () => new Response(null, { status, headers: { location: "https://esp.example.net/confirm" } }) });
     const esp = await duva.webServer("esp.example.net");
     const sender = fromSender(i);
     await receive(newsletter("https://lists.example.org/unsubscribe", sender));
 
-    expect(await block({ address: sender.from })).toEqual({ outcome: "failed", reason: "refused", status });
+    expect(await sendNowhere({ sender: sender.from })).toEqual({ outcome: "failed", reason: "refused", status });
     expect(esp).toEqual([]);
   }
 });
 
 test("a 307 or 308 may lead to http, but to no other scheme", async () => {
-  const { duva, receive, block } = await withMailbox({ answer: () => new Response(null, { status: 307, headers: { location: "ftp://esp.example.net:80/" } }) });
+  const { duva, receive, sendNowhere } = await withMailbox({ answer: () => new Response(null, { status: 307, headers: { location: "ftp://esp.example.net:80/" } }) });
   await duva.webServer("esp.example.net");
   await receive(newsletter("https://lists.example.org/unsubscribe"));
 
-  expect(await block()).toEqual({ outcome: "failed", reason: "notAllowed" });
+  expect(await sendNowhere()).toEqual({ outcome: "failed", reason: "notAllowed" });
 });
 
 test("a 307 to http on port 80 repeats the POST there", async () => {
-  const { duva, receive, block } = await withMailbox({ answer: () => new Response(null, { status: 307, headers: { location: "http://esp.example.net/one-click" } }) });
+  const { duva, receive, sendNowhere } = await withMailbox({ answer: () => new Response(null, { status: 307, headers: { location: "http://esp.example.net/one-click" } }) });
   const esp = await duva.webServer("esp.example.net");
   await receive(newsletter("https://lists.example.org/unsubscribe"));
 
-  expect(await block()).toEqual({ outcome: "unsubscribed" });
+  expect(await sendNowhere()).toEqual({ outcome: "unsubscribed" });
   expect(esp).toEqual([expect.objectContaining({ method: "POST", url: "http://esp.example.net/one-click", body: "List-Unsubscribe=One-Click" })]);
 });
 
 test("the POST follows three redirects at most", async () => {
-  const { receive, block, requests } = await withMailbox({ answer: ({ url }) => new Response(null, { status: 307, headers: { location: `${url}x` } }) });
+  const { receive, sendNowhere, requests } = await withMailbox({ answer: ({ url }) => new Response(null, { status: 307, headers: { location: `${url}x` } }) });
   await receive(newsletter("https://lists.example.org/unsubscribe"));
 
-  expect(await block()).toEqual({ outcome: "failed", reason: "tooManyRedirects" });
+  expect(await sendNowhere()).toEqual({ outcome: "failed", reason: "tooManyRedirects" });
   expect(requests).toHaveLength(4);
 });
 
 test("an error from the sender's server fails, with its status", async () => {
-  const { receive, block, changes } = await withMailbox({ answer: () => new Response("Gone", { status: 410 }) });
+  const { receive, sendNowhere, changes } = await withMailbox({ answer: () => new Response("Gone", { status: 410 }) });
   await receive(newsletter("https://lists.example.org/unsubscribe"));
 
-  expect(await block()).toEqual({ outcome: "failed", reason: "refused", status: 410 });
-  expect((await changes()).at(-1)).toEqual(expect.objectContaining({ type: "unsubscribeAttempted", outcome: "failed", reason: "refused", status: 410 }));
+  expect(await sendNowhere()).toEqual({ outcome: "failed", reason: "refused", status: 410 });
+  expect((await changes()).findLast(({ type }) => type === "unsubscribeAttempted")).toEqual(expect.objectContaining({ type: "unsubscribeAttempted", outcome: "failed", reason: "refused", status: 410 }));
 });
 
 test("a server whose name doesn't resolve fails as unreachable", async () => {
-  const { receive, block } = await withMailbox();
+  const { receive, sendNowhere } = await withMailbox();
   await receive(newsletter("https://nowhere.example.org/unsubscribe"));
 
-  expect(await block()).toEqual({ outcome: "failed", reason: "unreachable" });
+  expect(await sendNowhere()).toEqual({ outcome: "failed", reason: "unreachable" });
 });
 
 test("a server that doesn't answer within 5 seconds fails", async () => {
-  const { receive, block } = await withMailbox({ answer: () => new Promise<never>(() => {}) });
+  const { receive, sendNowhere } = await withMailbox({ answer: () => new Promise<never>(() => {}) });
   await receive(newsletter("https://lists.example.org/unsubscribe"));
 
   const started = Date.now();
-  expect(await block()).toEqual({ outcome: "failed", reason: "timedOut" });
+  expect(await sendNowhere()).toEqual({ outcome: "failed", reason: "timedOut" });
   expect(Date.now() - started).toBeLessThan(7_000);
 }, 15_000);
 
 
-test("blocking a domain unsubscribes from the newest mail from an address on exactly that domain", async () => {
-  const { duva, receive, grace, params, requests, changes, graceId } = await withMailbox();
+test("sending a domain's mail nowhere unsubscribes from the newest mail from an address on exactly that domain", async () => {
+  const { duva, receive, nowhere, requests, changes, graceId } = await withMailbox();
   const sub = await duva.webServer("mail.lists.example.org");
   await duva.receive(newsletter("https://lists.example.org/older", { subject: "Older" }), { to: ["grace@example.com"] }, { at: new Date("2026-10-01T09:00:00Z") });
   await receive(newsletter("https://mail.lists.example.org/newer", { subject: "Newer", from: "news@mail.lists.example.org" }));
 
-  const { data } = await grace.POST("/mailboxes/{mailbox}/screener/block", { params, body: { domain: "lists.example.org" } });
+  const { data } = await nowhere("lists.example.org");
 
   expect(data!.unsubscribe).toEqual({ outcome: "unsubscribed" });
   expect(requests.map(({ url }) => url)).toEqual(["https://lists.example.org/older"]);
   expect(sub).toEqual([]);
-  expect((await changes()).at(-1)).toEqual(expect.objectContaining({ type: "unsubscribeAttempted", domain: "lists.example.org", outcome: "unsubscribed", actor: graceId }));
+  expect((await changes()).findLast(({ type }) => type === "unsubscribeAttempted")).toEqual(expect.objectContaining({ type: "unsubscribeAttempted", domain: "lists.example.org", outcome: "unsubscribed", actor: graceId }));
 });
 
-test("blocking a domain leaves out mail from an address there the mailbox let in, since its own decision beats the block", async () => {
-  const { receive, grace, params, letIn, requests } = await withMailbox();
+test("sending a domain's mail nowhere leaves out mail from an address there with its own delivery, since its own decision beats the domain's", async () => {
+  const { receive, nowhere, letIn, requests } = await withMailbox();
   await receive(newsletter("https://lists.example.org/unsubscribe"));
   await letIn();
 
-  const { data } = await grace.POST("/mailboxes/{mailbox}/screener/block", { params, body: { domain: "lists.example.org" } });
+  const { data } = await nowhere("lists.example.org");
 
   expect(data!.unsubscribe).toEqual({ outcome: "notOffered", reason: "noMail" });
   expect(requests).toEqual([]);
+});
+
+test("mail dropped since its sender's mail goes nowhere unsubscribes by the one-click it offers, naming no actor", async () => {
+  const { receive, nowhere, requests, changes } = await withMailbox();
+  await nowhere(news);
+
+  await receive(newsletter("https://lists.example.org/unsubscribe?again"));
+
+  expect(requests.map(({ url }) => url)).toEqual(["https://lists.example.org/unsubscribe?again"]);
+  const [dropped, attempted] = (await changes()).slice(-2);
+  expect(dropped).toEqual({ position: expect.any(Number), at: expect.any(String), type: "messageDropped", address: "news@lists.example.org" });
+  expect(attempted).toEqual({ position: expect.any(Number), at: expect.any(String), type: "unsubscribeAttempted", address: "news@lists.example.org", outcome: "unsubscribed" });
+});
+
+test("spam that is dropped since its sender's mail goes nowhere unsubscribes from nothing", async () => {
+  const { receive, nowhere, requests, changes } = await withMailbox();
+  await nowhere(news);
+
+  await receive(newsletter("https://lists.example.org/unsubscribe"), { spam: "FAIL" });
+
+  expect(requests).toEqual([]);
+  expect((await changes()).at(-1)).toMatchObject({ type: "messageDropped" });
 });

@@ -63,7 +63,7 @@ test("with a mailbox as the catch-all, mail to unknown and removed addresses on 
   await duva.receive(message("linus@example.net", "someone@example.se", "To the alias"), { to: ["someone@example.se"] });
   expect(refused).toEqual([]);
   expect((await waiting(grace, graces)).sort()).toEqual(["To nobody", "To orders", "To the alias"]);
-  await grace.POST("/mailboxes/{mailbox}/screener/let-in", { params: graces, body: { address: "linus@example.net" } });
+  await grace.PUT("/mailboxes/{mailbox}/senders/{sender}", { params: { path: { ...graces.path, sender: "linus@example.net" } }, body: { delivery: "inbox" } });
   const recipients = (await messagesIn(grace, graces)).map(({ recipient, plusTag, group }) => ({ recipient, plusTag, group }));
   expect(recipients).toEqual(
     expect.arrayContaining([

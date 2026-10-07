@@ -761,7 +761,7 @@ test("mailboxes changes leaves spam arrivals out unless it's given --spam", asyn
   expect(JSON.parse(withSpam.stdout)).toMatchObject({ changes: [{ position: 1, type: "messageReceived", spam: true }], position: 1 });
 });
 
-test("a human lets a waiting sender in from the CLI, and switches the Screener off with --no-on", async () => {
+test("a human sends a waiting sender's mail to the Inbox from the CLI, and switches the Screener off with --no-on", async () => {
   const machine = await newMachine();
   const duva = await startDuva({ domain: "example.com", admin: "ada@example.org" });
   const server = await duva.listen();
@@ -773,15 +773,17 @@ test("a human lets a waiting sender in from the CLI, and switches the Screener o
   await duva.receive("From: Grace <grace@example.org>\r\nTo: ada@example.com\r\nSubject: Hello\r\n\r\nHi Ada.\r\n", { to: ["ada@example.com"] });
 
   const waiting = await machine.duva("screener", "get", "--mailbox", mailbox.id);
-  const letIn = await machine.duva("screener", "let-in", "--mailbox", mailbox.id, "--address", "grace@example.org");
+  const sheet = await machine.duva("senders", "get", "--mailbox", mailbox.id, "--sender", "grace@example.org");
+  const letIn = await machine.duva("senders", "set", "--mailbox", mailbox.id, "--sender", "grace@example.org", "--delivery", "inbox");
   const off = await machine.duva("screener", "switch", "--mailbox", mailbox.id, "--no-on");
 
   expect(JSON.parse(waiting.stdout)).toMatchObject({ on: true, senders: [{ address: "grace@example.org", threads: [{ subject: "Hello", labels: ["screener"] }] }] });
-  expect(JSON.parse(letIn.stdout)).toMatchObject({ sender: { address: "grace@example.org", decision: "letIn", actor: ada }, threads: [{ subject: "Hello", labels: ["inbox"] }] });
-  expect(JSON.parse(off.stdout)).toEqual({ on: false, senders: [], letIn: 1, blocked: 0 });
+  expect(JSON.parse(sheet.stdout)).toEqual({ address: "grace@example.org", name: "Grace", threads: 1, goesTo: "screener" });
+  expect(JSON.parse(letIn.stdout)).toMatchObject({ sender: { address: "grace@example.org", delivery: "inbox", actor: ada }, threads: [{ subject: "Hello", labels: ["inbox"] }] });
+  expect(JSON.parse(off.stdout)).toEqual({ on: false, senders: [], decided: 1 });
 });
 
-test("a human blocks a domain from the CLI, lists the screened senders and removes the block", async () => {
+test("a human files a domain's mail in the Paper Trail from the CLI, lists the senders and removes the decision", async () => {
   const machine = await newMachine();
   const duva = await startDuva({ domain: "example.com", admin: "ada@example.org" });
   const server = await duva.listen();
@@ -791,16 +793,16 @@ test("a human blocks a domain from the CLI, lists the screened senders and remov
   const { id: ada } = JSON.parse((await machine.duva("whoami")).stdout) as { id: string };
   const mailbox = JSON.parse((await machine.duva("mailboxes", "create", "--owner", ada, "--address", "ada@example.com")).stdout) as { id: string };
 
-  const blocked = await machine.duva("screener", "block", "--mailbox", mailbox.id, "--domain", "example.net");
-  const provider = await machine.duva("screener", "let-in", "--mailbox", mailbox.id, "--domain", "gmail.com");
-  const listed = await machine.duva("screener", "senders", "--mailbox", mailbox.id);
-  const removed = await machine.duva("screener", "remove", "--mailbox", mailbox.id, "--sender", "example.net");
+  const filed = await machine.duva("senders", "set", "--mailbox", mailbox.id, "--sender", "example.net", "--delivery", "paperTrail");
+  const provider = await machine.duva("senders", "set", "--mailbox", mailbox.id, "--sender", "gmail.com", "--delivery", "inbox");
+  const listed = await machine.duva("senders", "list", "--mailbox", mailbox.id);
+  const removed = await machine.duva("senders", "remove", "--mailbox", mailbox.id, "--sender", "example.net");
 
-  expect(JSON.parse(blocked.stdout)).toMatchObject({ sender: { domain: "example.net", decision: "block", actor: ada }, threads: [] });
+  expect(JSON.parse(filed.stdout)).toMatchObject({ sender: { domain: "example.net", delivery: "paperTrail", actor: ada }, threads: [] });
   expect(provider.exitCode).toBe(1);
   expect(errorIn(provider.stderr)).toMatch(/gmail.com is a public mail provider/);
-  expect(JSON.parse(listed.stdout)).toEqual({ senders: [{ domain: "example.net", decision: "block", decidedAt: expect.any(String), actor: ada }] });
-  expect(JSON.parse(removed.stdout)).toMatchObject({ sender: { domain: "example.net", decision: "block" }, threads: [] });
+  expect(JSON.parse(listed.stdout)).toEqual({ senders: [{ domain: "example.net", delivery: "paperTrail", decidedAt: expect.any(String), actor: ada }] });
+  expect(JSON.parse(removed.stdout)).toMatchObject({ sender: { domain: "example.net", delivery: "paperTrail" }, threads: [] });
 });
 
 test("mailboxes create says why an address is refused", async () => {
