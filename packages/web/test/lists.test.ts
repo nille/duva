@@ -128,3 +128,100 @@ test("on a phone every list fits the screen", budget, async () => {
   await expect.poll(() => page.locator(".screened-sheet").count(), wait).toBe(1);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(phone.width);
 });
+
+/**
+ * The web app for a deployment where Ada, the admin, has a personal mailbox at ada@example.com and
+ * sponsors the agent Hermes, which owns hermes@example.com and works in Ada's mailbox with full
+ * sponsor access. Mail from Grace and from Hermes waits in Ada's Inbox.
+ */
+async function withAgentAtWork() {
+  const app = await startWebApp({ domain: "example.com", admin: "ada@example.org" });
+  const ada = app.duva.signIn("ada@example.org");
+  const { data: me } = await ada.GET("/whoami");
+  const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: me!.id, address: "ada@example.com" } });
+  const inAdas = { path: { mailbox: mailbox!.id } };
+  await ada.PATCH("/mailboxes/{mailbox}/screener", { params: inAdas, body: { on: false } });
+  const { data: created } = await ada.POST("/agents", { body: { name: "Hermes" } });
+  await ada.POST("/mailboxes", { body: { owner: created!.agent.id, address: "hermes@example.com" } });
+  await ada.PATCH("/agents/{agent}/settings", { params: { path: { agent: created!.agent.id } }, body: { sponsorAccess: "full" } });
+  const hermes = app.duva.withKey(created!.key);
+  const toAda = (subject: string, from: string) => note(subject, from).replace("To: Grace <grace@example.com>", "To: ada@example.com");
+  await app.duva.receive(toAda("Möte", "Grace Hopper <grace@example.org>"), { to: ["ada@example.com"] });
+  await app.duva.receive(toAda("Veckorapport", "Hermes <hermes@example.com>"), { to: ["ada@example.com"] });
+  const { data: listed } = await ada.GET("/mailboxes/{mailbox}/threads", { params: inAdas });
+  const meeting = listed!.threads.find(({ subject }) => subject === "Möte")!;
+  const { data: thread } = await ada.GET("/mailboxes/{mailbox}/threads/{thread}", { params: { path: { ...inAdas.path, thread: meeting.id } } });
+  /** Hermes drafts a reply to Grace's message in Ada's mailbox and asks to send it, and answers the approval it waits for. */
+  const askToReply = async () => {
+    const { data: draft } = await hermes.POST("/mailboxes/{mailbox}/drafts", { params: inAdas, body: { answers: thread!.messages[0]!.id, text: "Måndag går bra." } });
+    const { data: asked } = await hermes.POST("/mailboxes/{mailbox}/drafts/{draft}/send", { params: { path: { ...inAdas.path, draft: draft!.id } } });
+    return asked!.send!.approval!;
+  };
+  return { ...app, ada, askToReply };
+}
+
+const row = (page: Page, subject: string) => page.getByRole("list", { name: "Threads" }).getByRole("listitem").filter({ hasText: subject });
+
+test("a row says when an agent sent it, and a thread whose reply an agent asks to send says it waits for you, naming the agent", budget, async () => {
+  const { page, signIn, ada, askToReply } = await withAgentAtWork();
+  const approval = await askToReply();
+  await signIn("ada@example.org");
+  await expect.poll(() => heading(page), wait).toBe("Inbox");
+
+  const meeting = row(page, "Möte");
+  await expect.poll(() => meeting.innerText(), wait).toContain("Waiting for you");
+  expect(await meeting.innerText()).toContain("Hermes");
+  expect(await meeting.getByRole("link").getAttribute("aria-label")).toContain("Hermes's reply waits for you");
+  expect(await meeting.getByRole("link").getAttribute("aria-label")).toContain("Grace Hopper, Möte");
+  const report = row(page, "Veckorapport");
+  expect(await report.getByRole("link").getAttribute("aria-label")).toContain("Hermes, an agent, Veckorapport");
+  expect(await report.innerText()).not.toContain("Waiting for you");
+
+  await ada.POST("/approvals/{approval}/send", { params: { path: { approval } } });
+
+  await expect.poll(() => meeting.innerText(), wait).not.toContain("Waiting for you");
+});
+
+test("new senders waiting in the Screener show as one row at the top of the Inbox, which opens the Screener", budget, async () => {
+  const { page } = await withLists(["Kvitto"]);
+  const waiting = page.getByRole("region", { name: "Screener" });
+
+  await expect.poll(() => waiting.innerText(), wait).toContain("1 new sender waits in the Screener");
+  const [rowTop, listTop] = [(await waiting.boundingBox())!.y, (await page.getByRole("list", { name: "Threads" }).boundingBox())!.y];
+  expect(rowTop).toBeLessThan(listTop);
+  await waiting.getByRole("link", { name: "Screen them" }).click();
+  await expect.poll(() => heading(page), wait).toBe("Screener");
+
+  await page.getByRole("button", { name: "Let in" }).click();
+  await page.getByRole("button", { name: "This address" }).click();
+  await go(page, "#/", "Inbox");
+  await expect.poll(() => page.getByRole("list", { name: "Threads" }).getByRole("listitem").count(), wait).toBe(2);
+  await expect.poll(() => waiting.count(), wait).toBe(0);
+});
+
+test("the Inbox's chips show its unread threads, or those with a label, and All shows it whole again", budget, async () => {
+  const { page, duva } = await withLists(["Kvitto", "Lunch", "Resplan"]);
+  const grace = duva.signIn("grace@example.org");
+  const { data: mailboxes } = await grace.GET("/mailboxes");
+  const params = { path: { mailbox: mailboxes!.mailboxes[0]!.id } };
+  const { data: threads } = await grace.GET("/mailboxes/{mailbox}/threads", { params });
+  const id = (subject: string) => threads!.threads.find((thread) => thread.subject === subject)!.id;
+  await grace.POST("/mailboxes/{mailbox}/threads/read", { params, body: { threads: [id("Kvitto"), id("Resplan")] } });
+  const { data: family } = await grace.POST("/mailboxes/{mailbox}/labels", { params, body: { name: "Familj" } });
+  await grace.POST("/mailboxes/{mailbox}/threads/labels", { params, body: { threads: [id("Resplan")], add: [family!.id] } });
+  await page.reload();
+  const chips = page.getByRole("navigation", { name: "Show" });
+  await expect.poll(() => chips.getByRole("link").allInnerTexts(), wait).toEqual(["All", "Unread", "Familj"]);
+  expect(await chips.getByRole("link", { name: "All" }).getAttribute("aria-current")).toBe("page");
+  const subjects = () => page.locator(".threads .thread-subject").allInnerTexts();
+
+  await chips.getByRole("link", { name: "Unread" }).click();
+
+  await expect.poll(subjects, wait).toEqual(["Lunch"]);
+  expect(await chips.getByRole("link", { name: "Unread" }).getAttribute("aria-current")).toBe("page");
+  await chips.getByRole("link", { name: "Familj" }).click();
+  await expect.poll(subjects, wait).toEqual(["Resplan"]);
+  await chips.getByRole("link", { name: "All" }).click();
+  await expect.poll(() => heading(page), wait).toBe("Inbox");
+  await expect.poll(subjects, wait).toHaveLength(3);
+});

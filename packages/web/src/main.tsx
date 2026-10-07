@@ -25,7 +25,7 @@ import { Composer } from "./compose.tsx";
 import { defaultPreferences, type Preferences, PreferencesContext, useDates } from "./dates.ts";
 import { Drafts } from "./drafts.tsx";
 import { approvalChanges, type Connection, draftChanges, type Follow, labelChanges, mailChanges, mailboxSetupChanges, screenerChanges, setupChanges, SignedOut, useFeeds } from "./feed.ts";
-import { ThreadIndex } from "./inbox.tsx";
+import { type Marks, ThreadIndex } from "./inbox.tsx";
 import { ActorMark } from "./mail-parts.tsx";
 import { type AgentMailbox, MailboxList, mailboxHref, mailboxName, ownInOrder } from "./mailboxes.tsx";
 import { type Beside, BesideContext } from "./panes.tsx";
@@ -177,6 +177,8 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
   const route = useRoute();
   const [mailboxes, setMailboxes] = useState<Mailboxes>({ status: "loading" });
   const [waiting, setWaiting] = useState<number>();
+  // The threads the agents' sends wait in for the human, which their lists say.
+  const [asked, setAsked] = useState<{ mailbox: string; thread: string; agent: string; forward: boolean }[]>([]);
   // How many of the sponsor's alerts are unseen, and the newest one's ID, so the Alerts view reads again when one arrives.
   const [alerts, setAlerts] = useState<{ unseen: number; newest?: string; version: number }>({ unseen: 0, version: 0 });
   // How many changes to each mailbox's mail the app has seen, so its views read it again when it grows.
@@ -290,7 +292,14 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
       if (first || changes.some(({ change }) => approvalChanges.has(change.type)) || organization.some((change) => setupChanges.has(change.type))) {
         const { data, response } = await client.GET("/approvals");
         if (response.status === 401) throw new SignedOut();
-        if (data !== undefined) setWaiting(data.approvals.length + data.setupApprovals.length);
+        if (data !== undefined) {
+          setWaiting(data.approvals.length + data.setupApprovals.length);
+          setAsked(
+            data.approvals.flatMap(({ mailbox, agent, draft }) =>
+              draft.thread === undefined ? [] : [{ mailbox, thread: draft.thread, agent, forward: draft.forwards !== undefined }],
+            ),
+          );
+        }
       }
       // Alerts come from no feed, so a sponsor's count is read with every read of the feeds. Only a
       // sponsor gets alerts, and one whose agents are gone may still have theirs.
@@ -465,6 +474,17 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
   const searched = away ? first : shown;
   const searching = route.view === "search" ? route.search.search : route.view === "thread" && "search" in route.from ? route.from.search : undefined;
   const doneHere = done !== undefined && done.at === route.hash ? done.done : undefined;
+  // Who sent the mail listed, as far as the human knows: the agents they sponsor, and Duva from its address on the mailbox's domains.
+  const marks = useMemo<Marks>(
+    () => ({
+      agents: new Map(listed?.agents.flatMap(({ mailbox, agent }) => mailbox.addresses.map((address) => [address.toLowerCase(), agent] as const))),
+      duva: new Set(shown?.addresses.map((address) => `no-reply@${address.slice(address.lastIndexOf("@") + 1).toLowerCase()}`)),
+      waiting: new Map(
+        asked.filter(({ mailbox }) => mailbox === shown?.id).map(({ thread, agent, forward }) => [thread, { agent: agentNames.get(agent) ?? strings.galley.anAgent, forward }]),
+      ),
+    }),
+    [listed, shown, asked, agentNames],
+  );
   const writing = route.view === "drafts" || route.view === "draft" || route.view === "write";
 
   // On phones the search field opens from its icon, and stays open while a search is shown.
@@ -534,6 +554,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
         view={listing}
         labels={labels}
         acted={acted}
+        marks={marks}
         done={reading ? undefined : doneHere}
         onDone={showDone}
         onSignedOut={onSignedOut}
@@ -549,6 +570,8 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
         labels={labels}
         version={version + acted}
         connection={connection}
+        marks={marks}
+        screener={shownScreener.status === "read" ? shownScreener.screener.senders.length : 0}
         done={reading ? undefined : doneHere}
         onDone={showDone}
         onSignedOut={onSignedOut}
@@ -777,6 +800,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
         <Shortcuts
           write={write}
           close={route.view === "thread" && shown !== undefined ? () => (location.hash = hrefOf(route.from, base)) : undefined}
+          views={shown === undefined ? undefined : { base, drafts: shownOwn }}
           sheetOpen={shortcutsOpen}
           onSheet={setShortcutsOpen}
         />

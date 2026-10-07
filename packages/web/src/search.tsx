@@ -1,11 +1,11 @@
-// Searching the open mailbox: a box in the bar, which `/` puts the cursor in, with a menu that builds
+// Searching the open mailbox: a box in the bar, which `/` puts the cursor in, as its cap shows, with a menu that builds
 // the filters into what is typed, and the results, best match or newest first, a page at a time, each
 // a thread with the words highlighted in its snippet. Opening one goes to the message that matched.
 import { type FormEvent, type ReactNode, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
-import { DoneLine, IndexTools, SkeletonIndex, ThreadRow, usePicking } from "./inbox.tsx";
-import { type Done, type Label, OrganizeActions, ownLabelsOf } from "./organize.tsx";
+import { chipOf, DoneLine, IndexTools, ListChips, type Marks, SkeletonIndex, ThreadRow, usePicking } from "./inbox.tsx";
+import { type Done, type Label, OrganizeActions, ownLabelsOf, useKeyed } from "./organize.tsx";
 import { useBeside, useViewTitle, ViewMain, ViewTitle } from "./panes.tsx";
 import { useShortcuts, useThreadKeys } from "./shortcuts.tsx";
 import { strings } from "./strings.ts";
@@ -111,6 +111,7 @@ export function SearchBox({ client, mailbox, base, agent, labels, current }: { c
 
   // `/` puts the cursor in the box from anywhere but a field, as in other mail apps.
   useShortcuts({ "/": () => box.current?.focus() });
+  const keyed = useKeyed();
 
   const open = chosen !== undefined;
   useEffect(() => {
@@ -164,9 +165,15 @@ export function SearchBox({ client, mailbox, base, agent, labels, current }: { c
           value={value}
           autoComplete="off"
           enterKeyHint="search"
+          aria-keyshortcuts={keyed("/")}
           onChange={(event) => setValue(event.target.value)}
           onFocus={() => warm(client, mailbox.id)}
         />
+        {keyed("/") !== undefined && (
+          <kbd className="search-key" aria-hidden="true">
+            /
+          </kbd>
+        )}
       </span>
       <button
         ref={button}
@@ -266,6 +273,7 @@ export function SearchResults({
   view,
   labels,
   acted = 0,
+  marks,
   done,
   onDone,
   onSignedOut,
@@ -277,6 +285,7 @@ export function SearchResults({
   labels: Label[];
   /** How many times the human changed a thread open beside the results, which then search again. */
   acted?: number;
+  marks?: Marks;
   done: Done | undefined;
   onDone: (done: Done | undefined) => void;
   onSignedOut: () => void;
@@ -370,7 +379,9 @@ export function SearchResults({
     void again();
   };
   const list = useRef<HTMLOListElement>(null);
-  useThreadKeys({ list, client, mailbox, threads, picked: picking.picked, place, onDone: organized, onSignedOut });
+  useThreadKeys({ list, client, mailbox, threads, picked: picking.picked, place, onPick: picking.toggle, onLabels: picking.askLabels, onDone: organized, onSignedOut });
+  // A search a list's chip makes shows the chips, that one current.
+  const chip = chipOf(view, labels, base);
 
   // A search that names no label can look in Spam or Trash instead.
   const { rest, filters } = filtersOf(q);
@@ -378,7 +389,7 @@ export function SearchResults({
   const lookIn = (label: string) => hrefOf({ search: { q: withFilters(rest, { ...filters, label }), sort } }, base);
 
   const sortLink = (to: SearchView["search"]["sort"], name: string) => (
-    <a href={hrefOf({ search: { q, sort: to } }, base)} aria-current={sort === to ? "page" : undefined}>
+    <a className="chip" href={hrefOf({ search: { q, sort: to } }, base)} aria-current={sort === to ? "page" : undefined}>
       {name}
     </a>
   );
@@ -395,6 +406,7 @@ export function SearchResults({
           {sortLink("newest", strings.search.newest)}
         </nav>
       </div>
+      {chip !== undefined && <ListChips base={base} scope={chip.scope} labels={labels} q={chip.q} />}
       <p className="visually-hidden" role="status">
         {finding.status === "found" ? (finding.results.length > 0 ? strings.search.found(finding.results.length, finding.next !== undefined) : strings.search.emptyTitle) : ""}
       </p>
@@ -424,7 +436,16 @@ export function SearchResults({
       ) : (
         <div className="index">
           <IndexTools picking={picking} more={finding.next !== undefined}>
-            <OrganizeActions client={client} mailbox={mailbox} threads={picking.picked} labels={labels} place={place} onDone={organized} onSignedOut={onSignedOut} />
+            <OrganizeActions
+              client={client}
+              mailbox={mailbox}
+              threads={picking.picked}
+              labels={labels}
+              place={place}
+              labelsAsked={picking.labelsAsked}
+              onDone={organized}
+              onSignedOut={onSignedOut}
+            />
           </IndexTools>
           <ol className="threads results" aria-label={strings.search.results} ref={list}>
             {finding.results.map((result) => (
@@ -432,6 +453,7 @@ export function SearchResults({
                 key={result.thread.id}
                 result={result}
                 labels={labels}
+                marks={marks}
                 href={threadHref(result.thread.id, view, base, result.message)}
                 open={result.thread.id === open}
                 selected={picking.selected.has(result.thread.id)}
@@ -458,7 +480,23 @@ export function SearchResults({
 }
 
 /** A thread found, as a line of the index, with the snippet of the message that matched and the words in it marked. */
-function ResultRow({ result, labels, href, open, selected, onToggle }: { result: SearchResult; labels: Label[]; href: string; open: boolean; selected: boolean; onToggle: () => void }) {
+function ResultRow({
+  result,
+  labels,
+  marks,
+  href,
+  open,
+  selected,
+  onToggle,
+}: {
+  result: SearchResult;
+  labels: Label[];
+  marks?: Marks;
+  href: string;
+  open: boolean;
+  selected: boolean;
+  onToggle: () => void;
+}) {
   const { thread } = result;
   // Spam and Trash are searched only when asked, and then a result says it is there.
   const named = [
@@ -472,6 +510,7 @@ function ResultRow({ result, labels, href, open, selected, onToggle }: { result:
       labels={named}
       href={href}
       snippet={result.snippet === "" ? "" : <Highlighted text={result.snippet} highlights={result.highlights} />}
+      marks={marks}
       open={open}
       selected={selected}
       onToggle={onToggle}

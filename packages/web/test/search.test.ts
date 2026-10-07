@@ -70,11 +70,13 @@ test("a human searches their mailbox from the bar and finds the threads with the
   expect(await page.title()).toBe("fakturan oktober · Duva");
 });
 
-test("pressing / anywhere outside a field puts the cursor in the search box", budget, async () => {
+test("the search box shows its / key, and pressing / anywhere outside a field puts the cursor there", budget, async () => {
   const { page, signIn, receive } = await withPersonalMailbox();
   await receive(note("Lunch på fredag", "Ska vi äta lunch på fredag?"));
   await signIn("grace@example.org");
   await expect.poll(() => page.getByRole("link", { name: /Lunch på fredag/ }).count(), wait).toBe(1);
+  expect(await searchBox(page).getAttribute("aria-keyshortcuts")).toBe("/");
+  expect(await page.getByRole("search").locator("kbd").innerText()).toBe("/");
 
   await page.keyboard.press("/");
   await page.keyboard.type("lunch/fredag");

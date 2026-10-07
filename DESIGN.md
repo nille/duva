@@ -158,6 +158,25 @@ components:
     textColor: "{colors.ink}"
     rounded: "{rounded.row}"
     padding: "0.36rem 0.5rem"
+  list-row:
+    textColor: "{colors.ink-2}"
+    typography: "{typography.body}"
+    padding: "0.72rem 1.4rem 0.78rem 0.7rem"
+  list-row-open:
+    backgroundColor: "{colors.read}"
+    textColor: "{colors.ink}"
+  checkbox:
+    backgroundColor: "{colors.raise}"
+    rounded: "{rounded.key}"
+    size: "0.875rem"
+  checkbox-checked:
+    backgroundColor: "{colors.ink}"
+    textColor: "{colors.raise}"
+  shortcut-sheet:
+    backgroundColor: "{colors.raise}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.sheet}"
+    padding: "1.5rem 2rem"
   status-strip:
     backgroundColor: "{colors.side}"
     textColor: "{colors.ink-2}"
@@ -244,7 +263,7 @@ On a desk (from 64rem) the page is one grid the full width and height of the win
 
 From 48rem to 64rem the side column stays, and what is open takes the one column beside it, as the list does while nothing is open. Under 48rem the phone has one top row (the wordmark, the search icon and Write), one column, a switcher at the view's head that opens the mailboxes and views, and the tab bar of places along the foot. There is no status strip on a phone, and Sign out is in Settings.
 
-Lists lay out their rows for their own width (a container query on the list column), so a row stacks, who and when, then the subject, then the snippet, wherever the list is narrower than 40rem.
+A list's row has one form at every width: who and when on the first line, the subject and snippet on the second. Only what fits changes (a container query on the list column gives a row's labels less room under 40rem).
 
 Spacing follows one scale (0.25, 0.5, 0.75, 1, 1.5, 2 and 3rem). A list's content sits 1.4rem in from its column's edge; the reading pane's, 3rem.
 
@@ -291,6 +310,26 @@ Actors are marked by shape, so they read without color: a human is a filled dot 
 - The list beside an open thread or draft stays the same element, so it keeps its place. It becomes a region named by its title, one heading level down, and the open view is the page's main content.
 - The open line is marked by the orange edge (an inset 3px Call Orange line) on Reader Grey.
 - While nothing is open, the reading pane says so quietly, in Third Ink.
+
+### Lists
+- **Rows on the plane:** the Inbox, a label's, Sent, All mail, Spam, Trash, Drafts, a search's results, the Screener and Screened senders lie in the list column edge to edge, parted by seams, never on a sheet. A row keeps the list's 1.4rem inset inside it.
+- **A row:** the checkbox, then on the first line the actor mark and who sent it (Second Ink, 500), a thread's message count, its groups and labels, quietly (Third Ink, label size), and the time at the end; on the second, the subject (Second Ink, 500) and the snippet (Third Ink) on one line that ends with an ellipsis. A search's result gives the snippet two lines of its own, the words found on Field Deep, heavier.
+- **Unread:** the orange dot (5px) in the gutter left of the checkbox, and who, the subject and the time in Ink, heavier.
+- **Waiting for you:** a thread an agent's send waits in for its sponsor opens its second line with "Waiting for you" in `call-ink` and the agent's name in `agent-ink`, both 700, before the subject.
+- **Actor marks:** an agent the human sponsors, known by its mailbox's addresses, takes the diamond; Duva's own mail, from its system address, the ring; everyone else the dot.
+- **Open and picked:** the open row lies on Reader Grey with the orange edge across the whole row; a picked row on Field Grey, and a row under the pointer on the ink wash.
+- **Checkboxes:** small square keys, 0.875rem (1.25rem on a phone), edged at 3:1 in Edge, filled ink with a white tick when picked and a dash while some are.
+- **The toolbar** heads the rows and stays at the column's top as they scroll: the box that picks them all, level with the rows' boxes, then once any is picked how many, and the small actions, each with its key cap.
+- **Chips** under the head of the Inbox, a label and All mail: All, Unread and each of the human's own labels. Each but All is the search that narrows the list to them, newest first, so Duva filters it; on those results the chips stay, the one chosen in ink.
+- **The Screener's row:** while new senders wait, one raised white slip at the Inbox's top says how many, with "Screen them".
+- **What was just done** is said in Ink above the rows, with Undo and its `z` cap.
+- **The Screener:** each waiting sender is a row: their dot, name (mono 700) and address, their mail as lines set in under the name, then Let in and Block. Screened senders names its groups as labels (mono 500, Third Ink) and each decision is a row with its actions.
+
+### Keyboard
+- The shortcuts are Gmail's wherever Duva has the action: `c` write; `j` and `k` next and previous; `o` or Enter open; `x` select; `e` archive; `#` Trash; `!` spam; `l` labels; Shift+`I` and Shift+`U` read and unread; `r`, `a` and `f` reply, reply all and forward; `u` or Esc back to the list; `z` undo; `/` search; `?` the sheet; `g` then `i`, `t`, `d` or `a` the Inbox, Sent, Drafts or All mail; Ctrl or ⌘ with Enter sends. A key that finishes a chord acts only as the chord, so `g` `a` goes to All mail and never replies to all.
+- None acts in a field, over a modal sheet, or once the human turns them off on You, and then no cap shows.
+- Every control with a key shows its cap and names it in `aria-keyshortcuts`: Write's `c`, the search field's `/` printed where its icon is while it is empty, the toolbar's `e`, `#`, `!` and `l`, Undo's `z`.
+- **The ? sheet** is a legend printed on the instrument: white, the soft lift over the scrim, 10px, a grotesk title, its three groups (in a list, in a thread, anywhere) side by side under label-size names, each key a cap beside what it does, keys pressed together joined by "+" and chords by "then". On a phone it lies along the foot, the groups one under another.
 
 ### Status strip
 - Side Grey along a desk's foot, mono 500 at 0.6875rem in Second Ink, one line: a green light and "Up to date at …" (red, heavier, when Duva can't be reached), each sponsored agent's diamond with whether it is running and how many sends it has left this hour, or that it is paused, then at the end the `?` key for the shortcuts, who is signed in with their dot, and Sign out.

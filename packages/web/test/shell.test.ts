@@ -355,7 +355,7 @@ test("on a desk a thread opens beside its list, which stays and marks the open l
   expect(await list.getByRole("heading", { level: 2 }).textContent()).toBe("Inbox");
   const open = threads.locator("a[aria-current=true]");
   expect(await open.getAttribute("aria-label")).toMatch(/Lunch/);
-  expect(await open.evaluate((line) => getComputedStyle(line).boxShadow)).toContain("rgb(255, 90, 31)");
+  expect(await open.evaluate((line) => getComputedStyle(line.closest("li")!).boxShadow)).toContain("rgb(255, 90, 31)");
   const [listBox, letterBox] = [(await threads.boundingBox())!, (await page.getByRole("article").boundingBox())!];
   expect(letterBox.x).toBeGreaterThanOrEqual(listBox.x + listBox.width);
   expect(await page.title()).toBe("Lunch · Duva");

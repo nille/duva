@@ -1,11 +1,11 @@
-// The Screener, where mail from a mailbox's first-time senders waits: each sender with their mail,
-// newest first, to let in or block by their address or, except at public mail providers, everyone at
-// their domain. Screened senders lists the decisions, to flip or remove them.
+// The Screener, where mail from a mailbox's first-time senders waits: each sender, by their mark,
+// with their mail, newest first, to let in or block by their address or, except at public mail
+// providers, everyone at their domain. Screened senders lists the decisions, to flip or remove them.
 import { useCallback, useEffect, useId, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import { type components, isPublicMailProvider } from "@duva/openapi";
 import type { Connection as ConnectionState } from "./feed.ts";
-import { Connection, Time } from "./mail-parts.tsx";
+import { ActorMark, Connection, Time } from "./mail-parts.tsx";
 import type { Done } from "./organize.tsx";
 import { useBeside, useViewTitle, ViewMain, ViewTitle } from "./panes.tsx";
 import { strings } from "./strings.ts";
@@ -211,6 +211,7 @@ function Waiting({
   return (
     <li className="waiting-sender" aria-labelledby={headingId}>
       <div className="waiting-head">
+        <ActorMark kind="human" />
         <h2 id={headingId}>{name}</h2>
         {name !== sender.address && <span className="waiting-address">{sender.address}</span>}
       </div>

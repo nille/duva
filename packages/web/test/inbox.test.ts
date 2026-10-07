@@ -56,7 +56,7 @@ test("after signing in, a human lands on their Inbox, newest thread first, each 
   expect(oldest).toContain("Grace Hopper");
   expect(oldest).toContain("Compiler notes");
   expect(oldest).toContain("Här är mina anteckningar om kompilatorn.");
-  expect(await page.getByRole("link", { name: /^Unread/ }).count()).toBe(2);
+  expect(await page.getByRole("list", { name: "Threads" }).getByRole("link", { name: /^Unread/ }).count()).toBe(2);
   expect(await page.getByText("2 unread", { exact: true }).isVisible()).toBe(true);
 });
 
@@ -99,7 +99,7 @@ test("opening a thread shows its messages oldest first, and the Inbox then lists
 
   await page.getByRole("link", { name: "Inbox" }).first().click();
   await expect.poll(() => page.getByRole("link", { name: /Compiler notes/ }).getAttribute("aria-label"), wait).not.toMatch(/^Unread/);
-  await expect.poll(() => page.getByText("unread").count(), wait).toBe(0);
+  await expect.poll(() => page.getByText(/^\d+ unread$/).count(), wait).toBe(0);
 });
 
 test("a thread shows the plus tag a message was sent to, and its attachments by name, type and size", budget, async () => {

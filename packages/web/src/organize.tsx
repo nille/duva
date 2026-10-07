@@ -1,8 +1,9 @@
 // Organizing threads with labels: archiving, Spam, Trash and the human's own labels, on one thread
 // or several. Every change can be undone at once, since it only moves labels.
-import { useEffect, useId, useRef, useState } from "react";
+import { useContext, useEffect, useId, useRef, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
+import { PreferencesContext } from "./dates.ts";
 import { useShortcuts } from "./shortcuts.tsx";
 import { strings } from "./strings.ts";
 
@@ -75,6 +76,21 @@ export async function organize(
   return { message: message(threads.length), undo };
 }
 
+/**
+ * Marks the threads read or unread, and answers what was done, or undefined if Duva couldn't.
+ * Throws SessionEnded if the session has ended.
+ */
+export async function markRead(client: DuvaClient, mailbox: string, threads: Labelled[], read: boolean): Promise<Done | undefined> {
+  const params = { path: { mailbox } };
+  const body = { threads: threads.map(({ id }) => id) };
+  const { data, response } = await (read ? client.POST("/mailboxes/{mailbox}/threads/read", { params, body }) : client.POST("/mailboxes/{mailbox}/threads/unread", { params, body })).catch(
+    () => ({ data: undefined, response: undefined }),
+  );
+  if (response?.status === 401) throw new SessionEnded();
+  if (data === undefined) return undefined;
+  return { message: (read ? strings.organize.markedRead : strings.organize.markedUnread)(threads.length) };
+}
+
 /** Where threads are being organized: a listing of a label, All mail, or one thread. */
 export type Place = { label: string } | { all: true } | { thread: true };
 
@@ -86,14 +102,20 @@ function whereOf(threads: Labelled[], place: Place): "spam" | "trash" | undefine
 }
 
 /**
- * What archiving the threads or moving them to Trash changes, and how it is said, as the Archive and
- * Move to Trash buttons do, or undefined where that button isn't offered: archiving outside the
- * Inbox, Spam and Trash, and Trash for threads already in it.
+ * What archiving the threads, moving them to Trash or marking them as spam changes, and how it is
+ * said, as the Archive, Move to Trash and Mark as spam buttons do, or undefined where that button
+ * isn't offered: archiving outside the Inbox, Spam and Trash, Trash for threads already in it, and
+ * spam for threads in Spam or Trash.
  */
-export function changeFor(action: "archive" | "trash", threads: Labelled[], place: Place): { change: { add?: string[]; remove?: string[] }; message: (count: number) => string } | undefined {
+export function changeFor(
+  action: "archive" | "trash" | "spam",
+  threads: Labelled[],
+  place: Place,
+): { change: { add?: string[]; remove?: string[] }; message: (count: number) => string } | undefined {
   const where = whereOf(threads, place);
   if (threads.length === 0 || where === "trash") return undefined;
   if (action === "trash") return { change: { add: ["trash"] }, message: strings.organize.trashed };
+  if (action === "spam") return where === "spam" ? undefined : { change: { add: ["spam"] }, message: strings.organize.spammed };
   if (where === "spam" || !threads.some((thread) => thread.labels.includes("inbox"))) return undefined;
   return { change: { remove: ["inbox"] }, message: strings.organize.archived };
 }
@@ -103,7 +125,9 @@ export function changeFor(action: "archive" | "trash", threads: Labelled[], plac
  * Trash, Trash offers restore, and anywhere else archive or move to the Inbox, spam, Trash and
  * labels. `onDone` hears what was done, and whether the threads left where they were, as archiving,
  * Spam, Trash and restoring take them out of a thread's view. `onSignedOut` hears that the session ended.
- * With `keys`, as in a thread, each button whose action has a key shows its cap, and l opens the labels.
+ * Each button whose action has a key shows its cap, in a list and, with `keys`, in a thread, where l
+ * opens the labels too. In a list, each time `labelsAsked` grows past 0 the labels open, as l asks
+ * there, and they open at once if it is past 0 when the buttons first show.
  */
 export function OrganizeActions({
   client,
@@ -112,6 +136,7 @@ export function OrganizeActions({
   labels,
   place,
   keys = false,
+  labelsAsked = 0,
   onDone,
   onSignedOut,
 }: {
@@ -120,7 +145,10 @@ export function OrganizeActions({
   threads: Labelled[];
   labels: Label[];
   place: Place;
+  /** Whether the thread's keys are on, as a thread says. A list's are always named. */
   keys?: boolean;
+  /** How many times the labels were asked for by their key, which opens them each time it grows. */
+  labelsAsked?: number;
   onDone: (done: Done, moved: boolean) => void;
   onSignedOut: () => void;
 }) {
@@ -128,9 +156,10 @@ export function OrganizeActions({
   const [failed, setFailed] = useState(false);
   const has = (label: string) => threads.some((thread) => thread.labels.includes(label));
   const where = whereOf(threads, place);
-  // Archive and Move to Trash do what e and # do.
+  // Archive, Move to Trash and Mark as spam do what e, # and ! do.
   const archive = changeFor("archive", threads, place);
   const trash = changeFor("trash", threads, place);
+  const spam = changeFor("spam", threads, place);
 
   const act = async (change: { add?: string[]; remove?: string[] }, message: (count: number) => string, moved = true) => {
     setBusy(true);
@@ -148,9 +177,7 @@ export function OrganizeActions({
   };
 
   const t = strings.organize;
-  // The key that does what the button does, said to a screen reader by the button and shown as its cap.
-  const key = (pressed: string) => (keys ? { "aria-keyshortcuts": pressed } : {});
-  const cap = (shown: string) => keys && <kbd aria-hidden="true">{shown}</kbd>;
+  const keyed = useKeyed(keys || !("thread" in place));
   return (
     <>
       {where === "trash" ? (
@@ -162,17 +189,17 @@ export function OrganizeActions({
           <button type="button" className="button button-small" disabled={busy} onClick={() => void act({ remove: ["spam"] }, t.notSpammed)}>
             {t.notSpam}
           </button>
-          <button type="button" className="button button-small" disabled={busy} {...key("#")} onClick={() => void act({ add: ["trash"] }, t.trashed)}>
-            {cap("#")}
+          <button type="button" className="button button-small" disabled={busy} aria-keyshortcuts={keyed("#")} onClick={() => void act({ add: ["trash"] }, t.trashed)}>
+            <Cap name={keyed("#")} />
             {t.trash}
           </button>
         </>
       ) : (
         <>
           {archive !== undefined && (
-            <button type="button" className="button button-small" disabled={busy} {...key("e")} onClick={() => void act(archive.change, archive.message)}>
+            <button type="button" className="button button-small" disabled={busy} aria-keyshortcuts={keyed("e")} onClick={() => void act(archive.change, archive.message)}>
               <ArchiveIcon />
-              {cap("e")}
+              <Cap name={keyed("e")} />
               {t.archive}
             </button>
           )}
@@ -181,14 +208,16 @@ export function OrganizeActions({
               {t.moveToInbox}
             </button>
           )}
-          <button type="button" className="button button-small" disabled={busy} {...key("!")} onClick={() => void act({ add: ["spam"] }, t.spammed)}>
-            {cap("!")}
-            {t.spam}
-          </button>
+          {spam !== undefined && (
+            <button type="button" className="button button-small" disabled={busy} aria-keyshortcuts={keyed("!")} onClick={() => void act(spam.change, spam.message)}>
+              <Cap name={keyed("!")} />
+              {t.spam}
+            </button>
+          )}
           {trash !== undefined && (
-            <button type="button" className="button button-small" disabled={busy} {...key("#")} onClick={() => void act(trash.change, trash.message)}>
+            <button type="button" className="button button-small" disabled={busy} aria-keyshortcuts={keyed("#")} onClick={() => void act(trash.change, trash.message)}>
               <TrashIcon />
-              {cap("#")}
+              <Cap name={keyed("#")} />
               {t.trash}
             </button>
           )}
@@ -199,7 +228,9 @@ export function OrganizeActions({
             labels={labels}
             disabled={busy}
             failed={failed}
-            keyed={keys}
+            asked={labelsAsked}
+            keyName={keyed("l")}
+            bound={keys}
             onToggle={(label, add) =>
               void act(add ? { add: [label.id] } : { remove: [label.id] }, add ? t.labelled(label.name) : t.unlabelled(label.name), false)
             }
@@ -228,7 +259,9 @@ function LabelPicker({
   labels,
   disabled,
   failed,
-  keyed,
+  asked,
+  keyName,
+  bound,
   onToggle,
   onSignedOut,
 }: {
@@ -238,8 +271,11 @@ function LabelPicker({
   labels: Label[];
   disabled: boolean;
   failed: boolean;
-  /** Whether l opens the labels, as in a thread, with its cap on the button. */
-  keyed: boolean;
+  asked: number;
+  /** The key that opens the labels, shown as its cap. */
+  keyName?: string;
+  /** Whether l itself opens the labels, as in a thread. A list's keys ask through `asked`. */
+  bound: boolean;
   onToggle: (label: Label, add: boolean) => void;
   onSignedOut: () => void;
 }) {
@@ -252,6 +288,9 @@ function LabelPicker({
   const wrapper = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
   const own = labels.filter((label) => !label.builtIn);
+  useEffect(() => {
+    if (asked > 0) setOpen(true);
+  }, [asked]);
 
   useEffect(() => {
     if (!open) return;
@@ -267,7 +306,7 @@ function LabelPicker({
     setOpen(false);
     button.current?.focus();
   };
-  useShortcuts({ l: keyed && !disabled ? () => setOpen(true) : undefined });
+  useShortcuts({ l: bound && !disabled ? () => setOpen(true) : undefined });
 
   return (
     <div
@@ -286,12 +325,12 @@ function LabelPicker({
         className="button button-small"
         aria-expanded={open}
         aria-controls={panelId}
-        aria-keyshortcuts={keyed ? "l" : undefined}
+        aria-keyshortcuts={keyName}
         disabled={disabled}
         onClick={() => setOpen(!open)}
       >
         <LabelIcon />
-        {keyed && <kbd aria-hidden="true">l</kbd>}
+        <Cap name={keyName} />
         {strings.organize.labels}
       </button>
       {open && (
@@ -447,3 +486,12 @@ const LabelIcon = () => (
     <path d="M2.5 2.5h5.2l5.8 5.8-5.2 5.2-5.8-5.8zM5.5 5.5h.01" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 );
+
+/** A control's key, for aria-keyshortcuts and its cap, where `shown` and while the human's shortcuts are on. */
+export function useKeyed(shown = true) {
+  const { keyboardShortcuts } = useContext(PreferencesContext);
+  return (key: string) => (shown && keyboardShortcuts !== "off" ? key : undefined);
+}
+
+/** A control's key as its printed cap, which the control names in aria-keyshortcuts, or nothing. */
+export const Cap = ({ name }: { name: string | undefined }) => (name === undefined ? null : <kbd aria-hidden="true">{name}</kbd>);

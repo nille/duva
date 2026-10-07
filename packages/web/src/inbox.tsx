@@ -1,21 +1,46 @@
-// A view's threads, newest first, a page at a time, laid on one sheet like the index of a bundle of
-// proofs: the Inbox, a label's, Sent, All mail, Spam or Trash. Unread threads carry the pencil's mark, and
-// the human picks threads to organize several at once.
+// A view's threads, newest first, a page at a time, in the list column: the Inbox, a label's, Sent,
+// All mail, Spam or Trash. Each row says who sent it by their mark, unread threads carry the orange
+// dot, and a thread an agent's send waits in says it waits for the human. Chips show a view's unread
+// threads or those with a label, the Inbox says when new senders wait in the Screener, and the human
+// picks threads to organize several at once.
 import { type ReactNode, useCallback, useEffect, useId, useRef, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
 import type { Connection as ConnectionState } from "./feed.ts";
 import { useDates } from "./dates.ts";
-import { Connection, nameOf, Time } from "./mail-parts.tsx";
-import { type Done, type Label, type Labelled, labelRefusal, OrganizeActions, ownLabelsOf, type Place } from "./organize.tsx";
+import { ActorMark, Connection, nameOf, Time } from "./mail-parts.tsx";
+import { Cap, type Done, type Label, type Labelled, labelRefusal, OrganizeActions, ownLabelsOf, type Place, useKeyed } from "./organize.tsx";
 import { useBeside, useViewTitle, ViewMain, ViewTitle } from "./panes.tsx";
-import { useThreadKeys } from "./shortcuts.tsx";
+import { useShortcuts, useThreadKeys } from "./shortcuts.tsx";
 import { strings } from "./strings.ts";
-import { type ThreadsView, threadHref, titleOf } from "./views.tsx";
+import { hrefOf, type SearchView, type ThreadsView, threadHref, titleOf } from "./views.tsx";
 
 type ThreadSummary = components["schemas"]["ThreadSummary"];
 type ThreadList = components["schemas"]["ThreadList"];
 type Mailbox = components["schemas"]["Mailbox"];
+type EmailAddress = components["schemas"]["EmailAddress"];
+
+/** What the web app knows of who sent a list's threads, and which of them wait for the human. */
+export interface Marks {
+  /** The names of the agents the human sponsors, by each address of their mailboxes. */
+  agents: ReadonlyMap<string, string>;
+  /** The addresses Duva's own mail comes from. */
+  duva: ReadonlySet<string>;
+  /** The threads an agent's send waits in for the human to approve, by ID. */
+  waiting: ReadonlyMap<string, Waiting>;
+}
+
+/** An agent's send that waits in a thread for the human to approve: the agent's name, and whether it replies or forwards. */
+export interface Waiting {
+  agent: string;
+  forward: boolean;
+}
+
+const noMarks: Marks = { agents: new Map(), duva: new Set(), waiting: new Map() };
+
+/** Who sent mail from the address, as far as the web app knows: an agent the human sponsors, Duva itself, or someone. */
+const actorOf = (address: EmailAddress, marks: Marks) =>
+  marks.agents.has(address.address.toLowerCase()) ? "agent" : marks.duva.has(address.address.toLowerCase()) ? "duva" : "human";
 
 /** How many threads a page of a view lists. */
 export const pageSize = 25;
@@ -34,6 +59,7 @@ class ListingFailed extends Error {}
  * app has seen, so the listing reads its pages again when it changes. `done` is what the human last did, said at the head with
  * a way to undo it, and `onDone` hears each new thing they do. Only the Inbox says when Duva last
  * checked for mail, on a phone, where there is no status strip, and every view says when it couldn't.
+ * `marks` says who sent each thread and which wait for the human.
  */
 export function ThreadIndex({
   client,
@@ -44,6 +70,8 @@ export function ThreadIndex({
   labels,
   version,
   connection,
+  marks = noMarks,
+  screener = 0,
   done,
   onDone,
   onSignedOut,
@@ -56,6 +84,9 @@ export function ThreadIndex({
   labels: Label[];
   version: number;
   connection: ConnectionState;
+  marks?: Marks;
+  /** How many new senders wait in the mailbox's Screener, which the Inbox says at its top. */
+  screener?: number;
   done: Done | undefined;
   onDone: (done: Done | undefined) => void;
   onSignedOut: () => void;
@@ -162,7 +193,7 @@ export function ThreadIndex({
   };
 
   const list = useRef<HTMLOListElement>(null);
-  useThreadKeys({ list, client, mailbox, threads, picked: picking.picked, place, onDone: organized, onSignedOut });
+  useThreadKeys({ list, client, mailbox, threads, picked: picking.picked, place, onPick: picking.toggle, onLabels: picking.askLabels, onDone: organized, onSignedOut });
 
   const ownLabel = label === undefined ? undefined : labels.find((each) => each.id === label && !each.builtIn);
 
@@ -192,6 +223,8 @@ export function ThreadIndex({
         )}
         {(connection?.ok === false || ("label" in view && view.label === "inbox")) && <Connection state={connection} unreachable={strings.connection.mailUnreachable} />}
       </div>
+      {scopeOf(view) !== undefined && <ListChips base={base} scope={scopeOf(view)!} labels={labels} />}
+      {"label" in view && view.label === "inbox" && screener > 0 && <ScreenerWaiting count={screener} href={hrefOf({ screener: true }, base)} />}
       <p className="visually-hidden" role="status">
         {announcement}
       </p>
@@ -210,7 +243,16 @@ export function ThreadIndex({
       ) : (
         <div className="index">
           <IndexTools picking={picking} more={listing.next !== undefined}>
-            <OrganizeActions client={client} mailbox={mailbox} threads={picking.picked} labels={labels} place={place} onDone={organized} onSignedOut={onSignedOut} />
+            <OrganizeActions
+              client={client}
+              mailbox={mailbox}
+              threads={picking.picked}
+              labels={labels}
+              place={place}
+              labelsAsked={picking.labelsAsked}
+              onDone={organized}
+              onSignedOut={onSignedOut}
+            />
           </IndexTools>
           <ol className="threads" aria-label={strings.inbox.threads} ref={list}>
             {listing.threads.map((thread) => (
@@ -223,6 +265,7 @@ export function ThreadIndex({
                   .map(({ name }) => name)}
                 href={threadHref(thread.id, view, base)}
                 snippet={thread.snippet}
+                marks={marks}
                 fresh={listing.fresh.has(thread.id)}
                 open={thread.id === open}
                 selected={picking.selected.has(thread.id)}
@@ -245,17 +288,28 @@ export function ThreadIndex({
 
 const noThreads: ThreadSummary[] = [];
 
-/** The threads of a list the human picked, to organize several at once. Threads that leave the list are no longer picked. */
+/**
+ * The threads of a list the human picked, to organize several at once. Threads that leave the list
+ * are no longer picked. `labelsAsked` counts the times l asked for the labels of those picked, from
+ * when the first was picked, and `askLabels` asks again.
+ */
 export function usePicking<Thread extends Labelled>(threads: Thread[]) {
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const [labelsAsked, setLabelsAsked] = useState(0);
   useEffect(() => {
     const listed = new Set(threads.map(({ id }) => id));
     setSelected((current) => (Array.from(current).every((id) => listed.has(id)) ? current : new Set(Array.from(current).filter((id) => listed.has(id)))));
   }, [threads]);
   const picked = threads.filter(({ id }) => selected.has(id));
+  // The labels' buttons go with the last thread picked, so asking for them starts over with the next.
+  useEffect(() => {
+    if (picked.length === 0) setLabelsAsked(0);
+  }, [picked.length]);
   return {
     selected,
     picked,
+    labelsAsked,
+    askLabels: () => setLabelsAsked((current) => current + 1),
     all: threads.length > 0 && picked.length === threads.length,
     some: picked.length > 0 && picked.length < threads.length,
     toggle: (id: string) =>
@@ -270,7 +324,7 @@ export function usePicking<Thread extends Labelled>(threads: Thread[]) {
 }
 
 /**
- * The toolbar heading a list's sheet: a checkbox that picks every thread shown, and once any is
+ * The toolbar heading a list's rows: a checkbox that picks every thread shown, and once any is
  * picked, how many, with the actions. While more threads than those shown follow, it says that
  * picking all picks only those shown.
  */
@@ -295,9 +349,10 @@ export function IndexTools({ picking, more, children }: { picking: ReturnType<ty
   );
 }
 
-/** What the human last did to the list, said above its sheet, with a way to undo it, after which `onUndone` reads the list again. */
+/** What the human last did to the list, said above its rows, with a way to undo it, which z does too, after which `onUndone` reads the list again. */
 export function DoneLine({ done, onDone, onUndone }: { done: Done | undefined; onDone: (done: Done) => void; onUndone: () => void }) {
   const [undoing, setUndoing] = useState(false);
+  const keyed = useKeyed();
   const undo = async () => {
     if (done?.undo === undefined || undoing) return;
     setUndoing(true);
@@ -306,14 +361,16 @@ export function DoneLine({ done, onDone, onUndone }: { done: Done | undefined; o
     onDone(undone ? { message: strings.organize.undone } : { message: strings.organize.undoFailed });
     onUndone();
   };
+  useShortcuts({ z: done?.undo === undefined ? undefined : () => void undo() });
   return (
     <div className="done-line" role="status">
       {done !== undefined && (
         <>
           <span>{done.message}</span>
           {done.undo !== undefined && (
-            <button type="button" className="link" disabled={undoing} onClick={() => void undo()}>
+            <button type="button" className="link" disabled={undoing} aria-keyshortcuts={keyed("z")} onClick={() => void undo()}>
               {strings.organize.undo}
+              <Cap name={keyed("z")} />
             </button>
           )}
         </>
@@ -535,6 +592,7 @@ export function ThreadRow({
   labels,
   href,
   snippet,
+  marks = noMarks,
   fresh = false,
   open = false,
   selected,
@@ -544,6 +602,7 @@ export function ThreadRow({
   labels: string[];
   href: string;
   snippet: ReactNode;
+  marks?: Marks;
   fresh?: boolean;
   /** Whether the thread is open beside the list. */
   open?: boolean;
@@ -557,25 +616,43 @@ export function ThreadRow({
         <input type="checkbox" checked={selected} onChange={onToggle} />
         <span className="visually-hidden">{strings.organize.select(thread.subject || strings.thread.noSubject)}</span>
       </label>
-      <ThreadLine thread={thread} labels={labels} href={href} snippet={snippet} open={open} />
+      <ThreadLine thread={thread} labels={labels} href={href} snippet={snippet} marks={marks} open={open} />
     </li>
   );
 }
 
 /**
- * A thread as a line of the index, a link to it: the pencil's dot when unread, the sender, the
- * subject with the labels named, the snippet, and the date. A search's results give a snippet of
- * their own, with the words found marked.
+ * A thread as a line of the list, a link to it: the orange dot when unread, who sent it by their
+ * mark and name, the groups and labels it carries, and the date, then its subject and snippet on
+ * one line, after "Waiting for you" and the agent's name when an agent's send waits in it. A
+ * search's results give a snippet of their own, with the words found marked.
  */
-export function ThreadLine({ thread, labels, href, snippet, open = false }: { thread: ThreadSummary; labels: string[]; href: string; snippet: ReactNode; open?: boolean }) {
+export function ThreadLine({
+  thread,
+  labels,
+  href,
+  snippet,
+  marks = noMarks,
+  open = false,
+}: {
+  thread: ThreadSummary;
+  labels: string[];
+  href: string;
+  snippet: ReactNode;
+  marks?: Marks;
+  open?: boolean;
+}) {
   const snippetId = useId();
   const { day } = useDates();
   const sender = nameOf(thread.from);
+  const actor = actorOf(thread.from, marks);
   const subject = thread.subject || strings.thread.noSubject;
+  const waiting = marks.waiting.get(thread.id);
   const label = [
     thread.unread && strings.inbox.unreadMark,
-    sender,
+    actor === "agent" ? strings.inbox.agentSender(sender) : sender,
     subject,
+    waiting !== undefined && strings.inbox.waitsFor(waiting.agent, waiting.forward),
     thread.messages > 1 && strings.inbox.messages(thread.messages),
     thread.groups !== undefined && strings.inbox.toGroups(thread.groups),
     labels.length > 0 && strings.inbox.labelled(labels),
@@ -583,27 +660,41 @@ export function ThreadLine({ thread, labels, href, snippet, open = false }: { th
   ]
     .filter(Boolean)
     .join(", ");
+  const labelled = (thread.groups?.length ?? 0) > 0 || labels.length > 0;
   return (
     <a className={thread.unread ? "thread thread-unread" : "thread"} href={href} aria-label={label} aria-describedby={snippet === "" ? undefined : snippetId} aria-current={open ? "true" : undefined}>
       <span className="thread-mark" aria-hidden="true" />
       <span className="thread-sender">
+        <ActorMark kind={actor} />
         <span className="thread-sender-name">{sender}</span>
         {thread.messages > 1 && <span className="thread-count">{thread.messages}</span>}
       </span>
-      <span className="thread-text">
-        <span className="thread-line-head">
-          <span className="thread-subject">{subject}</span>
+      {labelled && (
+        <span className="thread-labels" aria-hidden="true">
           {thread.groups?.map((group) => (
-            <span key={group} className="group-mark" aria-hidden="true">
+            <span key={group} className="group-mark">
               <GroupIcon />
               {group}
             </span>
           ))}
           {labels.map((name) => (
-            <span key={name} className="label-name" aria-hidden="true">
+            <span key={name} className="label-name">
               {name}
             </span>
           ))}
+        </span>
+      )}
+      <span className="thread-date">
+        <Time at={thread.latestAt} short />
+      </span>
+      <span className="thread-text">
+        <span className="thread-line-head">
+          {waiting !== undefined && (
+            <span className="thread-waiting" aria-hidden="true">
+              <span className="thread-waiting-you">{strings.inbox.waitingForYou}</span> <span className="thread-waiting-agent">{waiting.agent}</span>
+            </span>
+          )}
+          <span className="thread-subject">{subject}</span>
         </span>
         {snippet !== "" && (
           <span className="thread-snippet" id={snippetId} lang="">
@@ -611,10 +702,68 @@ export function ThreadLine({ thread, labels, href, snippet, open = false }: { th
           </span>
         )}
       </span>
-      <span className="thread-date">
-        <Time at={thread.latestAt} short />
-      </span>
     </a>
+  );
+}
+
+/** What a list's chips narrow: a label's threads, the Inbox's among them, or All mail. Spam, Trash and Sent take none. */
+export type Scope = { label: string } | { all: true };
+
+/** The scope of a view's chips, or undefined if it takes none. */
+export const scopeOf = (view: ThreadsView): Scope | undefined =>
+  "all" in view ? view : "label" in view && view.label !== "spam" && view.label !== "trash" ? view : undefined;
+
+/** A label's name as a search's label: filter has it, quoted if it has spaces. */
+const labelFilter = (name: string) => `label:${/[\s"]/.test(name) ? `"${name.replaceAll('"', "")}"` : name}`;
+
+/**
+ * The chips of a scope: All, the scope itself, then Unread and each of the mailbox's own labels
+ * but the scope's, each the search that narrows the scope to them, newest first, as Duva filters it.
+ */
+function chipsOf(scope: Scope, labels: Label[], base: string): { name: string; href: string; q?: string }[] {
+  const named = "label" in scope ? (scope.label === "inbox" ? "inbox" : labels.find(({ id }) => id === scope.label)?.name) : undefined;
+  const within = named === undefined ? [] : [labelFilter(named)];
+  const search = (q: string) => ({ q, href: hrefOf({ search: { q, sort: "newest" } }, base) });
+  return [
+    { name: strings.inbox.chips.all, href: hrefOf(scope, base) },
+    { name: strings.inbox.chips.unread, ...search([...within, "is:unread"].join(" ")) },
+    ...labels
+      .filter((label) => !label.builtIn && !("label" in scope && label.id === scope.label))
+      .map((label) => ({ name: label.name, ...search([...within, labelFilter(label.name)].join(" ")) })),
+  ];
+}
+
+/** The scope whose chip searches for what the search view does, and that chip, if one does. */
+export function chipOf(view: SearchView, labels: Label[], base: string): { scope: Scope; q: string } | undefined {
+  if (view.search.sort !== "newest") return undefined;
+  const scopes: Scope[] = [{ label: "inbox" }, ...labels.filter((label) => !label.builtIn).map(({ id }) => ({ label: id })), { all: true }];
+  for (const scope of scopes) if (chipsOf(scope, labels, base).some(({ q }) => q === view.search.q)) return { scope, q: view.search.q };
+  return undefined;
+}
+
+/** The chips under a list's head that narrow it, the one shown current: All while the list is whole, or the chip whose search is `q`. */
+export function ListChips({ base, scope, labels, q }: { base: string; scope: Scope; labels: Label[]; q?: string }) {
+  return (
+    <nav className="chips" aria-label={strings.inbox.chips.name}>
+      {chipsOf(scope, labels, base).map((chip) => (
+        <a key={chip.href} className="chip" href={chip.href} aria-current={chip.q === q ? "page" : undefined}>
+          {chip.name}
+        </a>
+      ))}
+    </nav>
+  );
+}
+
+/** One row at the top of the Inbox saying how many new senders wait in the Screener, with the way there. */
+function ScreenerWaiting({ count, href }: { count: number; href: string }) {
+  return (
+    <section className="screener-waiting" aria-label={strings.screener.title}>
+      <ActorMark kind="human" />
+      <p>
+        <strong>{strings.inbox.screener.senders(count)}</strong> {strings.inbox.screener.wait(count)}
+      </p>
+      <a href={href}>{strings.inbox.screener.go}</a>
+    </section>
   );
 }
 

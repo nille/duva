@@ -151,7 +151,30 @@ test("c writes a new message, and ? lists every shortcut on a sheet that Escape 
 
   await expect.poll(() => sheet(page).isVisible(), wait).toBe(true);
   const listedKeys = await sheet(page).innerText();
-  for (const what of ["Next thread", "Previous thread", "Open the thread", "Archive", "Move to Trash", "Write", "Search", "Close", "These shortcuts"]) expect(listedKeys).toContain(what);
+  for (const what of [
+    "Next thread",
+    "Previous thread",
+    "Open the thread",
+    "Select the thread",
+    "Archive",
+    "Move to Trash",
+    "Mark as spam",
+    "Labels",
+    "Mark unread",
+    "Mark read",
+    "Back to the list",
+    "Undo",
+    "Go to the Inbox",
+    "Go to Sent",
+    "Go to Drafts",
+    "Go to All mail",
+    "Write",
+    "Search",
+    "These shortcuts",
+  ])
+    expect(listedKeys).toContain(what);
+  // Each key shows as a printed cap, and a chord as its keys in turn.
+  expect(await sheet(page).locator("kbd").allInnerTexts()).toEqual(expect.arrayContaining(["j", "x", "!", "Shift", "U", "z", "g", "i"]));
   expect(await sheet(page).getByRole("link", { name: "You in Settings" }).getAttribute("href")).toBe("#/settings/you");
   await page.keyboard.press("Escape");
   await expect.poll(() => sheet(page).count(), wait).toBe(0);
@@ -223,4 +246,96 @@ test("on a phone Escape closes a thread's More first, and then the thread", budg
   expect(await heading(page)).toBe("Kvitto");
   await page.keyboard.press("Escape");
   await expect.poll(() => heading(page), wait).toBe("Inbox");
+});
+
+test("x picks the thread at the cursor, and ! marks the threads picked as spam", budget, async () => {
+  const { page } = await withThreads(["Kvitto", "Lunch", "Resplan"]);
+  await page.keyboard.press("j");
+  await page.keyboard.press("x");
+  await page.keyboard.press("j");
+  await page.keyboard.press("x");
+  const tools = page.getByRole("toolbar", { name: "Selected threads" });
+  await expect.poll(() => tools.innerText(), wait).toContain("2 selected");
+  expect(await page.getByRole("checkbox", { name: "Select Resplan" }).isChecked()).toBe(true);
+  expect(await page.getByRole("checkbox", { name: "Select Lunch" }).isChecked()).toBe(true);
+
+  await page.keyboard.press("!");
+
+  await expect.poll(() => listed(page), wait).toEqual(["Kvitto"]);
+  expect(await said(page)).toContain("Marked 2 threads as spam.");
+});
+
+test("z undoes what was just done, as Undo does", budget, async () => {
+  const { page } = await withThreads(["Kvitto", "Lunch"]);
+  await page.keyboard.press("j");
+  await page.keyboard.press("e");
+  await expect.poll(() => listed(page), wait).toEqual(["Kvitto"]);
+
+  await page.keyboard.press("z");
+
+  await expect.poll(() => listed(page), wait).toEqual(["Lunch", "Kvitto"]);
+  expect(await said(page)).toContain("Undone.");
+});
+
+test("Shift+I marks the thread at the cursor read, and Shift+U unread again", budget, async () => {
+  const { page } = await withThreads(["Kvitto"]);
+  const line = () => page.getByRole("list", { name: "Threads" }).getByRole("link").getAttribute("aria-label");
+  expect(await line()).toMatch(/^Unread/);
+  await page.keyboard.press("j");
+
+  await page.keyboard.press("Shift+I");
+
+  await expect.poll(line, wait).not.toMatch(/^Unread/);
+  expect(await said(page)).toContain("Marked 1 thread read.");
+  await page.keyboard.press("Shift+U");
+  await expect.poll(line, wait).toMatch(/^Unread/);
+  expect(await said(page)).toContain("Marked 1 thread unread.");
+});
+
+test("l opens the labels for the thread at the cursor, to label it from the keyboard", budget, async () => {
+  const { page, grace } = await withThreads(["Kvitto"]);
+  const { data: mailboxes } = await grace.GET("/mailboxes");
+  await grace.POST("/mailboxes/{mailbox}/labels", { params: { path: { mailbox: mailboxes!.mailboxes[0]!.id } }, body: { name: "Kvitton" } });
+  await page.reload();
+  await expect.poll(() => listed(page), wait).toEqual(["Kvitto"]);
+  await page.keyboard.press("j");
+
+  await page.keyboard.press("l");
+
+  const picker = page.getByRole("group", { name: "Labels for this thread" });
+  await expect.poll(() => picker.getByRole("checkbox", { name: "Kvitton" }).evaluate((box) => box === document.activeElement), wait).toBe(true);
+  await page.keyboard.press("Space");
+  await expect.poll(() => said(page), wait).toContain("Added Kvitton to 1 thread.");
+});
+
+test("g then i, t, d or a goes to the Inbox, Sent, Drafts or All mail, also from a thread, and u goes back to the list", budget, async () => {
+  const { page } = await withThreads(["Kvitto"]);
+  for (const [key, title] of [
+    ["t", "Sent"],
+    ["d", "Drafts"],
+    ["a", "All mail"],
+    ["i", "Inbox"],
+  ]) {
+    await page.keyboard.press("g");
+    await page.keyboard.press(key!);
+    await expect.poll(() => heading(page), wait).toBe(title);
+  }
+  await expect.poll(() => listed(page), wait).toEqual(["Kvitto"]);
+  // A key no chord ends does what it does alone, also right after g.
+  await page.keyboard.press("g");
+  await page.keyboard.press("j");
+  expect(await focused(page)).toBe("Kvitto");
+  await page.keyboard.press("o");
+  await expect.poll(() => heading(page), wait).toBe("Kvitto");
+
+  await page.keyboard.press("u");
+
+  await expect.poll(() => heading(page), wait).toBe("Inbox");
+  await page.keyboard.press("j");
+  await page.keyboard.press("o");
+  await expect.poll(() => heading(page), wait).toBe("Kvitto");
+  // In a thread a alone replies to all, and after g it goes to All mail.
+  await page.keyboard.press("g");
+  await page.keyboard.press("a");
+  await expect.poll(() => heading(page), wait).toBe("All mail");
 });
