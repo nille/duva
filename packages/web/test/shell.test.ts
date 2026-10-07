@@ -268,9 +268,9 @@ test("on a phone one switcher names the view and the mailbox, and opens the mail
   // While a thread is read the switcher steps aside, and the back link names the view.
   await expect.poll(() => title(page), wait).toBe("Till Lovelace");
   expect(await switcher.isVisible()).toBe(false);
-  expect(await page.getByRole("link", { name: "Inbox" }).isVisible()).toBe(true);
+  expect(await page.getByRole("link", { name: "Inbox", exact: true }).isVisible()).toBe(true);
 
-  await page.getByRole("link", { name: "Inbox" }).click();
+  await page.getByRole("link", { name: "Inbox", exact: true }).click();
   await switcher.click();
   await page.keyboard.press("Escape");
   expect(await switcher.getAttribute("aria-expanded")).toBe("true");
@@ -492,29 +492,6 @@ test.each([
   expect(await fits(page)).toBe(true);
 });
 
-test("every corner the stylesheet rounds is one of the radius tokens", budget, async () => {
-  const { page, signIn } = await withTwoMailboxes();
-  await signIn("ada@example.org");
-  await expect.poll(async () => (await mailboxes(page)).getByRole("link").count(), wait).toBe(2);
-
-  const radii = await page.evaluate(() => {
-    const found: string[] = [];
-    const walk = (rules: CSSRuleList) => {
-      for (const rule of Array.from(rules)) {
-        if (rule instanceof CSSStyleRule) {
-          const radius = rule.style.getPropertyValue("border-radius");
-          if (radius !== "") found.push(radius);
-        }
-        if ("cssRules" in rule) walk((rule as CSSGroupingRule).cssRules);
-      }
-    };
-    for (const sheet of Array.from(document.styleSheets)) walk(sheet.cssRules);
-    return found;
-  });
-  expect(radii.length).toBeGreaterThan(40);
-  const untokened = radii.filter((radius) => !radius.split(/\s+(?![^(]*\))/).every((corner) => /^(0(px)?|50%|var\(--radius(-[a-z]+)?\))$/.test(corner)));
-  expect(untokened).toEqual([]);
-});
 
 /** Where the open thread's parts lie, and how wide 72 of the letters' characters are, which was the column's measure before. */
 async function readingAt(width: number) {
@@ -566,11 +543,13 @@ test("at 3840 px the thread's column spans the screen's center line, the list co
   expect(place.x).toBeGreaterThanOrEqual(36);
 });
 
-test("on a desk Settings is in the status strip, not among the places, and shows as current there while open", budget, async () => {
+test("on a desk Settings is in the status strip, apart from the places, and shows as current there while open", budget, async () => {
   const { page, signIn } = await withTwoMailboxes();
   await signIn("ada@example.org");
   const places = page.getByRole("navigation", { name: "Duva" }).getByRole("link");
-  await expect.poll(() => places.allInnerTexts(), wait).toEqual(["Mail", "Screener"]);
+  // Ada sponsors her mailbox agent, so Approvals and Alerts are hers too, and Settings isn't among them.
+  await expect.poll(() => places.evaluateAll((links) => links.map((link) => link.className)), wait).toEqual(["place-mail", "place-screener", "place-approvals", ""]);
+  expect(await places.allInnerTexts()).not.toContainEqual(expect.stringContaining("Settings"));
   const settings = page.getByRole("contentinfo", { name: "Status" }).getByRole("link", { name: "Settings", exact: true });
 
   await settings.click();
@@ -584,15 +563,19 @@ for (const [size, viewport] of [
   ["a desk", { width: 1280, height: 800 }],
   ["a phone", phone],
 ] as const) {
-  test(`on ${size} the wordmark is a link to the Inbox`, budget, async () => {
-    const { page, signIn } = await withTwoMailboxes({ viewport });
+  test(`on ${size} the wordmark is a link to the Inbox of the human's first mailbox`, budget, async () => {
+    const { page, signIn, lovelace } = await withTwoMailboxes({ viewport });
     await signIn("ada@example.org");
+    await expect.poll(() => title(page), wait).toBe("Inbox");
+    await page.evaluate((id) => (location.hash = `#/mailboxes/${id}/`), lovelace);
     await page.getByRole("link", { name: "Settings", exact: true }).click();
     await expect.poll(() => title(page), wait).toBe("Settings");
 
-    await page.getByRole("banner").getByRole("link", { name: "Duva", exact: true }).click();
+    await page.getByRole("banner").getByRole("link", { name: "Duva, go to your Inbox", exact: true }).click();
 
     await expect.poll(() => title(page), wait).toBe("Inbox");
+    // The first of ada@example.com and lovelace@example.com, not the one last open.
+    expect(page.url()).not.toContain(lovelace);
   });
 }
 

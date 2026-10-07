@@ -97,7 +97,7 @@ test("opening a thread shows its messages oldest first, and the Inbox then lists
   expect(second).toContain("Ada Lovelace");
   expect(second).toContain("Tack, Grace. Jag läser dem i kväll.");
 
-  await page.getByRole("link", { name: "Inbox" }).first().click();
+  await page.getByRole("link", { name: "Inbox", exact: true }).first().click();
   await expect.poll(() => page.getByRole("link", { name: /Compiler notes/ }).getAttribute("aria-label"), wait).not.toMatch(/^Unread/);
   await expect.poll(() => page.getByText(/^\d+ unread$/).count(), wait).toBe(0);
 });

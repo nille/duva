@@ -26,7 +26,7 @@ async function withLogos() {
 /** Opens Settings as the human, on the Domains sheet for an admin, with the domain's line opened. */
 async function openDomain({ page, signIn }: WebApp, domain: string) {
   await signIn("ada@example.org");
-  await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
+  await page.getByRole("link", { name: "Settings", exact: true }).click();
   await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: /^Domains/ }).click();
   await page.getByRole("region", { name: "Domains" }).getByRole("heading", { name: domain, exact: true }).click();
   return page.getByRole("region", { name: "Domains" }).getByRole("group", { name: domain, exact: true }).getByRole("region", { name: "Logo" });
@@ -95,7 +95,7 @@ test("a human sets their own logo on You, and sees the record to ask an admin fo
   const app = await withLogos();
   const { page, signIn } = app;
   await signIn("grace@example.org");
-  await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
+  await page.getByRole("link", { name: "Settings", exact: true }).click();
   const mine = page.getByRole("region", { name: "My logo" });
   await expect.poll(() => mine.innerText(), wait).toContain("Only some receivers honor a mailbox's own logo, and others show the domain's.");
 

@@ -731,7 +731,8 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
       </a>
       <div className={shell}>
         <header className="bar">
-            <a className="wordmark" href={hrefOf({ label: "inbox" }, sideBase)}>
+              {/* The wordmark goes home: the Inbox of the human's first own mailbox, or the start view. */}
+              <a className="wordmark" href={first === undefined ? "#/" : hrefOf({ label: "inbox" }, mailboxHref(first, !several))} aria-label={strings.nav.home}>
               {strings.nav.label}
             </a>
           {write !== undefined && (
@@ -981,17 +982,17 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
 /** What a list beside an open thread or draft is: a view of the mail, or Drafts. */
 type Listing = View | { drafts: true };
 
-/**
- * The status strip along a desk's foot: whether Duva is up to date, how each agent the human
- * sponsors stands, the key that lists the shortcuts while they are on, and who is signed in, with
- * Sign out.
- */
 /** When Duva was last up to date, which the phone's switcher says on its sheet, since a phone has no status strip. */
 function UpToDate({ connection }: { connection: Connection }) {
   const { clock } = useDates();
   return connection?.ok ? <p className="side-state">{strings.connection.upToDate(clock(connection.at))}</p> : null;
 }
 
+/**
+ * The status strip along a desk's foot: whether Duva is up to date, how each agent the human
+ * sponsors stands, the key that lists the shortcuts while they are on, Settings, and who is signed
+ * in, with Sign out.
+ */
 function Strip({
   connection,
   agents,

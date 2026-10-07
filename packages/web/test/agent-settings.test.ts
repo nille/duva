@@ -136,7 +136,7 @@ test("a sponsor with two mailboxes chooses which of them an agent's access cover
   const { data: me } = await grace.GET("/whoami");
   const { data: work } = await duva.signIn("ada@example.org").POST("/mailboxes", { body: { owner: me!.id, address: "grace.work@example.com" } });
   await signIn("grace@example.org");
-  await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
+  await page.getByRole("link", { name: "Settings", exact: true }).click();
   await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "Your agents" }).click();
 
   const form = await openAgent(page, "Hermes");
@@ -156,7 +156,7 @@ test("a sponsor rotates an agent's key, which shows the new key once, and the ol
   const { page, signIn, duva } = app;
   const { data: created } = await duva.signIn("grace@example.org").POST("/agents", { body: { name: "Hermes" } });
   await signIn("grace@example.org");
-  await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
+  await page.getByRole("link", { name: "Settings", exact: true }).click();
   await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "Your agents" }).click();
   await openAgent(page, "Hermes");
   const key = agentsSheet(page).getByRole("region", { name: "Key" });
@@ -175,7 +175,7 @@ test("a sponsor removes an agent from its line after confirming, its line goes a
   const { data: agents } = await grace.GET("/agents");
   const { data: rotated } = await grace.POST("/agents/{agent}/key", { params: { path: { agent: agents!.agents.find(({ name }) => name === "Hermes")!.id } } });
   await signIn("grace@example.org");
-  await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
+  await page.getByRole("link", { name: "Settings", exact: true }).click();
   await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "Your agents" }).click();
   await openAgent(page, "Hermes");
   const remove = agentsSheet(page).getByRole("region", { name: "Remove" });

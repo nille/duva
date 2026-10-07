@@ -110,7 +110,7 @@ test("an admin opens the Organization page and chooses that erasing a thread era
 test("an admin sets how many seconds an approved send waits to be undone, on the Agents sheet", budget, async () => {
   const { page, signIn, duva } = await withOrganization();
   await signIn("ada@example.org");
-  await openSettings(page, "Organization");
+  await openSettings(page, "Mail and agents");
   const field = agentsSheet(page).getByRole("textbox", { name: "Seconds" });
   await expect.poll(() => field.inputValue(), wait).toBe("0");
 
@@ -197,7 +197,7 @@ test("a human who isn't an admin lands on You and reads the organization's reten
   expect(await page.getByRole("radio", { name: /^Keep them/ }).count()).toBe(0);
 });
 
-test("on a phone Settings opens on its index, each page links back to it, and Sign out is on You", budget, async () => {
+test("on a phone Settings opens on its index, each page links back to it, and Sign out is on Preferences", budget, async () => {
   const { page, signIn } = await startWebApp({ domain: "example.com", admin: "ada@example.org", humans: ["grace@example.org"], viewport: phone });
   await signIn("ada@example.org");
 
@@ -206,6 +206,8 @@ test("on a phone Settings opens on its index, each page links back to it, and Si
   await expect.poll(() => settingsIndex(page).getByRole("link", { name: "Mail and agents" }).isVisible(), wait).toBe(true);
   expect(await page.getByRole("region", { name: "Preferences" }).isVisible()).toBe(false);
   expect(await page.getByRole("link", { name: "Settings", exact: true }).filter({ visible: true }).count()).toBe(1);
+  // Preferences' line says the human's choices in words here too.
+  expect(await settingsIndex(page).getByRole("link", { name: "Preferences", exact: true }).innerText()).toContain("Default clock, mail as designed");
 
   await openPage(page, "Preferences");
 

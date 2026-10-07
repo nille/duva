@@ -145,8 +145,8 @@ test("on a phone, Ask your agent takes the screen, with the field at its foot", 
 test("an admin chooses the mailbox agents' model, where the mail they read is processed and their spend cap, and reads what they spent", budget, async () => {
   const { page, signIn, duva } = await withMailbox();
   await signIn("ada@example.org");
-  await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
-  await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: /^Organization/ }).click();
+  await page.getByRole("link", { name: "Settings", exact: true }).click();
+  await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: /^Mail and agents/ }).click();
   const sheet = page.getByRole("region", { name: "Mailbox agents" });
   await sheet.getByText("Spent $0.00 in").waitFor(wait);
   expect(await sheet.getByRole("radio", { name: /^Claude Sonnet 5\.5/ }).isChecked()).toBe(true);

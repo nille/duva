@@ -344,7 +344,8 @@ for (const [size, viewport] of [
   test(`on ${size} the Screener is a place after Mail, counting the senders waiting, and opens the mailbox's Screener`, budget, async () => {
     const { page } = await withLists(["Kvitto"], { viewport });
     const places = page.getByRole("navigation", { name: "Duva" }).getByRole("link");
-    await expect.poll(() => places.count(), wait).toBe(2);
+    // Grace sponsors her mailbox agent, so Approvals and Alerts follow.
+    await expect.poll(() => places.count(), wait).toBe(4);
     expect(await places.nth(0).textContent()).toBe("Mail");
     // Its count shows beside its name, and a screen reader hears how many wait.
     await expect.poll(() => page.getByRole("navigation", { name: "Duva" }).getByRole("link", { name: "Screener, 1 waiting", exact: true }).count(), wait).toBe(1);

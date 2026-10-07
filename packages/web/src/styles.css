@@ -504,6 +504,7 @@ kbd {
 /* In the bar the wordmark is the way to the Inbox, set as the wordmark still. */
 a.wordmark {
   justify-self: start;
+  border-radius: var(--radius-key);
   color: var(--ink);
   text-decoration: none;
 }

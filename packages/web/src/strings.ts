@@ -56,6 +56,8 @@ export const strings = {
     write: "Write",
     search: "Search",
     skip: "Skip to main content",
+    /** The wordmark, which goes to the Inbox. */
+    home: "Duva, go to your Inbox",
   },
   /** The status strip along the foot of a desk. */
   strip: {
@@ -567,7 +569,7 @@ export const strings = {
       recordsMissing: (domain: string, records: number) => `${domain}, ${records === 1 ? "1 record" : `${records} records`} missing`,
       domainsMissing: (domains: number) => `${domains} domains have records missing`,
       /** What each page holds now, as its line in the index says it. */
-      you: ({ hourCycle, dateFormat, mailView }: { hourCycle: string; dateFormat: string; mailView: string }) =>
+      you: ({ hourCycle, dateFormat, mailView }: components["schemas"]["Preferences"]) =>
         [
           hourCycle === "h12" ? "12-hour clock" : hourCycle === "h23" ? "24-hour clock" : "Default clock",
           ...(dateFormat === "iso" ? ["dates year first"] : dateFormat === "dayMonth" ? ["dates day first"] : dateFormat === "monthDay" ? ["dates month first"] : []),
