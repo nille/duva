@@ -30,7 +30,7 @@ import type { RecordType } from "../src/dns-records.ts";
 import { createEraser, type EraserEvent } from "../src/erasure.ts";
 import { createInbound } from "../src/inbound.ts";
 import { createFeeder, createIndexer, type IndexQueue, indexMailboxes, type QueuedTask } from "../src/indexing.ts";
-import { alertMailFilter, conversationPath, tokenHeader, feederFilter, hostedLogoHeaders, hostedLogosPath, senderFilter, senderRetries, tableKey, tableStreamView } from "../src/infrastructure.ts";
+import { alertMailFilter, conversationPath, mcpRoutes, tokenHeader, feederFilter, hostedLogoHeaders, hostedLogosPath, senderFilter, senderRetries, tableKey, tableStreamView } from "../src/infrastructure.ts";
 import { lanceSearch } from "../src/lancedb-search.ts";
 import { createSearcher } from "../src/searching.ts";
 import type { Table } from "../src/deployment.ts";
@@ -40,7 +40,8 @@ import { addHumanToOrganization, screenerKey, settingsKey, setUpOrganization } f
 import type { SendEvent } from "../src/limits.ts";
 import { setUpDeliveries, setUpScreeners } from "../src/screening.ts";
 import { type Model, runAgent } from "../src/agent-loop.ts";
-import { type ConversationEvent, createConversation } from "../src/conversation.ts";
+import { type ConversationEvent, createConversation, type PreparedTurn } from "../src/conversation.ts";
+import { createMcp } from "../src/mcp.ts";
 import { giveMailboxAgents } from "../src/mailbox-agents.ts";
 import type { ReminderDue } from "../src/reminders.ts";
 import { createSender } from "../src/sending.ts";
@@ -50,7 +51,8 @@ import { postOneClick } from "../src/unsubscriber.ts";
 import { type HostedLogos, logoCacheControl } from "../src/own-logos.ts";
 import { dynamodbLocal } from "./dynamodb-local.ts";
 import { gateway } from "./gateway.ts";
-import { managedLogin, managedLoginClientId } from "./managed-login.ts";
+import { managedLogin, managedLoginClientId, mcpAppClientId } from "./managed-login.ts";
+import { type ConnectedMcpClient, connectMcpClient, type McpClientOptions } from "./mcp-client.ts";
 import { type Bounce, type Envelope, memoryDns, type PublishOptions, type ReceiveOptions, type SendingEvent, sesIdentities, sesReceiving, sesSending, type StoredIdentity } from "./ses.ts";
 import { tableStream } from "./streams.ts";
 import { recordedNova } from "./nova.ts";
@@ -243,8 +245,15 @@ export interface Duva {
    */
   askAgent(email: string, turn: { mailbox: string; words: string }, options?: { token?: string }): Promise<{ status: number; events?: ConversationEvent[]; body?: { message: string } }>;
   /**
+   * Connects an MCP client to the MCP endpoint as Claude Code does: the MCP SDK's own client, which
+   * finds how to sign in, registers itself as `options` say, signs in through managed login as the
+   * human at `email`, then initializes. A tool's call returns once what it did is done, and a turn
+   * it started may still run; the generated client's calls wait for those.
+   */
+  mcp(email: string, options?: McpClientOptions): Promise<ConnectedMcpClient>;
+  /**
    * Serves the API on localhost, for clients that need a URL, such as the CLI, with a stand-in
-   * for managed login at the same URL.
+   * for managed login and the MCP endpoint at the same URL.
    */
   listen(): Promise<{ url: string; signIn: { url: string; clientId: string }; close(): Promise<void> }>;
 }
@@ -409,7 +418,15 @@ export async function startDuva({
       reminders,
       hostedLogos,
     }),
-    createAuthorizer({ table, verifyAccessToken: issuer.verify }),
+    // Cognito's verifier takes only the web app's and the CLI's app clients, which share the stand-in's one.
+    createAuthorizer({
+      table,
+      verifyAccessToken: async (token) => {
+        const { sub, clientId } = await issuer.verify(token);
+        if (clientId !== managedLoginClientId) throw new Error("Not an app client the API takes");
+        return sub;
+      },
+    }),
   );
   // A call returns once the stream has handed what it wrote to the sender, unless sends are held,
   // the eraser has erased the Trash it emptied and the mailboxes it deleted, and the indexer has
@@ -446,7 +463,7 @@ export async function startDuva({
   });
   // CloudFront passes the turn to the function URL, which streams its answer a line at a time.
   const agentTurn = async (request: Request): Promise<Response> => {
-    const answer = await conversation({ headers: Object.fromEntries(request.headers), body: await request.text() });
+    const answer = await conversation.turn({ headers: Object.fromEntries(request.headers), body: await request.text() });
     if (!("events" in answer)) return Response.json(answer.body, { status: answer.statusCode });
     const lines = answer.events[Symbol.asyncIterator]();
     return new Response(
@@ -461,11 +478,43 @@ export async function startDuva({
     );
   };
   const login = managedLogin({ ids: humans.ids, issuer, accessTokenLifetime });
-  const client = (headers?: Record<string, string>) => createDuvaClient(inProcess, { fetch: api, headers });
+  // The MCP Lambda invokes the conversation Lambda without waiting, with the turn it prepared, which
+  // goes through JSON. The turns still running when the generated client calls finish first.
+  const runs: Promise<void>[] = [];
+  // Managed login's stand-in is at the API's own URL, once it listens.
+  let signInUrl = inProcess;
+  const mcp = createMcp({
+    version,
+    region,
+    table,
+    get signInUrl() {
+      return signInUrl;
+    },
+    appClient: mcpAppClientId,
+    verifyAccessToken: issuer.verify,
+    turns: {
+      async start(prepared: PreparedTurn) {
+        runs.push((async () => {
+          for await (const _ of conversation.run(JSON.parse(JSON.stringify(prepared)) as PreparedTurn));
+        })());
+      },
+    },
+    fetch: (request) => web(request),
+    // Shorter than a deployment's, so a test of an answer that takes longer is quick.
+    askWait: 2_000,
+  });
+  const isMcp = (request: Request) => mcpRoutes.some(({ path, methods }) => new URL(request.url).pathname === path && (methods as string[]).includes(request.method));
+  // The deployment's URLs as the internet reaches them: managed login, the MCP endpoint and the API.
+  const web = async (request: Request) => (await login.handle(request)) ?? (isMcp(request) ? mcp(request) : api(request));
+  const settled = async (request: Request) => {
+    while (runs.length > 0) await Promise.all(runs.splice(0));
+    return api(request);
+  };
+  const client = (headers?: Record<string, string>) => createDuvaClient(inProcess, { fetch: settled, headers });
   const accessToken = (email: string) => {
     const id = humans.ids.get(email);
     if (id === undefined) throw new Error(`${email} isn't a human in the organization`);
-    return issuer.issue(id, accessTokenLifetime);
+    return issuer.issue(id, accessTokenLifetime, managedLoginClientId);
   };
   return {
     client: client(),
@@ -553,9 +602,11 @@ export async function startDuva({
       const events = (await response.text()).split("\n").filter((line) => line !== "").map((line) => JSON.parse(line) as ConversationEvent);
       return { status: response.status, events };
     },
+    mcp: (email, options) => connectMcpClient(`${inProcess}/mcp`, email, web, options),
     async listen() {
-      const server = await listen(async (request) => (await login.handle(request)) ?? (new URL(request.url).pathname.startsWith(`/${conversationPath}`) ? agentTurn(request) : api(request)));
+      const server = await listen(async (request) => (new URL(request.url).pathname.startsWith(`/${conversationPath}`) ? agentTurn(request) : web(request)));
       downloadUrl = `${server.url}/download/`;
+      signInUrl = server.url;
       logosUrl = `${server.url}/${hostedLogosPath}`;
       return { ...server, signIn: { url: server.url, clientId: managedLoginClientId } };
     },
@@ -810,7 +861,8 @@ async function listen(api: (request: Request) => Promise<Response>) {
       if (value !== undefined) headers.set(name, Array.isArray(value) ? value.join(", ") : value);
     }
     const response = await api(
-      new Request(new URL(incoming.url ?? "/", "http://127.0.0.1").href, {
+      // The URL the client asked for, port included, as the MCP endpoint names itself by it.
+      new Request(new URL(incoming.url ?? "/", `http://${incoming.headers.host ?? "127.0.0.1"}`).href, {
         method: incoming.method,
         headers,
         body: chunks.length > 0 ? Buffer.concat(chunks) : undefined,

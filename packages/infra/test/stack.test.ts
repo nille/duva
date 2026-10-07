@@ -3,7 +3,7 @@
 import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { alertMailFilter, embeddingModel, environmentVariables, feederFilter, hostedLogoHeaders, senderFilter, senderRetries, timeToLiveAttribute, translationModel } from "@duva/api/infrastructure";
+import { alertMailFilter, embeddingModel, environmentVariables, feederFilter, hostedLogoHeaders, mcpRoutes, senderFilter, senderRetries, timeToLiveAttribute, translationModel } from "@duva/api/infrastructure";
 import { operations } from "@duva/openapi";
 import { buildSync } from "esbuild";
 import { afterAll, expect, test } from "vitest";
@@ -716,7 +716,7 @@ test("sign-in codes go through SES from the sign-in domain once SES has verified
 
 test("every app client signs in through managed login with PKCE, and gives no hint that an address is unknown", () => {
   const clients = ofType("AWS::Cognito::UserPoolClient");
-  expect(clients).toHaveLength(2);
+  expect(clients).toHaveLength(3);
   for (const [id, { Properties }] of clients) {
     const { GenerateSecret, AllowedOAuthFlows, PreventUserExistenceErrors, ExplicitAuthFlows } = Properties ?? {};
     expect({ id, secret: GenerateSecret ?? false, AllowedOAuthFlows, PreventUserExistenceErrors, ExplicitAuthFlows }).toEqual({
@@ -735,7 +735,7 @@ test("managed login is the newer one, which offers choice-based sign-in", () => 
   expect(domain.Properties?.ManagedLoginVersion).toBe(2);
   // Prefix domains are unique per region, and duva-<account> was the retired user pool's.
   expect(domain.Properties?.Domain).toEqual({ "Fn::Join": ["", ["duva-signin-", { Ref: "AWS::AccountId" }]] });
-  expect(ofType("AWS::Cognito::ManagedLoginBranding")).toHaveLength(2);
+  expect(ofType("AWS::Cognito::ManagedLoginBranding")).toHaveLength(3);
 });
 
 test("every operation that needs sign-in goes through the one Lambda authorizer, which answers 401 to any call it can't resolve", () => {
@@ -1001,7 +1001,7 @@ test("Ask your agent posts to the web app's domain under /agent/, where CloudFro
   expect(access?.Properties?.OriginAccessControlConfig).toMatchObject({ OriginAccessControlOriginType: "lambda", SigningBehavior: "always" });
 });
 
-test("only the web app's distribution may invoke the conversation Lambda, which may invoke the mailbox agents' runtime, stop its sessions and read the API's URL, and invoke no Lambda", () => {
+test("only the web app's distribution and, through IAM, the MCP Lambda may invoke the conversation Lambda, which may invoke the mailbox agents' runtime, stop its sessions and read the API's URL, and invoke no Lambda", () => {
   const [conversationId] = lambda("ConversationHandler");
   const [urlId] = functionUrl(conversationId);
   const permissions = ofType("AWS::Lambda::Permission").filter(([, { Properties }]) =>
@@ -1023,4 +1023,42 @@ test("no origin request policy lists a header CloudFront refuses there, as those
   const listed = ofType("AWS::CloudFront::OriginRequestPolicy").flatMap(([, { Properties }]) => (Properties?.OriginRequestPolicyConfig?.HeadersConfig?.Headers ?? []) as string[]);
   expect(listed).not.toHaveLength(0);
   expect(listed.filter((header) => /^x-(amz|edge)-/i.test(header))).toEqual([]);
+});
+
+test("the MCP endpoint's routes reach the MCP Lambda without the authorizer, which API Gateway invokes through one permission, for its own API only", () => {
+  const [mcpId] = lambda("McpHandler");
+  const [[apiId]] = ofType("AWS::ApiGatewayV2::Api") as [[string, Resource]];
+  const routes = Object.fromEntries(ofType("AWS::ApiGatewayV2::Route").map(([, { Properties }]) => [Properties?.RouteKey, Properties]));
+  const integrations = Object.fromEntries(ofType("AWS::ApiGatewayV2::Integration"));
+  const keys = mcpRoutes.flatMap(({ path, methods }) => methods.map((method) => `${method} ${path}`));
+  expect(keys).toContain("POST /mcp");
+  for (const key of keys) {
+    const route = routes[key];
+    const integration = integrations[String(route?.Target?.["Fn::Join"]?.[1]?.[1]?.Ref)];
+    expect({ key, auth: route?.AuthorizationType, target: JSON.stringify(integration?.Properties?.IntegrationUri) }).toEqual({ key, auth: "NONE", target: JSON.stringify({ "Fn::GetAtt": [mcpId, "Arn"] }) });
+  }
+  const permissions = ofType("AWS::Lambda::Permission").filter(([, { Properties }]) => Properties?.FunctionName?.["Fn::GetAtt"]?.[0] === mcpId);
+  expect(permissions).toHaveLength(1);
+  const [[, { Properties: permission }]] = permissions as [[string, Resource]];
+  expect(permission).toMatchObject({ Action: "lambda:InvokeFunction", Principal: "apigateway.amazonaws.com" });
+  expect(JSON.stringify(permission?.SourceArn)).toMatch(new RegExp(`":execute-api:".*\\{"Ref":"${apiId}"\\},"/\\*/\\*/\\*"`));
+});
+
+test("the MCP Lambda writes the table and invokes only the conversation Lambda, within API Gateway's 30 seconds, and takes no Cognito action", () => {
+  const [conversationId] = lambda("ConversationHandler");
+  expect(actions("McpHandler", "cognito-idp")).toEqual([]);
+  const invokes = statements("McpHandler").filter(({ Action }) => [Action].flat().some((action) => action.startsWith("lambda:")));
+  expect(invokes.map(({ Action }) => Action)).toEqual(["lambda:InvokeFunction"]);
+  expect(JSON.stringify(invokes.map(({ Resource }) => Resource))).toContain(`{"Fn::GetAtt":["${conversationId}","Arn"]}`);
+  expect(tableActions("McpHandler")).toEqual(expect.arrayContaining(["dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:DeleteItem"]));
+  expect(lambda("McpHandler")[1].Properties?.Timeout).toBe(30);
+});
+
+test("MCP clients sign in through an app client of their own, which managed login sends back only to the MCP endpoint, and whose tokens only the MCP Lambda takes", () => {
+  const clients = ofType("AWS::Cognito::UserPoolClient");
+  const [mcpClientId, mcpClient] = clients.find(([id]) => id.includes("McpClient"))!;
+  const [[apiId]] = ofType("AWS::ApiGatewayV2::Api") as [[string, Resource]];
+  expect(JSON.stringify(mcpClient.Properties?.CallbackURLs)).toMatch(new RegExp(`\\{"Fn::GetAtt":\\["${apiId}","ApiEndpoint"\\]\\},"/mcp/callback"`));
+  expect(lambda("McpHandler")[1].Properties?.Environment?.Variables?.[environmentVariables.mcpClientId]).toEqual({ Ref: mcpClientId });
+  expect(JSON.stringify(lambda("AuthorizerHandler")[1].Properties?.Environment?.Variables?.[environmentVariables.userPoolClientIds])).not.toContain(mcpClientId);
 });

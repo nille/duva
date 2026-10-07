@@ -68,6 +68,12 @@ export const environmentVariables = {
   agentRuntime: "AGENT_RUNTIME",
   /** The name of the SSM parameter that holds the URL of Duva's API, which a mailbox agent calls as its tools. */
   apiUrlParameter: "API_URL_PARAMETER",
+  /** The URL of managed login, whose authorize and token endpoints MCP clients sign humans in at. */
+  signInUrl: "SIGN_IN_URL",
+  /** The user pool's app client MCP clients sign in through. */
+  mcpClientId: "MCP_CLIENT_ID",
+  /** The conversation Lambda, which the MCP Lambda invokes to run each turn it prepares. */
+  conversationFunction: "CONVERSATION_FUNCTION",
 } as const;
 
 /** What the table's stream shows of each changed item. The sender reads the item itself, so only its new image. */
@@ -142,3 +148,27 @@ export const conversationPath = "agent/";
 
 /** The header a turn gives the human's access token in, since CloudFront signs the request to the conversation Lambda with its own Authorization. */
 export const tokenHeader = "x-duva-token";
+
+/**
+ * Duva's MCP endpoint (ADR-0028), on the API's domain beside its operations, and what OAuth asks of
+ * it: the documents MCP clients discover the sign-in from, where they register, and the endpoints
+ * they sign in through, which pass each step on to managed login. API Gateway
+ * routes each to the MCP Lambda without the authorizer, since the endpoint answers 401 itself.
+ */
+export const mcpPath = "/mcp";
+export const mcpRegistrationPath = "/mcp/register";
+export const mcpAuthorizePath = "/mcp/authorize";
+/** Where managed login sends a human back to after an MCP client's sign-in, the MCP app client's only callback. */
+export const mcpCallbackPath = "/mcp/callback";
+export const mcpTokenPath = "/mcp/token";
+export const protectedResourcePaths = ["/.well-known/oauth-protected-resource", "/.well-known/oauth-protected-resource/mcp"];
+export const authorizationServerPath = "/.well-known/oauth-authorization-server";
+export const mcpRoutes: { path: string; methods: ("GET" | "POST")[] }[] = [
+  { path: mcpPath, methods: ["GET", "POST"] },
+  { path: mcpRegistrationPath, methods: ["POST"] },
+  { path: mcpAuthorizePath, methods: ["GET", "POST"] },
+  { path: mcpCallbackPath, methods: ["GET"] },
+  { path: mcpTokenPath, methods: ["POST"] },
+  ...protectedResourcePaths.map((path) => ({ path, methods: ["GET" as const] })),
+  { path: authorizationServerPath, methods: ["GET"] },
+];

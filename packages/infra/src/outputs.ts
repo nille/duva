@@ -33,6 +33,7 @@ export const stackOutputs = {
   logosUrl: "LogosUrl",
   conversationFunction: "ConversationFunction",
   agentRuntime: "AgentRuntime",
+  mcpFunction: "McpFunction",
   dkimName: (n: 1 | 2 | 3) => `DkimName${n}`,
   dkimValue: (n: 1 | 2 | 3) => `DkimValue${n}`,
 } as const;

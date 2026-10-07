@@ -8,7 +8,7 @@ import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { GetParameterCommand, SSMClient } from "@aws-sdk/client-ssm";
 import type { LambdaFunctionURLEvent } from "aws-lambda";
 import type { RunEvent } from "./agent-loop.ts";
-import { type AgentRuntime, createConversation } from "./conversation.ts";
+import { type AgentRuntime, createConversation, type PreparedTurn } from "./conversation.ts";
 import { required } from "./environment.ts";
 import { environmentVariables } from "./infrastructure.ts";
 
@@ -48,9 +48,16 @@ const conversation = createConversation({
   runtime: runtimeArn === "" ? undefined : agentCoreRuntime,
 });
 
-export const handler = awslambda.streamifyResponse<LambdaFunctionURLEvent>(async (event, responseStream) => {
+// A turn comes through the function URL, or from the MCP Lambda, which invokes this one through IAM
+// without waiting, with the turn it prepared, so the run goes on after its own answer.
+export const handler = awslambda.streamifyResponse<LambdaFunctionURLEvent | { run: PreparedTurn }>(async (event, responseStream) => {
+  if ("run" in event) {
+    for await (const _ of conversation.run(event.run));
+    responseStream.end();
+    return;
+  }
   const body = event.isBase64Encoded ? Buffer.from(event.body ?? "", "base64").toString() : (event.body ?? "");
-  const answer = await conversation({ headers: event.headers, body });
+  const answer = await conversation.turn({ headers: event.headers, body });
   const headers = { "content-type": "events" in answer ? "application/x-ndjson" : "application/json", "cache-control": "no-store" };
   const stream = awslambda.HttpResponseStream.from(responseStream, { statusCode: answer.statusCode, headers });
   // The runtime sends the status and headers with the first write (docs/aws.md).

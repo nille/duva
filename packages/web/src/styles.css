@@ -5281,6 +5281,7 @@ input[aria-invalid="true"] {
 }
 
 .logo-subpart h5,
+.setting-title,
 .logo-mailbox {
   margin: 0;
   font-size: var(--text-md);
@@ -6952,4 +6953,24 @@ mark {
 .stream-more {
   max-width: var(--measure);
   margin: var(--space-5) auto;
+}
+
+/* The MCP sheet: Duva's MCP address, then each app's steps, by a seam, with the address and the command whole on their lines beside their copy buttons. */
+.mcp-sheet .setting + .setting {
+  margin-top: var(--space-5);
+  padding-top: var(--space-5);
+  box-shadow: inset 0 1px 0 var(--seam);
+}
+
+.mcp-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.mcp-line code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font: 400 var(--text-sm) / 1.5 var(--mono);
 }

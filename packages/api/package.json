@@ -18,6 +18,7 @@
     "./feeder-lambda": "./src/feeder-lambda.ts",
     "./feedback-lambda": "./src/feedback-lambda.ts",
     "./conversation-lambda": "./src/conversation-lambda.ts",
+    "./mcp-lambda": "./src/mcp-lambda.ts",
     "./agent-runtime-main": "./src/agent-runtime-main.ts",
     "./infrastructure": "./src/infrastructure.ts",
     "./dns-records": "./src/dns-records.ts",
@@ -58,6 +59,7 @@
   "devDependencies": {
     "@aws-sdk/client-dynamodb-streams": "^3.1146.0",
     "@duva/client": "*",
+    "@modelcontextprotocol/sdk": "^1.32.1",
     "@types/aws-lambda": "^8.10.164",
     "@types/html-to-text": "^9.0.4",
     "@types/sanitize-html": "^2.16.2",

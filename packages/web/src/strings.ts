@@ -591,6 +591,15 @@ export const strings = {
     agentsLead: "Admins choose these for every agent in the organization.",
     organizationSummary: (days: number) => `Trash and Spam keep mail ${days === 1 ? "1 day" : `${days} days`}. Admins choose this for everyone.`,
     signedInAs: (email: string) => `Signed in as ${email}.`,
+    mcp: {
+      title: "AI apps",
+      lead: "Apps that speak MCP, such as Claude, can work in your mail through your mailbox agent: ask it, hand it tasks, and read, search, organize and draft as it may. Its sends wait for your approval if you asked for that, and everything is attributed to it.",
+      address: "Duva's MCP address",
+      claudeCode: "Claude Code",
+      claudeCodeSteps: "Run this in a terminal, then /mcp in Claude Code to sign in with your Duva account.",
+      claudeDesktop: "Claude Desktop",
+      claudeDesktopSteps: "In Settings, Connectors, choose Add custom connector. Name it Duva, give it the address above, and connect, signing in with your Duva account.",
+    },
     erasure: {
       legend: "When a thread with an agent's sends is erased",
       lead: "Each send an agent asked for has an approval record: the draft its approver saw, and any change they made.",

@@ -38,7 +38,7 @@ import { GetConfigurationSetEventDestinationsCommand, GetEmailIdentityCommand, S
 import { GetQueueAttributesCommand, SQSClient } from "@aws-sdk/client-sqs";
 import { paginateListObjectsV2, S3Client } from "@aws-sdk/client-s3";
 import { indexedMailboxes, uncompactedSince } from "@duva/api/indexing";
-import { alertMailFilter, conversationPath, tokenHeader, dropMetric, dropReasons, environmentVariables, hostedLogoHeaders, hostedLogosPath, inboundPrefix, receiptRuleNumber, recipientsPerRule, senderFilter, signInFrom } from "@duva/api/infrastructure";
+import { alertMailFilter, authorizationServerPath, conversationPath, mcpAuthorizePath, mcpPath, mcpRegistrationPath, mcpTokenPath, protectedResourcePaths, tokenHeader, dropMetric, dropReasons, environmentVariables, hostedLogoHeaders, hostedLogosPath, inboundPrefix, receiptRuleNumber, recipientsPerRule, senderFilter, signInFrom } from "@duva/api/infrastructure";
 import { rulesTake } from "@duva/api/receiving";
 import { defaultMailboxAgentModel, inferenceProfileId } from "@duva/api/agent-models";
 import { mailboxesWithoutAgents } from "@duva/api/mailbox-agents";
@@ -245,6 +245,58 @@ await check("Claude answers through the eu profile from eu-central-1, where the 
 await check("reading a mailbox's mailbox agent without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/mailboxes/x/agent`), 401));
 await check("clearing a conversation without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/mailboxes/x/agent/conversation`, { method: "DELETE" }), 401));
 await check("reading the mailbox agents' spend without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/organization/mailbox-agent-spend`), 401));
+// Duva's MCP endpoint, on the API's domain (ADR-0028).
+const mcpCall = (headers: Record<string, string> = {}) =>
+  fetch(`${apiUrl}${mcpPath}`, { method: "POST", headers: { "content-type": "application/json", accept: "application/json, text/event-stream", ...headers }, body: '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' });
+await check("the MCP endpoint answers a call without a session with 401, naming where MCP clients find how to sign in", async () => {
+  const response = await mcpCall();
+  const named = response.headers.get("www-authenticate");
+  return response.status === 401 && named === `Bearer resource_metadata="${apiUrl}${protectedResourcePaths[1]}"` ? undefined : `answered ${response.status} with ${named}`;
+});
+await check("the MCP endpoint refuses a forged token with 401, as an invalid token", async () => {
+  const response = await mcpCall({ authorization: "Bearer eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ4In0.forged" });
+  return response.status === 401 && /error="invalid_token"/.test(response.headers.get("www-authenticate") ?? "") ? undefined : `answered ${response.status}`;
+});
+await check("the MCP endpoint's protected resource names Duva's API as its authorization server, which registers clients and signs them in with PKCE", async () => {
+  const resource = (await (await fetch(`${apiUrl}${protectedResourcePaths[1]}`)).json()) as { resource?: string; authorization_servers?: string[] };
+  if (resource.resource !== `${apiUrl}${mcpPath}` || resource.authorization_servers?.[0] !== apiUrl) return `has ${JSON.stringify(resource)}`;
+  const server = (await (await fetch(`${apiUrl}${authorizationServerPath}`)).json()) as Record<string, unknown>;
+  const fine =
+    server.issuer === apiUrl &&
+    server.authorization_endpoint === `${apiUrl}${mcpAuthorizePath}` &&
+    server.token_endpoint === `${apiUrl}${mcpTokenPath}` &&
+    server.registration_endpoint === `${apiUrl}${mcpRegistrationPath}` &&
+    JSON.stringify(server.code_challenge_methods_supported) === '["S256"]';
+  return fine ? undefined : `has ${JSON.stringify(server)}`;
+});
+await check("the MCP endpoint refuses a registration with a redirect URI Cognito wouldn't take", async () => {
+  const response = await fetch(`${apiUrl}${mcpRegistrationPath}`, { method: "POST", headers: { "content-type": "application/json" }, body: '{"redirect_uris":["http://example.org/callback"],"token_endpoint_auth_method":"none"}' });
+  const { error } = (await response.json()) as { error?: string };
+  return response.status === 400 && error === "invalid_redirect_uri" ? undefined : `answered ${response.status} ${error}`;
+});
+await check("a registered MCP client's sign-in goes to managed login for the MCP app client, back to the MCP endpoint, and an unknown client's to nowhere", async () => {
+  const registered = await fetch(`${apiUrl}${mcpRegistrationPath}`, { method: "POST", headers: { "content-type": "application/json" }, body: '{"client_name":"Deployment check","redirect_uris":["http://localhost:1/callback"],"token_endpoint_auth_method":"none"}' });
+  const { client_id: client } = (await registered.json()) as { client_id?: string };
+  const query = (id: string) => new URLSearchParams({ client_id: id, redirect_uri: "http://localhost:1/callback", response_type: "code", code_challenge: "A".repeat(43), code_challenge_method: "S256", state: "check" });
+  const started = await fetch(`${apiUrl}${mcpAuthorizePath}?${query(client ?? "")}`, { redirect: "manual" });
+  const unknown = await fetch(`${apiUrl}${mcpAuthorizePath}?${query("0".repeat(32))}`, { redirect: "manual" });
+  const to = new URL(started.headers.get("location") ?? "http://nowhere");
+  const fine =
+    registered.status === 201 &&
+    started.status === 302 &&
+    `${to.origin}${to.pathname}` === `${output(stackOutputs.signInUrl)}/oauth2/authorize` &&
+    to.searchParams.get("redirect_uri") === `${apiUrl}/mcp/callback` &&
+    unknown.status === 400;
+  return fine ? undefined : `registered ${registered.status}, started ${started.status} to ${to.href}, unknown ${unknown.status}`;
+});
+await check("the MCP Lambda's policy lets only API Gateway invoke it, for Duva's API, and nobody publicly", async () => {
+  const { Policy } = await lambda.send(new GetPolicyCommand({ FunctionName: output(stackOutputs.mcpFunction) }));
+  const { Statement = [] } = JSON.parse(Policy ?? "{}") as { Statement?: { Principal?: unknown; Condition?: { ArnLike?: Record<string, string> } }[] };
+  const apiId = new URL(apiUrl).hostname.split(".")[0];
+  const fine = (statement: (typeof Statement)[number]) =>
+    JSON.stringify(statement.Principal) === '{"Service":"apigateway.amazonaws.com"}' && statement.Condition?.ArnLike?.["AWS:SourceArn"]?.includes(`:${apiId}/`) === true;
+  return Statement.length > 0 && Statement.every(fine) ? undefined : `has ${Policy}`;
+});
 
 const unsubscriberFunction = output(stackOutputs.unsubscriberFunction);
 const missing = (request: Promise<unknown>) =>

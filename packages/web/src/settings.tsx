@@ -12,6 +12,7 @@ import { AddressesSheet, type Giving } from "./addresses.tsx";
 import { AgentSettingsSheet } from "./agent-settings.tsx";
 import { agentHref } from "./alerts.tsx";
 import { Choice, wholeNumber } from "./setting-parts.tsx";
+import { CopyButton } from "./dns-parts.tsx";
 import { datesFor, type Preferences, PreferencesContext } from "./dates.ts";
 import { DomainsSheet } from "./domains.tsx";
 import { GroupsSheet } from "./groups.tsx";
@@ -480,6 +481,7 @@ function YouPage({
     <>
       <YouSheet client={client} onPreferences={onPreferences} onSignedOut={onSignedOut} />
       <MyLogoSheet client={client} mailboxes={mailboxes} onSignedOut={onSignedOut} />
+      {mailboxes.length > 0 && <McpSheet />}
       <div className="settings-aside">
         {retention !== undefined && <p>{strings.settings.organizationSummary(retention)}</p>}
         <div className="settings-signed-in">
@@ -490,6 +492,53 @@ function YouPage({
         </div>
       </div>
     </>
+  );
+}
+
+/**
+ * Duva's MCP endpoint, on the API's domain, with how to connect Claude Code and Claude Desktop to it
+ * (ADR-0028). A human without a mailbox has no mailbox agent for it to reach.
+ */
+function McpSheet() {
+  const copy = strings.settings.mcp;
+  const [url, setUrl] = useState<string>();
+  useEffect(() => {
+    let current = true;
+    void loadConfig()
+      .then((config) => current && setUrl(`${config.apiUrl}/mcp`))
+      .catch(() => undefined);
+    return () => {
+      current = false;
+    };
+  }, []);
+  if (url === undefined) return null;
+  const command = `claude mcp add --transport http duva ${url}`;
+  return (
+    <section className="settings mcp-sheet" aria-labelledby="mcp-sheet">
+      <div className="settings-head">
+        <h2 id="mcp-sheet">{copy.title}</h2>
+        <p id="mcp-sheet-lead">{copy.lead}</p>
+      </div>
+      <div className="setting">
+        <h3 className="setting-title">{copy.address}</h3>
+        <p className="mcp-line">
+          <code>{url}</code>
+          <CopyButton text={url} tabStop keysHint="mcp-sheet-lead" onFocus={() => undefined} />
+        </p>
+      </div>
+      <div className="setting">
+        <h3 className="setting-title">{copy.claudeCode}</h3>
+        <p className="setting-lead">{copy.claudeCodeSteps}</p>
+        <p className="mcp-line">
+          <code>{command}</code>
+          <CopyButton text={command} tabStop keysHint="mcp-sheet-lead" onFocus={() => undefined} />
+        </p>
+      </div>
+      <div className="setting">
+        <h3 className="setting-title">{copy.claudeDesktop}</h3>
+        <p className="setting-lead">{copy.claudeDesktopSteps}</p>
+      </div>
+    </section>
   );
 }
 

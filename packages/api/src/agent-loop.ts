@@ -122,7 +122,7 @@ export const agentTools: ToolSpec[] = agentOperations.map((id) => {
   };
 });
 
-function operationNamed(id: string): Operation {
+export function operationNamed(id: string): Operation {
   const operation = operations.find(({ operationId }) => operationId === id);
   if (operation === undefined) throw new Error(`No operation is called ${id}.`);
   return operation;
@@ -178,7 +178,7 @@ export async function* runAgent(payload: RunPayload, { model, fetch: call = fetc
     if (spent >= payload.budget) return yield { type: "end", outcome: "capReached" };
     const results: ContentBlock[] = [];
     for (const use of uses) {
-      const { action, result } = await useTool(payload, use.name, use.input, call);
+      const { action, result } = await callOperation({ apiUrl: payload.apiUrl, token: payload.token, mailbox: payload.mailbox }, use.name, use.input, call);
       yield { type: "action", action };
       results.push({ toolResult: { toolUseId: use.toolUseId, content: [{ text: result.slice(0, maxResult) }], status: action.ok ? "success" : "error" } });
     }
@@ -198,13 +198,21 @@ function merged(messages: ModelMessage[]): ModelMessage[] {
   }, []);
 }
 
-/** Calls the operation the tool is, in the run's mailbox, and says what it did. */
-async function useTool(payload: RunPayload, name: string, input: Record<string, unknown>, call: (request: Request) => Promise<Response>): Promise<{ action: AgentAction; result: string }> {
+/**
+ * Calls the operation one of the mailbox agent's tools is, in its mailbox, with the token given, as
+ * the agent, and says what it did, with Duva's answer as the model reads it.
+ */
+export async function callOperation(
+  { apiUrl, token, mailbox }: { apiUrl: string; token: string; mailbox: string },
+  name: string,
+  input: Record<string, unknown>,
+  call: (request: Request) => Promise<Response>,
+): Promise<{ action: AgentAction; result: string }> {
   if (!agentOperations.includes(name as OperationId)) {
     return { action: { operation: name, what: name, ok: false, message: "There is no such tool." }, result: `There is no tool ${name}.` };
   }
   const operation = operationNamed(name);
-  let path = operation.path.replace("{mailbox}", encodeURIComponent(payload.mailbox));
+  let path = operation.path.replace("{mailbox}", encodeURIComponent(mailbox));
   const query = new URLSearchParams();
   const body: Record<string, unknown> = {};
   for (const { name: option, in: place } of operation.options) {
@@ -215,11 +223,11 @@ async function useTool(payload: RunPayload, name: string, input: Record<string, 
     else body[option] = value;
   }
   const hasBody = operation.options.some((option) => option.in === "body");
-  const url = `${payload.apiUrl}${path}${query.size > 0 ? `?${query}` : ""}`;
+  const url = `${apiUrl}${path}${query.size > 0 ? `?${query}` : ""}`;
   const response = await call(
     new Request(url, {
       method: operation.method.toUpperCase(),
-      headers: { authorization: `Bearer ${payload.token}`, ...(hasBody && { "content-type": "application/json" }) },
+      headers: { authorization: `Bearer ${token}`, ...(hasBody && { "content-type": "application/json" }) },
       body: hasBody ? JSON.stringify(body) : undefined,
     }),
   ).catch((error: unknown) => new Response(JSON.stringify({ message: `Duva couldn't be reached: ${error instanceof Error ? error.message : error}` }), { status: 502 }));

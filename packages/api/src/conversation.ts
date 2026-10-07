@@ -38,90 +38,127 @@ export type AgentRuntime = (payload: RunPayload, session: string) => AsyncIterab
 /** An answer to a turn: a refusal, or the stream of what happens. */
 export type TurnAnswer = { statusCode: number; body: { message: string } } | { statusCode: 200; events: AsyncIterable<ConversationEvent> };
 
+/** What a turn asks: the mailbox whose agent it asks, by ID, and the human's words. */
+export interface TurnAsked {
+  mailbox?: unknown;
+  words?: unknown;
+}
+
+/**
+ * A turn the human's words are written for, ready to run: what the run is given and what it is
+ * counted against. It is plain JSON, so a Lambda can hand it to another to run.
+ */
+export interface PreparedTurn {
+  payload: Omit<RunPayload, "token">;
+  turn: ConversationTurn;
+  human: Human;
+  mailbox: Mailbox;
+  agent: Agent;
+  month: string;
+  /** What the mailbox agents had spent in the month when the turn was asked, and the cap on it, in US dollars. */
+  spent: number;
+  cap: number;
+}
+
+/**
+ * Checks that the human may ask their mailbox's mailbox agent, and writes their turn, or refuses
+ * with what to do instead. `available` is whether AgentCore runs mailbox agents in the region.
+ */
+export async function prepareTurn({ table, region, apiUrl, available }: { table: Table; region: string; apiUrl: string; available: boolean }, human: Human, asked: TurnAsked): Promise<PreparedTurn | { statusCode: number; body: { message: string } }> {
+  if (!available) return refusal(503, `Mailbox agents run on Amazon Bedrock AgentCore, which isn't in ${region}, where Duva is deployed.`);
+  const words = typeof asked.words === "string" ? asked.words.trim() : "";
+  if (words === "" || words.length > longestWords) return refusal(400, `Ask your agent something, in at most ${longestWords} characters.`);
+  const mailbox = typeof asked.mailbox === "string" ? await findMailbox(table, asked.mailbox) : undefined;
+  if (mailbox === undefined || mailbox.owner !== human.id) return refusal(404, "That isn't one of your mailboxes. Ask the agent of one of yours.");
+  const agent = await mailboxAgentOf(table, mailbox.id);
+  if (agent === undefined) return refusal(404, "This mailbox has no mailbox agent yet. Ask an admin to run duva deploy, which gives every mailbox one.");
+  if (agent.paused !== undefined) return refusal(409, `Your mailbox agent is paused by ${await actorNamed(table, agent.paused.by)}. Unpause it in Settings to ask it.`);
+  const { settings: given } = await agentSettings(table, agent.id);
+  const access = sponsorAccessIn(given, mailbox.id);
+  if (access === "none") return refusal(409, "Your mailbox agent has no access to this mailbox. Give it some in Settings, under Your agents.");
+  const { settings } = await organizationSettings(table, region);
+  if (settings.mailboxAgentSpendCap === 0) return refusal(409, "An admin turned the mailbox agents off, with a spend cap of $0. Ask one to raise it.");
+  const month = monthOf(new Date());
+  const spent = await spentIn(table, month);
+  if (spent >= settings.mailboxAgentSpendCap) {
+    await capReached(table, agent, month, settings.mailboxAgentSpendCap);
+    return refusal(409, capRefusal(settings.mailboxAgentSpendCap));
+  }
+  const history = await turnsOf(table, human.id, mailbox.id, turnsRead);
+  const turn = await addTurn(table, human, mailbox, { from: "human", text: words, actions: [] });
+  const payload: Omit<RunPayload, "token"> = {
+    apiUrl,
+    mailbox: mailbox.id,
+    address: mailbox.defaultAddress ?? mailbox.addresses[0] ?? "",
+    owner: human.email,
+    access,
+    approval: switchesFor(given, true).approval,
+    model: { model: settings.mailboxAgentModel, profile: settings.mailboxAgentProfile, region: settings.mailboxAgentRegion },
+    budget: settings.mailboxAgentSpendCap - spent,
+    history: history.map(({ from, text, actions }) => ({ from, text: from === "agent" && actions.length > 0 ? `${text}\n\n(${actionsRead(actions)})` : text })),
+    words,
+    now: new Date().toISOString(),
+  };
+  return { payload, turn, human, mailbox, agent, month, spent, cap: settings.mailboxAgentSpendCap };
+}
+
+/** Runs the prepared turn on the runtime, saying what happens as it goes, and writes the agent's turn when it ends. */
+export async function* runTurn(table: Table, runtime: AgentRuntime, { payload, turn, human, mailbox, agent, month, spent, cap }: PreparedTurn): AsyncGenerator<ConversationEvent> {
+  yield { type: "turn", turn };
+  const token = await issueRunToken(table, agent.id);
+  let text = "";
+  const actions: AgentAction[] = [];
+  let outcome: ConversationTurn["outcome"] = "failed";
+  // Each model call's cost is counted as it comes, so a run cut off still counts what it spent.
+  let total = spent;
+  try {
+    for await (const event of runtime({ ...payload, token }, `${agent.id}-${randomUUID()}`)) {
+      if (event.type === "text") {
+        text += event.text;
+        yield event;
+      } else if (event.type === "action") {
+        actions.push(event.action);
+        yield event;
+      } else if (event.type === "usage") total = await addSpend(table, month, costOf(event, payload.model.model, payload.model.profile));
+      else outcome = event.outcome;
+    }
+  } catch (error) {
+    console.error(error);
+    outcome = "failed";
+  } finally {
+    await endRunToken(table, token);
+  }
+  if (outcome === "capReached" || total >= cap) await capReached(table, agent, month, cap);
+  yield { type: "done", turn: await addTurn(table, human, mailbox, { from: "agent", text, actions, outcome }, turn.at) };
+}
+
 /**
  * The conversation Lambda's logic. A turn is the human's access token in `x-duva-token` and a JSON
  * body with the mailbox and their words. Each turn is a run of its own, in a session of its own.
  * `fetch` reaches Duva's API. Where AgentCore isn't, there is no `runtime`, and every turn is refused.
+ * `run` runs a turn prepared elsewhere, as the MCP endpoint prepares one.
  */
 export function createConversation({ table, region, apiUrl, fetch: call = fetch, runtime }: { table: Table; region: string; apiUrl: string; fetch?: (request: Request) => Promise<Response>; runtime: AgentRuntime | undefined }) {
-  return async ({ headers, body }: { headers: Record<string, string | undefined>; body: string }): Promise<TurnAnswer> => {
-    // The API's one authorizer says whom the token is, so the Lambda asks the API.
-    const asker = await call(new Request(`${apiUrl}/whoami`, { headers: { authorization: `Bearer ${headers[tokenHeader] ?? ""}` } }))
-      .then(async (response) => (response.ok ? ((await response.json()) as Actor) : undefined))
-      .catch(() => undefined);
-    const human = asker?.kind === "human" ? asker : undefined;
-    if (human === undefined) return refusal(401, "Duva didn't accept your session. Sign in again.");
-    if (runtime === undefined) return refusal(503, `Mailbox agents run on Amazon Bedrock AgentCore, which isn't in ${region}, where Duva is deployed.`);
-    const asked = (() => {
-      try {
-        return JSON.parse(body) as { mailbox?: unknown; words?: unknown };
-      } catch {
-        return {};
-      }
-    })();
-    const words = typeof asked.words === "string" ? asked.words.trim() : "";
-    if (words === "" || words.length > longestWords) return refusal(400, `Ask your agent something, in at most ${longestWords} characters.`);
-    const mailbox = typeof asked.mailbox === "string" ? await findMailbox(table, asked.mailbox) : undefined;
-    if (mailbox === undefined || mailbox.owner !== human.id) return refusal(404, "That isn't one of your mailboxes. Ask the agent of one of yours.");
-    const agent = await mailboxAgentOf(table, mailbox.id);
-    if (agent === undefined) return refusal(404, "This mailbox has no mailbox agent yet. Ask an admin to run duva deploy, which gives every mailbox one.");
-    if (agent.paused !== undefined) return refusal(409, `Your mailbox agent is paused by ${await actorNamed(table, agent.paused.by)}. Unpause it in Settings to ask it.`);
-    const { settings: given } = await agentSettings(table, agent.id);
-    const access = sponsorAccessIn(given, mailbox.id);
-    if (access === "none") return refusal(409, "Your mailbox agent has no access to this mailbox. Give it some in Settings, under Your agents.");
-    const { settings } = await organizationSettings(table, region);
-    if (settings.mailboxAgentSpendCap === 0) return refusal(409, "An admin turned the mailbox agents off, with a spend cap of $0. Ask one to raise it.");
-    const month = monthOf(new Date());
-    const spent = await spentIn(table, month);
-    if (spent >= settings.mailboxAgentSpendCap) {
-      await capReached(table, agent, month, settings.mailboxAgentSpendCap);
-      return refusal(409, capRefusal(settings.mailboxAgentSpendCap));
-    }
-    const history = await turnsOf(table, human.id, mailbox.id, turnsRead);
-    const turn = await addTurn(table, human, mailbox, { from: "human", text: words, actions: [] });
-    const payload: Omit<RunPayload, "token"> = {
-      apiUrl,
-      mailbox: mailbox.id,
-      address: mailbox.defaultAddress ?? mailbox.addresses[0] ?? "",
-      owner: human.email,
-      access,
-      approval: switchesFor(given, true).approval,
-      model: { model: settings.mailboxAgentModel, profile: settings.mailboxAgentProfile, region: settings.mailboxAgentRegion },
-      budget: settings.mailboxAgentSpendCap - spent,
-      history: history.map(({ from, text, actions }) => ({ from, text: from === "agent" && actions.length > 0 ? `${text}\n\n(${actionsRead(actions)})` : text })),
-      words,
-      now: new Date().toISOString(),
-    };
-    return { statusCode: 200, events: run(payload, turn) };
-
-    async function* run(payload: Omit<RunPayload, "token">, turn: ConversationTurn): AsyncGenerator<ConversationEvent> {
-      yield { type: "turn", turn };
-      const token = await issueRunToken(table, agent!.id);
-      let text = "";
-      const actions: AgentAction[] = [];
-      let outcome: ConversationTurn["outcome"] = "failed";
-      // Each model call's cost is counted as it comes, so a run cut off still counts what it spent.
-      let total = spent;
-      try {
-        for await (const event of runtime!({ ...payload, token }, `${agent!.id}-${randomUUID()}`)) {
-          if (event.type === "text") {
-            text += event.text;
-            yield event;
-          } else if (event.type === "action") {
-            actions.push(event.action);
-            yield event;
-          } else if (event.type === "usage") total = await addSpend(table, month, costOf(event, payload.model.model, payload.model.profile));
-          else outcome = event.outcome;
+  return {
+    async turn({ headers, body }: { headers: Record<string, string | undefined>; body: string }): Promise<TurnAnswer> {
+      // The API's one authorizer says whom the token is, so the Lambda asks the API.
+      const asker = await call(new Request(`${apiUrl}/whoami`, { headers: { authorization: `Bearer ${headers[tokenHeader] ?? ""}` } }))
+        .then(async (response) => (response.ok ? ((await response.json()) as Actor) : undefined))
+        .catch(() => undefined);
+      const human = asker?.kind === "human" ? asker : undefined;
+      if (human === undefined) return refusal(401, "Duva didn't accept your session. Sign in again.");
+      const asked = (() => {
+        try {
+          return JSON.parse(body) as TurnAsked;
+        } catch {
+          return {};
         }
-      } catch (error) {
-        console.error(error);
-        outcome = "failed";
-      } finally {
-        await endRunToken(table, token);
-      }
-      if (outcome === "capReached" || total >= settings.mailboxAgentSpendCap) await capReached(table, agent!, month, settings.mailboxAgentSpendCap);
-      yield { type: "done", turn: await addTurn(table, human!, mailbox!, { from: "agent", text, actions, outcome }, turn.at) };
-    }
+      })();
+      const prepared = await prepareTurn({ table, region, apiUrl, available: runtime !== undefined }, human, asked);
+      if ("statusCode" in prepared) return prepared;
+      return { statusCode: 200, events: runTurn(table, runtime!, prepared) };
+    },
+    run: (prepared: PreparedTurn) => runTurn(table, runtime!, prepared),
   };
 }
 
@@ -133,8 +170,8 @@ function capReached(table: Table, agent: Agent, month: string, cap: number) {
 }
 
 /** What an agent's turn did, as the agent reads it back later. */
-const actionsRead = (actions: AgentAction[]) =>
-  `You used ${actions.map(({ operation, ok, threads, draft }) => `${operation}${threads ? ` on thread ${threads.join(", ")}` : ""}${draft ? ` with draft ${draft}` : ""}${ok ? "" : " (refused)"}`).join("; ")}.`;
+export const actionsRead = (actions: AgentAction[], who = "You") =>
+  `${who} used ${actions.map(({ operation, ok, threads, draft }) => `${operation}${threads ? ` on thread ${threads.join(", ")}` : ""}${draft ? ` with draft ${draft}` : ""}${ok ? "" : " (refused)"}`).join("; ")}.`;
 
 /** Writes a turn of the human's conversation in the mailbox, after the time given if any, and returns it. */
 async function addTurn(table: Table, human: Human, mailbox: Mailbox, turn: Omit<ConversationTurn, "id" | "at">, after?: string): Promise<ConversationTurn> {
@@ -146,7 +183,7 @@ async function addTurn(table: Table, human: Human, mailbox: Mailbox, turn: Omit<
 }
 
 /** The last turns of the human's conversation in the mailbox, oldest first. */
-async function turnsOf(table: Table, human: string, mailbox: string, limit: number): Promise<ConversationTurn[]> {
+export async function turnsOf(table: Table, human: string, mailbox: string, limit: number): Promise<ConversationTurn[]> {
   const { Items = [] } = await documents(table).send(
     new QueryCommand({
       TableName: table.name,

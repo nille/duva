@@ -21,11 +21,19 @@ An actor that is software. Any human can create one, or approve one's access req
 _Avoid_: bot, assistant
 
 **Mailbox agent**:
-The agent Duva itself runs for each human's personal mailbox, created with the mailbox, with its owner as its sponsor. It works only in that mailbox, with the sponsor access its owner gives it, by default up to asking to send, each send waiting for their approval and carrying the disclosure's line. Its owner asks it in Ask your agent, and it acts through Duva's API as itself, so all it does is attributed to it, and it obeys pause, send limits and alerts as any agent does. It has no key: each run gets a token of its own. It owns no mailbox and is never an admin. Admins choose the model it thinks with, where the mail it reads is processed, and what all mailbox agents may spend a month (ADR-0027).
+The agent Duva itself runs for each human's personal mailbox, created with the mailbox, with its owner as its sponsor. It works only in that mailbox, with the sponsor access its owner gives it, by default up to asking to send, each send waiting for their approval and carrying the disclosure's line. Its owner asks it in Ask your agent or through the MCP endpoint, and it acts through Duva's API as itself, so all it does is attributed to it, and it obeys pause, send limits and alerts as any agent does. It has no key: each run gets a token of its own. It owns no mailbox and is never an admin. Admins choose the model it thinks with, where the mail it reads is processed, and what all mailbox agents may spend a month (ADR-0027).
 _Avoid_: assistant, bot, copilot
 
 **Ask your agent**:
 A human's conversation with the mailbox agent of one of their mailboxes, in the web app's reading pane. Each thing they ask, and each answer, is a turn; the agent's turns say what it did, with links to the threads and drafts it touched. The agent reads back the last turns, until the human starts over. A thread of mail is never called a conversation.
+
+**MCP endpoint**:
+Duva's remote MCP server, one per deployment at `/mcp` on the API's domain, which an MCP client signs in to with a human's Duva account. Its tools reach the human's own mailbox agents: asking one or giving it a task, and Duva's operations in its mailbox, each called as that agent, so they do only what it may, attributed to it, with its sends waiting for approval as its do (ADR-0028).
+_Avoid_: connector, integration, plugin
+
+**MCP client**:
+An app that speaks MCP, such as Claude Code or Claude Desktop, which a human connects to the MCP endpoint. Each registers itself with Duva, and signs the human in through managed login by way of the endpoint. Its session opens only the MCP endpoint, never the API.
+_Avoid_: connector. The web app calls them AI apps, to humans.
 
 **Mailbox**:
 A store of received and sent mail, reached through one or more addresses, that actors read and act on. Every mailbox is a personal mailbox.

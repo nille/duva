@@ -186,6 +186,8 @@ test("a human who isn't an admin lands on You and reads the organization's reten
   await expect.poll(() => page.getByText("Trash and Spam keep mail 30 days. Admins choose this for everyone.").isVisible(), wait).toBe(true);
   expect(await page.getByRole("region", { name: "Preferences" }).isVisible()).toBe(true);
   expect(await entries(page)).toEqual(["Preferences"]);
+  // Grace has no mailbox, so no mailbox agent for an MCP client to reach.
+  expect(await page.getByRole("region", { name: "AI apps" }).count()).toBe(0);
   const text = await page.locator("main").innerText();
   for (const word of ["AWS", "Nova", "Organization", "send limits", "For admins"]) expect(text).not.toContain(word);
 
@@ -195,6 +197,21 @@ test("a human who isn't an admin lands on You and reads the organization's reten
   expect(await page.getByRole("region", { name: "Preferences" }).isVisible()).toBe(true);
   expect(await page.getByRole("region", { name: "Agents", exact: true }).count()).toBe(0);
   expect(await page.getByRole("radio", { name: /^Keep them/ }).count()).toBe(0);
+});
+
+test("Preferences shows Duva's MCP address and how to connect Claude Code and Claude Desktop to it, to a human with a mailbox", budget, async () => {
+  const { page, signIn, duva, url } = await withOrganization();
+  const { data: grace } = await duva.signIn("grace@example.org").GET("/whoami");
+  await duva.signIn("ada@example.org").POST("/mailboxes", { body: { owner: grace!.id, address: "grace@example.com" } });
+  await signIn("grace@example.org");
+  await openSettings(page);
+
+  const sheet = page.getByRole("region", { name: "AI apps" });
+  await expect.poll(() => sheet.isVisible(), wait).toBe(true);
+  const address = `${url}api/mcp`;
+  expect(await sheet.locator("code").allTextContents()).toEqual([address, `claude mcp add --transport http duva ${address}`]);
+  expect(await sheet.getByRole("button", { name: `Copy ${address}`, exact: true }).isVisible()).toBe(true);
+  expect(await sheet.innerText()).toContain("Add custom connector");
 });
 
 test("on a phone Settings opens on its index, each page links back to it, and Sign out is on Preferences", budget, async () => {

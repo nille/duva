@@ -10,24 +10,24 @@ export class TestTokenIssuer {
     this.#keys = newKeys();
   }
 
-  /** An access token for the human with the ID, valid for `lifetime` seconds. */
-  issue(id: string, lifetime: number): string {
+  /** An access token for the human with the ID, issued to the app client, valid for `lifetime` seconds. */
+  issue(id: string, lifetime: number, client: string): string {
     const now = Math.floor(Date.now() / 1000);
     const header = encode({ alg: "RS256", typ: "JWT" });
-    const payload = encode({ sub: id, token_use: "access", iat: now, exp: now + lifetime });
+    const payload = encode({ sub: id, client_id: client, token_use: "access", iat: now, exp: now + lifetime });
     const signature = createSign("RSA-SHA256").update(`${header}.${payload}`).sign(this.#keys.privateKey, "base64url");
     return `${header}.${payload}.${signature}`;
   }
 
-  /** The ID the token carries. Throws if this issuer didn't sign it or it has expired. */
-  verify = async (token: string): Promise<string> => {
+  /** The ID the token carries, and the app client it was issued to. Throws if this issuer didn't sign it or it has expired. */
+  verify = async (token: string): Promise<{ sub: string; clientId: string }> => {
     const [header, payload, signature] = token.split(".");
     if (header === undefined || payload === undefined || signature === undefined) throw new Error("Not a token");
     const signed = createVerify("RSA-SHA256").update(`${header}.${payload}`).verify(this.#keys.publicKey, signature, "base64url");
     if (!signed) throw new Error("Not signed by the test issuer");
-    const { sub, exp } = JSON.parse(Buffer.from(payload, "base64url").toString()) as { sub: string; exp: number };
+    const { sub, client_id: clientId, exp } = JSON.parse(Buffer.from(payload, "base64url").toString()) as { sub: string; client_id: string; exp: number };
     if (exp * 1000 <= Date.now()) throw new Error("Expired");
-    return sub;
+    return { sub, clientId };
   };
 }
 

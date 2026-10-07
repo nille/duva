@@ -42,6 +42,8 @@ import {
   hostedLogoHeaders,
   hostedLogosPath,
   conversationPath,
+  mcpCallbackPath,
+  mcpRoutes,
   tokenHeader,
   inboundPrefix,
   receiptRuleName,
@@ -738,7 +740,36 @@ export class DuvaStack extends Stack {
       sourceArn: distribution.distributionArn,
     });
 
+    // Duva's MCP endpoint (ADR-0028), on the API's domain. Its routes have no authorizer: the MCP
+    // Lambda answers 401 with where to sign in, as MCP clients need, and takes only access tokens
+    // issued to the MCP app client, which the authorizer refuses. MCP clients register with it, and
+    // sign in through it to that one app client, whose only callback is the endpoint's, since a user
+    // pool has at most 20 managed login styles (docs/aws.md). It hands each turn it prepares to the
+    // conversation Lambda.
+    const mcpClient = client("McpClient", [`${api.apiEndpoint}${mcpCallbackPath}`], []);
+    const mcp = lambda(
+      "McpHandler",
+      "@duva/api/mcp-lambda",
+      {
+        [environmentVariables.version]: version,
+        [environmentVariables.tableName]: table.tableName,
+        [environmentVariables.userPoolId]: humans.userPoolId,
+        [environmentVariables.signInUrl]: signIn.baseUrl(),
+        [environmentVariables.mcpClientId]: mcpClient.userPoolClientId,
+        [environmentVariables.conversationFunction]: conversation.functionName,
+        [environmentVariables.agentRuntime]: Fn.conditionIf(agentsHere.logicalId, agentRuntime.agentRuntimeArn, "").toString(),
+      },
+      // API Gateway ends a call after 30 seconds.
+      { timeout: Duration.seconds(30) },
+    );
+    table.grantReadWriteData(mcp);
+    conversation.grantInvoke(mcp);
+    // One permission for the MCP Lambda's routes, as for the API's, with the API's own ARN.
+    const mcpIntegration = new HttpLambdaIntegration("Mcp", mcp, { scopePermissionToRoute: false });
+    for (const { path, methods } of mcpRoutes) api.addRoutes({ path, methods: methods.map((method) => HttpMethod[method]), integration: mcpIntegration });
+
     new CfnOutput(this, stackOutputs.apiUrl, { value: api.apiEndpoint, description: "The URL of Duva's API" });
+    new CfnOutput(this, stackOutputs.mcpFunction, { value: mcp.functionName, description: "The function API Gateway invokes for Duva's MCP endpoint" });
     new CfnOutput(this, stackOutputs.conversationFunction, { value: conversation.functionName, description: "The function Ask your agent's turns invoke through CloudFront" });
     new CfnOutput(this, stackOutputs.agentRuntime, { value: Fn.conditionIf(agentsHere.logicalId, agentRuntime.agentRuntimeArn, "").toString(), description: "The mailbox agents' AgentCore Runtime, empty where AgentCore isn't" });
     new CfnOutput(this, stackOutputs.webUrl, { value: webUrl, description: "The URL of Duva's web app" });
