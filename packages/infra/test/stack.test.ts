@@ -858,8 +858,12 @@ test("the organization's own logos are served under /bimi/ on the web app's doma
   const [behavior] = behaviors;
   // AWS's CachingOptimized policy, which keeps each logo as long as its Cache-Control says.
   expect(behavior).toMatchObject({ AllowedMethods: ["GET", "HEAD"], ViewerProtocolPolicy: "redirect-to-https", CachePolicyId: "658327ea-f89d-4fab-a63d-7e88639e58f6" });
-  const headers = stack.template.Resources[behavior.ResponseHeadersPolicyId?.Ref]?.Properties?.ResponseHeadersPolicyConfig?.CustomHeadersConfig?.Items;
-  expect(headers).toEqual(Object.entries(hostedLogoHeaders).map(([Header, Value]) => ({ Header, Value, Override: true })));
+  const headers = stack.template.Resources[behavior.ResponseHeadersPolicyId?.Ref]?.Properties?.ResponseHeadersPolicyConfig?.SecurityHeadersConfig;
+  expect(headers).toEqual({
+    ContentSecurityPolicy: { ContentSecurityPolicy: hostedLogoHeaders["content-security-policy"], Override: true },
+    // X-Content-Type-Options, which CloudFront sets to nosniff.
+    ContentTypeOptions: { Override: true },
+  });
 
   const origin = config?.Origins?.find(({ Id }: { Id: string }) => Id === behavior.TargetOriginId);
   const bucketId = origin?.DomainName?.["Fn::GetAtt"]?.[0];
@@ -877,6 +881,17 @@ test("the organization's own logos are served under /bimi/ on the web app's doma
   expect(lambda("ApiHandler")[1].Properties?.Environment?.Variables?.[environmentVariables.logosUrl]).toEqual({
     "Fn::Join": ["", ["https://", { "Fn::GetAtt": [distributionId, "DomainName"] }, "/bimi/"]],
   });
+});
+
+// CloudFormation refuses a security header given as a custom one, and the deploy rolls back (docs/aws.md).
+test("no response headers policy gives a security header as a custom header", () => {
+  const security = ["content-security-policy", "strict-transport-security", "x-content-type-options", "x-frame-options", "x-xss-protection", "referrer-policy"];
+  const policies = ofType("AWS::CloudFront::ResponseHeadersPolicy");
+  expect(policies).not.toHaveLength(0);
+  for (const [id, { Properties }] of policies) {
+    const custom = (Properties?.ResponseHeadersPolicyConfig?.CustomHeadersConfig?.Items ?? []).map(({ Header }: { Header: string }) => Header.toLowerCase());
+    expect({ id, security: custom.filter((header: string) => security.includes(header)) }).toEqual({ id, security: [] });
+  }
 });
 
 test("only the API writes the organization's own logos, and only under /bimi/", () => {

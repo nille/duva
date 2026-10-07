@@ -176,8 +176,10 @@ export class DuvaStack extends Stack {
       cachePolicy: CachePolicy.CACHING_OPTIMIZED,
       responseHeadersPolicy: new ResponseHeadersPolicy(this, "LogoHeaders", {
         responseHeadersPolicyName: `Duva-Logos-${this.region}`,
-        customHeadersBehavior: {
-          customHeaders: Object.entries(hostedLogoHeaders).map(([header, value]) => ({ header, value, override: true })),
+        // CloudFront takes these only as security headers, never as custom ones (docs/aws.md).
+        securityHeadersBehavior: {
+          contentSecurityPolicy: { contentSecurityPolicy: hostedLogoHeaders["content-security-policy"], override: true },
+          contentTypeOptions: { override: true },
         },
       }),
     });
