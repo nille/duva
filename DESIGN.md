@@ -376,6 +376,30 @@ Actors are marked by shape, so they read without color: a human is a filled dot 
 - A domain mail can't arrive at says so in its line in Alert Red's text hand.
 - A line opened from the index or by its address takes the focus for a screen reader, and only the keyboard's focus rings it.
 
+### Queue
+- Approvals and Alerts lay out as a mail view does: a queue of rows in the list column, and the one open lying beside it in the reading pane. The first that waits opens by itself on a desk and stays open as others arrive above it, until the human chooses another. Narrower than a desk, the queue and what is open take the column in turn, with "All approvals" or "All alerts" leading back to the row it came from.
+- A row is a button: the actor's diamond and name, the kind tag, when, then the subject, in Ink at 600 while it waits for a decision and in Second Ink once it is decided or approved, with its recipients in Third Ink. What waits for a decision carries the orange dot; the open row carries the orange edge on Reader Grey. Choosing a row moves the focus to the title of what it opened.
+- **Kind tags** are printed tags, 4px, mono 700 at 0.65625rem: Send on Call Orange in ink, Setup on Agent Blue in white, Held on Field Grey in Second Ink. A decided row's tag gives up its fill for a seam outline, and its line says how it went, green once sent.
+- Chips over the queue show one kind (All, Sends, Setup changes, Held), only where more than one kind waits.
+
+### Galley
+- A send waiting for approval, in the reading pane: who asks, by the diamond, in Second Ink, then the subject in Display grotesk, then where it sends from and when it was asked. A send as the sponsor says so in Ink at 600.
+- The message it answers lies on the plane, its text in Second Ink; the agent's draft lies raised beside it, white at 10px, its label in Agent Blue. They share their rows, so From sits beside From and the texts start level, and stack where the pane is narrower than 34rem. A draft that answers nothing says why where the message would lie.
+- The disclosure lies under the draft's text, after a dashed Edge line, as recipients get it, with Duva's note on why in Third Ink.
+- The decision lies under both after a seam: **Send** is the call button with its `s` key cap, then Edit and Reject (quiet). Editing marks up the draft in place, and says what the sponsor's version changes. Rejecting asks for a note first.
+
+### Slip
+- A decided request folds into a slip where its galley lay, by a view transition: the state icon (Second Ink while it settles, Sent Green once sent or made, Third Ink when rejected, Alert Red when it failed), the headline in the grotesk with the agent's name, the subject in the mono, and what became of it. No wash and no box. A send that waits for the limit keeps Send now on its slip.
+
+### Setup proof
+- A setup change an agent admin asks for, in the galley's frame: the first line of what it would do as the title, a size down at Headline; the call it made on the plane, its command and values exact in the mono, each ID named with the ID under it in Third Ink; and what it would do raised beside it. Approve is the call button.
+
+### Held sends
+- A send approved that hasn't gone out opens in the galley's frame: why it waits as the title's first line ("Waiting for the send limit", or "Held while Hermes is paused"), its subject, the lead saying what happens next, and the draft raised alone. One waiting for the limit offers Send now; one held while its agent is paused links to the agent's line at Pause.
+
+### Alerts
+- Alerts are rows in the queue, newest first: an unseen alert carries a red dot and its agent at 600; an urgent one carries the Urgent tag on Alert Red, before what happened. Opened in the pane, the agent's diamond and name, the kind in Display grotesk, Urgent and Unseen in red, the sentence at proof size, and under a seam where it leads (the first as the primary button) and Mark as seen. Opening an alert in the pane leaves it unseen; following where it leads, or Mark as seen, sees it.
+
 ## Do's and Don'ts
 
 ### Do:

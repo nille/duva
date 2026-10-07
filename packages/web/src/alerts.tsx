@@ -1,15 +1,17 @@
-// The Alerts view: what the agents a sponsor answers for need them for, newest first, on one sheet.
-// Each alert names its agent and what happened, and opens the message it is about, or the agent's
-// line in Settings. A pause opens the agent's line at Pause, and while the agent is paused, its sends
-// held in Approvals. Unseen alerts carry the pencil's dot, and urgent ones that are unseen lie on
-// Alert Wash. Marking one seen, or opening it, counts it no more in the bar. Each alert's controls
-// are named for its agent and what happened, so a list of them tells them apart.
-import { useCallback, useEffect, useId, useState } from "react";
+// The Alerts view: what the agents a sponsor answers for need them for, newest first, as rows in the
+// list column, with the alert chosen open in the reading pane beside them. Each alert names its agent
+// and what happened, and opens the message it is about, or the agent's line in Settings. A pause
+// opens the agent's line at Pause, and while the agent is paused, its sends held in Approvals. Unseen
+// alerts carry a red dot, and urgent ones are marked in red. Marking one seen, or following where it
+// leads, counts it no more in the bar. Each alert's controls are named for its agent and what
+// happened, so they tell it apart from the others.
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
-import { Time } from "./mail-parts.tsx";
+import { ActorMark, Time } from "./mail-parts.tsx";
 import { mailboxHref } from "./mailboxes.tsx";
 import { strings } from "./strings.ts";
+import { BackIcon } from "./thread.tsx";
 
 type Alert = components["schemas"]["Alert"];
 type Mailbox = components["schemas"]["Mailbox"];
@@ -20,6 +22,9 @@ type AlertKind = Alert["kind"];
 const pauses = new Set<AlertKind>(["pausedBy", "autoPaused", "keyUsedWhilePaused"]);
 
 type Listing = { status: "loading" } | { status: "failed"; message: string } | { status: "listed"; alerts: Alert[]; next?: string; more: "idle" | "loading" | "failed" };
+
+/** Set as an alert leads to the held sends, so Approvals opens on them. */
+export const heldAsked = { current: false };
 
 /** Where the agent's line is in Settings, open. */
 export const agentHref = (agent: string) => `#/settings/agents/${encodeURIComponent(agent)}`;
@@ -52,6 +57,13 @@ export function Alerts({
   const [paused, setPaused] = useState<ReadonlySet<string>>(new Set());
   const id = useId();
   const copy = strings.alerts;
+  // The alert chosen, and whether it was opened to read, which on a phone and a narrow window takes
+  // the column from the list.
+  const [chosen, setChosen] = useState<string>();
+  const [reading, setReading] = useState(false);
+  const [focusing, setFocusing] = useState<"pane" | "row">();
+  const pane = useRef<HTMLDivElement>(null);
+  const rows = useRef<HTMLOListElement>(null);
 
   const page = useCallback(
     async (after?: string) => {
@@ -130,91 +142,171 @@ export function Alerts({
     return [...(paused.has(alert.agent) ? [{ href: "#/approvals", name: copy.heldSends }] : []), { href: agentHref(alert.agent), name: copy.openAtPause(alert.agentName) }];
   };
 
-  return (
-    <main className="desk" aria-busy={listing.status === "loading"}>
-      <div className="desk-head">
-        <h1>{copy.title}</h1>
-        {unseen > 0 && <p className="count">{copy.unseen(unseen)}</p>}
-        {unseen > 0 && (
-          <button type="button" className="button button-quiet button-small desk-head-action" onClick={() => void see(listing.status === "listed" ? listing.alerts.filter((alert) => !alert.seen).map(({ id }) => id) : [])}>
-            {copy.markAllSeen}
-          </button>
-        )}
-      </div>
-      {problem !== undefined && (
-        <p className="notice notice-alert alerts-problem" role="alert">
-          {problem}
-        </p>
+  const alerts = listing.status === "listed" ? listing.alerts : [];
+  // The one open in the reading pane: the one chosen, or the newest unseen. It stays open as others arrive above it.
+  const open = alerts.find((alert) => alert.id === chosen) ?? alerts.find((alert) => !alert.seen) ?? alerts[0];
+  useEffect(() => {
+    if (open !== undefined && open.id !== chosen) setChosen(open.id);
+  }, [open, chosen]);
+  // Choosing a row moves the focus to the alert it opened, and coming back moves it to the row.
+  useEffect(() => {
+    if (focusing === undefined) return;
+    setFocusing(undefined);
+    const target = focusing === "pane" ? pane.current?.querySelector<HTMLElement>("article h2") : rows.current?.querySelector<HTMLElement>('[aria-current="true"]');
+    if (target === null || target === undefined) return;
+    if (focusing === "pane") target.tabIndex = -1;
+    target.focus();
+  }, [focusing]);
+
+  const head = (
+    <div className="desk-head queue-head">
+      <h1>{copy.title}</h1>
+      {unseen > 0 && <p className="count">{copy.unseen(unseen)}</p>}
+      {unseen > 0 && (
+        <button type="button" className="button button-quiet button-small desk-head-action" onClick={() => void see(alerts.filter((alert) => !alert.seen).map(({ id }) => id))}>
+          {copy.markAllSeen}
+        </button>
       )}
-      {listing.status === "loading" ? null : listing.status === "failed" ? (
-        <div className="notice notice-alert failed-listing" role="alert">
-          <p>{listing.message}</p>
-          <button type="button" className="button button-small" onClick={() => location.reload()}>
-            {strings.inbox.retry}
-          </button>
-        </div>
-      ) : listing.alerts.length === 0 ? (
-        <section className="empty" aria-labelledby="empty-title">
-          <h2 id="empty-title">{copy.emptyTitle}</h2>
-          <p>{copy.emptyLead}</p>
-        </section>
-      ) : (
-        <div className="index alerts">
-          <ol className="alert-list" aria-label={copy.title}>
-            {listing.alerts.map((alert, index) => {
-              const links = linksOf(alert);
-              // Each control is named by its own words, then the agent and what happened, so two alike stay apart.
-              const at = `${id}-${index}`;
-              const about = `${at}-agent ${at}-kind ${at}-what`;
-              const classes = ["alert", !alert.seen && "alert-unseen", alert.urgent && "alert-urgent"].filter(Boolean).join(" ");
-              return (
-                <li key={alert.id} className={classes}>
-                  <span className="alert-mark" aria-hidden="true" />
-                  <div className="alert-body">
-                    <p className="alert-head">
-                      <span className="alert-agent" id={`${at}-agent`}>
-                        {alert.agentName}
-                      </span>
-                      <span className="alert-kind" id={`${at}-kind`}>
-                        {copy.kinds[alert.kind]}
-                      </span>
-                      {alert.urgent && <span className="urgent-mark">{copy.urgent}</span>}
-                    </p>
-                    <p className="alert-what" id={`${at}-what`}>
-                      {alert.what}
-                    </p>
-                    {(links.length > 0 || !alert.seen) && (
-                      <div className="alert-actions">
-                        {links.map((link, each) => (
-                          <a key={link.href} id={`${at}-link-${each}`} href={link.href} aria-labelledby={`${at}-link-${each} ${about}`} onClick={() => !alert.seen && void see([alert.id])}>
-                            {link.name}
-                          </a>
-                        ))}
-                        {!alert.seen && (
-                          <button type="button" id={`${at}-seen`} className="button button-quiet button-small" aria-labelledby={`${at}-seen ${about}`} onClick={() => void see([alert.id])}>
-                            {copy.markSeen}
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                  <span className="alert-date">
+    </div>
+  );
+  const problemNotice = problem !== undefined && (
+    <p className="notice notice-alert alerts-problem" role="alert">
+      {problem}
+    </p>
+  );
+  if (listing.status !== "listed" || listing.alerts.length === 0) {
+    return (
+      <main className="desk" aria-busy={listing.status === "loading"}>
+        {head}
+        {problemNotice}
+        {listing.status === "loading" ? null : listing.status === "failed" ? (
+          <div className="notice notice-alert failed-listing" role="alert">
+            <p>{listing.message}</p>
+            <button type="button" className="button button-small" onClick={() => location.reload()}>
+              {strings.inbox.retry}
+            </button>
+          </div>
+        ) : (
+          <section className="empty" aria-labelledby="empty-title">
+            <h2 id="empty-title">{copy.emptyTitle}</h2>
+            <p>{copy.emptyLead}</p>
+          </section>
+        )}
+      </main>
+    );
+  }
+
+  const index = alerts.findIndex((alert) => alert === open);
+  const at = `${id}-open`;
+  const about = `${at}-agent ${at}-kind ${at}-what`;
+  const links = open === undefined ? [] : linksOf(open);
+  return (
+    <main className={reading ? "queue-view queue-view-reading" : "queue-view"}>
+      <div className="queue">
+        {head}
+        {problemNotice}
+        <ol className="queue-rows alert-list" aria-label={copy.title} ref={rows}>
+          {alerts.map((alert, each) => {
+            const classes = ["queue-row", "alert-row", !alert.seen && "alert-unseen", alert.urgent && "alert-urgent"].filter(Boolean).join(" ");
+            return (
+              <li key={alert.id}>
+                <button
+                  type="button"
+                  className={classes}
+                  aria-current={each === index ? "true" : undefined}
+                  aria-controls={`${id}-pane`}
+                  onClick={() => {
+                    setChosen(alert.id);
+                    setReading(true);
+                    setFocusing("pane");
+                  }}
+                >
+                  <span className="queue-who">
+                    <span className="alert-mark" aria-hidden="true" />
+                    <ActorMark kind="agent" />
+                    {alert.agentName}
+                  </span>
+                  <span className="queue-kind alert-kind">{copy.kinds[alert.kind]}</span>
+                  <span className="queue-time">
                     <Time at={alert.at} short />
                   </span>
+                  <span className="queue-line">
+                    {alert.urgent && <span className="urgent-mark">{copy.urgent}</span>} {alert.what}
+                  </span>
                   {!alert.seen && <span className="visually-hidden">{copy.unseenMark}</span>}
-                </li>
-              );
-            })}
-          </ol>
-          {listing.next !== undefined && (
-            <div className="index-foot">
-              <button type="button" className="button" disabled={listing.more === "loading"} onClick={() => void more()}>
-                {listing.more === "loading" ? strings.loading : copy.more}
-              </button>
-            </div>
-          )}
-        </div>
-      )}
+                </button>
+              </li>
+            );
+          })}
+        </ol>
+        {listing.next !== undefined && (
+          <div className="index-foot">
+            <button type="button" className="button" disabled={listing.more === "loading"} onClick={() => void more()}>
+              {listing.more === "loading" ? strings.loading : copy.more}
+            </button>
+          </div>
+        )}
+      </div>
+      <div className="queue-read" id={`${id}-pane`} ref={pane}>
+        <button
+          type="button"
+          className="button button-quiet button-small queue-back"
+          onClick={() => {
+            setReading(false);
+            setFocusing("row");
+          }}
+        >
+          <BackIcon />
+          {copy.back}
+        </button>
+        {open !== undefined && (
+          <article key={open.id} className={["alert", !open.seen && "alert-unseen", open.urgent && "alert-urgent"].filter(Boolean).join(" ")} aria-labelledby={`${at}-title`}>
+            <header className="galley-head">
+              <h2 id={`${at}-title`}>
+                <span className="galley-asks" id={`${at}-agent`}>
+                  <ActorMark kind="agent" />
+                  {open.agentName}
+                </span>{" "}
+                <span className="galley-subject" id={`${at}-kind`}>
+                  {copy.kinds[open.kind]}
+                </span>
+              </h2>
+              <p className="galley-meta">
+                {open.urgent && <span className="urgent-mark">{copy.urgent}</span>}
+                {!open.seen && <span className="alert-seen-state">{copy.unseenMark}</span>}
+                <Time at={open.at} />
+              </p>
+            </header>
+            <p className="alert-what" id={`${at}-what`}>
+              {open.what}
+            </p>
+            {(links.length > 0 || !open.seen) && (
+              <div className="alert-actions">
+                {links.map((link, each) => (
+                  <a
+                    key={link.href}
+                    id={`${at}-link-${each}`}
+                    className={each === 0 ? "button button-primary" : "button"}
+                    href={link.href}
+                    aria-labelledby={`${at}-link-${each} ${about}`}
+                    onClick={() => {
+                      if (link.href === "#/approvals") heldAsked.current = true;
+                      if (!open.seen) void see([open.id]);
+                    }}
+                  >
+                    {link.name}
+                  </a>
+                ))}
+                {!open.seen && (
+                  <button type="button" id={`${at}-seen`} className="button button-quiet" aria-labelledby={`${at}-seen ${about}`} onClick={() => void see([open.id])}>
+                    {copy.markSeen}
+                  </button>
+                )}
+              </div>
+            )}
+          </article>
+        )}
+      </div>
     </main>
   );
 }

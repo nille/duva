@@ -31,6 +31,8 @@ async function withAgentAdmin(options: Parameters<typeof startWebApp>[0] = {}) {
 const lines = (text: string) => text.replace(/\n+/g, "\n");
 
 const setupGalley = (page: Page) => page.getByRole("article", { name: /Hermes asks to change the setup/ });
+/** The queue's rows, each opening what waits in the reading pane. */
+const rows = (page: Page) => page.getByRole("list", { name: "Approvals" }).getByRole("button");
 
 test("an agent admin's setup change waits in Approvals after its sends, saying what it would do", budget, async () => {
   const { page, signIn, hermes, mailbox, askForAddress } = await withAgentAdmin();
@@ -41,12 +43,18 @@ test("an agent admin's setup change waits in Approvals after its sends, saying w
   await signIn("ada@example.org");
   await page.getByRole("link", { name: /^Approvals/ }).click();
 
-  await expect.poll(() => page.getByRole("article").count(), wait).toBe(2);
+  await expect.poll(() => rows(page).count(), wait).toBe(2);
   // The setup change was asked for last, and still comes after the send, where the agent speaks.
-  await expect.poll(() => page.getByRole("article").first().getByRole("heading", { level: 2 }).textContent(), wait).toBe("Hermes asks to send Hej");
-  expect(await page.getByRole("article").nth(1).getByRole("heading", { level: 2 }).textContent()).toBe(
-    "Hermes asks to change the setup Gives Hermes's mailbox at hermes@example.com the address sales@example.com.",
-  );
+  await expect.poll(async () => lines(await rows(page).first().innerText()), wait).toMatch(/^Hermes\nSend\n.*\nHej To linus@example\.net$/);
+  expect(lines(await rows(page).nth(1).innerText())).toMatch(/^Hermes\nSetup\n.*\nGives Hermes's mailbox at hermes@example\.com the address sales@example\.com\.$/);
+  // The first that waits lies open beside the queue, and choosing a row opens it instead.
+  await expect.poll(() => page.getByRole("article").getByRole("heading", { level: 2 }).textContent(), wait).toBe("Hermes asks to send Hej");
+  expect(await rows(page).first().getAttribute("aria-current")).toBe("true");
+  await rows(page).nth(1).click();
+  await expect
+    .poll(() => page.getByRole("article").getByRole("heading", { level: 2 }).textContent(), wait)
+    .toBe("Hermes asks to change the setup Gives Hermes's mailbox at hermes@example.com the address sales@example.com.");
+  expect(await rows(page).nth(1).getAttribute("aria-current")).toBe("true");
   expect(await setupGalley(page).innerText()).toContain("Gives Hermes's mailbox at hermes@example.com the address sales@example.com.");
   await expect.poll(() => page.getByRole("link", { name: /^Approvals/ }).textContent(), wait).toContain("2");
   expect(await page.getByText("2 waiting", { exact: true }).isVisible()).toBe(true);
@@ -60,7 +68,7 @@ test("approving an agent admin's setup change makes it, and the galley folds int
 
   await setupGalley(page).getByRole("button", { name: "Approve" }).click();
 
-  await expect.poll(() => page.getByText("You approved it").isVisible(), wait).toBe(true);
+  await expect.poll(() => page.getByRole("article").getByText("You approved it").isVisible(), wait).toBe(true);
   expect(await page.getByText("Made as Hermes asked.").isVisible()).toBe(true);
   expect(await addresses()).toContain("sales@example.com");
   expect(await page.getByText("Nothing is waiting for you.").isVisible()).toBe(true);
@@ -78,7 +86,7 @@ test("rejecting an agent admin's setup change takes a note the agent reads, and 
   await page.getByLabel("Note for Hermes").fill("Use support@ instead.");
   await setupGalley(page).getByRole("button", { name: "Reject with note" }).click();
 
-  await expect.poll(() => page.getByText("You rejected it").isVisible(), wait).toBe(true);
+  await expect.poll(() => page.getByRole("article").getByText("You rejected it").isVisible(), wait).toBe(true);
   expect(await page.getByText("Your note: “Use support@ instead.”").isVisible()).toBe(true);
   const { data } = await hermes.GET("/setup-approvals/{approval}", { params: { path: { approval: asked.id } } });
   expect(data).toMatchObject({ state: "rejected", note: "Use support@ instead." });
@@ -115,7 +123,7 @@ test("when the setup changed what a change would do, approving shows the new pre
 
   await setupGalley(page).getByRole("button", { name: "Approve" }).click();
 
-  await expect.poll(() => page.getByText("You approved it").isVisible(), wait).toBe(true);
+  await expect.poll(() => page.getByRole("article").getByText("You approved it").isVisible(), wait).toBe(true);
   expect(await addresses()).toEqual([]);
 });
 
@@ -124,6 +132,7 @@ test("on a phone, a setup change and its decision fit the screen", budget, async
   await askForAddress("a-rather-long-address-for-sales@example.com");
   await signIn("ada@example.org");
   await page.getByRole("link", { name: /^Approvals/ }).click();
+  await rows(page).first().click();
 
   await expect.poll(() => setupGalley(page).count(), wait).toBe(1);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(phone.width);
@@ -165,8 +174,9 @@ test("on a phone, a send comes before the setup changes asked for after it", bud
   await signIn("ada@example.org");
   await page.getByRole("link", { name: /^Approvals/ }).click();
 
-  await expect.poll(() => page.getByRole("article").count(), wait).toBe(3);
-  const send = await page.getByRole("article", { name: /asks to send/ }).boundingBox();
+  await expect.poll(() => rows(page).count(), wait).toBe(3);
+  expect(await rows(page).first().innerText()).toContain("Hej");
+  const send = await rows(page).first().boundingBox();
   expect(send!.y).toBeLessThan(phone.height);
 });
 
@@ -185,4 +195,50 @@ test("a decided slip sets the agent's name in the headings' grotesk and the mail
   const font = (text: string) => head.getByText(text, { exact: true }).evaluate((element) => getComputedStyle(element).fontFamily);
   expect(await font("Hermes")).toMatch(/^"Familjen Grotesk Variable"/);
   expect(await font("Hej")).toMatch(/^"JetBrains Mono Variable"/);
+});
+
+test("chips show one kind of request in the queue, and All shows them all again", budget, async () => {
+  const { page, signIn, hermes, mailbox, askForAddress } = await withAgentAdmin();
+  const { data: draft } = await hermes.POST("/mailboxes/{mailbox}/drafts", { params: { path: { mailbox: mailbox.id } }, body: { to: ["linus@example.net"], subject: "Hej", text: "Hej." } });
+  await hermes.POST("/mailboxes/{mailbox}/drafts/{draft}/send", { params: { path: { mailbox: mailbox.id, draft: draft!.id } } });
+  await askForAddress("sales@example.com");
+  await signIn("ada@example.org");
+  await page.getByRole("link", { name: /^Approvals/ }).click();
+  const chips = page.getByRole("group", { name: "Show" });
+  await expect.poll(() => chips.getByRole("button").allInnerTexts(), wait).toEqual(["All", "Sends", "Setup changes"]);
+
+  await chips.getByRole("button", { name: "Setup changes" }).click();
+
+  await expect.poll(() => rows(page).count(), wait).toBe(1);
+  expect(await chips.getByRole("button", { name: "Setup changes" }).getAttribute("aria-pressed")).toBe("true");
+  expect(await rows(page).first().innerText()).toContain("Setup");
+  await expect.poll(() => setupGalley(page).isVisible(), wait).toBe(true);
+
+  await chips.getByRole("button", { name: "All" }).click();
+
+  await expect.poll(() => rows(page).count(), wait).toBe(2);
+  // The setup change stays open, as the one last chosen.
+  expect(await setupGalley(page).isVisible()).toBe(true);
+});
+
+test("on a phone, a row opens what waits in the column, and All approvals leads back to the queue at that row", budget, async () => {
+  const { page, signIn, askForAddress } = await withAgentAdmin({ viewport: phone });
+  await askForAddress("sales@example.com");
+  await askForAddress("support@example.com");
+  await signIn("ada@example.org");
+  await page.getByRole("link", { name: /^Approvals/ }).click();
+  await expect.poll(() => rows(page).count(), wait).toBe(2);
+  expect(await setupGalley(page).count()).toBe(0);
+
+  await rows(page).nth(1).click();
+
+  await expect.poll(() => setupGalley(page).innerText(), wait).toContain("sales@example.com");
+  expect(await rows(page).count()).toBe(0);
+  expect(await page.evaluate(() => document.activeElement?.closest("article")?.querySelector("h2") === document.activeElement)).toBe(true);
+
+  await page.getByRole("button", { name: "All approvals" }).click();
+
+  await expect.poll(() => rows(page).count(), wait).toBe(2);
+  expect(await setupGalley(page).count()).toBe(0);
+  expect(await rows(page).nth(1).evaluate((row) => row === document.activeElement)).toBe(true);
 });

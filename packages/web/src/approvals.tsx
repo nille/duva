@@ -1,20 +1,24 @@
-// The Approvals view: the sends waiting for the signed-in sponsor, each laid out like a galley proof,
-// with the agent's draft set beside the message it answers, to send as is, edit and send, or reject.
-// Each says whether the agent sends as the sponsor, from their mailbox, or from its own, and shows
-// the disclosure's line as the sponsor's switch for that place leaves it. Beside them wait the setup
+// The Approvals view: what waits for the signed-in sponsor, as a queue of rows in the list column,
+// with the one chosen open in the reading pane beside it. A send lies there as a galley proof, the
+// agent's draft set beside the message it answers, to send as is, edit and send, or reject. Each
+// says whether the agent sends as the sponsor, from their mailbox, or from its own, and shows the
+// disclosure's line as the sponsor's switch for that place leaves it. Beside them wait the setup
 // changes the sponsor's agent admins ask for, each with the call it made and what it would do, to
-// approve or reject with a note. The sends come first, since they are where an agent speaks. Under
-// them lie the sends already approved that haven't gone out: those waiting for their agent's send
-// limit, and those held while their agent is paused.
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+// approve or reject with a note. The sends come first, since they are where an agent speaks. After
+// them come the sends already approved that haven't gone out: those waiting for their agent's send
+// limit, and those held while their agent is paused. Chips show one kind at a time.
+import { useCallback, useContext, useEffect, useId, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import type { DuvaClient } from "@duva/client";
 import type { components, Operation, OperationId } from "@duva/openapi";
-import { agentHref } from "./alerts.tsx";
+import { agentHref, heldAsked } from "./alerts.tsx";
+import { PreferencesContext } from "./dates.ts";
 import { approvalChanges, type Change, type Connection as ConnectionState, type Follow, setupChanges, SignedOut } from "./feed.ts";
-import { Addresses, Attachments, Connection, Field, Time } from "./mail-parts.tsx";
+import { ActorMark, Addresses, Attachments, Connection, Field, Time } from "./mail-parts.tsx";
 import { SendNow } from "./send-now.tsx";
+import { useShortcuts } from "./shortcuts.tsx";
 import { strings } from "./strings.ts";
+import { BackIcon } from "./thread.tsx";
 
 type Approval = components["schemas"]["Approval"];
 type SendStatus = components["schemas"]["SendStatus"];
@@ -179,6 +183,15 @@ export function Approvals({
   const [setupNames, setSetupNames] = useState<SetupNames>(new Map());
   // Those sent now from this page, which keep saying so after they leave the list.
   const [sentNow, setSentNow] = useState<Approved[]>([]);
+  // The kind the chips show, the row chosen, and whether it was opened to read, which on a phone
+  // and a narrow window takes the column from the queue.
+  // An alert that leads to the held sends opens Approvals on them.
+  const [kind, setKind] = useState<Kind | "all">(() => (heldAsked.current ? "held" : "all"));
+  useEffect(() => {
+    heldAsked.current = false;
+  }, []);
+  const [chosen, setChosen] = useState<string>();
+  const [reading, setReading] = useState(false);
   const entriesRef = useRef(entries);
   entriesRef.current = entries;
   const outcomesRef = useRef(outcomes);
@@ -320,10 +333,9 @@ export function Approvals({
     }
   }, [client, setups]);
 
-  // The sends come first, where an agent speaks, then the setup changes, each newest first.
+  // The sends come first, where an agent speaks, then the setup changes, each newest first, then
+  // the sends approved that haven't gone out: those waiting for the send limit, then those held.
   const newest = <T extends { askedAt: string }>(list: T[]) => [...list].sort((a, b) => b.askedAt.localeCompare(a.askedAt));
-  const items = [...newest((entries ?? []).map((entry) => ({ askedAt: entry.approval.askedAt, entry }))), ...newest(setups.map((setup) => ({ askedAt: setup.setup.askedAt, setup })))];
-  const waiting = (entries?.filter((entry) => entry.decision === undefined).length ?? 0) + setups.filter((entry) => entry.decision === undefined).length;
   // A send whose slip lies on the page already says how it stands there.
   const slipped = new Set(entries?.map((entry) => entry.approval.id));
   const unslipped = (approved ?? []).filter(({ draft }) => draft.send?.approval === undefined || !slipped.has(draft.send.approval));
@@ -331,122 +343,318 @@ export function Approvals({
     a.draft.updatedAt.localeCompare(b.draft.updatedAt),
   );
   const pausedAgents = new Map(unslipped.flatMap(({ agent }) => (agent?.paused !== undefined ? [[agent.id, agent] as const] : [])));
-  const held = [...pausedAgents.values()].map((agent) => ({ agent, sends: unslipped.filter((send) => send.agent?.id === agent.id) }));
-  const anyApproved = forLimit.length > 0 || held.length > 0;
+  const items: Item[] = [
+    ...newest((entries ?? []).map((entry) => ({ askedAt: entry.approval.askedAt, entry }))).map(({ entry }) => ({ kind: "send" as const, key: `send-${entry.approval.id}`, entry })),
+    ...newest(setups.map((setup) => ({ askedAt: setup.setup.askedAt, setup }))).map(({ setup }) => ({ kind: "setup" as const, key: `setup-${setup.setup.id}`, setup })),
+    ...forLimit.map((send) => ({ kind: "held" as const, key: `held-${send.draft.id}`, send })),
+    ...[...pausedAgents.values()].flatMap((agent) => unslipped.filter((send) => send.agent?.id === agent.id).map((send) => ({ kind: "held" as const, key: `held-${send.draft.id}`, send, pause: agent }))),
+  ];
+  const waiting = (entries?.filter((entry) => entry.decision === undefined).length ?? 0) + setups.filter((entry) => entry.decision === undefined).length;
+  const loaded = entries !== undefined && approved !== undefined;
+
+  // The chips offer only the kinds there are, and All shows them all.
+  const kinds = new Set(items.map(({ kind }) => kind));
+  const shownKind = kind !== "all" && kinds.has(kind) ? kind : "all";
+  const shown = items.filter((item) => shownKind === "all" || item.kind === shownKind);
+  // The one open in the reading pane: the one chosen, or the first that waits for a decision. It
+  // stays open as others arrive above it, until it leaves the list.
+  const open = shown.find((item) => item.key === chosen) ?? shown.find(undecided) ?? shown[0];
+  useEffect(() => {
+    if (open !== undefined && open.key !== chosen) setChosen(open.key);
+  }, [open, chosen]);
+  const paneId = useId();
+  const pane = useRef<HTMLDivElement>(null);
+  const queue = useRef<HTMLOListElement>(null);
+  // Choosing a row moves the focus to what it opened, and coming back moves it to the row.
+  const [focusing, setFocusing] = useState<"pane" | "row">();
+  useEffect(() => {
+    if (focusing === undefined) return;
+    setFocusing(undefined);
+    const target =
+      focusing === "pane"
+        ? pane.current?.querySelector<HTMLElement>(":scope > article:not([hidden]) h2, :scope > section:not([hidden]) h2")
+        : queue.current?.querySelector<HTMLElement>('[aria-current="true"]');
+    if (target === null || target === undefined) return;
+    if (focusing === "pane") target.tabIndex = -1;
+    target.focus();
+  }, [focusing]);
+  // A request decided while another lies open says so aloud, as its slip would if it lay open.
+  const [said, setSaid] = useState("");
+  const decidedKeys = useRef(new Set<string>());
+  const newlyDecided = items.filter((item) => rowOf(item, agents, outcomes).state !== undefined && !decidedKeys.current.has(item.key));
+  useEffect(() => {
+    const unseen = newlyDecided.filter((item) => item.key !== open?.key);
+    for (const item of newlyDecided) decidedKeys.current.add(item.key);
+    if (unseen.length === 0) return;
+    setSaid(
+      unseen
+        .map((item) => {
+          const { state, agent, subject } = rowOf(item, agents, outcomes);
+          return `${state!.headline} ${agent} ${subject}.`;
+        })
+        .join(" "),
+    );
+  });
+  const choose = (key: string) => {
+    setChosen(key);
+    setReading(true);
+    setFocusing("pane");
+  };
+
+  if (!loaded || items.length === 0) {
+    return (
+      <main className="desk" aria-busy={!loaded}>
+        <div className="desk-head">
+          <h1>{strings.approvals.title}</h1>
+          <Connection state={connection} />
+        </div>
+        {loaded ? <Empty /> : <SkeletonQueue />}
+      </main>
+    );
+  }
   return (
-    <main className="desk" aria-busy={entries === undefined}>
-      <div className="desk-head">
-        <h1>{strings.approvals.title}</h1>
-        {entries !== undefined && waiting > 0 && <p className="count">{strings.approvals.waiting(waiting)}</p>}
-        <Connection state={connection} />
-      </div>
-      {entries === undefined || approved === undefined ? (
-        <SkeletonGalley />
-      ) : items.length === 0 && !anyApproved ? (
-        <Empty />
-      ) : items.length === 0 ? null : (
-        <ol className="galleys" aria-label={strings.approvals.title}>
-          {items.map((item) => {
-            if ("setup" in item) {
-              const { setup } = item;
-              return (
-                <li key={setup.setup.id}>
-                  <SetupGalley
-                    entry={setup}
-                    agent={agents[setup.setup.agent] ?? strings.galley.anAgent}
-                    names={setupNames}
-                    client={client}
-                    onDecided={setupDecided}
-                    onChanged={setupChanged}
-                    onSeen={setupSeen}
-                    onSignedOut={onSignedOut}
-                  />
-                </li>
-              );
-            }
-            const { entry } = item;
-            const asSponsor = own?.has(entry.approval.mailbox);
-            return (
-              <li key={entry.approval.id}>
-                <Galley
-                  entry={entry}
-                  agent={agents[entry.approval.agent] ?? strings.galley.anAgent}
-                  sponsor={sponsor}
-                  asSponsor={asSponsor}
-                  line={lineFor(settings[entry.approval.agent], asSponsor)}
-                  outcome={outcomes[entry.approval.id]}
-                  client={client}
-                  onDecided={decided}
-                  onSeen={seen}
-                  onSignedOut={onSignedOut}
-                />
-              </li>
-            );
-          })}
+    <main className={reading ? "queue-view queue-view-reading" : "queue-view"}>
+      <div className="queue">
+        <div className="desk-head queue-head">
+          <h1>{strings.approvals.title}</h1>
+          {waiting > 0 && <p className="count">{strings.approvals.waiting(waiting)}</p>}
+          <Connection state={connection} />
+        </div>
+        {kinds.size > 1 && (
+          <div className="queue-chips" role="group" aria-label={strings.approvals.show}>
+            {(["all", ...order.filter((each) => kinds.has(each))] as const).map((each) => (
+              <button key={each} type="button" className="chip" aria-pressed={shownKind === each} onClick={() => setKind(each)}>
+                {strings.approvals.chips[each]}
+              </button>
+            ))}
+          </div>
+        )}
+        <ol className="queue-rows" aria-label={strings.approvals.title} ref={queue}>
+          {shown.map((item) => (
+            <li key={item.key}>
+              <Row item={item} agents={agents} outcomes={outcomes} current={item.key === open?.key} paneId={paneId} onChoose={() => choose(item.key)} />
+            </li>
+          ))}
         </ol>
-      )}
-      {entries !== undefined && approved !== undefined && waiting === 0 && (items.length > 0 || anyApproved) && (
-        <p className={items.length > 0 ? "all-done" : "all-done all-done-first"}>{anyApproved ? strings.approvals.noneToDecide : strings.approvals.noneWaiting}.</p>
-      )}
-      {entries !== undefined && forLimit.length > 0 && (
-        <ApprovedSends title={strings.approvals.limitTitle} lead={strings.approvals.limitLead} sends={forLimit} client={client} onSent={(send) => setSentNow((current) => [...current, send])} onSignedOut={onSignedOut} />
-      )}
-      {entries !== undefined &&
-        held.map(({ agent, sends }) => (
-          <ApprovedSends key={agent.id} title={strings.approvals.heldTitle(agent.name)} lead={strings.approvals.heldLead(agent.name)} sends={sends} pause={agent} client={client} onSignedOut={onSignedOut} />
-        ))}
+        <p className="visually-hidden" aria-live="polite">
+          {said}
+        </p>
+        {waiting === 0 && <p className="all-done">{kinds.has("held") ? strings.approvals.noneToDecide : strings.approvals.noneWaiting}.</p>}
+      </div>
+      <div className="queue-read" id={paneId} ref={pane}>
+        <button
+          type="button"
+          className="button button-quiet button-small queue-back"
+          onClick={() => {
+            setReading(false);
+            setFocusing("row");
+          }}
+        >
+          <BackIcon />
+          {strings.approvals.back}
+        </button>
+        {items.map((item) => {
+          const shownHere = item.key === open?.key;
+          if (item.kind === "setup") {
+            const { setup } = item;
+            return (
+              <SetupGalley
+                key={item.key}
+                shown={shownHere}
+                entry={setup}
+                agent={agents[setup.setup.agent] ?? strings.galley.anAgent}
+                names={setupNames}
+                client={client}
+                onDecided={setupDecided}
+                onChanged={setupChanged}
+                onSeen={setupSeen}
+                onSignedOut={onSignedOut}
+              />
+            );
+          }
+          if (item.kind === "held") {
+            return (
+              <HeldSend
+                key={item.key}
+                shown={shownHere}
+                send={item.send}
+                pause={item.pause}
+                sent={sentNow.some((sent) => sent.draft.id === item.send.draft.id)}
+                client={client}
+                onSent={() => setSentNow((current) => (current.some((sent) => sent.draft.id === item.send.draft.id) ? current : [...current, item.send]))}
+                onSignedOut={onSignedOut}
+              />
+            );
+          }
+          const { entry } = item;
+          const asSponsor = own?.has(entry.approval.mailbox);
+          return (
+            <Galley
+              key={item.key}
+              shown={shownHere}
+              entry={entry}
+              agent={agents[entry.approval.agent] ?? strings.galley.anAgent}
+              sponsor={sponsor}
+              asSponsor={asSponsor}
+              line={lineFor(settings[entry.approval.agent], asSponsor)}
+              outcome={outcomes[entry.approval.id]}
+              client={client}
+              onDecided={decided}
+              onSeen={seen}
+              onSignedOut={onSignedOut}
+            />
+          );
+        })}
+      </div>
     </main>
   );
 }
 
+/** What the queue lists: a send to decide, a setup change to decide, or a send approved that hasn't gone out. */
+type Item =
+  | { kind: "send"; key: string; entry: Entry }
+  | { kind: "setup"; key: string; setup: SetupEntry }
+  | { kind: "held"; key: string; send: Approved; pause?: Agent };
+
+type Kind = Item["kind"];
+
+/** The kinds, in the order the queue lists them. */
+const order: Kind[] = ["send", "setup", "held"];
+
+const undecided = (item: Item) => (item.kind === "send" ? item.entry.decision === undefined : item.kind === "setup" ? item.setup.decision === undefined : false);
+
+/** What a row says of its item: who, when, the subject, its recipients, and what a decided one became. */
+function rowOf(item: Item, agents: Record<string, string>, outcomes: Record<string, Outcome>) {
+  const anAgent = strings.galley.anAgent;
+  if (item.kind === "send") {
+    const { approval, decision, fresh } = item.entry;
+    const agent = agents[approval.agent] ?? anAgent;
+    return { agent, at: approval.askedAt, subject: approval.draft.subject || strings.galley.noSubject, to: approval.draft.to, state: decision && slipOf(approval, agent, decision, outcomes[approval.id]), fresh };
+  }
+  if (item.kind === "setup") {
+    const { setup, decision, fresh } = item.setup;
+    const agent = agents[setup.agent] ?? anAgent;
+    return { agent, at: setup.askedAt, subject: setup.preview[0] ?? strings.setupGalley.asks(agent), state: decision && setupSlipOf(agent, decision), fresh };
+  }
+  const { agent, draft } = item.send;
+  return { agent: agent?.name ?? anAgent, at: draft.updatedAt, subject: draft.subject || strings.galley.noSubject, to: draft.to, state: undefined, fresh: false };
+}
+
 /**
- * Sends approved that haven't gone out, on one sheet: each send's subject in the serif and its
- * recipients. Those waiting for the send limit name their agent and can go now. Those held while
- * their agent is paused are one agent's, with a link to its line at Pause.
+ * A row of the queue: the agent by its diamond, the kind, when, and the subject with its
+ * recipients, or what a decided one became. Choosing it opens it in the reading pane.
  */
-function ApprovedSends({
-  title,
-  lead,
-  sends,
+function Row({
+  item,
+  agents,
+  outcomes,
+  current,
+  paneId,
+  onChoose,
+}: {
+  item: Item;
+  agents: Record<string, string>;
+  outcomes: Record<string, Outcome>;
+  current: boolean;
+  paneId: string;
+  onChoose: () => void;
+}) {
+  const copy = strings.approvals;
+  const to = (list: EmailAddress[]) => copy.to(list.map(({ address }) => address).join(", "));
+  const row = rowOf(item, agents, outcomes);
+  const { agent, at, subject, state, fresh } = row;
+  const line = "to" in row && row.to !== undefined ? to(row.to) : undefined;
+  const why = item.kind === "held" ? (item.pause === undefined ? copy.limitTitle : copy.heldTitle(item.pause.name)) : undefined;
+  const classes = ["queue-row", undecided(item) && "queue-row-waiting", state !== undefined && "queue-row-decided"].filter(Boolean).join(" ");
+  return (
+    <button type="button" className={classes} aria-current={current ? "true" : undefined} aria-controls={paneId} onClick={onChoose}>
+      <span className="queue-who">
+        <ActorMark kind="agent" />
+        {agent}
+      </span>
+      <span className={`queue-kind queue-kind-${item.kind}`}>{copy.kinds[item.kind]}</span>
+      <span className="queue-time">
+        <Time at={at} short />
+      </span>
+      <span className="queue-line">
+        {fresh && <span className="mark-new">{strings.galley.isNew}</span>}
+        <b>{subject}</b> {state !== undefined ? <span className={`queue-state queue-state-${state.tone}`}>{state.headline}</span> : line}
+        {why !== undefined && <span className="queue-why">{why}</span>}
+      </span>
+    </button>
+  );
+}
+
+/**
+ * A send approved that hasn't gone out, in the reading pane: why it waits, its subject and
+ * recipients, and its text. One waiting for the send limit can go now. One held while its agent is
+ * paused links to the agent's line at Pause.
+ */
+function HeldSend({
+  shown,
+  send: { mailbox, draft, agent },
   pause,
+  sent,
   client,
   onSent,
   onSignedOut,
 }: {
-  title: string;
-  lead: string;
-  sends: Approved[];
+  shown: boolean;
+  send: Approved;
   pause?: Agent;
+  sent: boolean;
   client: DuvaClient;
-  onSent?: (send: Approved) => void;
+  onSent: () => void;
   onSignedOut: () => void;
 }) {
   const id = useId();
+  const copy = strings.approvals;
   return (
-    <section className="approved" aria-labelledby={`${id}-title`}>
-      <div className="approved-head">
-        <h2 id={`${id}-title`}>{title}</h2>
-        <p className="approved-lead">{lead}</p>
-        {pause !== undefined && (
-          <a className="approved-pause" href={agentHref(pause.id)}>
-            {strings.alerts.openAtPause(pause.name)}
-          </a>
-        )}
+    <section className="galley galley-held" aria-labelledby={`${id}-title`} hidden={!shown}>
+      <header className="galley-head">
+        <h2 id={`${id}-title`}>
+          <span className="galley-asks">
+            <ActorMark kind="agent" />
+            {pause === undefined ? copy.limitTitle : copy.heldTitle(pause.name)}
+          </span>{" "}
+          <span className="galley-subject" id={`${id}-subject`}>
+            {draft.subject || strings.galley.noSubject}
+          </span>
+        </h2>
+        <p className="galley-meta">
+          {pause === undefined && <span className="galley-agent">{agent?.name ?? strings.galley.anAgent}</span>}
+          <Time at={draft.updatedAt} />
+        </p>
+      </header>
+      <p className="galley-lead">{pause === undefined ? copy.limitLead : copy.heldLead(pause.name)}</p>
+      <div className="galley-cols galley-cols-single">
+        <section className="galley-copy galley-draft" aria-labelledby={`${id}-draft`}>
+          <h3 className="galley-label" id={`${id}-draft`}>
+            {strings.galley.draft(agent?.name ?? strings.galley.anAgent)}
+          </h3>
+          <dl className="galley-fields">
+            <Field label={strings.galley.from}>{draft.from}</Field>
+            <Field label={strings.galley.to}>
+              <Addresses list={draft.to} />
+            </Field>
+            <Field label={strings.galley.subject}>{draft.subject || strings.galley.noSubject}</Field>
+          </dl>
+          <div className="body" lang="">
+            {draft.text}
+          </div>
+        </section>
       </div>
-      <ul className="approved-sends">
-        {sends.map(({ mailbox, draft, agent }, index) => (
-          <li key={draft.id} className="approved-send">
-            <div className="approved-send-text">
-              {pause === undefined && <p className="approved-send-agent">{agent?.name ?? strings.galley.anAgent}</p>}
-              <p className="approved-send-subject" id={`${id}-${index}`}>
-                {draft.subject || strings.galley.noSubject}
-              </p>
-              <p className="approved-send-to">{strings.approvals.to(draft.to.map((address) => address.address).join(", "))}</p>
-            </div>
-            {pause === undefined && <SendNow client={client} mailbox={mailbox} draft={draft.id} labelledBy={`${id}-${index}`} onSent={() => onSent?.(sends[index]!)} onSignedOut={onSignedOut} />}
-          </li>
-        ))}
-      </ul>
+      <footer className="decision">
+        <div className="actions">
+          {pause !== undefined ? (
+            <a className="button" href={agentHref(pause.id)}>
+              {strings.alerts.openAtPause(pause.name)}
+            </a>
+          ) : (
+            <SendNow client={client} mailbox={mailbox} draft={draft.id} labelledBy={`${id}-subject`} done={sent} onSent={(went) => went !== undefined && onSent()} onSignedOut={onSignedOut} />
+          )}
+        </div>
+      </footer>
     </section>
   );
 }
@@ -461,24 +669,19 @@ function Empty() {
   );
 }
 
-function SkeletonGalley() {
+function SkeletonQueue() {
   return (
-    <div className="galley galley-skeleton" aria-hidden="true">
-      <div className="slug">
-        <span className="line" style={{ width: "14rem" }} />
-      </div>
-      <div className="sheet">
-        {[0, 1].map((column) => (
-          <div className="copy" key={column}>
-            {[70, 55, 80, 40, 90, 85, 60].map((width, line) => (
-              <span className="line" key={line} style={{ width: `${width}%` }} />
-            ))}
-          </div>
-        ))}
-      </div>
+    <div className="queue-skeleton" aria-hidden="true">
+      {[62, 48, 70].map((width, row) => (
+        <div className="queue-skeleton-row" key={row}>
+          <span className="line" style={{ width: "9rem" }} />
+          <span className="line" style={{ width: `${width}%` }} />
+        </div>
+      ))}
     </div>
   );
 }
+
 
 type Mode = "reading" | "editing" | "rejecting";
 
@@ -492,6 +695,8 @@ function lineFor(settings: AgentSettings | undefined, asSponsor: boolean | undef
 }
 
 interface GalleyProps {
+  /** Whether it is the one open in the reading pane. The others keep what the sponsor began there. */
+  shown: boolean;
   entry: Entry;
   agent: string;
   sponsor: string;
@@ -506,7 +711,7 @@ interface GalleyProps {
   onSignedOut: () => void;
 }
 
-function Galley({ entry, agent, sponsor, asSponsor, line, outcome, client, onDecided, onSeen, onSignedOut }: GalleyProps) {
+function Galley({ shown, entry, agent, sponsor, asSponsor, line, outcome, client, onDecided, onSeen, onSignedOut }: GalleyProps) {
   const { approval, decision, fresh } = entry;
   const { draft, original } = approval;
   const titleId = useId();
@@ -521,31 +726,9 @@ function Galley({ entry, agent, sponsor, asSponsor, line, outcome, client, onDec
   // Counts refusals of an empty note, so each one sends focus back to it.
   const [noteRefused, setNoteRefused] = useState(0);
   const ref = useRef<HTMLElement>(null);
+  const keys = useContext(PreferencesContext).keyboardShortcuts === "on";
 
-  // A new request keeps its mark until it has been on screen for a moment.
-  useEffect(() => {
-    if (!fresh || ref.current === null) return;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const observer = new IntersectionObserver(([seen]) => {
-      clearTimeout(timer);
-      if (seen?.isIntersecting) timer = setTimeout(() => onSeen(approval.id), 1500);
-    }, { threshold: 0.4 });
-    observer.observe(ref.current);
-    return () => {
-      clearTimeout(timer);
-      observer.disconnect();
-    };
-  }, [fresh, approval.id, onSeen]);
-
-  if (decision !== undefined) {
-    // A send that waits for the agent's limits can go now, past them.
-    const waits = typeof outcome === "object" && outcome.approval === approval.id && outcome.state === "waitingForLimit";
-    return (
-      <DecidedSlip approval={approval} agent={agent} decision={decision} outcome={outcome}>
-        {waits && <SendNow client={client} mailbox={approval.mailbox} draft={draft.id} onSignedOut={onSignedOut} />}
-      </DecidedSlip>
-    );
-  }
+  useSeenOnScreen(ref, fresh === true && shown, approval.id, onSeen);
 
   const decide = async (kind: "sending" | "rejecting", call: () => Promise<{ response: Response; error?: { message: string } }>, decision: Decision) => {
     if (busy !== undefined) return;
@@ -563,13 +746,25 @@ function Galley({ entry, agent, sponsor, asSponsor, line, outcome, client, onDec
     setBusy(undefined);
   };
   const path = { params: { path: { approval: approval.id } } };
+  const sendAsIs = () => decide("sending", () => client.POST("/approvals/{approval}/send", path), { by: "you", how: "sent" });
+  // s sends the draft open in the reading pane as written, as Send does.
+  useShortcuts({ s: shown && decision === undefined && mode === "reading" ? () => ref.current?.checkVisibility() && void sendAsIs() : undefined });
+
+  if (decision !== undefined) {
+    // A send that waits for the agent's limits can go now, past them.
+    const waits = typeof outcome === "object" && outcome.approval === approval.id && outcome.state === "waitingForLimit";
+    return (
+      <DecidedSlip shown={shown} approval={approval} agent={agent} decision={decision} outcome={outcome}>
+        {waits && <SendNow client={client} mailbox={approval.mailbox} draft={draft.id} onSignedOut={onSignedOut} />}
+      </DecidedSlip>
+    );
+  }
+
   const switchTo = (next: Mode) => {
     setProblem(undefined);
     setNoteRefused(0);
     setMode(next);
   };
-
-  const sendAsIs = () => decide("sending", () => client.POST("/approvals/{approval}/send", path), { by: "you", how: "sent" });
   const sendEdited = () => {
     const changed = changedFields(draft, { to, subject, text });
     const edits = {
@@ -591,35 +786,41 @@ function Galley({ entry, agent, sponsor, asSponsor, line, outcome, client, onDec
   const editing = mode === "editing";
   const changes = editing ? changedFields(draft, { to, subject, text }) : [];
   return (
-    <article className={fresh ? "galley galley-fresh" : "galley"} aria-labelledby={titleId} ref={ref} style={{ viewTransitionName: transitionName(approval) }}>
-      <header className="slug">
+    <article className={fresh ? "galley galley-fresh" : "galley"} aria-labelledby={titleId} ref={ref} hidden={!shown} style={{ viewTransitionName: shown ? transitionName(approval) : undefined }}>
+      <header className="galley-head">
         <h2 id={titleId}>
-          {strings.galley.asks(agent)}{" "}
-          <span className="slug-subject">{draft.subject || strings.galley.noSubject}</span>
+          <span className="galley-asks">
+            <ActorMark kind="agent" />
+            {strings.galley.asks(agent)}
+          </span>{" "}
+          <span className="galley-subject">{draft.subject || strings.galley.noSubject}</span>
         </h2>
-        {asSponsor !== undefined && (
-          <p className={asSponsor ? "slug-from slug-from-sponsor" : "slug-from"}>{asSponsor ? strings.galley.asYou(draft.from) : strings.galley.fromOwnMailbox(draft.from)}</p>
-        )}
-        <p className="slug-meta">
+        <p className="galley-meta">
           {fresh && <span className="mark-new">{strings.galley.isNew}</span>}
+          {asSponsor !== undefined && (
+            <span className={asSponsor ? "galley-from galley-from-sponsor" : "galley-from"}>{asSponsor ? strings.galley.asYou(draft.from) : strings.galley.fromOwnMailbox(draft.from)}</span>
+          )}
           <Time at={approval.askedAt} format={(time) => strings.galley.askedAt(time)} />
         </p>
       </header>
 
-      <div className={original === undefined ? "sheet sheet-single" : "sheet"}>
+      <div className={original === undefined ? "galley-cols galley-cols-single" : "galley-cols"}>
         {original !== undefined ? (
           <Original message={original} />
         ) : (
-          <p className="copy copy-note">{draft.forwards !== undefined ? strings.galley.forward : draft.answers === undefined ? strings.galley.noOriginal : strings.galley.originalGone}</p>
+          <p className="galley-note">{draft.forwards !== undefined ? strings.galley.forward : draft.answers === undefined ? strings.galley.noOriginal : strings.galley.originalGone}</p>
         )}
 
-        <section className={editing ? "copy proof proof-editing" : "copy proof"} aria-labelledby={`${titleId}-proof`}>
-          <h3 className="copy-label" id={`${titleId}-proof`}>{editing ? strings.galley.yourVersion : strings.galley.draft(agent)}</h3>
+        <section className={editing ? "galley-copy galley-draft galley-draft-editing" : "galley-copy galley-draft"} aria-labelledby={`${titleId}-proof`}>
+          <h3 className="galley-label" id={`${titleId}-proof`}>
+            <ActorMark kind={editing ? "human" : "agent"} />
+            {editing ? strings.galley.yourVersion : strings.galley.draft(agent)}
+          </h3>
           {editing ? (
             <EditFields to={[to, setTo]} subject={[subject, setSubject]} text={[text, setText]} />
           ) : (
             <>
-              <dl className="fields">
+              <dl className="galley-fields">
                 <Field label={strings.galley.from}>{draft.from}</Field>
                 <Field label={strings.galley.to}>
                   <Addresses list={draft.to} />
@@ -665,9 +866,10 @@ function Galley({ entry, agent, sponsor, asSponsor, line, outcome, client, onDec
         <div className="actions">
           {mode === "reading" && (
             <>
-              <button type="button" className="button button-primary" onClick={sendAsIs} disabled={busy !== undefined}>
+              <button type="button" className="button button-call" onClick={sendAsIs} disabled={busy !== undefined} aria-keyshortcuts={keys ? "s" : undefined}>
                 <SendIcon />
                 {busy === "sending" ? strings.decide.sending : strings.decide.send}
+                {keys && <kbd aria-hidden="true">s</kbd>}
               </button>
               <button type="button" className="button" onClick={() => switchTo("editing")} disabled={busy !== undefined}>
                 {strings.decide.edit}
@@ -679,7 +881,7 @@ function Galley({ entry, agent, sponsor, asSponsor, line, outcome, client, onDec
           )}
           {mode === "editing" && (
             <>
-              <button type="button" className="button button-primary" onClick={sendEdited} disabled={busy !== undefined}>
+              <button type="button" className="button button-call" onClick={sendEdited} disabled={busy !== undefined}>
                 <SendIcon />
                 {busy === "sending" ? strings.decide.sending : strings.decide.sendEdited}
               </button>
@@ -723,15 +925,34 @@ function Galley({ entry, agent, sponsor, asSponsor, line, outcome, client, onDec
   );
 }
 
+/** A new request keeps its mark until it has been on screen for a moment. */
+function useSeenOnScreen(ref: React.RefObject<HTMLElement | null>, fresh: boolean, id: string, onSeen: (id: string) => void) {
+  useEffect(() => {
+    if (!fresh || ref.current === null) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const observer = new IntersectionObserver(([seen]) => {
+      clearTimeout(timer);
+      if (seen?.isIntersecting) timer = setTimeout(() => onSeen(id), 1500);
+    }, { threshold: 0.4 });
+    observer.observe(ref.current);
+    return () => {
+      clearTimeout(timer);
+      observer.disconnect();
+    };
+  }, [ref, fresh, id, onSeen]);
+}
+
 /** The message the draft answers, as it arrived. Long ones fold, so the draft stays in reach. */
 function Original({ message }: { message: Message }) {
   const long = message.text.split("\n").length > 14 || message.text.length > 900;
   const [open, setOpen] = useState(false);
   const bodyId = useId();
   return (
-    <section className="copy original" aria-labelledby={`${bodyId}-label`}>
-      <h3 className="copy-label" id={`${bodyId}-label`}>{strings.galley.original}</h3>
-      <dl className="fields">
+    <section className="galley-copy galley-original" aria-labelledby={`${bodyId}-label`}>
+      <h3 className="galley-label" id={`${bodyId}-label`}>
+        {strings.galley.original}
+      </h3>
+      <dl className="galley-fields">
         <Field label={strings.galley.from}>
           <Addresses list={[message.from]} />
         </Field>
@@ -845,8 +1066,8 @@ function RejectNote({ agent, note, refused, errorId }: { agent: string; note: [s
   );
 }
 
-/** A decided approval, folded to one slip: what was decided, and how the send went. */
-function DecidedSlip({ approval, agent, decision, outcome, children }: { approval: Approval; agent: string; decision: Decision; outcome: Outcome | undefined; children?: React.ReactNode }) {
+/** What a decided approval's slip says: its headline, and how the send went in its tone. */
+function slipOf(approval: Approval, agent: string, decision: Decision, outcome: Outcome | undefined) {
   // What became of an approval that left the list shows only in its draft: decided elsewhere, or withdrawn.
   const own = typeof outcome === "object" && outcome.approval === approval.id ? outcome : undefined;
   const headline =
@@ -857,17 +1078,36 @@ function DecidedSlip({ approval, agent, decision, outcome, children }: { approva
           ? strings.outcome.noLongerWaiting
           : strings.outcome.elsewhere
         : decision.how === "sent"
-        ? strings.outcome.sentAsIs
-        : decision.how === "edited"
-          ? strings.outcome.sentEdited
-          : strings.outcome.rejected;
-  const result = describe(outcome, approval, agent, decision);
+          ? strings.outcome.sentAsIs
+          : decision.how === "edited"
+            ? strings.outcome.sentEdited
+            : strings.outcome.rejected;
+  return { headline, ...describe(outcome, approval, agent, decision) };
+}
+
+/** A decided approval, folded to one slip: what was decided, and how the send went. */
+function DecidedSlip({
+  shown,
+  approval,
+  agent,
+  decision,
+  outcome,
+  children,
+}: {
+  shown: boolean;
+  approval: Approval;
+  agent: string;
+  decision: Decision;
+  outcome: Outcome | undefined;
+  children?: React.ReactNode;
+}) {
+  const result = slipOf(approval, agent, decision, outcome);
   return (
-    <article className={`slip slip-${result.tone}`} aria-live="polite" style={{ viewTransitionName: transitionName(approval) }}>
+    <article className={`slip galley-slip slip-${result.tone}`} aria-live="polite" hidden={!shown} style={{ viewTransitionName: shown ? transitionName(approval) : undefined }}>
       <StateIcon tone={result.tone} />
       <div>
         <h2 className="slip-head">
-          {headline} <span className="slip-agent">{agent}</span> <span className="slip-subject">{approval.draft.subject || strings.galley.noSubject}</span>
+          {result.headline} <span className="slip-agent">{agent}</span> <span className="slip-subject">{approval.draft.subject || strings.galley.noSubject}</span>
         </h2>
         <p className="slip-result">{result.text}</p>
         {result.detail !== undefined && <p className="slip-detail">{result.detail}</p>}
@@ -917,6 +1157,7 @@ function describe(outcome: Outcome | undefined, approval: Approval, agent: strin
 }
 
 interface SetupGalleyProps {
+  shown: boolean;
   entry: SetupEntry;
   agent: string;
   names: SetupNames;
@@ -932,7 +1173,7 @@ interface SetupGalleyProps {
  * A setup change an agent admin asks for, as a proof: the call it made, beside what Duva works out
  * the change would do, with the decision under them.
  */
-function SetupGalley({ entry, agent, names, client, onDecided, onChanged, onSeen, onSignedOut }: SetupGalleyProps) {
+function SetupGalley({ shown, entry, agent, names, client, onDecided, onChanged, onSeen, onSignedOut }: SetupGalleyProps) {
   const { setup, decision, fresh } = entry;
   const titleId = useId();
   const problemId = useId();
@@ -944,21 +1185,9 @@ function SetupGalley({ entry, agent, names, client, onDecided, onChanged, onSeen
   const ref = useRef<HTMLElement>(null);
   const copy = strings.setupGalley;
 
-  useEffect(() => {
-    if (!fresh || ref.current === null) return;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const observer = new IntersectionObserver(([seen]) => {
-      clearTimeout(timer);
-      if (seen?.isIntersecting) timer = setTimeout(() => onSeen(setup.id), 1500);
-    }, { threshold: 0.4 });
-    observer.observe(ref.current);
-    return () => {
-      clearTimeout(timer);
-      observer.disconnect();
-    };
-  }, [fresh, setup.id, onSeen]);
+  useSeenOnScreen(ref, fresh === true && shown, setup.id, onSeen);
 
-  if (decision !== undefined) return <SetupSlip setup={setup} agent={agent} decision={decision} />;
+  if (decision !== undefined) return <SetupSlip shown={shown} setup={setup} agent={agent} decision={decision} />;
 
   const path = { params: { path: { approval: setup.id } } };
   /** What a refused decision means: decided elsewhere, a new preview to read, or Duva's reason. */
@@ -1001,23 +1230,37 @@ function SetupGalley({ entry, agent, names, client, onDecided, onChanged, onSeen
   const fields = [...byName(setup.operation.path ?? {}), ...byName(setup.operation.body ?? {})];
 
   return (
-    <article className={fresh ? "galley galley-setup galley-fresh" : "galley galley-setup"} aria-labelledby={titleId} ref={ref} style={{ viewTransitionName: setupTransitionName(setup) }}>
-      <header className="slug">
+    <article
+      className={fresh ? "galley galley-setup galley-fresh" : "galley galley-setup"}
+      aria-labelledby={titleId}
+      ref={ref}
+      hidden={!shown}
+      style={{ viewTransitionName: shown ? setupTransitionName(setup) : undefined }}
+    >
+      <header className="galley-head">
         <h2 id={titleId}>
-          {copy.asks(agent)}
-          {setup.preview[0] !== undefined && <> <span className="slug-subject slug-subject-setup">{setup.preview[0]}</span></>}
+          <span className="galley-asks">
+            <ActorMark kind="agent" />
+            {copy.asks(agent)}
+          </span>
+          {setup.preview[0] !== undefined && (
+            <>
+              {" "}
+              <span className="galley-subject galley-subject-setup">{setup.preview[0]}</span>
+            </>
+          )}
         </h2>
-        <p className="slug-meta">
+        <p className="galley-meta">
           {fresh && <span className="mark-new">{strings.galley.isNew}</span>}
           <Time at={setup.askedAt} format={(time) => strings.galley.askedAt(time)} />
         </p>
       </header>
-      <div className="sheet sheet-setup">
-        <section className="copy original setup-call" aria-labelledby={`${titleId}-call`}>
-          <h3 className="copy-label" id={`${titleId}-call`}>
+      <div className="galley-cols galley-cols-setup">
+        <section className="galley-copy galley-original setup-call" aria-labelledby={`${titleId}-call`}>
+          <h3 className="galley-label" id={`${titleId}-call`}>
             {copy.call}
           </h3>
-          <dl className="fields setup-fields">
+          <dl className="galley-fields setup-fields">
             <Field label={copy.command}>
               <code>{commands[setup.operation.operationId as OperationId] ?? setup.operation.operationId}</code>
             </Field>
@@ -1028,8 +1271,9 @@ function SetupGalley({ entry, agent, names, client, onDecided, onChanged, onSeen
             ))}
           </dl>
         </section>
-        <section className="copy proof setup-preview" aria-labelledby={`${titleId}-preview`}>
-          <h3 className="copy-label" id={`${titleId}-preview`}>
+        <section className="galley-copy galley-draft setup-preview" aria-labelledby={`${titleId}-preview`}>
+          <h3 className="galley-label" id={`${titleId}-preview`}>
+            <ActorMark kind="agent" />
             {copy.preview}
           </h3>
           <ul className="preview">
@@ -1067,7 +1311,7 @@ function SetupGalley({ entry, agent, names, client, onDecided, onChanged, onSeen
             </>
           ) : (
             <>
-              <button type="button" className="button button-primary" onClick={approve} disabled={busy !== undefined}>
+              <button type="button" className="button button-call" onClick={approve} disabled={busy !== undefined}>
                 {busy === "approving" ? copy.approving : copy.approve}
               </button>
               <button
@@ -1115,31 +1359,37 @@ function CallValue({ value, names }: { value: unknown; names: SetupNames }) {
   return <code>{typeof value === "string" ? value : JSON.stringify(value)}</code>;
 }
 
-/** A decided setup change, folded to one slip: what was decided, and what became of it. */
-function SetupSlip({ setup, agent, decision }: { setup: SetupApproval; agent: string; decision: SetupDecision }) {
+/** What a decided setup change's slip says: its headline, and what became of it in its tone. */
+function setupSlipOf(agent: string, decision: SetupDecision): { headline: string; tone: Tone; text: string } {
   const copy = strings.setupGalley;
   const read = decision.by === "elsewhere" ? decision.read : undefined;
   const failed = decision.by === "you" && decision.how === "approved" && decision.result !== undefined && decision.result.status >= 400;
-  const { headline, tone, text } =
-    decision.by === "you"
-      ? decision.how === "approved"
-        ? failed
-          ? { headline: copy.approved, tone: "failed" as const, text: copy.notMade(messageOf(decision.result!.body)) }
-          : { headline: copy.approved, tone: "done" as const, text: copy.made(agent) }
-        : { headline: strings.outcome.rejected, tone: "rejected" as const, text: copy.unchanged(agent) }
-      : read?.state === "withdrawn"
-        ? { headline: strings.outcome.withdrawnHead, tone: "rejected" as const, text: copy.withdrawn(agent) }
-        : read?.state === "approved"
-          ? { headline: strings.outcome.elsewhere, tone: "done" as const, text: copy.made(agent) }
-          : read?.state === "rejected"
-            ? { headline: strings.outcome.elsewhere, tone: "rejected" as const, text: copy.unchanged(agent) }
-            : { headline: strings.outcome.noLongerWaiting, tone: "pending" as const, text: strings.outcome.checking };
+  return decision.by === "you"
+    ? decision.how === "approved"
+      ? failed
+        ? { headline: copy.approved, tone: "failed", text: copy.notMade(messageOf(decision.result!.body)) }
+        : { headline: copy.approved, tone: "done", text: copy.made(agent) }
+      : { headline: strings.outcome.rejected, tone: "rejected", text: copy.unchanged(agent) }
+    : read?.state === "withdrawn"
+      ? { headline: strings.outcome.withdrawnHead, tone: "rejected", text: copy.withdrawn(agent) }
+      : read?.state === "approved"
+        ? { headline: strings.outcome.elsewhere, tone: "done", text: copy.made(agent) }
+        : read?.state === "rejected"
+          ? { headline: strings.outcome.elsewhere, tone: "rejected", text: copy.unchanged(agent) }
+          : { headline: strings.outcome.noLongerWaiting, tone: "pending", text: strings.outcome.checking };
+}
+
+/** A decided setup change, folded to one slip: what was decided, and what became of it. */
+function SetupSlip({ shown, setup, agent, decision }: { shown: boolean; setup: SetupApproval; agent: string; decision: SetupDecision }) {
+  const copy = strings.setupGalley;
+  const read = decision.by === "elsewhere" ? decision.read : undefined;
+  const { headline, tone, text } = setupSlipOf(agent, decision);
   return (
-    <article className={`slip slip-${tone}`} aria-live="polite" style={{ viewTransitionName: setupTransitionName(setup) }}>
+    <article className={`slip galley-slip slip-${tone}`} aria-live="polite" hidden={!shown} style={{ viewTransitionName: shown ? setupTransitionName(setup) : undefined }}>
       <StateIcon tone={tone} />
       <div>
         <h2 className="slip-head">
-          {headline} <span className="slip-subject slip-subject-setup">{copy.slipSubject(agent)}</span>
+          {headline} <span className="slip-subject">{copy.slipSubject(agent)}</span>
         </h2>
         <p className="slip-result">{text}</p>
         <p className="slip-detail">{setup.preview.join(" ")}</p>

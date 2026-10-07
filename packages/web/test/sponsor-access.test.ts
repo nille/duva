@@ -1,3 +1,4 @@
+import type { Page } from "playwright-core";
 import { expect, test } from "vitest";
 import { startWebApp } from "./web-app.ts";
 
@@ -103,6 +104,9 @@ test("a draft the agent wrote or changed last in its sponsor's mailbox names it,
   await expect.poll(() => page.getByRole("status").innerText(), wait).toMatch(/^Saved at /);
 });
 
+/** Opens the request about the subject in Approvals' reading pane, from its row in the queue. */
+const openRow = (page: Page, subject: string) => page.getByRole("list", { name: "Approvals" }).getByRole("button").filter({ hasText: subject }).click();
+
 test("Approvals marks a send as the sponsor apart from the agent's sends from its own mailbox", budget, async () => {
   const { page, signIn, hermes, inAdas, inHermess, ask } = await withAgentInSponsorsMailbox();
   await ask(hermes, inAdas, { to: ["grace@example.org"], subject: "Som Ada", text: "Hej Grace." });
@@ -113,7 +117,10 @@ test("Approvals marks a send as the sponsor apart from the agent's sends from it
 
   const asAda = page.getByRole("article", { name: /Som Ada/ });
   const asHermes = page.getByRole("article", { name: /Som Hermes/ });
+  await openRow(page, "Som Ada");
   await expect.poll(() => asAda.innerText(), wait).toContain("As you, from ada@example.com");
+  await openRow(page, "Som Hermes");
+  await expect.poll(() => asHermes.isVisible(), wait).toBe(true);
   expect(await asHermes.innerText()).not.toContain("As you");
   expect(await asHermes.innerText()).toContain("From its own mailbox, hermes@example.com");
 });
@@ -129,7 +136,10 @@ test("on Approvals, a send carries the disclosure's line only if its sponsor lef
 
   const asAda = page.getByRole("article", { name: /Som Ada/ });
   const asHermes = page.getByRole("article", { name: /Som Hermes/ });
+  await openRow(page, "Som Ada");
   await expect.poll(() => asAda.innerText(), wait).toContain("Duva adds no line to it");
   expect(await asAda.innerText()).not.toContain("Sent by Hermes for ada@example.org");
+  await openRow(page, "Som Hermes");
+  await expect.poll(() => asHermes.isVisible(), wait).toBe(true);
   expect(await asHermes.innerText()).toContain("Sent by Hermes for ada@example.org");
 });

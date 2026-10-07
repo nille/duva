@@ -12,13 +12,15 @@ type Sending = { status: "idle" } | { status: "sending" } | { status: "sent" } |
 /**
  * The button, and what came of it beside it. `onSent` hears of the draft as Duva answered, or of
  * nothing if it no longer waits. Where several wait side by side, `labelledBy` names the element
- * that says which send this is, so the button's name says it too.
+ * that says which send this is, so the button's name says it too. `done` says it was sent, as
+ * from this page before, so it stays said where the button is laid out again.
  */
 export function SendNow({
   client,
   mailbox,
   draft,
   labelledBy,
+  done = false,
   onSent,
   onSignedOut,
 }: {
@@ -26,6 +28,7 @@ export function SendNow({
   mailbox: string;
   draft: string;
   labelledBy?: string;
+  done?: boolean;
   onSent?: (draft?: Draft) => void;
   onSignedOut: () => void;
 }) {
@@ -47,7 +50,7 @@ export function SendNow({
     if (response?.status === 409 || response?.status === 404) onSent?.();
   };
 
-  if (sending.status === "sent") {
+  if (done || sending.status === "sent") {
     return (
       <p className="send-now-done" role="status">
         {copy.sent}

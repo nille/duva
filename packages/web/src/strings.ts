@@ -1023,6 +1023,7 @@ export const strings = {
     failed: (status: number) => `Duva couldn't list your alerts (error ${status}). Try again in a moment.`,
     unreachable: "Duva couldn't be reached, so your alerts aren't listed. Check your connection and try again.",
     seeFailed: "Duva couldn't mark it seen. Try again in a moment.",
+    back: "All alerts",
   },
 
   approvals: {
@@ -1037,6 +1038,10 @@ export const strings = {
     heldTitle: (agent: string) => `Held while ${agent} is paused`,
     heldLead: (agent: string) => `Approved. Unpausing ${agent} sends these, oldest first, so look at them before you do.`,
     to: (addresses: string) => `To ${addresses}`,
+    show: "Show",
+    chips: { all: "All", send: "Sends", setup: "Setup changes", held: "Held" },
+    kinds: { send: "Send", setup: "Setup", held: "Held" },
+    back: "All approvals",
   },
 
   setupGalley: {
