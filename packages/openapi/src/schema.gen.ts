@@ -237,7 +237,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List the agents you sponsor. */
+        /** List the agents you sponsor, each with how many sends it has left this hour. */
         get: operations["listAgents"];
         put?: never;
         /**
@@ -1339,6 +1339,8 @@ export interface components {
             /** @description Whether the agent may change the organization's setup, which only an agent whose sponsor is an admin can. Its changes wait for its sponsor's approval unless approvalForSetup is off, and it never removes humans or agents, or changes who is an admin. */
             admin: boolean;
             paused?: components["schemas"]["Pause"];
+            /** @description How many more messages the agent's send limits let it send now, counting its sends of the last hour. Its sends that wait for the limits leave none. There only when you list the agents you sponsor. */
+            sendsLeftThisHour?: number;
         };
         /** @description Who paused the agent and when, there only while it is paused. Its key is refused, and its approved sends are held, until it is unpaused. */
         Pause: {

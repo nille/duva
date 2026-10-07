@@ -1,7 +1,8 @@
 // The mailboxes a human can read, beside the mail: their own, each by its default address when they
 // have more than one, then each agent's they sponsor, with how many threads in each Inbox are unread.
-// A human with one mailbox who sponsors no agents never sees it.
+// A human with one mailbox who sponsors no agents never sees it. An agent's carries its mark.
 import type { components } from "@duva/openapi";
+import { ActorMark } from "./mail-parts.tsx";
 import { strings } from "./strings.ts";
 
 type Mailbox = components["schemas"]["Mailbox"];
@@ -78,6 +79,7 @@ export function MailboxList({
                 unread={unread.get(mailbox.id)}
                 current={current === mailbox.id}
                 href={mailboxHref(mailbox, false)}
+                agent
               />
             ))}
           </ul>
@@ -87,12 +89,15 @@ export function MailboxList({
   );
 }
 
-function MailboxLink({ name, address, unread = 0, current, href }: { name: string; address?: string; unread?: number; current: boolean; href: string }) {
+function MailboxLink({ name, address, unread = 0, current, href, agent = false }: { name: string; address?: string; unread?: number; current: boolean; href: string; agent?: boolean }) {
   const label = [name, address, unread > 0 && strings.mailboxes.unread(unread)].filter(Boolean).join(", ");
   return (
     <li>
       <a className={unread > 0 ? "mailbox mailbox-unread" : "mailbox"} href={href} aria-label={label} aria-current={current ? "page" : undefined}>
-        <span className="mailbox-name">{name}</span>
+        <span className="mailbox-name">
+          {agent && <ActorMark kind="agent" />}
+          {name}
+        </span>
         <span className="mailbox-count" aria-hidden="true">
           {unread > 0 ? unread : ""}
         </span>

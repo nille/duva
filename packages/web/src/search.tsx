@@ -6,6 +6,7 @@ import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
 import { DoneLine, IndexTools, SkeletonIndex, ThreadRow, usePicking } from "./inbox.tsx";
 import { type Done, type Label, OrganizeActions, ownLabelsOf } from "./organize.tsx";
+import { useBeside, useViewTitle, ViewMain, ViewTitle } from "./panes.tsx";
 import { useShortcuts, useThreadKeys } from "./shortcuts.tsx";
 import { strings } from "./strings.ts";
 import { hrefOf, type SearchView, threadHref } from "./views.tsx";
@@ -264,6 +265,7 @@ export function SearchResults({
   base,
   view,
   labels,
+  acted = 0,
   done,
   onDone,
   onSignedOut,
@@ -273,6 +275,8 @@ export function SearchResults({
   base: string;
   view: SearchView;
   labels: Label[];
+  /** How many times the human changed a thread open beside the results, which then search again. */
+  acted?: number;
   done: Done | undefined;
   onDone: (done: Done | undefined) => void;
   onSignedOut: () => void;
@@ -333,9 +337,15 @@ export function SearchResults({
     void load();
   }, [load]);
 
+  const searched = useRef(acted);
   useEffect(() => {
-    document.title = strings.title(q);
-  }, [q]);
+    if (searched.current === acted) return;
+    searched.current = acted;
+    void again();
+  });
+
+  useViewTitle(strings.title(q));
+  const { open } = useBeside();
 
   const more = async () => {
     if (finding.status !== "found" || finding.next === undefined) return;
@@ -374,11 +384,11 @@ export function SearchResults({
   );
 
   return (
-    <main className="desk" aria-busy={finding.status === "loading"}>
+    <ViewMain className="desk" aria-busy={finding.status === "loading"}>
       <div className="desk-head">
-        <h1 tabIndex={-1} className="view-title">
+        <ViewTitle tabIndex={-1} className="view-title">
           {strings.search.title}
-        </h1>
+        </ViewTitle>
         <p className="search-words">{strings.search.words(q)}</p>
         <nav className="sort" aria-label={strings.search.sort}>
           {sortLink("relevance", strings.search.relevance)}
@@ -423,6 +433,7 @@ export function SearchResults({
                 result={result}
                 labels={labels}
                 href={threadHref(result.thread.id, view, base, result.message)}
+                open={result.thread.id === open}
                 selected={picking.selected.has(result.thread.id)}
                 onToggle={() => picking.toggle(result.thread.id)}
               />
@@ -442,12 +453,12 @@ export function SearchResults({
           )}
         </div>
       )}
-    </main>
+    </ViewMain>
   );
 }
 
 /** A thread found, as a line of the index, with the snippet of the message that matched and the words in it marked. */
-function ResultRow({ result, labels, href, selected, onToggle }: { result: SearchResult; labels: Label[]; href: string; selected: boolean; onToggle: () => void }) {
+function ResultRow({ result, labels, href, open, selected, onToggle }: { result: SearchResult; labels: Label[]; href: string; open: boolean; selected: boolean; onToggle: () => void }) {
   const { thread } = result;
   // Spam and Trash are searched only when asked, and then a result says it is there.
   const named = [
@@ -461,6 +472,7 @@ function ResultRow({ result, labels, href, selected, onToggle }: { result: Searc
       labels={named}
       href={href}
       snippet={result.snippet === "" ? "" : <Highlighted text={result.snippet} highlights={result.highlights} />}
+      open={open}
       selected={selected}
       onToggle={onToggle}
     />

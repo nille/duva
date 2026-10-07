@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
 import { Time } from "./mail-parts.tsx";
+import { useBeside, useViewTitle, ViewMain, ViewTitle } from "./panes.tsx";
 import { strings } from "./strings.ts";
 
 type Draft = components["schemas"]["Draft"];
@@ -51,16 +52,15 @@ export function Drafts({
     void load();
   }, [load, version]);
 
-  useEffect(() => {
-    document.title = strings.title(strings.drafts.title);
-  }, []);
+  useViewTitle(strings.title(strings.drafts.title));
+  const { open } = useBeside();
 
   return (
-    <main className="desk" aria-busy={listing.status === "loading"}>
+    <ViewMain className="desk" aria-busy={listing.status === "loading"}>
       <div className="desk-head">
-        <h1 tabIndex={-1} className="view-title">
+        <ViewTitle tabIndex={-1} className="view-title">
           {strings.drafts.title}
-        </h1>
+        </ViewTitle>
         <p className="mailbox-address">{strings.mailboxes.address(mailbox)}</p>
       </div>
       {listing.status === "loading" ? (
@@ -89,17 +89,17 @@ export function Drafts({
         <div className="index">
           <ol className="threads" aria-label={strings.drafts.list}>
             {listing.drafts.map((draft) => (
-              <DraftRow key={draft.id} draft={draft} base={base} agent={draft.updatedBy === undefined ? undefined : agentNames.get(draft.updatedBy)} />
+              <DraftRow key={draft.id} draft={draft} base={base} open={draft.id === open} agent={draft.updatedBy === undefined ? undefined : agentNames.get(draft.updatedBy)} />
             ))}
           </ol>
         </div>
       )}
-    </main>
+    </ViewMain>
   );
 }
 
 /** A draft in the list, with the name of the agent that saved it last, if one did. */
-function DraftRow({ draft, base, agent }: { draft: Draft; base: string; agent?: string }) {
+function DraftRow({ draft, base, open, agent }: { draft: Draft; base: string; open: boolean; agent?: string }) {
   const recipients = [...draft.to, ...draft.cc, ...draft.bcc].map(({ name, address }) => name || address).join(", ");
   const to = recipients === "" ? strings.drafts.noRecipients : strings.drafts.to(recipients);
   const subject = draft.subject || strings.thread.noSubject;
@@ -108,7 +108,7 @@ function DraftRow({ draft, base, agent }: { draft: Draft; base: string; agent?: 
   const by = agent === undefined ? undefined : strings.drafts.by(agent);
   return (
     <li className="thread-row">
-      <a className="thread" href={`${base}drafts/${encodeURIComponent(draft.id)}`} aria-label={[by, state, to, subject].filter(Boolean).join(", ")}>
+      <a className="thread" href={`${base}drafts/${encodeURIComponent(draft.id)}`} aria-label={[by, state, to, subject].filter(Boolean).join(", ")} aria-current={open ? "true" : undefined}>
         <span className="thread-mark" aria-hidden="true" />
         <span className="thread-sender">
           <span className="thread-sender-name">{to}</span>

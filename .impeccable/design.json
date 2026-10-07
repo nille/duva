@@ -1,28 +1,118 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-03T21:34:19.448Z",
+  "generatedAt": "2026-10-07T08:24:20.983Z",
   "title": "Design System: Duva",
   "extensions": {
     "colorMeta": {
-      "desk": {
+      "side": {
         "role": "neutral",
-        "displayName": "Dove Desk",
-        "canonical": "#e3e6e9",
+        "displayName": "Side Grey",
+        "canonical": "#e6e6e2",
         "tonalRamp": [
-          "oklch(15.0% 0.005 248)",
-          "oklch(25.0% 0.005 248)",
-          "oklch(35.0% 0.005 248)",
-          "oklch(45.0% 0.005 248)",
-          "oklch(55.0% 0.005 248)",
-          "oklch(65.0% 0.005 248)",
-          "oklch(80.0% 0.005 248)",
-          "oklch(95.0% 0.005 248)"
+          "oklch(15.0% 0.005 107)",
+          "oklch(25.0% 0.005 107)",
+          "oklch(35.0% 0.005 107)",
+          "oklch(45.0% 0.005 107)",
+          "oklch(55.0% 0.005 107)",
+          "oklch(65.0% 0.005 107)",
+          "oklch(80.0% 0.005 107)",
+          "oklch(95.0% 0.005 107)"
         ]
       },
-      "paper": {
+      "list": {
         "role": "neutral",
-        "displayName": "Proof Paper",
+        "displayName": "List Grey",
+        "canonical": "#efefec",
+        "tonalRamp": [
+          "oklch(15.0% 0.004 106)",
+          "oklch(25.0% 0.004 106)",
+          "oklch(35.0% 0.004 106)",
+          "oklch(45.0% 0.004 106)",
+          "oklch(55.0% 0.004 106)",
+          "oklch(65.0% 0.004 106)",
+          "oklch(80.0% 0.004 106)",
+          "oklch(95.0% 0.004 106)"
+        ]
+      },
+      "read": {
+        "role": "neutral",
+        "displayName": "Reader Grey",
+        "canonical": "#f8f8f6",
+        "tonalRamp": [
+          "oklch(15.0% 0.003 106)",
+          "oklch(25.0% 0.003 106)",
+          "oklch(35.0% 0.003 106)",
+          "oklch(45.0% 0.003 106)",
+          "oklch(55.0% 0.003 106)",
+          "oklch(65.0% 0.003 106)",
+          "oklch(80.0% 0.003 106)",
+          "oklch(95.0% 0.003 106)"
+        ]
+      },
+      "raise": {
+        "role": "neutral",
+        "displayName": "Raised White",
         "canonical": "#ffffff",
+        "tonalRamp": [
+          "oklch(15.0% 0.000 90)",
+          "oklch(25.0% 0.000 90)",
+          "oklch(35.0% 0.000 90)",
+          "oklch(45.0% 0.000 90)",
+          "oklch(55.0% 0.000 90)",
+          "oklch(65.0% 0.000 90)",
+          "oklch(80.0% 0.000 90)",
+          "oklch(95.0% 0.000 90)"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "#161616",
+        "tonalRamp": [
+          "oklch(15.0% 0.000 90)",
+          "oklch(25.0% 0.000 90)",
+          "oklch(35.0% 0.000 90)",
+          "oklch(45.0% 0.000 90)",
+          "oklch(55.0% 0.000 90)",
+          "oklch(65.0% 0.000 90)",
+          "oklch(80.0% 0.000 90)",
+          "oklch(95.0% 0.000 90)"
+        ]
+      },
+      "ink-2": {
+        "role": "neutral",
+        "displayName": "Second Ink",
+        "canonical": "#56564f",
+        "tonalRamp": [
+          "oklch(15.0% 0.011 107)",
+          "oklch(25.0% 0.011 107)",
+          "oklch(35.0% 0.011 107)",
+          "oklch(45.0% 0.011 107)",
+          "oklch(55.0% 0.011 107)",
+          "oklch(65.0% 0.011 107)",
+          "oklch(80.0% 0.011 107)",
+          "oklch(95.0% 0.011 107)"
+        ]
+      },
+      "ink-3": {
+        "role": "neutral",
+        "displayName": "Third Ink",
+        "canonical": "#66665f",
+        "tonalRamp": [
+          "oklch(15.0% 0.011 107)",
+          "oklch(25.0% 0.011 107)",
+          "oklch(35.0% 0.011 107)",
+          "oklch(45.0% 0.011 107)",
+          "oklch(55.0% 0.011 107)",
+          "oklch(65.0% 0.011 107)",
+          "oklch(80.0% 0.011 107)",
+          "oklch(95.0% 0.011 107)"
+        ]
+      },
+      "ink-deep": {
+        "role": "neutral",
+        "displayName": "Deep Ink",
+        "canonical": "#000000",
         "tonalRamp": [
           "oklch(15.0% 0.000 0)",
           "oklch(25.0% 0.000 0)",
@@ -34,115 +124,160 @@
           "oklch(95.0% 0.000 0)"
         ]
       },
-      "paper-source": {
+      "seam": {
         "role": "neutral",
-        "displayName": "Source Paper",
-        "canonical": "#f5f6f7",
+        "displayName": "Seam",
+        "canonical": "#dededa",
         "tonalRamp": [
-          "oklch(15.0% 0.002 0)",
-          "oklch(25.0% 0.002 0)",
-          "oklch(35.0% 0.002 0)",
-          "oklch(45.0% 0.002 0)",
-          "oklch(55.0% 0.002 0)",
-          "oklch(65.0% 0.002 0)",
-          "oklch(80.0% 0.002 0)",
-          "oklch(95.0% 0.002 0)"
+          "oklch(15.0% 0.005 107)",
+          "oklch(25.0% 0.005 107)",
+          "oklch(35.0% 0.005 107)",
+          "oklch(45.0% 0.005 107)",
+          "oklch(55.0% 0.005 107)",
+          "oklch(65.0% 0.005 107)",
+          "oklch(80.0% 0.005 107)",
+          "oklch(95.0% 0.005 107)"
         ]
       },
-      "ink": {
+      "field": {
         "role": "neutral",
-        "displayName": "Ink",
-        "canonical": "#1b2129",
+        "displayName": "Field Grey",
+        "canonical": "#e2e2dd",
         "tonalRamp": [
-          "oklch(15.0% 0.018 256)",
-          "oklch(25.0% 0.018 256)",
-          "oklch(35.0% 0.018 256)",
-          "oklch(45.0% 0.018 256)",
-          "oklch(55.0% 0.018 256)",
-          "oklch(65.0% 0.018 256)",
-          "oklch(80.0% 0.018 256)",
-          "oklch(95.0% 0.018 256)"
+          "oklch(15.0% 0.007 107)",
+          "oklch(25.0% 0.007 107)",
+          "oklch(35.0% 0.007 107)",
+          "oklch(45.0% 0.007 107)",
+          "oklch(55.0% 0.007 107)",
+          "oklch(65.0% 0.007 107)",
+          "oklch(80.0% 0.007 107)",
+          "oklch(95.0% 0.007 107)"
         ]
       },
-      "ink-2": {
+      "field-deep": {
         "role": "neutral",
-        "displayName": "Second Ink",
-        "canonical": "#525b66",
+        "displayName": "Field Deep",
+        "canonical": "#d4d4ce",
         "tonalRamp": [
-          "oklch(15.0% 0.021 253)",
-          "oklch(25.0% 0.021 253)",
-          "oklch(35.0% 0.021 253)",
-          "oklch(45.0% 0.021 253)",
-          "oklch(55.0% 0.021 253)",
-          "oklch(65.0% 0.021 253)",
-          "oklch(80.0% 0.021 253)",
-          "oklch(95.0% 0.021 253)"
+          "oklch(15.0% 0.008 107)",
+          "oklch(25.0% 0.008 107)",
+          "oklch(35.0% 0.008 107)",
+          "oklch(45.0% 0.008 107)",
+          "oklch(55.0% 0.008 107)",
+          "oklch(65.0% 0.008 107)",
+          "oklch(80.0% 0.008 107)",
+          "oklch(95.0% 0.008 107)"
         ]
       },
-      "rule": {
+      "edge": {
         "role": "neutral",
-        "displayName": "Hairline",
-        "canonical": "#d9dde1",
+        "displayName": "Edge",
+        "canonical": "#84847c",
         "tonalRamp": [
-          "oklch(15.0% 0.007 248)",
-          "oklch(25.0% 0.007 248)",
-          "oklch(35.0% 0.007 248)",
-          "oklch(45.0% 0.007 248)",
-          "oklch(55.0% 0.007 248)",
-          "oklch(65.0% 0.007 248)",
-          "oklch(80.0% 0.007 248)",
-          "oklch(95.0% 0.007 248)"
+          "oklch(15.0% 0.012 107)",
+          "oklch(25.0% 0.012 107)",
+          "oklch(35.0% 0.012 107)",
+          "oklch(45.0% 0.012 107)",
+          "oklch(55.0% 0.012 107)",
+          "oklch(65.0% 0.012 107)",
+          "oklch(80.0% 0.012 107)",
+          "oklch(95.0% 0.012 107)"
         ]
       },
-      "rule-strong": {
-        "role": "neutral",
-        "displayName": "Strong Rule",
-        "canonical": "#8a929c",
-        "tonalRamp": [
-          "oklch(15.0% 0.018 254)",
-          "oklch(25.0% 0.018 254)",
-          "oklch(35.0% 0.018 254)",
-          "oklch(45.0% 0.018 254)",
-          "oklch(55.0% 0.018 254)",
-          "oklch(65.0% 0.018 254)",
-          "oklch(80.0% 0.018 254)",
-          "oklch(95.0% 0.018 254)"
-        ]
-      },
-      "pencil": {
+      "call": {
         "role": "primary",
-        "displayName": "Editor's Blue Pencil",
-        "canonical": "#2b4fc0",
+        "displayName": "Call Orange",
+        "canonical": "#ff5a1f",
         "tonalRamp": [
-          "oklch(15.0% 0.182 266)",
-          "oklch(25.0% 0.182 266)",
-          "oklch(35.0% 0.182 266)",
-          "oklch(45.0% 0.182 266)",
-          "oklch(55.0% 0.182 266)",
-          "oklch(65.0% 0.182 266)",
-          "oklch(80.0% 0.182 266)",
-          "oklch(95.0% 0.182 266)"
+          "oklch(15.0% 0.211 38)",
+          "oklch(25.0% 0.211 38)",
+          "oklch(35.0% 0.211 38)",
+          "oklch(45.0% 0.211 38)",
+          "oklch(55.0% 0.211 38)",
+          "oklch(65.0% 0.211 38)",
+          "oklch(80.0% 0.211 38)",
+          "oklch(95.0% 0.211 38)"
         ]
       },
-      "pencil-deep": {
+      "call-deep": {
         "role": "primary",
-        "displayName": "Pressed Pencil",
-        "canonical": "#203c96",
+        "displayName": "Call Deep",
+        "canonical": "#e5470d",
         "tonalRamp": [
-          "oklch(15.0% 0.152 266)",
-          "oklch(25.0% 0.152 266)",
-          "oklch(35.0% 0.152 266)",
-          "oklch(45.0% 0.152 266)",
-          "oklch(55.0% 0.152 266)",
-          "oklch(65.0% 0.152 266)",
-          "oklch(80.0% 0.152 266)",
-          "oklch(95.0% 0.152 266)"
+          "oklch(15.0% 0.203 37)",
+          "oklch(25.0% 0.203 37)",
+          "oklch(35.0% 0.203 37)",
+          "oklch(45.0% 0.203 37)",
+          "oklch(55.0% 0.203 37)",
+          "oklch(65.0% 0.203 37)",
+          "oklch(80.0% 0.203 37)",
+          "oklch(95.0% 0.203 37)"
         ]
       },
-      "pencil-wash": {
+      "call-ink": {
         "role": "primary",
-        "displayName": "Pencil Wash",
-        "canonical": "#e8edfb",
+        "displayName": "Call Ink",
+        "canonical": "#b93a0b",
+        "tonalRamp": [
+          "oklch(15.0% 0.171 37)",
+          "oklch(25.0% 0.171 37)",
+          "oklch(35.0% 0.171 37)",
+          "oklch(45.0% 0.171 37)",
+          "oklch(55.0% 0.171 37)",
+          "oklch(65.0% 0.171 37)",
+          "oklch(80.0% 0.171 37)",
+          "oklch(95.0% 0.171 37)"
+        ]
+      },
+      "call-wash": {
+        "role": "primary",
+        "displayName": "Call Wash",
+        "canonical": "#fff0e9",
+        "tonalRamp": [
+          "oklch(15.0% 0.019 47)",
+          "oklch(25.0% 0.019 47)",
+          "oklch(35.0% 0.019 47)",
+          "oklch(45.0% 0.019 47)",
+          "oklch(55.0% 0.019 47)",
+          "oklch(65.0% 0.019 47)",
+          "oklch(80.0% 0.019 47)",
+          "oklch(95.0% 0.019 47)"
+        ]
+      },
+      "agent": {
+        "role": "secondary",
+        "displayName": "Agent Blue",
+        "canonical": "#2e62ff",
+        "tonalRamp": [
+          "oklch(15.0% 0.239 265)",
+          "oklch(25.0% 0.239 265)",
+          "oklch(35.0% 0.239 265)",
+          "oklch(45.0% 0.239 265)",
+          "oklch(55.0% 0.239 265)",
+          "oklch(65.0% 0.239 265)",
+          "oklch(80.0% 0.239 265)",
+          "oklch(95.0% 0.239 265)"
+        ]
+      },
+      "agent-ink": {
+        "role": "secondary",
+        "displayName": "Agent Ink",
+        "canonical": "#1f4fe0",
+        "tonalRamp": [
+          "oklch(15.0% 0.226 265)",
+          "oklch(25.0% 0.226 265)",
+          "oklch(35.0% 0.226 265)",
+          "oklch(45.0% 0.226 265)",
+          "oklch(55.0% 0.226 265)",
+          "oklch(65.0% 0.226 265)",
+          "oklch(80.0% 0.226 265)",
+          "oklch(95.0% 0.226 265)"
+        ]
+      },
+      "agent-wash": {
+        "role": "secondary",
+        "displayName": "Agent Wash",
+        "canonical": "#ecf1ff",
         "tonalRamp": [
           "oklch(15.0% 0.020 270)",
           "oklch(25.0% 0.020 270)",
@@ -155,251 +290,264 @@
         ]
       },
       "sent": {
-        "role": "status",
+        "role": "tertiary",
         "displayName": "Sent Green",
-        "canonical": "#1e6a43",
+        "canonical": "#12a150",
         "tonalRamp": [
-          "oklch(15.0% 0.097 157)",
-          "oklch(25.0% 0.097 157)",
-          "oklch(35.0% 0.097 157)",
-          "oklch(45.0% 0.097 157)",
-          "oklch(55.0% 0.097 157)",
-          "oklch(65.0% 0.097 157)",
-          "oklch(80.0% 0.097 157)",
-          "oklch(95.0% 0.097 157)"
+          "oklch(15.0% 0.163 151)",
+          "oklch(25.0% 0.163 151)",
+          "oklch(35.0% 0.163 151)",
+          "oklch(45.0% 0.163 151)",
+          "oklch(55.0% 0.163 151)",
+          "oklch(65.0% 0.163 151)",
+          "oklch(80.0% 0.163 151)",
+          "oklch(95.0% 0.163 151)"
+        ]
+      },
+      "sent-ink": {
+        "role": "tertiary",
+        "displayName": "Sent Ink",
+        "canonical": "#0c7438",
+        "tonalRamp": [
+          "oklch(15.0% 0.128 151)",
+          "oklch(25.0% 0.128 151)",
+          "oklch(35.0% 0.128 151)",
+          "oklch(45.0% 0.128 151)",
+          "oklch(55.0% 0.128 151)",
+          "oklch(65.0% 0.128 151)",
+          "oklch(80.0% 0.128 151)",
+          "oklch(95.0% 0.128 151)"
+        ]
+      },
+      "sent-wash": {
+        "role": "tertiary",
+        "displayName": "Sent Wash",
+        "canonical": "#e8f6ee",
+        "tonalRamp": [
+          "oklch(15.0% 0.018 161)",
+          "oklch(25.0% 0.018 161)",
+          "oklch(35.0% 0.018 161)",
+          "oklch(45.0% 0.018 161)",
+          "oklch(55.0% 0.018 161)",
+          "oklch(65.0% 0.018 161)",
+          "oklch(80.0% 0.018 161)",
+          "oklch(95.0% 0.018 161)"
         ]
       },
       "alert": {
-        "role": "status",
+        "role": "tertiary",
         "displayName": "Alert Red",
-        "canonical": "#b42318",
+        "canonical": "#e5243b",
         "tonalRamp": [
-          "oklch(15.0% 0.182 30)",
-          "oklch(25.0% 0.182 30)",
-          "oklch(35.0% 0.182 30)",
-          "oklch(45.0% 0.182 30)",
-          "oklch(55.0% 0.182 30)",
-          "oklch(65.0% 0.182 30)",
-          "oklch(80.0% 0.182 30)",
-          "oklch(95.0% 0.182 30)"
+          "oklch(15.0% 0.222 22)",
+          "oklch(25.0% 0.222 22)",
+          "oklch(35.0% 0.222 22)",
+          "oklch(45.0% 0.222 22)",
+          "oklch(55.0% 0.222 22)",
+          "oklch(65.0% 0.222 22)",
+          "oklch(80.0% 0.222 22)",
+          "oklch(95.0% 0.222 22)"
+        ]
+      },
+      "alert-ink": {
+        "role": "tertiary",
+        "displayName": "Alert Ink",
+        "canonical": "#c41a2f",
+        "tonalRamp": [
+          "oklch(15.0% 0.200 23)",
+          "oklch(25.0% 0.200 23)",
+          "oklch(35.0% 0.200 23)",
+          "oklch(45.0% 0.200 23)",
+          "oklch(55.0% 0.200 23)",
+          "oklch(65.0% 0.200 23)",
+          "oklch(80.0% 0.200 23)",
+          "oklch(95.0% 0.200 23)"
         ]
       },
       "alert-wash": {
-        "role": "status",
+        "role": "tertiary",
         "displayName": "Alert Wash",
-        "canonical": "#fdecea",
+        "canonical": "#fdecee",
         "tonalRamp": [
-          "oklch(15.0% 0.019 26)",
-          "oklch(25.0% 0.019 26)",
-          "oklch(35.0% 0.019 26)",
-          "oklch(45.0% 0.019 26)",
-          "oklch(55.0% 0.019 26)",
-          "oklch(65.0% 0.019 26)",
-          "oklch(80.0% 0.019 26)",
-          "oklch(95.0% 0.019 26)"
+          "oklch(15.0% 0.019 9)",
+          "oklch(25.0% 0.019 9)",
+          "oklch(35.0% 0.019 9)",
+          "oklch(45.0% 0.019 9)",
+          "oklch(55.0% 0.019 9)",
+          "oklch(65.0% 0.019 9)",
+          "oklch(80.0% 0.019 9)",
+          "oklch(95.0% 0.019 9)"
         ]
       }
     },
     "typographyMeta": {
       "display": {
         "displayName": "Display",
-        "purpose": "Empty desk title; the sign-in door sets it at 2rem."
-      },
-      "wordmark": {
-        "displayName": "Wordmark",
-        "purpose": "Duva in the bar and at the door."
+        "purpose": "The door's title, and a thread's subject."
       },
       "headline": {
         "displayName": "Headline",
-        "purpose": "Page heading, in the interface sans."
+        "purpose": "A view's title, such as Inbox."
       },
-      "title": {
-        "displayName": "Title",
-        "purpose": "Who asks, at the head of a galley or slip."
-      },
-      "subject": {
-        "displayName": "Subject",
-        "purpose": "Mail subject beside the title, in Second Ink."
-      },
-      "proof": {
-        "displayName": "Proof",
-        "purpose": "Message bodies, the disclosure line and the edit body, max 68ch."
+      "wordmark": {
+        "displayName": "Wordmark",
+        "purpose": "Duva at the side column's head and the door."
       },
       "body": {
         "displayName": "Body",
-        "purpose": "Default interface text, tabular numbers."
+        "purpose": "All text, in the mono with ligatures."
+      },
+      "proof": {
+        "displayName": "Proof",
+        "purpose": "Message bodies, under 68ch."
       },
       "small": {
         "displayName": "Small",
-        "purpose": "Header fields, meta, buttons, notices."
+        "purpose": "Buttons and meta."
       },
       "label": {
         "displayName": "Label",
-        "purpose": "Column labels and the New mark, sentence case."
+        "purpose": "Group names, the status strip, counts."
+      },
+      "key": {
+        "displayName": "Key",
+        "purpose": "Key caps."
       }
     },
     "shadows": [
       {
-        "name": "sheet",
-        "value": "0 1px 2px rgb(27 33 41 / 0.08), 0 8px 24px -12px rgb(27 33 41 / 0.22)",
-        "purpose": "Galleys, the live proofs lying on the desk."
+        "name": "pressed",
+        "value": "0 1px 0 rgb(22 22 22 / 0.04)",
+        "purpose": "Under the place or view open, raised as a key pressed in."
       },
       {
-        "name": "slip",
-        "value": "0 1px 2px rgb(27 33 41 / 0.08)",
-        "purpose": "Decided approvals, set down flatter."
+        "name": "shade",
+        "value": "0 1px 2px rgb(22 22 22 / 0.08)",
+        "purpose": "Under a slip set down on the plane."
+      },
+      {
+        "name": "lift",
+        "value": "0 1px 0 rgb(22 22 22 / 0.03), 0 12px 32px -18px rgb(22 22 22 / 0.22)",
+        "purpose": "Under a sheet laid over the page."
+      },
+      {
+        "name": "open-edge",
+        "value": "inset 3px 0 0 #ff5a1f",
+        "purpose": "The open line of a list."
       }
     ],
     "motion": [
       {
         "name": "ease-out",
-        "value": "cubic-bezier(0.16, 1, 0.3, 1)",
-        "purpose": "The one easing curve, for every transition and animation."
-      },
-      {
-        "name": "control",
-        "value": "150ms",
-        "purpose": "Button background and border changes."
-      },
-      {
-        "name": "fold",
-        "value": "260ms",
-        "purpose": "View transition as a galley folds into its slip."
-      },
-      {
-        "name": "arrive",
-        "value": "600ms",
-        "purpose": "A new galley slides down 0.75rem from 40% opacity."
-      },
-      {
-        "name": "breathe",
-        "value": "1.6s ease-in-out infinite alternate",
-        "purpose": "Skeleton lines fade to 45% opacity while loading."
-      },
-      {
-        "name": "reduced",
-        "value": "prefers-reduced-motion: reduce",
-        "purpose": "Turns every animation and transition off."
+        "value": "cubic-bezier(0.2, 0.8, 0.2, 1)",
+        "purpose": "State transitions: 150ms for color, 120ms for a press."
       }
     ],
     "breakpoints": [
       {
         "name": "phone",
-        "value": "48rem",
-        "purpose": "Columns stack, original first; padding drops; buttons grow to 2.75rem."
+        "value": "max-width: 48rem"
+      },
+      {
+        "name": "desk",
+        "value": "min-width: 64rem"
+      },
+      {
+        "name": "list-stacks",
+        "value": "list column under 40rem (container query)"
       }
-    ],
-    "focus": {
-      "value": "outline: 2px solid var(--pencil); outline-offset: 2px",
-      "purpose": "Global focus ring; fields use offset 0 and a pencil border."
-    }
+    ]
   },
   "components": [
     {
       "name": "Primary Button",
       "kind": "button",
       "refersTo": "button-primary",
-      "description": "The one main action of a decision row: Send, or Send your version.",
-      "html": "<button class=\"ds-btn ds-btn-primary\">Send</button>",
-      "css": ".ds-btn { display:inline-flex; align-items:center; justify-content:center; gap:var(--space-2,0.5rem); min-height:2.5rem; padding:0 var(--space-4,1rem); border:1px solid var(--rule-strong,#8a929c); border-radius:var(--radius,6px); background:var(--paper,#fff); color:var(--ink,#1b2129); font:600 0.875rem/1 system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif; cursor:pointer; transition:background-color 150ms cubic-bezier(0.16,1,0.3,1), border-color 150ms cubic-bezier(0.16,1,0.3,1); } .ds-btn:focus-visible { outline:2px solid var(--pencil,#2b4fc0); outline-offset:2px; } .ds-btn:active { transform:translateY(1px); } .ds-btn-primary { background:var(--pencil,#2b4fc0); border-color:var(--pencil,#2b4fc0); color:var(--paper,#fff); padding:0 var(--space-5,1.5rem); } .ds-btn-primary:hover { background:var(--pencil-deep,#203c96); border-color:var(--pencil-deep,#203c96); }"
+      "description": "Write, and the one action a view leads with.",
+      "html": "<button class=\"ds-btn ds-btn-primary\">Write <kbd class=\"ds-kbd\">c</kbd></button>",
+      "css": ".ds-btn { display: inline-flex; align-items: center; gap: 0.5rem; min-height: 2.25rem; padding: 0 1rem; border: 0; border-radius: 999px; font: 600 0.78125rem/1 var(--mono); cursor: pointer; transition: background-color 150ms var(--ease-out), transform 120ms var(--ease-out); } .ds-btn:active { transform: translateY(1px); } .ds-btn:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; } .ds-btn-primary { background: var(--ink); color: var(--raise); } .ds-btn-primary:hover { background: var(--ink-deep); } .ds-kbd { display: inline-block; min-width: 1.15rem; padding: 0.18rem 0.32rem; border-radius: 4px; background: var(--key-on-fill); font: 600 0.65625rem/1 var(--mono); text-align: center; }"
+    },
+    {
+      "name": "Call Button",
+      "kind": "button",
+      "refersTo": "button-call",
+      "description": "A decision someone waits on.",
+      "html": "<button class=\"ds-btn ds-btn-call\">Send</button>",
+      "css": ".ds-btn { display: inline-flex; align-items: center; gap: 0.5rem; min-height: 2.25rem; padding: 0 1rem; border: 0; border-radius: 999px; font: 600 0.78125rem/1 var(--mono); cursor: pointer; } .ds-btn:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; } .ds-btn-call { background: var(--call); color: var(--ink); } .ds-btn-call:hover { background: var(--call-deep); }"
     },
     {
       "name": "Default Button",
       "kind": "button",
       "refersTo": "button",
-      "description": "Secondary actions such as Edit.",
-      "html": "<button class=\"ds-btn-default\">Edit</button>",
-      "css": ".ds-btn-default { display:inline-flex; align-items:center; min-height:2.5rem; padding:0 1rem; border:1px solid var(--rule-strong,#8a929c); border-radius:var(--radius,6px); background:var(--paper,#fff); color:var(--ink,#1b2129); font:600 0.875rem/1 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif; cursor:pointer; transition:background-color 150ms cubic-bezier(0.16,1,0.3,1), border-color 150ms cubic-bezier(0.16,1,0.3,1); } .ds-btn-default:hover { background:var(--paper-source,#f5f6f7); border-color:var(--ink-2,#525b66); } .ds-btn-default:focus-visible { outline:2px solid var(--pencil,#2b4fc0); outline-offset:2px; } .ds-btn-default:active { transform:translateY(1px); }"
+      "description": "Every other action.",
+      "html": "<button class=\"ds-btn ds-btn-default\">Forward</button>",
+      "css": ".ds-btn { display: inline-flex; align-items: center; min-height: 2.25rem; padding: 0 1rem; border: 0; border-radius: 999px; font: 600 0.78125rem/1 var(--mono); cursor: pointer; } .ds-btn:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; } .ds-btn-default { background: var(--field); color: var(--ink); } .ds-btn-default:hover { background: var(--field-deep); }"
     },
     {
-      "name": "Reject Button",
-      "kind": "button",
-      "refersTo": "button-reject",
-      "description": "Confirms a rejection with a note. The one dark control.",
-      "html": "<button class=\"ds-btn-reject\">Reject with note</button>",
-      "css": ".ds-btn-reject { display:inline-flex; align-items:center; min-height:2.5rem; padding:0 1rem; border:1px solid var(--ink,#1b2129); border-radius:var(--radius,6px); background:var(--ink,#1b2129); color:var(--paper,#fff); font:600 0.875rem/1 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif; cursor:pointer; } .ds-btn-reject:focus-visible { outline:2px solid var(--pencil,#2b4fc0); outline-offset:2px; } .ds-btn-reject:active { transform:translateY(1px); }"
-    },
-    {
-      "name": "Quiet Button",
-      "kind": "button",
-      "refersTo": "button-quiet",
-      "description": "Cancel, the first Reject step, and Sign out.",
-      "html": "<button class=\"ds-btn-quiet\">Cancel</button>",
-      "css": ".ds-btn-quiet { display:inline-flex; align-items:center; min-height:2.5rem; padding:0 1rem; border:1px solid transparent; border-radius:var(--radius,6px); background:transparent; color:var(--ink,#1b2129); font:600 0.875rem/1 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif; cursor:pointer; transition:background-color 150ms cubic-bezier(0.16,1,0.3,1); } .ds-btn-quiet:hover { background:rgb(27 33 41 / 0.06); } .ds-btn-quiet:focus-visible { outline:2px solid var(--pencil,#2b4fc0); outline-offset:2px; }"
-    },
-    {
-      "name": "Text Field",
+      "name": "Search Field",
       "kind": "input",
       "refersTo": "text-field",
-      "description": "Recipients, subject and the note; the edit body uses the proof serif.",
-      "html": "<label class=\"ds-field\"><span>Note for Hermes</span><input class=\"ds-input\" type=\"text\" value=\"Shorter, please.\"></label>",
-      "css": ".ds-field { display:grid; gap:0.5rem; font:600 0.875rem/1.5 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif; color:var(--ink,#1b2129); } .ds-input { width:100%; border:1px solid var(--rule-strong,#8a929c); border-radius:4px; background:var(--paper,#fff); color:var(--ink,#1b2129); font:400 1rem/1.5 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif; padding:0.5rem 0.75rem; } .ds-input:focus-visible { outline:2px solid var(--pencil,#2b4fc0); outline-offset:0; border-color:var(--pencil,#2b4fc0); }"
+      "description": "A field raised on the plane, edged at 3:1.",
+      "html": "<input class=\"ds-input\" type=\"search\" placeholder=\"Search your mail\">",
+      "css": ".ds-input { width: 100%; padding: 0.5rem 0.75rem; border: 1px solid var(--edge); border-radius: 7px; background: var(--raise); color: var(--ink); font: 400 0.84375rem/1.6 var(--mono); } .ds-input::placeholder { color: var(--ink-3); } .ds-input:focus-visible { outline: 2px solid var(--ink); outline-offset: 0; border-color: var(--ink); }"
     },
     {
-      "name": "Bar",
-      "kind": "nav",
-      "refersTo": "nav",
-      "description": "Wordmark, nav and who is signed in, across the desk.",
-      "html": "<header class=\"ds-bar\"><p class=\"ds-wordmark\">Duva</p><nav><a href=\"#\" aria-current=\"page\">Approvals</a></nav><span class=\"ds-who\">nicklas@example.com</span></header>",
-      "css": ".ds-bar { display:flex; align-items:center; gap:1.5rem; padding:1rem 1.5rem; background:var(--desk,#e3e6e9); color:var(--ink,#1b2129); font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif; } .ds-wordmark { margin:0; font:600 1.25rem/1 'Source Serif 4 Variable',Georgia,serif; letter-spacing:-0.01em; } .ds-bar nav a { color:var(--ink,#1b2129); font-weight:600; font-size:0.875rem; text-decoration:none; padding:0.25rem 0; border-bottom:2px solid transparent; } .ds-bar nav a[aria-current=page] { border-bottom-color:var(--pencil,#2b4fc0); } .ds-bar nav a:focus-visible { outline:2px solid var(--pencil,#2b4fc0); outline-offset:2px; } .ds-who { margin-left:auto; font-size:0.875rem; color:var(--ink-2,#525b66); }"
-    },
-    {
-      "name": "New Mark",
+      "name": "Chip",
       "kind": "chip",
-      "refersTo": "mark-new",
-      "description": "Marks a galley that arrived while the page was open.",
-      "html": "<span class=\"ds-mark-new\">New</span>",
-      "css": ".ds-mark-new { display:inline-block; padding:0.125rem 0.5rem; border-radius:999px; background:var(--pencil,#2b4fc0); color:var(--paper,#fff); font:650 0.8125rem/1.5 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif; }"
+      "refersTo": "chip",
+      "description": "One way to see a list; the chosen one is ink.",
+      "html": "<span class=\"ds-chip ds-chip-on\">All</span> <span class=\"ds-chip\">Unread</span>",
+      "css": ".ds-chip { display: inline-flex; align-items: center; min-height: 1.75rem; padding: 0 0.75rem; border: 1px solid var(--seam); border-radius: 999px; color: var(--ink-2); font: 500 0.6875rem/1 var(--mono); cursor: pointer; } .ds-chip:hover { background: var(--ink-wash); color: var(--ink); } .ds-chip-on { border-color: var(--ink); background: var(--ink); color: var(--raise); }"
     },
     {
-      "name": "Galley",
-      "kind": "card",
-      "refersTo": "galley",
-      "description": "One approval as a proof: original and draft on shared rows, decision under them.",
-      "html": "<article class=\"ds-galley\"><header class=\"ds-slug\"><h2>Hermes asks to send <span class=\"ds-subject\">Re: Dinner on Friday</span></h2><span class=\"ds-meta\"><span class=\"ds-mark-new\">New</span> Asked 09:14</span></header><div class=\"ds-sheet\"><section class=\"ds-copy ds-original\"><h3 class=\"ds-label\">The message it answers</h3><p class=\"ds-body\">Hej! Are we still on for Friday?</p></section><section class=\"ds-copy ds-proof\"><h3 class=\"ds-label ds-label-ink\">Draft by Hermes</h3><p class=\"ds-body\">Yes, Friday at seven works.</p><p class=\"ds-disclosure\">Sent by Hermes for Nicklas</p></section></div><footer class=\"ds-decision\"><button class=\"ds-send\">Send</button></footer></article>",
-      "css": ".ds-galley { background:var(--paper,#fff); border-radius:2px; box-shadow:0 1px 2px rgb(27 33 41 / 0.08), 0 8px 24px -12px rgb(27 33 41 / 0.22); color:var(--ink,#1b2129); font:400 1rem/1.5 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif; } .ds-slug { display:flex; flex-wrap:wrap; align-items:baseline; gap:0.5rem 1rem; padding:1rem 1.5rem; border-bottom:1px solid var(--rule,#d9dde1); } .ds-slug h2 { margin:0; font-size:1rem; font-weight:650; display:flex; gap:0 0.75rem; flex-wrap:wrap; } .ds-subject { font:400 1rem/1.4 'Source Serif 4 Variable',Georgia,serif; color:var(--ink-2,#525b66); } .ds-meta { margin-left:auto; display:flex; gap:0.75rem; align-items:center; font-size:0.875rem; color:var(--ink-2,#525b66); } .ds-mark-new { padding:0.125rem 0.5rem; border-radius:999px; background:var(--pencil,#2b4fc0); color:var(--paper,#fff); font-size:0.8125rem; font-weight:650; } .ds-sheet { display:grid; grid-template-columns:1fr 1fr; } .ds-copy { padding:1.5rem; min-width:0; } .ds-original { background:var(--paper-source,#f5f6f7); } .ds-proof { border-left:1px solid var(--rule,#d9dde1); } .ds-label { margin:0; padding-bottom:0.75rem; font-size:0.8125rem; font-weight:650; color:var(--ink-2,#525b66); } .ds-label-ink { color:var(--ink,#1b2129); } .ds-body { margin:0; font:400 1.0625rem/1.6 'Source Serif 4 Variable',Georgia,serif; max-width:68ch; } .ds-disclosure { margin:1.5rem 0 0; padding-top:0.75rem; border-top:1px dashed var(--rule,#d9dde1); font:400 1.0625rem/1.6 'Source Serif 4 Variable',Georgia,serif; } .ds-decision { padding:1rem 1.5rem; border-top:1px solid var(--rule,#d9dde1); } .ds-send { min-height:2.5rem; padding:0 1.5rem; border:1px solid var(--pencil,#2b4fc0); border-radius:6px; background:var(--pencil,#2b4fc0); color:#fff; font:600 0.875rem/1 system-ui,sans-serif; cursor:pointer; } .ds-send:hover { background:var(--pencil-deep,#203c96); border-color:var(--pencil-deep,#203c96); } .ds-send:focus-visible { outline:2px solid var(--pencil,#2b4fc0); outline-offset:2px; }"
+      "name": "Places",
+      "kind": "nav",
+      "refersTo": "place-current",
+      "description": "Duva's places in the side column, Approvals on the orange wash while something waits.",
+      "html": "<nav class=\"ds-places\"><a class=\"ds-place ds-place-wait\" href=\"#\">Approvals <span class=\"ds-count\">3</span></a><a class=\"ds-place\" href=\"#\">Alerts</a><a class=\"ds-place ds-place-on\" href=\"#\">Settings</a></nav>",
+      "css": ".ds-places { display: grid; gap: 1px; width: 13rem; padding: 0.5rem; background: var(--side); } .ds-place { display: flex; align-items: center; gap: 0.5rem; min-height: 2rem; padding: 0.36rem 0.5rem; border-radius: 6px; color: var(--ink); font: 400 0.84375rem/1.6 var(--mono); text-decoration: none; } .ds-place:hover { background: var(--ink-wash); } .ds-place:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; } .ds-place-on { background: var(--raise); box-shadow: var(--pressed); } .ds-place-wait { background: var(--call-wash); } .ds-count { margin-left: auto; min-width: 1.35rem; padding: 0.12rem 0.4rem; border-radius: 999px; background: var(--call); color: var(--ink); font: 700 0.6875rem/1.2 var(--mono); text-align: center; }"
     },
     {
-      "name": "Slip",
-      "kind": "card",
-      "refersTo": "slip",
-      "description": "A decided approval folded small, with how the send went.",
-      "html": "<article class=\"ds-slip\"><svg class=\"ds-slip-icon\" viewBox=\"0 0 16 16\" aria-hidden=\"true\"><circle cx=\"8\" cy=\"8\" r=\"6.5\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.4\"/><path d=\"m5 8.2 2 2 4-4.4\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg><div><h2 class=\"ds-slip-head\">Hermes asks to send <span class=\"ds-slip-subject\">Re: Dinner on Friday</span></h2><p class=\"ds-slip-result\">You approved it as written. Sent.</p></div></article>",
-      "css": ".ds-slip { display:flex; gap:0.75rem; padding:1rem 1.5rem; background:var(--paper,#fff); border-radius:2px; box-shadow:0 1px 2px rgb(27 33 41 / 0.08); color:var(--ink,#1b2129); font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif; } .ds-slip-icon { width:1.25rem; height:1.25rem; flex:none; margin-top:0.0625rem; color:var(--sent,#1e6a43); } .ds-slip-head { margin:0; display:flex; flex-wrap:wrap; gap:0 0.75rem; font-size:1rem; font-weight:650; } .ds-slip-subject { font:400 1rem/1.4 'Source Serif 4 Variable',Georgia,serif; color:var(--ink-2,#525b66); } .ds-slip-result { margin:0.25rem 0 0; font-size:0.875rem; }"
-    },
-    {
-      "name": "Alert Notice",
+      "name": "Actor Marks",
       "kind": "custom",
-      "refersTo": "notice-alert",
-      "description": "An error the human should act on.",
-      "html": "<p class=\"ds-notice-alert\" role=\"alert\">Duva couldn't be reached, so nothing was decided. Try again.</p>",
-      "css": ".ds-notice-alert { margin:0; padding:0.75rem 1rem; border-radius:4px; background:var(--alert-wash,#fdecea); color:var(--alert,#b42318); font:500 0.875rem/1.5 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif; }"
+      "refersTo": "actor-mark",
+      "description": "A human a dot, an agent a blue diamond, Duva a ring.",
+      "html": "<span class=\"ds-row\"><span class=\"ds-mark ds-human\"></span>Ada <span class=\"ds-mark ds-agent\"></span>Hermes <span class=\"ds-mark ds-duva\"></span>Duva</span>",
+      "css": ".ds-row { display: inline-flex; align-items: center; gap: 0.5rem; font: 400 0.84375rem/1.6 var(--mono); color: var(--ink); } .ds-mark { display: inline-block; width: 0.55rem; height: 0.55rem; } .ds-human { border-radius: 50%; background: var(--ink-2); } .ds-agent { border: 1.6px solid var(--agent); border-radius: 2px; transform: rotate(45deg) scale(0.82); } .ds-duva { border: 1.6px solid var(--ink-3); border-radius: 50%; }"
+    },
+    {
+      "name": "Status Strip",
+      "kind": "custom",
+      "refersTo": "status-strip",
+      "description": "The instrument's display along a desk's foot.",
+      "html": "<footer class=\"ds-strip\"><span><i class=\"ds-light\"></i>Up to date at 09:44</span><span>Hermes is running, 2 sends left this hour</span><span class=\"ds-end\"><kbd class=\"ds-key\">?</kbd> Shortcuts</span></footer>",
+      "css": ".ds-strip { display: flex; align-items: center; gap: 1.5rem; min-height: 2.125rem; padding: 0 1.4rem; background: var(--side); box-shadow: inset 0 1px 0 var(--seam); color: var(--ink-2); font: 500 0.6875rem/1 var(--mono); } .ds-light { display: inline-block; width: 6px; height: 6px; margin-right: 0.5rem; border-radius: 50%; background: var(--sent); } .ds-end { margin-left: auto; } .ds-key { padding: 0.18rem 0.32rem; border: 1px solid var(--seam); border-bottom-width: 2px; border-radius: 4px; background: var(--raise); font: 600 0.65625rem/1 var(--mono); }"
     }
   ],
   "narrative": {
-    "northStar": "The Galley Proof",
-    "overview": "Duva's web app is an editor's desk. The desk is dove grey. Each piece of mail lies on it as a white sheet, set in a book face, and everything Duva itself says sits around the sheet in the system sans. There is one color with intent, the editor's blue pencil. It marks what can be done, where focus is, and what is new. The rest is ink on paper.\n\nThe first surface, Approvals, sets a galley proof: the agent's draft beside the message it answers, on shared rows, with the decision under it. A decided proof folds into a slip that says how the send went. Density is moderate and calm. Sheets have generous padding (1.5rem), and the text column stops at 68ch.\n\nThe system is built in code, with no comps and no rasters. Styling is plain CSS with custom properties in one stylesheet (`packages/web/src/styles.css`), with no component library. PRODUCT.md lists the styling approach as undecided, so this is what the first surface chose, not a settled decision. The app is light only for now (`color-scheme: light`). Every interface string lives in `packages/web/src/strings.ts`.",
+    "northStar": "The Field Desk",
+    "overview": "Duva's web app is one precise instrument, laid flat. The side column, the list and the open thread lie side by side on a single plane, in three tones of aluminium grey that step lighter toward what is being read. Nothing is boxed: columns and rows part by tone, by a seam one shade off the grey, and by space. The direction was chosen in impeccable's direction round, seed 6c0f3a48, the North Window Desk re-rolled to Field Desk on Nicklas's steer, and `packages/web/index.html` carries its contract as the body's first comment, which the build keeps.\n\nThe voice is Teenage Engineering's: exact, a little playful, and sparing with color. Color never decorates. It is a function code, and each of the four hues says one thing: orange needs you, blue marks an agent, green is sent or healthy, red is an alert. All text, mail included, is set in JetBrains Mono with its ligatures on; the headings are Familjen Grotesk, tight and printed-looking. Shortcuts show as key caps, and who did something shows as a shape before their name.\n\nThe system is code-led: plain CSS with custom properties in one stylesheet (`packages/web/src/styles.css`), no component library, light only (`color-scheme: light`). Every string lives in `packages/web/src/strings.ts`. This file records the foundation, the tokens, the type, the shell and the shared controls. The areas (the thread and composer, the lists and the Screener, Approvals and Alerts, Settings and the admin sheets) are restyled in their own tickets, and until then they reach the new tokens through the old names, aliased in `:root`.",
     "keyCharacteristics": [
-      "Dove-grey desk, white sheets, one blue pencil.",
-      "Mail in Source Serif 4, the interface in the system sans.",
-      "Paper lifts off the desk. Controls stay flat.",
-      "Original and draft share rows, so the eye compares line by line.",
-      "Light only. Code-led, no rasters ship."
+      "One plane in three aluminium greys, no boxed sections.",
+      "Mono text with ligatures, grotesk headings.",
+      "Four function colors, each with one meaning, and never more.",
+      "Key caps for shortcuts, shapes for actors.",
+      "The full width on a desk, one column on a phone."
     ],
     "rules": [
       {
-        "name": "The One Pencil Rule",
-        "body": "Blue means \"you can act here\" or \"this is new\". It is never decoration, never a background area, never a heading color.",
-        "section": "colors"
-      },
-      {
-        "name": "The Status Ink Rule",
-        "body": "Green and red speak only about how a send went or whether Duva can be reached. They never style a control.",
+        "name": "The Function Code Rule",
+        "body": "Orange, blue, green and red each mean one thing and only that. None is a heading color, a background area or an ornament.",
         "section": "colors"
       },
       {
         "name": "The Two Hands Rule",
-        "body": "Text that is or becomes mail is set in the serif: bodies, subjects, the disclosure line, the editable text. What Duva says about the mail is set in the sans. The wordmark and the door and empty titles are the only serif outside the mail.",
+        "body": "Each function color fills at its own value and speaks text in its deeper hand (`-ink`), which keeps 4.5:1. A filled orange control carries ink, never white.",
+        "section": "colors"
+      },
+      {
+        "name": "The One Typewriter Rule",
+        "body": "All text is the mono; only headings and the wordmark are the grotesk. No third face.",
         "section": "typography"
       },
       {
@@ -408,31 +556,25 @@
         "section": "typography"
       },
       {
-        "name": "The Shared Rows Rule",
-        "body": "When two versions of a message are compared, they share grid rows. Never let one column's header push the other's text out of line.",
-        "section": "layout"
-      },
-      {
-        "name": "The Paper on Desk Rule",
-        "body": "Only sheets cast a shadow, and the shadow is soft and ink-tinted. A control that needs emphasis gets the pencil, not a shadow.",
+        "name": "The No Box Rule",
+        "body": "Columns, sections and rows are never boxed. They part by tone, a seam or space. A border is for a field, at 3:1, and a seam is one shade off its ground.",
         "section": "elevation"
       }
     ],
     "dos": [
-      "Do take every color, size and space from the custom properties in `styles.css`.",
-      "Do set mail text in Source Serif 4 at the proof size (1.0625rem, 1.6) and keep it under 68ch.",
-      "Do keep the pencil for actions, focus, links and new marks, and keep one primary button per decision.",
-      "Do put new interface strings in `strings.ts`, in plain, short sentences with no em dash.",
-      "Do honor reduced motion: every animation and transition is turned off under `prefers-reduced-motion`.",
-      "Do draw icons as inline SVG strokes in `currentColor`."
+      "Do separate columns and rows by tone, a seam or space.",
+      "Do use each function color for its one meaning, filled at its own value and as text in its `-ink` hand.",
+      "Do set every text in the mono with ligatures on, and every heading in the grotesk.",
+      "Do mark actors by shape with the one actor mark: dot, diamond, ring.",
+      "Do show a shortcut as a key cap beside the action it runs, hidden from screen readers.",
+      "Do keep text at 4.5:1 and field borders at 3:1 on every grey."
     ],
     "donts": [
-      "Don't add a second accent color or use the pencil as a fill for areas, headings or decoration.",
-      "Don't give controls, fields or notices a shadow; only sheets lift off the desk.",
-      "Don't set Duva's own interface text in the serif, or mail in the sans.",
-      "Don't use uppercase or letterspaced labels.",
-      "Don't add a dark scheme piecemeal. The app is light only until a dark palette is designed as a whole.",
-      "Don't ship comps or rasters for interface elements; the build is code-led."
+      "Don't box a section, a column or a list in a card.",
+      "Don't put white text on orange; it falls under 4.5:1. Ink goes on orange.",
+      "Don't use blue for anything but an agent, or orange for anything that doesn't need the human.",
+      "Don't add a third typeface, uppercase labels or letterspaced captions.",
+      "Don't use a dark theme; Field Desk is light only."
     ]
   }
 }

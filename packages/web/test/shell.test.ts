@@ -187,6 +187,9 @@ test("on a phone the bar is one row with the search icon and Write, and the plac
   }
   expect(await page.getByRole("button", { name: "Sign out" }).isVisible()).toBe(false);
   expect(await page.getByRole("searchbox").isVisible()).toBe(false);
+  // There is no status strip on a phone, so the Inbox says when Duva last checked.
+  await expect.poll(() => page.getByRole("main").getByText(/^Up to date at/).isVisible(), wait).toBe(true);
+  expect(await page.getByRole("contentinfo", { name: "Status" }).isVisible()).toBe(false);
 
   const places = page.getByRole("navigation", { name: "Duva" }).getByRole("link");
   expect(await places.allInnerTexts()).toEqual(["Mail", "Settings"]);
@@ -312,13 +315,13 @@ test("the first Tab reaches a skip link, which takes the human past the bar and 
   expect(await skip.isVisible()).toBe(true);
   await page.keyboard.press("Enter");
 
-  await expect.poll(() => page.evaluate(() => document.activeElement?.tagName === "H1" && document.activeElement.closest("main") !== null), wait).toBe(true);
+  await expect.poll(() => page.evaluate(() => document.activeElement?.tagName === "H1" && document.activeElement.closest("[role=main]") !== null), wait).toBe(true);
   expect(await title(page)).toBe("Inbox");
   await page.keyboard.press("Tab");
-  expect(await page.evaluate(() => document.activeElement?.closest("main") !== null)).toBe(true);
+  expect(await page.evaluate(() => document.activeElement?.closest("[role=main]") !== null)).toBe(true);
 });
 
-test("the mail's serif is fetched with the page, and Settings loads when first opened", budget, async () => {
+test("the text's and the headings' faces are fetched with the page, and Settings loads when first opened", budget, async () => {
   const { page, signIn } = await withTwoMailboxes();
   const scripts: string[] = [];
   page.on("request", (request) => {
@@ -327,9 +330,110 @@ test("the mail's serif is fetched with the page, and Settings loads when first o
   await signIn("ada@example.org");
   await expect.poll(() => title(page), wait).toBe("Inbox");
 
-  expect(await page.locator('link[rel="preload"][as="font"]').getAttribute("href")).toMatch(/source-serif-4-latin-opsz-normal/);
+  const preloaded = await page.locator('link[rel="preload"][as="font"]').evaluateAll((links) => links.map((link) => link.getAttribute("href")));
+  expect(preloaded).toEqual([expect.stringMatching(/familjen-grotesk-latin-wght-normal/), expect.stringMatching(/jetbrains-mono-latin-wght-normal/)]);
   const opening = scripts.length;
   await page.getByRole("navigation", { name: "Duva" }).getByRole("link", { name: "Settings" }).click();
   await expect.poll(() => title(page), wait).toBe("Settings");
   expect(scripts.length).toBeGreaterThan(opening);
+});
+
+test("on a desk a thread opens beside its list, which stays and marks the open line in orange, and Escape closes it", budget, async () => {
+  const { page, signIn, receive } = await withTwoMailboxes();
+  for (const subject of ["Kvitto", "Lunch", "Resplan"]) await receive("ada@example.com", subject);
+  await signIn("ada@example.org");
+  const threads = page.getByRole("list", { name: "Threads" });
+  await expect.poll(() => threads.getByRole("listitem").count(), wait).toBe(3);
+  // A mark on the list's element, to see whether the same list is still there once a thread is open.
+  await threads.evaluate((list) => (list.dataset.seen = "before"));
+
+  await threads.getByRole("link", { name: /Lunch/ }).click();
+
+  await expect.poll(() => title(page), wait).toBe("Lunch");
+  expect(await page.locator("ol[data-seen=before]").isVisible()).toBe(true);
+  const list = page.getByRole("region", { name: "Inbox" });
+  expect(await list.getByRole("heading", { level: 2 }).textContent()).toBe("Inbox");
+  const open = threads.locator("a[aria-current=true]");
+  expect(await open.getAttribute("aria-label")).toMatch(/Lunch/);
+  expect(await open.evaluate((line) => getComputedStyle(line).boxShadow)).toContain("rgb(255, 90, 31)");
+  const [listBox, letterBox] = [(await threads.boundingBox())!, (await page.getByRole("article").boundingBox())!];
+  expect(letterBox.x).toBeGreaterThanOrEqual(listBox.x + listBox.width);
+  expect(await page.title()).toBe("Lunch · Duva");
+
+  // j and k still move through the list beside the thread, and Enter opens the line they reach.
+  await page.keyboard.press("j");
+  await page.keyboard.press("j");
+  await page.keyboard.press("Enter");
+  await expect.poll(() => title(page), wait).toBe("Kvitto");
+  expect(await page.locator("ol[data-seen=before]").count()).toBe(1);
+
+  await page.keyboard.press("Escape");
+
+  await expect.poll(() => title(page), wait).toBe("Inbox");
+  expect(await page.locator("ol[data-seen=before]").count()).toBe(1);
+  expect(await threads.locator("a[aria-current]").count()).toBe(0);
+  expect(await page.getByText("Nothing open").isVisible()).toBe(true);
+});
+
+test("narrower than a desk, a thread takes the column, and its back link returns to the list", budget, async () => {
+  const { page, signIn, receive } = await withTwoMailboxes({ viewport: { width: 900, height: 800 } });
+  await receive("ada@example.com", "Lunch");
+  await signIn("ada@example.org");
+  await page.getByRole("list", { name: "Threads" }).getByRole("link", { name: /Lunch/ }).click();
+
+  await expect.poll(() => title(page), wait).toBe("Lunch");
+  expect(await page.getByRole("list", { name: "Threads" }).isVisible()).toBe(false);
+  expect(await fits(page)).toBe(true);
+  await page.getByRole("main").getByRole("link", { name: "Inbox" }).click();
+  await expect.poll(() => page.getByRole("list", { name: "Threads" }).isVisible(), wait).toBe(true);
+  expect(await page.getByText("Nothing open").isVisible()).toBe(false);
+});
+
+test("Write and a draft open in the reading pane, beside the list the human was on", budget, async () => {
+  const { page, signIn, receive } = await withTwoMailboxes();
+  await receive("ada@example.com", "Lunch");
+  await signIn("ada@example.org");
+  await views(page).getByRole("link", { name: "Sent" }).click();
+  await expect.poll(() => title(page), wait).toBe("Sent");
+
+  await page.getByRole("button", { name: "Write" }).click();
+
+  await expect.poll(() => page.getByLabel("Subject", { exact: true }).isVisible(), wait).toBe(true);
+  expect(await page.getByRole("region", { name: "Sent", exact: true }).isVisible()).toBe(true);
+  expect(await title(page)).toBe("New message");
+  await page.getByLabel("Subject", { exact: true }).fill("Från Ada");
+  await page.getByLabel("Message", { exact: true }).fill("Hej.");
+  await expect.poll(() => page.url(), wait).toMatch(/drafts\/[^/]+$/);
+  expect(await page.getByRole("region", { name: "Sent", exact: true }).isVisible()).toBe(true);
+
+  await views(page).getByRole("link", { name: "Drafts" }).click();
+  await page.getByRole("list", { name: "Drafts" }).getByRole("link").first().click();
+  await expect.poll(() => page.getByLabel("Message", { exact: true }).inputValue(), wait).toBe("Hej.");
+  expect(await page.getByRole("region", { name: "Drafts" }).getByRole("link", { name: /Från Ada/ }).getAttribute("aria-current")).toBe("true");
+});
+
+test("the status strip says Duva is up to date, how each sponsored agent stands, the key for shortcuts and who is signed in", budget, async () => {
+  const app = await startWebApp({ domain: "example.com", admin: "ada@example.org" });
+  const ada = app.duva.signIn("ada@example.org");
+  const { data: me } = await ada.GET("/whoami");
+  await ada.POST("/mailboxes", { body: { owner: me!.id, address: "ada@example.com" } });
+  const { data: hermes } = await ada.POST("/agents", { body: { name: "Hermes" } });
+  await ada.POST("/mailboxes", { body: { owner: hermes!.agent.id, address: "hermes@example.com" } });
+  await ada.PATCH("/agents/{agent}/settings", { params: { path: { agent: hermes!.agent.id } }, body: { sendsPerHour: 2 } });
+  const { page } = app;
+  await app.signIn("ada@example.org");
+  const strip = page.getByRole("contentinfo", { name: "Status" });
+
+  await expect.poll(() => strip.innerText(), wait).toMatch(/Up to date at/);
+  await expect.poll(() => strip.innerText(), wait).toContain("Hermes is running, 2 sends left this hour");
+  expect(await strip.innerText()).toContain("ada@example.org, admin");
+  expect(await strip.getByRole("button", { name: "Sign out" }).isVisible()).toBe(true);
+  // The agent's mailbox carries its diamond beside the mail too.
+  expect(await mailboxes(page).getByRole("link", { name: /^Hermes/ }).locator(".actor-mark-agent").count()).toBe(1);
+
+  await ada.POST("/agents/{agent}/pause", { params: { path: { agent: hermes!.agent.id } } });
+
+  await expect.poll(() => strip.innerText(), wait).toContain("Hermes is paused");
+  await strip.getByRole("button", { name: "Shortcuts" }).click();
+  expect(await page.getByRole("dialog", { name: "Keyboard shortcuts" }).isVisible()).toBe(true);
 });

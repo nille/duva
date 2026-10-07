@@ -6,6 +6,7 @@ import { releaseHeldSends, withdrawPendingApprovals } from "./drafting.ts";
 import type { Table } from "./deployment.ts";
 import { syncRecipients } from "./receiving.ts";
 import { removeAgentWithMailboxes } from "./removal.ts";
+import { sendsLeft } from "./limits.ts";
 import { isLimit } from "./settings.ts";
 import { setupOperation, takeAgentAdminAway } from "./setup.ts";
 import {
@@ -40,10 +41,13 @@ export const createAgent: OperationHandler = async (event, deployment, actor) =>
   return { statusCode: 201, body: created satisfies components["schemas"]["AgentWithKey"] };
 };
 
-export const listAgents: OperationHandler = async (_event, deployment, actor) => ({
-  statusCode: 200,
-  body: { agents: await sponsoredAgents(deployment.table, actor!.id) } satisfies components["schemas"]["AgentList"],
-});
+export const listAgents: OperationHandler = async (_event, deployment, actor) => {
+  const now = new Date();
+  const agents = await Promise.all(
+    (await sponsoredAgents(deployment.table, actor!.id)).map(async (agent) => ({ ...agent, sendsLeftThisHour: await sendsLeft(deployment.table, agent.id, now) })),
+  );
+  return { statusCode: 200, body: { agents } satisfies components["schemas"]["AgentList"] };
+};
 
 export const listOrganizationAgents: OperationHandler = async (_event, deployment, actor) => {
   if (!actor?.admin) return refusal(403, "Only admins can list the organization's agents. List the agents you sponsor with agents list.");

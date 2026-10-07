@@ -48,6 +48,22 @@ export const strings = {
     search: "Search",
     skip: "Skip to main content",
   },
+  /** The status strip along the foot of a desk. */
+  strip: {
+    label: "Status",
+    unreachable: "Duva couldn't check for changes. It tries again by itself.",
+    running: (agent: string, left?: number) =>
+      left === undefined ? `${agent} is running` : `${agent} is running, ${left === 0 ? "no sends" : left === 1 ? "1 send" : `${left} sends`} left this hour`,
+    paused: (agent: string) => `${agent} is paused`,
+    shortcuts: "Shortcuts",
+  },
+
+  /** The reading pane while nothing is open from the list beside it. */
+  reader: {
+    title: "Nothing open",
+    lead: "What you open from the list shows here.",
+  },
+
   connection: {
     upToDate: (time: string) => `Up to date at ${time}`,
     unreachable: "Duva couldn't check for new requests. It tries again by itself.",

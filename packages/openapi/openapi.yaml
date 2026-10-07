@@ -398,7 +398,7 @@ paths:
           $ref: "#/components/responses/Forbidden"
     get:
       operationId: listAgents
-      summary: List the agents you sponsor.
+      summary: List the agents you sponsor, each with how many sends it has left this hour.
       x-cli-command: agents list
       responses:
         "200":
@@ -2793,6 +2793,13 @@ components:
             removes humans or agents, or changes who is an admin.
         paused:
           $ref: "#/components/schemas/Pause"
+        sendsLeftThisHour:
+          type: integer
+          minimum: 0
+          description: >-
+            How many more messages the agent's send limits let it send now,
+            counting its sends of the last hour. Its sends that wait for the
+            limits leave none. There only when you list the agents you sponsor.
     Pause:
       type: object
       additionalProperties: false

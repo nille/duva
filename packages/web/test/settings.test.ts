@@ -271,7 +271,7 @@ test("a human chooses 24-hour time and ISO dates, and the Inbox and a thread sho
   await expect.poll(() => you(page).getByRole("status").textContent(), wait).toBe(saved);
   expect((await grace.GET("/preferences")).data).toEqual({ hourCycle: "h23", dateFormat: "iso", mailView: "html", keyboardShortcuts: "on" });
 
-  await page.getByRole("navigation").getByRole("link", { name: "Mail" }).click();
+  await page.getByRole("navigation").getByRole("link", { name: "Mail", exact: true }).click();
   await expect.poll(() => row(page, "Lunch").textContent(), wait).toBe("09:15");
   expect(await row(page, "Lunch").getAttribute("title")).toBe("2026-10-05 09:15");
   expect(await row(page, "Kvitto").textContent()).toBe("10-04");
@@ -305,7 +305,7 @@ test("a human chooses dates with the day first, and their 12-hour time stays", b
   await you(page).getByRole("button", { name: "Save" }).click();
   await expect.poll(() => you(page).getByRole("status").textContent(), wait).toBe(saved);
 
-  await page.getByRole("navigation").getByRole("link", { name: "Mail" }).click();
+  await page.getByRole("navigation").getByRole("link", { name: "Mail", exact: true }).click();
   await expect.poll(() => row(page, "Kvitto").textContent(), wait).toBe("4 Oct");
   expect(await row(page, "Lunch").textContent()).toBe("9:15 AM");
   await page.getByRole("link", { name: /Lunch/ }).click();

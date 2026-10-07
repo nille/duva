@@ -50,7 +50,7 @@ test("a sponsor who isn't an admin can't make their agent an admin", async () =>
 
   expect(response.status).toBe(403);
   expect(error?.message).toMatch(/aren't one/);
-  expect((await ada.GET("/agents")).data?.agents).toEqual([iris]);
+  expect((await ada.GET("/agents")).data?.agents).toEqual([{ ...iris, sendsLeftThisHour: 100 }]);
 });
 
 test("an admin can't make an agent they don't sponsor an admin", async () => {
@@ -60,7 +60,7 @@ test("an admin can't make an agent they don't sponsor an admin", async () => {
   const { response } = await makeAdmin(true, grace, iris.id);
 
   expect(response.status).toBe(403);
-  expect((await ada.GET("/agents")).data?.agents).toEqual([iris]);
+  expect((await ada.GET("/agents")).data?.agents).toEqual([{ ...iris, sendsLeftThisHour: 100 }]);
 });
 
 test("no agent changes who is an admin, an agent admin included", async () => {
@@ -461,8 +461,8 @@ test("an agent admin can't remove an agent, not even with approval", async () =>
     expect(response.status).toBe(403);
     expect(error?.message).toMatch(/Agents can't remove agents/);
   }
-  expect((await ada.GET("/agents")).data?.agents).toEqual([iris]);
-  expect((await grace.GET("/agents")).data?.agents).toEqual([{ ...agent, admin: true }]);
+  expect((await ada.GET("/agents")).data?.agents).toEqual([{ ...iris, sendsLeftThisHour: 100 }]);
+  expect((await grace.GET("/agents")).data?.agents).toEqual([{ ...agent, admin: true, sendsLeftThisHour: 100 }]);
   expect((await grace.GET("/approvals")).data?.setupApprovals).toEqual([]);
 });
 

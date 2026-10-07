@@ -114,6 +114,31 @@ test("a send over the hourly limit waits, and goes out by itself once an hour ha
   expect(await state(second.id)).toBe("sent");
 });
 
+test("the agents a sponsor lists say how many sends each has left in the rolling hour", async () => {
+  const { ada, grace, limit, send, after } = await withAgent();
+  const left = async () => (await ada.GET("/agents")).data?.agents.map(({ name, sendsLeftThisHour }) => [name, sendsLeftThisHour]);
+  await limit({ sendsPerHour: 3 });
+  expect(await left()).toEqual([["Hermes", 3]]);
+
+  await send("one@example.net");
+  await after(minutes(30));
+  await send("two@example.net");
+  expect(await left()).toEqual([["Hermes", 1]]);
+  await send("three@example.net");
+  await send("four@example.net");
+  // The fourth waits, so none are left.
+  expect(await left()).toEqual([["Hermes", 0]]);
+
+  await after(hours(1) + minutes(1));
+  // The first left the hour, and the one that waited went out in its place.
+  expect(await left()).toEqual([["Hermes", 0]]);
+  await after(hours(1) + minutes(31));
+  // The second and third left it too, so only the fourth counts.
+  expect(await left()).toEqual([["Hermes", 2]]);
+  // An admin's list of the organization's agents doesn't say.
+  expect((await grace.GET("/organization/agents")).data?.agents.map(({ sendsLeftThisHour }) => sendsLeftThisHour)).toEqual([undefined]);
+});
+
 test("sends that wait go out oldest first, as many as the rolling hour allows", async () => {
   const { duva, limit, send, after } = await withAgent();
   await limit({ sendsPerHour: 2 });

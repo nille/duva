@@ -1,5 +1,5 @@
-// The parts every view shows mail with: header fields, addresses, times, and whether Duva can be reached.
-import type { ReactNode } from "react";
+// The parts every view shows mail with: header fields, addresses, times, who an actor is, and whether Duva can be reached.
+import { type ReactNode, useSyncExternalStore } from "react";
 import type { components } from "@duva/openapi";
 import { useDates } from "./dates.ts";
 import type { Connection as ConnectionState } from "./feed.ts";
@@ -90,15 +90,30 @@ export function Time({ at, format = (time) => time, short = false }: { at: strin
   );
 }
 
+/** Who an actor is, by shape, so it reads without color: a human a filled dot, an agent a blue diamond, Duva itself a ring. The name beside it says who. */
+export const ActorMark = ({ kind }: { kind: "human" | "agent" | "duva" }) => <span className={`actor-mark actor-mark-${kind}`} aria-hidden="true" />;
+
 /** The display name of an address, or the address itself. */
 export const nameOf = (address: EmailAddress) => address.name || address.address;
 
+/**
+ * Whether Duva is up to date, or couldn't be reached. On a desk the status strip says when it is up
+ * to date, so a view says only when it couldn't be.
+ */
 export function Connection({ state, unreachable = strings.connection.unreachable }: { state: ConnectionState; unreachable?: string }) {
   const { clock } = useDates();
-  if (state === undefined) return null;
+  const desk = useSyncExternalStore(watchDesk, () => deskQuery.matches);
+  if (state === undefined || (state.ok && desk)) return null;
   return (
     <p className={state.ok ? "connection" : "connection connection-down"}>
       {state.ok ? strings.connection.upToDate(clock(state.at)) : <span role="alert">{unreachable}</span>}
     </p>
   );
 }
+
+/** Whether the window is a desk's, wide enough for the status strip. */
+const deskQuery = matchMedia("(min-width: 48.0625rem)");
+const watchDesk = (changed: () => void) => {
+  deskQuery.addEventListener("change", changed);
+  return () => deskQuery.removeEventListener("change", changed);
+};

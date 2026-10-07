@@ -160,7 +160,7 @@ Only admins can remove humans. Run it first with dryRun to see the human's mailb
 
 ## duva agents list
 
-List the agents you sponsor.
+List the agents you sponsor, each with how many sends it has left this hour.
 
 ## duva agents create
 

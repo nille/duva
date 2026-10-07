@@ -245,7 +245,7 @@ test("a sponsor who isn't an admin is told only admins make agents admins, and o
   expect(await part.getByRole("button").count()).toBe(0);
 });
 
-test("a checked box on an agent's line lies on paper, and only a chosen radio lies on Pencil Wash", budget, async () => {
+test("a checked box on an agent's line lies on paper, and only a chosen radio lies on the field grey", budget, async () => {
   const { page, signIn } = await withSponsor();
   await signIn("grace@example.org");
   await openYourAgents(page);
@@ -255,7 +255,7 @@ test("a checked box on an agent's line lies on paper, and only a chosen radio li
   const box = form.getByRole("checkbox", { name: /^Your approval before it sends from its own mailbox/ });
   expect(await box.isChecked()).toBe(true);
   expect(await background(box)).toBe("rgba(0, 0, 0, 0)");
-  expect(await background(form.getByRole("radio", { name: /^None/ }))).toBe("rgb(232, 237, 251)");
+  expect(await background(form.getByRole("radio", { name: /^None/ }))).toBe("rgb(226, 226, 221)");
 });
 
 test("the part on pausing is named for what it holds, not for its button", budget, async () => {

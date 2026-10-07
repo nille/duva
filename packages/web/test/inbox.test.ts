@@ -126,12 +126,12 @@ test("long quoted text is folded until the human asks for it", budget, async () 
 
   const show = page.getByRole("button", { name: "Show quoted text" });
   await expect.poll(() => show.getAttribute("aria-expanded"), wait).toBe("false");
-  expect(await page.getByText("Ja, det går bra.").isVisible()).toBe(true);
-  expect(await page.getByText("Gammal rad 8").isVisible()).toBe(false);
+  expect(await page.getByRole("article").getByText("Ja, det går bra.").isVisible()).toBe(true);
+  expect(await page.getByRole("article").getByText("Gammal rad 8").isVisible()).toBe(false);
 
   await show.click();
 
-  await expect.poll(() => page.getByText("Gammal rad 8").isVisible(), wait).toBe(true);
+  await expect.poll(() => page.getByRole("article").getByText("Gammal rad 8").isVisible(), wait).toBe(true);
 });
 
 test("a thread the human marks unread stays unread, however late the mark-reads from reading it reach Duva", budget, async () => {

@@ -3,11 +3,12 @@
 // and close, and ? for a sheet listing them all. None acts while the human types in a field. A stray
 // key, or a word said to speech input, would set them off, so a human can turn them all off on You
 // (WCAG 2.1.4).
-import { type RefObject, useContext, useEffect, useId, useRef, useState } from "react";
+import { type RefObject, useContext, useEffect, useId, useRef } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
 import { PreferencesContext } from "./dates.ts";
 import { changeFor, type Done, type Labelled, organize, type Place, SessionEnded } from "./organize.tsx";
+import { useBeside } from "./panes.tsx";
 import { strings } from "./strings.ts";
 
 type Mailbox = components["schemas"]["Mailbox"];
@@ -48,7 +49,8 @@ export function useShortcuts(keys: Record<string, (() => void) | undefined>) {
  * cursor, as Enter does. The cursor is the line with the focus, or the one that last had it. e
  * archives and # moves to Trash the threads picked or, with none picked, the thread at the cursor,
  * which stays where it was when the human comes back to the list from a thread,
- * where the list offers that, and says so as its buttons do. If the cursor's thread leaves the list,
+ * where the list offers that, and says so as its buttons do. Beside an open thread, e and # are the
+ * thread's, and while the list is out of sight, as when the thread takes the column, no key is its. If the cursor's thread leaves the list,
  * the cursor moves on to the next thread, or the one before it at the end.
  */
 export function useThreadKeys<Thread extends Labelled>({
@@ -126,12 +128,16 @@ export function useThreadKeys<Thread extends Labelled>({
     }
   };
 
+  const { thread } = useBeside();
+  const shown = (key: () => void) => () => {
+    if (list.current?.checkVisibility() === true) key();
+  };
   useShortcuts({
-    j: () => move(1),
-    k: () => move(-1),
-    o: () => line(cursor.current)?.click(),
-    e: () => void act("archive"),
-    "#": () => void act("trash"),
+    j: shown(() => move(1)),
+    k: shown(() => move(-1)),
+    o: shown(() => line(cursor.current)?.click()),
+    e: thread ? undefined : shown(() => void act("archive")),
+    "#": thread ? undefined : shown(() => void act("trash")),
   });
 }
 
@@ -140,13 +146,12 @@ let lastCursor: string | undefined;
 
 /**
  * The shortcuts of the whole web app: c writes with `write`, Escape closes with `close` where there
- * is something to close, as a thread is, and ? opens the sheet listing every shortcut. `/` is the
- * search box's own.
+ * is something to close, as a thread is, and ? opens the sheet listing every shortcut, which
+ * `sheetOpen` says is open, as the status strip's key opens it too. `/` is the search box's own.
  */
-export function Shortcuts({ write, close }: { write?: () => void; close?: () => void }) {
-  const [open, setOpen] = useState(false);
-  useShortcuts({ c: write, Escape: close, "?": () => setOpen(true) });
-  return open ? <ShortcutsSheet onClose={() => setOpen(false)} /> : null;
+export function Shortcuts({ write, close, sheetOpen, onSheet }: { write?: () => void; close?: () => void; sheetOpen: boolean; onSheet: (open: boolean) => void }) {
+  useShortcuts({ c: write, Escape: close, "?": () => onSheet(true) });
+  return sheetOpen ? <ShortcutsSheet onClose={() => onSheet(false)} /> : null;
 }
 
 /** The sheet listing every shortcut, over the page, which Escape and Close put away, back to where the focus was. */

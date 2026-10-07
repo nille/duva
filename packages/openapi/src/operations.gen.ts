@@ -348,7 +348,7 @@ export const operations = [
     "method": "get",
     "path": "/agents",
     "routeKey": "GET /agents",
-    "summary": "List the agents you sponsor.",
+    "summary": "List the agents you sponsor, each with how many sends it has left this hour.",
     "description": "",
     "signIn": true,
     "command": [

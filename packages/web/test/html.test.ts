@@ -235,7 +235,7 @@ test("a human chooses plain text on the You sheet, and HTML mail shows as text u
 
   await expect.poll(() => you.getByRole("status").textContent(), wait).toBe("Saved. This applies from now on.");
   expect((await grace.GET("/preferences")).data?.mailView).toBe("text");
-  await page.getByRole("navigation").getByRole("link", { name: "Mail" }).click();
+  await page.getByRole("navigation").getByRole("link", { name: "Mail", exact: true }).click();
   await open(page, "Höstens nyheter");
   const article = page.getByRole("article");
   await expect.poll(() => article.innerText(), wait).toContain("Höstens nyheter från Lindvallen.");

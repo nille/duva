@@ -63,6 +63,20 @@ export async function readWindow(table: Table, agent: string, now: Date): Promis
   return { version: (Item?.version as number | undefined) ?? 0, sends };
 }
 
+/** How many more sends the agent's limits let it send now: its hourly limit less its sends of the last hour, or none while sends wait for the limits. */
+export async function sendsLeft(table: Table, agent: string, now: Date): Promise<number> {
+  const [window, limits, waiting] = await Promise.all([readWindow(table, agent, now), limitsOf(table, agent), waitingSends(table, agent)]);
+  if (waiting.length > 0) return 0;
+  return Math.max(0, limits.sendsPerHour - lastHour(window, now).length);
+}
+
+/** When each of the agent's sends of the last hour went out, oldest first. */
+const lastHour = (window: Window, now: Date) =>
+  window.sends
+    .filter((send) => send.at > now.getTime() - hour)
+    .map((send) => send.at)
+    .sort((a, b) => a - b);
+
 /** The addresses the agent hasn't sent to before, from any mailbox, each once, in lower case. */
 export async function newRecipients(table: Table, agent: string, addresses: string[]): Promise<string[]> {
   const unique = [...new Set(addresses.map((address) => address.toLowerCase()))];
@@ -88,11 +102,8 @@ export async function newRecipients(table: Table, agent: string, addresses: stri
 export function allowedAt(window: Window, limits: Limits, fresh: number, now: Date): Date | "never" | undefined {
   if (fresh > limits.newRecipientsPerDay) return "never";
   let at = 0;
-  const lastHour = window.sends
-    .filter((send) => send.at > now.getTime() - hour)
-    .map((send) => send.at)
-    .sort((a, b) => a - b);
-  if (lastHour.length >= limits.sendsPerHour) at = lastHour[lastHour.length - limits.sendsPerHour]! + hour;
+  const sent = lastHour(window, now);
+  if (sent.length >= limits.sendsPerHour) at = sent[sent.length - limits.sendsPerHour]! + hour;
   if (fresh > 0) {
     const lastDay = window.sends.filter((send) => send.at > now.getTime() - day && send.newRecipients > 0).sort((a, b) => a.at - b.at);
     let total = lastDay.reduce((sum, send) => sum + send.newRecipients, fresh);

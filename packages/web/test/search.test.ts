@@ -268,8 +268,8 @@ test("opening a result shows its thread at the message that matched, and the way
   expect(await matched.innerText()).toContain("Tåget till Lissabon går klockan åtta.");
   await expect.poll(async () => (await matched.boundingBox())!.y, wait).toBeGreaterThanOrEqual(0);
   expect((await matched.boundingBox())!.y).toBeLessThan(600);
-  // It is ringed in pencil for a moment.
-  const ring = () => matched.evaluate((letter) => /rgb\(43, 79, 192\)/.test(getComputedStyle(letter).boxShadow));
+  // It is ringed in ink for a moment.
+  const ring = () => matched.evaluate((letter) => /rgb\(22, 22, 22\)/.test(getComputedStyle(letter).boxShadow));
   await expect.poll(ring, wait).toBe(true);
   await expect.poll(ring, wait).toBe(false);
 

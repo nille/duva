@@ -107,7 +107,8 @@ test("in an open thread e archives it, said in the Inbox it returns to", budget,
 
   await expect.poll(() => heading(page), wait).toBe("Inbox");
   await expect.poll(() => said(page), wait).toContain("Archived 1 thread.");
-  expect(await listed(page)).toEqual([]);
+  // The Inbox stayed beside the thread, and reads its threads again.
+  await expect.poll(() => listed(page), wait).toEqual([]);
   await openIn(page, /^All mail/, "Möte");
 });
 
@@ -118,7 +119,7 @@ test("in an open thread # moves it to Trash, said in the Inbox it returns to", b
 
   await expect.poll(() => heading(page), wait).toBe("Inbox");
   await expect.poll(() => said(page), wait).toContain("Moved 1 thread to Trash.");
-  expect(await listed(page)).toEqual([]);
+  await expect.poll(() => listed(page), wait).toEqual([]);
   await openIn(page, /^Trash/, "Möte");
 });
 

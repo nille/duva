@@ -148,7 +148,7 @@ test("a human lists the agents they sponsor, and only those", async () => {
   const { data } = await ada.GET("/agents");
 
   expect(data?.agents).toHaveLength(2);
-  expect(data?.agents).toEqual(expect.arrayContaining([hermes?.agent, iris?.agent]));
+  expect(data?.agents).toEqual(expect.arrayContaining([{ ...hermes?.agent, sendsLeftThisHour: 100 }, { ...iris?.agent, sendsLeftThisHour: 100 }]));
 });
 
 test("creating an agent and rotating its key are in the change feed, attributed to the sponsor", async () => {

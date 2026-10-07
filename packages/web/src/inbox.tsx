@@ -8,6 +8,7 @@ import type { Connection as ConnectionState } from "./feed.ts";
 import { useDates } from "./dates.ts";
 import { Connection, nameOf, Time } from "./mail-parts.tsx";
 import { type Done, type Label, type Labelled, labelRefusal, OrganizeActions, ownLabelsOf, type Place } from "./organize.tsx";
+import { useBeside, useViewTitle, ViewMain, ViewTitle } from "./panes.tsx";
 import { useThreadKeys } from "./shortcuts.tsx";
 import { strings } from "./strings.ts";
 import { type ThreadsView, threadHref, titleOf } from "./views.tsx";
@@ -32,7 +33,7 @@ class ListingFailed extends Error {}
  * sponsor, whose Inbox is at `base` in the web app. `version` counts the changes to the mailbox the
  * app has seen, so the listing reads its pages again when it changes. `done` is what the human last did, said at the head with
  * a way to undo it, and `onDone` hears each new thing they do. Only the Inbox says when Duva last
- * checked for mail, and every view says when it couldn't.
+ * checked for mail, on a phone, where there is no status strip, and every view says when it couldn't.
  */
 export function ThreadIndex({
   client,
@@ -146,10 +147,9 @@ export function ThreadIndex({
 
   // Sent lists what was written from the mailbox, so it counts nothing unread.
   const unread = listing.status === "listed" && !("sent" in view) ? listing.threads.filter((thread) => thread.unread).length : 0;
-  useEffect(() => {
-    document.title = strings.title(title, unread);
-  }, [title, unread]);
+  useViewTitle(strings.title(title, unread));
 
+  const { open } = useBeside();
   const threads = listing.status === "listed" ? listing.threads : noThreads;
   const picking = usePicking(threads);
   const place: Place = "label" in view ? { label: view.label } : { all: true };
@@ -167,12 +167,12 @@ export function ThreadIndex({
   const ownLabel = label === undefined ? undefined : labels.find((each) => each.id === label && !each.builtIn);
 
   return (
-    <main className="desk" aria-busy={listing.status === "loading"}>
+    <ViewMain className="desk" aria-busy={listing.status === "loading"}>
       <div className="desk-head">
         {ownLabel === undefined ? (
-          <h1 tabIndex={-1} className="view-title">
+          <ViewTitle tabIndex={-1} className="view-title">
             {title}
-          </h1>
+          </ViewTitle>
         ) : (
           <LabelHead client={client} mailbox={mailbox} base={base} label={ownLabel} onDone={onDone} onSignedOut={onSignedOut} />
         )}
@@ -224,6 +224,7 @@ export function ThreadIndex({
                 href={threadHref(thread.id, view, base)}
                 snippet={thread.snippet}
                 fresh={listing.fresh.has(thread.id)}
+                open={thread.id === open}
                 selected={picking.selected.has(thread.id)}
                 onToggle={() => picking.toggle(thread.id)}
               />
@@ -238,7 +239,7 @@ export function ThreadIndex({
           )}
         </div>
       )}
-    </main>
+    </ViewMain>
   );
 }
 
@@ -451,7 +452,7 @@ function LabelHead({
           void rename();
         }}
       >
-        <h1 className="visually-hidden">{label.name}</h1>
+        <ViewTitle className="visually-hidden">{label.name}</ViewTitle>
         <label htmlFor={fieldId}>{strings.labelForm.renameLabel(label.name)}</label>
         <div className="label-form-row">
           <input
@@ -486,9 +487,9 @@ function LabelHead({
 
   return (
     <>
-      <h1 tabIndex={-1} className="view-title">
+      <ViewTitle tabIndex={-1} className="view-title">
         {label.name}
-      </h1>
+      </ViewTitle>
       <div className="label-tools">
         {mode === "deleting" ? (
           <div className="confirm" role="group" aria-label={strings.labelForm.deleteLabel}>
@@ -535,6 +536,7 @@ export function ThreadRow({
   href,
   snippet,
   fresh = false,
+  open = false,
   selected,
   onToggle,
 }: {
@@ -543,6 +545,8 @@ export function ThreadRow({
   href: string;
   snippet: ReactNode;
   fresh?: boolean;
+  /** Whether the thread is open beside the list. */
+  open?: boolean;
   selected: boolean;
   onToggle: () => void;
 }) {
@@ -553,7 +557,7 @@ export function ThreadRow({
         <input type="checkbox" checked={selected} onChange={onToggle} />
         <span className="visually-hidden">{strings.organize.select(thread.subject || strings.thread.noSubject)}</span>
       </label>
-      <ThreadLine thread={thread} labels={labels} href={href} snippet={snippet} />
+      <ThreadLine thread={thread} labels={labels} href={href} snippet={snippet} open={open} />
     </li>
   );
 }
@@ -563,7 +567,7 @@ export function ThreadRow({
  * subject with the labels named, the snippet, and the date. A search's results give a snippet of
  * their own, with the words found marked.
  */
-export function ThreadLine({ thread, labels, href, snippet }: { thread: ThreadSummary; labels: string[]; href: string; snippet: ReactNode }) {
+export function ThreadLine({ thread, labels, href, snippet, open = false }: { thread: ThreadSummary; labels: string[]; href: string; snippet: ReactNode; open?: boolean }) {
   const snippetId = useId();
   const { day } = useDates();
   const sender = nameOf(thread.from);
@@ -580,7 +584,7 @@ export function ThreadLine({ thread, labels, href, snippet }: { thread: ThreadSu
     .filter(Boolean)
     .join(", ");
   return (
-    <a className={thread.unread ? "thread thread-unread" : "thread"} href={href} aria-label={label} aria-describedby={snippet === "" ? undefined : snippetId}>
+    <a className={thread.unread ? "thread thread-unread" : "thread"} href={href} aria-label={label} aria-describedby={snippet === "" ? undefined : snippetId} aria-current={open ? "true" : undefined}>
       <span className="thread-mark" aria-hidden="true" />
       <span className="thread-sender">
         <span className="thread-sender-name">{sender}</span>

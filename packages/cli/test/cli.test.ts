@@ -524,12 +524,12 @@ test("agents list shows the agents the signed-in human sponsors", async () => {
   onTestFinished(() => server.close());
   await machine.saveDeployment(server);
   await machine.duva("login", { browserSignsIn: "ada@example.com" });
-  const { agent } = JSON.parse((await machine.duva("agents", "create", "--name", "Hermes")).stdout) as { agent: unknown };
+  const { agent } = JSON.parse((await machine.duva("agents", "create", "--name", "Hermes")).stdout) as { agent: object };
 
   const result = await machine.duva("agents", "list");
 
   expect(result.exitCode).toBe(0);
-  expect(JSON.parse(result.stdout)).toEqual({ agents: [agent] });
+  expect(JSON.parse(result.stdout)).toEqual({ agents: [{ ...agent, sendsLeftThisHour: 100 }] });
 });
 
 test("the sponsor gives an agent read sponsor access and turns a switch off, and the agent then lists and reads the sponsor's mailbox", async () => {

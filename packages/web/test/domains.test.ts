@@ -52,7 +52,7 @@ test("an admin adds a domain and sees the DNS records to add, each missing, with
 
   await expect.poll(() => said(page), wait).toBe("Added example.net. Add its DNS records, below.");
   expect(await summary(page, "example.net").textContent()).toBe("Standalone domain. Waiting for DNS. 7 records missing, so mail can't arrive yet.");
-  expect(await summary(page, "example.net").evaluate((element) => getComputedStyle(element).color)).toBe("rgb(82, 91, 102)");
+  expect(await summary(page, "example.net").evaluate((element) => getComputedStyle(element).color)).toBe("rgb(86, 86, 79)");
   await expect.poll(() => statuses(page, "example.net"), wait).toEqual([
     "Receiving, MX record: Missing",
     "DKIM, CNAME record: Missing",
@@ -119,14 +119,14 @@ test("a domain SES verified for sending, whose receiving record DNS lacks, says 
   await settings();
 
   expect(await summary(page, "example.com").textContent()).toBe("Standalone domain. Verified for sending. 2 records missing, so mail can't arrive yet. Sign-in codes come from here.");
-  expect(await summary(page, "example.com").evaluate((element) => getComputedStyle(element).color)).toBe("rgb(180, 35, 24)");
+  expect(await summary(page, "example.com").evaluate((element) => getComputedStyle(element).color)).toBe("rgb(196, 26, 47)");
 
   duva.dnsRecord("MX", "example.com", ["10 inbound-smtp.eu-north-1.amazonaws.com"]);
   await line(page, "example.com").getByRole("heading").click();
   await opened(page, "example.com").getByRole("button", { name: "Check again" }).click();
 
   await expect.poll(() => summary(page, "example.com").textContent(), wait).toBe("Standalone domain. Verified. 1 record missing. Sign-in codes come from here.");
-  expect(await summary(page, "example.com").evaluate((element) => getComputedStyle(element).color)).toBe("rgb(82, 91, 102)");
+  expect(await summary(page, "example.com").evaluate((element) => getComputedStyle(element).color)).toBe("rgb(86, 86, 79)");
 });
 
 test("an open domain's Copy buttons are one stop in the Tab order, and the arrow keys move between them", budget, async () => {
@@ -297,9 +297,9 @@ test("on a phone, a domain's records fit the screen, and its line says mail can'
   await ada.POST("/domains", { body: { domain: "a-rather-long-subdomain.example.net" } });
   await settings();
   expect(await summary(page, "a-rather-long-subdomain.example.net").textContent()).toMatch(/so mail can't arrive yet\.$/);
-  expect(await summary(page, "a-rather-long-subdomain.example.net").evaluate((element) => getComputedStyle(element).color)).toBe("rgb(82, 91, 102)");
+  expect(await summary(page, "a-rather-long-subdomain.example.net").evaluate((element) => getComputedStyle(element).color)).toBe("rgb(86, 86, 79)");
   expect(await summary(page, "example.com").textContent()).toContain("so mail can't arrive yet.");
-  expect(await summary(page, "example.com").evaluate((element) => getComputedStyle(element).color)).toBe("rgb(180, 35, 24)");
+  expect(await summary(page, "example.com").evaluate((element) => getComputedStyle(element).color)).toBe("rgb(196, 26, 47)");
 
   await line(page, "a-rather-long-subdomain.example.net").getByRole("heading").click();
 

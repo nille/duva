@@ -56,7 +56,7 @@ test("the sponsor sees their agent paused in the list of agents they sponsor", a
 
   const { data } = await ada.GET("/agents");
 
-  expect(data?.agents).toEqual([{ ...agent, paused: { by: (await ids()).ada, at: expect.any(String) } }]);
+  expect(data?.agents).toEqual([{ ...agent, paused: { by: (await ids()).ada, at: expect.any(String) }, sendsLeftThisHour: 100 }]);
 });
 
 test("unpausing lets the agent's key work again", async () => {

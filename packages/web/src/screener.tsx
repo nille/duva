@@ -7,6 +7,7 @@ import { type components, isPublicMailProvider } from "@duva/openapi";
 import type { Connection as ConnectionState } from "./feed.ts";
 import { Connection, Time } from "./mail-parts.tsx";
 import type { Done } from "./organize.tsx";
+import { useBeside, useViewTitle, ViewMain, ViewTitle } from "./panes.tsx";
 import { strings } from "./strings.ts";
 import { hrefOf, pathOf, screenedSendersPath } from "./views.tsx";
 
@@ -119,17 +120,16 @@ export function ScreenerView({
 }) {
   const title = agent === undefined ? strings.screener.title : strings.screener.agentTitle(agent);
   // Mail waiting here calls for no attention, so the tab's title counts nothing.
-  useEffect(() => {
-    document.title = strings.title(title);
-  }, [title]);
+  useViewTitle(strings.title(title));
+  const { open } = useBeside();
   const screener = read.status === "read" ? read.screener : undefined;
 
   return (
-    <main className="desk" aria-busy={read.status === "loading"}>
+    <ViewMain className="desk" aria-busy={read.status === "loading"}>
       <div className="desk-head">
-        <h1 tabIndex={-1} className="view-title">
+        <ViewTitle tabIndex={-1} className="view-title">
           {title}
-        </h1>
+        </ViewTitle>
         {connection?.ok === false && <Connection state={connection} unreachable={strings.connection.mailUnreachable} />}
       </div>
       <div className="screener-lead">
@@ -164,11 +164,11 @@ export function ScreenerView({
       ) : (
         <ol className="waiting" aria-label={strings.screener.senders}>
           {read.screener.senders.map((sender) => (
-            <Waiting key={sender.address} client={client} mailbox={mailbox} base={base} sender={sender} onDone={onDone} onSignedOut={onSignedOut} />
+            <Waiting key={sender.address} client={client} mailbox={mailbox} base={base} sender={sender} open={open} onDone={onDone} onSignedOut={onSignedOut} />
           ))}
         </ol>
       )}
-    </main>
+    </ViewMain>
   );
 }
 
@@ -178,6 +178,7 @@ function Waiting({
   mailbox,
   base,
   sender,
+  open,
   onDone,
   onSignedOut,
 }: {
@@ -185,6 +186,8 @@ function Waiting({
   mailbox: Mailbox;
   base: string;
   sender: WaitingSender;
+  /** The thread open beside the Screener, whose line it marks. */
+  open?: string;
   onDone: (done: Done) => void;
   onSignedOut: () => void;
 }) {
@@ -214,7 +217,7 @@ function Waiting({
       <ol className="waiting-threads" aria-label={strings.screener.mailFrom(name)}>
         {sender.threads.map((thread) => (
           <li key={thread.id}>
-            <a className="waiting-thread" href={`${base}threads/${encodeURIComponent(thread.id)}?from=${from}`}>
+            <a className="waiting-thread" href={`${base}threads/${encodeURIComponent(thread.id)}?from=${from}`} aria-current={thread.id === open ? "true" : undefined}>
               <span className="waiting-subject">{thread.subject || strings.thread.noSubject}</span>
               {thread.snippet !== "" && (
                 <span className="waiting-snippet" lang="">

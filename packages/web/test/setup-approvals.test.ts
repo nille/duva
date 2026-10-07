@@ -170,7 +170,7 @@ test("on a phone, a send comes before the setup changes asked for after it", bud
   expect(send!.y).toBeLessThan(phone.height);
 });
 
-test("a decided slip sets the agent's name in the sans and the mail's subject in the serif", budget, async () => {
+test("a decided slip sets the agent's name in the headings' grotesk and the mail's subject in the text's mono face", budget, async () => {
   const { page, signIn, hermes, mailbox } = await withAgentAdmin();
   const { data: draft } = await hermes.POST("/mailboxes/{mailbox}/drafts", { params: { path: { mailbox: mailbox.id } }, body: { to: ["linus@example.net"], subject: "Hej", text: "Hej." } });
   await hermes.POST("/mailboxes/{mailbox}/drafts/{draft}/send", { params: { path: { mailbox: mailbox.id, draft: draft!.id } } });
@@ -183,6 +183,6 @@ test("a decided slip sets the agent's name in the sans and the mail's subject in
   const head = page.getByRole("article").getByRole("heading", { level: 2 });
   await expect.poll(() => head.textContent(), wait).toMatch(/Hermes/);
   const font = (text: string) => head.getByText(text, { exact: true }).evaluate((element) => getComputedStyle(element).fontFamily);
-  expect(await font("Hermes")).toMatch(/^system-ui/);
-  expect(await font("Hej")).toMatch(/^"Source Serif 4/);
+  expect(await font("Hermes")).toMatch(/^"Familjen Grotesk Variable"/);
+  expect(await font("Hej")).toMatch(/^"JetBrains Mono Variable"/);
 });

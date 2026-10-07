@@ -50,7 +50,7 @@ const go = async (page: Page, hash: string, title: string) => {
 const sheetWidth = (page: Page, selector: string) => page.locator(selector).first().evaluate((sheet) => Math.round(sheet.getBoundingClientRect().width));
 const head = (page: Page) => page.locator(".desk-head").innerText();
 
-test("every list lies on a sheet of one width, and a thread at the proof's narrower measure", budget, async () => {
+test("every list lies at one width in the list's column, and a thread opens beside it", budget, async () => {
   const { page } = await withLists(["Kvitto"]);
   await expect.poll(() => page.getByRole("list", { name: "Threads" }).getByRole("listitem").count(), wait).toBe(1);
   const inbox = await sheetWidth(page, ".index");
@@ -67,15 +67,16 @@ test("every list lies on a sheet of one width, and a thread at the proof's narro
   const results = await sheetWidth(page, ".index");
   await page.getByRole("list", { name: "Results" }).getByRole("link").first().click();
   await expect.poll(() => heading(page), wait).toBe("Kvitto");
-  const thread = await sheetWidth(page, "article");
+  const [list, thread] = [(await page.locator(".index").boundingBox())!, (await page.getByRole("article").boundingBox())!];
 
   expect([screener, screened, results]).toEqual([inbox, inbox, inbox]);
-  expect(thread).toBeLessThan(inbox - 100);
+  expect(thread.x).toBeGreaterThanOrEqual(list.x + list.width);
 });
 
-test("only the Inbox's head says when the mail was last checked, and no list's head repeats the mailbox's address", budget, async () => {
+test("the status strip says when the mail was last checked, and no list's head says it or repeats the mailbox's address", budget, async () => {
   const { page } = await withLists(["Kvitto"]);
-  await expect.poll(() => head(page), wait).toMatch(/Up to date at/);
+  await expect.poll(() => page.getByRole("contentinfo", { name: "Status" }).innerText(), wait).toMatch(/Up to date at/);
+  expect(await head(page)).not.toMatch(/Up to date/);
   expect(await head(page)).not.toContain("grace@example.com");
 
   for (const [hash, title] of [
