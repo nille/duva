@@ -45,6 +45,39 @@ test("an admin's Settings opens on You, with an index of every page in order and
   expect(await page.evaluate(() => location.hash)).toBe("#/settings/domains");
 });
 
+test("each line of the index says what its page holds now, as its link's description", budget, async () => {
+  const { page, signIn, duva } = await withOrganization();
+  const ada = duva.signIn("ada@example.org");
+  const { data: me } = await ada.GET("/whoami");
+  await ada.POST("/mailboxes", { body: { owner: me!.id, address: "ada@example.com" } });
+  await ada.POST("/groups", { body: { address: "team@example.com", members: ["ada@example.com"] } });
+  await signIn("ada@example.org");
+
+  await openSettings(page);
+
+  /** What the page's line says of it, as a screen reader hears it after the page's name. */
+  const state = (name: string) =>
+    settingsIndex(page)
+      .getByRole("link", { name, exact: true })
+      .evaluate((link) => document.getElementById(link.getAttribute("aria-describedby") ?? "")?.textContent);
+  await expect.poll(() => state("Groups"), wait).toBe("1 group");
+  expect(await state("You")).toMatch(/^02:30 PM, [A-Z][a-z]{2} \d{1,2}, \d{4}, mail as designed$/);
+  expect(await state("Screener")).toBe("On");
+  expect(await state("Organization")).toBe("Trash and Spam keep mail 30 days");
+  expect(await state("Domains")).toBe("example.com, 2 records missing");
+  expect(await state("Addresses")).toBe("1 mailbox");
+  expect(await state("People")).toBe("2 humans");
+
+  // A change on a page shows in its line once another page opens.
+  await openPage(page, "Screener");
+  await page.getByRole("region", { name: "Screener" }).getByRole("radio", { name: "Off" }).check();
+  await page.getByRole("region", { name: "Screener" }).getByRole("button", { name: "Save" }).click();
+  await expect.poll(() => page.getByRole("region", { name: "Screener" }).getByRole("status").textContent(), wait).toBe("Saved.");
+  await openPage(page, "You");
+
+  await expect.poll(() => state("Screener"), wait).toBe("Off");
+});
+
 test("an admin opens the Organization page and chooses that erasing a thread erases its approval records too, on the Agents sheet", budget, async () => {
   const { page, signIn, duva } = await withOrganization();
   await signIn("ada@example.org");

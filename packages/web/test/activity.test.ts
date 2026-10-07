@@ -156,6 +156,43 @@ test("opening a day shows its timeline, newest first, each entry linking to its 
   await expect.poll(() => days(page).count(), wait).toBe(1);
 });
 
+test("on a desk a day's timeline opens beside the days, its day marked as the one open, and a quiet day inside its fold", budget, async () => {
+  const { page, signIn } = await withActivity();
+  await signIn("ada@example.org");
+  await page.getByRole("navigation", { name: "Mailboxes" }).getByRole("link", { name: /^Hermes/ }).click();
+  await page.getByRole("navigation", { name: "Mail" }).getByRole("link", { name: "Activity" }).click();
+  await expect.poll(() => days(page).count(), wait).toBe(1);
+  expect(await page.getByRole("heading", { level: 2, name: "No day open" }).isVisible()).toBe(true);
+
+  await days(page).first().click();
+
+  await expect.poll(() => page.getByRole("heading", { level: 1 }).textContent(), wait).toMatch(/^Tuesday, Oct 6/);
+  const beside = page.getByRole("region", { name: "Hermes's activity" });
+  expect(await beside.getByRole("list", { name: "Days" }).isVisible()).toBe(true);
+  expect(await days(page).first().getAttribute("aria-current")).toBe("true");
+  await expect.poll(() => page.getByRole("main").getByRole("list", { name: "Timeline" }).isVisible(), wait).toBe(true);
+
+  await fold(page).click();
+  await days(page).nth(1).click();
+
+  await expect.poll(() => page.getByRole("heading", { level: 1 }).textContent(), wait).toMatch(/^Monday, Oct 5/);
+  await expect.poll(() => days(page).count(), wait).toBe(30);
+  expect(await fold(page).getAttribute("aria-expanded")).toBe("true");
+  expect(await days(page).nth(1).getAttribute("aria-current")).toBe("true");
+  expect(await days(page).first().getAttribute("aria-current")).toBe(null);
+});
+
+test("on a phone a day's timeline takes the screen alone, with the way back to the days", budget, async () => {
+  const { page, signIn, agent } = await withActivity({ viewport: phone });
+  await signIn("ada@example.org");
+  await expect.poll(() => page.getByRole("heading", { level: 1 }).textContent(), wait).toBe("Inbox");
+  await page.evaluate((agent) => (location.hash = `#/agents/${agent}/2026-10-06`), agent.id);
+
+  await expect.poll(() => page.getByRole("heading", { level: 1 }).textContent(), wait).toMatch(/^Tuesday, Oct 6/);
+  expect(await page.getByRole("list", { name: "Days" }).isVisible()).toBe(false);
+  expect(await page.getByRole("link", { name: "Hermes's activity" }).isVisible()).toBe(true);
+});
+
 test("a day the agent did nothing says so", budget, async () => {
   const { page, signIn } = await withActivity();
   await signIn("ada@example.org");

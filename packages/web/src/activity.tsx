@@ -1,11 +1,13 @@
 // An agent's activity, for its sponsor: a summary of each of the last 30 days, newest first, each
-// opening into the day's timeline, where every entry says who did what and links to its thread.
-// Days run in the human's time zone, or the browser's until they choose one.
+// opening into the day's timeline, where every entry says who did what and links to its thread. On
+// a desk the days lie in the list column and the open day's timeline beside them. Days run in the
+// human's time zone, or the browser's until they choose one.
 import { Fragment, useCallback, useEffect, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
 import { useDates } from "./dates.ts";
 import { SkeletonIndex } from "./inbox.tsx";
+import { ActorMark } from "./mail-parts.tsx";
 import { ChevronIcon } from "./setting-parts.tsx";
 import { type EntryMessage, strings } from "./strings.ts";
 import { BackIcon } from "./thread.tsx";
@@ -63,30 +65,60 @@ function useDayName() {
   );
 }
 
-/** The agent's summaries for the last 30 days, `name` being the agent's name if the human sponsors it. */
-export function AgentActivity({ client, agent, name = strings.galley.anAgent, timeZone, onSignedOut }: { client: DuvaClient; agent: string; name?: string; timeZone?: string; onSignedOut: () => void }) {
-  const [read, setRead] = useState<Read<{ timeZone: string; days: ActivitySummary[] }>>({ status: "loading" });
+/** The days last read for each agent in each time zone, so opening another day shows them at once while they are read again. */
+const daysRead = new Map<string, { timeZone: string; days: ActivitySummary[] }>();
+
+/**
+ * The agent's days, `name` being the agent's name if the human sponsors it: its title, what the days
+ * are, and a line for each, `open` being the day open beside them. Alone they are the page's main
+ * content, titled at its first level, and beside an open day a region headed one level down.
+ */
+function Days({
+  client,
+  agent,
+  name,
+  timeZone,
+  open,
+  beside,
+  onSignedOut,
+}: {
+  client: DuvaClient;
+  agent: string;
+  name: string;
+  timeZone?: string;
+  open?: string;
+  beside: boolean;
+  onSignedOut: () => void;
+}) {
+  const Title = beside ? "h2" : "h1";
+  const Root = beside ? "section" : "main";
+  const titleId = beside ? "activity-days-title" : undefined;
+  const key = `${agent} ${zoneOf(timeZone)}`;
+  const [read, setRead] = useState<Read<{ timeZone: string; days: ActivitySummary[] }>>(() => {
+    const known = daysRead.get(key);
+    return known === undefined ? { status: "loading" } : { status: "read", read: known };
+  });
   const copy = strings.activity;
 
   const load = useCallback(async () => {
-    setRead({ status: "loading" });
+    if (!daysRead.has(key)) setRead({ status: "loading" });
     const { data, response } = await client
       .GET("/agents/{agent}/activity", { params: { path: { agent }, query: { timeZone: zoneOf(timeZone) } } })
       .catch(() => ({ data: undefined, response: undefined }));
     if (response?.status === 401) return onSignedOut();
+    if (data !== undefined) daysRead.set(key, data);
     setRead(data === undefined ? { status: "failed", message: failure(response) } : { status: "read", read: data });
-  }, [client, agent, timeZone, onSignedOut]);
+  }, [client, agent, timeZone, key, onSignedOut]);
   useEffect(() => {
     void load();
   }, [load]);
-  useEffect(() => {
-    document.title = strings.title(copy.title(name));
-  }, [copy, name]);
 
   return (
-    <main className="desk activity" aria-busy={read.status === "loading"}>
-      <div className="desk-head activity-head">
-        <h1 tabIndex={-1} className="view-title">{copy.title(name)}</h1>
+    <Root className="activity-days" aria-labelledby={titleId} aria-busy={read.status === "loading"}>
+      <div className="activity-head">
+        <Title tabIndex={Title === "h1" ? -1 : undefined} id={titleId} className="view-title">
+          {copy.title(name)}
+        </Title>
         <p className="activity-lead">{copy.lead(read.status === "read" ? read.read.timeZone : zoneOf(timeZone))}</p>
       </div>
       {read.status === "loading" ? (
@@ -94,34 +126,60 @@ export function AgentActivity({ client, agent, name = strings.galley.anAgent, ti
       ) : read.status === "failed" ? (
         <Failed message={read.message} onRetry={() => void load()} />
       ) : (
-        <section className="index days" aria-labelledby="days-label">
-          <h2 className="visually-hidden" id="days-label">
+        <section className="days" aria-labelledby={`days-label-${Title}`}>
+          <h2 className="visually-hidden" id={`days-label-${Title}`}>
             {copy.days}
           </h2>
           <ol className="days-list" aria-label={copy.days}>
             {runsOf(read.read.days).map((run) =>
               "day" in run ? (
                 <li key={run.day.day}>
-                  <Day agent={agent} summary={run.day} />
+                  <Day agent={agent} summary={run.day} current={run.day.day === open} />
                 </li>
               ) : (
-                <QuietDays key={run.quiet[0]!.day} agent={agent} days={run.quiet} />
+                <QuietDays key={run.quiet[0]!.day} agent={agent} days={run.quiet} open={open} />
               ),
             )}
           </ol>
         </section>
       )}
-    </main>
+    </Root>
+  );
+}
+
+/**
+ * The agent's activity: its days, newest first, and on a desk, beside them, where a day opens. `name`
+ * is the agent's name if the human sponsors it.
+ */
+export function AgentActivity({ client, agent, name = strings.galley.anAgent, timeZone, onSignedOut }: { client: DuvaClient; agent: string; name?: string; timeZone?: string; onSignedOut: () => void }) {
+  const copy = strings.activity;
+  useEffect(() => {
+    document.title = strings.title(copy.title(name));
+  }, [copy, name]);
+
+  return (
+    <div className="activity-desk">
+      <Days client={client} agent={agent} name={name} timeZone={timeZone} beside={false} onSignedOut={onSignedOut} />
+      <section className="reader-empty activity-reader" aria-labelledby="activity-reader-title">
+        <h2 id="activity-reader-title">{copy.pickTitle}</h2>
+        <p>{copy.pickLead(name)}</p>
+      </section>
+    </div>
   );
 }
 
 /** A day as a line of the index, linking to its timeline: its name, then what was counted, the numbers in a heavier hand. */
-function Day({ agent, summary }: { agent: string; summary: ActivitySummary }) {
+function Day({ agent, summary, current = false }: { agent: string; summary: ActivitySummary; current?: boolean }) {
   const dayName = useDayName();
   const copy = strings.activity;
   const counted = kinds.filter((kind) => summary[kind] > 0);
   return (
-    <a className={counted.length === 0 ? "day day-quiet" : "day"} href={activityHref(agent, summary.day)} aria-label={copy.dayLabel(dayName(summary.day), copy.counted(counted.map((kind) => copy.counts[kind](summary[kind]))))}>
+    <a
+      className={counted.length === 0 ? "day day-quiet" : "day"}
+      href={activityHref(agent, summary.day)}
+      aria-current={current ? "true" : undefined}
+      aria-label={copy.dayLabel(dayName(summary.day), copy.counted(counted.map((kind) => copy.counts[kind](summary[kind]))))}
+    >
       <span className="day-name">{dayName(summary.day)}</span>
       <span className="day-said">
         {counted.length === 0
@@ -133,7 +191,7 @@ function Day({ agent, summary }: { agent: string; summary: ActivitySummary }) {
               return (
                 <Fragment key={kind}>
                   {at > 0 && ", "}
-                  <span className="day-count">
+                  <span className={`day-count day-count-${kind}`}>
                     <span className="day-number">{number}</span>
                     {said.slice(number.length)}
                   </span>
@@ -146,8 +204,9 @@ function Day({ agent, summary }: { agent: string; summary: ActivitySummary }) {
 }
 
 /** A run of days with nothing counted, as one row that opens into the days, since a day can hold what isn't counted. */
-function QuietDays({ agent, days }: { agent: string; days: ActivitySummary[] }) {
-  const [open, setOpen] = useState(false);
+function QuietDays({ agent, days, open: openDay }: { agent: string; days: ActivitySummary[]; open?: string }) {
+  // The fold opens on its own when the day open beside it is one of its days.
+  const [open, setOpen] = useState(() => days.some(({ day }) => day === openDay));
   const { date } = useDates();
   const copy = strings.activity;
   const from = date(localDay(days.at(-1)!.day), true);
@@ -163,7 +222,7 @@ function QuietDays({ agent, days }: { agent: string; days: ActivitySummary[] }) 
         <ol className="days-list days-folded">
           {days.map((summary) => (
             <li key={summary.day}>
-              <Day agent={agent} summary={summary} />
+              <Day agent={agent} summary={summary} current={summary.day === openDay} />
             </li>
           ))}
         </ol>
@@ -275,9 +334,16 @@ export function AgentDay({
   }, [client, entries, threads, onSignedOut]);
 
   const who = (actor: string | undefined) => (actor === agent ? name : actor === me ? copy.you : actor === "duva" ? copy.duva : copy.someone);
+  // Each entry is marked by the shape of whom it names first: its actor, or Duva or a sender when the entry names them instead.
+  // Mail that simply arrived is from a sender, a human, and someone else could be a human or an agent.
+  const kindOf = (actor: string | undefined) => (actor === agent ? "agent" : actor === me ? "human" : actor === "duva" ? "duva" : actor === undefined ? "human" : undefined);
+  const markOf = (actor: string | undefined, by: string) => (by === who(actor) ? kindOf(actor) : by === copy.duva ? "duva" : "human");
   const zone = read.status === "read" ? read.read.timeZone : zoneOf(timeZone);
   return (
-    <main className="desk activity" aria-busy={read.status === "loading"}>
+    <div className="activity-desk activity-desk-day">
+      {/* On a desk the days lie beside the open one, as a region headed one level down. */}
+      <Days client={client} agent={agent} name={name} timeZone={timeZone} open={day} beside onSignedOut={onSignedOut} />
+      <main className="activity-day" aria-busy={read.status === "loading"}>
       <p className="back">
         <a href={activityHref(agent)}>
           <BackIcon />
@@ -297,13 +363,14 @@ export function AgentDay({
           <h2 id="empty-title">{copy.empty}</h2>
         </section>
       ) : (
-        <section className="index timeline" aria-label={copy.timeline}>
+        <section className="timeline" aria-label={copy.timeline}>
           <ol className="timeline-list" aria-label={copy.timeline}>
             {read.read.entries.map(({ mailbox, thread, change }) => {
               const actor = "actor" in change ? change.actor : undefined;
               const linked = mailbox === undefined || thread === undefined ? undefined : threads.get(`${mailbox}/${thread}`);
               const message = linked !== undefined && "messages" in linked && "message" in change ? linked.messages.get(change.message) : undefined;
               const [by, rest] = copy.entry(change, who(actor), name, message);
+              const mark = markOf(actor, by);
               const time = clock(new Date(change.at), zone);
               return (
                 <li className="entry" key={`${mailbox ?? "organization"}/${change.position}`}>
@@ -312,6 +379,7 @@ export function AgentDay({
                   </time>
                   <p className="entry-line">
                     <span className="entry-said">
+                      {mark !== undefined && <ActorMark kind={mark} />}
                       <strong className="entry-by">{by}</strong>
                       {rest}
                     </span>
@@ -351,6 +419,7 @@ export function AgentDay({
           )}
         </section>
       )}
-    </main>
+      </main>
+    </div>
   );
 }

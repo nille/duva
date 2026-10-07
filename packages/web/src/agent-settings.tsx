@@ -9,6 +9,7 @@ import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
 import { activityHref } from "./activity.tsx";
 import { useDates } from "./dates.ts";
+import { ActorMark } from "./mail-parts.tsx";
 import type { AgentMailbox } from "./mailboxes.tsx";
 import { SendNow } from "./send-now.tsx";
 import { ChevronIcon, wholeNumber } from "./setting-parts.tsx";
@@ -301,6 +302,7 @@ function AgentForm({
       <summary>
         <div className="agent-summary">
           <div className="agent-summary-head">
+            <ActorMark kind="agent" />
             <h3 id={heading}>{agent.name}</h3>
             {agent.paused !== undefined && (
               <span className="line-mark">
@@ -315,7 +317,14 @@ function AgentForm({
               </span>
             )}
           </div>
-          {agent.paused !== undefined && <PausedLine paused={agent.paused} who={whoPaused(agent.paused.by)} />}
+          {agent.paused !== undefined ? (
+            <PausedLine paused={agent.paused} who={whoPaused(agent.paused.by)} />
+          ) : (
+            <p className="running-line">
+              <span className="settings-light" />
+              {copy.pause.runningLine(agent.sendsLeftThisHour)}
+            </p>
+          )}
           <p className="agent-summary-line">{summaryOf(saved, agent.admin)}</p>
           {stillWaiting > 0 && <p className="agent-summary-line">{copy.waiting.count(stillWaiting)}</p>}
         </div>

@@ -64,7 +64,7 @@ test("each agent shows as one line, its access and whether its sends wait for ap
   await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
   await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "Your agents" }).click();
 
-  await expect.poll(() => summaries(page), wait).toEqual(["Hermes\nNo access to your mailbox. Its sends wait for your approval.", "Iris\nReads your mailbox. Its sends go out without your approval."]);
+  await expect.poll(() => summaries(page), wait).toEqual(["Hermes\nRunning, 100 sends left this hour.\nNo access to your mailbox. Its sends wait for your approval.", "Iris\nRunning, 100 sends left this hour.\nReads your mailbox. Its sends go out without your approval."]);
   expect(await agentsSheet(page).getByRole("form").count()).toBe(0);
 
   await openAgent(page, "Hermes");
@@ -98,7 +98,7 @@ test("a sponsor gives an agent full access and switches off approval of its send
     approvalForSetup: true,
   });
   expect((await grace.GET("/agents/{agent}/settings", { params: { path: { agent: iris } } })).data?.sponsorAccess).toBe("none");
-  expect((await summaries(page))[0]).toBe("Hermes\nFull access to your mailbox. Its sends from its own mailbox wait for your approval.");
+  expect((await summaries(page))[0]).toBe("Hermes\nRunning, 100 sends left this hour.\nFull access to your mailbox. Its sends from its own mailbox wait for your approval.");
 
   await page.reload();
 
@@ -159,7 +159,7 @@ test("under Your agents in the index each agent is a link saying whether it is p
   await page.getByRole("navigation").getByRole("link", { name: "Settings" }).click();
   const index = page.getByRole("navigation", { name: "Settings" });
 
-  await expect.poll(() => index.getByRole("link", { name: /^(Hermes|Iris)/ }).allInnerTexts(), wait).toEqual(["Hermes\nPaused", "Iris"]);
+  await expect.poll(() => index.getByRole("link", { name: /^(Hermes|Iris)/ }).allInnerTexts(), wait).toEqual(["Hermes\nPaused", "Iris\nRunning"]);
   await index.getByRole("link", { name: /^Iris/ }).click();
 
   await expect.poll(() => agentForm(page, "Iris").isVisible(), wait).toBe(true);
@@ -195,7 +195,7 @@ test("an agent admin's line says Admin after its name and whether its setup chan
   await signIn("ada@example.org");
   await openYourAgents(page);
 
-  await expect.poll(() => summaries(page), wait).toEqual(["Hermes\nAdmin\nNo access to your mailbox. Its sends and setup changes wait for your approval."]);
+  await expect.poll(() => summaries(page), wait).toEqual(["Hermes\nAdmin\nRunning, 100 sends left this hour.\nNo access to your mailbox. Its sends and setup changes wait for your approval."]);
   const form = await openAgent(page, "Hermes");
   const approval = form.getByRole("group", { name: "When it changes the setup" }).getByRole("checkbox", { name: /^Your approval before it changes the setup/ });
   expect(await approval.isChecked()).toBe(true);
@@ -208,7 +208,7 @@ test("an agent admin's line says Admin after its name and whether its setup chan
 
   await expect.poll(() => form.getByRole("status").textContent(), wait).toBe("Saved. This applies at once.");
   expect((await ada.GET("/agents/{agent}/settings", { params: { path: { agent: hermes } } })).data?.approvalForSetup).toBe(false);
-  expect((await summaries(page))[0]).toBe("Hermes\nAdmin\nNo access to your mailbox. Its sends wait for your approval. Its setup changes go through without your approval.");
+  expect((await summaries(page))[0]).toBe("Hermes\nAdmin\nRunning, 100 sends left this hour.\nNo access to your mailbox. Its sends wait for your approval. Its setup changes go through without your approval.");
 });
 
 test("an admin makes the agent they sponsor an admin on its line, and takes it away again", budget, async () => {

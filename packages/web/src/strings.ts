@@ -393,6 +393,16 @@ export const strings = {
       waiting: (count: number) => `${count} waiting`,
       recordsMissing: (domain: string, records: number) => `${domain}, ${records === 1 ? "1 record" : `${records} records`} missing`,
       domainsMissing: (domains: number) => `${domains} domains have records missing`,
+      /** What each page holds now, as its line in the index says it. */
+      you: (time: string, date: string, html: boolean) => `${time}, ${date}, mail ${html ? "as designed" : "as plain text"}`,
+      screener: (on: number, of: number) => (of === 1 ? (on === 1 ? "On" : "Off") : on === of ? `On for all ${of} mailboxes` : on === 0 ? `Off for all ${of} mailboxes` : `On for ${on} of ${of} mailboxes`),
+      agents: (count: number) => (count === 1 ? "1 agent" : `${count} agents`),
+      running: "Running",
+      organization: (days: number) => `Trash and Spam keep mail ${days === 1 ? "1 day" : `${days} days`}`,
+      domains: (domains: string[]) => (domains.length === 0 ? "No domains yet" : domains.length === 1 ? domains[0]! : `${domains.length} domains`),
+      mailboxes: (count: number) => (count === 0 ? "No mailboxes yet" : count === 1 ? "1 mailbox" : `${count} mailboxes`),
+      humans: (count: number) => (count === 1 ? "1 human" : `${count} humans`),
+      groups: (count: number) => (count === 0 ? "No groups yet" : count === 1 ? "1 group" : `${count} groups`),
     },
     organization: "Organization",
     mail: "Mail",
@@ -911,6 +921,8 @@ export const strings = {
       running: "Pausing refuses its key at once and holds its approved sends until you unpause it. Mail to it keeps arriving.",
       held: "Its key is refused, and its approved sends are held. Unpausing sends them, oldest first, so look at them first.",
       by: (who: string, when: string) => `Paused by ${who} since ${when}.`,
+      /** An agent's line while it runs, with how many more its send limits let it send this hour, when Duva says. */
+      runningLine: (left?: number) => (left === undefined ? "Running." : `Running, ${left === 1 ? "1 send" : `${left} sends`} left this hour.`),
       you: "you",
       duva: "Duva",
       anAdmin: "an admin",
@@ -968,6 +980,9 @@ export const strings = {
     /** Days with nothing counted, folded into one line, from the oldest to the newest. */
     quietDays: (from: string, to: string) => `${from} to ${to}`,
     quietLabel: (from: string, to: string) => `${from} to ${to}, nothing counted`,
+    /** What the reading pane beside the days says while no day is open. */
+    pickTitle: "No day open",
+    pickLead: (agent: string) => `Open a day to see its timeline: everything ${agent} did, and what happened in its mailboxes.`,
   },
 
   sendNow: {

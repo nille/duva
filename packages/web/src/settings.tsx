@@ -1,19 +1,21 @@
-// Settings, a page per sheet, with an index of them in the side column: the human's own
+// Settings, a page per sheet, with an index of them in the list column, each line saying what its
+// page holds now, and the open page's sheets beside it in the reading pane: the human's own
 // preferences, which only they choose, the Screener of their mailboxes and their agents', a
 // sponsor's agents, where they pause each, set its limits and send what waits for them, and the
 // organization's settings, which admins choose for everyone. Then, for admins only, the
 // organization's domains, its mailboxes' addresses, its people and its groups. On a phone the index
 // is the page Settings opens on, and each sheet links back to it.
-import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { type ReactNode, useCallback, useContext, useEffect, useRef, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
 import { AddressesSheet, type Giving } from "./addresses.tsx";
 import { AgentSettingsSheet } from "./agent-settings.tsx";
 import { agentHref } from "./alerts.tsx";
 import { Choice, wholeNumber } from "./setting-parts.tsx";
-import { datesFor, type Preferences } from "./dates.ts";
+import { datesFor, type Preferences, PreferencesContext } from "./dates.ts";
 import { DomainsSheet } from "./domains.tsx";
 import { GroupsSheet } from "./groups.tsx";
+import { ActorMark } from "./mail-parts.tsx";
 import type { AgentMailbox } from "./mailboxes.tsx";
 import { PeopleSheet } from "./people.tsx";
 import { loadConfig, signOut } from "./session.ts";
@@ -136,10 +138,15 @@ function useHash(): string {
 /** An agent the human sponsors, as the index lists it: whether it is paused, and how many of its sends wait for its send limits. */
 type IndexedAgent = { id: string; name: string; paused: boolean; waiting: number };
 
+/** What a page's line in the index says it holds now, and the function color it says it in, if any. */
+type EntryState = { text: string; code?: "call" | "sent" };
+
 /**
- * What the index says beside its pages: the agents the human sponsors, and for an admin, which
- * domains have DNS records missing. It reads again whenever the human opens another page, so what
- * they changed on one shows, and whenever `changes` counts another change to an agent there.
+ * What the index says beside its pages: the agents the human sponsors, how the Screener stands in
+ * their mailboxes, and for an admin, the organization's retention, its domains, which say when DNS
+ * records are missing, and how many mailboxes, humans and groups it has. It reads again whenever the
+ * human opens another page, so what they changed on one shows, and whenever `changes` counts another
+ * change to an agent there. A list Duva can't give now leaves its line without a state.
  */
 function useIndex({
   client,
@@ -157,9 +164,9 @@ function useIndex({
   hash: string;
   changes: number;
   onSignedOut: () => void;
-}): { agents?: IndexedAgent[]; domains?: string } {
+}): { agents?: IndexedAgent[]; states: Partial<Record<Page, EntryState>> } {
   const [agents, setAgents] = useState<IndexedAgent[]>();
-  const [domains, setDomains] = useState<string>();
+  const [states, setStates] = useState<Partial<Record<Page, EntryState>>>({});
   const listed = useRef(mailboxes);
   listed.current = mailboxes;
   const mailboxesKey = mailboxes?.map(({ id }) => id).join();
@@ -169,10 +176,19 @@ function useIndex({
     if (mailboxes === undefined) return;
     let current = true;
     const quietly = <T,>(call: Promise<T>) => call.catch(() => ({ data: undefined, response: undefined }));
+    const none = Promise.resolve({ data: undefined, response: undefined });
     void (async () => {
-      const [list, organizationDomains] = await Promise.all([quietly(client.GET("/agents")), admin ? quietly(client.GET("/domains")) : Promise.resolve({ data: undefined, response: undefined })]);
+      const [list, domains, settings, organizationMailboxes, humans, groups, screeners] = await Promise.all([
+        quietly(client.GET("/agents")),
+        admin ? quietly(client.GET("/domains")) : none,
+        admin ? quietly(client.GET("/organization/settings")) : none,
+        admin ? quietly(client.GET("/organization/mailboxes")) : none,
+        admin ? quietly(client.GET("/humans")) : none,
+        admin ? quietly(client.GET("/groups")) : none,
+        Promise.all(mailboxes.map((mailbox) => quietly(client.GET("/mailboxes/{mailbox}/screener", { params: { path: { mailbox: mailbox.id } } })))),
+      ]);
       if (!current) return;
-      if (list.response?.status === 401 || organizationDomains.response?.status === 401) return onSignedOut();
+      if ([list, domains, settings, organizationMailboxes, humans, groups, ...screeners].some(({ response }) => response?.status === 401)) return onSignedOut();
       // An agent's sends wait in its own mailboxes, and in the human's when it sends as them. A list Duva can't give now counts none.
       const drafts = await Promise.all(
         mailboxes.map(async (mailbox) => {
@@ -189,19 +205,32 @@ function useIndex({
             .map((agent) => ({ id: agent.id, name: agent.name, paused: agent.paused !== undefined, waiting: waiting.filter((by) => by === agent.id).length })),
         );
       }
-      if (organizationDomains.data !== undefined) {
-        const missing = organizationDomains.data.domains
+      const copy = strings.settings.index;
+      const read: Partial<Record<Page, EntryState>> = {};
+      if (list.data !== undefined && list.data.agents.length > 0) read.agents = { text: copy.agents(list.data.agents.length) };
+      const on = screeners.map(({ data }) => data?.on);
+      if (on.every((each) => each !== undefined)) read.screener = { text: copy.screener(on.filter(Boolean).length, on.length) };
+      if (settings.data !== undefined) read.organization = { text: copy.organization(settings.data.retentionDays) };
+      if (domains.data !== undefined) {
+        const missing = domains.data.domains
           .map(({ domain, records }) => ({ domain, records: records.filter(({ status }) => status === "missing").length }))
           .filter(({ records }) => records > 0);
-        const copy = strings.settings.index;
-        setDomains(missing.length === 0 ? undefined : missing.length === 1 ? copy.recordsMissing(missing[0]!.domain, missing[0]!.records) : copy.domainsMissing(missing.length));
+        // Records missing need an admin at the domain's DNS provider, so they are said in orange.
+        read.domains =
+          missing.length === 0
+            ? { text: copy.domains(domains.data.domains.map(({ domain }) => domain)) }
+            : { text: missing.length === 1 ? copy.recordsMissing(missing[0]!.domain, missing[0]!.records) : copy.domainsMissing(missing.length), code: "call" };
       }
+      if (organizationMailboxes.data !== undefined) read.addresses = { text: copy.mailboxes(organizationMailboxes.data.mailboxes.length) };
+      if (humans.data !== undefined) read.people = { text: copy.humans(humans.data.humans.length) };
+      if (groups.data !== undefined) read.groups = { text: copy.groups(groups.data.groups.length) };
+      setStates(read);
     })();
     return () => {
       current = false;
     };
   }, [client, admin, me, mailboxesKey, hash, changes, onSignedOut]);
-  return { agents, domains };
+  return { agents, states };
 }
 
 /**
@@ -231,6 +260,7 @@ export function Settings({
 }) {
   const hash = useHash();
   const asked = pageOf(hash);
+  const preferences = useContext(PreferencesContext);
   const own = mailboxes === undefined ? [] : (mailboxes.own ?? (mailboxes.mine === undefined ? [] : [mailboxes.mine]));
   const screened = mailboxes === undefined ? [] : [...own.map((mailbox) => ({ mailbox })), ...mailboxes.agents];
   // A pause or a send on the Your agents page changes what the index says of the agent.
@@ -262,7 +292,9 @@ export function Settings({
     };
     const sheetTitle = () => (asked.page === undefined ? null : (view.current?.querySelector<HTMLElement>("h2") ?? null));
     if (!arriving) {
+      // On a desk the sheet's column scrolls by itself, and on a phone the page does.
       scrollTo(0, 0);
+      view.current?.scrollTo(0, 0);
       // Back at the index, as on a phone, the title of Settings takes the focus, since the sheets beside it don't show there.
       const title = sheetTitle() ?? document.querySelector<HTMLElement>("main h1");
       if (title !== null) focus(title);
@@ -296,13 +328,42 @@ export function Settings({
   // The actor the People sheet asked to give a mailbox to, which the Addresses sheet's form takes.
   const [giving, setGiving] = useState<Giving>();
 
-  const entry = (each: Page, name: string, state?: string) => (
-    <a href={pageHref(each)} className="settings-entry" aria-current={each === page && (each !== "agents" || agent === undefined) ? "page" : undefined}>
-      <span className="settings-entry-name">{name}</span>
-      {state !== undefined && <span className="settings-entry-state">{state}</span>}
-    </a>
-  );
   const copy = strings.settings;
+  // Today in the afternoon, so You's line shows the time as the human chose it.
+  const today = new Date();
+  today.setHours(14, 30, 0, 0);
+  const dates = datesFor(preferences);
+  const states: Partial<Record<Page, EntryState>> = { you: { text: copy.index.you(dates.clock(today), dates.date(today), preferences.mailView === "html") }, ...index.states };
+  // A line is named by its page alone, and says what the page holds now as its description.
+  const line = (key: string, href: string, name: string, current: boolean, state?: EntryState, agent?: IndexedAgent) => {
+    const stateId = `settings-state-${key}`;
+    return (
+      <a
+        href={href}
+        className={agent?.paused === true ? "settings-entry settings-entry-paused" : "settings-entry"}
+        aria-current={current ? "page" : undefined}
+        aria-label={name}
+        aria-describedby={state === undefined ? undefined : stateId}
+      >
+        <span className="settings-entry-head">
+          {agent !== undefined && <ActorMark kind="agent" />}
+          <span className="settings-entry-name">{name}</span>
+        </span>
+        {state !== undefined && (
+          <span id={stateId} className={state.code === undefined ? "settings-entry-state" : `settings-entry-state settings-entry-state-${state.code}`}>
+            {state.code === "sent" && <span className="settings-light" />}
+            {state.text}
+          </span>
+        )}
+      </a>
+    );
+  };
+  const entry = (each: Page, name: string) => line(each, pageHref(each), name, each === page && (each !== "agents" || agent === undefined), states[each]);
+  // An agent's line says whether it runs or is paused, and what waits for its send limits, in orange since the human can send it now.
+  const agentState = (each: IndexedAgent): EntryState => ({
+    text: [each.paused ? copy.index.paused : copy.index.running, ...(each.waiting > 0 ? [copy.index.waiting(each.waiting)] : [])].join(", "),
+    ...(each.waiting > 0 ? { code: "call" as const } : each.paused ? {} : { code: "sent" as const }),
+  });
   return (
     <main className={asked.page === undefined ? "desk settings-desk settings-at-index" : "desk settings-desk"}>
       <div className="settings-side">
@@ -319,14 +380,7 @@ export function Settings({
                 {index.agents !== undefined && index.agents.length > 0 && (
                   <ul className="settings-index-agents">
                     {index.agents.map((each) => (
-                      <li key={each.id}>
-                        <a href={agentHref(each.id)} className="settings-entry" aria-current={page === "agents" && agent === each.id ? "page" : undefined}>
-                          <span className="settings-entry-name">{each.name}</span>
-                          {(each.paused || each.waiting > 0) && (
-                            <span className="settings-entry-state">{[...(each.paused ? [copy.index.paused] : []), ...(each.waiting > 0 ? [copy.index.waiting(each.waiting)] : [])].join(", ")}</span>
-                          )}
-                        </a>
-                      </li>
+                      <li key={each.id}>{line(`agent-${each.id}`, agentHref(each.id), each.name, page === "agents" && agent === each.id, agentState(each), each)}</li>
                     ))}
                   </ul>
                 )}
@@ -340,7 +394,7 @@ export function Settings({
                 {copy.index.admins}
               </h2>
               <ul aria-labelledby="settings-admins">
-                <li>{entry("domains", strings.domains.title, index.domains)}</li>
+                <li>{entry("domains", strings.domains.title)}</li>
                 <li>{entry("addresses", strings.addresses.title)}</li>
                 <li>{entry("people", strings.people.title)}</li>
                 <li>{entry("groups", strings.groups.title)}</li>

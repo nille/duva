@@ -126,7 +126,7 @@ test("a send waiting for the send limit shows on its agent's line, and Send now 
   await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "Your agents" }).click();
 
   await expect.poll(() => summary(page).innerText(), wait).toMatch(/1 send waits for the send limit\./);
-  expect(await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: /^Hermes/ }).innerText()).toBe("Hermes\n1 waiting");
+  expect(await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: /^Hermes/ }).innerText()).toBe("Hermes\nRunning, 1 waiting");
   await agentsSheet(page).getByRole("heading", { level: 3, name: "Hermes" }).click();
   const waiting = agentsSheet(page).getByRole("region", { name: "Waiting for the send limit" });
   await expect.poll(async () => (await waiting.getByRole("listitem").allInnerTexts()).map(lines), wait).toEqual([expect.stringMatching(/^Second\nTo lou@example\.net\nSend now$/)]);
@@ -166,7 +166,7 @@ test("while its agent is paused, a send waiting for the send limit is held until
   await expect.poll(() => duva.sent().length, wait).toBe(before + 1);
   await expect.poll(() => waiting.count(), wait).toBe(0);
   expect(await summary(page).innerText()).not.toMatch(/waits for the send limit|Paused/);
-  await expect.poll(() => index.getByRole("link", { name: /^Hermes/ }).innerText(), wait).toBe("Hermes");
+  await expect.poll(() => index.getByRole("link", { name: /^Hermes/ }).innerText(), wait).toBe("Hermes\nRunning");
 });
 
 test("a send waiting for the send limit as the sponsor shows in their draft, with Send now", budget, async () => {

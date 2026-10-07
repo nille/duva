@@ -259,7 +259,7 @@ Both are OFL-1.1, noted in THIRD_PARTY_NOTICES.md, and their latin faces are pre
 
 ## Layout
 
-On a desk (from 64rem) the page is one grid the full width and height of the window. The side column (15rem) holds the bar at its head, the wordmark and Write, the search box, and Duva's places (Mail, Approvals, Alerts, Settings), then the mailboxes, the open mailbox's views and its labels. Beside it lies the list (`clamp(20rem, 28vw, 31rem)`), then what is open from it filling the rest, and the status strip (2.125rem) runs along the foot under all three. Each column scrolls by itself, so the list keeps its place while a thread or a draft is read beside it. Views that aren't a list, such as Approvals, Settings and an agent's activity, take the list's and the reader's width together.
+On a desk (from 64rem) the page is one grid the full width and height of the window. The side column (15rem) holds the bar at its head, the wordmark and Write, the search box, and Duva's places (Mail, Approvals, Alerts, Settings), then the mailboxes, the open mailbox's views and its labels. Beside it lies the list (`clamp(20rem, 28vw, 31rem)`), then what is open from it filling the rest, and the status strip (2.125rem) runs along the foot under all three. Each column scrolls by itself, so the list keeps its place while a thread or a draft is read beside it. Views that aren't a list of mail, such as Approvals, take the list's and the reader's width together. Settings and an agent's activity lay out their own list and reading pane there: Settings' index, or the agent's days, at the list's width, and the open sheet, or the day's timeline, beside it, each column scrolling by itself.
 
 From 48rem to 64rem the side column stays, and what is open takes the one column beside it, as the list does while nothing is open. Under 48rem the phone has one top row (the wordmark, the search icon and Write), one column, a switcher at the view's head that opens the mailboxes and views, and the tab bar of places along the foot. There is no status strip on a phone, and Sign out is in Settings.
 
@@ -350,6 +350,31 @@ Actors are marked by shape, so they read without color: a human is a filled dot 
 - **The foot:** Send in ink with its cap (`Ctrl ↵`, or `⌘↵` on a Mac, which sends from anywhere in the composer), Delete draft quiet, and "Saved at" in Third Ink at the right. A read-only field turns Second Ink.
 - **How the send went** sits above the foot: on its way in Second Ink, breathing; sent in Sent Ink with its check; refused or unclear as an alert notice. A new message that went out folds to a slip on the plane under a seam, its check in Sent Ink, who it went to, its subject and its thread.
 - **In the Drafts list,** a draft's state is said small before its subject, the agent that saved it last in Agent Ink, and only a refused or unclear send in Alert Ink.
+
+### Settings
+- **The index** lies in the list column on List Grey, headed "Settings" in the headline. Each page is a row, 0.72rem 1.4rem, parted from the next by a seam: its name at 600 in ink, and under it what the page holds now in Third Ink at the small size, such as the human's time and date as they chose them, how the Screener stands in their mailboxes, the retention, the domains, or how many mailboxes, humans and groups there are. A link is named by its page alone and carries the state as its description.
+- **Function codes in the index:** what needs the human is said in Call Orange's text hand at 600, as DNS records missing or an agent's sends waiting for its limits. A running agent's row carries the strip's green light. Each agent is a row under Your agents, its diamond set in under the page's name, and a paused agent's diamond turns Third Ink, as the strip draws it.
+- **The open page** is marked as the open line of a list is: Reader Grey with the orange edge.
+- **A sheet** lies straight on the reading pane, 46rem at most, 3rem in from its edge. Its title is set as an open thread's subject (display), its lead in Second Ink. Two sheets on a page part by a seam and 3rem.
+- **Settings** part by a seam: the setting's name at 600, what it means in Second Ink, then its choices. Save, a primary pill, closes the sheet after a seam, and "Saved." beside it carries the green light.
+- **Choices:** a radio is a ring at 3:1 that fills with ink, a box one that fills with ink and its tick. A choice is a row hung into the margin, so its text lies level with the setting's name, on the ink wash on hover and Field Grey once chosen. Choices whose names and examples are short are keys side by side: white, a seam edge with a 2px lower edge, 7px radius, the chosen one pressed in ink with white, as a chosen chip is.
+- **A switch** (the Screener's On and Off) is a slot on Field Grey, its chosen side raised white in it, as a key pressed in.
+- **Under 64rem** Settings takes one column: at `#/settings` the index alone, and a page's sheets alone with the way back to it.
+
+### An agent's line
+- On Your agents each agent is a line that opens: its diamond and name, a pause or being an admin marked beside it in a seam-outlined pill, then whether it runs, with the green light and the sends its limits leave it this hour, or who paused it and since when, in ink at 600. What the line says and opens into is set in by the diamond, so it lines up under the name.
+- Its parts come first: Pause with what pausing does, Admin, and its sends waiting for the send limit as rows parted by seams, each with Send now. Its send limits are short numeric fields side by side, with the organization's cap under each.
+
+### An agent's activity
+- **The days** lie in the list column, newest first, a row each: the day at 600, then what was counted in Third Ink, its numbers in ink, the sends' in Sent Green's text hand and the alerts' in Alert Red's. A run of days with nothing counted folds into one row with a chevron, its days set in under it once opened. The open day is marked by the orange edge, and a fold holding it opens by itself.
+- **The day's timeline** lies in the reading pane, titled as a subject is: a row an entry, parted by seams, the time in Third Ink in a 5.5rem margin, then whom the entry names first, after their shape (the agent's diamond, Duva's ring, a human's dot), at 650, what happened, and the thread's subject as its link. While no day is open, the reading pane says so quietly.
+- Under 64rem the days or the open day take the one column alone, with the way back.
+
+### The admin sheets
+- Domains, Addresses, People and Groups share the grammar: each domain, mailbox, human or group is a line parted by seams, its name at 600 and what it holds in Second Ink, which opens into its parts, each named at 600. Lines open one at a time, rising into place as the chevron turns. Adding closes the sheet after a seam.
+- **DNS records** are rows parted by seams: what the record is for and its type, its status as a function code (Verified in green with its tick, Missing in orange with its light), then its name and value, each raised white with a seam edge, as a field that can't be typed in, and Copy beside it.
+- A domain mail can't arrive at says so in its line in Alert Red's text hand.
+- A line opened from the index or by its address takes the focus for a screen reader, and only the keyboard's focus rings it.
 
 ## Do's and Don'ts
 
