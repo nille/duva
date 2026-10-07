@@ -16,6 +16,22 @@ export const BesideContext = createContext<Beside>({ beside: false });
 /** Whether the list lies beside something open, and what is open. */
 export const useBeside = () => useContext(BesideContext);
 
+/** The place a list opened beside itself, with the focus left in the list, until the view opened there takes it. */
+let openedBeside: string | undefined;
+
+/** Opens what is at `hash` beside the list, as following its link does, but with the focus left where it is. */
+export function openBeside(hash: string) {
+  openedBeside = hash;
+  location.hash = hash;
+}
+
+/** Whether the view now open was opened beside the list by `openBeside`, so the focus stays in the list. Each answer is for one view. */
+export function takeOpenedBeside() {
+  const opened = openedBeside === location.hash;
+  openedBeside = undefined;
+  return opened;
+}
+
 const TitleContext = createContext<string | undefined>(undefined);
 
 /**

@@ -29,7 +29,7 @@ import { approvalChanges, type Connection, draftChanges, type Follow, labelChang
 import { type Marks, ThreadIndex } from "./inbox.tsx";
 import { ActorMark } from "./mail-parts.tsx";
 import { type AgentMailbox, ChevronIcon, MailboxList, MailboxSelector, mailboxHref, mailboxName, ownInOrder } from "./mailboxes.tsx";
-import { type Beside, BesideContext, ListCountContext } from "./panes.tsx";
+import { type Beside, BesideContext, ListCountContext, takeOpenedBeside } from "./panes.tsx";
 import { readScreener, ScreenedSenders, type ScreenerRead, ScreenerView } from "./screener.tsx";
 import { SenderLinkContext, SenderSheetView } from "./sender.tsx";
 import { SearchBox, SearchResults } from "./search.tsx";
@@ -420,6 +420,8 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
     // On a desk the panes scroll each by itself, and a list keeps its place while what is open from it changes.
     scrollTo(0, 0);
     for (const pane of document.querySelectorAll(".pane-read, .panes-one")) pane.scrollTo(0, 0);
+    // A thread j or k opened beside the list leaves the focus in it, so the keys go on moving there.
+    if (takeOpenedBeside()) return;
     return focusTitle();
   }, [routeKey]);
   // What was done stops being said once the human goes elsewhere.

@@ -78,6 +78,72 @@ test("j and k move through a list's threads, each line taking the focus a screen
   await expect.poll(() => heading(page), wait).toBe("Resplan");
 });
 
+/** The aria-label of each line of the open list, which starts "Unread" while its thread is, in order. */
+const lines = (page: Page) => page.locator(".threads a.thread").evaluateAll((links) => links.map((link) => link.getAttribute("aria-label") ?? ""));
+/** The subject of the thread whose line is marked open beside the list, or undefined. */
+const openLine = (page: Page) => page.evaluate(() => document.querySelector('.threads a.thread[aria-current="true"] .thread-subject')?.textContent ?? undefined);
+
+test("on a desk j and k open the thread at the cursor beside the list once it rests there half a second, marking it read, while the focus stays in the list", budget, async () => {
+  const { page } = await withThreads(["Kvitto", "Lunch", "Resplan"]);
+
+  await page.keyboard.press("j");
+  await page.waitForTimeout(300);
+  expect(await heading(page)).toBe("Inbox");
+  expect((await lines(page))[0]).toMatch(/^Unread, /);
+
+  await expect.poll(() => heading(page), wait).toBe("Resplan");
+  expect(await page.locator(".pane-list").getByRole("heading", { name: "Inbox", level: 2 }).count()).toBe(1);
+  expect(await focused(page)).toBe("Resplan");
+  expect(await openLine(page)).toBe("Resplan");
+  await expect.poll(async () => (await lines(page))[0], wait).not.toMatch(/^Unread, /);
+
+  // The keys go on moving from there, and the next rest opens the next.
+  await page.keyboard.press("j");
+  expect(await focused(page)).toBe("Lunch");
+  await expect.poll(() => heading(page), wait).toBe("Lunch");
+  expect(await focused(page)).toBe("Lunch");
+  expect(await openLine(page)).toBe("Lunch");
+  // Escape still closes what is open.
+  await page.keyboard.press("Escape");
+  await expect.poll(() => heading(page), wait).toBe("Inbox");
+});
+
+test("a quick run of j and k opens none of the threads it passes, only the one it rests on", budget, async () => {
+  const { page } = await withThreads(["Kvitto", "Lunch", "Resplan"]);
+
+  for (const key of ["j", "j", "j", "k"]) await page.keyboard.press(key);
+  expect(await heading(page)).toBe("Inbox");
+
+  await expect.poll(() => heading(page), wait).toBe("Lunch");
+  expect(await focused(page)).toBe("Lunch");
+  await expect.poll(async () => (await lines(page))[1], wait).not.toMatch(/^Unread, /);
+  const [resplan, , kvitto] = await lines(page);
+  expect(resplan).toMatch(/^Unread, /);
+  expect(kvitto).toMatch(/^Unread, /);
+});
+
+test("on a phone j and k open nothing by themselves, and o still opens", budget, async () => {
+  const { page } = await withThreads(["Kvitto", "Lunch"], { viewport: phone });
+
+  await page.keyboard.press("j");
+  await page.waitForTimeout(1_000);
+
+  expect(await heading(page)).toBe("Inbox");
+  expect(await focused(page)).toBe("Lunch");
+  expect((await lines(page))[0]).toMatch(/^Unread, /);
+  await page.keyboard.press("o");
+  await expect.poll(() => heading(page), wait).toBe("Lunch");
+});
+
+test("hovering a line opens nothing", budget, async () => {
+  const { page } = await withThreads(["Kvitto"]);
+
+  await page.locator(".threads a.thread").hover();
+  await page.waitForTimeout(1_000);
+
+  expect(await heading(page)).toBe("Inbox");
+});
+
 test("e archives the thread at the cursor and # moves it to Trash, each said with Undo, and the cursor moves on to the next", budget, async () => {
   const { page } = await withThreads(["Kvitto", "Lunch", "Resplan"]);
   await page.keyboard.press("j");
@@ -152,8 +218,7 @@ test("c writes a new message, and ? lists every shortcut on a sheet that Escape 
   await expect.poll(() => sheet(page).isVisible(), wait).toBe(true);
   const listedKeys = await sheet(page).innerText();
   for (const what of [
-    "Next thread",
-    "Previous thread",
+    "Move, and open after a moment",
     "Open the thread",
     "Select the thread",
     "Archive",
@@ -212,7 +277,8 @@ test("a human turns keyboard shortcuts off on You, and then no key acts, ? and /
 
   for (const key of ["j", "e", "?", "/", "c"]) await page.keyboard.press(key);
 
-  await page.waitForTimeout(500);
+  // Long enough for j to have opened the thread at the cursor, had it moved there.
+  await page.waitForTimeout(1_000);
   expect(await focused(page)).toBeUndefined();
   expect(await sheet(page).count()).toBe(0);
   expect(await page.evaluate(() => document.activeElement?.getAttribute("type"))).not.toBe("search");
@@ -302,6 +368,8 @@ test("l opens the labels for the thread at the cursor, to label it from the keyb
   await grace.POST("/mailboxes/{mailbox}/labels", { params: { path: { mailbox: mailboxes!.mailboxes[0]!.id } }, body: { name: "Kvitton" } });
   await page.reload();
   await expect.poll(() => listed(page), wait).toEqual(["Kvitto"]);
+  // The list can show before the labels have loaded, and the labels would then open without Kvitton.
+  await expect.poll(() => page.getByRole("link", { name: /Kvitton/ }).count(), wait).toBeGreaterThan(0);
   await page.keyboard.press("j");
 
   await page.keyboard.press("l");

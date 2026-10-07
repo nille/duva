@@ -9,7 +9,7 @@ import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
 import { PreferencesContext } from "./dates.ts";
 import { changeFor, type Done, type Labelled, markRead, organize, type Place, SessionEnded } from "./organize.tsx";
-import { useBeside } from "./panes.tsx";
+import { openBeside, useBeside } from "./panes.tsx";
 import { strings } from "./strings.ts";
 import { hrefOf } from "./views.tsx";
 
@@ -78,7 +78,10 @@ export function useShortcuts(keys: Record<string, (() => void) | undefined>) {
 
 /**
  * The keys of a list of threads, each a line `li[data-thread]` with its link: j and k move the
- * focus to the next and previous line, which a screen reader reads, o opens the line at the cursor,
+ * focus to the next and previous line, which a screen reader reads. Where the list and the reading
+ * pane lie side by side, the line's thread then opens there once the cursor rests on it for
+ * `restBeforeOpen` with no other key pressed, the focus staying in the list, so skimming past a
+ * thread doesn't mark it read. o opens the line at the cursor,
  * as Enter does, and x picks it or leaves it, as its checkbox does. The cursor is the line with the
  * focus, or the one that last had it. e archives, # moves to Trash and ! marks as spam the threads
  * picked or, with none picked, the thread at the cursor, which stays where it was when the human
@@ -120,6 +123,20 @@ export function useThreadKeys<Thread extends Labelled>({
   // The threads after the cursor's, then those before it, nearest first, for where it moves on to.
   const after = useRef<string[]>([]);
   const acting = useRef(false);
+  const resting = useRef<ReturnType<typeof setTimeout>>(undefined);
+  // Any key, click or move elsewhere ends the rest, as l does while its labels open, and j or k starts it again.
+  useEffect(() => {
+    const ended = () => clearTimeout(resting.current);
+    document.addEventListener("keydown", ended, { capture: true });
+    document.addEventListener("pointerdown", ended, { capture: true });
+    addEventListener("hashchange", ended);
+    return () => {
+      ended();
+      document.removeEventListener("keydown", ended, { capture: true });
+      document.removeEventListener("pointerdown", ended, { capture: true });
+      removeEventListener("hashchange", ended);
+    };
+  }, []);
 
   useEffect(() => {
     const element = list.current;
@@ -151,7 +168,14 @@ export function useThreadKeys<Thread extends Labelled>({
     // From outside the list, as from the title on coming back, the first key goes to the cursor's line.
     const inside = list.current?.contains(document.activeElement) === true;
     const to = at === -1 ? 0 : inside ? Math.min(Math.max(at + step, 0), lines.length - 1) : at;
-    lines[to]!.querySelector<HTMLElement>("a.thread")?.focus();
+    const link = lines[to]!.querySelector<HTMLAnchorElement>("a.thread");
+    if (link === null) return;
+    link.focus();
+    if (!sideBySide() || list.current?.closest(".pane-list") === null) return;
+    // It opens only if the cursor is still there, with nothing over the page, as the shortcuts' sheet.
+    resting.current = setTimeout(() => {
+      if (document.activeElement === link && link.hash !== location.hash) openBeside(link.hash);
+    }, restBeforeOpen);
   };
 
   const atCursor = () => threads.filter(({ id }) => id === cursor.current);
@@ -213,6 +237,12 @@ export function useThreadKeys<Thread extends Labelled>({
     }),
   });
 }
+
+/** How long the cursor rests on a line after j or k before its thread opens beside the list. */
+const restBeforeOpen = 500;
+
+/** Whether the page is wide enough for the list and what is open from it to lie side by side, as styles.css lays them out. */
+const sideBySide = () => matchMedia("(min-width: 64rem)").matches;
 
 /** The thread the cursor was last on in any list, so coming back to the list from it finds it there. */
 let lastCursor: string | undefined;
@@ -281,8 +311,7 @@ function ShortcutsSheet({ onClose }: { onClose: () => void }) {
     [
       copy.inList,
       [
-        [[key("j")], copy.next],
-        [[key("k")], copy.previous],
+        [[key("j"), key("k")], copy.move],
         [[key("Enter"), key("o")], copy.open],
         [[key("x")], copy.select],
         [[key("e")], copy.archive],
