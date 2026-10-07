@@ -431,10 +431,10 @@ function rowOf(item: Item, agents: Record<string, string>, outcomes: Record<stri
   if (item.kind === "send") {
     const { approval, decision, fresh } = item.entry;
     const agent = agents[approval.agent] ?? anAgent;
-    return { agent, at: approval.askedAt, subject: approval.draft.subject || strings.galley.noSubject, to: approval.draft.to, state: decision && slipOf(approval, agent, decision, outcomes[approval.id]), fresh };
+    return { agent, agentId: approval.agent, at: approval.askedAt, subject: approval.draft.subject || strings.galley.noSubject, to: approval.draft.to, state: decision && slipOf(approval, agent, decision, outcomes[approval.id]), fresh };
   }
   const { agent, draft } = item.send;
-  return { agent: agent?.name ?? anAgent, at: draft.updatedAt, subject: draft.subject || strings.galley.noSubject, to: draft.to, state: undefined, fresh: false };
+  return { agent: agent?.name ?? anAgent, agentId: agent?.id, at: draft.updatedAt, subject: draft.subject || strings.galley.noSubject, to: draft.to, state: undefined, fresh: false };
 }
 
 /**
@@ -459,14 +459,14 @@ function Row({
   const copy = strings.approvals;
   const to = (list: EmailAddress[]) => copy.to(list.map(({ address }) => address).join(", "));
   const row = rowOf(item, agents, outcomes);
-  const { agent, at, subject, state, fresh } = row;
+  const { agent, agentId, at, subject, state, fresh } = row;
   const line = "to" in row && row.to !== undefined ? to(row.to) : undefined;
   const why = item.kind === "held" ? (item.pause === undefined ? copy.limitTitle : copy.heldTitle(item.pause.name)) : undefined;
   const classes = ["queue-row", undecided(item) && "queue-row-waiting", state !== undefined && "queue-row-decided"].filter(Boolean).join(" ");
   return (
     <button type="button" className={classes} aria-current={current ? "true" : undefined} aria-controls={paneId} onClick={onChoose}>
       <span className="queue-who">
-        <ActorMark kind="agent" />
+        <ActorMark kind="agent" agent={agentId} />
         {agent}
       </span>
       <span className={`queue-kind queue-kind-${item.kind}`}>{copy.kinds[item.kind]}</span>
@@ -511,7 +511,7 @@ function HeldSend({
       <header className="galley-head">
         <h2 id={`${id}-title`}>
           <span className="galley-asks">
-            <ActorMark kind="agent" />
+            <ActorMark kind="agent" agent={agent?.id} />
             {pause === undefined ? copy.limitTitle : copy.heldTitle(pause.name)}
           </span>{" "}
           <span className="galley-subject" id={`${id}-subject`}>
@@ -682,7 +682,7 @@ function Galley({ shown, entry, agent, sponsor, line, outcome, client, onDecided
       <header className="galley-head">
         <h2 id={titleId}>
           <span className="galley-asks">
-            <ActorMark kind="agent" />
+            <ActorMark kind="agent" agent={approval.agent} />
             {strings.galley.asks(agent)}
           </span>{" "}
           <span className="galley-subject">{draft.subject || strings.galley.noSubject}</span>
@@ -703,7 +703,7 @@ function Galley({ shown, entry, agent, sponsor, line, outcome, client, onDecided
 
         <section className={editing ? "galley-copy galley-draft galley-draft-editing" : "galley-copy galley-draft"} aria-labelledby={`${titleId}-proof`}>
           <h3 className="galley-label" id={`${titleId}-proof`}>
-            <ActorMark kind={editing ? "human" : "agent"} />
+            <ActorMark kind={editing ? "human" : "agent"} agent={approval.agent} />
             {editing ? strings.galley.yourVersion : strings.galley.draft(agent)}
           </h3>
           {editing ? (

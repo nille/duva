@@ -179,10 +179,10 @@ test("on a phone the bar is one row with the search icon and Write, and the plac
   const settings = page.getByRole("banner").getByRole("link", { name: "Settings", exact: true });
   await expect.poll(() => write.isVisible(), wait).toBe(true);
 
-  const wordmark = (await page.locator(".bar .wordmark").boundingBox())!;
+  const nest = (await page.getByRole("banner").getByRole("link", { name: /^Duva, Coo is/ }).boundingBox())!;
   for (const control of [write, searchIcon, settings]) {
     const box = (await control.boundingBox())!;
-    expect(Math.abs(box.y + box.height / 2 - (wordmark.y + wordmark.height / 2))).toBeLessThan(4);
+    expect(Math.abs(box.y + box.height / 2 - (nest.y + nest.height / 2))).toBeLessThan(4);
     expect(box.height).toBeGreaterThanOrEqual(44);
   }
   expect(await page.getByRole("button", { name: "Sign out" }).isVisible()).toBe(false);
@@ -556,26 +556,6 @@ test("on a desk Settings is in the status strip, apart from the places, and show
   expect(await settings.getAttribute("aria-current")).toBe("page");
   expect(await places.evaluateAll((links) => links.filter((link) => link.hasAttribute("aria-current")).length)).toBe(0);
 });
-
-for (const [size, viewport] of [
-  ["a desk", { width: 1280, height: 800 }],
-  ["a phone", phone],
-] as const) {
-  test(`on ${size} the wordmark is a link to the Inbox of the human's first mailbox`, budget, async () => {
-    const { page, signIn, lovelace } = await withTwoMailboxes({ viewport });
-    await signIn("ada@example.org");
-    await expect.poll(() => title(page), wait).toBe("Inbox");
-    await page.evaluate((id) => (location.hash = `#/mailboxes/${id}/`), lovelace);
-    await page.getByRole("link", { name: "Settings", exact: true }).click();
-    await expect.poll(() => title(page), wait).toBe("Settings");
-
-    await page.getByRole("banner").getByRole("link", { name: "Duva, go to your Inbox", exact: true }).click();
-
-    await expect.poll(() => title(page), wait).toBe("Inbox");
-    // The first of ada@example.com and lovelace@example.com, not the one last open.
-    expect(page.url()).not.toContain(lovelace);
-  });
-}
 
 test("on a desk the open mailbox heads the side column as a selector, which opens the mailboxes, switches, and closes on Escape", budget, async () => {
   const { page, signIn, receive } = await withTwoMailboxes();

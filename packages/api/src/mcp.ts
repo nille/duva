@@ -80,13 +80,13 @@ const ownTools: Tool[] = [
     name: "askAgent",
     title: "Ask your mailbox agent",
     description:
-      "Asks your mailbox agent, Duva's own agent for the mailbox, which reads and works in it itself, and gives its answer and what it did. It waits up to about 20 seconds; if the agent takes longer, read its answer later with readConversation. This is the same conversation as Ask your agent in Duva.",
+      "Asks your mailbox agent, Duva's own agent for the mailbox, which reads and works in it itself, and gives its answer and what it did. It waits up to about 20 seconds; if the agent takes longer, read its answer later with readConversation. This is the same conversation as Ask Coo in Duva.",
     inputSchema: { type: "object", properties: { mailbox: mailboxInput, words: { type: "string", description: "What to ask, as you would ask a person." } }, required: ["words"] },
   },
   {
     name: "giveAgentTask",
     title: "Give your mailbox agent a task",
-    description: "Hands your mailbox agent something to do, without waiting for it. Its answer and what it did land in the conversation, in Ask your agent in Duva and in readConversation.",
+    description: "Hands your mailbox agent something to do, without waiting for it. Its answer and what it did land in the conversation, in Ask Coo in Duva and in readConversation.",
     inputSchema: { type: "object", properties: { mailbox: mailboxInput, words: { type: "string", description: "What the agent should do." } }, required: ["words"] },
   },
   {
@@ -266,7 +266,7 @@ export function createMcp(deployment: McpDeployment) {
       const prepared = await prepareTurn({ table, region, apiUrl, available: turns !== undefined }, human, { mailbox: mailbox.id, words: rest.words });
       if ("statusCode" in prepared) throw new Refused(prepared.body.message);
       await turns!.start(prepared);
-      const later = "Its answer will be in Ask your agent in Duva, and readConversation reads it.";
+      const later = "Its answer will be in Ask Coo in Duva, and readConversation reads it.";
       if (name === "giveAgentTask") return `Your mailbox agent is on it. ${later}`;
       const answered = await agentAnswer(human, mailbox, prepared.turn);
       return answered === undefined ? `Your mailbox agent is still working on it. ${later}` : answerAsRead(answered);

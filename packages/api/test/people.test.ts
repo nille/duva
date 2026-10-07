@@ -64,7 +64,7 @@ test("a dry run of removing a human lists their mailboxes and their agents, and 
   expect(data).toEqual({
     human: graceActor,
     mailboxes: [mailbox],
-    agents: expect.arrayContaining([agent, expect.objectContaining({ name: "Mailbox agent", mailbox: mailbox.id })]),
+    agents: expect.arrayContaining([agent, expect.objectContaining({ name: "Coo", mailbox: mailbox.id })]),
     removed: false,
   });
   expect(data!.agents).toHaveLength(2);
@@ -210,12 +210,12 @@ test("each change of a removal is in the organization's feed under the admin, an
   expect(removedAgents).toEqual(
     expect.arrayContaining([
       { ...stamp, type: "actorRemoved", removed: agent },
-      { ...stamp, type: "actorRemoved", removed: expect.objectContaining({ name: "Mailbox agent", mailbox: mailbox.id, sponsor: graceActor.id }) },
+      { ...stamp, type: "actorRemoved", removed: expect.objectContaining({ name: "Coo", mailbox: mailbox.id, sponsor: graceActor.id }) },
     ]),
   );
   expect(after?.changes.slice(2)).toEqual([
     { ...stamp, type: "mailboxHandedOver", mailbox: mailbox.id, from: graceActor.id, to: linusId },
-    { ...stamp, actor: linusId, type: "actorAdded", added: expect.objectContaining({ name: "Mailbox agent", mailbox: mailbox.id, sponsor: linusId }) },
+    { ...stamp, actor: linusId, type: "actorAdded", added: expect.objectContaining({ name: "Coo", mailbox: mailbox.id, sponsor: linusId }) },
     { ...stamp, type: "actorRemoved", removed: graceActor },
   ]);
   expect(before?.changes).toContainEqual(expect.objectContaining({ type: "actorAdded", added: graceActor }));

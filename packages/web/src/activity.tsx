@@ -379,7 +379,7 @@ export function AgentDay({
                   </time>
                   <p className="entry-line">
                     <span className="entry-said">
-                      {mark !== undefined && <ActorMark kind={mark} />}
+                      {mark !== undefined && <ActorMark kind={mark} agent={agent} />}
                       <strong className="entry-by">{by}</strong>
                       {rest}
                     </span>

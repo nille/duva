@@ -71,7 +71,7 @@ async function current(config: Config): Promise<Session | undefined> {
 const save = (session: Session) => localStorage.setItem(sessionKey, JSON.stringify(session));
 
 /**
- * Posts a turn of Ask your agent to the conversation Lambda, on the web app's own domain under
+ * Posts a turn of Ask Coo to the conversation Lambda, on the web app's own domain under
  * /agent/, where CloudFront signs it for the Lambda. CloudFront's signature takes the Authorization
  * header, so the access token goes in a header of its own, and the body's SHA-256 with it, which
  * CloudFront needs to sign a POST. Answers undefined once the session has expired.

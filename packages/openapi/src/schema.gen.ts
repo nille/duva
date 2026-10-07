@@ -1169,7 +1169,7 @@ export interface paths {
         };
         /**
          * Read a mailbox's mailbox agent and your conversation with it.
-         * @description Every human's personal mailbox has a mailbox agent, which Duva hosts and which you sponsor. It works only in that mailbox, with the sponsor access you give it in its settings, and its actions are attributed to it. The web app asks it in "Ask your agent", which streams its answer from the web app's own address, under /agent/. Lists the conversation's turns, oldest first, at most the last 100. Only the mailbox's owner can read it.
+         * @description Every human's personal mailbox has a mailbox agent, Coo, which Duva hosts and which you sponsor. It works only in that mailbox, with the sponsor access you give it in its settings, and its actions are attributed to it. The web app asks it in "Ask Coo", which streams its answer from the web app's own address, under /agent/. Lists the conversation's turns, oldest first, at most the last 100. Only the mailbox's owner can read it.
          */
         get: operations["getMailboxAgent"];
         put?: never;
@@ -4100,6 +4100,7 @@ export interface components {
             dateFormat: components["schemas"]["DateFormat"];
             mailView: components["schemas"]["MailView"];
             keyboardShortcuts: components["schemas"]["KeyboardShortcuts"];
+            cooSpeaksUp: components["schemas"]["CooSpeaksUp"];
             timeZone?: components["schemas"]["TimeZone"];
         };
         /** @description The preferences changed, each with its new value. */
@@ -4108,6 +4109,7 @@ export interface components {
             dateFormat?: components["schemas"]["DateFormat"];
             mailView?: components["schemas"]["MailView"];
             keyboardShortcuts?: components["schemas"]["KeyboardShortcuts"];
+            cooSpeaksUp?: components["schemas"]["CooSpeaksUp"];
             /** @description The time zone, as an IANA name, or null to remove it, as if the human never chose one. The CLI removes it with --no-timeZone. */
             timeZone?: components["schemas"]["TimeZone"] | null;
         };
@@ -4136,6 +4138,11 @@ export interface components {
          * @enum {string}
          */
         KeyboardShortcuts: "on" | "off";
+        /**
+         * @description Whether Coo, the mailbox agent, says in the web app when there is news worth a glance: new mail since the human last looked, a draft of its waiting for their approval, or a label's task done. on, the default, has it say so in a speech bubble under its nest. off keeps it quiet.
+         * @enum {string}
+         */
+        CooSpeaksUp: "on" | "off";
         Status: {
             /**
              * @description The version of Duva the deployment runs.

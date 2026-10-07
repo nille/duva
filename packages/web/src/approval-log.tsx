@@ -174,7 +174,7 @@ function LogRow({ entry, current, paneId, onChoose }: { entry: Entry; current: b
   return (
     <button type="button" className="queue-row queue-row-decided" aria-current={current ? "true" : undefined} aria-controls={paneId} onClick={onChoose}>
       <span className="queue-who">
-        <ActorMark kind="agent" />
+        <ActorMark kind="agent" agent={entry.agent} />
         {entry.agentName || strings.galley.anAgent}
       </span>
       <span className={`queue-kind queue-outcome queue-outcome-${entry.outcome}`}>{strings.log.outcomes[entry.outcome]}</span>
@@ -253,7 +253,7 @@ function LogEntry({ entry, me, own, client, onChanged, onSignedOut }: { entry: E
       <header className="galley-head">
         <h2 id={titleId}>
           <span className="galley-asks">
-            <ActorMark kind="agent" />
+            <ActorMark kind="agent" agent={entry.agent} />
             {copy.headline(entry.outcome, by)} {agent}
           </span>{" "}
           <span className="galley-subject">{entry.subject || strings.galley.noSubject}</span>

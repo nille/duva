@@ -130,6 +130,11 @@ export interface DuvaOptions {
    */
   beforeMailboxAgents?: boolean;
   /**
+   * Whether the deployment runs a version from before mailbox agents were named Coo until setUp()
+   * deploys this one, so its mailbox agents are called Mailbox agent until then.
+   */
+  beforeCoo?: boolean;
+  /**
    * The model the mailbox agents ask, in place of Claude on Bedrock: a stand-in that answers as a
    * test scripts it, from what it is asked. Unless given, it answers every turn with "Stand-in answer."
    */
@@ -253,7 +258,7 @@ export interface Duva {
   /** Has the indexer's queue lose the next task that takes a step of a backfill, as when SQS drops it as a duplicate. */
   loseBackfillStep(): void;
   /**
-   * Posts a turn of Ask your agent to the conversation Lambda as the web app does, through
+   * Posts a turn of Ask Coo to the conversation Lambda as the web app does, through
    * CloudFront, as the human at `email`, unless `token` gives their access token, and reads all it
    * streams back. Each of the agent's runs on AgentCore asks the `model` option's stand-in.
    */
@@ -295,6 +300,7 @@ export async function startDuva({
   beforeApprovalLog = false,
   undoWindow = 0,
   beforeMailboxAgents = false,
+  beforeCoo = false,
   model = standInModel,
   tasksHeld = false,
 }: DuvaOptions = {}): Promise<Duva> {
@@ -457,6 +463,7 @@ export async function startDuva({
   let screenerDeployed = !beforeScreener;
   let approvalLogDeployed = !beforeApprovalLog;
   let mailboxAgentsDeployed = !beforeMailboxAgents;
+  let cooDeployed = !beforeCoo;
   let deliveriesDeployed = !beforeDeliveries;
   const api = async (request: Request) => {
     if (new URL(request.url).pathname.startsWith("/download/")) return downloaded(request);
@@ -469,6 +476,7 @@ export async function startDuva({
     if (!screenerDeployed) await forgetScreener(table);
     if (!approvalLogDeployed) await forgetApprovalLog(table);
     if (!mailboxAgentsDeployed) await forgetMailboxAgents(table);
+    if (!cooDeployed) await forgetCoo(table);
     if (!deliveriesDeployed) await forgetDeliveries(table);
     if (!indexingHeld) await index();
     await giveTasks();
@@ -615,6 +623,7 @@ export async function startDuva({
       await setUpDeliveries(table);
       await setUpScreeners(table);
       mailboxAgentsDeployed = true;
+      cooDeployed = true;
       await giveMailboxAgents(table);
       approvalLogDeployed = true;
       await listEarlierDecisions(table);
@@ -840,6 +849,19 @@ async function forgetMailboxAgents(table: Table) {
       await table.client.send(new DeleteItemCommand({ TableName: table.name, Key: { [tableKey.partitionKey]: key[tableKey.partitionKey]!, [tableKey.sortKey]: key[tableKey.sortKey]! } }));
     }
   }
+}
+
+/** Names each mailbox agent as a version from before Coo did. */
+async function forgetCoo(table: Table) {
+  const { Items = [] } = await table.client.send(
+    new ScanCommand({
+      TableName: table.name,
+      FilterExpression: "#sk = :actor AND attribute_exists(mailbox)",
+      ExpressionAttributeNames: { "#sk": tableKey.sortKey },
+      ExpressionAttributeValues: { ":actor": { S: "actor" } },
+    }),
+  );
+  for (const item of Items) await table.client.send(new PutItemCommand({ TableName: table.name, Item: { ...item, name: { S: "Mailbox agent" } } }));
 }
 
 /** Removes what a version from before the approval log didn't write: each decision's listing in its approver's log. */

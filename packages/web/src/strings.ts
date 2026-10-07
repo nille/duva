@@ -53,8 +53,6 @@ export const strings = {
     write: "Write",
     search: "Search",
     skip: "Skip to main content",
-    /** The wordmark, which goes to the Inbox. */
-    home: "Duva, go to your Inbox",
   },
   /** The status strip along the foot of a desk. */
   strip: {
@@ -244,12 +242,28 @@ export const strings = {
     },
   },
 
-  /** Ask your agent: the human's conversation with their mailbox's mailbox agent, in the reading pane. */
+  /** Coo, the mailbox agent, in its nest at the side column's head, and what it says there. */
+  coo: {
+    /** The nest's name: Duva's, then how Coo is, then where it goes. */
+    nest: (working: boolean) => `Duva, Coo is ${working ? "working" : "resting"}. Ask Coo`,
+    coo: "Coo.",
+    drafts: (count: number) => (count === 1 ? "A draft of mine waits for your approval." : `${count} drafts of mine wait for your approval.`),
+    mail: (count: number, from: string[]) => {
+      const who = from.length === 0 ? "" : from.length <= 2 ? `from ${from.join(" and ")}` : `from ${from.slice(0, 2).join(", ")} and others`;
+      return count === 1 ? `New mail${who === "" ? "" : ` ${who}`}.` : `${count} new since you looked${who === "" ? "" : `, ${who}`}.`;
+    },
+    tasks: (count: number, subject?: string, label?: string) => {
+      const what = subject === undefined ? "" : label === undefined ? ` ${subject}` : ` ${subject}, from ${label}`;
+      return count === 1 ? `Done:${what || " a task"}.` : `${count} tasks done${what === "" ? "" : `, the last${what}`}.`;
+    },
+  },
+
+  /** Ask Coo: the human's conversation with their mailbox's mailbox agent, Coo, in the reading pane. */
   ask: {
-    link: "Ask your agent",
-    title: "Ask your agent",
+    link: "Ask Coo",
+    title: "Ask Coo",
     you: "You",
-    agent: "Mailbox agent",
+    agent: "Coo",
     where: (address: string) => `Works in ${address}, as itself`,
     can: {
       none: "It has no access to this mailbox now.",
@@ -266,12 +280,12 @@ export const strings = {
     suggestions: ["What came in today that needs me?", "Sum up the newest thread.", "Draft a reply to the last mail I got."],
     suggestion: "Ask this",
     field: "What do you want to ask?",
-    placeholder: "Ask your agent…",
+    placeholder: "Ask Coo…",
     send: "Ask",
     hint: "Enter asks, Shift+Enter starts a new line.",
     thinking: "Working…",
-    working: "Your agent is working",
-    answered: "Your agent answered",
+    working: "Coo is working",
+    answered: "Coo answered",
     steps: "What it did",
     open: {
       thread: "the thread",
@@ -308,8 +322,8 @@ export const strings = {
     refusedStep: (message: string) => `Duva refused: ${message}`,
     capReached: "It stopped here, since the mailbox agents reached the organization's spend cap for the month. An admin can raise it in Settings.",
     failed: "Something went wrong on its side, so it stopped. Ask again.",
-    unreachable: "Duva couldn't be reached, so your agent didn't get that. Check your connection and ask again.",
-    loadFailed: "Duva couldn't load what you asked your agent before. Try again in a moment.",
+    unreachable: "Duva couldn't be reached, so Coo didn't get that. Check your connection and ask again.",
+    loadFailed: "Duva couldn't load what you asked Coo before. Try again in a moment.",
     retry: "Try again",
   },
 
@@ -454,7 +468,7 @@ export const strings = {
     goSent: "Go to Sent",
     goDrafts: "Go to Drafts",
     goAll: "Go to All mail",
-    ask: "Ask your agent",
+    ask: "Ask Coo",
     goScreener: "Go to the Screener",
     help: "These shortcuts",
     offBefore: "To turn them off, as for speech input, choose Off on ",
@@ -494,18 +508,18 @@ export const strings = {
   },
 
   labelPrompt: {
-    lead: "Your mailbox agent gets each message here, with this prompt:",
+    lead: "Coo gets each message here, with this prompt:",
     add: "Add a prompt",
     edit: "Edit prompt",
     field: (label: string) => `Prompt for ${label}`,
-    hint: "Each message that gets this label, by hand, by an agent or by a sender's delivery, goes to your mailbox agent as a task with this prompt. It works within the access you give it, and the message still goes where it goes.",
+    hint: "Each message that gets this label, by hand, by an agent or by a sender's delivery, goes to Coo, your mailbox agent, as a task with this prompt. It works within the access you give it, and the message still goes where it goes.",
     placeholder: "Note the amount and the date, and draft a reply that thanks them.",
     save: "Save prompt",
     remove: "Remove prompt",
     cancel: "Cancel",
-    missing: "Write what your mailbox agent is to do with each message.",
-    saved: (label: string) => `Saved. Your mailbox agent gets each message labelled ${label} from now on.`,
-    removed: (label: string) => `Removed the prompt. Messages labelled ${label} no longer go to your mailbox agent.`,
+    missing: "Write what Coo is to do with each message.",
+    saved: (label: string) => `Saved. Coo gets each message labelled ${label} from now on.`,
+    removed: (label: string) => `Removed the prompt. Messages labelled ${label} no longer go to Coo.`,
     failed: (status: number) => `Duva couldn't save the prompt (error ${status}). Try again in a moment.`,
     noAgent: "This mailbox has no mailbox agent yet. Ask an admin to run duva deploy, which gives every human's mailbox one.",
     unreachable: "Duva couldn't be reached, so the prompt wasn't saved. Check your connection and try again.",
@@ -514,7 +528,7 @@ export const strings = {
     title: "Tasks",
     from: (label: string) => `from ${label}`,
     states: { waiting: "Waiting", working: "Working", done: "Done", failed: "Failed" },
-    agent: "Mailbox agent",
+    agent: "Coo",
   },
 
   logo: {
@@ -644,7 +658,7 @@ export const strings = {
     saving: "Saving…",
     mailboxAgents: {
       title: "Mailbox agents",
-      lead: "Every human's mailbox has a mailbox agent Duva runs, which its owner asks in Ask your agent. Admins choose the model it thinks with, where the mail it reads is processed, and what all of them may spend.",
+      lead: "Every human's mailbox has a mailbox agent Duva runs, which its owner asks in Ask Coo. Admins choose the model it thinks with, where the mail it reads is processed, and what all of them may spend.",
       model: {
         legend: "Model",
         lead: "Claude on Amazon Bedrock, paid per word it reads and writes.",
@@ -730,6 +744,14 @@ export const strings = {
       onHint: "They work anywhere but in a field. This is the default.",
       off: "Off",
       offHint: "For speech input, or if keys set things off by mistake.",
+    },
+    cooSpeaksUp: {
+      legend: "Coo speaks up",
+      lead: "Coo sits in its nest at the top left. It says so under it when there's news worth a glance: new mail since you looked, a draft of its waiting for you, or a task done.",
+      on: "On",
+      onHint: "What it says goes away once you look. This is the default.",
+      off: "Off",
+      offHint: "Coo keeps quiet. It still bobs while it works.",
     },
     mailView: {
       legend: "How mail shows",

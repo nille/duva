@@ -139,6 +139,7 @@ Give only the preferences to change. They follow you to every browser you sign i
 - `--dateFormat`: How the web app shows dates. Locale, the default, follows the browser's language. iso shows 2026-10-05, dayMonth 5 Oct 2026 and monthDay Oct 5, 2026, with month names in the browser's language. Without the year, they show 10-05, 5 Oct and Oct 5.
 - `--mailView`: How the web app shows a message that has HTML. html, the default, shows it as its sender designed it, with known trackers removed. text shows its plain text. Either way, the human can switch each message the other way.
 - `--keyboardShortcuts`: Whether single keys work as shortcuts in the web app, such as j and k to move through a list and e to archive. on, the default, has them work anywhere but in a field. off turns them all off, for speech input or keys pressed by mistake.
+- `--cooSpeaksUp`: Whether Coo, the mailbox agent, says in the web app when there is news worth a glance: new mail since the human last looked, a draft of its waiting for their approval, or a label's task done. on, the default, has it say so in a speech bubble under its nest. off keeps it quiet.
 - `--timeZone` or `--no-timeZone`: The time zone, as an IANA name, or null to remove it, as if the human never chose one. The CLI removes it with --no-timeZone.
 
 ## duva humans list
@@ -727,7 +728,7 @@ Erases each thread that is in Trash when you call, with its messages and their r
 
 Read a mailbox's mailbox agent and your conversation with it.
 
-Every human's personal mailbox has a mailbox agent, which Duva hosts and which you sponsor. It works only in that mailbox, with the sponsor access you give it in its settings, and its actions are attributed to it. The web app asks it in "Ask your agent", which streams its answer from the web app's own address, under /agent/. Lists the conversation's turns, oldest first, at most the last 100. Only the mailbox's owner can read it.
+Every human's personal mailbox has a mailbox agent, Coo, which Duva hosts and which you sponsor. It works only in that mailbox, with the sponsor access you give it in its settings, and its actions are attributed to it. The web app asks it in "Ask Coo", which streams its answer from the web app's own address, under /agent/. Lists the conversation's turns, oldest first, at most the last 100. Only the mailbox's owner can read it.
 
 - `--mailbox` (required): The mailbox's ID.
 

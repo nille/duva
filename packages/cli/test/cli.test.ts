@@ -239,7 +239,7 @@ test("a human chooses to read mail as text", async () => {
   const changed = await machine.duva("preferences", "change", "--mailView", "text");
 
   expect(changed.exitCode).toBe(0);
-  expect(JSON.parse(changed.stdout)).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "text", keyboardShortcuts: "on" });
+  expect(JSON.parse(changed.stdout)).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "text", keyboardShortcuts: "on", cooSpeaksUp: "on" });
 });
 
 test("a human chooses 24-hour time and ISO dates, and the CLI's own timestamps stay ISO 8601", async () => {
@@ -253,9 +253,9 @@ test("a human chooses 24-hour time and ISO dates, and the CLI's own timestamps s
   const changed = await machine.duva("preferences", "change", "--hourCycle", "h23", "--dateFormat", "dayMonth");
   const changes = await machine.duva("organization", "changes");
 
-  expect(JSON.parse(before.stdout)).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "html", keyboardShortcuts: "on" });
+  expect(JSON.parse(before.stdout)).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "on" });
   expect(changed.exitCode).toBe(0);
-  expect(JSON.parse(changed.stdout)).toEqual({ hourCycle: "h23", dateFormat: "dayMonth", mailView: "html", keyboardShortcuts: "on" });
+  expect(JSON.parse(changed.stdout)).toEqual({ hourCycle: "h23", dateFormat: "dayMonth", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "on" });
   const times = (JSON.parse(changes.stdout) as { changes: { at: string }[] }).changes.map(({ at }) => at);
   expect(times).not.toHaveLength(0);
   for (const at of times) expect(at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
@@ -271,10 +271,10 @@ test("a human chooses a time zone, and removes it again", async () => {
   const chosen = await machine.duva("preferences", "change", "--timeZone", "Europe/Stockholm");
   const removed = await machine.duva("preferences", "change", "--no-timeZone");
 
-  expect(JSON.parse(chosen.stdout)).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "html", keyboardShortcuts: "on", timeZone: "Europe/Stockholm" });
+  expect(JSON.parse(chosen.stdout)).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "on", timeZone: "Europe/Stockholm" });
   expect(removed.stderr).toBe("");
   expect(removed.exitCode).toBe(0);
-  expect(JSON.parse(removed.stdout)).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "html", keyboardShortcuts: "on" });
+  expect(JSON.parse(removed.stdout)).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "on" });
 });
 
 test("preferences change with a date format Duva doesn't have says which there are", async () => {
@@ -426,7 +426,7 @@ test("an admin removes a human from the CLI, first with --dryRun, handing their 
   const dryRun = await machine.duva("humans", "remove", "--human", grace!.id, "--dryRun");
   const removed = await machine.duva("humans", "remove", "--human", grace!.id, "--handTo", linus!.id, "--handOver", mailbox.id);
 
-  expect(JSON.parse(dryRun.stdout)).toMatchObject({ human: grace, mailboxes: [mailbox], agents: [expect.objectContaining({ name: "Mailbox agent", mailbox: mailbox.id })], removed: false });
+  expect(JSON.parse(dryRun.stdout)).toMatchObject({ human: grace, mailboxes: [mailbox], agents: [expect.objectContaining({ name: "Coo", mailbox: mailbox.id })], removed: false });
   expect(removed.exitCode).toBe(0);
   expect(JSON.parse(removed.stdout)).toMatchObject({ human: grace, removed: true });
   expect((await duva.signIn("linus@example.com").GET("/mailboxes")).data?.mailboxes).toEqual([{ ...mailbox, owner: linus!.id, groups: [] }]);

@@ -52,8 +52,8 @@ test("a human asks their mailbox's agent from the side column, and reads its ans
   const { page, signIn } = await withMailbox({ model });
   await signIn("grace@example.org");
 
-  await page.getByRole("link", { name: "Ask your agent" }).click();
-  await page.getByRole("heading", { level: 1, name: "Ask your agent" }).waitFor(wait);
+  await page.getByRole("link", { name: "Ask Coo", exact: true }).click();
+  await page.getByRole("heading", { level: 1, name: "Ask Coo" }).waitFor(wait);
   await page.getByRole("textbox", { name: "What do you want to ask?" }).fill("What did Ada send?");
   await page.getByRole("button", { name: "Ask", exact: true }).click();
 
@@ -78,7 +78,7 @@ test("a reply the agent asks to send says it waits in Approvals, which counts it
   const { page, signIn } = await withMailbox({ model });
   await signIn("grace@example.org");
 
-  await page.getByRole("link", { name: "Ask your agent" }).click();
+  await page.getByRole("link", { name: "Ask Coo", exact: true }).click();
   await page.getByRole("textbox", { name: "What do you want to ask?" }).fill("Thank Ada.");
   await page.keyboard.press("Enter");
 
@@ -96,7 +96,7 @@ test("what Duva refuses the agent shows on its step, and a turn Duva refuses kee
   const path = { params: { path: { agent: (await agent()).id } } };
   await grace.PATCH("/agents/{agent}/settings", { ...path, body: { sponsorAccess: "read" } });
   await signIn("grace@example.org");
-  await page.getByRole("link", { name: "Ask your agent" }).click();
+  await page.getByRole("link", { name: "Ask Coo", exact: true }).click();
   await page.getByText("It reads and searches your mail.").waitFor(wait);
 
   await page.getByRole("textbox", { name: "What do you want to ask?" }).fill("Write to Ada.");
@@ -110,7 +110,7 @@ test("what Duva refuses the agent shows on its step, and a turn Duva refuses kee
   expect(await page.getByRole("textbox", { name: "What do you want to ask?" }).inputValue()).toBe("And now?");
 });
 
-test("what was asked is there when the human comes back, Shift+A opens Ask your agent, and Start over clears it", budget, async () => {
+test("what was asked is there when the human comes back, Shift+A opens Ask Coo, and Start over clears it", budget, async () => {
   const { page, signIn } = await withMailbox({ model: scripted(() => [{ text: "Hello Grace." }]) });
   await signIn("grace@example.org");
   await page.getByRole("heading", { level: 1, name: "Inbox" }).waitFor(wait);
@@ -127,7 +127,7 @@ test("what was asked is there when the human comes back, Shift+A opens Ask your 
   expect(await page.locator(".ask-turn").count()).toBe(0);
 });
 
-test("on a phone, Ask your agent takes the screen, with the field at its foot", budget, async () => {
+test("on a phone, Ask Coo takes the screen, with the field at its foot", budget, async () => {
   const { page, signIn } = await withMailbox({ viewport: phone, model: scripted(() => [{ text: "Hello." }]) });
   await signIn("grace@example.org");
   await page.getByRole("heading", { level: 1, name: "Inbox" }).waitFor(wait);

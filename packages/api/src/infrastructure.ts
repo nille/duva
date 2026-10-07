@@ -157,7 +157,7 @@ export const signInSender = systemAddress;
 /** The From of sign-in codes, as Cognito sends them from the sign-in domain. */
 export const signInFrom = (domain: string) => `Duva <${signInSender(domain)}>`;
 
-/** Where on the web app's domain Ask your agent posts each turn, which CloudFront passes to the conversation Lambda. */
+/** Where on the web app's domain Ask Coo posts each turn, which CloudFront passes to the conversation Lambda. */
 export const conversationPath = "agent/";
 
 /** The header a turn gives the human's access token in, since CloudFront signs the request to the conversation Lambda with its own Authorization. */

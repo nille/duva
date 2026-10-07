@@ -44,12 +44,12 @@ test("a human writes a label's prompt in its head, and a thread given the label 
   await page.getByRole("textbox", { name: "Prompt for Receipts" }).fill("Note the amount.");
   await page.getByRole("button", { name: "Save prompt" }).click();
 
-  await expect.poll(() => page.getByText("Saved. Your mailbox agent gets each message labelled Receipts from now on.").isVisible(), wait).toBe(true);
-  await expect.poll(() => page.getByText(/^Your mailbox agent gets each message here, with this prompt:/).textContent(), wait).toBe("Your mailbox agent gets each message here, with this prompt: Note the amount.");
+  await expect.poll(() => page.getByText("Saved. Coo gets each message labelled Receipts from now on.").isVisible(), wait).toBe(true);
+  await expect.poll(() => page.getByText(/^Coo gets each message here, with this prompt:/).textContent(), wait).toBe("Coo gets each message here, with this prompt: Note the amount.");
   await grace.POST("/mailboxes/{mailbox}/threads/labels", { params, body: { threads: [thread], add: [receipts] } });
-  await page.getByRole("link", { name: /Your receipt/ }).click();
+  await page.getByRole("link", { name: /^Unread, Shop, Your receipt/ }).click();
   const tasks = page.getByRole("region", { name: "Tasks" });
-  await expect.poll(() => tasks.getByRole("listitem").first().textContent(), wait).toMatch(/^Mailbox agentfrom ReceiptsDone.*Stand-in answer\.$/);
+  await expect.poll(() => tasks.getByRole("listitem").first().textContent(), wait).toMatch(/^Coofrom ReceiptsDone.*Stand-in answer\.$/);
 });
 
 test("a human edits and removes a label's prompt, and the Feed takes one while the Inbox doesn't", budget, async () => {
@@ -61,15 +61,15 @@ test("a human edits and removes a label's prompt, and the Feed takes one while t
   await page.getByRole("button", { name: "Add a prompt" }).click();
   await page.getByRole("textbox", { name: "Prompt for Feed" }).fill("Summarize it.");
   await page.getByRole("button", { name: "Save prompt" }).click();
-  const shown = () => page.getByText(/^Your mailbox agent gets each message here, with this prompt:/).textContent();
-  await expect.poll(shown, wait).toBe("Your mailbox agent gets each message here, with this prompt: Summarize it.");
+  const shown = () => page.getByText(/^Coo gets each message here, with this prompt:/).textContent();
+  await expect.poll(shown, wait).toBe("Coo gets each message here, with this prompt: Summarize it.");
   await page.getByRole("button", { name: "Edit prompt" }).click();
   await page.getByRole("textbox", { name: "Prompt for Feed" }).fill("Summarize it in a line.");
   await page.getByRole("button", { name: "Save prompt" }).click();
-  await expect.poll(shown, wait).toBe("Your mailbox agent gets each message here, with this prompt: Summarize it in a line.");
+  await expect.poll(shown, wait).toBe("Coo gets each message here, with this prompt: Summarize it in a line.");
   await page.getByRole("button", { name: "Edit prompt" }).click();
   await page.getByRole("button", { name: "Remove prompt" }).click();
 
   await expect.poll(() => page.getByRole("button", { name: "Add a prompt" }).isVisible(), wait).toBe(true);
-  expect(await page.getByText(/^Your mailbox agent gets each message here/).count()).toBe(0);
+  expect(await page.getByText(/^Coo gets each message here/).count()).toBe(0);
 });

@@ -2,7 +2,7 @@
 // Each change to the setup is written in one transaction with its change-feed entry.
 import { randomUUID } from "node:crypto";
 import { ConditionalCheckFailedException, TransactionCanceledException } from "@aws-sdk/client-dynamodb";
-import { DeleteCommand, GetCommand, PutCommand, QueryCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
+import { DeleteCommand, GetCommand, PutCommand, QueryCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import type { components } from "@duva/openapi";
 import { agentKeyHash, newAgentKey } from "./agent-keys.ts";
 import type { Humans } from "./user-pool.ts";
@@ -262,6 +262,28 @@ async function addAgentWith(
     ...items,
   ]);
   return agent;
+}
+
+/**
+ * Renames the agent, unless it was removed, as deploy's setup names the mailbox agents from before
+ * Coo. The change feeds have no rename to record: clients read the agents again as they stand, and
+ * the feeds' earlier entries keep the name they were written with.
+ */
+export async function renameAgent(table: Table, agent: string, name: string): Promise<void> {
+  await documents(table)
+    .send(
+      new UpdateCommand({
+        TableName: table.name,
+        Key: actorKey(agent),
+        UpdateExpression: "SET #name = :name",
+        ConditionExpression: `attribute_exists(${pk})`,
+        ExpressionAttributeNames: { "#name": "name" },
+        ExpressionAttributeValues: { ":name": name },
+      }),
+    )
+    .catch((error: unknown) => {
+      if (!(error instanceof ConditionalCheckFailedException)) throw error;
+    });
 }
 
 /**

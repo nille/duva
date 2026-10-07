@@ -210,7 +210,7 @@ async function alertUnlessSponsor(table: Table, actor: Actor, agent: Agent, kind
 }
 
 // Duva hosts mailbox agents and gives each run a token of its own, so they have no key (ADR-0027).
-const hostedRefusal = () => refusal(409, "Duva hosts mailbox agents, so they have no key to rotate. Ask yours in the web app's Ask your agent.");
+const hostedRefusal = () => refusal(409, "Duva hosts mailbox agents, so they have no key to rotate. Ask yours, Coo, in the web app.");
 
 const removedMeanwhile = (agent: Agent) => refusal(404, `The agent ${JSON.stringify(agent.id)} was removed meanwhile.`);
 

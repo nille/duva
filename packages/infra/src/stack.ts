@@ -706,7 +706,7 @@ export class DuvaStack extends Stack {
       }),
     );
 
-    // Ask your agent posts each turn to the web app's domain, under /agent/, where CloudFront signs
+    // Ask Coo posts each turn to the web app's domain, under /agent/, where CloudFront signs
     // the request to the conversation Lambda's function URL, which only the distribution may call
     // (docs/aws.md). CloudFront's signature takes the Authorization header, so the human's access
     // token comes in a header of its own, and a POST carries its body's SHA-256 to CloudFront, as OAC asks. The
@@ -822,7 +822,7 @@ export class DuvaStack extends Stack {
 
     new CfnOutput(this, stackOutputs.apiUrl, { value: api.apiEndpoint, description: "The URL of Duva's API" });
     new CfnOutput(this, stackOutputs.mcpFunction, { value: mcp.functionName, description: "The function API Gateway invokes for Duva's MCP endpoint" });
-    new CfnOutput(this, stackOutputs.conversationFunction, { value: conversation.functionName, description: "The function Ask your agent's turns invoke through CloudFront" });
+    new CfnOutput(this, stackOutputs.conversationFunction, { value: conversation.functionName, description: "The function Ask Coo's turns invoke through CloudFront" });
     new CfnOutput(this, stackOutputs.agentRuntime, { value: Fn.conditionIf(agentsHere.logicalId, agentRuntime.agentRuntimeArn, "").toString(), description: "The mailbox agents' AgentCore Runtime, empty where AgentCore isn't" });
     new CfnOutput(this, stackOutputs.webUrl, { value: webUrl, description: "The URL of Duva's web app" });
     new CfnOutput(this, stackOutputs.webBucket, { value: web.bucketName, description: "The bucket the web app is served from" });

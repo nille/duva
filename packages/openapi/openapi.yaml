@@ -2317,10 +2317,10 @@ paths:
       operationId: getMailboxAgent
       summary: Read a mailbox's mailbox agent and your conversation with it.
       description: >
-        Every human's personal mailbox has a mailbox agent, which Duva hosts
-        and which you sponsor. It works only in that mailbox, with the
+        Every human's personal mailbox has a mailbox agent, Coo, which Duva
+        hosts and which you sponsor. It works only in that mailbox, with the
         sponsor access you give it in its settings, and its actions are
-        attributed to it. The web app asks it in "Ask your agent", which
+        attributed to it. The web app asks it in "Ask Coo", which
         streams its answer from the web app's own address, under /agent/.
         Lists the conversation's turns, oldest first, at most the last 100.
         Only the mailbox's owner can read it.
@@ -7037,7 +7037,7 @@ components:
     Preferences:
       type: object
       additionalProperties: false
-      required: [hourCycle, dateFormat, mailView, keyboardShortcuts]
+      required: [hourCycle, dateFormat, mailView, keyboardShortcuts, cooSpeaksUp]
       description: A human's own preferences.
       properties:
         hourCycle:
@@ -7048,6 +7048,8 @@ components:
           $ref: "#/components/schemas/MailView"
         keyboardShortcuts:
           $ref: "#/components/schemas/KeyboardShortcuts"
+        cooSpeaksUp:
+          $ref: "#/components/schemas/CooSpeaksUp"
         timeZone:
           $ref: "#/components/schemas/TimeZone"
     PreferencesChanges:
@@ -7063,6 +7065,8 @@ components:
           $ref: "#/components/schemas/MailView"
         keyboardShortcuts:
           $ref: "#/components/schemas/KeyboardShortcuts"
+        cooSpeaksUp:
+          $ref: "#/components/schemas/CooSpeaksUp"
         timeZone:
           description: >-
             The time zone, as an IANA name, or null to remove it, as if the
@@ -7108,6 +7112,14 @@ components:
         to move through a list and e to archive. on, the default, has them
         work anywhere but in a field. off turns them all off, for speech
         input or keys pressed by mistake.
+    CooSpeaksUp:
+      type: string
+      enum: ["on", "off"]
+      description: >-
+        Whether Coo, the mailbox agent, says in the web app when there is news
+        worth a glance: new mail since the human last looked, a draft of its
+        waiting for their approval, or a label's task done. on, the default,
+        has it say so in a speech bubble under its nest. off keeps it quiet.
     Status:
       type: object
       additionalProperties: false

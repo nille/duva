@@ -339,7 +339,7 @@ export function Settings({
         aria-describedby={state === undefined ? undefined : stateId}
       >
         <span className="settings-entry-head">
-          {agent !== undefined && <ActorMark kind="agent" />}
+          {agent !== undefined && <ActorMark kind="agent" agent={agent.id} />}
           <span className="settings-entry-name">{name}</span>
         </span>
         {state !== undefined && (
@@ -990,8 +990,9 @@ const hourCycles: Preferences["hourCycle"][] = ["locale", "h12", "h23"];
 const dateFormats: Preferences["dateFormat"][] = ["locale", "iso", "dayMonth", "monthDay"];
 const mailViews: Preferences["mailView"][] = ["html", "text"];
 const keyboardShortcuts: Preferences["keyboardShortcuts"][] = ["on", "off"];
+const cooSpeaksUp: Preferences["cooSpeaksUp"][] = ["on", "off"];
 
-/** The human's own preferences: how times and dates show, each choice with an example built from today, how mail shows, and whether keyboard shortcuts work. */
+/** The human's own preferences: how times and dates show, each choice with an example built from today, how mail shows, whether keyboard shortcuts work, and whether Coo speaks up. */
 function YouSheet({ client, onPreferences, onSignedOut }: { client: DuvaClient; onPreferences: (preferences: Preferences) => void; onSignedOut: () => void }) {
   const sheet = useSheet<Preferences>({
     read: () => client.GET("/preferences"),
@@ -1070,6 +1071,20 @@ function YouSheet({ client, onPreferences, onSignedOut }: { client: DuvaClient; 
                 onChoose={() => sheet.choose({ keyboardShortcuts: choice })}
                 label={copy.keyboardShortcuts[choice]}
                 hint={copy.keyboardShortcuts[`${choice}Hint`]}
+              />
+            ))}
+          </fieldset>
+          <fieldset>
+            <legend>{copy.cooSpeaksUp.legend}</legend>
+            <p className="setting-lead">{copy.cooSpeaksUp.lead}</p>
+            {cooSpeaksUp.map((choice) => (
+              <Choice
+                key={choice}
+                name="cooSpeaksUp"
+                checked={chosen.cooSpeaksUp === choice}
+                onChoose={() => sheet.choose({ cooSpeaksUp: choice })}
+                label={copy.cooSpeaksUp[choice]}
+                hint={copy.cooSpeaksUp[`${choice}Hint`]}
               />
             ))}
           </fieldset>

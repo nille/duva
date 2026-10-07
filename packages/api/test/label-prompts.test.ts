@@ -316,7 +316,7 @@ test("a task works within the mailbox agent's sponsor access, and fails with an 
     expect.objectContaining({
       kind: "taskFailed",
       agent: agent.id,
-      what: "Mailbox agent couldn't do a task from the label Receipts: Your mailbox agent has no access to this mailbox. Give it some in Settings, under Your agents.",
+      what: "Coo couldn't do a task from the label Receipts: Your mailbox agent has no access to this mailbox. Give it some in Settings, under Your agents.",
       mailbox: params.path.mailbox,
       thread: second.thread,
     }),

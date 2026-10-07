@@ -1001,7 +1001,7 @@ test("the mailbox agents may call only the Claude models admins can choose, thro
   expect(sorted(onModels!.Condition!.StringLike["bedrock:InferenceProfileArn"]!)).toEqual(sorted(profiles));
 });
 
-test("Ask your agent posts to the web app's domain under /agent/, where CloudFront signs each request to the conversation Lambda's function URL, which streams its answer", () => {
+test("Ask Coo posts to the web app's domain under /agent/, where CloudFront signs each request to the conversation Lambda's function URL, which streams its answer", () => {
   const [conversationId] = lambda("ConversationHandler");
   const [urlId, { Properties: url }] = functionUrl(conversationId);
   expect(url).toMatchObject({ AuthType: "AWS_IAM", InvokeMode: "RESPONSE_STREAM" });

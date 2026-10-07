@@ -268,6 +268,13 @@ export const operations = [
         "description": "Whether single keys work as shortcuts in the web app, such as j and k to move through a list and e to archive. on, the default, has them work anywhere but in a field. off turns them all off, for speech input or keys pressed by mistake."
       },
       {
+        "name": "cooSpeaksUp",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "Whether Coo, the mailbox agent, says in the web app when there is news worth a glance: new mail since the human last looked, a draft of its waiting for their approval, or a label's task done. on, the default, has it say so in a speech bubble under its nest. off keeps it quiet."
+      },
+      {
         "name": "timeZone",
         "in": "body",
         "type": "string",
@@ -2204,7 +2211,7 @@ export const operations = [
     "path": "/mailboxes/{mailbox}/agent",
     "routeKey": "GET /mailboxes/{mailbox}/agent",
     "summary": "Read a mailbox's mailbox agent and your conversation with it.",
-    "description": "Every human's personal mailbox has a mailbox agent, which Duva hosts and which you sponsor. It works only in that mailbox, with the sponsor access you give it in its settings, and its actions are attributed to it. The web app asks it in \"Ask your agent\", which streams its answer from the web app's own address, under /agent/. Lists the conversation's turns, oldest first, at most the last 100. Only the mailbox's owner can read it.",
+    "description": "Every human's personal mailbox has a mailbox agent, Coo, which Duva hosts and which you sponsor. It works only in that mailbox, with the sponsor access you give it in its settings, and its actions are attributed to it. The web app asks it in \"Ask Coo\", which streams its answer from the web app's own address, under /agent/. Lists the conversation's turns, oldest first, at most the last 100. Only the mailbox's owner can read it.",
     "signIn": true,
     "command": [
       "mailbox-agent",

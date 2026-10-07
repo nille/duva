@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" version="1.2" baseProfile="tiny-ps" viewBox="0 0 64 64"><title>Duva</title>
+<rect width="64" height="64" fill="#e6e6e2"/>
+<g transform="translate(13 12) scale(1.22)">
+<path d="M6.2 20.4 1.9 23.6c-.5.4-.2 1.2.4 1.1l5.6-.9z" fill="#4a4d52"/>
+<path d="M12.3 26.6v2.5M15.9 26.6v2.5" fill="none" stroke="#e5470d" stroke-width="1.5" stroke-linecap="round"/>
+<path d="M11 29.1h2.6M14.6 29.1h2.6" fill="none" stroke="#e5470d" stroke-width="1.1" stroke-linecap="round"/>
+<ellipse cx="14" cy="20" rx="9.6" ry="7.2" fill="#8a9099"/>
+<path d="M6.6 18.6c3.2-3.2 8.7-3.4 11.9-.6-1.6 4.4-7.6 6.1-11.9.6z" fill="#a9aeb5"/>
+<path d="M9.4 19.9c1.6.5 3.6.5 5.4-.2M10.6 22c1.3.3 2.8.2 4-.3" stroke="#4a4d52" stroke-width="1.1" stroke-linecap="round" fill="none"/>
+<circle cx="21.4" cy="11.2" r="5.7" fill="#7b818a"/>
+<path d="M16.9 14.3c1.9 2 5.6 2.6 8.3.9l.7 2c-3.2 1.8-7.7 1.1-10-1.4z" fill="#2e62ff"/>
+<circle cx="23.3" cy="10.1" r="1.7" fill="#f8f8f6"/>
+<circle cx="23.6" cy="10.2" r=".95" fill="#161616"/>
+<path d="M26.6 10.7 29.9 12l-3.4 1z" fill="#161616"/>
+<ellipse cx="26.2" cy="10.8" rx=".95" ry=".62" fill="#f8f8f6"/>
+</g>
+</svg>

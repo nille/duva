@@ -212,7 +212,7 @@ Three near-neutral greys with a faint warm cast, one ink, and four saturated sig
 - **Call Orange** (`call`): what needs the human. The Approvals count's badge and its row's wash, the orange edge on the open line of a list, the unread dot, the `call` button for a decision, the caret, and the keyboard's bar before a focused title. As text, in its deeper hand (`call-ink`), it is the unread counts in the side column. The wash (`call-wash`) lies under the Approvals place while something waits, and under selected text.
 
 ### Secondary
-- **Agent Blue** (`agent`): an agent. Its diamond, and later its draft and its kind of request. As text, `agent-ink`; under what it marks, `agent-wash`.
+- **Agent Blue** (`agent`): an agent. Its diamond, Coo's mark and neck ring, and later its draft and its kind of request. As text, `agent-ink`; under what it marks, `agent-wash`.
 
 ### Tertiary
 - **Sent Green** (`sent`): sent or healthy. The status strip's light while Duva is up to date. As text, `sent-ink`, as a send's slip says it went.
@@ -232,6 +232,8 @@ Three near-neutral greys with a faint warm cast, one ink, and four saturated sig
 ### Named Rules
 **The Function Code Rule.** Orange, blue, green and red each mean one thing and only that. None is a heading color, a background area or an ornament.
 
+**The Coo Exception.** Coo's drawing and nest are the one place colors outside the function codes appear: a pigeon's greys (`#7b818a` head, `#8a9099` body, `#a9aeb5` wing, `#4a4d52` bars and tail), Call Deep for its feet, and the nest's straw (`#bba57b`, woven in `#94805b` and `#d5c39b`, rimmed in `#8c7853`). They stay in the drawing.
+
 **The Two Hands Rule.** Each function color fills at its own value and speaks text in its deeper hand (`-ink`), which keeps 4.5:1. A filled orange control carries ink, never white.
 
 ## Typography
@@ -246,7 +248,7 @@ Both are OFL-1.1, noted in THIRD_PARTY_NOTICES.md, and their latin faces are pre
 ### Hierarchy
 - **Display** (grotesk 600, 2.375rem, 1.06, -0.03em): the door's title, a thread's subject and a draft's title (Headline's 1.625rem on a phone).
 - **Headline** (grotesk 700, 1.625rem, 1.05, -0.03em): a view's title, such as "Inbox".
-- **Wordmark** (grotesk 700, 1.375rem, 1, -0.03em): "Duva" at the side column's head and the door.
+- **Wordmark** (grotesk 700, 1.375rem, 1, -0.03em): "Duva" at the door. In the side column's head Coo's nest has its place.
 - **Body** (mono 400, 0.84375rem, 1.6): default text, with ligatures and tabular figures.
 - **Proof** (mono 400, 0.875rem, 1.78 in a letter and 1.75 in the composer, under 68ch): message bodies and the text a human writes.
 - **Small** (mono 400 or 600, 0.78125rem): buttons, meta.
@@ -260,9 +262,9 @@ Both are OFL-1.1, noted in THIRD_PARTY_NOTICES.md, and their latin faces are pre
 
 ## Layout
 
-On a desk (from 64rem) the page is one grid the full width and height of the window. The side column (15rem) holds the bar at its head, the wordmark, a link to the Inbox of the human's first own mailbox, and Write, the open mailbox as a selector, the search box, and Duva's places (Mail, Screener, Approvals, Alerts), then the open mailbox's views and its labels. Its inset at the window's edge is the gutter, 1rem up to 1280px and growing gently to 2.5rem on a 4K screen, and the column widens by what the gutter adds. Beside it lies the list (`clamp(20rem, 28vw, 31rem)`, growing from 1920px to 40rem), then what is open from it filling the rest, and the status strip (2.125rem) runs along the foot under all three. In the reading pane the thread's column, its tools, subject, letters and composer, widens to the 88ch measure and lies centered, but never so far right that its middle passes a quarter measure beyond the screen's center line, so on a wide screen the mail sits near the screen's middle. A galley lies centered in the pane. Each column scrolls by itself, so the list keeps its place while a thread or a draft is read beside it. Views that aren't a list of mail, such as Approvals, take the list's and the reader's width together. Settings and an agent's activity lay out their own list and reading pane there: Settings' index, or the agent's days, at the list's width, and the open sheet, or the day's timeline, beside it, each column scrolling by itself.
+On a desk (from 64rem) the page is one grid the full width and height of the window. The side column (15rem) holds the bar at its head, Coo in its nest, a link to Ask Coo, and Write, with what Coo says under them while it has news, the open mailbox as a selector, the search box, and Duva's places (Mail, Screener, Approvals, Alerts), then the open mailbox's views and its labels. Its inset at the window's edge is the gutter, 1rem up to 1280px and growing gently to 2.5rem on a 4K screen, and the column widens by what the gutter adds. Beside it lies the list (`clamp(20rem, 28vw, 31rem)`, growing from 1920px to 40rem), then what is open from it filling the rest, and the status strip (2.125rem) runs along the foot under all three. In the reading pane the thread's column, its tools, subject, letters and composer, widens to the 88ch measure and lies centered, but never so far right that its middle passes a quarter measure beyond the screen's center line, so on a wide screen the mail sits near the screen's middle. A galley lies centered in the pane. Each column scrolls by itself, so the list keeps its place while a thread or a draft is read beside it. Views that aren't a list of mail, such as Approvals, take the list's and the reader's width together. Settings and an agent's activity lay out their own list and reading pane there: Settings' index, or the agent's days, at the list's width, and the open sheet, or the day's timeline, beside it, each column scrolling by itself.
 
-From 48rem to 64rem the side column stays, and what is open takes the one column beside it, as the list does while nothing is open. Under 48rem the phone has one top row (the wordmark, the search icon, the Settings gear and Write), one column, a switcher at the view's head that opens the mailboxes and views, and the tab bar of places along the foot. The switcher is a list's head: one line with the view, the mailbox and the unread count, so the list doesn't name itself again but for screen readers. There is no status strip on a phone, so the switcher's sheet says when Duva was last up to date, and Sign out is in Settings.
+From 48rem to 64rem the side column stays, and what is open takes the one column beside it, as the list does while nothing is open. Under 48rem the phone has one top row (Coo's nest at its left end, the search icon, the Settings gear and Write), one column, a switcher at the view's head that opens the mailboxes and views, and the tab bar of places along the foot. The switcher is a list's head: one line with the view, the mailbox and the unread count, so the list doesn't name itself again but for screen readers. There is no status strip on a phone, so the switcher's sheet says when Duva was last up to date, and Sign out is in Settings.
 
 A list's row has one form at every width: who and when on the first line, the subject and snippet on the second. Only what fits changes (a container query on the list column gives a row's labels less room under 40rem).
 
@@ -279,7 +281,7 @@ Flat by default: depth is tone. The three greys step lighter toward the reader, 
 
 Small, exact radii, and pills for what is pressed. Marks 2px, as the agent's diamond, the keyboard's focus bar and a skeleton's lines are; key caps 4px, with a heavier 2px lower edge; rows and places 6px; fields 7px; sheets laid over the page 10px; buttons, chips and counts are pills.
 
-Actors are marked by shape, so they read without color: a human is a filled dot in Second Ink, an agent a diamond outlined in Agent Blue, Duva itself a ring in Third Ink, each 0.55rem. A sender whose domain publishes a logo Duva shows (ADR-0023) has their logo there instead: a 0.875rem square, 3px radius, edged by a 1px seam ring, centred on the mark's place and taking only its room, so names line up and lines keep their height. A verified logo carries a 0.55rem ink disc with a white tick at its lower right. An agent always keeps its diamond.
+Actors are marked by shape, so they read without color: a human is a filled dot in Second Ink, an agent a diamond outlined in Agent Blue, Duva itself a ring in Third Ink, each 0.55rem. Coo, the mailbox agent, has its own mark in the agent's place: its silhouette in Agent Blue, 0.95rem, centred on the mark's box as a logo is, its eye left open, in Third Ink while it is paused. A sender whose domain publishes a logo Duva shows (ADR-0023) has their logo there instead: a 0.875rem square, 3px radius, edged by a 1px seam ring, centred on the mark's place and taking only its room, so names line up and lines keep their height. A verified logo carries a 0.55rem ink disc with a white tick at its lower right. An agent always keeps its diamond.
 
 ## Components
 
@@ -305,7 +307,7 @@ Actors are marked by shape, so they read without color: a human is a filled dot 
 
 ### Navigation
 - **Desk:** the places and views are rows in the side column, mono at body size, 6px rows with the ink wash on hover. The view open, and a place outside the mail, lie raised white; Mail and the mailbox open are set heavier instead, since the view says where the human is. Approvals lies on the orange wash while something waits, with its count as an orange pill; unseen alerts are counted in Alert Red text. Unread counts are in Call Orange text, the Screener's in Third Ink.
-- **The mailbox selector** heads the side column under the wordmark and Write: the open mailbox's name in ink, heavier, its address under it in Second Ink when the name differs, a chevron, and the orange dot while another of the human's mailboxes has unread mail. It opens a raised white sheet over the column, 10px with the soft lift, listing the human's own mailboxes, each with its unread count; Enter or a click opens one, and Escape closes it, back to the selector. With one mailbox it names it, a link to its Inbox, with no chevron. Agents own no mailboxes, so none is in it: an agent is reached from Your agents and the status strip. On a phone the switcher does its work.
+- **The mailbox selector** heads the side column under Coo's nest and Write: the open mailbox's name in ink, heavier, its address under it in Second Ink when the name differs, a chevron, and the orange dot while another of the human's mailboxes has unread mail. It opens a raised white sheet over the column, 10px with the soft lift, listing the human's own mailboxes, each with its unread count; Enter or a click opens one, and Escape closes it, back to the selector. With one mailbox it names it, a link to its Inbox, with no chevron. Agents own no mailboxes, so none is in it: an agent is reached from Your agents and the status strip. On a phone the switcher does its work.
 - **The Screener** is a place of its own after Mail, since screening is the commonest decision: it opens the Screener of the mailbox the side column shows, and counts its waiting senders in Second Ink, without a pill, as everyday work. It stays among the mailbox's views and at the Inbox's top too.
 - **Settings** sits apart from the places. On a desk it is a quiet gear and "Settings" in the status strip, before who is signed in, in ink and heavier while open, when the side column marks no place; on a phone it is the gear in the top row.
 - **Phone:** the places lie in a tab bar on Side Grey along the foot, icon over name, the current one in ink with an ink line at the bar's edge, a waiting count at the icon's shoulder.
@@ -346,8 +348,14 @@ Actors are marked by shape, so they read without color: a human is a filled dot 
 - Every control with a key shows its cap and names it in `aria-keyshortcuts`: Write's `c`, the search field's `/` printed where its icon is while it is empty, the toolbar's `e`, `#`, `!`, `b` and `l`, Undo's `z`.
 - **The ? sheet** is a legend printed on the instrument: white, the soft lift over the scrim, 10px, a grotesk title, its three groups (in a list, in a thread, anywhere) side by side under label-size names, each key a cap beside what it does, keys pressed together joined by "+" and chords by "then". On a phone it lies along the foot, the groups one under another.
 
+### Coo
+- **The drawing:** a plump grey pigeon in profile, facing right, with the agent's blue neck ring, a dark beak with its white cere, an open eye, two dark wing bars and orange feet, on a 32 unit grid, for 32px and up. Under that, the one-color mark in Agent Blue on a 16 unit grid, which reads as a bird at 12px. The sources are in `docs/brand/`, with the BIMI logo and the favicon's.
+- **The nest** heads the side column where the wordmark was, 3.5rem by 3rem (2.9rem by 2.5rem on a phone, the top row's left end): Coo sitting in a small woven bowl that hides its feet, a link to Ask Coo named "Duva" and how Coo is.
+- **The bob:** while Coo works, a turn of Ask Coo or a label's task, its head bobs as a walking pigeon's does: it drifts back over 0.54s, snaps forward, and settles, every 0.84s. Only the head moves. At rest Coo sits still, and reduced motion keeps it still while it works too.
+- **The bubble:** what Coo says, under the nest, in the column's flow, so it never covers content: white, 4px at the corner by Coo and 12px elsewhere, with the soft lift and a point up at Coo, small text in Second Ink, "Coo." in Ink at 650 first. It speaks only with news: Coo's drafts waiting for approval, new mail in the Inbox since the human last looked, naming who, and tasks done. Each is a link to where it is about, and goes once the human looks there. It rises in over 240ms, and a screen reader hears it politely. Settings, You, has Coo speaks up, on by default.
+
 ### Status strip
-- Side Grey along a desk's foot, mono 500 at 0.6875rem in Second Ink, one line: a green light and "Up to date at …" (red, heavier, when Duva can't be reached), each sponsored agent's diamond with whether it is running and how many sends it has left this hour, or that it is paused, then at the end the `?` key for the shortcuts, Settings with its gear, who is signed in with their dot, and Sign out.
+- Side Grey along a desk's foot, mono 500 at 0.6875rem in Second Ink, one line: a green light and "Up to date at …" (red, heavier, when Duva can't be reached), each sponsored agent's diamond, or Coo's mark, with whether it is running and how many sends it has left this hour, or that it is paused, then at the end the `?` key for the shortcuts, Settings with its gear, who is signed in with their dot, and Sign out.
 
 ### Letter
 - **The thread's tools** run along the reading pane's top as quiet keys, each its key cap then its name in Second Ink, the ink wash on hover: back to the list (`u`), then, past a seam, Archive (`e`), Mark as spam (`!`), Move to Trash (`#`), Remind me (`b`), Labels (`l`) and Mark unread (`⇧U`). Where the pane has room (56rem), `j` and `k` say at the right that they move through the list. In a pane narrower than one line of them (46rem), back shows as its arrow and cap, its name kept for screen readers, and the keys sit closer.
@@ -419,7 +427,7 @@ Actors are marked by shape, so they read without color: a human is a filled dot 
 - **Do** separate columns and rows by tone, a seam or space.
 - **Do** use each function color for its one meaning, filled at its own value and as text in its `-ink` hand.
 - **Do** set every text in the mono with ligatures on, and every heading in the grotesk.
-- **Do** mark actors by shape with the one actor mark: dot, diamond, ring, or a sender's logo in the dot's place.
+- **Do** mark actors by shape with the one actor mark: dot, diamond, ring, Coo for a mailbox agent, or a sender's logo in the dot's place.
 - **Do** show a shortcut as a key cap beside the action it runs, hidden from screen readers.
 - **Do** keep text at 4.5:1 and field borders at 3:1 on every grey.
 

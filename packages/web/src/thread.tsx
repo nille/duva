@@ -617,7 +617,7 @@ function FoldedLetter({ message, ref, me, agentNames, groups, onOpen }: LetterPr
     <article ref={ref} className="letter letter-folded" tabIndex={ref === undefined ? undefined : -1} aria-labelledby={fromId}>
       <h2 className="letter-slug-title">
         <button type="button" className="letter-slug" aria-expanded={false} onClick={onOpen}>
-          <SenderMark kind={actorOf(message, agentNames)} logo={message.logo} name={nameOf(message.from)} />
+          <SenderMark kind={actorOf(message, agentNames)} agent={message.sentBy} logo={message.logo} name={nameOf(message.from)} />
           <span className="letter-slug-from" id={fromId}>
             {nameOf(message.from)}
           </span>
@@ -679,7 +679,7 @@ export function Letter({
       aria-labelledby={titleId}
     >
       <header className="letter-head">
-        <SenderMark kind={actor} logo={message.logo} name={nameOf(message.from)} />
+        <SenderMark kind={actor} agent={message.sentBy} logo={message.logo} name={nameOf(message.from)} />
         <h2 className="letter-from" id={titleId}>
           {senderLink === undefined || message.sentBy !== undefined ? (
             <From from={message.from} />

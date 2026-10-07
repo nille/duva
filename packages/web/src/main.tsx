@@ -1,6 +1,6 @@
 // Duva's web app. A human signs in and lands on the Inbox of their personal mailbox, where they read,
 // organize, write and send their mail. On a desk the mail lies on one plane: the side column, with
-// the wordmark, Write, search, Duva's places and the mail's views, then the list, and what is open
+// Coo in its nest, Write, search, Duva's places and the mail's views, then the list, and what is open
 // from it beside the list, with a status strip along the foot. A human with more than one mailbox
 // chooses among their own at the side column's head. Agents own no mailboxes: they work in their
 // sponsors' with sponsor access. Sponsors reach the Approvals view from the places, where they decide
@@ -23,6 +23,7 @@ import type { components } from "@duva/openapi";
 import { activityHref, AgentActivity, AgentDay } from "./activity.tsx";
 import { AskAgent } from "./ask.tsx";
 import { Composer } from "./compose.tsx";
+import { CooSays, MailboxAgentsContext, Nest, useCoo } from "./coo.tsx";
 import { defaultPreferences, type Preferences, PreferencesContext, useDates } from "./dates.ts";
 import { Drafts } from "./drafts.tsx";
 import { approvalChanges, type Connection, draftChanges, type Follow, labelChanges, mailChanges, mailboxSetupChanges, screenerChanges, SignedOut, useFeeds } from "./feed.ts";
@@ -215,6 +216,8 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
   // The agents the human sponsors, as the status strip says how each stands, and when they were last read.
   const [sponsored, setSponsored] = useState<Agent[]>([]);
   const sponsoredRead = useRef(0);
+  // The human's mailbox agents, each of them Coo.
+  const coos = useMemo<ReadonlySet<string>>(() => new Set(sponsored.filter((agent) => agent.mailbox !== undefined).map(({ id }) => id)), [sponsored]);
   // Whether the sheet listing the keyboard's shortcuts is open.
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
 
@@ -310,11 +313,13 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
       // The mailboxes were listed when the app opened, so they are listed again only when an admin's
       // feed says they changed, or one of them can't be read anymore.
       if (!first && (gone || organization.some((change) => mailboxSetupChanges.has(change.type)))) await listMailboxes(true);
+      coo.onChanges(changes);
       if (first || changes.some(({ change }) => approvalChanges.has(change.type))) {
         const { data, response } = await client.GET("/approvals");
         if (response.status === 401) throw new SignedOut();
         if (data !== undefined) {
           setWaiting(data.approvals.length);
+          coo.onApprovals(data.approvals);
           setAsked(
             data.approvals.flatMap(({ mailbox, agent, draft }) =>
               draft.thread === undefined ? [] : [{ mailbox, thread: draft.thread, agent, forward: draft.forwards !== undefined }],
@@ -447,6 +452,20 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
   const sided = shown ?? (away ? (lastShown.current ?? first) : undefined);
   const sideBase = sided === undefined ? "#/" : mailboxHref(sided, !several && sided.id === first?.id);
   const version = sided === undefined ? 0 : (versions.get(sided.id) ?? 0);
+
+  // Coo, in its nest, works and speaks of the side column's mailbox. Where the human looks ends its news of it.
+  const coo = useCoo({
+    client,
+    mailbox: sided?.id,
+    own: followed,
+    coos,
+    looking: {
+      inbox: route.view === "list" && "label" in route.list && route.list.label === "inbox" ? shown?.id : undefined,
+      approvals: route.view === "approvals",
+      thread: route.view === "thread" ? route.id : undefined,
+    },
+    onSignedOut,
+  });
 
   // The side column's mailbox's labels, with their unread counts, are read again whenever its mail changes, and only the latest read counts.
   const labelsReading = useRef(0);
@@ -679,6 +698,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
           base={base}
           back={listing === undefined || "drafts" in listing ? base : hrefOf(listing, base)}
           backTo={listing === undefined ? strings.views.inbox : "drafts" in listing ? strings.views.drafts : titleOf(listing, labels)}
+          onAsking={coo.onAsking}
           onSignedOut={onSignedOut}
         />
     ) : route.view === "draft" || route.view === "write" ? (
@@ -753,6 +773,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
 
   return (
     <PreferencesContext value={preferences}>
+      <MailboxAgentsContext value={coos}>
       <SenderLinkContext value={senderLink}>
         <ListCountContext value={setListCount}>
         <ReadMarksContext value={readMarks}>
@@ -768,10 +789,9 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
       </a>
       <div className={shell}>
         <header className="bar">
-              {/* The wordmark goes home: the Inbox of the human's first own mailbox, or the start view. */}
-              <a className="wordmark" href={first === undefined ? "#/" : hrefOf({ label: "inbox" }, mailboxHref(first, !several))} aria-label={strings.nav.home}>
-              {strings.nav.label}
-            </a>
+          {/* Coo's nest, where the wordmark was, opens Ask Coo for the side column's mailbox. */}
+          <Nest href={sided !== undefined ? `${sideBase}agent` : first !== undefined ? "#/agent" : "#/"} working={coo.working} />
+          {preferences.cooSpeaksUp === "on" && <CooSays news={coo.news} base={sideBase} onTasksSeen={coo.tasksSeen} />}
           {write !== undefined && (
             <button type="button" className="button button-primary button-small bar-write" aria-keyshortcuts={preferences.keyboardShortcuts === "off" ? undefined : "c"} onClick={write}>
               <WriteIcon />
@@ -1004,6 +1024,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
         </ReadMarksContext>
         </ListCountContext>
       </SenderLinkContext>
+      </MailboxAgentsContext>
     </PreferencesContext>
   );
 }
@@ -1062,7 +1083,7 @@ function Strip({
                 className={agent.paused === undefined ? "strip-agent" : "strip-agent strip-agent-paused"}
                 aria-current={activity === agent.id ? "page" : undefined}
               >
-                <ActorMark kind="agent" />
+                <ActorMark kind="agent" agent={agent.id} />
                 {agent.paused === undefined ? strings.strip.running(agent.name, agent.sendsLeftThisHour) : strings.strip.paused(agent.name)}
               </a>
             </li>

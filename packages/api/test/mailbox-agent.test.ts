@@ -58,7 +58,7 @@ test("a human's new mailbox gets a mailbox agent its owner sponsors, which may r
   const { response, data } = await linus.GET("/mailboxes/{mailbox}/agent", { params });
 
   expect(response.status).toBe(200);
-  expect(data).toEqual({ agent: { id: expect.any(String), kind: "agent", name: "Mailbox agent", sponsor: linusId, mailbox: mailbox.id }, turns: [] });
+  expect(data).toEqual({ agent: { id: expect.any(String), kind: "agent", name: "Coo", sponsor: linusId, mailbox: mailbox.id }, turns: [] });
   expect((await linus.GET("/agents")).data!.agents).toEqual([{ ...data!.agent, sendsLeftThisHour: 100 }]);
   const { data: settings } = await linus.GET("/agents/{agent}/settings", { params: { path: { agent: data!.agent.id } } });
   expect(settings).toMatchObject({ sponsorAccess: "send", sponsorMailboxes: [mailbox.id], approvalAsSponsor: true, disclosureLineAsSponsor: true });
@@ -73,6 +73,15 @@ test("mailboxes from before mailbox agents get theirs at the setup after the dep
 
   expect((await linus.GET("/mailboxes/{mailbox}/agent", { params })).response.status).toBe(200);
   expect((await linus.GET("/agents")).data!.agents).toHaveLength(1);
+});
+
+test("mailbox agents from before Coo are named Coo at the setup after the deploy that names them", async () => {
+  const { duva, agent } = await withMailbox({ beforeCoo: true });
+  expect((await agent()).name).toBe("Mailbox agent");
+
+  await duva.setUp({ admin: "ada@example.org" });
+
+  expect((await agent()).name).toBe("Coo");
 });
 
 test("a mailbox handed over gets a mailbox agent its new owner sponsors", async () => {
@@ -179,7 +188,7 @@ test("a reply the mailbox agent drafts and asks to send waits for its owner's ap
 
   const mail = await PostalMime.parse(duva.sent()[0]!);
   expect(mail.from).toEqual({ name: "", address: "linus@example.com" });
-  expect(mail.text).toBe("Thanks, I'll read it.\n\nSent by Mailbox agent for linus@example.org\n");
+  expect(mail.text).toBe("Thanks, I'll read it.\n\nSent by Coo for linus@example.org\n");
 });
 
 test("the mailbox agent can do only what its sponsor access lets it, and says Duva's refusal", async () => {
@@ -283,7 +292,7 @@ test("a run stops at the organization's spend cap, with an alert to its sponsor,
   expect(events!.at(-1)).toMatchObject({ type: "done", turn: { outcome: "capReached", actions: [expect.objectContaining({ operation: "listLabels" })] } });
   expect(refused).toEqual({ status: 409, body: { message: "The mailbox agents reached the organization's spend cap of $2 this month. Ask an admin to raise it." } });
   const { data: alerts } = await linus.GET("/alerts");
-  expect(alerts!.alerts).toEqual([expect.objectContaining({ kind: "spendCapReached", agentName: "Mailbox agent", what: expect.stringContaining("spend cap of $2") })]);
+  expect(alerts!.alerts).toEqual([expect.objectContaining({ kind: "spendCapReached", agentName: "Coo", what: expect.stringContaining("spend cap of $2") })]);
   const { data: spend } = await ada.GET("/organization/mailbox-agent-spend");
   expect(spend).toEqual({ month: new Date().toISOString().slice(0, 7), spent: expect.closeTo(2.2, 5), cap: 2 });
   expect((await linus.GET("/organization/mailbox-agent-spend")).response.status).toBe(403);

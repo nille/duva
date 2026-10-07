@@ -172,7 +172,7 @@ export function MailViews({
         {link({ label: "trash" }, strings.views.trash, 0)}
         <li className="views-ask">
           <a href={ask.href} className="view-link" aria-current={ask.current ? "page" : undefined} aria-keyshortcuts={keys ? "Shift+A" : undefined}>
-            <ActorMark kind="agent" />
+            <ActorMark kind="coo" />
             <span className="view-name">{strings.ask.link}</span>
           </a>
         </li>

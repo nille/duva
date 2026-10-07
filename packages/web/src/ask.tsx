@@ -1,4 +1,4 @@
-// Ask your agent, in the reading pane: the human's conversation with the mailbox agent of one of
+// Ask Coo, in the reading pane: the human's conversation with Coo, the mailbox agent of one of
 // their mailboxes (ADR-0027). Each turn goes to the conversation Lambda on the web app's own domain,
 // which streams back what the agent says as it writes it, and each thing it does as it does it, with
 // links to the threads and drafts it touched. A send it asks for waits in Approvals.
@@ -35,6 +35,7 @@ export function AskAgent({
   base,
   back,
   backTo,
+  onAsking,
   onSignedOut,
 }: {
   client: DuvaClient;
@@ -45,6 +46,8 @@ export function AskAgent({
   /** Where the list beside it is, and its name. */
   back: string;
   backTo: string;
+  /** Told as a turn starts, true, and as it ends, false, so Coo bobs in its nest while it works. */
+  onAsking?: (asking: boolean) => void;
   onSignedOut: () => void;
 }) {
   const [read, setRead] = useState<Read>({ status: "loading" });
@@ -90,6 +93,7 @@ export function AskAgent({
     setWords("");
     setRunning({ text: "", actions: [] });
     setAnnounced(copy.working);
+    onAsking?.(true);
     try {
       const response = await postTurn(config, { mailbox: mailbox.id, words: asked });
       if (response === undefined || response.status === 401) return onSignedOut();
@@ -124,6 +128,7 @@ export function AskAgent({
       setRefused(copy.unreachable);
       setWords(asked);
     } finally {
+      onAsking?.(false);
       setRunning(undefined);
       field.current?.focus();
     }
@@ -170,7 +175,7 @@ export function AskAgent({
         </h1>
         <div className="reading-meta ask-meta">
           <p className="ask-agent">
-            <ActorMark kind="agent" />
+            <ActorMark kind="coo" />
             <span>
               {copy.agent}. {copy.where(address)}
             </span>
@@ -220,7 +225,7 @@ export function AskAgent({
           {running !== undefined && (
             <li className="ask-turn ask-turn-agent ask-turn-running" aria-label={copy.working}>
               <p className="ask-who">
-                <ActorMark kind="agent" />
+                <ActorMark kind="coo" />
                 <span className="ask-name">{copy.agent}</span>
                 <span className="ask-time">{copy.thinking}</span>
               </p>
@@ -278,7 +283,7 @@ function TurnShown({ turn, base, approval, time }: { turn: Turn; base: string; a
   return (
     <li className={human ? "ask-turn ask-turn-human" : "ask-turn ask-turn-agent"}>
       <p className="ask-who">
-        <ActorMark kind={human ? "human" : "agent"} />
+        <ActorMark kind={human ? "human" : "coo"} />
         <span className="ask-name">{human ? copy.you : copy.agent}</span>
         <time className="ask-time" dateTime={turn.at}>
           {time}

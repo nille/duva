@@ -16,7 +16,7 @@ export type Operation = (typeof operations)[number];
 export type OperationId = Operation["operationId"];
 
 /**
- * What the conversation Lambda streams back for a turn of Ask your agent, a line of JSON each: the
+ * What the conversation Lambda streams back for a turn of Ask Coo, a line of JSON each: the
  * human's turn as kept, the agent's text as it comes, each action as it is done, and the agent's turn
  * as kept once it ends. It answers on the web app's domain, outside the API, as download links do,
  * since API Gateway's HTTP APIs don't stream (ADR-0027). A refusal is a JSON body with its message.

@@ -252,7 +252,7 @@ let lastCursor: string | undefined;
  * there is something to close, as a thread is, g then i, t, d or a go to the Inbox, Sent, Drafts
  * or All mail of the mailbox whose Inbox is at `base`, Drafts only where it is listed, and ? opens
  * the sheet listing every shortcut, which `sheetOpen` says is open, as the status strip's key opens
- * it too. Shift+A opens Ask your agent with `ask`. `/` is the search box's own, and z the line that says what was just done.
+ * it too. Shift+A opens Ask Coo with `ask`. `/` is the search box's own, and z the line that says what was just done.
  */
 export function Shortcuts({
   write,
@@ -266,7 +266,7 @@ export function Shortcuts({
   close?: () => void;
   /** Where the mailbox open is, and whether it lists Drafts. */
   views?: { base: string; drafts: boolean };
-  /** Opens Ask your agent, for the human's own mailbox open or their first. */
+  /** Opens Ask Coo, for the human's own mailbox open or their first. */
   ask?: () => void;
   sheetOpen: boolean;
   onSheet: (open: boolean) => void;

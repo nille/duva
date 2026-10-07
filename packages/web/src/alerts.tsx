@@ -223,7 +223,7 @@ export function Alerts({
                 >
                   <span className="queue-who">
                     <span className="alert-mark" aria-hidden="true" />
-                    <ActorMark kind="agent" />
+                    <ActorMark kind="agent" agent={alert.agent} />
                     {alert.agentName}
                   </span>
                   <span className="queue-kind alert-kind">{copy.kinds[alert.kind]}</span>
@@ -264,7 +264,7 @@ export function Alerts({
             <header className="galley-head">
               <h2 id={`${at}-title`}>
                 <span className="galley-asks" id={`${at}-agent`}>
-                  <ActorMark kind="agent" />
+                  <ActorMark kind="agent" agent={open.agent} />
                   {open.agentName}
                 </span>{" "}
                 <span className="galley-subject" id={`${at}-kind`}>

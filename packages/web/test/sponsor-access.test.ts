@@ -98,7 +98,7 @@ test("a draft the agent wrote or changed last in its sponsor's mailbox names it,
 
   await expect.poll(() => page.getByText("Last saved by Hermes").isVisible(), wait).toBe(true);
   await page.getByLabel("Message").fill("Hej, Grace. Ada här.");
-  await expect.poll(() => page.getByRole("status").innerText(), wait).toMatch(/^Saved at /);
+  await expect.poll(() => page.getByRole("status").filter({ hasText: /^Saved at / }).isVisible(), wait).toBe(true);
 });
 
 /** Opens the request about the subject in Approvals' reading pane, from its row in the queue. */

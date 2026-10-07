@@ -80,7 +80,7 @@ test("approving makes the human the agent's sponsor with what it asked for, the 
   await main.getByRole("link", { name: "Hermes in Your agents" }).click();
   const agents = page.getByRole("region", { name: "Your agents" });
   // Each of her two mailboxes has its mailbox agent too.
-  await expect.poll(() => agents.getByRole("heading", { level: 3 }).allTextContents(), wait).toEqual(["Hermes", "Mailbox agent", "Mailbox agent"]);
+  await expect.poll(() => agents.getByRole("heading", { level: 3 }).allTextContents(), wait).toEqual(["Coo", "Coo", "Hermes"]);
   const line = agents.getByRole("form", { name: "Hermes" });
   await expect.poll(() => line.isVisible(), wait).toBe(true);
   expect(await line.getByRole("radio", { name: /^Draft/ }).isChecked()).toBe(true);

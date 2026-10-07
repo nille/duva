@@ -393,6 +393,31 @@ kbd {
 }
 
 /*
+ * Coo, the mailbox agent, is its silhouette in the agent's blue. Its box is the mark's, so lines
+ * keep their height, and the bird, bigger to read as one, lies centred on it as a sender's logo does.
+ */
+.actor-mark-coo {
+  --coo: 0.95rem;
+  position: relative;
+  color: var(--agent);
+}
+
+.actor-mark-coo svg {
+  position: absolute;
+  right: -0.05rem;
+  top: calc((0.55rem - var(--coo)) / 2 - 0.04rem);
+  width: var(--coo);
+  height: var(--coo);
+}
+
+/* A paused Coo turns grey, as a paused agent's diamond does. */
+.strip-agent-paused .actor-mark-coo,
+.settings-entry-paused .actor-mark-coo,
+.agent-setting:has(.paused-line) .actor-mark-coo {
+  color: var(--ink-3);
+}
+
+/*
  * A sender's logo stands where their mark does: its box is the mark's, empty, so lines keep their
  * height and baseline, and the logo, a small square, lies centred on it, overhanging it to the left
  * so the names after it line up with those after a mark. A verified one carries the check at its foot.
@@ -501,12 +526,146 @@ kbd {
   letter-spacing: -0.03em;
 }
 
-/* In the bar the wordmark is the way to the Inbox, set as the wordmark still. */
-a.wordmark {
+/*
+ * Coo's nest heads the side column, where the wordmark was: Coo sitting in a small woven nest, the
+ * one place the drawing's straw and grey stand outside the function colors. It opens Ask Coo.
+ */
+.nest {
+  grid-area: brand;
   justify-self: start;
+  display: block;
+  width: 3.5rem;
+  height: 3rem;
+  margin: -0.65rem 0 -0.35rem;
   border-radius: var(--radius-key);
+}
+
+.nest > svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.nest-back,
+.nest-twig {
+  fill: none;
+  stroke: #8c7853;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+}
+
+.nest-bowl {
+  fill: #bba57b;
+}
+
+.nest-weave {
+  fill: none;
+  stroke: #94805b;
+  stroke-width: 1.1;
+  stroke-linecap: round;
+  stroke-dasharray: 5 2.4;
+}
+
+.nest-weave-light {
+  stroke: #d5c39b;
+  stroke-dasharray: 3 3.6;
+  stroke-dashoffset: 2;
+}
+
+/* Coo's head moves about its neck. */
+.nest .coo-head {
+  transform-box: fill-box;
+  transform-origin: 30% 85%;
+}
+
+/*
+ * While Coo works its head bobs, as a walking pigeon's: it drifts back as the body goes on, then
+ * snaps forward. At rest it sits still. Reduced motion keeps it still while it works too.
+ */
+.nest-working .coo-head {
+  animation: coo-bob 0.84s cubic-bezier(0.45, 0, 0.2, 1) infinite;
+}
+
+@keyframes coo-bob {
+  0%,
+  100% {
+    transform: translate(0.7px, 0);
+  }
+  64% {
+    transform: translate(-1px, 0.35px);
+  }
+  80% {
+    transform: translate(1.5px, -0.25px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nest-working .coo-head {
+    animation: none;
+  }
+}
+
+/*
+ * What Coo says, under the nest, while it has news: a small white bubble that lies in the column's
+ * flow, so it never covers anything, its point up at Coo. Each part is a link to where it is about.
+ */
+.coo-say {
+  grid-area: say;
+}
+
+.coo-says {
+  position: relative;
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: 4px 12px 12px 12px;
+  background: var(--raise);
+  box-shadow: var(--lift);
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  animation: coo-says 240ms var(--ease-out);
+}
+
+.coo-says::before {
+  content: "";
+  position: absolute;
+  top: -6px;
+  left: 1.35rem;
+  border: 6px solid transparent;
+  border-top: 0;
+  border-bottom-color: var(--raise);
+}
+
+.coo-says-coo {
   color: var(--ink);
+  font-weight: 650;
+}
+
+.coo-says a {
+  border-radius: 2px;
+  color: inherit;
   text-decoration: none;
+}
+
+.coo-says a:hover {
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-color: var(--edge);
+  text-underline-offset: 0.2em;
+}
+
+@keyframes coo-says {
+  from {
+    opacity: 0;
+    transform: translateY(-0.25rem);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .coo-says {
+    animation: none;
+  }
 }
 
 /*
@@ -533,7 +692,7 @@ a.wordmark {
   background: var(--side);
 }
 
-/* The bar heads the side column: the wordmark and Write, the open mailbox, the search box, then Duva's places. */
+/* The bar heads the side column: Coo's nest and Write, the open mailbox, the search box, then Duva's places. */
 .bar {
   grid-area: 1 / 1;
   display: grid;
@@ -548,9 +707,14 @@ a.wordmark {
   padding: 1.35rem var(--space-4) var(--space-3) var(--gutter);
 }
 
-.bar .wordmark {
-  grid-area: brand;
-  padding-left: var(--space-2);
+/* While Coo says something, it lies under the nest. */
+.bar:has(.coo-says) {
+  grid-template-areas:
+    "brand write"
+    "say say"
+    "mailbox mailbox"
+    "search search"
+    "places places";
 }
 
 .bar-write {
@@ -1152,7 +1316,7 @@ button.selector[aria-expanded="true"] {
 }
 
 /*
- * Phones: one top row, the wordmark, the search icon and Write, then one column. The places lie in
+ * Phones: one top row, Coo's nest, the search icon and Write, then one column. The places lie in
  * a tab bar along the screen's foot, in reach of the thumb, and Sign out moves to Settings. The
  * page scrolls as one, and the status strip stays on a desk.
  */
@@ -1190,9 +1354,20 @@ button.selector[aria-expanded="true"] {
     background: var(--read);
   }
 
-  .bar .wordmark {
-    margin-right: auto;
-    padding-left: 0;
+  .bar .nest {
+    width: 2.9rem;
+    height: 2.5rem;
+    margin: -0.4rem auto -0.2rem -0.3rem;
+  }
+
+  /* On a phone what Coo says takes a row of its own under the top row. */
+  .bar .coo-say {
+    order: 10;
+    flex-basis: 100%;
+  }
+
+  .bar .coo-says {
+    margin: var(--space-1) 0;
   }
 
   .bar .bar-search-toggle {
@@ -5627,7 +5802,7 @@ input[aria-invalid="true"] {
 }
 
 /*
- * Ask your agent, in the reading pane: the human's conversation with the mailbox agent, a transcript
+ * Ask Coo, in the reading pane: the human's conversation with Coo, the mailbox agent, a transcript
  * on the plane at the letter's measure. Each turn is parted from the one before by a seam and says
  * who took it by their mark, the agent's diamond in blue. What the agent did runs as a trace above
  * its words, a line a step, with links to what it touched, and while it writes, a blue cursor stands
@@ -5882,7 +6057,7 @@ input[aria-invalid="true"] {
   font-size: var(--text-xs);
 }
 
-/* In the side column, Ask your agent carries the agent's diamond and its key. */
+/* In the side column, Ask Coo carries Coo's mark and its key. */
 .views-ask .view-link .actor-mark {
   margin: 0 0.1rem;
 }

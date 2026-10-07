@@ -54,7 +54,7 @@ export function LabelPrompt({ client, mailbox, label, onDone, onSignedOut }: { c
       <div className="label-prompt">
         {label.prompt !== undefined && (
           <p className="label-prompt-text">
-            <ActorMark kind="agent" />
+            <ActorMark kind="coo" />
             <span>
               {strings.labelPrompt.lead} <q>{label.prompt}</q>
             </span>
@@ -132,7 +132,7 @@ export function ThreadTasks({ tasks }: { tasks: Task[] | undefined }) {
         {tasks.map((task) => (
           <li key={task.id} className={`task task-${task.state}`}>
             <p className="task-head">
-              <ActorMark kind="agent" />
+              <ActorMark kind="coo" />
               <span className="task-agent">{strings.tasks.agent}</span>
               <span className="task-label">{strings.tasks.from(task.labelName)}</span>
               <span className="task-state">{strings.tasks.states[task.state]}</span>

@@ -1,4 +1,4 @@
-// A run of a mailbox agent (ADR-0027): what a turn of Ask your agent and a task (ADR-0029) share.
+// A run of a mailbox agent (ADR-0027): what a turn of Ask Coo and a task (ADR-0029) share.
 // Each run gets a token of its own, runs on AgentCore in a session of its own, and counts what its
 // model calls cost toward the organization's spend cap for the month.
 import { randomUUID } from "node:crypto";

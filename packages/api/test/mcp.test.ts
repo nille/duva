@@ -268,7 +268,7 @@ test("a paused mailbox agent's tools are refused", async () => {
   expect(await call(client, "listThreads")).toEqual({ isError: true, text: "Your mailbox agent is paused by linus@example.org. Unpause it in Settings, under Your agents, to use Duva's tools." });
 });
 
-test("asking the mailbox agent over MCP gives its answer, in the same conversation as Ask your agent", async () => {
+test("asking the mailbox agent over MCP gives its answer, in the same conversation as Ask Coo", async () => {
   const model: Model = async function* ({ messages }) {
     if (messages.length === 1) yield { toolUse: { toolUseId: "1", name: "searchMailbox", input: { q: "report" } } };
     else yield { text: "Grace sent you the quarterly report." };
@@ -299,8 +299,8 @@ test("an answer that takes longer than the call waits is read later, and a task 
   const asked = await call(client, "askAgent", { words: "Take your time." });
   const tasked = await call(client, "giveAgentTask", { words: "Label the report Work." });
 
-  expect(asked.text).toBe("Your mailbox agent is still working on it. Its answer will be in Ask your agent in Duva, and readConversation reads it.");
-  expect(tasked.text).toBe("Your mailbox agent is on it. Its answer will be in Ask your agent in Duva, and readConversation reads it.");
+  expect(asked.text).toBe("Your mailbox agent is still working on it. Its answer will be in Ask Coo in Duva, and readConversation reads it.");
+  expect(tasked.text).toBe("Your mailbox agent is on it. Its answer will be in Ask Coo in Duva, and readConversation reads it.");
   const { data } = await linus.GET("/mailboxes/{mailbox}/agent", { params });
   expect(data!.turns.filter(({ from }) => from === "agent").map(({ text, outcome }) => [text, outcome])).toEqual([
     ["Done, slowly.", "answered"],

@@ -14,11 +14,12 @@ import {
   firstAgentSettings,
   type Mailbox,
   mailboxKey,
+  renameAgent,
 } from "./organization.ts";
 import { documents, pk, sk } from "./table.ts";
 
-/** What every mailbox agent is called, which its mail's disclosure names. */
-export const mailboxAgentName = "Mailbox agent";
+/** What every mailbox agent is called, which its mail's disclosure names. Its owner can't rename it. */
+export const mailboxAgentName = "Coo";
 
 /**
  * A mailbox agent's settings until its owner changes them: read, search, organize and draft, and
@@ -39,15 +40,18 @@ export async function mailboxAgentOf(table: Table, mailbox: string): Promise<Age
 
 /**
  * Gives the mailbox its mailbox agent, sponsored by its owner, if a human owns it and it has none
- * with that sponsor, as when the mailbox was handed over, whose agent went with its sponsor. Giving
- * it again changes nothing.
+ * with that sponsor, as when the mailbox was handed over, whose agent went with its sponsor. One
+ * named before mailbox agents were called Coo is renamed. Giving it again changes nothing.
  */
 export async function giveMailboxAgent(table: Table, mailbox: Mailbox): Promise<void> {
   const owner = await findActor(table, mailbox.owner);
   if (owner?.kind !== "human") return;
   const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: pointerKey(mailbox.id), ConsistentRead: true }));
   const current = Item === undefined ? undefined : await findActor(table, Item.agent as string);
-  if (current?.kind === "agent" && current.sponsor === owner.id) return;
+  if (current?.kind === "agent" && current.sponsor === owner.id) {
+    if (current.name !== mailboxAgentName) await renameAgent(table, current.id, mailboxAgentName);
+    return;
+  }
   // If another call gave it one first, this one gives none.
   const asRead =
     Item === undefined

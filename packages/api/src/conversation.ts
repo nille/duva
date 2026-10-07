@@ -1,4 +1,4 @@
-// Ask your agent: a human's conversation with their mailbox's mailbox agent (ADR-0027). The web app
+// Ask Coo: a human's conversation with their mailbox's mailbox agent (ADR-0027). The web app
 // posts each turn to the conversation Lambda, through the web app's CloudFront distribution, which
 // checks the human, gives the run its token, runs the agent on AgentCore and streams what it says
 // and does back as it goes. The turns are kept in the human's partition, so they go with them.
@@ -59,7 +59,7 @@ export interface PreparedTurn {
 export async function prepareTurn({ table, region, apiUrl, available }: { table: Table; region: string; apiUrl: string; available: boolean }, human: Human, asked: TurnAsked): Promise<PreparedTurn | { statusCode: number; body: { message: string } }> {
   if (!available) return refusal(503, runtimeMissing(region));
   const words = typeof asked.words === "string" ? asked.words.trim() : "";
-  if (words === "" || words.length > longestWords) return refusal(400, `Ask your agent something, in at most ${longestWords} characters.`);
+  if (words === "" || words.length > longestWords) return refusal(400, `Ask Coo something, in at most ${longestWords} characters.`);
   const mailbox = typeof asked.mailbox === "string" ? await findMailbox(table, asked.mailbox) : undefined;
   if (mailbox === undefined || mailbox.owner !== human.id) return refusal(404, "That isn't one of your mailboxes. Ask the agent of one of yours.");
   const agent = await mailboxAgentOf(table, mailbox.id);

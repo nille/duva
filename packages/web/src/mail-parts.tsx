@@ -1,6 +1,7 @@
 // The parts every view shows mail with: header fields, addresses, times, who an actor is, and whether Duva can be reached.
 import { type ReactNode, useState, useSyncExternalStore } from "react";
 import type { components } from "@duva/openapi";
+import { CooMark, useIsCoo } from "./coo.tsx";
 import { useDates } from "./dates.ts";
 import type { Connection as ConnectionState } from "./feed.ts";
 import { size, strings } from "./strings.ts";
@@ -91,8 +92,22 @@ export function Time({ at, format = (time) => time, short = false }: { at: strin
   );
 }
 
-/** Who an actor is, by shape, so it reads without color: a human a filled dot, an agent a blue diamond, Duva itself a ring. The name beside it says who. */
-export const ActorMark = ({ kind }: { kind: "human" | "agent" | "duva" }) => <span className={`actor-mark actor-mark-${kind}`} aria-hidden="true" />;
+/**
+ * Who an actor is, by shape, so it reads without color: a human a filled dot, an agent a blue
+ * diamond, Duva itself a ring, and Coo, the mailbox agent, its own silhouette in the agent's blue,
+ * as `coo` or as an `agent` whose ID is one of the human's mailbox agents. The name beside it says who.
+ */
+export function ActorMark({ kind, agent }: { kind: "human" | "agent" | "duva" | "coo"; agent?: string }) {
+  const coo = useIsCoo(agent);
+  if (kind === "coo" || (kind === "agent" && coo)) {
+    return (
+      <span className="actor-mark actor-mark-coo" aria-hidden="true">
+        <CooMark />
+      </span>
+    );
+  }
+  return <span className={`actor-mark actor-mark-${kind}`} aria-hidden="true" />;
+}
 
 /**
  * Who sent mail: their logo in place of their actor mark, when their domain publishes one Duva shows
@@ -100,9 +115,9 @@ export const ActorMark = ({ kind }: { kind: "human" | "agent" | "duva" }) => <sp
  * its diamond, and a logo that won't load gives way to the mark. Duva serves the logo, so showing
  * it never reaches the sender.
  */
-export function SenderMark({ kind, logo, name }: { kind: "human" | "agent" | "duva"; logo?: SenderLogo; name: string }) {
+export function SenderMark({ kind, agent, logo, name }: { kind: "human" | "agent" | "duva"; agent?: string; logo?: SenderLogo; name: string }) {
   const [failed, setFailed] = useState<string>();
-  if (logo === undefined || kind === "agent" || failed === logo.url) return <ActorMark kind={kind} />;
+  if (logo === undefined || kind === "agent" || failed === logo.url) return <ActorMark kind={kind} agent={agent} />;
   return (
     <span className="sender-logo">
       <img src={logo.url} alt={logo.verified ? strings.logo.verified(name) : strings.logo.of(name)} onError={() => setFailed(logo.url)} />

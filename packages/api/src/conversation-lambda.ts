@@ -1,4 +1,4 @@
-// The Lambda entry point a turn of Ask your agent reaches, through the web app's CloudFront
+// The Lambda entry point a turn of Ask Coo reaches, through the web app's CloudFront
 // distribution under /agent/, which signs each request to its function URL, so only CloudFront
 // invokes it (docs/aws.md). It streams what the mailbox agent says and does as the run goes
 // (ADR-0027). The CDK app sets the environment.

@@ -315,7 +315,7 @@ function AgentForm({
       <summary>
         <div className="agent-summary">
           <div className="agent-summary-head">
-            <ActorMark kind="agent" />
+            <ActorMark kind="agent" agent={first.id} />
             <h3 id={heading}>{agent.name}</h3>
             {agent.paused !== undefined && (
               <span className="line-mark">
