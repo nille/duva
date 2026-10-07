@@ -194,7 +194,7 @@ test("each of a thread's actions with a key shows its cap and says its key, as S
   const tools = page.getByRole("toolbar", { name: "Thread actions" });
   const keyOf = async (button: ReturnType<Page["getByRole"]>) => [await button.getAttribute("aria-keyshortcuts"), await button.locator("kbd").innerText()];
 
-  expect(await keyOf(page.getByRole("link", { name: "Inbox", exact: true }))).toEqual(["u", "u"]);
+  expect(await keyOf(page.getByRole("main").getByRole("link", { name: "Inbox", exact: true }))).toEqual(["u", "u"]);
   expect(await keyOf(tools.getByRole("button", { name: "Archive" }))).toEqual(["e", "e"]);
   expect(await keyOf(tools.getByRole("button", { name: "Move to Trash" }))).toEqual(["#", "#"]);
   expect(await keyOf(tools.getByRole("button", { name: "Mark as spam" }))).toEqual(["!", "!"]);

@@ -4,7 +4,7 @@
 // a thread an agent's send waits in says it waits for the human. Chips show a view's unread
 // threads or those with a label, the Inbox says when new senders wait in the Screener, and the human
 // picks threads to organize several at once.
-import { type ReactNode, useCallback, useEffect, useId, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
 import type { Connection as ConnectionState } from "./feed.ts";
@@ -12,6 +12,7 @@ import { useDates } from "./dates.ts";
 import { ActorMark, Connection, nameOf, SenderMark, Time } from "./mail-parts.tsx";
 import { Cap, ClockIcon, type Done, type Label, type Labelled, labelRefusal, OrganizeActions, ownLabelsOf, type Place, useKeyed } from "./organize.tsx";
 import { useBeside, useListCount, useViewTitle, ViewMain, ViewTitle } from "./panes.tsx";
+import { now, unreadOf, useReadMarks } from "./read-marks.ts";
 import { useShortcuts, useThreadKeys } from "./shortcuts.tsx";
 import { LabelPrompt, promptedBuiltIns } from "./tasks.tsx";
 import { strings } from "./strings.ts";
@@ -46,7 +47,7 @@ export const pageSize = 25;
 type Listing =
   | { status: "loading" }
   | { status: "failed"; message: string }
-  | { status: "listed"; threads: ThreadSummary[]; next?: string; pages: number; fresh: Set<string> };
+  | { status: "listed"; threads: ThreadSummary[]; next?: string; pages: number; fresh: Set<string>; at: number };
 
 /** A failure the human can act on: the session ended, or Duva couldn't list the threads. */
 class ListingFailed extends Error {}
@@ -129,6 +130,7 @@ export function ThreadIndex({
   const load = useCallback(
     async ({ arrivals }: { arrivals: boolean }) => {
       const mine = ++generation.current;
+      const at = now();
       const threads: ThreadSummary[] = [];
       let next: string | undefined;
       let read = 0;
@@ -156,7 +158,7 @@ export function ThreadIndex({
       const oldest = shown.at(-1) === undefined ? "" : placeOf(shown.at(-1)!);
       const arrived = before.status === "listed" && arrivals ? threads.filter((thread) => !known.has(thread.id) && placeOf(thread) >= oldest).map(({ id }) => id) : [];
       if (arrived.length > 0) setAnnouncement(strings.inbox.arrived(arrived.length));
-      setListing({ status: "listed", threads, next, pages: read, fresh: new Set(arrived) });
+      setListing({ status: "listed", threads, next, pages: read, fresh: new Set(arrived), at });
       return true;
     },
     [page],
@@ -175,13 +177,26 @@ export function ThreadIndex({
     setLoadingOlder(false);
   };
 
+  // Each thread reads as the human last marked it, though the list was read before.
+  const { state: readState } = useReadMarks();
+  const threads = useMemo(
+    () =>
+      listing.status !== "listed"
+        ? noThreads
+        : listing.threads.map((thread) => {
+            const unread = unreadOf(readState, mailbox.id, thread.id, thread.unread, listing.at);
+            return unread === thread.unread ? thread : { ...thread, unread };
+          }),
+    [listing, readState, mailbox.id],
+  );
+
   // The whole list counts its own unread threads. Past the threads shown, Duva's count for a label,
   // the Inbox's among them, says how many; All mail has none. Sent counts nothing unread.
   const unread =
     listing.status !== "listed" || "sent" in view
       ? 0
         : listing.next === undefined
-          ? listing.threads.filter((thread) => thread.unread).length
+          ? threads.filter((thread) => thread.unread).length
         : "label" in view
           ? (labels.find(({ id }) => id === view.label)?.unread ?? 0)
           : 0;
@@ -189,7 +204,6 @@ export function ThreadIndex({
   useListCount(unread);
 
   const { open } = useBeside();
-  const threads = listing.status === "listed" ? listing.threads : noThreads;
   const picking = usePicking(threads);
   const place: Place = "label" in view ? { label: view.label } : { all: true };
 
@@ -236,7 +250,7 @@ export function ThreadIndex({
             onEmptied={() => {
               // The eraser erases them right after Duva answers, and the change feed says when each is gone.
               picking.clear();
-              setListing({ status: "listed", threads: [], pages: 1, fresh: new Set() });
+              setListing({ status: "listed", threads: [], pages: 1, fresh: new Set(), at: now() });
               onDone({ message: strings.trash.emptied });
             }}
             onSignedOut={onSignedOut}
@@ -281,7 +295,7 @@ export function ThreadIndex({
       ) : (
         <div className="index">
           <ol className="threads" aria-label={strings.inbox.threads} ref={list}>
-            {listing.threads.map((thread) => (
+            {threads.map((thread) => (
               <ThreadRow
                 key={thread.id}
                 thread={thread}

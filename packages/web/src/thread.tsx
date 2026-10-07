@@ -12,6 +12,7 @@ import { PreferencesContext, useDates } from "./dates.ts";
 import { DesignedBody } from "./designed.tsx";
 import { Addresses, Attachments, Field, nameOf, SenderMark, Time } from "./mail-parts.tsx";
 import { changeFor, type Done, type Label, organize, OrganizeActions, ownLabelsOf, SessionEnded } from "./organize.tsx";
+import { now, useReadMarks } from "./read-marks.ts";
 import { useSenderLink } from "./sender.tsx";
 import { useShortcuts } from "./shortcuts.tsx";
 import { strings } from "./strings.ts";
@@ -109,7 +110,9 @@ export function ThreadView({
   const readingRef = useRef(reading);
   readingRef.current = reading;
 
+  const { saw, mark } = useReadMarks();
   const load = useCallback(async () => {
+    const at = now();
     const { data, response } = await client
       .GET("/mailboxes/{mailbox}/threads/{thread}", { params: { path: { mailbox: mailbox.id, thread: id } } })
       .catch(() => ({ data: undefined, response: undefined }));
@@ -136,15 +139,19 @@ export function ThreadView({
       setOpened((current) => new Set([...current, ...fresh]));
     }
     setReading({ status: "read", thread: data, fresh: new Set(fresh) });
+    saw(mailbox.id, data, at);
     // Reading the thread on screen marks it read, also when a reply arrives while it's open, until the human marks it unread.
     if (data.unread && !leaving.current) {
-      const read = client.POST("/mailboxes/{mailbox}/threads/read", { params: { path: { mailbox: mailbox.id } }, body: { threads: [id] } }).catch(() => ({ response: undefined }));
+      // The list and the counts show it read at once, and unread again if Duva refuses the mark.
+      const read = mark(mailbox.id, id, false, () =>
+        client.POST("/mailboxes/{mailbox}/threads/read", { params: { path: { mailbox: mailbox.id } }, body: { threads: [id] } }).catch(() => ({ response: undefined })),
+      );
       markingRead.current = Promise.all([markingRead.current, read]);
       const { response: marked } = await read;
       if (marked?.status === 401) return onSignedOut();
       setMarking(marked?.ok ? "idle" : "readFailed");
     }
-  }, [client, mailbox.id, id, matched, me, onSignedOut]);
+  }, [client, mailbox.id, id, matched, me, saw, mark, onSignedOut]);
 
   useEffect(() => {
     void load();
@@ -179,8 +186,11 @@ export function ThreadView({
   const markUnread = async () => {
     setMarking("busy");
     leaving.current = true;
-    await markingRead.current;
-    const { response } = await client.POST("/mailboxes/{mailbox}/threads/unread", { params: { path: { mailbox: mailbox.id } }, body: { threads: [id] } }).catch(() => ({ response: undefined }));
+    // The list and the counts show it unread at once, though the request waits for the marks read still on their way.
+    const { response } = await mark(mailbox.id, id, true, async () => {
+      await markingRead.current;
+      return client.POST("/mailboxes/{mailbox}/threads/unread", { params: { path: { mailbox: mailbox.id } }, body: { threads: [id] } }).catch(() => ({ response: undefined }));
+    });
     if (response?.status === 401) return onSignedOut();
     if (!response?.ok) {
       leaving.current = false;

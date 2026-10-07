@@ -7,6 +7,7 @@ import type { components } from "@duva/openapi";
 import { chipOf, DoneLine, ListChips, ListLine, type Marks, SkeletonIndex, ThreadRow, usePicking } from "./inbox.tsx";
 import { type Done, type Label, OrganizeActions, ownLabelsOf, useKeyed } from "./organize.tsx";
 import { useBeside, useViewTitle, ViewMain, ViewTitle } from "./panes.tsx";
+import { now, unreadOf, useReadMarks } from "./read-marks.ts";
 import { useShortcuts, useThreadKeys } from "./shortcuts.tsx";
 import { strings } from "./strings.ts";
 import { hrefOf, type SearchView, threadHref } from "./views.tsx";
@@ -257,7 +258,7 @@ const pageSize = 20;
 type Finding =
   | { status: "loading" }
   | { status: "failed"; message: string; refused: boolean }
-  | { status: "found"; results: SearchResult[]; next?: string };
+  | { status: "found"; results: SearchResult[]; next?: string; at: number };
 
 /**
  * A search's results in the human's mailbox whose Inbox is at `base`. Duva's words show when it refuses the search, as for a filter it
@@ -312,9 +313,10 @@ export function SearchResults({
 
   const load = useCallback(async () => {
     setFinding({ status: "loading" });
+    const at = now();
     const answer = await page();
     if (answer === undefined) return;
-    setFinding("results" in answer ? { status: "found", ...answer } : { status: "failed", ...answer });
+    setFinding("results" in answer ? { status: "found", ...answer, at } : { status: "failed", ...answer });
   }, [page]);
 
   const findingRef = useRef(finding);
@@ -329,6 +331,7 @@ export function SearchResults({
   const again = async () => {
     const mine = ++generation.current;
     const shown = findingRef.current.status === "found" ? findingRef.current.results.length : pageSize;
+    const at = now();
     const results: SearchResult[] = [];
     let next: string | undefined;
     do {
@@ -337,7 +340,7 @@ export function SearchResults({
       results.push(...answer.results.filter(({ thread }) => !results.some((each) => each.thread.id === thread.id)));
       next = answer.next;
     } while (results.length < shown && next !== undefined);
-    if (mine === generation.current) setFinding({ status: "found", results, next });
+    if (mine === generation.current) setFinding({ status: "found", results, next, at });
   };
 
   useEffect(() => {
@@ -364,10 +367,22 @@ export function SearchResults({
     if (!("results" in answer)) return setMoreFailed(answer.message);
     // A thread already shown, whose place changed since the page before, isn't listed twice.
     const shown = new Set(finding.results.map(({ thread }) => thread.id));
-    setFinding({ status: "found", results: [...finding.results, ...answer.results.filter(({ thread }) => !shown.has(thread.id))], next: answer.next });
+    setFinding({ status: "found", results: [...finding.results, ...answer.results.filter(({ thread }) => !shown.has(thread.id))], next: answer.next, at: finding.at });
   };
 
-  const threads = useMemo(() => (finding.status === "found" ? finding.results.map(({ thread }) => thread) : []), [finding]);
+  // Each result reads as the human last marked its thread, though it was found before.
+  const { state: readState } = useReadMarks();
+  const results = useMemo(
+    () =>
+      finding.status !== "found"
+        ? []
+        : finding.results.map((result) => {
+            const unread = unreadOf(readState, mailbox.id, result.thread.id, result.thread.unread, finding.at);
+            return unread === result.thread.unread ? result : { ...result, thread: { ...result.thread, unread } };
+          }),
+    [finding, readState, mailbox.id],
+  );
+  const threads = useMemo(() => results.map(({ thread }) => thread), [results]);
   const picking = usePicking(threads);
   // Results come from anywhere but Spam and Trash, unless the search asks for one.
   const place = { all: true } as const;
@@ -450,7 +465,7 @@ export function SearchResults({
       ) : (
         <div className="index">
           <ol className="threads results" aria-label={strings.search.results} ref={list}>
-            {finding.results.map((result) => (
+            {results.map((result) => (
               <ResultRow
                 key={result.thread.id}
                 result={result}

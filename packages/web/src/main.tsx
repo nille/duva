@@ -30,6 +30,7 @@ import { type Marks, ThreadIndex } from "./inbox.tsx";
 import { ActorMark } from "./mail-parts.tsx";
 import { ChevronIcon, MailboxList, MailboxSelector, mailboxHref, mailboxName, ownInOrder } from "./mailboxes.tsx";
 import { type Beside, BesideContext, ListCountContext, takeOpenedBeside } from "./panes.tsx";
+import { answered, countChange, marked, now, overlapsMark, type Mark, type ReadMarks, ReadMarksContext, type ReadState, saw } from "./read-marks.ts";
 import { readScreener, ScreenedSenders, type ScreenerRead, ScreenerView } from "./screener.tsx";
 import { SenderLinkContext, SenderSheetView } from "./sender.tsx";
 import { SearchBox, SearchResults } from "./search.tsx";
@@ -192,9 +193,15 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
   const [alerts, setAlerts] = useState<{ unseen: number; newest?: string; version: number }>({ unseen: 0, version: 0 });
   // How many changes to each mailbox's mail the app has seen, so its views read it again when it grows.
   const [versions, setVersions] = useState<ReadonlyMap<string, number>>(new Map());
-  const [unread, setUnread] = useState<ReadonlyMap<string, number>>(new Map());
+  // How many threads in each mailbox's Inbox are unread, as last read and when.
+  const [counted, setCounted] = useState<ReadonlyMap<string, { count: number; at: number }>>(new Map());
   const [connection, setConnection] = useState<Connection>();
-  const [labels, setLabels] = useState<Label[]>([]);
+  // The side column's mailbox's labels, as last read and when.
+  const [labelsRead, setLabelsRead] = useState<{ mailbox?: string; labels: Label[]; at: number }>({ labels: [], at: 0 });
+  // The read marks the human made, which the lists and the counts show before they read them from Duva.
+  const [readState, setReadState] = useState<ReadState>(new Map());
+  const readStateRef = useRef(readState);
+  readStateRef.current = readState;
   const [relabelled, setRelabelled] = useState(0);
   // What the human last did, said in the view where it shows, until they go elsewhere.
   const [done, setDone] = useState<{ done: Done; at: string }>();
@@ -252,6 +259,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
   const countUnread = useCallback(
     async (ids: string[]) => {
       if (ids.length === 0) return;
+      const at = now();
       const counts = await Promise.all(
         ids.map(async (mailbox) => {
           const { data, response } = await client.GET("/mailboxes/{mailbox}", { params: { path: { mailbox } } }).catch(() => ({ data: undefined, response: undefined }));
@@ -259,7 +267,13 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
           return [mailbox, data?.unread] as const;
         }),
       );
-      setUnread((current) => new Map([...current, ...counts.flatMap(([mailbox, count]) => (count === undefined ? [] : [[mailbox, count] as const]))]));
+      const end = now();
+      // A read that started before the count shown, but ends after it, is dropped, as is one a mark was on its way during.
+      const kept = (mailbox: string, current?: { at: number }) => (current?.at ?? -Infinity) <= at && !overlapsMark(readStateRef.current, mailbox, at, end);
+      setCounted(
+        (current) =>
+          new Map([...current, ...counts.flatMap(([mailbox, count]) => (count === undefined || !kept(mailbox, current.get(mailbox)) ? [] : [[mailbox, { count, at }] as const]))]),
+      );
     },
     [client],
   );
@@ -435,16 +449,55 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
   const version = sided === undefined ? 0 : (versions.get(sided.id) ?? 0);
 
   // The side column's mailbox's labels, with their unread counts, are read again whenever its mail changes, and only the latest read counts.
-  const labelsRead = useRef(0);
+  const labelsReading = useRef(0);
   useEffect(() => {
-    const read = ++labelsRead.current;
-    if (sided === undefined) return setLabels([]);
+    const read = ++labelsReading.current;
+    if (sided === undefined) return setLabelsRead({ labels: [], at: now() });
     void (async () => {
+      const at = now();
       const { data, response } = await client.GET("/mailboxes/{mailbox}/labels", { params: { path: { mailbox: sided.id } } }).catch(() => ({ data: undefined, response: undefined }));
       if (response?.status === 401) return onSignedOut();
-      if (data !== undefined && read === labelsRead.current) setLabels(data.labels);
+      // Labels read while a mark was on its way are dropped, and read again once Duva answers it.
+      if (data !== undefined && read === labelsReading.current && !overlapsMark(readStateRef.current, sided.id, at, now())) setLabelsRead({ mailbox: sided.id, labels: data.labels, at });
     })();
   }, [client, sided, version, relabelled, onSignedOut]);
+
+  // The labels and the Inboxes count the threads as the human last marked them, though they were read before.
+  const labels = useMemo(
+    () =>
+      labelsRead.mailbox === undefined
+        ? labelsRead.labels
+        : labelsRead.labels.map((label) => {
+            const change = countChange(readState, labelsRead.mailbox!, label.id, labelsRead.at);
+            return change === 0 ? label : { ...label, unread: Math.max(0, label.unread + change) };
+          }),
+    [labelsRead, readState],
+  );
+  const unread = useMemo<ReadonlyMap<string, number>>(
+    () => new Map([...counted].map(([mailbox, { count, at }]) => [mailbox, Math.max(0, count + countChange(readState, mailbox, "inbox", at))])),
+    [counted, readState],
+  );
+  // What a thread view notes and marks stays the same, so it reads the thread again only when its mail changes.
+  const sawThread = useCallback<ReadMarks["saw"]>((mailbox, thread, at) => setReadState((current) => saw(current, mailbox, thread, at)), []);
+  const recount = useRef<(mailbox: string) => void>(undefined);
+  recount.current = (mailbox) => {
+    setRelabelled((current) => current + 1);
+    if (columned)
+      countUnread([mailbox]).catch((error: unknown) => {
+        if (error instanceof SignedOut) onSignedOut();
+      });
+  };
+  const mark = useCallback<Mark>(async (mailbox, thread, unread, send) => {
+    const fact = { unread, at: Infinity, sent: now() };
+    setReadState((current) => marked(current, mailbox, thread, fact));
+    const answer = await send();
+    const at = answer.response?.ok === true ? now() : undefined;
+    setReadState((current) => answered(current, mailbox, thread, fact, at));
+    // A count read while the mark was on its way was dropped, so the counts are read again.
+    recount.current?.(mailbox);
+    return answer;
+  }, []);
+  const readMarks = useMemo<ReadMarks>(() => ({ state: readState, saw: sawThread, mark }), [readState, sawThread, mark]);
 
   // Its Screener is read whenever its mail changes too, for the side column's count and the Screener
   // view. Another mailbox's shows as loading until it is read.
@@ -702,6 +755,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
     <PreferencesContext value={preferences}>
       <SenderLinkContext value={senderLink}>
         <ListCountContext value={setListCount}>
+        <ReadMarksContext value={readMarks}>
       <a
         className="skip"
         href={route.hash || "#/"}
@@ -947,6 +1001,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
           onSignOut={() => signOut(config)}
         />
       </div>
+        </ReadMarksContext>
         </ListCountContext>
       </SenderLinkContext>
     </PreferencesContext>
