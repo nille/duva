@@ -5,7 +5,7 @@
 // Runs the checks of a real run that need no human: the API answers, refuses calls without valid
 // credentials, and lets the web app call it; download links go through the web app's domain, and
 // only its distribution may invoke the download Lambda; nothing but IAM may invoke the
-// unsubscriber, which refuses addresses that aren't public; the web app is served with the config
+// unsubscriber and the logo fetcher, which refuse addresses that aren't public; the web app is served with the config
 // deploy published; the user pool takes sign-in names in any case, sends its codes from a domain
 // SES has verified, and still offers emailed codes, and no pool the stack retired is left; once an address exists, SES's receipt rules list each address, and each domain with a catch-all, once, and none is on SES's
 // suppression list, which only warns; and no received mail and no approved send waits in a failure queue; Duva's configuration set publishes only bounces,
@@ -153,6 +153,16 @@ for (const url of ["https://169.254.169.254/latest/meta-data/", "https://localho
     const { FunctionError, Payload } = await lambda.send(new InvokeCommand({ FunctionName: unsubscriberFunction, Payload: JSON.stringify({ url }) }));
     const answer = new TextDecoder().decode(Payload);
     return FunctionError === undefined && answer === JSON.stringify({ outcome: "failed", reason: "notPublic" }) ? undefined : `answered ${answer}`;
+  });
+}
+const logoFetcherFunction = output(stackOutputs.logoFetcherFunction);
+await check("the logo fetcher has no resource policy, so only IAM invokes it", () => missing(lambda.send(new GetPolicyCommand({ FunctionName: logoFetcherFunction }))));
+await check("the logo fetcher has no function URL", () => missing(lambda.send(new GetFunctionUrlConfigCommand({ FunctionName: logoFetcherFunction }))));
+for (const url of ["https://169.254.169.254/latest/meta-data/", "https://localhost/logo.svg", "https://[::1]/logo.svg"]) {
+  await check(`the logo fetcher fetches nothing from ${url}, which isn't public`, async () => {
+    const { FunctionError, Payload } = await lambda.send(new InvokeCommand({ FunctionName: logoFetcherFunction, Payload: JSON.stringify({ url }) }));
+    const answer = new TextDecoder().decode(Payload);
+    return FunctionError === undefined && answer === "{}" ? undefined : `answered ${answer}`;
   });
 }
 /** The physical ID of the stack's one resource of the type whose logical ID starts with the prefix. */

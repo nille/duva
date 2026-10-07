@@ -137,6 +137,16 @@ _Avoid_: contact, rule
 **Tracking protection**:
 Removing known trackers, such as spy pixels, from HTML mail before anyone sees it, and saying what was removed. Always on. Other remote images and fonts load from the sender's servers as they are.
 
+**BIMI**:
+Brand Indicators for Message Identification: how a domain publishes its logo in DNS, for receivers to show beside its mail. Duva honors it on received mail only when the message passed DMARC and the domain enforces DMARC (ADR-0023).
+
+**Sender logo**:
+The logo a sender's domain publishes through BIMI, which Duva shows in place of the sender's actor mark. Duva fetches it when mail arrives and serves it itself, so showing it never reaches the sender. It is verified, and marked with a check, when a VMC or CMC from a Mark Verifying Authority vouches for it and the domain. Mail from an agent keeps the agent's mark.
+_Avoid_: avatar, brand icon
+
+**Selector**:
+The name of one of a domain's BIMI records, so a domain can publish several logos. A message names its selector in its BIMI-Selector header; without one, it is default.
+
 **Search**:
 Finding threads in one mailbox by words and meaning together, with filters such as from: and label:. It covers subjects, senders, recipients, message text and attachment names, Sent included, and leaves out Spam and Trash unless asked. An actor searches only mailboxes it can read.
 _Avoid_: query, lookup

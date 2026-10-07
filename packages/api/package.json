@@ -12,6 +12,7 @@
     "./eraser-lambda": "./src/eraser-lambda.ts",
     "./download-lambda": "./src/download-lambda.ts",
     "./unsubscriber-lambda": "./src/unsubscriber-lambda.ts",
+    "./logo-fetcher-lambda": "./src/logo-fetcher-lambda.ts",
     "./search-lambda": "./src/search-lambda.ts",
     "./indexer-lambda": "./src/indexer-lambda.ts",
     "./feeder-lambda": "./src/feeder-lambda.ts",
@@ -43,6 +44,7 @@
     "apache-arrow": "18.1.0",
     "aws-jwt-verify": "^5.2.1",
     "html-to-text": "^10.0.1",
+    "htmlparser2": "^10.1.0",
     "postal-mime": "^4.0.2",
     "sanitize-html": "^2.18.0",
     "snowball-stemmers": "^0.6.0"

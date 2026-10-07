@@ -278,7 +278,7 @@ Flat by default: depth is tone. The three greys step lighter toward the reader, 
 
 Small, exact radii, and pills for what is pressed. Key caps 4px, with a heavier 2px lower edge; rows and places 6px; fields 7px; sheets laid over the page 10px; buttons, chips and counts are pills.
 
-Actors are marked by shape, so they read without color: a human is a filled dot in Second Ink, an agent a diamond outlined in Agent Blue, Duva itself a ring in Third Ink, each 0.55rem.
+Actors are marked by shape, so they read without color: a human is a filled dot in Second Ink, an agent a diamond outlined in Agent Blue, Duva itself a ring in Third Ink, each 0.55rem. A sender whose domain publishes a logo Duva shows (ADR-0023) has their logo there instead: a 0.875rem square, 3px radius, edged by a 1px seam ring, centred on the mark's place and taking only its room, so names line up and lines keep their height. A verified logo carries a 0.55rem ink disc with a white tick at its lower right. An agent always keeps its diamond.
 
 ## Components
 
@@ -319,7 +319,7 @@ Actors are marked by shape, so they read without color: a human is a filled dot 
 - **Back:** a thread that came back from Remind me opens its second line with "Back" in `call-ink` at 700, then when it was set aside in Third Ink, until it leaves the Inbox. An open thread says it in its meta line, in `call-ink` at 600, and one set aside says when it comes back.
 - **Remind me** is a view of the side column, after the Screener. Its rows end with when each thread comes back, after a small clock, in Second Ink, in place of when its mail arrived, the soonest first.
 - **Remind me's picker** hangs from the button as the labels' does, a white sheet with the soft lift, from the toolbar's inset in a list: when the threads set aside come back and Cancel reminder over a seam, then the presets as lines, each its name at 600 and at the right the time it gives in Third Ink, tabular, with the ink wash on hover, then "Another time" as a date and time field with Set.
-- **Actor marks:** an agent the human sponsors, known by its mailbox's addresses, takes the diamond; Duva's own mail, from its system address, the ring; everyone else the dot.
+- **Actor marks:** an agent the human sponsors, known by its mailbox's addresses, takes the diamond; Duva's own mail, from its system address, the ring; everyone else the dot, or their sender logo, in rows, letters, slugs and the Screener, falling back to the dot when the logo won't load.
 - **Open and picked:** the open row lies on Reader Grey with the orange edge across the whole row; a picked row on Field Grey, and a row under the pointer on the ink wash.
 - **Checkboxes:** small square keys, 0.875rem (1.25rem on a phone), edged at 3:1 in Edge, filled ink with a white tick when picked and a dash while some are.
 - **The toolbar** heads the rows and stays at the column's top as they scroll: the box that picks them all, level with the rows' boxes, then once any is picked how many, and the small actions, each with its key cap.
@@ -409,7 +409,7 @@ Actors are marked by shape, so they read without color: a human is a filled dot 
 - **Do** separate columns and rows by tone, a seam or space.
 - **Do** use each function color for its one meaning, filled at its own value and as text in its `-ink` hand.
 - **Do** set every text in the mono with ligatures on, and every heading in the grotesk.
-- **Do** mark actors by shape with the one actor mark: dot, diamond, ring.
+- **Do** mark actors by shape with the one actor mark: dot, diamond, ring, or a sender's logo in the dot's place.
 - **Do** show a shortcut as a key cap beside the action it runs, hidden from screen readers.
 - **Do** keep text at 4.5:1 and field borders at 3:1 on every grey.
 

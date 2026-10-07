@@ -77,6 +77,7 @@ export const strings = {
     unread: (count: number, more: boolean) => (more ? `At least ${count} unread` : `${count} unread`),
     unreadMark: "Unread",
     agentSender: (agent: string) => `${agent}, an agent`,
+    verifiedSender: (sender: string) => `${sender}, verified logo`,
     waitingForYou: "Waiting for you",
     waitsFor: (agent: string, forward: boolean) => `${agent}'s ${forward ? "forward" : "reply"} waits for you`,
     chips: { name: "Show", all: "All", unread: "Unread" },
@@ -360,6 +361,10 @@ export const strings = {
     unreachable: "Duva couldn't be reached, so the label wasn't saved. Check your connection and try again.",
   },
 
+  logo: {
+    of: (sender: string) => `${sender}'s logo`,
+    verified: (sender: string) => `${sender}'s verified logo`,
+  },
   thread: {
     reply: "Reply",
     replyAll: "Reply all",

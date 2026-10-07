@@ -9,7 +9,7 @@ import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
 import type { Connection as ConnectionState } from "./feed.ts";
 import { useDates } from "./dates.ts";
-import { ActorMark, Connection, nameOf, Time } from "./mail-parts.tsx";
+import { ActorMark, Connection, nameOf, SenderMark, Time } from "./mail-parts.tsx";
 import { Cap, ClockIcon, type Done, type Label, type Labelled, labelRefusal, OrganizeActions, ownLabelsOf, type Place, useKeyed } from "./organize.tsx";
 import { useBeside, useViewTitle, ViewMain, ViewTitle } from "./panes.tsx";
 import { useShortcuts, useThreadKeys } from "./shortcuts.tsx";
@@ -680,7 +680,7 @@ export function ThreadLine({
   const waiting = marks.waiting.get(thread.id);
   const label = [
     thread.unread && strings.inbox.unreadMark,
-    actor === "agent" ? strings.inbox.agentSender(sender) : sender,
+    actor === "agent" ? strings.inbox.agentSender(sender) : thread.logo?.verified ? strings.inbox.verifiedSender(sender) : sender,
     subject,
     waiting !== undefined && strings.inbox.waitsFor(waiting.agent, waiting.forward),
     back !== undefined && strings.remind.backLabel(day(new Date(back.setAsideAt))),
@@ -696,7 +696,7 @@ export function ThreadLine({
     <a className={thread.unread ? "thread thread-unread" : "thread"} href={href} aria-label={label} aria-describedby={snippet === "" ? undefined : snippetId} aria-current={open ? "true" : undefined}>
       <span className="thread-mark" aria-hidden="true" />
       <span className="thread-sender">
-        <ActorMark kind={actor} />
+        <SenderMark kind={actor} logo={thread.logo} name={sender} />
         <span className="thread-sender-name">{sender}</span>
         {thread.messages > 1 && <span className="thread-count">{thread.messages}</span>}
       </span>

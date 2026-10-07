@@ -1,4 +1,4 @@
-// A stand-in for the internet the unsubscriber reaches: web servers by host name, each at the
+// A stand-in for the internet the unsubscriber and the logo fetcher reach: web servers by host name, each at the
 // addresses its name resolves to, serving http on port 80 and https on port 443 with a test
 // certificate. Connections to those addresses reach the servers in-process, and to any other
 // address are refused. Nothing leaves the machine.
@@ -7,7 +7,7 @@ import { createServer as createHttpServer, type IncomingMessage, type Server, ty
 import { createServer as createHttpsServer } from "node:https";
 import type { AddressInfo } from "node:net";
 import { connect, Socket } from "node:net";
-import type { Network } from "../src/unsubscriber.ts";
+import type { Network } from "../src/internet.ts";
 
 const certificate = readFileSync(new URL("web/cert.pem", import.meta.url), "utf8");
 const key = readFileSync(new URL("web/key.pem", import.meta.url), "utf8");

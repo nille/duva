@@ -29,6 +29,8 @@ export interface ParsedMail {
   cc: EmailAddress[];
   /** The Duva-Agent header's value, which names the agent that sent it, if it has one (docs/disclosure.md). */
   disclosure?: string;
+  /** The selector of the sender's logo its BIMI-Selector header names, as in v=BIMI1; s=news, if it names one. */
+  bimiSelector?: string;
   /** Where the sender wants replies, if the message says. */
   replyTo: EmailAddress[];
   subject: string;
@@ -64,6 +66,7 @@ export async function parseMail(raw: Uint8Array): Promise<ParsedMail> {
   const text = textFromHtml ? htmlToText(email.html ?? email.text ?? "") : email.text!;
   const html = email.html ?? (email.text !== undefined && isHtmlDocument(email.text) ? email.text : undefined);
   const disclosure = email.headers.find(({ key }) => key === disclosureHeader.toLowerCase())?.value.trim() || undefined;
+  const bimiSelector = /(?:^|;)\s*s\s*=\s*([^;\s]+)/i.exec(email.headers.find(({ key }) => key === "bimi-selector")?.value ?? "")?.[1];
   const parts = email.attachments.map(({ filename, mimeType, contentId, content }) => ({
     ...(filename !== null && { name: filename }),
     type: mimeType,
@@ -79,6 +82,7 @@ export async function parseMail(raw: Uint8Array): Promise<ParsedMail> {
     cc: addresses(email.cc),
     replyTo: addresses(email.replyTo),
     ...(disclosure !== undefined && { disclosure }),
+    ...(bimiSelector !== undefined && { bimiSelector }),
     subject: email.subject ?? "",
     date: date === undefined || Number.isNaN(date.getTime()) ? undefined : date.toISOString(),
     text: text.replace(/\r\n?/g, "\n").replace(/\n+$/, ""),

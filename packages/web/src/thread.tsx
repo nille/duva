@@ -10,7 +10,7 @@ import type { components } from "@duva/openapi";
 import { Composer, startDraft } from "./compose.tsx";
 import { PreferencesContext, useDates } from "./dates.ts";
 import { DesignedBody } from "./designed.tsx";
-import { ActorMark, Addresses, Attachments, Field, nameOf, Time } from "./mail-parts.tsx";
+import { Addresses, Attachments, Field, nameOf, SenderMark, Time } from "./mail-parts.tsx";
 import { changeFor, type Done, type Label, organize, OrganizeActions, ownLabelsOf, SessionEnded } from "./organize.tsx";
 import { useShortcuts } from "./shortcuts.tsx";
 import { strings } from "./strings.ts";
@@ -611,7 +611,7 @@ function FoldedLetter({ message, ref, me, agentNames, owner, groups, onOpen }: L
     <article ref={ref} className="letter letter-folded" tabIndex={ref === undefined ? undefined : -1} aria-labelledby={fromId}>
       <h2 className="letter-slug-title">
         <button type="button" className="letter-slug" aria-expanded={false} onClick={onOpen}>
-          <ActorMark kind={actorOf(message, agentNames, owner)} />
+          <SenderMark kind={actorOf(message, agentNames, owner)} logo={message.logo} name={nameOf(message.from)} />
           <span className="letter-slug-from" id={fromId}>
             {nameOf(message.from)}
           </span>
@@ -673,7 +673,7 @@ function Letter({
       aria-labelledby={titleId}
     >
       <header className="letter-head">
-        <ActorMark kind={actor} />
+        <SenderMark kind={actor} logo={message.logo} name={nameOf(message.from)} />
         <h2 className="letter-from" id={titleId}>
           {nameOf(message.from)}
           {message.from.name && (

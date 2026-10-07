@@ -2923,6 +2923,8 @@ export interface components {
             from: components["schemas"]["EmailAddress"];
             /** @description True when Duva knows an agent sent the thread's first message, as its message's fromAgent says. Absent otherwise. */
             fromAgent?: boolean;
+            /** @description The logo of whoever sent the thread's first message, as its message's logo says. */
+            logo?: components["schemas"]["SenderLogo"];
             /**
              * @description The start of the newest message's text, on one line, without quoted lines.
              * @example Here are my notes on the compiler.
@@ -3020,6 +3022,8 @@ export interface components {
             sentAs?: components["schemas"]["SentAsGroup"];
             /** @description True when Duva knows an agent sent the message: an agent sent it from this Duva, or it came with the Duva-Agent header from one of the organization's domains with a DMARC pass, as a message an agent sent from another of its mailboxes does. Absent otherwise, and on mail Duva received before it kept this. */
             fromAgent?: boolean;
+            /** @description The sender's logo, which their domain publishes through BIMI, on received mail that passed DMARC from a domain that enforces it. Absent otherwise, on mail from an agent, and on mail Duva received before it kept this. */
+            logo?: components["schemas"]["SenderLogo"];
             /** @description Who approved the message before it was sent, if an agent sent it. */
             approval?: components["schemas"]["SentApproval"];
             /** @description What SES reported about a message sent from the mailbox, oldest first, if it reported anything. */
@@ -3037,6 +3041,17 @@ export interface components {
              */
             removedTrackers?: string[];
             attachments: components["schemas"]["Attachment"][];
+        };
+        /** @description A sender's logo, which their domain publishes through BIMI. Duva fetched it when the mail arrived, checked that it is SVG Tiny PS and wrote it out again without anything that could run or fetch, so showing it never reaches the sender (ADR-0023). */
+        SenderLogo: {
+            /**
+             * Format: uri
+             * @description Where Duva serves the logo, an SVG, to anyone with the URL.
+             * @example https://d111111abcdef8.cloudfront.net/download/logos/6f1c2a9e-0d3b-4c5e-9a8f-1b2c3d4e5f60
+             */
+            url: string;
+            /** @description Whether a mark certificate (a VMC or CMC) from a Mark Verifying Authority vouches for the logo and the domain, so the logo is the brand's own. */
+            verified: boolean;
         };
         /** @description On a copy of a message another local member sent as a group, who sent it and as which group. Each other local member's mailbox gets one, in the thread of the message it answers, so nobody answers twice. */
         SentAsGroup: {

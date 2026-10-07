@@ -1,7 +1,7 @@
 // The API test harness: the real handlers, authorizer, inbound handler, sender and eraser in-process, with
 // DynamoDB Local (started by dynamodb-local.ts) for DynamoDB and its stream, an in-memory stand-in
 // for the mail bucket and for the inbound Lambda's log, stand-ins for SES receiving and sending, a
-// stand-in internet for the unsubscriber, a test token issuer in place of Cognito, and search indexes
+// stand-in internet for the unsubscriber and the logo fetcher, a test Mark Verifying Authority, a test token issuer in place of Cognito, and search indexes
 // in LanceDB on local disk, with a stand-in for the indexer's FIFO queue and Titan's recorded vectors. Tests drive
 // the API only through the generated client, hand mail to SES as a sender's server does, read what
 // SES sent, and put web servers on the internet to see what the unsubscriber sends them.
@@ -10,7 +10,7 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AddressInfo } from "node:net";
-import { randomUUID } from "node:crypto";
+import { randomUUID, X509Certificate } from "node:crypto";
 import { CreateTableCommand, DeleteItemCommand, ScanCommand } from "@aws-sdk/client-dynamodb";
 import type { ReceiptRule } from "@aws-sdk/client-ses";
 import type { SESEvent, SNSEvent } from "aws-lambda";
@@ -42,6 +42,7 @@ import { setUpScreeners } from "../src/screening.ts";
 import type { ReminderDue } from "../src/reminders.ts";
 import { createSender } from "../src/sending.ts";
 import type { SuppressionReason } from "../src/suppression.ts";
+import { fetchForLogo, logoUrl } from "../src/sender-logos.ts";
 import { postOneClick } from "../src/unsubscriber.ts";
 import { dynamodbLocal } from "./dynamodb-local.ts";
 import { gateway } from "./gateway.ts";
@@ -52,6 +53,9 @@ import { recordedNova } from "./nova.ts";
 import { recordedTitan } from "./titan.ts";
 import { TestTokenIssuer } from "./token-issuer.ts";
 import { type ReceivedRequest, standInInternet, type WebServerOptions } from "./web.ts";
+
+/** The root of the tests' own Mark Verifying Authority, whose mark certificates verify logos. */
+const testMarkRoot = new X509Certificate(readFileSync(new URL("marks/root.pem", import.meta.url)));
 
 declare module "vitest" {
   export interface ProvidedContext {
@@ -145,7 +149,7 @@ export interface Duva {
   emailIdentities(): StoredIdentity[];
   /**
    * Puts the records of the type at the name in DNS, replacing any there, as an admin does at the
-   * domain's DNS provider. SES verifies an identity once DNS has the records it needs.
+   * domain's DNS provider, or a sender at theirs. SES verifies an identity once DNS has the records it needs.
    */
   dnsRecord(type: RecordType, name: string, values: string[]): void;
   /** The address the user pool sends sign-in codes from, as Cognito's EmailConfiguration names it. */
@@ -189,11 +193,11 @@ export interface Duva {
    */
   erase(at: Date, options?: { s3DeletesFail?: boolean }): Promise<void>;
   /**
-   * Puts a web server on the internet the unsubscriber reaches, at the host name, serving http on
+   * Puts a web server on the internet the unsubscriber and the logo fetcher reach, at the host name, serving http on
    * port 80 and https on 443. Returns the requests it gets, as they arrive.
    */
   webServer(hostname: string, options?: WebServerOptions): Promise<ReceivedRequest[]>;
-  /** Follows a download link, as a browser does, and gives what the download Lambda answered through CloudFront. */
+  /** Follows a download link or a sender logo's URL, as a browser does, and gives what the download Lambda answered through CloudFront. */
   download(url: string): Promise<Response>;
   /**
    * Moves Duva to a new user pool, as the deploy of #30 did. No human can sign in there, and every
@@ -252,6 +256,7 @@ export async function startDuva({
   const handed: EraserEvent[] = [];
   const inboundLog: string[] = [];
   const dns = memoryDns();
+  const internet = standInInternet();
   const identities = sesIdentities({ region, dns, verified: [domain], others: othersIdentities, configurationSet: "duva-sending" });
   const signInSender = memorySignInSender(domain, identities.verified);
   // SES's events invoke the feedback Lambda, which changes SES's suppression list, so the two are tied once both exist.
@@ -261,7 +266,19 @@ export async function startDuva({
   // SES invokes the inbound Lambda, which bounces through SES, so the two are tied once both exist.
   let inbound: (event: SESEvent) => Promise<void> = async () => {};
   const ses = sesReceiving({ verified: identities.verified, region, buckets: new Map([[mailBucketName, mailBucket]]), functions: new Map([[inboundFunction, (event) => inbound(event)]]) });
-  inbound = createInbound({ table, mailBucket, log: (line) => inboundLog.push(line), outbound: sending.outbound, bounces: ses.bounces });
+  // The inbound Lambda invokes the logo fetcher Lambda and waits for it, so its answer goes through JSON.
+  const logos = {
+    dns,
+    fetcher: {
+      async get(url: string) {
+        const { body } = JSON.parse(JSON.stringify(await fetchForLogo(internet.network, { url }))) as { body?: string };
+        return body === undefined ? undefined : new Uint8Array(Buffer.from(body, "base64"));
+      },
+    },
+    roots: [testMarkRoot],
+    url: (logo: string) => logoUrl(downloads.url, logo),
+  };
+  inbound = createInbound({ table, mailBucket, log: (line) => inboundLog.push(line), outbound: sending.outbound, bounces: ses.bounces, logos });
   const receiving = { rules: ses.rules, bucket: mailBucketName, inboundFunction, suppressionList: sending.suppressionList };
   // Each mailbox's index is a table under the deployment's own directory. The search Lambda and the
   // indexer each open them, as two Lambdas do. Backfill steps are small, so a few messages take several.
@@ -314,7 +331,6 @@ export async function startDuva({
     return new Response(body, { status: statusCode, headers });
   };
   // The API invokes the unsubscriber Lambda and waits for it, so its answer goes through JSON.
-  const internet = standInInternet();
   const unsubscriber = { post: async (url: string) => JSON.parse(JSON.stringify(await postOneClick(internet.network, url))) };
   const gatewayed = gateway(
     createApi({

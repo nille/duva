@@ -30,9 +30,11 @@ export const environmentVariables = {
   eraserFunction: "ERASER_FUNCTION",
   /** The unsubscriber Lambda, which the API invokes for each one-click unsubscribe. */
   unsubscriberFunction: "UNSUBSCRIBER_FUNCTION",
+  /** The logo fetcher Lambda, which the inbound Lambda invokes to fetch each sender's logo. */
+  logoFetcherFunction: "LOGO_FETCHER_FUNCTION",
   /** The SES configuration set every send goes through. */
   configurationSet: "CONFIGURATION_SET",
-  /** The URL of the download Lambda, which download links lead to. */
+  /** The URL of the download Lambda, which download links and senders' logos lead to. */
   downloadUrl: "DOWNLOAD_URL",
   /** The search Lambda, which the API invokes for each search. */
   searchFunction: "SEARCH_FUNCTION",

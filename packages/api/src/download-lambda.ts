@@ -1,4 +1,4 @@
-// The Lambda entry point download links reach, through the web app's CloudFront distribution. It
+// The Lambda entry point download links and senders' logos reach, through the web app's CloudFront distribution. It
 // streams its answer, since a buffered one can't exceed 6 MB and an attachment can be far larger
 // (docs/aws.md).
 // The CDK app sets the environment.

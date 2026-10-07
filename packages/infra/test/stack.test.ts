@@ -351,6 +351,25 @@ test("the unsubscriber can be invoked only by the API, through IAM, and may do n
   expect(Properties?.Timeout).toBe(10);
 });
 
+// The logo fetcher GETs a URL from a sender's BIMI record, so it may reach nothing of Duva's (ADR-0023).
+test("the logo fetcher can be invoked only by the inbound Lambda, through IAM, and may do nothing but write its log", () => {
+  const [fetcherId, { Properties }] = lambda("LogoFetcherHandler");
+  for (const type of ["AWS::Lambda::Permission", "AWS::Lambda::Url", "AWS::Lambda::EventSourceMapping", "AWS::Events::Rule"]) expect({ type, naming: naming(type, fetcherId) }).toEqual({ type, naming: [] });
+  expect(statements("LogoFetcherHandler")).toEqual([]);
+  const roleId = Properties?.Role?.["Fn::GetAtt"]?.[0];
+  expect(stack.template.Resources[roleId]?.Properties?.ManagedPolicyArns).toEqual([
+    { "Fn::Join": ["", ["arn:", { Ref: "AWS::Partition" }, ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"]] },
+  ]);
+  expect(Object.keys(Properties?.Environment?.Variables ?? {})).toEqual(["NODE_OPTIONS"]);
+  // Longer than each fetch's 5 seconds.
+  expect(Properties?.Timeout).toBe(10);
+  expect(invokers(fetcherId)).toEqual([lambda("InboundHandler")[1].Properties?.Role?.["Fn::GetAtt"]?.[0]]);
+  const variables = lambda("InboundHandler")[1].Properties?.Environment?.Variables;
+  expect(variables?.[environmentVariables.logoFetcherFunction]).toEqual({ "Fn::GetAtt": [fetcherId, "Arn"] });
+  // Senders' logos are served under the URL download links lead to, on the web app's domain.
+  expect(JSON.stringify(variables?.[environmentVariables.downloadUrl])).toContain("/download/");
+});
+
 const [ruleSetId] = ofType("AWS::SES::ReceiptRuleSet")[0]!;
 
 test("SES may invoke the inbound Lambda, only for Duva's receipt rules in this account", () => {

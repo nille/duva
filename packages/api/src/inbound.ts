@@ -5,6 +5,8 @@
 // system address, such as an urgent alert, is never spam, whatever SES's verdict. Mail to a group
 // goes to its members, as group-mail.ts has it. Mail to an address the organization doesn't have
 // goes to its domain's catch-all, which SES takes it for, as if to the catch-all's mailbox or group.
+// Mail that passed DMARC carries its sender's logo, if their domain publishes one Duva shows
+// (ADR-0023), except mail from an agent, which keeps the agent's mark, and spam.
 import type { SESEvent } from "aws-lambda";
 import type { Table } from "./deployment.ts";
 import { dropLogLine, dropReason } from "./drops.ts";
@@ -16,12 +18,28 @@ import { bounceOnce, type Bounces, type Expanded, expand, type GroupRefusal, isO
 import { addressTarget, allDomains, type CatchAll, catchAllTarget, type Group } from "./organization.ts";
 import { type Outbound, sentBySystem } from "./sending.ts";
 import { receiveScreened } from "./screening.ts";
+import { senderLogo, type SenderLogos } from "./sender-logos.ts";
 
 /**
  * What the inbound handler needs: the table, the mail bucket, its log, which takes one line at a
- * time, SES's sending, for groups' external members, and its bounces, for mail a group refuses.
+ * time, SES's sending, for groups' external members, its bounces, for mail a group refuses, and
+ * what looking up senders' logos needs.
  */
-export function createInbound({ table, mailBucket, log, outbound, bounces }: { table: Table; mailBucket: MailBucket; log: (line: string) => void; outbound: Outbound; bounces: Bounces }) {
+export function createInbound({
+  table,
+  mailBucket,
+  log,
+  outbound,
+  bounces,
+  logos,
+}: {
+  table: Table;
+  mailBucket: MailBucket;
+  log: (line: string) => void;
+  outbound: Outbound;
+  bounces: Bounces;
+  logos: SenderLogos;
+}) {
   return async (event: SESEvent): Promise<void> => {
     for (const { ses } of event.Records) {
       const rawKey = `${inboundPrefix}${ses.mail.messageId}`;
@@ -87,8 +105,13 @@ export function createInbound({ table, mailBucket, log, outbound, bounces }: { t
       for (const [mailbox, to] of caught) if (!delivered.has(mailbox)) delivered.set(mailbox, to);
       // Only Duva sends from the organization's domains with a DMARC pass, so there the header is its own.
       const fromAgent = parsed.disclosure !== undefined && dmarcPassed && domains.has(domainOf(sender.from));
+      // DMARC passes only for the From's domain.
+      const logo =
+        dmarcPassed && !spam && !fromAgent && parsed.from !== undefined && delivered.size > 0
+          ? await senderLogo(table, logos, { domain: domainOf(sender.from), selector: parsed.bimiSelector })
+          : undefined;
       for (const [mailbox, to] of delivered) {
-        await receiveScreened(table, { mailbox, sesMessageId: ses.mail.messageId, rawKey, ...to, sender: ses.mail.source, receivedAt: ses.mail.timestamp, parsed, spam, dmarcPassed, fromAgent });
+        await receiveScreened(table, { mailbox, sesMessageId: ses.mail.messageId, rawKey, ...to, sender: ses.mail.source, receivedAt: ses.mail.timestamp, parsed, spam, dmarcPassed, fromAgent, logo });
       }
       // Spam goes to no one outside, and a bounce of it would most likely reach someone it forged.
       if (spam) continue;

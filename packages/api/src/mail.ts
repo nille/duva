@@ -109,6 +109,8 @@ export interface Arrival {
   spam: boolean;
   /** Whether Duva knows an agent sent it, by its disclosure header on mail from the organization's domain with a DMARC pass. */
   fromAgent: boolean;
+  /** The sender's logo, if their domain publishes one Duva shows (ADR-0023). */
+  logo?: components["schemas"]["SenderLogo"];
   /** Where the message goes if it starts a thread, as the Screener decided, and the writes that hold only while that decision does. */
   screening?: Screening;
 }
@@ -163,6 +165,8 @@ interface StoredMessage {
   sentAs?: components["schemas"]["SentAsGroup"];
   /** Set when Duva knows an agent sent it. */
   fromAgent?: true;
+  /** The sender's logo, on received mail whose sender's domain publishes one Duva shows. */
+  logo?: components["schemas"]["SenderLogo"];
   /** The approval an agent's message went out with. */
   approval?: components["schemas"]["SentApproval"];
   /** What SES reported about a message sent from the mailbox, oldest first. */
@@ -201,6 +205,7 @@ export async function receiveMessage(table: Table, arrival: Arrival): Promise<bo
     receivedAt,
     rawKey,
     ...(arrival.fromAgent && { fromAgent: true }),
+    ...(arrival.logo !== undefined && { logo: arrival.logo }),
   };
   return storeMessage(table, {
     mailbox,
@@ -339,6 +344,7 @@ async function storeMessage(
             subject: message.subject,
             from: message.from,
             ...(message.fromAgent && { fromAgent: true }),
+            ...(message.logo !== undefined && { logo: message.logo }),
             snippet: snippetOf(text),
             labels: label === undefined ? [] : [label],
             unread: unread ?? false,
@@ -891,7 +897,7 @@ async function readMessage(mailBucket: MailBucket, stored: StoredMessage, linkTo
   const parsed = await parseMail(raw);
   const { text, attachments } = parsed;
   const html = parsed.html === undefined || linkTo === undefined ? undefined : await servedHtml(parsed.html, parsed.parts, (attachment) => linkTo(stored.id, attachment));
-  const { id, messageId, from, to, cc, bcc, recipient, plusTag, group, subject, date, receivedAt, sentBy, sentAs, fromAgent, approval, feedback } = stored;
+  const { id, messageId, from, to, cc, bcc, recipient, plusTag, group, subject, date, receivedAt, sentBy, sentAs, fromAgent, logo, approval, feedback } = stored;
   const message = {
     id,
     messageId,
@@ -908,6 +914,7 @@ async function readMessage(mailBucket: MailBucket, stored: StoredMessage, linkTo
     ...(sentBy !== undefined && { sentBy }),
     ...(sentAs !== undefined && { sentAs: { group: sentAs.group, by: sentAs.by, name: sentAs.name } }),
     ...(fromAgent && { fromAgent }),
+    ...(logo !== undefined && { logo }),
     ...(approval !== undefined && { approval }),
     ...(feedback !== undefined && { feedback }),
     text,
@@ -950,11 +957,12 @@ async function servedHtml(html: string, parts: Part[], linkTo: (attachment: numb
 }
 
 // Threads stored before snippets and read state existed have neither, and are read.
-export const summaryOf = ({ id, subject, from, fromAgent, snippet, labels, unread, latestAt, messages, groups, reminder, back }: ThreadSummary): ThreadSummary => ({
+export const summaryOf = ({ id, subject, from, fromAgent, logo, snippet, labels, unread, latestAt, messages, groups, reminder, back }: ThreadSummary): ThreadSummary => ({
   id,
   subject,
   from: addressOf(from),
   ...(fromAgent && { fromAgent }),
+  ...(logo !== undefined && { logo }),
   snippet: snippet ?? "",
   labels,
   unread: unread ?? false,

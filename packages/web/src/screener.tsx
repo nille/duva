@@ -5,7 +5,7 @@ import { useCallback, useEffect, useId, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import { type components, isPublicMailProvider } from "@duva/openapi";
 import type { Connection as ConnectionState } from "./feed.ts";
-import { ActorMark, Connection, Time } from "./mail-parts.tsx";
+import { Connection, SenderMark, Time } from "./mail-parts.tsx";
 import type { Done } from "./organize.tsx";
 import { useBeside, useViewTitle, ViewMain, ViewTitle } from "./panes.tsx";
 import { strings } from "./strings.ts";
@@ -211,7 +211,7 @@ function Waiting({
   return (
     <li className="waiting-sender" aria-labelledby={headingId}>
       <div className="waiting-head">
-        <ActorMark kind="human" />
+        <SenderMark kind="human" logo={sender.threads.find((thread) => thread.logo !== undefined)?.logo} name={name} />
         <h2 id={headingId}>{name}</h2>
         {name !== sender.address && <span className="waiting-address">{sender.address}</span>}
       </div>

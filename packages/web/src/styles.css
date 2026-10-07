@@ -387,6 +387,54 @@ kbd {
   border-radius: 50%;
 }
 
+/*
+ * A sender's logo stands where their mark does: its box is the mark's, empty, so lines keep their
+ * height and baseline, and the logo, a small square, lies centred on it, overhanging it to the left
+ * so the names after it line up with those after a mark. A verified one carries the check at its foot.
+ */
+.sender-logo {
+  --logo: 0.875rem;
+  position: relative;
+  display: inline-block;
+  flex: none;
+  width: 0.55rem;
+  height: 0.55rem;
+}
+
+.sender-logo img {
+  position: absolute;
+  right: 0;
+  top: calc((0.55rem - var(--logo)) / 2);
+  width: var(--logo);
+  height: var(--logo);
+  border-radius: 3px;
+  object-fit: contain;
+  /* A white logo on a grey plane keeps its edge. */
+  box-shadow: 0 0 0 1px var(--seam);
+}
+
+.sender-logo-check {
+  position: absolute;
+  right: -0.2rem;
+  bottom: calc((0.55rem - var(--logo)) / 2 - 0.2rem);
+  width: 0.55rem;
+  height: 0.55rem;
+}
+
+.sender-logo-check circle {
+  fill: var(--ink);
+  stroke: var(--raise);
+  stroke-width: 1.2;
+}
+
+.sender-logo-check path {
+  fill: none;
+  stroke: var(--raise);
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .notice {
   padding: var(--space-3) var(--space-4);
   border-radius: var(--radius);

@@ -25,6 +25,7 @@ export const stackOutputs = {
   downloadUrl: "DownloadUrl",
   downloadFunction: "DownloadFunction",
   unsubscriberFunction: "UnsubscriberFunction",
+  logoFetcherFunction: "LogoFetcherFunction",
   searchFunction: "SearchFunction",
   indexFailures: "IndexFailuresUrl",
   searchBucket: "SearchBucket",

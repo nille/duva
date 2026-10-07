@@ -1,6 +1,7 @@
 // Downloading attachments. Asking for one gives a short-lived link, and following it takes the
 // attachment from the raw message there and then, so nothing is stored twice. The link's ticket is
 // the only thing kept, under the hash of its token, until the table's time to live removes it.
+// Senders' logos are served under the same URL, at logos/ and their ID.
 import { createHash, randomBytes } from "node:crypto";
 import { GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 import type { components } from "@duva/openapi";
@@ -10,6 +11,7 @@ import { timeToLiveAttribute } from "./infrastructure.ts";
 import type { MailBucket } from "./mail-bucket.ts";
 import { type AttachmentLinks, findMessage } from "./mail.ts";
 import { mediaTypeOf } from "./mime.ts";
+import { logoAt, storedLogo } from "./sender-logos.ts";
 import { mailboxFor } from "./access.ts";
 import { documents, pk, sk } from "./table.ts";
 
@@ -85,6 +87,8 @@ export interface DownloadAnswer {
  */
 export function createDownloads({ table, mailBucket }: { table: Table; mailBucket: MailBucket }) {
   return async (path: string): Promise<DownloadAnswer> => {
+    const logo = logoAt(path);
+    if (logo !== undefined) return logoAnswer(table, logo);
     const token = path.split("/").at(-1) ?? "";
     const { Item } = token === "" ? { Item: undefined } : await documents(table).send(new GetCommand({ TableName: table.name, Key: ticketKey(token), ConsistentRead: true }));
     const ticket = Item as Ticket | undefined;
@@ -103,6 +107,25 @@ export function createDownloads({ table, mailBucket }: { table: Table; mailBucke
       },
       body: part.content,
     };
+  };
+}
+
+/**
+ * The sender's logo with the ID, which anyone with its URL may see, as Duva wrote it out
+ * (ADR-0023). It never changes, so a browser keeps it. Opened on its own, it still runs nothing.
+ */
+async function logoAnswer(table: Table, id: string): Promise<DownloadAnswer> {
+  const svg = await storedLogo(table, id);
+  if (svg === undefined) return text(404, "Duva has no such logo.");
+  return {
+    statusCode: 200,
+    headers: {
+      "content-type": "image/svg+xml",
+      "x-content-type-options": "nosniff",
+      "content-security-policy": "sandbox; default-src 'none'; style-src 'unsafe-inline'",
+      "cache-control": "public, max-age=31536000, immutable",
+    },
+    body: new TextEncoder().encode(svg),
   };
 }
 

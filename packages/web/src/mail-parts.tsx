@@ -1,5 +1,5 @@
 // The parts every view shows mail with: header fields, addresses, times, who an actor is, and whether Duva can be reached.
-import { type ReactNode, useSyncExternalStore } from "react";
+import { type ReactNode, useState, useSyncExternalStore } from "react";
 import type { components } from "@duva/openapi";
 import { useDates } from "./dates.ts";
 import type { Connection as ConnectionState } from "./feed.ts";
@@ -7,6 +7,7 @@ import { size, strings } from "./strings.ts";
 
 type EmailAddress = components["schemas"]["EmailAddress"];
 type Attachment = components["schemas"]["Attachment"];
+type SenderLogo = components["schemas"]["SenderLogo"];
 
 /**
  * A message's or a forward's attachments under a hairline, each with the clip icon, its name and
@@ -92,6 +93,28 @@ export function Time({ at, format = (time) => time, short = false }: { at: strin
 
 /** Who an actor is, by shape, so it reads without color: a human a filled dot, an agent a blue diamond, Duva itself a ring. The name beside it says who. */
 export const ActorMark = ({ kind }: { kind: "human" | "agent" | "duva" }) => <span className={`actor-mark actor-mark-${kind}`} aria-hidden="true" />;
+
+/**
+ * Who sent mail: their logo in place of their actor mark, when their domain publishes one Duva shows
+ * (ADR-0023), with the check when a mark certificate verifies it, or else the mark. An agent keeps
+ * its diamond, and a logo that won't load gives way to the mark. Duva serves the logo, so showing
+ * it never reaches the sender.
+ */
+export function SenderMark({ kind, logo, name }: { kind: "human" | "agent" | "duva"; logo?: SenderLogo; name: string }) {
+  const [failed, setFailed] = useState<string>();
+  if (logo === undefined || kind === "agent" || failed === logo.url) return <ActorMark kind={kind} />;
+  return (
+    <span className="sender-logo">
+      <img src={logo.url} alt={logo.verified ? strings.logo.verified(name) : strings.logo.of(name)} onError={() => setFailed(logo.url)} />
+      {logo.verified && (
+        <svg className="sender-logo-check" viewBox="0 0 10 10" aria-hidden="true">
+          <circle cx="5" cy="5" r="4.5" />
+          <path d="M2.9 5.1 4.4 6.6 7.2 3.6" />
+        </svg>
+      )}
+    </span>
+  );
+}
 
 /** The display name of an address, or the address itself. */
 export const nameOf = (address: EmailAddress) => address.name || address.address;

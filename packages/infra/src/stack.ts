@@ -342,6 +342,15 @@ export class DuvaStack extends Stack {
     // do nothing but write its log (ADR-0016). Its POST gives up well within its time.
     const unsubscriber = lambda("UnsubscriberHandler", "@duva/api/unsubscriber-lambda", {}, { memorySize: 256 });
 
+    // A sender's logo, and its mark certificate, come from URLs in the sender's DNS, so the inbound
+    // Lambda fetches them through a Lambda of its own, which only it may invoke, through IAM, and
+    // whose role may do nothing but write its log (ADR-0023). Each fetch gives up well within its
+    // time. Logos are served under the URL download links lead to, so a browser never reaches the sender.
+    const logoFetcher = lambda("LogoFetcherHandler", "@duva/api/logo-fetcher-lambda", {}, { memorySize: 256 });
+    logoFetcher.grantInvoke(inbound);
+    inbound.addEnvironment(environmentVariables.logoFetcherFunction, logoFetcher.functionArn);
+    inbound.addEnvironment(environmentVariables.downloadUrl, downloadUrl);
+
     // Search (ADR-0007). Each mailbox's index is a LanceDB table in the search bucket, which keeps no
     // old versions, so what LanceDB deletes is gone. Only the indexer writes there, and the search
     // Lambda reads. Both are an x64 zip of one code, with LanceDB's native module.
@@ -618,6 +627,7 @@ export class DuvaStack extends Stack {
     new CfnOutput(this, stackOutputs.downloadUrl, { value: downloadUrl, description: "Where download links lead, on the web app's domain" });
     new CfnOutput(this, stackOutputs.downloadFunction, { value: download.functionName, description: "The function download links invoke through CloudFront" });
     new CfnOutput(this, stackOutputs.unsubscriberFunction, { value: unsubscriber.functionName, description: "The function that sends one-click unsubscribes" });
+    new CfnOutput(this, stackOutputs.logoFetcherFunction, { value: logoFetcher.functionName, description: "The function that fetches senders' logos" });
     new CfnOutput(this, stackOutputs.searchFunction, { value: searcher.functionName, description: "The function that runs searches, which only the API invokes" });
     new CfnOutput(this, stackOutputs.indexFailures, { value: indexFailures.queueUrl, description: "The queue of the indexer's tasks that failed" });
     new CfnOutput(this, stackOutputs.searchBucket, { value: search.bucketName, description: "The bucket the mailboxes' search indexes are in" });
