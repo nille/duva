@@ -2,13 +2,14 @@ import type { APIGatewayProxyEventV2, APIGatewayProxyStructuredResultV2 } from "
 import { type Operation, operations, type OperationId } from "@duva/openapi";
 import { addAddress, changeMailbox, listAddresses, removeAddress } from "./addresses.ts";
 import { getAgentActivity, getAgentActivityDay } from "./activity.ts";
+import { listApprovalLog } from "./approval-log.ts";
 import { listAlerts, markAlertsSeen } from "./alerts.ts";
 import { getAttachment } from "./attachments.ts";
 import { changeAgent, changeAgentSettings, createAgent, getAgentSettings, listAgents, listOrganizationAgents, pauseAgent, pausedRefusal, removeAgent, rotateAgentKey, unpauseAgent } from "./agents.ts";
 import type { AuthorizerContext } from "./authorizer.ts";
 import { addDomain, changeDomain, clearCatchAll, getDomain, listDomains, removeDomain, setCatchAll } from "./domains.ts";
 import { listOrganizationChanges } from "./changes.ts";
-import { createDraft, deleteDraft, editDraft, getDraft, listApprovals, listDrafts, rejectApproval, sendApproval, sendDraft, sendDraftNow } from "./drafts.ts";
+import { createDraft, deleteDraft, editDraft, getDraft, listApprovals, listDrafts, rejectApproval, sendApproval, sendDraft, sendDraftNow, undoApproval } from "./drafts.ts";
 import { changeGroup, createGroup, deleteGroup, getGroup, listGroups } from "./groups.ts";
 import { addHuman, changeHuman, listHumans, removeHuman } from "./humans.ts";
 import {
@@ -130,8 +131,10 @@ export const handlers: Record<OperationId, OperationHandler> = {
   listAlerts,
   markAlertsSeen,
   listApprovals,
+  listApprovalLog,
   sendApproval,
   rejectApproval,
+  undoApproval,
   getSetupApproval,
   approveSetup,
   rejectSetup,

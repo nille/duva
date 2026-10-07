@@ -138,6 +138,13 @@ export const operations = [
         "type": "integer",
         "required": false,
         "description": "The most newRecipientsPerDay a sponsor can give an agent. 50 by default. Lowering it lowers each agent above it to it, recorded as a change to the agent's settings under you. Raising it raises no agent."
+      },
+      {
+        "name": "undoWindowSeconds",
+        "in": "body",
+        "type": "integer",
+        "required": false,
+        "description": "How many seconds an approved send waits before the sender takes it, so its approver can undo the approval meanwhile. 30 by default, and a whole number from 0 to 120, where 0 sends at once. A change applies to approvals from then on. A human's own sends never wait."
       }
     ]
   },
@@ -2333,12 +2340,41 @@ export const operations = [
     "options": []
   },
   {
+    "operationId": "listApprovalLog",
+    "method": "get",
+    "path": "/approvals/log",
+    "routeKey": "GET /approvals/log",
+    "summary": "List the decisions on your agents' sends, newest first, each with what became of it.",
+    "description": "The approval log: every decision on a send one of your agents asked you for, newest first, with who decided it and when, and how it went: approved and on its way, sent, failed, unclear, or rejected with its note. Each entry links to its thread, and says how the decision can be taken back, if it can. It reaches as far back as approval records are kept (ADR-0014). An undone approval waits again, so it leaves the log until it is decided again. To read the next page, call again with the answer's next as after, until an answer has no next.",
+    "signIn": true,
+    "command": [
+      "approvals",
+      "log"
+    ],
+    "options": [
+      {
+        "name": "limit",
+        "in": "query",
+        "type": "integer",
+        "required": false,
+        "description": "How many entries a page lists at most."
+      },
+      {
+        "name": "after",
+        "in": "query",
+        "type": "string",
+        "required": false,
+        "description": "Where the page starts, the next of the page before it. Leave it out for the first page."
+      }
+    ]
+  },
+  {
     "operationId": "sendApproval",
     "method": "post",
     "path": "/approvals/{approval}/send",
     "routeKey": "POST /approvals/{approval}/send",
     "summary": "Send a draft waiting for your approval, as is or with your changes.",
-    "description": "Give recipients, a subject or text to send your version instead of the agent's. Duva then sends it through SES from the draft's address, as a reply in the thread if it is one. Every message an agent sends carries the Duva-Agent header, naming the agent and the human it acts for, also when you changed it, and a line that says so after the text unless you switched that off for the agent. The draft's send shows sending, then sent or failed with the reason. Only the approver can decide an approval, never an agent, and only once: of two decisions at the same time, one is refused. The decision, with any edits, is recorded in the mailbox's change feed under you, and the send under the agent. While the agent is paused, its approvals wait and can't be sent, which is 409.",
+    "description": "Give recipients, a subject or text to send your version instead of the agent's. Duva then sends it through SES from the draft's address, as a reply in the thread if it is one. Every message an agent sends carries the Duva-Agent header, naming the agent and the human it acts for, also when you changed it, and a line that says so after the text unless you switched that off for the agent. The draft's send shows sending, then sent or failed with the reason. Only the approver can decide an approval, never an agent, and only once: of two decisions at the same time, one is refused. A rejected approval can still be sent after all, while its draft is as the agent asked it: once the agent changed it, deleted it or asked again, that is 409. The decision, with any edits, is recorded in the mailbox's change feed under you, and the send under the agent. While the agent is paused, its approvals wait and can't be sent, which is 409. The draft then waits the organization's undo window, undoWindowSeconds, before the sender takes it, and you can undo the approval until then. Held after that while the agent is paused, or by its send limits, it stays approved.",
     "signIn": true,
     "command": [
       "approvals",
@@ -2401,6 +2437,28 @@ export const operations = [
         "type": "string",
         "required": true,
         "description": "What the agent should change."
+      }
+    ]
+  },
+  {
+    "operationId": "undoApproval",
+    "method": "post",
+    "path": "/approvals/{approval}/undo",
+    "routeKey": "POST /approvals/{approval}/undo",
+    "summary": "Undo an approved send during the undo window, so it waits for your approval again.",
+    "description": "An approved send waits the organization's undo window, undoWindowSeconds, before the sender takes it, as the draft's undoUntil says. Until then its approver can undo the approval: the draft waits for approval again as the agent asked it, without your edits, and nothing is sent. Once the window is over, or the sender took it, that is 409, and mail that went out can't be called back. Only the approver can undo. Undoing is recorded in the mailbox's change feed under you.",
+    "signIn": true,
+    "command": [
+      "approvals",
+      "undo"
+    ],
+    "options": [
+      {
+        "name": "approval",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The approval's ID."
       }
     ]
   },

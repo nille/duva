@@ -67,7 +67,7 @@ const mailboxListedKey = (id: string) => ({ [pk]: mailboxesPartition, [sk]: `mai
 const mailboxListedPrefix = mailboxListedKey("")[sk];
 // The settings are an item of their own, so changing one doesn't contend with the organization's feed.
 // Each change counts up its version, which a write that relies on the settings checks.
-const settingsKey = { [pk]: "organization", [sk]: "settings" };
+export const settingsKey = { [pk]: "organization", [sk]: "settings" };
 const organizationFeed: Feed = {
   counter: organizationKey,
   partition: "organization#changes",
@@ -1064,6 +1064,7 @@ export const defaultSettings: OrganizationSettings = {
   searchLanguages: defaultSearchLanguages,
   agentSendsPerHourCap: 100,
   agentNewRecipientsPerDayCap: 50,
+  undoWindowSeconds: 30,
 };
 
 /** Settings as read, with the version a write that relies on them checks. */

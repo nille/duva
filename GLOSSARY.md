@@ -37,6 +37,12 @@ _Avoid_: notification, warning
 **Approval**:
 Sign-off before an action takes effect. An agent's send from its own mailbox, its send from its sponsor's mailbox, and a setup change by an agent admin need it from the agent's sponsor; each can be switched off for that agent on its own.
 
+**Undo window**:
+How long an agent's approved send waits before it goes out, so its approver can undo the approval, which puts it back among the requests that wait, as the agent asked it. Admins set it for the organization, from 0 to 120 seconds, 30 by default (ADR-0022). A send held after the window, while its agent is paused or by its send limits, stays approved. A human's own sends never wait.
+
+**Approval log**:
+A sponsor's record of every decision on their agents' sends, newest first: who decided, when, and how it went, sent, failed or rejected with its note. It reaches as far back as approval records are kept (ADR-0014). From it a sponsor undoes a send during its undo window, sends a rejected one after all while its draft is as the agent asked it, or writes a correction to the recipients of mail that went out, which can't be called back.
+
 **Admin**:
 An actor allowed to change the organization's setup: domains, addresses, groups, actors and settings. Admins can't read personal mailboxes. An agent can be an admin only if its sponsor is one, and stops being one when its sponsor does. An agent admin never removes humans or agents, or changes who is admin.
 
@@ -56,7 +62,7 @@ How much an agent may send per hour, and to how many new recipients per day: 100
 
 **Activity**:
 What an agent did, and what happened in its mailboxes, day by day: a daily summary of how much it sent, had approved or rejected, received, organized and screened, which opens into the day's timeline. It is read from change feeds, so it reaches back to the agent's start. Only its sponsor and admins read it, and an admin who isn't the sponsor reads none of what the mail says.
-_Avoid_: log, audit
+_Avoid_: log, audit. The approval log is the record of a sponsor's decisions.
 
 ## Domains and addresses
 

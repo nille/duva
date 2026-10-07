@@ -2490,6 +2490,46 @@ paths:
                 $ref: "#/components/schemas/ApprovalList"
         "401":
           $ref: "#/components/responses/Unauthorized"
+  /approvals/log:
+    get:
+      operationId: listApprovalLog
+      summary: List the decisions on your agents' sends, newest first, each with what became of it.
+      description: >
+        The approval log: every decision on a send one of your agents asked
+        you for, newest first, with who decided it and when, and how it
+        went: approved and on its way, sent, failed, unclear, or rejected
+        with its note. Each entry links to its thread, and says how the
+        decision can be taken back, if it can. It reaches as far
+        back as approval records are kept (ADR-0014). An undone approval
+        waits again, so it leaves the log until it is decided again. To read
+        the next page, call again with the answer's next as after, until an
+        answer has no next.
+      x-cli-command: approvals log
+      parameters:
+        - name: limit
+          in: query
+          description: How many entries a page lists at most.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: after
+          in: query
+          description: Where the page starts, the next of the page before it. Leave it out for the first page.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: A page of the log, newest first.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApprovalLog"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
   /approvals/{approval}/send:
     post:
       operationId: sendApproval
@@ -2503,9 +2543,15 @@ paths:
         after the text unless you switched that off for the agent. The
         draft's send shows sending, then sent or failed with the reason. Only the approver can decide an approval, never an
         agent, and only once: of two decisions at the same time, one is
-        refused. The decision, with any edits, is recorded in the mailbox's
+        refused. A rejected approval can still be sent after all, while its
+        draft is as the agent asked it: once the agent changed it, deleted it
+        or asked again, that is 409. The decision, with any edits, is recorded in the mailbox's
         change feed under you, and the send under the agent. While the agent
-        is paused, its approvals wait and can't be sent, which is 409.
+        is paused, its approvals wait and can't be sent, which is 409. The
+        draft then waits the organization's undo window, undoWindowSeconds,
+        before the sender takes it, and you can undo the approval until
+        then. Held after that while the agent is paused, or by its send
+        limits, it stays approved.
       x-cli-command: approvals send
       parameters:
         - $ref: "#/components/parameters/Approval"
@@ -2559,6 +2605,37 @@ paths:
                 $ref: "#/components/schemas/Approval"
         "400":
           $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /approvals/{approval}/undo:
+    post:
+      operationId: undoApproval
+      summary: Undo an approved send during the undo window, so it waits for your approval again.
+      description: >
+        An approved send waits the organization's undo window,
+        undoWindowSeconds, before the sender takes it, as the draft's
+        undoUntil says. Until then its approver can undo the approval: the
+        draft waits for approval again as the agent asked it, without your
+        edits, and nothing is sent. Once the window is over, or the sender
+        took it, that is 409, and mail that went out can't be called back.
+        Only the approver can undo. Undoing is recorded in the mailbox's
+        change feed under you.
+      x-cli-command: approvals undo
+      parameters:
+        - $ref: "#/components/parameters/Approval"
+      responses:
+        "200":
+          description: The approval, waiting for you again.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Approval"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -3518,6 +3595,7 @@ components:
         - $ref: "#/components/schemas/ApprovalAsked"
         - $ref: "#/components/schemas/ApprovalWithdrawn"
         - $ref: "#/components/schemas/ApprovalDecided"
+        - $ref: "#/components/schemas/ApprovalUndone"
         - $ref: "#/components/schemas/MessageSent"
         - $ref: "#/components/schemas/SendWaitingForLimit"
         - $ref: "#/components/schemas/SentNow"
@@ -3552,6 +3630,7 @@ components:
           approvalAsked: "#/components/schemas/ApprovalAsked"
           approvalWithdrawn: "#/components/schemas/ApprovalWithdrawn"
           approvalDecided: "#/components/schemas/ApprovalDecided"
+          approvalUndone: "#/components/schemas/ApprovalUndone"
           messageSent: "#/components/schemas/MessageSent"
           sendWaitingForLimit: "#/components/schemas/SendWaitingForLimit"
           sentNow: "#/components/schemas/SentNow"
@@ -3715,6 +3794,22 @@ components:
             note:
               type: string
               description: The approver's note, with a rejection.
+    ApprovalUndone:
+      allOf:
+        - $ref: "#/components/schemas/ChangeBase"
+        - type: object
+          required: [type, draft, approval]
+          description: The approver undid an approval during the undo window, so the draft waits for approval again, as the agent asked it.
+          properties:
+            type:
+              type: string
+              const: approvalUndone
+            draft:
+              type: string
+              description: The draft's ID.
+            approval:
+              type: string
+              description: The approval's ID.
     MessageSent:
       allOf:
         - $ref: "#/components/schemas/ChangeBase"
@@ -4515,6 +4610,14 @@ components:
             recipients and subject, since only SES's answer gives its Message-ID. Duva never
             sends an unclear draft again. An approved draft can't change,
             but a rejected or failed one can be revised and sent again.
+        undoUntil:
+          type: string
+          format: date-time
+          description: >-
+            Until when its approver can undo the approval, for an approved
+            send, which the sender takes only after then: the decision's time
+            and the organization's undo window. A send approved with a window
+            of 0 has none.
         note:
           type: string
           description: The approver's note, if they rejected it.
@@ -4578,6 +4681,10 @@ components:
         decidedAt:
           type: string
           format: date-time
+        undoUntil:
+          type: string
+          format: date-time
+          description: Until when its approver can undo it, once approved, as its draft's send says.
         edits:
           $ref: "#/components/schemas/Edits"
         note:
@@ -4772,6 +4879,91 @@ components:
           description: The sponsor's note, if they rejected it.
         result:
           $ref: "#/components/schemas/SetupResult"
+    ApprovalLog:
+      type: object
+      additionalProperties: false
+      required: [entries]
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/ApprovalLogEntry"
+        next:
+          type: string
+          description: Where the next page starts, if there is one. Give it as after.
+    ApprovalLogEntry:
+      type: object
+      additionalProperties: false
+      required: [approval, agent, agentName, decidedBy, decidedAt, outcome, mailbox, draft, subject, to, cc]
+      description: A decision on a send one of your agents asked for, and what became of it.
+      properties:
+        approval:
+          type: string
+          description: The approval's ID.
+        agent:
+          type: string
+          description: The ID of the agent that asked.
+        agentName:
+          type: string
+          description: The agent's name when it was decided, kept after it is removed.
+        decidedBy:
+          type: string
+          description: The ID of the human who decided.
+        decidedAt:
+          type: string
+          format: date-time
+        outcome:
+          type: string
+          enum: [approved, sent, failed, unclear, rejected]
+          description: >
+            How it went: approved, on its way, in the undo window, held while
+            the agent is paused, waiting for its send limits or being sent;
+            sent; failed, with the reason; unclear, when sending stopped
+            before SES answered; or rejected, with the note.
+        undoUntil:
+          type: string
+          format: date-time
+          description: Until when the approval can be undone, while it can.
+        reversal:
+          type: string
+          enum: [undo, sendAfterAll, correction]
+          description: >
+            How the decision can be taken back, if it can: undo, during the
+            undo window; sendAfterAll, a rejected send whose draft is as the
+            agent asked it, which sending the approval does; correction, a
+            send that went out, which can't be called back, so a correction
+            is written to its recipients.
+        mailbox:
+          type: string
+          description: The ID of the mailbox the draft is in.
+        draft:
+          type: string
+          description: The draft's ID.
+        thread:
+          type: string
+          description: The ID of the thread it went out in, or the one it replies in.
+        message:
+          type: string
+          description: The ID of the message it went out as, once sent.
+        subject:
+          type: string
+          description: Its subject, as sent if it was edited.
+        to:
+          type: array
+          items:
+            $ref: "#/components/schemas/EmailAddress"
+          description: Its recipients in To, as sent if the approver changed them.
+        cc:
+          type: array
+          items:
+            $ref: "#/components/schemas/EmailAddress"
+          description: Its recipients in Cc. Those in Bcc are left out, as every header leaves them out.
+        note:
+          type: string
+          description: The note, with a rejection.
+        reason:
+          type: string
+          description: Why it failed.
     SetupOperation:
       type: object
       additionalProperties: false
@@ -5723,7 +5915,7 @@ components:
     OrganizationSettings:
       type: object
       additionalProperties: false
-      required: [erasureErasesApprovals, retentionDays, searchLanguages, agentSendsPerHourCap, agentNewRecipientsPerDayCap]
+      required: [erasureErasesApprovals, retentionDays, searchLanguages, agentSendsPerHourCap, agentNewRecipientsPerDayCap, undoWindowSeconds]
       properties:
         erasureErasesApprovals:
           $ref: "#/components/schemas/ErasureErasesApprovals"
@@ -5735,6 +5927,8 @@ components:
           $ref: "#/components/schemas/AgentSendsPerHourCap"
         agentNewRecipientsPerDayCap:
           $ref: "#/components/schemas/AgentNewRecipientsPerDayCap"
+        undoWindowSeconds:
+          $ref: "#/components/schemas/UndoWindowSeconds"
     SettingsChanges:
       type: object
       additionalProperties: false
@@ -5750,6 +5944,8 @@ components:
           $ref: "#/components/schemas/AgentSendsPerHourCap"
         agentNewRecipientsPerDayCap:
           $ref: "#/components/schemas/AgentNewRecipientsPerDayCap"
+        undoWindowSeconds:
+          $ref: "#/components/schemas/UndoWindowSeconds"
     RetentionDays:
       type: integer
       minimum: 7
@@ -5775,6 +5971,15 @@ components:
         The most newRecipientsPerDay a sponsor can give an agent. 50 by
         default. Lowering it lowers each agent above it to it, recorded as a
         change to the agent's settings under you. Raising it raises no agent.
+    UndoWindowSeconds:
+      type: integer
+      minimum: 0
+      maximum: 120
+      description: >-
+        How many seconds an approved send waits before the sender takes it,
+        so its approver can undo the approval meanwhile. 30 by default, and a
+        whole number from 0 to 120, where 0 sends at once. A change applies
+        to approvals from then on. A human's own sends never wait.
     RetentionPreview:
       type: object
       additionalProperties: false

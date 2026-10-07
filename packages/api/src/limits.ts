@@ -208,19 +208,30 @@ export function lambdaWaitingSends(lambda: LambdaClient, functionName: string): 
   };
 }
 
-/** Has the sender handed an agent at a time, when its limits allow what waits. EventBridge Scheduler's, or a stand-in in tests. */
+/** The event that has the sender send the approved draft once its undo window is over. */
+export interface SendEvent {
+  send: { mailbox: string; draft: string };
+}
+
+/**
+ * Has the sender handed an agent at a time, when its limits allow what waits, or a draft, when its
+ * undo window is over. EventBridge Scheduler's, or a stand-in in tests.
+ */
 export interface Schedules {
   releaseAt(agent: string, at: Date): Promise<void>;
+  sendAt(draft: SendEvent["send"], at: Date): Promise<void>;
 }
 
 /**
  * One-time schedules in Duva's schedule group, which invoke the sender with the role given, each
- * deleted once it ran. A schedule's name holds the agent and the second, so asking twice for the
- * same time makes one.
+ * deleted once it ran. A schedule's name holds the agent or the draft and the second, so asking
+ * twice for the same time makes one.
  */
 export function eventBridgeSchedules(scheduler: SchedulerClient, schedule: ScheduleGroup): Schedules {
   return {
     releaseAt: (agent, at) => scheduleOnce(scheduler, schedule, { name: (second) => `release-${agent}-${second}`, at, input: { release: agent } satisfies ReleaseEvent }),
+    // A draft's ID is unique across mailboxes, and keeps the name within Scheduler's 64 characters.
+    sendAt: (draft, at) => scheduleOnce(scheduler, schedule, { name: (second) => `send-${draft.draft}-${second}`, at, input: { send: draft } satisfies SendEvent }),
   };
 }
 

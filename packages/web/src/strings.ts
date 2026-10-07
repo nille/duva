@@ -466,14 +466,22 @@ export const strings = {
     },
     save: "Save",
     saving: "Saving…",
+    undoWindow: {
+      legend: "Undo window",
+      lead: "How long an approved send waits before it goes out, so its sponsor can undo the approval. A human's own mail never waits.",
+      label: "Seconds",
+      hint: "From 0 to 120. With 0, an approved send goes out at once.",
+      invalid: "Give a whole number of seconds from 0 to 120.",
+    },
     caps: {
       legend: "Agents' send limits",
       lead: "The most a sponsor can let each agent send. Each sponsor sets their agents' limits up to these.",
       lowering: "Saving lowers any agent with a higher limit to this cap.",
     },
-    saved: (changed: ("erasure" | "retention" | "languages" | "indexes" | "caps")[]) =>
+    saved: (changed: ("erasure" | "retention" | "languages" | "indexes" | "caps" | "undo")[]) =>
       [
         "Saved.",
+        ...(changed.includes("undo") ? ["Sends approved from now on wait this long."] : []),
         ...(changed.includes("erasure") ? ["This applies to threads erased from now on."] : []),
         ...(changed.includes("retention") ? ["The eraser's next daily run follows it."] : []),
         ...(changed.includes("languages") ? ["Searches use these languages from now on."] : []),
@@ -1068,6 +1076,55 @@ export const strings = {
     chips: { all: "All", send: "Sends", setup: "Setup changes", held: "Held" },
     kinds: { send: "Send", setup: "Setup", held: "Held" },
     back: "All approvals",
+    lists: "Which list",
+    waitingList: "Waiting",
+    logList: "Log",
+  },
+
+  log: {
+    title: "Approval log",
+    lead: "Every decision on your agents' sends, newest first, with what became of it.",
+    empty: "No decisions yet",
+    emptyLead: "When you send or reject what an agent asks to send, the decision is logged here, with how it went.",
+    more: "Show older decisions",
+    loading: "Reading older decisions…",
+    readFailed: "Duva couldn't read the log. It tries again with the next update.",
+    back: "The whole log",
+    pick: "Choose a decision to read it here.",
+    outcomes: { approved: "Approved", sent: "Sent", failed: "Failed", unclear: "Unclear", rejected: "Rejected" },
+    headline: (outcome: "approved" | "sent" | "failed" | "unclear" | "rejected", by: string) => (outcome === "rejected" ? `${by} rejected` : `${by} approved`),
+    you: "You",
+    someone: "Someone",
+    decidedAt: (time: string) => `Decided ${time}`,
+    to: (addresses: string) => `To ${addresses}`,
+    cc: "Cc",
+    approved: (agent: string) => `On its way. It goes out once the undo window is over, or when ${agent}'s send limits allow, and is held while ${agent} is paused.`,
+    undoable: "It waits for the undo window before it goes out. Undo puts it back among the requests that wait for you.",
+    sent: "Sent. Mail that went out stays sent. If something in it was wrong, write a correction to its recipients.",
+    failed: (agent: string) => `Not sent. ${agent} can revise the draft and ask again.`,
+    unclear: "Sending stopped before Amazon SES answered, so Duva can't tell whether it went out. Check with the recipients.",
+    rejected: (agent: string) => `Nothing was sent. ${agent} sees your note.`,
+    note: (note: string) => `Your note: “${note}”`,
+    reason: (reason: string) => `Amazon SES said: ${reason}`,
+    afterAll: (agent: string) => `The draft is still as ${agent} asked it, so you can send it after all.`,
+    movedOn: (agent: string) => `${agent} has changed the draft or asked again since, so any new request waits for you.`,
+    sendAfterAll: "Send after all",
+    sendingAfterAll: "Sending…",
+    correction: "Write a correction",
+    correcting: "Starting the draft…",
+    noMailbox: "A correction goes from your own mailbox, and you have none. Ask an admin for one.",
+    openThread: "Open the thread",
+    decideFailed: (status: number) => `Duva answered ${status}. Try again.`,
+    unreachable: "Duva couldn't be reached. Check your connection and try again.",
+    changedMeanwhile: "This changed meanwhile, so the log shows it as it is now.",
+  },
+
+  undo: {
+    undo: "Undo",
+    undoing: "Undoing…",
+    left: (seconds: number) => (seconds === 1 ? "1 second left" : `${seconds} seconds left`),
+    undone: "Undone. It waits for you again.",
+    tooLate: "Too late to undo: the undo window is over. A send held after it stays approved.",
   },
 
   setupGalley: {
@@ -1151,6 +1208,7 @@ export const strings = {
     noteFrom: (note: string) => `The note: “${note}”`,
     checking: "Checking how the send went…",
     approved: "Approved. Duva sends it in a moment.",
+    undoWindow: "Approved. It goes out once the undo window is over, unless you undo it.",
     sending: "Sending…",
     waitingForLimit: (agent: string) => `Approved. It waits for ${agent}'s send limit, and goes out by itself when the limit allows.`,
     sent: "Sent.",
@@ -1196,6 +1254,8 @@ function entrySaid(change: ActivityChange, who: string, agent: string, message?:
       return [who, ` asked for approval to send.`];
     case "approvalWithdrawn":
       return ["Duva", ` withdrew ${agent}'s request for approval.`];
+    case "approvalUndone":
+      return [who, ` undid the approval of ${agent}'s send, so it waits again.`];
     case "approvalDecided": {
       if (change.decision === "rejected") return change.note === undefined ? [who, ` rejected ${agent}'s send.`] : [who, ` rejected ${agent}'s send: “${change.note}”`];
       const edited = change.edits === undefined ? [] : Object.keys(change.edits).map((field) => ({ to: "the recipients", subject: "the subject", text: "the text" })[field] ?? field);

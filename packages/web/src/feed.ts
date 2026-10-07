@@ -15,7 +15,7 @@ export interface MailboxChange {
 }
 
 /** The changes that alter what the Approvals view shows: a request, its decision, or how its send went. */
-export const approvalChanges = new Set<Change["type"]>(["approvalAsked", "approvalWithdrawn", "approvalDecided", "messageSent", "sendFailed", "sendUnclear"]);
+export const approvalChanges = new Set<Change["type"]>(["approvalAsked", "approvalWithdrawn", "approvalDecided", "approvalUndone", "messageSent", "sendFailed", "sendUnclear"]);
 
 /** The organization's changes that alter what the Approvals view shows: an agent admin's setup change asked for or decided. */
 export const setupChanges = new Set<OrganizationChange["type"]>(["setupAsked", "setupApproved", "setupRejected", "setupWithdrawn"]);
@@ -30,7 +30,7 @@ export const screenerChanges = new Set<Change["type"]>(["senderScreened", "scree
 export const labelChanges = new Set<Change["type"]>(["labelCreated", "labelRenamed", "labelDeleted"]);
 
 /** The changes that alter a mailbox's drafts: writing, deleting and sending them, and erasing the threads they sent in. */
-export const draftChanges = new Set<Change["type"]>(["draftWritten", "draftChanged", "draftDeleted", "sendAsked", "approvalAsked", "approvalDecided", "sendFailed", "sendUnclear", "threadErased"]);
+export const draftChanges = new Set<Change["type"]>(["draftWritten", "draftChanged", "draftDeleted", "sendAsked", "approvalAsked", "approvalDecided", "approvalUndone", "sendFailed", "sendUnclear", "threadErased"]);
 
 /** How often the signed-in app reads the change feeds while its tab is visible, unless config.json says otherwise. */
 export const defaultPollInterval = 5_000;

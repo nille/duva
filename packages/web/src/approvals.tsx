@@ -12,6 +12,7 @@ import { flushSync } from "react-dom";
 import type { DuvaClient } from "@duva/client";
 import type { components, Operation, OperationId } from "@duva/openapi";
 import { agentHref, heldAsked } from "./alerts.tsx";
+import { ApprovalLog, UndoButton } from "./approval-log.tsx";
 import { PreferencesContext } from "./dates.ts";
 import { approvalChanges, type Change, type Connection as ConnectionState, type Follow, setupChanges, SignedOut } from "./feed.ts";
 import { ActorMark, Addresses, Attachments, Connection, Field, Time } from "./mail-parts.tsx";
@@ -39,7 +40,8 @@ interface Entry {
   fresh?: boolean;
 }
 
-type Decision = { by: "you"; how: "sent" | "edited" | "rejected"; note?: string } | { by: "elsewhere" };
+/** A decision this page made says until when it can be undone, if it can. */
+type Decision = { by: "you"; how: "sent" | "edited" | "rejected"; note?: string; undoUntil?: string } | { by: "elsewhere" };
 
 /** A setup approval the view shows: waiting, or decided while the page was open. */
 interface SetupEntry {
@@ -192,6 +194,8 @@ export function Approvals({
   }, []);
   const [chosen, setChosen] = useState<string>();
   const [reading, setReading] = useState(false);
+  // Whether the list column holds what waits, or the log of decisions.
+  const [list, setList] = useState<"waiting" | "log">("waiting");
   const entriesRef = useRef(entries);
   entriesRef.current = entries;
   const outcomesRef = useRef(outcomes);
@@ -312,6 +316,15 @@ export function Approvals({
   }, []);
   const seen = useCallback((id: string) => setEntries((current) => current?.map((entry) => (entry.approval.id === id ? { ...entry, fresh: false } : entry))), []);
 
+  // An approval undone during its undo window waits again, so its galley opens where its slip lay.
+  const undone = useCallback((approval: Approval) => {
+    outcomesRead.current.delete(approval.id);
+    setOutcomes(({ [approval.id]: _, ...rest }) => rest);
+    const update = () => setEntries((current) => current?.map((entry) => (entry.approval.id === approval.id ? { approval: { ...entry.approval, ...approval }, fresh: false } : entry)));
+    if (document.startViewTransition === undefined) return update();
+    document.startViewTransition(() => flushSync(update));
+  }, []);
+
   const setupDecided = useCallback((setup: SetupApproval, decision: SetupDecision) => {
     const update = () => setSetups((current) => current.map((entry) => (entry.setup.id === setup.id ? { ...entry, decision, fresh: false } : entry)));
     if (document.startViewTransition === undefined) return update();
@@ -401,6 +414,18 @@ export function Approvals({
     setFocusing("pane");
   };
 
+  const toggle = (
+    <div className="queue-chips queue-lists" role="group" aria-label={strings.approvals.lists}>
+      {(["waiting", "log"] as const).map((each) => (
+        <button key={each} type="button" className="chip" aria-pressed={list === each} onClick={() => setList(each)}>
+          {each === "waiting" ? strings.approvals.waitingList : strings.approvals.logList}
+        </button>
+      ))}
+    </div>
+  );
+  if (list === "log") {
+    return <ApprovalLog client={client} me={me} own={own} connection={connection} follow={follow} toggle={toggle} onSignedOut={onSignedOut} />;
+  }
   if (!loaded || items.length === 0) {
     return (
       <main className="desk" aria-busy={!loaded}>
@@ -408,6 +433,7 @@ export function Approvals({
           <h1>{strings.approvals.title}</h1>
           <Connection state={connection} />
         </div>
+        {toggle}
         {loaded ? <Empty /> : <SkeletonQueue />}
       </main>
     );
@@ -420,6 +446,7 @@ export function Approvals({
           {waiting > 0 && <p className="count">{strings.approvals.waiting(waiting)}</p>}
           <Connection state={connection} />
         </div>
+        {toggle}
         {kinds.size > 1 && (
           <div className="queue-chips" role="group" aria-label={strings.approvals.show}>
             {(["all", ...order.filter((each) => kinds.has(each))] as const).map((each) => (
@@ -500,6 +527,7 @@ export function Approvals({
               outcome={outcomes[entry.approval.id]}
               client={client}
               onDecided={decided}
+              onUndone={undone}
               onSeen={seen}
               onSignedOut={onSignedOut}
             />
@@ -707,11 +735,12 @@ interface GalleyProps {
   outcome: Outcome | undefined;
   client: DuvaClient;
   onDecided: (approval: Approval, decision: Decision) => void;
+  onUndone: (approval: Approval) => void;
   onSeen: (id: string) => void;
   onSignedOut: () => void;
 }
 
-function Galley({ shown, entry, agent, sponsor, asSponsor, line, outcome, client, onDecided, onSeen, onSignedOut }: GalleyProps) {
+function Galley({ shown, entry, agent, sponsor, asSponsor, line, outcome, client, onDecided, onUndone, onSeen, onSignedOut }: GalleyProps) {
   const { approval, decision, fresh } = entry;
   const { draft, original } = approval;
   const titleId = useId();
@@ -730,13 +759,15 @@ function Galley({ shown, entry, agent, sponsor, asSponsor, line, outcome, client
 
   useSeenOnScreen(ref, fresh === true && shown, approval.id, onSeen);
 
-  const decide = async (kind: "sending" | "rejecting", call: () => Promise<{ response: Response; error?: { message: string } }>, decision: Decision) => {
+  const decide = async (kind: "sending" | "rejecting", call: () => Promise<{ response: Response; error?: { message: string }; data?: Approval }>, decision: Decision) => {
     if (busy !== undefined) return;
     setBusy(kind);
     setProblem(undefined);
     try {
-      const { response, error } = await call();
-      if (response.ok) return onDecided(approval, decision);
+      const { response, error, data } = await call();
+      // Busy no longer once decided, so a send undone opens ready to decide again.
+      setBusy(undefined);
+      if (response.ok) return onDecided(approval, decision.by === "you" && data?.undoUntil !== undefined ? { ...decision, undoUntil: data.undoUntil } : decision);
       if (response.status === 409) return onDecided(approval, { by: "elsewhere" });
       if (response.status === 401) return onSignedOut();
       setProblem(response.status === 404 ? strings.decide.gone : response.status === 403 ? strings.decide.notYours : (error?.message ?? strings.decide.failed(response.status)));
@@ -756,6 +787,9 @@ function Galley({ shown, entry, agent, sponsor, asSponsor, line, outcome, client
     return (
       <DecidedSlip shown={shown} approval={approval} agent={agent} decision={decision} outcome={outcome}>
         {waits && <SendNow client={client} mailbox={approval.mailbox} draft={draft.id} onSignedOut={onSignedOut} />}
+        {decision.by === "you" && decision.undoUntil !== undefined && (
+          <UndoButton client={client} approval={approval.id} until={decision.undoUntil} onUndone={onUndone} onSignedOut={onSignedOut} />
+        )}
       </DecidedSlip>
     );
   }
@@ -1134,8 +1168,9 @@ function describe(outcome: Outcome | undefined, approval: Approval, agent: strin
   }
   switch (outcome.state) {
     case "waiting":
-    case "approved":
       return { tone: "pending", text: strings.outcome.approved };
+    case "approved":
+      return { tone: "pending", text: outcome.undoUntil !== undefined && Date.parse(outcome.undoUntil) > Date.now() ? strings.outcome.undoWindow : strings.outcome.approved };
     case "waitingForLimit":
       return { tone: "pending", text: strings.outcome.waitingForLimit(agent) };
     case "sending":

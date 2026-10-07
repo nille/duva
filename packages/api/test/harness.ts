@@ -16,8 +16,12 @@ import type { ReceiptRule } from "@aws-sdk/client-ses";
 import type { SESEvent, SNSEvent } from "aws-lambda";
 import PostalMime from "postal-mime";
 import { createDuvaClient, type DuvaClient } from "@duva/client";
+import { PutCommand } from "@aws-sdk/lib-dynamodb";
 import { inject, onTestFinished, vi } from "vitest";
 import { createApi } from "../src/api.ts";
+import { listEarlierDecisions } from "../src/approval-log.ts";
+import { decisionPrefix } from "../src/decisions.ts";
+import { documents } from "../src/table.ts";
 import { createFeedback } from "../src/feedback.ts";
 import { createDownloads, downloadLinkLifetime as linkLifetime } from "../src/attachments.ts";
 import { createAuthorizer } from "../src/authorizer.ts";
@@ -32,7 +36,8 @@ import { createSearcher } from "../src/searching.ts";
 import type { Table } from "../src/deployment.ts";
 import type { MailBucket } from "../src/mail-bucket.ts";
 import { keys, timeEarlierLabels } from "../src/mail.ts";
-import { addHumanToOrganization, screenerKey, setUpOrganization } from "../src/organization.ts";
+import { addHumanToOrganization, organizationSettings, screenerKey, settingsKey, setUpOrganization } from "../src/organization.ts";
+import type { SendEvent } from "../src/limits.ts";
 import { setUpScreeners } from "../src/screening.ts";
 import type { ReminderDue } from "../src/reminders.ts";
 import { createSender } from "../src/sending.ts";
@@ -91,6 +96,16 @@ export interface DuvaOptions {
    * nothing indexes its mail until then.
    */
   beforeSearch?: boolean;
+  /**
+   * Whether the deployment runs a version from before the approval log until setUp() deploys this
+   * one, so the decisions made until then aren't in it.
+   */
+  beforeApprovalLog?: boolean;
+  /**
+   * The organization's undo window in seconds, as its admins set it before the test. 0 unless
+   * given, so approved sends go out at once; null leaves Duva's own default.
+   */
+  undoWindow?: number | null;
 }
 
 /** A Duva deployment running in-process, set up as duva deploy sets one up, with its own table and mail bucket. */
@@ -218,6 +233,8 @@ export async function startDuva({
   beforeScreener = false,
   indexingHeld = false,
   beforeSearch = false,
+  beforeApprovalLog = false,
+  undoWindow = 0,
 }: DuvaOptions = {}): Promise<Duva> {
   const { table, streamArn, database } = await createTable();
   const humans = memoryHumans();
@@ -225,6 +242,10 @@ export async function startDuva({
   const setUp = (options: { admin: string }) => setUpOrganization({ table, humans }, { domain, ...options });
   const firstAdmin = await setUp({ admin });
   for (const email of others) await addHumanToOrganization({ table, humans }, { email, by: firstAdmin.id });
+  if (undoWindow !== null) {
+    const { settings } = await organizationSettings(table);
+    await documents(table).send(new PutCommand({ TableName: table.name, Item: { ...settingsKey, ...settings, undoWindowSeconds: undoWindow, version: 1 } }));
+  }
 
   const mailBucket = memoryMailBucket();
   // Trash emptied and mailboxes deleted in a call, which the eraser erases once the call is answered.
@@ -262,9 +283,15 @@ export async function startDuva({
   };
   const searcher = createSearcher(lanceSearch({ uri: indexes, embedder: titan, translator: recordedNova() }));
   // EventBridge Scheduler's one-time schedules, each invoking the sender at a time, with an agent
-  // whose sends wait or a thread due back from Remind me.
+  // whose sends wait, a draft whose undo window is over, or a thread due back from Remind me.
   const schedules: { event: Parameters<typeof sender>[0]; at: Date }[] = [];
-  const sender = createSender({ table, mailBucket, outbound: sending.outbound, region, schedules: { releaseAt: async (agent, at) => void schedules.push({ event: { release: agent }, at }) } });
+  const sender = createSender({
+    table,
+    mailBucket,
+    outbound: sending.outbound,
+    region,
+    schedules: { releaseAt: async (agent, at) => void schedules.push({ event: { release: agent }, at }), sendAt: async (draft, at) => void schedules.push({ event: { send: draft }, at }) },
+  });
   const reminders = { remindAt: async (due: ReminderDue) => void schedules.push({ event: { remind: due }, at: new Date(due.at) }) };
   const stream = tableStream(database, streamArn, [
     { filter: senderFilter, handler: sender, retries: senderRetries, invocations: senderInvocations },
@@ -315,6 +342,7 @@ export async function startDuva({
   // the eraser has erased the Trash it emptied and the mailboxes it deleted, and the indexer has
   // caught up, unless indexing is held, so tests see the outcome.
   let screenerDeployed = !beforeScreener;
+  let approvalLogDeployed = !beforeApprovalLog;
   const api = async (request: Request) => {
     if (new URL(request.url).pathname.startsWith("/download/")) return downloaded(request);
     const response = await gatewayed(request);
@@ -323,6 +351,7 @@ export async function startDuva({
     if (!sendsHeld) await stream.deliver();
     for (let each = handed.shift(); each !== undefined; each = handed.shift()) if (!eraserRunsLost) await eraser(each);
     if (!screenerDeployed) await forgetScreener(table);
+    if (!approvalLogDeployed) await forgetApprovalLog(table);
     if (!indexingHeld) await index();
     return response;
   };
@@ -395,6 +424,8 @@ export async function startDuva({
       await timeEarlierLabels(table);
       screenerDeployed = true;
       await setUpScreeners(table);
+      approvalLogDeployed = true;
+      await listEarlierDecisions(table);
       // The feeder starts with this version, and reads only what is written from then on.
       if (!searchDeployed) await feed.deliver();
       searchDeployed = true;
@@ -567,6 +598,21 @@ async function forgetScreener(table: Table) {
       FilterExpression: "#sk = :switch OR begins_with(#sk, :sentTo)",
       ExpressionAttributeNames: { "#sk": tableKey.sortKey },
       ExpressionAttributeValues: { ":switch": { S: switchSortKey! }, ":sentTo": { S: sentToPrefix } },
+    }),
+  );
+  for (const item of Items) {
+    await table.client.send(new DeleteItemCommand({ TableName: table.name, Key: { [tableKey.partitionKey]: item[tableKey.partitionKey]!, [tableKey.sortKey]: item[tableKey.sortKey]! } }));
+  }
+}
+
+/** Removes what a version from before the approval log didn't write: each decision's listing in its approver's log. */
+async function forgetApprovalLog(table: Table) {
+  const { Items = [] } = await table.client.send(
+    new ScanCommand({
+      TableName: table.name,
+      FilterExpression: "begins_with(#sk, :decided)",
+      ExpressionAttributeNames: { "#sk": tableKey.sortKey },
+      ExpressionAttributeValues: { ":decided": { S: decisionPrefix } },
     }),
   );
   for (const item of Items) {

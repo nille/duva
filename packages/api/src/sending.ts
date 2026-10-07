@@ -2,7 +2,8 @@
 // or one asked to send without approval, as a human's from their own mailbox is. It sends an agent's draft through SES
 // with the disclosure, and a human's without, and records the outcome. Sending starts
 // from the recorded approval, so a crash between it and the send can't lose it, and each step is
-// conditional on the last, so a retried record never sends twice. A paused agent's sends stay
+// conditional on the last, so a retried record never sends twice. An approved send waits out the
+// organization's undo window first, and the sender asks to be handed it again once it is over. A paused agent's sends stay
 // approved, held, until unpausing writes them again and the stream hands them over once more. A
 // draft sent as a group is copied to each other local member's mailbox once it is sent
 // (ADR-0019), also when a retried record finds it sent already. An
@@ -18,7 +19,7 @@ import { SendEmailCommand, SESv2ServiceException, type SESv2Client } from "@aws-
 import type { DynamoDBStreamEvent } from "aws-lambda";
 import { GetCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import type { Table } from "./deployment.ts";
-import { approvedAt, type Draft, draftAt, draftToSend, findApproval, markFailed, markSent, markUnclear, type Sending, sesMessagePartition, startSending, unsendableFrom, waitForLimit } from "./drafting.ts";
+import { approvedAt, type Draft, draftAt, undoable, draftToSend, findApproval, keepSent, markFailed, markSent, markUnclear, type Sending, sesMessagePartition, startSending, unsendableFrom, waitForLimit } from "./drafting.ts";
 import { alertAt, alertItems, limitRead, mailingSettled, raiseAlert, startMailing } from "./alerting.ts";
 import {
   allowedAt,
@@ -29,6 +30,7 @@ import {
   readWindow,
   type ReleaseEvent,
   type Schedules,
+  type SendEvent,
   type WaitingSend,
   stopWaiting,
   waitingSends,
@@ -110,7 +112,7 @@ interface Sender {
 }
 
 export function createSender(sender: Sender) {
-  return async (event: DynamoDBStreamEvent | ReleaseEvent | RemindEvent): Promise<void> => {
+  return async (event: DynamoDBStreamEvent | ReleaseEvent | RemindEvent | SendEvent): Promise<void> => {
     if ("release" in event) {
       await release(sender, event.release);
       return;
@@ -118,6 +120,10 @@ export function createSender(sender: Sender) {
     // A thread set aside in Remind me is due back.
     if ("remind" in event) {
       await bringBack(sender.table, event.remind);
+      return;
+    }
+    if ("send" in event) {
+      await send(sender, event.send);
       return;
     }
     for (const record of event.Records) {
@@ -186,6 +192,7 @@ async function sendOnce(
   const by = approval?.agent ?? status.by;
   if (by === undefined) throw new Error(`Draft ${id} was asked to send without an approval or a human who sent it.`);
   if (status.state === "sent") {
+    if (approval !== undefined) await keepSent(table, approval.id, { thread: status.thread!, message: status.message! });
     await copyToOtherMembers({ table, mailBucket }, mailbox, status.message!);
     return "done";
   }
@@ -200,6 +207,11 @@ async function sendOnce(
     return "done";
   }
   if (status.state !== expected) return "done";
+  // An approved send waits out its undo window, while its approver can undo it, and is handed over again then.
+  if (waiting === undefined && undoable(status)) {
+    await schedules.sendAt({ mailbox, draft: id }, new Date(status.undoUntil));
+    return "done";
+  }
 
   const actor = await findActor(table, by);
   if (actor === undefined) throw new Error(`The actor ${by} that draft ${id} is sent for is missing.`);
@@ -240,7 +252,7 @@ async function sendOnce(
 
   // Everything is ready before the draft moves to sending, so only SES's answer can leave it unclear.
   const message = randomUUID();
-  const sending: Sending = { mailbox, draft: id, approval: approval?.id, message, by };
+  const sending: Sending = { mailbox, draft: id, approval: approval?.id, message, by, ...(status.undoUntil !== undefined && { undoUntil: status.undoUntil }) };
   const date = new Date();
 
   // An agent's send counts against its limits when it goes out, unless it can't go at all. Over
@@ -313,7 +325,13 @@ async function sendOnce(
     stored: { from, to: draft.to, cc: draft.cc, bcc: draft.bcc, recipient: draft.from, subject: draft.subject, date: sentAt, receivedAt: sentAt, rawKey, ...(actor.kind === "agent" && { fromAgent: true }) },
     approval,
   });
-  if (marked) await copyToOtherMembers({ table, mailBucket }, mailbox, message);
+  if (!marked) return "done";
+  // A crash before it's kept fails the record, and the stream hands it over again, which keeps it as sent.
+  if (approval !== undefined) {
+    const sent = await draftToSend(table, mailbox, id);
+    if (sent?.send?.state === "sent") await keepSent(table, approval.id, { thread: sent.send.thread!, message });
+  }
+  await copyToOtherMembers({ table, mailBucket }, mailbox, message);
   return "done";
 }
 

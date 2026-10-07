@@ -482,7 +482,7 @@ const searchLanguages: Language[] = ["English", "Swedish", "Danish"];
 const alwaysIndexed: Language[] = ["English", "Swedish"];
 
 type MailSettings = Pick<OrganizationSettings, "retentionDays" | "searchLanguages">;
-type AgentsSettings = Pick<OrganizationSettings, "erasureErasesApprovals" | "agentSendsPerHourCap" | "agentNewRecipientsPerDayCap">;
+type AgentsSettings = Pick<OrganizationSettings, "erasureErasesApprovals" | "agentSendsPerHourCap" | "agentNewRecipientsPerDayCap" | "undoWindowSeconds">;
 
 /**
  * A sheet's share of the organization's settings, as Duva has them and as an admin saves them. Each
@@ -568,19 +568,30 @@ function MailSheet({ client, onSignedOut }: { client: DuvaClient; onSignedOut: (
   );
 }
 
-/** The organization's Agents sheet: whether erasing a thread erases its approval records, and the caps on agents' send limits. */
+/**
+ * The organization's Agents sheet: how long an approved send waits to be undone, whether erasing a
+ * thread erases its approval records, and the caps on agents' send limits.
+ */
 function AgentsSheet({ client, onSignedOut }: { client: DuvaClient; onSignedOut: () => void }) {
   const { sheet, before, after } = useOrganizationSheet<AgentsSettings>(
     client,
-    ({ erasureErasesApprovals, agentSendsPerHourCap, agentNewRecipientsPerDayCap }) => ({ erasureErasesApprovals, agentSendsPerHourCap, agentNewRecipientsPerDayCap }),
+    ({ erasureErasesApprovals, agentSendsPerHourCap, agentNewRecipientsPerDayCap, undoWindowSeconds }) => ({ erasureErasesApprovals, agentSendsPerHourCap, agentNewRecipientsPerDayCap, undoWindowSeconds }),
     onSignedOut,
   );
   const [capsValid, setCapsValid] = useState({ agentSendsPerHourCap: true, agentNewRecipientsPerDayCap: true });
+  const [windowValid, setWindowValid] = useState(true);
   const copy = strings.settings.erasure;
   return (
     <Sheet id="agents-settings" name={strings.settings.agents} lead={strings.settings.agentsLead} sheet={sheet}>
       {(chosen) => (
         <>
+          <UndoWindow
+            chosen={chosen.undoWindowSeconds}
+            onChoose={(seconds) => {
+              setWindowValid(seconds !== undefined);
+              if (seconds !== undefined) sheet.choose({ undoWindowSeconds: seconds });
+            }}
+          />
           <fieldset>
             <legend>{copy.legend}</legend>
             <p className="setting-lead">{copy.lead}</p>
@@ -619,11 +630,12 @@ function AgentsSheet({ client, onSignedOut }: { client: DuvaClient; onSignedOut:
               before === undefined || after === undefined
                 ? []
                 : [
+                    ...(before.undoWindowSeconds !== after.undoWindowSeconds ? ["undo" as const] : []),
                     ...(before.erasureErasesApprovals !== after.erasureErasesApprovals ? ["erasure" as const] : []),
                     ...(after.agentSendsPerHourCap < before.agentSendsPerHourCap || after.agentNewRecipientsPerDayCap < before.agentNewRecipientsPerDayCap ? ["caps" as const] : []),
                   ],
             )}
-            invalid={!capsValid.agentSendsPerHourCap || !capsValid.agentNewRecipientsPerDayCap}
+            invalid={!capsValid.agentSendsPerHourCap || !capsValid.agentNewRecipientsPerDayCap || !windowValid}
           />
         </>
       )}
@@ -635,6 +647,47 @@ function AgentsSheet({ client, onSignedOut }: { client: DuvaClient; onSignedOut:
 function daysOf(text: string): number | undefined {
   const days = /^\d+$/.test(text.trim()) ? Number(text.trim()) : undefined;
   return days !== undefined && days >= 7 && days <= 365 ? days : undefined;
+}
+
+/** The undo window typed, if it is a whole number of seconds Duva takes, from 0 to 120. */
+function secondsOf(text: string): number | undefined {
+  const seconds = /^\d+$/.test(text.trim()) ? Number(text.trim()) : undefined;
+  return seconds !== undefined && seconds <= 120 ? seconds : undefined;
+}
+
+/** How many seconds an approved send waits, so its sponsor can undo it, as a short field. `onChoose` hears of an invalid one as undefined. */
+function UndoWindow({ chosen, onChoose }: { chosen: number; onChoose: (seconds: number | undefined) => void }) {
+  const copy = strings.settings.undoWindow;
+  const [text, setText] = useState(String(chosen));
+  const valid = secondsOf(text) !== undefined;
+  return (
+    <fieldset>
+      <legend>{copy.legend}</legend>
+      <p className="setting-lead">{copy.lead}</p>
+      <div className="limits">
+        <div className="limit">
+          <label htmlFor="undo-window" className="limit-name">
+            {copy.label}
+          </label>
+          <input
+            id="undo-window"
+            type="text"
+            inputMode="numeric"
+            aria-invalid={!valid}
+            aria-describedby="undo-window-hint"
+            value={text}
+            onChange={(event) => {
+              setText(event.target.value);
+              onChoose(secondsOf(event.target.value));
+            }}
+          />
+          <p id="undo-window-hint" className={valid ? "hint" : "field-error"}>
+            {valid ? copy.hint : copy.invalid}
+          </p>
+        </div>
+      </div>
+    </fieldset>
+  );
 }
 
 /** The most a cap can be, as the contract says. */

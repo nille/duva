@@ -15,17 +15,20 @@ import {
   BeingSent,
   changeDraft,
   deleteDraft as deleteStoredDraft,
+  DraftMovedOn,
   draftsIn,
   draftToSend,
   findApproval,
   findDraft,
   NoRecipient,
+  NotUndoable,
   NotWaitingForLimit,
   pendingApprovals,
   reject,
   SendNotAllowed,
   sendNow,
   maxNote,
+  undo,
   unsendableFrom,
 } from "./drafting.ts";
 import { attachmentLinks } from "./attachments.ts";
@@ -306,6 +309,17 @@ export const sendApproval: OperationHandler = async (event, deployment, actor) =
   return decided(deployment, () => approve(deployment.table, { approval, by: actor!.id, edits: edited ? edits : undefined }), 202);
 };
 
+export const undoApproval: OperationHandler = async (event, deployment, actor) => {
+  const approval = await decidable(event, deployment, actor!);
+  if ("statusCode" in approval) return approval;
+  try {
+    return { statusCode: 200, body: (await withOriginal(deployment, await undo(deployment.table, { approval, by: actor!.id }))) satisfies components["schemas"]["Approval"] };
+  } catch (error) {
+    if (!(error instanceof NotUndoable)) throw error;
+    return refusal(409, "The approval can't be undone: it isn't approved, its undo window is over, or the sender already took it. Read the draft to see where its send stands.");
+  }
+};
+
 export const rejectApproval: OperationHandler = async (event, deployment, actor) => {
   const approval = await decidable(event, deployment, actor!);
   if ("statusCode" in approval) return approval;
@@ -332,6 +346,7 @@ async function decided(deployment: Deployment, decide: () => Promise<Approval>, 
   } catch (error) {
     if (error instanceof AlreadyDecided) return refusal(409, `The approval was already ${error.approval.state}, so it can't be decided again.`);
     if (error instanceof AgentPaused) return refusal(409, "The agent is paused, so its sends can't be approved. Unpause it first, or reject this with a note.");
+    if (error instanceof DraftMovedOn) return refusal(409, "The agent changed the draft, deleted it or asked again since you rejected it, so it can't be sent after all. Any new request waits for you.");
     throw error;
   }
 }

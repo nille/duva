@@ -14,6 +14,7 @@ import { entryKey, recordChanges } from "./feed.ts";
 import { type SendFeedback, type StoredMessage, storeSentMessage } from "./mail.ts";
 import { startWaiting, stopWaiting, type WaitingSend } from "./limits.ts";
 import { sponsorAccessAllows } from "./access.ts";
+import { listDecision, unlistDecision } from "./decisions.ts";
 import {
   type Actor,
   type Agent,
@@ -24,6 +25,7 @@ import {
   type Mailbox,
   mailboxFeed,
   mailboxKey,
+  organizationSettings,
   ownedMailboxes,
   switchesFor,
 } from "./organization.ts";
@@ -46,8 +48,36 @@ type StoredSend = SendStatus & { by?: string; askedAt?: string; pastLimit?: bool
  * approvals were listed list none, and erasure finds theirs in the mailbox's change feed.
  */
 type StoredDraft = Omit<Draft, "send"> & { send?: StoredSend; version: number; approvals?: string[] };
-/** An approval as stored, with the position of its decision in the mailbox's change feed once it is decided. */
-type StoredApproval = Approval & { decidedIn?: number };
+/**
+ * An approval as stored, with the position of its decision in the mailbox's change feed once it is
+ * decided, and of its decisions before that, undone or rejected before it was sent after all, so
+ * erasure finds each. Once its send went out or failed, it keeps how it went, which stays after its
+ * draft is gone.
+ */
+type StoredApproval = Approval & { decidedIn?: number; decidedBefore?: number[]; outcome?: SendOutcome };
+
+/** The approval with the ID as the table stores it, or undefined if there is none. */
+async function storedItem(table: Table, id: string): Promise<StoredApproval | undefined> {
+  const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: approvalKey(id), ConsistentRead: true }));
+  return Item as StoredApproval | undefined;
+}
+
+/** The write that keeps where an earlier decision on the approval is in the feed, if it is anywhere. */
+const keepEarlier = (decidedIn: number | undefined) =>
+  decidedIn === undefined
+    ? { expression: "", values: {} }
+    : { expression: ", decidedBefore = list_append(if_not_exists(decidedBefore, :none), :earlier)", values: { ":none": [], ":earlier": [decidedIn] } };
+
+/** Whether the draft's send is approved and its approver can still undo it, now. */
+export const undoable = (send: Pick<SendStatus, "state" | "undoUntil"> | undefined): send is SendStatus & { undoUntil: string } =>
+  send?.state === "approved" && send.undoUntil !== undefined && Date.parse(send.undoUntil) > Date.now();
+/** How an approved send went, as its approval keeps it. */
+export interface SendOutcome {
+  state: "sent" | "failed" | "unclear";
+  thread?: string;
+  message?: string;
+  reason?: string;
+}
 
 const draftKey = (mailbox: string, draft: string) => ({ [pk]: mailboxKey(mailbox)[pk]!, [sk]: `draft#${draft}` });
 const approvalKey = (approval: string) => ({ [pk]: `approval#${approval}`, [sk]: "approval" });
@@ -317,6 +347,14 @@ export async function findApproval(table: Table, id: string): Promise<Approval |
   return Item && approvalOf(Item as Approval);
 }
 
+/** The approval with the ID as stored, with how its send went once it went out or failed, or undefined if there is none. */
+export async function storedApproval(table: Table, id: string): Promise<(Approval & { outcome?: SendOutcome }) | undefined> {
+  const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: approvalKey(id), ConsistentRead: true }));
+  if (Item === undefined) return undefined;
+  const { outcome } = Item as StoredApproval;
+  return { ...approvalOf(Item as Approval), ...(outcome !== undefined && { outcome }) };
+}
+
 /** The approvals pending for the approver, newest first. */
 export async function pendingApprovals(table: Table, approver: string): Promise<Approval[]> {
   const { [pk]: partition } = pendingKey(approver, "", "");
@@ -352,15 +390,26 @@ export function reject(table: Table, { approval, by, note }: { approval: Approva
 /** The agent is paused, so its approvals can't be sent until it is unpaused. */
 export class AgentPaused extends Error {}
 
+/** The agent changed, deleted or asked again for the draft of a rejected approval, so it can't be sent after all. */
+export class DraftMovedOn extends Error {}
+
 /**
  * Approves the pending approval, on behalf of the approver `by`, with the approver's edits to the
  * draft, if any, which the draft then carries. That leaves the draft approved, and the sender sends
- * it from there. The decision is a conditional write, so of two at once one wins and the other
- * throws AlreadyDecided. It holds only while the agent isn't paused, and throws AgentPaused if it is.
+ * it once the organization's undo window is over. A rejected approval is approved after all, while
+ * its draft is still as the agent asked it, and throws DraftMovedOn once it isn't. The decision is
+ * a conditional write, so of two at once one wins and the other throws AlreadyDecided. It holds
+ * only while the agent isn't paused, and throws AgentPaused if it is.
  */
 export async function approve(table: Table, { approval, by, edits }: { approval: Approval; by: string; edits?: Edits }): Promise<Approval> {
+  let rejected: { draftVersion: number; decidedIn?: number } | undefined;
+  if (approval.state === "rejected") {
+    const draft = await storedDraft(table, approval.mailbox, approval.draft.id);
+    if (draft === undefined || draft.send?.approval !== approval.id || draft.send.state !== "rejected" || !asAsked(draft, approval)) throw new DraftMovedOn();
+    rejected = { draftVersion: draft.version, decidedIn: (await storedItem(table, approval.id))?.decidedIn };
+  }
   try {
-    return await decide(table, approval, by, { state: "approved", edits }, [agentUnpaused(table, approval.agent)]);
+    return await decide(table, approval, by, { state: "approved", edits, rejected }, [agentUnpaused(table, approval.agent)]);
   } catch (error) {
     const agent = changedMeanwhile(error) ? await findActor(table, approval.agent) : undefined;
     if (agent?.kind === "agent" && agent.paused !== undefined) throw new AgentPaused();
@@ -368,68 +417,144 @@ export async function approve(table: Table, { approval, by, edits }: { approval:
   }
 }
 
+/** Whether the draft is as the agent asked for it to be sent with the approval. */
+export const asAsked = (draft: Pick<Draft, "from" | "to" | "cc" | "bcc" | "subject" | "text">, approval: Approval) => {
+  const fields = ({ from, to, cc = [], bcc = [], subject, text }: Pick<Draft, "from" | "to" | "cc" | "bcc" | "subject" | "text">) => JSON.stringify([from, [to, cc, bcc].map((list) => list.map(({ address }) => address)), subject, text]);
+  return fields(draft) === fields(approval.draft);
+};
+
 /**
- * Decides the pending approval, on behalf of the approver `by`, and gives the draft the decision's
- * send status and edits, with the `checks` written too.
+ * Decides the pending approval, or approves a rejected one after all, on behalf of the approver
+ * `by`, and gives the draft the decision's send status and edits, with the `checks` written too.
+ * Approving holds the send for the organization's undo window. The decision is listed in the
+ * approver's log, at its new time if it was decided before. A rejected approval's draft must still
+ * be at the version read, and where its rejection is in the feed is kept.
  */
 async function decide(
   table: Table,
   approval: Approval,
   by: string,
-  { state, note, edits }: { state: "approved" | "rejected"; note?: string; edits?: Edits },
+  { state, note, edits, rejected }: { state: "approved" | "rejected"; note?: string; edits?: Edits; rejected?: { draftVersion: number; decidedIn?: number } },
   checks: TransactItem[] = [],
 ): Promise<Approval> {
-  if (approval.state !== "pending") throw new AlreadyDecided(approval);
+  const again = approval.state === "rejected" && state === "approved";
+  if (approval.state !== "pending" && !again) throw new AlreadyDecided(approval);
   const decidedAt = new Date().toISOString();
+  const window = state === "approved" ? (await organizationSettings(table)).settings.undoWindowSeconds : 0;
+  const undoUntil = window > 0 ? new Date(Date.parse(decidedAt) + window * 1000).toISOString() : undefined;
+  const agent = await findActor(table, approval.agent);
   const { mailbox, draft } = approval;
-  const send: SendStatus = { approval: approval.id, state, note };
+  const send: SendStatus = { approval: approval.id, state, note, undoUntil };
   const draftSet = setting({ ...edits, ...(edits !== undefined && { updatedAt: decidedAt, updatedBy: by }), send });
+  const asRead = rejected === undefined ? undefined : { condition: " AND version = :version", values: { ":version": rejected.draftVersion } };
   try {
     await recordChanges(table, mailboxFeed(mailbox), {
       by,
       changes: [{ type: "approvalDecided", draft: draft.id, approval: approval.id, decision: state, edits, note }],
       items: (decidedIn) => [
-        ...settle(table, approval, { state, decidedAt, note, edits, decidedIn }),
+        ...settle(table, approval, { state, decidedAt, note, edits, decidedIn, undoUntil }, rejected?.decidedIn),
         {
           Update: {
             TableName: table.name,
             Key: draftKey(mailbox, draft.id),
             UpdateExpression: `${draftSet.UpdateExpression}, version = version + :one`,
-            ConditionExpression: "#send.approval = :approval",
+            ConditionExpression: `#send.approval = :approval${asRead?.condition ?? ""}`,
             ExpressionAttributeNames: draftSet.ExpressionAttributeNames,
-            ExpressionAttributeValues: { ...draftSet.ExpressionAttributeValues, ":one": 1, ":approval": approval.id },
+            ExpressionAttributeValues: { ...draftSet.ExpressionAttributeValues, ":one": 1, ":approval": approval.id, ...asRead?.values },
           },
         },
+        listDecision(table, approval.approver, { approval: approval.id, agent: approval.agent, agentName: agent?.kind === "agent" ? agent.name : "", decidedBy: by, decidedAt }),
+        ...(again ? [unlistDecision(table, approval.approver, approval.decidedAt!, approval.id)] : []),
         ...checks,
       ],
     });
   } catch (error) {
     if (!changedMeanwhile(error)) throw error;
     const current = await findApproval(table, approval.id);
+    if (again) throw current?.state === "rejected" ? new DraftMovedOn() : new AlreadyDecided(current ?? approval);
     throw current?.state === "pending" ? error : new AlreadyDecided(current ?? approval);
   }
-  return approvalOf({ ...approval, state, decidedAt, note, edits });
+  const { note: _, ...decided } = approval;
+  return approvalOf({ ...decided, state, decidedAt, ...(note !== undefined && { note }), edits, undoUntil });
 }
 
 /**
  * The writes that move a pending approval to its outcome: the approval, on condition that it is
- * still pending, and the removal of its copy from the approver's pending approvals.
+ * still pending, and the removal of its copy from the approver's pending approvals. A rejected
+ * approval approved after all loses its note, and was listed as pending no more.
  */
-function settle(table: Table, approval: Approval, outcome: Pick<StoredApproval, "state" | "decidedAt" | "note" | "edits" | "decidedIn">): TransactItem[] {
+function settle(
+  table: Table,
+  approval: Approval,
+  outcome: Pick<StoredApproval, "state" | "decidedAt" | "note" | "edits" | "decidedIn" | "undoUntil">,
+  rejectedIn?: number,
+): TransactItem[] {
   const set = setting(outcome);
+  const from = approval.state === "rejected" ? "rejected" : "pending";
+  const earlier = keepEarlier(rejectedIn);
   return [
     {
       Update: {
         TableName: table.name,
         Key: approvalKey(approval.id),
         ...set,
-        ConditionExpression: "#state = :pending",
+        UpdateExpression: `${set.UpdateExpression}${earlier.expression}${from === "rejected" ? " REMOVE note" : ""}`,
+        ConditionExpression: "#state = :from",
         ExpressionAttributeNames: { ...set.ExpressionAttributeNames, "#state": "state" },
-        ExpressionAttributeValues: { ...set.ExpressionAttributeValues, ":pending": "pending" },
+        ExpressionAttributeValues: { ...set.ExpressionAttributeValues, ...earlier.values, ":from": from },
       },
     },
-    { Delete: { TableName: table.name, Key: pendingKey(approval.approver, approval.askedAt, approval.id) } },
+    ...(from === "pending" ? [{ Delete: { TableName: table.name, Key: pendingKey(approval.approver, approval.askedAt, approval.id) } }] : []),
   ];
+}
+
+/** The approval can't be undone: it isn't approved, its undo window is over, or the sender took it. */
+export class NotUndoable extends Error {}
+
+/**
+ * Undoes the approved approval during its undo window, on behalf of its approver `by`: it waits
+ * for them again, as the agent asked it, without their edits, listed among their pending
+ * approvals and off their log, and its draft waits for it. The sender takes the draft only once
+ * the window is over, on condition that it is still approved, so of the two one wins. Throws
+ * NotUndoable once the window is over or the sender took it.
+ */
+export function undo(table: Table, { approval, by }: { approval: Approval; by: string }): Promise<Approval> {
+  return retried(async () => {
+    const stored = await storedItem(table, approval.id);
+    const current = stored && approvalOf(stored);
+    const draft = await storedDraft(table, approval.mailbox, approval.draft.id);
+    if (current?.state !== "approved" || draft === undefined || draft.send?.approval !== approval.id || !undoable(draft.send)) throw new NotUndoable();
+    const earlier = keepEarlier(stored!.decidedIn);
+    const { decidedAt, edits, undoUntil: _, ...asked } = current;
+    const waiting: Approval = { ...asked, state: "pending" };
+    const now = new Date().toISOString();
+    const restored: StoredDraft = {
+      ...draft,
+      ...(edits !== undefined && { to: current.draft.to, subject: current.draft.subject, text: current.draft.text, updatedAt: now, updatedBy: by }),
+      send: { approval: approval.id, state: "waiting" },
+      version: draft.version + 1,
+    };
+    await recordChanges(table, mailboxFeed(approval.mailbox), {
+      by,
+      changes: [{ type: "approvalUndone", draft: draft.id, approval: approval.id }],
+      items: [
+        { Put: { TableName: table.name, Item: { ...draftKey(approval.mailbox, draft.id), ...restored }, ...unchanged(draft) } },
+        {
+          Update: {
+            TableName: table.name,
+            Key: approvalKey(approval.id),
+            UpdateExpression: `SET #state = :pending${earlier.expression} REMOVE decidedAt, edits, undoUntil, decidedIn`,
+            ConditionExpression: "#state = :approved",
+            ExpressionAttributeNames: { "#state": "state" },
+            ExpressionAttributeValues: { ":pending": "pending", ":approved": "approved", ...earlier.values },
+          },
+        },
+        { Put: { TableName: table.name, Item: { ...pendingKey(waiting.approver, waiting.askedAt, waiting.id), ...approvalOf(waiting) } } },
+        unlistDecision(table, waiting.approver, decidedAt!, waiting.id),
+      ],
+    });
+    return approvalOf(waiting);
+  });
 }
 
 /**
@@ -446,24 +571,24 @@ export async function eraseApprovals(table: Table, mailbox: string, stored: Reco
   for (const id of draft.approvals ?? listed!.keys()) {
     const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: approvalKey(id), ConsistentRead: true }));
     if (Item === undefined) continue;
-    const decidedIn = (Item as StoredApproval).decidedIn ?? listed?.get(id);
+    const { decidedIn: kept, decidedBefore = [], approver, decidedAt } = Item as StoredApproval;
+    const decidedIn = kept ?? listed?.get(id);
+    // Each decision on it, an undone or rejected one before the last included, loses its edit and note.
+    const positions = [...decidedBefore, ...(decidedIn === undefined ? [] : [decidedIn])];
     await documents(table).send(
       new TransactWriteCommand({
         TransactItems: [
           { Delete: { TableName: table.name, Key: approvalKey(id) } },
-          ...(decidedIn === undefined
-            ? []
-            : [
-                {
-                  Update: {
-                    TableName: table.name,
-                    Key: entryKey(feed, decidedIn),
-                    UpdateExpression: "REMOVE edits, note",
-                    ConditionExpression: "approval = :approval",
-                    ExpressionAttributeValues: { ":approval": id },
-                  },
-                },
-              ]),
+          ...(decidedAt === undefined ? [] : [unlistDecision(table, approver, decidedAt, id)]),
+          ...positions.map((position) => ({
+            Update: {
+              TableName: table.name,
+              Key: entryKey(feed, position),
+              UpdateExpression: "REMOVE edits, note",
+              ConditionExpression: "approval = :approval",
+              ExpressionAttributeValues: { ":approval": id },
+            },
+          })),
         ],
       }),
     );
@@ -528,7 +653,7 @@ async function retried<T>(attempt: () => Promise<T>): Promise<T> {
  * The approval in the order the contract lists its fields, without what only Duva keeps, and with
  * the message its draft replies to, if given.
  */
-export const approvalOf = ({ id, state, mailbox, agent, approver, draft, askedAt, decidedAt, edits, note }: Approval, original?: Approval["original"]): Approval => ({
+export const approvalOf = ({ id, state, mailbox, agent, approver, draft, askedAt, decidedAt, undoUntil, edits, note }: Approval, original?: Approval["original"]): Approval => ({
   id,
   state,
   mailbox,
@@ -538,6 +663,7 @@ export const approvalOf = ({ id, state, mailbox, agent, approver, draft, askedAt
   ...(original !== undefined && { original }),
   askedAt,
   ...(decidedAt !== undefined && { decidedAt }),
+  ...(undoUntil !== undefined && { undoUntil }),
   ...(edits !== undefined && { edits: editsOf(edits) }),
   ...(note !== undefined && { note }),
 });
@@ -585,9 +711,10 @@ const draftOf = ({ id, answers, forwards, thread, from, to, cc = [], bcc = [], s
   ...(send !== undefined && { send: sendOf(send) }),
 });
 
-const sendOf = ({ approval, state, note, reason, thread, message, messageId, feedback }: SendStatus): SendStatus => ({
+const sendOf = ({ approval, state, undoUntil, note, reason, thread, message, messageId, feedback }: SendStatus): SendStatus => ({
   ...(approval !== undefined && { approval }),
   state,
+  ...(undoUntil !== undefined && { undoUntil }),
   ...(note !== undefined && { note }),
   ...(reason !== undefined && { reason }),
   ...(thread !== undefined && { thread }),
@@ -614,6 +741,7 @@ export const approvedAt = (draft: Pick<Draft, "updatedAt"> & { send?: StoredSend
 export async function startSending(table: Table, sending: Sending, checks: TransactItem[] = [], from: "approved" | "waitingForLimit" = "approved"): Promise<boolean> {
   const { mailbox, draft, message } = sending;
   const request = sameRequest(sending);
+  const window = sameWindow(sending);
   return conditionally(
     documents(table).send(
       new TransactWriteCommand({
@@ -623,9 +751,9 @@ export async function startSending(table: Table, sending: Sending, checks: Trans
               TableName: table.name,
               Key: draftKey(mailbox, draft),
               UpdateExpression: "SET #send = :sending, version = version + :one",
-              ConditionExpression: `${request.condition} AND #send.#state = :approved`,
+              ConditionExpression: `${request.condition} AND ${window.condition} AND #send.#state = :approved`,
               ExpressionAttributeNames: { "#send": "send", "#state": "state", ...request.names },
-              ExpressionAttributeValues: { ":sending": { ...outcomeOf(sending, "sending"), message }, ":one": 1, ...request.values, ":approved": from },
+              ExpressionAttributeValues: { ":sending": { ...outcomeOf(sending, "sending"), message }, ":one": 1, ...request.values, ...window.values, ":approved": from },
             },
           },
           ...checks,
@@ -640,8 +768,9 @@ export async function startSending(table: Table, sending: Sending, checks: Trans
  * the `checks` written too, recorded in the mailbox's change feed under the agent. Returns false if
  * the draft is no longer approved for the same request, or a check failed.
  */
-export function waitForLimit(table: Table, { mailbox, draft, approval, by }: Omit<Sending, "message">, approvedAt: string, checks: TransactItem[]): Promise<boolean> {
+export function waitForLimit(table: Table, { mailbox, draft, approval, by, undoUntil }: Omit<Sending, "message">, approvedAt: string, checks: TransactItem[]): Promise<boolean> {
   const request = sameRequest({ approval, by });
+  const window = sameWindow({ undoUntil });
   const waiting: WaitingSend = { mailbox, draft, approvedAt };
   return conditionally(
     recordChanges(table, mailboxFeed(mailbox), {
@@ -653,9 +782,9 @@ export function waitForLimit(table: Table, { mailbox, draft, approval, by }: Omi
             TableName: table.name,
             Key: draftKey(mailbox, draft),
             UpdateExpression: "SET #send.#state = :waiting, version = version + :one",
-            ConditionExpression: `${request.condition} AND #send.#state = :approved`,
+            ConditionExpression: `${request.condition} AND ${window.condition} AND #send.#state = :approved`,
             ExpressionAttributeNames: { "#send": "send", "#state": "state", ...request.names },
-            ExpressionAttributeValues: { ":waiting": "waitingForLimit", ":one": 1, ...request.values, ":approved": "approved" },
+            ExpressionAttributeValues: { ":waiting": "waitingForLimit", ":one": 1, ...request.values, ...window.values, ":approved": "approved" },
           },
         },
         startWaiting(table, by, waiting),
@@ -759,6 +888,13 @@ const sameRequest = ({ approval, by }: Pick<Sending, "approval" | "by">): { cond
     ? { condition: "attribute_not_exists(#send.approval) AND #send.#by = :by", names: { "#by": "by" }, values: { ":by": by } }
     : { condition: "#send.approval = :approval", names: {}, values: { ":approval": approval } };
 
+/**
+ * The condition that the draft's send was approved with the same undo window as read, so an approval
+ * undone and approved again since waits for its new window.
+ */
+const sameWindow = ({ undoUntil }: Pick<Sending, "undoUntil">): { condition: string; values: Record<string, string> } =>
+  undoUntil === undefined ? { condition: "attribute_not_exists(#send.undoUntil)", values: {} } : { condition: "#send.undoUntil = :undoUntil", values: { ":undoUntil": undoUntil } };
+
 /** A send status in the state, for the same request as the sending. */
 const outcomeOf = ({ approval, by }: Sending, state: SendStatus["state"]): StoredSend => (approval === undefined ? { state, by } : { approval, state });
 
@@ -772,6 +908,8 @@ export interface Sending {
   approval?: string;
   message: string;
   by: string;
+  /** Until when its approver could undo the approval, as the sender read it. */
+  undoUntil?: string;
 }
 
 /** A message the sender sent, by the ID SES gave it, so what SES reports about it finds it. */
@@ -861,8 +999,26 @@ export function markFailed(table: Table, sending: Sending, reason: string, items
     recordChanges(table, mailboxFeed(mailbox), {
       by,
       changes: [{ type: "sendFailed", draft, approval, reason }],
-      items: [sendingSettles(table, sending, { ...outcomeOf(sending, "failed"), reason }), ...items],
+      items: [sendingSettles(table, sending, { ...outcomeOf(sending, "failed"), reason }), ...outcomeKept(table, approval, { state: "failed", reason }), ...items],
     }),
+  );
+}
+
+/** The write that keeps how the send went on the approval that let it go, if it needed one. */
+const outcomeKept = (table: Table, approval: string | undefined, outcome: SendOutcome): TransactItem[] =>
+  approval === undefined
+    ? []
+    : [{ Update: { TableName: table.name, Key: approvalKey(approval), UpdateExpression: "SET outcome = :outcome", ExpressionAttributeValues: { ":outcome": outcome } } }];
+
+/**
+ * Keeps on the approval that the send went out as the message in the thread, so the approval log
+ * says so after the draft is gone. Run again, it writes the same. An approval erased meanwhile stays erased.
+ */
+export async function keepSent(table: Table, approval: string, sent: { thread: string; message: string }): Promise<void> {
+  await conditionally(
+    documents(table).send(
+      new UpdateCommand({ TableName: table.name, Key: approvalKey(approval), UpdateExpression: "SET outcome = :outcome", ConditionExpression: `attribute_exists(${pk})`, ExpressionAttributeValues: { ":outcome": { state: "sent", ...sent } } }),
+    ),
   );
 }
 
@@ -877,7 +1033,7 @@ export function markUnclear(table: Table, sending: Sending, items: TransactItem[
     recordChanges(table, mailboxFeed(mailbox), {
       by,
       changes: [{ type: "sendUnclear", draft, approval }],
-      items: [sendingSettles(table, sending, outcomeOf(sending, "unclear")), ...items],
+      items: [sendingSettles(table, sending, outcomeOf(sending, "unclear")), ...outcomeKept(table, approval, { state: "unclear" }), ...items],
     }),
   );
 }

@@ -10,3 +10,4 @@ Erasing a thread (#28) removes its messages, their raw copies and the drafts tha
 - Changing it is a setup change in the organization's change feed, attributed to the admin.
 - Either way, point-in-time recovery can keep erased metadata in DynamoDB's backups for up to 35 days (`docs/aws.md`). The raw mail is gone at once.
 - It is the organization's first setting, so it sets the pattern for later ones, such as the retention period.
+- Each sponsor's approval log (ADR-0022) reads these records, so with the setting on, an erased thread's decisions leave the log with them.

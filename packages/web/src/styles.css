@@ -1440,6 +1440,101 @@ kbd {
   color: var(--alert-ink);
 }
 
+/* Waiting and the Log lie as two chips over the list column, the one shown pressed in ink. */
+.queue-lists {
+  padding-top: 0;
+}
+
+.desk > .queue-lists {
+  padding-inline: 0;
+}
+
+.queue-lead {
+  margin: 0;
+  padding: 0 1.4rem var(--space-3);
+  color: var(--ink-3);
+  font-size: var(--text-sm);
+}
+
+/* How a decision went, as a printed tag outlined by a seam, in its function color's text hand. */
+.queue-kind.queue-outcome {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--seam);
+  color: var(--ink-2);
+}
+
+.queue-row-decided .queue-kind.queue-outcome-sent,
+.queue-outcome-sent {
+  color: var(--sent-ink);
+}
+
+.queue-row-decided .queue-kind.queue-outcome-failed,
+.queue-row-decided .queue-kind.queue-outcome-unclear,
+.queue-outcome-failed,
+.queue-outcome-unclear {
+  color: var(--alert-ink);
+}
+
+.queue-row-decided .queue-kind.queue-outcome-rejected,
+.queue-outcome-rejected {
+  color: var(--ink-3);
+}
+
+.queue-more {
+  margin: 0;
+  padding: var(--space-3) 1.4rem var(--space-5);
+}
+
+/* A decision open from the log: what it said, then what it still allows, under a seam. */
+.log-entry .galley-meta .queue-outcome {
+  margin-right: var(--space-2);
+}
+
+.log-fields {
+  max-width: 44rem;
+  margin-top: var(--space-4);
+}
+
+.log-said {
+  max-width: 60ch;
+  margin-top: var(--space-4);
+  font-size: var(--text-md);
+  line-height: 1.6;
+}
+
+.log-hint {
+  max-width: 60ch;
+  margin-top: var(--space-2);
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+}
+
+.log-entry .decision .hint {
+  margin-top: var(--space-2);
+}
+
+/* Undo during the undo window, with the seconds left beside it in Second Ink, counted in even figures. */
+.undo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+
+.galley-slip .undo {
+  margin-top: var(--space-4);
+}
+
+.undo .button svg {
+  margin-right: 0.35rem;
+}
+
+.undo-left {
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
 .all-done {
   padding: var(--space-4) 1.4rem 0;
   color: var(--ink-2);

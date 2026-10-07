@@ -177,11 +177,11 @@ test("an admin turns erasure of approval records on with a flag, and off with it
   const on = await machine.duva("organization", "change-settings", "--erasureErasesApprovals");
   const off = await machine.duva("organization", "change-settings", "--no-erasureErasesApprovals");
 
-  expect(JSON.parse(before.stdout)).toEqual({ erasureErasesApprovals: false, retentionDays: 30, searchLanguages: ["English", "Swedish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50 });
+  expect(JSON.parse(before.stdout)).toEqual({ erasureErasesApprovals: false, retentionDays: 30, searchLanguages: ["English", "Swedish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50, undoWindowSeconds: 0 });
   expect(on.exitCode).toBe(0);
-  expect(JSON.parse(on.stdout)).toEqual({ erasureErasesApprovals: true, retentionDays: 30, searchLanguages: ["English", "Swedish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50 });
+  expect(JSON.parse(on.stdout)).toEqual({ erasureErasesApprovals: true, retentionDays: 30, searchLanguages: ["English", "Swedish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50, undoWindowSeconds: 0 });
   expect(off.exitCode).toBe(0);
-  expect(JSON.parse(off.stdout)).toEqual({ erasureErasesApprovals: false, retentionDays: 30, searchLanguages: ["English", "Swedish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50 });
+  expect(JSON.parse(off.stdout)).toEqual({ erasureErasesApprovals: false, retentionDays: 30, searchLanguages: ["English", "Swedish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50, undoWindowSeconds: 0 });
 });
 
 test("an admin previews a retention period and sets it", async () => {
@@ -197,7 +197,7 @@ test("an admin previews a retention period and sets it", async () => {
   expect(preview.exitCode).toBe(0);
   expect(JSON.parse(preview.stdout)).toEqual({ retentionDays: 7, threads: 0 });
   expect(changed.exitCode).toBe(0);
-  expect(JSON.parse(changed.stdout)).toEqual({ erasureErasesApprovals: false, retentionDays: 7, searchLanguages: ["English", "Swedish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50 });
+  expect(JSON.parse(changed.stdout)).toEqual({ erasureErasesApprovals: false, retentionDays: 7, searchLanguages: ["English", "Swedish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50, undoWindowSeconds: 0 });
 });
 
 test("an admin gives the search languages to organization change-settings, once for each", async () => {
@@ -210,7 +210,7 @@ test("an admin gives the search languages to organization change-settings, once 
   const result = await machine.duva("organization", "change-settings", "--searchLanguages", "Swedish", "--searchLanguages", "Danish", "--searchLanguages", "English");
 
   expect(result.exitCode).toBe(0);
-  expect(JSON.parse(result.stdout)).toEqual({ erasureErasesApprovals: false, retentionDays: 30, searchLanguages: ["English", "Swedish", "Danish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50 });
+  expect(JSON.parse(result.stdout)).toEqual({ erasureErasesApprovals: false, retentionDays: 30, searchLanguages: ["English", "Swedish", "Danish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50, undoWindowSeconds: 0 });
 });
 
 test("organization change-settings with no setting says which there are", async () => {
@@ -846,6 +846,58 @@ test("the sponsor sends a pending draft from the CLI, as is or with their own te
   expect(JSON.parse(edited.stdout)).toMatchObject({ id: second.approval, state: "approved", edits: { text: "Hej Grace, hur mår du?" } });
   expect(JSON.parse(read.stdout)).toMatchObject({ send: { approval: first.approval, state: "sent" } });
   expect(duva.sent()).toHaveLength(2);
+});
+
+test("the sponsor undoes an approved send from the CLI during the undo window, and reads each decision in the approval log", async () => {
+  const machine = await newMachine();
+  const duva = await startDuva({ domain: "example.com", admin: "ada@example.org", undoWindow: null });
+  const server = await duva.listen();
+  onTestFinished(() => server.close());
+  await machine.saveDeployment(server);
+  await machine.duva("login", { browserSignsIn: "ada@example.org" });
+  const { agent, key } = JSON.parse((await machine.duva("agents", "create", "--name", "Hermes")).stdout) as { agent: { id: string }; key: string };
+  const mailbox = JSON.parse((await machine.duva("mailboxes", "create", "--owner", agent.id, "--address", "hermes@example.com")).stdout) as { id: string };
+  const asAgent = { env: { DUVA_AGENT_KEY: key } };
+  const draft = JSON.parse((await machine.duva("drafts", "create", "--mailbox", mailbox.id, "--to", "grace@example.org", "--subject", "Hello", "--text", "Hej.", asAgent)).stdout) as { id: string };
+  const { send } = JSON.parse((await machine.duva("drafts", "send", "--mailbox", mailbox.id, "--draft", draft.id, asAgent)).stdout) as { send: { approval: string } };
+
+  const approved = await machine.duva("approvals", "send", "--approval", send.approval);
+  const logged = await machine.duva("approvals", "log");
+  const undone = await machine.duva("approvals", "undo", "--approval", send.approval);
+  const again = await machine.duva("approvals", "undo", "--approval", send.approval);
+
+  expect(JSON.parse(approved.stdout)).toMatchObject({ state: "approved", undoUntil: expect.any(String) });
+  expect(JSON.parse(logged.stdout)).toMatchObject({ entries: [{ approval: send.approval, agentName: "Hermes", outcome: "approved", reversal: "undo" }] });
+  expect(undone.exitCode).toBe(0);
+  expect(JSON.parse(undone.stdout)).toMatchObject({ id: send.approval, state: "pending" });
+  expect(again.exitCode).toBe(1);
+  expect(errorIn(again.stderr)).toMatch(/409.*can't be undone/);
+  expect(JSON.parse((await machine.duva("approvals", "log")).stdout)).toEqual({ entries: [] });
+  expect(duva.sent()).toEqual([]);
+});
+
+test("an admin sets the undo window from the CLI, and a sponsor sends a rejected draft after all", async () => {
+  const machine = await newMachine();
+  const duva = await startDuva({ domain: "example.com", admin: "ada@example.org", undoWindow: null });
+  const server = await duva.listen();
+  onTestFinished(() => server.close());
+  await machine.saveDeployment(server);
+  await machine.duva("login", { browserSignsIn: "ada@example.org" });
+  const { agent, key } = JSON.parse((await machine.duva("agents", "create", "--name", "Hermes")).stdout) as { agent: { id: string }; key: string };
+  const mailbox = JSON.parse((await machine.duva("mailboxes", "create", "--owner", agent.id, "--address", "hermes@example.com")).stdout) as { id: string };
+  const asAgent = { env: { DUVA_AGENT_KEY: key } };
+  const draft = JSON.parse((await machine.duva("drafts", "create", "--mailbox", mailbox.id, "--to", "grace@example.org", "--subject", "Hello", "--text", "Hej.", asAgent)).stdout) as { id: string };
+  const { send } = JSON.parse((await machine.duva("drafts", "send", "--mailbox", mailbox.id, "--draft", draft.id, asAgent)).stdout) as { send: { approval: string } };
+
+  const changed = await machine.duva("organization", "change-settings", "--undoWindowSeconds", "0");
+  await machine.duva("approvals", "reject", "--approval", send.approval, "--note", "Not yet.");
+  const afterAll = await machine.duva("approvals", "send", "--approval", send.approval);
+
+  expect(JSON.parse(changed.stdout)).toMatchObject({ undoWindowSeconds: 0 });
+  expect(afterAll.exitCode).toBe(0);
+  expect(JSON.parse(afterAll.stdout)).toMatchObject({ id: send.approval, state: "approved" });
+  expect(duva.sent()).toHaveLength(1);
+  expect(JSON.parse((await machine.duva("approvals", "log")).stdout)).toMatchObject({ entries: [{ approval: send.approval, outcome: "sent", reversal: "correction" }] });
 });
 
 test("drafts create takes a new message's recipients as --to, once for each", async () => {

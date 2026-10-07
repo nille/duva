@@ -27,6 +27,10 @@ const values: { [Name in keyof OrganizationSettings]: { takes: (value: unknown) 
   },
   agentSendsPerHourCap: { takes: isLimit, refusal: "Give agentSendsPerHourCap as a whole number from 1 to 10000." },
   agentNewRecipientsPerDayCap: { takes: isLimit, refusal: "Give agentNewRecipientsPerDayCap as a whole number from 1 to 10000." },
+  undoWindowSeconds: {
+    takes: (value): value is number => Number.isInteger(value) && (value as number) >= 0 && (value as number) <= 120,
+    refusal: "Give undoWindowSeconds as a whole number of seconds from 0 to 120.",
+  },
 };
 
 export const getOrganizationSettings: OperationHandler = async (_event, deployment) => {
@@ -72,7 +76,7 @@ export const changeOrganizationSettings = setupOperation("changeOrganizationSett
 async function settingsPreview(deployment: Deployment, changes: Partial<OrganizationSettings>): Promise<string[]> {
   const { settings } = await organizationSettings(deployment.table);
   const preview: string[] = [];
-  const { retentionDays, erasureErasesApprovals, searchLanguages } = changes;
+  const { retentionDays, erasureErasesApprovals, searchLanguages, undoWindowSeconds } = changes;
   if (retentionDays !== undefined && retentionDays !== settings.retentionDays) {
     const threads = retentionDays < settings.retentionDays ? await threadsPastRetention(deployment.table, retentionDays, new Date()) : 0;
     preview.push(`Keeps threads in Trash and Spam ${retentionDays} days, instead of ${settings.retentionDays}.`);
@@ -83,6 +87,13 @@ async function settingsPreview(deployment: Deployment, changes: Partial<Organiza
   }
   if (searchLanguages !== undefined && searchLanguages.join() !== settings.searchLanguages.join()) {
     preview.push(`Searches mail in ${listed(searchLanguages)}, instead of ${listed(settings.searchLanguages)}, which rebuilds every mailbox's search index.`);
+  }
+  if (undoWindowSeconds !== undefined && undoWindowSeconds !== settings.undoWindowSeconds) {
+    preview.push(
+      undoWindowSeconds === 0
+        ? `Sends each approved send at once, so it can't be undone, instead of after ${settings.undoWindowSeconds} seconds.`
+        : `Holds each approved send ${undoWindowSeconds} seconds, so its approver can undo it, instead of ${settings.undoWindowSeconds === 0 ? "sending it at once" : `${settings.undoWindowSeconds} seconds`}.`,
+    );
   }
   for (const [limit, cap] of Object.entries(limitCaps) as [keyof typeof limitCaps, (typeof limitCaps)[keyof typeof limitCaps]][]) {
     const value = changes[cap];

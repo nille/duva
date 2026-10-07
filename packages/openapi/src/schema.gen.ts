@@ -1216,6 +1216,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/approvals/log": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the decisions on your agents' sends, newest first, each with what became of it.
+         * @description The approval log: every decision on a send one of your agents asked you for, newest first, with who decided it and when, and how it went: approved and on its way, sent, failed, unclear, or rejected with its note. Each entry links to its thread, and says how the decision can be taken back, if it can. It reaches as far back as approval records are kept (ADR-0014). An undone approval waits again, so it leaves the log until it is decided again. To read the next page, call again with the answer's next as after, until an answer has no next.
+         */
+        get: operations["listApprovalLog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/approvals/{approval}/send": {
         parameters: {
             query?: never;
@@ -1227,7 +1247,7 @@ export interface paths {
         put?: never;
         /**
          * Send a draft waiting for your approval, as is or with your changes.
-         * @description Give recipients, a subject or text to send your version instead of the agent's. Duva then sends it through SES from the draft's address, as a reply in the thread if it is one. Every message an agent sends carries the Duva-Agent header, naming the agent and the human it acts for, also when you changed it, and a line that says so after the text unless you switched that off for the agent. The draft's send shows sending, then sent or failed with the reason. Only the approver can decide an approval, never an agent, and only once: of two decisions at the same time, one is refused. The decision, with any edits, is recorded in the mailbox's change feed under you, and the send under the agent. While the agent is paused, its approvals wait and can't be sent, which is 409.
+         * @description Give recipients, a subject or text to send your version instead of the agent's. Duva then sends it through SES from the draft's address, as a reply in the thread if it is one. Every message an agent sends carries the Duva-Agent header, naming the agent and the human it acts for, also when you changed it, and a line that says so after the text unless you switched that off for the agent. The draft's send shows sending, then sent or failed with the reason. Only the approver can decide an approval, never an agent, and only once: of two decisions at the same time, one is refused. A rejected approval can still be sent after all, while its draft is as the agent asked it: once the agent changed it, deleted it or asked again, that is 409. The decision, with any edits, is recorded in the mailbox's change feed under you, and the send under the agent. While the agent is paused, its approvals wait and can't be sent, which is 409. The draft then waits the organization's undo window, undoWindowSeconds, before the sender takes it, and you can undo the approval until then. Held after that while the agent is paused, or by its send limits, it stays approved.
          */
         post: operations["sendApproval"];
         delete?: never;
@@ -1250,6 +1270,26 @@ export interface paths {
          * @description The draft goes back to the agent with the note, and the agent can revise it and ask again. Only the approver can decide an approval, never an agent, and only once: of two decisions at the same time, one is refused. The decision is recorded in the mailbox's change feed.
          */
         post: operations["rejectApproval"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/approvals/{approval}/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Undo an approved send during the undo window, so it waits for your approval again.
+         * @description An approved send waits the organization's undo window, undoWindowSeconds, before the sender takes it, as the draft's undoUntil says. Until then its approver can undo the approval: the draft waits for approval again as the agent asked it, without your edits, and nothing is sent. Once the window is over, or the sender took it, that is 409, and mail that went out can't be called back. Only the approver can undo. Undoing is recorded in the mailbox's change feed under you.
+         */
+        post: operations["undoApproval"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1786,7 +1826,7 @@ export interface components {
             position: number;
         };
         /** @description A change in a mailbox. */
-        MailboxChange: components["schemas"]["MessageReceived"] | components["schemas"]["DraftWritten"] | components["schemas"]["DraftChanged"] | components["schemas"]["DraftDeleted"] | components["schemas"]["SendAsked"] | components["schemas"]["ApprovalAsked"] | components["schemas"]["ApprovalWithdrawn"] | components["schemas"]["ApprovalDecided"] | components["schemas"]["MessageSent"] | components["schemas"]["SendWaitingForLimit"] | components["schemas"]["SentNow"] | components["schemas"]["SendFailed"] | components["schemas"]["SendUnclear"] | components["schemas"]["FeedbackReceived"] | components["schemas"]["ThreadRead"] | components["schemas"]["ThreadUnread"] | components["schemas"]["ThreadLabelsChanged"] | components["schemas"]["ReminderSet"] | components["schemas"]["ReminderCancelled"] | components["schemas"]["ThreadBack"] | components["schemas"]["LabelCreated"] | components["schemas"]["LabelRenamed"] | components["schemas"]["LabelDeleted"] | components["schemas"]["ThreadErased"] | components["schemas"]["AgentSettingsChanged"] | components["schemas"]["AgentPaused"] | components["schemas"]["AgentUnpaused"] | components["schemas"]["SenderScreened"] | components["schemas"]["ScreenerSwitched"] | components["schemas"]["ScreenedSenderRemoved"] | components["schemas"]["UnsubscribeAttempted"];
+        MailboxChange: components["schemas"]["MessageReceived"] | components["schemas"]["DraftWritten"] | components["schemas"]["DraftChanged"] | components["schemas"]["DraftDeleted"] | components["schemas"]["SendAsked"] | components["schemas"]["ApprovalAsked"] | components["schemas"]["ApprovalWithdrawn"] | components["schemas"]["ApprovalDecided"] | components["schemas"]["ApprovalUndone"] | components["schemas"]["MessageSent"] | components["schemas"]["SendWaitingForLimit"] | components["schemas"]["SentNow"] | components["schemas"]["SendFailed"] | components["schemas"]["SendUnclear"] | components["schemas"]["FeedbackReceived"] | components["schemas"]["ThreadRead"] | components["schemas"]["ThreadUnread"] | components["schemas"]["ThreadLabelsChanged"] | components["schemas"]["ReminderSet"] | components["schemas"]["ReminderCancelled"] | components["schemas"]["ThreadBack"] | components["schemas"]["LabelCreated"] | components["schemas"]["LabelRenamed"] | components["schemas"]["LabelDeleted"] | components["schemas"]["ThreadErased"] | components["schemas"]["AgentSettingsChanged"] | components["schemas"]["AgentPaused"] | components["schemas"]["AgentUnpaused"] | components["schemas"]["SenderScreened"] | components["schemas"]["ScreenerSwitched"] | components["schemas"]["ScreenedSenderRemoved"] | components["schemas"]["UnsubscribeAttempted"];
         /** @description Mail arrived. No actor made this change, so it names none. */
         MessageReceived: {
             /** @description The change's position in the mailbox's feed, counting from 1. */
@@ -1910,6 +1950,20 @@ export interface components {
              * @enum {string}
              */
             type: "approvalDecided";
+        };
+        ApprovalUndone: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "approvalUndone";
+            /** @description The draft's ID. */
+            draft: string;
+            /** @description The approval's ID. */
+            approval: string;
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "approvalUndone";
         };
         MessageSent: components["schemas"]["ChangeBase"] & {
             /** @constant */
@@ -2499,6 +2553,11 @@ export interface components {
              * @enum {string}
              */
             state: "waiting" | "withdrawn" | "rejected" | "approved" | "waitingForLimit" | "sending" | "sent" | "failed" | "unclear";
+            /**
+             * Format: date-time
+             * @description Until when its approver can undo the approval, for an approved send, which the sender takes only after then: the decision's time and the organization's undo window. A send approved with a window of 0 has none.
+             */
+            undoUntil?: string;
             /** @description The approver's note, if they rejected it. */
             note?: string;
             /**
@@ -2540,6 +2599,11 @@ export interface components {
             askedAt: string;
             /** Format: date-time */
             decidedAt?: string;
+            /**
+             * Format: date-time
+             * @description Until when its approver can undo it, once approved, as its draft's send says.
+             */
+            undoUntil?: string;
             edits?: components["schemas"]["Edits"];
             /** @description The approver's note, if they rejected it. */
             note?: string;
@@ -2647,6 +2711,57 @@ export interface components {
             /** @description The sponsor's note, if they rejected it. */
             note?: string;
             result?: components["schemas"]["SetupResult"];
+        };
+        ApprovalLog: {
+            entries: components["schemas"]["ApprovalLogEntry"][];
+            /** @description Where the next page starts, if there is one. Give it as after. */
+            next?: string;
+        };
+        /** @description A decision on a send one of your agents asked for, and what became of it. */
+        ApprovalLogEntry: {
+            /** @description The approval's ID. */
+            approval: string;
+            /** @description The ID of the agent that asked. */
+            agent: string;
+            /** @description The agent's name when it was decided, kept after it is removed. */
+            agentName: string;
+            /** @description The ID of the human who decided. */
+            decidedBy: string;
+            /** Format: date-time */
+            decidedAt: string;
+            /**
+             * @description How it went: approved, on its way, in the undo window, held while the agent is paused, waiting for its send limits or being sent; sent; failed, with the reason; unclear, when sending stopped before SES answered; or rejected, with the note.
+             * @enum {string}
+             */
+            outcome: "approved" | "sent" | "failed" | "unclear" | "rejected";
+            /**
+             * Format: date-time
+             * @description Until when the approval can be undone, while it can.
+             */
+            undoUntil?: string;
+            /**
+             * @description How the decision can be taken back, if it can: undo, during the undo window; sendAfterAll, a rejected send whose draft is as the agent asked it, which sending the approval does; correction, a send that went out, which can't be called back, so a correction is written to its recipients.
+             * @enum {string}
+             */
+            reversal?: "undo" | "sendAfterAll" | "correction";
+            /** @description The ID of the mailbox the draft is in. */
+            mailbox: string;
+            /** @description The draft's ID. */
+            draft: string;
+            /** @description The ID of the thread it went out in, or the one it replies in. */
+            thread?: string;
+            /** @description The ID of the message it went out as, once sent. */
+            message?: string;
+            /** @description Its subject, as sent if it was edited. */
+            subject: string;
+            /** @description Its recipients in To, as sent if the approver changed them. */
+            to: components["schemas"]["EmailAddress"][];
+            /** @description Its recipients in Cc. Those in Bcc are left out, as every header leaves them out. */
+            cc: components["schemas"]["EmailAddress"][];
+            /** @description The note, with a rejection. */
+            note?: string;
+            /** @description Why it failed. */
+            reason?: string;
         };
         /** @description The call the agent made, which approving makes again as the agent. */
         SetupOperation: {
@@ -3374,6 +3489,7 @@ export interface components {
             searchLanguages: components["schemas"]["SearchLanguages"];
             agentSendsPerHourCap: components["schemas"]["AgentSendsPerHourCap"];
             agentNewRecipientsPerDayCap: components["schemas"]["AgentNewRecipientsPerDayCap"];
+            undoWindowSeconds: components["schemas"]["UndoWindowSeconds"];
         };
         /** @description The settings changed, each with its new value. */
         SettingsChanges: {
@@ -3382,6 +3498,7 @@ export interface components {
             searchLanguages?: components["schemas"]["SearchLanguages"];
             agentSendsPerHourCap?: components["schemas"]["AgentSendsPerHourCap"];
             agentNewRecipientsPerDayCap?: components["schemas"]["AgentNewRecipientsPerDayCap"];
+            undoWindowSeconds?: components["schemas"]["UndoWindowSeconds"];
         };
         /** @description How many days Trash and Spam keep a thread, counted from when it got the label, before the eraser erases it for good. 30 by default, and a whole number from 7 to 365. It applies to all Trash and Spam, threads already there included. */
         RetentionDays: number;
@@ -3389,6 +3506,8 @@ export interface components {
         AgentSendsPerHourCap: number;
         /** @description The most newRecipientsPerDay a sponsor can give an agent. 50 by default. Lowering it lowers each agent above it to it, recorded as a change to the agent's settings under you. Raising it raises no agent. */
         AgentNewRecipientsPerDayCap: number;
+        /** @description How many seconds an approved send waits before the sender takes it, so its approver can undo the approval meanwhile. 30 by default, and a whole number from 0 to 120, where 0 sends at once. A change applies to approvals from then on. A human's own sends never wait. */
+        UndoWindowSeconds: number;
         RetentionPreview: {
             retentionDays: components["schemas"]["RetentionDays"];
             /** @description How many threads in Trash and Spam are older than retentionDays now. */
@@ -5808,6 +5927,33 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
         };
     };
+    listApprovalLog: {
+        parameters: {
+            query?: {
+                /** @description How many entries a page lists at most. */
+                limit?: number;
+                /** @description Where the page starts, the next of the page before it. Leave it out for the first page. */
+                after?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of the log, newest first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalLog"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
     sendApproval: {
         parameters: {
             query?: never;
@@ -5866,6 +6012,33 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    undoApproval: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The approval's ID. */
+                approval: components["parameters"]["Approval"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The approval, waiting for you again. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Approval"];
+                };
+            };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
