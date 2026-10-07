@@ -1,0 +1,182 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Duva · Field Desk</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  /* aluminium greys, one plane in three tones */
+  --side:#e6e6e2; --list:#efefec; --read:#f8f8f6; --raise:#ffffff;
+  --ink:#161616; --ink-2:#56564f; --ink-3:#97978f; --seam:#dededa; --field:#e2e2dd;
+  /* colour is a function code, never decoration */
+  --call:#ff5a1f; --call-deep:#e5470d; --call-wash:#fff0e9;   /* needs you */
+  --agent:#2e62ff; --agent-wash:#ecf1ff;                     /* an agent did or wants this */
+  --sent:#12a150; --alert:#e5243b;
+  --mono:"JetBrains Mono",ui-monospace,monospace; --grot:"Familjen Grotesk",system-ui,sans-serif;
+  --ease:cubic-bezier(.2,.8,.2,1);
+}
+*{box-sizing:border-box;margin:0}html,body{height:100%}
+body{font:400 13.5px/1.6 var(--mono);color:var(--ink);background:var(--list);overflow:hidden;-webkit-font-smoothing:antialiased;font-variant-ligatures:contextual common-ligatures}
+button{font:inherit;color:inherit}
+.app{height:100%;display:grid;grid-template-columns:15rem minmax(24rem,31rem) 1fr;grid-template-rows:1fr auto}
+/* side: the device's left edge */
+.side{background:var(--side);padding:1.35rem 1rem 1rem;display:flex;flex-direction:column;gap:1.4rem;overflow:auto}
+.brand{display:flex;align-items:center;justify-content:space-between;padding:0 .5rem}
+.brand b{font:700 22px/1 var(--grot);letter-spacing:-.03em}
+.write{display:flex;align-items:center;gap:.5rem;border:0;border-radius:99px;background:var(--ink);color:#fff;padding:.42rem .55rem .42rem .8rem;font:600 12px/1 var(--mono);cursor:pointer}
+.write kbd{background:rgb(255 255 255 / .16);color:#fff;border:0}
+nav h2{font:500 11px/1 var(--mono);color:var(--ink-3);padding:0 .5rem .55rem;display:flex;justify-content:space-between}
+nav a{display:flex;align-items:center;gap:.6rem;padding:.36rem .5rem;border-radius:6px;color:var(--ink);text-decoration:none;cursor:pointer}
+nav a:hover{background:rgb(22 22 22 / .04)}
+nav a.on{background:var(--raise);box-shadow:0 1px 0 rgb(0 0 0 / .04)}
+nav a b{margin-left:auto;font-weight:700;color:var(--call)}nav a b.quiet{color:var(--ink-3);font-weight:400}nav a b.agent{color:var(--agent)}
+nav small{display:block;color:var(--ink-3);font-size:11px;line-height:1.3}
+.approvals-link{background:var(--call-wash)}
+.approvals-link b{background:var(--call);color:#fff!important;border-radius:99px;min-width:1.35rem;text-align:center;padding:.05rem .35rem;font-size:11px}
+kbd{font:600 10.5px/1 var(--mono);color:var(--ink-2);background:var(--raise);border:1px solid var(--seam);border-bottom-width:2px;border-radius:4px;padding:.18rem .32rem;min-width:1.15rem;text-align:center;display:inline-block}
+/* list column */
+.list{display:flex;flex-direction:column;min-height:0;background:var(--list)}
+.lhead{display:flex;align-items:baseline;gap:.75rem;padding:1.35rem 1.4rem .75rem}
+.lhead h1{font:700 26px/1 var(--grot);letter-spacing:-.03em}
+.lhead span{color:var(--ink-3);font-size:11.5px}
+.search{margin:0 1.4rem .4rem;padding:.5rem .65rem;border-radius:7px;background:var(--field);color:var(--ink-3);font-size:12.5px;display:flex;align-items:center;gap:.6rem}
+.chips{display:flex;gap:.35rem;padding:.45rem 1.4rem .7rem}
+.chip{font:500 11px/1 var(--mono);color:var(--ink-2);border:1px solid var(--seam);border-radius:99px;padding:.32rem .55rem;background:transparent;cursor:pointer}
+.chip.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.rows{list-style:none;padding:0;overflow:auto;flex:1}
+.screened{display:flex;align-items:center;gap:.6rem;margin:0 1.4rem .6rem;padding:.6rem .75rem;border-radius:8px;background:var(--raise);font-size:12px;color:var(--ink-2)}
+.screened b{color:var(--ink)}.screened a{margin-left:auto;color:var(--ink);text-decoration:underline;text-underline-offset:3px;text-decoration-color:var(--seam)}
+.row{display:grid;grid-template-columns:1fr auto auto;column-gap:.6rem;padding:.72rem 1.4rem .78rem;cursor:pointer;position:relative;transition:background .15s}
+.row+.row{box-shadow:inset 0 1px 0 var(--seam)}
+.row:hover{background:rgb(22 22 22 / .025)}
+.row.on{background:var(--read);box-shadow:inset 3px 0 0 var(--call)}
+.row.on+.row{box-shadow:none}
+.who{display:flex;align-items:center;gap:.5rem;font-weight:500;color:var(--ink-2);min-width:0;white-space:nowrap}
+.row.unread .who{font-weight:700;color:var(--ink)}
+.row.unread::after{content:"";position:absolute;left:.65rem;top:1.12rem;width:5px;height:5px;border-radius:50%;background:var(--call)}
+.time{font-size:11.5px;color:var(--ink-3)}.row.unread .time{color:var(--ink);font-weight:600}
+.tag{font-size:10.5px;color:var(--ink-3);align-self:center}
+.line{grid-column:1/4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink-3);font-size:12.5px;margin-top:.12rem}
+.line b{font-weight:500;color:var(--ink-2)}.row.unread .line b{color:var(--ink);font-weight:600}
+.flag{font-style:normal;font-weight:700;margin-right:.45rem}
+.flag.wait{color:var(--call)}.flag.agent{color:var(--agent)}.flag.held{color:var(--ink-2)}
+/* actor marks: shape is meaning, readable without colour */
+.mark{width:.55rem;height:.55rem;flex:none;display:inline-block}
+.mark-human{border-radius:50%;background:var(--ink-2)}
+.mark-agent{border-radius:2px;border:1.6px solid var(--agent);transform:rotate(45deg) scale(.82)}
+.mark-duva{border-radius:50%;border:1.6px solid var(--ink-3);box-shadow:inset 0 0 0 1.5px var(--side)}
+/* reading pane: the same plane, one step lighter */
+.read{background:var(--read);overflow:auto;padding:1.25rem 3rem 3rem;min-height:0}
+.tools{display:flex;align-items:center;gap:1.1rem;margin-bottom:2.1rem;font-size:12px;color:var(--ink-2)}
+.tool{display:inline-flex;align-items:center;gap:.45rem;border:0;background:none;cursor:pointer;padding:.3rem 0}
+.tool:hover{color:var(--ink)}
+.tools .grow{margin-left:auto;color:var(--ink-3)}
+.subject{font:600 38px/1.06 var(--grot);letter-spacing:-.03em;margin-bottom:.5rem;max-width:26ch}
+.meta{color:var(--ink-3);font-size:12px;margin-bottom:2.2rem;display:flex;gap:.6rem;align-items:center}
+.fold{display:flex;gap:.7rem;align-items:center;padding:.85rem 0;box-shadow:inset 0 1px 0 var(--seam);color:var(--ink-3);max-width:72ch;cursor:pointer}
+.fold b{color:var(--ink);font-weight:500}.fold em{font-style:normal;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.letter{box-shadow:inset 0 1px 0 var(--seam);padding-top:1.3rem;max-width:72ch}
+.from{display:flex;align-items:baseline;gap:.6rem;margin-bottom:1.35rem}
+.from b{font-weight:700}.from span{color:var(--ink-3);font-size:12px}.from time{margin-left:auto;color:var(--ink-3);font-size:12px}
+.body{font-size:14px;line-height:1.78;max-width:68ch}.body p+p{margin-top:1em}
+.compose{margin-top:2rem;max-width:72ch;border-radius:10px;background:var(--raise);box-shadow:0 1px 0 rgb(0 0 0 / .03), 0 12px 32px -18px rgb(0 0 0 / .18);display:none}
+.compose.open{display:block}
+.compose .hd{display:flex;gap:.8rem;align-items:center;padding:.8rem 1.1rem;box-shadow:inset 0 -1px 0 var(--seam);font-size:12px;color:var(--ink-3)}
+.compose .hd b{color:var(--ink)}
+.compose textarea{display:block;width:100%;min-height:9rem;border:0;resize:vertical;padding:1rem 1.1rem;font:400 14px/1.75 var(--mono);color:var(--ink);background:transparent;outline:none}
+.compose .ft{display:flex;gap:.5rem;align-items:center;padding:.7rem 1.1rem .9rem}
+.compose .ft span{margin-left:auto;color:var(--ink-3);font-size:11.5px}
+.btn{display:inline-flex;align-items:center;gap:.5rem;font:600 12px/1 var(--mono);border:0;border-radius:99px;padding:.6rem .95rem;background:var(--field);color:var(--ink);cursor:pointer;transition:transform .12s var(--ease),background .15s}
+.btn:active{transform:translateY(1px)}
+.btn.primary{background:var(--ink);color:#fff}.btn.primary kbd{background:rgb(255 255 255 / .16);border:0;color:#fff}
+.btn.call{background:var(--call);color:#fff}.btn.call:hover{background:var(--call-deep)}.btn.call kbd{background:rgb(255 255 255 / .22);border:0;color:#fff}
+.btn.quiet{background:transparent;color:var(--ink-2)}
+.replyrow{display:flex;gap:.4rem;margin-top:2.1rem}
+/* approvals */
+.queue .row .who{color:var(--ink)}
+.kind{font:700 10.5px/1 var(--mono);padding:.22rem .42rem;border-radius:4px}
+.kind.send{background:var(--call);color:#fff}.kind.setup{background:var(--agent);color:#fff}.kind.held{background:var(--field);color:var(--ink-2)}
+.galley .ask{display:flex;align-items:center;gap:.6rem;font-size:12px;color:var(--ink-2);margin-bottom:1rem}
+.galley .ask b{color:var(--agent)}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:2.4rem;margin-top:1.6rem}
+.col h3{font:500 11px/1 var(--mono);color:var(--ink-3);margin-bottom:.9rem;display:flex;gap:.5rem;align-items:center}
+.col .body{font-size:13.5px}
+.src .body{color:var(--ink-2)}
+.col{padding:1.2rem 1.3rem 1.1rem;border-radius:10px}.src{padding-left:0}
+.draft{background:var(--raise)}
+.cols{gap:1.2rem}
+.draft h3{color:var(--agent)}
+.disclose{margin-top:1.2rem;padding-top:.65rem;border-top:1px dashed var(--seam);color:var(--ink-3);font-size:12px}
+.decide{display:flex;gap:.45rem;align-items:center;margin-top:2rem;padding-top:1.2rem;box-shadow:inset 0 1px 0 var(--seam)}
+.decide span{margin-left:auto;color:var(--ink-3);font-size:11.5px;max-width:28ch;text-align:right}
+/* status strip: the device's display */
+.strip{grid-column:1/-1;display:flex;align-items:center;gap:1.6rem;padding:.42rem 1.4rem;background:var(--side);font:500 11px/1 var(--mono);color:var(--ink-3);box-shadow:inset 0 1px 0 var(--seam)}
+.strip i{font-style:normal;display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:.45rem;vertical-align:.05em}
+.strip .ok{background:var(--sent)}.strip .ag{background:var(--agent)}
+.strip .keys{margin-left:auto;display:flex;gap:.9rem;align-items:center}
+.view{display:contents}.view[hidden]{display:none}
+@media (max-width:52rem){
+  body{overflow:auto;background:var(--read)}.app{display:block}.side,.strip,.list .chips{display:none}
+  .list{background:var(--read)}.read{display:none}
+  .tabbar{display:flex!important}.phonebar{display:flex!important}
+  .screened{flex-wrap:wrap}.screened a{margin-left:1.1rem;flex-basis:100%}.lhead{padding-top:.6rem}.rows{padding-bottom:4rem}
+}
+.phonebar{display:none;align-items:center;justify-content:space-between;padding:.9rem 1.4rem .2rem;background:var(--read)}.phonebar b{font:700 20px/1 var(--grot);letter-spacing:-.03em}
+.tabbar{display:none;position:fixed;left:0;right:0;bottom:0;height:3.6rem;background:var(--side);box-shadow:inset 0 1px 0 var(--seam);justify-content:space-around;align-items:center;font:600 10.5px/1 var(--mono);color:var(--ink-2)}
+.tabbar span{display:flex;align-items:center;gap:.4rem}.tabbar .on{color:var(--ink)}.tabbar em{font-style:normal;background:var(--call);color:#fff;border-radius:99px;padding:.1rem .35rem}
+</style></head><body><div class="phonebar"><b>Duva</b><button class="write">Write</button></div><div class="app">
+<aside class="side">
+  <div class="brand"><b>Duva</b><button class="write">Write <kbd>c</kbd></button></div>
+  <nav><a class="approvals-link" data-go="approvals">Approvals <b>3</b></a><a data-go="alerts">Alerts <b class="quiet">1</b></a></nav>
+  <nav><h2>Your mailbox</h2><a data-go="inbox" class="on">Inbox<b class="">3</b></a><a >Screener<b class="quiet">1</b></a><a >Sent</a><a >Drafts</a><a >All mail</a><a >Spam</a><a >Trash</a></nav>
+  <nav><h2>Your labels</h2><a>Family<b>1</b></a><a>Receipts</a></nav>
+  <nav><h2>Agents</h2><a><span class="mark mark-agent" aria-hidden="true"></span><span>Hermes<small>hermes@duva.nille.xyz</small></span><b class="agent">2</b></a></nav>
+</aside>
+<div class="view" id="inbox">
+<section class="list"><header class="lhead"><h1>Inbox</h1><span>3 unread</span></header>
+  <div class="search"><kbd>/</kbd>Search your mail</div>
+  <div class="chips"><button class="chip on">All</button><button class="chip">Unread</button><button class="chip">From agents</button><button class="chip">Family</button></div>
+  <div class="screened"><span class="mark mark-human" aria-hidden="true"></span><span><b>2 new senders</b> wait in the Screener</span><a>Screen them</a></div>
+  <ol class="rows"><li class="row unread on"><span class="who"><span class="mark mark-human" aria-hidden="true"></span>Astrid Lindqvist</span><span class="tag">Family</span><span class="time">09:41</span>
+    <span class="line"><b>Middag på lördag?</b> Hej! Vi tänkte grilla om vädret håller. Kan ni komma vid sex? Ta gärna med barnen.</span></li><li class="row unread "><span class="who"><span class="mark mark-agent" aria-hidden="true"></span>Hermes</span><span></span><span class="time">09:12</span>
+    <span class="line"><em class="flag wait">Waiting for you</em><b>Re: Offert för takbyte</b> I asked Byggfirman Ek for a firm price and a start date in May.</span></li><li class="row unread "><span class="who"><span class="mark mark-human" aria-hidden="true"></span>SJ</span><span></span><span class="time">08:30</span>
+    <span class="line"><b>Din bokning: Stockholm C till Göteborg C</b> Fre 11 okt, 07:10 -> 10:05, vagn 4, plats 22. Biljetten finns i appen.</span></li><li class="row  "><span class="who"><span class="mark mark-human" aria-hidden="true"></span>Grace Hopper</span><span></span><span class="time">Yesterday</span>
+    <span class="line"><b>Notes from Thursday</b> Attached the notes. Two open questions: is retention >= 30 days enough, and who can see Trash?</span></li><li class="row  "><span class="who"><span class="mark mark-human" aria-hidden="true"></span>Kivra</span><span class="tag">Receipts</span><span class="time">Yesterday</span>
+    <span class="line"><b>Ny faktura från Ellevio</b> Du har fått en faktura på 1 284 kr med förfallodag 31 oktober.</span></li><li class="row  "><span class="who"><span class="mark mark-human" aria-hidden="true"></span>Lars Ek</span><span></span><span class="time">Mon</span>
+    <span class="line"><b>Båtplatsen i sommar</b> Hamnföreningen har öppnat anmälan. Ska vi dela plats igen?</span></li><li class="row  "><span class="who"><span class="mark mark-duva" aria-hidden="true"></span>Duva</span><span></span><span class="time">Sun</span>
+    <span class="line"><b>Hermes sent 4 messages this week</b> All four were approved by you. One reply is waiting since this morning.</span></li></ol></section>
+<main class="read"><div class="tools"><button class="tool"><kbd>e</kbd>Archive</button><button class="tool"><kbd>#</kbd>Trash</button><button class="tool"><kbd>l</kbd>Labels</button><button class="tool"><kbd>u</kbd>Mark unread</button><span class="grow"><kbd>j</kbd> <kbd>k</kbd> next, previous</span></div>
+  <h1 class="subject">Middag på lördag?</h1><p class="meta">2 messages <span>·</span> Family <span>·</span> Astrid and you</p>
+  <div class="fold"><span class="mark mark-human" aria-hidden="true"></span><b>Nicklas</b><em>Låter toppen! Vi kollar med barnen och återkommer.</em><time>Thu 18:02</time></div><div class="letter"><div class="from"><span class="mark mark-human" aria-hidden="true"></span><b>Astrid Lindqvist</b><span>astrid@lindqvist.se</span><time>09:41</time></div><div class="body"><p>Hej!</p><p>Vi tänkte grilla om vädret håller. Kan ni komma vid sex? Ta gärna med barnen, Elsa har frågat efter Moa hela veckan.</p><p>Om det regnar flyttar vi in och kör tacos istället.</p><p>Kram,<br>Astrid</p></div></div>
+  <div class="replyrow" id="replyrow"><button class="btn primary" id="reply">Reply <kbd>r</kbd></button><button class="btn">Reply all <kbd>a</kbd></button><button class="btn">Forward <kbd>f</kbd></button></div>
+  <div class="compose" id="compose"><div class="hd"><span>To</span><b>Astrid Lindqvist</b><span>astrid@lindqvist.se</span></div>
+    <textarea>Hej Astrid!
+
+Vi kommer gärna vid sex -> barnen är redan taggade. Vi tar med efterrätt.
+
+Kram,
+Nicklas</textarea>
+    <div class="ft"><button class="btn primary">Send <kbd>⌘↵</kbd></button><button class="btn quiet" id="discard">Delete draft</button><span>Saved at 09:46</span></div></div>
+</main></div>
+<div class="view" id="approvals" hidden>
+<section class="list queue"><header class="lhead"><h1>Approvals</h1><span>3 for you</span></header>
+  <div class="chips"><button class="chip on">All</button><button class="chip">Sends</button><button class="chip">Setup changes</button><button class="chip">Held</button></div>
+  <ol class="rows"><li class="row on unread"><span class="who"><span class="mark mark-agent" aria-hidden="true"></span>Hermes</span><span class="kind send">Send</span><span class="time">09:12</span>
+    <span class="line"><b>Re: Offert för takbyte</b> to info@byggfirmanek.se</span></li><li class="row "><span class="who"><span class="mark mark-agent" aria-hidden="true"></span>Hermes</span><span class="kind setup">Setup</span><span class="time">08:55</span>
+    <span class="line"><b>Add the address offert@duva.nille.xyz to its mailbox</b> </span></li><li class="row "><span class="who"><span class="mark mark-agent" aria-hidden="true"></span>Hermes</span><span class="kind held">Held</span><span class="time">Yesterday</span>
+    <span class="line"><b>Re: Båtplatsen i sommar</b> to lars@ek.se · Waiting for the send limit, 1 an hour</span></li></ol></section>
+<main class="read galley"><div class="ask"><span class="mark mark-agent" aria-hidden="true"></span><b>Hermes</b> asks to send, to info@byggfirmanek.se, 09:12</div>
+  <h1 class="subject">Re: Offert för takbyte</h1>
+  <div class="cols"><div class="col src"><h3><span class="mark mark-human" aria-hidden="true"></span>The message it answers</h3><div class="body"><p>Hej Nicklas,</p><p>Tack för förfrågan. Vi kan lämna offert efter ett platsbesök. Passar det i nästa vecka?</p><p>Mvh Lars, Byggfirman Ek</p></div></div>
+  <div class="col draft"><h3><span class="mark mark-agent" aria-hidden="true"></span>Hermes's draft</h3><div class="body"><p>Hej Lars,</p><p>Tack! Ett platsbesök passar bra tisdag eller onsdag efter klockan 15. Kan ni också ange ett ungefärligt startdatum i maj?</p><p>Vänliga hälsningar,<br>Nicklas</p></div><p class="disclose">Sent by Hermes for Nicklas</p></div></div>
+  <div class="decide"><button class="btn call">Send <kbd>s</kbd></button><button class="btn">Edit first</button><button class="btn quiet">Reject with a note</button><span>Approving sends it as Hermes, with its disclosure.</span></div>
+</main></div>
+<footer class="strip"><span><i class="ok"></i>Up to date at 09:44</span><span><i class="ag"></i>Hermes is running, 2 sends left this hour</span><span class="keys"><span><kbd>?</kbd> shortcuts</span><span>nicklas@duva.nille.xyz</span></span></footer>
+</div>
+<div class="tabbar"><span class="on">Mail</span><span>Approvals <em>3</em></span><span>Alerts</span><span>Settings</span></div>
+<script>
+const go=(v)=>{document.getElementById("inbox").hidden=v!=="inbox";document.getElementById("approvals").hidden=v!=="approvals";
+  document.querySelectorAll("[data-go]").forEach(a=>a.classList.toggle("on",a.dataset.go===v))};
+document.querySelectorAll("[data-go]").forEach(a=>a.onclick=()=>go(a.dataset.go));
+const c=document.getElementById("compose"),rr=document.getElementById("replyrow");
+document.getElementById("reply").onclick=()=>{c.classList.add("open");rr.style.display="none";c.querySelector("textarea").focus()};
+document.getElementById("discard").onclick=()=>{c.classList.remove("open");rr.style.display=""};
+</script></body></html>
