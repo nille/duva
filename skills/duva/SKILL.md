@@ -708,6 +708,25 @@ Gives the label a name no other label in the mailbox has, in any case. Its threa
 - `--label` (required): The label's ID.
 - `--name` (required): The label's name.
 
+## duva labels set-prompt
+
+Give a label a prompt, which hands each message that gets the label to the mailbox agent as a task.
+
+Sets the label's prompt, or replaces it. From then on, whenever the label is added to a message, by hand, by an agent or by a sender's delivery, Duva gives the mailbox's mailbox agent a task: the prompt, with that message and its thread, once per message per label. The message stays where it goes. A thread given the label by hand or by an agent hands over its newest message. The agent works within the sponsor access the mailbox's owner gives it. The Feed, the Paper Trail and the mailbox's own labels can carry a prompt. Only the mailbox's owner can set its labels' prompts, and only in a mailbox that has a mailbox agent. The change is recorded in the mailbox's change feed, naming you.
+
+- `--mailbox` (required): The mailbox's ID.
+- `--label` (required): The label's ID.
+- `--prompt` (required): What the mailbox agent is to do with each message that gets the label.
+
+## duva labels remove-prompt
+
+Remove a label's prompt, so the mailbox agent gets no more tasks from it.
+
+Removes the label's prompt. Tasks it gave already go on. Only the mailbox's owner can remove its labels' prompts. The change is recorded in the mailbox's change feed, naming you.
+
+- `--mailbox` (required): The mailbox's ID.
+- `--label` (required): The label's ID.
+
 ## duva threads empty-trash
 
 Empty a mailbox's Trash, erasing every thread in it for good.

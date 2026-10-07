@@ -2162,6 +2162,71 @@ export const operations = [
     ]
   },
   {
+    "operationId": "setLabelPrompt",
+    "method": "put",
+    "path": "/mailboxes/{mailbox}/labels/{label}/prompt",
+    "routeKey": "PUT /mailboxes/{mailbox}/labels/{label}/prompt",
+    "summary": "Give a label a prompt, which hands each message that gets the label to the mailbox agent as a task.",
+    "description": "Sets the label's prompt, or replaces it. From then on, whenever the label is added to a message, by hand, by an agent or by a sender's delivery, Duva gives the mailbox's mailbox agent a task: the prompt, with that message and its thread, once per message per label. The message stays where it goes. A thread given the label by hand or by an agent hands over its newest message. The agent works within the sponsor access the mailbox's owner gives it. The Feed, the Paper Trail and the mailbox's own labels can carry a prompt. Only the mailbox's owner can set its labels' prompts, and only in a mailbox that has a mailbox agent. The change is recorded in the mailbox's change feed, naming you.",
+    "signIn": true,
+    "command": [
+      "labels",
+      "set-prompt"
+    ],
+    "options": [
+      {
+        "name": "mailbox",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The mailbox's ID."
+      },
+      {
+        "name": "label",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The label's ID."
+      },
+      {
+        "name": "prompt",
+        "in": "body",
+        "type": "string",
+        "required": true,
+        "description": "What the mailbox agent is to do with each message that gets the label."
+      }
+    ]
+  },
+  {
+    "operationId": "removeLabelPrompt",
+    "method": "delete",
+    "path": "/mailboxes/{mailbox}/labels/{label}/prompt",
+    "routeKey": "DELETE /mailboxes/{mailbox}/labels/{label}/prompt",
+    "summary": "Remove a label's prompt, so the mailbox agent gets no more tasks from it.",
+    "description": "Removes the label's prompt. Tasks it gave already go on. Only the mailbox's owner can remove its labels' prompts. The change is recorded in the mailbox's change feed, naming you.",
+    "signIn": true,
+    "command": [
+      "labels",
+      "remove-prompt"
+    ],
+    "options": [
+      {
+        "name": "mailbox",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The mailbox's ID."
+      },
+      {
+        "name": "label",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The label's ID."
+      }
+    ]
+  },
+  {
     "operationId": "emptyTrash",
     "method": "post",
     "path": "/mailboxes/{mailbox}/trash/empty",

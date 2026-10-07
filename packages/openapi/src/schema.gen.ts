@@ -1120,6 +1120,30 @@ export interface paths {
         patch: operations["renameLabel"];
         trace?: never;
     };
+    "/mailboxes/{mailbox}/labels/{label}/prompt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Give a label a prompt, which hands each message that gets the label to the mailbox agent as a task.
+         * @description Sets the label's prompt, or replaces it. From then on, whenever the label is added to a message, by hand, by an agent or by a sender's delivery, Duva gives the mailbox's mailbox agent a task: the prompt, with that message and its thread, once per message per label. The message stays where it goes. A thread given the label by hand or by an agent hands over its newest message. The agent works within the sponsor access the mailbox's owner gives it. The Feed, the Paper Trail and the mailbox's own labels can carry a prompt. Only the mailbox's owner can set its labels' prompts, and only in a mailbox that has a mailbox agent. The change is recorded in the mailbox's change feed, naming you.
+         */
+        put: operations["setLabelPrompt"];
+        post?: never;
+        /**
+         * Remove a label's prompt, so the mailbox agent gets no more tasks from it.
+         * @description Removes the label's prompt. Tasks it gave already go on. Only the mailbox's owner can remove its labels' prompts. The change is recorded in the mailbox's change feed, naming you.
+         */
+        delete: operations["removeLabelPrompt"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/mailboxes/{mailbox}/trash/empty": {
         parameters: {
             query?: never;
@@ -2204,7 +2228,7 @@ export interface components {
             position: number;
         };
         /** @description A change in a mailbox. */
-        MailboxChange: components["schemas"]["MessageReceived"] | components["schemas"]["DraftWritten"] | components["schemas"]["DraftChanged"] | components["schemas"]["DraftDeleted"] | components["schemas"]["SendAsked"] | components["schemas"]["ApprovalAsked"] | components["schemas"]["ApprovalWithdrawn"] | components["schemas"]["ApprovalDecided"] | components["schemas"]["ApprovalUndone"] | components["schemas"]["MessageSent"] | components["schemas"]["SendWaitingForLimit"] | components["schemas"]["SentNow"] | components["schemas"]["SendFailed"] | components["schemas"]["SendUnclear"] | components["schemas"]["FeedbackReceived"] | components["schemas"]["ThreadRead"] | components["schemas"]["ThreadUnread"] | components["schemas"]["ThreadLabelsChanged"] | components["schemas"]["ReminderSet"] | components["schemas"]["ReminderCancelled"] | components["schemas"]["ThreadBack"] | components["schemas"]["LabelCreated"] | components["schemas"]["LabelRenamed"] | components["schemas"]["LabelDeleted"] | components["schemas"]["ThreadErased"] | components["schemas"]["AgentSettingsChanged"] | components["schemas"]["AgentPaused"] | components["schemas"]["AgentUnpaused"] | components["schemas"]["SenderScreened"] | components["schemas"]["ScreenerSwitched"] | components["schemas"]["ScreenedSenderRemoved"] | components["schemas"]["UnsubscribeAttempted"] | components["schemas"]["SenderDeliverySet"] | components["schemas"]["SenderDeliveryRemoved"] | components["schemas"]["MessageDropped"];
+        MailboxChange: components["schemas"]["MessageReceived"] | components["schemas"]["DraftWritten"] | components["schemas"]["DraftChanged"] | components["schemas"]["DraftDeleted"] | components["schemas"]["SendAsked"] | components["schemas"]["ApprovalAsked"] | components["schemas"]["ApprovalWithdrawn"] | components["schemas"]["ApprovalDecided"] | components["schemas"]["ApprovalUndone"] | components["schemas"]["MessageSent"] | components["schemas"]["SendWaitingForLimit"] | components["schemas"]["SentNow"] | components["schemas"]["SendFailed"] | components["schemas"]["SendUnclear"] | components["schemas"]["FeedbackReceived"] | components["schemas"]["ThreadRead"] | components["schemas"]["ThreadUnread"] | components["schemas"]["ThreadLabelsChanged"] | components["schemas"]["ReminderSet"] | components["schemas"]["ReminderCancelled"] | components["schemas"]["ThreadBack"] | components["schemas"]["LabelCreated"] | components["schemas"]["LabelRenamed"] | components["schemas"]["LabelDeleted"] | components["schemas"]["ThreadErased"] | components["schemas"]["AgentSettingsChanged"] | components["schemas"]["AgentPaused"] | components["schemas"]["AgentUnpaused"] | components["schemas"]["SenderScreened"] | components["schemas"]["ScreenerSwitched"] | components["schemas"]["ScreenedSenderRemoved"] | components["schemas"]["UnsubscribeAttempted"] | components["schemas"]["SenderDeliverySet"] | components["schemas"]["SenderDeliveryRemoved"] | components["schemas"]["MessageDropped"] | components["schemas"]["LabelPromptSet"] | components["schemas"]["LabelPromptRemoved"] | components["schemas"]["TaskGiven"] | components["schemas"]["TaskStarted"] | components["schemas"]["TaskEnded"];
         /** @description Mail arrived. No actor made this change, so it names none. */
         MessageReceived: {
             /** @description The change's position in the mailbox's feed, counting from 1. */
@@ -2235,6 +2259,8 @@ export interface components {
             screened?: "waiting" | "blocked";
             /** @description Present when its sender's delivery filed it outside the Inbox, in the Feed, the Paper Trail or a label. */
             delivered?: components["schemas"]["Delivery"];
+            /** @description With delivered, the ID of the label the delivery filed it under, feed, paperTrail or one of the mailbox's own. */
+            deliveredTo?: string;
         };
         DraftWritten: components["schemas"]["ChangeBase"] & {
             /** @constant */
@@ -2598,6 +2624,89 @@ export interface components {
              * @enum {string}
              */
             type: "labelRenamed";
+        };
+        LabelPromptSet: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "labelPromptSet";
+            /** @description The label's ID. */
+            label: string;
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "labelPromptSet";
+        };
+        LabelPromptRemoved: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "labelPromptRemoved";
+            /** @description The label's ID. */
+            label: string;
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "labelPromptRemoved";
+        };
+        TaskGiven: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "taskGiven";
+            /** @description The task's ID. */
+            task: string;
+            /** @description The ID of the thread the message is in. */
+            thread: string;
+            /** @description The ID of the message. */
+            message: string;
+            /** @description The ID of the label. */
+            label: string;
+            /** @description The ID of the mailbox agent. */
+            agent: string;
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "taskGiven";
+        };
+        TaskStarted: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "taskStarted";
+            /** @description The task's ID. */
+            task: string;
+            /** @description The ID of the thread the task is about. */
+            thread: string;
+            /** @description The ID of the mailbox agent. */
+            agent: string;
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "taskStarted";
+        };
+        TaskEnded: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "taskEnded";
+            /** @description The task's ID. */
+            task: string;
+            /** @description The ID of the thread the task is about. */
+            thread: string;
+            /** @description The ID of the mailbox agent. */
+            agent: string;
+            /**
+             * @description How it ended.
+             * @enum {string}
+             */
+            outcome: "done" | "failed";
+            /** @description In the activity the agent's sponsor reads, what the agent said it did, or why it failed, while its thread is kept. The feed itself keeps no note, so an erased thread leaves none. */
+            note?: string;
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "taskEnded";
         };
         LabelDeleted: components["schemas"]["ChangeBase"] & {
             /** @constant */
@@ -3090,10 +3199,10 @@ export interface components {
             /** @description The alert's ID. */
             id: string;
             /**
-             * @description What happened: sendFailed, the agent's send failed, SES rejected it, or it's unclear whether it went out; bounced, it hard-bounced; complained, a recipient complained about it; limitReached, its sends wait for its send limits, once per window; pausedBy, limitsChangedBy and removedBy, an admin paused it, lowered its limits with a cap, or removed it; keyUsedWhilePaused, its key was used while it is paused, once per pause; autoPaused, Duva paused it because its mail hurts the domain (ADR-0021); spendCapReached, a run of its mailbox agent stopped at the organization's spend cap, once a month.
+             * @description What happened: sendFailed, the agent's send failed, SES rejected it, or it's unclear whether it went out; bounced, it hard-bounced; complained, a recipient complained about it; limitReached, its sends wait for its send limits, once per window; pausedBy, limitsChangedBy and removedBy, an admin paused it, lowered its limits with a cap, or removed it; keyUsedWhilePaused, its key was used while it is paused, once per pause; autoPaused, Duva paused it because its mail hurts the domain (ADR-0021); spendCapReached, a run of its mailbox agent stopped at the organization's spend cap, once a month; taskFailed, a task a label's prompt gave its mailbox agent failed.
              * @enum {string}
              */
-            kind: "sendFailed" | "bounced" | "complained" | "limitReached" | "pausedBy" | "limitsChangedBy" | "removedBy" | "keyUsedWhilePaused" | "autoPaused" | "spendCapReached";
+            kind: "sendFailed" | "bounced" | "complained" | "limitReached" | "pausedBy" | "limitsChangedBy" | "removedBy" | "keyUsedWhilePaused" | "autoPaused" | "spendCapReached" | "taskFailed";
             /** @description The ID of the agent the alert is about. */
             agent: string;
             /** @description The agent's name when the alert was raised, kept after it is removed. */
@@ -3340,9 +3449,59 @@ export interface components {
             builtIn: boolean;
             /** @description How many of the label's threads are unread, leaving out those in Spam and Trash unless the label is one of those, and those waiting in the Screener. */
             unread: number;
+            /** @description The label's prompt, if it has one, which hands each message that gets the label to the mailbox agent as a task. */
+            prompt?: string;
         };
         LabelList: {
             labels: components["schemas"]["Label"][];
+        };
+        LabelPrompt: {
+            /**
+             * @description What the mailbox agent is to do with each message that gets the label.
+             * @example File the receipt's amount and date in a draft to my accountant, and leave it unsent.
+             */
+            prompt: string;
+        };
+        /** @description Work a label's prompt gave the mailbox agent: the prompt, with a message that got the label and its thread. */
+        Task: {
+            /** @description The task's ID. */
+            id: string;
+            /** @description The ID of the label whose prompt gave it. */
+            label: string;
+            /** @description The label's name when it gave the task. */
+            labelName: string;
+            /** @description The label's prompt when it gave the task. */
+            prompt: string;
+            /** @description The ID of the message that got the label. */
+            message: string;
+            /** @description The ID of the mailbox agent the task is for. */
+            agent: string;
+            /**
+             * @description waiting, for its turn, or while the agent is paused; working, the agent is on it; done, the agent finished it, with its note; failed, the agent couldn't, and why is in its note.
+             * @enum {string}
+             */
+            state: "waiting" | "working" | "done" | "failed";
+            /**
+             * Format: date-time
+             * @description When the label gave it.
+             */
+            givenAt: string;
+            /** @description The ID of the actor who added the label, or duva when a sender's delivery did. */
+            givenBy: string;
+            /**
+             * Format: date-time
+             * @description When the agent started it.
+             */
+            startedAt?: string;
+            /**
+             * Format: date-time
+             * @description When it was done or failed.
+             */
+            endedAt?: string;
+            /** @description What the agent said it did, or why it failed. */
+            note?: string;
+            /** @description What the agent did in it, in order. */
+            actions?: components["schemas"]["AgentAction"][];
         };
         NewLabel: {
             /**
@@ -3434,6 +3593,8 @@ export interface components {
             /** @description Present when the thread came back from Remind me and is still in the Inbox. */
             back?: components["schemas"]["Back"];
             messages: components["schemas"]["Message"][];
+            /** @description The tasks labels' prompts gave the mailbox agent for the thread's messages, oldest first. Present when there are any. */
+            tasks?: components["schemas"]["Task"][];
         };
         Message: {
             /** @description The message's ID in Duva. */
@@ -6372,6 +6533,69 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    setLabelPrompt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The mailbox's ID. */
+                mailbox: components["parameters"]["Mailbox"];
+                /** @description The label's ID. */
+                label: components["parameters"]["Label"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LabelPrompt"];
+            };
+        };
+        responses: {
+            /** @description The label, with its prompt. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Label"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    removeLabelPrompt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The mailbox's ID. */
+                mailbox: components["parameters"]["Mailbox"];
+                /** @description The label's ID. */
+                label: components["parameters"]["Label"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The label, without a prompt. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Label"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     emptyTrash: {

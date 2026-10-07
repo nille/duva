@@ -13,6 +13,7 @@ import { ActorMark, Connection, nameOf, SenderMark, Time } from "./mail-parts.ts
 import { Cap, ClockIcon, type Done, type Label, type Labelled, labelRefusal, OrganizeActions, ownLabelsOf, type Place, useKeyed } from "./organize.tsx";
 import { useBeside, useListCount, useViewTitle, ViewMain, ViewTitle } from "./panes.tsx";
 import { useShortcuts, useThreadKeys } from "./shortcuts.tsx";
+import { LabelPrompt, promptedBuiltIns } from "./tasks.tsx";
 import { strings } from "./strings.ts";
 import { hrefOf, type SearchView, type ThreadsView, threadHref, titleOf } from "./views.tsx";
 
@@ -69,6 +70,7 @@ export function ThreadIndex({
   connection,
   marks = noMarks,
   screener = 0,
+  prompts = false,
   done,
   onDone,
   onSignedOut,
@@ -77,6 +79,8 @@ export function ThreadIndex({
   mailbox: Mailbox;
   base: string;
   agent?: string;
+  /** Whether the mailbox is the human's own, whose labels' prompts give its mailbox agent tasks. */
+  prompts?: boolean;
   view: ThreadsView;
   labels: Label[];
   version: number;
@@ -218,6 +222,7 @@ export function ThreadIndex({
   });
 
   const ownLabel = label === undefined ? undefined : labels.find((each) => each.id === label && !each.builtIn);
+  const prompted = label === undefined || !prompts ? undefined : labels.find((each) => each.id === label && (!each.builtIn || promptedBuiltIns.includes(each.id)));
 
   return (
     <ViewMain className="desk" aria-busy={listing.status === "loading"}>
@@ -245,6 +250,7 @@ export function ThreadIndex({
         )}
         {connection?.ok === false && <Connection state={connection} unreachable={strings.connection.mailUnreachable} />}
       </div>
+      {prompted !== undefined && <LabelPrompt key={prompted.id} client={client} mailbox={mailbox.id} label={prompted} onDone={onDone} onSignedOut={onSignedOut} />}
       {"label" in view && view.label === "inbox" && screener > 0 && <ScreenerWaiting count={screener} href={hrefOf({ screener: true }, base)} />}
       <p className="visually-hidden" role="status">
         {announcement}

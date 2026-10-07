@@ -39,6 +39,7 @@ import {
   environmentVariables,
   alertMailFilter,
   feederFilter,
+  taskGiverFilter,
   hostedLogoHeaders,
   hostedLogosPath,
   conversationPath,
@@ -767,6 +768,43 @@ export class DuvaStack extends Stack {
     // One permission for the MCP Lambda's routes, as for the API's, with the API's own ARN.
     const mcpIntegration = new HttpLambdaIntegration("Mcp", mcp, { scopePermissionToRoute: false });
     for (const { path, methods } of mcpRoutes) api.addRoutes({ path, methods: methods.map((method) => HttpMethod[method]), integration: mcpIntegration });
+
+    // Label prompts (ADR-0029). The table's stream hands the task giver each change that may add a
+    // label in a mailbox, and the giver hands each task a prompt gives to the task runner, without
+    // waiting, as unpausing a mailbox agent does with its tasks that wait. The runner runs the agent
+    // as the conversation Lambda does, for up to Lambda's 15 minutes, and Lambda retries none, since
+    // a run that started has acted on the mail. Only IAM invokes it.
+    const taskRunner = lambda(
+      "TaskRunnerHandler",
+      "@duva/api/task-runner-lambda",
+      {
+        [environmentVariables.tableName]: table.tableName,
+        [environmentVariables.apiUrlParameter]: apiUrlParameter,
+        [environmentVariables.agentRuntime]: Fn.conditionIf(agentsHere.logicalId, agentRuntime.agentRuntimeArn, "").toString(),
+      },
+      { timeout: Duration.minutes(15) },
+    );
+    taskRunner.configureAsyncInvoke({ retryAttempts: 0 });
+    table.grantReadWriteData(taskRunner);
+    taskRunner.addToRolePolicy(new PolicyStatement({ actions: ["ssm:GetParameter"], resources: [this.formatArn({ service: "ssm", resource: "parameter", resourceName: apiUrlParameter.slice(1) })] }));
+    taskRunner.addToRolePolicy(new PolicyStatement({ actions: ["bedrock-agentcore:InvokeAgentRuntime", "bedrock-agentcore:StopRuntimeSession"], resources: [runtimes, `${runtimes}/*`] }));
+    const taskGiver = lambda("TaskGiverHandler", "@duva/api/task-giver-lambda", {
+      [environmentVariables.tableName]: table.tableName,
+      [environmentVariables.taskRunnerFunction]: taskRunner.functionArn,
+    });
+    taskGiver.addEventSource(
+      new DynamoEventSource(table, {
+        startingPosition: StartingPosition.LATEST,
+        batchSize: 10,
+        retryAttempts: 10,
+        bisectBatchOnError: true,
+        filters: [FilterCriteria.filter(taskGiverFilter)],
+      }),
+    );
+    table.grantReadWriteData(taskGiver);
+    taskRunner.grantInvoke(taskGiver);
+    handler.addEnvironment(environmentVariables.taskRunnerFunction, taskRunner.functionArn);
+    taskRunner.grantInvoke(handler);
 
     new CfnOutput(this, stackOutputs.apiUrl, { value: api.apiEndpoint, description: "The URL of Duva's API" });
     new CfnOutput(this, stackOutputs.mcpFunction, { value: mcp.functionName, description: "The function API Gateway invokes for Duva's MCP endpoint" });

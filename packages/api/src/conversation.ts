@@ -3,23 +3,21 @@
 // checks the human, gives the run its token, runs the agent on AgentCore and streams what it says
 // and does back as it goes. The turns are kept in the human's partition, so they go with them.
 import { randomUUID } from "node:crypto";
-import { BatchWriteCommand, GetCommand, PutCommand, QueryCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { BatchWriteCommand, PutCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
 import type { components, ConversationEvent } from "@duva/openapi";
-import type { AgentAction, RunEvent, RunPayload } from "./agent-loop.ts";
-import { costOf } from "./agent-models.ts";
-import { actorNamed, raiseAlert } from "./alerting.ts";
+import type { AgentAction, RunPayload } from "./agent-loop.ts";
+import { type AgentRuntime, monthOf, noMailboxAgent, runMailboxAgent, runtimeMissing, spentIn, startRun } from "./agent-runs.ts";
+import { actorNamed } from "./alerting.ts";
 import { type OperationHandler, refusal } from "./api.ts";
 import type { Table } from "./deployment.ts";
 import { mailboxAgentOf } from "./mailbox-agents.ts";
-import { sponsorAccessIn } from "./access.ts";
-import { type Actor, type Agent, agentSettings, findMailbox, type Human, type Mailbox, organizationSettings, switchesFor } from "./organization.ts";
+import { type Actor, type Agent, findMailbox, type Human, type Mailbox, organizationSettings } from "./organization.ts";
 import { tokenHeader } from "./infrastructure.ts";
-import { endRunToken, issueRunToken } from "./run-tokens.ts";
 import { documents, pk, sk } from "./table.ts";
 
 export type ConversationTurn = components["schemas"]["ConversationTurn"];
 
-export type { ConversationEvent };
+export type { AgentRuntime, ConversationEvent };
 
 
 /** The most turns a conversation shows, and the most the agent reads back. */
@@ -29,11 +27,6 @@ const turnsRead = 20;
 const longestWords = 10_000;
 
 const turnPrefix = (mailbox: string) => `turn#${mailbox}#`;
-const spendKey = (month: string) => ({ [pk]: "organization", [sk]: `mailbox-agent-spend#${month}` });
-const monthOf = (at: Date) => at.toISOString().slice(0, 7);
-
-/** Runs the mailbox agent on AgentCore, in the session, and gives what it says as it goes. */
-export type AgentRuntime = (payload: RunPayload, session: string) => AsyncIterable<RunEvent>;
 
 /** An answer to a turn: a refusal, or the stream of what happens. */
 export type TurnAnswer = { statusCode: number; body: { message: string } } | { statusCode: 200; events: AsyncIterable<ConversationEvent> };
@@ -55,8 +48,7 @@ export interface PreparedTurn {
   mailbox: Mailbox;
   agent: Agent;
   month: string;
-  /** What the mailbox agents had spent in the month when the turn was asked, and the cap on it, in US dollars. */
-  spent: number;
+  /** The organization's spend cap on the mailbox agents, in US dollars. */
   cap: number;
 }
 
@@ -65,70 +57,34 @@ export interface PreparedTurn {
  * with what to do instead. `available` is whether AgentCore runs mailbox agents in the region.
  */
 export async function prepareTurn({ table, region, apiUrl, available }: { table: Table; region: string; apiUrl: string; available: boolean }, human: Human, asked: TurnAsked): Promise<PreparedTurn | { statusCode: number; body: { message: string } }> {
-  if (!available) return refusal(503, `Mailbox agents run on Amazon Bedrock AgentCore, which isn't in ${region}, where Duva is deployed.`);
+  if (!available) return refusal(503, runtimeMissing(region));
   const words = typeof asked.words === "string" ? asked.words.trim() : "";
   if (words === "" || words.length > longestWords) return refusal(400, `Ask your agent something, in at most ${longestWords} characters.`);
   const mailbox = typeof asked.mailbox === "string" ? await findMailbox(table, asked.mailbox) : undefined;
   if (mailbox === undefined || mailbox.owner !== human.id) return refusal(404, "That isn't one of your mailboxes. Ask the agent of one of yours.");
   const agent = await mailboxAgentOf(table, mailbox.id);
-  if (agent === undefined) return refusal(404, "This mailbox has no mailbox agent yet. Ask an admin to run duva deploy, which gives every mailbox one.");
+  if (agent === undefined) return refusal(404, noMailboxAgent);
   if (agent.paused !== undefined) return refusal(409, `Your mailbox agent is paused by ${await actorNamed(table, agent.paused.by)}. Unpause it in Settings to ask it.`);
-  const { settings: given } = await agentSettings(table, agent.id);
-  const access = sponsorAccessIn(given, mailbox.id);
-  if (access === "none") return refusal(409, "Your mailbox agent has no access to this mailbox. Give it some in Settings, under Your agents.");
-  const { settings } = await organizationSettings(table, region);
-  if (settings.mailboxAgentSpendCap === 0) return refusal(409, "An admin turned the mailbox agents off, with a spend cap of $0. Ask one to raise it.");
-  const month = monthOf(new Date());
-  const spent = await spentIn(table, month);
-  if (spent >= settings.mailboxAgentSpendCap) {
-    await capReached(table, agent, month, settings.mailboxAgentSpendCap);
-    return refusal(409, capRefusal(settings.mailboxAgentSpendCap));
-  }
+  const started = await startRun(table, { agent, mailbox, owner: human.email, region, apiUrl });
+  if ("refused" in started) return refusal(409, started.refused);
+  const { start, month, cap } = started;
   const history = await turnsOf(table, human.id, mailbox.id, turnsRead);
   const turn = await addTurn(table, human, mailbox, { from: "human", text: words, actions: [] });
   const payload: Omit<RunPayload, "token"> = {
-    apiUrl,
-    mailbox: mailbox.id,
-    address: mailbox.defaultAddress ?? mailbox.addresses[0] ?? "",
-    owner: human.email,
-    access,
-    approval: switchesFor(given, true).approval,
-    model: { model: settings.mailboxAgentModel, profile: settings.mailboxAgentProfile, region: settings.mailboxAgentRegion },
-    budget: settings.mailboxAgentSpendCap - spent,
+    ...start,
     history: history.map(({ from, text, actions }) => ({ from, text: from === "agent" && actions.length > 0 ? `${text}\n\n(${actionsRead(actions)})` : text })),
     words,
-    now: new Date().toISOString(),
   };
-  return { payload, turn, human, mailbox, agent, month, spent, cap: settings.mailboxAgentSpendCap };
+  return { payload, turn, human, mailbox, agent, month, cap };
 }
 
 /** Runs the prepared turn on the runtime, saying what happens as it goes, and writes the agent's turn when it ends. */
-export async function* runTurn(table: Table, runtime: AgentRuntime, { payload, turn, human, mailbox, agent, month, spent, cap }: PreparedTurn): AsyncGenerator<ConversationEvent> {
+export async function* runTurn(table: Table, runtime: AgentRuntime, { payload, turn, human, mailbox, agent, month, cap }: PreparedTurn): AsyncGenerator<ConversationEvent> {
   yield { type: "turn", turn };
-  const token = await issueRunToken(table, agent.id);
-  let text = "";
-  const actions: AgentAction[] = [];
-  let outcome: ConversationTurn["outcome"] = "failed";
-  // Each model call's cost is counted as it comes, so a run cut off still counts what it spent.
-  let total = spent;
-  try {
-    for await (const event of runtime({ ...payload, token }, `${agent.id}-${randomUUID()}`)) {
-      if (event.type === "text") {
-        text += event.text;
-        yield event;
-      } else if (event.type === "action") {
-        actions.push(event.action);
-        yield event;
-      } else if (event.type === "usage") total = await addSpend(table, month, costOf(event, payload.model.model, payload.model.profile));
-      else outcome = event.outcome;
-    }
-  } catch (error) {
-    console.error(error);
-    outcome = "failed";
-  } finally {
-    await endRunToken(table, token);
-  }
-  if (outcome === "capReached" || total >= cap) await capReached(table, agent, month, cap);
+  const ran = runMailboxAgent(table, { agent, payload, runtime, month, cap });
+  let next = await ran.next();
+  for (; !next.done; next = await ran.next()) yield next.value;
+  const { text, actions, outcome } = next.value;
   yield { type: "done", turn: await addTurn(table, human, mailbox, { from: "agent", text, actions, outcome }, turn.at) };
 }
 
@@ -162,13 +118,6 @@ export function createConversation({ table, region, apiUrl, fetch: call = fetch,
   };
 }
 
-const capRefusal = (cap: number) => `The mailbox agents reached the organization's spend cap of $${cap} this month. Ask an admin to raise it.`;
-
-/** Alerts the agent's sponsor that its run stopped at the cap, once a month. */
-function capReached(table: Table, agent: Agent, month: string, cap: number) {
-  return raiseAlert(table, { kind: "spendCapReached", agent, what: `${agent.name} stopped, since the mailbox agents reached the organization's spend cap of $${cap} for ${month}. Ask an admin to raise it.` }, { source: `spend-cap#${month}` });
-}
-
 /** What an agent's turn did, as the agent reads it back later. */
 export const actionsRead = (actions: AgentAction[], who = "You") =>
   `${who} used ${actions.map(({ operation, ok, threads, draft }) => `${operation}${threads ? ` on thread ${threads.join(", ")}` : ""}${draft ? ` with draft ${draft}` : ""}${ok ? "" : " (refused)"}`).join("; ")}.`;
@@ -197,20 +146,6 @@ export async function turnsOf(table: Table, human: string, mailbox: string, limi
   return Items.reverse().map(({ id, at, from, text, actions, outcome }) => ({ id, at, from, text, actions, ...(outcome !== undefined && { outcome }) }) as ConversationTurn);
 }
 
-/** What the mailbox agents spent in the month, in US dollars. */
-async function spentIn(table: Table, month: string): Promise<number> {
-  const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: spendKey(month), ConsistentRead: true }));
-  return (Item?.spent as number | undefined) ?? 0;
-}
-
-/** Adds what a run cost to the month's spend, and returns the month's spend with it. */
-async function addSpend(table: Table, month: string, cost: number): Promise<number> {
-  const { Attributes } = await documents(table).send(
-    new UpdateCommand({ TableName: table.name, Key: spendKey(month), UpdateExpression: "ADD spent :cost", ExpressionAttributeValues: { ":cost": cost }, ReturnValues: "ALL_NEW" }),
-  );
-  return Attributes!.spent as number;
-}
-
 /** The mailbox's mailbox agent and the conversation with it, if the actor owns the mailbox, or a refusal. */
 async function conversationAsked(event: Parameters<OperationHandler>[0], deployment: Parameters<OperationHandler>[1], actor: Parameters<OperationHandler>[2]) {
   const id = event.pathParameters?.mailbox ?? "";
@@ -218,7 +153,7 @@ async function conversationAsked(event: Parameters<OperationHandler>[0], deploym
   if (mailbox === undefined) return refusal(404, `There is no mailbox ${JSON.stringify(id)}. List the mailboxes you can read to find its ID.`);
   if (mailbox.owner !== actor!.id) return refusal(403, "Only the mailbox's owner talks with its mailbox agent.");
   const agent = await mailboxAgentOf(deployment.table, mailbox.id);
-  if (agent === undefined) return refusal(404, "This mailbox has no mailbox agent yet. Ask an admin to run duva deploy, which gives every human's mailbox one.");
+  if (agent === undefined) return refusal(404, noMailboxAgent);
   return { mailbox, agent };
 }
 

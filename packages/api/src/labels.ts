@@ -30,6 +30,12 @@ const labelKey = (mailbox: string, label: string) => ({ [pk]: partition(mailbox)
 // Each name points at its label, so no two labels in a mailbox share one, in any case.
 const nameKey = (mailbox: string, name: string) => ({ [pk]: partition(mailbox), [sk]: `label-name#${name.toLowerCase()}` });
 
+// Each label's prompt, if it has one, which gives the mailbox agent a task for each message that gets the label (ADR-0029).
+const promptKey = (mailbox: string, label: string) => ({ [pk]: partition(mailbox), [sk]: `label-prompt#${label}` });
+
+/** The built-in labels that can carry a prompt, besides the mailbox's own. */
+export const promptedBuiltIns: string[] = [feed, paperTrail];
+
 /** Thrown when the name is another label's, or one a label can't have. */
 export class NameTaken extends Error {}
 
@@ -69,7 +75,55 @@ export async function listLabels(table: Table, mailbox: string): Promise<Label[]
   );
   const own = Items.map((item) => ({ id: item.id as string, name: item.name as string })).sort((a, b) => a.name.localeCompare(b.name));
   const labels = [...builtInLabels.map((label) => ({ ...label, builtIn: true })), ...own.map((label) => ({ ...label, builtIn: false }))];
-  return Promise.all(labels.map(async (label) => ({ ...label, unread: await unreadWithLabel(table, mailbox, label.id) })));
+  const prompts = await labelPrompts(table, mailbox);
+  return Promise.all(
+    labels.map(async (label) => ({ ...label, unread: await unreadWithLabel(table, mailbox, label.id), ...(prompts.has(label.id) && { prompt: prompts.get(label.id)! }) })),
+  );
+}
+
+/** The prompts of the mailbox's labels, by label. */
+async function labelPrompts(table: Table, mailbox: string): Promise<Map<string, string>> {
+  const { Items = [] } = await documents(table).send(
+    new QueryCommand({
+      TableName: table.name,
+      KeyConditionExpression: `${pk} = :mailbox AND begins_with(${sk}, :prompt)`,
+      ExpressionAttributeValues: { ":mailbox": partition(mailbox), ":prompt": promptKey(mailbox, "")[sk] },
+      ConsistentRead: true,
+    }),
+  );
+  return new Map(Items.map((item) => [item.label as string, item.prompt as string]));
+}
+
+/** The label's prompt, or undefined if it has none. */
+export async function labelPrompt(table: Table, mailbox: string, label: string): Promise<string | undefined> {
+  const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: promptKey(mailbox, label), ConsistentRead: true }));
+  return Item?.prompt as string | undefined;
+}
+
+/** The name of the mailbox's label with the ID, built in or its own, or undefined if it has none. */
+export async function nameOfLabel(table: Table, mailbox: string, id: string): Promise<string | undefined> {
+  return builtInLabels.find((label) => label.id === id)?.name ?? (await ownLabel(table, mailbox, id))?.name;
+}
+
+/** The longest prompt a label takes, in characters. */
+export const longestPrompt = 4000;
+
+/** The mailbox's label with the ID, built in or its own, as listLabels lists it, or undefined if it has none. */
+export async function labelWithId(table: Table, mailbox: string, id: string): Promise<Label | undefined> {
+  return (await listLabels(table, mailbox)).find((label) => label.id === id);
+}
+
+/**
+ * Gives the label the prompt, or removes its prompt if it is undefined, recorded in the mailbox's
+ * change feed under the actor `by`. Removing a prompt the label hasn't changes nothing.
+ */
+export async function changeLabelPrompt(table: Table, { mailbox, label, prompt, by }: { mailbox: string; label: string; prompt: string | undefined; by: string }): Promise<void> {
+  if (prompt === undefined && (await labelPrompt(table, mailbox, label)) === undefined) return;
+  await recordChanges(table, mailboxFeed(mailbox), {
+    by,
+    changes: [{ type: prompt === undefined ? "labelPromptRemoved" : "labelPromptSet", label }],
+    items: [prompt === undefined ? { Delete: { TableName: table.name, Key: promptKey(mailbox, label) } } : { Put: { TableName: table.name, Item: { ...promptKey(mailbox, label), label, prompt } } }],
+  });
 }
 
 /** Creates a label in the mailbox, recorded in its change feed under the actor `by`. Throws NameTaken if the name is taken. */
@@ -158,6 +212,7 @@ export async function deleteLabel(table: Table, { mailbox, label, by }: { mailbo
     items: [
       { Delete: { TableName: table.name, Key: labelKey(mailbox, label) } },
       { Delete: { TableName: table.name, Key: nameKey(mailbox, current.name) } },
+      { Delete: { TableName: table.name, Key: promptKey(mailbox, label) } },
     ],
   });
   return { ...current, builtIn: false, unread };

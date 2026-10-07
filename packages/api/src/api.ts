@@ -32,6 +32,8 @@ import {
   markThreadsRead,
   markThreadsUnread,
   renameMailboxLabel,
+  setMailboxLabelPrompt,
+  removeMailboxLabelPrompt,
 } from "./mailboxes.ts";
 import type { Deployment } from "./deployment.ts";
 import { type Actor, actorOf } from "./organization.ts";
@@ -130,6 +132,8 @@ export const handlers: Record<OperationId, OperationHandler> = {
   createLabel: createMailboxLabel,
   renameLabel: renameMailboxLabel,
   deleteLabel: deleteMailboxLabel,
+  setLabelPrompt: setMailboxLabelPrompt,
+  removeLabelPrompt: removeMailboxLabelPrompt,
   emptyTrash: emptyMailboxTrash,
   getMailboxAgent,
   clearConversation,

@@ -6974,3 +6974,101 @@ mark {
   overflow-wrap: anywhere;
   font: 400 var(--text-sm) / 1.5 var(--mono);
 }
+
+/*
+ * A label's prompt (ADR-0029): under the label's head, what the mailbox agent is to do with each
+ * message there, quiet in Second Ink after the agent's diamond, and writing it in place.
+ */
+.label-prompt {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+  margin: calc(-1 * var(--space-2)) 0 var(--space-4);
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+}
+
+.label-prompt .button {
+  margin-left: calc(-1 * var(--space-3));
+}
+
+.label-prompt-text {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  flex-basis: 100%;
+  max-width: 68ch;
+}
+
+.label-prompt-text q {
+  color: var(--ink);
+}
+
+.label-prompt-form {
+  max-width: 40rem;
+  margin: calc(-1 * var(--space-2)) 0 var(--space-4);
+}
+
+.label-prompt-hint {
+  max-width: 68ch;
+  color: var(--ink-2);
+  font-size: var(--text-xs);
+}
+
+.label-prompt-form textarea {
+  font: var(--text-proof) / 1.6 var(--mono);
+  resize: vertical;
+}
+
+/* The tasks a thread's messages gave the mailbox agent, under its subject, each a line and its note. */
+.tasks {
+  margin: calc(-1 * var(--space-4)) 0 var(--space-6);
+  font-size: var(--text-sm);
+}
+
+.tasks ol {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.task-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+  color: var(--ink-3);
+}
+
+.task-agent {
+  color: var(--agent-ink);
+  font-weight: 600;
+}
+
+.task-state {
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.task-working .task-state {
+  color: var(--agent-ink);
+}
+
+.task-done .task-state {
+  color: var(--sent-ink);
+}
+
+.task-failed .task-state {
+  color: var(--alert-ink);
+}
+
+.task-note {
+  max-width: 68ch;
+  margin-top: var(--space-1);
+  padding-left: calc(0.55rem + var(--space-2));
+  color: var(--ink-2);
+  white-space: pre-line;
+}

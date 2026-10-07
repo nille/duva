@@ -4,6 +4,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
+import type { Done, Label } from "./organize.tsx";
+import { LabelPrompt } from "./tasks.tsx";
 import { ViewMain, ViewTitle, useViewTitle } from "./panes.tsx";
 import { strings } from "./strings.ts";
 import { Letter } from "./thread.tsx";
@@ -26,6 +28,8 @@ export function FeedStream({
   me,
   agentNames,
   version,
+  prompt,
+  onDone,
   onSignedOut,
 }: {
   client: DuvaClient;
@@ -34,6 +38,9 @@ export function FeedStream({
   me: string;
   agentNames: ReadonlyMap<string, string>;
   version: number;
+  /** The Feed as a label, with its prompt, in the human's own mailbox, whose mailbox agent its prompt gives tasks. */
+  prompt?: Label;
+  onDone: (done: Done) => void;
   onSignedOut: () => void;
 }) {
   const [reading, setReading] = useState<Reading>({ status: "loading" });
@@ -89,6 +96,7 @@ export function FeedStream({
         </ViewTitle>
         <p className="stream-order">{strings.feed.stream}</p>
       </div>
+      {prompt !== undefined && <LabelPrompt client={client} mailbox={mailbox.id} label={prompt} onDone={onDone} onSignedOut={onSignedOut} />}
       {failedDownload && (
         <p className="notice notice-alert" role="alert">
           {strings.thread.downloadFailed}

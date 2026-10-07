@@ -30,7 +30,7 @@ import type { RecordType } from "../src/dns-records.ts";
 import { createEraser, type EraserEvent } from "../src/erasure.ts";
 import { createInbound } from "../src/inbound.ts";
 import { createFeeder, createIndexer, type IndexQueue, indexMailboxes, type QueuedTask } from "../src/indexing.ts";
-import { alertMailFilter, conversationPath, mcpRoutes, tokenHeader, feederFilter, hostedLogoHeaders, hostedLogosPath, senderFilter, senderRetries, tableKey, tableStreamView } from "../src/infrastructure.ts";
+import { alertMailFilter, conversationPath, mcpRoutes, tokenHeader, feederFilter, taskGiverFilter, hostedLogoHeaders, hostedLogosPath, senderFilter, senderRetries, tableKey, tableStreamView } from "../src/infrastructure.ts";
 import { lanceSearch } from "../src/lancedb-search.ts";
 import { createSearcher } from "../src/searching.ts";
 import type { Table } from "../src/deployment.ts";
@@ -40,7 +40,8 @@ import { addHumanToOrganization, screenerKey, settingsKey, setUpOrganization } f
 import type { SendEvent } from "../src/limits.ts";
 import { setUpDeliveries, setUpScreeners } from "../src/screening.ts";
 import { type Model, runAgent } from "../src/agent-loop.ts";
-import { type ConversationEvent, createConversation, type PreparedTurn } from "../src/conversation.ts";
+import { type AgentRuntime, type ConversationEvent, createConversation, type PreparedTurn } from "../src/conversation.ts";
+import { createTaskGiver, createTaskRunner, type TaskRef, type TaskRunner } from "../src/tasks.ts";
 import { createMcp } from "../src/mcp.ts";
 import { giveMailboxAgents } from "../src/mailbox-agents.ts";
 import type { ReminderDue } from "../src/reminders.ts";
@@ -131,6 +132,11 @@ export interface DuvaOptions {
    * test scripts it, from what it is asked. Unless given, it answers every turn with "Stand-in answer."
    */
   model?: Model;
+  /**
+   * Whether the task runner runs the tasks labels' prompts give only at releaseTasks(), as when
+   * Lambda falls behind, so they wait until then.
+   */
+  tasksHeld?: boolean;
 }
 
 /** A Duva deployment running in-process, set up as duva deploy sets one up, with its own table and mail bucket. */
@@ -244,6 +250,8 @@ export interface Duva {
    * streams back. Each of the agent's runs on AgentCore asks the `model` option's stand-in.
    */
   askAgent(email: string, turn: { mailbox: string; words: string }, options?: { token?: string }): Promise<{ status: number; events?: ConversationEvent[]; body?: { message: string } }>;
+  /** Lets the task runner run the tasks it held when tasksHeld, and waits until they are done or wait for an unpause. */
+  releaseTasks(): Promise<void>;
   /**
    * Connects an MCP client to the MCP endpoint as Claude Code does: the MCP SDK's own client, which
    * finds how to sign in, registers itself as `options` say, signs in through managed login as the
@@ -280,6 +288,7 @@ export async function startDuva({
   undoWindow = 0,
   beforeMailboxAgents = false,
   model = standInModel,
+  tasksHeld = false,
 }: DuvaOptions = {}): Promise<Duva> {
   const { table, streamArn, database } = await createTable();
   const humans = memoryHumans();
@@ -357,6 +366,10 @@ export async function startDuva({
   ]);
   // Agents the API handed the sender in a call, which it invokes once the call is answered.
   const released: string[] = [];
+  // Tasks the task giver and the API handed the task runner, which it runs once what handed them is done.
+  const handedTasks: TaskRef[] = [];
+  const taskRunner: TaskRunner = { run: async (task) => void handedTasks.push(JSON.parse(JSON.stringify(task)) as TaskRef) };
+  const tasking = tableStream(database, streamArn, [{ filter: taskGiverFilter, handler: createTaskGiver({ table, runner: taskRunner }), retries: 2, invocations: 1 }]);
   // Download links lead to the web app's domain under /download/, from where CloudFront invokes the
   // download Lambda. Here they lead to the API's own URL, under the same path, once it listens.
   let downloadUrl = `${inProcess}/download/`;
@@ -417,6 +430,7 @@ export async function startDuva({
       waitingSends: { release: async (agent) => void released.push(agent) },
       reminders,
       hostedLogos,
+      tasks: taskRunner,
     }),
     // Cognito's verifier takes only the web app's and the CLI's app clients, which share the stand-in's one.
     createAuthorizer({
@@ -448,19 +462,26 @@ export async function startDuva({
     if (!mailboxAgentsDeployed) await forgetMailboxAgents(table);
     if (!deliveriesDeployed) await forgetDeliveries(table);
     if (!indexingHeld) await index();
+    await giveTasks();
     return response;
   };
-  // The conversation Lambda, which runs each turn on AgentCore. The runtime there calls the API over
-  // HTTPS, and its payload and what it says go through JSON.
-  const conversation = createConversation({
-    table,
-    region,
-    apiUrl: inProcess,
-    fetch: api,
-    runtime: async function* (payload) {
-      for await (const event of runAgent(JSON.parse(JSON.stringify(payload)), { model, fetch: api })) yield JSON.parse(JSON.stringify(event));
-    },
-  });
+  // The mailbox agents' runtime on AgentCore, which calls the API over HTTPS. Its payload and what
+  // it says go through JSON.
+  const runtime: AgentRuntime = async function* (payload) {
+    for await (const event of runAgent(JSON.parse(JSON.stringify(payload)), { model, fetch: api })) yield JSON.parse(JSON.stringify(event));
+  };
+  // The conversation Lambda, which runs each turn on AgentCore.
+  const conversation = createConversation({ table, region, apiUrl: inProcess, fetch: api, runtime });
+  // The task runner, which Lambda invokes asynchronously with each task handed to it, one at a time.
+  const runTask = createTaskRunner({ table, region, apiUrl: inProcess, fetch: api, runtime });
+  const runHandedTasks = async () => {
+    for (let task = handedTasks.shift(); task !== undefined; task = handedTasks.shift()) await runTask(task);
+  };
+  // The task giver reads the table's stream, and hands its tasks to the runner, unless tasks are held.
+  async function giveTasks() {
+    await tasking.deliver();
+    if (!tasksHeld) await runHandedTasks();
+  }
   // CloudFront passes the turn to the function URL, which streams its answer a line at a time.
   const agentTurn = async (request: Request): Promise<Response> => {
     const answer = await conversation.turn({ headers: Object.fromEntries(request.headers), body: await request.text() });
@@ -531,6 +552,7 @@ export async function startDuva({
       const received = await ses.receive(raw, { from: from ?? (await senderOf(raw)), to }, options);
       if (!deliveriesDeployed) await forgetDeliveries(table);
       if (!indexingHeld) await index();
+      await giveTasks();
       return received;
     },
     inboundLog: () => [...inboundLog],
@@ -595,6 +617,10 @@ export async function startDuva({
       } finally {
         if (backfillLost) indexQueue.backfillStepsLost = 0;
       }
+    },
+    async releaseTasks() {
+      await tasking.deliver();
+      await runHandedTasks();
     },
     async askAgent(email, turn, { token = accessToken(email) } = {}) {
       const response = await agentTurn(new Request(`${inProcess}/${conversationPath}turns`, { method: "POST", headers: { [tokenHeader]: token }, body: JSON.stringify(turn) }));

@@ -11,6 +11,7 @@ import { changesPerPage } from "./feed.ts";
 import { mailboxChanges } from "./mail.ts";
 import { type Actor, type Agent, findActor, organizationChanges, ownedMailboxes } from "./organization.ts";
 import { timeZoneNamed, timeZoneOf } from "./preferences.ts";
+import { threadTasks } from "./tasks.ts";
 
 type Change = components["schemas"]["MailboxChange"] | components["schemas"]["OrganizationChange"];
 type Summary = components["schemas"]["ActivitySummary"];
@@ -171,7 +172,7 @@ export const getAgentActivity: OperationHandler = async (event, deployment, acto
  * isn't the sponsor reads. Any other field is left out, so a field added later stays out until
  * it is listed here.
  */
-const mailFree = new Set(["position", "at", "actor", "type", "thread", "message", "draft", "approval", "decision", "label", "added", "removed", "spam", "screened", "delivery", "delivered", "agent", "before", "after", "on", "letIn", "outcome", "status", "feedback"]);
+const mailFree = new Set(["position", "at", "actor", "type", "task", "thread", "message", "draft", "approval", "decision", "label", "added", "removed", "spam", "screened", "delivery", "delivered", "agent", "before", "after", "on", "letIn", "outcome", "status", "feedback"]);
 /** The fields of what SES reported about a send that say nothing of its recipients. */
 const feedbackFree = new Set(["kind", "at", "reason"]);
 
@@ -220,10 +221,12 @@ export const getAgentActivityDay: OperationHandler = async (event, deployment, a
       const thread =
         (field(change, "thread") as string | undefined) ??
         (mailbox === undefined || draft === undefined ? undefined : (sentIn.get(`${mailbox}|${draft}`) ?? (await findDraft(deployment.table, mailbox, draft))?.thread));
+      // A task's note is kept with its thread, so the sponsor reads it there.
+      const note = sponsor && change.type === "taskEnded" && mailbox !== undefined ? (await threadTasks(deployment.table, mailbox, change.thread)).find(({ id }) => id === change.task)?.note : undefined;
       return {
         ...(mailbox !== undefined && { mailbox }),
         ...(thread !== undefined && { thread }),
-        change: sponsor || mailbox === undefined ? change : withoutMail(change),
+        change: sponsor || mailbox === undefined ? { ...change, ...(note !== undefined && { note }) } : withoutMail(change),
       };
     }),
   );

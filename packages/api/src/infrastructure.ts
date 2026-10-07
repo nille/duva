@@ -74,6 +74,8 @@ export const environmentVariables = {
   mcpClientId: "MCP_CLIENT_ID",
   /** The conversation Lambda, which the MCP Lambda invokes to run each turn it prepares. */
   conversationFunction: "CONVERSATION_FUNCTION",
+  /** The task runner Lambda, which the task giver and the API invoke for each task a label's prompt gives a mailbox agent. */
+  taskRunnerFunction: "TASK_RUNNER_FUNCTION",
 } as const;
 
 /** What the table's stream shows of each changed item. The sender reads the item itself, so only its new image. */
@@ -93,6 +95,18 @@ export const alertMailFilter = { dynamodb: { NewImage: { mail: { S: ["pending"] 
  * feed, whose entries are in the mailbox's changes partition.
  */
 export const feederFilter = { eventName: ["INSERT"], dynamodb: { Keys: { [tableKey.partitionKey]: { S: [{ prefix: "mailbox#" }] }, [tableKey.sortKey]: { S: [{ prefix: "change#" }] } } } };
+
+/**
+ * Which of the table stream's records Lambda hands the task giver: each new change in a mailbox's
+ * change feed that may add a label to a message (ADR-0029).
+ */
+export const taskGiverFilter = {
+  eventName: ["INSERT"],
+  dynamodb: {
+    Keys: { [tableKey.partitionKey]: { S: [{ prefix: "mailbox#" }] }, [tableKey.sortKey]: { S: [{ prefix: "change#" }] } },
+    NewImage: { type: { S: ["threadLabelsChanged", "messageReceived"] } },
+  },
+};
 
 /** Where in the search bucket the mailboxes' indexes are, one table each. */
 export const searchIndexesPrefix = "indexes";

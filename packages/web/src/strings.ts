@@ -504,6 +504,30 @@ export const strings = {
     unreachable: "Duva couldn't be reached, so the label wasn't saved. Check your connection and try again.",
   },
 
+  labelPrompt: {
+    lead: "Your mailbox agent gets each message here, with this prompt:",
+    add: "Add a prompt",
+    edit: "Edit prompt",
+    field: (label: string) => `Prompt for ${label}`,
+    hint: "Each message that gets this label, by hand, by an agent or by a sender's delivery, goes to your mailbox agent as a task with this prompt. It works within the access you give it, and the message still goes where it goes.",
+    placeholder: "Note the amount and the date, and draft a reply that thanks them.",
+    save: "Save prompt",
+    remove: "Remove prompt",
+    cancel: "Cancel",
+    missing: "Write what your mailbox agent is to do with each message.",
+    saved: (label: string) => `Saved. Your mailbox agent gets each message labelled ${label} from now on.`,
+    removed: (label: string) => `Removed the prompt. Messages labelled ${label} no longer go to your mailbox agent.`,
+    failed: (status: number) => `Duva couldn't save the prompt (error ${status}). Try again in a moment.`,
+    noAgent: "This mailbox has no mailbox agent yet. Ask an admin to run duva deploy, which gives every human's mailbox one.",
+    unreachable: "Duva couldn't be reached, so the prompt wasn't saved. Check your connection and try again.",
+  },
+  tasks: {
+    title: "Tasks",
+    from: (label: string) => `from ${label}`,
+    states: { waiting: "Waiting", working: "Working", done: "Done", failed: "Failed" },
+    agent: "Mailbox agent",
+  },
+
   logo: {
     of: (sender: string) => `${sender}'s logo`,
     verified: (sender: string) => `${sender}'s verified logo`,
@@ -1360,6 +1384,7 @@ export const strings = {
       keyUsedWhilePaused: "Key used while paused",
       autoPaused: "Paused by Duva",
       spendCapReached: "Spend cap reached",
+      taskFailed: "Task failed",
     },
     urgent: "Urgent",
     unseenMark: "Unseen",
@@ -1622,6 +1647,17 @@ function entrySaid(change: ActivityChange, who: string, agent: string, message?:
       return change.name === undefined ? [who, ` renamed a label.`] : [who, ` renamed a label to ${change.name}.`];
     case "labelDeleted":
       return [who, ` deleted a label.`];
+    case "labelPromptSet":
+      return [who, ` gave a label a prompt for ${agent}.`];
+    case "labelPromptRemoved":
+      return [who, ` removed a label's prompt.`];
+    case "taskGiven":
+      return [who, who === "Duva" ? `, filing a sender's mail under a label with a prompt, gave ${agent} a task.` : ` added a label with a prompt, which gave ${agent} a task.`];
+    case "taskStarted":
+      return [who, ` started a task.`];
+    case "taskEnded":
+      if (change.outcome === "done") return change.note === undefined ? [who, ` finished a task.`] : [who, ` finished a task: “${change.note}”`];
+      return change.note === undefined ? [who, ` couldn't finish a task.`] : [who, ` couldn't finish a task: “${change.note}”`];
     case "threadErased":
       return "actor" in change && change.actor !== undefined ? [who, " erased a thread for good, emptying Trash."] : ["Duva", " erased a thread for good, after the retention period."];
     case "agentSettingsChanged":

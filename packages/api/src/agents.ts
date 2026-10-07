@@ -1,4 +1,5 @@
 import type { components } from "@duva/openapi";
+import { waitingTasks } from "./tasks.ts";
 import { jsonBody, type OperationHandler, refusal } from "./api.ts";
 import { sponsorAccessAllows, sponsorAccessIn } from "./access.ts";
 import { actorNamed, alertWrites, raiseAlert } from "./alerting.ts";
@@ -212,10 +213,10 @@ export const pauseAgent = setupOperation("pauseAgent", async (event, deployment,
     preview:
       agent.paused !== undefined
         ? []
-        : [`Pauses ${await agentNamed(deployment.table, agent)}. Its key is refused and its approved sends are held until a human unpauses it.`],
+        : [`Pauses ${await agentNamed(deployment.table, agent)}. Its key is refused and its approved sends are held until a human unpauses it.${heldTasks(agent)}`],
     run: async () => {
       const alert = await alertUnlessSponsor(deployment.table, actor, agent, "pausedBy", (who) => ({
-        what: `${who} paused ${agent.name}. Its approved sends are held, and unpausing sends them.`,
+        what: `${who} paused ${agent.name}. Its approved sends are held, and unpausing sends them.${heldTasks(agent)}`,
         urgent: `${agent.name} was paused by ${who}`,
       }));
       const paused = await pause(deployment.table, { agent, by: actor.id, items: alert });
@@ -223,6 +224,9 @@ export const pauseAgent = setupOperation("pauseAgent", async (event, deployment,
     },
   };
 });
+
+/** What a pause also holds of a mailbox agent: the tasks labels' prompts give it (ADR-0029). */
+const heldTasks = (agent: Agent) => (agent.mailbox === undefined ? "" : " Its tasks wait too, and unpausing runs them.");
 
 export const unpauseAgent: OperationHandler = async (event, deployment, actor) => {
   const agent = await agentAsked(event, deployment);
@@ -234,6 +238,8 @@ export const unpauseAgent: OperationHandler = async (event, deployment, actor) =
   // Each unpause releases what is held, so unpausing again finishes what one that stopped partway left.
   await releaseHeldSends(deployment.table, agent);
   await deployment.waitingSends.release(agent.id);
+  // A pause holds a mailbox agent's tasks, as it holds its sends (ADR-0029).
+  if (agent.mailbox !== undefined) for (const task of await waitingTasks(deployment.table, agent.mailbox)) await deployment.tasks.run(task);
   return { statusCode: 200, body: unpaused satisfies components["schemas"]["Agent"] };
 };
 

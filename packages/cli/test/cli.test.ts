@@ -740,6 +740,34 @@ test("an agent sets a thread aside in its sponsor's Remind me with a preset, lis
   expect(JSON.parse(cancelled.stdout)).toMatchObject({ threads: [{ id: thread, labels: ["inbox"] }] });
 });
 
+test("a human gives a label a prompt, and a thread given the label shows the mailbox agent's task", async () => {
+  const machine = await newMachine();
+  const duva = await startDuva({ domain: "example.com", admin: "ada@example.org" });
+  const server = await duva.listen();
+  onTestFinished(() => server.close());
+  await machine.saveDeployment(server);
+  await machine.duva("login", { browserSignsIn: "ada@example.org" });
+  const ada = (JSON.parse((await machine.duva("whoami")).stdout) as { id: string }).id;
+  const mailbox = JSON.parse((await machine.duva("mailboxes", "create", "--owner", ada, "--address", "ada@example.com")).stdout) as { id: string };
+  await machine.duva("screener", "switch", "--mailbox", mailbox.id, "--no-on");
+  const label = JSON.parse((await machine.duva("labels", "create", "--mailbox", mailbox.id, "--name", "Receipts")).stdout) as { id: string };
+  await duva.receive("From: Grace <grace@example.org>\r\nTo: ada@example.com\r\nSubject: Receipt\r\nDate: Sat, 03 Oct 2026 10:00:00 +0000\r\n\r\nYou paid 42 euros.\r\n", { to: ["ada@example.com"] });
+  const thread = (JSON.parse((await machine.duva("threads", "list", "--mailbox", mailbox.id)).stdout) as { threads: { id: string }[] }).threads[0]!.id;
+
+  const set = await machine.duva("labels", "set-prompt", "--mailbox", mailbox.id, "--label", label.id, "--prompt", "Note the amount.");
+  await machine.duva("threads", "label", "--mailbox", mailbox.id, "--threads", thread, "--add", label.id);
+  const read = await machine.duva("threads", "get", "--mailbox", mailbox.id, "--thread", thread);
+  const removed = await machine.duva("labels", "remove-prompt", "--mailbox", mailbox.id, "--label", label.id);
+  const inbox = await machine.duva("labels", "set-prompt", "--mailbox", mailbox.id, "--label", "inbox", "--prompt", "Do it.");
+
+  expect(set.exitCode).toBe(0);
+  expect(JSON.parse(set.stdout)).toEqual({ id: label.id, name: "Receipts", builtIn: false, unread: 0, prompt: "Note the amount." });
+  expect(JSON.parse(read.stdout)).toMatchObject({ tasks: [{ label: label.id, labelName: "Receipts", prompt: "Note the amount.", state: "done", note: "Stand-in answer." }] });
+  expect(JSON.parse(removed.stdout)).toEqual({ id: label.id, name: "Receipts", builtIn: false, unread: 1 });
+  expect(inbox.exitCode).toBe(1);
+  expect(JSON.parse(inbox.stderr).error).toMatch(/answered 400 Bad Request: Inbox can't carry a prompt\. Give the Feed, the Paper Trail or one of the mailbox's own labels one\.$/);
+});
+
 test("an agent searches its mailbox, and a search that can't be read says what to do", async () => {
   const machine = await newMachine();
   const duva = await startDuva({ domain: "example.com", admin: "ada@example.org" });

@@ -3,7 +3,7 @@
 import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { alertMailFilter, embeddingModel, environmentVariables, feederFilter, hostedLogoHeaders, mcpRoutes, senderFilter, senderRetries, timeToLiveAttribute, translationModel } from "@duva/api/infrastructure";
+import { alertMailFilter, embeddingModel, environmentVariables, feederFilter, hostedLogoHeaders, mcpRoutes, senderFilter, senderRetries, taskGiverFilter, timeToLiveAttribute, translationModel } from "@duva/api/infrastructure";
 import { operations } from "@duva/openapi";
 import { buildSync } from "esbuild";
 import { afterAll, expect, test } from "vitest";
@@ -240,14 +240,15 @@ test("the eraser can write the table and erase raw mail for good, every version 
   expect(scoped).not.toMatch(/"\/\*"|"s3:prefix":"\*"/);
 });
 
-test("the API invokes the eraser to empty a Trash, the unsubscriber to unsubscribe, search to search and the sender to send what waits for an agent's limits, and may invoke no other Lambda", () => {
+test("the API invokes the eraser to empty a Trash, the unsubscriber to unsubscribe, search to search, the sender to send what waits for an agent's limits and the task runner to run a mailbox agent's tasks that wait, and may invoke no other Lambda", () => {
   const [eraserId] = lambda("EraserHandler");
   const [unsubscriberId] = lambda("UnsubscriberHandler");
   const [searchId] = lambda("SearchHandler");
   const [senderId] = lambda("SenderHandler");
+  const [taskRunnerId] = lambda("TaskRunnerHandler");
   const invoking = statements("ApiHandler").filter(({ Action }) => [Action].flat().some((action) => action.startsWith("lambda:")));
   const invoked = JSON.stringify(invoking.map(({ Resource }) => Resource)).match(/Fn::GetAtt":\["(\w+)"/g)?.map((ref) => ref.replace(/^Fn::GetAtt":\["|"$/g, ""));
-  expect(new Set(invoked)).toEqual(new Set([eraserId, unsubscriberId, searchId, senderId]));
+  expect(new Set(invoked)).toEqual(new Set([eraserId, unsubscriberId, searchId, senderId, taskRunnerId]));
   const variables = lambda("ApiHandler")[1].Properties?.Environment?.Variables;
   expect(variables?.[environmentVariables.eraserFunction]).toEqual({ "Fn::GetAtt": [eraserId, "Arn"] });
   expect(variables?.[environmentVariables.unsubscriberFunction]).toEqual({ "Fn::GetAtt": [unsubscriberId, "Arn"] });
@@ -1016,6 +1017,30 @@ test("only the web app's distribution and, through IAM, the MCP Lambda may invok
   expect(actions("ConversationHandler", "lambda")).toEqual([]);
   expect(actions("ConversationHandler", "bedrock")).toEqual([]);
   expect(lambda("ConversationHandler")[1].Properties?.Timeout).toBe(900);
+});
+
+test("the table's stream hands the task giver each change that may add a label, and the giver and the API invoke the task runner, which nothing else may", () => {
+  const [[tableId]] = ofType("AWS::DynamoDB::GlobalTable") as [[string, Resource]];
+  const [, { Properties: mapping }] = mappingOf("TaskGiverHandler");
+  expect(mapping).toMatchObject({ EventSourceArn: { "Fn::GetAtt": [tableId, "StreamArn"] }, StartingPosition: "LATEST", FilterCriteria: { Filters: [{ Pattern: JSON.stringify(taskGiverFilter) }] } });
+  const [runnerId] = lambda("TaskRunnerHandler");
+  for (const prefix of ["TaskGiverHandler", "ApiHandler"]) {
+    expect(lambda(prefix)[1].Properties?.Environment?.Variables?.[environmentVariables.taskRunnerFunction]).toEqual({ "Fn::GetAtt": [runnerId, "Arn"] });
+    expect(actions(prefix, "lambda")).toContain("lambda:InvokeFunction");
+  }
+  expect(ofType("AWS::Lambda::Permission").filter(([, { Properties }]) => JSON.stringify(Properties?.FunctionName).includes(runnerId))).toEqual([]);
+});
+
+test("the task runner runs the mailbox agent on its runtime for up to 15 minutes, and Lambda retries none of its runs", () => {
+  const [runnerId, { Properties: runner }] = lambda("TaskRunnerHandler");
+  expect(runner?.Timeout).toBe(900);
+  expect(Object.keys(runner?.Environment?.Variables ?? {}).sort()).toEqual([environmentVariables.agentRuntime, environmentVariables.apiUrlParameter, "NODE_OPTIONS", environmentVariables.tableName].sort());
+  expect(actions("TaskRunnerHandler", "bedrock-agentcore").sort()).toEqual(["bedrock-agentcore:InvokeAgentRuntime", "bedrock-agentcore:StopRuntimeSession"]);
+  expect(actions("TaskRunnerHandler", "ssm")).toEqual(["ssm:GetParameter"]);
+  expect(actions("TaskRunnerHandler", "lambda")).toEqual([]);
+  expect(actions("TaskRunnerHandler", "bedrock")).toEqual([]);
+  const configs = ofType("AWS::Lambda::EventInvokeConfig").filter(([, { Properties }]) => JSON.stringify(Properties?.FunctionName).includes(runnerId));
+  expect(configs.map(([, { Properties }]) => Properties?.MaximumRetryAttempts)).toEqual([0]);
 });
 
 test("no origin request policy lists a header CloudFront refuses there, as those beginning X-Amz- or X-Edge-", () => {

@@ -4,11 +4,13 @@ import { mailboxesReadBy, mailboxFor } from "./access.ts";
 import type { Deployment } from "./deployment.ts";
 import { AddressTaken, addMailbox, allMailboxes, findActor, findMailbox } from "./organization.ts";
 import { addressGiven, addressTaken } from "./addresses.ts";
-import { builtInLabels, createLabel, deleteLabel, hasLabel, listLabels, NameTaken, renameLabel } from "./labels.ts";
+import { builtInLabels, changeLabelPrompt, createLabel, deleteLabel, hasLabel, labelWithId, listLabels, longestPrompt, NameTaken, promptedBuiltIns, renameLabel } from "./labels.ts";
+import { noMailboxAgent } from "./agent-runs.ts";
 import { attachmentLinks } from "./attachments.ts";
 import { allMail, type Cursor, cursorOf, inbox, labelThreads, mailboxChanges, markThreads, readThread, spam, threadsMarkedAtOnce, threadsPerPage, sentThreads, threadsWithLabel, trash, unreadWithLabel } from "./mail.ts";
 import { recordEmptying } from "./erasure.ts";
-import { giveMailboxAgent } from "./mailbox-agents.ts";
+import { giveMailboxAgent, mailboxAgentOf } from "./mailbox-agents.ts";
+import { threadTasks } from "./tasks.ts";
 import { syncRecipients } from "./receiving.ts";
 import { groupsSentAsBy } from "./group-mail.ts";
 import { actorNamed, setupOperation } from "./setup.ts";
@@ -136,7 +138,8 @@ export const getThread: OperationHandler = async (event, deployment, actor) => {
   const id = event.pathParameters?.thread ?? "";
   const thread = await readThread(deployment.table, deployment.mailBucket, mailbox.id, id, attachmentLinks(deployment, mailbox.id));
   if (thread === undefined) return refusal(404, `The mailbox has no thread ${JSON.stringify(id)}. List its threads to find one.`);
-  return { statusCode: 200, body: thread satisfies components["schemas"]["Thread"] };
+  const tasks = await threadTasks(deployment.table, mailbox.id, id);
+  return { statusCode: 200, body: { ...thread, ...(tasks.length > 0 && { tasks }) } satisfies components["schemas"]["Thread"] };
 };
 
 export const labelMailboxThreads: OperationHandler = async (event, deployment, actor) => {
@@ -229,6 +232,44 @@ export const deleteMailboxLabel: OperationHandler = async (event, deployment, ac
   if (typeof label !== "string") return label;
   const deleted = await deleteLabel(deployment.table, { mailbox: mailbox.id, label, by: actor!.id });
   return deleted === undefined ? noLabel(label) : { statusCode: 200, body: deleted satisfies components["schemas"]["Label"] };
+};
+
+/** The label whose prompt the call changes, if its actor owns the mailbox and the label can carry one, or a refusal. */
+async function promptAsked(event: Parameters<OperationHandler>[0], deployment: Deployment, actor: Parameters<OperationHandler>[2]) {
+  const mailbox = await mailboxFor(event, deployment, actor!, "read");
+  if ("statusCode" in mailbox) return mailbox;
+  // Never an agent, so no agent gives a mailbox agent work (ADR-0029).
+  if (actor!.kind !== "human" || mailbox.owner !== actor!.id) return refusal(403, "Only the mailbox's owner gives its labels prompts, since they set its mailbox agent to work. Ask them.");
+  const id = event.pathParameters?.label ?? "";
+  const label = await labelWithId(deployment.table, mailbox.id, id);
+  if (label === undefined) return noLabel(id);
+  if (label.builtIn && !promptedBuiltIns.includes(label.id)) {
+    return refusal(400, `${label.name} can't carry a prompt. Give the Feed, the Paper Trail or one of the mailbox's own labels one.`);
+  }
+  if ((await mailboxAgentOf(deployment.table, mailbox.id)) === undefined) {
+    return refusal(409, noMailboxAgent);
+  }
+  return { mailbox, label };
+}
+
+export const setMailboxLabelPrompt: OperationHandler = async (event, deployment, actor) => {
+  const asked = await promptAsked(event, deployment, actor);
+  if ("statusCode" in asked) return asked;
+  const given = jsonBody(event)?.prompt;
+  const prompt = typeof given === "string" ? given.trim() : "";
+  if (prompt === "" || prompt.length > longestPrompt) {
+    return refusal(400, `Give the label a prompt of 1 to ${longestPrompt.toLocaleString("en-US")} characters, saying what the mailbox agent is to do with each message that gets it.`);
+  }
+  await changeLabelPrompt(deployment.table, { mailbox: asked.mailbox.id, label: asked.label.id, prompt, by: actor!.id });
+  return { statusCode: 200, body: { ...asked.label, prompt } satisfies components["schemas"]["Label"] };
+};
+
+export const removeMailboxLabelPrompt: OperationHandler = async (event, deployment, actor) => {
+  const asked = await promptAsked(event, deployment, actor);
+  if ("statusCode" in asked) return asked;
+  await changeLabelPrompt(deployment.table, { mailbox: asked.mailbox.id, label: asked.label.id, prompt: undefined, by: actor!.id });
+  const { prompt: _removed, ...label } = asked.label;
+  return { statusCode: 200, body: label satisfies components["schemas"]["Label"] };
 };
 
 export const emptyMailboxTrash: OperationHandler = async (event, deployment, actor) => {

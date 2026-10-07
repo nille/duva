@@ -12,6 +12,7 @@ import type { Unsubscriber } from "./unsubscriber.ts";
 import type { WaitingSends } from "./limits.ts";
 import type { Reminders } from "./reminders.ts";
 import type { HostedLogos } from "./own-logos.ts";
+import type { TaskRunner } from "./tasks.ts";
 
 /** Duva's one DynamoDB table. */
 export interface Table {
@@ -50,4 +51,6 @@ export interface Deployment {
   reminders: Reminders;
   /** Serves the organization's own logos, and the mark certificates attached to them. */
   hostedLogos: HostedLogos;
+  /** Runs the tasks labels' prompts give mailbox agents, as unpausing one hands them over again. */
+  tasks: TaskRunner;
 }

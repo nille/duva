@@ -10,6 +10,7 @@
 // else it holds but its change feed, and its index is dropped (ADR-0020). So are the threads of a
 // sender whose mail goes nowhere (ADR-0025).
 import { DeleteCommand, GetCommand, PutCommand, QueryCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
+import { taskPrefix } from "./tasks.ts";
 import { TransactionCanceledException } from "@aws-sdk/client-dynamodb";
 import { InvokeCommand, type LambdaClient } from "@aws-sdk/client-lambda";
 import type { ScheduledEvent } from "aws-lambda";
@@ -286,6 +287,15 @@ async function eraseMessages(table: Table, mailbox: string, thread: string, eras
   for (let index = 0; index < drafts.length; index += 100) {
     const chunk = drafts.slice(index, index + 100);
     await db.send(new TransactWriteCommand({ TransactItems: chunk.map((draft) => ({ Delete: { TableName: table.name, Key: { [pk]: draft[pk], [sk]: draft[sk] } } })) }));
+  }
+  // The tasks labels' prompts gave for its messages keep the agent's notes on them.
+  const tasks = await allItems(table, {
+    KeyConditionExpression: `${pk} = :mailbox AND begins_with(${sk}, :tasks)`,
+    ExpressionAttributeValues: { ":mailbox": keys.partition(mailbox), ":tasks": taskPrefix(mailbox, thread)[sk] },
+  });
+  for (let index = 0; index < tasks.length; index += 100) {
+    const chunk = tasks.slice(index, index + 100);
+    await db.send(new TransactWriteCommand({ TransactItems: chunk.map((task) => ({ Delete: { TableName: table.name, Key: { [pk]: task[pk], [sk]: task[sk] } } })) }));
   }
   await db.send(
     new TransactWriteCommand({

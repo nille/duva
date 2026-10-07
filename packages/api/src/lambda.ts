@@ -26,6 +26,7 @@ import { eventBridgeReminders } from "./reminders.ts";
 import { X509Certificate } from "node:crypto";
 import { markRoots } from "./mark-roots.ts";
 import { s3HostedLogos } from "./own-logos.ts";
+import { lambdaTaskRunner } from "./tasks.ts";
 
 const mailBucket = required(environmentVariables.mailBucket);
 const lambda = new LambdaClient({});
@@ -66,4 +67,5 @@ export const handler = createApi({
     required(environmentVariables.logosUrl),
     markRoots.map((pem) => new X509Certificate(pem)),
   ),
+  tasks: lambdaTaskRunner(lambda, required(environmentVariables.taskRunnerFunction)),
 });

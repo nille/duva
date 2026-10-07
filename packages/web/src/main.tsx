@@ -597,6 +597,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
         connection={connection}
         marks={marks}
         screener={shownScreener.status === "read" ? shownScreener.screener.senders.length : 0}
+        prompts={shownOwn}
         done={reading ? undefined : doneHere}
         onDone={showDone}
         onSignedOut={onSignedOut}
@@ -659,7 +660,18 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
   // stream across the plane while nothing is open from it.
   const elsewhere =
     shown !== undefined && route.view === "list" && "label" in route.list && route.list.label === "feed" ? (
-      <FeedStream key={`${shown.id}/stream`} client={client} mailbox={shown} base={base} me={actor.id} agentNames={agentNames} version={version} onSignedOut={onSignedOut} />
+      <FeedStream
+        key={`${shown.id}/stream`}
+        client={client}
+        mailbox={shown}
+        base={base}
+        me={actor.id}
+        agentNames={agentNames}
+        version={version}
+        prompt={shownOwn ? labels.find(({ id }) => id === "feed") : undefined}
+        onDone={showDone}
+        onSignedOut={onSignedOut}
+      />
     ) : route.view === "activity" ? (
       route.day === undefined ? (
         <AgentActivity key={route.agent} client={client} agent={route.agent} name={agentNames.get(route.agent)} timeZone={preferences.timeZone} onSignedOut={onSignedOut} />

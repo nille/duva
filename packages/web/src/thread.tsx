@@ -15,6 +15,7 @@ import { changeFor, type Done, type Label, organize, OrganizeActions, ownLabelsO
 import { useSenderLink } from "./sender.tsx";
 import { useShortcuts } from "./shortcuts.tsx";
 import { strings } from "./strings.ts";
+import { ThreadTasks } from "./tasks.tsx";
 
 type Thread = components["schemas"]["Thread"];
 type Message = components["schemas"]["Message"];
@@ -389,6 +390,7 @@ export function ThreadView({
               <SetAside thread={reading.thread} />
             </div>
           </div>
+          <ThreadTasks tasks={reading.thread.tasks} />
           {(marking === "failed" || marking === "readFailed") && (
             <p className="notice notice-alert" role="alert">
               {marking === "failed" ? strings.thread.markFailed : strings.thread.markReadFailed}

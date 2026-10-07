@@ -132,6 +132,14 @@ _Avoid_: conversation
 A name on a thread. A thread can carry many labels.
 _Avoid_: folder, tag, category
 
+**Label prompt**:
+What a label's owner asks the mailbox agent to do with each message that gets the label, the Feed's and the Paper Trail's included. Adding the label, by hand, by an agent or by a sender's delivery, gives the agent a task, once per message per label, and the message goes where it would anyway (ADR-0029).
+_Avoid_: rule, filter, automation
+
+**Task**:
+Work a label prompt gave the mailbox agent: the prompt, with a message that got the label and its thread. It waits, works, and is done or fails, with the agent's note, which the thread and the agent's activity show. A failed one is an alert to its sponsor. Removing the label doesn't recall it.
+_Avoid_: job
+
 **Inbox**:
 A built-in label for threads that want attention. New mail adds it, unless its sender's delivery files it elsewhere; archiving removes it. A thread lies in at most one of the Inbox, the Feed and the Paper Trail.
 

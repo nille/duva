@@ -226,13 +226,15 @@ export async function receiveMessage(table: Table, arrival: Arrival): Promise<bo
     unread: (labels) => labels.includes(inbox) || !labels.some((label) => label === feed || label === paperTrail),
     findable: !arrival.spam,
     by: undefined,
-    change: (thread, joined) => ({
+    change: (thread, joined, labels) => ({
       type: "messageReceived",
       thread,
       message: message.id,
       ...(arrival.spam ? { spam: true } : {}),
       ...(!joined && screening?.screened !== undefined && { screened: screening.screened }),
       ...(screening?.delivered !== undefined && { delivered: screening.delivered }),
+      // A thread in Spam or Trash, or lying in another place, doesn't get the delivery's label.
+      ...(screening?.delivered !== undefined && labels.includes(label(joined)) && { deliveredTo: label(joined) }),
     }),
     once: () => ({ Put: { TableName: table.name, Item: receivedKey(mailbox, sesMessageId), ...isNew } }),
     checks: screening?.items ?? [],
@@ -352,7 +354,7 @@ async function storeMessage(
     findable: boolean;
     sent?: boolean;
     by: string | undefined;
-    change: (thread: string, joined: boolean) => object;
+    change: (thread: string, joined: boolean, labels: string[]) => object;
     once: (thread: string) => TransactItem;
     also?: TransactItem[];
     checks?: TransactItem[];
@@ -414,7 +416,7 @@ async function storeMessage(
       ...checks,
     ];
     try {
-      const changes = [change(thread, joined !== undefined), ...(early ? [{ type: "threadBack", thread, setAsideAt: joined.reminder!.setAt, early: true }] : [])];
+      const changes = [change(thread, joined !== undefined, summary.labels), ...(early ? [{ type: "threadBack", thread, setAsideAt: joined.reminder!.setAt, early: true }] : [])];
       await recordChanges(table, mailboxFeed(mailbox), { by, changes, items });
       return true;
     } catch (error) {
@@ -754,6 +756,23 @@ export async function threadSummary(table: Table, mailbox: string, thread: strin
     ...(Item.sent === true && { sent: true }),
     ...(Item.labelledAt !== undefined && { labelledAt: Item.labelledAt }),
   };
+}
+
+/** The ID of the thread's newest message, of those that arrived by the time if one is given, or undefined if it has none. */
+export async function newestMessage(table: Table, mailbox: string, thread: string, by?: string): Promise<string | undefined> {
+  const messages = `${threadPrefix(thread)}message#`;
+  const { Items = [] } = await documents(table).send(
+    new QueryCommand({
+      TableName: table.name,
+      KeyConditionExpression: `${pk} = :mailbox AND ${sk} BETWEEN :first AND :last`,
+      // A message's sort key follows the prefix with when it arrived, then "#", which sorts before "~".
+      ExpressionAttributeValues: { ":mailbox": partition(mailbox), ":first": messages, ":last": `${messages}${by ?? "~"}~` },
+      ScanIndexForward: false,
+      Limit: 1,
+      ConsistentRead: true,
+    }),
+  );
+  return Items[0]?.id as string | undefined;
 }
 
 /** The thread of the first of the messages that the mailbox has, if it has any. */

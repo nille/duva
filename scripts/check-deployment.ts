@@ -15,7 +15,7 @@
 // on x64, and Nova Lite translates in the region; every mailbox's search index is backfilled, naming any whose backfill is stuck, none has held
 // erased mail for more than a day, and no indexer task waits in its failure queue; nothing but IAM
 // may invoke the sender, and no schedule for sends that wait for an agent's limits, or for threads set aside in Remind me, is overdue; Ask your agent's
-// turns reach the conversation Lambda only through the web app's domain, the mailbox agents' AgentCore Runtime is ready and takes only IAM calls, every
+// turns reach the conversation Lambda only through the web app's domain, the mailbox agents' AgentCore Runtime is ready and takes only IAM calls, only IAM invokes the task runner, which retries no run, and no task is stuck working, every
 // human's mailbox has its mailbox agent, and Claude answers from eu-central-1 through the eu profile. Signing in stays
 // with a human. Then prints how many
 // messages Duva dropped on arrival each day of the last 7, by reason. Exits 1 if any check fails.
@@ -25,6 +25,7 @@ import { CognitoIdentityProviderClient, DescribeUserPoolCommand, paginateListUse
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import {
   GetFunctionConfigurationCommand,
+  GetFunctionEventInvokeConfigCommand,
   GetFunctionUrlConfigCommand,
   GetPolicyCommand,
   InvokeCommand,
@@ -38,10 +39,11 @@ import { GetConfigurationSetEventDestinationsCommand, GetEmailIdentityCommand, S
 import { GetQueueAttributesCommand, SQSClient } from "@aws-sdk/client-sqs";
 import { paginateListObjectsV2, S3Client } from "@aws-sdk/client-s3";
 import { indexedMailboxes, uncompactedSince } from "@duva/api/indexing";
-import { alertMailFilter, authorizationServerPath, conversationPath, mcpAuthorizePath, mcpPath, mcpRegistrationPath, mcpTokenPath, protectedResourcePaths, tokenHeader, dropMetric, dropReasons, environmentVariables, hostedLogoHeaders, hostedLogosPath, inboundPrefix, receiptRuleNumber, recipientsPerRule, senderFilter, signInFrom } from "@duva/api/infrastructure";
+import { alertMailFilter, authorizationServerPath, conversationPath, taskGiverFilter, mcpAuthorizePath, mcpPath, mcpRegistrationPath, mcpTokenPath, protectedResourcePaths, tokenHeader, dropMetric, dropReasons, environmentVariables, hostedLogoHeaders, hostedLogosPath, inboundPrefix, receiptRuleNumber, recipientsPerRule, senderFilter, signInFrom } from "@duva/api/infrastructure";
 import { rulesTake } from "@duva/api/receiving";
 import { defaultMailboxAgentModel, inferenceProfileId } from "@duva/api/agent-models";
 import { mailboxesWithoutAgents } from "@duva/api/mailbox-agents";
+import { tasksWorkingSince } from "@duva/api/tasks";
 import { BedrockAgentCoreControlClient, GetAgentRuntimeCommand } from "@aws-sdk/client-bedrock-agentcore-control";
 import { BedrockRuntimeClient, ConverseCommand } from "@aws-sdk/client-bedrock-runtime";
 import { createHash } from "node:crypto";
@@ -342,6 +344,36 @@ await check("the table's stream hands the sender each approved draft and each ur
   const expected = [senderFilter, alertMailFilter].map((filter) => JSON.stringify(filter));
   return JSON.stringify(patterns.sort()) === JSON.stringify(expected.sort()) ? undefined : `its filters are ${patterns.join(", ")}`;
 });
+// Label prompts (ADR-0029): the table's stream hands the task giver what may add a label, and only IAM invokes the task runner.
+await check("the task runner has no resource policy and no function URL, runs up to 15 minutes, and Lambda retries none of its runs", async () => {
+  const runner = await stackResource("AWS::Lambda::Function", "TaskRunnerHandler");
+  if (runner === undefined) return "isn't in the stack";
+  const policy = await missing(lambda.send(new GetPolicyCommand({ FunctionName: runner })));
+  if (policy !== undefined) return policy;
+  const url = await missing(lambda.send(new GetFunctionUrlConfigCommand({ FunctionName: runner })));
+  if (url !== undefined) return url;
+  const { Timeout } = await lambda.send(new GetFunctionConfigurationCommand({ FunctionName: runner }));
+  const { MaximumRetryAttempts } = await lambda.send(new GetFunctionEventInvokeConfigCommand({ FunctionName: runner }));
+  return Timeout === 900 && MaximumRetryAttempts === 0 ? undefined : `times out at ${Timeout} s and retries ${MaximumRetryAttempts} times`;
+});
+await check("the table's stream hands the task giver each change that may add a label, and nothing else", async () => {
+  const giver = await stackResource("AWS::Lambda::Function", "TaskGiverHandler");
+  if (giver === undefined) return "isn't in the stack";
+  const mappings: string[] = [];
+  for await (const { EventSourceMappings = [] } of paginateListEventSourceMappings({ client: lambda }, { FunctionName: giver })) {
+    for (const { State, FilterCriteria } of EventSourceMappings) mappings.push(`${State} ${(FilterCriteria?.Filters ?? []).map(({ Pattern = "" }) => JSON.stringify(JSON.parse(Pattern))).join(", ")}`);
+  }
+  return JSON.stringify(mappings) === JSON.stringify([`Enabled ${JSON.stringify(taskGiverFilter)}`]) ? undefined : `its mappings are ${mappings.join("; ")}`;
+});
+await check("no task has worked longer than a run can last", async () => {
+  const table = await stackTable();
+  if (table === undefined) return "the stack has no table";
+  const stuck = await tasksWorkingSince(table, new Date(Date.now() - 20 * 60_000).toISOString());
+  return stuck.length === 0 ? undefined : `${stuck.length} ${stuck.length === 1 ? "task has" : "tasks have"} worked since ${stuck.map(({ startedAt }) => startedAt).sort()[0]}, as when the task runner stopped partway`;
+});
+await check("giving a label a prompt without credentials answers 401", async () =>
+  expectStatus(await fetch(`${apiUrl}/mailboxes/x/labels/x/prompt`, { method: "PUT", headers: { "content-type": "application/json" }, body: '{"prompt":"x"}' }), 401),
+);
 await check("listing alerts without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/alerts`), 401));
 await check("marking alerts seen without credentials answers 401", async () =>
   expectStatus(await fetch(`${apiUrl}/alerts/seen`, { method: "POST", headers: { "content-type": "application/json" }, body: '{"alerts":["x"]}' }), 401),
