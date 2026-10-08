@@ -116,7 +116,7 @@ test("choosing nowhere asks once more, saying it can't be undone, then erases th
   expect(await listed("inbox")).toEqual([]);
   await expect.poll(() => sheet(page).innerText(), wait).toContain("Nowhere. Their mail is dropped as it arrives");
   // Their newsletters offer no unsubscribe, so the agent bounced the newest.
-  await expect.poll(() => sheet(page).innerText(), wait).toContain("Mailbox agent bounced their mail, so their list sees the address as gone.");
+  await expect.poll(() => sheet(page).innerText(), wait).toContain("Coo bounced their mail, so their list sees the address as gone.");
 });
 
 test("a label delivery files their mail under one of the human's own labels", budget, async () => {
