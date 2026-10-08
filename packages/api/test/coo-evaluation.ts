@@ -132,6 +132,8 @@ interface Mailbox {
   access(level: components["schemas"]["SponsorAccess"]): Promise<void>;
   /** What was sent from the mailbox. */
   sent(): string[];
+  /** Gives the owner an agent with the name, paused once and running now, and puts in the mailbox the alert Duva mailed days ago when it paused it. */
+  pausedOnce(name: string): Promise<void>;
 }
 
 /** One of Coo's jobs, with its grader: whether what it answered and did is what its owner asked for. */
@@ -166,6 +168,16 @@ export const tasks: CooTask[] = [
     name: "bokningsnumret till Lissabon",
     kind: "conversation",
     passes: async (mailbox) => says((await mailbox.ask("Vad är bokningsnumret för min resa till Lissabon?")).text, /K7QX2M/),
+  },
+  {
+    name: "whether an agent is paused, after an old alert",
+    kind: "conversation",
+    async passes(mailbox) {
+      await mailbox.pausedOnce("Real run 45");
+      const { text } = await mailbox.ask("Is Real run 45 paused?");
+      // "To see if Real run 45 is paused", as it says before it looks, says nothing of it.
+      return says(text, /\b(running|not paused|isn['’]t paused|no longer paused|unpaused)\b/i) && !/(?<!\b(if|whether|om) )Real run 45 (is|är) (still )?(paused|pausad)\b/i.test(text);
+    },
   },
   {
     name: "draft a reply to Grace",
@@ -441,6 +453,15 @@ export async function runTask(setup: Setup, task: CooTask, attempt: number): Pro
       await linus.PATCH("/agents/{agent}/settings", { params: { path: { agent: agent.id } }, body: { sponsorAccess: level } });
     },
     sent: () => duva.sent(),
+    async pausedOnce(name) {
+      const { data } = await linus.POST("/agents", { body: { name } });
+      const path = { params: { path: { agent: data!.agent.id } } };
+      await linus.POST("/agents/{agent}/pause", path);
+      await linus.POST("/agents/{agent}/unpause", path);
+      // The alert as Duva mailed it on the 3rd, when it paused the agent.
+      const alert: Mail = { key: "alert-paused", from: "Duva <no-reply@example.com>", subject: `${name} was paused by Duva`, date: "Sat, 03 Oct 2026 09:00:00 +0000", text: `Duva paused ${name}, since a recipient complained about its mail.\n\nAll alerts about your agents are in Duva, under Alerts.` };
+      await duva.receive(raw(alert), { to: ["linus@example.com"] });
+    },
   };
   const passed = await task.passes(mailbox);
   recorder.save();

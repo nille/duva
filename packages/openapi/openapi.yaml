@@ -439,11 +439,14 @@ paths:
           $ref: "#/components/responses/Forbidden"
     get:
       operationId: listAgents
-      summary: List the agents you sponsor, each with how many sends it has left this hour.
+      summary: List the agents you sponsor, each with whether it is paused and how many sends it has left this hour.
+      description: >
+        An agent without paused is running. A mailbox agent lists its owner's agents, itself among
+        them, so it reports their state as Duva has it now.
       x-cli-command: agents list
       responses:
         "200":
-          description: The agents the signed-in actor sponsors.
+          description: The agents the signed-in actor sponsors, or a mailbox agent's owner sponsors.
           content:
             application/json:
               schema:
@@ -3384,7 +3387,7 @@ components:
           description: >-
             How many more messages the agent's send limits let it send now,
             counting its sends of the last hour. Its sends that wait for the
-            limits leave none. There only when you list the agents you sponsor.
+            limits leave none. There only when you list the agents you sponsor, or a mailbox agent lists its owner's.
     Pause:
       type: object
       additionalProperties: false
@@ -7078,7 +7081,8 @@ components:
         the everyday model's tool calls twice; stepBudget, the everyday model
         hadn't finished after 6 steps; askedForHelp, it asked for help, saying
         why; answerCheck, its answer didn't hold up, as when it named a thread
-        or message nothing gave it.
+        or message nothing gave it, or said an agent is paused that Duva has
+        running.
       properties:
         reason:
           type: string

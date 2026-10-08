@@ -277,7 +277,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List the agents you sponsor, each with how many sends it has left this hour. */
+        /**
+         * List the agents you sponsor, each with whether it is paused and how many sends it has left this hour.
+         * @description An agent without paused is running. A mailbox agent lists its owner's agents, itself among them, so it reports their state as Duva has it now.
+         */
         get: operations["listAgents"];
         put?: never;
         /**
@@ -1625,7 +1628,7 @@ export interface components {
             paused?: components["schemas"]["Pause"];
             /** @description For a mailbox agent, the ID of the human's mailbox it is the mailbox agent of, the only one it works in. Duva hosts it, so it has no key, and it goes with the mailbox. */
             mailbox?: string;
-            /** @description How many more messages the agent's send limits let it send now, counting its sends of the last hour. Its sends that wait for the limits leave none. There only when you list the agents you sponsor. */
+            /** @description How many more messages the agent's send limits let it send now, counting its sends of the last hour. Its sends that wait for the limits leave none. There only when you list the agents you sponsor, or a mailbox agent lists its owner's. */
             sendsLeftThisHour?: number;
         };
         /** @description Who paused the agent and when, there only while it is paused. Its key is refused, and its approved sends are held, until it is unpaused. */
@@ -4099,7 +4102,7 @@ export interface components {
             /** @description How sure the decider was, from 0 to 1. */
             confidence: number;
         };
-        /** @description Why a run went over to the harder model, with the work so far: decided, the decider found the turn complex or wasn't sure; writing, it came to writing mail that may be sent; failedCalls, Duva refused the everyday model's tool calls twice; stepBudget, the everyday model hadn't finished after 6 steps; askedForHelp, it asked for help, saying why; answerCheck, its answer didn't hold up, as when it named a thread or message nothing gave it. */
+        /** @description Why a run went over to the harder model, with the work so far: decided, the decider found the turn complex or wasn't sure; writing, it came to writing mail that may be sent; failedCalls, Duva refused the everyday model's tool calls twice; stepBudget, the everyday model hadn't finished after 6 steps; askedForHelp, it asked for help, saying why; answerCheck, its answer didn't hold up, as when it named a thread or message nothing gave it, or said an agent is paused that Duva has running. */
         Handover: {
             /** @enum {string} */
             reason: "decided" | "writing" | "failedCalls" | "stepBudget" | "askedForHelp" | "answerCheck";
@@ -4816,7 +4819,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The agents the signed-in actor sponsors. */
+            /** @description The agents the signed-in actor sponsors, or a mailbox agent's owner sponsors. */
             200: {
                 headers: {
                     [name: string]: unknown;

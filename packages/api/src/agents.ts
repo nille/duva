@@ -40,8 +40,11 @@ export const createAgent: OperationHandler = async (event, deployment, actor) =>
 
 export const listAgents: OperationHandler = async (_event, deployment, actor) => {
   const now = new Date();
+  // A mailbox agent lists its owner's, its sponsor's, so it can say where they stand (#140).
+  const caller = actor!;
+  const sponsor = caller.kind === "agent" && caller.mailbox !== undefined ? caller.sponsor : caller.id;
   const agents = await Promise.all(
-    (await sponsoredAgents(deployment.table, actor!.id)).map(async (agent) => ({ ...agent, sendsLeftThisHour: await sendsLeft(deployment.table, agent.id, now) })),
+    (await sponsoredAgents(deployment.table, sponsor)).map(async (agent) => ({ ...agent, sendsLeftThisHour: await sendsLeft(deployment.table, agent.id, now) })),
   );
   return { statusCode: 200, body: { agents } satisfies components["schemas"]["AgentList"] };
 };

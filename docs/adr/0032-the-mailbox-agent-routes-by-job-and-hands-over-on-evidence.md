@@ -25,3 +25,7 @@ Each handover is kept on the turn or the task, with its reason, and is a change 
 - The runtime's role may call Nova Micro through its eu and us profiles, and the conversation Lambda Titan in the deployment's own region.
 - A conversation turn that needs no lookup, as a greeting, goes to the harder model, since the answer check can't tell it from a guess. That costs a harder model's call, not a wrong answer.
 - Unsubscribing on a sender's page (ADR-0031) is harder work, and starts with the harder model.
+
+## Note
+
+On 2026-10-08 (#140) Coo told Nicklas an agent was paused, from an old alert in the mail, while it was running. So the mailbox agent lists its owner's agents with listAgents, as Duva has them now, its prompt says to look there, and at its drafts, before it says where an agent or a send stands, and the answer check also reads each clause of an answer that names one of the owner's agents for whether it says the agent is paused or running, and compares that with Duva's list. An everyday model's answer that gets it wrong is set aside, and the harder model is told what Duva has. The harder model's answer has streamed by then, so Duva tells it what it got wrong once, and its correction follows.

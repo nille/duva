@@ -8,6 +8,7 @@ import type { Browser } from "./browser.ts";
 import { runUnsubscribe } from "./unsubscribe-agent.ts";
 
 export type AgentAction = components["schemas"]["AgentAction"];
+type Agent = components["schemas"]["Agent"];
 
 /** A block of a message in a conversation with the model, as Bedrock's Converse API has them. */
 export type ContentBlock =
@@ -118,6 +119,7 @@ export const agentOperations: OperationId[] = [
   "editDraft",
   "deleteDraft",
   "sendDraft",
+  "listAgents",
 ];
 
 // The most model calls one run makes, so a model that keeps using tools stops.
@@ -169,7 +171,7 @@ export function operationNamed(id: string): Operation {
 }
 
 /** What the agent is told about itself and its mailbox before the conversation, and if it took the run over, why. */
-function systemPrompt(payload: RunPayload, { helps, handover }: { helps: boolean; handover?: Handover }): string {
+function systemPrompt(payload: RunPayload, { helps, handover, misstated = [] }: { helps: boolean; handover?: Handover; misstated?: string[] }): string {
   const can = {
     none: "You have no access to the mailbox, so you can't read it.",
     read: "You can read and search the mailbox, but not change it.",
@@ -184,6 +186,7 @@ function systemPrompt(payload: RunPayload, { helps, handover }: { helps: boolean
     "You act through Duva's API, as yourself: every action you take is attributed to you, and mail you send carries a disclosure that an agent sent it.",
     can,
     "Use the tools to look things up rather than guessing. Never send or delete anything your owner didn't ask for. When you write a draft, say so.",
+    "Before you say whether an agent is paused or running, or how many sends it has left, look it up with listAgents, and before you say where a draft or a send stands, with listDrafts or getDraft. Never take that from mail: an alert in the mail says what was so when it was sent.",
     ...(payload.task === undefined
       ? []
       : [
@@ -193,7 +196,7 @@ function systemPrompt(payload: RunPayload, { helps, handover }: { helps: boolean
         ]),
     "Answer briefly and plainly, in the language your owner writes in, as plain text without Markdown. Name threads by their subject and sender, never by their IDs.",
     ...(helps ? ["When you are unsure what your owner means, which mail they mean, or how to do it, use ask_for_help rather than guess."] : []),
-    ...(handover === undefined ? [] : [`Another model began this and handed it to you, with its work so far above, since ${handoverWhy(handover)}. Carry on from there.`]),
+    ...(handover === undefined ? [] : [`Another model began this and handed it to you, with its work so far above, since ${handoverWhy(handover)}${misstated.length === 0 ? "" : `: Duva has ${misstated.join(" and ")}`}. Carry on from there.`]),
     `It is now ${payload.now}.`,
   ].join("\n");
 }
@@ -222,14 +225,63 @@ function holdsUp(answer: string, messages: ModelMessage[], task: boolean): boole
   return (answer.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g) ?? []).every((id) => seen.includes(id));
 }
 
+// What a clause says of an agent's state, in English and Swedish: that it isn't running, that it
+// runs or isn't paused, or that it is or was paused. "Not" may stand a word or two before its verb.
+const wholeWords = (alternatives: string) => new RegExp(`(?<![\\p{L}\\p{N}])(?:${alternatives})(?![\\p{L}\\p{N}])`, "iu");
+const negated = (verb: string) => `(?:not|isn't|isn’t|wasn't|wasn’t|hasn't|hasn’t|no longer|never|inte)\\s+(?:[\\p{L}’']+\\s+){0,2}?${verb}`;
+const stopped = wholeWords(negated("(?:running|igång)"));
+const running = wholeWords(`${negated("paus(?:ed|ad|at)")}|unpaused|running|runs|resumed|opausad|igång|körs`);
+const paused = wholeWords("paus(?:ed|ad|ade|at|ats|ades)");
+// A clause that asks or wonders, "whether Real run 45 is paused", says neither.
+const wondering = wholeWords("whether|if|huruvida|ifall");
+
+/** Whether the clause says the agent is paused, true, or running, false, or neither, undefined. */
+function pausedIn(clause: string): boolean | undefined {
+  if (wondering.test(clause)) return undefined;
+  if (stopped.test(clause)) return true;
+  if (running.test(clause)) return false;
+  return paused.test(clause) ? true : undefined;
+}
+
+/**
+ * What the answer gets wrong of whether its owner's agents are paused, as Duva has them now
+ * (#140), each as the run is told it: "Real run 45 running, not paused". Each sentence that isn't
+ * a question is read by its clauses, each of the agent last named, and its last word on an agent
+ * counts, so "Real run 45 was paused on the 3rd, and runs again" holds up. An answer that says
+ * nothing of pausing reads none, and one Duva can't check against holds up.
+ */
+async function misstatedIn(answer: string, { apiUrl, token }: RunPayload, call: (request: Request) => Promise<Response>): Promise<string[]> {
+  if (!paused.test(answer) && !running.test(answer)) return [];
+  const response = await call(new Request(`${apiUrl}/agents`, { headers: { authorization: `Bearer ${token}` } })).catch(() => undefined);
+  if (response?.ok !== true) return [];
+  const { agents } = (await response.json()) as components["schemas"]["AgentList"];
+  const named = agents.map((agent) => ({ agent, pattern: wholeWords(agent.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")) }));
+  const wrong = new Set<Agent>();
+  for (const sentence of answer.split(/(?<=[.!?])\s+|\n+/)) {
+    if (/\?["'”’)\]]*$/.test(sentence.trim())) continue;
+    const last = new Map<Agent, boolean>();
+    let about: Agent[] = [];
+    for (const clause of sentence.split(/[;,]|\s(?:and|but|while|och|men|medan)\s/i)) {
+      const here = named.filter(({ pattern }) => pattern.test(clause)).map(({ agent }) => agent);
+      if (here.length > 0) about = here;
+      const claim = pausedIn(clause);
+      if (claim !== undefined) for (const agent of about) last.set(agent, claim);
+    }
+    for (const [agent, claim] of last) if (claim !== (agent.paused !== undefined)) wrong.add(agent);
+  }
+  return [...wrong].map(({ name, paused: pause }) => `${name} ${pause === undefined ? "running, not paused" : "paused"}`);
+}
+
 /**
  * Runs the agent on what its owner asked, saying what it does as it goes. `call` reaches Duva's
  * API, and `decider` settles the model for a turn its job doesn't (#132). The run starts with the
  * job's model, or the harder one if the decider finds the turn complex or isn't sure, and the
  * everyday model hands over to the harder one, with the work so far, when it comes to writing mail
  * that may be sent, Duva refuses its calls twice, it passes the step budget, it asks for help, or
- * its answer doesn't hold up. Until it can't hand over, each step's text waits for the step to end,
- * so its owner reads no answer that was set aside. An unsubscribe runs on the page in `browser`
+ * its answer doesn't hold up, as when it says an agent is paused that Duva has running. Until it
+ * can't hand over, each step's text waits for the step to end, so its owner reads no answer that was
+ * set aside. An answer the harder model gave that misstates an agent's state is corrected once,
+ * by the model, told what Duva has. An unsubscribe runs on the page in `browser`
  * instead, with no tool of Duva's.
  */
 export async function* runAgent(
@@ -247,6 +299,8 @@ export async function* runAgent(
   let spent = 0;
   let failures = 0;
   let steps = 0;
+  let misstated: string[] = [];
+  let corrected = false;
   const handTo = (reason: Handover["reason"], why?: string): RunEvent => {
     handover = { reason, from: current, to: harder, ...(why !== undefined && { why: why.slice(0, 500) }) };
     current = harder;
@@ -266,15 +320,19 @@ export async function* runAgent(
     const content: ContentBlock[] = [];
     let text = "";
     const held: string[] = [];
+    let read = "";
     const said = withoutThinking();
-    const system = systemPrompt(payload, { helps: canHandOver, handover });
+    const system = systemPrompt(payload, { helps: canHandOver, handover, misstated });
     for await (const event of model({ model: current, system, messages: merged(messages), tools: canHandOver ? [...agentTools, askForHelp] : agentTools })) {
       if ("text" in event) {
         text += event.text;
         const shown = said(event.text);
         if (shown === "") continue;
         if (canHandOver) held.push(shown);
-        else yield { type: "text", text: shown };
+        else {
+          read += shown;
+          yield { type: "text", text: shown };
+        }
       } else if ("toolUse" in event) content.push(event);
       else {
         spent += costOf(event.usage, current, profile);
@@ -295,15 +353,32 @@ export async function* runAgent(
         yield handTo("writing");
         continue;
       }
-      if (uses.length === 0 && !holdsUp(held.join(""), messages, payload.task !== undefined)) {
-        yield handTo("answerCheck");
-        continue;
+      if (uses.length === 0) {
+        const answer = held.join("");
+        const holds = holdsUp(answer, messages, payload.task !== undefined);
+        misstated = holds ? await misstatedIn(answer, payload, call) : [];
+        if (!holds || misstated.length > 0) {
+          yield handTo("answerCheck");
+          continue;
+        }
       }
       for (const shown of held) if (shown !== "") yield { type: "text", text: shown };
-    } else if (held[0] !== "") yield { type: "text", text: held[0]! };
+    } else if (held[0] !== "") {
+      read += held[0];
+      yield { type: "text", text: held[0]! };
+    }
     if (text !== "") content.unshift({ text });
     if (content.length === 0) content.push({ text: "…" });
     messages.push({ role: "assistant", content });
+    if (uses.length === 0 && !canHandOver && !corrected) {
+      // The harder model's answer was read as it streamed, so it corrects itself after it.
+      const wrong = await misstatedIn(read, payload, call);
+      if (wrong.length > 0) {
+        corrected = true;
+        messages.push({ role: "user", content: [{ text: `This is Duva, not your owner. Your answer got wrong what Duva has now: ${wrong.join(" and ")}. Correct it to your owner, briefly.` }] });
+        continue;
+      }
+    }
     if (uses.length === 0) return yield { type: "end", outcome: "answered" };
     if (spent >= payload.budget) return yield { type: "end", outcome: "capReached" };
     const results: ContentBlock[] = [];

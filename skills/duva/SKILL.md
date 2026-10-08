@@ -188,7 +188,9 @@ Only admins can remove humans. Run it first with dryRun to see the human's mailb
 
 ## duva agents list
 
-List the agents you sponsor, each with how many sends it has left this hour.
+List the agents you sponsor, each with whether it is paused and how many sends it has left this hour.
+
+An agent without paused is running. A mailbox agent lists its owner's agents, itself among them, so it reports their state as Duva has it now.
 
 ## duva agents create
 

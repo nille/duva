@@ -439,8 +439,8 @@ export const operations = [
     "method": "get",
     "path": "/agents",
     "routeKey": "GET /agents",
-    "summary": "List the agents you sponsor, each with how many sends it has left this hour.",
-    "description": "",
+    "summary": "List the agents you sponsor, each with whether it is paused and how many sends it has left this hour.",
+    "description": "An agent without paused is running. A mailbox agent lists its owner's agents, itself among them, so it reports their state as Duva has it now.",
     "signIn": true,
     "command": [
       "agents",

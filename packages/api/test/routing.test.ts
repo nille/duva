@@ -154,6 +154,70 @@ test("an answer from the everyday model that names a thread nothing gave it, or 
   }
 });
 
+/** An alert Duva mailed days ago, when it paused the agent, which is running again since. */
+const pausedAlert = (name: string) =>
+  `From: Duva <no-reply@example.com>\r\nTo: linus@example.com\r\nSubject: ${name} was paused by Duva\r\nDate: Sat, 03 Oct 2026 09:00:00 +0000\r\nMessage-ID: <alert-1@example.com>\r\n\r\nDuva paused ${name}, since a recipient complained about its mail.\r\n\r\nAll alerts about your agents are in Duva, under Alerts.\r\n`;
+
+test("an everyday model's answer that an agent is paused, taken from an old alert while Duva has it running, is set aside unread, and the harder model answers, told what Duva has", async () => {
+  for (const claim of ["Real run 45 was paused by Duva, so a reply may be held.", "Real run 45 är pausad."]) {
+    const { model, requests } = scripted({ [nova]: [() => [use("searchMailbox", { q: "paused" })], () => [{ text: claim }]], [sonnet]: [() => [use("listAgents")], () => [{ text: "Real run 45 is running." }]] });
+    const { duva, linus, ask } = await withMailbox({ model });
+    await linus.POST("/agents", { body: { name: "Real run 45" } });
+    await duva.receive(pausedAlert("Real run 45"), { to: ["linus@example.com"] });
+
+    const { events } = await ask("Is Real run 45 paused?");
+
+    expect(said(events)).toBe("Real run 45 is running.");
+    expect(done(events).turn).toMatchObject({ text: "Real run 45 is running.", model: sonnet, handover: { reason: "answerCheck", from: nova, to: sonnet } });
+    expect(requests.find(({ model: asked }) => asked === sonnet)!.system).toContain("since its answer didn't hold up: Duva has Real run 45 running, not paused.");
+  }
+});
+
+test("an everyday model's answer that says rightly whether an agent is paused, or only wonders whether it is, holds up", async () => {
+  for (const answer of [
+    "Real run 45 is paused, and Hermes isn't.",
+    "Hermes was paused on the 3rd, and runs again since.",
+    "Hermes is not currently paused. Real run 45 är pausad.",
+    "I can't tell whether Hermes is paused. Is Hermes paused (do you think?)",
+  ]) {
+    const { model } = scripted({ [nova]: [() => [use("listAgents")], () => [{ text: answer }]] });
+    const { linus, ask } = await withMailbox({ model });
+    const { data } = await linus.POST("/agents", { body: { name: "Real run 45" } });
+    await linus.POST("/agents", { body: { name: "Hermes" } });
+    await linus.POST("/agents/{agent}/pause", { params: { path: { agent: data!.agent.id } } });
+
+    const { events } = await ask("Are my agents paused?");
+
+    expect(done(events).turn).toMatchObject({ text: answer, model: nova });
+    expect(done(events).turn.handover).toBeUndefined();
+  }
+});
+
+test("the harder model's answer that an agent is paused while Duva has it running, which its owner read as it streamed, is corrected after it", async () => {
+  const { model, requests } = scripted({ [sonnet]: [() => [{ text: "Real run 45 is paused." }], () => [{ text: " Sorry, Real run 45 is running." }]] });
+  const { duva, linus, ask } = await withMailbox({ model, decider: deciding("complex", 0.9) });
+  await linus.POST("/agents", { body: { name: "Real run 45" } });
+  await duva.receive(pausedAlert("Real run 45"), { to: ["linus@example.com"] });
+
+  const { events } = await ask("Is Real run 45 paused?");
+
+  expect(said(events)).toBe("Real run 45 is paused. Sorry, Real run 45 is running.");
+  expect(requests).toHaveLength(2);
+  expect(requests[1]!.messages.at(-1)!.content).toEqual([{ text: "This is Duva, not your owner. Your answer got wrong what Duva has now: Real run 45 running, not paused. Correct it to your owner, briefly." }]);
+  expect(done(events).turn).toMatchObject({ model: sonnet, outcome: "answered" });
+});
+
+test("what the harder model thinks between <thinking> and </thinking> isn't checked, as its owner never reads it", async () => {
+  const { model, requests } = scripted({ [sonnet]: [() => [{ text: "<thinking>The alert says Real run 45 is paused.</thinking>Real run 45 is running." }]] });
+  const { linus, ask } = await withMailbox({ model, decider: deciding("complex", 0.9) });
+  await linus.POST("/agents", { body: { name: "Real run 45" } });
+
+  const { events } = await ask("Is Real run 45 paused?");
+
+  expect(said(events)).toBe("Real run 45 is running.");
+  expect(requests).toHaveLength(1);
+});
+
 test("a label's task uses the task model, with no decider, and its handover shows on the task and in the agent's events", async () => {
   let decided = 0;
   const { model, requests } = scripted({ [nova]: [() => [use("ask_for_help", { why: "Unclear prompt." })]], [sonnet]: [() => [{ text: "Noted." }]] });
