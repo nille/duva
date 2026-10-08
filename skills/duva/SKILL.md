@@ -252,28 +252,26 @@ Give only the settings to change. A change works at once. Only the agent's spons
 - `--sendsPerHour`: How many messages the agent sends in any hour, from all its sponsor's mailboxes. 100 by default, and up to the organization's agentSendsPerHourCap. A send counts when it goes out, and one over the limit waits.
 - `--newRecipientsPerDay`: How many new recipients the agent sends to in any 24 hours: addresses it hasn't sent to before, from any mailbox. 50 by default, and up to the organization's agentNewRecipientsPerDayCap. A send counts when it goes out, and one over the limit waits. A message with more new recipients than the whole limit waits until its sponsor sends it now.
 
-## duva agents activity
+## duva agents events
 
-Read an agent's daily summaries, how much it sent, had approved or rejected, organized, screened, answered, did and drafted each day.
+List an agent's events, everything it did and what was done to it, newest first.
 
-Gives every day from from to to, newest first, each day in your time zone, days without activity included. Leave both out for the last 30 days. Activity reaches back to the agent's start: what it did in its sponsor's mailboxes, and the organization's changes to it. Only the agent's sponsor and admins can read it.
-
-- `--agent` (required): The agent's ID.
-- `--from`: The first day, as YYYY-MM-DD. Defaults to 29 days before to.
-- `--to`: The last day, as YYYY-MM-DD, at most 366 days after from. Defaults to today in your time zone.
-- `--timeZone`: The time zone days are in, an IANA name such as Europe/Stockholm. Defaults to your timeZone preference, or UTC if you have none.
-
-## duva agents timeline
-
-Read an agent's timeline for one day, everything it did and what was done to it, newest first.
-
-Lists the day's entries a page at a time, newest first. Each is a change as the change feed recorded it, with the mailbox it was in and its thread, where it has them. To read the next page, call again with the answer's next as after, until an answer has no next. Only the agent's sponsor and admins can read it. An admin who isn't the sponsor reads no part of what the mail says, so the changes leave out approvers' edits and notes, label names, and senders' and recipients' addresses.
+Lists the agent's activity a page at a time, newest first, across days: each event its ID, when, its kind, and a line saying what happened. Read one with agents event for everything recorded on it. Give kinds to list only events of those kinds, and failed to list only those that failed. To read the next page, call again with the answer's next as after, and the same kinds and failed, until an answer has no next. Activity reaches back to the agent's start: what it did in its sponsor's mailboxes, the organization's changes to it, and the alerts about it. Only the agent's sponsor and admins can read it. An admin who isn't the sponsor reads no part of what the mail says.
 
 - `--agent` (required): The agent's ID.
-- `--day` (required): The day, as YYYY-MM-DD, in your time zone.
-- `--timeZone`: The time zone days are in, an IANA name such as Europe/Stockholm. Defaults to your timeZone preference, or UTC if you have none.
-- `--limit`: How many entries a page lists at most.
+- `--kinds` (once for each): Only events of these kinds, any of conversations, tasks, draftsAndSends, approvals, organizing, screening, unsubscribes, pausesAndLimits, alerts and setup. Leave it out for every kind.
+- `--failed` or `--no-failed`: Only events that failed, of any kind, such as a send SES refused, a task the agent couldn't finish, or an unsubscribe that didn't work.
+- `--limit`: How many events a page lists at most.
 - `--after`: Where the page starts, the next of the page before it. Leave it out for the first page.
+
+## duva agents event
+
+Read one of an agent's events, with everything recorded on it.
+
+Gives the event as agents events lists it, with the mailbox it was in and its thread, where it has them, and what was recorded: the change as its feed recorded it, such as the threads a turn of Ask Coo touched, the models that answered, a handover and its reason, the cost, why a send or an unsubscribe failed, and a task's note, or the alert. Only the agent's sponsor and admins can read it. An admin who isn't the sponsor reads no part of what the mail says, so the change leaves out approvers' edits and notes, label names, senders' and recipients' addresses, and what the human asked, and an alert is only its event.
+
+- `--agent` (required): The agent's ID.
+- `--event` (required): The event's ID, as agents events lists it.
 
 ## duva access-requests ask
 

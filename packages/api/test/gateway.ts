@@ -29,7 +29,8 @@ export function gateway(handler: ApiHandler, authorizer: AuthorizerHandler): (re
     const { routeKey } = operation;
     const body = await request.text();
     const headers = Object.fromEntries(request.headers);
-    const queryStringParameters = url.search === "" ? undefined : Object.fromEntries(url.searchParams);
+    // API Gateway joins a parameter given more than once with commas, as kinds=a&kinds=b reaches the API as "a,b".
+    const queryStringParameters = url.search === "" ? undefined : Object.fromEntries([...new Set(url.searchParams.keys())].map((name) => [name, url.searchParams.getAll(name).join(",")]));
     const requestContext = context(request, url, routeKey);
 
     let authorizerContext: object | undefined;

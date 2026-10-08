@@ -1,6 +1,9 @@
 import { expect, test } from "vitest";
+import type { components } from "@duva/openapi";
 import type { Model, ModelEvent } from "../src/agent-loop.ts";
 import { type DuvaOptions, startDuva } from "./harness.ts";
+
+type Kind = components["schemas"]["AgentEventKind"];
 
 /** A message from Linus to the address, with the subject, which starts its own thread. */
 const note = (to: string, subject: string) =>
@@ -19,7 +22,7 @@ const note = (to: string, subject: string) =>
 /**
  * A deployment on example.com where Ada sponsors the agent Hermes, which has send sponsor access
  * to her mailbox at ada@example.com, its Screener off. Grace is the first admin, and Ken another
- * human.
+ * human. Adding Hermes and giving it access are its first two events.
  */
 async function withAgent(options: DuvaOptions = {}) {
   const duva = await startDuva({ domain: "example.com", admin: "grace@example.org", humans: ["ada@example.org", "ken@example.org"], ...options });
@@ -52,132 +55,341 @@ async function withAgent(options: DuvaOptions = {}) {
     const { data: asked } = await hermes.POST("/mailboxes/{mailbox}/drafts/{draft}/send", { params: { path: { ...params.path, draft: draft!.id } } });
     return { draft: draft!.id, approval: asked!.send!.approval! };
   };
-  const approve = (approval: string) => ada.POST("/approvals/{approval}/send", { params: { path: { approval } } });
-  const reject = (approval: string) => ada.POST("/approvals/{approval}/reject", { params: { path: { approval } }, body: { note: "Not now." } });
-  /** The agent's daily summaries, as the reader reads them. */
-  const summaries = async (query: { from?: string; to?: string; timeZone?: string } = {}, reader = ada) =>
-    reader.GET("/agents/{agent}/activity", { params: { path: { agent: agent.id }, query } });
-  /** One day of the agent's timeline, as the reader reads it. */
-  const timeline = async (day: string, query: { timeZone?: string; limit?: number; after?: string } = {}, reader = ada) =>
-    reader.GET("/agents/{agent}/activity/{day}", { params: { path: { agent: agent.id, day }, query } });
-  return { duva, ada, grace, ken: duva.signIn("ken@example.org"), hermes, agent, adaId: adaId!.id, mailbox: mailbox!, params, receive, organize, ask, approve, reject, summaries, timeline };
+  const approve = (approval: string) => duva.signIn("ada@example.org").POST("/approvals/{approval}/send", { params: { path: { approval } } });
+  const reject = (approval: string) => duva.signIn("ada@example.org").POST("/approvals/{approval}/reject", { params: { path: { approval } }, body: { note: "Not now." } });
+  /** A page of the agent's events, as the reader reads it. */
+  const events = async (query: { kinds?: Kind[]; failed?: boolean; limit?: number; after?: string } = {}, reader = ada) =>
+    reader.GET("/agents/{agent}/events", { params: { path: { agent: agent.id }, query } });
+  /** One of the agent's events, as the reader reads it. */
+  const event = async (id: string, reader = ada) => reader.GET("/agents/{agent}/events/{event}", { params: { path: { agent: agent.id, event: id } } });
+  /** Every page of the agent's events, as the reader reads them. */
+  const everyEvent = async (query: { kinds?: Kind[]; failed?: boolean; limit?: number } = {}, reader = ada) => {
+    const read = [];
+    for (let after: string | undefined, page = 0; page === 0 || after !== undefined; page++) {
+      const { data } = await events({ ...query, ...(after !== undefined && { after }) }, reader);
+      read.push(...data!.events);
+      after = data!.next;
+    }
+    return read;
+  };
+  const whoami = async (reader: typeof ada) => (await reader.GET("/whoami")).data!.id;
+  return { duva, ada, grace, ken: duva.signIn("ken@example.org"), hermes, agent, adaId: adaId!.id, mailbox: mailbox!, params, receive, organize, ask, approve, reject, events, event, everyEvent, whoami };
 }
 
-/** A day of a summary with nothing in it. */
-const quiet = (day: string) => ({ day, sent: 0, approved: 0, rejected: 0, organized: 0, screened: 0, alerts: 0, conversations: 0, tasksDone: 0, tasksFailed: 0, drafts: 0, unsubscribes: 0 });
+/** The events' types and lines, as a list says them. */
+const said = (events: { type: string; summary: string }[] | undefined) => events?.map(({ type, summary }) => [type, summary]);
 
-test("the sponsor reads their agent's daily summaries, newest first, each day's work counted on the day it was done in their time zone", async () => {
-  const { duva, organize, summaries } = await withAgent();
-  // 01:30 on 6 October in Stockholm, still 5 October in UTC.
-  await duva.clock(new Date("2026-10-05T23:30:00Z"));
+test("the sponsor lists their agent's events newest first, across days, each with when, its kind and what happened", async () => {
+  const { duva, hermes, adaId, organize, events, whoami } = await withAgent();
+  await duva.clock(new Date("2026-09-14T10:00:00Z"));
   await organize("Kvitto");
+  await duva.clock(new Date("2026-09-15T10:00:00Z"));
   await organize("Faktura");
 
-  const { response, data } = await summaries({ from: "2026-10-04", to: "2026-10-06", timeZone: "Europe/Stockholm" });
+  const { response, data } = await events();
 
   expect(response.status).toBe(200);
-  expect(data).toEqual({ timeZone: "Europe/Stockholm", days: [{ ...quiet("2026-10-06"), organized: 2 }, quiet("2026-10-05"), quiet("2026-10-04")] });
-  expect((await summaries({ from: "2026-10-04", to: "2026-10-06" })).data).toEqual({
-    timeZone: "UTC",
-    days: [quiet("2026-10-06"), { ...quiet("2026-10-05"), organized: 2 }, quiet("2026-10-04")],
+  const event = { id: expect.any(String), at: expect.any(String), failed: false, needsYou: false };
+  // Setting Hermes up happened today, after the days the clock went back to, so it is newest.
+  expect(data).toEqual({
+    events: [
+      { ...event, kind: "pausesAndLimits", type: "agentSettingsChanged", actor: adaId, summary: "You changed Hermes's settings." },
+      { ...event, kind: "setup", type: "actorAdded", actor: adaId, summary: "You added the agent Hermes." },
+      { ...event, at: expect.stringMatching(/^2026-09-15T10:00/), kind: "organizing", type: "threadRead", actor: await whoami(hermes), summary: "Hermes marked a thread read." },
+      { ...event, at: expect.stringMatching(/^2026-09-14T10:00/), kind: "organizing", type: "threadRead", actor: await whoami(hermes), summary: "Hermes marked a thread read." },
+    ],
   });
+  expect(new Set(data!.events.map(({ id }) => id)).size).toBe(4);
 });
 
-test("a day's summary counts the drafts the agent started, its sends that went out, and those its sponsor approved and rejected", async () => {
-  const { duva, ask, approve, reject, summaries } = await withAgent();
-  await duva.clock(new Date("2026-10-06T10:00:00Z"));
+test("an event opens into everything recorded on it, with its mailbox and thread", async () => {
+  const { duva, hermes, mailbox, organize, events, event, whoami } = await withAgent();
+  await duva.clock(new Date("2026-09-15T10:00:00Z"));
+  const thread = await organize("Kvitto");
+  const listed = (await events()).data!.events.find(({ type }) => type === "threadRead")!;
+
+  const { response, data } = await event(listed.id);
+
+  expect(response.status).toBe(200);
+  expect(data).toEqual({ ...listed, mailbox: mailbox.id, thread, change: { position: expect.any(Number), at: listed.at, type: "threadRead", actor: await whoami(hermes), thread } });
+});
+
+test("what the agent did in its sponsor's mailbox is in its events, each draft with its thread, but not what the sponsor did there", async () => {
+  const { duva, ada, params, receive, organize, ask, approve, everyEvent, event } = await withAgent();
+  await duva.clock(new Date("2026-09-15T10:00:00Z"));
+  const ownWork = await receive("Faktura");
+  await ada.POST("/mailboxes/{mailbox}/threads/read", { params, body: { threads: [ownWork] } });
+  await ada.POST("/mailboxes/{mailbox}/drafts", { params, body: { to: ["linus@example.org"], text: "Ada's own." } });
+  await organize("Kvitto");
   await approve((await ask("linus@example.org")).approval);
-  await approve((await ask("grace@example.org")).approval);
-  await reject((await ask("ken@example.org")).approval);
+  const sent = (await ada.GET("/mailboxes/{mailbox}/sent", { params })).data!.threads[0]!.id;
 
-  const { data } = await summaries({ from: "2026-10-06", to: "2026-10-06" });
+  const listed = (await everyEvent()).slice(2);
 
-  expect(data?.days).toEqual([{ ...quiet("2026-10-06"), drafts: 3, sent: 2, approved: 2, rejected: 1 }]);
+  expect(said(listed)).toEqual([
+    ["messageSent", "Duva sent Hermes's message to linus@example.org."],
+    ["approvalDecided", "You approved Hermes's send."],
+    ["approvalAsked", "Hermes asked for approval to send."],
+    ["draftWritten", "Hermes started a draft."],
+    ["threadRead", "Hermes marked a thread read."],
+  ]);
+  expect((await event(listed[3]!.id)).data?.thread).toBe(sent);
 });
 
-test("a day's summary counts what the agent organized and screened itself, and leaves out what its sponsor did in their mailbox", async () => {
-  const { duva, ada, hermes, params, receive, summaries } = await withAgent();
-  await duva.clock(new Date("2026-10-06T10:00:00Z"));
+test("a draft not sent yet that replies in a thread has that thread", async () => {
+  const { duva, hermes, params, receive, events, event } = await withAgent();
+  await duva.clock(new Date("2026-09-15T10:00:00Z"));
   const thread = await receive("Kvitto");
-  await hermes.POST("/mailboxes/{mailbox}/threads/read", { params, body: { threads: [thread] } });
-  await hermes.POST("/mailboxes/{mailbox}/threads/labels", { params, body: { threads: [thread], remove: ["inbox"] } });
+  const message = (await hermes.GET("/mailboxes/{mailbox}/threads/{thread}", { params: { path: { ...params.path, thread } } })).data!.messages[0]!.id;
+  await hermes.POST("/mailboxes/{mailbox}/drafts", { params, body: { answers: message, text: "Tack." } });
+
+  const written = (await events()).data!.events.find(({ type }) => type === "draftWritten")!;
+
+  expect((await event(written.id)).data).toMatchObject({ type: "draftWritten", thread });
+});
+
+test("the agent's pauses are in its events once, with its key rotations and changes to its settings, from the organization's feed and its sponsor's mailboxes", async () => {
+  const { duva, ada, grace, agent, mailbox, everyEvent, event, whoami } = await withAgent();
+  const agentParams = { params: { path: { agent: agent.id } } };
+  // Ada has a second mailbox, whose feed records the change to the settings too.
+  const { data: second } = await grace.POST("/mailboxes", { body: { owner: await whoami(ada), address: "ada.lovelace@example.com" } });
+  await duva.clock(new Date("2026-09-15T10:00:00Z"));
+  await grace.POST("/agents/{agent}/pause", agentParams);
+  await ada.POST("/agents/{agent}/unpause", agentParams);
+  await ada.POST("/agents/{agent}/key", agentParams);
+  await ada.PATCH("/agents/{agent}/settings", { ...agentParams, body: { sendsPerHour: 20 } });
+
+  const listed = (await everyEvent()).filter(({ type }) => type !== "alert").slice(2, 6);
+
+  expect(said(listed)).toEqual([
+    ["agentSettingsChanged", "You changed Hermes's settings."],
+    ["agentKeyRotated", "You rotated Hermes's key."],
+    ["agentUnpaused", "You unpaused Hermes."],
+    ["agentPaused", "grace@example.org paused Hermes."],
+  ]);
+  expect((await event(listed[0]!.id)).data).toMatchObject({ mailbox: expect.toBeOneOf([mailbox.id, second!.id]), change: { before: { sendsPerHour: 100 }, after: { sendsPerHour: 20 } } });
+  expect((await event(listed[3]!.id)).data).toMatchObject({ change: { actor: await whoami(grace), agent: agent.id } });
+  expect((await event(listed[3]!.id)).data).not.toHaveProperty("mailbox");
+});
+
+test.each([5, 20, 100])("a change to the agent's settings in two of its sponsor's mailboxes is one event, read %i at a time", async (limit) => {
+  const { duva, ada, grace, agent, everyEvent, whoami } = await withAgent();
+  const agentParams = { params: { path: { agent: agent.id } } };
+  await grace.POST("/mailboxes", { body: { owner: await whoami(ada), address: "ada.lovelace@example.com" } });
+  await duva.clock(new Date("2026-09-15T10:00:00Z"));
+  for (const sendsPerHour of [10, 20, 30, 40, 50, 60]) await ada.PATCH("/agents/{agent}/settings", { ...agentParams, body: { sendsPerHour } });
+
+  const read = await everyEvent({ limit });
+
+  expect(read.map(({ type }) => type)).toEqual(["agentSettingsChanged", "actorAdded", ...Array(6).fill("agentSettingsChanged")]);
+});
+
+test("a long list is read a page at a time, newest first, without repeats", async () => {
+  const { duva, organize, events } = await withAgent();
+  await duva.clock(new Date("2026-09-15T10:00:00Z"));
+  for (const subject of ["Ett", "Två", "Tre"]) await organize(subject);
+
+  const first = (await events({ limit: 2 })).data!;
+  const second = (await events({ limit: 2, after: first.next })).data!;
+  const third = (await events({ limit: 2, after: second.next })).data!;
+
+  expect([first, second, third].map(({ events }) => events.map(({ type }) => type))).toEqual([["agentSettingsChanged", "actorAdded"], ["threadRead", "threadRead"], ["threadRead"]]);
+  expect(third).not.toHaveProperty("next");
+});
+
+test("a list of one kind is read a page at a time too, each page holding only that kind", async () => {
+  const { duva, event, organize, events } = await withAgent();
+  await duva.clock(new Date("2026-09-15T10:00:00Z"));
+  const threads = [];
+  for (const subject of ["Ett", "Två", "Tre", "Fyra", "Fem"]) threads.push(await organize(subject));
+
+  const pages = [];
+  for (let after: string | undefined, page = 0; page === 0 || after !== undefined; page++) {
+    const { data } = await events({ kinds: ["organizing"], limit: 2, ...(after !== undefined && { after }) });
+    pages.push(data!.events);
+    after = data!.next;
+  }
+
+  expect(pages.map((page) => page.length)).toEqual([2, 2, 1]);
+  const read = await Promise.all(pages.flat().map(async ({ id }) => (await event(id)).data!.thread));
+  expect(read).toEqual(threads.toReversed());
+});
+
+/**
+ * Hermes organizes, screens, drafts and sends with approval, is paused by Grace, which alerts Ada,
+ * then unpaused and its key rotated by Ada, on a day before it was set up, as the clock goes back.
+ */
+async function withEveryKind() {
+  const setUp = await withAgent();
+  const { duva, ada, grace, hermes, agent, params, organize, ask, approve } = setUp;
+  await duva.clock(new Date("2026-09-15T10:00:00Z"));
+  await organize("Kvitto");
+  await hermes.PUT("/mailboxes/{mailbox}/senders/{sender}", { params: { path: { ...params.path, sender: "mallory@example.net" } }, body: { delivery: "paperTrail" } });
+  await approve((await ask("linus@example.org")).approval);
+  await grace.POST("/agents/{agent}/pause", { params: { path: { agent: agent.id } } });
+  await ada.POST("/agents/{agent}/unpause", { params: { path: { agent: agent.id } } });
+  await ada.POST("/agents/{agent}/key", { params: { path: { agent: agent.id } } });
+  return setUp;
+}
+
+test.each<[Kind[], string[]]>([
+  [["organizing"], ["threadRead"]],
+  [["screening"], ["senderDeliverySet"]],
+  [["draftsAndSends"], ["messageSent", "draftWritten"]],
+  [["approvals"], ["approvalDecided", "approvalAsked"]],
+  [["pausesAndLimits"], ["agentSettingsChanged", "agentUnpaused", "agentPaused"]],
+  [["alerts"], ["alert"]],
+  [["setup"], ["actorAdded", "agentKeyRotated"]],
+  [["conversations"], []],
+  [["organizing", "screening"], ["senderDeliverySet", "threadRead"]],
+])("the events of the kinds %j are listed alone", async (kinds, types) => {
+  const { events } = await withEveryKind();
+
+  const { data } = await events({ kinds });
+
+  expect(data!.events.map(({ type }) => type)).toEqual(types);
+  expect(data!.events.every(({ kind }) => kinds.includes(kind))).toBe(true);
+});
+
+test("kinds given as one comma-separated list are read as several", async () => {
+  const { ada, agent } = await withEveryKind();
+
+  const { data } = await ada.GET("/agents/{agent}/events", { params: { path: { agent: agent.id }, query: { kinds: ["organizing,screening"] as unknown as Kind[] } } });
+
+  expect(data!.events.map(({ type }) => type)).toEqual(["senderDeliverySet", "threadRead"]);
+});
+
+test("the failed events are listed alone, across kinds, as a send SES refused and one that bounced", async () => {
+  // In the sandbox, SES refuses mail to anyone not on the domain.
+  const { duva, hermes, params, ask, approve, organize, events } = await withAgent({ sandbox: true });
+  await duva.clock(new Date("2026-09-15T10:00:00Z"));
+  await organize("Kvitto");
+  await approve((await ask("linus@example.org")).approval);
+  const bounced = await ask("nobody@example.com");
+  await approve(bounced.approval);
+  const { data: sent } = await hermes.GET("/mailboxes/{mailbox}/drafts/{draft}", { params: { path: { ...params.path, draft: bounced.draft } } });
+  await duva.sendingEvent(/^<(.+)@[^@]+>$/.exec(sent!.send!.messageId!)![1]!, { type: "Bounce", bounceType: "Permanent", bounceSubType: "NoEmail", recipients: ["nobody@example.com"] });
+
+  const failed = (await events({ failed: true })).data!.events;
+
+  expect(said(failed)).toEqual([
+    ["feedbackReceived", "Amazon SES reported that a message bounced for nobody@example.com."],
+    ["sendFailed", expect.stringMatching(/^Amazon SES refused to send Hermes's message: .*linus@example\.org/)],
+  ]);
+  expect(failed.every(({ failed }) => failed)).toBe(true);
+  expect((await events({ failed: true, kinds: ["approvals"] })).data!.events).toEqual([]);
+  expect((await events({ failed: false })).data!.events.length).toBeGreaterThan(failed.length);
+});
+
+test("a send waiting for approval waits for the sponsor until they decide, and an alert until they see it", async () => {
+  const { duva, ada, grace, agent, ask, approve, events } = await withAgent();
+  await duva.clock(new Date("2026-09-15T10:00:00Z"));
+  const asked = await ask("linus@example.org");
+  await grace.POST("/agents/{agent}/pause", { params: { path: { agent: agent.id } } });
+  const waiting = async (reader = ada) => (await events({}, reader)).data!.events.filter(({ needsYou }) => needsYou).map(({ type }) => type);
+
+  expect(await waiting()).toEqual(["alert", "approvalAsked"]);
+  // Waiting is for the sponsor, and an admin who isn't one reads nothing waiting for them.
+  expect(await waiting(grace)).toEqual([]);
+
+  const alert = (await ada.GET("/alerts")).data!.alerts[0]!;
+  await ada.POST("/alerts/seen", { body: { alerts: [alert.id] } });
+  await ada.POST("/agents/{agent}/unpause", { params: { path: { agent: agent.id } } });
+  await approve(asked.approval);
+
+  expect(await waiting()).toEqual([]);
+});
+
+test("an alert is an event, saying for the sponsor what the alert said, and opening into the alert", async () => {
+  const { duva, ada, grace, agent, events, event } = await withAgent();
+  await duva.clock(new Date("2026-09-15T10:00:00Z"));
+  await grace.POST("/agents/{agent}/pause", { params: { path: { agent: agent.id } } });
+  const alert = (await ada.GET("/alerts")).data!.alerts[0]!;
+
+  const listed = (await events({ kinds: ["alerts"] })).data!.events;
+
+  expect(listed).toEqual([{ id: expect.any(String), at: alert.at, kind: "alerts", type: "alert", actor: "duva", summary: alert.what, failed: false, needsYou: true }]);
+  expect((await event(listed[0]!.id)).data).toEqual({ ...listed[0], alert });
+  // An admin who isn't the sponsor reads whom it went to and what it was about, and not the alert.
+  const admins = (await events({ kinds: ["alerts"] }, grace)).data!.events;
+  expect(said(admins)).toEqual([["alert", "Duva alerted ada@example.org that it was paused."]]);
+  expect((await event(admins[0]!.id, grace)).data).not.toHaveProperty("alert");
+});
+
+test("an admin who isn't the sponsor reads the events without what the mail says", async () => {
+  const { duva, grace, hermes, params, receive, ask, reject, everyEvent, event } = await withAgent();
+  await duva.clock(new Date("2026-09-15T10:00:00Z"));
+  await receive("Kvitto");
   await hermes.POST("/mailboxes/{mailbox}/labels", { params, body: { name: "Kvitton" } });
   await hermes.PUT("/mailboxes/{mailbox}/senders/{sender}", { params: { path: { ...params.path, sender: "mallory@example.net" } }, body: { delivery: "paperTrail" } });
-  await hermes.PUT("/mailboxes/{mailbox}/senders/{sender}", { params: { path: { ...params.path, sender: "eve@example.net" } }, body: { delivery: "feed" } });
-  await ada.POST("/mailboxes/{mailbox}/threads/unread", { params, body: { threads: [thread] } });
-  await ada.PUT("/mailboxes/{mailbox}/senders/{sender}", { params: { path: { ...params.path, sender: "linus@example.org" } }, body: { delivery: "inbox" } });
+  await reject((await ask("linus@example.org")).approval);
 
-  const { data } = await summaries({ from: "2026-10-06", to: "2026-10-06" });
+  const sponsors = (await everyEvent()).slice(2);
+  const admins = (await everyEvent({}, grace)).slice(2);
 
-  expect(data?.days).toEqual([{ ...quiet("2026-10-06"), organized: 3, screened: 2 }]);
+  expect(said(sponsors)).toEqual([
+    ["approvalDecided", "You rejected Hermes's send: “Not now.”"],
+    ["approvalAsked", "Hermes asked for approval to send."],
+    ["draftWritten", "Hermes started a draft."],
+    ["senderDeliverySet", "Hermes sent mail from mallory@example.net to the Paper Trail."],
+    ["labelCreated", "Hermes created the label Kvitton."],
+  ]);
+  expect(said(admins)).toEqual([
+    ["approvalDecided", "ada@example.org rejected Hermes's send."],
+    ["approvalAsked", "Hermes asked for approval to send."],
+    ["draftWritten", "Hermes started a draft."],
+    ["senderDeliverySet", "Hermes sent mail from a sender to the Paper Trail."],
+    ["labelCreated", "Hermes created a label."],
+  ]);
+  const decided = (await event(admins[0]!.id, grace)).data!.change!;
+  expect(decided).toMatchObject({ decision: "rejected" });
+  expect(decided).not.toHaveProperty("note");
+  expect((await event(admins[4]!.id, grace)).data!.change).not.toHaveProperty("name");
+  expect((await event(admins[3]!.id, grace)).data!.change).toEqual(expect.not.objectContaining({ address: expect.anything() }));
+  expect((await event(sponsors[3]!.id)).data!.change).toMatchObject({ address: "mallory@example.net" });
 });
 
-test("a day's summary counts the alerts about the agent its sponsor got, on the day in the reader's time zone, and none about their other agents", async () => {
-  const { duva, ada, grace, hermes, agent, summaries } = await withAgent();
-  const { data: other } = await ada.POST("/agents", { body: { name: "Iris" } });
-  // 01:30 on 6 October in Stockholm, still 5 October in UTC.
-  await duva.clock(new Date("2026-10-05T23:30:00Z"));
-  await grace.POST("/agents/{agent}/pause", { params: { path: { agent: agent.id } } });
-  await hermes.GET("/whoami");
-  await grace.POST("/agents/{agent}/pause", { params: { path: { agent: other!.agent.id } } });
+test("an admin who isn't the sponsor reads no approver's edits, no bounced recipients and no reason SES gave for refusing a send", async () => {
+  // In the sandbox, SES refuses mail to anyone not on the domain, and names them in its reason.
+  const { duva, grace, hermes, params, ask, events, event } = await withAgent({ sandbox: true });
+  await duva.clock(new Date("2026-09-15T10:00:00Z"));
+  const refused = await ask("linus@example.org");
+  await duva.signIn("ada@example.org").POST("/approvals/{approval}/send", { params: { path: { approval: refused.approval } }, body: { text: "Hej då." } });
+  const bounced = await ask("nobody@example.com");
+  await duva.signIn("ada@example.org").POST("/approvals/{approval}/send", { params: { path: { approval: bounced.approval } } });
+  const { data: sent } = await hermes.GET("/mailboxes/{mailbox}/drafts/{draft}", { params: { path: { ...params.path, draft: bounced.draft } } });
+  await duva.sendingEvent(/^<(.+)@[^@]+>$/.exec(sent!.send!.messageId!)![1]!, { type: "Bounce", bounceType: "Permanent", bounceSubType: "NoEmail", recipients: ["nobody@example.com"] });
 
-  const { data } = await summaries({ from: "2026-10-05", to: "2026-10-06", timeZone: "Europe/Stockholm" });
+  const changes = async (reader: typeof grace | undefined) => {
+    const listed = (await events({ kinds: ["approvals", "draftsAndSends"], limit: 100 }, reader)).data!.events;
+    return Promise.all(listed.map(async ({ id, summary }) => ({ summary, change: (await event(id, reader)).data!.change! })));
+  };
+  const sponsors = await changes(undefined);
+  const admins = await changes(grace);
+  const find = (read: typeof sponsors, type: string) => read.find(({ change }) => change.type === type && (type !== "approvalDecided" || ("approval" in change && change.approval === refused.approval)))!;
 
-  expect(data?.days).toEqual([{ ...quiet("2026-10-06"), alerts: 2 }, quiet("2026-10-05")]);
-  expect((await summaries({ from: "2026-10-05", to: "2026-10-06", timeZone: "UTC" })).data?.days).toEqual([quiet("2026-10-06"), { ...quiet("2026-10-05"), alerts: 2 }]);
+  expect(find(sponsors, "approvalDecided")).toMatchObject({ summary: "You approved Hermes's send, changing the text.", change: { edits: { text: "Hej då." } } });
+  expect(find(sponsors, "sendFailed").change).toMatchObject({ reason: expect.stringContaining("linus@example.org") });
+  expect(find(sponsors, "feedbackReceived").change).toMatchObject({ feedback: { kind: "hardBounce", recipients: ["nobody@example.com"], reason: "NoEmail" } });
+  expect(find(admins, "approvalDecided").summary).toBe("ada@example.org approved Hermes's send.");
+  expect(find(admins, "approvalDecided").change).not.toHaveProperty("edits");
+  expect(find(admins, "sendFailed")).toMatchObject({ summary: "Amazon SES refused to send Hermes's message." });
+  expect(find(admins, "sendFailed").change).not.toHaveProperty("reason");
+  expect(find(admins, "feedbackReceived").summary).toBe("Amazon SES reported that a message bounced.");
+  expect((find(admins, "feedbackReceived").change as { feedback: object }).feedback).toEqual({ kind: "hardBounce", at: expect.any(String), reason: "NoEmail" });
+  expect(admins.find(({ change }) => change.type === "messageSent")!.summary).toBe("Duva sent Hermes's message.");
 });
 
-test("the sponsor's days are in their time zone preference, and a call's time zone beats it", async () => {
-  const { duva, ada, organize, summaries } = await withAgent();
-  await duva.clock(new Date("2026-10-05T23:30:00Z"));
-  await organize("Kvitto");
-  await ada.PATCH("/preferences", { body: { timeZone: "Europe/Stockholm" } });
+test("an admin reads an agent's events, and another human or the agent itself gets 403", async () => {
+  const { grace, ken, hermes, events, event } = await withAgent();
+  const listed = (await events({}, grace)).data!.events;
 
-  const { data } = await summaries({ from: "2026-10-05", to: "2026-10-06" });
-
-  expect(data).toEqual({ timeZone: "Europe/Stockholm", days: [{ ...quiet("2026-10-06"), organized: 1 }, quiet("2026-10-05")] });
-  expect((await summaries({ from: "2026-10-05", to: "2026-10-06", timeZone: "America/New_York" })).data).toEqual({
-    timeZone: "America/New_York",
-    days: [quiet("2026-10-06"), { ...quiet("2026-10-05"), organized: 1 }],
-  });
-});
-
-test("without from and to, the summaries cover the last 30 days, today first", async () => {
-  const { duva, organize, summaries } = await withAgent();
-  await duva.clock(new Date("2026-09-07T12:00:00Z"));
-  await organize("Too old");
-  await duva.clock(new Date("2026-09-08T12:00:00Z"));
-  await organize("Oldest");
-  await duva.clock(new Date("2026-10-07T12:00:00Z"));
-  await organize("Newest");
-
-  // A session signed in today would have expired by then.
-  const { data } = await summaries({}, duva.signIn("ada@example.org"));
-
-  expect(data?.days).toHaveLength(30);
-  expect(data?.days[0]).toEqual({ ...quiet("2026-10-07"), organized: 1 });
-  expect(data?.days[29]).toEqual({ ...quiet("2026-09-08"), organized: 1 });
-});
-
-test("activity reaches back to the agent's start, so a day long ago is still counted", async () => {
-  const { duva, organize, summaries } = await withAgent();
-  await duva.clock(new Date("2024-01-15T12:00:00Z"));
-  await organize("Gammalt");
-  await duva.clock(new Date("2026-10-06T12:00:00Z"));
-
-  const { data } = await summaries({ from: "2024-01-15", to: "2024-01-15" });
-
-  expect(data?.days).toEqual([{ ...quiet("2024-01-15"), organized: 1 }]);
-});
-
-test("an admin reads an agent's summaries, and another human or the agent itself gets 403", async () => {
-  const { duva, grace, ken, hermes, organize, summaries, timeline } = await withAgent();
-  await duva.clock(new Date("2026-10-06T10:00:00Z"));
-  await organize("Kvitto");
-
-  expect((await summaries({ from: "2026-10-06", to: "2026-10-06" }, grace)).data?.days).toEqual([{ ...quiet("2026-10-06"), organized: 1 }]);
+  expect(said(listed)).toEqual([
+    ["agentSettingsChanged", "ada@example.org changed Hermes's settings."],
+    ["actorAdded", "ada@example.org added the agent Hermes."],
+  ]);
   for (const reader of [ken, hermes]) {
-    for (const read of [summaries({}, reader), timeline("2026-10-06", {}, reader)]) {
+    for (const read of [events({}, reader), event(listed[0]!.id, reader)]) {
       const { response, error } = await read;
       expect(response.status).toBe(403);
       expect(error?.message).toBe("Only the agent's sponsor and admins can read its activity. Ask its sponsor.");
@@ -185,212 +397,26 @@ test("an admin reads an agent's summaries, and another human or the agent itself
   }
 });
 
-test("reading the activity of an agent there is none of gets 404", async () => {
-  const { ada } = await withAgent();
+test("reading the events of an agent there is none of gets 404, and so does an event it doesn't have", async () => {
+  const { ada, event } = await withAgent();
 
-  const { response, error } = await ada.GET("/agents/{agent}/activity", { params: { path: { agent: "nobody" } } });
+  const none = await ada.GET("/agents/{agent}/events", { params: { path: { agent: "nobody" } } });
+  const missing = await event("organization:999999");
 
-  expect(response.status).toBe(404);
-  expect(error?.message).toBe('There is no agent "nobody". List the agents you sponsor to find its ID.');
+  expect(none.response.status).toBe(404);
+  expect(none.error?.message).toBe('There is no agent "nobody". List the agents you sponsor to find its ID.');
+  expect(missing.response.status).toBe(404);
+  expect(missing.error?.message).toBe('Hermes has no event "organization:999999". List its events to find its ID.');
 });
 
 test.each([
-  ["a from that isn't a day", { from: "2026-02-30" }, '"2026-02-30" isn\'t a day. Give from as YYYY-MM-DD.'],
-  ["a to that isn't a day", { to: "6 Oct" }, '"6 Oct" isn\'t a day. Give to as YYYY-MM-DD.'],
-  ["a from after to", { from: "2026-10-07", to: "2026-10-06" }, "The first day, from, is after the last, to. Give them the other way round."],
-  ["more than a year of days", { from: "2025-01-01", to: "2026-01-03" }, "Ask for at most 367 days at once."],
-  ["a time zone that isn't one", { timeZone: "Mars/Olympus" }, '"Mars/Olympus" isn\'t a time zone. Give timeZone as an IANA name, such as Europe/Stockholm.'],
-])("reading summaries with %s gets 400", async (_, query, message) => {
-  const { summaries } = await withAgent();
+  ["a kind there is none of", { kinds: ["mail"] }, '"mail" isn\'t a kind of event. Give kinds from conversations, tasks, draftsAndSends, approvals, organizing, screening, unsubscribes, pausesAndLimits, alerts, setup.'],
+  ["a limit Duva doesn't take", { limit: 0 }, '"0" isn\'t a limit Duva takes. Give limit as a whole number from 1 to 100.'],
+  ["an after no page gave", { after: "somewhere" }, '"somewhere" isn\'t where a page starts. Give after as the next of the page before, or leave it out for the first page.'],
+])("listing events with %s gets 400", async (_, query, message) => {
+  const { events } = await withAgent();
 
-  const { response, error } = await summaries(query);
-
-  expect(response.status).toBe(400);
-  expect(error?.message).toBe(message);
-});
-
-// Setting up the agent is in its activity, today, so the timelines are read for days before it.
-/** The entries' change types, with the mailbox and thread of each, as a timeline lists them. */
-const outline = (entries: { mailbox?: string; thread?: string; change: { type: string } }[] | undefined) =>
-  entries?.map(({ mailbox, thread, change }) => ({ type: change.type, ...(mailbox !== undefined && { mailbox }), ...(thread !== undefined && { thread }) }));
-
-test("a day's timeline lists what the agent did in its sponsor's mailbox newest first, each with its mailbox and thread", async () => {
-  const { duva, hermes, mailbox, params, receive, ask, approve, timeline } = await withAgent();
-  await duva.clock(new Date("2026-09-15T10:00:00Z"));
-  const received = await receive("Kvitto");
-  await hermes.POST("/mailboxes/{mailbox}/threads/labels", { params, body: { threads: [received], remove: ["inbox"] } });
-  await approve((await ask("linus@example.org")).approval);
-  const sent = (await hermes.GET("/mailboxes/{mailbox}/sent", { params })).data!.threads[0]!.id;
-
-  const { response, data } = await timeline("2026-09-15");
-
-  expect(response.status).toBe(200);
-  expect(data?.day).toBe("2026-09-15");
-  expect(data?.timeZone).toBe("UTC");
-  expect(data).not.toHaveProperty("next");
-  expect(outline(data?.entries)).toEqual([
-    { type: "messageSent", mailbox: mailbox.id, thread: sent },
-    { type: "approvalDecided", mailbox: mailbox.id, thread: sent },
-    { type: "approvalAsked", mailbox: mailbox.id, thread: sent },
-    { type: "draftWritten", mailbox: mailbox.id, thread: sent },
-    { type: "threadLabelsChanged", mailbox: mailbox.id, thread: received },
-  ]);
-  expect(data?.entries[4]?.change).toMatchObject({ type: "threadLabelsChanged", actor: (await hermes.GET("/whoami")).data!.id, added: [], removed: ["inbox"] });
-});
-
-test("a draft not sent yet that replies in a thread has that thread in the timeline", async () => {
-  const { duva, hermes, params, receive, timeline } = await withAgent();
-  await duva.clock(new Date("2026-09-15T10:00:00Z"));
-  const thread = await receive("Kvitto");
-  const message = (await hermes.GET("/mailboxes/{mailbox}/threads/{thread}", { params: { path: { ...params.path, thread } } })).data!.messages[0]!.id;
-  await hermes.POST("/mailboxes/{mailbox}/drafts", { params, body: { answers: message, text: "Tack." } });
-
-  const { data } = await timeline("2026-09-15");
-
-  expect(outline(data?.entries)?.[0]).toMatchObject({ type: "draftWritten", thread });
-});
-
-test("a day's timeline is in the reader's time zone", async () => {
-  const { duva, organize, timeline } = await withAgent();
-  await duva.clock(new Date("2026-09-14T23:30:00Z"));
-  await organize("Kvitto");
-
-  expect((await timeline("2026-09-15", { timeZone: "Europe/Stockholm" })).data?.entries.map(({ change }) => change.type)).toEqual(["threadRead"]);
-  expect((await timeline("2026-09-15")).data?.entries).toEqual([]);
-  expect((await timeline("2026-09-14")).data?.entries.map(({ change }) => change.type)).toEqual(["threadRead"]);
-});
-
-test("the timeline has what the agent did in its sponsor's mailbox, and its sends there, but not what the sponsor did there", async () => {
-  const { duva, ada, hermes, mailbox: adasMailbox, params: adasParams, receive, ask, approve, timeline } = await withAgent();
-  await duva.clock(new Date("2026-09-15T10:00:00Z"));
-  const organized = await receive("Kvitto");
-  const ownWork = await receive("Faktura");
-  await hermes.POST("/mailboxes/{mailbox}/threads/read", { params: adasParams, body: { threads: [organized] } });
-  await ada.POST("/mailboxes/{mailbox}/threads/read", { params: adasParams, body: { threads: [ownWork] } });
-  await ada.POST("/mailboxes/{mailbox}/drafts", { params: adasParams, body: { to: ["linus@example.org"], text: "Ada's own." } });
-  await approve((await ask("linus@example.org")).approval);
-  const sent = (await ada.GET("/mailboxes/{mailbox}/sent", { params: adasParams })).data!.threads[0]!.id;
-
-  const { data } = await timeline("2026-09-15");
-
-  expect(outline(data?.entries)).toEqual([
-    { type: "messageSent", mailbox: adasMailbox.id, thread: sent },
-    { type: "approvalDecided", mailbox: adasMailbox.id, thread: sent },
-    { type: "approvalAsked", mailbox: adasMailbox.id, thread: sent },
-    { type: "draftWritten", mailbox: adasMailbox.id, thread: sent },
-    { type: "threadRead", mailbox: adasMailbox.id, thread: organized },
-  ]);
-});
-
-test("the timeline has the agent's pauses once, its key rotations and changes to its settings, from the organization's feed and its sponsor's mailbox", async () => {
-  const { duva, ada, grace, agent, mailbox: adasMailbox, timeline } = await withAgent();
-  const agentParams = { params: { path: { agent: agent.id } } };
-  // Ada has a second mailbox, whose feed records the change to the settings too.
-  const { data: second } = await grace.POST("/mailboxes", { body: { owner: (await ada.GET("/whoami")).data!.id, address: "ada.lovelace@example.com" } });
-  await duva.clock(new Date("2026-09-15T10:00:00Z"));
-  await grace.POST("/agents/{agent}/pause", agentParams);
-  await ada.POST("/agents/{agent}/unpause", agentParams);
-  await ada.POST("/agents/{agent}/key", agentParams);
-  await ada.PATCH("/agents/{agent}/settings", { ...agentParams, body: { sendsPerHour: 20 } });
-
-  const { data } = await timeline("2026-09-15");
-
-  expect(outline(data?.entries)).toEqual([
-    { type: "agentSettingsChanged", mailbox: expect.toBeOneOf([adasMailbox.id, second!.id]) },
-    { type: "agentKeyRotated" },
-    { type: "agentUnpaused" },
-    { type: "agentPaused" },
-  ]);
-  expect(data?.entries[0]?.change).toMatchObject({ before: { sendsPerHour: 100 }, after: { sendsPerHour: 20 } });
-  expect(data?.entries[3]?.change).toMatchObject({ actor: (await grace.GET("/whoami")).data!.id, agent: agent.id });
-});
-
-test("an admin who isn't the sponsor reads the timeline without what the mail says", async () => {
-  const { duva, grace, hermes, params, receive, ask, reject, timeline } = await withAgent();
-  await duva.clock(new Date("2026-09-15T10:00:00Z"));
-  await receive("Kvitto");
-  await hermes.POST("/mailboxes/{mailbox}/labels", { params, body: { name: "Kvitton" } });
-  await hermes.PUT("/mailboxes/{mailbox}/senders/{sender}", { params: { path: { ...params.path, sender: "mallory@example.net" } }, body: { delivery: "paperTrail" } });
-  await reject((await ask("linus@example.org")).approval);
-
-  const sponsors = (await timeline("2026-09-15")).data!.entries.map(({ change }) => change);
-  const admins = (await timeline("2026-09-15", {}, grace)).data!.entries.map(({ change }) => change);
-
-  expect(sponsors.find(({ type }) => type === "approvalDecided")).toMatchObject({ decision: "rejected", note: "Not now." });
-  expect(sponsors.find(({ type }) => type === "labelCreated")).toMatchObject({ name: "Kvitton" });
-  expect(sponsors.find(({ type }) => type === "senderDeliverySet")).toMatchObject({ address: "mallory@example.net" });
-  expect(admins.map(({ type }) => type)).toEqual(sponsors.map(({ type }) => type));
-  const decided = admins.find(({ type }) => type === "approvalDecided");
-  expect(decided).toMatchObject({ decision: "rejected" });
-  expect(decided).not.toHaveProperty("note");
-  expect(admins.find(({ type }) => type === "labelCreated")).not.toHaveProperty("name");
-  expect(admins.find(({ type }) => type === "senderDeliverySet")).toEqual(expect.not.objectContaining({ address: expect.anything() }));
-});
-
-test("an admin who isn't the sponsor reads no approver's edits, no bounced recipients and no reason SES gave for refusing a send", async () => {
-  // In the sandbox, SES refuses mail to anyone not on the domain, and names them in its reason.
-  const { duva, grace, hermes, params, ask, timeline } = await withAgent({ sandbox: true });
-  await duva.clock(new Date("2026-09-15T10:00:00Z"));
-  const refused = await ask("linus@example.org");
-  await duva.signIn("ada@example.org").POST("/approvals/{approval}/send", { params: { path: { approval: refused.approval } }, body: { text: "Hej då." } });
-  const bounced = await ask("nobody@example.com");
-  await duva.signIn("ada@example.org").POST("/approvals/{approval}/send", { params: { path: { approval: bounced.approval } } });
-  const { data: sent } = await hermes.GET("/mailboxes/{mailbox}/drafts/{draft}", { params: { path: { ...params.path, draft: bounced.draft } } });
-  const messageId = /^<(.+)@[^@]+>$/.exec(sent!.send!.messageId!)![1]!;
-  await duva.sendingEvent(messageId, { type: "Bounce", bounceType: "Permanent", bounceSubType: "NoEmail", recipients: ["nobody@example.com"] });
-
-  const sponsors = (await timeline("2026-09-15")).data!.entries.map(({ change }) => change);
-  const admins = (await timeline("2026-09-15", {}, grace)).data!.entries.map(({ change }) => change);
-
-  const find = (changes: typeof sponsors, type: string) => changes.find((change) => change.type === type && (type !== "approvalDecided" || ("approval" in change && change.approval === refused.approval)));
-  expect(find(sponsors, "approvalDecided")).toMatchObject({ edits: { text: "Hej då." } });
-  expect(find(sponsors, "sendFailed")).toMatchObject({ reason: expect.stringContaining("linus@example.org") });
-  expect(find(sponsors, "feedbackReceived")).toMatchObject({ feedback: { kind: "hardBounce", recipients: ["nobody@example.com"], reason: "NoEmail" } });
-  expect(find(admins, "approvalDecided")).not.toHaveProperty("edits");
-  expect(find(admins, "sendFailed")).not.toHaveProperty("reason");
-  expect(find(admins, "feedbackReceived")).toMatchObject({ feedback: { kind: "hardBounce", at: expect.any(String), reason: "NoEmail" } });
-  expect((find(admins, "feedbackReceived") as { feedback: object }).feedback).not.toHaveProperty("recipients");
-});
-
-test.each([5, 20, 100])("a change to the agent's settings in two of its sponsor's mailboxes is in the timeline once, read %i at a time", async (limit) => {
-  const { duva, ada, grace, agent, timeline } = await withAgent();
-  const agentParams = { params: { path: { agent: agent.id } } };
-  await grace.POST("/mailboxes", { body: { owner: (await ada.GET("/whoami")).data!.id, address: "ada.lovelace@example.com" } });
-  await duva.clock(new Date("2026-09-15T10:00:00Z"));
-  for (const sendsPerHour of [10, 20, 30, 40, 50, 60]) await ada.PATCH("/agents/{agent}/settings", { ...agentParams, body: { sendsPerHour } });
-
-  const read = [];
-  for (let after: string | undefined, page = 0; page === 0 || after !== undefined; page++) {
-    const { data } = await timeline("2026-09-15", { limit, ...(after !== undefined && { after }) });
-    read.push(...data!.entries);
-    after = data!.next;
-  }
-
-  expect(read.map(({ change }) => change.type === "agentSettingsChanged" && change.after.sendsPerHour)).toEqual([60, 50, 40, 30, 20, 10]);
-});
-
-test("a long timeline is read a page at a time, newest first, without repeats", async () => {
-  const { duva, organize, timeline } = await withAgent();
-  await duva.clock(new Date("2026-09-15T10:00:00Z"));
-  const threads = [];
-  for (const subject of ["Ett", "Två", "Tre", "Fyra", "Fem"]) threads.push(await organize(subject));
-
-  const first = (await timeline("2026-09-15", { limit: 2 })).data!;
-  const second = (await timeline("2026-09-15", { limit: 2, after: first.next })).data!;
-  const third = (await timeline("2026-09-15", { limit: 2, after: second.next })).data!;
-
-  expect([first, second, third].map(({ entries }) => entries.map(({ thread }) => thread))).toEqual([threads.slice(3).reverse(), threads.slice(1, 3).reverse(), [threads[0]]]);
-  expect(third).not.toHaveProperty("next");
-});
-
-test.each([
-  ["a day that isn't one", "2026-13-01", {}, '"2026-13-01" isn\'t a day. Give the day as YYYY-MM-DD.'],
-  ["a limit Duva doesn't take", "2026-09-15", { limit: 0 }, '"0" isn\'t a limit Duva takes. Give limit as a whole number from 1 to 100.'],
-  ["an after no page gave", "2026-09-15", { after: "somewhere" }, '"somewhere" isn\'t where a page starts. Give after as the next of the page before, or leave it out for the first page.'],
-])("reading a timeline with %s gets 400", async (_, day, query, message) => {
-  const { timeline } = await withAgent();
-
-  const { response, error } = await timeline(day, query);
+  const { response, error } = await events(query as Parameters<typeof events>[0]);
 
   expect(response.status).toBe(400);
   expect(error?.message).toBe(message);
@@ -410,7 +436,7 @@ const use = (name: string, input: Record<string, unknown> = {}): ModelEvent => (
 const haiku = "anthropic.claude-haiku-4-5-20251001-v1:0";
 const sonnet = "anthropic.claude-sonnet-5-5";
 
-test("each turn of Ask Coo records one change under Coo: what was asked, what Coo read, the models that answered, a handover and what it cost", async () => {
+test("each turn of Ask Coo is one event under Coo, saying what was asked, and opening into what Coo read, the models, a handover and the cost", async () => {
   const words = "Is the receipt from Linus about the dinner last Friday, and did he say whether the restaurant takes cards or only cash at the door?";
   let thread = "";
   const model = scripted(
@@ -422,7 +448,7 @@ test("each turn of Ask Coo records one change under Coo: what was asked, what Co
   );
   const { duva, ada, params, receive, adaId } = await withAgent({ model });
   const coo = (await ada.GET("/mailboxes/{mailbox}/agent", { params })).data!.agent;
-  await duva.clock(new Date("2026-10-06T10:00:00Z"));
+  await duva.clock(new Date("2026-09-15T10:00:00Z"));
   thread = await receive("Kvitto");
 
   await duva.askAgent("ada@example.org", { mailbox: params.path.mailbox, words });
@@ -449,10 +475,18 @@ test("each turn of Ask Coo records one change under Coo: what was asked, what Co
       cost: 0.495,
     },
   ]);
-  const summary = await ada.GET("/agents/{agent}/activity", { params: { path: { agent: coo.id }, query: { from: "2026-10-06", to: "2026-10-06" } } });
-  expect(summary.data!.days).toEqual([{ ...quiet("2026-10-06"), conversations: 2 }]);
-  const { data: timeline } = await ada.GET("/agents/{agent}/activity/{day}", { params: { path: { agent: coo.id, day: "2026-10-06" } } });
-  expect(timeline!.entries.filter(({ change }) => change.type === "conversationTurn").map(({ change }) => change)).toEqual(turns.toReversed());
+  const read = (query: { kinds: Kind[] }) => ada.GET("/agents/{agent}/events", { params: { path: { agent: coo.id }, query } });
+  const { data } = await read({ kinds: ["conversations"] });
+  // A turn keeps its handover, so the handover is no event of its own, and a turn that wrote no draft says none.
+  expect(said(data!.events)).toEqual([
+    ["conversationTurn", "You asked Coo “Hej!”"],
+    ["conversationTurn", `You asked Coo “${words.slice(0, 120)}…”`],
+  ]);
+  expect(data!.events.map(({ kind }) => kind)).toEqual(["conversations", "conversations"]);
+  expect((await read({ kinds: ["tasks"] })).data!.events).toEqual([]);
+  const opened = await Promise.all(data!.events.map(async ({ id }) => (await ada.GET("/agents/{agent}/events/{event}", { params: { path: { agent: coo.id, event: id } } })).data));
+  expect(opened.map((event) => event!.change)).toEqual(turns.toReversed());
+  expect(opened.map((event) => event!.mailbox)).toEqual([params.path.mailbox, params.path.mailbox]);
 });
 
 test("an admin who isn't the sponsor reads Coo's turns without what was asked or what the model said in asking for help", async () => {
@@ -464,16 +498,28 @@ test("an admin who isn't the sponsor reads Coo's turns without what was asked or
   const { duva, ada, grace, params } = await withAgent({ model });
   const coo = (await ada.GET("/mailboxes/{mailbox}/agent", { params })).data!.agent;
   await duva.askAgent("ada@example.org", { mailbox: params.path.mailbox, words: "Find Linus's receipt." });
-  const day = new Date().toISOString().slice(0, 10);
 
-  const { data } = await grace.GET("/agents/{agent}/activity/{day}", { params: { path: { agent: coo.id, day }, query: { timeZone: "UTC" } } });
+  const { data } = await grace.GET("/agents/{agent}/events", { params: { path: { agent: coo.id }, query: { kinds: ["conversations"] } } });
 
-  const turn = data!.entries.find(({ change }) => change.type === "conversationTurn")!.change;
-  expect(turn).not.toHaveProperty("asked");
-  expect(turn).toMatchObject({ handover: { reason: "askedForHelp", from: haiku, to: sonnet } });
-  expect((turn as { handover: object }).handover).not.toHaveProperty("why");
-  const handedOver = data!.entries.find(({ change }) => change.type === "agentHandedOver")!.change;
-  expect((handedOver as { handover: object }).handover).toEqual({ reason: "askedForHelp", from: haiku, to: sonnet });
+  expect(said(data!.events)).toEqual([["conversationTurn", "ada@example.org asked Coo something."]]);
+  const { data: turn } = await grace.GET("/agents/{agent}/events/{event}", { params: { path: { agent: coo.id, event: data!.events[0]!.id } } });
+  expect(turn!.change).not.toHaveProperty("asked");
+  expect(turn!.change).toMatchObject({ handover: { reason: "askedForHelp", from: haiku, to: sonnet } });
+  expect((turn!.change as { handover: object }).handover).not.toHaveProperty("why");
+});
+
+test("a turn that fails says so, and is listed with the failed events", async () => {
+  const model: Model = async function* () {
+    yield { text: "Hm" };
+    throw new Error("Bedrock fell over.");
+  };
+  const { duva, ada, params } = await withAgent({ model });
+  const coo = (await ada.GET("/mailboxes/{mailbox}/agent", { params })).data!.agent;
+  await duva.askAgent("ada@example.org", { mailbox: params.path.mailbox, words: "Hej!" });
+
+  const { data } = await ada.GET("/agents/{agent}/events", { params: { path: { agent: coo.id }, query: { failed: true } } });
+
+  expect(said(data!.events)).toEqual([["conversationTurn", "You asked Coo “Hej!”, and it couldn't answer."]]);
 });
 
 test("a turn names only the drafts Coo wrote, not those it read, nor a draft an input it made up names (#135)", async () => {
@@ -502,4 +548,8 @@ test("a turn names only the drafts Coo wrote, not those it read, nor a draft an 
     { asked: "How many unread threads are in my Inbox?", drafts: [], handover: { reason: "answerCheck" } },
     { asked: "Thank Linus.", drafts: [written.at(-1)], handover: { reason: "writing" } },
   ]);
+  // So Coo's events say it wrote a draft only where it did.
+  const coo = (await ada.GET("/mailboxes/{mailbox}/agent", { params })).data!.agent;
+  const { data } = await ada.GET("/agents/{agent}/events", { params: { path: { agent: coo.id }, query: { kinds: ["conversations"] } } });
+  expect(data!.events.map(({ summary }) => summary)).toEqual(["You asked Coo “Thank Linus.”, and it wrote a draft.", "You asked Coo “How many unread threads are in my Inbox?”"]);
 });

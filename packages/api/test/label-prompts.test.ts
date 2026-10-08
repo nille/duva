@@ -355,23 +355,25 @@ test("a task given at the spend cap fails, with an alert to its sponsor, and so 
   ]);
 });
 
-test("a task shows in the mailbox agent's activity, with its note for its sponsor", async () => {
+test("a task shows in the mailbox agent's events, with its note for its sponsor", async () => {
   const { linus, receipts, prompt, label, receive, agent } = await withMailbox();
   await prompt(receipts, "Note the amount.");
   const { thread: id } = await receive(fromShop("Your receipt", "You paid 42 euros.", "order-1"));
 
   await label(id, [receipts]);
 
-  const day = new Date().toISOString().slice(0, 10);
-  const { data } = await linus.GET("/agents/{agent}/activity/{day}", { params: { path: { agent: agent.id, day }, query: { timeZone: "UTC" } } });
-  expect(data!.entries.filter(({ change }) => change.type.startsWith("task")).map(({ change, thread: about }) => [change.type, about, "note" in change ? change.note : undefined])).toEqual([
-    ["taskEnded", id, "Stand-in answer."],
-    ["taskStarted", id, undefined],
-    ["taskGiven", id, undefined],
+  const { data } = await linus.GET("/agents/{agent}/events", { params: { path: { agent: agent.id }, query: { kinds: ["tasks"] } } });
+  expect(data!.events.filter(({ type }) => type.startsWith("task")).map(({ type, summary }) => [type, summary])).toEqual([
+    ["taskEnded", "Coo finished a task: “Stand-in answer.”"],
+    ["taskStarted", "Coo started a task."],
+    ["taskGiven", "You added a label with a prompt, which gave Coo a task."],
   ]);
+  const ended = data!.events[0]!;
+  const { data: detail } = await linus.GET("/agents/{agent}/events/{event}", { params: { path: { agent: agent.id, event: ended.id } } });
+  expect(detail).toEqual(expect.objectContaining({ thread: id, change: expect.objectContaining({ type: "taskEnded", note: "Stand-in answer." }) }));
 });
 
-test("the mailbox agent's day counts its tasks done and failed, so a day of tasks alone is no quiet day", async () => {
+test("the mailbox agent's failed tasks are among its failed events, beside the alert they raised", async () => {
   const { linus, receipts, prompt, label, receive, agent } = await withMailbox();
   await prompt(receipts, "Note the amount.");
   const path = { params: { path: { agent: agent.id } } };
@@ -380,8 +382,10 @@ test("the mailbox agent's day counts its tasks done and failed, so a day of task
   await linus.PATCH("/agents/{agent}/settings", { ...path, body: { sponsorAccess: "none" } });
   await label((await receive(fromShop("A third receipt", "You paid 1 euro.", "order-3"))).thread, [receipts]);
 
-  const day = new Date().toISOString().slice(0, 10);
-  const { data } = await linus.GET("/agents/{agent}/activity", { params: { path: { agent: agent.id }, query: { from: day, to: day, timeZone: "UTC" } } });
+  const ended = async (query: { kinds?: ("tasks" | "alerts")[]; failed?: boolean }) =>
+    (await linus.GET("/agents/{agent}/events", { params: { path: { agent: agent.id }, query } })).data!.events.filter(({ type }) => type === "taskEnded" || type === "alert");
 
-  expect(data!.days).toEqual([expect.objectContaining({ tasksDone: 2, tasksFailed: 1, alerts: 1 })]);
+  expect((await ended({ kinds: ["tasks"] })).map(({ failed }) => failed)).toEqual([true, false, false]);
+  expect((await ended({ failed: true })).map(({ type }) => type)).toEqual(["taskEnded"]);
+  expect((await ended({ kinds: ["alerts"] })).map(({ type, needsYou }) => [type, needsYou])).toEqual([["alert", true]]);
 });

@@ -352,7 +352,7 @@ test("the sponsor pauses an agent, its key is refused saying so, and unpausing l
   expect(JSON.parse(whoami.stdout)).toEqual(agent);
 });
 
-test("the sponsor reads their agent's daily summaries and a day's timeline from the CLI", async () => {
+test("the sponsor lists their agent's events, of chosen kinds or failed, and reads one from the CLI", async () => {
   const machine = await newMachine();
   const server = await (await startDuva({ admin: "ada@example.com" })).listen();
   onTestFinished(() => server.close());
@@ -360,15 +360,23 @@ test("the sponsor reads their agent's daily summaries and a day's timeline from 
   await machine.duva("login", { browserSignsIn: "ada@example.com" });
   const { agent } = JSON.parse((await machine.duva("agents", "create", "--name", "Hermes")).stdout) as { agent: { id: string } };
   await machine.duva("agents", "pause", "--agent", agent.id);
-  const today = new Date().toISOString().slice(0, 10);
+  type Page = { events: { id: string; type: string; kind: string; summary: string }[] };
 
-  const summaries = await machine.duva("agents", "activity", "--agent", agent.id, "--from", today, "--to", today, "--timeZone", "UTC");
-  const timeline = await machine.duva("agents", "timeline", "--agent", agent.id, "--day", today, "--timeZone", "UTC");
+  const all = await machine.duva("agents", "events", "--agent", agent.id);
+  const chosen = await machine.duva("agents", "events", "--agent", agent.id, "--kinds", "pausesAndLimits", "--kinds", "alerts");
+  const failed = await machine.duva("agents", "events", "--agent", agent.id, "--failed");
+  const paused = (JSON.parse(all.stdout) as Page).events[0]!;
+  const read = await machine.duva("agents", "event", "--agent", agent.id, "--event", paused.id);
 
-  expect(summaries.exitCode).toBe(0);
-  expect(JSON.parse(summaries.stdout)).toEqual({ timeZone: "UTC", days: [{ day: today, sent: 0, approved: 0, rejected: 0, organized: 0, screened: 0, alerts: 0, conversations: 0, tasksDone: 0, tasksFailed: 0, drafts: 0, unsubscribes: 0 }] });
-  expect(timeline.exitCode).toBe(0);
-  expect((JSON.parse(timeline.stdout) as { entries: { change: { type: string } }[] }).entries.map(({ change }) => change.type)).toEqual(["agentPaused", "actorAdded"]);
+  expect(all.exitCode).toBe(0);
+  expect((JSON.parse(all.stdout) as Page).events.map(({ type, summary }) => [type, summary])).toEqual([
+    ["agentPaused", "You paused Hermes."],
+    ["actorAdded", "You added the agent Hermes."],
+  ]);
+  expect((JSON.parse(chosen.stdout) as Page).events.map(({ type }) => type)).toEqual(["agentPaused"]);
+  expect(JSON.parse(failed.stdout)).toEqual({ events: [] });
+  expect(read.exitCode).toBe(0);
+  expect(JSON.parse(read.stdout)).toEqual(expect.objectContaining({ id: paused.id, kind: "pausesAndLimits", change: expect.objectContaining({ type: "agentPaused" }) }));
 });
 
 test("the sponsor lists their agents' alerts with the unseen count, and marks one seen", async () => {

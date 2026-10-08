@@ -395,7 +395,7 @@ export interface paths {
         patch: operations["changeAgentSettings"];
         trace?: never;
     };
-    "/agents/{agent}/activity": {
+    "/agents/{agent}/events": {
         parameters: {
             query?: never;
             header?: never;
@@ -403,10 +403,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Read an agent's daily summaries, how much it sent, had approved or rejected, organized, screened, answered, did and drafted each day.
-         * @description Gives every day from from to to, newest first, each day in your time zone, days without activity included. Leave both out for the last 30 days. Activity reaches back to the agent's start: what it did in its sponsor's mailboxes, and the organization's changes to it. Only the agent's sponsor and admins can read it.
+         * List an agent's events, everything it did and what was done to it, newest first.
+         * @description Lists the agent's activity a page at a time, newest first, across days: each event its ID, when, its kind, and a line saying what happened. Read one with agents event for everything recorded on it. Give kinds to list only events of those kinds, and failed to list only those that failed. To read the next page, call again with the answer's next as after, and the same kinds and failed, until an answer has no next. Activity reaches back to the agent's start: what it did in its sponsor's mailboxes, the organization's changes to it, and the alerts about it. Only the agent's sponsor and admins can read it. An admin who isn't the sponsor reads no part of what the mail says.
          */
-        get: operations["getAgentActivity"];
+        get: operations["listAgentEvents"];
         put?: never;
         post?: never;
         delete?: never;
@@ -415,7 +415,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/agents/{agent}/activity/{day}": {
+    "/agents/{agent}/events/{event}": {
         parameters: {
             query?: never;
             header?: never;
@@ -423,10 +423,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Read an agent's timeline for one day, everything it did and what was done to it, newest first.
-         * @description Lists the day's entries a page at a time, newest first. Each is a change as the change feed recorded it, with the mailbox it was in and its thread, where it has them. To read the next page, call again with the answer's next as after, until an answer has no next. Only the agent's sponsor and admins can read it. An admin who isn't the sponsor reads no part of what the mail says, so the changes leave out approvers' edits and notes, label names, and senders' and recipients' addresses.
+         * Read one of an agent's events, with everything recorded on it.
+         * @description Gives the event as agents events lists it, with the mailbox it was in and its thread, where it has them, and what was recorded: the change as its feed recorded it, such as the threads a turn of Ask Coo touched, the models that answered, a handover and its reason, the cost, why a send or an unsubscribe failed, and a task's note, or the alert. Only the agent's sponsor and admins can read it. An admin who isn't the sponsor reads no part of what the mail says, so the change leaves out approvers' edits and notes, label names, senders' and recipients' addresses, and what the human asked, and an alert is only its event.
          */
-        get: operations["getAgentActivityDay"];
+        get: operations["getAgentEvent"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4199,69 +4199,75 @@ export interface components {
          * @enum {string}
          */
         SearchLanguage: "English" | "Swedish" | "Danish";
-        ActivitySummaries: {
+        /**
+         * @description What an event is about. conversations, turns of Ask Coo; tasks, the tasks labels' prompts give a mailbox agent, from the prompt to its end; draftsAndSends, drafts, sends and what SES reported about them; approvals, asking for approval and the sponsor's decisions; organizing, marking threads read or unread, labels, Remind me and erasing; screening, the Screener and where senders' mail goes; unsubscribes, each try to unsubscribe from a sender's mail; pausesAndLimits, pauses, settings and send limits, and sends waiting for them; alerts, the alerts about the agent its sponsor got; setup, the agent's creation and removal, its key and the organization's setup it made.
+         * @enum {string}
+         */
+        AgentEventKind: "conversations" | "tasks" | "draftsAndSends" | "approvals" | "organizing" | "screening" | "unsubscribes" | "pausesAndLimits" | "alerts" | "setup";
+        /** @description One event in an agent's activity. */
+        AgentEvent: {
             /**
-             * @description The time zone the days are in.
-             * @example Europe/Stockholm
+             * @description The event's ID, which agents event reads.
+             * @example mbx_2Tq1:42
              */
-            timeZone: string;
-            /** @description Every day asked for, newest first. */
-            days: components["schemas"]["ActivitySummary"][];
+            id: string;
+            /**
+             * Format: date-time
+             * @description When it happened.
+             */
+            at: string;
+            kind: components["schemas"]["AgentEventKind"];
+            /**
+             * @description The type of the change it is, as the change feed records it, or alert for an alert.
+             * @example conversationTurn
+             */
+            type: string;
+            /** @description The ID of the actor who made it, or duva if Duva did. Absent when no one did, as for mail that arrived. */
+            actor?: string;
+            /**
+             * @description What happened, in one line, as the web app says it.
+             * @example You asked Coo “How many unread threads are in my Inbox?”
+             */
+            summary: string;
+            /** @description Whether it failed: a send SES refused, one that bounced or that SES didn't send after all, one that stopped before SES answered, a turn or a task the agent couldn't finish, or an unsubscribe that didn't work. */
+            failed: boolean;
+            /** @description Whether it waits for the reader, the agent's sponsor: a send still waiting for their approval, or an alert they haven't seen. */
+            needsYou: boolean;
         };
-        /** @description How much an agent did in one day. */
-        ActivitySummary: {
-            /**
-             * Format: date
-             * @example 2026-10-06
-             */
-            day: string;
-            /** @description The messages it sent that SES accepted. */
-            sent: number;
-            /** @description Its sends its sponsor approved. */
-            approved: number;
-            /** @description Its sends its sponsor rejected. */
-            rejected: number;
-            /** @description The times it marked threads read or unread, changed their labels, or created, renamed or deleted a label. */
-            organized: number;
-            /** @description The times it let a sender in, blocked one, or removed a decision on one. */
-            screened: number;
-            /** @description The alerts about it its sponsor got that day. */
-            alerts: number;
-            /** @description The turns of Ask Coo it answered, as a mailbox agent. */
-            conversations: number;
-            /** @description The tasks labels' prompts gave it that it finished, as a mailbox agent. */
-            tasksDone: number;
-            /** @description The tasks it couldn't finish. */
-            tasksFailed: number;
-            /** @description The drafts it started. */
-            drafts: number;
-            /** @description The times it unsubscribed from a sender's mail, on their page or by their link, by mailing their unsubscribe address, or by bouncing their mail. */
-            unsubscribes: number;
-        };
-        ActivityTimeline: {
-            /**
-             * Format: date
-             * @example 2026-10-06
-             */
-            day: string;
-            /**
-             * @description The time zone the day is in.
-             * @example Europe/Stockholm
-             */
-            timeZone: string;
-            /** @description The page's entries, newest first. */
-            entries: components["schemas"]["ActivityEntry"][];
-            /** @description Present when more entries follow. Pass it as after to list the next page. */
+        AgentEventPage: {
+            /** @description The page's events, newest first. */
+            events: components["schemas"]["AgentEvent"][];
+            /** @description Present when more events follow. Pass it as after to list the next page. */
             next?: string;
         };
-        /** @description One change in an agent's activity: by it in one of its sponsor's mailboxes or about its sends there, or in the organization's setup about it or by it. */
-        ActivityEntry: {
-            /** @description The ID of the mailbox whose change feed recorded it, unless the organization's did. */
+        /** @description One event in an agent's activity, with everything recorded on it. */
+        AgentEventDetail: {
+            /** @description The event's ID. */
+            id: string;
+            /**
+             * Format: date-time
+             * @description When it happened.
+             */
+            at: string;
+            kind: components["schemas"]["AgentEventKind"];
+            /** @description The type of the change it is, or alert for an alert. */
+            type: string;
+            /** @description The ID of the actor who made it, or duva if Duva did. Absent when no one did, as for mail that arrived. */
+            actor?: string;
+            /** @description What happened, in one line. */
+            summary: string;
+            /** @description Whether it failed. */
+            failed: boolean;
+            /** @description Whether it waits for the reader, the agent's sponsor. */
+            needsYou: boolean;
+            /** @description The ID of the mailbox whose change feed recorded it, unless the organization's did, or the mailbox the alert links to. */
             mailbox?: string;
             /** @description The ID of the thread it is about, if it is about one. A draft's is the thread it replies in or was sent in. */
             thread?: string;
-            /** @description The change as its feed recorded it. Its position is in that feed. For an admin who isn't the agent's sponsor, a change in a mailbox leaves out what its mail says: edits, note, name, address, domain, the feedback's recipients, SES's reason for refusing a send, what the human asked Coo, and why a model asked for help. */
-            change: components["schemas"]["MailboxChange"] | components["schemas"]["OrganizationChange"];
+            /** @description The change as its feed recorded it, for every event but an alert. Its position is in that feed. A task's end has the task's note for the sponsor while its thread is kept. For an admin who isn't the agent's sponsor, a change in a mailbox leaves out what its mail says: edits, note, name, address, domain, the feedback's recipients, SES's reason for refusing a send, what the human asked Coo, and why a model asked for help. */
+            change?: components["schemas"]["MailboxChange"] | components["schemas"]["OrganizationChange"];
+            /** @description The alert, for an alert, as its sponsor got it. An admin who isn't the agent's sponsor reads only the event. */
+            alert?: components["schemas"]["Alert"];
         };
         /** @description A human's own preferences. */
         Preferences: {
@@ -4283,7 +4289,7 @@ export interface components {
             timeZone?: components["schemas"]["TimeZone"] | null;
         };
         /**
-         * @description The time zone an agent's activity is in, as an IANA name. Left out until the human chooses one, when the API counts days in UTC and the web app in the browser's time zone.
+         * @description The human's time zone, as an IANA name, which the web app shows their agents' events in and Remind me's times count in. Left out until the human chooses one, when the API uses UTC and the web app the browser's time zone.
          * @example Europe/Stockholm
          */
         TimeZone: string;
@@ -4392,8 +4398,6 @@ export interface components {
         Label: string;
         /** @description The approval's ID. */
         Approval: string;
-        /** @description The time zone days are in, an IANA name such as Europe/Stockholm. Defaults to your timeZone preference, or UTC if you have none. */
-        TimeZone: string;
         /** @description The code the agent shows, as BCDF-GHJK. Case and the dash don't matter. */
         AccessCode: string;
         /** @description The agent's ID. */
@@ -5014,46 +5018,14 @@ export interface operations {
             409: components["responses"]["Conflict"];
         };
     };
-    getAgentActivity: {
+    listAgentEvents: {
         parameters: {
             query?: {
-                /** @description The first day, as YYYY-MM-DD. Defaults to 29 days before to. */
-                from?: string;
-                /** @description The last day, as YYYY-MM-DD, at most 366 days after from. Defaults to today in your time zone. */
-                to?: string;
-                /** @description The time zone days are in, an IANA name such as Europe/Stockholm. Defaults to your timeZone preference, or UTC if you have none. */
-                timeZone?: components["parameters"]["TimeZone"];
-            };
-            header?: never;
-            path: {
-                /** @description The agent's ID. */
-                agent: components["parameters"]["Agent"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description The agent's daily summaries. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ActivitySummaries"];
-                };
-            };
-            400: components["responses"]["BadRequest"];
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-        };
-    };
-    getAgentActivityDay: {
-        parameters: {
-            query?: {
-                /** @description The time zone days are in, an IANA name such as Europe/Stockholm. Defaults to your timeZone preference, or UTC if you have none. */
-                timeZone?: components["parameters"]["TimeZone"];
-                /** @description How many entries a page lists at most. */
+                /** @description Only events of these kinds, any of conversations, tasks, draftsAndSends, approvals, organizing, screening, unsubscribes, pausesAndLimits, alerts and setup. Leave it out for every kind. */
+                kinds?: components["schemas"]["AgentEventKind"][];
+                /** @description Only events that failed, of any kind, such as a send SES refused, a task the agent couldn't finish, or an unsubscribe that didn't work. */
+                failed?: boolean;
+                /** @description How many events a page lists at most. */
                 limit?: number;
                 /** @description Where the page starts, the next of the page before it. Leave it out for the first page. */
                 after?: string;
@@ -5062,23 +5034,49 @@ export interface operations {
             path: {
                 /** @description The agent's ID. */
                 agent: components["parameters"]["Agent"];
-                /** @description The day, as YYYY-MM-DD, in your time zone. */
-                day: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description A page of the day's timeline. */
+            /** @description A page of the agent's events. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ActivityTimeline"];
+                    "application/json": components["schemas"]["AgentEventPage"];
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getAgentEvent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The agent's ID. */
+                agent: components["parameters"]["Agent"];
+                /** @description The event's ID, as agents events lists it. */
+                event: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The event, with everything recorded on it. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentEventDetail"];
+                };
+            };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];

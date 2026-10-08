@@ -142,12 +142,10 @@ test("when their newest mail is too old to bounce, the sheet and Coo's activity 
 
   await page.getByRole("link", { name: "Ask Coo", exact: true }).click();
   await page.getByRole("link", { name: "What Coo did" }).click();
-  await page.getByRole("list", { name: "Days" }).getByRole("link").first().click();
+  await page.getByRole("group", { name: "Show" }).getByRole("button", { name: "Unsubscribes" }).click();
 
-  const entries = page.getByRole("list", { name: "Timeline" }).getByRole("listitem");
-  await expect.poll(() => entries.allInnerTexts(), wait).toEqual(
-    expect.arrayContaining([expect.stringContaining(`Coo couldn't bounce mail from news@example.net. ${tooLate}`), expect.stringContaining("Coo bounced mail from news@example.net, so their list sees the address as gone.")]),
-  );
+  const events = page.getByRole("region", { name: "Events" }).locator(".event-said");
+  await expect.poll(() => events.allInnerTexts(), wait).toEqual(["Coo bounced mail from news@example.net, so their list sees the address as gone.", `Coo couldn't bounce mail from news@example.net. ${tooLate}`]);
 });
 
 test("a label delivery files their mail under one of the human's own labels", budget, async () => {

@@ -112,6 +112,8 @@ await check("creating an agent without credentials answers 401", async () =>
   expectStatus(await fetch(`${apiUrl}/agents`, { method: "POST", headers: { "content-type": "application/json" }, body: '{"name":"Check"}' }), 401),
 );
 await check("reading an agent's settings without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/agents/x/settings`), 401));
+await check("listing an agent's events without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/agents/x/events?kinds=tasks&kinds=alerts&failed=true`), 401));
+await check("reading one of an agent's events without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/agents/x/events/${encodeURIComponent("alert:x")}`), 401));
 await check("changing an agent's settings without credentials answers 401", async () =>
   expectStatus(await fetch(`${apiUrl}/agents/x/settings`, { method: "PATCH", headers: { "content-type": "application/json" }, body: '{"sponsorAccess":"read"}' }), 401),
 );

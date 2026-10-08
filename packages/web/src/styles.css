@@ -6455,13 +6455,13 @@ mark {
 }
 
 /*
- * An agent's activity, on the plane as the mail lies. On a desk its days lie in the list column,
- * newest first, each a row saying what was counted, each run of days with nothing counted folded
- * into one row, and the open day's timeline lies in the reading pane beside them, its row marked by
- * the orange edge. The timeline is a row an entry: the time in the margin, then who did what, after
- * their shape, and the thread it was about.
+ * An agent's activity, on the plane as the mail lies. On a desk its events lie in the list column,
+ * newest first, under a heading for each date that stays at the column's top while its events
+ * scroll past, each a row with its time in the margin and what happened, a failure marked in
+ * Alert Red and what waits for the human in Call Orange. The open event lies in the reading pane
+ * beside them, its row marked by the orange edge, with everything recorded on it.
  */
-.activity-days {
+.activity-events {
   min-width: 0;
   padding: 1.35rem 0 var(--space-7);
   background: var(--list);
@@ -6484,194 +6484,192 @@ mark {
   color: var(--ink-3);
 }
 
-.days-list,
-.timeline-list {
+.activity-chips {
+  gap: 0.3rem;
+  padding-top: 0;
+}
+
+.activity-events .notice {
+  margin: 0 1.4rem;
+}
+
+.activity-empty {
+  padding-inline: 1.4rem;
+}
+
+/* Each date heads its events, staying at the column's top until the next date takes its place. */
+.event-date {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: var(--space-3) 1.4rem var(--space-2);
+  background: var(--list);
+  box-shadow: inset 0 -1px 0 var(--seam);
+  color: var(--ink-2);
+  font: 600 var(--text-sm) / 1.2 var(--grotesk);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+.event-list {
   list-style: none;
   margin: 0;
   padding: 0;
 }
 
-.days-list > li + li .day,
-.days-folded .day {
+.event-list > li + li .event {
   box-shadow: inset 0 1px 0 var(--seam);
 }
 
-.day {
+.event {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 0.125rem var(--space-3);
-  width: 100%;
-  padding: 0.72rem 1.4rem 0.78rem;
-  border: 0;
-  background: none;
+  grid-template-columns: 4.75rem minmax(0, 1fr);
+  align-items: baseline;
+  gap: 0.25rem var(--space-3);
+  padding: 0.68rem 1.4rem 0.74rem;
   color: var(--ink);
-  font: inherit;
-  text-align: start;
   text-decoration: none;
-  cursor: pointer;
   transition: background-color 150ms var(--ease-out);
 }
 
-.day:hover {
+.event:hover {
   background: rgb(22 22 22 / 0.025);
 }
 
-.day:focus-visible {
+.event:focus-visible {
   outline-offset: -2px;
 }
 
-/* The day open beside the days, marked as the open line of a list is. */
-.days-list .day[aria-current="true"] {
+/* The event open beside the events, marked as the open line of a list is. */
+.event-list .event[aria-current="true"] {
   background: var(--read);
   box-shadow: inset 3px 0 0 var(--call);
 }
 
-.day-name {
-  grid-column: 1;
-  font-weight: 600;
-}
-
-.day-said {
-  grid-column: 1;
-  min-width: 0;
+.event-time {
   font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
   color: var(--ink-3);
+  white-space: nowrap;
 }
 
-/* What was counted reads as a sentence, its numbers in Ink, sends in green and alerts in red, so a busy day stands out from a quiet one. */
-.day-number {
-  color: var(--ink);
-  font-weight: 650;
+/* A long line, as SES's reason for refusing a send, is cut at three lines, and the open event says it all. */
+.event-said {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow-wrap: anywhere;
 }
 
-.day-count-sent .day-number {
-  color: var(--sent-ink);
+.event-marks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  grid-column: 2;
 }
 
-.day-count-alerts .day-number {
+/* A mark is its function's colour, with a dot of it, so it reads without the colour too. */
+.event-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font: 600 var(--text-xs) / 1.2 var(--mono);
+  letter-spacing: 0.02em;
+}
+
+.event-mark::before {
+  content: "";
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.event-mark-failed {
   color: var(--alert-ink);
 }
 
-.day-quiet .day-name,
-.day-fold .day-name {
-  font-weight: 400;
-  color: var(--ink-2);
+.event-mark-call {
+  color: var(--call-ink);
 }
 
-.day-fold .agent-chevron {
-  grid-column: 2;
-  grid-row: 1 / span 2;
-  align-self: center;
-  color: var(--ink-2);
-  transition: transform 150ms var(--ease-out);
+.events .index-foot {
+  padding: var(--space-4) 1.4rem 0;
 }
 
-.day-fold[aria-expanded="true"] .agent-chevron {
-  transform: rotate(180deg);
+.events > .notice {
+  margin-top: var(--space-4);
 }
 
-/* The days a fold opens lie under it, set in from the fold so they read as its own. */
-.days-folded .day {
-  padding-inline-start: 2.4rem;
-}
-
-.days-folded {
-  animation: sheet-in 220ms var(--ease-out);
-}
-
-.activity-days .notice {
-  margin: 0 1.4rem;
-}
-
-/* The open day, or where one opens, in the reading pane. */
-.activity-day {
+/* The open event, or where one opens, in the reading pane. */
+.activity-event {
   min-width: 0;
   padding: 1.25rem var(--space-7) var(--space-7);
   background: var(--read);
   animation: sheet-in 260ms var(--ease-out);
 }
 
-.activity-day .activity-head {
+.activity-event .activity-head {
   padding: 0 0 var(--space-5);
 }
 
-.activity-day .activity-head .view-title {
-  max-width: 26ch;
-  font: 600 var(--text-display) / 1.06 var(--grotesk);
+.activity-event .activity-head .view-title {
+  max-width: 40ch;
+  font: 600 var(--text-xl) / 1.15 var(--grotesk);
+  letter-spacing: -0.02em;
+  overflow-wrap: anywhere;
 }
 
-.activity-day .activity-lead {
-  color: var(--ink-2);
-}
-
-.timeline-list {
-  max-width: 76ch;
-}
-
-.entry {
-  display: grid;
-  grid-template-columns: 5.5rem minmax(0, 1fr);
+.event-when {
+  display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
+  gap: var(--space-3);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-3);
+}
+
+.event-facts {
+  display: grid;
+  max-width: 76ch;
+  margin: 0;
+}
+
+.event-fact {
+  display: grid;
+  grid-template-columns: 9rem minmax(0, 1fr);
   gap: var(--space-4);
   padding: var(--space-3) 0;
   box-shadow: inset 0 1px 0 var(--seam);
 }
 
-.entry-time {
+.event-fact dt {
   font-size: var(--text-sm);
   color: var(--ink-3);
-  white-space: nowrap;
 }
 
-.entry-line {
+.event-fact dd {
   margin: 0;
   overflow-wrap: anywhere;
 }
 
-.entry-said .actor-mark {
-  margin-inline-end: var(--space-2);
-  vertical-align: 0.05em;
-}
-
-.entry-by {
-  font-weight: 650;
-}
-
-/* The thread follows the sentence, as a row of a list sets the subject after the sender. */
-.entry-thread {
-  margin-inline-start: var(--space-1);
-  font-weight: 500;
-}
-
-/* A turn of Ask Coo takes two lines, what was asked and how it was answered, with how in Third Ink under them. */
-.entry-turn {
+.event-links {
   display: grid;
   gap: var(--space-1);
-}
-
-/* Set in by the mark and its gap, so it lines up under the names. */
-.entry-how {
   margin: 0;
-  padding-inline-start: calc(0.55rem + var(--space-2));
+  padding: 0;
+  list-style: none;
+}
+
+.event-gone {
   font-size: var(--text-sm);
   color: var(--ink-3);
 }
 
-.entry-gone {
-  font-size: var(--text-sm);
-  font-weight: 400;
-  color: var(--ink-3);
-}
-
-.timeline .notice {
-  margin-top: var(--space-4);
-}
-
-.timeline .index-foot {
-  padding: var(--space-4) 0 0;
-}
-
-/* A desk: the days and the open day side by side, each scrolling by itself. */
+/* A desk: the events and the open event side by side, each scrolling by itself, the way back unneeded. */
 @media (min-width: 64rem) {
   .panes-one:has(> .activity-desk) {
     grid-template-rows: minmax(0, 1fr);
@@ -6688,50 +6686,47 @@ mark {
     min-height: 0;
     overflow: auto;
   }
+
+  .activity-event > .back {
+    display: none;
+  }
 }
 
-/* Narrower, the days or the open day take the one column alone. */
+/* Narrower, the events or the open event take the one column alone. */
 @media (max-width: 63.9375rem) {
   .activity-reader,
-  .activity-desk-day .activity-days {
+  .activity-desk-open .activity-events {
     display: none;
   }
 
-  .activity-days {
+  .activity-events {
     min-height: 100%;
   }
 }
 
 @media (max-width: 48rem) {
-  .activity-days,
-  .activity-day {
+  .activity-events,
+  .activity-event {
     padding: var(--space-2) 0 var(--space-6);
     background: var(--read);
   }
 
-  .activity-day {
+  .event-date {
+    background: var(--read);
+  }
+
+  .activity-event {
     padding-inline: 1.4rem;
   }
 
-  .activity-day .activity-head .view-title {
-    font-size: var(--text-xl);
-    line-height: 1.05;
-  }
-
-  .day {
+  .event {
+    grid-template-columns: 4.25rem minmax(0, 1fr);
     min-height: 2.75rem;
   }
 
-  .entry {
-    grid-template-columns: 4.5rem minmax(0, 1fr);
-    gap: var(--space-3);
-  }
-
-  /* On a phone the thread takes a line of its own, under what happened. */
-  .entry-thread {
-    display: block;
-    margin-inline-start: 0;
-    margin-top: var(--space-1);
+  .event-fact {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-1);
   }
 }
 

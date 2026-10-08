@@ -154,7 +154,7 @@ test("an answer from the everyday model that names a thread nothing gave it, or 
   }
 });
 
-test("a label's task uses the task model, with no decider, and its handover shows on the task and in the agent's activity", async () => {
+test("a label's task uses the task model, with no decider, and its handover shows on the task and in the agent's events", async () => {
   let decided = 0;
   const { model, requests } = scripted({ [nova]: [() => [use("ask_for_help", { why: "Unclear prompt." })]], [sonnet]: [() => [{ text: "Noted." }]] });
   const { linus, params, agent } = await withMailbox({ model, decider: async () => (decided++, { route: "simple", confidence: 1, inputTokens: 1, outputTokens: 1 }) });
@@ -169,9 +169,8 @@ test("a label's task uses the task model, with no decider, and its handover show
   expect(requests.map(({ model: asked }) => asked)).toEqual([nova, sonnet]);
   const { data: read } = await linus.GET("/mailboxes/{mailbox}/threads/{thread}", { params: { path: { ...params.path, thread } } });
   expect(read!.tasks).toEqual([expect.objectContaining({ state: "done", note: "Noted.", handover: { reason: "askedForHelp", from: nova, to: sonnet, why: "Unclear prompt." } })]);
-  const day = new Date().toISOString().slice(0, 10);
-  const { data: activity } = await linus.GET("/agents/{agent}/activity/{day}", { params: { path: { agent: agent.id, day }, query: { timeZone: "UTC" } } });
-  expect(activity!.entries.map(({ change }) => change.type)).toContain("agentHandedOver");
+  const { data: events } = await linus.GET("/agents/{agent}/events", { params: { path: { agent: agent.id }, query: { kinds: ["tasks"] } } });
+  expect(events!.events.map(({ type }) => type)).toContain("agentHandedOver");
 });
 
 test("Think harder answers the last turn again with the harder model, after what came before it", async () => {

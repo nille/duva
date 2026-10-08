@@ -23,6 +23,7 @@ Facts about AWS that shaped Duva's design, each with how it was established. A c
 - **A Lambda authorizer answers 401 by failing with "Unauthorized",** but only when it has no identity sources. With identity sources, API Gateway answers 401 itself when one is missing, and `isAuthorized: false` gives 403. Caching needs an identity source, so Duva's authorizer caches nothing. _[HTTP API Lambda authorizers](https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-lambda-authorizer.html); 401 for a missing and a forged token seen in the real run, 2026-10-03._
 
 - **An HTTP API ends an integration after 30 seconds at most,** so a call to the MCP endpoint does too. Asking the mailbox agent there waits 20 seconds for its answer, and the run goes on in the conversation Lambda, invoked without waiting, whose answer the conversation keeps. _[HTTP API quotas](https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-quotas.html)._
+- **An HTTP API joins a query parameter given more than once with commas** in payload format 2.0's `queryStringParameters`, so `kinds=tasks&kinds=alerts` reaches the API as `"tasks,alerts"`, as `kinds=tasks,alerts` does. The events' kinds are read either way, and the harness's gateway joins them too. _[Working with AWS Lambda proxy integrations for HTTP APIs](https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-develop-integrations-lambda.html)._ To confirm in #137's real run.
 
 ## CloudFront
 

@@ -9,7 +9,7 @@ export const agentKeyVariable = "DUVA_AGENT_KEY";
 
 /** What a call passes, from the command's options: its query, its path parameters and its JSON body. */
 interface Call {
-  query?: Record<string, string | number | boolean>;
+  query?: Record<string, string | number | boolean | string[]>;
   path?: Record<string, string | number>;
   body?: Record<string, string | number | boolean | string[] | null>;
 }

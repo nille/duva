@@ -2,7 +2,7 @@ import type { APIGatewayProxyEventV2, APIGatewayProxyStructuredResultV2 } from "
 import { type Operation, operations, type OperationId } from "@duva/openapi";
 import { approveAccessRequest, askForAccess, collectAccess, declineAccessRequest, getAccessRequest } from "./access-requests.ts";
 import { addAddress, changeMailbox, listAddresses, removeAddress } from "./addresses.ts";
-import { getAgentActivity, getAgentActivityDay } from "./activity.ts";
+import { getAgentEvent, listAgentEvents } from "./activity.ts";
 import { listApprovalLog } from "./approval-log.ts";
 import { listAlerts, markAlertsSeen } from "./alerts.ts";
 import { getAttachment } from "./attachments.ts";
@@ -80,8 +80,8 @@ export const handlers: Record<OperationId, OperationHandler> = {
   unpauseAgent,
   getAgentSettings,
   changeAgentSettings,
-  getAgentActivity,
-  getAgentActivityDay,
+  getAgentEvent,
+  listAgentEvents,
   askForAccess,
   collectAccess,
   getAccessRequest,

@@ -239,10 +239,10 @@ export function useThreadKeys<Thread extends Labelled>({
 }
 
 /** How long the cursor rests on a line after j or k before its thread opens beside the list. */
-const restBeforeOpen = 500;
+export const restBeforeOpen = 500;
 
 /** Whether the page is wide enough for the list and what is open from it to lie side by side, as styles.css lays them out. */
-const sideBySide = () => matchMedia("(min-width: 64rem)").matches;
+export const sideBySide = () => matchMedia("(min-width: 64rem)").matches;
 
 /** The thread the cursor was last on in any list, so coming back to the list from it finds it there. */
 let lastCursor: string | undefined;

@@ -6,7 +6,7 @@
 // sponsors' with sponsor access. Sponsors reach the Approvals view from the places, where they decide
 // what the agents they sponsor ask to send, and the Alerts view, where they read what their agents
 // need them for, each with its count. Mail from first-time senders waits in each mailbox's Screener,
-// beside its views. Each agent's activity, a summary a day that opens into the day's timeline, is
+// beside its views. Each agent's activity, one list of its events that each open beside it, is
 // reached from Your agents in Settings and from the status strip. Every human reaches Settings
 // from the places too, where they choose how times and dates show and switch their Screeners, admins
 // the organization's settings and sponsors their agents', which they pause and limit there. The search
@@ -20,7 +20,7 @@ import { lazy, StrictMode, Suspense, useCallback, useEffect, useId, useMemo, use
 import { createRoot } from "react-dom/client";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
-import { activityHref, AgentActivity, AgentDay } from "./activity.tsx";
+import { activityHref, AgentEvents, type Filter, filterOf } from "./activity.tsx";
 import { AskAgent } from "./ask.tsx";
 import { Composer } from "./compose.tsx";
 import { CooSays, MailboxAgentsContext, Nest, useCoo } from "./coo.tsx";
@@ -119,7 +119,7 @@ function App() {
  * links to them may not say. A thread knows the view it was opened from, to go back there, and from
  * a search, the message that matched. A sender's sheet knows the view, or the screened senders, it
  * was opened from, at the path `from`. A mailbox's screened senders are reached from its Screener. An
- * agent's activity lies across the plane, and opens into one day. Settings reads which of its pages
+ * agent's activity lies across the plane, opens into one event, and keeps the kinds of event it shows. Settings reads which of its pages
  * is open from the rest of the hash.
  */
 type Route =
@@ -133,7 +133,7 @@ type Route =
   | { view: "sender"; mailbox?: string; sender: string; from: string }
   | { view: "drafts" | "write" | "agent"; mailbox?: string }
   | { view: "draft"; mailbox?: string; id: string }
-  | { view: "activity"; agent: string; day?: string };
+  | { view: "activity"; agent: string; event?: string; filter: Filter };
 
 function routeOf(hash: string): Route {
   if (hash === "#/approvals") return { view: "approvals" };
@@ -141,8 +141,8 @@ function routeOf(hash: string): Route {
   const code = /^#\/access\/([^/]+)$/.exec(hash)?.[1];
   if (code !== undefined) return { view: "access", code: decodeURIComponent(code) };
   if (hash === "#/settings" || hash.startsWith("#/settings/")) return { view: "settings" };
-  const [, agent, day] = /^#\/agents\/([^/]+)(?:\/(\d{4}-\d{2}-\d{2}))?$/.exec(hash) ?? [];
-  if (agent !== undefined) return { view: "activity", agent: decodeURIComponent(agent), day };
+  const [, agent, event, query = ""] = /^#\/agents\/([^/?]+)(?:\/([^/?]+))?(?:\?(.*))?$/.exec(hash) ?? [];
+  if (agent !== undefined) return { view: "activity", agent: decodeURIComponent(agent), ...(event !== undefined && { event: decodeURIComponent(event) }), filter: filterOf(query) };
   const path = hash.replace(/^#\/?/, "");
   const [, mailbox, inMailbox = ""] = /^mailboxes\/([^/]+)\/?(.*)$/.exec(path) ?? [undefined, undefined, path];
   const decoded = mailbox === undefined ? undefined : decodeURIComponent(mailbox);
@@ -414,7 +414,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
       ? `access/${route.code}`
       : route.view
     : route.view === "activity"
-      ? `activity/${route.agent}/${route.day ?? ""}`
+      ? `activity/${route.agent}/${route.event ?? ""}`
       : `${route.view}/${named ?? ""}/${"id" in route ? route.id : route.view === "sender" ? route.sender : route.view === "list" ? pathOf(route.list) : route.view === "search" ? pathOf(route.search) : route.view === "screener" ? String(route.senders) : ""}`;
   // A screen reader follows the human to the view they opened, and the page starts at its top.
   const navigated = useRef(false);
@@ -722,11 +722,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
         onSignedOut={onSignedOut}
       />
     ) : route.view === "activity" ? (
-      route.day === undefined ? (
-        <AgentActivity key={route.agent} client={client} agent={route.agent} name={agentNames.get(route.agent)} timeZone={preferences.timeZone} onSignedOut={onSignedOut} />
-      ) : (
-        <AgentDay key={`${route.agent}/${route.day}`} client={client} agent={route.agent} day={route.day} name={agentNames.get(route.agent)} me={actor.id} mine={first?.id} timeZone={preferences.timeZone} onSignedOut={onSignedOut} />
-      )
+      <AgentEvents key={route.agent} client={client} agent={route.agent} name={agentNames.get(route.agent)} open={route.event} filter={route.filter} mine={first?.id} timeZone={preferences.timeZone} onSignedOut={onSignedOut} />
     ) : mailboxes.status === "loading" || placingDraft || checking ? (
       <main className="desk" aria-busy="true" />
     ) : mailboxes.status === "failed" ? (

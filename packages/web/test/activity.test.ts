@@ -46,14 +46,15 @@ const note = (to: string, subject: string) =>
 
 /**
  * The web app for a deployment where Ada, the admin, has a personal mailbox at ada@example.com
- * and sponsors the agent Hermes, which has send access to it. Two messages reached Ada on Tuesday
- * 6 October, and Hermes archived one and answered the other as her, which she approved, all in the
- * browser's time zone, UTC.
+ * and sponsors the agent Hermes, which has send access to it, added on Monday 5 October. Two
+ * messages reached Ada on Tuesday 6 October, and Hermes archived one and answered the other as her,
+ * which she approved but SES refused, since the account is in the sandbox. Then Hermes asked to
+ * send another answer, which waits for her. All in the browser's time zone, UTC.
  */
 async function withActivity(options: Parameters<typeof startWebApp>[0] = {}) {
-  const app = await startWebApp({ domain: "example.com", admin: "ada@example.org", ...options });
+  const app = await startWebApp({ domain: "example.com", admin: "ada@example.org", sandbox: true, ...options });
   const { duva } = app;
-  await duva.clock(new Date("2026-10-06T08:00:00Z"));
+  await duva.clock(new Date("2026-10-05T16:00:00Z"));
   const ada = duva.signIn("ada@example.org");
   const { data: me } = await ada.GET("/whoami");
   const { data: adaMailbox } = await ada.POST("/mailboxes", { body: { owner: me!.id, address: "ada@example.com" } });
@@ -62,6 +63,7 @@ async function withActivity(options: Parameters<typeof startWebApp>[0] = {}) {
   await ada.PATCH("/agents/{agent}/settings", { params: { path: { agent: created!.agent.id } }, body: { sponsorAccess: "send" } });
   const hermes = duva.withKey(created!.key);
   const params = { path: { mailbox: adaMailbox!.id } };
+  await duva.clock(new Date("2026-10-06T08:00:00Z"));
   await duva.receive(note("ada@example.com", "Kvitto"), { to: ["ada@example.com"] });
   await duva.receive(note("ada@example.com", "Möte"), { to: ["ada@example.com"] });
   const { data: threads } = await hermes.GET("/mailboxes/{mailbox}/threads", { params });
@@ -74,57 +76,48 @@ async function withActivity(options: Parameters<typeof startWebApp>[0] = {}) {
   const { data: asked } = await hermes.POST("/mailboxes/{mailbox}/drafts/{draft}/send", { params: { path: { ...params.path, draft: draft!.id } } });
   // Ada's session from before the clock moved has ended, so she signs in again.
   await duva.signIn("ada@example.org").POST("/approvals/{approval}/send", { params: { path: { approval: asked!.send!.approval! } } });
-  return { ...app, hermes, agent: created!.agent };
+  await duva.clock(new Date("2026-10-06T10:15:00Z"));
+  const { data: again } = await hermes.POST("/mailboxes/{mailbox}/drafts", { params, body: { answers: read!.messages[0]!.id, text: "Tisdag går också bra." } });
+  await hermes.POST("/mailboxes/{mailbox}/drafts/{draft}/send", { params: { path: { ...params.path, draft: again!.id } } });
+  return { ...app, hermes, params, receipt, agent: created!.agent };
 }
 
-const days = (page: Page) => page.getByRole("list", { name: "Days" }).getByRole("link");
+const events = (page: Page) => page.getByRole("region", { name: "Events" }).getByRole("link");
+const labels = (page: Page) => events(page).evaluateAll((links) => links.map((link) => link.getAttribute("aria-label")));
+const chip = (page: Page, name: string) => page.getByRole("group", { name: "Show" }).getByRole("button", { name, exact: true });
+const heading = (page: Page) => page.getByRole("heading", { level: 1 }).textContent();
 /** Opens Hermes's activity from the status strip along the desk's foot, where Hermes says how it stands. */
 const openActivity = (page: Page) => page.getByRole("contentinfo", { name: "Status" }).getByRole("link", { name: /^Hermes is running/ }).click();
-const fold = (page: Page) => page.getByRole("list", { name: "Days" }).getByRole("button", { name: "Sep 7 to Oct 5, nothing counted" });
 
-test("a sponsor opens their agent's page from the status strip, with a summary for each of the last 30 days, newest first, the quiet ones folded", budget, async () => {
+test("a sponsor opens their agent's activity from the status strip: its events, newest first, under a heading for each date, failures and what waits for them marked", budget, async () => {
   const { page, signIn } = await withActivity();
   await signIn("ada@example.org");
 
   await openActivity(page);
 
-  await expect.poll(() => page.getByRole("heading", { level: 1 }).textContent(), wait).toBe("Hermes's activity");
-  await expect.poll(() => days(page).count(), wait).toBe(1);
-  expect(await days(page).first().getAttribute("aria-label")).toMatch(/^Tuesday, Oct 6.*: 1 draft, 1 sent, 1 approved, 1 organized$/);
-  expect(await days(page).first().innerText()).toMatch(/1 draft, 1 sent, 1 approved, 1 organized$/);
-  expect(await fold(page).getAttribute("aria-expanded")).toBe("false");
+  await expect.poll(() => heading(page), wait).toBe("Hermes's activity");
+  await expect.poll(() => events(page).count(), wait).toBeGreaterThan(0);
+  const list = page.getByRole("region", { name: "Events" });
+  expect(await list.getByRole("heading", { level: 2 }).allInnerTexts()).toEqual(["Tuesday, Oct 6", "Monday, Oct 5"]);
+  const said = await labels(page);
+  expect(said[0]).toBe("Tuesday, Oct 6, 10:15 AM: Hermes asked for approval to send.. Needs you");
+  expect(said).toContain("Tuesday, Oct 6, 09:30 AM: Hermes archived a thread.");
+  expect(said).toContainEqual(expect.stringMatching(/^Tuesday, Oct 6, 09:30 AM: Amazon SES refused to send Hermes's message: .*\. Failed$/));
+  expect(said.slice(-2)).toEqual(["Monday, Oct 5, 04:00 PM: You changed Hermes's settings.", "Monday, Oct 5, 04:00 PM: You added the agent Hermes."]);
+  // Mail that simply arrived in the sponsor's mailbox is none of the agent's doing.
+  expect(said.some((text) => text!.includes(" wrote to "))).toBe(false);
+  // Each row shows its time, then what happened, then its marks.
+  expect(await events(page).first().innerText()).toBe("10:15 AM\nHermes asked for approval to send.\nNeeds you");
+  expect(await events(page).filter({ hasText: "refused" }).locator(".event-mark").innerText()).toBe("Failed");
+  // The date heading stays at the column's top as the events scroll under it.
+  expect(await list.getByRole("heading", { level: 2 }).first().evaluate((date) => getComputedStyle(date).position)).toBe("sticky");
   expect(await page.getByRole("contentinfo", { name: "Status" }).getByRole("link", { name: /^Hermes is running/ }).getAttribute("aria-current")).toBe("page");
+  expect(await page.getByRole("heading", { level: 2, name: "No event open" }).isVisible()).toBe(true);
   // Agents own no mailboxes, so the side column's views list no activity of their own.
   expect(await page.getByRole("navigation", { name: "Mail" }).getByRole("link", { name: "Activity" }).count()).toBe(0);
-
-  await fold(page).click();
-
-  expect(await fold(page).getAttribute("aria-expanded")).toBe("true");
-  await expect.poll(() => days(page).count(), wait).toBe(30);
-  expect(await days(page).nth(1).getAttribute("aria-label")).toMatch(/^Monday, Oct 5.*: nothing counted$/);
-  expect(await days(page).last().getAttribute("aria-label")).toMatch(/^Monday, Sep 7/);
-
-  await fold(page).click();
-
-  await expect.poll(() => days(page).count(), wait).toBe(1);
 });
 
-test("from the keyboard, a fold of quiet days opens and its days are the next stops", budget, async () => {
-  const { page, signIn } = await withActivity();
-  await signIn("ada@example.org");
-  await openActivity(page);
-  await expect.poll(() => days(page).count(), wait).toBe(1);
-
-  await days(page).first().focus();
-  await page.keyboard.press("Tab");
-  expect(await page.evaluate(() => document.activeElement?.getAttribute("aria-label"))).toBe("Sep 7 to Oct 5, nothing counted");
-  await page.keyboard.press("Enter");
-  await page.keyboard.press("Tab");
-
-  expect(await page.evaluate(() => document.activeElement?.getAttribute("aria-label"))).toMatch(/^Monday, Oct 5.*: nothing counted$/);
-});
-
-test("a sponsor reaches each agent's page from the Agents sheet", budget, async () => {
+test("a sponsor reaches each agent's activity from the Agents sheet", budget, async () => {
   const { page, signIn } = await withActivity();
   await signIn("ada@example.org");
 
@@ -133,137 +126,201 @@ test("a sponsor reaches each agent's page from the Agents sheet", budget, async 
   await page.getByRole("region", { name: "Your agents" }).getByRole("heading", { name: "Hermes" }).click();
   await page.getByRole("link", { name: "Hermes's activity" }).click();
 
-  await expect.poll(() => page.getByRole("heading", { level: 1 }).textContent(), wait).toBe("Hermes's activity");
-  await expect.poll(() => days(page).count(), wait).toBe(1);
+  await expect.poll(() => heading(page), wait).toBe("Hermes's activity");
+  await expect.poll(() => events(page).count(), wait).toBeGreaterThan(0);
 });
 
-test("opening a day shows its timeline, newest first, each entry linking to its thread", budget, async () => {
+test("on a desk an event opens beside the events, its row marked, with what was recorded on it and links to the thread and draft it touched", budget, async () => {
   const { page, signIn } = await withActivity();
   await signIn("ada@example.org");
   await openActivity(page);
 
-  await days(page).first().click();
+  await events(page).filter({ hasText: "archived" }).click();
 
-  await expect.poll(() => page.getByRole("heading", { level: 1 }).textContent(), wait).toMatch(/^Tuesday, Oct 6/);
-  const entries = page.getByRole("list", { name: "Timeline" }).getByRole("listitem");
-  await expect.poll(() => entries.count(), wait).toBeGreaterThanOrEqual(5);
-  const archived = async () => (await entries.allInnerTexts()).filter((text) => text.includes(" archived "));
-  await expect.poll(archived, wait).toEqual([expect.stringMatching(/^09:30 AM\n+Hermes archived a thread\. Kvitto$/)]);
-  const texts = await entries.allInnerTexts();
-  // Mail that simply arrived in the sponsor's mailbox is none of the agent's doing.
-  expect(texts.some((text) => text.includes(" wrote to "))).toBe(false);
-  expect(texts.some((text) => text.includes("You added the agent Hermes"))).toBe(true);
-  expect(texts.some((text) => text.includes("You changed Hermes's settings."))).toBe(true);
-  expect(texts.some((text) => text.includes("You approved Hermes's send"))).toBe(true);
-  expect(texts.some((text) => text.includes("Hermes asked for approval to send"))).toBe(true);
-  expect(texts.some((text) => text.includes("Duva sent Hermes's message to Grace Hopper."))).toBe(true);
-  // Each entry names who did it, in a heavier hand.
-  expect(await page.getByRole("list", { name: "Timeline" }).locator("strong").allInnerTexts()).toEqual(expect.arrayContaining(["Duva", "Hermes", "You"]));
-  expect(await page.getByRole("list", { name: "Timeline" }).locator("strong").count()).toBe(await entries.count());
-  await expect.poll(() => page.getByRole("list", { name: "Timeline" }).getByRole("link", { name: "Kvitto" }).count(), wait).toBe(1);
-
-  // A thread several entries are about is linked from each, each link naming its entry.
-  const meetingLinks = page.getByRole("list", { name: "Timeline" }).getByRole("link", { name: /^Möte\. / });
-  expect(await meetingLinks.count()).toBeGreaterThan(1);
-  const names = await meetingLinks.evaluateAll((links) => links.map((link) => link.getAttribute("aria-label")));
-  expect(new Set(names).size).toBe(names.length);
-  expect(names).toContain("Möte. 09:30 AM: Hermes asked for approval to send.");
-
-  // The subject follows what happened on its line, with no gap between them.
-  const arrival = entries.filter({ hasText: "Kvitto" });
-  const said = (await arrival.locator(".entry-said").boundingBox())!;
-  const subject = (await arrival.getByRole("link").boundingBox())!;
-  expect(Math.abs(subject.y + subject.height - (said.y + said.height))).toBeLessThan(8);
-  expect(subject.x - (said.x + said.width)).toBeLessThan(16);
-
-  await page.getByRole("list", { name: "Timeline" }).getByRole("link", { name: "Kvitto" }).click();
-
-  await expect.poll(() => page.getByRole("heading", { level: 1 }).textContent(), wait).toBe("Kvitto");
-  await page.goBack();
-  await expect.poll(() => page.getByRole("heading", { level: 1 }).textContent(), wait).toMatch(/^Tuesday, Oct 6/);
-  await page.getByRole("link", { name: "Hermes's activity" }).click();
-  await expect.poll(() => days(page).count(), wait).toBe(1);
-});
-
-test("on a desk a day's timeline opens beside the days, its day marked as the one open, and a quiet day inside its fold", budget, async () => {
-  const { page, signIn } = await withActivity();
-  await signIn("ada@example.org");
-  await openActivity(page);
-  await expect.poll(() => days(page).count(), wait).toBe(1);
-  expect(await page.getByRole("heading", { level: 2, name: "No day open" }).isVisible()).toBe(true);
-
-  await days(page).first().click();
-
-  await expect.poll(() => page.getByRole("heading", { level: 1 }).textContent(), wait).toMatch(/^Tuesday, Oct 6/);
+  await expect.poll(() => heading(page), wait).toBe("Hermes archived a thread.");
+  expect(await page.getByRole("main").getByText("Tuesday, Oct 6, 09:30 AM").isVisible()).toBe(true);
   const beside = page.getByRole("region", { name: "Hermes's activity" });
-  expect(await beside.getByRole("list", { name: "Days" }).isVisible()).toBe(true);
-  expect(await days(page).first().getAttribute("aria-current")).toBe("true");
-  await expect.poll(() => page.getByRole("main").getByRole("list", { name: "Timeline" }).isVisible(), wait).toBe(true);
+  expect(await beside.getByRole("region", { name: "Events" }).isVisible()).toBe(true);
+  expect(await events(page).filter({ hasText: "archived" }).getAttribute("aria-current")).toBe("true");
+  const facts = page.getByRole("main").getByRole("definition");
+  await expect.poll(() => page.getByRole("main").getByRole("link", { name: "Kvitto" }).count(), wait).toBe(1);
 
-  await fold(page).click();
-  await days(page).nth(1).click();
+  // What SES said in refusing is recorded on the failed send.
+  await events(page).filter({ hasText: "refused" }).click();
+  await expect.poll(() => heading(page), wait).toMatch(/^Amazon SES refused to send Hermes's message/);
+  expect(await page.getByRole("main").getByText("Failed", { exact: true }).isVisible()).toBe(true);
+  expect(await page.getByRole("main").getByRole("term").allInnerTexts()).toEqual(["Thread", "Why it failed"]);
+  expect(await facts.last().innerText()).toMatch(/grace@example\.org/);
 
-  await expect.poll(() => page.getByRole("heading", { level: 1 }).textContent(), wait).toMatch(/^Monday, Oct 5/);
-  await expect.poll(() => days(page).count(), wait).toBe(30);
-  expect(await fold(page).getAttribute("aria-expanded")).toBe("true");
-  expect(await days(page).nth(1).getAttribute("aria-current")).toBe("true");
-  expect(await days(page).first().getAttribute("aria-current")).toBe(null);
+  // A draft still waiting links to it.
+  await events(page).first().click();
+  await expect.poll(() => heading(page), wait).toBe("Hermes asked for approval to send.");
+  expect(await page.getByRole("main").getByText("Needs you", { exact: true }).isVisible()).toBe(true);
+  await page.getByRole("main").getByRole("link", { name: "Open the draft" }).click();
+  await expect.poll(() => page.evaluate(() => location.hash), wait).toMatch(/^#\/drafts\/[^/?]+$/);
+  await expect.poll(() => page.getByRole("main").getByText("Tisdag går också bra.").count(), wait).toBeGreaterThan(0);
+  await page.goBack();
+  await expect.poll(() => heading(page), wait).toBe("Hermes asked for approval to send.");
+
+  await page.getByRole("main").getByRole("link", { name: "Möte" }).click();
+  await expect.poll(() => heading(page), wait).toBe("Möte");
 });
 
-test("on a phone a day's timeline takes the screen alone, with the way back to the days", budget, async () => {
+test("chips choose the kinds of event shown, several at once, the address keeping them, and a choice with none says so with the way back to all", budget, async () => {
+  const { page, signIn, agent } = await withActivity();
+  await signIn("ada@example.org");
+  await openActivity(page);
+  await expect.poll(() => events(page).count(), wait).toBeGreaterThan(0);
+  expect(await chip(page, "All").getAttribute("aria-pressed")).toBe("true");
+
+  await chip(page, "Organizing").click();
+
+  await expect.poll(() => page.evaluate(() => location.hash), wait).toBe(`#/agents/${agent.id}?kinds=organizing`);
+  await expect.poll(() => labels(page), wait).toEqual(["Tuesday, Oct 6, 09:30 AM: Hermes archived a thread."]);
+  expect(await chip(page, "Organizing").getAttribute("aria-pressed")).toBe("true");
+  expect(await chip(page, "All").getAttribute("aria-pressed")).toBe("false");
+
+  await chip(page, "Pauses and limits").click();
+
+  await expect.poll(() => page.evaluate(() => location.hash), wait).toBe(`#/agents/${agent.id}?kinds=organizing,pausesAndLimits`);
+  await expect.poll(() => labels(page), wait).toEqual(["Tuesday, Oct 6, 09:30 AM: Hermes archived a thread.", "Monday, Oct 5, 04:00 PM: You changed Hermes's settings."]);
+
+  // A reload keeps the choice.
+  await page.reload();
+  await expect.poll(() => labels(page), wait).toEqual(["Tuesday, Oct 6, 09:30 AM: Hermes archived a thread.", "Monday, Oct 5, 04:00 PM: You changed Hermes's settings."]);
+  expect(await chip(page, "Pauses and limits").getAttribute("aria-pressed")).toBe("true");
+
+  await chip(page, "Organizing").click();
+  await chip(page, "Pauses and limits").click();
+
+  await expect.poll(() => page.evaluate(() => location.hash), wait).toBe(`#/agents/${agent.id}`);
+  expect(await chip(page, "All").getAttribute("aria-pressed")).toBe("true");
+
+  // Failures are any events that failed, whatever their kind.
+  await chip(page, "Failures").click();
+
+  await expect.poll(() => page.evaluate(() => location.hash), wait).toBe(`#/agents/${agent.id}?failed=true`);
+  await expect.poll(() => labels(page), wait).toEqual([expect.stringMatching(/^Tuesday, Oct 6, 09:30 AM: Amazon SES refused to send/)]);
+
+  await chip(page, "Approvals").click();
+
+  await expect.poll(() => page.getByRole("heading", { name: "No events of these kinds." }).isVisible(), wait).toBe(true);
+  expect(await events(page).count()).toBe(0);
+
+  await page.getByRole("button", { name: "Show all events" }).click();
+
+  await expect.poll(() => page.evaluate(() => location.hash), wait).toBe(`#/agents/${agent.id}`);
+  await expect.poll(() => events(page).count(), wait).toBeGreaterThan(5);
+  expect(await chip(page, "All").getAttribute("aria-pressed")).toBe("true");
+});
+
+test("each chip shows its kind of event alone, and a kind with none says so", budget, async () => {
+  const { page, signIn } = await withActivity();
+  await signIn("ada@example.org");
+  await openActivity(page);
+  await expect.poll(() => events(page).count(), wait).toBeGreaterThan(0);
+  const shown: [chip: string, said: RegExp | undefined][] = [
+    ["Conversations", undefined],
+    ["Tasks", undefined],
+    ["Drafts and sends", /^Hermes started a draft\.$/],
+    ["Approvals", /^You approved Hermes's send\.$/],
+    ["Organizing", /^Hermes archived a thread\.$/],
+    ["Screening and senders", undefined],
+    ["Unsubscribes", undefined],
+    ["Pauses and limits", /^You changed Hermes's settings\.$/],
+    ["Alerts", /^Hermes's message .* failed/],
+  ];
+  const lines = () => page.getByRole("region", { name: "Events" }).locator(".event-said").allInnerTexts();
+
+  for (const [name, said] of shown) {
+    await chip(page, name).click();
+    if (said === undefined) {
+      await expect.poll(() => page.getByRole("heading", { name: "No events of these kinds." }).isVisible(), wait).toBe(true);
+    } else {
+      await expect.poll(lines, wait).toContainEqual(expect.stringMatching(said));
+      // Nothing of another kind shows beside it.
+      expect((await lines()).filter((line) => shown.some(([other, its]) => other !== name && its?.test(line)))).toEqual([]);
+    }
+    await chip(page, name).click();
+    await expect.poll(() => chip(page, "All").getAttribute("aria-pressed"), wait).toBe("true");
+  }
+});
+
+test("More at the foot reads older events, and under a filter older events of its kinds", budget, async () => {
+  const { page, signIn, hermes, params, receipt } = await withActivity();
+  // Hermes marks the receipt read and unread 30 times each, 60 events of organizing.
+  for (let time = 0; time < 30; time++) {
+    await hermes.POST("/mailboxes/{mailbox}/threads/read", { params, body: { threads: [receipt.id] } });
+    await hermes.POST("/mailboxes/{mailbox}/threads/unread", { params, body: { threads: [receipt.id] } });
+  }
+  await signIn("ada@example.org");
+  await openActivity(page);
+
+  await expect.poll(() => events(page).count(), wait).toBe(50);
+  const first = await labels(page);
+  await page.getByRole("button", { name: "More" }).click();
+  await expect.poll(() => events(page).count(), wait).toBeGreaterThan(50);
+  const all = await labels(page);
+  expect(all.slice(0, 50)).toEqual(first);
+  expect(all.at(-1)).toBe("Monday, Oct 5, 04:00 PM: You added the agent Hermes.");
+  expect(await page.getByRole("button", { name: "More" }).count()).toBe(0);
+
+  await chip(page, "Organizing").click();
+
+  await expect.poll(() => events(page).count(), wait).toBe(50);
+  await page.getByRole("button", { name: "More" }).click();
+  await expect.poll(() => events(page).count(), wait).toBe(61);
+  expect((await labels(page)).at(-1)).toBe("Tuesday, Oct 6, 09:30 AM: Hermes archived a thread.");
+  expect(await page.getByRole("button", { name: "More" }).count()).toBe(0);
+});
+
+test("on a desk j and k move through the events, and the one the focus rests on half a second opens beside them, the focus staying in the list", budget, async () => {
+  const { page, signIn } = await withActivity();
+  await signIn("ada@example.org");
+  await openActivity(page);
+  await expect.poll(() => events(page).count(), wait).toBeGreaterThan(0);
+  const focused = () => page.evaluate(() => document.activeElement?.getAttribute("aria-label"));
+  const said = await labels(page);
+
+  await page.keyboard.press("j");
+  await page.keyboard.press("j");
+  await page.waitForTimeout(250);
+  expect(await focused()).toBe(said[1]);
+  expect(await heading(page)).toBe("Hermes's activity");
+
+  await expect.poll(() => heading(page), wait).toBe(said[1]!.replace(/^[^:]+:[^:]+: /, ""));
+  expect(await focused()).toBe(said[1]);
+
+  await page.keyboard.press("k");
+  await expect.poll(() => heading(page), wait).toBe("Hermes asked for approval to send.");
+  expect(await focused()).toBe(said[0]);
+
+  await page.keyboard.press("Escape");
+  await expect.poll(() => heading(page), wait).toBe("Hermes's activity");
+});
+
+test("on a phone an open event takes the screen alone, with the way back to the events, and everything fits the screen", budget, async () => {
   const { page, signIn, agent } = await withActivity({ viewport: phone });
   await signIn("ada@example.org");
-  await expect.poll(() => page.getByRole("heading", { level: 1 }).textContent(), wait).toBe("Inbox");
-  await page.evaluate((agent) => (location.hash = `#/agents/${agent}/2026-10-06`), agent.id);
+  await expect.poll(() => heading(page), wait).toBe("Inbox");
+  await page.evaluate((agent) => (location.hash = `#/agents/${agent}`), agent.id);
+  await expect.poll(() => events(page).count(), wait).toBeGreaterThan(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(phone.width);
+  expect(await page.getByRole("heading", { name: "No event open" }).isVisible()).toBe(false);
 
-  await expect.poll(() => page.getByRole("heading", { level: 1 }).textContent(), wait).toMatch(/^Tuesday, Oct 6/);
-  expect(await page.getByRole("list", { name: "Days" }).isVisible()).toBe(false);
-  expect(await page.getByRole("link", { name: "Hermes's activity" }).isVisible()).toBe(true);
-});
+  await events(page).filter({ hasText: "refused" }).click();
 
-test("a day the agent did nothing says so", budget, async () => {
-  const { page, signIn } = await withActivity();
-  await signIn("ada@example.org");
-  await openActivity(page);
+  await expect.poll(() => heading(page), wait).toMatch(/^Amazon SES refused/);
+  expect(await page.getByRole("region", { name: "Events" }).isVisible()).toBe(false);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(phone.width);
 
-  await fold(page).click();
-  await days(page).nth(1).click();
-
-  await expect.poll(() => page.getByRole("heading", { level: 1 }).textContent(), wait).toMatch(/^Monday, Oct 5/);
-  await expect.poll(() => page.getByText("Nothing happened that day.").isVisible(), wait).toBe(true);
-});
-
-test("on a phone, each day and each entry fits the screen", budget, async () => {
-  const { page, signIn } = await withActivity({ viewport: phone });
-  await signIn("ada@example.org");
-  // A phone has no status strip, so the activity opens from Your agents.
-  await page.getByRole("link", { name: "Settings", exact: true }).click();
-  await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "Your agents" }).click();
-  await page.getByRole("region", { name: "Your agents" }).getByRole("heading", { name: "Hermes" }).click();
   await page.getByRole("link", { name: "Hermes's activity" }).click();
 
-  await expect.poll(() => days(page).count(), wait).toBe(1);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(phone.width);
-  expect(await days(page).first().innerText()).toMatch(/1 sent/);
-  expect(await fold(page).innerText()).toMatch(/^Sep 7 to Oct 5\nNothing counted$/);
-  await fold(page).click();
-  await expect.poll(() => days(page).count(), wait).toBe(30);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(phone.width);
-
-  await days(page).first().click();
-
-  const entries = page.getByRole("list", { name: "Timeline" }).getByRole("listitem");
-  await expect.poll(() => entries.count(), wait).toBeGreaterThanOrEqual(5);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(phone.width);
-  // On a phone the thread takes a line of its own, under what happened.
-  const arrival = entries.filter({ hasText: "Kvitto" });
-  await expect.poll(() => arrival.getByRole("link", { name: /^Kvitto\. / }).count(), wait).toBe(1);
-  const said = (await arrival.locator(".entry-said").boundingBox())!;
-  const subject = (await arrival.getByRole("link").boundingBox())!;
-  expect(subject.y).toBeGreaterThanOrEqual(said.y + said.height - 1);
+  await expect.poll(() => heading(page), wait).toBe("Hermes's activity");
+  expect(await page.getByRole("region", { name: "Events" }).isVisible()).toBe(true);
 });
 
-test("a day Coo only answered Ask Coo isn't folded as quiet, and its timeline says what was asked and what Coo read, reached from Ask Coo", budget, async () => {
+test("a turn of Ask Coo is an event saying what was asked, opening into the threads Coo read, the models and the cost, reached from Ask Coo", budget, async () => {
   const model = scripted(
     () => [use("listThreads")],
     (request) => [use("getThread", { thread: lastResult(request).threads.find(({ subject }: { subject: string }) => subject === "Möte").id })],
@@ -279,16 +336,17 @@ test("a day Coo only answered Ask Coo isn't folded as quiet, and its timeline sa
 
   await page.getByRole("link", { name: "What Coo did" }).click();
 
-  await expect.poll(() => page.getByRole("heading", { level: 1 }).textContent(), wait).toBe("Coo's activity");
-  await expect.poll(() => days(page).count(), wait).toBe(1);
-  expect(await days(page).first().getAttribute("aria-label")).toMatch(/^Wednesday, Oct 7.*: 1 conversation$/);
-  expect(await page.getByRole("list", { name: "Days" }).getByRole("button", { name: "Sep 8 to Oct 6, nothing counted" }).count()).toBe(1);
+  await expect.poll(() => heading(page), wait).toBe("Coo's activity");
+  await expect.poll(() => labels(page), wait).toContain("Wednesday, Oct 7, 10:00 AM: You asked Coo “What came in?”");
 
-  await days(page).first().click();
+  await events(page).filter({ hasText: "What came in?" }).click();
 
-  const turn = page.getByRole("list", { name: "Timeline" }).getByRole("listitem").filter({ hasText: "asked Coo" });
-  await expect.poll(() => turn.locator(".entry-line").allInnerTexts(), wait).toEqual(["You asked Coo “What came in?”", "Coo answered, reading Möte."]);
-  expect(await turn.locator(".entry-how").innerText()).toMatch(/^Claude Haiku 4\.5\. [\d.]+ cents\.$/);
-  await turn.getByRole("link", { name: /^Möte\. / }).click();
-  await expect.poll(() => page.getByRole("heading", { level: 1 }).textContent(), wait).toBe("Möte");
+  await expect.poll(() => heading(page), wait).toBe("You asked Coo “What came in?”");
+  const fact = (term: string) => page.getByRole("main").locator(".event-fact").filter({ has: page.getByRole("term").filter({ hasText: term }) }).getByRole("definition").innerText();
+  expect(await fact("Asked")).toBe("“What came in?”");
+  expect(await fact("Models")).toBe("Claude Haiku 4.5");
+  expect(await fact("Cost")).toMatch(/^[\d.]+ cents?$/);
+  await expect.poll(() => fact("Threads"), wait).toBe("Möte");
+  await page.getByRole("main").getByRole("link", { name: "Möte" }).click();
+  await expect.poll(() => heading(page), wait).toBe("Möte");
 });

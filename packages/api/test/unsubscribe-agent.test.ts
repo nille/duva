@@ -135,19 +135,18 @@ test("when one-click isn't offered, the mailbox agent fills in the opt-out page 
   expect(JSON.stringify(asks)).not.toContain("This week's news.");
 });
 
-test("the mailbox agent's unsubscribe is in its activity", async () => {
+test("the mailbox agent's unsubscribe is in its events, and Grace's own isn't", async () => {
   const { model } = scripted(...fillsInThePage);
-  const { grace, receive, setDelivery, agent, attempts } = await withMailbox({ model });
+  const { grace, receive, setDelivery, agent } = await withMailbox({ model });
   await receive(newsletter({ unsubscribe: "<https://lists.example.org/optout>" }));
   await setDelivery("nowhere");
-  const day = (await attempts()).at(-1)!.at.slice(0, 10);
 
-  const { data } = await grace.GET("/agents/{agent}/activity/{day}", { params: { path: { agent: agent.id, day } } });
+  const { data } = await grace.GET("/agents/{agent}/events", { params: { path: { agent: agent.id }, query: { kinds: ["unsubscribes"] } } });
 
-  expect(data!.entries.map(({ change }) => change)).toContainEqual(expect.objectContaining({ type: "unsubscribeAttempted", method: "page", outcome: "unsubscribed" }));
-  const { data: summaries } = await grace.GET("/agents/{agent}/activity", { params: { path: { agent: agent.id }, query: { from: day, to: day, timeZone: "UTC" } } });
-  // The one-click Grace's choice tried was hers, and isn't offered, so the agent's day counts only its own.
-  expect(summaries!.days).toEqual([expect.objectContaining({ unsubscribes: 1 })]);
+  // The one-click Grace's choice tried was hers, and isn't offered, so the agent's events have only its own.
+  expect(data!.events).toEqual([expect.objectContaining({ type: "unsubscribeAttempted", actor: agent.id, kind: "unsubscribes", failed: false })]);
+  const { data: detail } = await grace.GET("/agents/{agent}/events/{event}", { params: { path: { agent: agent.id, event: data!.events[0]!.id } } });
+  expect(detail!.change).toEqual(expect.objectContaining({ type: "unsubscribeAttempted", method: "page", outcome: "unsubscribed" }));
 });
 
 test("the address is all the agent can type, whatever it asks to type", async () => {

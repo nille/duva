@@ -151,26 +151,26 @@ export async function alertsPage(table: Table, sponsor: string, { agent, limit, 
   return { alerts, unseen: await unseenAlerts(table, sponsor, agent), ...(more && { next: alerts.at(-1)!.id }) };
 }
 
-/** When each of the sponsor's alerts about the agent raised since the time was raised. */
-export async function alertTimes(table: Table, sponsor: string, agent: string, since: string): Promise<string[]> {
-  const times: string[] = [];
+/** Every one of the sponsor's alerts about the agent, oldest first. */
+export async function alertsAbout(table: Table, sponsor: string, agent: string): Promise<Alert[]> {
+  const alerts: Alert[] = [];
   let start: Record<string, unknown> | undefined;
   do {
     const page = await documents(table).send(
       new QueryCommand({
         TableName: table.name,
-        KeyConditionExpression: `${pk} = :sponsor AND ${sk} BETWEEN :from AND :to`,
+        KeyConditionExpression: `${pk} = :sponsor AND begins_with(${sk}, :alert)`,
         FilterExpression: "#agent = :agent",
-        ProjectionExpression: "#at",
-        ExpressionAttributeNames: { "#agent": "agent", "#at": "at" },
-        ExpressionAttributeValues: { ":sponsor": partition(sponsor), ":from": `${alertPrefix}${since}`, ":to": `${alertPrefix}\uffff`, ":agent": agent },
+        ExpressionAttributeNames: { "#agent": "agent" },
+        ExpressionAttributeValues: { ":sponsor": partition(sponsor), ":alert": alertPrefix, ":agent": agent },
+        ConsistentRead: true,
         ExclusiveStartKey: start,
       }),
     );
-    for (const item of page.Items ?? []) times.push(item.at as string);
+    for (const item of page.Items ?? []) alerts.push(alertOf(item));
     start = page.LastEvaluatedKey;
   } while (start !== undefined);
-  return times;
+  return alerts;
 }
 
 /** How many of the sponsor's alerts, about the agent if one is given, they haven't seen. */

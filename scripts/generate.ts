@@ -111,7 +111,10 @@ function parametersOf(where: string, parameters: NonNullable<OperationObject["pa
     const parameter = "$ref" in given ? document.components?.parameters?.[given.$ref.replace("#/components/parameters/", "")] : given;
     if (parameter === undefined) fail(`${where} refers to a parameter the document doesn't have.`);
     if (parameter.in !== "query" && parameter.in !== "path") fail(`${where} has a ${parameter.in} parameter, which the CLI can't pass yet.`);
-    return option(where, parameter.in, parameter.name, parameter.schema?.type, parameter.required ?? false, parameter.description);
+    // A list of strings in the query is an option given once per item, as a body's is.
+    const schema = parameter.schema as SchemaObject | undefined;
+    const type = schema?.type === "array" && resolve(schema.items as SchemaObject | undefined)?.type === "string" ? "strings" : schema?.type;
+    return option(where, parameter.in, parameter.name, type, parameter.required ?? false, parameter.description);
   });
 }
 

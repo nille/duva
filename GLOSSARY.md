@@ -84,7 +84,7 @@ A sponsor's record of every decision on their agents' sends, newest first: who d
 A human allowed to change the organization's setup: domains, addresses, groups, actors and settings. Admins can't read personal mailboxes. Only humans are admins; no agent is one.
 
 **Preference**:
-A choice a human makes for themselves about how Duva shows things to them, such as how times and dates read in the web app, the time zone their agents' activity is counted in, or whether mail shows as designed or as plain text. It follows them to every browser, and no one else sees or changes it. An agent has none; its sponsor changes its settings.
+A choice a human makes for themselves about how Duva shows things to them, such as how times and dates read in the web app, the time zone their agents' activity gives dates and times in, or whether mail shows as designed or as plain text. It follows them to every browser, and no one else sees or changes it. An agent has none; its sponsor changes its settings.
 _Avoid_: user setting, profile
 
 **Sponsor**:
@@ -98,8 +98,8 @@ The mark on mail an agent sends: always a header, even after a human approved it
 How much an agent may send per hour, and to how many new recipients per day: 100 and 50 to start. A sponsor sets their agent's limits up to the organization's cap, which admins set. Mail over the limit waits and goes out by itself as the limit allows, or when the sponsor sends it now. Humans have none.
 
 **Activity**:
-What an agent did, and what was done to it, day by day: a daily summary of how much it sent, had approved or rejected, organized and screened, and for a mailbox agent the turns of Ask Coo it answered, its tasks done and failed, its drafts and its unsubscribes, which opens into the day's timeline. It is read from change feeds, so it reaches back to the agent's start. Only its sponsor and admins read it, and an admin who isn't the sponsor reads none of what the mail says.
-_Avoid_: log, audit. The approval log is the record of a sponsor's decisions.
+What an agent did, and what was done to it, as one list of events, newest first, across days. Each event is one change from a change feed, such as a turn of Ask Coo, a task, a draft or a send, an approval, a thread organized, a sender screened, an unsubscribe, a pause or a change to its limits, or an alert its sponsor got, with when it happened and what happened in one line. Each opens into everything recorded on it: the threads, drafts and senders it touched, the models and a handover, the cost, why it failed, and a task's note. It is read from change feeds, so it reaches back to the agent's start. Only its sponsor and admins read it, and an admin who isn't the sponsor reads none of what the mail says.
+_Avoid_: daily summary, timeline, audit log
 
 ## Domains and addresses
 
