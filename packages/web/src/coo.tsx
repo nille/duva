@@ -4,7 +4,7 @@
 // turn of Ask Coo or a label's task, and speaks up only with news worth a glance: new mail since the
 // human last looked, a draft of its waiting for their approval, or a task done. What it said goes
 // away once they look.
-import { createContext, useCallback, useContext, useEffect, useId, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
 import type { MailboxChange } from "./feed.ts";
@@ -25,67 +25,47 @@ export const useIsCoo = (agent: string | undefined) => {
 };
 
 /**
- * Coo in full: a plump grey pigeon with the agent's blue neck ring and orange feet, on a 32 unit
- * grid, for 32px and up. Its head is a group of its own, which bobs while Coo works.
+ * Coo, a pigeon's portrait in one line with round ends, open at the bottom, in the color around it
+ * (`.impeccable/previews/coo/mark`): its head and neck, the shoulder of its wing, a ring eye, the
+ * bill and its gape line, and a highlight on the crown. In full, a .75 line on a 32 unit grid, for
+ * 48px and up, and `small`, for 16 to 24px, a 1.6 line without the gape line. The portrait is a
+ * group of its own, which bobs while Coo works.
  */
-export const CooDrawing = ({ className }: { className?: string }) => (
-  <svg className={className} viewBox="0 0 32 32" aria-hidden="true">
-    <path d="M6.2 20.4 1.9 23.6c-.5.4-.2 1.2.4 1.1l5.6-.9z" fill="#4a4d52" />
-    <path d="M12.3 26.6v2.5M15.9 26.6v2.5" stroke="#e5470d" strokeWidth="1.5" strokeLinecap="round" />
-    <path d="M11 29.1h2.6M14.6 29.1h2.6" stroke="#e5470d" strokeWidth="1.1" strokeLinecap="round" />
-    <ellipse cx="14" cy="20" rx="9.6" ry="7.2" fill="#8a9099" />
-    <path d="M6.6 18.6c3.2-3.2 8.7-3.4 11.9-.6-1.6 4.4-7.6 6.1-11.9.6z" fill="#a9aeb5" />
-    <path d="M9.4 19.9c1.6.5 3.6.5 5.4-.2M10.6 22c1.3.3 2.8.2 4-.3" stroke="#4a4d52" strokeWidth="1.1" strokeLinecap="round" fill="none" />
-    <g className="coo-head">
-      <circle cx="21.4" cy="11.2" r="5.7" fill="#7b818a" />
-      <path d="M16.9 14.3c1.9 2 5.6 2.6 8.3.9l.7 2c-3.2 1.8-7.7 1.1-10-1.4z" fill="#2e62ff" />
-      <circle cx="23.3" cy="10.1" r="1.7" fill="#f8f8f6" />
-      <circle cx="23.6" cy="10.2" r=".95" fill="#161616" />
-      <path d="M26.6 10.7 29.9 12l-3.4 1z" fill="#161616" />
-      <ellipse cx="26.2" cy="10.8" rx=".95" ry=".62" fill="#f8f8f6" />
+const CooPortrait = ({ small }: { small: boolean }) => (
+  <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth={small ? "1.6" : ".75"} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <g className="coo-portrait">
+      <path d="M6.4 22.6C9.8 20.4 12.2 17.6 13.6 13.6 15 9.4 17.2 6.4 20.8 6.2 23.4 6 25 7.6 25.6 9.6" />
+      <path d="M25.4 9.6 29 11.6 25.2 12.6C24.6 11.6 24.7 10.4 25.4 9.6Z" />
+      {!small && <path d="M25.3 11.4 28.6 11.6" />}
+      <path d="M25 12.8C23.8 15.4 24 19 24.8 22.6 25.3 24.8 25.4 26.4 25.4 27.4" />
+      <path d="M11.6 19.2C15 17.4 19 17.8 20.4 20.6 21.4 22.6 21.1 25.4 20.3 27.2" />
+      <circle cx="22.3" cy="10" r={small ? ".85" : ".8"} />
+      <path d="M17 12.6C17.6 10.9 18.5 10 19.6 9.6" />
     </g>
   </svg>
 );
 
-/**
- * Coo in one color, for the sizes the full drawing blurs at: its silhouette in the agent's blue on a
- * 16 unit grid, the eye left open, so it reads as an agent and as a bird at 12px.
- */
-export function CooMark({ className }: { className?: string }) {
-  const eye = useId();
-  return (
-    <svg className={className} viewBox="0 0 16 16" aria-hidden="true">
-      <mask id={eye}>
-        <rect width="16" height="16" fill="#fff" />
-        <circle cx="11.9" cy="5" r=".95" fill="#000" />
-      </mask>
-      <g fill="currentColor" mask={`url(#${eye})`}>
-        <ellipse cx="7" cy="10.2" rx="5.3" ry="4" />
-        <circle cx="11" cy="5.6" r="3.2" />
-        <path d="M13.6 4.6 15.9 5.9 13.6 6.8z" />
-        <path d="M2.6 9.2.3 11.4c-.3.3 0 .7.3.6l3-.6z" />
-      </g>
-    </svg>
-  );
-}
+/** Coo as the mailbox agent's mark, 16 to 24px. */
+export const CooMark = () => <CooPortrait small />;
 
 /**
  * Coo in its nest at the side column's head, a link to Ask Coo. Its name is Duva's, with how Coo is,
- * and while Coo works its head bobs, as a walking pigeon's does.
+ * and while Coo works its head bobs, as a walking pigeon's does. The nest is woven in Coo's own line.
  */
 export function Nest({ href, working }: { href: string; working: boolean }) {
   return (
     <a className={working ? "nest nest-working" : "nest"} href={href} aria-label={copy.nest(working)}>
       <svg viewBox="0 0 56 48" aria-hidden="true">
-        <svg x="7" y="1" width="44" height="44" viewBox="0 0 32 32" overflow="visible">
-          <CooDrawing />
+        <svg x="7" y="-3.2" width="44" height="44" viewBox="0 0 32 32" overflow="visible">
+          <CooPortrait small={false} />
         </svg>
-        {/* The nest's back rim, behind Coo's tail, then its woven bowl in front. */}
-        <path className="nest-back" d="M6 33.5c4-3.2 40-3.2 44 0" />
-        <path className="nest-bowl" d="M3.5 33.2c.6 8.6 10 13.6 24.5 13.6s23.9-5 24.5-13.6c-6.4 2.6-42.6 2.6-49 0Z" />
-        <path className="nest-weave" d="M5.5 36.6c9 2.7 36 2.7 45 0M8 40.4c8 2.4 32 2.4 40 0M12.5 43.8c6.5 1.5 24.5 1.5 31 0" />
-        <path className="nest-weave nest-weave-light" d="M4.4 34.6c10 2.5 37.2 2.5 47.2 0M6.6 38.6c9 2.5 33.8 2.5 42.8 0M10 42.2c7.5 2 28.5 2 36 0" />
-        <path className="nest-twig" d="M1.6 34.4 9 32.1M47.4 32.4l6.8 2.6M49.8 37.6l3.6-.6" />
+        {/* The nest's back rim either side of Coo, then its woven bowl in front, open at the top for Coo to sit in. */}
+        <g className="nest-line">
+          <path d="M6 33.4c2.6-1.6 6.4-2.4 9.6-2.8M42.4 30.8c3.4.5 6 1.4 7.6 2.6" />
+          <path d="M3.5 33.2c6.4 2.6 42.6 2.6 49 0-.6 8.6-10 13.6-24.5 13.6S4.1 41.8 3.5 33.2Z" />
+          <path className="nest-weave" d="M5.5 37.2c9 2.7 36 2.7 45 0M8.6 41c8 2.4 30.8 2.4 38.8 0" />
+          <path d="M1.6 34.4 4.4 33.6M51.6 33.5l2.6 1" />
+        </g>
       </svg>
     </a>
   );

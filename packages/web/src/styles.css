@@ -393,11 +393,12 @@ kbd {
 }
 
 /*
- * Coo, the mailbox agent, is its silhouette in the agent's blue. Its box is the mark's, so lines
- * keep their height, and the bird, bigger to read as one, lies centred on it as a sender's logo does.
+ * Coo, the mailbox agent, is its portrait in the agent's blue, in the line drawn for 16 to 24px. Its
+ * box is the mark's, so lines keep their height, and the bird, bigger to read as one, lies centred on
+ * it as a sender's logo does.
  */
 .actor-mark-coo {
-  --coo: 0.95rem;
+  --coo: 1rem;
   position: relative;
   color: var(--agent);
 }
@@ -527,8 +528,8 @@ kbd {
 }
 
 /*
- * Coo's nest heads the side column, where the wordmark was: Coo sitting in a small woven nest, the
- * one place the drawing's straw and grey stand outside the function colors. It opens Ask Coo.
+ * Coo's nest heads the side column, where the wordmark was: Coo sitting in a small woven nest, both
+ * in Coo's one line, in ink. It opens Ask Coo.
  */
 .nest {
   grid-area: brand;
@@ -538,6 +539,7 @@ kbd {
   height: 3rem;
   margin: -0.65rem 0 -0.35rem;
   border-radius: var(--radius-key);
+  color: var(--ink);
 }
 
 .nest > svg {
@@ -547,61 +549,48 @@ kbd {
   overflow: visible;
 }
 
-.nest-back,
-.nest-twig {
+/* Coo's .75 line on its 32 unit grid, drawn 44 units wide in the nest's. */
+.nest-line {
   fill: none;
-  stroke: #8c7853;
-  stroke-width: 1.5;
+  stroke: currentColor;
+  stroke-width: 1.03;
   stroke-linecap: round;
-}
-
-.nest-bowl {
-  fill: #bba57b;
+  stroke-linejoin: round;
 }
 
 .nest-weave {
-  fill: none;
-  stroke: #94805b;
-  stroke-width: 1.1;
-  stroke-linecap: round;
-  stroke-dasharray: 5 2.4;
+  stroke-dasharray: 4.6 2.6;
 }
 
-.nest-weave-light {
-  stroke: #d5c39b;
-  stroke-dasharray: 3 3.6;
-  stroke-dashoffset: 2;
-}
-
-/* Coo's head moves about its neck. */
-.nest .coo-head {
+/* Coo leans about where it sits in the nest, so its head moves most. */
+.nest .coo-portrait {
   transform-box: fill-box;
-  transform-origin: 30% 85%;
+  transform-origin: 50% 100%;
 }
 
 /*
  * While Coo works its head bobs, as a walking pigeon's: it drifts back as the body goes on, then
  * snaps forward. At rest it sits still. Reduced motion keeps it still while it works too.
  */
-.nest-working .coo-head {
+.nest-working .coo-portrait {
   animation: coo-bob 0.84s cubic-bezier(0.45, 0, 0.2, 1) infinite;
 }
 
 @keyframes coo-bob {
   0%,
   100% {
-    transform: translate(0.7px, 0);
+    transform: skewX(-1.6deg);
   }
   64% {
-    transform: translate(-1px, 0.35px);
+    transform: skewX(2.2deg);
   }
   80% {
-    transform: translate(1.5px, -0.25px);
+    transform: skewX(-3.4deg);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .nest-working .coo-head {
+  .nest-working .coo-portrait {
     animation: none;
   }
 }

@@ -212,7 +212,7 @@ Three near-neutral greys with a faint warm cast, one ink, and four saturated sig
 - **Call Orange** (`call`): what needs the human. The Approvals count's badge and its row's wash, the orange edge on the open line of a list, the unread dot, the `call` button for a decision, the caret, and the keyboard's bar before a focused title. As text, in its deeper hand (`call-ink`), it is the unread counts in the side column. The wash (`call-wash`) lies under the Approvals place while something waits, and under selected text.
 
 ### Secondary
-- **Agent Blue** (`agent`): an agent. Its diamond, Coo's mark and neck ring, and later its draft and its kind of request. As text, `agent-ink`; under what it marks, `agent-wash`.
+- **Agent Blue** (`agent`): an agent. Its diamond, Coo's mark, and later its draft and its kind of request. As text, `agent-ink`; under what it marks, `agent-wash`.
 
 ### Tertiary
 - **Sent Green** (`sent`): sent or healthy. The status strip's light while Duva is up to date. As text, `sent-ink`, as a send's slip says it went.
@@ -231,8 +231,6 @@ Three near-neutral greys with a faint warm cast, one ink, and four saturated sig
 
 ### Named Rules
 **The Function Code Rule.** Orange, blue, green and red each mean one thing and only that. None is a heading color, a background area or an ornament.
-
-**The Coo Exception.** Coo's drawing and nest are the one place colors outside the function codes appear: a pigeon's greys (`#7b818a` head, `#8a9099` body, `#a9aeb5` wing, `#4a4d52` bars and tail), Call Deep for its feet, and the nest's straw (`#bba57b`, woven in `#94805b` and `#d5c39b`, rimmed in `#8c7853`). They stay in the drawing.
 
 **The Two Hands Rule.** Each function color fills at its own value and speaks text in its deeper hand (`-ink`), which keeps 4.5:1. A filled orange control carries ink, never white.
 
@@ -281,7 +279,7 @@ Flat by default: depth is tone. The three greys step lighter toward the reader, 
 
 Small, exact radii, and pills for what is pressed. Marks 2px, as the agent's diamond, the keyboard's focus bar and a skeleton's lines are; key caps 4px, with a heavier 2px lower edge; rows and places 6px; fields 7px; sheets laid over the page 10px; buttons, chips and counts are pills.
 
-Actors are marked by shape, so they read without color: a human is a filled dot in Second Ink, an agent a diamond outlined in Agent Blue, Duva itself a ring in Third Ink, each 0.55rem. Coo, the mailbox agent, has its own mark in the agent's place: its silhouette in Agent Blue, 0.95rem, centred on the mark's box as a logo is, its eye left open, in Third Ink while it is paused. A sender whose domain publishes a logo Duva shows (ADR-0023) has their logo there instead: a 0.875rem square, 3px radius, edged by a 1px seam ring, centred on the mark's place and taking only its room, so names line up and lines keep their height. A verified logo carries a 0.55rem ink disc with a white tick at its lower right. An agent always keeps its diamond.
+Actors are marked by shape, so they read without color: a human is a filled dot in Second Ink, an agent a diamond outlined in Agent Blue, Duva itself a ring in Third Ink, each 0.55rem. Coo, the mailbox agent, has its own mark in the agent's place: its portrait in its 16 to 24px line, in Agent Blue, 1rem, centred on the mark's box as a logo is, in Third Ink while it is paused. A sender whose domain publishes a logo Duva shows (ADR-0023) has their logo there instead: a 0.875rem square, 3px radius, edged by a 1px seam ring, centred on the mark's place and taking only its room, so names line up and lines keep their height. A verified logo carries a 0.55rem ink disc with a white tick at its lower right. An agent always keeps its diamond.
 
 ## Components
 
@@ -349,9 +347,9 @@ Actors are marked by shape, so they read without color: a human is a filled dot 
 - **The ? sheet** is a legend printed on the instrument: white, the soft lift over the scrim, 10px, a grotesk title, its three groups (in a list, in a thread, anywhere) side by side under label-size names, each key a cap beside what it does, keys pressed together joined by "+" and chords by "then". On a phone it lies along the foot, the groups one under another.
 
 ### Coo
-- **The drawing:** a plump grey pigeon in profile, facing right, with the agent's blue neck ring, a dark beak with its white cere, an open eye, two dark wing bars and orange feet, on a 32 unit grid, for 32px and up. Under that, the one-color mark in Agent Blue on a 16 unit grid, which reads as a bird at 12px. The sources are in `docs/brand/`, with the BIMI logo and the favicon's.
-- **The nest** heads the side column where the wordmark was, 3.5rem by 3rem (2.9rem by 2.5rem on a phone, the top row's left end): Coo sitting in a small woven bowl that hides its feet, a link to Ask Coo named "Duva" and how Coo is.
-- **The bob:** while Coo works, a turn of Ask Coo or a label's task, its head bobs as a walking pigeon's does: it drifts back over 0.54s, snaps forward, and settles, every 0.84s. Only the head moves. At rest Coo sits still, and reduced motion keeps it still while it works too.
+- **The drawing:** a pigeon's portrait facing right, in one line with round ends, open at the bottom: its head and neck, the shoulder of its wing, a ring eye, the bill and its gape line, and a highlight on the crown. It has one color, the one around it: Ink on the greys, as in the nest and the BIMI logo, and Agent Blue where it marks the mailbox agent, as the diamond marks an agent. The favicon is `currentColor` too, which a browser draws black. On a 32 unit grid it is a .75 line for 48px and up, which the nest draws at 44px (36px on a phone), and for 16 to 24px a 1.6 line without the gape line, which the actor mark and the favicon use. The sources are in `docs/brand/`, with the BIMI logo.
+- **The nest** heads the side column where the wordmark was, 3.5rem by 3rem (2.9rem by 2.5rem on a phone, the top row's left end): Coo sitting in a small woven bowl, drawn in Coo's own line and Ink, its open bottom at the bowl's rim, a link to Ask Coo named "Duva" and how Coo is.
+- **The bob:** while Coo works, a turn of Ask Coo or a label's task, its head bobs as a walking pigeon's does: it leans back over 0.54s, snaps forward, and settles, every 0.84s, the portrait skewing about where it sits so its head moves most. At rest Coo sits still, and reduced motion keeps it still while it works too.
 - **The bubble:** what Coo says, under the nest, in the column's flow, so it never covers content: white, 4px at the corner by Coo and 12px elsewhere, with the soft lift and a point up at Coo, small text in Second Ink, "Coo." in Ink at 650 first. It speaks only with news: Coo's drafts waiting for approval, new mail in the Inbox since the human last looked, naming who, and tasks done. Each is a link to where it is about, and goes once the human looks there. It rises in over 240ms, and a screen reader hears it politely. Settings, You, has Coo speaks up, on by default.
 
 ### Status strip

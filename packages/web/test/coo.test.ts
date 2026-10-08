@@ -63,6 +63,41 @@ for (const [size, viewport] of [
   });
 }
 
+test("Coo is one line in the color of where it is: ink in its nest, and the agent's blue where it marks the mailbox agent", budget, async () => {
+  const { page, nest, heading } = await withGrace();
+  /** Each shape of Coo in the element: its fill and its stroke, with the color around it set to `color`, if given. */
+  const lines = (where: ReturnType<Page["locator"]>, color?: string) =>
+    where.evaluate((element: HTMLElement, color) => {
+      if (color !== undefined) element.style.color = color;
+      const shapes = [...element.querySelectorAll("path, circle, ellipse, rect, polygon")].map((shape) => {
+        const style = getComputedStyle(shape);
+        return { fill: style.fill, stroke: style.stroke };
+      });
+      element.style.color = "";
+      return shapes;
+    }, color);
+  const one = (stroke: string) => ({ fill: "none", stroke });
+  const lineOf = async (where: ReturnType<Page["locator"]>, stroke: string) => {
+    const shapes = await lines(where);
+    expect(shapes.length).toBeGreaterThan(5);
+    expect(shapes).toEqual(shapes.map(() => one(stroke)));
+    // Every line takes the color around it, whatever it is.
+    expect(await lines(where, "rgb(1, 2, 3)")).toEqual(shapes.map(() => one("rgb(1, 2, 3)")));
+  };
+
+  await lineOf(nest, "rgb(22, 22, 22)");
+  await nest.click();
+  await expect.poll(heading, wait).toBe("Ask Coo");
+  await lineOf(page.locator("main .actor-mark-coo").first(), "rgb(46, 98, 255)");
+});
+
+test("the favicon is Coo in one line, in whatever color the browser draws it", budget, async () => {
+  const { page } = await withGrace();
+  const favicon = await page.evaluate(() => fetch("/favicon.svg").then((response) => response.text()));
+  expect(favicon).toContain('stroke="currentColor"');
+  expect(favicon).not.toMatch(/#[0-9a-f]{3,6}\b|rgb\(/i);
+});
+
 test("Coo bobs its head in the nest while it works on a turn, sits still at rest, and keeps still for reduced motion", budget, async () => {
   let answer!: () => void;
   const answered = new Promise<void>((resolve) => (answer = resolve));
@@ -72,7 +107,7 @@ test("Coo bobs its head in the nest while it works on a turn, sits still at rest
     yield { usage: { inputTokens: 1000, outputTokens: 10 } };
   };
   const { page, nest } = await withGrace({ model });
-  const bobbing = () => nest.locator(".coo-head").evaluate((head) => getComputedStyle(head).animationName);
+  const bobbing = () => nest.locator(".coo-portrait").evaluate((head) => getComputedStyle(head).animationName);
   expect(await bobbing()).toBe("none");
 
   await nest.click();
