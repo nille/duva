@@ -17,7 +17,7 @@ type ActivitySummary = components["schemas"]["ActivitySummary"];
 type ActivityEntry = components["schemas"]["ActivityEntry"];
 
 /** The kinds a summary counts, in the order a day says them. */
-const kinds = ["sent", "approved", "rejected", "organized", "screened", "alerts"] as const satisfies readonly (keyof ActivitySummary & keyof typeof strings.activity.counts)[];
+const kinds = ["conversations", "tasksDone", "tasksFailed", "drafts", "sent", "approved", "rejected", "organized", "screened", "unsubscribes", "alerts"] as const satisfies readonly (keyof ActivitySummary & keyof typeof strings.activity.counts)[];
 
 /** A row of the days: a day of its own, or a run of days with nothing counted, folded into one. */
 type Run = { day: ActivitySummary } | { quiet: ActivitySummary[] };
@@ -314,7 +314,9 @@ export function AgentDay({
   // Each thread is read once, for its subject, however many entries are about it.
   const entries = read.status === "read" ? read.read.entries : [];
   useEffect(() => {
-    const unread = [...new Set(entries.flatMap(({ mailbox, thread }) => (mailbox === undefined || thread === undefined ? [] : [`${mailbox}/${thread}`])))].filter((key) => !threads.has(key));
+    const about = ({ mailbox, thread, change }: ActivityEntry) =>
+      mailbox === undefined ? [] : [...(thread === undefined ? [] : [thread]), ...(change.type === "conversationTurn" ? change.threads.slice(0, threadsNamed) : [])].map((id) => `${mailbox}/${id}`);
+    const unread = [...new Set(entries.flatMap(about))].filter((key) => !threads.has(key));
     if (unread.length === 0) return;
     setThreads((current) => new Map([...current, ...unread.map((key) => [key, undefined] as const)]));
     for (const key of unread) {
@@ -366,6 +368,9 @@ export function AgentDay({
         <section className="timeline" aria-label={copy.timeline}>
           <ol className="timeline-list" aria-label={copy.timeline}>
             {read.read.entries.map(({ mailbox, thread, change }) => {
+              if (change.type === "conversationTurn" && mailbox !== undefined) {
+                return <TurnEntry key={`${mailbox}/${change.position}`} turn={change} mailbox={mailbox} mine={mailbox === mine} agent={agent} name={name} asker={who(change.human)} threads={threads} time={clock(new Date(change.at), zone)} />;
+              }
               const actor = "actor" in change ? change.actor : undefined;
               const linked = mailbox === undefined || thread === undefined ? undefined : threads.get(`${mailbox}/${thread}`);
               const message = linked !== undefined && "messages" in linked && "message" in change && typeof change.message === "string" ? linked.messages.get(change.message) : undefined;
@@ -421,5 +426,83 @@ export function AgentDay({
       )}
       </main>
     </div>
+  );
+}
+
+/** How many of the threads a turn of Ask Coo read its entry names, before saying how many more. */
+const threadsNamed = 3;
+
+/**
+ * A turn of Ask Coo in the timeline, on two lines: what the human asked, then how the agent
+ * answered, linking to the threads it read or changed, with the models that answered and the cost.
+ */
+function TurnEntry({
+  turn,
+  mailbox,
+  mine,
+  agent,
+  name,
+  asker,
+  threads,
+  time,
+}: {
+  turn: Extract<ActivityEntry["change"], { type: "conversationTurn" }>;
+  mailbox: string;
+  mine: boolean;
+  agent: string;
+  name: string;
+  asker: string;
+  threads: ReadonlyMap<string, Linked>;
+  time: string;
+}) {
+  const copy = strings.activity.turn;
+  const answered = copy.answered[turn.outcome];
+  const named = turn.threads.slice(0, threadsNamed);
+  const more = turn.threads.length - named.length;
+  const read = [
+    ...named.map((id) => {
+      const linked = threads.get(`${mailbox}/${id}`);
+      if (linked !== undefined && "gone" in linked) return <span className="entry-gone">{copy.gone}</span>;
+      const subject = linked === undefined ? strings.activity.openThread : linked.subject || strings.activity.noSubject;
+      return (
+        <a href={threadHref(id, { label: "inbox" }, mine ? "#/" : `#/mailboxes/${encodeURIComponent(mailbox)}/`)} aria-label={strings.activity.threadLabel(subject, time, name + answered)}>
+          {subject}
+        </a>
+      );
+    }),
+    ...(more > 0 ? [copy.more(more)] : []),
+  ];
+  return (
+    <li className="entry">
+      <time className="entry-time" dateTime={turn.at}>
+        {time}
+      </time>
+      <div className="entry-turn">
+        <p className="entry-line">
+          <span className="entry-said">
+            <ActorMark kind="human" />
+            <strong className="entry-by">{asker}</strong>
+            {copy.asked(name, turn.asked)}
+          </span>
+        </p>
+        <p className="entry-line">
+          <span className="entry-said">
+            <ActorMark kind="agent" agent={agent} />
+            <strong className="entry-by">{name}</strong>
+            {answered}
+            {read.length > 0 && copy.reading}
+            {read.map((part, at) => (
+              <Fragment key={at}>
+                {at > 0 && (at === read.length - 1 ? copy.and : copy.comma)}
+                {part}
+              </Fragment>
+            ))}
+            {turn.drafts.length > 0 && copy.wrote(turn.drafts.length, read.length > 0)}
+            {copy.end}
+          </span>
+        </p>
+        <p className="entry-how">{copy.how(turn.models.map((model) => strings.ask.models[model]), turn.handover === undefined ? undefined : strings.ask.handoverWhy[turn.handover.reason], turn.cost)}</p>
+      </div>
+    </li>
   );
 }

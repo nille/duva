@@ -370,3 +370,18 @@ test("a task shows in the mailbox agent's activity, with its note for its sponso
     ["taskGiven", id, undefined],
   ]);
 });
+
+test("the mailbox agent's day counts its tasks done and failed, so a day of tasks alone is no quiet day", async () => {
+  const { linus, receipts, prompt, label, receive, agent } = await withMailbox();
+  await prompt(receipts, "Note the amount.");
+  const path = { params: { path: { agent: agent.id } } };
+  await label((await receive(fromShop("Your receipt", "You paid 42 euros.", "order-1"))).thread, [receipts]);
+  await label((await receive(fromShop("Another receipt", "You paid 7 euros.", "order-2"))).thread, [receipts]);
+  await linus.PATCH("/agents/{agent}/settings", { ...path, body: { sponsorAccess: "none" } });
+  await label((await receive(fromShop("A third receipt", "You paid 1 euro.", "order-3"))).thread, [receipts]);
+
+  const day = new Date().toISOString().slice(0, 10);
+  const { data } = await linus.GET("/agents/{agent}/activity", { params: { path: { agent: agent.id }, query: { from: day, to: day, timeZone: "UTC" } } });
+
+  expect(data!.days).toEqual([expect.objectContaining({ tasksDone: 2, tasksFailed: 1, alerts: 1 })]);
+});

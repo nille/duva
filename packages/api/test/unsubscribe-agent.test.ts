@@ -145,6 +145,9 @@ test("the mailbox agent's unsubscribe is in its activity", async () => {
   const { data } = await grace.GET("/agents/{agent}/activity/{day}", { params: { path: { agent: agent.id, day } } });
 
   expect(data!.entries.map(({ change }) => change)).toContainEqual(expect.objectContaining({ type: "unsubscribeAttempted", method: "page", outcome: "unsubscribed" }));
+  const { data: summaries } = await grace.GET("/agents/{agent}/activity", { params: { path: { agent: agent.id }, query: { from: day, to: day, timeZone: "UTC" } } });
+  // The one-click Grace's choice tried was hers, and isn't offered, so the agent's day counts only its own.
+  expect(summaries!.days).toEqual([expect.objectContaining({ unsubscribes: 1 })]);
 });
 
 test("the address is all the agent can type, whatever it asks to type", async () => {

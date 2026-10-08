@@ -273,6 +273,7 @@ export const strings = {
       send: (approval: boolean) => (approval ? "It reads, searches and organizes your mail, and writes drafts. Each send waits for you in Approvals." : "It reads, searches and organizes your mail, writes drafts and sends them without asking you."),
     } as const,
     settings: "Its settings",
+    activity: "What Coo did",
     clear: "Start over",
     clearing: "Starting over…",
     emptyTitle: "Ask about your mail",
@@ -1337,6 +1338,11 @@ export const strings = {
       organized: (count: number) => `${count} organized`,
       screened: (count: number) => `${count} screened`,
       alerts: (count: number) => (count === 1 ? "1 alert" : `${count} alerts`),
+      conversations: (count: number) => (count === 1 ? "1 conversation" : `${count} conversations`),
+      tasksDone: (count: number) => (count === 1 ? "1 task" : `${count} tasks`),
+      tasksFailed: (count: number) => (count === 1 ? "1 failed task" : `${count} failed tasks`),
+      drafts: (count: number) => (count === 1 ? "1 draft" : `${count} drafts`),
+      unsubscribes: (count: number) => (count === 1 ? "1 unsubscribe" : `${count} unsubscribes`),
     },
     nothing: "Nothing counted",
     dayLabel: (day: string, counted: string) => `${day}: ${counted}`,
@@ -1355,6 +1361,24 @@ export const strings = {
     someone: "Someone else",
     /** What a change in the timeline says, `who` being who made it and `agent` the agent's name. */
     entry: (change: ActivityChange, who: string, agent: string, message?: EntryMessage) => entrySaid(change, who, agent, message),
+    /** What a turn of Ask Coo says: what the human asked, then how the agent answered, what it read, and how. */
+    turn: {
+      asked: (agent: string, asked?: string) => (asked === undefined ? ` asked ${agent}.` : ` asked ${agent} “${asked}”`),
+      answered: { answered: " answered", capReached: " stopped at the spend cap", failed: " couldn't answer" } as const,
+      reading: ", reading ",
+      more: (count: number) => (count === 1 ? "1 more thread" : `${count} more threads`),
+      /** What it wrote, after what it read, if it read anything. */
+      wrote: (count: number, afterReading: boolean) => `${afterReading ? ", and " : ", "}${count === 1 ? "writing a draft" : `writing ${count} drafts`}`,
+      comma: ", ",
+      and: " and ",
+      end: ".",
+      gone: "a thread no longer there",
+      /** The models in order, why the run went over to the last, and what the turn cost, in cents. */
+      how: (models: string[], why: string | undefined, cents: number) => {
+        const cost = Number(cents.toFixed(2));
+        return `${models.join(", then ")}${why === undefined ? "" : `, since ${why}`}. ${cost === 1 ? "1 cent" : `${cost} cents`}.`;
+      },
+    },
     /** A thread's link names the entry it is for, since one thread can be the subject of many. */
     threadLabel: (subject: string, time: string, said: string) => `${subject}. ${time}: ${said}`,
     /** Days with nothing counted, folded into one line, from the oldest to the newest. */
@@ -1638,6 +1662,9 @@ function entrySaid(change: ActivityChange, who: string, agent: string, message?:
       return [who, who === "Duva" ? `, filing a sender's mail under a label with a prompt, gave ${agent} a task.` : ` added a label with a prompt, which gave ${agent} a task.`];
     case "taskStarted":
       return [who, ` started a task.`];
+    // The timeline says a turn on lines of its own, so this is what it reads alone.
+    case "conversationTurn":
+      return [who, ` answered a turn of Ask ${agent}.`];
     case "agentHandedOver":
       return [who, ` handed ${change.task === undefined ? "a turn" : "a task"} to ${strings.ask.models[change.handover.to]}, since ${strings.ask.handoverWhy[change.handover.reason]}.`];
     case "taskEnded":

@@ -403,7 +403,7 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Read an agent's daily summaries, how much it sent, had approved or rejected, organized and screened each day.
+         * Read an agent's daily summaries, how much it sent, had approved or rejected, organized, screened, answered, did and drafted each day.
          * @description Gives every day from from to to, newest first, each day in your time zone, days without activity included. Leave both out for the last 30 days. Activity reaches back to the agent's start: what it did in its sponsor's mailboxes, and the organization's changes to it. Only the agent's sponsor and admins can read it.
          */
         get: operations["getAgentActivity"];
@@ -2162,7 +2162,7 @@ export interface components {
             position: number;
         };
         /** @description A change in a mailbox. */
-        MailboxChange: components["schemas"]["MessageReceived"] | components["schemas"]["DraftWritten"] | components["schemas"]["DraftChanged"] | components["schemas"]["DraftDeleted"] | components["schemas"]["SendAsked"] | components["schemas"]["ApprovalAsked"] | components["schemas"]["ApprovalWithdrawn"] | components["schemas"]["ApprovalDecided"] | components["schemas"]["ApprovalUndone"] | components["schemas"]["MessageSent"] | components["schemas"]["SendWaitingForLimit"] | components["schemas"]["SentNow"] | components["schemas"]["SendFailed"] | components["schemas"]["SendUnclear"] | components["schemas"]["FeedbackReceived"] | components["schemas"]["ThreadRead"] | components["schemas"]["ThreadUnread"] | components["schemas"]["ThreadLabelsChanged"] | components["schemas"]["ReminderSet"] | components["schemas"]["ReminderCancelled"] | components["schemas"]["ThreadBack"] | components["schemas"]["LabelCreated"] | components["schemas"]["LabelRenamed"] | components["schemas"]["LabelDeleted"] | components["schemas"]["ThreadErased"] | components["schemas"]["AgentSettingsChanged"] | components["schemas"]["AgentPaused"] | components["schemas"]["AgentUnpaused"] | components["schemas"]["SenderScreened"] | components["schemas"]["ScreenerSwitched"] | components["schemas"]["ScreenedSenderRemoved"] | components["schemas"]["UnsubscribeAttempted"] | components["schemas"]["SenderDeliverySet"] | components["schemas"]["SenderDeliveryRemoved"] | components["schemas"]["MessageDropped"] | components["schemas"]["LabelPromptSet"] | components["schemas"]["LabelPromptRemoved"] | components["schemas"]["TaskGiven"] | components["schemas"]["TaskStarted"] | components["schemas"]["TaskEnded"] | components["schemas"]["AgentHandedOver"];
+        MailboxChange: components["schemas"]["MessageReceived"] | components["schemas"]["DraftWritten"] | components["schemas"]["DraftChanged"] | components["schemas"]["DraftDeleted"] | components["schemas"]["SendAsked"] | components["schemas"]["ApprovalAsked"] | components["schemas"]["ApprovalWithdrawn"] | components["schemas"]["ApprovalDecided"] | components["schemas"]["ApprovalUndone"] | components["schemas"]["MessageSent"] | components["schemas"]["SendWaitingForLimit"] | components["schemas"]["SentNow"] | components["schemas"]["SendFailed"] | components["schemas"]["SendUnclear"] | components["schemas"]["FeedbackReceived"] | components["schemas"]["ThreadRead"] | components["schemas"]["ThreadUnread"] | components["schemas"]["ThreadLabelsChanged"] | components["schemas"]["ReminderSet"] | components["schemas"]["ReminderCancelled"] | components["schemas"]["ThreadBack"] | components["schemas"]["LabelCreated"] | components["schemas"]["LabelRenamed"] | components["schemas"]["LabelDeleted"] | components["schemas"]["ThreadErased"] | components["schemas"]["AgentSettingsChanged"] | components["schemas"]["AgentPaused"] | components["schemas"]["AgentUnpaused"] | components["schemas"]["SenderScreened"] | components["schemas"]["ScreenerSwitched"] | components["schemas"]["ScreenedSenderRemoved"] | components["schemas"]["UnsubscribeAttempted"] | components["schemas"]["SenderDeliverySet"] | components["schemas"]["SenderDeliveryRemoved"] | components["schemas"]["MessageDropped"] | components["schemas"]["LabelPromptSet"] | components["schemas"]["LabelPromptRemoved"] | components["schemas"]["TaskGiven"] | components["schemas"]["TaskStarted"] | components["schemas"]["TaskEnded"] | components["schemas"]["AgentHandedOver"] | components["schemas"]["ConversationTurnTaken"];
         /** @description Mail arrived. No actor made this change, so it names none. */
         MessageReceived: {
             /** @description The change's position in the mailbox's feed, counting from 1. */
@@ -2635,6 +2635,38 @@ export interface components {
              * @enum {string}
              */
             type: "agentHandedOver";
+        };
+        ConversationTurnTaken: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "conversationTurn";
+            /** @description The ID of the mailbox agent. */
+            agent: string;
+            /** @description The ID of the human who asked. */
+            human: string;
+            /** @description What the human asked: the first 120 characters of their words, ending in … where they went on. */
+            asked?: string;
+            /** @description The IDs of the threads the agent read or changed, in the order it first touched them. */
+            threads: string[];
+            /** @description The IDs of the drafts it wrote, changed or asked to send. */
+            drafts: string[];
+            /** @description The models that answered, in order, the harder one last after a handover. */
+            models: components["schemas"]["MailboxAgentModel"][];
+            handover?: components["schemas"]["Handover"];
+            /** @description Whether the human asked the harder model to think harder about their last turn. */
+            harder?: boolean;
+            /**
+             * @description How the agent's turn ended, as the conversation's turn says.
+             * @enum {string}
+             */
+            outcome: "answered" | "capReached" | "failed";
+            /** @description What the turn's model calls cost, in US cents. */
+            cost: number;
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "conversationTurn";
         };
         TaskEnded: components["schemas"]["ChangeBase"] & {
             /** @constant */
@@ -4195,6 +4227,16 @@ export interface components {
             screened: number;
             /** @description The alerts about it its sponsor got that day. */
             alerts: number;
+            /** @description The turns of Ask Coo it answered, as a mailbox agent. */
+            conversations: number;
+            /** @description The tasks labels' prompts gave it that it finished, as a mailbox agent. */
+            tasksDone: number;
+            /** @description The tasks it couldn't finish. */
+            tasksFailed: number;
+            /** @description The drafts it started. */
+            drafts: number;
+            /** @description The times it unsubscribed from a sender's mail, on their page or by their link, by mailing their unsubscribe address, or by bouncing their mail. */
+            unsubscribes: number;
         };
         ActivityTimeline: {
             /**
@@ -4218,7 +4260,7 @@ export interface components {
             mailbox?: string;
             /** @description The ID of the thread it is about, if it is about one. A draft's is the thread it replies in or was sent in. */
             thread?: string;
-            /** @description The change as its feed recorded it. Its position is in that feed. For an admin who isn't the agent's sponsor, a change in a mailbox leaves out what its mail says: edits, note, name, address, domain, the feedback's recipients, and SES's reason for refusing a send. */
+            /** @description The change as its feed recorded it. Its position is in that feed. For an admin who isn't the agent's sponsor, a change in a mailbox leaves out what its mail says: edits, note, name, address, domain, the feedback's recipients, SES's reason for refusing a send, what the human asked Coo, and why a model asked for help. */
             change: components["schemas"]["MailboxChange"] | components["schemas"]["OrganizationChange"];
         };
         /** @description A human's own preferences. */

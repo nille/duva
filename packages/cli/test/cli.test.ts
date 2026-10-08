@@ -366,7 +366,7 @@ test("the sponsor reads their agent's daily summaries and a day's timeline from 
   const timeline = await machine.duva("agents", "timeline", "--agent", agent.id, "--day", today, "--timeZone", "UTC");
 
   expect(summaries.exitCode).toBe(0);
-  expect(JSON.parse(summaries.stdout)).toEqual({ timeZone: "UTC", days: [{ day: today, sent: 0, approved: 0, rejected: 0, organized: 0, screened: 0, alerts: 0 }] });
+  expect(JSON.parse(summaries.stdout)).toEqual({ timeZone: "UTC", days: [{ day: today, sent: 0, approved: 0, rejected: 0, organized: 0, screened: 0, alerts: 0, conversations: 0, tasksDone: 0, tasksFailed: 0, drafts: 0, unsubscribes: 0 }] });
   expect(timeline.exitCode).toBe(0);
   expect((JSON.parse(timeline.stdout) as { entries: { change: { type: string } }[] }).entries.map(({ change }) => change.type)).toEqual(["agentPaused", "actorAdded"]);
 });

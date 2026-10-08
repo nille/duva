@@ -6654,6 +6654,20 @@ mark {
   font-weight: 500;
 }
 
+/* A turn of Ask Coo takes two lines, what was asked and how it was answered, with how in Third Ink under them. */
+.entry-turn {
+  display: grid;
+  gap: var(--space-1);
+}
+
+/* Set in by the mark and its gap, so it lines up under the names. */
+.entry-how {
+  margin: 0;
+  padding-inline-start: calc(0.55rem + var(--space-2));
+  font-size: var(--text-sm);
+  color: var(--ink-3);
+}
+
 .entry-gone {
   font-size: var(--text-sm);
   font-weight: 400;

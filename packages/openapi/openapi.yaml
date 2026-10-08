@@ -624,7 +624,7 @@ paths:
   /agents/{agent}/activity:
     get:
       operationId: getAgentActivity
-      summary: Read an agent's daily summaries, how much it sent, had approved or rejected, organized and screened each day.
+      summary: Read an agent's daily summaries, how much it sent, had approved or rejected, organized, screened, answered, did and drafted each day.
       description: >
         Gives every day from from to to, newest first, each day in your time
         zone, days without activity included. Leave both out for the last 30
@@ -4270,6 +4270,7 @@ components:
         - $ref: "#/components/schemas/TaskStarted"
         - $ref: "#/components/schemas/TaskEnded"
         - $ref: "#/components/schemas/AgentHandedOver"
+        - $ref: "#/components/schemas/ConversationTurnTaken"
       discriminator:
         propertyName: type
         mapping:
@@ -4314,6 +4315,7 @@ components:
           taskStarted: "#/components/schemas/TaskStarted"
           taskEnded: "#/components/schemas/TaskEnded"
           agentHandedOver: "#/components/schemas/AgentHandedOver"
+          conversationTurn: "#/components/schemas/ConversationTurnTaken"
     MessageReceived:
       type: object
       additionalProperties: false
@@ -4875,6 +4877,58 @@ components:
             thread:
               type: string
               description: The ID of the thread the task is about, if it was a task.
+    ConversationTurnTaken:
+      allOf:
+        - $ref: "#/components/schemas/ChangeBase"
+        - type: object
+          required: [type, agent, human, threads, drafts, models, outcome, cost]
+          description: >-
+            A turn of Ask Coo ended: the human asked the mailbox agent, which
+            answered, naming the agent. Every turn records one, a turn that
+            only read included.
+          properties:
+            type:
+              type: string
+              const: conversationTurn
+            agent:
+              type: string
+              description: The ID of the mailbox agent.
+            human:
+              type: string
+              description: The ID of the human who asked.
+            asked:
+              type: string
+              description: >-
+                What the human asked: the first 120 characters of their words,
+                ending in … where they went on.
+            threads:
+              type: array
+              items:
+                type: string
+              description: The IDs of the threads the agent read or changed, in the order it first touched them.
+            drafts:
+              type: array
+              items:
+                type: string
+              description: The IDs of the drafts it wrote, changed or asked to send.
+            models:
+              type: array
+              items:
+                $ref: "#/components/schemas/MailboxAgentModel"
+              description: The models that answered, in order, the harder one last after a handover.
+            handover:
+              $ref: "#/components/schemas/Handover"
+            harder:
+              type: boolean
+              description: Whether the human asked the harder model to think harder about their last turn.
+            outcome:
+              type: string
+              enum: [answered, capReached, failed]
+              description: How the agent's turn ended, as the conversation's turn says.
+            cost:
+              type: number
+              minimum: 0
+              description: What the turn's model calls cost, in US cents.
     TaskEnded:
       allOf:
         - $ref: "#/components/schemas/ChangeBase"
@@ -7220,7 +7274,7 @@ components:
     ActivitySummary:
       type: object
       additionalProperties: false
-      required: [day, sent, approved, rejected, organized, screened, alerts]
+      required: [day, sent, approved, rejected, organized, screened, alerts, conversations, tasksDone, tasksFailed, drafts, unsubscribes]
       description: How much an agent did in one day.
       properties:
         day:
@@ -7245,6 +7299,21 @@ components:
         alerts:
           type: integer
           description: The alerts about it its sponsor got that day.
+        conversations:
+          type: integer
+          description: The turns of Ask Coo it answered, as a mailbox agent.
+        tasksDone:
+          type: integer
+          description: The tasks labels' prompts gave it that it finished, as a mailbox agent.
+        tasksFailed:
+          type: integer
+          description: The tasks it couldn't finish.
+        drafts:
+          type: integer
+          description: The drafts it started.
+        unsubscribes:
+          type: integer
+          description: The times it unsubscribed from a sender's mail, on their page or by their link, by mailing their unsubscribe address, or by bouncing their mail.
     ActivityTimeline:
       type: object
       additionalProperties: false
@@ -7286,7 +7355,8 @@ components:
             The change as its feed recorded it. Its position is in that feed.
             For an admin who isn't the agent's sponsor, a change in a mailbox
             leaves out what its mail says: edits, note, name, address, domain,
-            the feedback's recipients, and SES's reason for refusing a send.
+            the feedback's recipients, SES's reason for refusing a send, what
+            the human asked Coo, and why a model asked for help.
           anyOf:
             - $ref: "#/components/schemas/MailboxChange"
             - $ref: "#/components/schemas/OrganizationChange"

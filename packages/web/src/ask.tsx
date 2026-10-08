@@ -8,6 +8,7 @@ import { type FormEvent, type KeyboardEvent, useCallback, useEffect, useId, useR
 import type { DuvaClient } from "@duva/client";
 import type { components, ConversationEvent } from "@duva/openapi";
 import { useDates } from "./dates.ts";
+import { activityHref } from "./activity.tsx";
 import { ActorMark } from "./mail-parts.tsx";
 import { agentHref } from "./alerts.tsx";
 import { type Config, postTurn } from "./session.ts";
@@ -194,6 +195,7 @@ export function AskAgent({
           )}
           {read.status === "read" && (
             <p className="ask-links">
+              <a href={activityHref(read.agent.id)}>{copy.activity}</a>
               <a href={agentHref(read.agent.id)}>{copy.settings}</a>
               {turns.length > 0 && (
                 <button type="button" className="button button-quiet button-small" disabled={clearing || running !== undefined} onClick={() => void clear()}>

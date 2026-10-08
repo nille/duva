@@ -35,6 +35,8 @@ const entriesPerPage = 100;
 const organizing = new Set<Change["type"]>(["threadRead", "threadUnread", "threadLabelsChanged", "reminderSet", "reminderCancelled", "labelCreated", "labelRenamed", "labelDeleted"]);
 /** The changes Duva counts as screening, when the agent makes them. */
 const screening = new Set<Change["type"]>(["senderScreened", "screenedSenderRemoved", "senderDeliverySet", "senderDeliveryRemoved"]);
+/** How an unsubscribe went when it counts as one: the sender took it, or was mailed or bounced to. */
+const unsubscribed = new Set<components["schemas"]["UnsubscribeOutcome"]>(["unsubscribed", "requested", "bounced"]);
 /** The changes of kinds Duva no longer records, from when agents could be admins (ADR-0030), which are no part of activity. */
 const retired = new Set<Change["type"]>(["agentAdminChanged", "setupAsked", "setupApproved", "setupRejected", "setupWithdrawn"]);
 
@@ -141,7 +143,7 @@ export const getAgentActivity: OperationHandler = async (event, deployment, acto
 
   const days = new Map<string, Summary>();
   for (let number = to; number >= from; number--) {
-    const summary = { day: dayOfNumber(number), sent: 0, approved: 0, rejected: 0, organized: 0, screened: 0, alerts: 0 };
+    const summary = { day: dayOfNumber(number), sent: 0, approved: 0, rejected: 0, organized: 0, screened: 0, alerts: 0, conversations: 0, tasksDone: 0, tasksFailed: 0, drafts: 0, unsubscribes: 0 };
     days.set(summary.day, summary);
   }
   for (const { change } of await activityOf(deployment.table, agent)) {
@@ -152,6 +154,10 @@ export const getAgentActivity: OperationHandler = async (event, deployment, acto
     else if (change.type === "approvalDecided") summary[change.decision]++;
     else if (organizing.has(change.type) && byAgent) summary.organized++;
     else if (screening.has(change.type) && byAgent) summary.screened++;
+    else if (change.type === "conversationTurn" && byAgent) summary.conversations++;
+    else if (change.type === "taskEnded" && byAgent) summary[change.outcome === "done" ? "tasksDone" : "tasksFailed"]++;
+    else if (change.type === "draftWritten" && byAgent) summary.drafts++;
+    else if (change.type === "unsubscribeAttempted" && byAgent && unsubscribed.has(change.outcome)) summary.unsubscribes++;
   }
   // No time zone is more than 14 hours ahead of UTC, so the first day starts after midnight UTC the day before.
   for (const at of await alertTimes(deployment.table, agent.sponsor, agent.id, `${dayOfNumber(from - 1)}T00:00:00.000Z`)) {
@@ -166,14 +172,17 @@ export const getAgentActivity: OperationHandler = async (event, deployment, acto
  * isn't the sponsor reads. Any other field is left out, so a field added later stays out until
  * it is listed here.
  */
-const mailFree = new Set(["position", "at", "actor", "type", "task", "thread", "message", "draft", "approval", "decision", "label", "added", "removed", "spam", "screened", "delivery", "delivered", "agent", "before", "after", "on", "letIn", "outcome", "status", "feedback"]);
+const mailFree = new Set(["position", "at", "actor", "type", "task", "thread", "message", "draft", "approval", "decision", "label", "added", "removed", "spam", "screened", "delivery", "delivered", "agent", "before", "after", "on", "letIn", "outcome", "status", "feedback", "human", "threads", "drafts", "models", "handover", "harder", "cost"]);
 /** The fields of what SES reported about a send that say nothing of its recipients. */
 const feedbackFree = new Set(["kind", "at", "reason"]);
+/** The fields of a handover that say nothing of the mail, as what the everyday model said in asking for help can. */
+const handoverFree = new Set(["reason", "from", "to"]);
 
 /** The change without what its mail says. SES's reason for refusing a send can name its recipients, so it goes too. */
 function withoutMail(change: Change): Change {
   const kept = Object.fromEntries(Object.entries(change).filter(([name]) => mailFree.has(name)));
   if (kept.feedback !== undefined) kept.feedback = Object.fromEntries(Object.entries(kept.feedback as object).filter(([name]) => feedbackFree.has(name)));
+  if (kept.handover !== undefined) kept.handover = Object.fromEntries(Object.entries(kept.handover as object).filter(([name]) => handoverFree.has(name)));
   if (change.type !== "sendFailed" && "reason" in change) kept.reason = change.reason;
   return kept as unknown as Change;
 }

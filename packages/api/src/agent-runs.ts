@@ -119,6 +119,7 @@ export async function* runMailboxAgent(
   let outcome: RunOutcome = "failed";
   let verdict: { unsubscribed: boolean; detail: string } | undefined;
   let total = 0;
+  let cost = 0;
   let model = payload.model.model;
   let decision: Decision | undefined;
   let handover: Handover | undefined;
@@ -132,7 +133,9 @@ export async function* runMailboxAgent(
         yield event;
       } else if (event.type === "usage") {
         const profile = event.model === deciderModel ? deciderProfile(payload.model.region) : payload.model.profile;
-        total = await addSpend(table, month, costOf(event, event.model ?? payload.model.model, profile));
+        const spent = costOf(event, event.model ?? payload.model.model, profile);
+        cost += spent;
+        total = await addSpend(table, month, spent);
       } else if (event.type === "verdict") verdict = { unsubscribed: event.unsubscribed, detail: event.detail };
       else if (event.type === "decided") decision = event.decision;
       else if (event.type === "handedOver") {
@@ -150,16 +153,18 @@ export async function* runMailboxAgent(
     await endRunToken(table, token);
   }
   if (outcome === "capReached" || total >= cap) await capReached(table, agent, month, cap);
-  return { text, actions, outcome, model, ...(verdict !== undefined && { verdict }), ...(decision !== undefined && { decision }), ...(handover !== undefined && { handover }) };
+  return { text, actions, outcome, model, cost, ...(verdict !== undefined && { verdict }), ...(decision !== undefined && { decision }), ...(handover !== undefined && { handover }) };
 }
 
-/** How a run ended: what it said and did, an unsubscribe's verdict, the model that ended it, and how it was routed. */
+/** How a run ended: what it said and did, an unsubscribe's verdict, the model that ended it, what its model calls cost, and how it was routed. */
 export interface RunEnd {
   text: string;
   actions: AgentAction[];
   outcome: RunOutcome;
   verdict?: { unsubscribed: boolean; detail: string };
   model: MailboxAgentModel;
+  /** In US dollars. */
+  cost: number;
   decision?: Decision;
   handover?: Handover;
 }

@@ -182,7 +182,7 @@ test("what the mailbox agent does is attributed to it in the mailbox's change fe
     action: { operation: "markThreadsRead", what: expect.any(String), ok: true, threads: [threads!.threads[0]!.id] },
   });
   const { data: changes } = await linus.GET("/mailboxes/{mailbox}/changes", { params });
-  expect(changes!.changes.at(-1)).toMatchObject({ type: "threadRead", actor: (await agent()).id });
+  expect(changes!.changes.slice(-2)).toEqual([expect.objectContaining({ type: "threadRead", actor: (await agent()).id }), expect.objectContaining({ type: "conversationTurn", actor: (await agent()).id })]);
 });
 
 test("a reply the mailbox agent drafts and asks to send waits for its owner's approval, and goes out from their address with the disclosure", async () => {

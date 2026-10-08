@@ -98,7 +98,7 @@ The mark on mail an agent sends: always a header, even after a human approved it
 How much an agent may send per hour, and to how many new recipients per day: 100 and 50 to start. A sponsor sets their agent's limits up to the organization's cap, which admins set. Mail over the limit waits and goes out by itself as the limit allows, or when the sponsor sends it now. Humans have none.
 
 **Activity**:
-What an agent did, and what was done to it, day by day: a daily summary of how much it sent, had approved or rejected, organized and screened, which opens into the day's timeline. It is read from change feeds, so it reaches back to the agent's start. Only its sponsor and admins read it, and an admin who isn't the sponsor reads none of what the mail says.
+What an agent did, and what was done to it, day by day: a daily summary of how much it sent, had approved or rejected, organized and screened, and for a mailbox agent the turns of Ask Coo it answered, its tasks done and failed, its drafts and its unsubscribes, which opens into the day's timeline. It is read from change feeds, so it reaches back to the agent's start. Only its sponsor and admins read it, and an admin who isn't the sponsor reads none of what the mail says.
 _Avoid_: log, audit. The approval log is the record of a sponsor's decisions.
 
 ## Domains and addresses

@@ -1,4 +1,5 @@
 import { expect, test } from "vitest";
+import type { Model, ModelEvent } from "../src/agent-loop.ts";
 import { type DuvaOptions, startDuva } from "./harness.ts";
 
 /** A message from Linus to the address, with the subject, which starts its own thread. */
@@ -63,7 +64,7 @@ async function withAgent(options: DuvaOptions = {}) {
 }
 
 /** A day of a summary with nothing in it. */
-const quiet = (day: string) => ({ day, sent: 0, approved: 0, rejected: 0, organized: 0, screened: 0, alerts: 0 });
+const quiet = (day: string) => ({ day, sent: 0, approved: 0, rejected: 0, organized: 0, screened: 0, alerts: 0, conversations: 0, tasksDone: 0, tasksFailed: 0, drafts: 0, unsubscribes: 0 });
 
 test("the sponsor reads their agent's daily summaries, newest first, each day's work counted on the day it was done in their time zone", async () => {
   const { duva, organize, summaries } = await withAgent();
@@ -82,7 +83,7 @@ test("the sponsor reads their agent's daily summaries, newest first, each day's 
   });
 });
 
-test("a day's summary counts the agent's sends that went out, and those its sponsor approved and rejected", async () => {
+test("a day's summary counts the drafts the agent started, its sends that went out, and those its sponsor approved and rejected", async () => {
   const { duva, ask, approve, reject, summaries } = await withAgent();
   await duva.clock(new Date("2026-10-06T10:00:00Z"));
   await approve((await ask("linus@example.org")).approval);
@@ -91,7 +92,7 @@ test("a day's summary counts the agent's sends that went out, and those its spon
 
   const { data } = await summaries({ from: "2026-10-06", to: "2026-10-06" });
 
-  expect(data?.days).toEqual([{ ...quiet("2026-10-06"), sent: 2, approved: 2, rejected: 1 }]);
+  expect(data?.days).toEqual([{ ...quiet("2026-10-06"), drafts: 3, sent: 2, approved: 2, rejected: 1 }]);
 });
 
 test("a day's summary counts what the agent organized and screened itself, and leaves out what its sponsor did in their mailbox", async () => {
@@ -393,4 +394,84 @@ test.each([
 
   expect(response.status).toBe(400);
   expect(error?.message).toBe(message);
+});
+
+/** A stand-in for the mailbox agent's models that takes one step of the script per model call, each costing 1,000 tokens in and 100 out. */
+function scripted(...steps: ((request: Parameters<Model>[0]) => ModelEvent[])[]): Model {
+  let step = 0;
+  return async function* (request) {
+    for (const event of steps[step++]?.(request) ?? [{ text: "Done." }]) yield event;
+    yield { usage: { inputTokens: 1000, outputTokens: 100 } };
+  };
+}
+
+const use = (name: string, input: Record<string, unknown> = {}): ModelEvent => ({ toolUse: { toolUseId: `${name}-${Math.random()}`, name, input } });
+
+const haiku = "anthropic.claude-haiku-4-5-20251001-v1:0";
+const sonnet = "anthropic.claude-sonnet-5-5";
+
+test("each turn of Ask Coo records one change under Coo: what was asked, what Coo read, the models that answered, a handover and what it cost", async () => {
+  const words = "Is the receipt from Linus about the dinner last Friday, and did he say whether the restaurant takes cards or only cash at the door?";
+  let thread = "";
+  const model = scripted(
+    () => [use("getThread", { thread })],
+    () => [{ text: "It is about the dinner." }],
+    // Answering without looking anything up doesn't hold up, so the harder model answers again (ADR-0032).
+    () => [{ text: "Hej!" }],
+    () => [{ text: "Hej Ada!" }],
+  );
+  const { duva, ada, params, receive, adaId } = await withAgent({ model });
+  const coo = (await ada.GET("/mailboxes/{mailbox}/agent", { params })).data!.agent;
+  await duva.clock(new Date("2026-10-06T10:00:00Z"));
+  thread = await receive("Kvitto");
+
+  await duva.askAgent("ada@example.org", { mailbox: params.path.mailbox, words });
+  await duva.askAgent("ada@example.org", { mailbox: params.path.mailbox, words: "Hej!" });
+
+  const { data: feed } = await ada.GET("/mailboxes/{mailbox}/changes", { params });
+  const turns = feed!.changes.filter((change) => change.type === "conversationTurn");
+  // Haiku 4.5 costs $1.10 and Sonnet 5.5 $2.20 a million tokens in, and $5.50 and $11 a million out, through the eu profile.
+  expect(turns).toEqual([
+    { position: expect.any(Number), at: expect.any(String), type: "conversationTurn", actor: coo.id, agent: coo.id, human: adaId, asked: `${words.slice(0, 120)}…`, threads: [thread], drafts: [], models: [haiku], outcome: "answered", cost: 0.33 },
+    {
+      position: expect.any(Number),
+      at: expect.any(String),
+      type: "conversationTurn",
+      actor: coo.id,
+      agent: coo.id,
+      human: adaId,
+      asked: "Hej!",
+      threads: [],
+      drafts: [],
+      models: [haiku, sonnet],
+      handover: { reason: "answerCheck", from: haiku, to: sonnet },
+      outcome: "answered",
+      cost: 0.495,
+    },
+  ]);
+  const summary = await ada.GET("/agents/{agent}/activity", { params: { path: { agent: coo.id }, query: { from: "2026-10-06", to: "2026-10-06" } } });
+  expect(summary.data!.days).toEqual([{ ...quiet("2026-10-06"), conversations: 2 }]);
+  const { data: timeline } = await ada.GET("/agents/{agent}/activity/{day}", { params: { path: { agent: coo.id, day: "2026-10-06" } } });
+  expect(timeline!.entries.filter(({ change }) => change.type === "conversationTurn").map(({ change }) => change)).toEqual(turns.toReversed());
+});
+
+test("an admin who isn't the sponsor reads Coo's turns without what was asked or what the model said in asking for help", async () => {
+  const model = scripted(
+    () => [{ text: "Hmm." }, use("ask_for_help", { why: "Which receipt from Linus?" })],
+    () => [use("listThreads")],
+    () => [{ text: "There are none." }],
+  );
+  const { duva, ada, grace, params } = await withAgent({ model });
+  const coo = (await ada.GET("/mailboxes/{mailbox}/agent", { params })).data!.agent;
+  await duva.askAgent("ada@example.org", { mailbox: params.path.mailbox, words: "Find Linus's receipt." });
+  const day = new Date().toISOString().slice(0, 10);
+
+  const { data } = await grace.GET("/agents/{agent}/activity/{day}", { params: { path: { agent: coo.id, day }, query: { timeZone: "UTC" } } });
+
+  const turn = data!.entries.find(({ change }) => change.type === "conversationTurn")!.change;
+  expect(turn).not.toHaveProperty("asked");
+  expect(turn).toMatchObject({ handover: { reason: "askedForHelp", from: haiku, to: sonnet } });
+  expect((turn as { handover: object }).handover).not.toHaveProperty("why");
+  const handedOver = data!.entries.find(({ change }) => change.type === "agentHandedOver")!.change;
+  expect((handedOver as { handover: object }).handover).toEqual({ reason: "askedForHelp", from: haiku, to: sonnet });
 });

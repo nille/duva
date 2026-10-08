@@ -254,7 +254,7 @@ Give only the settings to change. A change works at once. Only the agent's spons
 
 ## duva agents activity
 
-Read an agent's daily summaries, how much it sent, had approved or rejected, organized and screened each day.
+Read an agent's daily summaries, how much it sent, had approved or rejected, organized, screened, answered, did and drafted each day.
 
 Gives every day from from to to, newest first, each day in your time zone, days without activity included. Leave both out for the last 30 days. Activity reaches back to the agent's start: what it did in its sponsor's mailboxes, and the organization's changes to it. Only the agent's sponsor and admins can read it.
 

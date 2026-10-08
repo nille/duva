@@ -390,7 +390,7 @@ Actors are marked by shape, so they read without color: a human is a filled dot 
 
 ### An agent's activity
 - **The days** lie in the list column, newest first, a row each: the day at 600, then what was counted in Third Ink, its numbers in ink, the sends' in Sent Green's text hand and the alerts' in Alert Red's. A run of days with nothing counted folds into one row with a chevron, its days set in under it once opened. The open day is marked by the orange edge, and a fold holding it opens by itself.
-- **The day's timeline** lies in the reading pane, titled as a subject is: a row an entry, parted by seams, the time in Third Ink in a 5.5rem margin, then whom the entry names first, after their shape (the agent's diamond, Duva's ring, a human's dot), at 650, what happened, and the thread's subject as its link. While no day is open, the reading pane says so quietly.
+- **The day's timeline** lies in the reading pane, titled as a subject is: a row an entry, parted by seams, the time in Third Ink in a 5.5rem margin, then whom the entry names first, after their shape (the agent's diamond, Duva's ring, a human's dot), at 650, what happened, and the thread's subject as its link. A turn of Ask Coo takes two lines, what the human asked and how Coo answered, linking to the threads it read, with the models and the cost under them in Third Ink. While no day is open, the reading pane says so quietly.
 - Under 64rem the days or the open day take the one column alone, with the way back.
 
 ### The admin sheets

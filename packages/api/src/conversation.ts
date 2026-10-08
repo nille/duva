@@ -6,12 +6,14 @@ import { randomUUID } from "node:crypto";
 import { BatchWriteCommand, PutCommand, QueryCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import type { components, ConversationEvent } from "@duva/openapi";
 import type { AgentAction, RunPayload } from "./agent-loop.ts";
-import { type AgentRuntime, monthOf, noMailboxAgent, runMailboxAgent, runtimeMissing, spentIn, startRun } from "./agent-runs.ts";
+import type { MailboxAgentModel } from "./agent-models.ts";
+import { type AgentRuntime, monthOf, noMailboxAgent, type RunEnd, runMailboxAgent, runtimeMissing, spentIn, startRun } from "./agent-runs.ts";
 import { actorNamed } from "./alerting.ts";
 import { type OperationHandler, refusal } from "./api.ts";
 import type { Table } from "./deployment.ts";
+import { recordChanges } from "./feed.ts";
 import { mailboxAgentOf } from "./mailbox-agents.ts";
-import { type Actor, type Agent, allHumans, findMailbox, type Human, isAdmin, type Mailbox, organizationSettings } from "./organization.ts";
+import { type Actor, type Agent, allHumans, findMailbox, type Human, isAdmin, type Mailbox, mailboxFeed, organizationSettings } from "./organization.ts";
 import type { Embedder } from "./titan.ts";
 import { tokenHeader } from "./infrastructure.ts";
 import { documents, pk, sk } from "./table.ts";
@@ -99,10 +101,38 @@ export async function* runTurn(table: Table, runtime: AgentRuntime, embedder: Em
   const ran = runMailboxAgent(table, { agent, payload, runtime, month, cap });
   let next = await ran.next();
   for (; !next.done; next = await ran.next()) yield next.value;
-  const { text, actions, outcome, model, decision, handover } = next.value;
+  const { text, actions, outcome, model, cost, decision, handover } = next.value;
   const answer: Omit<ConversationTurn, "id" | "at"> = { from: "agent", text, actions, outcome, model, ...(decision && { decision }), ...(handover && { handover }), ...(harder && { harder }) };
-  yield { type: "done", turn: await addTurn(table, human, mailbox, answer, turn.at) };
+  const answered = await addTurn(table, human, mailbox, answer, turn.at);
+  // Recorded before the stream ends, so a reader that stops at done still leaves it in the feed.
+  await recordChanges(table, mailboxFeed(mailbox.id), { by: agent.id, changes: [turnTaken(agent, human, turn.text, next.value, payload.model.model, harder)], items: [] });
+  yield { type: "done", turn: answered };
   await keepRouting(table, embedder, human, turn, { month, harder, decision, handover, alone: payload.model.model === payload.model.harder });
+}
+
+/** The longest part of the human's words a turn's change in the feed keeps, in characters. */
+const askedKept = 120;
+
+/**
+ * The change a turn records in the mailbox's feed, so the agent's activity shows it: what the human
+ * asked, what the agent touched, the models that answered, and what it cost (#133).
+ */
+function turnTaken(agent: Agent, human: Human, words: string, { actions, outcome, cost, handover }: RunEnd, first: MailboxAgentModel, harder?: boolean) {
+  const touched = (pick: (action: AgentAction) => string[]) => [...new Set(actions.filter(({ ok }) => ok).flatMap(pick))];
+  return {
+    type: "conversationTurn" as const,
+    agent: agent.id,
+    human: human.id,
+    asked: words.length > askedKept ? `${words.slice(0, askedKept)}…` : words,
+    threads: touched(({ threads }) => threads ?? []),
+    drafts: touched(({ draft }) => (draft === undefined ? [] : [draft])),
+    models: handover === undefined ? [first] : [handover.from, handover.to],
+    ...(handover !== undefined && { handover }),
+    ...(harder && { harder }),
+    outcome,
+    // Cents, to a thousandth of one.
+    cost: Math.round(cost * 100_000) / 1000,
+  };
 }
 
 const routingKey = (human: string, turn: string) => ({ [pk]: `actor#${human}`, [sk]: `routing#${turn}` });

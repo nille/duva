@@ -1,6 +1,28 @@
 import type { Page } from "playwright-core";
 import { expect, test } from "vitest";
+import type { DuvaOptions } from "@duva/api/harness";
 import { phone, startWebApp } from "./web-app.ts";
+
+type Model = NonNullable<DuvaOptions["model"]>;
+type Request = Parameters<Model>[0];
+type Event = ReturnType<Model> extends AsyncIterable<infer Each> ? Each : never;
+
+/** A stand-in for Claude that takes one step of the script per model call, each from what it was asked. Past the end it answers "Done.". */
+function scripted(...steps: ((request: Request) => Event[])[]): Model {
+  let step = 0;
+  return async function* (request) {
+    for (const event of steps[step++]?.(request) ?? [{ text: "Done." }]) yield event;
+    yield { usage: { inputTokens: 1000, outputTokens: 100 } };
+  };
+}
+
+const use = (name: string, input: Record<string, unknown> = {}): Event => ({ toolUse: { toolUseId: `${name}-${Math.random()}`, name, input } });
+
+/** What the last tool the model used answered, as JSON. */
+const lastResult = (request: Request) => {
+  for (const block of request.messages.at(-1)!.content.toReversed()) if ("toolResult" in block) return JSON.parse(block.toolResult.content[0]!.text) as Record<string, any>;
+  throw new Error("No tool answered.");
+};
 
 // The page reads the change feeds every 250 ms in these tests, but a page under the full suite's
 // load can still take seconds to show what changed, so every wait has room, and every test more.
@@ -68,8 +90,8 @@ test("a sponsor opens their agent's page from the status strip, with a summary f
 
   await expect.poll(() => page.getByRole("heading", { level: 1 }).textContent(), wait).toBe("Hermes's activity");
   await expect.poll(() => days(page).count(), wait).toBe(1);
-  expect(await days(page).first().getAttribute("aria-label")).toMatch(/^Tuesday, Oct 6.*: 1 sent, 1 approved, 1 organized$/);
-  expect(await days(page).first().innerText()).toMatch(/1 sent, 1 approved, 1 organized$/);
+  expect(await days(page).first().getAttribute("aria-label")).toMatch(/^Tuesday, Oct 6.*: 1 draft, 1 sent, 1 approved, 1 organized$/);
+  expect(await days(page).first().innerText()).toMatch(/1 draft, 1 sent, 1 approved, 1 organized$/);
   expect(await fold(page).getAttribute("aria-expanded")).toBe("false");
   expect(await page.getByRole("contentinfo", { name: "Status" }).getByRole("link", { name: /^Hermes is running/ }).getAttribute("aria-current")).toBe("page");
   // Agents own no mailboxes, so the side column's views list no activity of their own.
@@ -239,4 +261,34 @@ test("on a phone, each day and each entry fits the screen", budget, async () => 
   const said = (await arrival.locator(".entry-said").boundingBox())!;
   const subject = (await arrival.getByRole("link").boundingBox())!;
   expect(subject.y).toBeGreaterThanOrEqual(said.y + said.height - 1);
+});
+
+test("a day Coo only answered Ask Coo isn't folded as quiet, and its timeline says what was asked and what Coo read, reached from Ask Coo", budget, async () => {
+  const model = scripted(
+    () => [use("listThreads")],
+    (request) => [use("getThread", { thread: lastResult(request).threads.find(({ subject }: { subject: string }) => subject === "Möte").id })],
+    () => [{ text: "Grace asks about a meeting." }],
+  );
+  const { page, signIn, duva } = await withActivity({ model });
+  await duva.clock(new Date("2026-10-07T10:00:00Z"));
+  await signIn("ada@example.org");
+  await page.getByRole("link", { name: "Ask Coo", exact: true }).click();
+  await page.getByRole("textbox", { name: "What do you want to ask?" }).fill("What came in?");
+  await page.getByRole("button", { name: "Ask", exact: true }).click();
+  await expect.poll(() => page.locator(".ask-turn").nth(1).locator(".ask-text").innerText(), wait).toBe("Grace asks about a meeting.");
+
+  await page.getByRole("link", { name: "What Coo did" }).click();
+
+  await expect.poll(() => page.getByRole("heading", { level: 1 }).textContent(), wait).toBe("Coo's activity");
+  await expect.poll(() => days(page).count(), wait).toBe(1);
+  expect(await days(page).first().getAttribute("aria-label")).toMatch(/^Wednesday, Oct 7.*: 1 conversation$/);
+  expect(await page.getByRole("list", { name: "Days" }).getByRole("button", { name: "Sep 8 to Oct 6, nothing counted" }).count()).toBe(1);
+
+  await days(page).first().click();
+
+  const turn = page.getByRole("list", { name: "Timeline" }).getByRole("listitem").filter({ hasText: "asked Coo" });
+  await expect.poll(() => turn.locator(".entry-line").allInnerTexts(), wait).toEqual(["You asked Coo “What came in?”", "Coo answered, reading Möte."]);
+  expect(await turn.locator(".entry-how").innerText()).toMatch(/^Claude Haiku 4\.5\. [\d.]+ cents\.$/);
+  await turn.getByRole("link", { name: /^Möte\. / }).click();
+  await expect.poll(() => page.getByRole("heading", { level: 1 }).textContent(), wait).toBe("Möte");
 });
