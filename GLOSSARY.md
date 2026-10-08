@@ -174,10 +174,10 @@ _Avoid_: job
 A built-in label for threads that want attention. New mail adds it, unless its sender's delivery files it elsewhere; archiving removes it. A thread lies in at most one of the Inbox, the Feed and the Paper Trail.
 
 **Feed**:
-A built-in label for newsletters, read as a stream. A sender's delivery files their mail here instead of the Inbox, and it arrives read, so it counts nothing unread.
+A built-in label for newsletters, read as a stream. A sender's delivery files their mail here instead of the Inbox, and it arrives unread, counted here and never on the Inbox. Mail screened in from the Screener arrives read.
 
 **Paper Trail**:
-A built-in label for receipts and notifications. A sender's delivery files their mail here instead of the Inbox, and it arrives read.
+A built-in label for receipts and notifications. A sender's delivery files their mail here instead of the Inbox, and it arrives unread, counted here and never on the Inbox. Mail screened in from the Screener arrives read.
 
 **Remind me**:
 Setting a thread aside until a time, chosen as later today, tomorrow morning, next week or an exact time, in the human's time zone. The thread leaves the Inbox and waits in Remind me until then, when it comes back to the top of the Inbox, unread, with a Back mark naming when it was set aside, which it keeps until it leaves the Inbox. New mail in the thread brings it back early. Cancelling puts it back in the Inbox at once, at its own place and without the mark.
@@ -194,7 +194,7 @@ Where mail from a mailbox's first-time senders waits until an actor who may orga
 _Avoid_: gatekeeper, allowlist
 
 **Delivery**:
-Where a screened sender's mail goes in a mailbox: the Inbox, the Feed, the Paper Trail, a label of the mailbox's own instead of the Inbox, or nowhere. It applies to their later mail, whether the Screener is on or not, and to their threads already there: those where their mail went before move to where it goes now, and keep the labels given by hand. Group mail skips it, as it skips the Screener.
+Where a screened sender's mail goes in a mailbox: the Inbox, the Feed, the Paper Trail, a label of the mailbox's own instead of the Inbox, or nowhere. It applies to their later mail, whether the Screener is on or not, and to their threads already there: changing it moves them all, archived ones too, to where it goes now, and they keep the labels given by hand. Those in Spam, Trash or Remind me stay there. Group mail skips it, as it skips the Screener.
 
 **Nowhere**:
 The delivery that drops a sender's mail on arrival, keeping none of it, not even in Trash, and records only that a message from them was dropped. Choosing it erases their threads in the mailbox for good, and unsubscribes from their mail, as each message dropped later does too, until one method works: see Unsubscribing. Removing it brings back nothing. Only the mailbox's owner chooses it (ADR-0025).

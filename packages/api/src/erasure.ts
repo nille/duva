@@ -22,7 +22,7 @@ import { asRead, type Cursor, cursorOf, type ErasedLabel, keys, listingsOf, rece
 import { eraseApprovals } from "./drafting.ts";
 import { compactIndexes, type IndexQueue } from "./indexing.ts";
 import { allMailboxes, mailboxFeed, mailboxKey, type OrganizationSettings, organizationSettings, settingsUnchanged } from "./organization.ts";
-import { deliveryFor, type Sender } from "./screening.ts";
+import { deliveryFor, screenedSenders, type Sender } from "./screening.ts";
 import { documents, pk, sk, type TransactItem } from "./table.ts";
 
 // Each thread being erased is listed until its messages are gone, and each of their raw messages,
@@ -53,7 +53,8 @@ export interface MailboxDeleted {
 export interface SenderErased {
   mailbox: string;
   sender: Sender;
-  by: string;
+  /** Left out for a block from before deliveries that names no one. */
+  by?: string;
 }
 
 /** Hands the eraser work without waiting for it. */
@@ -129,6 +130,31 @@ export const mailboxErasure = (table: Table, deleted: MailboxDeleted): TransactI
  * nowhere, so the eraser's daily run erases their threads if the run it is handed fails.
  */
 export const senderErasure = (table: Table, erased: SenderErased): TransactItem => ({ Put: { TableName: table.name, Item: { ...senderErasureKey(erased), ...erased } } });
+
+// Each mailbox whose senders sent nowhere setup handed the eraser is marked, so it does that once.
+const blocksErasedKey = (mailbox: string) => ({ [pk]: mailboxKey(mailbox)[pk]!, [sk]: "blocks-erased" });
+
+/**
+ * Lists every sender each mailbox sends nowhere for the eraser, once, naming whoever decided it, so
+ * the threads a block from before deliveries put in Trash are erased as choosing nowhere erases
+ * (ADR-0025). Those of a sender sent nowhere since are erased already. Then hands the eraser the
+ * senders listed, if there are any.
+ */
+export async function eraseBlockedSenders(table: Table, eraser: Eraser): Promise<void> {
+  let listed: SenderErased | undefined;
+  for (const mailbox of await allMailboxes(table)) {
+    const { Item: erased } = await documents(table).send(new GetCommand({ TableName: table.name, Key: blocksErasedKey(mailbox), ConsistentRead: true }));
+    if (erased !== undefined) continue;
+    for (const { address, domain, delivery, actor } of await screenedSenders(table, mailbox)) {
+      if (delivery !== "nowhere") continue;
+      listed = { mailbox, sender: address !== undefined ? { address } : { domain: domain! }, ...(actor !== undefined && { by: actor }) };
+      await documents(table).send(new PutCommand(senderErasure(table, listed).Put!));
+    }
+    await documents(table).send(new PutCommand({ TableName: table.name, Item: blocksErasedKey(mailbox) }));
+  }
+  // The eraser finishes every sender listed, whichever it is handed.
+  if (listed !== undefined) await eraser.eraseSender(listed);
+}
 
 /**
  * Erases each thread from the sender whose mail still goes nowhere as it is erased, naming the

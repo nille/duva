@@ -27,7 +27,7 @@ import { createDownloads, downloadLinkLifetime as linkLifetime } from "../src/at
 import { createAuthorizer } from "../src/authorizer.ts";
 import type { Humans, SignInSender } from "../src/user-pool.ts";
 import type { RecordType } from "../src/dns-records.ts";
-import { createEraser, type Eraser, type EraserEvent } from "../src/erasure.ts";
+import { createEraser, eraseBlockedSenders, type Eraser, type EraserEvent } from "../src/erasure.ts";
 import { syncRecipients } from "../src/receiving.ts";
 import { eraseAgentsMailboxes } from "../src/removal.ts";
 import { createInbound } from "../src/inbound.ts";
@@ -485,7 +485,8 @@ export async function startDuva({
     if (!sendsHeld) await stream.deliver();
     for (let agent = released.shift(); agent !== undefined; agent = released.shift()) await sender({ release: agent });
     if (!sendsHeld) await stream.deliver();
-    for (let each = handed.shift(); each !== undefined; each = handed.shift()) if (!eraserRunsLost) await eraser(each);
+    // A block from before deliveries erased nothing: the threads it put in Trash waited there.
+    for (let each = handed.shift(); each !== undefined; each = handed.shift()) if (!eraserRunsLost && (deliveriesDeployed || !("eraseSender" in each))) await eraser(each);
     if (!screenerDeployed) await forgetScreener(table);
     if (!approvalLogDeployed) await forgetApprovalLog(table);
     if (!mailboxAgentsDeployed) await forgetMailboxAgents(table);
@@ -642,6 +643,8 @@ export async function startDuva({
       screenerDeployed = true;
       deliveriesDeployed = true;
       await setUpDeliveries(table);
+      await eraseBlockedSenders(table, apiEraser);
+      for (let each = handed.shift(); each !== undefined; each = handed.shift()) if (!eraserRunsLost) await eraser(each);
       await setUpScreeners(table);
       mailboxAgentsDeployed = true;
       cooDeployed = true;
@@ -905,14 +908,15 @@ async function forgetApprovalLog(table: Table) {
 
 /**
  * Takes away what deliveries added, as a deployment from before them has it: each decision is a
- * let-in or a block, as the Inbox and nowhere were, and no thread is listed by whom it is from.
+ * let-in or a block, as the Inbox and nowhere were, no thread is listed by whom it is from, and no
+ * sender's threads wait for the eraser.
  */
 async function forgetDeliveries(table: Table) {
   const { Items = [] } = await table.client.send(new ScanCommand({ TableName: table.name }));
   for (const item of Items) {
     const [partition, sort] = [item[tableKey.partitionKey]!.S!, item[tableKey.sortKey]!.S!];
     const Key = { [tableKey.partitionKey]: item[tableKey.partitionKey]!, [tableKey.sortKey]: item[tableKey.sortKey]! };
-    if (/#from(-domain)?#/.test(partition) || sort === "senders-listed") {
+    if (/#from(-domain)?#/.test(partition) || sort === "senders-listed" || sort === "blocks-erased" || partition === "erasure#senders") {
       await table.client.send(new DeleteItemCommand({ TableName: table.name, Key }));
     } else if (sort.startsWith("screened#") && item.delivery !== undefined) {
       const { delivery, label, ...rest } = item;

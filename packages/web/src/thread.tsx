@@ -42,7 +42,7 @@ const datedApart = 15 * 60_000;
  * keeps one unread mark for the whole thread, so they are taken to be those that arrived after the
  * mailbox last sent in it.
  */
-function unreadIn(thread: Thread): string[] {
+export function unreadIn(thread: Thread): string[] {
   if (!thread.unread) return [];
   const since = thread.messages.findLastIndex((message) => message.sentBy !== undefined);
   return thread.messages.slice(since + 1).map(({ id }) => id);

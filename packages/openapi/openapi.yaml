@@ -2514,13 +2514,15 @@ paths:
       summary: Decide where a sender's mail goes in a mailbox, for their mail there and their later mail.
       description: >
         inbox puts their mail in the Inbox. feed and paperTrail file it in the
-        Feed or the Paper Trail instead, read. label files it under the
+        Feed or the Paper Trail instead, unread and counted there, and what
+        waits from them in the Screener arrives there read. label files it under the
         mailbox's own label you give, unread, instead of the Inbox. nowhere
         drops their later mail on arrival, keeping none of it, and erases
         their threads in the mailbox, Spam and Trash included, for good.
-        Removing nowhere later brings none of it back. Their threads where
-        their mail went before, or waiting in the Screener, move to where it
-        goes now, and keep the labels given by hand. Their later mail skips
+        Removing nowhere later brings none of it back. All their threads,
+        archived ones too, move to where it goes now, and keep the labels
+        given by hand, except those in Spam, Trash or Remind me, which stay
+        there. Their later mail skips
         the Screener, even while it is off. A domain covers exactly that
         domain, not its subdomains, and can't be a public mail provider's,
         like gmail.com. An address's decision beats its domain's. Setting
@@ -2569,9 +2571,10 @@ paths:
       summary: Remove a mailbox's decision on a sender, so they are first-time again.
       description: >
         Their later mail waits in the Screener again, unless the mailbox has
-        written to them, or a decision on their domain covers them. Their
-        threads where their mail went move to where it goes now, the Inbox
-        unless their domain's decision says otherwise. Mail nowhere dropped
+        written to them, or a decision on their domain covers them. All their
+        threads, archived ones too, but those in Spam, Trash or Remind me,
+        move to where it goes now, the Inbox unless their domain's decision
+        says otherwise. Mail nowhere dropped
         doesn't come back. The removal and each thread it moves are recorded
         in the mailbox's change feed under you. Only the mailbox's owner and the
         agents
@@ -5136,8 +5139,8 @@ components:
       enum: [inbox, feed, paperTrail, label, nowhere]
       description: >
         Where a sender's mail goes. inbox: the Inbox. feed: the Feed, for
-        newsletters, read. paperTrail: the Paper Trail, for receipts and
-        notifications, read. label: a label of the mailbox's own, unread,
+        newsletters, unread. paperTrail: the Paper Trail, for receipts and
+        notifications, unread. label: a label of the mailbox's own, unread,
         instead of the Inbox. nowhere: dropped on arrival, keeping none of it.
     ScreeningDecision:
       type: object

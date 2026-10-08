@@ -402,8 +402,8 @@ export const strings = {
     choose: "Send their mail to",
     choices: {
       inbox: { name: "Inbox", hint: "Mail that wants your attention." },
-      feed: { name: "Feed", hint: "Newsletters, read as a stream. Arrives read." },
-      paperTrail: { name: "Paper Trail", hint: "Receipts and notifications. Arrives read." },
+      feed: { name: "Feed", hint: "Newsletters, read as a stream, out of your Inbox." },
+      paperTrail: { name: "Paper Trail", hint: "Receipts and notifications, out of your Inbox." },
       label: { name: "A label", hint: "Filed under one of your labels instead of the Inbox, unread." },
       nowhere: { name: "Nowhere", hint: "Dropped as it arrives and kept nowhere. Duva unsubscribes you, and your mailbox agent tries harder where one-click isn't offered." },
     },

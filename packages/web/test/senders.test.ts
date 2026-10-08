@@ -89,16 +89,40 @@ test("choosing the Feed moves their threads there, and the Feed reads as a strea
   await expect.poll(() => heading(page), wait).toBe("Issue 2");
 });
 
-test("the side column lists the Feed and the Paper Trail among the Inbox's views, neither counting unread mail", budget, async () => {
+/** The side column's views, each with its count if it shows one, from the Inbox to the Paper Trail. */
+const views = async (page: Page) => (await side(page).getByRole("link").allTextContents()).slice(0, 5);
+
+test("the side column lists the Feed and the Paper Trail among the Inbox's views, each counting its own unread mail, which the Inbox doesn't", budget, async () => {
   const { page, grace, params } = await withNewsletters();
+  await expect.poll(() => views(page), wait).toEqual(["Inbox2, 2 unread", "Screener", "Remind me", "Feed", "Paper Trail"]);
   await grace.PUT("/mailboxes/{mailbox}/senders/{sender}", { params: { path: { ...params.path, sender: "news@example.net" } }, body: { delivery: "paperTrail" } });
 
-  await side(page).getByRole("link", { name: "Paper Trail" }).click();
+  await side(page).getByRole("link", { name: /^Paper Trail/ }).click();
 
   await expect.poll(() => heading(page), wait).toBe("Paper Trail");
   await expect.poll(() => page.getByRole("list", { name: "Threads" }).getByRole("listitem").count(), wait).toBe(2);
-  // The Inbox's count drops once the side column reads the labels again.
-  await expect.poll(async () => (await side(page).getByRole("link").allTextContents()).slice(0, 5), wait).toEqual(["Inbox", "Screener", "Remind me", "Feed", "Paper Trail"]);
+  // The counts move once the side column reads the labels again.
+  await expect.poll(() => views(page), wait).toEqual(["Inbox", "Screener", "Remind me", "Feed", "Paper Trail2, 2 unread"]);
+});
+
+test("the Feed's stream marks the newsletters it shows read, each new one saying New, and the Feed counts none unread", budget, async () => {
+  const { page, duva, grace, params } = await withNewsletters();
+  await grace.PUT("/mailboxes/{mailbox}/senders/{sender}", { params: { path: { ...params.path, sender: "news@example.net" } }, body: { delivery: "feed" } });
+  await expect.poll(() => views(page), wait).toEqual(["Inbox", "Screener", "Remind me", "Feed2, 2 unread", "Paper Trail"]);
+
+  await side(page).getByRole("link", { name: /^Feed/ }).click();
+
+  await expect.poll(() => heading(page), wait).toBe("Feed");
+  const items = page.getByRole("list", { name: "Feed" }).getByRole("listitem").filter({ has: page.locator(".stream-subject") });
+  await expect.poll(() => items.count(), wait).toBe(2);
+  expect(await items.getByText("New", { exact: true }).count()).toBe(2);
+  await expect.poll(() => views(page), wait).toEqual(["Inbox", "Screener", "Remind me", "Feed", "Paper Trail"]);
+  expect((await grace.GET("/mailboxes/{mailbox}/threads", { params: { ...params, query: { label: "feed" } } })).data!.threads.map(({ unread }) => unread)).toEqual([false, false]);
+  // What arrives while the stream is open comes in new too, and is read there.
+  await duva.receive(note("Example News <news@example.net>", "Issue 3", "The third issue, on bridges."), { to: ["grace@example.com"] });
+  await expect.poll(() => items.count(), wait).toBe(3);
+  expect(await items.nth(0).getByText("New", { exact: true }).count()).toBe(1);
+  await expect.poll(async () => (await grace.GET("/mailboxes/{mailbox}/threads", { params: { ...params, query: { label: "feed" } } })).data!.threads.some(({ unread }) => unread), wait).toBe(false);
 });
 
 test("choosing nowhere asks once more, saying it can't be undone, then erases their threads, and the sheet says how the mailbox agent went on unsubscribing", budget, async () => {

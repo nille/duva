@@ -87,8 +87,8 @@ const builtInName = (label: string) => ({ inbox: strings.views.inbox, feed: stri
 
 /**
  * The mailbox's views as links, the one open marked current, with a form at the foot to create a
- * label. Only the Inbox and the mailbox's own labels count their unread threads, so the Feed, the
- * Paper Trail, Sent, Spam, Trash and All mail never call for attention. The Screener, listed while it is on or something
+ * label. Only the Inbox, the Feed, the Paper Trail and the mailbox's own labels count their unread
+ * threads, each its own, so Sent, Spam, Trash and All mail never call for attention. The Screener, listed while it is on or something
  * waits there, quietly counts the senders who wait.
  */
 export function MailViews({
@@ -159,8 +159,8 @@ export function MailViews({
           </li>
         )}
         {link({ reminders: true }, strings.views.reminders, 0)}
-        {link({ label: "feed" }, strings.views.feed, 0)}
-        {link({ label: "paperTrail" }, strings.views.paperTrail, 0)}
+        {link({ label: "feed" }, strings.views.feed, unread("feed"))}
+        {link({ label: "paperTrail" }, strings.views.paperTrail, unread("paperTrail"))}
         {link({ sent: true }, strings.views.sent, 0)}
         <li>
           <a href={`${base}drafts`} className="view-link" aria-current={drafts.current ? "page" : undefined}>

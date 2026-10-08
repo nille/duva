@@ -239,8 +239,8 @@ export async function receiveMessage(table: Table, arrival: Arrival): Promise<bo
     text: parsed.text,
     thread: async () => (arrival.spam ? undefined : threadAnswered(table, mailbox, parsed.answers)),
     label,
-    // Mail makes its thread unread, unless the thread lies only in the Feed or the Paper Trail, which are read as they come.
-    unread: (labels) => labels.includes(inbox) || !labels.some((label) => label === feed || label === paperTrail),
+    // Mail makes its thread unread wherever it lies, the Feed and the Paper Trail too, which count it.
+    unread: true,
     findable: !arrival.spam,
     by: undefined,
     change: (thread, joined, labels) => ({
@@ -367,7 +367,7 @@ async function storeMessage(
     text: string;
     thread: () => Promise<StoredSummary | undefined>;
     label?: (joined: boolean) => string;
-    unread?: boolean | ((labels: string[]) => boolean);
+    unread?: boolean;
     findable: boolean;
     sent?: boolean;
     by: string | undefined;
@@ -416,7 +416,7 @@ async function storeMessage(
             ...(groups !== undefined && { groups }),
             ...((sent || joined.sent) && { sent: true }),
           };
-    summary.unread = typeof unread === "function" ? unread(summary.labels) : (unread ?? summary.unread);
+    summary.unread = unread ?? summary.unread;
     timeErasedLabels(joined, summary);
     // New mail brings a thread set aside back early.
     const early = joined?.reminder !== undefined && label !== undefined;
@@ -604,8 +604,6 @@ async function changeThreads(
   const found = await Promise.all(threads.map((thread) => threadSummary(table, mailbox, thread)));
   const missing = threads.filter((_, index) => found[index] === undefined);
   if (missing.length > 0) return { missing };
-  // recordChanges gives the items' cancellation reasons after the counter's and the one change's.
-  const threadReason = 2;
   const changed = [];
   for (let [index, current] of found.entries()) {
     for (let attempt = 1; ; attempt++) {
@@ -618,6 +616,8 @@ async function changeThreads(
         delete next.summary.reminder;
         changes.push({ type: "reminderCancelled", thread: current!.id });
       }
+      // recordChanges gives the items' cancellation reasons after the counter's and the changes'.
+      const threadReason = 1 + changes.length;
       try {
         await recordChanges(table, mailboxFeed(mailbox), {
           by,
@@ -1105,11 +1105,13 @@ async function everyThreadIn(table: Table, mailbox: string, listing: Listing): P
 }
 
 /**
- * Moves each thread from where its sender's mail went to `to`, the label where it goes now: one
- * waiting in the Screener, or with the label `from` unless that is undefined, as for mail that went
- * nowhere. A thread in Spam or Trash only leaves the Screener, and every other label stays. Records
- * a change in the mailbox's change feed attributed to the actor `by` for each, and returns the
- * threads moved as they are now, in the order given. A thread erased meanwhile is left out.
+ * Moves each thread from where its sender's mail went, `from`, to `to`, the label where it goes now,
+ * taking away `from` and the place it lies in. One waiting in the Screener moves, and arrives read
+ * in the Feed or the Paper Trail. So does every other one, archived ones too, unless `from` is
+ * undefined, as for mail that went nowhere. One in Spam or Trash only leaves the Screener, and one
+ * set aside in Remind me stays. Every other label stays. Records the changes in the mailbox's change
+ * feed attributed to the actor `by` for each, and returns the threads moved as they are now, in the
+ * order given. A thread erased meanwhile is left out.
  */
 export async function moveDelivered(
   table: Table,
@@ -1117,15 +1119,25 @@ export async function moveDelivered(
 ): Promise<ThreadSummary[]> {
   const waits = (summary: ThreadSummary) => summary.labels.includes(screener);
   const thrown = (summary: ThreadSummary) => summary.labels.includes(spam) || summary.labels.includes(trash);
-  const moves = (summary: ThreadSummary | undefined): summary is StoredSummary => summary !== undefined && (waits(summary) || (from !== undefined && summary.labels.includes(from) && !thrown(summary)));
+  /** The thread's labels once moved, or undefined if it doesn't move. */
+  const movedTo = (summary: ThreadSummary) => {
+    if (!waits(summary) && (from === undefined || thrown(summary) || summary.reminder !== undefined)) return undefined;
+    const kept = summary.labels.filter((label) => label !== screener && (thrown(summary) || (label !== from && !places.includes(label))));
+    const labels = thrown(summary) || kept.includes(to) ? kept : [...kept, to];
+    return labels.length === summary.labels.length && labels.every((label) => summary.labels.includes(label)) ? undefined : labels;
+  };
+  const moves = (summary: ThreadSummary | undefined): summary is StoredSummary => summary !== undefined && movedTo(summary) !== undefined;
   const found = (await Promise.all(threads.map((thread) => threadSummary(table, mailbox, thread)))).filter(moves);
+  // Mail that joins a thread meanwhile came from where the sender's mail goes now, so it stays unread.
+  const screened = new Map(found.map(({ id, messages }) => [id, messages]));
   const moved = await changeThreads(table, { mailbox, threads: found.map(({ id }) => id), by }, (current) => {
-    if (!moves(current)) return undefined;
-    const kept = current.labels.filter((label) => label !== screener && (thrown(current) || label !== from));
-    const labels = thrown(current) || kept.includes(to) ? kept : [...kept, to];
+    const labels = movedTo(current);
+    if (labels === undefined) return undefined;
     const added = labels.filter((label) => !current.labels.includes(label));
     const removed = current.labels.filter((label) => !labels.includes(label));
-    return { summary: { ...current, labels }, change: { type: "threadLabelsChanged", thread: current.id, added, removed } };
+    const screenedRead = waits(current) && current.unread && current.messages === screened.get(current.id) && (to === feed || to === paperTrail) && labels.includes(to);
+    const changes = [{ type: "threadLabelsChanged", thread: current.id, added, removed }, ...(screenedRead ? [{ type: "threadRead", thread: current.id }] : [])];
+    return { summary: { ...current, labels, ...(screenedRead && { unread: false }) }, change: changes };
   });
   return "threads" in moved ? moved.threads : [];
 }

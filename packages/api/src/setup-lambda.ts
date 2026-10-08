@@ -10,7 +10,7 @@ import { required } from "./environment.ts";
 import { cognitoHumans } from "./user-pool.ts";
 import { environmentVariables } from "./infrastructure.ts";
 import { listEarlierDecisions } from "./approval-log.ts";
-import { lambdaEraser } from "./erasure.ts";
+import { eraseBlockedSenders, lambdaEraser } from "./erasure.ts";
 import { indexMailboxes, sqsIndexQueue } from "./indexing.ts";
 import { timeEarlierLabels } from "./mail.ts";
 import { giveMailboxAgents } from "./mailbox-agents.ts";
@@ -42,6 +42,8 @@ export const handler = async () => {
   await eraseAgentsMailboxes({ table, eraser, receiving });
   // Decisions from before deliveries become deliveries, and threads are listed by whom they are from.
   await setUpDeliveries(table);
+  // Blocks from before deliveries became nowhere, so the threads they put in Trash are erased, once, as nowhere erases.
+  await eraseBlockedSenders(table, eraser);
   // Humans' mailboxes from before the Screener get it on, with every sender they already have sent to the Inbox.
   await setUpScreeners(table);
   // Humans' mailboxes from before mailbox agents get theirs, and those named before Coo are renamed.

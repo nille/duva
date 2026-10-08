@@ -95,7 +95,7 @@ test("only those who can read the mailbox read a sender's sheet, and a sheet nee
   expect([notSender.response.status, provider.response.status]).toEqual([400, 400]);
 });
 
-test("mail from a sender sent to the Feed skips the Inbox and arrives read in the Feed, which All mail and search cover", async () => {
+test("mail from a sender sent to the Feed skips the Inbox and arrives unread in the Feed, counted there, which All mail and search cover", async () => {
   const { grace, params, receive, listed, decide, unreadOn } = await withSenders();
   const { response, data } = await decide("news@example.net", "feed");
 
@@ -107,16 +107,17 @@ test("mail from a sender sent to the Feed skips the Inbox and arrives read in th
   expect(await listed("feed")).toEqual([issue.thread]);
   expect(await listed("inbox")).toEqual([]);
   expect((await grace.GET("/mailboxes/{mailbox}/all-mail", { params })).data!.threads.map(({ id }) => id)).toEqual([issue.thread]);
-  expect((await grace.GET("/mailboxes/{mailbox}/threads/{thread}", { params: { path: { ...params.path, thread: issue.thread } } })).data).toMatchObject({ labels: ["feed"], unread: false });
-  expect(await unreadOn("feed")).toBe(0);
+  expect((await grace.GET("/mailboxes/{mailbox}/threads/{thread}", { params: { path: { ...params.path, thread: issue.thread } } })).data).toMatchObject({ labels: ["feed"], unread: true });
+  expect(await unreadOn("feed")).toBe(1);
+  expect(await unreadOn("inbox")).toBe(0);
   expect((await grace.GET("/mailboxes/{mailbox}", { params })).data!.unread).toBe(0);
   const searched = await grace.GET("/mailboxes/{mailbox}/search", { params: { ...params, query: { q: "lighthouse label:feed" } } });
   expect(searched.error).toBeUndefined();
   expect(searched.data!.results.map(({ thread }) => thread.id)).toEqual([issue.thread]);
 });
 
-test("mail from a sender sent to the Paper Trail skips the Inbox and arrives read in the Paper Trail", async () => {
-  const { receive, listed, thread, decide } = await withSenders();
+test("mail from a sender sent to the Paper Trail skips the Inbox and arrives unread in the Paper Trail, counted there", async () => {
+  const { grace, params, receive, listed, thread, decide, unreadOn } = await withSenders();
   await decide("receipts@shop.example.net", "paperTrail");
 
   const receipt = await receive(note("receipts@shop.example.net", "Your order"));
@@ -124,7 +125,27 @@ test("mail from a sender sent to the Paper Trail skips the Inbox and arrives rea
   expect(receipt.delivered).toBe("paperTrail");
   expect(await listed("paperTrail")).toEqual([receipt.thread]);
   expect(await listed("inbox")).toEqual([]);
+  expect(await thread(receipt.thread)).toMatchObject({ labels: ["paperTrail"], unread: true });
+  expect(await unreadOn("paperTrail")).toBe(1);
+  expect((await grace.GET("/mailboxes/{mailbox}", { params })).data!.unread).toBe(0);
+});
+
+test("mail screened into the Feed or the Paper Trail from the Screener arrives read there, and their later mail unread", async () => {
+  const { receive, listed, thread, decide, unreadOn } = await withSenders();
+  const issue = await receive(note("news@example.net", "Issue 1"));
+  const receipt = await receive(note("receipts@shop.example.net", "Your order"));
+  const waiting = await listed("screener");
+
+  await decide("news@example.net", "feed");
+  await decide("receipts@shop.example.net", "paperTrail");
+  const later = await receive(note("news@example.net", "Issue 2"));
+
+  expect(waiting).toEqual([receipt.thread, issue.thread]);
+  expect(await thread(issue.thread)).toMatchObject({ labels: ["feed"], unread: false });
   expect(await thread(receipt.thread)).toMatchObject({ labels: ["paperTrail"], unread: false });
+  expect(await thread(later.thread)).toMatchObject({ labels: ["feed"], unread: true });
+  expect(await unreadOn("feed")).toBe(1);
+  expect(await unreadOn("paperTrail")).toBe(0);
 });
 
 test("mail from a sender filed under a label skips the Inbox and arrives unread under the label, counted there", async () => {
@@ -157,32 +178,57 @@ test("a label delivery needs one of the mailbox's own labels, and only a label d
   expect(withFeed.error?.message).toMatch(/only with delivery label/);
 });
 
-test("changing a sender's delivery moves their threads where their mail went, keeping labels given by hand, and leaves those filed elsewhere", async () => {
-  const { graceId, receive, listed, decide, label, relabel, changes } = await withSenders();
+test("changing a sender's delivery moves all their threads, archived ones too, keeping labels given by hand, and leaves Trash, Spam and Remind me alone", async () => {
+  const { grace, graceId, params, receive, listed, decide, label, relabel, changes } = await withSenders();
   await decide("news@example.net", "inbox");
   const kept = await receive(note("news@example.net", "Kept"));
   const labelled = await receive(note("news@example.net", "Labelled"));
   const archived = await receive(note("news@example.net", "Archived"));
+  const filed = await receive(note("news@example.net", "Filed"));
+  const aside = await receive(note("news@example.net", "Aside"));
   const trashed = await receive(note("news@example.net", "Trashed"));
+  const spam = await receive(note("news@example.net", "Spam"), { spam: true });
   const reading = await label("Reading");
   await relabel([labelled.thread], { add: [reading] });
   await relabel([archived.thread], { remove: ["inbox"] });
+  await relabel([filed.thread], { add: ["paperTrail"] });
+  await grace.POST("/mailboxes/{mailbox}/threads/remind", { params, body: { threads: [aside.thread], preset: "nextWeek" } });
   await relabel([trashed.thread], { add: ["trash"] });
 
   const { data } = await decide("news@example.net", "feed");
 
   expect(data!.threads.map(({ id, labels }) => ({ id, labels }))).toEqual([
+    { id: filed.thread, labels: ["feed"] },
+    { id: archived.thread, labels: ["feed"] },
     { id: labelled.thread, labels: [reading, "feed"] },
     { id: kept.thread, labels: ["feed"] },
   ]);
-  expect(await listed("feed")).toEqual([labelled.thread, kept.thread]);
+  expect(await listed("feed")).toEqual([filed.thread, archived.thread, labelled.thread, kept.thread]);
   expect(await listed("inbox")).toEqual([]);
+  expect(await listed("paperTrail")).toEqual([]);
   expect(await listed("trash")).toEqual([trashed.thread]);
-  expect((await changes()).slice(-3)).toEqual([
+  expect(await listed("spam")).toEqual([spam.thread]);
+  expect((await grace.GET("/mailboxes/{mailbox}/reminders", { params })).data!.threads.map(({ id }) => id)).toEqual([aside.thread]);
+  expect((await changes()).slice(-5)).toEqual([
     expect.objectContaining({ type: "senderDeliverySet", address: "news@example.net", delivery: "feed", actor: graceId }),
+    expect.objectContaining({ type: "threadLabelsChanged", thread: filed.thread, added: ["feed"], removed: ["paperTrail"], actor: graceId }),
+    expect.objectContaining({ type: "threadLabelsChanged", thread: archived.thread, added: ["feed"], removed: [], actor: graceId }),
     expect.objectContaining({ type: "threadLabelsChanged", thread: labelled.thread, added: ["feed"], removed: ["inbox"], actor: graceId }),
     expect.objectContaining({ type: "threadLabelsChanged", thread: kept.thread, added: ["feed"], removed: ["inbox"], actor: graceId }),
   ]);
+});
+
+test("deciding again where a sender's mail already goes, by their address or their domain, leaves their archived threads archived", async () => {
+  const { receive, listed, decide, relabel } = await withSenders();
+  const first = await receive(note("bob@example.net", "First"));
+  await decide("bob@example.net", "inbox");
+  await relabel([first.thread], { remove: ["inbox"] });
+  const later = await receive(note("bob@example.net", "Later"));
+
+  await decide("bob@example.net", "inbox");
+  await decide("example.net", "inbox");
+
+  expect(await listed("inbox")).toEqual([later.thread]);
 });
 
 test("moving a sender from a label to the Paper Trail takes their threads out of the label, and back to the Inbox puts them there", async () => {
@@ -200,13 +246,13 @@ test("moving a sender from a label to the Paper Trail takes their threads out of
   expect(await listed("paperTrail")).toEqual([]);
 });
 
-test("a reply from a Feed sender in a thread in the Inbox leaves it there, unread, and one in their own thread keeps it in the Feed, read", async () => {
+test("a reply from a Feed sender in a thread in the Inbox leaves it there, and one in their own thread keeps it in the Feed, each unread again", async () => {
   const { grace, params, receive, listed, thread, decide } = await withSenders();
   await decide("bob@example.net", "inbox");
   const talk = await receive(note("bob@example.net", "Talk"));
-  await grace.POST("/mailboxes/{mailbox}/threads/read", { params, body: { threads: [talk.thread] } });
   await decide("news@example.net", "feed");
   const issue = await receive(note("news@example.net", "Issue"));
+  await grace.POST("/mailboxes/{mailbox}/threads/read", { params, body: { threads: [talk.thread, issue.thread] } });
 
   const inTalk = await receive(note("news@example.net", "Re Talk", { inReplyTo: "<Talk@mail.test>" }));
   const inIssue = await receive(note("news@example.net", "Re Issue", { inReplyTo: "<Issue@mail.test>" }));
@@ -214,7 +260,7 @@ test("a reply from a Feed sender in a thread in the Inbox leaves it there, unrea
   expect([inTalk.thread, inIssue.thread]).toEqual([talk.thread, issue.thread]);
   expect(await thread(talk.thread)).toMatchObject({ labels: ["inbox"], unread: true });
   expect(await listed("feed")).toEqual([issue.thread]);
-  expect(await thread(issue.thread)).toMatchObject({ labels: ["feed"], unread: false });
+  expect(await thread(issue.thread)).toMatchObject({ labels: ["feed"], unread: true });
   expect(await listed("inbox")).toEqual([talk.thread]);
 });
 
@@ -364,6 +410,28 @@ test("setup turns a let-in from before deliveries into the Inbox and a block int
   expect((await sheet("bob@example.net")).data!.threads).toBe(1);
   await decide("bob@example.net", "feed");
   expect(await listed("feed")).toEqual([before.thread]);
+});
+
+test("setup erases, once, the threads a block from before deliveries put in Trash, as choosing nowhere erases, in the mailbox's change feed", async () => {
+  const { duva, graceId, receive, listed, decide, relabel, sheet, changes } = await withSenders({ beforeDeliveries: true });
+  const prize = await receive(note("mallory@example.net", "Prize"));
+  const again = await receive(note("mallory@example.net", "Prize again"));
+  const kept = await receive(note("bob@example.net", "Kept"));
+  await relabel([kept.thread], { add: ["trash"] });
+  // Blocking put the sender's threads in Trash, to wait out the retention period there.
+  await relabel([prize.thread, again.thread], { add: ["trash"] });
+  await decide("mallory@example.net", "nowhere");
+  const blocked = await listed("trash");
+
+  await duva.setUp({ admin: "ada@example.org" });
+  const erased = (await changes()).filter((change) => change.type === "threadErased");
+  await duva.setUp({ admin: "ada@example.org" });
+
+  expect(blocked).toEqual([kept.thread, again.thread, prize.thread]);
+  expect(await listed("trash")).toEqual([kept.thread]);
+  expect((await sheet("mallory@example.net")).data!.threads).toBe(0);
+  expect(erased).toEqual([expect.objectContaining({ type: "threadErased", thread: again.thread, actor: graceId }), expect.objectContaining({ type: "threadErased", thread: prize.thread, actor: graceId })]);
+  expect((await changes()).filter((change) => change.type === "threadErased")).toHaveLength(2);
 });
 
 /** A deployment as withSenders() gives, where Grace also writes to people. */
