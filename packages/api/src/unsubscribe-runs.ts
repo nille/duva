@@ -52,7 +52,7 @@ export function createUnsubscribeRunner({ table, region, apiUrl, runtime, bounce
     const { agent, mailbox, owner } = working;
     const browse = async (url: string): Promise<Attempt> => {
       if (runtime === undefined) return { outcome: "failed", reason: "notDone", detail: runtimeMissing(region) };
-      const run = await startRun(table, { agent, mailbox, owner, region, apiUrl });
+      const run = await startRun(table, { agent, mailbox, owner, region, apiUrl, job: "unsubscribe" });
       if ("refused" in run) return { outcome: "failed", reason: "notDone", detail: run.refused };
       const ran = runMailboxAgent(table, { agent, payload: { ...run.start, history: [], words: "", unsubscribe: { url, address: job.offer.recipient } }, runtime, month: run.month, cap: run.cap });
       let next = await ran.next();

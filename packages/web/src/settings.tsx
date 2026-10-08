@@ -705,10 +705,37 @@ function AgentsSheet({ client, onSignedOut }: { client: DuvaClient; onSignedOut:
   );
 }
 
-type MailboxAgentsSettings = Pick<OrganizationSettings, "mailboxAgentModel" | "mailboxAgentProfile" | "mailboxAgentRegion" | "mailboxAgentSpendCap">;
+type MailboxAgentsSettings = Pick<
+  OrganizationSettings,
+  "mailboxAgentModel" | "mailboxAgentTaskModel" | "mailboxAgentHarderModel" | "mailboxAgentDecider" | "mailboxAgentProfile" | "mailboxAgentRegion" | "mailboxAgentSpendCap"
+>;
+type Model = MailboxAgentsSettings["mailboxAgentModel"];
+type Profile = MailboxAgentsSettings["mailboxAgentProfile"];
 
-const mailboxAgentModels = ["anthropic.claude-sonnet-5-5", "anthropic.claude-haiku-4-5-20251001-v1:0", "anthropic.claude-opus-5-5"] as const;
-const mailboxAgentProfiles = ["eu", "us", "global"] as const;
+/** The models, each with the profiles it runs through, and the regions it runs in without one, as agent-models.ts has them. */
+const mailboxAgentModels: Record<Model, { profiles: Profile[]; inRegion: string[] }> = {
+  "amazon.nova-2-lite-v1:0": { profiles: ["eu", "us", "global"], inRegion: [] },
+  "anthropic.claude-sonnet-5-5": { profiles: ["eu", "us", "global"], inRegion: [] },
+  "anthropic.claude-haiku-4-5-20251001-v1:0": { profiles: ["eu", "us", "global"], inRegion: [] },
+  "anthropic.claude-opus-5-5": { profiles: ["eu", "us", "global"], inRegion: [] },
+  "amazon.nova-pro-v1:0": { profiles: ["eu", "us", "none"], inRegion: ["us-east-1"] },
+  "amazon.nova-lite-v1:0": { profiles: ["eu", "us", "none"], inRegion: ["eu-north-1", "us-east-1", "us-east-2", "us-west-2"] },
+};
+const mailboxAgentProfiles = ["eu", "us", "global", "none"] as const;
+const jobs = ["mailboxAgentModel", "mailboxAgentTaskModel", "mailboxAgentHarderModel"] as const;
+
+/** Why the chosen models don't all run through the profile from the region, if they don't. */
+function wontRun(chosen: MailboxAgentsSettings): string | undefined {
+  const copy = strings.settings.mailboxAgents.where;
+  const { mailboxAgentProfile: profile, mailboxAgentRegion: region } = chosen;
+  for (const model of new Set(jobs.map((job) => chosen[job]))) {
+    const { profiles, inRegion } = mailboxAgentModels[model];
+    if (!profiles.includes(profile)) return copy.noProfile(strings.ask.models[model]);
+    if (profile === "none" && !inRegion.includes(region)) return copy.notHere(strings.ask.models[model], inRegion);
+  }
+  if ((profile === "eu" || profile === "us") && !region.startsWith(`${profile}-`)) return copy.mismatch(profile);
+  return undefined;
+}
 const mailboxAgentRegions = ["eu-central-1", "eu-west-1", "eu-west-3", "eu-north-1", "us-east-1", "us-east-2", "us-west-2"] as const;
 
 /**
@@ -718,7 +745,15 @@ const mailboxAgentRegions = ["eu-central-1", "eu-west-1", "eu-west-3", "eu-north
 function MailboxAgentsSheet({ client, onSignedOut }: { client: DuvaClient; onSignedOut: () => void }) {
   const { sheet } = useOrganizationSheet<MailboxAgentsSettings>(
     client,
-    ({ mailboxAgentModel, mailboxAgentProfile, mailboxAgentRegion, mailboxAgentSpendCap }) => ({ mailboxAgentModel, mailboxAgentProfile, mailboxAgentRegion, mailboxAgentSpendCap }),
+    ({ mailboxAgentModel, mailboxAgentTaskModel, mailboxAgentHarderModel, mailboxAgentDecider, mailboxAgentProfile, mailboxAgentRegion, mailboxAgentSpendCap }) => ({
+      mailboxAgentModel,
+      mailboxAgentTaskModel,
+      mailboxAgentHarderModel,
+      mailboxAgentDecider,
+      mailboxAgentProfile,
+      mailboxAgentRegion,
+      mailboxAgentSpendCap,
+    }),
     onSignedOut,
   );
   const [capText, setCapText] = useState<string>();
@@ -737,22 +772,44 @@ function MailboxAgentsSheet({ client, onSignedOut }: { client: DuvaClient; onSig
       {(chosen) => {
         const text = capText ?? String(chosen.mailboxAgentSpendCap);
         const capValid = /^\d+$/.test(text.trim()) && Number(text.trim()) <= 10_000;
-        const runs = chosen.mailboxAgentProfile === "global" || chosen.mailboxAgentRegion.startsWith(`${chosen.mailboxAgentProfile}-`);
+        const unrunnable = wontRun(chosen);
+        const runs = unrunnable === undefined;
         return (
           <>
             <fieldset>
               <legend>{copy.model.legend}</legend>
               <p className="setting-lead">{copy.model.lead}</p>
-              {mailboxAgentModels.map((model) => (
-                <Choice
-                  key={model}
-                  name="mailboxAgentModel"
-                  checked={chosen.mailboxAgentModel === model}
-                  onChoose={() => sheet.choose({ mailboxAgentModel: model })}
-                  label={copy.model.names[model]}
-                  hint={copy.model.hints[model]}
-                />
-              ))}
+              <div className="limits">
+                {jobs.map((job) => (
+                  <div className="limit" key={job}>
+                    <label htmlFor={`mailbox-agent-${job}`} className="limit-name">
+                      {copy.model.jobs[job]}
+                    </label>
+                    <select
+                      id={`mailbox-agent-${job}`}
+                      aria-describedby={`mailbox-agent-${job}-hint`}
+                      value={chosen[job]}
+                      onChange={(event) => sheet.choose({ [job]: event.target.value as Model })}
+                    >
+                      {(Object.keys(mailboxAgentModels) as Model[]).map((model) => (
+                        <option key={model} value={model}>
+                          {strings.ask.models[model]}
+                        </option>
+                      ))}
+                    </select>
+                    <p id={`mailbox-agent-${job}-hint`} className="hint">
+                      {copy.model.hints[chosen[job]]}
+                    </p>
+                  </div>
+                ))}
+              </div>
+              <label className="choice">
+                <input type="checkbox" checked={chosen.mailboxAgentDecider} onChange={(event) => sheet.choose({ mailboxAgentDecider: event.target.checked })} />
+                <span className="choice-text">
+                  <span className="choice-name">{copy.model.decider}</span>
+                  <span className="hint">{copy.model.deciderHint}</span>
+                </span>
+              </label>
             </fieldset>
             <fieldset>
               <legend>{copy.where.legend}</legend>
@@ -786,7 +843,7 @@ function MailboxAgentsSheet({ client, onSignedOut }: { client: DuvaClient; onSig
                     ))}
                   </select>
                   <p id="mailbox-agent-region-hint" className={runs ? "hint" : "field-error"}>
-                    {runs ? copy.where.regionHint : copy.where.mismatch(chosen.mailboxAgentProfile)}
+                    {unrunnable ?? copy.where.regionHint}
                   </p>
                 </div>
               </div>

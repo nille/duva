@@ -134,6 +134,30 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
+  /organization/mailbox-agent-routing:
+    get:
+      operationId: getMailboxAgentRouting
+      summary: Show how the mailbox agents' conversation turns were routed this month.
+      description: >-
+        Counts each turn of Ask Coo and over MCP by how it went: the
+        everyday model took it alone, the decider sent it to the harder
+        model, the everyday model handed it over, and why, or its owner had
+        the harder model think harder. Duva keeps each turn's routing with
+        its words' embedding, in the owner's own records, for a router that
+        learns from them later. Neither words nor embeddings are shown. Only
+        admins can read it.
+      x-cli-command: organization mailbox-agent-routing
+      responses:
+        "200":
+          description: The month's routing.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MailboxAgentRouting"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
   /organization/settings:
     get:
       operationId: getOrganizationSettings
@@ -4245,6 +4269,7 @@ components:
         - $ref: "#/components/schemas/TaskGiven"
         - $ref: "#/components/schemas/TaskStarted"
         - $ref: "#/components/schemas/TaskEnded"
+        - $ref: "#/components/schemas/AgentHandedOver"
       discriminator:
         propertyName: type
         mapping:
@@ -4288,6 +4313,7 @@ components:
           taskGiven: "#/components/schemas/TaskGiven"
           taskStarted: "#/components/schemas/TaskStarted"
           taskEnded: "#/components/schemas/TaskEnded"
+          agentHandedOver: "#/components/schemas/AgentHandedOver"
     MessageReceived:
       type: object
       additionalProperties: false
@@ -4826,6 +4852,29 @@ components:
             agent:
               type: string
               description: The ID of the mailbox agent.
+    AgentHandedOver:
+      allOf:
+        - $ref: "#/components/schemas/ChangeBase"
+        - type: object
+          required: [type, agent, handover]
+          description: >-
+            The mailbox agent's run went over to the harder model, in a turn of
+            Ask Coo, or in a task, naming the agent.
+          properties:
+            type:
+              type: string
+              const: agentHandedOver
+            agent:
+              type: string
+              description: The ID of the mailbox agent.
+            handover:
+              $ref: "#/components/schemas/Handover"
+            task:
+              type: string
+              description: The task's ID, if it was a task.
+            thread:
+              type: string
+              description: The ID of the thread the task is about, if it was a task.
     TaskEnded:
       allOf:
         - $ref: "#/components/schemas/ChangeBase"
@@ -6039,6 +6088,8 @@ components:
           description: What the agent did in it, in order.
           items:
             $ref: "#/components/schemas/AgentAction"
+        handover:
+          $ref: "#/components/schemas/Handover"
     NewLabel:
       type: object
       additionalProperties: false
@@ -6771,7 +6822,7 @@ components:
     OrganizationSettings:
       type: object
       additionalProperties: false
-      required: [erasureErasesApprovals, retentionDays, searchLanguages, agentSendsPerHourCap, agentNewRecipientsPerDayCap, undoWindowSeconds, mailboxAgentModel, mailboxAgentProfile, mailboxAgentRegion, mailboxAgentSpendCap]
+      required: [erasureErasesApprovals, retentionDays, searchLanguages, agentSendsPerHourCap, agentNewRecipientsPerDayCap, undoWindowSeconds, mailboxAgentModel, mailboxAgentTaskModel, mailboxAgentHarderModel, mailboxAgentDecider, mailboxAgentProfile, mailboxAgentRegion, mailboxAgentSpendCap]
       properties:
         erasureErasesApprovals:
           $ref: "#/components/schemas/ErasureErasesApprovals"
@@ -6787,6 +6838,21 @@ components:
           $ref: "#/components/schemas/UndoWindowSeconds"
         mailboxAgentModel:
           $ref: "#/components/schemas/MailboxAgentModel"
+          description: >-
+            The model a mailbox agent answers its owner with in Ask Coo
+            and over MCP, unless the decider finds a turn complex. Claude
+            Haiku 4.5 by default.
+        mailboxAgentTaskModel:
+          $ref: "#/components/schemas/MailboxAgentModel"
+          description: The model that does the tasks labels' prompts give. Claude Haiku 4.5 by default.
+        mailboxAgentHarderModel:
+          $ref: "#/components/schemas/MailboxAgentModel"
+          description: >-
+            The model for the harder work: writing mail that may be sent, a
+            turn the decider finds complex, a run the everyday model hands
+            over, and Think harder. Claude Sonnet 5.5 by default.
+        mailboxAgentDecider:
+          $ref: "#/components/schemas/MailboxAgentDecider"
         mailboxAgentProfile:
           $ref: "#/components/schemas/MailboxAgentProfile"
         mailboxAgentRegion:
@@ -6812,6 +6878,21 @@ components:
           $ref: "#/components/schemas/UndoWindowSeconds"
         mailboxAgentModel:
           $ref: "#/components/schemas/MailboxAgentModel"
+          description: >-
+            The model a mailbox agent answers its owner with in Ask Coo
+            and over MCP, unless the decider finds a turn complex. Claude
+            Haiku 4.5 by default.
+        mailboxAgentTaskModel:
+          $ref: "#/components/schemas/MailboxAgentModel"
+          description: The model that does the tasks labels' prompts give. Claude Haiku 4.5 by default.
+        mailboxAgentHarderModel:
+          $ref: "#/components/schemas/MailboxAgentModel"
+          description: >-
+            The model for the harder work: writing mail that may be sent, a
+            turn the decider finds complex, a run the everyday model hands
+            over, and Think harder. Claude Sonnet 5.5 by default.
+        mailboxAgentDecider:
+          $ref: "#/components/schemas/MailboxAgentDecider"
         mailboxAgentProfile:
           $ref: "#/components/schemas/MailboxAgentProfile"
         mailboxAgentRegion:
@@ -6895,6 +6976,57 @@ components:
             How the agent's turn ended: answered; capReached, it stopped as the
             mailbox agents reached the organization's spend cap; failed, the
             model or the runtime failed, so asking again may work.
+        model:
+          $ref: "#/components/schemas/MailboxAgentModel"
+          description: The model that ended the agent's turn.
+        decision:
+          $ref: "#/components/schemas/RoutingDecision"
+        handover:
+          $ref: "#/components/schemas/Handover"
+        harder:
+          type: boolean
+          description: Whether the agent's turn is the harder model's answer to the turn before, as you asked it to think harder.
+    RoutingDecision:
+      type: object
+      additionalProperties: false
+      required: [route, confidence]
+      description: >-
+        What the decider, Amazon Nova Micro, made of a turn whose job doesn't
+        settle the model: simple, the everyday model takes it, or complex,
+        the harder model does, as it does when the decider is less than 0.7
+        sure.
+      properties:
+        route:
+          type: string
+          enum: [simple, complex]
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: How sure the decider was, from 0 to 1.
+    Handover:
+      type: object
+      additionalProperties: false
+      required: [reason, from, to]
+      description: >-
+        Why a run went over to the harder model, with the work so far:
+        decided, the decider found the turn complex or wasn't sure; writing,
+        it came to writing mail that may be sent; failedCalls, Duva refused
+        the everyday model's tool calls twice; stepBudget, the everyday model
+        hadn't finished after 6 steps; askedForHelp, it asked for help, saying
+        why; answerCheck, its answer didn't hold up, as when it named a thread
+        or message nothing gave it.
+      properties:
+        reason:
+          type: string
+          enum: [decided, writing, failedCalls, stepBudget, askedForHelp, answerCheck]
+        from:
+          $ref: "#/components/schemas/MailboxAgentModel"
+        to:
+          $ref: "#/components/schemas/MailboxAgentModel"
+        why:
+          type: string
+          description: What the everyday model said when it asked for help.
     AgentAction:
       type: object
       additionalProperties: false
@@ -6936,23 +7068,78 @@ components:
           description: What the mailbox agents' model calls cost this month, in US dollars.
         cap:
           $ref: "#/components/schemas/MailboxAgentSpendCap"
+    MailboxAgentRouting:
+      type: object
+      additionalProperties: false
+      required: [month, turns, everyday, harder, decided, handedOver, thoughtHarder, embedded]
+      properties:
+        month:
+          type: string
+          description: The month counted, as YYYY-MM in UTC.
+          examples: ["2026-10"]
+        turns:
+          type: integer
+          description: >-
+            The agents' turns this month, think harder's reruns left out. Each
+            is counted once: a turn its owner had the harder model think
+            harder about counts as that, however it went first.
+        everyday:
+          type: integer
+          description: Turns the everyday model took alone.
+        harder:
+          type: integer
+          description: Turns the harder model took from the start, as the model admins chose for answering.
+        decided:
+          type: integer
+          description: Turns the decider sent to the harder model.
+        handedOver:
+          type: object
+          additionalProperties: false
+          required: [writing, failedCalls, stepBudget, askedForHelp, answerCheck]
+          description: Turns the everyday model handed over, by why.
+          properties:
+            writing:
+              type: integer
+            failedCalls:
+              type: integer
+            stepBudget:
+              type: integer
+            askedForHelp:
+              type: integer
+            answerCheck:
+              type: integer
+        thoughtHarder:
+          type: integer
+          description: Turns whose owner had the harder model think harder.
+        embedded:
+          type: integer
+          description: Turns kept with their words' embedding.
     MailboxAgentModel:
       type: string
-      enum: [anthropic.claude-sonnet-5-5, anthropic.claude-haiku-4-5-20251001-v1:0, anthropic.claude-opus-5-5]
+      enum: [anthropic.claude-sonnet-5-5, anthropic.claude-haiku-4-5-20251001-v1:0, anthropic.claude-opus-5-5, amazon.nova-2-lite-v1:0, amazon.nova-pro-v1:0, amazon.nova-lite-v1:0]
       description: >-
-        The Claude model on Amazon Bedrock the mailbox agents think with:
-        Claude Sonnet 5.5, the default, Claude Haiku 4.5, which costs about a
-        half as much, or Claude Opus 5.5, which costs about twice as much.
+        A model on Amazon Bedrock the mailbox agents think with: Claude
+        Sonnet 5.5, Claude Haiku 4.5, which costs about a half as much,
+        Claude Opus 5.5, which costs about twice as much, or one of Amazon's
+        Nova models, which cost from a sixth (Nova 2 Lite) to a fiftieth
+        (Nova Lite) as much a task as Claude Sonnet 5.5 and need no AWS
+        Marketplace agreement (docs/research/coo-models.md). Nova Pro and Nova Lite run through the eu or us profiles,
+        or without one, and Nova 2 Lite through any. Each of the three
+        models chosen must run through mailboxAgentProfile from
+        mailboxAgentRegion.
     MailboxAgentProfile:
       type: string
-      enum: [eu, us, global]
+      enum: [eu, us, global, none]
       description: >-
         The inference profile Bedrock runs the model through, which decides
         where the mail the agents read is processed: eu keeps it in the EU's
         AWS regions, us in the US's, and global sends it to any region with
-        capacity, for about 10% less. eu by default for a deployment in the
-        EU, us for one in the US, and global elsewhere. eu needs an EU
-        mailboxAgentRegion, us a US one.
+        capacity, for about 10% less. none runs the model in
+        mailboxAgentRegion itself, which keeps the mail there: Nova Lite runs
+        so in eu-north-1, us-east-1, us-east-2 and us-west-2, and Nova Pro in
+        us-east-1. eu by default for a deployment in the EU, us for one in the
+        US, and global elsewhere. eu needs an EU mailboxAgentRegion, us a US
+        one.
     MailboxAgentRegion:
       type: string
       enum: [eu-central-1, eu-west-1, eu-west-3, eu-north-1, us-east-1, us-east-2, us-west-2]
@@ -6980,6 +7167,14 @@ components:
           type: integer
           minimum: 0
           description: How many threads in Trash and Spam are older than retentionDays now.
+    MailboxAgentDecider:
+      type: boolean
+      description: >-
+        Whether the decider, Amazon Nova Micro, settles the model for each
+        turn in Ask Coo and over MCP first, sending one it finds
+        complex to mailboxAgentHarderModel. Off by default: on Coo's tasks it
+        was right on 4 of 10 (docs/research/coo-models.md). Either way a turn
+        hands over to the harder model on evidence.
     ErasureErasesApprovals:
       type: boolean
       description: >-

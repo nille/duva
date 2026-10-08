@@ -77,12 +77,12 @@ export async function* runUnsubscribe(payload: RunPayload, { model, browser }: {
     for (let step = 0; step < maxSteps; step++) {
       const content: ContentBlock[] = [];
       let text = "";
-      for await (const event of model({ system, messages: merged(messages), tools: unsubscribeTools })) {
+      for await (const event of model({ model: payload.model.model, system, messages: merged(messages), tools: unsubscribeTools })) {
         if ("text" in event) text += event.text;
         else if ("toolUse" in event) content.push(event);
         else {
           spent += costOf(event.usage, payload.model.model, payload.model.profile);
-          yield { type: "usage", ...event.usage };
+          yield { type: "usage", model: payload.model.model, ...event.usage };
         }
       }
       if (text !== "") content.unshift({ text });

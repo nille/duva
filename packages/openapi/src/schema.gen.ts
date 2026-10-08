@@ -118,6 +118,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/organization/mailbox-agent-routing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show how the mailbox agents' conversation turns were routed this month.
+         * @description Counts each turn of Ask Coo and over MCP by how it went: the everyday model took it alone, the decider sent it to the harder model, the everyday model handed it over, and why, or its owner had the harder model think harder. Duva keeps each turn's routing with its words' embedding, in the owner's own records, for a router that learns from them later. Neither words nor embeddings are shown. Only admins can read it.
+         */
+        get: operations["getMailboxAgentRouting"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/organization/settings": {
         parameters: {
             query?: never;
@@ -2142,7 +2162,7 @@ export interface components {
             position: number;
         };
         /** @description A change in a mailbox. */
-        MailboxChange: components["schemas"]["MessageReceived"] | components["schemas"]["DraftWritten"] | components["schemas"]["DraftChanged"] | components["schemas"]["DraftDeleted"] | components["schemas"]["SendAsked"] | components["schemas"]["ApprovalAsked"] | components["schemas"]["ApprovalWithdrawn"] | components["schemas"]["ApprovalDecided"] | components["schemas"]["ApprovalUndone"] | components["schemas"]["MessageSent"] | components["schemas"]["SendWaitingForLimit"] | components["schemas"]["SentNow"] | components["schemas"]["SendFailed"] | components["schemas"]["SendUnclear"] | components["schemas"]["FeedbackReceived"] | components["schemas"]["ThreadRead"] | components["schemas"]["ThreadUnread"] | components["schemas"]["ThreadLabelsChanged"] | components["schemas"]["ReminderSet"] | components["schemas"]["ReminderCancelled"] | components["schemas"]["ThreadBack"] | components["schemas"]["LabelCreated"] | components["schemas"]["LabelRenamed"] | components["schemas"]["LabelDeleted"] | components["schemas"]["ThreadErased"] | components["schemas"]["AgentSettingsChanged"] | components["schemas"]["AgentPaused"] | components["schemas"]["AgentUnpaused"] | components["schemas"]["SenderScreened"] | components["schemas"]["ScreenerSwitched"] | components["schemas"]["ScreenedSenderRemoved"] | components["schemas"]["UnsubscribeAttempted"] | components["schemas"]["SenderDeliverySet"] | components["schemas"]["SenderDeliveryRemoved"] | components["schemas"]["MessageDropped"] | components["schemas"]["LabelPromptSet"] | components["schemas"]["LabelPromptRemoved"] | components["schemas"]["TaskGiven"] | components["schemas"]["TaskStarted"] | components["schemas"]["TaskEnded"];
+        MailboxChange: components["schemas"]["MessageReceived"] | components["schemas"]["DraftWritten"] | components["schemas"]["DraftChanged"] | components["schemas"]["DraftDeleted"] | components["schemas"]["SendAsked"] | components["schemas"]["ApprovalAsked"] | components["schemas"]["ApprovalWithdrawn"] | components["schemas"]["ApprovalDecided"] | components["schemas"]["ApprovalUndone"] | components["schemas"]["MessageSent"] | components["schemas"]["SendWaitingForLimit"] | components["schemas"]["SentNow"] | components["schemas"]["SendFailed"] | components["schemas"]["SendUnclear"] | components["schemas"]["FeedbackReceived"] | components["schemas"]["ThreadRead"] | components["schemas"]["ThreadUnread"] | components["schemas"]["ThreadLabelsChanged"] | components["schemas"]["ReminderSet"] | components["schemas"]["ReminderCancelled"] | components["schemas"]["ThreadBack"] | components["schemas"]["LabelCreated"] | components["schemas"]["LabelRenamed"] | components["schemas"]["LabelDeleted"] | components["schemas"]["ThreadErased"] | components["schemas"]["AgentSettingsChanged"] | components["schemas"]["AgentPaused"] | components["schemas"]["AgentUnpaused"] | components["schemas"]["SenderScreened"] | components["schemas"]["ScreenerSwitched"] | components["schemas"]["ScreenedSenderRemoved"] | components["schemas"]["UnsubscribeAttempted"] | components["schemas"]["SenderDeliverySet"] | components["schemas"]["SenderDeliveryRemoved"] | components["schemas"]["MessageDropped"] | components["schemas"]["LabelPromptSet"] | components["schemas"]["LabelPromptRemoved"] | components["schemas"]["TaskGiven"] | components["schemas"]["TaskStarted"] | components["schemas"]["TaskEnded"] | components["schemas"]["AgentHandedOver"];
         /** @description Mail arrived. No actor made this change, so it names none. */
         MessageReceived: {
             /** @description The change's position in the mailbox's feed, counting from 1. */
@@ -2598,6 +2618,23 @@ export interface components {
              * @enum {string}
              */
             type: "taskStarted";
+        };
+        AgentHandedOver: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "agentHandedOver";
+            /** @description The ID of the mailbox agent. */
+            agent: string;
+            handover: components["schemas"]["Handover"];
+            /** @description The task's ID, if it was a task. */
+            task?: string;
+            /** @description The ID of the thread the task is about, if it was a task. */
+            thread?: string;
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "agentHandedOver";
         };
         TaskEnded: components["schemas"]["ChangeBase"] & {
             /** @constant */
@@ -3388,6 +3425,7 @@ export interface components {
             note?: string;
             /** @description What the agent did in it, in order. */
             actions?: components["schemas"]["AgentAction"][];
+            handover?: components["schemas"]["Handover"];
         };
         NewLabel: {
             /**
@@ -3950,7 +3988,13 @@ export interface components {
             agentSendsPerHourCap: components["schemas"]["AgentSendsPerHourCap"];
             agentNewRecipientsPerDayCap: components["schemas"]["AgentNewRecipientsPerDayCap"];
             undoWindowSeconds: components["schemas"]["UndoWindowSeconds"];
+            /** @description The model a mailbox agent answers its owner with in Ask Coo and over MCP, unless the decider finds a turn complex. Claude Haiku 4.5 by default. */
             mailboxAgentModel: components["schemas"]["MailboxAgentModel"];
+            /** @description The model that does the tasks labels' prompts give. Claude Haiku 4.5 by default. */
+            mailboxAgentTaskModel: components["schemas"]["MailboxAgentModel"];
+            /** @description The model for the harder work: writing mail that may be sent, a turn the decider finds complex, a run the everyday model hands over, and Think harder. Claude Sonnet 5.5 by default. */
+            mailboxAgentHarderModel: components["schemas"]["MailboxAgentModel"];
+            mailboxAgentDecider: components["schemas"]["MailboxAgentDecider"];
             mailboxAgentProfile: components["schemas"]["MailboxAgentProfile"];
             mailboxAgentRegion: components["schemas"]["MailboxAgentRegion"];
             mailboxAgentSpendCap: components["schemas"]["MailboxAgentSpendCap"];
@@ -3963,7 +4007,13 @@ export interface components {
             agentSendsPerHourCap?: components["schemas"]["AgentSendsPerHourCap"];
             agentNewRecipientsPerDayCap?: components["schemas"]["AgentNewRecipientsPerDayCap"];
             undoWindowSeconds?: components["schemas"]["UndoWindowSeconds"];
+            /** @description The model a mailbox agent answers its owner with in Ask Coo and over MCP, unless the decider finds a turn complex. Claude Haiku 4.5 by default. */
             mailboxAgentModel?: components["schemas"]["MailboxAgentModel"];
+            /** @description The model that does the tasks labels' prompts give. Claude Haiku 4.5 by default. */
+            mailboxAgentTaskModel?: components["schemas"]["MailboxAgentModel"];
+            /** @description The model for the harder work: writing mail that may be sent, a turn the decider finds complex, a run the everyday model hands over, and Think harder. Claude Sonnet 5.5 by default. */
+            mailboxAgentHarderModel?: components["schemas"]["MailboxAgentModel"];
+            mailboxAgentDecider?: components["schemas"]["MailboxAgentDecider"];
             mailboxAgentProfile?: components["schemas"]["MailboxAgentProfile"];
             mailboxAgentRegion?: components["schemas"]["MailboxAgentRegion"];
             mailboxAgentSpendCap?: components["schemas"]["MailboxAgentSpendCap"];
@@ -4003,6 +4053,28 @@ export interface components {
              * @enum {string}
              */
             outcome?: "answered" | "capReached" | "failed";
+            /** @description The model that ended the agent's turn. */
+            model?: components["schemas"]["MailboxAgentModel"];
+            decision?: components["schemas"]["RoutingDecision"];
+            handover?: components["schemas"]["Handover"];
+            /** @description Whether the agent's turn is the harder model's answer to the turn before, as you asked it to think harder. */
+            harder?: boolean;
+        };
+        /** @description What the decider, Amazon Nova Micro, made of a turn whose job doesn't settle the model: simple, the everyday model takes it, or complex, the harder model does, as it does when the decider is less than 0.7 sure. */
+        RoutingDecision: {
+            /** @enum {string} */
+            route: "simple" | "complex";
+            /** @description How sure the decider was, from 0 to 1. */
+            confidence: number;
+        };
+        /** @description Why a run went over to the harder model, with the work so far: decided, the decider found the turn complex or wasn't sure; writing, it came to writing mail that may be sent; failedCalls, Duva refused the everyday model's tool calls twice; stepBudget, the everyday model hadn't finished after 6 steps; askedForHelp, it asked for help, saying why; answerCheck, its answer didn't hold up, as when it named a thread or message nothing gave it. */
+        Handover: {
+            /** @enum {string} */
+            reason: "decided" | "writing" | "failedCalls" | "stepBudget" | "askedForHelp" | "answerCheck";
+            from: components["schemas"]["MailboxAgentModel"];
+            to: components["schemas"]["MailboxAgentModel"];
+            /** @description What the everyday model said when it asked for help. */
+            why?: string;
         };
         /** @description One call the mailbox agent made to Duva's API, as its tool. */
         AgentAction: {
@@ -4029,16 +4101,43 @@ export interface components {
             spent: number;
             cap: components["schemas"]["MailboxAgentSpendCap"];
         };
+        MailboxAgentRouting: {
+            /**
+             * @description The month counted, as YYYY-MM in UTC.
+             * @example 2026-10
+             */
+            month: string;
+            /** @description The agents' turns this month, think harder's reruns left out. Each is counted once: a turn its owner had the harder model think harder about counts as that, however it went first. */
+            turns: number;
+            /** @description Turns the everyday model took alone. */
+            everyday: number;
+            /** @description Turns the harder model took from the start, as the model admins chose for answering. */
+            harder: number;
+            /** @description Turns the decider sent to the harder model. */
+            decided: number;
+            /** @description Turns the everyday model handed over, by why. */
+            handedOver: {
+                writing: number;
+                failedCalls: number;
+                stepBudget: number;
+                askedForHelp: number;
+                answerCheck: number;
+            };
+            /** @description Turns whose owner had the harder model think harder. */
+            thoughtHarder: number;
+            /** @description Turns kept with their words' embedding. */
+            embedded: number;
+        };
         /**
-         * @description The Claude model on Amazon Bedrock the mailbox agents think with: Claude Sonnet 5.5, the default, Claude Haiku 4.5, which costs about a half as much, or Claude Opus 5.5, which costs about twice as much.
+         * @description A model on Amazon Bedrock the mailbox agents think with: Claude Sonnet 5.5, Claude Haiku 4.5, which costs about a half as much, Claude Opus 5.5, which costs about twice as much, or one of Amazon's Nova models, which cost from a sixth (Nova 2 Lite) to a fiftieth (Nova Lite) as much a task as Claude Sonnet 5.5 and need no AWS Marketplace agreement (docs/research/coo-models.md). Nova Pro and Nova Lite run through the eu or us profiles, or without one, and Nova 2 Lite through any. Each of the three models chosen must run through mailboxAgentProfile from mailboxAgentRegion.
          * @enum {string}
          */
-        MailboxAgentModel: "anthropic.claude-sonnet-5-5" | "anthropic.claude-haiku-4-5-20251001-v1:0" | "anthropic.claude-opus-5-5";
+        MailboxAgentModel: "anthropic.claude-sonnet-5-5" | "anthropic.claude-haiku-4-5-20251001-v1:0" | "anthropic.claude-opus-5-5" | "amazon.nova-2-lite-v1:0" | "amazon.nova-pro-v1:0" | "amazon.nova-lite-v1:0";
         /**
-         * @description The inference profile Bedrock runs the model through, which decides where the mail the agents read is processed: eu keeps it in the EU's AWS regions, us in the US's, and global sends it to any region with capacity, for about 10% less. eu by default for a deployment in the EU, us for one in the US, and global elsewhere. eu needs an EU mailboxAgentRegion, us a US one.
+         * @description The inference profile Bedrock runs the model through, which decides where the mail the agents read is processed: eu keeps it in the EU's AWS regions, us in the US's, and global sends it to any region with capacity, for about 10% less. none runs the model in mailboxAgentRegion itself, which keeps the mail there: Nova Lite runs so in eu-north-1, us-east-1, us-east-2 and us-west-2, and Nova Pro in us-east-1. eu by default for a deployment in the EU, us for one in the US, and global elsewhere. eu needs an EU mailboxAgentRegion, us a US one.
          * @enum {string}
          */
-        MailboxAgentProfile: "eu" | "us" | "global";
+        MailboxAgentProfile: "eu" | "us" | "global" | "none";
         /**
          * @description The AWS region the mailbox agents call Bedrock in, which the profile sends on from. eu-central-1 by default for a deployment in the EU, us-west-2 for one in the US.
          * @enum {string}
@@ -4051,6 +4150,8 @@ export interface components {
             /** @description How many threads in Trash and Spam are older than retentionDays now. */
             threads: number;
         };
+        /** @description Whether the decider, Amazon Nova Micro, settles the model for each turn in Ask Coo and over MCP first, sending one it finds complex to mailboxAgentHarderModel. Off by default: on Coo's tasks it was right on 4 of 10 (docs/research/coo-models.md). Either way a turn hands over to the harder model on evidence. */
+        MailboxAgentDecider: boolean;
         /** @description Whether erasing a thread also erases the approval records of the agents' sends in it: the draft its approver saw and any edit they made. Off by default, so the records stay as the account of what an agent sent and who approved it. Either way the mailbox's change feed keeps each decision and who made it. */
         ErasureErasesApprovals: boolean;
         /**
@@ -4395,6 +4496,28 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MailboxAgentSpend"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getMailboxAgentRouting: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The month's routing. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MailboxAgentRouting"];
                 };
             };
             401: components["responses"]["Unauthorized"];

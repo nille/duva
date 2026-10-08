@@ -2,17 +2,20 @@
 // contract asks, with GET /ping and POST /invocations. Each invocation is one run of a mailbox
 // agent, whose events it streams back as lines of JSON while the run goes.
 import { createServer, type Server } from "node:http";
-import { type Model, type RunPayload, runAgent } from "./agent-loop.ts";
-import { inferenceProfileId } from "./agent-models.ts";
+import { type Decider, type Model, type RunPayload, runAgent } from "./agent-loop.ts";
 import { agentCoreBrowser } from "./agentcore-browser.ts";
-import { bedrockModel } from "./bedrock-model.ts";
+import { bedrockDecider, bedrockModel } from "./bedrock-model.ts";
 import type { Browser } from "./browser.ts";
 import { environmentVariables } from "./infrastructure.ts";
 
-/** The runtime's server, asking the model the payload names, and unsubscribing in the browser, AgentCore Browser's that the stack names unless given. */
+/**
+ * The runtime's server, asking the models and the decider in the region and through the profile
+ * the payload names, and unsubscribing in the browser, AgentCore Browser's that the stack names unless given.
+ */
 export function createRuntimeServer(
-  modelFor: (payload: RunPayload) => Model = ({ model }) => bedrockModel({ region: model.region, modelId: inferenceProfileId(model.model, model.profile) }),
+  modelFor: (payload: RunPayload) => Model = ({ model }) => bedrockModel({ region: model.region, profile: model.profile }),
   browser: Browser | undefined = agentCoreBrowser(process.env[environmentVariables.unsubscribeBrowser] ?? ""),
+  deciderFor: (payload: RunPayload) => Decider = ({ model }) => bedrockDecider({ region: model.region }),
 ): Server {
   // AgentCore reads a busy runtime as one to keep running.
   let running = 0;
@@ -28,7 +31,7 @@ export function createRuntimeServer(
     outgoing.writeHead(200, { "content-type": "application/x-ndjson" });
     try {
       const payload = JSON.parse(Buffer.concat(chunks).toString()) as RunPayload;
-      for await (const event of runAgent(payload, { model: modelFor(payload), browser })) outgoing.write(`${JSON.stringify(event)}\n`);
+      for await (const event of runAgent(payload, { model: modelFor(payload), decider: deciderFor(payload), browser })) outgoing.write(`${JSON.stringify(event)}\n`);
     } catch (error) {
       console.error(error);
       outgoing.write(`${JSON.stringify({ type: "end", outcome: "failed" })}\n`);

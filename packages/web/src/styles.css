@@ -5996,6 +5996,27 @@ input[aria-invalid="true"] {
   color: var(--alert-ink);
 }
 
+/* A handover, or a turn thought harder about, is a quiet line above the steps, in the small type. */
+.ask-handover {
+  max-width: var(--measure);
+  margin: 0 0 var(--space-1);
+  color: var(--ink-3);
+  font-size: var(--text-sm);
+}
+
+.ask-again {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: var(--space-1) 0 0;
+}
+
+.ask-again-hint {
+  color: var(--ink-3);
+  font-size: var(--text-sm);
+}
+
 .ask-stopped {
   max-width: var(--measure);
   background: var(--field);

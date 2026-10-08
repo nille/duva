@@ -9,6 +9,7 @@ import { agentCoreRuntime } from "./agentcore.ts";
 import { createConversation, type PreparedTurn } from "./conversation.ts";
 import { required } from "./environment.ts";
 import { environmentVariables } from "./infrastructure.ts";
+import { titanEmbedder } from "./titan.ts";
 
 // How often the stream says it is alive while the agent runs, in milliseconds.
 const keepAlive = 20_000;
@@ -21,6 +22,7 @@ const conversation = createConversation({
   region: required("AWS_REGION"),
   apiUrl: Parameter!.Value!,
   runtime: agentCoreRuntime(required(environmentVariables.agentRuntime)),
+  embedder: titanEmbedder(),
 });
 
 // A turn comes through the function URL, or from the MCP Lambda, which invokes this one through IAM

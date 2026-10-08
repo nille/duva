@@ -110,7 +110,7 @@ async function withMailbox(options: DuvaOptions = {}) {
   return { duva, grace, params, agent, requests, receive, setDelivery, sheet, changes, attempts, graceId: me!.id };
 }
 
-test("when one-click isn't offered, the mailbox agent fills in the opt-out page with only the mailbox's address and an opt-out choice, and the sender's sheet says so", async () => {
+test("when one-click isn't offered, the mailbox agent fills in the opt-out page with the harder model, only the mailbox's address and an opt-out choice, and the sender's sheet says so", async () => {
   const { model, requests: asks } = scripted(...fillsInThePage);
   const { receive, setDelivery, requests, sheet, attempts, agent, graceId } = await withMailbox({ model });
   await receive(newsletter({ unsubscribe: "<https://lists.example.org/optout>" }));
@@ -128,8 +128,9 @@ test("when one-click isn't offered, the mailbox agent fills in the opt-out page 
     expect.objectContaining({ actor: graceId, outcome: "notOffered", reason: "noOneClick" }),
     expect.objectContaining({ actor: agent.id, address: "news@lists.example.org", method: "page", outcome: "unsubscribed", detail: "The page said you're unsubscribed." }),
   ]);
-  // It is given the page and the tools that act on it, nothing of Duva's.
+  // It is given the page and the tools that act on it, nothing of Duva's, and it is the harder model's work (ADR-0032).
   expect(asks[0]!.tools.map(({ name }) => name)).toEqual(["fillAddress", "choose", "click", "finish"]);
+  expect(new Set(asks.map(({ model: asked }) => asked))).toEqual(new Set(["anthropic.claude-sonnet-5-5"]));
   expect(asked(asks[0]!)).toContain('[1] field (email) "Your email"');
   expect(JSON.stringify(asks)).not.toContain("This week's news.");
 });

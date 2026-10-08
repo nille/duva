@@ -298,7 +298,7 @@ test("search may only read the search bucket, and only the indexer may write it"
   expect(writers).toEqual([]);
 });
 
-test("only search and the indexer call Bedrock, both to embed with Titan and search also to translate with Nova Lite, in the deployment's region", () => {
+test("only search, the indexer and the conversation Lambda call Bedrock, each to embed with Titan and search also to translate with Nova Lite, in the deployment's region", () => {
   const model = (id: string) => ({ "Fn::Join": ["", ["arn:", { Ref: "AWS::Partition" }, ":bedrock:", { Ref: "AWS::Region" }, `::foundation-model/${id}`]] });
   const onBedrock = (prefix: string) => statements(prefix).filter(({ Action }) => [Action].flat().some((action) => action.startsWith("bedrock:")));
   // Each Bedrock statement invokes models and nothing else, and these are all the models invoked.
@@ -310,9 +310,11 @@ test("only search and the indexer call Bedrock, both to embed with Titan and sea
   expect(invoked("SearchHandler")).toEqual(expect.arrayContaining([model(embeddingModel), model(translationModel)]));
   expect(invoked("SearchHandler")).toHaveLength(2);
   expect(invoked("IndexerHandler")).toEqual([model(embeddingModel)]);
+  // The conversation Lambda keeps each turn's routing with its words' embedding (ADR-0032).
+  expect(invoked("ConversationHandler")).toEqual([model(embeddingModel)]);
   const others = ofType("AWS::Lambda::Function")
     .map(([id]) => id)
-    .filter((id) => !id.startsWith("SearchHandler") && !id.startsWith("IndexerHandler") && onBedrock(id).length > 0);
+    .filter((id) => !["SearchHandler", "IndexerHandler", "ConversationHandler"].some((name) => id.startsWith(name)) && onBedrock(id).length > 0);
   expect(others).toEqual([]);
 });
 
@@ -999,24 +1001,32 @@ test("where AgentCore isn't, the stack leaves out the runtime and everything it 
   for (const id of [runtime[0], role]) expect((stack.template.Resources[id] as { Condition?: string }).Condition).toBe("MailboxAgentsCondition");
 });
 
-test("the mailbox agents may call only the Claude models admins can choose, through the profiles they can choose, in any region", () => {
+test("the mailbox agents may call only the models admins can choose, through the profiles each has in any region, or in the regions where they run without one, and the decider through the eu and us profiles", () => {
   const runtime = resources.find(([, { Type }]) => Type === "AWS::BedrockAgentCore::Runtime")!;
   const role = JSON.stringify((runtime[1].Properties?.RoleArn as { "Fn::GetAtt": string[] })["Fn::GetAtt"][0]);
   const onBedrock = ofType("AWS::IAM::Policy")
     .filter(([, { Properties }]) => (Properties?.Roles ?? []).some((ref: { Ref?: string }) => JSON.stringify(ref.Ref) === role))
     .flatMap(([, { Properties }]) => (Properties?.PolicyDocument?.Statement ?? []) as { Action: string | string[]; Resource: unknown; Condition?: unknown }[])
     .filter(({ Action }) => [Action].flat().some((action) => action.startsWith("bedrock:")));
-  const models = ["anthropic.claude-sonnet-5-5", "anthropic.claude-haiku-4-5-20251001-v1:0", "anthropic.claude-opus-5-5"];
-  const profiles = models.flatMap((model) =>
-    ["eu", "us", "global"].map((profile) => ({ "Fn::Join": ["", ["arn:", { Ref: "AWS::Partition" }, ":bedrock:*:", { Ref: "AWS::AccountId" }, `:inference-profile/${profile}.${model}`]] })),
-  );
+  const claude = ["anthropic.claude-sonnet-5-5", "anthropic.claude-haiku-4-5-20251001-v1:0", "anthropic.claude-opus-5-5"];
+  const models = [...claude, "amazon.nova-2-lite-v1:0", "amazon.nova-pro-v1:0", "amazon.nova-lite-v1:0", "amazon.nova-micro-v1:0"];
+  const profile = (id: string) => ({ "Fn::Join": ["", ["arn:", { Ref: "AWS::Partition" }, ":bedrock:*:", { Ref: "AWS::AccountId" }, `:inference-profile/${id}`]] });
+  const profiles = [
+    ...[...claude, "amazon.nova-2-lite-v1:0"].flatMap((model) => ["eu", "us", "global"].map((name) => profile(`${name}.${model}`))),
+    ...["amazon.nova-pro-v1:0", "amazon.nova-lite-v1:0", "amazon.nova-micro-v1:0"].flatMap((model) => ["eu", "us"].map((name) => profile(`${name}.${model}`))),
+  ];
   // IAM's order of a statement's resources means nothing, and CDK sorts them.
   const sorted = (values: unknown[]) => values.map((value) => JSON.stringify(value)).sort();
+  // Nova Lite runs without a profile in eu-north-1 and three US regions, and Nova Pro in us-east-1 (docs/research/coo-models.md).
+  const inRegion = [
+    "arn:aws:bedrock:us-east-1::foundation-model/amazon.nova-pro-v1:0",
+    ...["eu-north-1", "us-east-1", "us-east-2", "us-west-2"].map((region) => `arn:aws:bedrock:${region}::foundation-model/amazon.nova-lite-v1:0`),
+  ];
   expect(onBedrock).toHaveLength(2);
-  const [onProfiles, onModels] = onBedrock as { Effect: string; Action: string[]; Resource: unknown[]; Condition?: { StringLike: Record<string, unknown[]> } }[];
-  for (const statement of [onProfiles!, onModels!]) expect(statement).toMatchObject({ Effect: "Allow", Action: ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"] });
-  expect(sorted(onProfiles!.Resource)).toEqual(sorted(profiles));
-  expect(onProfiles!.Condition).toBeUndefined();
+  const [unconditioned, onModels] = onBedrock as { Effect: string; Action: string[]; Resource: unknown[]; Condition?: { StringLike: Record<string, unknown[]> } }[];
+  for (const statement of [unconditioned!, onModels!]) expect(statement).toMatchObject({ Effect: "Allow", Action: ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"] });
+  expect(sorted(unconditioned!.Resource)).toEqual(sorted([...profiles, ...inRegion]));
+  expect(unconditioned!.Condition).toBeUndefined();
   expect(sorted(onModels!.Resource)).toEqual(sorted(models.flatMap((model) => [`arn:aws:bedrock:*::foundation-model/${model}`, `arn:aws:bedrock:::foundation-model/${model}`])));
   expect(sorted(onModels!.Condition!.StringLike["bedrock:InferenceProfileArn"]!)).toEqual(sorted(profiles));
 });
@@ -1040,7 +1050,7 @@ test("Ask Coo posts to the web app's domain under /agent/, where CloudFront sign
   expect(access?.Properties?.OriginAccessControlConfig).toMatchObject({ OriginAccessControlOriginType: "lambda", SigningBehavior: "always" });
 });
 
-test("only the web app's distribution and, through IAM, the MCP Lambda may invoke the conversation Lambda, which may invoke the mailbox agents' runtime, stop its sessions and read the API's URL, and invoke no Lambda", () => {
+test("only the web app's distribution and, through IAM, the MCP Lambda may invoke the conversation Lambda, which may invoke the mailbox agents' runtime, stop its sessions, read the API's URL and embed with Titan, and invoke no Lambda", () => {
   const [conversationId] = lambda("ConversationHandler");
   const [urlId] = functionUrl(conversationId);
   const permissions = ofType("AWS::Lambda::Permission").filter(([, { Properties }]) =>
@@ -1053,7 +1063,7 @@ test("only the web app's distribution and, through IAM, the MCP Lambda may invok
   expect(actions("ConversationHandler", "bedrock-agentcore").sort()).toEqual(["bedrock-agentcore:InvokeAgentRuntime", "bedrock-agentcore:StopRuntimeSession"]);
   expect(actions("ConversationHandler", "ssm")).toEqual(["ssm:GetParameter"]);
   expect(actions("ConversationHandler", "lambda")).toEqual([]);
-  expect(actions("ConversationHandler", "bedrock")).toEqual([]);
+  expect(actions("ConversationHandler", "bedrock")).toEqual(["bedrock:InvokeModel"]);
   expect(lambda("ConversationHandler")[1].Properties?.Timeout).toBe(900);
 });
 

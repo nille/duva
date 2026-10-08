@@ -113,7 +113,7 @@ export async function tasksWorkingSince(table: Table, before: string): Promise<(
   return stuck;
 }
 
-const taskOf = ({ id, label, labelName, prompt, message, agent, state, givenAt, givenBy, startedAt, endedAt, note, actions }: Record<string, unknown>) =>
+const taskOf = ({ id, label, labelName, prompt, message, agent, state, givenAt, givenBy, startedAt, endedAt, note, actions, handover }: Record<string, unknown>) =>
   ({
     id,
     label,
@@ -128,6 +128,7 @@ const taskOf = ({ id, label, labelName, prompt, message, agent, state, givenAt, 
     ...(endedAt !== undefined && { endedAt }),
     ...(note !== undefined && { note }),
     ...(actions !== undefined && { actions }),
+    ...(handover !== undefined && { handover }),
   }) as Task;
 
 async function readTask(table: Table, ref: TaskRef): Promise<(Task & { thread: string }) | undefined> {
@@ -280,7 +281,7 @@ export function createTaskRunner({ table, region, apiUrl, fetch: call = fetch, r
 
   async function work(ref: TaskRef, task: Task, agent: Agent, mailbox: Mailbox, owner: string) {
     if (runtime === undefined) return fail(ref, task, agent, runtimeMissing(region));
-    const started = await startRun(table, { agent, mailbox, owner, region, apiUrl });
+    const started = await startRun(table, { agent, mailbox, owner, region, apiUrl, job: "task" });
     if ("refused" in started) return fail(ref, task, agent, started.refused);
     const { start, month, cap } = started;
     let threadUnreadable: string | undefined;
@@ -317,14 +318,15 @@ export function createTaskRunner({ table, region, apiUrl, fetch: call = fetch, r
       },
       month,
       cap,
+      about: { task: task.id, thread: ref.thread },
     });
     let next = await ran.next();
     while (!next.done) next = await ran.next();
-    const { text, actions, outcome } = next.value;
+    const { text, actions, outcome, handover } = next.value;
     if (threadUnreadable !== undefined) return fail(ref, task, agent, threadUnreadable);
     const note = text.trim().slice(0, longestNote);
     if (outcome === "answered") {
-      await moveTask(table, ref, task, { from: "working", to: "done", also: { note, actions } });
+      await moveTask(table, ref, task, { from: "working", to: "done", also: { note, actions, ...(handover && { handover }) } });
       return;
     }
     const why = outOfTime ? `It ran out of time, after ${longestRun / 60_000} minutes.` : outcome === "capReached" ? capRefusal(cap) : "The model or the runtime failed partway.";

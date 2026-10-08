@@ -8,7 +8,7 @@ import { startDuva } from "@duva/api/harness";
 import { expect, onTestFinished, test, vi } from "vitest";
 
 /** Where the mailbox agents call their model, and what they may spend, in a deployment in eu-north-1 until an admin chooses. */
-const mailboxAgentDefaults = { mailboxAgentModel: "anthropic.claude-sonnet-5-5", mailboxAgentProfile: "eu", mailboxAgentRegion: "eu-central-1", mailboxAgentSpendCap: 20 } as const;
+const mailboxAgentDefaults = { mailboxAgentModel: "anthropic.claude-haiku-4-5-20251001-v1:0", mailboxAgentTaskModel: "anthropic.claude-haiku-4-5-20251001-v1:0", mailboxAgentHarderModel: "anthropic.claude-sonnet-5-5", mailboxAgentDecider: false, mailboxAgentProfile: "eu", mailboxAgentRegion: "eu-central-1", mailboxAgentSpendCap: 20 } as const;
 
 test("deploy refuses a region where SES can't receive mail", async () => {
   const machine = await newMachine();

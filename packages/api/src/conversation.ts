@@ -3,7 +3,7 @@
 // checks the human, gives the run its token, runs the agent on AgentCore and streams what it says
 // and does back as it goes. The turns are kept in the human's partition, so they go with them.
 import { randomUUID } from "node:crypto";
-import { BatchWriteCommand, PutCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
+import { BatchWriteCommand, PutCommand, QueryCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import type { components, ConversationEvent } from "@duva/openapi";
 import type { AgentAction, RunPayload } from "./agent-loop.ts";
 import { type AgentRuntime, monthOf, noMailboxAgent, runMailboxAgent, runtimeMissing, spentIn, startRun } from "./agent-runs.ts";
@@ -11,7 +11,8 @@ import { actorNamed } from "./alerting.ts";
 import { type OperationHandler, refusal } from "./api.ts";
 import type { Table } from "./deployment.ts";
 import { mailboxAgentOf } from "./mailbox-agents.ts";
-import { type Actor, type Agent, findMailbox, type Human, isAdmin, type Mailbox, organizationSettings } from "./organization.ts";
+import { type Actor, type Agent, allHumans, findMailbox, type Human, isAdmin, type Mailbox, organizationSettings } from "./organization.ts";
+import type { Embedder } from "./titan.ts";
 import { tokenHeader } from "./infrastructure.ts";
 import { documents, pk, sk } from "./table.ts";
 
@@ -31,10 +32,14 @@ const turnPrefix = (mailbox: string) => `turn#${mailbox}#`;
 /** An answer to a turn: a refusal, or the stream of what happens. */
 export type TurnAnswer = { statusCode: number; body: { message: string } } | { statusCode: 200; events: AsyncIterable<ConversationEvent> };
 
-/** What a turn asks: the mailbox whose agent it asks, by ID, and the human's words. */
+/**
+ * What a turn asks: the mailbox whose agent it asks, by ID, and the human's words, or with
+ * `harder`, that the harder model answer the last turn again, as Think harder does.
+ */
 export interface TurnAsked {
   mailbox?: unknown;
   words?: unknown;
+  harder?: unknown;
 }
 
 /**
@@ -50,6 +55,8 @@ export interface PreparedTurn {
   month: string;
   /** The organization's spend cap on the mailbox agents, in US dollars. */
   cap: number;
+  /** Whether it answers the human's last turn again, with the harder model. */
+  harder?: boolean;
 }
 
 /**
@@ -58,35 +65,123 @@ export interface PreparedTurn {
  */
 export async function prepareTurn({ table, region, apiUrl, available }: { table: Table; region: string; apiUrl: string; available: boolean }, human: Human, asked: TurnAsked): Promise<PreparedTurn | { statusCode: number; body: { message: string } }> {
   if (!available) return refusal(503, runtimeMissing(region));
+  const harder = asked.harder === true;
   const words = typeof asked.words === "string" ? asked.words.trim() : "";
-  if (words === "" || words.length > longestWords) return refusal(400, `Ask Coo something, in at most ${longestWords} characters.`);
+  if (!harder && (words === "" || words.length > longestWords)) return refusal(400, `Ask Coo something, in at most ${longestWords} characters.`);
   const mailbox = typeof asked.mailbox === "string" ? await findMailbox(table, asked.mailbox) : undefined;
   if (mailbox === undefined || mailbox.owner !== human.id) return refusal(404, "That isn't one of your mailboxes. Ask the agent of one of yours.");
   const agent = await mailboxAgentOf(table, mailbox.id);
   if (agent === undefined) return refusal(404, noMailboxAgent);
   if (agent.paused !== undefined) return refusal(409, `Your mailbox agent is paused by ${await actorNamed(table, agent.paused.by)}. Unpause it in Settings to ask it.`);
-  const started = await startRun(table, { agent, mailbox, owner: human.email, region, apiUrl });
+  // Thinking harder answers the human's last turn again, with what came before it.
+  const turns = await turnsOf(table, human.id, mailbox.id, turnsRead + 2);
+  const asking = turns.findLastIndex(({ from }) => from === "human");
+  if (harder && (asking === -1 || turns.at(-1)!.from !== "agent")) return refusal(409, "There's no answer to think harder about. Ask Coo something first.");
+  const started = await startRun(table, { agent, mailbox, owner: human.email, region, apiUrl, job: harder ? "harder" : "conversation" });
   if ("refused" in started) return refusal(409, started.refused);
   const { start, month, cap } = started;
-  const history = await turnsOf(table, human.id, mailbox.id, turnsRead);
-  const turn = await addTurn(table, human, mailbox, { from: "human", text: words, actions: [] });
+  const history = (harder ? turns.slice(0, asking) : turns).slice(-turnsRead);
+  const turn = harder ? turns[asking]! : await addTurn(table, human, mailbox, { from: "human", text: words, actions: [] });
   const payload: Omit<RunPayload, "token"> = {
     ...start,
     history: history.map(({ from, text, actions }) => ({ from, text: from === "agent" && actions.length > 0 ? `${text}\n\n(${actionsRead(actions)})` : text })),
-    words,
+    words: turn.text,
   };
-  return { payload, turn, human, mailbox, agent, month, cap };
+  return { payload, turn, human, mailbox, agent, month, cap, ...(harder && { harder }) };
 }
 
-/** Runs the prepared turn on the runtime, saying what happens as it goes, and writes the agent's turn when it ends. */
-export async function* runTurn(table: Table, runtime: AgentRuntime, { payload, turn, human, mailbox, agent, month, cap }: PreparedTurn): AsyncGenerator<ConversationEvent> {
+/**
+ * Runs the prepared turn on the runtime, saying what happens as it goes, and writes the agent's
+ * turn when it ends, with the turn's routing, which it keeps with the words' embedding (#132).
+ */
+export async function* runTurn(table: Table, runtime: AgentRuntime, embedder: Embedder, { payload, turn, human, mailbox, agent, month, cap, harder }: PreparedTurn): AsyncGenerator<ConversationEvent> {
   yield { type: "turn", turn };
   const ran = runMailboxAgent(table, { agent, payload, runtime, month, cap });
   let next = await ran.next();
   for (; !next.done; next = await ran.next()) yield next.value;
-  const { text, actions, outcome } = next.value;
-  yield { type: "done", turn: await addTurn(table, human, mailbox, { from: "agent", text, actions, outcome }, turn.at) };
+  const { text, actions, outcome, model, decision, handover } = next.value;
+  const answer: Omit<ConversationTurn, "id" | "at"> = { from: "agent", text, actions, outcome, model, ...(decision && { decision }), ...(handover && { handover }), ...(harder && { harder }) };
+  yield { type: "done", turn: await addTurn(table, human, mailbox, answer, turn.at) };
+  await keepRouting(table, embedder, human, turn, { month, harder, decision, handover, alone: payload.model.model === payload.model.harder });
 }
+
+const routingKey = (human: string, turn: string) => ({ [pk]: `actor#${human}`, [sk]: `routing#${turn}` });
+
+/**
+ * Keeps how the human's turn was routed, labelled as a learned router will read it: the everyday
+ * model took it, the decider sent it on, the everyday model handed it over and why, the harder
+ * model took it as the one that answers, or its owner had the harder model think harder about it,
+ * with its words' Titan embedding. It is kept in the
+ * human's partition, so it goes with them, and nothing leaves the account (ADR-0002). A turn kept
+ * without its embedding, as when Titan fails, is still counted.
+ */
+async function keepRouting(
+  table: Table,
+  embedder: Embedder,
+  human: Human,
+  turn: ConversationTurn,
+  { month, harder, decision, handover, alone }: { month: string; harder?: boolean; decision?: ConversationTurn["decision"]; handover?: ConversationTurn["handover"]; alone: boolean },
+) {
+  if (harder) {
+    await documents(table).send(
+      new UpdateCommand({ TableName: table.name, Key: routingKey(human.id, turn.id), UpdateExpression: "SET thoughtHarder = :yes", ConditionExpression: "attribute_exists(#pk)", ExpressionAttributeNames: { "#pk": pk }, ExpressionAttributeValues: { ":yes": true } }),
+    ).catch((error: unknown) => console.error(error));
+    return;
+  }
+  const embedding = await embedder
+    .embed([turn.text])
+    .then(([vector]) => new Uint8Array(vector!.buffer, vector!.byteOffset, vector!.byteLength))
+    .catch((error: unknown) => void console.error(error));
+  // With the harder model also the one that answers, nothing was routed.
+  const label = handover?.reason ?? (alone ? "harder" : "everyday");
+  await documents(table).send(
+    new PutCommand({ TableName: table.name, Item: { ...routingKey(human.id, turn.id), at: turn.at, month, label, ...(decision && { decision }), ...(embedding && { embedding }) } }),
+  );
+}
+
+/** How many of the organization's turns the month's routing counts, by how they went. */
+async function routingIn(table: Table, month: string): Promise<components["schemas"]["MailboxAgentRouting"]> {
+  const routing: components["schemas"]["MailboxAgentRouting"] = {
+    month,
+    turns: 0,
+    everyday: 0,
+    harder: 0,
+    decided: 0,
+    handedOver: { writing: 0, failedCalls: 0, stepBudget: 0, askedForHelp: 0, answerCheck: 0 },
+    thoughtHarder: 0,
+    embedded: 0,
+  };
+  for (const human of await allHumans(table)) {
+    let after: Record<string, unknown> | undefined;
+    do {
+      const page = await documents(table).send(
+        new QueryCommand({
+          TableName: table.name,
+          KeyConditionExpression: `${pk} = :human AND begins_with(${sk}, :routing)`,
+          FilterExpression: "#month = :month",
+          ExpressionAttributeNames: { "#month": "month" },
+          ExpressionAttributeValues: { ":human": `actor#${human.id}`, ":routing": "routing#", ":month": month },
+          ProjectionExpression: "#month, label, thoughtHarder, embedding",
+          ExclusiveStartKey: after,
+        }),
+      );
+      for (const item of page.Items ?? []) {
+        routing.turns++;
+        if (item.embedding !== undefined) routing.embedded++;
+        if (item.thoughtHarder === true) routing.thoughtHarder++;
+        else if (item.label === "everyday" || item.label === "harder" || item.label === "decided") routing[item.label as "everyday" | "harder" | "decided"]++;
+        else routing.handedOver[item.label as keyof typeof routing.handedOver]++;
+      }
+      after = page.LastEvaluatedKey;
+    } while (after !== undefined);
+  }
+  return routing;
+}
+
+export const getMailboxAgentRouting: OperationHandler = async (_event, deployment, actor) => {
+  if (!isAdmin(actor)) return refusal(403, "Only admins can read how the mailbox agents' turns were routed. Ask an admin.");
+  return { statusCode: 200, body: await routingIn(deployment.table, monthOf(new Date())) };
+};
 
 /**
  * The conversation Lambda's logic. A turn is the human's access token in `x-duva-token` and a JSON
@@ -94,7 +189,21 @@ export async function* runTurn(table: Table, runtime: AgentRuntime, { payload, t
  * `fetch` reaches Duva's API. Where AgentCore isn't, there is no `runtime`, and every turn is refused.
  * `run` runs a turn prepared elsewhere, as the MCP endpoint prepares one.
  */
-export function createConversation({ table, region, apiUrl, fetch: call = fetch, runtime }: { table: Table; region: string; apiUrl: string; fetch?: (request: Request) => Promise<Response>; runtime: AgentRuntime | undefined }) {
+export function createConversation({
+  table,
+  region,
+  apiUrl,
+  fetch: call = fetch,
+  runtime,
+  embedder,
+}: {
+  table: Table;
+  region: string;
+  apiUrl: string;
+  fetch?: (request: Request) => Promise<Response>;
+  runtime: AgentRuntime | undefined;
+  embedder: Embedder;
+}) {
   return {
     async turn({ headers, body }: { headers: Record<string, string | undefined>; body: string }): Promise<TurnAnswer> {
       // The API's one authorizer says whom the token is, so the Lambda asks the API.
@@ -112,9 +221,9 @@ export function createConversation({ table, region, apiUrl, fetch: call = fetch,
       })();
       const prepared = await prepareTurn({ table, region, apiUrl, available: runtime !== undefined }, human, asked);
       if ("statusCode" in prepared) return prepared;
-      return { statusCode: 200, events: runTurn(table, runtime!, prepared) };
+      return { statusCode: 200, events: runTurn(table, runtime!, embedder, prepared) };
     },
-    run: (prepared: PreparedTurn) => runTurn(table, runtime!, prepared),
+    run: (prepared: PreparedTurn) => runTurn(table, runtime!, embedder, prepared),
   };
 }
 
@@ -143,7 +252,10 @@ export async function turnsOf(table: Table, human: string, mailbox: string, limi
       ConsistentRead: true,
     }),
   );
-  return Items.reverse().map(({ id, at, from, text, actions, outcome }) => ({ id, at, from, text, actions, ...(outcome !== undefined && { outcome }) }) as ConversationTurn);
+  return Items.reverse().map(
+    ({ id, at, from, text, actions, outcome, model, decision, handover, harder }) =>
+      ({ id, at, from, text, actions, ...(outcome !== undefined && { outcome }), ...(model !== undefined && { model }), ...(decision !== undefined && { decision }), ...(handover !== undefined && { handover }), ...(harder !== undefined && { harder }) }) as ConversationTurn,
+  );
 }
 
 /** The mailbox's mailbox agent and the conversation with it, if the actor owns the mailbox, or a refusal. */

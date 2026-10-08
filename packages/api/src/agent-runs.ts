@@ -3,12 +3,14 @@
 // model calls cost toward the organization's spend cap for the month.
 import { randomUUID } from "node:crypto";
 import { GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
-import type { AgentAction, RunEvent, RunPayload } from "./agent-loop.ts";
+import type { AgentAction, Decision, Handover, RunEvent, RunPayload } from "./agent-loop.ts";
+import { deciderModel, deciderProfile, type MailboxAgentModel } from "./agent-models.ts";
 import { costOf } from "./agent-models.ts";
 import { raiseAlert } from "./alerting.ts";
 import type { Table } from "./deployment.ts";
 import { sponsorAccessIn } from "./access.ts";
-import { type Agent, agentSettings, type Mailbox, organizationSettings } from "./organization.ts";
+import { type Agent, agentSettings, type Mailbox, mailboxFeed, organizationSettings } from "./organization.ts";
+import { recordChanges } from "./feed.ts";
 import { endRunToken, issueRunToken } from "./run-tokens.ts";
 import { documents, pk, sk } from "./table.ts";
 
@@ -43,6 +45,13 @@ export const runtimeMissing = (region: string) => `Mailbox agents run on Amazon 
 /** Why no run starts in a mailbox from before mailbox agents, until deploy's setup gives it one. */
 export const noMailboxAgent = "This mailbox has no mailbox agent yet. Ask an admin to run duva deploy, which gives every human's mailbox one.";
 
+/**
+ * The job a run does, which decides the model it starts with (ADR-0032): a conversation turn, with
+ * the everyday model unless the decider finds it complex, a label's task, with the task model, and
+ * with the harder model a turn its owner asked to think harder, or unsubscribing on a sender's page.
+ */
+export type Job = "conversation" | "task" | "harder" | "unsubscribe";
+
 /** What every run starts with, before what it is asked. */
 export type RunStart = Omit<RunPayload, "token" | "history" | "words" | "task" | "unsubscribe">;
 
@@ -53,7 +62,7 @@ export type RunStart = Omit<RunPayload, "token" | "history" | "words" | "task" |
  */
 export async function startRun(
   table: Table,
-  { agent, mailbox, owner, region, apiUrl }: { agent: Agent; mailbox: Mailbox; owner: string; region: string; apiUrl: string },
+  { agent, mailbox, owner, region, apiUrl, job }: { agent: Agent; mailbox: Mailbox; owner: string; region: string; apiUrl: string; job: Job },
 ): Promise<{ refused: string } | { start: RunStart; month: string; cap: number }> {
   const { settings: given } = await agentSettings(table, agent.id);
   const access = sponsorAccessIn(given, mailbox.id);
@@ -74,7 +83,13 @@ export async function startRun(
     owner,
     access,
     approval: given.approvalAsSponsor,
-    model: { model: settings.mailboxAgentModel, profile: settings.mailboxAgentProfile, region: settings.mailboxAgentRegion },
+    model: {
+      model: { conversation: settings.mailboxAgentModel, task: settings.mailboxAgentTaskModel, harder: settings.mailboxAgentHarderModel, unsubscribe: settings.mailboxAgentHarderModel }[job],
+      harder: settings.mailboxAgentHarderModel,
+      profile: settings.mailboxAgentProfile,
+      region: settings.mailboxAgentRegion,
+    },
+    ...(job === "conversation" && settings.mailboxAgentDecider && { decide: true }),
     budget: cap - spent,
     now: new Date().toISOString(),
   };
@@ -96,14 +111,17 @@ export function capReached(table: Table, agent: Agent, month: string, cap: numbe
  */
 export async function* runMailboxAgent(
   table: Table,
-  { agent, payload, runtime, month, cap }: { agent: Agent; payload: Omit<RunPayload, "token">; runtime: AgentRuntime; month: string; cap: number },
-): AsyncGenerator<Extract<RunEvent, { type: "text" | "action" }>, { text: string; actions: AgentAction[]; outcome: RunOutcome; verdict?: { unsubscribed: boolean; detail: string } }> {
+  { agent, payload, runtime, month, cap, about = {} }: { agent: Agent; payload: Omit<RunPayload, "token">; runtime: AgentRuntime; month: string; cap: number; about?: { task?: string; thread?: string } },
+): AsyncGenerator<Extract<RunEvent, { type: "text" | "action" | "handedOver" }>, RunEnd> {
   const token = await issueRunToken(table, agent.id);
   let text = "";
   const actions: AgentAction[] = [];
   let outcome: RunOutcome = "failed";
   let verdict: { unsubscribed: boolean; detail: string } | undefined;
   let total = 0;
+  let model = payload.model.model;
+  let decision: Decision | undefined;
+  let handover: Handover | undefined;
   try {
     for await (const event of runtime({ ...payload, token } as RunPayload, `${agent.id}-${randomUUID()}`)) {
       if (event.type === "text") {
@@ -112,9 +130,18 @@ export async function* runMailboxAgent(
       } else if (event.type === "action") {
         actions.push(event.action);
         yield event;
-      } else if (event.type === "usage") total = await addSpend(table, month, costOf(event, payload.model.model, payload.model.profile));
-      else if (event.type === "verdict") verdict = { unsubscribed: event.unsubscribed, detail: event.detail };
-      else outcome = event.outcome;
+      } else if (event.type === "usage") {
+        const profile = event.model === deciderModel ? deciderProfile(payload.model.region) : payload.model.profile;
+        total = await addSpend(table, month, costOf(event, event.model ?? payload.model.model, profile));
+      } else if (event.type === "verdict") verdict = { unsubscribed: event.unsubscribed, detail: event.detail };
+      else if (event.type === "decided") decision = event.decision;
+      else if (event.type === "handedOver") {
+        // Text said before the handover was the everyday model's, set aside with its step.
+        handover = event.handover;
+        model = handover.to;
+        await recordChanges(table, mailboxFeed(payload.mailbox), { by: agent.id, changes: [{ type: "agentHandedOver", agent: agent.id, handover, ...about }], items: [] });
+        yield event;
+      } else outcome = event.outcome;
     }
   } catch (error) {
     console.error(error);
@@ -123,5 +150,16 @@ export async function* runMailboxAgent(
     await endRunToken(table, token);
   }
   if (outcome === "capReached" || total >= cap) await capReached(table, agent, month, cap);
-  return { text, actions, outcome, ...(verdict !== undefined && { verdict }) };
+  return { text, actions, outcome, model, ...(verdict !== undefined && { verdict }), ...(decision !== undefined && { decision }), ...(handover !== undefined && { handover }) };
+}
+
+/** How a run ended: what it said and did, an unsubscribe's verdict, the model that ended it, and how it was routed. */
+export interface RunEnd {
+  text: string;
+  actions: AgentAction[];
+  outcome: RunOutcome;
+  verdict?: { unsubscribed: boolean; detail: string };
+  model: MailboxAgentModel;
+  decision?: Decision;
+  handover?: Handover;
 }

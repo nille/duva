@@ -45,8 +45,10 @@ async function withMailbox(options: DuvaOptions = {}) {
   const params = { path: { mailbox: mailbox!.id } };
   await linus.PATCH("/mailboxes/{mailbox}/screener", { params, body: { on: false } });
   const ask = (words: string, email = "linus@example.org", mailboxId = mailbox!.id) => duva.askAgent(email, { mailbox: mailboxId, words });
+  // With Claude Sonnet 5.5 for every job, nothing is routed, so a script runs as written.
+  const sonnetOnly = () => ada.PATCH("/organization/settings", { body: { mailboxAgentModel: "anthropic.claude-sonnet-5-5", mailboxAgentTaskModel: "anthropic.claude-sonnet-5-5" } });
   const agent = async () => (await linus.GET("/mailboxes/{mailbox}/agent", { params })).data!.agent;
-  return { duva, ada, linus, grace, linusId: linusActor!.id, graceId: graceActor!.id, mailbox: mailbox!, params, ask, agent };
+  return { duva, ada, linus, grace, linusId: linusActor!.id, graceId: graceActor!.id, mailbox: mailbox!, params, ask, agent, sonnetOnly };
 }
 
 const fromGrace = (subject: string, text: string, id = "report-1") =>
@@ -131,13 +133,37 @@ test("the mailbox agent answers from what its tools read in the mailbox, streami
   expect(events![2]).toEqual({ type: "action", action: { operation: "searchMailbox", what: expect.stringMatching(/^Search/), ok: true } });
   expect(events!.at(-1)).toEqual({
     type: "done",
-    turn: { id: expect.any(String), at: expect.any(String), from: "agent", text: "Let me look. You have 1 thread about the report.", actions: [expect.objectContaining({ operation: "searchMailbox" })], outcome: "answered" },
+    turn: {
+      id: expect.any(String),
+      at: expect.any(String),
+      from: "agent",
+      text: "Let me look. You have 1 thread about the report.",
+      actions: [expect.objectContaining({ operation: "searchMailbox" })],
+      outcome: "answered",
+      model: "anthropic.claude-haiku-4-5-20251001-v1:0",
+    },
   });
   // The model's tools are Duva's operations, in the agent's own mailbox.
   expect(requests[0]!.tools.map(({ name }) => name)).toContain("getThread");
   expect(requests[0]!.tools.find(({ name }) => name === "getThread")!.inputSchema.json).toEqual(expect.objectContaining({ required: ["thread"] }));
   expect(requests[0]!.system).toContain("linus@example.org's mailbox linus@example.com");
   void mailbox;
+});
+
+test("what a model writes between <thinking> and </thinking>, as Nova does, is neither streamed nor kept in the turn", async () => {
+  const { model, requests } = scripted(
+    () => [{ text: "<think" }, { text: "ing>I should search.</thi" }, { text: "nking>\n\n" }, use("searchMailbox", { q: "report" })],
+    () => [{ text: "<thinking>Nothing found.</thinking>\n\nYou have " }, { text: "no mail about it. <" }, { text: "3" }],
+  );
+  const { ask } = await withMailbox({ model });
+
+  const { events } = await ask("Is there anything about the report?");
+
+  const streamed = events!.flatMap((event) => (event.type === "text" ? [event.text] : [])).join("");
+  expect(streamed).toBe("You have no mail about it. <3");
+  expect(events!.at(-1)).toMatchObject({ type: "done", turn: { text: "You have no mail about it. <3", outcome: "answered" } });
+  // The model reads back what it wrote, its thinking included.
+  expect(requests[1]!.messages.at(-2)!.content[0]).toEqual({ text: "<thinking>I should search.</thinking>\n\n" });
 });
 
 test("what the mailbox agent does is attributed to it in the mailbox's change feed", async () => {
@@ -167,7 +193,8 @@ test("a reply the mailbox agent drafts and asks to send waits for its owner's ap
     (request) => [use("sendDraft", { draft: lastResult(request.messages).id })],
     () => [{ text: "I drafted a reply. It waits for your approval." }],
   );
-  const { duva, linus, ask, agent } = await withMailbox({ model });
+  const { duva, linus, ask, agent, sonnetOnly } = await withMailbox({ model });
+  await sonnetOnly();
   await duva.receive(fromGrace("The report", "Here is the quarterly report."), { to: ["linus@example.com"] });
 
   const { events } = await ask("Thank Grace for the report.");
@@ -193,7 +220,8 @@ test("a reply the mailbox agent drafts and asks to send waits for its owner's ap
 
 test("the mailbox agent can do only what its sponsor access lets it, and says Duva's refusal", async () => {
   const { model, requests } = scripted(() => [use("createDraft", { to: ["grace@example.org"], text: "Hello" })], () => [{ text: "I can't write drafts." }]);
-  const { linus, ask, agent } = await withMailbox({ model });
+  const { linus, ask, agent, sonnetOnly } = await withMailbox({ model });
+  await sonnetOnly();
   await linus.PATCH("/agents/{agent}/settings", { params: { path: { agent: (await agent()).id } }, body: { sponsorAccess: "read" } });
 
   const { events } = await ask("Write to Grace.");
@@ -254,7 +282,8 @@ test("the conversation keeps its turns, which the agent reads back, until its ow
     () => [{ text: "You said hello." }],
     () => [{ text: "We haven't talked." }],
   );
-  const { linus, params, ask } = await withMailbox({ model });
+  const { linus, params, ask, sonnetOnly } = await withMailbox({ model });
+  await sonnetOnly();
 
   await ask("Hello.");
   await ask("What did I say?");
@@ -283,7 +312,8 @@ test("a run stops at the organization's spend cap, with an alert to its sponsor,
     yield use("listLabels");
     yield { usage: { inputTokens: 250_000, outputTokens: 50_000 } };
   };
-  const { ada, linus, ask } = await withMailbox({ model: expensive });
+  const { ada, linus, ask, sonnetOnly } = await withMailbox({ model: expensive });
+  await sonnetOnly();
   await ada.PATCH("/organization/settings", { body: { mailboxAgentSpendCap: 2 } });
 
   const { events } = await ask("Keep going.");
@@ -308,10 +338,42 @@ test("admins choose the model, the profile and the region the mailbox agents cal
   const mismatched = await ada.PATCH("/organization/settings", { body: { mailboxAgentRegion: "us-west-2" } });
   const changed = await ada.PATCH("/organization/settings", { body: { mailboxAgentModel: "anthropic.claude-haiku-4-5-20251001-v1:0", mailboxAgentProfile: "global", mailboxAgentRegion: "us-west-2" } });
 
-  expect(before).toMatchObject({ mailboxAgentModel: "anthropic.claude-sonnet-5-5", mailboxAgentProfile: "eu", mailboxAgentRegion: "eu-central-1", mailboxAgentSpendCap: 20 });
+  expect(before).toMatchObject({
+    mailboxAgentModel: "anthropic.claude-haiku-4-5-20251001-v1:0",
+    mailboxAgentTaskModel: "anthropic.claude-haiku-4-5-20251001-v1:0",
+    mailboxAgentHarderModel: "anthropic.claude-sonnet-5-5",
+    mailboxAgentDecider: false,
+    mailboxAgentProfile: "eu",
+    mailboxAgentRegion: "eu-central-1",
+    mailboxAgentSpendCap: 20,
+  });
   expect(mismatched.response.status).toBe(400);
   expect((mismatched.error as { message: string }).message).toBe("The eu profile runs only from an EU region, and us-west-2 isn't one. Give mailboxAgentRegion as one, or mailboxAgentProfile as global.");
   expect(changed.data).toMatchObject({ mailboxAgentModel: "anthropic.claude-haiku-4-5-20251001-v1:0", mailboxAgentProfile: "global", mailboxAgentRegion: "us-west-2" });
+});
+
+test("admins may choose Amazon's Nova models, each through the profiles it has, and Nova Lite in eu-north-1 itself without one", async () => {
+  const { ada } = await withMailbox();
+  const choose = (body: { mailboxAgentModel?: string; mailboxAgentTaskModel?: string; mailboxAgentHarderModel?: string; mailboxAgentProfile?: string; mailboxAgentRegion?: string }) => ada.PATCH("/organization/settings", { body: body as never });
+
+  const novaTwo = await choose({ mailboxAgentModel: "amazon.nova-2-lite-v1:0", mailboxAgentProfile: "global", mailboxAgentRegion: "eu-north-1" });
+  const liteGlobal = await choose({ mailboxAgentModel: "amazon.nova-lite-v1:0" });
+  const harderHere = await choose({ mailboxAgentModel: "amazon.nova-lite-v1:0", mailboxAgentProfile: "none" });
+  const liteHere = await choose({ mailboxAgentModel: "amazon.nova-lite-v1:0", mailboxAgentTaskModel: "amazon.nova-lite-v1:0", mailboxAgentHarderModel: "amazon.nova-lite-v1:0", mailboxAgentProfile: "none" });
+  const proHere = await choose({ mailboxAgentModel: "amazon.nova-pro-v1:0" });
+  const claudeHere = await choose({ mailboxAgentModel: "anthropic.claude-haiku-4-5-20251001-v1:0" });
+  const pro = await choose({ mailboxAgentModel: "amazon.nova-pro-v1:0", mailboxAgentProfile: "eu" });
+
+  expect(novaTwo.data).toMatchObject({ mailboxAgentModel: "amazon.nova-2-lite-v1:0", mailboxAgentProfile: "global", mailboxAgentRegion: "eu-north-1" });
+  expect((liteGlobal.error as { message: string }).message).toBe("Amazon Nova Lite runs only through the eu or us profile, or with none. Give mailboxAgentProfile as one of those.");
+  // Each job's model must run through the profile, Claude Haiku 4.5 for tasks among them.
+  expect((harderHere.error as { message: string }).message).toBe("Claude Haiku 4.5 runs only through the eu, us or global profile. Give mailboxAgentProfile as one of those.");
+  expect(liteHere.data).toMatchObject({ mailboxAgentModel: "amazon.nova-lite-v1:0", mailboxAgentProfile: "none", mailboxAgentRegion: "eu-north-1" });
+  expect((proHere.error as { message: string }).message).toBe(
+    "Amazon Nova Pro runs without a profile only in us-east-1, and not in eu-north-1. Give mailboxAgentRegion as one of them, or mailboxAgentProfile as a profile.",
+  );
+  expect((claudeHere.error as { message: string }).message).toBe("Claude Haiku 4.5 runs only through the eu, us or global profile. Give mailboxAgentProfile as one of those.");
+  expect(pro.data).toMatchObject({ mailboxAgentModel: "amazon.nova-pro-v1:0", mailboxAgentProfile: "eu", mailboxAgentRegion: "eu-north-1" });
 });
 
 test("a deployment in the US has its mailbox agents call the model in the US, through us-west-2", async () => {

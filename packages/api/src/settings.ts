@@ -4,13 +4,19 @@ import { jsonBody, type OperationHandler, refusal } from "./api.ts";
 import { threadsPastRetention } from "./erasure.ts";
 import { indexMailboxes } from "./indexing.ts";
 import { type Language, languages } from "./languages.ts";
-import { type MailboxAgentModel, mailboxAgentModels, type MailboxAgentProfile, mailboxAgentProfiles, type MailboxAgentRegion, mailboxAgentRegions, profileRunsIn } from "./agent-models.ts";
+import { type MailboxAgentModel, mailboxAgentModels, type MailboxAgentProfile, mailboxAgentProfiles, type MailboxAgentRegion, mailboxAgentRegions, wontRun } from "./agent-models.ts";
 import { changeSettings, defaultSettings, isAdmin, lowerLimitsToCaps, organizationSettings, type OrganizationSettings } from "./organization.ts";
 
 /** Whether the value is a send limit or a cap on one: a whole number from 1 to 10,000. */
 export const isLimit = (value: unknown): value is number => Number.isInteger(value) && (value as number) >= 1 && (value as number) <= 10_000;
 
 /** Which values each setting takes, and what refuses one it doesn't. */
+/** A setting that takes one of the models admins can choose. */
+const aModel = (name: string) => ({
+  takes: (value: unknown): value is MailboxAgentModel => typeof value === "string" && value in mailboxAgentModels,
+  refusal: `Give ${name} as one of ${Object.keys(mailboxAgentModels).join(", ")}.`,
+});
+
 const values: { [Name in keyof OrganizationSettings]: { takes: (value: unknown) => value is OrganizationSettings[Name]; refusal: string } } = {
   erasureErasesApprovals: {
     takes: (value) => typeof value === "boolean",
@@ -30,13 +36,16 @@ const values: { [Name in keyof OrganizationSettings]: { takes: (value: unknown) 
     takes: (value): value is number => Number.isInteger(value) && (value as number) >= 0 && (value as number) <= 120,
     refusal: "Give undoWindowSeconds as a whole number of seconds from 0 to 120.",
   },
-  mailboxAgentModel: {
-    takes: (value): value is MailboxAgentModel => typeof value === "string" && value in mailboxAgentModels,
-    refusal: `Give mailboxAgentModel as one of ${Object.keys(mailboxAgentModels).join(", ")}.`,
+  mailboxAgentModel: aModel("mailboxAgentModel"),
+  mailboxAgentTaskModel: aModel("mailboxAgentTaskModel"),
+  mailboxAgentHarderModel: aModel("mailboxAgentHarderModel"),
+  mailboxAgentDecider: {
+    takes: (value): value is boolean => typeof value === "boolean",
+    refusal: "Give mailboxAgentDecider as true to turn the decider on, or false to turn it off.",
   },
   mailboxAgentProfile: {
     takes: (value): value is MailboxAgentProfile => mailboxAgentProfiles.includes(value as MailboxAgentProfile),
-    refusal: `Give mailboxAgentProfile as ${mailboxAgentProfiles.join(", ")}.`,
+    refusal: `Give mailboxAgentProfile as one of ${mailboxAgentProfiles.join(", ")}.`,
   },
   mailboxAgentRegion: {
     takes: (value): value is MailboxAgentRegion => mailboxAgentRegions.includes(value as MailboxAgentRegion),
@@ -66,9 +75,9 @@ export const changeOrganizationSettings: OperationHandler = async (event, deploy
   const { settings: current } = await organizationSettings(deployment.table, deployment.region);
   const profile = changes.mailboxAgentProfile ?? current.mailboxAgentProfile;
   const region = changes.mailboxAgentRegion ?? current.mailboxAgentRegion;
-  if (!profileRunsIn(profile, region)) {
-    return refusal(400, `The ${profile} profile runs only from ${profile === "eu" ? "an EU" : "a US"} region, and ${region} isn't one. Give mailboxAgentRegion as one, or mailboxAgentProfile as global.`);
-  }
+  const models = [changes.mailboxAgentModel ?? current.mailboxAgentModel, changes.mailboxAgentTaskModel ?? current.mailboxAgentTaskModel, changes.mailboxAgentHarderModel ?? current.mailboxAgentHarderModel];
+  const unrunnable = [...new Set(models)].map((model) => wontRun(model, profile, region)).find((why) => why !== undefined);
+  if (unrunnable !== undefined) return refusal(400, unrunnable);
   // Kept in one order, so a list is the same list however it was given.
   if (changes.searchLanguages !== undefined) changes.searchLanguages = languages.filter((language) => changes.searchLanguages!.includes(language));
   const settings = await changeSettings(deployment.table, { by: actor!.id, changes, region: deployment.region });

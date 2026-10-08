@@ -285,6 +285,26 @@ export const strings = {
     hint: "Enter asks, Shift+Enter starts a new line.",
     thinking: "Working…",
     working: "Coo is working",
+    harder: "Think harder",
+    harderHint: "Asks the harder model to answer this again.",
+    thoughtHarder: (model: string) => `${model} thought harder about this.`,
+    handedOver: (model: string, why: string, said?: string) => `${model} took this over, since ${why}${said === undefined ? "." : `: “${said}”`}`,
+    handoverWhy: {
+      decided: "it looked like more than a quick question",
+      writing: "it came to writing mail that may be sent",
+      failedCalls: "Duva refused two of the first model's steps",
+      stepBudget: "the first model hadn't finished after 6 steps",
+      askedForHelp: "the first model asked for help",
+      answerCheck: "the first model's answer didn't hold up",
+    } as const,
+    models: {
+      "anthropic.claude-sonnet-5-5": "Claude Sonnet 5.5",
+      "anthropic.claude-haiku-4-5-20251001-v1:0": "Claude Haiku 4.5",
+      "anthropic.claude-opus-5-5": "Claude Opus 5.5",
+      "amazon.nova-2-lite-v1:0": "Amazon Nova 2 Lite",
+      "amazon.nova-pro-v1:0": "Amazon Nova Pro",
+      "amazon.nova-lite-v1:0": "Amazon Nova Lite",
+    } as const,
     answered: "Coo answered",
     steps: "What it did",
     open: {
@@ -673,31 +693,39 @@ export const strings = {
       title: "Mailbox agents",
       lead: "Every human's mailbox has a mailbox agent Duva runs, which its owner asks in Ask Coo. Admins choose the model it thinks with, where the mail it reads is processed, and what all of them may spend.",
       model: {
-        legend: "Model",
-        lead: "Claude on Amazon Bedrock, paid per word it reads and writes.",
-        names: {
-          "anthropic.claude-sonnet-5-5": "Claude Sonnet 5.5",
-          "anthropic.claude-haiku-4-5-20251001-v1:0": "Claude Haiku 4.5",
-          "anthropic.claude-opus-5-5": "Claude Opus 5.5",
+        legend: "Models",
+        lead: "Models on Amazon Bedrock, paid per word they read and write. A cheap model does the everyday work, and hands a turn to the harder model when it comes to writing mail that may be sent, gets stuck, or asks for help.",
+        jobs: {
+          mailboxAgentModel: "Answering in Ask Coo",
+          mailboxAgentTaskModel: "Tasks from labels' prompts",
+          mailboxAgentHarderModel: "The harder work",
         },
+        decider: "Ask the decider first",
+        deciderHint: "Amazon Nova Micro judges each question first, and sends one it finds complex straight to the harder model. Off, a question goes there only on evidence.",
         hints: {
-          "anthropic.claude-sonnet-5-5": "Capable and quick. The default.",
-          "anthropic.claude-haiku-4-5-20251001-v1:0": "Quicker, at about half the price, for simple questions.",
-          "anthropic.claude-opus-5-5": "The most capable, at about twice the price.",
+          "amazon.nova-2-lite-v1:0": "Quick and cheap, about a sixth of Claude Sonnet's price, but it guesses and writes poorly. Runs in the EU, the US or any region.",
+          "anthropic.claude-sonnet-5-5": "Capable and careful. The default for the harder work. Runs in the EU, the US or any region.",
+          "anthropic.claude-haiku-4-5-20251001-v1:0": "Nearly as good on everyday work, at about half of Claude Sonnet's price. The default for answering and tasks. Runs in the EU, the US or any region.",
+          "anthropic.claude-opus-5-5": "The most capable, at about twice Claude Sonnet's price. Runs in the EU, the US or any region.",
+          "amazon.nova-pro-v1:0": "At about a third of Claude Sonnet's price. Runs in the EU or the US, or in us-east-1 itself.",
+          "amazon.nova-lite-v1:0": "The cheapest, but weak with tools. Runs in the EU or the US, or in eu-north-1 itself.",
         },
       },
       where: {
         legend: "Where mail is processed",
         lead: "What a mailbox agent reads of the mail goes to the model in these AWS regions. The mail itself stays where Duva keeps it.",
-        names: { eu: "In the EU", us: "In the US", global: "In any region" },
+        names: { eu: "In the EU", us: "In the US", global: "In any region", none: "In the region Duva calls" },
         hints: {
           eu: "Bedrock keeps the mail in the EU's AWS regions.",
           us: "Bedrock keeps the mail in the US's AWS regions.",
           global: "Bedrock sends it to any region with room, for about 10% less.",
+          none: "Bedrock keeps the mail in the region Duva calls it in. Only Nova Lite and Nova Pro run so.",
         },
         region: "Called from",
         regionHint: "The region Duva calls Bedrock in, which the choice above sends on from.",
         mismatch: (profile: string) => `Choose ${profile === "eu" ? "an EU" : "a US"} region for that, or In any region.`,
+        noProfile: (model: string) => `${model} doesn't run that way. Choose another place, or another model.`,
+        notHere: (model: string, regions: string[]) => `${model} runs in the region Duva calls only from ${regions.join(", ")}. Choose one of those, or another place.`,
       },
       cap: {
         legend: "Spend cap",
@@ -1610,6 +1638,8 @@ function entrySaid(change: ActivityChange, who: string, agent: string, message?:
       return [who, who === "Duva" ? `, filing a sender's mail under a label with a prompt, gave ${agent} a task.` : ` added a label with a prompt, which gave ${agent} a task.`];
     case "taskStarted":
       return [who, ` started a task.`];
+    case "agentHandedOver":
+      return [who, ` handed ${change.task === undefined ? "a turn" : "a task"} to ${strings.ask.models[change.handover.to]}, since ${strings.ask.handoverWhy[change.handover.reason]}.`];
     case "taskEnded":
       if (change.outcome === "done") return change.note === undefined ? [who, ` finished a task.`] : [who, ` finished a task: “${change.note}”`];
       return change.note === undefined ? [who, ` couldn't finish a task.`] : [who, ` couldn't finish a task: “${change.note}”`];

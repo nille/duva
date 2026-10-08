@@ -21,12 +21,26 @@ An actor that is software. Any human can create one, or approve one's access req
 _Avoid_: bot, assistant
 
 **Mailbox agent**:
-The agent Duva itself runs for each human's personal mailbox, created with the mailbox, with its owner as its sponsor. Every mailbox agent is named Coo, which its owner can't change, and the web app draws it as Coo too, a pigeon, where any other agent has the diamond. It works only in that mailbox, with the sponsor access its owner gives it, by default up to asking to send, each send waiting for their approval and carrying the disclosure's line. Its owner asks it in Ask Coo or through the MCP endpoint, and it acts through Duva's API as itself, so all it does is attributed to it, and it obeys pause, send limits and alerts as any agent does. It has no key: each run gets a token of its own. Admins choose the model it thinks with, where the mail it reads is processed, and what all mailbox agents may spend a month (ADR-0027).
+The agent Duva itself runs for each human's personal mailbox, created with the mailbox, with its owner as its sponsor. Every mailbox agent is named Coo, which its owner can't change, and the web app draws it as Coo too, a pigeon, where any other agent has the diamond. It works only in that mailbox, with the sponsor access its owner gives it, by default up to asking to send, each send waiting for their approval and carrying the disclosure's line. Its owner asks it in Ask Coo or through the MCP endpoint, and it acts through Duva's API as itself, so all it does is attributed to it, and it obeys pause, send limits and alerts as any agent does. It has no key: each run gets a token of its own. Admins choose the models it thinks with, one for each job, where the mail it reads is processed, and what all mailbox agents may spend a month (ADR-0027, ADR-0032).
 _Avoid_: assistant, bot, copilot
 
 **Coo**:
 The name of every mailbox agent, after the sound a duva, Swedish for dove, makes. In the web app Coo sits in its nest at the side column's head, where Duva's wordmark was: it bobs its head while it works, and says, in a bubble under the nest, when there's news worth a glance, unless its human turned Coo speaks up off.
 _Avoid_: the bot, the assistant
+
+**Harder model**:
+The model a mailbox agent's harder work goes to: writing mail that may be sent, unsubscribing on a sender's page, a turn the decider finds complex, a run the everyday model hands over, and Think harder. Claude Sonnet 5.5 by default, where the everyday model is Claude Haiku 4.5 (ADR-0032).
+
+**Handover**:
+A run going over from the everyday model to the harder one, with the work so far, and why: decided, writing, failed calls, step budget, asked for help, or an answer that didn't hold up. The turn or the task, and the agent's activity, show it (ADR-0032).
+_Avoid_: escalation, fallback
+
+**Decider**:
+The one call to Amazon Nova Micro that settles whether a turn of Ask Coo is simple, for the everyday model, or complex, for the harder model, with its confidence. Off unless an admin turns it on (ADR-0032). A router that learns from the routing Duva keeps would be a later layer, not the decider.
+_Avoid_: classifier
+
+**Think harder**:
+Asking the harder model to answer a human's last turn of Ask Coo again. Its answer is a new turn, and the turn's routing is kept as thought harder (ADR-0032).
 
 **Ask Coo**:
 A human's conversation with Coo, the mailbox agent of one of their mailboxes, in the web app's reading pane. Each thing they ask, and each answer, is a turn; the agent's turns say what it did, with links to the threads and drafts it touched. The agent reads back the last turns, until the human starts over. A thread of mail is never called a conversation.

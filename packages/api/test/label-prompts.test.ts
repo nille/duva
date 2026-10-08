@@ -325,8 +325,8 @@ test("a task works within the mailbox agent's sponsor access, and fails with an 
 
 test("a task given at the spend cap fails, with an alert to its sponsor, and so does one whose run fails", async () => {
   const { model } = scripted(
-    // The first task's run costs more than $1.
-    () => [{ text: "Working on it. " }, { usage: { inputTokens: 500_000, outputTokens: 0 } }],
+    // The first task's run costs more than $1 at Claude Haiku 4.5's EU price.
+    () => [{ text: "Working on it. " }, { usage: { inputTokens: 3_000_000, outputTokens: 0 } }],
     () => {
       throw new Error("Bedrock is down.");
     },

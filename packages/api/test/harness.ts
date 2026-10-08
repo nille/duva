@@ -41,7 +41,7 @@ import { keys, timeEarlierLabels } from "../src/mail.ts";
 import { addHumanToOrganization, addMailbox, screenerKey, settingsKey, setUpOrganization } from "../src/organization.ts";
 import type { SendEvent } from "../src/limits.ts";
 import { setUpDeliveries, setUpScreeners } from "../src/screening.ts";
-import { type Model, runAgent } from "../src/agent-loop.ts";
+import { type Decider, type Model, runAgent } from "../src/agent-loop.ts";
 import { type AgentRuntime, type ConversationEvent, createConversation, type PreparedTurn } from "../src/conversation.ts";
 import { createTaskGiver, createTaskRunner, type TaskRef, type TaskRunner, type TaskRunnerEvent } from "../src/tasks.ts";
 import { createUnsubscribeRunner } from "../src/unsubscribe-runs.ts";
@@ -141,6 +141,11 @@ export interface DuvaOptions {
    * test scripts it, from what it is asked. Unless given, it answers every turn with "Stand-in answer."
    */
   model?: Model;
+  /**
+   * The decider the mailbox agents ask whether a conversation turn is simple, in place of Nova
+   * Micro on Bedrock. Unless given, it finds every turn simple, and is sure.
+   */
+  decider?: Decider;
   /**
    * Whether the task runner runs the tasks labels' prompts give only at releaseTasks(), as when
    * Lambda falls behind, so they wait until then.
@@ -262,9 +267,11 @@ export interface Duva {
   /**
    * Posts a turn of Ask Coo to the conversation Lambda as the web app does, through
    * CloudFront, as the human at `email`, unless `token` gives their access token, and reads all it
-   * streams back. Each of the agent's runs on AgentCore asks the `model` option's stand-in.
+   * streams back. Each of the agent's runs on AgentCore asks the `model` option's stand-in, and
+   * the `decider` option's whether the turn is simple. With `harder`, it asks the harder model to
+   * answer the last turn again, as Think harder does.
    */
-  askAgent(email: string, turn: { mailbox: string; words: string }, options?: { token?: string }): Promise<{ status: number; events?: ConversationEvent[]; body?: { message: string } }>;
+  askAgent(email: string, turn: { mailbox: string; words?: string; harder?: boolean }, options?: { token?: string }): Promise<{ status: number; events?: ConversationEvent[]; body?: { message: string } }>;
   /** Lets the task runner run the tasks it held when tasksHeld, and waits until they are done or wait for an unpause. */
   releaseTasks(): Promise<void>;
   /**
@@ -304,6 +311,7 @@ export async function startDuva({
   beforeMailboxAgents = false,
   beforeCoo = false,
   model = standInModel,
+  decider = standInDecider,
   tasksHeld = false,
 }: DuvaOptions = {}): Promise<Duva> {
   const { table, streamArn, database } = await createTable();
@@ -492,10 +500,10 @@ export async function startDuva({
   // It unsubscribes in AgentCore Browser, a stand-in here over the stand-in internet.
   const browser = standInBrowser(internet.network);
   const runtime: AgentRuntime = async function* (payload) {
-    for await (const event of runAgent(JSON.parse(JSON.stringify(payload)), { model, fetch: api, browser: browser.start })) yield JSON.parse(JSON.stringify(event));
+    for await (const event of runAgent(JSON.parse(JSON.stringify(payload)), { model, decider, fetch: api, browser: browser.start })) yield JSON.parse(JSON.stringify(event));
   };
   // The conversation Lambda, which runs each turn on AgentCore.
-  const conversation = createConversation({ table, region, apiUrl: inProcess, fetch: api, runtime });
+  const conversation = createConversation({ table, region, apiUrl: inProcess, fetch: api, runtime, embedder: titan });
   // The task runner, which Lambda invokes asynchronously with each task handed to it, one at a time.
   const runTask = createTaskRunner({ table, region, apiUrl: inProcess, fetch: api, runtime });
   const unsubscribe = createUnsubscribeRunner({ table, region, apiUrl: inProcess, runtime, bounces: ses.bounces });
@@ -842,6 +850,9 @@ const standInModel: Model = async function* () {
   yield { text: "Stand-in answer." };
   yield { usage: { inputTokens: 1000, outputTokens: 10 } };
 };
+
+/** The decider mailbox agents ask unless a test gives one: every turn is simple, for sure. */
+const standInDecider: Decider = async () => ({ route: "simple", confidence: 1, inputTokens: 500, outputTokens: 20 });
 
 /** Removes what a version from before mailbox agents didn't write: each mailbox agent, with its settings and its listing. */
 async function forgetMailboxAgents(table: Table) {

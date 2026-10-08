@@ -1,7 +1,9 @@
 // Ask Coo, in the reading pane: the human's conversation with Coo, the mailbox agent of one of
 // their mailboxes (ADR-0027). Each turn goes to the conversation Lambda on the web app's own domain,
 // which streams back what the agent says as it writes it, and each thing it does as it does it, with
-// links to the threads and drafts it touched. A send it asks for waits in Approvals.
+// links to the threads and drafts it touched. A send it asks for waits in Approvals. When the
+// everyday model hands a turn to the harder one, the turn says so and why, and its last answer can
+// be asked again of the harder model, to think harder (#132).
 import { type FormEvent, type KeyboardEvent, useCallback, useEffect, useId, useRef, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components, ConversationEvent } from "@duva/openapi";
@@ -20,10 +22,11 @@ type Settings = components["schemas"]["AgentSettings"];
 
 type Read = { status: "loading" } | { status: "failed" } | { status: "read"; agent: Agent; settings?: Settings; turns: Turn[] };
 
-/** The agent's turn while it is under way: what it said and did so far. */
+/** The agent's turn while it is under way: what it said and did so far, and the handover, if any. */
 interface Running {
   text: string;
   actions: Action[];
+  handover?: components["schemas"]["Handover"];
 }
 
 const copy = strings.ask;
@@ -85,22 +88,27 @@ export function AskAgent({
     end.current?.scrollIntoView({ block: "end" });
   }, [turnCount, running?.text, running?.actions.length]);
 
-  const add = (turn: Turn) => setRead((current) => (current.status === "read" ? { ...current, turns: [...current.turns.filter(({ id }) => id !== turn.id), turn] } : current));
+  // A turn already shown, as the one thinking harder answers again, keeps its place.
+  const add = (turn: Turn) =>
+    setRead((current) =>
+      current.status !== "read" ? current : { ...current, turns: current.turns.some(({ id }) => id === turn.id) ? current.turns.map((each) => (each.id === turn.id ? turn : each)) : [...current.turns, turn] },
+    );
 
-  async function ask(asked: string) {
-    if (asked === "" || running !== undefined) return;
+  /** Asks the agent the words, or with `harder`, the harder model to answer the last turn again. */
+  async function ask(asked: string, { harder = false } = {}) {
+    if ((asked === "" && !harder) || running !== undefined) return;
     setRefused(undefined);
-    setWords("");
+    if (!harder) setWords("");
     setRunning({ text: "", actions: [] });
     setAnnounced(copy.working);
     onAsking?.(true);
     try {
-      const response = await postTurn(config, { mailbox: mailbox.id, words: asked });
+      const response = await postTurn(config, harder ? { mailbox: mailbox.id, harder } : { mailbox: mailbox.id, words: asked });
       if (response === undefined || response.status === 401) return onSignedOut();
       if (!response.ok || response.body === null) {
         const { message } = (await response.json().catch(() => ({}))) as { message?: string };
         setRefused(message ?? copy.failed);
-        setWords(asked);
+        if (!harder) setWords(asked);
         return;
       }
       const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
@@ -118,6 +126,7 @@ export function AskAgent({
           if (event.type === "turn") add(event.turn);
           else if (event.type === "text") setRunning((current) => current && { ...current, text: current.text + event.text });
           else if (event.type === "action") setRunning((current) => current && { ...current, actions: [...current.actions, event.action] });
+          else if (event.type === "handedOver") setRunning((current) => current && { ...current, handover: event.handover });
           else {
             add(event.turn);
             setAnnounced(`${copy.answered}: ${event.turn.text}`);
@@ -126,7 +135,7 @@ export function AskAgent({
       }
     } catch {
       setRefused(copy.unreachable);
-      setWords(asked);
+      if (!harder) setWords(asked);
     } finally {
       onAsking?.(false);
       setRunning(undefined);
@@ -219,8 +228,15 @@ export function AskAgent({
         </section>
       ) : (
         <ol className="ask-turns">
-          {turns.map((turn) => (
-            <TurnShown key={turn.id} turn={turn} base={base} approval={approval} time={clock(new Date(turn.at))} />
+          {turns.map((turn, index) => (
+            <TurnShown
+              key={turn.id}
+              turn={turn}
+              base={base}
+              approval={approval}
+              time={clock(new Date(turn.at))}
+              onHarder={index === turns.length - 1 && turn.from === "agent" && turn.harder !== true && running === undefined ? () => void ask("", { harder: true }) : undefined}
+            />
           ))}
           {running !== undefined && (
             <li className="ask-turn ask-turn-agent ask-turn-running" aria-label={copy.working}>
@@ -229,6 +245,7 @@ export function AskAgent({
                 <span className="ask-name">{copy.agent}</span>
                 <span className="ask-time">{copy.thinking}</span>
               </p>
+              {running.handover !== undefined && <Handover handover={running.handover} />}
               <Steps actions={running.actions} base={base} approval={approval} />
               <p className="ask-text">
                 {running.text}
@@ -277,8 +294,11 @@ export function AskAgent({
   );
 }
 
-/** A turn of the conversation: who took it and when, what the agent did, and what was said. */
-function TurnShown({ turn, base, approval, time }: { turn: Turn; base: string; approval: boolean; time: string }) {
+/**
+ * A turn of the conversation: who took it and when, what the agent did, and what was said, and of
+ * the agent's, the model that took it over and why. The last answer offers to think harder.
+ */
+function TurnShown({ turn, base, approval, time, onHarder }: { turn: Turn; base: string; approval: boolean; time: string; onHarder?: () => void }) {
   const human = turn.from === "human";
   return (
     <li className={human ? "ask-turn ask-turn-human" : "ask-turn ask-turn-agent"}>
@@ -289,6 +309,8 @@ function TurnShown({ turn, base, approval, time }: { turn: Turn; base: string; a
           {time}
         </time>
       </p>
+      {turn.harder === true && turn.model !== undefined && <p className="ask-handover">{copy.thoughtHarder(copy.models[turn.model])}</p>}
+      {turn.handover !== undefined && <Handover handover={turn.handover} />}
       {!human && <Steps actions={turn.actions} base={base} approval={approval} />}
       {turn.text !== "" && <p className="ask-text">{turn.text}</p>}
       {turn.outcome === "capReached" && <p className="notice ask-stopped">{copy.capReached}</p>}
@@ -297,9 +319,22 @@ function TurnShown({ turn, base, approval, time }: { turn: Turn; base: string; a
           {copy.failed}
         </p>
       )}
+      {onHarder !== undefined && (
+        <p className="ask-again">
+          <button type="button" className="button button-quiet button-small" onClick={onHarder}>
+            {copy.harder}
+          </button>
+          <span className="ask-again-hint">{copy.harderHint}</span>
+        </p>
+      )}
     </li>
   );
 }
+
+/** Which model took the turn over, and why. */
+const Handover = ({ handover }: { handover: components["schemas"]["Handover"] }) => (
+  <p className="ask-handover">{copy.handedOver(copy.models[handover.to], copy.handoverWhy[handover.reason], handover.why)}</p>
+);
 
 /** What the agent did in a turn, a line each, with links to the threads and drafts it touched. */
 function Steps({ actions, base, approval }: { actions: Action[]; base: string; approval: boolean }) {

@@ -92,6 +92,20 @@ export const operations = [
     "options": []
   },
   {
+    "operationId": "getMailboxAgentRouting",
+    "method": "get",
+    "path": "/organization/mailbox-agent-routing",
+    "routeKey": "GET /organization/mailbox-agent-routing",
+    "summary": "Show how the mailbox agents' conversation turns were routed this month.",
+    "description": "Counts each turn of Ask Coo and over MCP by how it went: the everyday model took it alone, the decider sent it to the harder model, the everyday model handed it over, and why, or its owner had the harder model think harder. Duva keeps each turn's routing with its words' embedding, in the owner's own records, for a router that learns from them later. Neither words nor embeddings are shown. Only admins can read it.",
+    "signIn": true,
+    "command": [
+      "organization",
+      "mailbox-agent-routing"
+    ],
+    "options": []
+  },
+  {
     "operationId": "getOrganizationSettings",
     "method": "get",
     "path": "/organization/settings",
@@ -165,14 +179,35 @@ export const operations = [
         "in": "body",
         "type": "string",
         "required": false,
-        "description": "The Claude model on Amazon Bedrock the mailbox agents think with: Claude Sonnet 5.5, the default, Claude Haiku 4.5, which costs about a half as much, or Claude Opus 5.5, which costs about twice as much."
+        "description": "The model a mailbox agent answers its owner with in Ask Coo and over MCP, unless the decider finds a turn complex. Claude Haiku 4.5 by default."
+      },
+      {
+        "name": "mailboxAgentTaskModel",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "The model that does the tasks labels' prompts give. Claude Haiku 4.5 by default."
+      },
+      {
+        "name": "mailboxAgentHarderModel",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "The model for the harder work: writing mail that may be sent, a turn the decider finds complex, a run the everyday model hands over, and Think harder. Claude Sonnet 5.5 by default."
+      },
+      {
+        "name": "mailboxAgentDecider",
+        "in": "body",
+        "type": "boolean",
+        "required": false,
+        "description": "Whether the decider, Amazon Nova Micro, settles the model for each turn in Ask Coo and over MCP first, sending one it finds complex to mailboxAgentHarderModel. Off by default: on Coo's tasks it was right on 4 of 10 (docs/research/coo-models.md). Either way a turn hands over to the harder model on evidence."
       },
       {
         "name": "mailboxAgentProfile",
         "in": "body",
         "type": "string",
         "required": false,
-        "description": "The inference profile Bedrock runs the model through, which decides where the mail the agents read is processed: eu keeps it in the EU's AWS regions, us in the US's, and global sends it to any region with capacity, for about 10% less. eu by default for a deployment in the EU, us for one in the US, and global elsewhere. eu needs an EU mailboxAgentRegion, us a US one."
+        "description": "The inference profile Bedrock runs the model through, which decides where the mail the agents read is processed: eu keeps it in the EU's AWS regions, us in the US's, and global sends it to any region with capacity, for about 10% less. none runs the model in mailboxAgentRegion itself, which keeps the mail there: Nova Lite runs so in eu-north-1, us-east-1, us-east-2 and us-west-2, and Nova Pro in us-east-1. eu by default for a deployment in the EU, us for one in the US, and global elsewhere. eu needs an EU mailboxAgentRegion, us a US one."
       },
       {
         "name": "mailboxAgentRegion",

@@ -61,7 +61,7 @@ import { operations } from "@duva/openapi";
 import { cliRedirectUri, stackOutputs, stackParameters } from "./outputs.ts";
 import { searchCode } from "./search-code.ts";
 import { agentCode, agentEntryPoint } from "./agent-code.ts";
-import { inferenceProfileId, type MailboxAgentModel, mailboxAgentModels, mailboxAgentProfiles } from "@duva/api/agent-models";
+import { deciderModel, type MailboxAgentModel, mailboxAgentModels } from "@duva/api/agent-models";
 
 /** The regions where SES receives mail but AgentCore Runtime doesn't run (docs/research/agentcore.md). */
 export const regionsWithoutAgentCore = ["af-south-1", "ap-northeast-3", "ap-southeast-3", "il-central-1", "me-south-1"];
@@ -422,7 +422,7 @@ export class DuvaStack extends Stack {
     const searcher = lanceLambda("SearchHandler", "search.handler", {}, { memorySize: 10_240, timeout: Duration.seconds(30) });
     search.grantRead(searcher);
     // Search embeds its words, and the indexer each message, with Titan in the deployment's own
-    // region, so mail stays there (ADR-0007). Nothing else calls Bedrock.
+    // region, so mail stays there (ADR-0007). The conversation Lambda embeds each turn's words there too (#132).
     const embedding = new PolicyStatement({ actions: ["bedrock:InvokeModel"], resources: [this.formatArn({ service: "bedrock", account: "", resource: "foundation-model", resourceName: embeddingModel })] });
     searcher.addToRolePolicy(embedding);
     // Search also translates its words with Nova Lite there, into the organization's search languages (#67).
@@ -699,20 +699,24 @@ export class DuvaStack extends Stack {
     });
     unsubscribeBrowser.grantUse(agentRuntime.role);
     for (const construct of [agentRuntime, unsubscribeBrowser]) for (const resource of construct.node.findAll()) if (resource instanceof CfnResource) resource.cfnOptions.condition = agentsHere;
-    // The agents call Claude in the model region the organization chose, through its eu, us or
+    // The agents call their model in the model region the organization chose, through its eu, us or
     // global inference profile, which may send it on to that profile's regions (docs/aws.md). So
-    // the role may invoke the models admins can choose through those profiles in any region, and
-    // the models themselves only through one of them.
-    const models = Object.keys(mailboxAgentModels) as MailboxAgentModel[];
-    const claudeProfiles = models.flatMap((model) =>
-      mailboxAgentProfiles.map((profile) => this.formatArn({ service: "bedrock", region: "*", resource: "inference-profile", resourceName: inferenceProfileId(model, profile) })),
+    // the role may invoke the models admins can choose through the profiles each has in any region,
+    // and the models themselves only through one of them, or in the regions where they run without one.
+    // The decider, Nova Micro, goes through the eu or us profile (#132).
+    const models: (MailboxAgentModel | typeof deciderModel)[] = [...(Object.keys(mailboxAgentModels) as MailboxAgentModel[]), deciderModel];
+    const profiles = models.flatMap((model) =>
+      (model === deciderModel ? ["eu", "us"] : mailboxAgentModels[model].profiles.filter((profile) => profile !== "none")).map((profile) =>
+        this.formatArn({ service: "bedrock", region: "*", resource: "inference-profile", resourceName: `${profile}.${model}` }),
+      ),
     );
-    agentRuntime.addToRolePolicy(new PolicyStatement({ actions: ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"], resources: claudeProfiles }));
+    const inRegion = models.flatMap((model) => (model === deciderModel ? [] : mailboxAgentModels[model].inRegion).map((region) => `arn:aws:bedrock:${region}::foundation-model/${model}`));
+    agentRuntime.addToRolePolicy(new PolicyStatement({ actions: ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"], resources: [...profiles, ...inRegion] }));
     agentRuntime.addToRolePolicy(
       new PolicyStatement({
         actions: ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
         resources: models.flatMap((model) => [`arn:aws:bedrock:*::foundation-model/${model}`, `arn:aws:bedrock:::foundation-model/${model}`]),
-        conditions: { StringLike: { "bedrock:InferenceProfileArn": claudeProfiles } },
+        conditions: { StringLike: { "bedrock:InferenceProfileArn": profiles } },
       }),
     );
 
@@ -739,6 +743,8 @@ export class DuvaStack extends Stack {
     conversation.addToRolePolicy(new PolicyStatement({ actions: ["ssm:GetParameter"], resources: [this.formatArn({ service: "ssm", resource: "parameter", resourceName: apiUrlParameter.slice(1) })] }));
     const runtimes = this.formatArn({ service: "bedrock-agentcore", resource: "runtime", resourceName: "*" });
     conversation.addToRolePolicy(new PolicyStatement({ actions: ["bedrock-agentcore:InvokeAgentRuntime", "bedrock-agentcore:StopRuntimeSession"], resources: [runtimes, `${runtimes}/*`] }));
+    // It keeps each turn's routing with its words' Titan embedding, made in the deployment's own region (#132).
+    conversation.addToRolePolicy(embedding);
     const conversationUrl = conversation.addFunctionUrl({ authType: FunctionUrlAuthType.AWS_IAM, invokeMode: InvokeMode.RESPONSE_STREAM });
     distribution.addBehavior(
       `/${conversationPath}*`,

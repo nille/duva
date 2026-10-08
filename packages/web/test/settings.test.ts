@@ -3,7 +3,7 @@ import type { Page } from "playwright-core";
 import { phone, startWebApp } from "./web-app.ts";
 
 /** Where the mailbox agents call their model, and what they may spend, in a deployment in eu-north-1 until an admin chooses. */
-const mailboxAgentDefaults = { mailboxAgentModel: "anthropic.claude-sonnet-5-5", mailboxAgentProfile: "eu", mailboxAgentRegion: "eu-central-1", mailboxAgentSpendCap: 20 } as const;
+const mailboxAgentDefaults = { mailboxAgentModel: "anthropic.claude-haiku-4-5-20251001-v1:0", mailboxAgentTaskModel: "anthropic.claude-haiku-4-5-20251001-v1:0", mailboxAgentHarderModel: "anthropic.claude-sonnet-5-5", mailboxAgentDecider: false, mailboxAgentProfile: "eu", mailboxAgentRegion: "eu-central-1", mailboxAgentSpendCap: 20 } as const;
 
 // The page under the full suite's load can take seconds to show what changed, so every wait has room, and every test more.
 const wait = { timeout: 10_000 };

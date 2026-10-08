@@ -8,7 +8,7 @@ import { agentKeyHash, newAgentKey } from "./agent-keys.ts";
 import type { Humans } from "./user-pool.ts";
 import type { Table } from "./deployment.ts";
 import { changesAfter, entryKey, type Feed, recordChanges, recordInFeeds } from "./feed.ts";
-import { defaultMailboxAgentModel, defaultModelRegion } from "./agent-models.ts";
+import { defaultHarderModel, defaultMailboxAgentModel, defaultModelRegion } from "./agent-models.ts";
 import { defaultSearchLanguages } from "./languages.ts";
 import { documents, isNew, pk, sk, type TransactItem } from "./table.ts";
 
@@ -1106,6 +1106,9 @@ export const defaultSettings: OrganizationSettings = {
   agentNewRecipientsPerDayCap: 50,
   undoWindowSeconds: 30,
   mailboxAgentModel: defaultMailboxAgentModel,
+  mailboxAgentTaskModel: defaultMailboxAgentModel,
+  mailboxAgentHarderModel: defaultHarderModel,
+  mailboxAgentDecider: false,
   ...defaultModelRegion("eu-north-1"),
   mailboxAgentSpendCap: 20,
 };

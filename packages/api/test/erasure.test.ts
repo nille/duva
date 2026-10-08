@@ -2,7 +2,7 @@ import { expect, onTestFinished, test, vi } from "vitest";
 import { type DuvaOptions, startDuva } from "./harness.ts";
 
 /** Where the mailbox agents call their model, and what they may spend, in a deployment in eu-north-1 until an admin chooses. */
-const mailboxAgentDefaults = { mailboxAgentModel: "anthropic.claude-sonnet-5-5", mailboxAgentProfile: "eu", mailboxAgentRegion: "eu-central-1", mailboxAgentSpendCap: 20 } as const;
+const mailboxAgentDefaults = { mailboxAgentModel: "anthropic.claude-haiku-4-5-20251001-v1:0", mailboxAgentTaskModel: "anthropic.claude-haiku-4-5-20251001-v1:0", mailboxAgentHarderModel: "anthropic.claude-sonnet-5-5", mailboxAgentDecider: false, mailboxAgentProfile: "eu", mailboxAgentRegion: "eu-central-1", mailboxAgentSpendCap: 20 } as const;
 
 const day = 24 * 60 * 60 * 1000;
 // The tests that receive several messages and empty Trash take seconds when the full suite loads DynamoDB Local, so they have room.
