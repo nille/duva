@@ -91,11 +91,18 @@ test("Coo is one line in the color of where it is: ink in its nest, and the agen
   await lineOf(page.locator("main .actor-mark-coo").first(), "rgb(46, 98, 255)");
 });
 
-test("the favicon is Coo in one line, in whatever color the browser draws it", budget, async () => {
-  const { page } = await withGrace();
-  const favicon = await page.evaluate(() => fetch("/favicon.svg").then((response) => response.text()));
-  expect(favicon).toContain('stroke="currentColor"');
-  expect(favicon).not.toMatch(/#[0-9a-f]{3,6}\b|rgb\(/i);
+test.each([
+  ["light", "rgb(22, 22, 22)"],
+  ["dark", "rgb(248, 248, 246)"],
+] as const)("the favicon is Coo in one line, in Ink for a light browser and Reader Grey for a dark one: %s", budget, async (scheme, color) => {
+  const { page, url } = await startWebApp();
+  await page.emulateMedia({ colorScheme: scheme });
+
+  await page.goto(new URL("/favicon.svg", url).href);
+
+  const strokes = await page.locator("path, circle").evaluateAll((shapes) => shapes.map((shape) => getComputedStyle(shape).stroke));
+  expect(strokes.length).toBeGreaterThan(0);
+  expect(new Set(strokes)).toEqual(new Set([color]));
 });
 
 test("Coo bobs its head in the nest while it works on a turn, sits still at rest, and keeps still for reduced motion", budget, async () => {

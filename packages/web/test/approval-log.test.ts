@@ -1,6 +1,6 @@
 import type { Page } from "playwright-core";
 import { expect, test } from "vitest";
-import { startWebApp } from "./web-app.ts";
+import { follow, startWebApp } from "./web-app.ts";
 
 // The page reads the change feeds every 250 ms in these tests, but a page under the full suite's
 // load can still take seconds to show what changed, so every wait has room, and every test more.
@@ -117,7 +117,9 @@ test("a rejected send is sent after all from the log, and its tag then says it w
 test("with no decisions yet, the Log says so, and Waiting is a click away", budget, async () => {
   const { page, signIn } = await withSponsor();
   await signIn("ada@example.org");
-  await openApprovals(page);
+  await expect.poll(() => page.getByRole("heading", { level: 1 }).textContent(), wait).toBe("Inbox");
+  // Nothing has waited for Ada, so Approvals isn't among the places, and a link opens it.
+  await follow(page, "#/approvals");
 
   await lists(page).getByRole("button", { name: "Log" }).click();
 

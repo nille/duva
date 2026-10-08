@@ -59,6 +59,7 @@ export const strings = {
     running: (agent: string, left?: number) =>
       left === undefined ? `${agent} is running` : `${agent} is running, ${left === 0 ? "no sends" : left === 1 ? "1 send" : `${left} sends`} left this hour`,
     paused: (agent: string) => `${agent} is paused`,
+    coo: "Coo",
     shortcuts: "Shortcuts",
   },
 

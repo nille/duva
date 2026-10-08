@@ -73,6 +73,8 @@
   --space-7: 3rem;
 
   --radius-mark: 2px;
+  /* The round avatar who sent mail sits in, at the start of a row and a letter's head. */
+  --avatar: 1.25rem;
   --radius-key: 4px;
   --radius: 6px;
   --radius-field: 7px;
@@ -419,35 +421,44 @@ kbd {
 }
 
 /*
- * A sender's logo stands where their mark does: its box is the mark's, empty, so lines keep their
- * height and baseline, and the logo, a small square, lies centred on it, overhanging it to the left
- * so the names after it line up with those after a mark. A verified one carries the check at its foot.
+ * Who sent mail sits in a round avatar at the start of a row and a letter's head, so names line up
+ * whatever stands for them: a white disc in the seam's ring, their mark at its middle, or their logo
+ * filling it, round as receivers show it. A verified logo carries the check at its lower right.
  */
-.sender-logo {
-  --logo: 0.875rem;
+.avatar {
   position: relative;
-  display: inline-block;
+  display: inline-flex;
   flex: none;
-  width: 0.55rem;
-  height: 0.55rem;
-}
-
-.sender-logo img {
-  position: absolute;
-  right: 0;
-  top: calc((0.55rem - var(--logo)) / 2);
-  width: var(--logo);
-  height: var(--logo);
-  border-radius: 3px;
-  object-fit: contain;
-  /* A white logo on a grey plane keeps its edge. */
+  align-items: center;
+  justify-content: center;
+  width: var(--avatar);
+  height: var(--avatar);
+  border-radius: 50%;
+  background: var(--raise);
   box-shadow: 0 0 0 1px var(--seam);
 }
 
+.avatar img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+/* Coo's portrait, drawn to overhang its mark's box, keeps to the disc, at its middle. */
+.avatar .actor-mark-coo {
+  --coo: 0.875rem;
+}
+
+.avatar .actor-mark-coo svg {
+  right: calc((0.55rem - var(--coo)) / 2);
+}
+
+/* Its middle lies on the disc's edge, at the lower right. */
 .sender-logo-check {
   position: absolute;
-  right: -0.2rem;
-  bottom: calc((0.55rem - var(--logo)) / 2 - 0.2rem);
+  right: -0.1rem;
+  bottom: -0.1rem;
   width: 0.55rem;
   height: 0.55rem;
 }
@@ -2697,6 +2708,12 @@ a.thread:focus-visible {
   white-space: nowrap;
 }
 
+/* The name gives the row's first line its baseline, so the time and labels sit level with it, and the avatar lies centred beside it. */
+.thread-sender-name,
+.thread-count {
+  align-self: baseline;
+}
+
 .thread-sender-name {
   min-width: 0;
   overflow: hidden;
@@ -3220,6 +3237,10 @@ a.thread:focus-visible {
   align-items: baseline;
   flex-wrap: wrap;
   gap: var(--space-1) var(--space-2);
+}
+
+.letter-head > .avatar {
+  align-self: center;
 }
 
 .letter-from {
@@ -4426,9 +4447,9 @@ input[aria-invalid="true"] {
   white-space: nowrap;
 }
 
-/* Their mail, as lines under the sender, set in from the mark: the subject, the snippet and the time on one line. */
+/* Their mail, as lines under the sender, set in from the avatar: the subject, the snippet and the time on one line. */
 .waiting-threads {
-  margin-left: 0.55rem;
+  margin-left: var(--avatar);
 }
 
 .waiting-thread {
@@ -4473,7 +4494,7 @@ input[aria-invalid="true"] {
 }
 
 .waiting-actions {
-  padding: var(--space-1) 0 0 calc(0.55rem + var(--space-2));
+  padding: var(--space-1) 0 0 calc(var(--avatar) + var(--space-2));
 }
 
 .waiting-actions .confirm p {
@@ -6312,7 +6333,6 @@ mark {
 
 .shortcuts-lead,
 .shortcuts-off {
-  max-width: 68ch;
   color: var(--ink-2);
   font-size: var(--text-sm);
 }
@@ -6321,15 +6341,30 @@ mark {
   margin-top: var(--space-2);
 }
 
+/*
+ * Two columns, In a list beside In a thread, and Anywhere under both, its keys in the same two
+ * columns, so the sheet fits a laptop's screen without scrolling.
+ */
 .shortcuts-groups {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
-  gap: var(--space-5) var(--space-6);
-  margin-top: var(--space-5);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4) var(--space-6);
+  margin-top: var(--space-4);
+}
+
+.shortcuts-group-wide {
+  grid-column: 1 / -1;
+}
+
+.shortcuts-lists {
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  gap: 0.3rem var(--space-6);
 }
 
 .shortcuts-group h3 {
-  margin-bottom: var(--space-3);
+  margin-bottom: var(--space-2);
   padding-bottom: var(--space-2);
   box-shadow: inset 0 -1px 0 var(--seam);
   color: var(--ink-3);
@@ -6341,7 +6376,7 @@ mark {
   display: grid;
   grid-template-columns: 7.25rem minmax(0, 1fr);
   align-items: center;
-  gap: 0.55rem var(--space-4);
+  gap: 0.3rem var(--space-4);
   margin: 0;
   font-size: var(--text-sm);
 }
@@ -6351,7 +6386,7 @@ mark {
 }
 
 .shortcut dt {
-  line-height: 1.9;
+  line-height: 1.6;
 }
 
 .shortcut dd {
@@ -6363,16 +6398,17 @@ mark {
   white-space: nowrap;
 }
 
+/* Alternatives wrap at their "or", never inside one. */
 .shortcut-or,
 .shortcut-join {
   color: var(--ink-3);
   font-size: var(--text-xs);
-  white-space: pre;
+  white-space: pre-wrap;
 }
 
 .shortcuts-off {
-  margin-top: var(--space-5);
-  padding-top: var(--space-4);
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
   box-shadow: inset 0 1px 0 var(--seam);
 }
 
@@ -6389,6 +6425,15 @@ mark {
     margin: auto 0 var(--tab-bar-height);
     padding: var(--space-4) 1.4rem;
     border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
+  }
+
+  .shortcuts-groups {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* Anywhere's two lists read as one. */
+  .shortcuts-lists {
+    grid-auto-flow: row;
   }
 }
 

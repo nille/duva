@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { expect, test } from "vitest";
-import { startWebApp } from "./web-app.ts";
+import { phone, startWebApp } from "./web-app.ts";
 
 // A page under the full suite's load can take seconds to show what changed, so every wait has room, and every test more.
 const wait = { timeout: 10_000 };
@@ -28,8 +28,8 @@ const newsletter = (from: string, subject: string) =>
  * grace@example.com. lists.example.org enforces DMARC and publishes a logo, and example.org one
  * that its VMC verifies, both served from logos.example.net. With `screener`, Grace's Screener is on.
  */
-async function withLogos({ screener = false } = {}) {
-  const app = await startWebApp({ domain: "example.com", admin: "ada@example.org", humans: ["grace@example.org"] });
+async function withLogos({ screener = false, viewport }: { screener?: boolean; viewport?: { width: number; height: number } } = {}) {
+  const app = await startWebApp({ domain: "example.com", admin: "ada@example.org", humans: ["grace@example.org"], viewport });
   const ada = app.duva.signIn("ada@example.org");
   const grace = app.duva.signIn("grace@example.org");
   const { data: me } = await grace.GET("/whoami");
@@ -97,4 +97,66 @@ test("a first-time sender's logo shows by their name in the Screener", budget, a
 
   const waiting = page.getByRole("list", { name: "Waiting senders" }).getByRole("listitem").filter({ has: page.getByRole("heading", { name: "Example Org" }) });
   await expect.poll(() => waiting.getByRole("img", { name: "Example Org's verified logo" }).count(), wait).toBe(1);
+});
+
+/** Each avatar's box, whether it is round, and where the name after it starts. */
+const avatars = (within: import("playwright-core").Locator, name: string) =>
+  within.evaluateAll(
+    (elements, name) =>
+      elements.map((element) => {
+        const avatar = element.querySelector(".avatar")!;
+        const box = avatar.getBoundingClientRect();
+        const check = avatar.querySelector(".sender-logo-check")?.getBoundingClientRect();
+        return {
+          width: Math.round(box.width),
+          height: Math.round(box.height),
+          round: getComputedStyle(avatar).borderRadius === "50%",
+          // The check's middle lies on the avatar's lower right edge.
+          checkAtCorner: check === undefined ? undefined : Math.abs(check.x + check.width / 2 - box.right) < 4 && Math.abs(check.y + check.height / 2 - box.bottom) < 4,
+          nameLeft: Math.round(element.querySelector(name)!.getBoundingClientRect().left),
+        };
+      }),
+    name,
+  );
+
+test.each([
+  ["a desk", { width: 1280, height: 800 }],
+  ["a phone", phone],
+])("on %s a sender's logo or mark sits in a round avatar at the start of each row and letter, so names line up, with the check at its corner", budget, async (_, viewport) => {
+  const { page, signIn, receive } = await withLogos({ viewport });
+  await receive(newsletter("Example Org <hello@example.org>", "Your order"));
+  await receive(newsletter("Bob <bob@example.net>", "Lunch"));
+  await receive(
+    [
+      "From: Example Org <hello@example.org>",
+      "To: Grace <grace@example.com>",
+      "Subject: Re: Your order",
+      "Date: Wed, 07 Oct 2026 10:00:00 +0200",
+      "Message-ID: <Your-order-shipped@example.org>",
+      "In-Reply-To: <Your-order@example.org>",
+      "References: <Your-order@example.org>",
+      "",
+      "It has shipped.",
+    ].join("\r\n"),
+  );
+  await signIn("grace@example.org");
+
+  const rows = page.getByRole("list", { name: "Threads" }).locator("a.thread");
+  await expect.poll(() => rows.count(), wait).toBe(2);
+  await expect.poll(() => rows.locator("img").evaluateAll((images) => images.every((image) => (image as HTMLImageElement).complete)), wait).toBe(true);
+  const listed = await avatars(rows, ".thread-sender-name");
+  expect(listed.map(({ width, height, round }) => ({ width, height, round }))).toEqual(Array(2).fill({ width: 20, height: 20, round: true }));
+  expect(listed.map(({ checkAtCorner }) => checkAtCorner)).toEqual([true, undefined]);
+  expect(new Set(listed.map(({ nameLeft }) => nameLeft)).size).toBe(1);
+
+  // Opened once, the thread is read, so opened again its older letter folds to a slug.
+  await rows.filter({ hasText: "Your order" }).click();
+  await expect.poll(() => page.locator("article.letter").count(), wait).toBe(2);
+  await page.goBack();
+  await rows.filter({ hasText: "Your order" }).click();
+
+  await expect.poll(() => page.locator(".letter-slug").count(), wait).toBe(1);
+  const slug = await avatars(page.locator(".letter-slug"), ".letter-slug-from");
+  const head = await avatars(page.locator(".letter-head"), ".letter-from");
+  for (const avatar of [...slug, ...head]) expect(avatar).toMatchObject({ width: 20, height: 20, round: true, checkAtCorner: true });
 });

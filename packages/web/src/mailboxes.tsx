@@ -132,7 +132,9 @@ export function MailboxSelector({
   }, [open]);
   const named = (
     <>
-      <span className="selector-name">{name}</span>
+      <span className="selector-name">
+        <span>{breakableBeforeAt(name)}</span>
+      </span>
       {address !== name && <span className="selector-address">{breakableBeforeAt(address)}</span>}
     </>
   );

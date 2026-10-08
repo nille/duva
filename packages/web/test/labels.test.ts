@@ -204,8 +204,8 @@ test("the side column holds every view of the mail, Remind me, Sent and Drafts b
 
   const names = () => views.getByRole("link").evaluateAll((links) => links.map((link) => link.querySelector(".view-name")?.textContent));
   await expect.poll(names, wait).toEqual(["Inbox", "Remind me", "Feed", "Paper Trail", "Sent", "Drafts", "All mail", "Spam", "Trash", "Ask Coo"]);
-  // She sponsors her mailbox's mailbox agent, so Approvals and Alerts are hers too.
-  expect(await page.getByRole("navigation", { name: "Duva" }).getByRole("link").allInnerTexts()).toEqual(["Mail", "Screener", "Approvals", "Alerts"]);
+  // Approvals and Alerts join the places once used.
+  expect(await page.getByRole("navigation", { name: "Duva" }).getByRole("link").allInnerTexts()).toEqual(["Mail", "Screener"]);
 
   await open("Sent");
   await expect.poll(() => page.getByText("Nothing sent yet").isVisible(), wait).toBe(true);

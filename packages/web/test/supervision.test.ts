@@ -1,7 +1,7 @@
 import type { Page } from "playwright-core";
 import { expect, test } from "vitest";
 import type { DuvaClient } from "@duva/client";
-import { phone, startWebApp } from "./web-app.ts";
+import { follow, phone, places, startWebApp } from "./web-app.ts";
 
 // The page under the full suite's load can take seconds to show what changed, so every wait has room, and every test more.
 const wait = { timeout: 10_000 };
@@ -280,10 +280,11 @@ test("an alert opens the message it is about, or its agent's line in Settings, a
   expect(await agentsSheet(page).getByRole("button", { name: "Unpause" }).isVisible()).toBe(true);
 });
 
-test("a sponsor without alerts finds the Alerts view saying so", budget, async () => {
+test("a sponsor without alerts finds the Alerts view, from a link, saying so", budget, async () => {
   const { page, signIn } = await withAgent();
   await signIn("grace@example.org");
-  await alertsLink(page).click();
+  await expect.poll(() => page.getByRole("heading", { level: 1 }).textContent(), wait).toBe("Inbox");
+  await follow(page, "#/alerts");
 
   await expect.poll(() => page.getByRole("heading", { name: "No alerts" }).isVisible(), wait).toBe(true);
 });
@@ -496,4 +497,34 @@ test("s sends the draft open in the reading pane as written, and the queue's row
   await expect.poll(() => page.getByRole("article").getByText("You approved it as written").isVisible(), wait).toBe(true);
   await expect.poll(() => duva.sent().length, wait).toBe(before + 1);
   await expect.poll(() => rows(page).first().innerText(), wait).toContain("You approved it as written");
+});
+
+test.each([
+  ["a desk", { width: 1280, height: 800 }],
+  ["a phone", phone],
+])("on %s Alerts is among the places only once the sponsor has had an alert, and a link opens it before", budget, async (_, viewport) => {
+  const { page, signIn, ada, agent } = await withAgent({ viewport });
+  await signIn("grace@example.org");
+
+  await expect.poll(() => places(page), wait).toEqual(["Mail", "Screener"]);
+  await follow(page, "#/alerts");
+  await expect.poll(() => page.getByRole("heading", { level: 1 }).textContent(), wait).toBe("Alerts");
+  await follow(page, "#/");
+  await expect.poll(() => places(page), wait).toEqual(["Mail", "Screener"]);
+
+  await ada.POST("/agents/{agent}/pause", { params: { path: { agent: agent.id } } });
+
+  await expect.poll(() => places(page), wait).toEqual(["Mail", "Screener", "Alerts"]);
+});
+
+test("Approvals joins the places once an agent's send waits there for its send limit, while the page is open", budget, async () => {
+  const { page, signIn, grace, settings, send } = await withAgent();
+  await grace.PATCH("/agents/{agent}/settings", { ...settings, body: { sendsPerHour: 1 } });
+  await send("ken@example.net", "First");
+  await signIn("grace@example.org");
+  await expect.poll(() => places(page), wait).toEqual(["Mail", "Screener"]);
+
+  await send("lou@example.net", "Second");
+
+  await expect.poll(() => places(page), wait).toContain("Approvals");
 });

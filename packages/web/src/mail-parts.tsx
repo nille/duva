@@ -110,16 +110,23 @@ export function ActorMark({ kind, agent }: { kind: "human" | "agent" | "duva" | 
 }
 
 /**
- * Who sent mail: their logo in place of their actor mark, when their domain publishes one Duva shows
- * (ADR-0023), with the check when a mark certificate verifies it, or else the mark. An agent keeps
- * its diamond, and a logo that won't load gives way to the mark. Duva serves the logo, so showing
- * it never reaches the sender.
+ * Who sent mail, in a round avatar at the start of a row or a letter's head, so names line up: their
+ * logo, when their domain publishes one Duva shows (ADR-0023), with the check at the avatar's corner
+ * when a mark certificate verifies it, or else their actor mark in it. An agent keeps its diamond,
+ * and a logo that won't load gives way to the mark. Duva serves the logo, so showing it never
+ * reaches the sender.
  */
 export function SenderMark({ kind, agent, logo, name }: { kind: "human" | "agent" | "duva"; agent?: string; logo?: SenderLogo; name: string }) {
   const [failed, setFailed] = useState<string>();
-  if (logo === undefined || kind === "agent" || failed === logo.url) return <ActorMark kind={kind} agent={agent} />;
+  if (logo === undefined || kind === "agent" || failed === logo.url) {
+    return (
+      <span className="avatar">
+        <ActorMark kind={kind} agent={agent} />
+      </span>
+    );
+  }
   return (
-    <span className="sender-logo">
+    <span className="avatar sender-logo">
       <img src={logo.url} alt={logo.verified ? strings.logo.verified(name) : strings.logo.of(name)} onError={() => setFailed(logo.url)} />
       {logo.verified && (
         <svg className="sender-logo-check" viewBox="0 0 10 10" aria-hidden="true">

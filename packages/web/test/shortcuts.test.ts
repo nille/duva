@@ -302,6 +302,25 @@ test("on a phone the shortcuts' sheet fits the screen", budget, async () => {
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(phone.width);
 });
 
+test.each([
+  ["a 1280 by 800 desk", { width: 1280, height: 800 }, 2],
+  ["a phone", phone, 1],
+])("on %s the shortcuts' sheet lists its groups in the columns that fit, and a desk's needs no scrolling", budget, async (_, viewport, columns) => {
+  const { page } = await withThreads(["Kvitto"], { viewport });
+
+  await page.keyboard.press("?");
+
+  await expect.poll(() => sheet(page).isVisible(), wait).toBe(true);
+  const lefts = await sheet(page).locator(".shortcuts-group").evaluateAll((groups) => groups.map((group) => Math.round(group.getBoundingClientRect().left)));
+  expect(new Set(lefts).size).toBe(columns);
+  if (columns > 1) {
+    expect(await sheet(page).evaluate((dialog) => dialog.scrollHeight <= dialog.clientHeight)).toBe(true);
+    const box = (await sheet(page).boundingBox())!;
+    expect(box.y).toBeGreaterThanOrEqual(0);
+    expect(box.y + box.height).toBeLessThanOrEqual(viewport.height);
+  }
+});
+
 test("on a phone Escape closes a thread's More first, and then the thread", budget, async () => {
   const { page } = await withThreads(["Kvitto"], { viewport: phone });
   await page.getByRole("link", { name: /Kvitto/ }).click();

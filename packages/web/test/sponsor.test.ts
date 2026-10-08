@@ -1,6 +1,6 @@
 import type { Page } from "playwright-core";
 import { expect, test } from "vitest";
-import { mailboxes, phone, startWebApp } from "./web-app.ts";
+import { follow, mailboxes, phone, places, startWebApp } from "./web-app.ts";
 
 // The page reads the change feeds every 250 ms in these tests, but a page under the full suite's
 // load can still take seconds to show what changed, so every wait has room, and every test more.
@@ -171,4 +171,29 @@ test("a sponsor without a mailbox of their own is told so, and reaches their age
   await expect.poll(() => page.getByRole("heading", { name: "You don't have a mailbox yet" }).count(), wait).toBe(1);
   await page.getByRole("contentinfo", { name: "Status" }).getByRole("link", { name: /^Hermes is running/ }).click();
   await expect.poll(() => page.getByRole("heading", { level: 1 }).textContent(), wait).toBe("Hermes's activity");
+});
+
+test.each([
+  ["a desk", { width: 1280, height: 800 }],
+  ["a phone", phone],
+])("on %s Approvals is among the places only once something has waited for the sponsor, and a link opens it before", budget, async (_, viewport) => {
+  const { page, signIn, ada, ask } = await withSponsor({ viewport });
+  await signIn("ada@example.org");
+
+  await expect.poll(() => places(page), wait).toEqual(["Mail", "Screener"]);
+  await follow(page, "#/approvals");
+  await expect.poll(() => page.getByRole("heading", { level: 1 }).textContent(), wait).toBe("Approvals");
+  await follow(page, "#/");
+  await expect.poll(() => places(page), wait).toEqual(["Mail", "Screener"]);
+
+  const approval = await ask({ to: ["grace@example.org"], subject: "Hej", text: "Hej Grace." });
+
+  await expect.poll(() => places(page), wait).toEqual(["Mail", "Screener", "Approvals"]);
+
+  // Once decided, nothing waits, and Approvals stays, as its log reads what was decided.
+  await ada.POST("/approvals/{approval}/reject", { params: { path: { approval } }, body: { note: "Inte nu." } });
+  await page.reload();
+
+  await expect.poll(() => page.getByRole("heading", { level: 1 }).textContent(), wait).toBe("Inbox");
+  await expect.poll(() => places(page), wait).toEqual(["Mail", "Screener", "Approvals"]);
 });

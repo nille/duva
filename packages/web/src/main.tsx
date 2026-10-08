@@ -3,10 +3,10 @@
 // Coo in its nest, Write, search, Duva's places and the mail's views, then the list, and what is open
 // from it beside the list, with a status strip along the foot. A human with more than one mailbox
 // chooses among their own at the side column's head. Agents own no mailboxes: they work in their
-// sponsors' with sponsor access. Sponsors reach the Approvals view from the places, where they decide
-// what the agents they sponsor ask to send, and the Alerts view, where they read what their agents
-// need them for, each with its count. Mail from first-time senders waits in each mailbox's Screener,
-// beside its views. Each agent's activity, one list of its events that each open beside it, is
+// sponsors' with sponsor access. Sponsors reach the Approvals view from the places once anything has
+// waited for them, where they decide what the agents they sponsor ask to send, and the Alerts view
+// once they have had an alert, where they read what their agents need them for, each with its count.
+// Mail from first-time senders waits in each mailbox's Screener, beside its views. Each agent's activity, one list of its events that each open beside it, is
 // reached from Your agents in Settings and from the status strip. Every human reaches Settings
 // from the places too, where they choose how times and dates show and switch their Screeners, admins
 // the organization's settings and sponsors their agents', which they pause and limit there. The search
@@ -188,6 +188,16 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
   const route = useRoute();
   const [mailboxes, setMailboxes] = useState<Mailboxes>({ status: "loading" });
   const [waiting, setWaiting] = useState<number>();
+  // Whether anything has ever waited for the human in Approvals, so it is among the places. This
+  // browser keeps it, since a held send that went out leaves no trace Duva lists. The ref is for the feeds' reads.
+  const usedKey = `duva.approvals.used.${actor.id}`;
+  const [approvalsUsed, setApprovalsUsed] = useState(() => localStorage.getItem(usedKey) !== null);
+  const approvalsUsedRef = useRef(approvalsUsed);
+  const markApprovalsUsed = () => {
+    approvalsUsedRef.current = true;
+    localStorage.setItem(usedKey, "1");
+    setApprovalsUsed(true);
+  };
   // The threads the agents' sends wait in for the human, which their lists say.
   const [asked, setAsked] = useState<{ mailbox: string; thread: string; agent: string; forward: boolean }[]>([]);
   // How many of the sponsor's alerts are unseen, and the newest one's ID, so the Alerts view reads again when one arrives.
@@ -302,6 +312,14 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
 
   const listed = mailboxes.status === "listed" ? mailboxes : undefined;
   const followed = useMemo(() => (listed === undefined ? [] : listed.own.map(({ id }) => id)), [listed]);
+  // With nothing waiting once the mailboxes are listed, the log says whether anything ever did, or a send held in them.
+  useEffect(() => {
+    if (approvalsUsedRef.current || followed.length === 0) return;
+    void (async () => {
+      const { data: log } = await client.GET("/approvals/log", { params: { query: { limit: 1 } } }).catch(() => ({ data: undefined }));
+      if ((log?.entries.length ?? 0) > 0 || (await holdsSends(client, followed, actor.id))) markApprovalsUsed();
+    })();
+  }, [client, followed, actor.id]);
   useFeeds(client, {
     mailboxes: followed,
     interval: config.pollInterval,
@@ -319,6 +337,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
         if (response.status === 401) throw new SignedOut();
         if (data !== undefined) {
           setWaiting(data.approvals.length);
+          if (data.approvals.length > 0) markApprovalsUsed();
           coo.onApprovals(data.approvals);
           setAsked(
             data.approvals.flatMap(({ mailbox, agent, draft }) =>
@@ -327,6 +346,9 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
           );
         }
       }
+      // Until anything has waited for the human, a send held for its agent's send limit, which
+      // Approvals shows too, is looked for whenever an agent asks to send.
+      if (!approvalsUsedRef.current && !first && changes.some(({ change }) => change.type === "sendAsked") && (await holdsSends(client, followed, actor.id))) markApprovalsUsed();
       // Alerts come from no feed, so a sponsor's count is read with every read of the feeds. Only a
       // sponsor gets alerts, and one whose agents are gone may still have theirs.
       if (first || (mailboxes.status === "listed" && mailboxes.sponsorsAgents) || alertsRef.current.newest !== undefined) {
@@ -441,8 +463,9 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
   }, [route.view, waiting]);
 
   const agentNames = listed?.agentNames ?? noNames;
-  const sponsor = listed?.sponsorsAgents === true || (waiting ?? 0) > 0;
-  const alerted = sponsor || alerts.newest !== undefined;
+  // Approvals and Alerts are among the places once used, and while open, as a link may open them before.
+  const approvalsPlace = approvalsUsed || route.view === "approvals";
+  const alertsPlace = alerts.newest !== undefined || route.view === "alerts";
   // The mailbox the route is in, the human's first own if it names none.
   const shown = away ? undefined : named === undefined ? first : own.find(({ id }) => id === named);
   const base = shown === undefined ? "#/" : mailboxHref(shown, !several && shown.id === first?.id);
@@ -452,6 +475,12 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
   const sided = shown ?? (away ? (lastShown.current ?? first) : undefined);
   const sideBase = sided === undefined ? "#/" : mailboxHref(sided, !several && sided.id === first?.id);
   const version = sided === undefined ? 0 : (versions.get(sided.id) ?? 0);
+
+  // The strip names Coo once, the one of the side column's mailbox, or of the first own, and each self-hosted agent.
+  const stripAgents = useMemo(() => {
+    const coo = sponsored.find(({ mailbox }) => mailbox !== undefined && mailbox === (sided ?? first)?.id) ?? sponsored.find(({ mailbox }) => mailbox !== undefined);
+    return [...(coo === undefined ? [] : [coo]), ...sponsored.filter(({ mailbox }) => mailbox === undefined)];
+  }, [sponsored, sided, first]);
 
   // Coo, in its nest, works and speaks of the side column's mailbox. Where the human looks ends its news of it.
   const coo = useCoo({
@@ -851,7 +880,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
                   )}
                 </a>
               )}
-            {sponsor && (
+            {approvalsPlace && (
               <a href="#/approvals" className="place-approvals" aria-current={route.view === "approvals" ? "page" : undefined}>
                 <ApprovalsIcon />
                 {strings.nav.approvals}
@@ -865,7 +894,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
                 )}
               </a>
             )}
-            {alerted && (
+            {alertsPlace && (
               <a
                 href="#/alerts"
                 aria-current={route.view === "alerts" ? "page" : undefined}
@@ -1008,7 +1037,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
         </Suspense>
         <Strip
           connection={connection}
-          agents={listed?.sponsorsAgents === true ? sponsored : noAgents}
+          agents={listed?.sponsorsAgents === true ? stripAgents : noAgents}
           onShortcuts={preferences.keyboardShortcuts === "off" ? undefined : () => setShortcutsOpen(true)}
           email={actor.email}
           admin={actor.admin}
@@ -1028,6 +1057,18 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
 /** What a list beside an open thread or draft is: a view of the mail, or Drafts. */
 type Listing = View | { drafts: true };
 
+/**
+ * Whether any of the human's mailboxes holds an agent's send approved that hasn't gone out, waiting
+ * for its send limit or held while it is paused, which Approvals shows. A human's own send is approved
+ * only on its way out.
+ */
+async function holdsSends(client: DuvaClient, mailboxes: string[], me: string) {
+  const drafts = await Promise.all(
+    mailboxes.map(async (mailbox) => (await client.GET("/mailboxes/{mailbox}/drafts", { params: { path: { mailbox } } }).catch(() => ({ data: undefined }))).data?.drafts ?? []),
+  );
+  return drafts.flat().some(({ send, updatedBy }) => send?.state === "waitingForLimit" || (send?.state === "approved" && updatedBy !== me));
+}
+
 /** When Duva was last up to date, which the phone's switcher says on its sheet, since a phone has no status strip. */
 function UpToDate({ connection }: { connection: Connection }) {
   const { clock } = useDates();
@@ -1035,9 +1076,10 @@ function UpToDate({ connection }: { connection: Connection }) {
 }
 
 /**
- * The status strip along a desk's foot: whether Duva is up to date, how each agent the human
- * sponsors stands, each a link to its activity, the key that lists the shortcuts while they are on, Settings, and who is signed
- * in, with Sign out.
+ * The status strip along a desk's foot: whether Duva is up to date, how Coo stands, the mailbox
+ * agent of the mailbox beside or else of the first own, and how each self-hosted agent the human
+ * sponsors does, each a link to its activity, the key that lists the shortcuts while they are on,
+ * Settings, and who is signed in, with Sign out.
  */
 function Strip({
   connection,
@@ -1080,7 +1122,14 @@ function Strip({
                 aria-current={activity === agent.id ? "page" : undefined}
               >
                 <ActorMark kind="agent" agent={agent.id} />
-                {agent.paused === undefined ? strings.strip.running(agent.name, agent.sendsLeftThisHour) : strings.strip.paused(agent.name)}
+                {/* Coo is named once for all the human's mailboxes, so its sends, counted per mailbox, aren't said. */}
+                {agent.mailbox !== undefined
+                  ? agent.paused === undefined
+                    ? strings.strip.running(strings.strip.coo)
+                    : strings.strip.paused(strings.strip.coo)
+                  : agent.paused === undefined
+                    ? strings.strip.running(agent.name, agent.sendsLeftThisHour)
+                    : strings.strip.paused(agent.name)}
               </a>
             </li>
           ))}

@@ -295,7 +295,8 @@ const chord = (...inTurn: string[]): Keys => ({ inTurn });
 
 /**
  * The sheet listing every shortcut, over the page, as a legend of printed key caps: each group's
- * keys in one column, what each does beside them. Escape and Close put it away, back to where the
+ * keys in one column, what each does beside them, the groups in two columns on a desk, so the
+ * sheet fits a laptop's screen. Escape and Close put it away, back to where the
  * focus was.
  */
 function ShortcutsSheet({ onClose }: { onClose: () => void }) {
@@ -307,7 +308,8 @@ function ShortcutsSheet({ onClose }: { onClose: () => void }) {
     return () => sheet?.close();
   }, []);
   const copy = strings.shortcuts;
-  const groups: [string, [Keys[], string][]][] = [
+  // Each group is one list of keys, or, as Anywhere is on a desk, two side by side under the others.
+  const groups: [string, ...[Keys[], string][][]][] = [
     [
       copy.inList,
       [
@@ -345,13 +347,15 @@ function ShortcutsSheet({ onClose }: { onClose: () => void }) {
         [[key("c")], copy.write],
         [[key("/")], copy.search],
         [[key("z")], copy.undo],
+        [[key("Shift", "A")], copy.ask],
+        [[key("?")], copy.help],
+      ],
+      [
         [[chord("g", "i")], copy.goInbox],
         [[chord("g", "t")], copy.goSent],
         [[chord("g", "d")], copy.goDrafts],
         [[chord("g", "a")], copy.goAll],
         [[chord("g", "s")], copy.goScreener],
-        [[key("Shift", "A")], copy.ask],
-        [[key("?")], copy.help],
       ],
     ],
   ];
@@ -366,24 +370,28 @@ function ShortcutsSheet({ onClose }: { onClose: () => void }) {
       </div>
       <p className="shortcuts-lead">{copy.lead}</p>
       <div className="shortcuts-groups">
-        {groups.map(([name, keys]) => (
-          <section key={name} className="shortcuts-group" aria-label={name}>
+        {groups.map(([name, ...lists]) => (
+          <section key={name} className={lists.length > 1 ? "shortcuts-group shortcuts-group-wide" : "shortcuts-group"} aria-label={name}>
             <h3>{name}</h3>
-            <dl>
-              {keys.map(([pressed, what]) => (
-                <div key={what} className="shortcut">
-                  <dt>
-                    {pressed.map((keys, index) => (
-                      <span key={index} className="shortcut-keys">
-                        {index > 0 && <span className="shortcut-or"> {copy.or} </span>}
-                        <Caps keys={keys} />
-                      </span>
-                    ))}
-                  </dt>
-                  <dd>{what}</dd>
-                </div>
+            <div className="shortcuts-lists">
+              {lists.map((keys, index) => (
+                <dl key={index}>
+                  {keys.map(([pressed, what]) => (
+                    <div key={what} className="shortcut">
+                      <dt>
+                        {pressed.map((keys, index) => (
+                          <span key={index} className="shortcut-keys">
+                            {index > 0 && <span className="shortcut-or"> {copy.or} </span>}
+                            <Caps keys={keys} />
+                          </span>
+                        ))}
+                      </dt>
+                      <dd>{what}</dd>
+                    </div>
+                  ))}
+                </dl>
               ))}
-            </dl>
+            </div>
           </section>
         ))}
       </div>

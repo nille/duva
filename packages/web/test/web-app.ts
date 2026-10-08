@@ -35,6 +35,16 @@ export const textLeft = (locators: Locator[]) =>
 /** A phone's viewport, for tests of the layout there. */
 export const phone = { width: 390, height: 844 };
 
+/** The names of Duva's places, in the side column on a desk and the tab bar on a phone, without their counts. */
+export const places = (page: Page) =>
+  page
+    .getByRole("navigation", { name: "Duva" })
+    .getByRole("link")
+    .evaluateAll((links) => links.map((link) => [...link.childNodes].filter((node) => node.nodeType === Node.TEXT_NODE).map((node) => node.textContent).join("")));
+
+/** Follows a link into the web app open, as one in a message or a bookmark, to the route in `hash`. */
+export const follow = (page: Page, hash: string) => page.goto(`${page.url().split("#")[0]}${hash}`);
+
 export interface WebApp {
   duva: Duva;
   /** A page in a fresh browser, with nothing stored, at the web app's address. */

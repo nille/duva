@@ -195,8 +195,8 @@ test("on a phone the bar is one row with the search icon and Write, and the plac
   await page.getByRole("button", { name: /Mailboxes and views/ }).click();
 
   const places = page.getByRole("navigation", { name: "Duva" }).getByRole("link");
-  // She sponsors her mailbox's mailbox agent, so Approvals and Alerts are hers too.
-  expect(await places.allInnerTexts()).toEqual(["Mail", "Screener", "Approvals", "Alerts"]);
+  // Approvals and Alerts join them once used.
+  expect(await places.allInnerTexts()).toEqual(["Mail", "Screener"]);
   const tabBarHeight = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--tab-bar-height"));
   expect(tabBarHeight).not.toBe("0px");
   for (const place of await places.all()) {
@@ -443,6 +443,33 @@ test("the status strip says Duva is up to date, how each sponsored agent stands,
   expect(await page.getByRole("dialog", { name: "Keyboard shortcuts" }).isVisible()).toBe(true);
 });
 
+test("the status strip names Coo once for all of a human's mailboxes, the Coo of the mailbox beside, and each self-hosted agent on a line of its own", budget, async () => {
+  const { page, signIn, ada, lovelace } = await withTwoMailboxes();
+  const { data: hermes } = await ada.POST("/agents", { body: { name: "Hermes" } });
+  const { data: agents } = await ada.GET("/agents");
+  const coos = new Map(agents!.agents.flatMap((agent) => (agent.mailbox === undefined ? [] : [[agent.mailbox, agent.id] as const])));
+  expect(coos.size).toBe(2);
+  await signIn("ada@example.org");
+  const strip = page.getByRole("contentinfo", { name: "Status" });
+  const lines = () => strip.locator(".strip-agents li").allInnerTexts();
+
+  await expect.poll(lines, wait).toEqual(["Coo is running", expect.stringMatching(/^Hermes is running/)]);
+  const coo = strip.getByRole("link", { name: "Coo is running" });
+  expect(await coo.locator(".actor-mark-coo").count()).toBe(1);
+  expect(await strip.getByRole("link", { name: /^Hermes is running/ }).getAttribute("href")).toBe(`#/agents/${hermes!.agent.id}`);
+  const first = await coo.getAttribute("href");
+  expect(first).not.toBe(`#/agents/${coos.get(lovelace)}`);
+
+  await (await mailboxes(page)).getByRole("link", { name: /^lovelace@/ }).click();
+
+  await expect.poll(() => coo.getAttribute("href"), wait).toBe(`#/agents/${coos.get(lovelace)}`);
+  expect(await lines()).toHaveLength(2);
+
+  await ada.POST("/agents/{agent}/pause", { params: { path: { agent: coos.get(lovelace)! } } });
+
+  await expect.poll(lines, wait).toEqual(["Coo is paused", expect.stringMatching(/^Hermes is running/)]);
+});
+
 /**
  * Whether each element reads whole: nothing of it is cut off or hidden, and if it wraps, an address
  * in it wraps at its @, so its domain starts a line of its own.
@@ -461,7 +488,7 @@ const readWhole = (elements: Element[]) =>
     const wrapped = new Set(lines.map(({ top }) => Math.round(top))).size > 1;
     const domain = texts.find((text) => text.data.startsWith("@"));
     const startsLine = domain === undefined || !wrapped || Math.round(linesOf(domain)[0]!.left) === Math.round(Math.min(...lines.map(({ left }) => left)));
-    const side = element.closest(".mailboxes")!.getBoundingClientRect();
+    const side = element.closest(".mailboxes, .bar-mailbox")!.getBoundingClientRect();
     return element.scrollWidth <= element.clientWidth && lines.every(({ right }) => right <= side.right + 0.5) && startsLine;
   });
 
@@ -488,6 +515,43 @@ test.each([
   expect(await shown.count()).toBe(4);
   expect(await shown.evaluateAll(readWhole)).toEqual(Array(4).fill(true));
   expect(await fits(page)).toBe(true);
+});
+
+
+test("on a desk the selector names a long mailbox address whole, wrapping before its @ and never inside a word", budget, async () => {
+  const { page, signIn, ada, me } = await withTwoMailboxes();
+  await ada.POST("/mailboxes", { body: { owner: me.id, address: "agent-runs.daily@example.com" } });
+  await signIn("ada@example.org");
+  await (await mailboxes(page)).getByRole("link", { name: /^agent-runs\.daily@/ }).click();
+
+  const selector = page.getByRole("button", { name: /Choose a mailbox$/ });
+  await expect.poll(() => selector.getAttribute("aria-label"), wait).toMatch(/^agent-runs\.daily@example\.com, /);
+  const name = page.locator(".bar-mailbox .selector-name");
+  expect(await name.evaluateAll(readWhole)).toEqual([true]);
+  // It wraps once, at the @: two lines, the second starting with the @ at the first's left edge.
+  const wrapped = await name.evaluate((element) => {
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    const tops = new Set<number>();
+    let at: DOMRect | undefined;
+    let left = Infinity;
+    while (walker.nextNode()) {
+      const text = walker.currentNode as Text;
+      const range = document.createRange();
+      range.selectNodeContents(text);
+      for (const line of range.getClientRects()) {
+        tops.add(Math.round(line.top));
+        left = Math.min(left, line.left);
+      }
+      const index = text.data.indexOf("@");
+      if (index >= 0) {
+        range.setStart(text, index);
+        range.setEnd(text, index + 1);
+        at = range.getBoundingClientRect();
+      }
+    }
+    return { lines: tops.size, atLineStart: at !== undefined && Math.round(at.left) === Math.round(left) };
+  });
+  expect(wrapped).toEqual({ lines: 2, atLineStart: true });
 });
 
 
@@ -545,8 +609,8 @@ test("on a desk Settings is in the status strip, apart from the places, and show
   const { page, signIn } = await withTwoMailboxes();
   await signIn("ada@example.org");
   const places = page.getByRole("navigation", { name: "Duva" }).getByRole("link");
-  // Ada sponsors her mailbox agent, so Approvals and Alerts are hers too, and Settings isn't among them.
-  await expect.poll(() => places.evaluateAll((links) => links.map((link) => link.className)), wait).toEqual(["place-mail", "place-screener", "place-approvals", ""]);
+  // Settings isn't among them.
+  await expect.poll(() => places.evaluateAll((links) => links.map((link) => link.className)), wait).toEqual(["place-mail", "place-screener"]);
   expect(await places.allInnerTexts()).not.toContainEqual(expect.stringContaining("Settings"));
   const settings = page.getByRole("contentinfo", { name: "Status" }).getByRole("link", { name: "Settings", exact: true });
 
