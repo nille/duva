@@ -371,8 +371,24 @@ export const strings = {
       bounce: (agent: string) => `${agent} bounced their mail, so their list sees the address as gone.`,
       pageFailed: (agent: string, why?: string) => `${agent} couldn't unsubscribe you on their page${why === undefined ? "." : `: ${why}`}`,
       mailtoFailed: (agent: string) => `${agent} couldn't mail their unsubscribe address.`,
-      tooLate: (agent: string) => `${agent} can only bounce mail within a day of its arrival, so it bounces their next message.`,
-      notBounceable: (agent: string) => `${agent} didn't bounce their mail, since it didn't pass DMARC or has nowhere to bounce to.`,
+      notBounced: (agent: string, why: string) => `${agent} didn't bounce their mail. ${why}`,
+      /** Why the agent didn't bounce their mail, as the sheet and the activity say it after saying so. */
+      whyNotBounced: (agent: string, reason: components["schemas"]["UnsubscribeReason"] | undefined, detail?: string) => {
+        switch (reason) {
+          case "ownDomain":
+            return "It comes from the organization's own domain, which is never bounced.";
+          case "notDmarc":
+            return "It didn't pass DMARC.";
+          case "noEnvelopeSender":
+            return "Duva doesn't know where their bounces go.";
+          case "tooLate":
+            return `Their newest mail is more than 24 hours old, so ${agent} bounces their next message as it arrives.`;
+          case "refused":
+            return detail === undefined ? "SES refused." : `SES refused: ${detail}`;
+          default:
+            return "It didn't pass DMARC, or has nowhere to bounce to.";
+        }
+      },
     },
     /** The mailbox agent, until its name is read. */
     agent: "Your mailbox agent",
@@ -1697,7 +1713,9 @@ function entrySaid(change: ActivityChange, who: string, agent: string, message?:
         return change.outcome === "unsubscribed" ? [who, ` unsubscribed from ${from} on ${where}.`] : [who, ` couldn't unsubscribe from ${from} on ${where}.`];
       }
       if (change.method === "mailto") return change.outcome === "requested" ? [who, ` mailed the unsubscribe address of ${from}.`] : [who, ` couldn't mail the unsubscribe address of ${from}.`];
-      if (change.method === "bounce") return change.outcome === "bounced" ? [who, ` bounced mail from ${from}, so their list sees the address as gone.`] : [who, ` couldn't bounce mail from ${from}.`];
+      if (change.method === "bounce") {
+        return change.outcome === "bounced" ? [who, ` bounced mail from ${from}, so their list sees the address as gone.`] : [who, ` couldn't bounce mail from ${from}. ${strings.sender.unsubscribe.whyNotBounced(who, change.reason, change.detail)}`];
+      }
       return change.outcome === "unsubscribed" ? ["Duva", ` unsubscribed from ${from}.`] : ["Duva", ` couldn't unsubscribe from ${from}.`];
     }
     case "agentKeyRotated":

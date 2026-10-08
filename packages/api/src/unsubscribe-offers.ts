@@ -6,6 +6,8 @@
 // the body counts only on the signer's own domain, aligned with the From's, or on a mailing
 // service's known unsubscribe host. SES heads each raw copy it stores with its verdicts, the spam
 // verdict and an Authentication-Results with a DKIM result per signature, and those come first.
+// Whether the message passed DMARC, and its envelope sender, come from SES's receipt when the
+// caller has it, from the event or as recorded on the stored message, and else from those headers.
 import { Parser } from "htmlparser2";
 import { domainOf, isEmailAddress } from "./email-address.ts";
 import { parseMail } from "./mime.ts";
@@ -40,10 +42,13 @@ const linksAtMost = 2;
 /** What a link's text or URL says, in the languages Duva's humans write in, when it unsubscribes. */
 const unsubscribeWords = /unsubscribe|opt[\s-]?out|avregistrera|avsluta prenumeration|avprenumerera|abmelden|abbestellen|désinscri|désabonner|darse de baja|cancelar suscripci/i;
 
-/** What the raw message offers, or undefined if SES judged it to be spam, which offers nothing. */
+/**
+ * What the raw message offers, or undefined if SES judged it to be spam, which offers nothing.
+ * `envelopeSender`, empty for none, and `dmarcPassed` are SES's, if the caller has them.
+ */
 export async function offerOf(
   raw: Uint8Array,
-  { sesMessageId, receivedAt, recipient, envelopeSender }: { sesMessageId: string; receivedAt: string; recipient: string; envelopeSender?: string },
+  { sesMessageId, receivedAt, recipient, envelopeSender, dmarcPassed: given }: { sesMessageId: string; receivedAt: string; recipient: string; envelopeSender?: string; dmarcPassed?: boolean },
 ): Promise<Offer | undefined> {
   const fields = fieldsOf(raw);
   const first = (name: string) => fields.find((field) => field.name === name)?.value;
@@ -51,9 +56,9 @@ export async function offerOf(
   const parsed = await parseMail(raw);
   const from = (parsed.from?.address ?? "").toLowerCase();
   const results = sesResults(fields);
-  const dmarcPassed = results?.some((result) => /^dmarc=pass\b/i.test(result)) ?? false;
+  const dmarcPassed = given ?? results?.some((result) => /^dmarc=pass\b/i.test(result)) ?? false;
   const signatures = passingSignatures(fields, results);
-  // SES heads the raw copy with the envelope sender as Return-Path, which the event gives too.
+  // SES heads the raw copy with the envelope sender as Return-Path.
   const returnPath = (envelopeSender ?? /<([^>]*)>/.exec(first("return-path") ?? "")?.[1])?.trim().toLowerCase();
   const all = (name: string) => fields.filter((field) => field.name === name).map(({ value }) => value);
   const [unsubscribe, ...moreUnsubscribe] = all("list-unsubscribe");

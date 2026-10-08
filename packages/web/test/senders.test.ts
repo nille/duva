@@ -119,6 +119,37 @@ test("choosing nowhere asks once more, saying it can't be undone, then erases th
   await expect.poll(() => sheet(page).innerText(), wait).toContain("Coo bounced their mail, so their list sees the address as gone.");
 });
 
+test("when their newest mail is too old to bounce, the sheet and Coo's activity say Coo bounces their next message, which it does as it arrives", budget, async () => {
+  const app = await startWebApp({ domain: "example.com", admin: "ada@example.org", humans: ["grace@example.org"] });
+  const { duva, page } = app;
+  const grace = duva.signIn("grace@example.org");
+  const { data: me } = await grace.GET("/whoami");
+  const { data: mailbox } = await duva.signIn("ada@example.org").POST("/mailboxes", { body: { owner: me!.id, address: "grace@example.com" } });
+  await grace.PUT("/mailboxes/{mailbox}/senders/{sender}", { params: { path: { mailbox: mailbox!.id, sender: "news@example.net" } }, body: { delivery: "inbox" } });
+  await duva.receive(note("Example News <news@example.net>", "Issue 1"), { to: ["grace@example.com"] }, { at: new Date(Date.now() - 2 * 24 * 60 * 60_000) });
+  await app.signIn("grace@example.org");
+  await openSheet(page, "Issue 1");
+
+  await sheet(page).getByRole("radio", { name: /^Nowhere/ }).check();
+  await sheet(page).getByRole("button", { name: "Save" }).click();
+  await sheet(page).getByRole("button", { name: "Erase and send nowhere" }).click();
+
+  const tooLate = "Their newest mail is more than 24 hours old, so Coo bounces their next message as it arrives.";
+  await expect.poll(() => sheet(page).innerText(), wait).toContain(`Coo didn't bounce their mail. ${tooLate}`);
+  await duva.receive(note("Example News <news@example.net>", "Issue 2"), { to: ["grace@example.com"] });
+  await expect.poll(() => sheet(page).innerText(), wait).toContain("Coo bounced their mail, so their list sees the address as gone.");
+  expect(duva.bounces()).toHaveLength(1);
+
+  await page.getByRole("link", { name: "Ask Coo", exact: true }).click();
+  await page.getByRole("link", { name: "What Coo did" }).click();
+  await page.getByRole("list", { name: "Days" }).getByRole("link").first().click();
+
+  const entries = page.getByRole("list", { name: "Timeline" }).getByRole("listitem");
+  await expect.poll(() => entries.allInnerTexts(), wait).toEqual(
+    expect.arrayContaining([expect.stringContaining(`Coo couldn't bounce mail from news@example.net. ${tooLate}`), expect.stringContaining("Coo bounced mail from news@example.net, so their list sees the address as gone.")]),
+  );
+});
+
 test("a label delivery files their mail under one of the human's own labels", budget, async () => {
   const { page, grace, params, listed } = await withNewsletters();
   const { data: reading } = await grace.POST("/mailboxes/{mailbox}/labels", { params, body: { name: "Reading" } });

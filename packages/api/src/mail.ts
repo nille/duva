@@ -4,6 +4,7 @@
 import { randomUUID } from "node:crypto";
 import { TransactionCanceledException } from "@aws-sdk/client-dynamodb";
 import { BatchGetCommand, type BatchGetCommandOutput, GetCommand, PutCommand, QueryCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
+import type { SESReceiptStatus } from "aws-lambda";
 import type { components } from "@duva/openapi";
 import type { Table } from "./deployment.ts";
 import { changesAfter, changesPerPage, recordChanges } from "./feed.ts";
@@ -112,6 +113,8 @@ export interface Arrival {
   /** The envelope sender, for mail without a From. */
   sender: string;
   receivedAt: string;
+  /** What SES judged the message to be as it arrived. */
+  verdicts: Verdicts;
   parsed: ParsedMail;
   /** Whether SES judged the message to be spam. */
   spam: boolean;
@@ -183,6 +186,19 @@ interface StoredMessage {
   feedback?: SendFeedback[];
   /** Where the raw message is in the mail bucket. */
   rawKey: string;
+  /**
+   * On received mail, what SES gave it as it arrived: its ID, the envelope sender, empty for none,
+   * and SES's verdicts, with whether Duva took it for spam, which bouncing and unsubscribing read
+   * (ADR-0031). Mail stored before #136 has none.
+   */
+  arrival?: { sesMessageId: string; envelopeSender: string; spam: boolean; verdicts: Verdicts };
+}
+
+/** SES's verdicts on a message as it arrived. */
+export interface Verdicts {
+  dmarc: SESReceiptStatus["status"];
+  spf: SESReceiptStatus["status"];
+  dkim: SESReceiptStatus["status"];
 }
 
 /**
@@ -213,6 +229,7 @@ export async function receiveMessage(table: Table, arrival: Arrival): Promise<bo
     date: parsed.date ?? receivedAt,
     receivedAt,
     rawKey,
+    arrival: { sesMessageId, envelopeSender: sender, spam: arrival.spam, verdicts: arrival.verdicts },
     ...(arrival.fromAgent && { fromAgent: true }),
     ...(arrival.logo !== undefined && { logo: arrival.logo }),
   };
@@ -1202,9 +1219,9 @@ export async function noteSentTo(table: Table, mailbox: string, addresses: Itera
   }
 }
 
-/** Where the raw copies of the mail the mailbox received from the addresses `from` takes are, newest first. It is given each in lower case. */
-export async function receivedFrom(table: Table, mailbox: string, from: (address: string) => boolean): Promise<Pick<StoredMessage, "rawKey" | "receivedAt" | "recipient">[]> {
-  const found: Pick<StoredMessage, "rawKey" | "receivedAt" | "recipient">[] = [];
+/** Where the raw copies of the mail the mailbox received from the addresses `from` takes are, with what SES gave each as it arrived, newest first. It is given each in lower case. */
+export async function receivedFrom(table: Table, mailbox: string, from: (address: string) => boolean): Promise<Pick<StoredMessage, "rawKey" | "receivedAt" | "recipient" | "arrival">[]> {
+  const found: Pick<StoredMessage, "rawKey" | "receivedAt" | "recipient" | "arrival">[] = [];
   let start: Record<string, unknown> | undefined;
   do {
     const page = await documents(table).send(
@@ -1217,7 +1234,7 @@ export async function receivedFrom(table: Table, mailbox: string, from: (address
         ExclusiveStartKey: start,
       }),
     );
-    for (const message of (page.Items ?? []) as StoredMessage[]) if (from(message.from.address.toLowerCase())) found.push({ rawKey: message.rawKey, receivedAt: message.receivedAt, recipient: message.recipient });
+    for (const message of (page.Items ?? []) as StoredMessage[]) if (from(message.from.address.toLowerCase())) found.push({ rawKey: message.rawKey, receivedAt: message.receivedAt, recipient: message.recipient, arrival: message.arrival });
     start = page.LastEvaluatedKey;
   } while (start !== undefined);
   return found.sort((a, b) => b.receivedAt.localeCompare(a.receivedAt));

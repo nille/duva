@@ -87,6 +87,8 @@ export function createInbound({
         continue;
       }
       const dmarcPassed = ses.receipt.dmarcVerdict.status === "PASS";
+      // Kept on each message stored, for bouncing and unsubscribing later, once the event is gone.
+      const verdicts = { dmarc: ses.receipt.dmarcVerdict.status, spf: ses.receipt.spfVerdict.status, dkim: ses.receipt.dkimVerdict.status };
       const raw = await mailBucket.get(rawKey);
       if (raw === undefined) throw new Error(`SES stored no message at ${rawKey}.`);
       const parsed = await parseMail(raw);
@@ -121,13 +123,13 @@ export function createInbound({
           : undefined;
       const dropped: [string, Recipient][] = [];
       for (const [mailbox, to] of delivered) {
-        const received = await receiveScreened(table, { mailbox, sesMessageId: ses.mail.messageId, rawKey, ...to, sender: ses.mail.source, receivedAt: ses.mail.timestamp, parsed, spam, dmarcPassed, fromAgent, logo });
+        const received = await receiveScreened(table, { mailbox, sesMessageId: ses.mail.messageId, rawKey, ...to, sender: ses.mail.source, receivedAt: ses.mail.timestamp, verdicts, parsed, spam, dmarcPassed, fromAgent, logo });
         if (received === "dropped") dropped.push([mailbox, to]);
       }
       // Unsubscribing from spam would confirm a live address (ADR-0031).
       if (!spam) {
         for (const [mailbox, { recipient }] of dropped) {
-          await unsubscribeDropped({ table, unsubscriber, tasks }, { mailbox, address: sender.from, raw, message: { sesMessageId: ses.mail.messageId, receivedAt: ses.mail.timestamp, recipient, envelopeSender: ses.mail.source } });
+          await unsubscribeDropped({ table, unsubscriber, tasks }, { mailbox, address: sender.from, raw, message: { sesMessageId: ses.mail.messageId, receivedAt: ses.mail.timestamp, recipient, envelopeSender: ses.mail.source, dmarcPassed } });
         }
       }
       // Mail that went nowhere is kept nowhere, once no mailbox it was for has it (ADR-0025). An

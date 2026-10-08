@@ -38,6 +38,11 @@ export interface ReceiveOptions {
   verdicts?: Verdicts;
   /** When SES received the message, which is now unless given. */
   at?: Date;
+  /**
+   * Whether SES heads the copy it stores with the envelope sender and its verdicts, as in every
+   * copy seen so far. Without them, the copy stands for one Duva can't read them from (#136).
+   */
+  headed?: boolean;
 }
 
 /** A bounce SES sent for a message it received: to its envelope sender, from SES's own MAILER-DAEMON, for the recipients. */
@@ -136,7 +141,7 @@ export function sesReceiving({ verified, region, buckets, functions }: { verifie
     async receive(
       raw: string | Uint8Array,
       envelope: Envelope,
-      { invocations = 1, verdicts = {}, at = new Date() }: ReceiveOptions = {},
+      { invocations = 1, verdicts = {}, at = new Date(), headed = true }: ReceiveOptions = {},
     ): Promise<{ refused: string[]; messageId?: string }> {
       const matching = (recipient: string) => rules.filter((rule) => rule.Enabled && matches(rule, recipient));
       const refused = envelope.to.filter((recipient) => matching(recipient).length === 0);
@@ -153,7 +158,7 @@ export function sesReceiving({ verified, region, buckets, functions }: { verifie
         const recipients = accepted.filter((recipient) => matching(recipient).includes(rule));
         if (recipients.length === 0) continue;
         const verdict = (given: SESReceiptStatus["status"] | undefined): SESReceiptStatus => ({ status: rule.ScanEnabled ? (given ?? "PASS") : "DISABLED" });
-        const stored = rule.ScanEnabled ? withVerdicts(bytes, parsed, envelope, verdicts) : bytes;
+        const stored = rule.ScanEnabled && headed ? withVerdicts(bytes, parsed, envelope, verdicts) : bytes;
         for (const { S3Action, LambdaAction } of rule.Actions ?? []) {
           if (S3Action) await buckets.get(S3Action.BucketName!)!.put(`${S3Action.ObjectKeyPrefix ?? ""}${messageId}`, stored);
           if (LambdaAction) {

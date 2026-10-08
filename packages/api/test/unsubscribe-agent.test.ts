@@ -100,8 +100,8 @@ async function withMailbox(options: DuvaOptions = {}) {
   const params = { path: { mailbox: mailbox!.id } };
   const agent = (await grace.GET("/mailboxes/{mailbox}/agent", { params })).data!.agent;
   const requests = await duva.webServer("lists.example.org", { answer: listsServer });
-  const receive = (raw: string, { verdicts = {}, at, from = "bounces@lists.example.org" }: { verdicts?: Verdicts; at?: Date; from?: string } = {}) =>
-    duva.receive(raw, { from, to: ["grace@example.com"] }, { verdicts, ...(at !== undefined && { at }) });
+  const receive = (raw: string, { verdicts = {}, at, from = "bounces@lists.example.org", headed }: { verdicts?: Verdicts; at?: Date; from?: string; headed?: boolean } = {}) =>
+    duva.receive(raw, { from, to: ["grace@example.com"] }, { verdicts, ...(at !== undefined && { at }), ...(headed !== undefined && { headed }) });
   const setDelivery = (delivery: "nowhere" | "inbox", sender = "news@lists.example.org") => grace.PUT("/mailboxes/{mailbox}/senders/{sender}", { params: { path: { ...params.path, sender } }, body: { delivery } });
   const sheet = async (sender = "news@lists.example.org") => (await grace.GET("/mailboxes/{mailbox}/senders/{sender}", { params: { path: { ...params.path, sender } } })).data!;
   const changes = async () => (await grace.GET("/mailboxes/{mailbox}/changes", { params: { ...params, query: { spam: true } } })).data!.changes;
@@ -277,6 +277,44 @@ test("SES bounces only within 24 hours of receiving the message, so older mail w
   expect(duva.bounces()).toHaveLength(2);
 });
 
+test("a sender whose mail passed DMARC is bounced from what SES judged as it arrived, though its stored copy lacks SES's headers", async () => {
+  const { duva, receive, setDelivery, sheet } = await withMailbox();
+  const first = await receive(newsletter(), { headed: false });
+
+  await setDelivery("nowhere");
+
+  expect(duva.bounces()).toEqual([expect.objectContaining({ messageId: first.messageId, to: "bounces@lists.example.org", recipients: ["grace@example.com"], status: "5.1.1" })]);
+  expect((await sheet()).decided?.unsubscribe).toMatchObject({ method: "bounce", outcome: "bounced" });
+});
+
+test("a sender whose newest mail is too old to bounce has their next message bounced as it arrives, though its stored copy lacks SES's headers", async () => {
+  const { duva, receive, setDelivery, sheet, attempts } = await withMailbox();
+  await receive(newsletter(), { at: new Date(Date.now() - 2 * 24 * 60 * 60_000), headed: false });
+  await setDelivery("nowhere");
+  expect((await sheet()).decided?.unsubscribe).toMatchObject({ method: "bounce", outcome: "failed", reason: "tooLate" });
+
+  const later = await receive(newsletter({ subject: "Later" }), { headed: false });
+
+  expect(duva.bounces().map(({ messageId }) => messageId)).toEqual([later.messageId]);
+  expect((await sheet()).decided?.unsubscribe).toMatchObject({ method: "bounce", outcome: "bounced" });
+  expect((await attempts()).map(({ method, outcome, reason }) => `${method ?? "oneClick"} ${outcome} ${reason ?? ""}`.trim())).toEqual([
+    "oneClick notOffered noOneClick",
+    "bounce failed tooLate",
+    "oneClick notOffered noOneClick",
+    "bounce bounced",
+  ]);
+});
+
+test("mail with no envelope sender isn't bounced, since Duva doesn't know where its bounces go", async () => {
+  const { duva, receive, setDelivery, sheet } = await withMailbox();
+  await receive(newsletter(), { from: "" });
+
+  await setDelivery("nowhere");
+
+  expect(duva.bounces()).toEqual([]);
+  expect((await sheet()).decided?.unsubscribe).toMatchObject({ method: "bounce", outcome: "failed", reason: "noEnvelopeSender" });
+});
+
 test("a later message with an unsubscribe address, after a bounce too late to send, has the agent mail it", async () => {
   const { duva, receive, setDelivery, sheet } = await withMailbox();
   await receive(newsletter(), { at: new Date(Date.now() - 2 * 24 * 60 * 60_000) });
@@ -322,7 +360,7 @@ test("mail that didn't pass DMARC gets no page, no unsubscribe mail, no link and
   expect(requests).toEqual([]);
   expect(duva.sent()).toEqual([]);
   expect(duva.bounces()).toEqual([]);
-  expect((await sheet()).decided?.unsubscribe).toMatchObject({ method: "bounce", outcome: "failed", reason: "notBounceable" });
+  expect((await sheet()).decided?.unsubscribe).toMatchObject({ method: "bounce", outcome: "failed", reason: "notDmarc" });
 });
 
 test("a page or address that no passing DKIM signature covers isn't used", async () => {
@@ -353,7 +391,7 @@ test("mail from the organization's own domains is never bounced, which the sende
   await setDelivery("nowhere", "news@example.com");
 
   expect(duva.bounces()).toEqual([]);
-  expect((await sheet("news@example.com")).decided?.unsubscribe).toMatchObject({ method: "bounce", outcome: "failed", reason: "notBounceable", detail: expect.stringMatching(/own domain/) });
+  expect((await sheet("news@example.com")).decided?.unsubscribe).toMatchObject({ method: "bounce", outcome: "failed", reason: "ownDomain" });
 });
 
 test("once a method worked, the sender's later mail is only dropped", async () => {

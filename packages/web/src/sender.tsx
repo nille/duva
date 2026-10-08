@@ -85,6 +85,9 @@ function unsubscribeSaid({ outcome, reason, status }: Unsubscribe): string {
     // Reasons of the mailbox agent's methods, which one-click never gives.
     case "notDone":
     case "notSent":
+    case "ownDomain":
+    case "notDmarc":
+    case "noEnvelopeSender":
     case "tooLate":
     case "notBounceable":
     case undefined:
@@ -101,7 +104,7 @@ function unsubscribedSaid(unsubscribe: NonNullable<ScreenedSender["unsubscribe"]
   if (method === "oneClick") return unsubscribeSaid(unsubscribe);
   if (outcome !== "failed") return copy[method](agent);
   if (method === "mailto") return copy.mailtoFailed(agent);
-  if (method === "bounce") return reason === "tooLate" ? copy.tooLate(agent) : copy.notBounceable(agent);
+  if (method === "bounce") return copy.notBounced(agent, copy.whyNotBounced(agent, reason, detail));
   return copy.pageFailed(agent, detail);
 }
 

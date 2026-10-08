@@ -59,7 +59,7 @@ export async function unsubscribeFrom(
  */
 export async function unsubscribeDropped(
   { table, unsubscriber, tasks }: { table: Table; unsubscriber: Unsubscriber; tasks: TaskRunner },
-  { mailbox, address, raw, message }: { mailbox: string; address: string; raw: Uint8Array; message: { sesMessageId: string; receivedAt: string; recipient: string; envelopeSender: string } },
+  { mailbox, address, raw, message }: { mailbox: string; address: string; raw: Uint8Array; message: { sesMessageId: string; receivedAt: string; recipient: string; envelopeSender: string; dmarcPassed: boolean } },
 ): Promise<void> {
   const decided = await deliveryFor(table, mailbox, address);
   if (decided === undefined || decided.delivery !== "nowhere" || worked(decided.unsubscribe)) return;
@@ -100,12 +100,18 @@ async function onDomain(table: Table, mailbox: string, domain: string): Promise<
 }
 
 /** What the newest of the messages that SES didn't judge to be spam offers, or why there is none. */
-async function newestOffer(mailBucket: MailBucket, received: { rawKey: string; receivedAt: string; recipient: string }[]): Promise<{ offer: Offer } | Unsubscribe> {
+async function newestOffer(mailBucket: MailBucket, received: Awaited<ReturnType<typeof receivedFrom>>): Promise<{ offer: Offer } | Unsubscribe> {
   let sawSpam = false;
-  for (const { rawKey, receivedAt, recipient } of received.slice(0, messagesRead)) {
+  for (const { rawKey, receivedAt, recipient, arrival } of received.slice(0, messagesRead)) {
+    if (arrival?.spam === true) {
+      sawSpam = true;
+      continue;
+    }
     const raw = await mailBucket.get(rawKey);
     if (raw === undefined) continue;
-    const offer = await offerOf(raw, { sesMessageId: rawKey.slice(rawKey.lastIndexOf("/") + 1), receivedAt, recipient });
+    // What SES gave the message as it arrived comes first. Mail stored before has only the headers SES heads its copy with.
+    const given = arrival === undefined ? {} : { envelopeSender: arrival.envelopeSender, dmarcPassed: arrival.verdicts.dmarc === "PASS" };
+    const offer = await offerOf(raw, { sesMessageId: arrival?.sesMessageId ?? rawKey.slice(rawKey.lastIndexOf("/") + 1), receivedAt, recipient, ...given });
     if (offer !== undefined) return { offer };
     sawSpam = true;
   }

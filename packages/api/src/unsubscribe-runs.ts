@@ -141,9 +141,10 @@ async function mail(table: Table, { agent, mailbox, offer, mailto }: { agent: Ag
 async function bounce(table: Table, bounces: Bounces, offer: Offer, mailbox: string): Promise<Attempt | undefined> {
   const own = new Set((await allDomains(table)).map(({ domain }) => domain));
   if (own.has(domainOf(offer.from)) || (offer.envelopeSender !== undefined && own.has(domainOf(offer.envelopeSender)))) {
-    return { outcome: "failed", reason: "notBounceable", detail: "Their mail comes from the organization's own domain, which is never bounced." };
+    return { outcome: "failed", reason: "ownDomain" };
   }
-  if (!offer.dmarcPassed || offer.envelopeSender === undefined) return { outcome: "failed", reason: "notBounceable" };
+  if (!offer.dmarcPassed) return { outcome: "failed", reason: "notDmarc" };
+  if (offer.envelopeSender === undefined) return { outcome: "failed", reason: "noEnvelopeSender" };
   if (Date.now() - new Date(offer.receivedAt).getTime() > bounceWindow) return { outcome: "failed", reason: "tooLate" };
   // A message handed on twice, as a repeated event or invocation can, is bounced once. A bounce SES refuses isn't tried again.
   const release = await claim(table, offer.sesMessageId, `unsubscribe-bounced#${mailbox}`);
@@ -156,7 +157,7 @@ async function bounce(table: Table, bounces: Bounces, offer: Offer, mailbox: str
       await release();
       throw error;
     }
-    return { outcome: "failed", reason: "notBounceable", detail: error.message };
+    return { outcome: "failed", reason: "refused", detail: error.message };
   }
 }
 
