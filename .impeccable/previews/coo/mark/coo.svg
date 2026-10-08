@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width=".75" stroke-linecap="round" stroke-linejoin="round"><title>Coo</title>
+  <!-- the back of the neck and the crown, down to the bill -->
+  <path d="M6.4 22.6C9.8 20.4 12.2 17.6 13.6 13.6 15 9.4 17.2 6.4 20.8 6.2 23.4 6 25 7.6 25.6 9.6"/>
+  <!-- the bill, and the line of its gape -->
+  <path d="M25.4 9.6 29 11.6 25.2 12.6C24.6 11.6 24.7 10.4 25.4 9.6Z"/>
+  <path d="M25.3 11.4 28.6 11.6"/>
+  <!-- the front of the neck and the chest, open below -->
+  <path d="M25 12.8C23.8 15.4 24 19 24.8 22.6 25.3 24.8 25.4 26.4 25.4 27.4"/>
+  <!-- the shoulder of the wing -->
+  <path d="M11.6 19.2C15 17.4 19 17.8 20.4 20.6 21.4 22.6 21.1 25.4 20.3 27.2"/>
+  <!-- eye ring -->
+  <circle cx="22.3" cy="10" r=".8"/>
+  <!-- the highlight on the crown -->
+  <path d="M17 12.6C17.6 10.9 18.5 10 19.6 9.6"/>
+  
+</svg>
