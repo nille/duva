@@ -129,7 +129,7 @@ const failuresAllowed = 1;
 // How sure the decider must be that a turn is simple for the everyday model to take it.
 export const confidenceNeeded = 0.7;
 /** The calls that write what may be sent, which the harder model makes (#132). */
-const writing = new Set(["createDraft", "editDraft", "sendDraft"]);
+export const writing = new Set(["createDraft", "editDraft", "sendDraft"]);
 
 /** The tool the everyday model uses to hand the turn to the harder model. */
 export const askForHelp: ToolSpec = {
@@ -408,8 +408,11 @@ export async function callOperation(
       return {};
     }
   })();
-  const threads = typeof input.thread === "string" ? [input.thread] : Array.isArray(input.threads) ? input.threads.filter((id): id is string => typeof id === "string") : undefined;
-  const draft = typeof input.draft === "string" ? input.draft : name === "createDraft" && typeof answer.id === "string" ? answer.id : undefined;
+  // Only the operation's own options name what it did, so an input the model made up names nothing (#135).
+  const given = (option: string) => (operation.options.some(({ name: own }) => own === option) ? input[option] : undefined);
+  const [thread, many, named] = [given("thread"), given("threads"), given("draft")];
+  const threads = typeof thread === "string" ? [thread] : Array.isArray(many) ? many.filter((id): id is string => typeof id === "string") : undefined;
+  const draft = typeof named === "string" ? named : name === "createDraft" && typeof answer.id === "string" ? answer.id : undefined;
   const action: AgentAction = {
     operation: name,
     what: operation.summary,

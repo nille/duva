@@ -5,7 +5,7 @@
 import { randomUUID } from "node:crypto";
 import { BatchWriteCommand, PutCommand, QueryCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import type { components, ConversationEvent } from "@duva/openapi";
-import type { AgentAction, RunPayload } from "./agent-loop.ts";
+import { type AgentAction, type RunPayload, writing } from "./agent-loop.ts";
 import type { MailboxAgentModel } from "./agent-models.ts";
 import { type AgentRuntime, monthOf, noMailboxAgent, type RunEnd, runMailboxAgent, runtimeMissing, spentIn, startRun } from "./agent-runs.ts";
 import { actorNamed } from "./alerting.ts";
@@ -125,7 +125,8 @@ function turnTaken(agent: Agent, human: Human, words: string, { actions, outcome
     human: human.id,
     asked: words.length > askedKept ? `${words.slice(0, askedKept)}…` : words,
     threads: touched(({ threads }) => threads ?? []),
-    drafts: touched(({ draft }) => (draft === undefined ? [] : [draft])),
+    // Only the drafts it wrote, not those it read (#135).
+    drafts: touched(({ operation, draft }) => (draft === undefined || !writing.has(operation) ? [] : [draft])),
     models: handover === undefined ? [first] : [handover.from, handover.to],
     ...(handover !== undefined && { handover }),
     ...(harder && { harder }),

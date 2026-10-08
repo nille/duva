@@ -475,3 +475,31 @@ test("an admin who isn't the sponsor reads Coo's turns without what was asked or
   const handedOver = data!.entries.find(({ change }) => change.type === "agentHandedOver")!.change;
   expect((handedOver as { handover: object }).handover).toEqual({ reason: "askedForHelp", from: haiku, to: sonnet });
 });
+
+test("a turn names only the drafts Coo wrote, not those it read, nor a draft an input it made up names (#135)", async () => {
+  let draft = "";
+  const model = scripted(
+    // Answering without looking anything up doesn't hold up, so the harder model answers again (ADR-0032).
+    () => [{ text: "You have 2 unread threads." }],
+    () => [use("listThreads", { label: "inbox", draft: "unread" }), use("getDraft", { draft })],
+    () => [{ text: "You have 1 unread thread." }],
+    // Writing a draft goes to the harder model, which writes it.
+    () => [use("createDraft", { to: ["linus@example.org"], text: "Tack." })],
+    () => [use("createDraft", { to: ["linus@example.org"], text: "Tack." })],
+    () => [{ text: "I wrote a draft to Linus." }],
+  );
+  const { duva, ada, params, receive } = await withAgent({ model });
+  await receive("Kvitto");
+  draft = (await ada.POST("/mailboxes/{mailbox}/drafts", { params, body: { to: ["linus@example.org"], text: "Ada's own." } })).data!.id;
+
+  await duva.askAgent("ada@example.org", { mailbox: params.path.mailbox, words: "How many unread threads are in my Inbox?" });
+  await duva.askAgent("ada@example.org", { mailbox: params.path.mailbox, words: "Thank Linus." });
+
+  const { data: feed } = await ada.GET("/mailboxes/{mailbox}/changes", { params });
+  const written = feed!.changes.filter((change) => change.type === "draftWritten").map((change) => (change as { draft: string }).draft);
+  const turns = feed!.changes.filter((change) => change.type === "conversationTurn");
+  expect(turns).toMatchObject([
+    { asked: "How many unread threads are in my Inbox?", drafts: [], handover: { reason: "answerCheck" } },
+    { asked: "Thank Linus.", drafts: [written.at(-1)], handover: { reason: "writing" } },
+  ]);
+});
