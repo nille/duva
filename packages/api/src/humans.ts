@@ -62,12 +62,13 @@ export const removeHuman: OperationHandler = async (event, deployment, actor) =>
   const lastAdmin = lastAdminRefusal(human);
   if (human.admin && !(await allHumans(deployment.table)).some(({ id, admin }) => admin && id !== human.id)) return lastAdmin;
 
-  for (const agent of agents) await removeAgentWithApprovals(deployment.table, { agent, by: actor!.id });
+  // Those merged into their mailbox agent go too (ADR-0033).
+  for (const agent of await sponsoredAgents(deployment.table, human.id, { merged: true })) await removeAgentWithApprovals(deployment.table, { agent, by: actor!.id });
   try {
     for (const mailbox of choices.handOver) {
       await handOverMailbox(deployment.table, { mailbox, to: choices.handTo!.id, by: actor!.id });
-      // Its mailbox agent went with its sponsor, so the new owner gets one of their own.
-      await giveMailboxAgent(deployment.table, { ...mailbox, owner: choices.handTo!.id });
+      // Its owner's mailbox agent went with them, so the new owner's works in it, given one if they had none.
+      await giveMailboxAgent(deployment.table, choices.handTo!.id);
     }
   } catch (error) {
     if (!(error instanceof NotAHuman)) throw error;

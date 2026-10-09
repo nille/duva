@@ -145,7 +145,7 @@ export function SenderSheetView({
   const load = useCallback(async () => {
     const get = (sender: string) => client.GET("/mailboxes/{mailbox}/senders/{sender}", { params: { path: { mailbox: mailbox.id, sender } } }).catch(() => ({ data: undefined, response: undefined }));
     // The mailbox agent's name says who went on unsubscribing.
-    const agent = client.GET("/mailboxes/{mailbox}/agent", { params: { path: { mailbox: mailbox.id } } }).catch(() => ({ data: undefined }));
+    const agent = client.GET("/mailbox-agent").catch(() => ({ data: undefined }));
     const [own, atDomain, mailboxAgent] = await Promise.all([get(sender), address !== undefined && domainChoosable ? get(domain) : Promise.resolve(undefined), agent]);
     if (own.response?.status === 401) return onSignedOut();
     if (own.data === undefined) return setReading({ status: "failed", message: own.response === undefined ? strings.sender.unreachable : strings.sender.failed(own.response.status) });

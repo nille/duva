@@ -16,7 +16,7 @@ import type { ReceiptRule } from "@aws-sdk/client-ses";
 import type { SESEvent, SNSEvent } from "aws-lambda";
 import PostalMime from "postal-mime";
 import { createDuvaClient, type DuvaClient } from "@duva/client";
-import { PutCommand } from "@aws-sdk/lib-dynamodb";
+import { DeleteCommand, GetCommand, PutCommand, ScanCommand as ScanDocuments, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { inject, onTestFinished, vi } from "vitest";
 import { createApi } from "../src/api.ts";
 import { listEarlierDecisions } from "../src/approval-log.ts";
@@ -38,7 +38,7 @@ import { createSearcher } from "../src/searching.ts";
 import type { Table } from "../src/deployment.ts";
 import type { MailBucket } from "../src/mail-bucket.ts";
 import { keys, timeEarlierLabels } from "../src/mail.ts";
-import { addHumanToOrganization, addMailbox, screenerKey, settingsKey, setUpOrganization } from "../src/organization.ts";
+import { actorKey, addHumanToOrganization, addKeylessAgent, addMailbox, agentSettingsKey, firstAgentSettings, mailboxKey, ownedMailboxes, screenerKey, settingsKey, setUpOrganization } from "../src/organization.ts";
 import type { SendEvent } from "../src/limits.ts";
 import { setUpDeliveries, setUpScreeners } from "../src/screening.ts";
 import { type Decider, type Model, runAgent } from "../src/agent-loop.ts";
@@ -47,7 +47,7 @@ import { createTaskGiver, createTaskRunner, type TaskRef, type TaskRunner, type 
 import { createUnsubscribeRunner } from "../src/unsubscribe-runs.ts";
 import { standInBrowser } from "./browser.ts";
 import { createMcp } from "../src/mcp.ts";
-import { giveMailboxAgents } from "../src/mailbox-agents.ts";
+import { giveMailboxAgents, mailboxAgentName, mailboxAgentSettings, turnPrefix } from "../src/mailbox-agents.ts";
 import type { ReminderDue } from "../src/reminders.ts";
 import { createSender } from "../src/sending.ts";
 import type { SuppressionReason } from "../src/suppression.ts";
@@ -137,6 +137,12 @@ export interface DuvaOptions {
    * deploys this one, so its mailbox agents are called Mailbox agent until then.
    */
   beforeCoo?: boolean;
+  /**
+   * Whether the deployment runs a version from before one mailbox agent per human until setUp()
+   * deploys this one, so each mailbox has a mailbox agent of its own until then, and each human a
+   * conversation with each (ADR-0033).
+   */
+  beforeOneCoo?: boolean;
   /**
    * The model the mailbox agents ask, in place of Claude on Bedrock: a stand-in that answers as a
    * test scripts it, from what it is asked. Unless given, it answers every turn with "Stand-in answer."
@@ -279,7 +285,7 @@ export interface Duva {
    * the `decider` option's whether the turn is simple. With `harder`, it asks the harder model to
    * answer the last turn again, as Think harder does.
    */
-  askAgent(email: string, turn: { mailbox: string; words?: string; harder?: boolean }, options?: { token?: string }): Promise<{ status: number; events?: ConversationEvent[]; body?: { message: string } }>;
+  askAgent(email: string, turn: { mailbox?: string; words?: string; harder?: boolean }, options?: { token?: string }): Promise<{ status: number; events?: ConversationEvent[]; body?: { message: string } }>;
   /** Lets the task runner run the tasks it held when tasksHeld, and waits until they are done or wait for an unpause. */
   releaseTasks(): Promise<void>;
   /**
@@ -318,6 +324,7 @@ export async function startDuva({
   undoWindow = 0,
   beforeMailboxAgents = false,
   beforeCoo = false,
+  beforeOneCoo = false,
   model = standInModel,
   decider = standInDecider,
   tasksHeld = false,
@@ -490,6 +497,7 @@ export async function startDuva({
   let approvalLogDeployed = !beforeApprovalLog;
   let mailboxAgentsDeployed = !beforeMailboxAgents;
   let cooDeployed = !beforeCoo;
+  let oneCooDeployed = !beforeOneCoo;
   let deliveriesDeployed = !beforeDeliveries;
   const api = async (request: Request) => {
     const fromBucket = await uploads.handle(request);
@@ -505,6 +513,7 @@ export async function startDuva({
     if (!screenerDeployed) await forgetScreener(table);
     if (!approvalLogDeployed) await forgetApprovalLog(table);
     if (!mailboxAgentsDeployed) await forgetMailboxAgents(table);
+    if (!oneCooDeployed) await forgetOneCoo(table);
     if (!cooDeployed) await forgetCoo(table);
     if (!deliveriesDeployed) await forgetDeliveries(table);
     if (!indexingHeld) await index();
@@ -666,6 +675,7 @@ export async function startDuva({
       await setUpScreeners(table);
       mailboxAgentsDeployed = true;
       cooDeployed = true;
+      oneCooDeployed = true;
       await giveMailboxAgents(table);
       approvalLogDeployed = true;
       await listEarlierDecisions(table);
@@ -881,7 +891,7 @@ async function forgetMailboxAgents(table: Table) {
   const { Items = [] } = await table.client.send(
     new ScanCommand({
       TableName: table.name,
-      FilterExpression: "#sk = :pointer OR (#sk = :actor AND attribute_exists(mailbox))",
+      FilterExpression: "#sk = :pointer OR (#sk = :actor AND (attribute_exists(mailbox) OR attribute_exists(mailboxAgent)))",
       ExpressionAttributeNames: { "#sk": tableKey.sortKey },
       ExpressionAttributeValues: { ":pointer": { S: "mailboxAgent" }, ":actor": { S: "actor" } },
     }),
@@ -897,12 +907,51 @@ async function forgetMailboxAgents(table: Table) {
   }
 }
 
+/**
+ * Writes what a version from before one mailbox agent per human wrote: each human's mailbox agent is
+ * their first mailbox's own, each of their other mailboxes gets one of its own, each listed by its
+ * mailbox, and each turn of their conversation is kept by the mailbox it was asked from.
+ */
+async function forgetOneCoo(table: Table) {
+  const db = documents(table);
+  const { Items: pointers = [] } = await db.send(
+    new ScanDocuments({ TableName: table.name, FilterExpression: "#sk = :pointer AND begins_with(#pk, :actor)", ExpressionAttributeNames: { "#sk": tableKey.sortKey, "#pk": tableKey.partitionKey }, ExpressionAttributeValues: { ":pointer": "mailboxAgent", ":actor": "actor#" } }),
+  );
+  for (const pointer of pointers) {
+    const human = (pointer[tableKey.partitionKey] as string).slice("actor#".length);
+    const agent = pointer.agent as string;
+    const own = [];
+    for (const mailbox of await ownedMailboxes(table, human)) {
+      const { Item } = await db.send(new GetCommand({ TableName: table.name, Key: { ...mailboxKey(mailbox.id), [tableKey.sortKey]: "mailboxAgent" } }));
+      if (Item === undefined) own.push(mailbox.id);
+    }
+    const asOwn = async (id: string, mailbox: string) => {
+      await db.send(new UpdateCommand({ TableName: table.name, Key: actorKey(id), UpdateExpression: "SET mailbox = :mailbox REMOVE mailboxAgent", ExpressionAttributeValues: { ":mailbox": mailbox } }));
+      await db.send(new UpdateCommand({ TableName: table.name, Key: agentSettingsKey(id), UpdateExpression: "SET sponsorMailboxes = :mailboxes", ExpressionAttributeValues: { ":mailboxes": [mailbox] } }));
+      await db.send(new PutCommand({ TableName: table.name, Item: { ...mailboxKey(mailbox), [tableKey.sortKey]: "mailboxAgent", agent: id } }));
+    };
+    for (const [index, mailbox] of own.entries()) {
+      if (index === 0) await asOwn(agent, mailbox);
+      else await asOwn((await addKeylessAgent(table, { name: mailboxAgentName, sponsor: human, items: (id) => [firstAgentSettings(table, id, mailboxAgentSettings)] })).id, mailbox);
+    }
+    await db.send(new DeleteCommand({ TableName: table.name, Key: { [tableKey.partitionKey]: pointer[tableKey.partitionKey], [tableKey.sortKey]: "mailboxAgent" } }));
+  }
+  const { Items: turns = [] } = await db.send(
+    new ScanDocuments({ TableName: table.name, FilterExpression: "begins_with(#sk, :turn)", ExpressionAttributeNames: { "#sk": tableKey.sortKey }, ExpressionAttributeValues: { ":turn": turnPrefix } }),
+  );
+  // A turn asked from All mailboxes had no way to be.
+  for (const { [tableKey.partitionKey]: partition, [tableKey.sortKey]: key, mailbox, ...turn } of turns.filter(({ mailbox }) => mailbox !== undefined)) {
+    await db.send(new PutCommand({ TableName: table.name, Item: { [tableKey.partitionKey]: partition, [tableKey.sortKey]: `turn#${mailbox}#${turn.at}#${turn.id}`, ...turn } }));
+    await db.send(new DeleteCommand({ TableName: table.name, Key: { [tableKey.partitionKey]: partition, [tableKey.sortKey]: key } }));
+  }
+}
+
 /** Names each mailbox agent as a version from before Coo did. */
 async function forgetCoo(table: Table) {
   const { Items = [] } = await table.client.send(
     new ScanCommand({
       TableName: table.name,
-      FilterExpression: "#sk = :actor AND attribute_exists(mailbox)",
+      FilterExpression: "#sk = :actor AND (attribute_exists(mailbox) OR attribute_exists(mailboxAgent))",
       ExpressionAttributeNames: { "#sk": tableKey.sortKey },
       ExpressionAttributeValues: { ":actor": { S: "actor" } },
     }),

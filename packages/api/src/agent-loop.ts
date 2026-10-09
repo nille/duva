@@ -49,13 +49,16 @@ export interface RunPayload {
   token: string;
   /** Where Duva's API is. */
   apiUrl: string;
-  /** The ID of the mailbox it works in. */
-  mailbox: string;
-  /** The mailbox's default address. */
-  address: string;
+  /**
+   * The ID of the mailbox the run was asked from, which it works in unless told otherwise, or for a
+   * turn asked from All mailboxes, none (ADR-0033).
+   */
+  mailbox?: string;
+  /** The mailboxes it may work in, each with its default address, the asked one among them. */
+  mailboxes: { id: string; address: string }[];
   /** The email address of its owner, the agent's sponsor. */
   owner: string;
-  /** The sponsor access its owner gives it there. */
+  /** The sponsor access its owner gives it in each of them. */
   access: components["schemas"]["SponsorAccess"];
   /** Whether its sends wait for the owner's approval. */
   approval: boolean;
@@ -131,7 +134,7 @@ const failuresAllowed = 1;
 // How sure the decider must be that a turn is simple for the everyday model to take it.
 export const confidenceNeeded = 0.7;
 /** The calls that write what may be sent, which the harder model makes (#132). */
-export const writing = new Set(["createDraft", "editDraft", "sendDraft"]);
+export const writing = new Set(["createDraft", "editDraft", "sendDraft", "createAllMailboxesDraft", "editAllMailboxesDraft", "sendAllMailboxesDraft"]);
 
 /** The tool the everyday model uses to hand the turn to the harder model. */
 export const askForHelp: ToolSpec = {
@@ -143,8 +146,14 @@ export const askForHelp: ToolSpec = {
 // The most of an answer from Duva the model reads, in characters.
 const maxResult = 30_000;
 
-/** The tools, each an operation with its options as the input's properties. The mailbox is the run's, so it isn't one. */
-export const agentTools: ToolSpec[] = agentOperations.map((id) => {
+/**
+ * The tools, each an operation with its options as the input's properties. The mailbox is the run's,
+ * so it isn't one, unless the run may work in several (`toolsFor`).
+ */
+export const agentTools: ToolSpec[] = agentOperations.map((id) => toolOf(id));
+
+/** The operation as a tool, with its options but the mailbox as the input's properties. */
+function toolOf(id: string): ToolSpec {
   const operation = operationNamed(id);
   const options = operation.options.filter(({ name, in: place }) => !(place === "path" && name === "mailbox"));
   const property = ({ type, description, ...option }: (typeof options)[number]) => {
@@ -162,7 +171,54 @@ export const agentTools: ToolSpec[] = agentOperations.map((id) => {
       },
     },
   };
-});
+}
+
+/**
+ * Each of the agent's operations' counterpart on All mailboxes, if it has one (ADR-0033, #142): the
+ * operation of the same CLI command, which works on all the mailboxes the agent's sponsor access covers.
+ */
+const counterparts = new Map(
+  agentOperations.flatMap((id) => {
+    const command = operationNamed(id).command.join(" ");
+    const all = operations.find((operation) => "allMailboxes" in operation && operation.allMailboxes && operation.command.join(" ") === command);
+    return all === undefined ? [] : [[id, all.operationId as OperationId] as const];
+  }),
+);
+const allMailboxesTools = new Map([...counterparts.values()].map((id) => [id, toolOf(id)]));
+
+/**
+ * The tools for a run: in one mailbox, the tools as they are, and in several, each taking the
+ * mailbox to work in, by its address, which a turn asked from one of them may leave out for that
+ * one. Asked from All mailboxes, an operation with a counterpart there is that counterpart instead.
+ */
+export function toolsFor(payload: Pick<RunPayload, "mailbox" | "mailboxes">): ToolSpec[] {
+  if (payload.mailboxes.length < 2) return agentTools;
+  const asked = payload.mailboxes.find(({ id }) => id === payload.mailbox);
+  const mailbox = {
+    type: "string",
+    description: `The address of the mailbox to work in: ${payload.mailboxes.map(({ address }) => address).join(", ")}.${asked === undefined ? "" : ` Leave it out for ${asked.address}.`}`,
+  };
+  return agentTools.map(({ inputSchema: { json }, ...tool }) => {
+    const all = asked === undefined ? counterparts.get(tool.name as OperationId) : undefined;
+    if (all !== undefined) return allMailboxesTools.get(all)!;
+    if (!inMailbox(tool.name)) return { ...tool, inputSchema: { json } };
+    const { properties, required } = json as { properties: Record<string, unknown>; required: string[] };
+    return { ...tool, inputSchema: { json: { ...json, properties: { mailbox, ...properties }, required: asked === undefined ? ["mailbox", ...required] : required } } };
+  });
+}
+
+/** Whether the operation works in a mailbox, which the call's path names. */
+export const inMailbox = (id: string) => operationNamed(id).options.some(({ name, in: place }) => place === "path" && name === "mailbox");
+
+/**
+ * The mailbox a tool call works in: the one its input names, by address or ID, among those the run
+ * may work in, or the one the run was asked from, or the only one. Undefined if it names none of them.
+ */
+export function mailboxOfCall(payload: Pick<RunPayload, "mailbox" | "mailboxes">, input: Record<string, unknown>): string | undefined {
+  const named = typeof input.mailbox === "string" && input.mailbox !== "" ? input.mailbox.toLowerCase() : undefined;
+  if (named === undefined) return payload.mailbox ?? (payload.mailboxes.length === 1 ? payload.mailboxes[0]!.id : undefined);
+  return payload.mailboxes.find(({ id, address }) => id === input.mailbox || address.toLowerCase() === named)?.id;
+}
 
 export function operationNamed(id: string): Operation {
   const operation = operations.find(({ operationId }) => operationId === id);
@@ -172,17 +228,30 @@ export function operationNamed(id: string): Operation {
 
 /** What the agent is told about itself and its mailbox before the conversation, and if it took the run over, why. */
 function systemPrompt(payload: RunPayload, { helps, handover, misstated = [] }: { helps: boolean; handover?: Handover; misstated?: string[] }): string {
+  // In several mailboxes, what it may do is the same in each.
+  const the = payload.mailboxes.length === 1 ? "the mailbox" : "each mailbox";
   const can = {
-    none: "You have no access to the mailbox, so you can't read it.",
-    read: "You can read and search the mailbox, but not change it.",
-    organize: "You can read, search and organize the mailbox, but not write drafts.",
-    draft: "You can read, search and organize the mailbox, and write drafts, but not send them.",
+    none: `You have no access to ${the}, so you can't read it.`,
+    read: `You can read and search ${the}, but not change it.`,
+    organize: `You can read, search and organize ${the}, but not write drafts.`,
+    draft: `You can read, search and organize ${the}, and write drafts, but not send them.`,
     send: payload.approval
-      ? "You can read, search and organize the mailbox, write drafts, and ask to send them: each send waits for your owner's approval in Duva."
-      : "You can read, search and organize the mailbox, write drafts, and send them as your owner without their approval.",
+      ? `You can read, search and organize ${the}, write drafts, and ask to send them: each send waits for your owner's approval in Duva.`
+      : `You can read, search and organize ${the}, write drafts, and send them as your owner without their approval.`,
   }[payload.access];
+  const asked = payload.mailboxes.find(({ id }) => id === payload.mailbox);
+  // In one mailbox, the agent is told as before one per human (ADR-0033).
+  const where =
+    payload.mailboxes.length === 1
+      ? [`You are the mailbox agent of ${payload.owner}'s mailbox ${payload.mailboxes[0]!.address} in Duva, an email platform where humans and agents are both actors.`]
+      : [
+          `You are the mailbox agent of ${payload.owner} in Duva, an email platform where humans and agents are both actors. You work in their mailboxes ${payload.mailboxes.map(({ address }) => address).join(", ")}, each named by its address.`,
+          asked === undefined
+            ? "Your owner asks from All mailboxes, so work across all of them. The tools named for All mailboxes work on all of them at once, and each thread they give names its mailbox, which the other tools take as the mailbox to work in."
+            : `Your owner asks from their mailbox ${asked.address}, so work there unless they say otherwise. Each tool works there unless you give it another mailbox.`,
+        ];
   return [
-    `You are the mailbox agent of ${payload.owner}'s mailbox ${payload.address} in Duva, an email platform where humans and agents are both actors.`,
+    ...where,
     "You act through Duva's API, as yourself: every action you take is attributed to you, and mail you send carries a disclosure that an agent sent it.",
     can,
     "Use the tools to look things up rather than guessing. Never send or delete anything your owner didn't ask for. When you write a draft, say so.",
@@ -323,7 +392,8 @@ export async function* runAgent(
     let read = "";
     const said = withoutThinking();
     const system = systemPrompt(payload, { helps: canHandOver, handover, misstated });
-    for await (const event of model({ model: current, system, messages: merged(messages), tools: canHandOver ? [...agentTools, askForHelp] : agentTools })) {
+    const tools = toolsFor(payload);
+    for await (const event of model({ model: current, system, messages: merged(messages), tools: canHandOver ? [...tools, askForHelp] : tools })) {
       if ("text" in event) {
         text += event.text;
         const shown = said(event.text);
@@ -383,7 +453,7 @@ export async function* runAgent(
     if (spent >= payload.budget) return yield { type: "end", outcome: "capReached" };
     const results: ContentBlock[] = [];
     for (const use of uses) {
-      const { action, result } = await callOperation({ apiUrl: payload.apiUrl, token: payload.token, mailbox: payload.mailbox }, use.name, use.input, call);
+      const { action, result } = await callOperation({ apiUrl: payload.apiUrl, token: payload.token, mailbox: mailboxOfCall(payload, use.input) }, use.name, use.input, call);
       yield { type: "action", action };
       if (!action.ok) failures++;
       results.push({ toolResult: { toolUseId: use.toolUseId, content: [{ text: result.slice(0, maxResult) }], status: action.ok ? "success" : "error" } });
@@ -447,16 +517,21 @@ export function merged(messages: ModelMessage[]): ModelMessage[] {
  * the agent, and says what it did, with Duva's answer as the model reads it.
  */
 export async function callOperation(
-  { apiUrl, token, mailbox }: { apiUrl: string; token: string; mailbox: string },
+  { apiUrl, token, mailbox }: { apiUrl: string; token: string; mailbox: string | undefined },
   name: string,
   input: Record<string, unknown>,
   call: (request: Request) => Promise<Response>,
 ): Promise<{ action: AgentAction; result: string }> {
-  if (!agentOperations.includes(name as OperationId)) {
+  if (!agentOperations.includes(name as OperationId) && !allMailboxesTools.has(name as OperationId)) {
     return { action: { operation: name, what: name, ok: false, message: "There is no such tool." }, result: `There is no tool ${name}.` };
   }
   const operation = operationNamed(name);
-  let path = operation.path.replace("{mailbox}", encodeURIComponent(mailbox));
+  const working = inMailbox(name);
+  if (working && mailbox === undefined) {
+    const message = typeof input.mailbox === "string" ? `${input.mailbox} isn't a mailbox you work in.` : "Say which mailbox to work in, by its address.";
+    return { action: { operation: name, what: operation.summary, ok: false, message }, result: message };
+  }
+  let path = operation.path.replace("{mailbox}", encodeURIComponent(mailbox ?? ""));
   const query = new URLSearchParams();
   const body: Record<string, unknown> = {};
   for (const { name: option, in: place } of operation.options) {
@@ -487,9 +562,11 @@ export async function callOperation(
   const given = (option: string) => (operation.options.some(({ name: own }) => own === option) ? input[option] : undefined);
   const [thread, many, named] = [given("thread"), given("threads"), given("draft")];
   const threads = typeof thread === "string" ? [thread] : Array.isArray(many) ? many.filter((id): id is string => typeof id === "string") : undefined;
-  const draft = typeof named === "string" ? named : name === "createDraft" && typeof answer.id === "string" ? answer.id : undefined;
+  const draft = typeof named === "string" ? named : (name === "createDraft" || name === "createAllMailboxesDraft") && typeof answer.id === "string" ? answer.id : undefined;
   const action: AgentAction = {
     operation: name,
+    // On All mailboxes, the mailbox is the one the answer names, as a thread's.
+    ...(working ? { mailbox } : typeof answer.mailbox === "string" && { mailbox: answer.mailbox }),
     what: operation.summary,
     ok: response.ok,
     ...(!response.ok && { message: typeof answer.message === "string" ? answer.message : `Duva answered ${response.status}.` }),

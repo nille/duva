@@ -443,12 +443,12 @@ test("the status strip says Duva is up to date, how each sponsored agent stands,
   expect(await page.getByRole("dialog", { name: "Keyboard shortcuts" }).isVisible()).toBe(true);
 });
 
-test("the status strip names Coo once for all of a human's mailboxes, the Coo of the mailbox beside, and each self-hosted agent on a line of its own", budget, async () => {
-  const { page, signIn, ada, lovelace } = await withTwoMailboxes();
+test("the status strip names a human's one Coo, for all their mailboxes, and each self-hosted agent on a line of its own", budget, async () => {
+  const { page, signIn, ada } = await withTwoMailboxes();
   const { data: hermes } = await ada.POST("/agents", { body: { name: "Hermes" } });
   const { data: agents } = await ada.GET("/agents");
-  const coos = new Map(agents!.agents.flatMap((agent) => (agent.mailbox === undefined ? [] : [[agent.mailbox, agent.id] as const])));
-  expect(coos.size).toBe(2);
+  const coos = agents!.agents.filter(({ mailboxAgent }) => mailboxAgent);
+  expect(coos).toHaveLength(1);
   await signIn("ada@example.org");
   const strip = page.getByRole("contentinfo", { name: "Status" });
   const lines = () => strip.locator(".strip-agents li").allInnerTexts();
@@ -456,16 +456,10 @@ test("the status strip names Coo once for all of a human's mailboxes, the Coo of
   await expect.poll(lines, wait).toEqual(["Coo is running", expect.stringMatching(/^Hermes is running/)]);
   const coo = strip.getByRole("link", { name: "Coo is running" });
   expect(await coo.locator(".actor-mark-coo").count()).toBe(1);
+  expect(await coo.getAttribute("href")).toBe(`#/agents/${coos[0]!.id}`);
   expect(await strip.getByRole("link", { name: /^Hermes is running/ }).getAttribute("href")).toBe(`#/agents/${hermes!.agent.id}`);
-  const first = await coo.getAttribute("href");
-  expect(first).not.toBe(`#/agents/${coos.get(lovelace)}`);
 
-  await (await mailboxes(page)).getByRole("link", { name: /^lovelace@/ }).click();
-
-  await expect.poll(() => coo.getAttribute("href"), wait).toBe(`#/agents/${coos.get(lovelace)}`);
-  expect(await lines()).toHaveLength(2);
-
-  await ada.POST("/agents/{agent}/pause", { params: { path: { agent: coos.get(lovelace)! } } });
+  await ada.POST("/agents/{agent}/pause", { params: { path: { agent: coos[0]!.id } } });
 
   await expect.poll(lines, wait).toEqual(["Coo is paused", expect.stringMatching(/^Hermes is running/)]);
 });

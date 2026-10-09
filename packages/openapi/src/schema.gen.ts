@@ -1149,7 +1149,7 @@ export interface paths {
         get?: never;
         /**
          * Give a label a prompt, which hands each message that gets the label to the mailbox agent as a task.
-         * @description Sets the label's prompt, or replaces it. From then on, whenever the label is added to a message, by hand, by an agent or by a sender's delivery, Duva gives the mailbox's mailbox agent a task: the prompt, with that message and its thread, once per message per label. The message stays where it goes. A thread given the label by hand or by an agent hands over its newest message. The agent works within the sponsor access the mailbox's owner gives it. The Feed, the Paper Trail and the mailbox's own labels can carry a prompt. Only the mailbox's owner can set its labels' prompts, and only in a mailbox that has a mailbox agent. The change is recorded in the mailbox's change feed, naming you.
+         * @description Sets the label's prompt, or replaces it. From then on, whenever the label is added to a message, by hand, by an agent or by a sender's delivery, Duva gives its owner's mailbox agent a task: the prompt, with that message and its thread, once per message per label. The message stays where it goes. A thread given the label by hand or by an agent hands over its newest message. The agent works within the sponsor access the mailbox's owner gives it. The Feed, the Paper Trail and the mailbox's own labels can carry a prompt. Only the mailbox's owner can set its labels' prompts, and only once they have a mailbox agent. The change is recorded in the mailbox's change feed, naming you.
          */
         put: operations["setLabelPrompt"];
         post?: never;
@@ -1183,7 +1183,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/mailboxes/{mailbox}/agent": {
+    "/mailbox-agent": {
         parameters: {
             query?: never;
             header?: never;
@@ -1191,8 +1191,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Read a mailbox's mailbox agent and your conversation with it.
-         * @description Every human's personal mailbox has a mailbox agent, Coo, which Duva hosts and which you sponsor. It works only in that mailbox, with the sponsor access you give it in its settings, and its actions are attributed to it. The web app asks it in "Ask Coo", which streams its answer from the web app's own address, under /agent/. Lists the conversation's turns, oldest first, at most the last 100. Only the mailbox's owner can read it.
+         * Read your mailbox agent and your conversation with it.
+         * @description Every human with a personal mailbox has one mailbox agent, Coo, which Duva hosts and which they sponsor. It works in all their personal mailboxes, with the sponsor access they give it in its settings, and its actions are attributed to it. The web app asks it in "Ask Coo", from one mailbox or from All mailboxes, which streams its answer from the web app's own address, under /agent/. You have one conversation with it, wherever you ask from. Lists the conversation's turns, oldest first, at most the last 100.
          */
         get: operations["getMailboxAgent"];
         put?: never;
@@ -1203,7 +1203,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/mailboxes/{mailbox}/agent/conversation": {
+    "/mailbox-agent/conversation": {
         parameters: {
             query?: never;
             header?: never;
@@ -1214,8 +1214,8 @@ export interface paths {
         put?: never;
         post?: never;
         /**
-         * Start a new conversation with a mailbox's mailbox agent.
-         * @description Deletes every turn of your conversation with it, so it starts again knowing none of it. What it did stays done, in the mailbox's change feed. Only the mailbox's owner can clear it.
+         * Start a new conversation with your mailbox agent.
+         * @description Deletes every turn of your conversation with it, so it starts again knowing none of it. What it did stays done, in the mailboxes' change feeds.
          */
         delete: operations["clearConversation"];
         options?: never;
@@ -1281,7 +1281,7 @@ export interface paths {
         get: operations["getSender"];
         /**
          * Decide where a sender's mail goes in a mailbox, for their mail there and their later mail.
-         * @description inbox puts their mail in the Inbox. feed and paperTrail file it in the Feed or the Paper Trail instead, unread and counted there, and what waits from them in the Screener arrives there read. label files it under the mailbox's own label you give, unread, instead of the Inbox. nowhere drops their later mail on arrival, keeping none of it, and erases their threads in the mailbox, Spam and Trash included, for good. Removing nowhere later brings none of it back. All their threads, archived ones too, move to where it goes now, and keep the labels given by hand, except those in Spam, Trash or Remind me, which stay there. Their later mail skips the Screener, even while it is off. A domain covers exactly that domain, not its subdomains, and can't be a public mail provider's, like gmail.com. An address's decision beats its domain's. Setting nowhere also unsubscribes the mailbox from the sender's mail by one-click (RFC 8058), when their newest mail that SES didn't judge to be spam offers it and a DKIM signature that passed covers its unsubscribe headers, and each message dropped later tries the same. If one-click doesn't unsubscribe, the mailbox's mailbox agent goes on by itself, for mail that passed DMARC: on the List-Unsubscribe page in an isolated browser, then by mailing the List-Unsubscribe address, then by an unsubscribe link in the body on the signer's domain, and as a last resort by bouncing their mail as if the address were unknown, until a method works. The sender's sheet shows how it went. The decision, each thread it moves or erases and the one-click's outcome are recorded in the mailbox's change feed under you, and the agent's attempts under it. Only the mailbox's owner and the agents they give organize sponsor access or more can decide, and only the owner or the sponsor can choose nowhere.
+         * @description inbox puts their mail in the Inbox. feed and paperTrail file it in the Feed or the Paper Trail instead, unread and counted there, and what waits from them in the Screener arrives there read. label files it under the mailbox's own label you give, unread, instead of the Inbox. nowhere drops their later mail on arrival, keeping none of it, and erases their threads in the mailbox, Spam and Trash included, for good. Removing nowhere later brings none of it back. All their threads, archived ones too, move to where it goes now, and keep the labels given by hand, except those in Spam, Trash or Remind me, which stay there. Their later mail skips the Screener, even while it is off. A domain covers exactly that domain, not its subdomains, and can't be a public mail provider's, like gmail.com. An address's decision beats its domain's. Setting nowhere also unsubscribes the mailbox from the sender's mail by one-click (RFC 8058), when their newest mail that SES didn't judge to be spam offers it and a DKIM signature that passed covers its unsubscribe headers, and each message dropped later tries the same. If one-click doesn't unsubscribe, its owner's mailbox agent goes on by itself, for mail that passed DMARC: on the List-Unsubscribe page in an isolated browser, then by mailing the List-Unsubscribe address, then by an unsubscribe link in the body on the signer's domain, and as a last resort by bouncing their mail as if the address were unknown, until a method works. The sender's sheet shows how it went. The decision, each thread it moves or erases and the one-click's outcome are recorded in the mailbox's change feed under you, and the agent's attempts under it. Only the mailbox's owner and the agents they give organize sponsor access or more can decide, and only the owner or the sponsor can choose nowhere.
          */
         put: operations["setSenderDelivery"];
         post?: never;
@@ -2130,8 +2130,8 @@ export interface components {
             /** @description The ID of the human who answers for the agent. */
             sponsor: string;
             paused?: components["schemas"]["Pause"];
-            /** @description For a mailbox agent, the ID of the human's mailbox it is the mailbox agent of, the only one it works in. Duva hosts it, so it has no key, and it goes with the mailbox. */
-            mailbox?: string;
+            /** @description Present, true, for a mailbox agent, Coo: the one Duva hosts for its sponsor, which works in their personal mailboxes. Duva hosts it, so it has no key, and it goes with its sponsor (ADR-0033). */
+            mailboxAgent?: boolean;
             /** @description How many more messages the agent's send limits let it send now, counting its sends of the last hour. Its sends that wait for the limits leave none. There only when you list the agents you sponsor, or a mailbox agent lists its owner's. */
             sendsLeftThisHour?: number;
         };
@@ -2669,7 +2669,7 @@ export interface components {
             position: number;
         };
         /** @description A change in a mailbox. */
-        MailboxChange: components["schemas"]["MessageReceived"] | components["schemas"]["DraftWritten"] | components["schemas"]["DraftChanged"] | components["schemas"]["DraftDeleted"] | components["schemas"]["SendAsked"] | components["schemas"]["ApprovalAsked"] | components["schemas"]["ApprovalWithdrawn"] | components["schemas"]["ApprovalDecided"] | components["schemas"]["ApprovalUndone"] | components["schemas"]["MessageSent"] | components["schemas"]["SendWaitingForLimit"] | components["schemas"]["SentNow"] | components["schemas"]["SendFailed"] | components["schemas"]["SendUnclear"] | components["schemas"]["FeedbackReceived"] | components["schemas"]["ThreadRead"] | components["schemas"]["ThreadUnread"] | components["schemas"]["ThreadLabelsChanged"] | components["schemas"]["ReminderSet"] | components["schemas"]["ReminderCancelled"] | components["schemas"]["ThreadBack"] | components["schemas"]["LabelCreated"] | components["schemas"]["LabelRenamed"] | components["schemas"]["LabelDeleted"] | components["schemas"]["ThreadErased"] | components["schemas"]["AgentSettingsChanged"] | components["schemas"]["AgentPaused"] | components["schemas"]["AgentUnpaused"] | components["schemas"]["SenderScreened"] | components["schemas"]["ScreenerSwitched"] | components["schemas"]["ScreenedSenderRemoved"] | components["schemas"]["UnsubscribeAttempted"] | components["schemas"]["SenderDeliverySet"] | components["schemas"]["SenderDeliveryRemoved"] | components["schemas"]["MessageDropped"] | components["schemas"]["LabelPromptSet"] | components["schemas"]["LabelPromptRemoved"] | components["schemas"]["TaskGiven"] | components["schemas"]["TaskStarted"] | components["schemas"]["TaskEnded"] | components["schemas"]["AgentHandedOver"] | components["schemas"]["ConversationTurnTaken"];
+        MailboxChange: components["schemas"]["MessageReceived"] | components["schemas"]["DraftWritten"] | components["schemas"]["DraftChanged"] | components["schemas"]["DraftDeleted"] | components["schemas"]["SendAsked"] | components["schemas"]["ApprovalAsked"] | components["schemas"]["ApprovalWithdrawn"] | components["schemas"]["ApprovalDecided"] | components["schemas"]["ApprovalUndone"] | components["schemas"]["MessageSent"] | components["schemas"]["SendWaitingForLimit"] | components["schemas"]["SentNow"] | components["schemas"]["SendFailed"] | components["schemas"]["SendUnclear"] | components["schemas"]["FeedbackReceived"] | components["schemas"]["ThreadRead"] | components["schemas"]["ThreadUnread"] | components["schemas"]["ThreadLabelsChanged"] | components["schemas"]["ReminderSet"] | components["schemas"]["ReminderCancelled"] | components["schemas"]["ThreadBack"] | components["schemas"]["LabelCreated"] | components["schemas"]["LabelRenamed"] | components["schemas"]["LabelDeleted"] | components["schemas"]["ThreadErased"] | components["schemas"]["AgentSettingsChanged"] | components["schemas"]["AgentPaused"] | components["schemas"]["AgentUnpaused"] | components["schemas"]["SenderScreened"] | components["schemas"]["ScreenerSwitched"] | components["schemas"]["ScreenedSenderRemoved"] | components["schemas"]["UnsubscribeAttempted"] | components["schemas"]["SenderDeliverySet"] | components["schemas"]["SenderDeliveryRemoved"] | components["schemas"]["MessageDropped"] | components["schemas"]["LabelPromptSet"] | components["schemas"]["LabelPromptRemoved"] | components["schemas"]["TaskGiven"] | components["schemas"]["TaskStarted"] | components["schemas"]["TaskEnded"] | components["schemas"]["AgentHandedOver"] | components["schemas"]["ConversationTurnTaken"] | components["schemas"]["MailboxAgentsMerged"];
         /** @description Mail arrived. No actor made this change, so it names none. */
         MessageReceived: {
             /** @description The change's position in the mailbox's feed, counting from 1. */
@@ -3161,6 +3161,8 @@ export interface components {
             handover?: components["schemas"]["Handover"];
             /** @description Whether the human asked the harder model to think harder about their last turn. */
             harder?: boolean;
+            /** @description Present, true, for a turn asked from All mailboxes, which the feed of the first of the human's mailboxes the agent works in records. A turn asked from one mailbox is in that one's feed. */
+            allMailboxes?: boolean;
             /**
              * @description How the agent's turn ended, as the conversation's turn says.
              * @enum {string}
@@ -4426,7 +4428,7 @@ export interface components {
             position: number;
         };
         /** @description A change to the organization's setup. */
-        OrganizationChange: components["schemas"]["OrganizationAdded"] | components["schemas"]["DomainAdded"] | components["schemas"]["DomainRemoved"] | components["schemas"]["SignInDomainChanged"] | components["schemas"]["CatchAllChanged"] | components["schemas"]["ActorAdded"] | components["schemas"]["AgentKeyRotated"] | components["schemas"]["AgentPaused"] | components["schemas"]["AgentUnpaused"] | components["schemas"]["MailboxAdded"] | components["schemas"]["AddressAdded"] | components["schemas"]["AddressRemoved"] | components["schemas"]["DefaultAddressChanged"] | components["schemas"]["GroupAdded"] | components["schemas"]["GroupChanged"] | components["schemas"]["GroupRemoved"] | components["schemas"]["SettingsChanged"] | components["schemas"]["ActorRemoved"] | components["schemas"]["AdminChanged"] | components["schemas"]["MailboxHandedOver"] | components["schemas"]["MailboxDeleted"] | components["schemas"]["RetiredChange"];
+        OrganizationChange: components["schemas"]["OrganizationAdded"] | components["schemas"]["DomainAdded"] | components["schemas"]["DomainRemoved"] | components["schemas"]["SignInDomainChanged"] | components["schemas"]["CatchAllChanged"] | components["schemas"]["ActorAdded"] | components["schemas"]["AgentKeyRotated"] | components["schemas"]["AgentPaused"] | components["schemas"]["AgentUnpaused"] | components["schemas"]["MailboxAdded"] | components["schemas"]["AddressAdded"] | components["schemas"]["AddressRemoved"] | components["schemas"]["DefaultAddressChanged"] | components["schemas"]["GroupAdded"] | components["schemas"]["GroupChanged"] | components["schemas"]["GroupRemoved"] | components["schemas"]["SettingsChanged"] | components["schemas"]["ActorRemoved"] | components["schemas"]["AdminChanged"] | components["schemas"]["MailboxHandedOver"] | components["schemas"]["MailboxDeleted"] | components["schemas"]["MailboxAgentsMerged"] | components["schemas"]["RetiredChange"];
         ChangeBase: {
             /** @description The change's position in the feed, counting from 1. */
             position: number;
@@ -4586,6 +4588,22 @@ export interface components {
              * @enum {string}
              */
             type: "addressAdded";
+        };
+        MailboxAgentsMerged: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "mailboxAgentsMerged";
+            /** @description The ID of the human's one mailbox agent. */
+            agent: string;
+            /** @description The ID of the human. */
+            human: string;
+            /** @description The IDs of the mailbox agents merged into it, none if the human had only it. */
+            merged: string[];
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "mailboxAgentsMerged";
         };
         ActorRemoved: components["schemas"]["ChangeBase"] & {
             /** @constant */
@@ -4800,6 +4818,8 @@ export interface components {
              * @enum {string}
              */
             from: "human" | "agent";
+            /** @description The ID of the mailbox the turn was asked from, which the agent worked on unless you said otherwise. Absent for a turn asked from All mailboxes. */
+            mailbox?: string;
             /** @description What was said. */
             text: string;
             /** @description What the agent did in the turn, in order. None for yours. */
@@ -4836,6 +4856,8 @@ export interface components {
         AgentAction: {
             /** @description The operation's ID in this document, such as getThread. */
             operation: string;
+            /** @description The ID of the mailbox it called the operation in. */
+            mailbox?: string;
             /** @description What the operation does, its summary. */
             what: string;
             /** @description Whether Duva did it. A refusal says why in message. */
@@ -4948,6 +4970,8 @@ export interface components {
             type: string;
             /** @description The ID of the actor who made it, or duva if Duva did. Absent when no one did, as for mail that arrived. */
             actor?: string;
+            /** @description The ID of the mailbox it happened in. Absent for a change to the organization or to the agent itself, an alert about no mailbox, and a turn asked from All mailboxes. */
+            mailbox?: string;
             /**
              * @description What happened, in one line, as the web app says it.
              * @example You asked Coo “How many unread threads are in my Inbox?”
@@ -7311,10 +7335,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                /** @description The mailbox's ID. */
-                mailbox: components["parameters"]["Mailbox"];
-            };
+            path?: never;
             cookie?: never;
         };
         requestBody?: never;
@@ -7337,10 +7358,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                /** @description The mailbox's ID. */
-                mailbox: components["parameters"]["Mailbox"];
-            };
+            path?: never;
             cookie?: never;
         };
         requestBody?: never;

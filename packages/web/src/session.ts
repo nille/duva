@@ -76,7 +76,7 @@ const save = (session: Session) => localStorage.setItem(sessionKey, JSON.stringi
  * header, so the access token goes in a header of its own, and the body's SHA-256 with it, which
  * CloudFront needs to sign a POST. Answers undefined once the session has expired.
  */
-export async function postTurn(config: Config, turn: { mailbox: string; words?: string; harder?: boolean }, signal?: AbortSignal): Promise<Response | undefined> {
+export async function postTurn(config: Config, turn: { mailbox?: string; words?: string; harder?: boolean }, signal?: AbortSignal): Promise<Response | undefined> {
   const session = await current(config);
   if (session === undefined) return undefined;
   const body = JSON.stringify(turn);

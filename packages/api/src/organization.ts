@@ -28,11 +28,11 @@ export const isAdmin = (actor: Actor | undefined): boolean => actor?.kind === "h
 type ChangeDetails = OrganizationChange extends infer Change ? (Change extends unknown ? Omit<Change, "position" | "at" | "actor"> : never) : never;
 
 const organizationKey = { [pk]: "organization", [sk]: "organization" };
-const actorKey = (id: string) => ({ [pk]: `actor#${id}`, [sk]: "actor" });
+export const actorKey = (id: string) => ({ [pk]: `actor#${id}`, [sk]: "actor" });
 // Each agent is listed in its sponsor's partition, so a human's agents are one query away.
-const sponsoredKey = (sponsor: string, agent: string) => ({ [pk]: `actor#${sponsor}`, [sk]: `agent#${agent}` });
+export const sponsoredKey = (sponsor: string, agent: string) => ({ [pk]: `actor#${sponsor}`, [sk]: `agent#${agent}` });
 // An agent's settings are an item of their own beside it, which counts up its version as the organization's settings do.
-const agentSettingsKey = (agent: string) => ({ [pk]: `actor#${agent}`, [sk]: "settings" });
+export const agentSettingsKey = (agent: string) => ({ [pk]: `actor#${agent}`, [sk]: "settings" });
 // Every human is listed in one partition, so the organization's humans are one query away.
 const humansPartition = "organization#humans";
 const humanListedKey = (id: string) => ({ [pk]: humansPartition, [sk]: `human#${id}` });
@@ -72,7 +72,7 @@ const mailboxListedPrefix = mailboxListedKey("")[sk];
 // The settings are an item of their own, so changing one doesn't contend with the organization's feed.
 // Each change counts up its version, which a write that relies on the settings checks.
 export const settingsKey = { [pk]: "organization", [sk]: "settings" };
-const organizationFeed: Feed = {
+export const organizationFeed: Feed = {
   counter: organizationKey,
   partition: "organization#changes",
   missing: "The organization isn't set up. Run duva deploy.",
@@ -246,16 +246,16 @@ export async function addAgent(table: Table, { name, sponsor }: { name: string; 
  * Adds an agent with the human `sponsor` as its sponsor and no key yet, with the `items` for its ID
  * written too, and returns it. It gets its key from issueAgentKey.
  */
-export function addKeylessAgent(table: Table, { name, sponsor, mailbox, items }: { name: string; sponsor: string; mailbox?: string; items: (agent: string) => TransactItem[] }): Promise<Agent> {
+export function addKeylessAgent(table: Table, { name, sponsor, mailboxAgent, items }: { name: string; sponsor: string; mailboxAgent?: boolean; items: (agent: string) => TransactItem[] }): Promise<Agent> {
   const id = randomUUID();
-  return addAgentWith(table, { id, name, sponsor, mailbox, items: items(id) });
+  return addAgentWith(table, { id, name, sponsor, mailboxAgent, items: items(id) });
 }
 
 async function addAgentWith(
   table: Table,
-  { id, name, sponsor, mailbox, keyHash, items }: { id: string; name: string; sponsor: string; mailbox?: string; keyHash?: string; items: TransactItem[] },
+  { id, name, sponsor, mailboxAgent, keyHash, items }: { id: string; name: string; sponsor: string; mailboxAgent?: boolean; keyHash?: string; items: TransactItem[] },
 ): Promise<Agent> {
-  const agent: Agent = { id, kind: "agent", name, sponsor, ...(mailbox !== undefined && { mailbox }) };
+  const agent: Agent = { id, kind: "agent", name, sponsor, ...(mailboxAgent && { mailboxAgent }) };
   await recordChange(table, sponsor, { type: "actorAdded", added: agent }, [
     { Put: { TableName: table.name, Item: { ...actorKey(agent.id), ...agent, ...(keyHash !== undefined && { keyHash }) }, ...isNew } },
     { Put: { TableName: table.name, Item: { ...sponsoredKey(sponsor, agent.id) }, ...isNew } },
@@ -425,7 +425,11 @@ export function agentUnpaused(table: Table, agent: string): TransactItem {
 }
 
 /** The agents the actor sponsors. */
-export async function sponsoredAgents(table: Table, sponsor: string): Promise<Agent[]> {
+/**
+ * The agents the human sponsors. Those merged into their one mailbox agent (ADR-0033) stay, so what
+ * they did keeps their name and their sends that were under way go out, but only `merged` lists them.
+ */
+export async function sponsoredAgents(table: Table, sponsor: string, { merged = false } = {}): Promise<Agent[]> {
   const { [pk]: partition, [sk]: prefix } = sponsoredKey(sponsor, "");
   const { Items = [] } = await documents(table).send(
     new QueryCommand({
@@ -434,7 +438,12 @@ export async function sponsoredAgents(table: Table, sponsor: string): Promise<Ag
       ExpressionAttributeValues: { ":sponsor": partition, ":agent": prefix },
     }),
   );
-  const agents = await Promise.all(Items.map((item) => findActor(table, (item[sk] as string).slice(prefix.length))));
+  const agents = await Promise.all(
+    Items.map(async (item) => {
+      const { Item: stored } = await documents(table).send(new GetCommand({ TableName: table.name, Key: actorKey((item[sk] as string).slice(prefix.length)), ConsistentRead: true }));
+      return stored === undefined || (stored.mergedInto !== undefined && !merged) ? undefined : actorOf(stored);
+    }),
+  );
   return agents.filter((agent): agent is Agent => agent?.kind === "agent");
 }
 
@@ -882,6 +891,15 @@ export async function ownedMailboxes(table: Table, owner: string): Promise<Mailb
   return mailboxes.filter((mailbox) => mailbox !== undefined);
 }
 
+/**
+ * The human's mailboxes in the order the web app lists them: the one with their sign-in address
+ * first, then by their default addresses.
+ */
+export function mailboxesInOrder(mailboxes: Mailbox[], email: string): Mailbox[] {
+  const rank = (mailbox: Mailbox) => (mailbox.addresses.includes(email) ? 0 : mailbox.defaultAddress === undefined ? 2 : 1);
+  return [...mailboxes].sort((a, b) => rank(a) - rank(b) || (a.defaultAddress ?? "").localeCompare(b.defaultAddress ?? "") || a.id.localeCompare(b.id));
+}
+
 /** The address an address on an alias domain mirrors, or the address itself, in lower case and without its plus tag. */
 export function mirroredAddress(address: string, aliases: Map<string, string>): string {
   const untagged = address.toLowerCase().replace(/\+[^@]*@/, "@");
@@ -1067,14 +1085,16 @@ export function actorOf(item: Record<string, unknown>): Actor {
   const actor = item as Actor;
   if (actor.kind === "agent") {
     // An agent stored before agents were never admins (ADR-0030) may still carry admin, which is left out.
-    const { id, kind, name, sponsor, paused, mailbox } = actor;
+    const { id, kind, name, sponsor, paused } = actor;
+    // A mailbox agent from before one per human (ADR-0033) names the mailbox it was the agent of.
+    const mailboxAgent = actor.mailboxAgent === true || "mailbox" in item;
     return {
       id,
       kind,
       name,
       sponsor,
       ...(paused !== undefined && { paused: { by: paused.by, at: paused.at, ...(paused.reason !== undefined && { reason: paused.reason }) } }),
-      ...(mailbox !== undefined && { mailbox }),
+      ...(mailboxAgent && { mailboxAgent }),
     };
   }
   return { id: actor.id, kind: actor.kind, email: actor.email, admin: actor.admin };

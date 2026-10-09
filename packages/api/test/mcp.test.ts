@@ -21,7 +21,7 @@ async function withMailbox(options: DuvaOptions = {}) {
     "From: Grace Hopper <grace@example.org>\r\nTo: linus@example.com\r\nSubject: The report\r\nDate: Sat, 03 Oct 2026 10:00:00 +0000\r\nMessage-ID: <report-1@example.org>\r\n\r\nHere is the quarterly report.\r\n",
     { to: ["linus@example.com"] },
   );
-  const agent = (await linus.GET("/mailboxes/{mailbox}/agent", { params })).data!.agent;
+  const agent = (await linus.GET("/mailbox-agent")).data!.agent;
   return { duva, ada, linus, mailbox: mailbox!, params, agent };
 }
 
@@ -280,7 +280,7 @@ test("asking the mailbox agent over MCP gives its answer, in the same conversati
   const answer = await call(client, "askAgent", { words: "Anything from Grace?" });
 
   expect(answer).toEqual({ isError: false, text: "Grace sent you the quarterly report.\n\n(It used searchMailbox.)" });
-  const { data } = await linus.GET("/mailboxes/{mailbox}/agent", { params });
+  const { data } = await linus.GET("/mailbox-agent");
   expect(data!.turns.map(({ from, text }) => [from, text])).toEqual([
     ["human", "Anything from Grace?"],
     ["agent", "Grace sent you the quarterly report."],
@@ -301,7 +301,7 @@ test("an answer that takes longer than the call waits is read later, and a task 
 
   expect(asked.text).toBe("Your mailbox agent is still working on it. Its answer will be in Ask Coo in Duva, and readConversation reads it.");
   expect(tasked.text).toBe("Your mailbox agent is on it. Its answer will be in Ask Coo in Duva, and readConversation reads it.");
-  const { data } = await linus.GET("/mailboxes/{mailbox}/agent", { params });
+  const { data } = await linus.GET("/mailbox-agent");
   expect(data!.turns.filter(({ from }) => from === "agent").map(({ text, outcome }) => [text, outcome])).toEqual([
     ["Done, slowly.", "answered"],
     ["Done, slowly.", "answered"],

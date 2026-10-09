@@ -434,7 +434,7 @@ test("an admin removes a human from the CLI, first with --dryRun, handing their 
   const dryRun = await machine.duva("humans", "remove", "--human", grace!.id, "--dryRun");
   const removed = await machine.duva("humans", "remove", "--human", grace!.id, "--handTo", linus!.id, "--handOver", mailbox.id);
 
-  expect(JSON.parse(dryRun.stdout)).toMatchObject({ human: grace, mailboxes: [mailbox], agents: [expect.objectContaining({ name: "Coo", mailbox: mailbox.id })], removed: false });
+  expect(JSON.parse(dryRun.stdout)).toMatchObject({ human: grace, mailboxes: [mailbox], agents: [expect.objectContaining({ name: "Coo", mailboxAgent: true })], removed: false });
   expect(removed.exitCode).toBe(0);
   expect(JSON.parse(removed.stdout)).toMatchObject({ human: grace, removed: true });
   expect((await duva.signIn("linus@example.com").GET("/mailboxes")).data?.mailboxes).toEqual([{ ...mailbox, owner: linus!.id, groups: [] }]);

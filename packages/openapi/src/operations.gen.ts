@@ -2160,7 +2160,7 @@ export const operations = [
     "path": "/mailboxes/{mailbox}/labels/{label}/prompt",
     "routeKey": "PUT /mailboxes/{mailbox}/labels/{label}/prompt",
     "summary": "Give a label a prompt, which hands each message that gets the label to the mailbox agent as a task.",
-    "description": "Sets the label's prompt, or replaces it. From then on, whenever the label is added to a message, by hand, by an agent or by a sender's delivery, Duva gives the mailbox's mailbox agent a task: the prompt, with that message and its thread, once per message per label. The message stays where it goes. A thread given the label by hand or by an agent hands over its newest message. The agent works within the sponsor access the mailbox's owner gives it. The Feed, the Paper Trail and the mailbox's own labels can carry a prompt. Only the mailbox's owner can set its labels' prompts, and only in a mailbox that has a mailbox agent. The change is recorded in the mailbox's change feed, naming you.",
+    "description": "Sets the label's prompt, or replaces it. From then on, whenever the label is added to a message, by hand, by an agent or by a sender's delivery, Duva gives its owner's mailbox agent a task: the prompt, with that message and its thread, once per message per label. The message stays where it goes. A thread given the label by hand or by an agent hands over its newest message. The agent works within the sponsor access the mailbox's owner gives it. The Feed, the Paper Trail and the mailbox's own labels can carry a prompt. Only the mailbox's owner can set its labels' prompts, and only once they have a mailbox agent. The change is recorded in the mailbox's change feed, naming you.",
     "signIn": true,
     "command": [
       "labels",
@@ -2244,46 +2244,30 @@ export const operations = [
   {
     "operationId": "getMailboxAgent",
     "method": "get",
-    "path": "/mailboxes/{mailbox}/agent",
-    "routeKey": "GET /mailboxes/{mailbox}/agent",
-    "summary": "Read a mailbox's mailbox agent and your conversation with it.",
-    "description": "Every human's personal mailbox has a mailbox agent, Coo, which Duva hosts and which you sponsor. It works only in that mailbox, with the sponsor access you give it in its settings, and its actions are attributed to it. The web app asks it in \"Ask Coo\", which streams its answer from the web app's own address, under /agent/. Lists the conversation's turns, oldest first, at most the last 100. Only the mailbox's owner can read it.",
+    "path": "/mailbox-agent",
+    "routeKey": "GET /mailbox-agent",
+    "summary": "Read your mailbox agent and your conversation with it.",
+    "description": "Every human with a personal mailbox has one mailbox agent, Coo, which Duva hosts and which they sponsor. It works in all their personal mailboxes, with the sponsor access they give it in its settings, and its actions are attributed to it. The web app asks it in \"Ask Coo\", from one mailbox or from All mailboxes, which streams its answer from the web app's own address, under /agent/. You have one conversation with it, wherever you ask from. Lists the conversation's turns, oldest first, at most the last 100.",
     "signIn": true,
     "command": [
       "mailbox-agent",
       "get"
     ],
-    "options": [
-      {
-        "name": "mailbox",
-        "in": "path",
-        "type": "string",
-        "required": true,
-        "description": "The mailbox's ID."
-      }
-    ]
+    "options": []
   },
   {
     "operationId": "clearConversation",
     "method": "delete",
-    "path": "/mailboxes/{mailbox}/agent/conversation",
-    "routeKey": "DELETE /mailboxes/{mailbox}/agent/conversation",
-    "summary": "Start a new conversation with a mailbox's mailbox agent.",
-    "description": "Deletes every turn of your conversation with it, so it starts again knowing none of it. What it did stays done, in the mailbox's change feed. Only the mailbox's owner can clear it.",
+    "path": "/mailbox-agent/conversation",
+    "routeKey": "DELETE /mailbox-agent/conversation",
+    "summary": "Start a new conversation with your mailbox agent.",
+    "description": "Deletes every turn of your conversation with it, so it starts again knowing none of it. What it did stays done, in the mailboxes' change feeds.",
     "signIn": true,
     "command": [
       "mailbox-agent",
       "clear"
     ],
-    "options": [
-      {
-        "name": "mailbox",
-        "in": "path",
-        "type": "string",
-        "required": true,
-        "description": "The mailbox's ID."
-      }
-    ]
+    "options": []
   },
   {
     "operationId": "getScreener",
@@ -2393,7 +2377,7 @@ export const operations = [
     "path": "/mailboxes/{mailbox}/senders/{sender}",
     "routeKey": "PUT /mailboxes/{mailbox}/senders/{sender}",
     "summary": "Decide where a sender's mail goes in a mailbox, for their mail there and their later mail.",
-    "description": "inbox puts their mail in the Inbox. feed and paperTrail file it in the Feed or the Paper Trail instead, unread and counted there, and what waits from them in the Screener arrives there read. label files it under the mailbox's own label you give, unread, instead of the Inbox. nowhere drops their later mail on arrival, keeping none of it, and erases their threads in the mailbox, Spam and Trash included, for good. Removing nowhere later brings none of it back. All their threads, archived ones too, move to where it goes now, and keep the labels given by hand, except those in Spam, Trash or Remind me, which stay there. Their later mail skips the Screener, even while it is off. A domain covers exactly that domain, not its subdomains, and can't be a public mail provider's, like gmail.com. An address's decision beats its domain's. Setting nowhere also unsubscribes the mailbox from the sender's mail by one-click (RFC 8058), when their newest mail that SES didn't judge to be spam offers it and a DKIM signature that passed covers its unsubscribe headers, and each message dropped later tries the same. If one-click doesn't unsubscribe, the mailbox's mailbox agent goes on by itself, for mail that passed DMARC: on the List-Unsubscribe page in an isolated browser, then by mailing the List-Unsubscribe address, then by an unsubscribe link in the body on the signer's domain, and as a last resort by bouncing their mail as if the address were unknown, until a method works. The sender's sheet shows how it went. The decision, each thread it moves or erases and the one-click's outcome are recorded in the mailbox's change feed under you, and the agent's attempts under it. Only the mailbox's owner and the agents they give organize sponsor access or more can decide, and only the owner or the sponsor can choose nowhere.",
+    "description": "inbox puts their mail in the Inbox. feed and paperTrail file it in the Feed or the Paper Trail instead, unread and counted there, and what waits from them in the Screener arrives there read. label files it under the mailbox's own label you give, unread, instead of the Inbox. nowhere drops their later mail on arrival, keeping none of it, and erases their threads in the mailbox, Spam and Trash included, for good. Removing nowhere later brings none of it back. All their threads, archived ones too, move to where it goes now, and keep the labels given by hand, except those in Spam, Trash or Remind me, which stay there. Their later mail skips the Screener, even while it is off. A domain covers exactly that domain, not its subdomains, and can't be a public mail provider's, like gmail.com. An address's decision beats its domain's. Setting nowhere also unsubscribes the mailbox from the sender's mail by one-click (RFC 8058), when their newest mail that SES didn't judge to be spam offers it and a DKIM signature that passed covers its unsubscribe headers, and each message dropped later tries the same. If one-click doesn't unsubscribe, its owner's mailbox agent goes on by itself, for mail that passed DMARC: on the List-Unsubscribe page in an isolated browser, then by mailing the List-Unsubscribe address, then by an unsubscribe link in the body on the signer's domain, and as a last resort by bouncing their mail as if the address were unknown, until a method works. The sender's sheet shows how it went. The decision, each thread it moves or erases and the one-click's outcome are recorded in the mailbox's change feed under you, and the agent's attempts under it. Only the mailbox's owner and the agents they give organize sponsor access or more can decide, and only the owner or the sponsor can choose nowhere.",
     "signIn": true,
     "command": [
       "senders",

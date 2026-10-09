@@ -74,7 +74,7 @@ One organization per deployment (ADR-0002), in its own AWS account. Everything i
 
 ### Coo, the mailbox agent
 
-- **One AgentCore Runtime serves every human mailbox** (ADR-0027). Its code is `agent-runtime.ts` around `agent-loop.ts`, Duva's own Converse tool loop.
+- **One AgentCore Runtime serves every human's mailbox agent,** one per human, working in all their mailboxes (ADR-0027, ADR-0033). Its code is `agent-runtime.ts` around `agent-loop.ts`, Duva's own Converse tool loop.
 - **Its tools are API operations,** which it calls over HTTP with its run's token, as any agent calls Duva. So it can do only what an agent with that access can, attributed to it.
 - **It's run from four places:**
   - **Ask Coo:** the **conversation** Lambda (`conversation.ts`) takes each turn and streams back what Coo says. The web app reaches it through CloudFront with origin access control.

@@ -2,13 +2,14 @@
 // was recorded on it. The events come from change feeds, read whole each time: those of its sponsor's
 // mailboxes for what concerns the agent, and the organization's for changes to it or by it, with
 // the alerts about it its sponsor got. So they reach back to the agent's start and need no storage
-// of their own.
+// of their own. A mailbox agent's are those of the mailbox agents merged into it too (ADR-0033).
 import type { components } from "@duva/openapi";
 import { alertSaid, changeSaid, type MessageNamed } from "./activity-words.ts";
 import { type OperationHandler, refusal } from "./api.ts";
 import { actorNamed, alertsAbout } from "./alerting.ts";
 import type { Table } from "./deployment.ts";
 import { findDraft } from "./drafting.ts";
+import { mergedInto } from "./mailbox-agents.ts";
 import { changesPerPage } from "./feed.ts";
 import { mailboxChanges, storedMessage } from "./mail.ts";
 import { type Actor, type Agent, duva, findActor, isAdmin, organizationChanges, ownedMailboxes } from "./organization.ts";
@@ -114,9 +115,15 @@ async function wholeFeed<Read extends { position: number }>(read: (after: number
 
 const field = (change: Change, name: string) => (change as unknown as Record<string, unknown>)[name];
 
+/** The agent and the mailbox agents merged into it, whose events are its own. */
+async function selves(table: Table, agent: Agent): Promise<Set<string>> {
+  return new Set([agent.id, ...(agent.mailboxAgent ? await mergedInto(table, agent.id) : [])]);
+}
+
 /** Every event in the agent's activity, newest first. */
 async function activityOf(table: Table, agent: Agent): Promise<Entry[]> {
   const sponsors = await ownedMailboxes(table, agent.sponsor);
+  const ids = await selves(table, agent);
   const entries: Entry[] = [];
   const add = (mailbox: string | undefined, change: Change) => {
     const feed = mailbox ?? "organization";
@@ -134,24 +141,24 @@ async function activityOf(table: Table, agent: Agent): Promise<Entry[]> {
   };
   const [organization, alerts, ...feeds] = await Promise.all([
     wholeFeed((after) => organizationChanges(table, after)),
-    alertsAbout(table, agent.sponsor, agent.id),
+    Promise.all([...ids].map((id) => alertsAbout(table, agent.sponsor, id))).then((each) => each.flat()),
     ...sponsors.map(({ id }) => wholeFeed(async (after) => (await mailboxChanges(table, id, after, true)).changes)),
   ]);
   sponsors.forEach(({ id }, index) => {
     const changes = feeds[index]!;
     // What the agent did, its drafts' lives, and changes to the agent.
-    const drafts = new Set(changes.filter((change) => change.type === "draftWritten" && change.actor === agent.id).map((change) => field(change, "draft")));
+    const drafts = new Set(changes.filter((change) => change.type === "draftWritten" && ids.has(change.actor!)).map((change) => field(change, "draft")));
     for (const change of changes) {
-      const concerns = ("actor" in change && change.actor === agent.id) || field(change, "agent") === agent.id || drafts.has(field(change, "draft"));
-      // A turn of Ask Coo keeps its handover, so the handover isn't an event of its own.
-      const turnsOwn = change.type === "agentHandedOver" && change.task === undefined;
-      if (concerns && !turnsOwn && once(change)) add(id, change);
+      const concerns = ("actor" in change && ids.has(change.actor!)) || ids.has(field(change, "agent") as string) || drafts.has(field(change, "draft"));
+      // A turn of Ask Coo keeps its handover, so the handover isn't an event of its own, and a merge is the organization's.
+      const counted = !(change.type === "agentHandedOver" && change.task === undefined) && change.type !== "mailboxAgentsMerged";
+      if (concerns && counted && once(change)) add(id, change);
     }
   });
   for (const change of organization) {
     if (retired.has(change.type)) continue;
-    const about = [field(change, "agent"), (field(change, "added") as Actor | undefined)?.id, (field(change, "removed") as Actor | undefined)?.id];
-    if (field(change, "actor") === agent.id || about.includes(agent.id)) add(undefined, change);
+    const about = [field(change, "agent"), (field(change, "added") as Actor | undefined)?.id, (field(change, "removed") as Actor | undefined)?.id] as (string | undefined)[];
+    if (ids.has(field(change, "actor") as string) || about.some((id) => id !== undefined && ids.has(id))) add(undefined, change);
   }
   for (const alert of alerts) entries.push({ alert, id: `alert:${alert.id}`, key: `${alert.at}|alert|${alert.id}`, kind: "alerts", failed: false });
   return entries.sort((a, b) => (a.key < b.key ? 1 : -1));
@@ -192,7 +199,7 @@ async function activityAsked(event: Parameters<OperationHandler>[0], table: Tabl
  * isn't the sponsor reads. Any other field is left out, so a field added later stays out until
  * it is listed here.
  */
-const mailFree = new Set(["position", "at", "actor", "type", "task", "thread", "message", "draft", "approval", "decision", "label", "added", "removed", "spam", "screened", "delivery", "delivered", "agent", "before", "after", "on", "letIn", "outcome", "status", "feedback", "human", "threads", "drafts", "models", "handover", "harder", "cost", "method", "until", "setAsideAt"]);
+const mailFree = new Set(["position", "at", "actor", "type", "task", "thread", "message", "draft", "approval", "decision", "label", "added", "removed", "spam", "screened", "delivery", "delivered", "agent", "before", "after", "on", "letIn", "outcome", "status", "feedback", "human", "threads", "drafts", "models", "handover", "harder", "cost", "method", "until", "setAsideAt", "allMailboxes", "merged"]);
 /** The fields of what SES reported about a send that say nothing of its recipients. */
 const feedbackFree = new Set(["kind", "at", "reason"]);
 /** The fields of a handover that say nothing of the mail, as what the everyday model said in asking for help can. */
@@ -217,12 +224,12 @@ function startOf(after: string): string | undefined {
  * What the reader reads of the activity's events: each change as they may read it, with its thread,
  * a task's note for the sponsor, and the line it says, its actors named as the reader knows them.
  */
-function reading(table: Table, agent: Agent, reader: Actor, all: Entry[]) {
+function reading(table: Table, agent: Agent, reader: Actor, all: Entry[], ids: Set<string>) {
   const sponsor = reader.id === agent.sponsor;
   const waiting = sponsor ? waitingForSponsor(all) : new Set<string>();
   const names = new Map<string, Promise<string>>();
   const nameOf = (id: string) => {
-    if (id === agent.id) return Promise.resolve(agent.name);
+    if (ids.has(id)) return Promise.resolve(agent.name);
     if (id === reader.id) return Promise.resolve("You");
     if (!names.has(id)) names.set(id, actorNamed(table, id));
     return names.get(id)!;
@@ -234,7 +241,7 @@ function reading(table: Table, agent: Agent, reader: Actor, all: Entry[]) {
     if ("alert" in entry) {
       const { alert } = entry;
       const summary = alertSaid(alert, sponsor ? { sponsor: true } : { sponsor: false, sponsorName: await nameOf(agent.sponsor) });
-      const event: AgentEvent = { ...base, at: alert.at, type: "alert", actor: duva, summary };
+      const event: AgentEvent = { ...base, at: alert.at, type: "alert", actor: duva, ...(alert.mailbox !== undefined && { mailbox: alert.mailbox }), summary };
       return { event, detail: { ...event, ...(alert.mailbox !== undefined && { mailbox: alert.mailbox }), ...(alert.thread !== undefined && { thread: alert.thread }), ...(sponsor && { alert }) } };
     }
     const { mailbox, change: recorded } = entry;
@@ -253,7 +260,9 @@ function reading(table: Table, agent: Agent, reader: Actor, all: Entry[]) {
     const message = sponsor && mailbox !== undefined && messageId !== undefined ? await storedMessage(table, mailbox, messageId) : undefined;
     const said: MessageNamed | undefined = message && { from: message.from.name ?? message.from.address, to: message.to.map(({ name, address }) => name ?? address), recipient: message.recipient };
     const summary = changeSaid(change, { who, agent: agent.name, you: named === reader.id }, said);
-    const event: AgentEvent = { ...base, at: recorded.at, type: recorded.type, ...(actor !== undefined && { actor }), summary };
+    // A turn asked from All mailboxes happened in none of them.
+    const inMailbox = mailbox !== undefined && !(recorded.type === "conversationTurn" && recorded.allMailboxes === true) ? mailbox : undefined;
+    const event: AgentEvent = { ...base, at: recorded.at, type: recorded.type, ...(actor !== undefined && { actor }), ...(inMailbox !== undefined && { mailbox: inMailbox }), summary };
     return { event, detail: { ...event, ...(mailbox !== undefined && { mailbox }), ...(thread !== undefined && { thread }), change } };
   };
 }
@@ -280,7 +289,7 @@ export const listAgentEvents: OperationHandler = async (event, deployment, actor
     ({ key, kind, failed }) => (start === undefined || key < start) && (asked === undefined || asked.includes(kind)) && (query.failed !== "true" || failed),
   );
   const page = chosen.slice(0, Number(limit));
-  const read = reading(deployment.table, agent, actor!, all);
+  const read = reading(deployment.table, agent, actor!, all, await selves(deployment.table, agent));
   const events = await Promise.all(page.map(async (entry) => (await read(entry)).event));
   const next = chosen.length > page.length ? Buffer.from(page.at(-1)!.key).toString("base64url") : undefined;
   return { statusCode: 200, body: { events, ...(next !== undefined && { next }) } satisfies components["schemas"]["AgentEventPage"] };
@@ -293,6 +302,6 @@ export const getAgentEvent: OperationHandler = async (event, deployment, actor) 
   const all = await activityOf(deployment.table, agent);
   const entry = all.find((each) => each.id === id);
   if (entry === undefined) return refusal(404, `${agent.name} has no event ${JSON.stringify(id)}. List its events to find its ID.`);
-  const { detail } = await reading(deployment.table, agent, actor!, all)(entry);
+  const { detail } = await reading(deployment.table, agent, actor!, all, await selves(deployment.table, agent))(entry);
   return { statusCode: 200, body: detail satisfies components["schemas"]["AgentEventDetail"] };
 };

@@ -165,7 +165,7 @@ function routeOf(hash: string): Route {
 
 /** Whether the route is one that links reach without naming a mailbox, so it is in the own mailbox the human was last in. */
 const followsLastMailbox = (route: Route) =>
-  (route.view === "thread" || route.view === "draft" || route.view === "drafts" || route.view === "write" || route.view === "agent") && route.mailbox === undefined;
+  (route.view === "thread" || route.view === "draft" || route.view === "drafts" || route.view === "write") && route.mailbox === undefined;
 
 function useRoute(): Route & { hash: string } {
   const [hash, setHash] = useState(location.hash);
@@ -227,7 +227,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
   const [sponsored, setSponsored] = useState<Agent[]>([]);
   const sponsoredRead = useRef(0);
   // The human's mailbox agents, each of them Coo.
-  const coos = useMemo<ReadonlySet<string>>(() => new Set(sponsored.filter((agent) => agent.mailbox !== undefined).map(({ id }) => id)), [sponsored]);
+  const coos = useMemo<ReadonlySet<string>>(() => new Set(sponsored.filter((agent) => agent.mailboxAgent).map(({ id }) => id)), [sponsored]);
   // Whether the sheet listing the keyboard's shortcuts is open.
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
 
@@ -476,16 +476,23 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
   const sideBase = sided === undefined ? "#/" : mailboxHref(sided, !several && sided.id === first?.id);
   const version = sided === undefined ? 0 : (versions.get(sided.id) ?? 0);
 
-  // The strip names Coo once, the one of the side column's mailbox, or of the first own, and each self-hosted agent.
-  const stripAgents = useMemo(() => {
-    const coo = sponsored.find(({ mailbox }) => mailbox !== undefined && mailbox === (sided ?? first)?.id) ?? sponsored.find(({ mailbox }) => mailbox !== undefined);
-    return [...(coo === undefined ? [] : [coo]), ...sponsored.filter(({ mailbox }) => mailbox === undefined)];
-  }, [sponsored, sided, first]);
+  // The strip names Coo first, then each self-hosted agent.
+  const stripAgents = useMemo(() => [...sponsored.filter(({ mailboxAgent }) => mailboxAgent), ...sponsored.filter(({ mailboxAgent }) => !mailboxAgent)], [sponsored]);
 
-  // Coo, at the side column's head, works and speaks of the side column's mailbox. Where the human looks ends its news of it.
+  // Each own mailbox by its address, as an agent's activity names where each event happened.
+  const addresses = useMemo(() => new Map(own.map(({ id, defaultAddress, addresses }) => [id, defaultAddress ?? addresses[0] ?? id])), [own]);
+  // Ask Coo from All mailboxes, which a human with several reaches at #/agent.
+  const askingAll = route.view === "agent" && route.mailbox === undefined && several;
+  // Coo, at the side column's head, works and speaks of the side column's mailbox, or of all of them
+  // from All mailboxes. Where the human looks ends its news of it.
+  const cooMailboxes = useMemo(() => (askingAll ? followed : sided === undefined ? [] : [sided.id]), [askingAll, followed, sided]);
+  const cooBaseOf = (id: string) => {
+    const found = own.find((each) => each.id === id);
+    return found === undefined ? sideBase : mailboxHref(found, !several && found.id === first?.id);
+  };
   const coo = useCoo({
     client,
-    mailbox: sided?.id,
+    mailboxes: cooMailboxes,
     own: followed,
     coos,
     looking: {
@@ -720,10 +727,12 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
       />
     ) : route.view === "agent" ? (
       <AskAgent
-          key={`${shown.id}/agent`}
+          // One conversation, wherever it is asked from, so choosing where keeps it on the page.
+          key="agent"
           client={client}
           config={config}
-          mailbox={shown}
+          mailbox={askingAll ? undefined : shown}
+          own={own}
           base={base}
           back={listing === undefined || "drafts" in listing ? base : hrefOf(listing, base)}
           backTo={listing === undefined ? strings.views.inbox : "drafts" in listing ? strings.views.drafts : titleOf(listing, labels)}
@@ -751,7 +760,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
         onSignedOut={onSignedOut}
       />
     ) : route.view === "activity" ? (
-      <AgentEvents key={route.agent} client={client} agent={route.agent} name={agentNames.get(route.agent)} open={route.event} filter={route.filter} mine={first?.id} timeZone={preferences.timeZone} onSignedOut={onSignedOut} />
+      <AgentEvents key={route.agent} client={client} agent={route.agent} name={agentNames.get(route.agent)} open={route.event} filter={route.filter} mine={first?.id} addresses={several ? addresses : undefined} timeZone={preferences.timeZone} onSignedOut={onSignedOut} />
     ) : mailboxes.status === "loading" || placingDraft || checking ? (
       <main className="desk" aria-busy="true" />
     ) : mailboxes.status === "failed" ? (
@@ -816,7 +825,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
         <header className="bar">
           {/* Coo's portrait, where the wordmark was, opens Ask Coo for the side column's mailbox. */}
           <CooLink href={sided !== undefined ? `${sideBase}agent` : first !== undefined ? "#/agent" : "#/"} working={coo.working} />
-          {preferences.cooSpeaksUp === "on" && <CooSays news={coo.news} base={sideBase} onTasksSeen={coo.tasksSeen} />}
+          {preferences.cooSpeaksUp === "on" && <CooSays news={coo.news} baseOf={cooBaseOf} onTasksSeen={coo.tasksSeen} />}
           {write !== undefined && (
             <button type="button" className="button button-primary button-small bar-write" aria-keyshortcuts={preferences.keyboardShortcuts === "off" ? undefined : "c"} onClick={write}>
               <WriteIcon />
@@ -1123,7 +1132,7 @@ function Strip({
               >
                 <ActorMark kind="agent" agent={agent.id} />
                 {/* Coo is named once for all the human's mailboxes, so its sends, counted per mailbox, aren't said. */}
-                {agent.mailbox !== undefined
+                {agent.mailboxAgent
                   ? agent.paused === undefined
                     ? strings.strip.running(strings.strip.coo)
                     : strings.strip.paused(strings.strip.coo)

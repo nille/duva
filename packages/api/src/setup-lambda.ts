@@ -46,7 +46,8 @@ export const handler = async () => {
   await eraseBlockedSenders(table, eraser);
   // Humans' mailboxes from before the Screener get it on, with every sender they already have sent to the Inbox.
   await setUpScreeners(table);
-  // Humans' mailboxes from before mailbox agents get theirs, and those named before Coo are renamed.
+  // Each human's mailbox agents from before one per human are merged into one, once (ADR-0033), humans
+  // from before mailbox agents get theirs, and those named before Coo are renamed.
   await giveMailboxAgents(table);
   // Decisions on approvals from before the approval log are listed in it, once.
   await listEarlierDecisions(table);

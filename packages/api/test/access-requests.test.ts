@@ -91,7 +91,7 @@ test("approving makes the human the agent's sponsor with the access it asked for
 
   expect(response.status).toBe(201);
   expect(agent).toEqual({ id: expect.any(String), kind: "agent", name: "Hermes", sponsor: linusId });
-  expect((await linus.GET("/agents")).data!.agents.filter(({ mailbox }) => mailbox === undefined)).toEqual([expect.objectContaining({ id: agent!.id, name: "Hermes" })]);
+  expect((await linus.GET("/agents")).data!.agents.filter(({ mailboxAgent }) => !mailboxAgent)).toEqual([expect.objectContaining({ id: agent!.id, name: "Hermes" })]);
   expect((await linus.GET("/agents/{agent}/settings", { params: { path: { agent: agent!.id } } })).data).toMatchObject({
     sponsorAccess: "draft",
     sponsorMailboxes: [work.id],
@@ -156,7 +156,7 @@ test("approving names only the human's own mailboxes, so another's gets 400 and 
 
   expect(response.status).toBe(400);
   expect(error).toEqual({ message: `${JSON.stringify(graceMailbox.id)} isn't one of your mailboxes. List your mailboxes to find their IDs.` });
-  expect((await linus.GET("/agents")).data!.agents.filter(({ mailbox }) => mailbox === undefined)).toEqual([]);
+  expect((await linus.GET("/agents")).data!.agents.filter(({ mailboxAgent }) => !mailboxAgent)).toEqual([]);
   expect((await linus.GET("/access-requests/{code}", inCode(asked.code))).response.status).toBe(200);
 });
 
@@ -173,7 +173,7 @@ test("a declined request gives the agent no key, and can't be approved after", a
   expect(refused.response.status).toBe(403);
   expect(refused.error).toEqual({ message: `The human declined the access request ${asked.code}. Ask them why before asking again.` });
   expect((await linus.POST("/access-requests/{code}/approve", inCode(asked.code))).response.status).toBe(404);
-  expect((await linus.GET("/agents")).data!.agents.filter(({ mailbox }) => mailbox === undefined)).toEqual([]);
+  expect((await linus.GET("/agents")).data!.agents.filter(({ mailboxAgent }) => !mailboxAgent)).toEqual([]);
 });
 
 test("a code is approved once, so a second human approving it gets 404", async () => {
@@ -186,7 +186,7 @@ test("a code is approved once, so a second human approving it gets 404", async (
 
   expect(response.status).toBe(404);
   expect(error).toEqual({ message: `No access request waits with the code "${asked.code}". A code works for 10 minutes and once. Ask the agent to ask again.` });
-  expect((await grace.GET("/agents")).data!.agents.filter(({ mailbox }) => mailbox === undefined)).toEqual([]);
+  expect((await grace.GET("/agents")).data!.agents.filter(({ mailboxAgent }) => !mailboxAgent)).toEqual([]);
 });
 
 test("a code expires 10 minutes after the agent asked, and then neither shows nor gives a key", async () => {

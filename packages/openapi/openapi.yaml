@@ -2253,14 +2253,14 @@ paths:
       description: >
         Sets the label's prompt, or replaces it. From then on, whenever the
         label is added to a message, by hand, by an agent or by a sender's
-        delivery, Duva gives the mailbox's mailbox agent a task: the prompt,
+        delivery, Duva gives its owner's mailbox agent a task: the prompt,
         with that message and its thread, once per message per label. The
         message stays where it goes. A thread given the label by hand or by
         an agent hands over its newest message. The agent works within the
         sponsor access the mailbox's owner gives it. The Feed, the Paper
         Trail and the mailbox's own labels can carry a prompt. Only the
-        mailbox's owner can set its labels' prompts, and only in a mailbox
-        that has a mailbox agent. The change is recorded in the mailbox's
+        mailbox's owner can set its labels' prompts, and only once they have
+        a mailbox agent. The change is recorded in the mailbox's
         change feed, naming you.
       x-cli-command: labels set-prompt
       parameters:
@@ -2346,21 +2346,20 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
-  /mailboxes/{mailbox}/agent:
+  /mailbox-agent:
     get:
       operationId: getMailboxAgent
-      summary: Read a mailbox's mailbox agent and your conversation with it.
+      summary: Read your mailbox agent and your conversation with it.
       description: >
-        Every human's personal mailbox has a mailbox agent, Coo, which Duva
-        hosts and which you sponsor. It works only in that mailbox, with the
-        sponsor access you give it in its settings, and its actions are
-        attributed to it. The web app asks it in "Ask Coo", which
-        streams its answer from the web app's own address, under /agent/.
-        Lists the conversation's turns, oldest first, at most the last 100.
-        Only the mailbox's owner can read it.
+        Every human with a personal mailbox has one mailbox agent, Coo, which
+        Duva hosts and which they sponsor. It works in all their personal
+        mailboxes, with the sponsor access they give it in its settings, and
+        its actions are attributed to it. The web app asks it in "Ask Coo",
+        from one mailbox or from All mailboxes, which streams its answer from
+        the web app's own address, under /agent/. You have one conversation
+        with it, wherever you ask from. Lists the conversation's turns, oldest
+        first, at most the last 100.
       x-cli-command: mailbox-agent get
-      parameters:
-        - $ref: "#/components/parameters/Mailbox"
       responses:
         "200":
           description: The mailbox agent and the conversation.
@@ -2374,17 +2373,15 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
-  /mailboxes/{mailbox}/agent/conversation:
+  /mailbox-agent/conversation:
     delete:
       operationId: clearConversation
-      summary: Start a new conversation with a mailbox's mailbox agent.
+      summary: Start a new conversation with your mailbox agent.
       description: >
         Deletes every turn of your conversation with it, so it starts again
-        knowing none of it. What it did stays done, in the mailbox's change
-        feed. Only the mailbox's owner can clear it.
+        knowing none of it. What it did stays done, in the mailboxes' change
+        feeds.
       x-cli-command: mailbox-agent clear
-      parameters:
-        - $ref: "#/components/parameters/Mailbox"
       responses:
         "200":
           description: The mailbox agent and the conversation, now empty.
@@ -2533,7 +2530,7 @@ paths:
         one-click (RFC 8058), when their newest mail that SES didn't judge to
         be spam offers it and a DKIM signature that passed covers its
         unsubscribe headers, and each message dropped later tries the same.
-        If one-click doesn't unsubscribe, the mailbox's mailbox agent goes on
+        If one-click doesn't unsubscribe, its owner's mailbox agent goes on
         by itself, for mail that passed DMARC: on the List-Unsubscribe page in
         an isolated browser, then by mailing the List-Unsubscribe address,
         then by an unsubscribe link in the body on the signer's domain, and
@@ -4227,12 +4224,12 @@ components:
           description: The ID of the human who answers for the agent.
         paused:
           $ref: "#/components/schemas/Pause"
-        mailbox:
-          type: string
+        mailboxAgent:
+          type: boolean
           description: >-
-            For a mailbox agent, the ID of the human's mailbox it is the
-            mailbox agent of, the only one it works in. Duva hosts it, so it
-            has no key, and it goes with the mailbox.
+            Present, true, for a mailbox agent, Coo: the one Duva hosts for its
+            sponsor, which works in their personal mailboxes. Duva hosts it, so
+            it has no key, and it goes with its sponsor (ADR-0033).
         sendsLeftThisHour:
           type: integer
           minimum: 0
@@ -5129,6 +5126,7 @@ components:
         - $ref: "#/components/schemas/TaskEnded"
         - $ref: "#/components/schemas/AgentHandedOver"
         - $ref: "#/components/schemas/ConversationTurnTaken"
+        - $ref: "#/components/schemas/MailboxAgentsMerged"
       discriminator:
         propertyName: type
         mapping:
@@ -5174,6 +5172,7 @@ components:
           taskEnded: "#/components/schemas/TaskEnded"
           agentHandedOver: "#/components/schemas/AgentHandedOver"
           conversationTurn: "#/components/schemas/ConversationTurnTaken"
+          mailboxAgentsMerged: "#/components/schemas/MailboxAgentsMerged"
     MessageReceived:
       type: object
       additionalProperties: false
@@ -5779,6 +5778,12 @@ components:
             harder:
               type: boolean
               description: Whether the human asked the harder model to think harder about their last turn.
+            allMailboxes:
+              type: boolean
+              description: >-
+                Present, true, for a turn asked from All mailboxes, which the
+                feed of the first of the human's mailboxes the agent works in
+                records. A turn asked from one mailbox is in that one's feed.
             outcome:
               type: string
               enum: [answered, capReached, failed]
@@ -7747,6 +7752,7 @@ components:
         - $ref: "#/components/schemas/AdminChanged"
         - $ref: "#/components/schemas/MailboxHandedOver"
         - $ref: "#/components/schemas/MailboxDeleted"
+        - $ref: "#/components/schemas/MailboxAgentsMerged"
         - $ref: "#/components/schemas/RetiredChange"
       discriminator:
         propertyName: type
@@ -7772,6 +7778,7 @@ components:
           adminChanged: "#/components/schemas/AdminChanged"
           mailboxHandedOver: "#/components/schemas/MailboxHandedOver"
           mailboxDeleted: "#/components/schemas/MailboxDeleted"
+          mailboxAgentsMerged: "#/components/schemas/MailboxAgentsMerged"
           agentAdminChanged: "#/components/schemas/RetiredChange"
           setupAsked: "#/components/schemas/RetiredChange"
           setupApproved: "#/components/schemas/RetiredChange"
@@ -7934,6 +7941,34 @@ components:
             mailbox:
               type: string
               description: The ID of the mailbox it delivers to.
+    MailboxAgentsMerged:
+      allOf:
+        - $ref: "#/components/schemas/ChangeBase"
+        - type: object
+          required: [type, agent, human, merged]
+          description: >-
+            Duva made the human's mailbox agents one, as the setup after the
+            deploy that brought one per human did (ADR-0033): the agent is now
+            their mailbox agent in all their personal mailboxes, with the
+            conversations of those merged into it, and settings none of them
+            had more of. What each did stays attributed to it, and its
+            activity is the one agent's. Recorded in the organization's change
+            feed and in each of the human's personal mailboxes.
+          properties:
+            type:
+              type: string
+              const: mailboxAgentsMerged
+            agent:
+              type: string
+              description: The ID of the human's one mailbox agent.
+            human:
+              type: string
+              description: The ID of the human.
+            merged:
+              type: array
+              items:
+                type: string
+              description: The IDs of the mailbox agents merged into it, none if the human had only it.
     ActorRemoved:
       allOf:
         - $ref: "#/components/schemas/ChangeBase"
@@ -8230,6 +8265,12 @@ components:
           type: string
           enum: [human, agent]
           description: Who took the turn, you or the agent.
+        mailbox:
+          type: string
+          description: >-
+            The ID of the mailbox the turn was asked from, which the agent
+            worked on unless you said otherwise. Absent for a turn asked from
+            All mailboxes.
         text:
           type: string
           description: What was said.
@@ -8306,6 +8347,9 @@ components:
         operation:
           type: string
           description: The operation's ID in this document, such as getThread.
+        mailbox:
+          type: string
+          description: The ID of the mailbox it called the operation in.
         what:
           type: string
           description: What the operation does, its summary.
@@ -8510,6 +8554,12 @@ components:
         actor:
           type: string
           description: The ID of the actor who made it, or duva if Duva did. Absent when no one did, as for mail that arrived.
+        mailbox:
+          type: string
+          description: >-
+            The ID of the mailbox it happened in. Absent for a change to the
+            organization or to the agent itself, an alert about no mailbox, and
+            a turn asked from All mailboxes.
         summary:
           type: string
           description: What happened, in one line, as the web app says it.

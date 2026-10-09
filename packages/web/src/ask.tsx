@@ -1,5 +1,5 @@
-// Ask Coo, in the reading pane: the human's conversation with Coo, the mailbox agent of one of
-// their mailboxes (ADR-0027). Each turn goes to the conversation Lambda on the web app's own domain,
+// Ask Coo, in the reading pane: the human's one conversation with Coo, their mailbox agent, asked
+// from one of their mailboxes or, with several, from All mailboxes (ADR-0033). Each turn goes to the conversation Lambda on the web app's own domain,
 // which streams back what the agent says as it writes it, and each thing it does as it does it, with
 // links to the threads and drafts it touched. A send it asks for waits in Approvals. When the
 // everyday model hands a turn to the harder one, the turn says so and why, and its last answer can
@@ -11,6 +11,7 @@ import { useDates } from "./dates.ts";
 import { activityHref } from "./activity.tsx";
 import { ActorMark } from "./mail-parts.tsx";
 import { agentHref } from "./alerts.tsx";
+import { mailboxHref } from "./mailboxes.tsx";
 import { type Config, postTurn } from "./session.ts";
 import { strings } from "./strings.ts";
 import { threadHref } from "./views.tsx";
@@ -36,6 +37,7 @@ export function AskAgent({
   client,
   config,
   mailbox,
+  own,
   base,
   back,
   backTo,
@@ -44,8 +46,11 @@ export function AskAgent({
 }: {
   client: DuvaClient;
   config: Config;
-  mailbox: Mailbox;
-  /** Where the mailbox's Inbox is. */
+  /** The mailbox Coo is asked from, or none for All mailboxes. */
+  mailbox?: Mailbox;
+  /** The human's own mailboxes, in the order the web app lists them. */
+  own: Mailbox[];
+  /** Where the Inbox of the mailbox it is asked from is, or the first's. */
   base: string;
   /** Where the list beside it is, and its name. */
   back: string;
@@ -70,14 +75,14 @@ export function AskAgent({
 
   const load = useCallback(async () => {
     setRead({ status: "loading" });
-    const { data, response } = await client.GET("/mailboxes/{mailbox}/agent", { params: { path: { mailbox: mailbox.id } } }).catch(() => ({ data: undefined, response: undefined }));
+    const { data, response } = await client.GET("/mailbox-agent").catch(() => ({ data: undefined, response: undefined }));
     if (response?.status === 401) return onSignedOut();
     if (data === undefined) return setRead({ status: "failed" });
     setRead({ status: "read", agent: data.agent, turns: data.turns });
     // What the agent may do is said in its head, once its settings are read.
     const { data: settings } = await client.GET("/agents/{agent}/settings", { params: { path: { agent: data.agent.id } } }).catch(() => ({ data: undefined }));
     if (settings !== undefined) setRead((current) => (current.status === "read" ? { ...current, settings } : current));
-  }, [client, mailbox.id, onSignedOut]);
+  }, [client, onSignedOut]);
 
   useEffect(() => {
     void load();
@@ -104,7 +109,8 @@ export function AskAgent({
     setAnnounced(copy.working);
     onAsking?.(true);
     try {
-      const response = await postTurn(config, harder ? { mailbox: mailbox.id, harder } : { mailbox: mailbox.id, words: asked });
+      // Thinking harder asks from where the turn it answers again was asked.
+      const response = await postTurn(config, harder ? { harder } : { ...(mailbox !== undefined && { mailbox: mailbox.id }), words: asked });
       if (response === undefined || response.status === 401) return onSignedOut();
       if (!response.ok || response.body === null) {
         const { message } = (await response.json().catch(() => ({}))) as { message?: string };
@@ -157,7 +163,7 @@ export function AskAgent({
 
   async function clear() {
     setClearing(true);
-    const { data, response } = await client.DELETE("/mailboxes/{mailbox}/agent/conversation", { params: { path: { mailbox: mailbox.id } } }).catch(() => ({ data: undefined, response: undefined }));
+    const { data, response } = await client.DELETE("/mailbox-agent/conversation").catch(() => ({ data: undefined, response: undefined }));
     setClearing(false);
     if (response?.status === 401) return onSignedOut();
     if (data !== undefined) setRead((current) => (current.status === "read" ? { ...current, turns: [] } : current));
@@ -165,7 +171,20 @@ export function AskAgent({
     field.current?.focus();
   }
 
-  const address = mailbox.defaultAddress ?? mailbox.addresses[0] ?? mailbox.id;
+  const several = own.length > 1;
+  const addressOf = (each: Mailbox) => each.defaultAddress ?? each.addresses[0] ?? each.id;
+  // Each thing Coo touched is linked in the mailbox it was in.
+  const baseOf = (id: string | undefined) => {
+    const found = own.find((each) => each.id === id);
+    return found === undefined ? base : mailboxHref(found, !several);
+  };
+  // With several mailboxes, each turn says where it was asked.
+  const askedIn = (turn: Turn) => {
+    if (!several) return undefined;
+    if (turn.mailbox === undefined) return copy.askedIn(copy.allMailboxes);
+    const found = own.find(({ id }) => id === turn.mailbox);
+    return found === undefined ? undefined : copy.askedIn(addressOf(found));
+  };
   const approval = read.status === "read" ? read.settings?.approvalAsSponsor !== false : true;
   const turns = read.status === "read" ? read.turns : [];
 
@@ -187,9 +206,30 @@ export function AskAgent({
           <p className="ask-agent">
             <ActorMark kind="coo" />
             <span>
-              {copy.agent}. {copy.where(address)}
+              {copy.agent}. {mailbox === undefined ? copy.whereAll : copy.where(addressOf(mailbox))}
             </span>
           </p>
+          {several && (
+            <nav className="ask-scope" aria-label={copy.scope}>
+              <span className="ask-scope-label" aria-hidden="true">
+                {copy.scope}
+              </span>
+              <ul>
+                <li>
+                  <a className="chip" href="#/agent" aria-current={mailbox === undefined ? "page" : undefined}>
+                    {copy.allMailboxes}
+                  </a>
+                </li>
+                {own.map((each) => (
+                  <li key={each.id}>
+                    <a className="chip" href={`${mailboxHref(each, false)}agent`} aria-current={mailbox?.id === each.id ? "page" : undefined}>
+                      {addressOf(each)}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+          )}
           {read.status === "read" && read.settings !== undefined && (
             <p className="ask-can">{read.settings.sponsorAccess === "send" ? copy.can.send(approval) : copy.can[read.settings.sponsorAccess]}</p>
           )}
@@ -217,7 +257,7 @@ export function AskAgent({
       ) : read.status === "loading" ? null : turns.length === 0 && running === undefined ? (
         <section className="ask-empty" aria-labelledby={`${titleId}-empty`}>
           <h2 id={`${titleId}-empty`}>{copy.emptyTitle}</h2>
-          <p>{copy.emptyLead}</p>
+          <p>{mailbox === undefined && several ? copy.emptyLeadAll : copy.emptyLead}</p>
           <ul className="ask-suggestions" aria-label={copy.suggestion}>
             {copy.suggestions.map((suggestion) => (
               <li key={suggestion}>
@@ -234,7 +274,8 @@ export function AskAgent({
             <TurnShown
               key={turn.id}
               turn={turn}
-              base={base}
+              baseOf={baseOf}
+              askedIn={askedIn(turn)}
               approval={approval}
               time={clock(new Date(turn.at))}
               onHarder={index === turns.length - 1 && turn.from === "agent" && turn.harder !== true && running === undefined ? () => void ask("", { harder: true }) : undefined}
@@ -248,7 +289,7 @@ export function AskAgent({
                 <span className="ask-time">{copy.thinking}</span>
               </p>
               {running.handover !== undefined && <Handover handover={running.handover} />}
-              <Steps actions={running.actions} base={base} approval={approval} />
+              <Steps actions={running.actions} baseOf={baseOf} approval={approval} />
               <p className="ask-text">
                 {running.text}
                 <span className="ask-caret" aria-hidden="true" />
@@ -300,7 +341,22 @@ export function AskAgent({
  * A turn of the conversation: who took it and when, what the agent did, and what was said, and of
  * the agent's, the model that took it over and why. The last answer offers to think harder.
  */
-function TurnShown({ turn, base, approval, time, onHarder }: { turn: Turn; base: string; approval: boolean; time: string; onHarder?: () => void }) {
+function TurnShown({
+  turn,
+  baseOf,
+  askedIn,
+  approval,
+  time,
+  onHarder,
+}: {
+  turn: Turn;
+  baseOf: (mailbox: string | undefined) => string;
+  /** Where the human asked it, said when they have several mailboxes. */
+  askedIn?: string;
+  approval: boolean;
+  time: string;
+  onHarder?: () => void;
+}) {
   const human = turn.from === "human";
   return (
     <li className={human ? "ask-turn ask-turn-human" : "ask-turn ask-turn-agent"}>
@@ -310,10 +366,11 @@ function TurnShown({ turn, base, approval, time, onHarder }: { turn: Turn; base:
         <time className="ask-time" dateTime={turn.at}>
           {time}
         </time>
+        {human && askedIn !== undefined && <span className="ask-where">{askedIn}</span>}
       </p>
       {turn.harder === true && turn.model !== undefined && <p className="ask-handover">{copy.thoughtHarder(copy.models[turn.model])}</p>}
       {turn.handover !== undefined && <Handover handover={turn.handover} />}
-      {!human && <Steps actions={turn.actions} base={base} approval={approval} />}
+      {!human && <Steps actions={turn.actions} baseOf={baseOf} approval={approval} />}
       {turn.text !== "" && <p className="ask-text">{turn.text}</p>}
       {turn.outcome === "capReached" && <p className="notice ask-stopped">{copy.capReached}</p>}
       {turn.outcome === "failed" && (
@@ -339,7 +396,7 @@ const Handover = ({ handover }: { handover: components["schemas"]["Handover"] })
 );
 
 /** What the agent did in a turn, a line each, with links to the threads and drafts it touched. */
-function Steps({ actions, base, approval }: { actions: Action[]; base: string; approval: boolean }) {
+function Steps({ actions, baseOf, approval }: { actions: Action[]; baseOf: (mailbox: string | undefined) => string; approval: boolean }) {
   if (actions.length === 0) return null;
   return (
     <ol className="ask-steps" aria-label={copy.steps}>
@@ -347,7 +404,7 @@ function Steps({ actions, base, approval }: { actions: Action[]; base: string; a
         <li key={index} className={action.ok ? "ask-step" : "ask-step ask-step-refused"}>
           <StepIcon ok={action.ok} />
           <span className="ask-step-what">
-            <Step action={action} base={base} approval={approval} />
+            <Step action={action} base={baseOf(action.mailbox)} approval={approval} />
           </span>
         </li>
       ))}
@@ -363,7 +420,7 @@ function Step({ action, base, approval }: { action: Action; base: string; approv
     return (
       <>
         {phrase} <a href={`${base}drafts/${encodeURIComponent(action.draft)}`}>{copy.open.draft}</a>
-        {action.operation === "sendDraft" && approval && (
+        {(action.operation === "sendDraft" || action.operation === "sendAllMailboxesDraft") && approval && (
           <>
             {". "}
             <a href="#/approvals" className="ask-waits">

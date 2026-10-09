@@ -52,7 +52,7 @@ async function withMailbox({ defaults = false, ...options }: DuvaOptions & { def
   );
   const ask = (words: string) => duva.askAgent("linus@example.org", { mailbox: mailbox!.id, words });
   const harder = () => duva.askAgent("linus@example.org", { mailbox: mailbox!.id, harder: true });
-  const agent = (await linus.GET("/mailboxes/{mailbox}/agent", { params })).data!.agent;
+  const agent = (await linus.GET("/mailbox-agent")).data!.agent;
   const handovers = async () =>
     (await linus.GET("/mailboxes/{mailbox}/changes", { params })).data!.changes.filter((change) => change.type === "agentHandedOver");
   return { duva, ada, linus, params, ask, harder, agent, handovers };
@@ -252,7 +252,7 @@ test("Think harder answers the last turn again with the harder model, after what
   // It answers the question again, without the answer it had.
   expect(JSON.stringify(requests.at(-1)!.messages)).not.toContain("First answer.");
   expect(done(events).turn).toMatchObject({ text: "A better answer.", model: sonnet, harder: true });
-  const { data } = await linus.GET("/mailboxes/{mailbox}/agent", { params });
+  const { data } = await linus.GET("/mailbox-agent");
   expect(data!.turns.map(({ from, text }) => [from, text])).toEqual([
     ["human", "Anything from Grace?"],
     ["agent", "First answer."],

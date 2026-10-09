@@ -47,33 +47,46 @@ async function withMailbox(options: DuvaOptions = {}) {
   const ask = (words: string, email = "linus@example.org", mailboxId = mailbox!.id) => duva.askAgent(email, { mailbox: mailboxId, words });
   // With Claude Sonnet 5.5 for every job, nothing is routed, so a script runs as written.
   const sonnetOnly = () => ada.PATCH("/organization/settings", { body: { mailboxAgentModel: "anthropic.claude-sonnet-5-5", mailboxAgentTaskModel: "anthropic.claude-sonnet-5-5" } });
-  const agent = async () => (await linus.GET("/mailboxes/{mailbox}/agent", { params })).data!.agent;
+  const agent = async () => (await linus.GET("/mailbox-agent")).data!.agent;
   return { duva, ada, linus, grace, linusId: linusActor!.id, graceId: graceActor!.id, mailbox: mailbox!, params, ask, agent, sonnetOnly };
 }
 
 const fromGrace = (subject: string, text: string, id = "report-1") =>
   `From: Grace Hopper <grace@example.org>\r\nTo: linus@example.com\r\nSubject: ${subject}\r\nDate: Sat, 03 Oct 2026 10:00:00 +0000\r\nMessage-ID: <${id}@example.org>\r\n\r\n${text}\r\n`;
 
-test("a human's new mailbox gets a mailbox agent its owner sponsors, which may read, organize, draft and ask to send there", async () => {
-  const { linus, mailbox, params, linusId } = await withMailbox();
+test("a human's first mailbox gives them a mailbox agent they sponsor, which may read, organize, draft and ask to send in all their mailboxes", async () => {
+  const { linus, linusId } = await withMailbox();
 
-  const { response, data } = await linus.GET("/mailboxes/{mailbox}/agent", { params });
+  const { response, data } = await linus.GET("/mailbox-agent");
 
   expect(response.status).toBe(200);
-  expect(data).toEqual({ agent: { id: expect.any(String), kind: "agent", name: "Coo", sponsor: linusId, mailbox: mailbox.id }, turns: [] });
+  expect(data).toEqual({ agent: { id: expect.any(String), kind: "agent", name: "Coo", sponsor: linusId, mailboxAgent: true }, turns: [] });
   expect((await linus.GET("/agents")).data!.agents).toEqual([{ ...data!.agent, sendsLeftThisHour: 100 }]);
   const { data: settings } = await linus.GET("/agents/{agent}/settings", { params: { path: { agent: data!.agent.id } } });
-  expect(settings).toMatchObject({ sponsorAccess: "send", sponsorMailboxes: [mailbox.id], approvalAsSponsor: true, disclosureLineAsSponsor: true });
+  expect(settings).toMatchObject({ sponsorAccess: "send", sponsorMailboxes: null, approvalAsSponsor: true, disclosureLineAsSponsor: true });
+});
+
+test("a human's later mailboxes are worked by the mailbox agent they have, with no other", async () => {
+  const { ada, linus, linusId, agent } = await withMailbox();
+  const coo = await agent();
+
+  const { data: second } = await ada.POST("/mailboxes", { body: { owner: linusId, address: "linus.home@example.com" } });
+
+  expect((await linus.GET("/agents")).data!.agents.map(({ id }) => id)).toEqual([coo.id]);
+  const { data: listed } = await linus.GET("/mailboxes");
+  expect(listed!.mailboxes.find(({ id }) => id === second!.id)).toBeDefined();
+  const { data: settings } = await linus.GET("/agents/{agent}/settings", { params: { path: { agent: coo.id } } });
+  expect(settings!.sponsorMailboxes).toBeNull();
 });
 
 test("mailboxes from before mailbox agents get theirs at the setup after the deploy that brings them", async () => {
   const { duva, linus, params } = await withMailbox({ beforeMailboxAgents: true });
-  expect((await linus.GET("/mailboxes/{mailbox}/agent", { params })).response.status).toBe(404);
+  expect((await linus.GET("/mailbox-agent")).response.status).toBe(404);
 
   await duva.setUp({ admin: "ada@example.org" });
   await duva.setUp({ admin: "ada@example.org" });
 
-  expect((await linus.GET("/mailboxes/{mailbox}/agent", { params })).response.status).toBe(200);
+  expect((await linus.GET("/mailbox-agent")).response.status).toBe(200);
   expect((await linus.GET("/agents")).data!.agents).toHaveLength(1);
 });
 
@@ -86,28 +99,38 @@ test("mailbox agents from before Coo are named Coo at the setup after the deploy
   expect((await agent()).name).toBe("Coo");
 });
 
-test("a mailbox handed over gets a mailbox agent its new owner sponsors", async () => {
-  const { ada, grace, graceId, linusId, mailbox, params } = await withMailbox();
+test("a mailbox handed to a human without one is worked by a mailbox agent they sponsor", async () => {
+  const { ada, grace, graceId, linusId, mailbox } = await withMailbox();
 
   await ada.POST("/humans/{human}/remove", { params: { path: { human: linusId } }, body: { handOver: [mailbox.id], handTo: graceId, delete: [] } });
 
-  const { data } = await grace.GET("/mailboxes/{mailbox}/agent", { params });
-  expect(data!.agent.sponsor).toBe(graceId);
-  expect((await grace.GET("/agents")).data!.agents).toEqual([expect.objectContaining({ id: data!.agent.id, mailbox: mailbox.id })]);
+  const { data } = await grace.GET("/mailbox-agent");
+  expect(data!.agent).toMatchObject({ sponsor: graceId, mailboxAgent: true });
+  expect((await grace.GET("/agents")).data!.agents).toEqual([expect.objectContaining({ id: data!.agent.id })]);
 });
 
-test("a mailbox agent works only in its mailbox, has no key, owns no mailbox, and goes only with its mailbox", async () => {
+test("a mailbox handed to a human with a mailbox agent is worked by theirs", async () => {
+  const { model, requests } = scripted(() => [{ text: "Both." }]);
+  const { duva, ada, grace, graceId, linusId, mailbox } = await withMailbox({ model });
+  await ada.POST("/mailboxes", { body: { owner: graceId, address: "grace@example.com" } });
+  const { data: before } = await grace.GET("/mailbox-agent");
+
+  await ada.POST("/humans/{human}/remove", { params: { path: { human: linusId } }, body: { handOver: [mailbox.id], handTo: graceId, delete: [] } });
+  await duva.askAgent("grace@example.org", { words: "Which mailboxes do you work in?" });
+
+  expect((await grace.GET("/agents")).data!.agents.map(({ id }) => id)).toEqual([before!.agent.id]);
+  expect(requests[0]!.system).toContain("You work in their mailboxes");
+  expect(requests[0]!.system).toContain("linus@example.com");
+  expect(requests[0]!.system).toContain("grace@example.com");
+});
+
+test("a mailbox agent has no key, owns no mailbox, and goes only with its sponsor", async () => {
   const { linus, ada, agent } = await withMailbox();
   const path = { params: { path: { agent: (await agent()).id } } };
-  const { data: other } = await ada.POST("/mailboxes", { body: { owner: (await linus.GET("/whoami")).data!.id, address: "linus.other@example.com" } });
 
-  const moved = await linus.PATCH("/agents/{agent}/settings", { ...path, body: { sponsorMailboxes: [other!.id] } });
-  const all = await linus.PATCH("/agents/{agent}/settings", { ...path, body: { sponsorMailboxes: null } });
   const rotated = await linus.POST("/agents/{agent}/key", path);
   const removed = await linus.DELETE("/agents/{agent}", path);
 
-  expect(moved.response.status).toBe(400);
-  expect(all.response.status).toBe(400);
   expect(rotated.response.status).toBe(409);
   expect((rotated.error as { message: string }).message).toMatch(/no key/);
   expect(removed.response.status).toBe(409);
@@ -129,14 +152,15 @@ test("the mailbox agent answers from what its tools read in the mailbox, streami
 
   expect(status).toBe(200);
   expect(events!.map((event) => event.type)).toEqual(["turn", "text", "action", "text", "done"]);
-  expect(events![0]).toEqual({ type: "turn", turn: { id: expect.any(String), at: expect.any(String), from: "human", text: "Is there anything about the report?", actions: [] } });
-  expect(events![2]).toEqual({ type: "action", action: { operation: "searchMailbox", what: expect.stringMatching(/^Search/), ok: true } });
+  expect(events![0]).toEqual({ type: "turn", turn: { id: expect.any(String), at: expect.any(String), from: "human", mailbox: mailbox.id, text: "Is there anything about the report?", actions: [] } });
+  expect(events![2]).toEqual({ type: "action", action: { operation: "searchMailbox", mailbox: mailbox.id, what: expect.stringMatching(/^Search/), ok: true } });
   expect(events!.at(-1)).toEqual({
     type: "done",
     turn: {
       id: expect.any(String),
       at: expect.any(String),
       from: "agent",
+      mailbox: mailbox.id,
       text: "Let me look. You have 1 thread about the report.",
       actions: [expect.objectContaining({ operation: "searchMailbox" })],
       outcome: "answered",
@@ -147,7 +171,7 @@ test("the mailbox agent answers from what its tools read in the mailbox, streami
   expect(requests[0]!.tools.map(({ name }) => name)).toContain("getThread");
   expect(requests[0]!.tools.find(({ name }) => name === "getThread")!.inputSchema.json).toEqual(expect.objectContaining({ required: ["thread"] }));
   expect(requests[0]!.system).toContain("linus@example.org's mailbox linus@example.com");
-  void mailbox;
+  expect(requests[0]!.tools.find(({ name }) => name === "getThread")!.inputSchema.json).not.toHaveProperty("properties.mailbox");
 });
 
 test("what a model writes between <thinking> and </thinking>, as Nova does, is neither streamed nor kept in the turn", async () => {
@@ -171,7 +195,7 @@ test("what the mailbox agent does is attributed to it in the mailbox's change fe
     () => [use("listThreads")],
     (request) => [use("markThreadsRead", { threads: [lastResult(request.messages).threads[0].id] })],
   );
-  const { duva, linus, params, ask, agent } = await withMailbox({ model });
+  const { duva, linus, params, ask, agent, mailbox } = await withMailbox({ model });
   await duva.receive(fromGrace("The report", "Here it is."), { to: ["linus@example.com"] });
 
   const { events } = await ask("Mark the report read.");
@@ -179,7 +203,7 @@ test("what the mailbox agent does is attributed to it in the mailbox's change fe
   const { data: threads } = await linus.GET("/mailboxes/{mailbox}/threads", { params });
   expect(events!.find((event) => event.type === "action" && event.action.operation === "markThreadsRead")).toEqual({
     type: "action",
-    action: { operation: "markThreadsRead", what: expect.any(String), ok: true, threads: [threads!.threads[0]!.id] },
+    action: { operation: "markThreadsRead", mailbox: mailbox.id, what: expect.any(String), ok: true, threads: [threads!.threads[0]!.id] },
   });
   const { data: changes } = await linus.GET("/mailboxes/{mailbox}/changes", { params });
   expect(changes!.changes.slice(-2)).toEqual([expect.objectContaining({ type: "threadRead", actor: (await agent()).id }), expect.objectContaining({ type: "conversationTurn", actor: (await agent()).id })]);
@@ -240,7 +264,7 @@ test("a reply the mailbox agent drafts and asks to send waits for its owner's ap
 
 test("the mailbox agent can do only what its sponsor access lets it, and says Duva's refusal", async () => {
   const { model, requests } = scripted(() => [use("createDraft", { to: ["grace@example.org"], text: "Hello" })], () => [{ text: "I can't write drafts." }]);
-  const { linus, ask, agent, sonnetOnly } = await withMailbox({ model });
+  const { linus, ask, agent, sonnetOnly, mailbox } = await withMailbox({ model });
   await sonnetOnly();
   await linus.PATCH("/agents/{agent}/settings", { params: { path: { agent: (await agent()).id } }, body: { sponsorAccess: "read" } });
 
@@ -248,7 +272,7 @@ test("the mailbox agent can do only what its sponsor access lets it, and says Du
 
   expect(events!.find((event) => event.type === "action")).toEqual({
     type: "action",
-    action: { operation: "createDraft", what: expect.any(String), ok: false, message: "Your sponsor access is read, which doesn't let you write or change drafts in your sponsor's mailbox. Ask your sponsor for draft access." },
+    action: { operation: "createDraft", mailbox: mailbox.id, what: expect.any(String), ok: false, message: "Your sponsor access is read, which doesn't let you write or change drafts in your sponsor's mailbox. Ask your sponsor for draft access." },
   });
   expect(requests[0]!.system).toContain("not change it");
 });
@@ -291,9 +315,10 @@ test("a mailbox agent paused during its run is refused what it does next", async
 test("only a mailbox's owner asks its mailbox agent, signed in", async () => {
   const { grace, ask, params, duva, mailbox } = await withMailbox();
 
-  expect(await ask("Hello?", "grace@example.org")).toEqual({ status: 404, body: { message: "That isn't one of your mailboxes. Ask the agent of one of yours." } });
+  expect(await ask("Hello?", "grace@example.org")).toEqual({ status: 404, body: { message: "That isn't one of your mailboxes. Ask Coo from one of yours, or from All mailboxes." } });
+  expect(await duva.askAgent("grace@example.org", { words: "Hello?" })).toEqual({ status: 404, body: { message: "You have no mailbox agent yet. Ask an admin to run duva deploy, which gives every human with a mailbox one." } });
   expect((await duva.askAgent("linus@example.org", { mailbox: mailbox.id, words: "Hello?" }, { token: "forged" })).status).toBe(401);
-  expect((await grace.GET("/mailboxes/{mailbox}/agent", { params })).response.status).toBe(403);
+  expect(await grace.GET("/mailbox-agent")).toMatchObject({ response: { status: 404 }, error: { message: "You have no mailbox, so no mailbox agent. Ask an admin to create a mailbox for you." } });
 });
 
 test("the conversation keeps its turns, which the agent reads back, until its owner starts a new one", async () => {
@@ -307,8 +332,8 @@ test("the conversation keeps its turns, which the agent reads back, until its ow
 
   await ask("Hello.");
   await ask("What did I say?");
-  const { data } = await linus.GET("/mailboxes/{mailbox}/agent", { params });
-  const cleared = await linus.DELETE("/mailboxes/{mailbox}/agent/conversation", { params });
+  const { data } = await linus.GET("/mailbox-agent");
+  const cleared = await linus.DELETE("/mailbox-agent/conversation");
   await ask("What did I say?");
 
   expect(data!.turns.map(({ from, text }) => [from, text])).toEqual([

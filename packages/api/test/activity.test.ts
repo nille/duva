@@ -80,7 +80,7 @@ async function withAgent(options: DuvaOptions = {}) {
 const said = (events: { type: string; summary: string }[] | undefined) => events?.map(({ type, summary }) => [type, summary]);
 
 test("the sponsor lists their agent's events newest first, across days, each with when, its kind and what happened", async () => {
-  const { duva, hermes, adaId, organize, events, whoami } = await withAgent();
+  const { duva, hermes, adaId, mailbox, organize, events, whoami } = await withAgent();
   await duva.clock(new Date("2026-09-14T10:00:00Z"));
   await organize("Kvitto");
   await duva.clock(new Date("2026-09-15T10:00:00Z"));
@@ -93,10 +93,10 @@ test("the sponsor lists their agent's events newest first, across days, each wit
   // Setting Hermes up happened today, after the days the clock went back to, so it is newest.
   expect(data).toEqual({
     events: [
-      { ...event, kind: "pausesAndLimits", type: "agentSettingsChanged", actor: adaId, summary: "You changed Hermes's settings." },
+      { ...event, kind: "pausesAndLimits", type: "agentSettingsChanged", actor: adaId, mailbox: mailbox.id, summary: "You changed Hermes's settings." },
       { ...event, kind: "setup", type: "actorAdded", actor: adaId, summary: "You added the agent Hermes." },
-      { ...event, at: expect.stringMatching(/^2026-09-15T10:00/), kind: "organizing", type: "threadRead", actor: await whoami(hermes), summary: "Hermes marked a thread read." },
-      { ...event, at: expect.stringMatching(/^2026-09-14T10:00/), kind: "organizing", type: "threadRead", actor: await whoami(hermes), summary: "Hermes marked a thread read." },
+      { ...event, at: expect.stringMatching(/^2026-09-15T10:00/), kind: "organizing", type: "threadRead", actor: await whoami(hermes), mailbox: mailbox.id, summary: "Hermes marked a thread read." },
+      { ...event, at: expect.stringMatching(/^2026-09-14T10:00/), kind: "organizing", type: "threadRead", actor: await whoami(hermes), mailbox: mailbox.id, summary: "Hermes marked a thread read." },
     ],
   });
   expect(new Set(data!.events.map(({ id }) => id)).size).toBe(4);
@@ -447,7 +447,7 @@ test("each turn of Ask Coo is one event under Coo, saying what was asked, and op
     () => [{ text: "Hej Ada!" }],
   );
   const { duva, ada, params, receive, adaId } = await withAgent({ model });
-  const coo = (await ada.GET("/mailboxes/{mailbox}/agent", { params })).data!.agent;
+  const coo = (await ada.GET("/mailbox-agent")).data!.agent;
   await duva.clock(new Date("2026-09-15T10:00:00Z"));
   thread = await receive("Kvitto");
 
@@ -496,7 +496,7 @@ test("an admin who isn't the sponsor reads Coo's turns without what was asked or
     () => [{ text: "There are none." }],
   );
   const { duva, ada, grace, params } = await withAgent({ model });
-  const coo = (await ada.GET("/mailboxes/{mailbox}/agent", { params })).data!.agent;
+  const coo = (await ada.GET("/mailbox-agent")).data!.agent;
   await duva.askAgent("ada@example.org", { mailbox: params.path.mailbox, words: "Find Linus's receipt." });
 
   const { data } = await grace.GET("/agents/{agent}/events", { params: { path: { agent: coo.id }, query: { kinds: ["conversations"] } } });
@@ -514,7 +514,7 @@ test("a turn that fails says so, and is listed with the failed events", async ()
     throw new Error("Bedrock fell over.");
   };
   const { duva, ada, params } = await withAgent({ model });
-  const coo = (await ada.GET("/mailboxes/{mailbox}/agent", { params })).data!.agent;
+  const coo = (await ada.GET("/mailbox-agent")).data!.agent;
   await duva.askAgent("ada@example.org", { mailbox: params.path.mailbox, words: "Hej!" });
 
   const { data } = await ada.GET("/agents/{agent}/events", { params: { path: { agent: coo.id }, query: { failed: true } } });
@@ -549,7 +549,7 @@ test("a turn names only the drafts Coo wrote, not those it read, nor a draft an 
     { asked: "Thank Linus.", drafts: [written.at(-1)], handover: { reason: "writing" } },
   ]);
   // So Coo's events say it wrote a draft only where it did.
-  const coo = (await ada.GET("/mailboxes/{mailbox}/agent", { params })).data!.agent;
+  const coo = (await ada.GET("/mailbox-agent")).data!.agent;
   const { data } = await ada.GET("/agents/{agent}/events", { params: { path: { agent: coo.id }, query: { kinds: ["conversations"] } } });
   expect(data!.events.map(({ summary }) => summary)).toEqual(["You asked Coo “Thank Linus.”, and it wrote a draft.", "You asked Coo “How many unread threads are in my Inbox?”"]);
 });

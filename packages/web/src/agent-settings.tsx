@@ -213,9 +213,8 @@ function AgentForm({
   // Only send access lets an agent send as its sponsor, so only lowering it, or taking a mailbox away from it, withdraws what waits.
   const lowers = saved.sponsorAccess === "send" && (chosen.sponsorAccess !== "send" || own.some(({ id }) => covers(saved, id) && !covers(chosen, id)));
   // The mailboxes it covers are chosen once there are more than one, or once they were.
-  // A mailbox agent works in its own mailbox only, which Duva keeps its access to.
-  const hosted = own.find(({ id }) => id === agent.mailbox);
-  const choosesMailboxes = agent.mailbox === undefined && (own.length > 1 || saved.sponsorMailboxes !== null);
+  const hosted = agent.mailboxAgent === true;
+  const choosesMailboxes = own.length > 1 || saved.sponsorMailboxes !== null;
 
   // The line an alert or the index opens comes open, in view, and takes the focus from the sheet's title.
   const details = useRef<HTMLDetailsElement>(null);
@@ -332,14 +331,14 @@ function AgentForm({
               {copy.pause.runningLine(agent.sendsLeftThisHour)}
             </p>
           )}
-          {hosted !== undefined && <p className="agent-summary-line">{copy.hosted.in(strings.mailboxes.address(hosted))}</p>}
+          {hosted && <p className="agent-summary-line">{copy.hosted.in}</p>}
           <p className="agent-summary-line">{summaryOf(saved)}</p>
           {stillWaiting > 0 && <p className="agent-summary-line">{copy.waiting.count(stillWaiting)}</p>}
         </div>
         <ChevronIcon />
       </summary>
       <p className="agent-activity">
-        {hosted !== undefined && <a href={`#/mailboxes/${encodeURIComponent(hosted.id)}/agent`}>{copy.hosted.ask}</a>}
+        {hosted && <a href="#/agent">{copy.hosted.ask}</a>}
         <a href={activityHref(agent.id)}>{strings.activity.title(agent.name)}</a>
       </p>
       <div className="agent-parts">
@@ -352,8 +351,8 @@ function AgentForm({
           }}
           onSignedOut={onSignedOut}
         />
-        {/* Duva hosts a mailbox agent, so it has no key, and goes only with its mailbox. */}
-        {agent.mailbox === undefined && (
+        {/* Duva hosts a mailbox agent, so it has no key, and goes only with its sponsor. */}
+        {!hosted && (
           <>
             <KeyPart client={client} agent={agent} onSignedOut={onSignedOut} />
             <RemovePart client={client} agent={agent} onRemoved={onRemoved} onSignedOut={onSignedOut} />

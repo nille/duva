@@ -5916,6 +5916,45 @@ input[aria-invalid="true"] {
   color: var(--ink-2);
 }
 
+/* With several mailboxes, where Coo is asked about, as chips: All mailboxes, then each by address. */
+.ask-scope {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.ask-scope-label {
+  color: var(--ink-3);
+  font: 500 var(--text-xs) / 1 var(--mono);
+}
+
+.ask-scope ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ask-scope .chip {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Where a turn was asked, quietly beside its time. */
+.ask-where {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink-3);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .ask-links {
   display: flex;
   flex-wrap: wrap;
@@ -6885,6 +6924,12 @@ mark {
   -webkit-line-clamp: 3;
   line-clamp: 3;
   overflow-wrap: anywhere;
+}
+
+/* The mailbox it happened in, with several, quietly after the line. */
+.event-where {
+  margin-left: 0.6ch;
+  color: var(--ink-3);
 }
 
 .event-marks {

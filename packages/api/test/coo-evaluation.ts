@@ -427,7 +427,7 @@ export async function runTask(setup: Setup, task: CooTask, attempt: number): Pro
   const arrived = received!.changes.flatMap((change) => (change.type === "messageReceived" ? [change.thread] : []));
   const threads = Object.fromEntries(mail.map(({ key }, index) => [key, arrived[index]!]));
   const createLabel = async (name: string) => (await linus.POST("/mailboxes/{mailbox}/labels", { params, body: { name } })).data!.id;
-  const agent = (await linus.GET("/mailboxes/{mailbox}/agent", { params })).data!.agent;
+  const agent = (await linus.GET("/mailbox-agent")).data!.agent;
   const thread = async (key: string) => (await linus.GET("/mailboxes/{mailbox}/threads/{thread}", { params: { path: { ...params.path, thread: threads[key]! } } })).data!;
   const mailbox: Mailbox = {
     async ask(words) {

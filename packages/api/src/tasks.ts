@@ -17,7 +17,7 @@ import type { Table } from "./deployment.ts";
 import { recordChanges } from "./feed.ts";
 import { labelPrompt, nameOfLabel } from "./labels.ts";
 import { newestMessage } from "./mail.ts";
-import { mailboxAgentOf } from "./mailbox-agents.ts";
+import { mailboxAgentIn, mergedInto } from "./mailbox-agents.ts";
 import { type Agent, allMailboxes, duva, findActor, findMailbox, type Mailbox, mailboxFeed, mailboxKey } from "./organization.ts";
 import { documents, isNew, pk, sk } from "./table.ts";
 import type { UnsubscribeJob } from "./unsubscribing.ts";
@@ -173,7 +173,8 @@ export function createTaskGiver({ table, runner }: { table: Table; runner: TaskR
         const { by, ...ref } = labelled;
         const prompt = await labelPrompt(table, ref.mailbox, ref.label);
         if (prompt === undefined) continue;
-        const agent = await mailboxAgentOf(table, ref.mailbox);
+        const mailbox = await findMailbox(table, ref.mailbox);
+        const agent = mailbox === undefined ? undefined : await mailboxAgentIn(table, mailbox);
         const labelName = await nameOfLabel(table, ref.mailbox, ref.label);
         if (agent === undefined || labelName === undefined) continue;
         if (await giveTask(table, ref, { prompt, labelName, agent, by })) await runner.run(ref);
@@ -249,21 +250,24 @@ async function moveTask(table: Table, ref: TaskRef, task: Task, change: { from: 
  */
 export function createTaskRunner({ table, region, apiUrl, fetch: call = fetch, runtime }: { table: Table; region: string; apiUrl: string; fetch?: (request: Request) => Promise<Response>; runtime: AgentRuntime | undefined }) {
   return async (ref: TaskRef): Promise<void> => {
-    const task = await readTask(table, ref);
-    if (task?.state !== "waiting") return;
-    const found = await findActor(table, task.agent);
-    const agent = found?.kind === "agent" ? found : undefined;
-    // A pause holds the task, until unpausing hands it over again.
-    if (agent?.paused !== undefined) return;
+    const given = await readTask(table, ref);
+    if (given?.state !== "waiting") return;
     const mailbox = await findMailbox(table, ref.mailbox);
     const owner = mailbox === undefined ? undefined : await findActor(table, mailbox.owner);
-    if (agent === undefined || mailbox === undefined || owner?.kind !== "human" || owner.id !== agent.sponsor) {
-      if (await moveTask(table, ref, task, { from: "waiting", to: "working" })) await fail(ref, task, agent, "Its mailbox agent went with the mailbox's owner, so no one does it.");
+    // The owner's mailbox agent does it, if it was given the task or one merged into it was (ADR-0033).
+    const working = mailbox === undefined ? undefined : await mailboxAgentIn(table, mailbox);
+    const agent = working !== undefined && (working.id === given.agent || (await mergedInto(table, working.id)).includes(given.agent)) ? working : undefined;
+    // A pause holds the task, until unpausing hands it over again.
+    if (agent?.paused !== undefined) return;
+    if (agent === undefined || owner?.kind !== "human" || owner.id !== agent.sponsor) {
+      const found = await findActor(table, given.agent);
+      if (await moveTask(table, ref, given, { from: "waiting", to: "working" })) await fail(ref, given, found?.kind === "agent" ? found : undefined, "Its mailbox agent went with the mailbox's owner, so no one does it.");
       return;
     }
-    if (!(await moveTask(table, ref, task, { from: "waiting", to: "working" }))) return;
+    const task = { ...given, agent: agent.id };
+    if (!(await moveTask(table, ref, task, { from: "waiting", to: "working", also: { agent: agent.id } }))) return;
     try {
-      await work(ref, task, agent, mailbox, owner.email);
+      await work(ref, task, agent, mailbox!, owner.email);
     } catch (error) {
       // Whatever stopped it, the task ends, so none stays working.
       console.error(error);
@@ -281,7 +285,7 @@ export function createTaskRunner({ table, region, apiUrl, fetch: call = fetch, r
 
   async function work(ref: TaskRef, task: Task, agent: Agent, mailbox: Mailbox, owner: string) {
     if (runtime === undefined) return fail(ref, task, agent, runtimeMissing(region));
-    const started = await startRun(table, { agent, mailbox, owner, region, apiUrl, job: "task" });
+    const started = await startRun(table, { agent, mailbox, mailboxes: [mailbox], owner, region, apiUrl, job: "task" });
     if ("refused" in started) return fail(ref, task, agent, started.refused);
     const { start, month, cap } = started;
     let threadUnreadable: string | undefined;

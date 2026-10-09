@@ -1,5 +1,6 @@
 import type { components } from "@duva/openapi";
 import { waitingTasks } from "./tasks.ts";
+import { mergedInto } from "./mailbox-agents.ts";
 import { jsonBody, type OperationHandler, refusal } from "./api.ts";
 import { sponsorAccessAllows, sponsorAccessIn } from "./access.ts";
 import { actorNamed, alertWrites, raiseAlert } from "./alerting.ts";
@@ -42,7 +43,7 @@ export const listAgents: OperationHandler = async (_event, deployment, actor) =>
   const now = new Date();
   // A mailbox agent lists its owner's, its sponsor's, so it can say where they stand (#140).
   const caller = actor!;
-  const sponsor = caller.kind === "agent" && caller.mailbox !== undefined ? caller.sponsor : caller.id;
+  const sponsor = caller.kind === "agent" && caller.mailboxAgent ? caller.sponsor : caller.id;
   const agents = await Promise.all(
     (await sponsoredAgents(deployment.table, sponsor)).map(async (agent) => ({ ...agent, sendsLeftThisHour: await sendsLeft(deployment.table, agent.id, now) })),
   );
@@ -60,7 +61,7 @@ export const rotateAgentKey: OperationHandler = async (event, deployment, actor)
   const agent = await agentAsked(event, deployment);
   if ("statusCode" in agent) return agent;
   if (agent.sponsor !== actor?.id) return refusal(403, "Only the agent's sponsor can rotate its key. Ask them to.");
-  if (agent.mailbox !== undefined) return hostedRefusal();
+  if (agent.mailboxAgent) return hostedRefusal();
   try {
     const key = await replaceAgentKey(deployment.table, { agent: agent.id, by: actor.id });
     return { statusCode: 200, body: { agent, key } satisfies components["schemas"]["AgentWithKey"] };
@@ -98,9 +99,6 @@ export const changeAgentSettings: OperationHandler = async (event, deployment, a
   const { sponsorAccess, sponsorMailboxes, sendsPerHour, newRecipientsPerDay, ...switches } = body;
   if (sponsorAccess !== undefined && !sponsorAccesses.includes(sponsorAccess as AgentSettings["sponsorAccess"])) {
     return refusal(400, `Give sponsorAccess as ${sponsorAccesses.slice(0, -1).join(", ")} or ${sponsorAccesses.at(-1)}.`);
-  }
-  if (agent.mailbox !== undefined && sponsorMailboxes !== undefined && JSON.stringify(sponsorMailboxes) !== JSON.stringify([agent.mailbox])) {
-    return refusal(400, "A mailbox agent works only in the mailbox it is the agent of, so its sponsorMailboxes stay that one. Give it the sponsor access it needs there.");
   }
   if (sponsorMailboxes !== undefined) {
     const notCovered = await notSponsorsMailboxes(deployment.table, agent, sponsorMailboxes);
@@ -164,7 +162,7 @@ export const removeAgent: OperationHandler = async (event, deployment, actor) =>
   const agent = await agentAsked(event, deployment);
   if ("statusCode" in agent) return agent;
   if (!sponsorOrAdmin(actor!, agent)) return refusal(403, "Only the agent's sponsor and admins can remove it. Ask its sponsor.");
-  if (agent.mailbox !== undefined) return refusal(409, "A mailbox agent goes only with its mailbox. To stop it, pause it, or give it no sponsor access.");
+  if (agent.mailboxAgent) return refusal(409, "A mailbox agent goes only with its sponsor. To stop it, pause it, or give it no sponsor access.");
   const alert = await alertUnlessSponsor(deployment.table, actor!, agent, "removedBy", (who) => ({
     what: `${who} removed ${agent.name}.`,
     urgent: `${agent.name} was removed by ${who}`,
@@ -186,7 +184,7 @@ export const pauseAgent: OperationHandler = async (event, deployment, actor) => 
 };
 
 /** What a pause also holds of a mailbox agent: the tasks labels' prompts give it (ADR-0029). */
-const heldTasks = (agent: Agent) => (agent.mailbox === undefined ? "" : " Its tasks wait too, and unpausing runs them.");
+const heldTasks = (agent: Agent) => (agent.mailboxAgent ? " Its tasks wait too, and unpausing runs them." : "");
 
 export const unpauseAgent: OperationHandler = async (event, deployment, actor) => {
   const agent = await agentAsked(event, deployment);
@@ -198,8 +196,17 @@ export const unpauseAgent: OperationHandler = async (event, deployment, actor) =
   // Each unpause releases what is held, so unpausing again finishes what one that stopped partway left.
   await releaseHeldSends(deployment.table, agent);
   await deployment.waitingSends.release(agent.id);
+  // The mailbox agents merged into it, paused before the merge, go on with it (ADR-0033).
+  if (agent.mailboxAgent) {
+    for (const id of await mergedInto(deployment.table, agent.id)) {
+      const merged = await findActor(deployment.table, id);
+      if (merged?.kind !== "agent" || merged.paused === undefined || (await unpause(deployment.table, { agent: merged, by: actor!.id })) === undefined) continue;
+      await releaseHeldSends(deployment.table, merged);
+      await deployment.waitingSends.release(merged.id);
+    }
+  }
   // A pause holds a mailbox agent's tasks, as it holds its sends (ADR-0029).
-  if (agent.mailbox !== undefined) for (const task of await waitingTasks(deployment.table, agent.mailbox)) await deployment.tasks.run(task);
+  if (agent.mailboxAgent) for (const { id } of await ownedMailboxes(deployment.table, agent.sponsor)) for (const task of await waitingTasks(deployment.table, id)) await deployment.tasks.run(task);
   return { statusCode: 200, body: unpaused satisfies components["schemas"]["Agent"] };
 };
 

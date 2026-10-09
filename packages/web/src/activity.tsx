@@ -80,7 +80,8 @@ const marksOf = ({ failed, needsYou }: Pick<AgentEvent, "failed" | "needsYou">) 
 /**
  * The agent's activity: its events, `open` being the one open beside them, of the kinds the filter
  * chooses. `name` is the agent's name if the human sponsors it, and `mine` the human's first own
- * mailbox, whose threads open at the root.
+ * mailbox, whose threads open at the root. With several mailboxes, `addresses` names each, and
+ * each event says the mailbox it happened in (ADR-0033).
  */
 export function AgentEvents({
   client,
@@ -89,6 +90,7 @@ export function AgentEvents({
   open,
   filter,
   mine,
+  addresses,
   timeZone,
   onSignedOut,
 }: {
@@ -98,6 +100,7 @@ export function AgentEvents({
   open?: string;
   filter: Filter;
   mine?: string;
+  addresses?: ReadonlyMap<string, string>;
   timeZone?: string;
   onSignedOut: () => void;
 }) {
@@ -212,18 +215,22 @@ export function AgentEvents({
                   {events.map((event) => {
                     const { time } = when(event.at);
                     const marks = marksOf(event);
+                    const where = event.mailbox === undefined ? undefined : addresses?.get(event.mailbox);
                     return (
                       <li key={event.id} data-event={event.id}>
                         <a
                           className={`event${event.failed ? " event-failed" : ""}${event.needsYou ? " event-needs-you" : ""}`}
                           href={activityHref(agent, event.id, filter)}
                           aria-current={event.id === open ? "true" : undefined}
-                          aria-label={copy.eventLabel(`${day}, ${time}`, event.summary, marks)}
+                          aria-label={copy.eventLabel(`${day}, ${time}`, where === undefined ? event.summary : `${event.summary} ${copy.inMailbox(where)}`, marks)}
                         >
                           <time className="event-time" dateTime={event.at}>
                             {time}
                           </time>
-                          <span className="event-said">{event.summary}</span>
+                          <span className="event-said">
+                            {event.summary}
+                            {where !== undefined && <span className="event-where">{copy.inMailbox(where)}</span>}
+                          </span>
                           {marks.length > 0 && (
                             <span className="event-marks">
                               {event.failed && <span className="event-mark event-mark-failed">{copy.failedMark}</span>}

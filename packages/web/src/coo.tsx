@@ -1,5 +1,5 @@
-// Coo, the mailbox agent every human's mailbox has (ADR-0027), a duva, Swedish for dove. Its portrait
-// heads the side column, where Duva's wordmark was, and is the mark of the mailbox agent
+// Coo, the mailbox agent every human with a mailbox has, one for all their mailboxes (ADR-0033), a
+// duva, Swedish for dove. Its portrait heads the side column, where Duva's wordmark was, and is the mark of the mailbox agent
 // wherever it appears, as the diamond is any other agent's. It bobs its head only while it works, a
 // turn of Ask Coo or a label's task, and speaks up only with news worth a glance: new mail since the
 // human last looked, a draft of its waiting for their approval, or a task done. What it said goes
@@ -62,12 +62,12 @@ export function CooLink({ href, working }: { href: string; working: boolean }) {
 
 /** What Coo has to say, each part linked to where the human looks at it. */
 export interface CooNews {
-  /** New mail in the mailbox's Inbox since the human last looked there, by whom, newest first. */
-  mail: { thread: string; from?: string }[];
-  /** How many of Coo's drafts in the mailbox wait for the human's approval since they last looked at Approvals. */
+  /** New mail in the mailboxes' Inboxes since the human last looked there, by whom, newest first. */
+  mail: { mailbox: string; thread: string; from?: string }[];
+  /** How many of Coo's drafts in the mailboxes wait for the human's approval since they last looked at Approvals. */
   drafts: number;
-  /** Tasks Coo did in the mailbox since the human last looked, newest first. */
-  tasks: { task: string; thread: string; label?: string; subject?: string }[];
+  /** Tasks Coo did in the mailboxes since the human last looked, newest first. */
+  tasks: { mailbox: string; task: string; thread: string; label?: string; subject?: string }[];
 }
 
 const quiet: CooNews = { mail: [], drafts: 0, tasks: [] };
@@ -76,7 +76,7 @@ const quiet: CooNews = { mail: [], drafts: 0, tasks: [] };
  * Coo's speech bubble under its portrait, while it has news and its human lets it speak up. It lies in
  * the page's flow, so it never covers what is under it, and screen readers hear it politely.
  */
-export function CooSays({ news, base, onTasksSeen }: { news: CooNews; base: string; onTasksSeen: () => void }) {
+export function CooSays({ news, baseOf, onTasksSeen }: { news: CooNews; baseOf: (mailbox: string) => string; onTasksSeen: () => void }) {
   const { mail, drafts, tasks } = news;
   const said = mail.length > 0 || drafts > 0 || tasks.length > 0;
   // The live region stays in the page while Coo is quiet, so a screen reader hears what it then says.
@@ -86,11 +86,11 @@ export function CooSays({ news, base, onTasksSeen }: { news: CooNews; base: stri
         <p className="coo-says">
           <span className="coo-says-coo">{copy.coo}</span>
           {drafts > 0 && <> <a href="#/approvals">{copy.drafts(drafts)}</a></>}
-          {mail.length > 0 && <> <a href={hrefOf({ label: "inbox" }, base)}>{copy.mail(mail.length, names(mail.flatMap(({ from }) => (from === undefined ? [] : [from]))))}</a></>}
+          {mail.length > 0 && <> <a href={hrefOf({ label: "inbox" }, baseOf(mail[0]!.mailbox))}>{copy.mail(mail.length, names(mail.flatMap(({ from }) => (from === undefined ? [] : [from]))))}</a></>}
           {tasks.length > 0 && (
             <>
               {" "}
-              <a href={threadHref(tasks[0]!.thread, { label: "inbox" }, base)} onClick={onTasksSeen}>
+              <a href={threadHref(tasks[0]!.thread, { label: "inbox" }, baseOf(tasks[0]!.mailbox))} onClick={onTasksSeen}>
                 {copy.tasks(tasks.length, tasks[0]!.subject, tasks[0]!.label)}
               </a>
             </>
@@ -133,21 +133,21 @@ export interface Looking {
 
 /**
  * How Coo is: whether it works, from the turns of Ask Coo under way and the tasks the feeds say it
- * started and hasn't ended, and its news in `mailbox`, from what the feeds and Approvals say. Call
+ * started and hasn't ended, and its news in `mailboxes`, from what the feeds and Approvals say. Call
  * `onChanges` with every read of the feeds, `onApprovals` with what waits for the human, and
  * `onAsking` as a turn starts and ends.
  */
 export function useCoo({
   client,
-  mailbox,
+  mailboxes,
   own,
   coos,
   looking,
   onSignedOut,
 }: {
   client: DuvaClient;
-  /** The mailbox whose news Coo says. */
-  mailbox?: string;
+  /** The mailboxes whose news Coo says: the open one, or all of them from All mailboxes. */
+  mailboxes: readonly string[];
   /** The IDs of the human's own mailboxes, whose feeds are followed. */
   own: readonly string[];
   coos: ReadonlySet<string>;
@@ -249,19 +249,18 @@ export function useCoo({
     if (visible && thread !== undefined && hasTask) setDone((current) => current.filter((each) => each.thread !== thread));
   }, [visible, thread, hasTask]);
   const tasksSeen = useCallback(() => {
-    if (mailbox === undefined) return;
-    look(`tasks.${mailbox}`);
-    setDone((current) => current.filter((each) => each.mailbox !== mailbox));
-  }, [mailbox]);
+    for (const mailbox of mailboxes) look(`tasks.${mailbox}`);
+    setDone((current) => current.filter((each) => !mailboxes.includes(each.mailbox)));
+  }, [mailboxes]);
 
   const news = useMemo<CooNews>(() => {
-    if (mailbox === undefined) return quiet;
+    if (mailboxes.length === 0) return quiet;
     return {
-      mail: arrived.filter((each) => each.mailbox === mailbox),
-      drafts: waiting.filter((approval) => approval.mailbox === mailbox && coos.has(approval.agent) && Date.parse(approval.askedAt) > approvalsLooked).length,
-      tasks: done.filter((each) => each.mailbox === mailbox),
+      mail: arrived.filter((each) => mailboxes.includes(each.mailbox)),
+      drafts: waiting.filter((approval) => mailboxes.includes(approval.mailbox) && coos.has(approval.agent) && Date.parse(approval.askedAt) > approvalsLooked).length,
+      tasks: done.filter((each) => mailboxes.includes(each.mailbox)),
     };
-  }, [mailbox, arrived, waiting, coos, approvalsLooked, done]);
+  }, [mailboxes, arrived, waiting, coos, approvalsLooked, done]);
   const working = asking > 0 || [...started.values()].some((at) => now - at < taskRunsFor);
   return { working, news, onChanges, onApprovals, onAsking, tasksSeen };
 }

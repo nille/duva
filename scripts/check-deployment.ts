@@ -44,7 +44,7 @@ import { indexedMailboxes, uncompactedSince } from "@duva/api/indexing";
 import { alertMailFilter, authorizationServerPath, conversationPath, taskGiverFilter, mcpAuthorizePath, mcpPath, mcpRegistrationPath, mcpTokenPath, protectedResourcePaths, tokenHeader, dropMetric, dropReasons, environmentVariables, hostedLogoHeaders, hostedLogosPath, inboundPrefix, receiptRuleNumber, recipientsPerRule, senderFilter, signInFrom } from "@duva/api/infrastructure";
 import { rulesTake } from "@duva/api/receiving";
 import { defaultMailboxAgentModel, inferenceProfileId } from "@duva/api/agent-models";
-import { mailboxesWithoutAgents } from "@duva/api/mailbox-agents";
+import { mailboxAgentsLeft } from "@duva/api/mailbox-agents";
 import { tasksWorkingSince } from "@duva/api/tasks";
 import { agentsMailboxes } from "@duva/api/removal";
 import { BedrockAgentCoreControlClient, GetAgentRuntimeCommand, GetBrowserCommand } from "@aws-sdk/client-bedrock-agentcore-control";
@@ -268,11 +268,15 @@ await check("the mailbox agents' unsubscribe browser is ready, on the public net
   if (browser.networkConfiguration?.networkMode !== "PUBLIC") return `is on ${browser.networkConfiguration?.networkMode}`;
   return browser.recording?.enabled === true ? "records its sessions" : undefined;
 });
-await check("every human's mailbox has its mailbox agent", async () => {
+await check("every human with a mailbox has one mailbox agent, those of each mailbox from before merged into it (ADR-0033)", async () => {
   const table = await stackTable();
   if (table === undefined) return "the stack has no table";
-  const without = await mailboxesWithoutAgents(table);
-  return without.length === 0 ? undefined : `${without.map(({ addresses, id }) => addresses[0] ?? id).join(", ")} ${without.length === 1 ? "has" : "have"} none. Run duva deploy again.`;
+  const { without, unmerged } = await mailboxAgentsLeft(table);
+  const left = [
+    ...(without.length === 0 ? [] : [`${without.map(({ email }) => email).join(", ")} ${without.length === 1 ? "has" : "have"} none`]),
+    ...(unmerged.length === 0 ? [] : [`${unmerged.map(({ addresses, id }) => addresses[0] ?? id).join(", ")} still ${unmerged.length === 1 ? "has its" : "have their"} own`]),
+  ];
+  return left.length === 0 ? undefined : `${left.join(", and ")}. Run duva deploy again.`;
 });
 await check("no agent owns a mailbox, since setup erased those they owned (ADR-0030)", async () => {
   const table = await stackTable();

@@ -46,7 +46,7 @@ async function withMailbox({ models = "sonnet", ...options }: Parameters<typeof 
   const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: whoami!.id, address: "grace@example.com" } });
   await grace.PATCH("/mailboxes/{mailbox}/screener", { params: { path: { mailbox: mailbox!.id } }, body: { on: false } });
   await app.duva.receive(fromAda("The report", "Here is the quarterly report."), { to: ["grace@example.com"] });
-  const agent = async () => (await grace.GET("/mailboxes/{mailbox}/agent", { params: { path: { mailbox: mailbox!.id } } })).data!.agent;
+  const agent = async () => (await grace.GET("/mailbox-agent")).data!.agent;
   return { ...app, grace, mailbox: mailbox!, agent };
 }
 
@@ -212,4 +212,39 @@ test("an admin chooses the mailbox agents' model for each job, where the mail th
     mailboxAgentRegion: "us-west-2",
     mailboxAgentSpendCap: 5,
   });
+});
+
+test("a human with two mailboxes asks Coo from one of them or from All mailboxes, in one conversation, each turn saying where it was asked", budget, async () => {
+  const model = scripted(
+    () => [use("listThreads")],
+    () => [{ text: "Ada sent the report." }],
+    () => [use("listAllMailboxesThreads")],
+    () => [{ text: "Nothing at home." }],
+  );
+  const { page, signIn, duva, grace } = await withMailbox({ model });
+  const { data: whoami } = await grace.GET("/whoami");
+  await duva.signIn("ada@example.org").POST("/mailboxes", { body: { owner: whoami!.id, address: "grace.home@example.com" } });
+  await signIn("grace@example.org");
+
+  await page.getByRole("link", { name: "Ask Coo", exact: true }).click();
+  const scope = page.getByRole("navigation", { name: "Ask about" });
+  await scope.waitFor(wait);
+  await expect.poll(() => scope.getByRole("link").allInnerTexts(), wait).toEqual(["All mailboxes", "grace.home@example.com", "grace@example.com"]);
+  const current = scope.locator('[aria-current="page"]');
+  await page.getByRole("textbox", { name: "What do you want to ask?" }).fill("What did Ada send?");
+  await page.keyboard.press("Enter");
+  const turns = page.locator(".ask-turn");
+  await expect.poll(() => turns.count(), wait).toBe(2);
+  const asked = await current.innerText();
+
+  await scope.getByRole("link", { name: "All mailboxes" }).click();
+  await expect.poll(() => current.innerText(), wait).toBe("All mailboxes");
+  await page.getByText("Coo. Works in all your mailboxes, as itself").waitFor(wait);
+  await page.getByRole("textbox", { name: "What do you want to ask?" }).fill("Anything at home?");
+  await page.keyboard.press("Enter");
+
+  await expect.poll(() => turns.count(), wait).toBe(4);
+  await expect.poll(() => page.locator(".ask-turn-human .ask-where").allInnerTexts(), wait).toEqual([`in ${asked}`, "in All mailboxes"]);
+  await expect.poll(() => turns.nth(3).locator(".ask-text").innerText(), wait).toBe("Nothing at home.");
+  expect(await page.evaluate(() => location.hash)).toBe("#/agent");
 });

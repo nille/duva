@@ -9,7 +9,7 @@ import { noMailboxAgent } from "./agent-runs.ts";
 import { attachmentLinks } from "./attachments.ts";
 import { allMail, type Cursor, cursorOf, inbox, labelThreads, mailboxChanges, markThreads, readThread, spam, threadsMarkedAtOnce, threadsPerPage, sentThreads, threadsWithLabel, trash, unreadWithLabel } from "./mail.ts";
 import { recordEmptying } from "./erasure.ts";
-import { giveMailboxAgent, mailboxAgentOf } from "./mailbox-agents.ts";
+import { giveMailboxAgent, mailboxAgentIn } from "./mailbox-agents.ts";
 import { threadTasks } from "./tasks.ts";
 import { syncRecipients } from "./receiving.ts";
 import { groupsSentAsBy } from "./group-mail.ts";
@@ -26,7 +26,7 @@ export const createMailbox: OperationHandler = async (event, deployment, actor) 
   if (typeof address !== "string") return address;
   try {
     const mailbox = await addMailbox(deployment.table, { owner: owner.id, address, by: actor!.id });
-    await giveMailboxAgent(deployment.table, mailbox);
+    await giveMailboxAgent(deployment.table, owner.id);
     await syncRecipients(deployment.table, deployment.receiving);
     return { statusCode: 201, body: mailbox satisfies components["schemas"]["Mailbox"] };
   } catch (error) {
@@ -239,7 +239,7 @@ async function promptAsked(event: Parameters<OperationHandler>[0], deployment: D
   if (label.builtIn && !promptedBuiltIns.includes(label.id)) {
     return refusal(400, `${label.name} can't carry a prompt. Give the Feed, the Paper Trail or one of the mailbox's own labels one.`);
   }
-  if ((await mailboxAgentOf(deployment.table, mailbox.id)) === undefined) {
+  if ((await mailboxAgentIn(deployment.table, mailbox)) === undefined) {
     return refusal(409, noMailboxAgent);
   }
   return { mailbox, label };

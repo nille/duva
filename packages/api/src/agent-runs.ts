@@ -9,7 +9,7 @@ import { costOf } from "./agent-models.ts";
 import { raiseAlert } from "./alerting.ts";
 import type { Table } from "./deployment.ts";
 import { sponsorAccessIn } from "./access.ts";
-import { type Agent, agentSettings, type Mailbox, mailboxFeed, organizationSettings } from "./organization.ts";
+import { type Agent, agentSettings, type Mailbox, mailboxesInOrder, mailboxFeed, organizationSettings } from "./organization.ts";
 import { recordChanges } from "./feed.ts";
 import { endRunToken, issueRunToken } from "./run-tokens.ts";
 import { documents, pk, sk } from "./table.ts";
@@ -42,8 +42,8 @@ async function addSpend(table: Table, month: string, cost: number): Promise<numb
 /** Why no run starts where the stack left the runtime out. */
 export const runtimeMissing = (region: string) => `Mailbox agents run on Amazon Bedrock AgentCore, which isn't in ${region}, where Duva is deployed.`;
 
-/** Why no run starts in a mailbox from before mailbox agents, until deploy's setup gives it one. */
-export const noMailboxAgent = "This mailbox has no mailbox agent yet. Ask an admin to run duva deploy, which gives every human's mailbox one.";
+/** Why no run starts for a human from before mailbox agents, until deploy's setup gives them one. */
+export const noMailboxAgent = "You have no mailbox agent yet. Ask an admin to run duva deploy, which gives every human with a mailbox one.";
 
 /**
  * The job a run does, which decides the model it starts with (ADR-0032): a conversation turn, with
@@ -56,17 +56,21 @@ export type Job = "conversation" | "task" | "harder" | "unsubscribe";
 export type RunStart = Omit<RunPayload, "token" | "history" | "words" | "task" | "unsubscribe">;
 
 /**
- * What a run of the agent in its owner's mailbox starts with, with the month it counts toward and
- * the cap, or why it can't start: the agent has no access there, or the mailbox agents are off or
- * at the spend cap, which alerts its sponsor once a month.
+ * What a run of the agent in its owner's mailboxes starts with, asked from one of them or from All
+ * mailboxes, with the month it counts toward and the cap, or why it can't start: the agent has no
+ * access there, or the mailbox agents are off or at the spend cap, which alerts its sponsor once a
+ * month. It works in those of `mailboxes` its sponsor access covers.
  */
 export async function startRun(
   table: Table,
-  { agent, mailbox, owner, region, apiUrl, job }: { agent: Agent; mailbox: Mailbox; owner: string; region: string; apiUrl: string; job: Job },
+  { agent, mailbox, mailboxes, owner, region, apiUrl, job }: { agent: Agent; mailbox?: Mailbox; mailboxes: Mailbox[]; owner: string; region: string; apiUrl: string; job: Job },
 ): Promise<{ refused: string } | { start: RunStart; month: string; cap: number }> {
   const { settings: given } = await agentSettings(table, agent.id);
-  const access = sponsorAccessIn(given, mailbox.id);
-  if (access === "none") return { refused: "Your mailbox agent has no access to this mailbox. Give it some in Settings, under Your agents." };
+  const working = mailboxesInOrder(mailboxes, owner).filter(({ id }) => sponsorAccessIn(given, id) !== "none");
+  if (mailbox !== undefined && !working.some(({ id }) => id === mailbox.id)) return { refused: "Your mailbox agent has no access to this mailbox. Give it some in Settings, under Your agents." };
+  if (working.length === 0) return { refused: "Your mailbox agent has no access to your mailboxes. Give it some in Settings, under Your agents." };
+  // Sponsor access is one level in every mailbox it covers.
+  const access = given.sponsorAccess;
   const { settings } = await organizationSettings(table, region);
   const cap = settings.mailboxAgentSpendCap;
   if (cap === 0) return { refused: "An admin turned the mailbox agents off, with a spend cap of $0. Ask one to raise it." };
@@ -78,8 +82,8 @@ export async function startRun(
   }
   const start: RunStart = {
     apiUrl,
-    mailbox: mailbox.id,
-    address: mailbox.defaultAddress ?? mailbox.addresses[0] ?? "",
+    ...(mailbox !== undefined && { mailbox: mailbox.id }),
+    mailboxes: working.map(({ id, defaultAddress, addresses }) => ({ id, address: defaultAddress ?? addresses[0] ?? "" })),
     owner,
     access,
     approval: given.approvalAsSponsor,
@@ -142,7 +146,7 @@ export async function* runMailboxAgent(
         // Text said before the handover was the everyday model's, set aside with its step.
         handover = event.handover;
         model = handover.to;
-        await recordChanges(table, mailboxFeed(payload.mailbox), { by: agent.id, changes: [{ type: "agentHandedOver", agent: agent.id, handover, ...about }], items: [] });
+        await recordChanges(table, mailboxFeed(recordingMailbox(payload)), { by: agent.id, changes: [{ type: "agentHandedOver", agent: agent.id, handover, ...about }], items: [] });
         yield event;
       } else outcome = event.outcome;
     }
@@ -155,6 +159,12 @@ export async function* runMailboxAgent(
   if (outcome === "capReached" || total >= cap) await capReached(table, agent, month, cap);
   return { text, actions, outcome, model, cost, ...(verdict !== undefined && { verdict }), ...(decision !== undefined && { decision }), ...(handover !== undefined && { handover }) };
 }
+
+/**
+ * The mailbox whose change feed records the run: the one it was asked from, or for a turn asked
+ * from All mailboxes, the first it works in.
+ */
+export const recordingMailbox = (payload: Pick<RunPayload, "mailbox" | "mailboxes">) => payload.mailbox ?? payload.mailboxes[0]!.id;
 
 /** How a run ended: what it said and did, an unsubscribe's verdict, the model that ended it, what its model calls cost, and how it was routed. */
 export interface RunEnd {

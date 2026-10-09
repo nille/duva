@@ -12,7 +12,7 @@ import type { Table } from "./deployment.ts";
 import { sendUnsubscribeRequest } from "./drafting.ts";
 import { domainOf } from "./email-address.ts";
 import { BounceRefused, type Bounces, claim } from "./group-mail.ts";
-import { mailboxAgentOf } from "./mailbox-agents.ts";
+import { mailboxAgentIn } from "./mailbox-agents.ts";
 import { type Agent, agentSettings, allDomains, findActor, findMailbox, type Mailbox } from "./organization.ts";
 import { decisionOn, leaseUnsubscribing, noteUnsubscribe, type ScreenedSender } from "./screening.ts";
 import type { Offer } from "./unsubscribe-offers.ts";
@@ -52,7 +52,7 @@ export function createUnsubscribeRunner({ table, region, apiUrl, runtime, bounce
     const { agent, mailbox, owner } = working;
     const browse = async (url: string): Promise<Attempt> => {
       if (runtime === undefined) return { outcome: "failed", reason: "notDone", detail: runtimeMissing(region) };
-      const run = await startRun(table, { agent, mailbox, owner, region, apiUrl, job: "unsubscribe" });
+      const run = await startRun(table, { agent, mailbox, mailboxes: [mailbox], owner, region, apiUrl, job: "unsubscribe" });
       if ("refused" in run) return { outcome: "failed", reason: "notDone", detail: run.refused };
       const ran = runMailboxAgent(table, { agent, payload: { ...run.start, history: [], words: "", unsubscribe: { url, address: job.offer.recipient } }, runtime, month: run.month, cap: run.cap });
       let next = await ran.next();
@@ -106,9 +106,10 @@ export function createUnsubscribeRunner({ table, region, apiUrl, runtime, bounce
   };
 }
 
-/** The mailbox's mailbox agent, its mailbox and its owner's address, unless it is paused, its owner gave it no access, or it went with them. */
+/** The mailbox's owner's mailbox agent, the mailbox and the owner's address, unless it is paused or its owner gave it no access there. */
 async function workingAgent(table: Table, mailboxId: string): Promise<{ agent: Agent; mailbox: Mailbox; owner: string } | undefined> {
-  const [agent, mailbox] = await Promise.all([mailboxAgentOf(table, mailboxId), findMailbox(table, mailboxId)]);
+  const mailbox = await findMailbox(table, mailboxId);
+  const agent = mailbox === undefined ? undefined : await mailboxAgentIn(table, mailbox);
   if (agent === undefined || agent.paused !== undefined || mailbox === undefined) return undefined;
   const owner = await findActor(table, mailbox.owner);
   if (owner?.kind !== "human" || owner.id !== agent.sponsor) return undefined;

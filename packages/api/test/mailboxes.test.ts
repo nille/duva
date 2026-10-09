@@ -96,7 +96,7 @@ test("creating a mailbox and its address are in the change feed, attributed to t
   expect(data?.changes).toEqual([
     { position: before!.position + 1, at: expect.any(String), actor: admin?.id, type: "mailboxAdded", mailbox },
     { position: before!.position + 2, at: expect.any(String), actor: admin?.id, type: "addressAdded", address: "grace@example.com", mailbox: mailbox?.id },
-    expect.objectContaining({ type: "actorAdded", added: expect.objectContaining({ kind: "agent", mailbox: mailbox?.id }) }),
+    expect.objectContaining({ type: "actorAdded", added: expect.objectContaining({ kind: "agent", mailboxAgent: true }) }),
   ]);
 });
 

@@ -1,22 +1,23 @@
 // Duva's MCP endpoint (ADR-0028): a remote MCP server over Streamable HTTP, stateless, which an MCP
 // client such as Claude Code signs in to with the human's Duva account, through OAuth with the
-// deployment's user pool. Its tools reach the human's own mailbox agents: asking one, or giving it a
-// task, and calling Duva's operations in its mailbox as that agent, so all a tool does is what the
-// agent may do there, attributed to it, and its sends wait for the human's approval as the agent's do.
+// deployment's user pool. Its tools reach the human's own mailbox agent (ADR-0033): asking it, or
+// giving it a task, and calling Duva's operations in one of their mailboxes as that agent, so all a
+// tool does is what the agent may do there, attributed to it, and its sends wait for the human's
+// approval as the agent's do.
 //
 // MCP clients register with Duva, not Cognito, and all sign in through the user pool's one MCP app
 // client, by way of Duva's own authorize, callback and token endpoints, which pass each step on to
 // managed login. A user pool takes at most 20 managed login styles, one per app client (docs/aws.md).
 import { createHash, randomBytes } from "node:crypto";
 import { DeleteCommand, GetCommand, PutCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
-import { agentOperations, agentTools, callOperation, operationNamed } from "./agent-loop.ts";
+import { agentOperations, agentTools, callOperation, inMailbox, operationNamed } from "./agent-loop.ts";
 import { sponsorAccessIn } from "./access.ts";
 import { actorNamed } from "./alerting.ts";
 import { actionsRead, type ConversationTurn, type PreparedTurn, prepareTurn, turnsOf } from "./conversation.ts";
 import type { Table } from "./deployment.ts";
 import { authorizationServerPath, mcpAuthorizePath, mcpCallbackPath, mcpPath, mcpRegistrationPath, mcpTokenPath, protectedResourcePaths, timeToLiveAttribute } from "./infrastructure.ts";
-import { mailboxAgentOf } from "./mailbox-agents.ts";
-import { type Agent, agentSettings, findHumanBySignIn, type Human, type Mailbox, ownedMailboxes } from "./organization.ts";
+import { mailboxAgentIn } from "./mailbox-agents.ts";
+import { type Agent, agentSettings, findHumanBySignIn, type Human, type Mailbox, mailboxesInOrder, ownedMailboxes } from "./organization.ts";
 import { endRunToken, issueRunToken } from "./run-tokens.ts";
 import { documents, isNew, pk, sk } from "./table.ts";
 
@@ -66,6 +67,7 @@ interface Tool {
 }
 
 const mailboxInput = { type: "string", description: "The mailbox to work in, by its address or ID. Leave it out if you have one mailbox." };
+const askedFrom = { type: "string", description: "The mailbox to ask about, by its address or ID. Leave it out to ask about all your mailboxes." };
 
 /** The tools of Duva's own, which reach the mailbox agent itself. */
 const ownTools: Tool[] = [
@@ -80,20 +82,20 @@ const ownTools: Tool[] = [
     name: "askAgent",
     title: "Ask your mailbox agent",
     description:
-      "Asks your mailbox agent, Duva's own agent for the mailbox, which reads and works in it itself, and gives its answer and what it did. It waits up to about 20 seconds; if the agent takes longer, read its answer later with readConversation. This is the same conversation as Ask Coo in Duva.",
-    inputSchema: { type: "object", properties: { mailbox: mailboxInput, words: { type: "string", description: "What to ask, as you would ask a person." } }, required: ["words"] },
+      "Asks your mailbox agent, Duva's own agent for your mailboxes, which reads and works in them itself, and gives its answer and what it did. It waits up to about 20 seconds; if the agent takes longer, read its answer later with readConversation. This is the same conversation as Ask Coo in Duva.",
+    inputSchema: { type: "object", properties: { mailbox: askedFrom, words: { type: "string", description: "What to ask, as you would ask a person." } }, required: ["words"] },
   },
   {
     name: "giveAgentTask",
     title: "Give your mailbox agent a task",
     description: "Hands your mailbox agent something to do, without waiting for it. Its answer and what it did land in the conversation, in Ask Coo in Duva and in readConversation.",
-    inputSchema: { type: "object", properties: { mailbox: mailboxInput, words: { type: "string", description: "What the agent should do." } }, required: ["words"] },
+    inputSchema: { type: "object", properties: { mailbox: askedFrom, words: { type: "string", description: "What the agent should do." } }, required: ["words"] },
   },
   {
     name: "readConversation",
     title: "Read the conversation with your mailbox agent",
     description: "The last turns of your conversation with your mailbox agent, oldest first: what you asked, and what it answered and did, with the outcome of each run.",
-    inputSchema: { type: "object", properties: { mailbox: mailboxInput } },
+    inputSchema: { type: "object", properties: {} },
     annotations: { readOnlyHint: true },
   },
 ];
@@ -110,7 +112,7 @@ const operationTools: Tool[] = agentTools.map(({ name, description, inputSchema 
     name,
     title: summary,
     description,
-    inputSchema: { ...schema, properties: { mailbox: mailboxInput, ...schema.properties } },
+    inputSchema: inMailbox(name) ? { ...schema, properties: { mailbox: mailboxInput, ...schema.properties } } : schema,
     annotations: { readOnlyHint: method === "get", destructiveHint: method === "delete" },
   };
 });
@@ -259,25 +261,28 @@ export function createMcp(deployment: McpDeployment) {
         ),
       );
     }
+    if (name === "readConversation") return JSON.stringify(await turnsOf(table, human.id, 20));
     const { mailbox: asked, ...rest } = input;
-    const { mailbox, agent } = mailboxAsked(mailboxes, asked);
-    if (name === "readConversation") return JSON.stringify(await turnsOf(table, human.id, mailbox.id, 20));
     if (name === "askAgent" || name === "giveAgentTask") {
-      const prepared = await prepareTurn({ table, region, apiUrl, available: turns !== undefined }, human, { mailbox: mailbox.id, words: rest.words });
+      // Asked about no mailbox, with several, it is asked from All mailboxes.
+      const from = (asked === undefined || asked === null || asked === "") && mailboxes.length !== 1 ? undefined : mailboxAsked(mailboxes, asked).mailbox.id;
+      const prepared = await prepareTurn({ table, region, apiUrl, available: turns !== undefined }, human, { mailbox: from, words: rest.words });
       if ("statusCode" in prepared) throw new Refused(prepared.body.message);
       await turns!.start(prepared);
       const later = "Its answer will be in Ask Coo in Duva, and readConversation reads it.";
       if (name === "giveAgentTask") return `Your mailbox agent is on it. ${later}`;
-      const answered = await agentAnswer(human, mailbox, prepared.turn);
+      const answered = await agentAnswer(human, prepared.turn);
       return answered === undefined ? `Your mailbox agent is still working on it. ${later}` : answerAsRead(answered);
     }
     if (!agentOperations.includes(name as (typeof agentOperations)[number])) throw new Refused(`Duva has no tool ${name}.`);
+    // An operation in no mailbox, as listing the agents, is the human's mailbox agent's wherever it works.
+    const { mailbox, agent } = inMailbox(name) ? mailboxAsked(mailboxes, asked) : { mailbox: undefined, agent: mailboxAsked(mailboxes.slice(0, 1), undefined).agent };
     // A paused agent's calls would each alert its sponsor, who is the one calling.
     if (agent.paused !== undefined) throw new Refused(`Your mailbox agent is paused by ${await actorNamed(table, agent.paused.by)}. Unpause it in Settings, under Your agents, to use Duva's tools.`);
     // Each call is one the mailbox agent makes, with a token of its own that ends with the call.
     const token = await issueRunToken(table, agent.id);
     try {
-      const { action, result } = await callOperation({ apiUrl, token, mailbox: mailbox.id }, name, rest, call);
+      const { action, result } = await callOperation({ apiUrl, token, mailbox: mailbox?.id }, name, rest, call);
       if (!action.ok) throw new Refused(result);
       return result;
     } finally {
@@ -285,17 +290,17 @@ export function createMcp(deployment: McpDeployment) {
     }
   }
 
-  /** The human's own mailboxes that have a mailbox agent, each with it. */
+  /** The human's own mailboxes that have a mailbox agent at work, each with it. */
   async function mailboxesWithAgents(human: Human): Promise<AgentMailbox[]> {
-    const all = await Promise.all((await ownedMailboxes(table, human.id)).map(async (mailbox) => ({ mailbox, agent: await mailboxAgentOf(table, mailbox.id) })));
+    const all = await Promise.all(mailboxesInOrder(await ownedMailboxes(table, human.id), human.email).map(async (mailbox) => ({ mailbox, agent: await mailboxAgentIn(table, mailbox) })));
     return all.filter((each): each is AgentMailbox => each.agent !== undefined);
   }
 
   /** The agent's turn that answers the human's, once the run has written it, waiting no longer than askWait. */
-  async function agentAnswer(human: Human, mailbox: Mailbox, asked: ConversationTurn): Promise<ConversationTurn | undefined> {
+  async function agentAnswer(human: Human, asked: ConversationTurn): Promise<ConversationTurn | undefined> {
     const until = Date.now() + askWait;
     for (;;) {
-      const turns = await turnsOf(table, human.id, mailbox.id, 20);
+      const turns = await turnsOf(table, human.id, 20);
       const at = turns.findIndex(({ id }) => id === asked.id);
       const answered = at === -1 ? undefined : turns.slice(at + 1).find(({ from }) => from === "agent");
       if (answered !== undefined || Date.now() >= until) return answered;

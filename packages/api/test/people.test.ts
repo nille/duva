@@ -64,7 +64,7 @@ test("a dry run of removing a human lists their mailboxes and their agents, and 
   expect(data).toEqual({
     human: graceActor,
     mailboxes: [mailbox],
-    agents: expect.arrayContaining([agent, expect.objectContaining({ name: "Coo", mailbox: mailbox.id })]),
+    agents: expect.arrayContaining([agent, expect.objectContaining({ name: "Coo", mailboxAgent: true })]),
     removed: false,
   });
   expect(data!.agents).toHaveLength(2);
@@ -210,12 +210,12 @@ test("each change of a removal is in the organization's feed under the admin, an
   expect(removedAgents).toEqual(
     expect.arrayContaining([
       { ...stamp, type: "actorRemoved", removed: agent },
-      { ...stamp, type: "actorRemoved", removed: expect.objectContaining({ name: "Coo", mailbox: mailbox.id, sponsor: graceActor.id }) },
+      { ...stamp, type: "actorRemoved", removed: expect.objectContaining({ name: "Coo", mailboxAgent: true, sponsor: graceActor.id }) },
     ]),
   );
   expect(after?.changes.slice(2)).toEqual([
     { ...stamp, type: "mailboxHandedOver", mailbox: mailbox.id, from: graceActor.id, to: linusId },
-    { ...stamp, actor: linusId, type: "actorAdded", added: expect.objectContaining({ name: "Coo", mailbox: mailbox.id, sponsor: linusId }) },
+    { ...stamp, actor: linusId, type: "actorAdded", added: expect.objectContaining({ name: "Coo", mailboxAgent: true, sponsor: linusId }) },
     { ...stamp, type: "actorRemoved", removed: graceActor },
   ]);
   expect(before?.changes).toContainEqual(expect.objectContaining({ type: "actorAdded", added: graceActor }));
@@ -231,7 +231,7 @@ test("an agent's sponsor removes it: its key stops working, and the removal is i
   expect(response.status).toBe(200);
   expect(data).toEqual({ agent });
   expect((await hermes.GET("/whoami")).response.status).toBe(401);
-  expect((await grace.GET("/agents")).data!.agents.filter(({ mailbox }) => mailbox === undefined)).toEqual([]);
+  expect((await grace.GET("/agents")).data!.agents.filter(({ mailboxAgent }) => !mailboxAgent)).toEqual([]);
   const { data: after } = await ada.GET("/organization/changes", { params: { query: { after: before!.position } } });
   expect(after?.changes.at(-1)).toMatchObject({ type: "actorRemoved", removed: agent, actor: graceActor.id });
 });

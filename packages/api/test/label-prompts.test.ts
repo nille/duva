@@ -44,7 +44,7 @@ async function withMailbox(options: DuvaOptions = {}) {
   const params = { path: { mailbox: mailbox!.id } };
   await linus.PATCH("/mailboxes/{mailbox}/screener", { params, body: { on: false } });
   const { data: receipts } = await linus.POST("/mailboxes/{mailbox}/labels", { params, body: { name: "Receipts" } });
-  const agent = (await linus.GET("/mailboxes/{mailbox}/agent", { params })).data?.agent!;
+  const agent = (await linus.GET("/mailbox-agent")).data?.agent!;
   const prompt = (label: string, words: string) => linus.PUT("/mailboxes/{mailbox}/labels/{label}/prompt", { params: { path: { ...params.path, label } }, body: { prompt: words } });
   const label = (thread: string, add: string[], remove: string[] = [], client = linus) => client.POST("/mailboxes/{mailbox}/threads/labels", { params, body: { threads: [thread], add, remove } });
   const thread = async (id: string) => (await linus.GET("/mailboxes/{mailbox}/threads/{thread}", { params: { path: { ...params.path, thread: id } } })).data!;
@@ -110,7 +110,7 @@ test("a mailbox from before mailbox agents takes no prompt until deploy's setup 
   await duva.setUp({ admin: "ada@example.org" });
 
   expect(before.response.status).toBe(409);
-  expect((before.error as { message: string }).message).toBe("This mailbox has no mailbox agent yet. Ask an admin to run duva deploy, which gives every human's mailbox one.");
+  expect((before.error as { message: string }).message).toBe("You have no mailbox agent yet. Ask an admin to run duva deploy, which gives every human with a mailbox one.");
   expect((await prompt(receipts, "Note the amount.")).response.status).toBe(200);
 });
 

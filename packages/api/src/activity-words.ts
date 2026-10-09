@@ -244,6 +244,10 @@ export function changeSaid(change: Change, { who, agent, you }: Named, message?:
       return `${who} removed the address ${change.address}.`;
     case "actorAdded":
       return `${who} added ${change.added.kind === "agent" ? `the agent ${change.added.name}` : change.added.email}.`;
+    case "mailboxAgentsMerged":
+      return change.merged.length === 0
+        ? `${who} set ${agent} to work in all its sponsor's mailboxes.`
+        : `${who} merged ${change.merged.length + 1} mailbox agents into ${agent}, which works in all its sponsor's mailboxes.`;
     case "actorRemoved":
       return `${who} removed ${change.removed.kind === "agent" ? `the agent ${change.removed.name}` : change.removed.email}.`;
     // Kinds Duva no longer records, such as an agent admin's setup changes, still read from old feeds.
