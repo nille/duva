@@ -316,6 +316,21 @@ export const operations = [
         "required": false,
         "description": "The time zone, as an IANA name, or null to remove it, as if the human never chose one. The CLI removes it with --no-timeZone.",
         "nullable": true
+      },
+      {
+        "name": "opensOn",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "Where the web app opens: all, the default, on All mailboxes, or the ID of one of the human's mailboxes, on that one. A mailbox no longer theirs opens All mailboxes."
+      },
+      {
+        "name": "newMailFrom",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "The address, or null to start from the default again. The CLI gives null with --no-newMailFrom.",
+        "nullable": true
       }
     ]
   },
@@ -2771,6 +2786,705 @@ export const operations = [
         "type": "string",
         "required": true,
         "description": "The draft's ID."
+      }
+    ]
+  },
+  {
+    "operationId": "getAllMailboxes",
+    "method": "get",
+    "path": "/all-mailboxes",
+    "routeKey": "GET /all-mailboxes",
+    "summary": "Read All mailboxes, every mailbox you can read taken together, with how many threads in their Inboxes are unread.",
+    "description": "All mailboxes is a human's own mailboxes, or for an agent its sponsor's that its sponsor access covers. Each list, count and search of one mailbox also works on All mailboxes, under /all-mailboxes, and each thread there names its mailbox and the address it came to. A message delivered to two of them is two threads, one in each, and acting on one leaves the other as it is. Lists each mailbox with its own unread count, and the sum.",
+    "signIn": true,
+    "command": [
+      "mailboxes",
+      "get"
+    ],
+    "allMailboxes": true,
+    "options": []
+  },
+  {
+    "operationId": "listAllMailboxesChanges",
+    "method": "get",
+    "path": "/all-mailboxes/changes",
+    "routeKey": "GET /all-mailboxes/changes",
+    "summary": "List the changes in each of All mailboxes after where you left off, in one call.",
+    "description": "Lists up to 100 changes of each mailbox's change feed, oldest first, leaving out the arrivals of mail judged to be spam unless asked for them. To catch up, call again with the position the answer ends at until it lists no more. A mailbox that joins All mailboxes later is listed from its start.",
+    "signIn": true,
+    "command": [
+      "mailboxes",
+      "changes"
+    ],
+    "allMailboxes": true,
+    "options": [
+      {
+        "name": "after",
+        "in": "query",
+        "type": "string",
+        "required": false,
+        "description": "The position to list changes after, as an answer gave it. Leave it out to list from the start."
+      },
+      {
+        "name": "spam",
+        "in": "query",
+        "type": "boolean",
+        "required": false,
+        "description": "Lists the arrivals of mail judged to be spam too."
+      }
+    ]
+  },
+  {
+    "operationId": "listAllMailboxesThreads",
+    "method": "get",
+    "path": "/all-mailboxes/threads",
+    "routeKey": "GET /all-mailboxes/threads",
+    "summary": "List the threads in All mailboxes with a label, newest first.",
+    "description": "Lists the threads of every mailbox with the label, merged newest first by their newest message, a page at a time. A label of the mailboxes' own is given by its name, and lists the label of that name in each mailbox that has one. To read the next page, call again with the answer's next as after, until an answer has no next.",
+    "signIn": true,
+    "command": [
+      "threads",
+      "list"
+    ],
+    "allMailboxes": true,
+    "options": [
+      {
+        "name": "label",
+        "in": "query",
+        "type": "string",
+        "required": false,
+        "description": "The label the threads carry, a built-in label's ID or the name of a label of the mailboxes' own, in any case. inbox, the default, lists the Inbox."
+      },
+      {
+        "name": "limit",
+        "in": "query",
+        "type": "integer",
+        "required": false,
+        "description": "How many threads a page lists at most."
+      },
+      {
+        "name": "after",
+        "in": "query",
+        "type": "string",
+        "required": false,
+        "description": "Where the page starts, the next of the page before it. Leave it out for the first page."
+      }
+    ]
+  },
+  {
+    "operationId": "listAllMailboxesSentThreads",
+    "method": "get",
+    "path": "/all-mailboxes/sent",
+    "routeKey": "GET /all-mailboxes/sent",
+    "summary": "List the threads All mailboxes have sent mail in, newest first.",
+    "description": "Lists every thread with a message sent from one of the mailboxes, except those in Spam and Trash, merged newest first by its newest message, a page at a time. To read the next page, call again with the answer's next as after, until an answer has no next.",
+    "signIn": true,
+    "command": [
+      "threads",
+      "sent"
+    ],
+    "allMailboxes": true,
+    "options": [
+      {
+        "name": "limit",
+        "in": "query",
+        "type": "integer",
+        "required": false,
+        "description": "How many threads a page lists at most."
+      },
+      {
+        "name": "after",
+        "in": "query",
+        "type": "string",
+        "required": false,
+        "description": "Where the page starts, the next of the page before it. Leave it out for the first page."
+      }
+    ]
+  },
+  {
+    "operationId": "listAllMailboxesAllMail",
+    "method": "get",
+    "path": "/all-mailboxes/all-mail",
+    "routeKey": "GET /all-mailboxes/all-mail",
+    "summary": "List every thread in All mailboxes except those in Spam and Trash, newest first.",
+    "description": "Lists archived threads too, merged newest first by their newest message, a page at a time. To read the next page, call again with the answer's next as after, until an answer has no next.",
+    "signIn": true,
+    "command": [
+      "threads",
+      "all-mail"
+    ],
+    "allMailboxes": true,
+    "options": [
+      {
+        "name": "limit",
+        "in": "query",
+        "type": "integer",
+        "required": false,
+        "description": "How many threads a page lists at most."
+      },
+      {
+        "name": "after",
+        "in": "query",
+        "type": "string",
+        "required": false,
+        "description": "Where the page starts, the next of the page before it. Leave it out for the first page."
+      }
+    ]
+  },
+  {
+    "operationId": "listAllMailboxesReminders",
+    "method": "get",
+    "path": "/all-mailboxes/reminders",
+    "routeKey": "GET /all-mailboxes/reminders",
+    "summary": "List the threads set aside in All mailboxes' Remind me, the soonest back first.",
+    "description": "Lists the threads waiting in each mailbox's Remind me, merged so the one that comes back soonest is first, each with its reminder, a page at a time. To read the next page, call again with the answer's next as after, until an answer has no next.",
+    "signIn": true,
+    "command": [
+      "threads",
+      "reminders"
+    ],
+    "allMailboxes": true,
+    "options": [
+      {
+        "name": "limit",
+        "in": "query",
+        "type": "integer",
+        "required": false,
+        "description": "How many threads a page lists at most."
+      },
+      {
+        "name": "after",
+        "in": "query",
+        "type": "string",
+        "required": false,
+        "description": "Where the page starts, the next of the page before it. Leave it out for the first page."
+      }
+    ]
+  },
+  {
+    "operationId": "markAllMailboxesThreadsRead",
+    "method": "post",
+    "path": "/all-mailboxes/threads/read",
+    "routeKey": "POST /all-mailboxes/threads/read",
+    "summary": "Mark threads in All mailboxes read, each in its own mailbox.",
+    "description": "Marks each thread read in the mailbox it is in, as marking it there does, so its copy in another mailbox stays as it is. Each thread that was unread gets a change in its mailbox's change feed, naming you. You need to be able to mark threads in each mailbox the threads are in.",
+    "signIn": true,
+    "command": [
+      "threads",
+      "mark-read"
+    ],
+    "allMailboxes": true,
+    "options": [
+      {
+        "name": "threads",
+        "in": "body",
+        "type": "strings",
+        "required": true,
+        "description": "The IDs of the threads."
+      }
+    ]
+  },
+  {
+    "operationId": "markAllMailboxesThreadsUnread",
+    "method": "post",
+    "path": "/all-mailboxes/threads/unread",
+    "routeKey": "POST /all-mailboxes/threads/unread",
+    "summary": "Mark threads in All mailboxes unread, each in its own mailbox.",
+    "description": "Marks each thread unread in the mailbox it is in, as marking it there does. Each thread that was read gets a change in its mailbox's change feed, naming you. You need to be able to mark threads in each mailbox the threads are in.",
+    "signIn": true,
+    "command": [
+      "threads",
+      "mark-unread"
+    ],
+    "allMailboxes": true,
+    "options": [
+      {
+        "name": "threads",
+        "in": "body",
+        "type": "strings",
+        "required": true,
+        "description": "The IDs of the threads."
+      }
+    ]
+  },
+  {
+    "operationId": "labelAllMailboxesThreads",
+    "method": "post",
+    "path": "/all-mailboxes/threads/labels",
+    "routeKey": "POST /all-mailboxes/threads/labels",
+    "summary": "Add labels to threads in All mailboxes, and remove them, each in its own mailbox.",
+    "description": "Adds and removes the labels on each thread in the mailbox it is in, as labeling it there does, so archiving removes inbox. Give a built-in label by its ID, and a label of the mailboxes' own by its name or its ID. A name stands for the label of that name in each thread's own mailbox, which is created there when added and missing. Removing a name a thread's mailbox has no label of leaves it as it is. Each thread whose labels change gets a change in its mailbox's change feed, naming you. You need to be able to label threads in each mailbox the threads are in.",
+    "signIn": true,
+    "command": [
+      "threads",
+      "label"
+    ],
+    "allMailboxes": true,
+    "options": [
+      {
+        "name": "threads",
+        "in": "body",
+        "type": "strings",
+        "required": true,
+        "description": "The IDs of the threads."
+      },
+      {
+        "name": "add",
+        "in": "body",
+        "type": "strings",
+        "required": false,
+        "description": "The IDs of the labels to add, such as inbox, spam, trash or one of the mailbox's own."
+      },
+      {
+        "name": "remove",
+        "in": "body",
+        "type": "strings",
+        "required": false,
+        "description": "The IDs of the labels to remove."
+      }
+    ]
+  },
+  {
+    "operationId": "remindAllMailboxesThreads",
+    "method": "post",
+    "path": "/all-mailboxes/threads/remind",
+    "routeKey": "POST /all-mailboxes/threads/remind",
+    "summary": "Set threads in All mailboxes aside until a time, each in its own mailbox.",
+    "description": "Sets each thread aside in the Remind me of the mailbox it is in, as setting it aside there does, and it comes back to that mailbox's Inbox. Each thread gets a change in its mailbox's change feed, naming you. You need to be able to set threads aside in each mailbox the threads are in.",
+    "signIn": true,
+    "command": [
+      "threads",
+      "remind"
+    ],
+    "allMailboxes": true,
+    "options": [
+      {
+        "name": "threads",
+        "in": "body",
+        "type": "strings",
+        "required": true,
+        "description": "The IDs of the threads."
+      },
+      {
+        "name": "at",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "When the threads come back, to the second, at least a minute from now."
+      },
+      {
+        "name": "preset",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "A time counted from now, in the time zone: laterToday is three hours from now, on the hour after, tomorrowMorning is 8:00 tomorrow, and nextWeek is 8:00 next Monday."
+      },
+      {
+        "name": "timeZone",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "The time zone a preset is counted in, as an IANA name. Left out, it is your time zone preference, for an agent its sponsor's, or UTC if they chose none."
+      }
+    ]
+  },
+  {
+    "operationId": "cancelAllMailboxesReminders",
+    "method": "post",
+    "path": "/all-mailboxes/threads/remind/cancel",
+    "routeKey": "POST /all-mailboxes/threads/remind/cancel",
+    "summary": "Cancel the reminders of threads in All mailboxes, which puts each back in its own mailbox's Inbox.",
+    "description": "Cancels each thread's reminder in the mailbox it is in, as cancelling it there does. Threads not set aside are left as they are. Each thread whose reminder is cancelled gets a change in its mailbox's change feed, naming you.",
+    "signIn": true,
+    "command": [
+      "threads",
+      "cancel-reminder"
+    ],
+    "allMailboxes": true,
+    "options": [
+      {
+        "name": "threads",
+        "in": "body",
+        "type": "strings",
+        "required": true,
+        "description": "The IDs of the threads."
+      }
+    ]
+  },
+  {
+    "operationId": "getAllMailboxesThread",
+    "method": "get",
+    "path": "/all-mailboxes/threads/{thread}",
+    "routeKey": "GET /all-mailboxes/threads/{thread}",
+    "summary": "Read a thread in All mailboxes, with each of its messages, oldest first, and the mailbox it is in.",
+    "description": "",
+    "signIn": true,
+    "command": [
+      "threads",
+      "get"
+    ],
+    "allMailboxes": true,
+    "options": [
+      {
+        "name": "thread",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The thread's ID."
+      }
+    ]
+  },
+  {
+    "operationId": "searchAllMailboxes",
+    "method": "get",
+    "path": "/all-mailboxes/search",
+    "routeKey": "GET /all-mailboxes/search",
+    "summary": "Search All mailboxes' threads by words, meaning and filters.",
+    "description": "Searches each mailbox's own index as searching it alone does, with the same q, and merges what each finds by rank, so every mailbox's best come first, or newest first when sorted so. Each result names its mailbox. label: finds the label of that name in each mailbox that has one. To read the next page, call again with the answer's next as after.",
+    "signIn": true,
+    "command": [
+      "search"
+    ],
+    "allMailboxes": true,
+    "options": [
+      {
+        "name": "q",
+        "in": "query",
+        "type": "string",
+        "required": true,
+        "description": "What to search for, as searching one mailbox takes it: words, \"quoted phrases\", and the filters from:, to:, subject:, label:, has:attachment, is:unread, after: and before:.\n"
+      },
+      {
+        "name": "sort",
+        "in": "query",
+        "type": "string",
+        "required": false,
+        "description": "Best first, or newest first. Without words or phrases, both are newest first."
+      },
+      {
+        "name": "limit",
+        "in": "query",
+        "type": "integer",
+        "required": false,
+        "description": "How many threads a page lists at most."
+      },
+      {
+        "name": "after",
+        "in": "query",
+        "type": "string",
+        "required": false,
+        "description": "Where the page starts, the next of the page before it. Leave it out for the first page."
+      }
+    ]
+  },
+  {
+    "operationId": "listAllMailboxesLabels",
+    "method": "get",
+    "path": "/all-mailboxes/labels",
+    "routeKey": "GET /all-mailboxes/labels",
+    "summary": "List All mailboxes' labels, each name once, with the mailboxes that have it and how many unread threads it has.",
+    "description": "Lists the built-in labels first, then the mailboxes' own labels by name. Labels of the same name, in any case, in several mailboxes are one label here, whose unread count is the sum of theirs. Each label stays its mailbox's own, with its own prompt, so create, rename and delete labels, and give them prompts, in a mailbox.",
+    "signIn": true,
+    "command": [
+      "labels",
+      "list"
+    ],
+    "allMailboxes": true,
+    "options": []
+  },
+  {
+    "operationId": "getAllMailboxesScreener",
+    "method": "get",
+    "path": "/all-mailboxes/screener",
+    "routeKey": "GET /all-mailboxes/screener",
+    "summary": "Read All mailboxes' Screener, with the first-time senders whose mail waits in each mailbox.",
+    "description": "Lists each sender whose mail waits in a mailbox, newest first, with their waiting threads there. A sender waiting in two mailboxes is listed for each, since each mailbox decides on its senders: decide in the sender's mailbox. Says for each mailbox whether its Screener is on, and how many senders it has decided where mail goes for.",
+    "signIn": true,
+    "command": [
+      "screener",
+      "get"
+    ],
+    "allMailboxes": true,
+    "options": []
+  },
+  {
+    "operationId": "listAllMailboxesDrafts",
+    "method": "get",
+    "path": "/all-mailboxes/drafts",
+    "routeKey": "GET /all-mailboxes/drafts",
+    "summary": "List the drafts in All mailboxes, newest first, each with its mailbox and where its send stands.",
+    "description": "",
+    "signIn": true,
+    "command": [
+      "drafts",
+      "list"
+    ],
+    "allMailboxes": true,
+    "options": []
+  },
+  {
+    "operationId": "createAllMailboxesDraft",
+    "method": "post",
+    "path": "/all-mailboxes/drafts",
+    "routeKey": "POST /all-mailboxes/drafts",
+    "summary": "Draft a reply, a forward or a new message in All mailboxes, in the mailbox it goes from.",
+    "description": "A reply or a forward lives in the mailbox of the message it answers or forwards, and goes from the address a reply there would. A new message lives in the mailbox of the address it goes from: from, or else the address your newMailFrom preference names, or for an agent its sponsor's, while it is one of the mailboxes'. Otherwise it goes from the default address of the first mailbox. Writing it is as writing a draft in that mailbox, recorded in its change feed, naming you, and you need to be able to draft there.",
+    "signIn": true,
+    "command": [
+      "drafts",
+      "create"
+    ],
+    "allMailboxes": true,
+    "options": [
+      {
+        "name": "answers",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "The ID of the message the draft replies to. Without it or forwards, the draft is a new message."
+      },
+      {
+        "name": "forwards",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "The ID of the message the draft forwards, with its text and attachments. Give answers or forwards, not both."
+      },
+      {
+        "name": "from",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "The address to send from: one of the mailbox's addresses, or a group its owner is a local member of, to send as the group. A reply or a forward goes from the address the original was sent to unless you give one, and a new message from the default address."
+      },
+      {
+        "name": "replyAll",
+        "in": "body",
+        "type": "boolean",
+        "required": false,
+        "description": "With answers, replies to all, so every other recipient of the original gets it too, except the mailbox's own addresses."
+      },
+      {
+        "name": "to",
+        "in": "body",
+        "type": "strings",
+        "required": false,
+        "description": "The recipients' addresses. A reply goes to the original's Reply-To or From unless you give them."
+      },
+      {
+        "name": "cc",
+        "in": "body",
+        "type": "strings",
+        "required": false,
+        "description": "The Cc recipients' addresses. A reply to all copies the original's Cc recipients unless you give them."
+      },
+      {
+        "name": "bcc",
+        "in": "body",
+        "type": "strings",
+        "required": false,
+        "description": "The Bcc recipients' addresses, which get the message but appear in no header."
+      },
+      {
+        "name": "subject",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "The subject. A reply's is the original's with \"Re: \" unless you give one."
+      },
+      {
+        "name": "text",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "The plain-text body."
+      }
+    ]
+  },
+  {
+    "operationId": "getAllMailboxesDraft",
+    "method": "get",
+    "path": "/all-mailboxes/drafts/{draft}",
+    "routeKey": "GET /all-mailboxes/drafts/{draft}",
+    "summary": "Read a draft in All mailboxes, with its mailbox and where its send stands.",
+    "description": "",
+    "signIn": true,
+    "command": [
+      "drafts",
+      "get"
+    ],
+    "allMailboxes": true,
+    "options": [
+      {
+        "name": "draft",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The draft's ID."
+      }
+    ]
+  },
+  {
+    "operationId": "deleteAllMailboxesDraft",
+    "method": "delete",
+    "path": "/all-mailboxes/drafts/{draft}",
+    "routeKey": "DELETE /all-mailboxes/drafts/{draft}",
+    "summary": "Delete a draft in All mailboxes, in its own mailbox.",
+    "description": "",
+    "signIn": true,
+    "command": [
+      "drafts",
+      "delete"
+    ],
+    "allMailboxes": true,
+    "options": [
+      {
+        "name": "draft",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The draft's ID."
+      }
+    ]
+  },
+  {
+    "operationId": "editAllMailboxesDraft",
+    "method": "patch",
+    "path": "/all-mailboxes/drafts/{draft}",
+    "routeKey": "PATCH /all-mailboxes/drafts/{draft}",
+    "summary": "Change a draft in All mailboxes, in its own mailbox.",
+    "description": "As changing it in its mailbox does. Its From can be another of that mailbox's addresses, or a group, but not another mailbox's address, since a draft stays in its mailbox.",
+    "signIn": true,
+    "command": [
+      "drafts",
+      "edit"
+    ],
+    "allMailboxes": true,
+    "options": [
+      {
+        "name": "draft",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The draft's ID."
+      },
+      {
+        "name": "from",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "The address to send from, in place of the draft's: one of the mailbox's addresses, or a group its owner is a local member of."
+      },
+      {
+        "name": "to",
+        "in": "body",
+        "type": "strings",
+        "required": false,
+        "description": "The recipients' addresses, in place of the draft's."
+      },
+      {
+        "name": "cc",
+        "in": "body",
+        "type": "strings",
+        "required": false,
+        "description": "The Cc recipients' addresses, in place of the draft's."
+      },
+      {
+        "name": "bcc",
+        "in": "body",
+        "type": "strings",
+        "required": false,
+        "description": "The Bcc recipients' addresses, in place of the draft's."
+      },
+      {
+        "name": "subject",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "The subject, in place of the draft's."
+      },
+      {
+        "name": "text",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "The plain-text body."
+      }
+    ]
+  },
+  {
+    "operationId": "sendAllMailboxesDraft",
+    "method": "post",
+    "path": "/all-mailboxes/drafts/{draft}/send",
+    "routeKey": "POST /all-mailboxes/drafts/{draft}/send",
+    "summary": "Ask for a draft in All mailboxes to be sent, from its own mailbox.",
+    "description": "As asking in its mailbox does, approval and all.",
+    "signIn": true,
+    "command": [
+      "drafts",
+      "send"
+    ],
+    "allMailboxes": true,
+    "options": [
+      {
+        "name": "draft",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The draft's ID."
+      }
+    ]
+  },
+  {
+    "operationId": "sendAllMailboxesDraftNow",
+    "method": "post",
+    "path": "/all-mailboxes/drafts/{draft}/send-now",
+    "routeKey": "POST /all-mailboxes/drafts/{draft}/send-now",
+    "summary": "Send a draft in All mailboxes waiting for an agent's send limits now, past the limits.",
+    "description": "As sending it now in its mailbox does.",
+    "signIn": true,
+    "command": [
+      "drafts",
+      "send-now"
+    ],
+    "allMailboxes": true,
+    "options": [
+      {
+        "name": "draft",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The draft's ID."
+      }
+    ]
+  },
+  {
+    "operationId": "getAllMailboxesAttachment",
+    "method": "get",
+    "path": "/all-mailboxes/messages/{message}/attachments/{attachment}",
+    "routeKey": "GET /all-mailboxes/messages/{message}/attachments/{attachment}",
+    "summary": "Get a short-lived link that downloads one of the attachments of a message in All mailboxes.",
+    "description": "As getting one in the message's mailbox does. The link works for 5 minutes, for whoever follows it, so keep it to yourself.",
+    "signIn": true,
+    "command": [
+      "attachments",
+      "link"
+    ],
+    "allMailboxes": true,
+    "options": [
+      {
+        "name": "message",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The message's ID."
+      },
+      {
+        "name": "attachment",
+        "in": "path",
+        "type": "integer",
+        "required": true,
+        "description": "The attachment's place among the message's attachments, from 0."
       }
     ]
   },

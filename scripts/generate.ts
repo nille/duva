@@ -26,6 +26,8 @@ interface OperationObject {
   parameters?: (ParameterObject | { $ref: string })[];
   requestBody?: { required?: boolean; content?: Record<string, { schema?: SchemaObject }> };
   "x-cli-command"?: string;
+  /** For an operation on All mailboxes, the command it serves when given --mailbox all, in place of x-cli-command. */
+  "x-cli-all-mailboxes"?: string;
 }
 
 interface SchemaObject {
@@ -83,7 +85,8 @@ function operationsOf(document: Document) {
       const where = `${method.toUpperCase()} ${path}`;
       if (!operation.operationId) fail(`${where} has no operationId.`);
       if (!operation.summary) fail(`${where} has no summary.`);
-      if (!operation["x-cli-command"]) fail(`${where} has no x-cli-command.`);
+      const allMailboxes = operation["x-cli-all-mailboxes"];
+      if (!operation["x-cli-command"] === !allMailboxes) fail(`${where} needs one of x-cli-command and x-cli-all-mailboxes.`);
       return [
         {
           operationId: operation.operationId,
@@ -93,15 +96,23 @@ function operationsOf(document: Document) {
           summary: operation.summary,
           description: operation.description?.trim() ?? "",
           signIn: needsSignIn(operation.security ?? document.security ?? []),
-          command: operation["x-cli-command"].split(" "),
+          command: (operation["x-cli-command"] ?? allMailboxes!).split(" "),
+          ...(allMailboxes && { allMailboxes: true }),
           options: [...parametersOf(where, operation.parameters ?? []), ...bodyOf(where, operation.requestBody)],
         },
       ];
     }),
   );
-  const commands = operations.map((operation) => operation.command.join(" "));
-  const repeated = commands.find((command, index) => commands.indexOf(command) !== index);
-  if (repeated !== undefined) fail(`Two operations have the x-cli-command "${repeated}".`);
+  // An operation on All mailboxes serves a command of an operation on one mailbox, given --mailbox all.
+  for (const group of [operations.filter((operation) => !("allMailboxes" in operation)), operations.filter((operation) => "allMailboxes" in operation)]) {
+    const commands = group.map((operation) => operation.command.join(" "));
+    const repeated = commands.find((command, index) => commands.indexOf(command) !== index);
+    if (repeated !== undefined) fail(`Two operations have the x-cli-command or x-cli-all-mailboxes "${repeated}".`);
+  }
+  for (const operation of operations.filter((each) => "allMailboxes" in each)) {
+    const served = operations.find((each) => !("allMailboxes" in each) && each.command.join(" ") === operation.command.join(" "));
+    if (!served?.options.some(({ name, in: place }) => name === "mailbox" && place === "path")) fail(`${operation.operationId} serves "${operation.command.join(" ")}", which no operation on one mailbox has.`);
+  }
   return operations;
 }
 

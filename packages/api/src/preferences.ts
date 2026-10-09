@@ -4,14 +4,18 @@ import { GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import type { components } from "@duva/openapi";
 import { jsonBody, type OperationHandler, refusal } from "./api.ts";
 import type { Table } from "./deployment.ts";
+import { type Human, type Mailbox, ownedMailboxes } from "./organization.ts";
 import { documents, pk, sk } from "./table.ts";
 
 type Preferences = components["schemas"]["Preferences"];
 
 const preferencesKey = (human: string) => ({ [pk]: `actor#${human}`, [sk]: "preferences" });
 
+/** The preferences that aren't a choice among a few values, whose defaults come from elsewhere or are none. */
+const notChosen = ["timeZone", "opensOn", "newMailFrom"] as const;
+
 /** Each preference with choices, the first its default until the human changes it. */
-const choices: { [Name in Exclude<keyof Preferences, "timeZone">]: Preferences[Name][] } = {
+const choices: { [Name in Exclude<keyof Preferences, (typeof notChosen)[number]>]: Preferences[Name][] } = {
   hourCycle: ["locale", "h12", "h23"],
   dateFormat: ["locale", "iso", "dayMonth", "monthDay"],
   mailView: ["html", "text"],
@@ -19,12 +23,44 @@ const choices: { [Name in Exclude<keyof Preferences, "timeZone">]: Preferences[N
   cooSpeaksUp: ["on", "off"],
 };
 const chosen = Object.keys(choices) as (keyof typeof choices)[];
-// The time zone has no default, so a client can tell that the human never chose one.
-const names: string[] = [...chosen, "timeZone"];
+const names: string[] = [...chosen, ...notChosen];
 
-/** The preferences an item holds, each with its default if the human never changed it. */
-const preferencesOf = (item: Record<string, unknown> | undefined) =>
-  ({ ...Object.fromEntries(chosen.map((name) => [name, item?.[name] ?? choices[name][0]])), ...(item?.timeZone !== undefined && { timeZone: item.timeZone }) }) as Preferences;
+/** What opensOn names for All mailboxes (ADR-0033). */
+const allMailboxes = "all";
+
+/**
+ * The preferences an item holds, each with its default if the human never changed it. The time
+ * zone has no default, so a client can tell that the human never chose one. Where the web app
+ * opens, and new mail's address, hold only while they name one of the human's mailboxes.
+ */
+function preferencesOf(item: Record<string, unknown> | undefined, human: Human, mailboxes: Mailbox[]): Preferences {
+  const opensOn = mailboxes.some(({ id }) => id === item?.opensOn) ? (item!.opensOn as string) : allMailboxes;
+  const newMailFrom = addressAmong(mailboxes, item?.newMailFrom) ?? defaultNewMailFrom(human, mailboxes);
+  return {
+    ...(Object.fromEntries(chosen.map((name) => [name, item?.[name] ?? choices[name][0]])) as Pick<Preferences, keyof typeof choices>),
+    ...(item?.timeZone !== undefined && { timeZone: item.timeZone as string }),
+    opensOn,
+    ...(newMailFrom !== undefined && { newMailFrom }),
+  };
+}
+
+/** The address as one of the mailboxes has it, in any case, or undefined if none has it. */
+const addressAmong = (mailboxes: Mailbox[], address: unknown) =>
+  typeof address === "string" ? mailboxes.flatMap(({ addresses }) => addresses).find((each) => each.toLowerCase() === address.toLowerCase()) : undefined;
+
+/** The default address of the mailbox holding the human's sign-in address, or else of their first mailbox with one. */
+const defaultNewMailFrom = (human: Human, mailboxes: Mailbox[]) =>
+  mailboxes.find(({ addresses }) => addresses.some((address) => address.toLowerCase() === human.email.toLowerCase()))?.defaultAddress ??
+  mailboxes.find(({ defaultAddress }) => defaultAddress !== undefined)?.defaultAddress;
+
+/** The address new mail written in All mailboxes starts from, as the human's preference says, or undefined while they have no mailbox. */
+export async function newMailFromOf(table: Table, human: Human): Promise<string | undefined> {
+  const [{ Item }, mailboxes] = await Promise.all([
+    documents(table).send(new GetCommand({ TableName: table.name, Key: preferencesKey(human.id), ConsistentRead: true })),
+    ownedMailboxes(table, human.id),
+  ]);
+  return preferencesOf(Item, human, mailboxes).newMailFrom;
+}
 
 /** The time zone with the name, as an IANA name or UTC, in the case Intl gives it, or undefined if there is none. */
 export function timeZoneNamed(name: unknown): string | undefined {
@@ -47,8 +83,11 @@ const agentsRefused = () => refusal(403, "Only humans have preferences. An agent
 export const getPreferences: OperationHandler = async (_event, deployment, actor) => {
   if (actor?.kind !== "human") return agentsRefused();
   const { table } = deployment;
-  const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: preferencesKey(actor.id), ConsistentRead: true }));
-  return { statusCode: 200, body: preferencesOf(Item) satisfies components["schemas"]["Preferences"] };
+  const [{ Item }, mailboxes] = await Promise.all([
+    documents(table).send(new GetCommand({ TableName: table.name, Key: preferencesKey(actor.id), ConsistentRead: true })),
+    ownedMailboxes(table, actor.id),
+  ]);
+  return { statusCode: 200, body: preferencesOf(Item, actor, mailboxes) satisfies components["schemas"]["Preferences"] };
 };
 
 export const changePreferences: OperationHandler = async (event, deployment, actor) => {
@@ -66,12 +105,21 @@ export const changePreferences: OperationHandler = async (event, deployment, act
     if (timeZone === undefined) return refusal(400, `${JSON.stringify(body.timeZone)} isn't a time zone. Give timeZone as an IANA name, such as Europe/Stockholm.`);
     body.timeZone = timeZone;
   }
+  const { table } = deployment;
+  const mailboxes = await ownedMailboxes(table, actor.id);
+  if (body.opensOn !== undefined && body.opensOn !== allMailboxes && !mailboxes.some(({ id }) => id === body.opensOn)) {
+    return refusal(400, `${JSON.stringify(body.opensOn)} isn't one of your mailboxes. Give opensOn as all, for All mailboxes, or the ID of one of yours, which listing your mailboxes gives.`);
+  }
+  if (body.newMailFrom !== undefined && body.newMailFrom !== null) {
+    const address = addressAmong(mailboxes, body.newMailFrom);
+    if (address === undefined) return refusal(400, `${JSON.stringify(body.newMailFrom)} isn't one of your addresses. Give newMailFrom as an address of one of your mailboxes, which listing your mailboxes gives.`);
+    body.newMailFrom = address;
+  }
   // Each preference is set on its own, so two changes at once to different ones both hold. The time
-  // zone given as null is removed, so the human has none again.
+  // zone or the address given as null is removed, so the human has none, or the default, again.
   const changes = Object.entries(body).map(([name, value], index) => ({ name, value, index }));
   const set = changes.filter(({ value }) => value !== null);
   const removed = changes.filter(({ value }) => value === null);
-  const { table } = deployment;
   const { Attributes } = await documents(table).send(
     new UpdateCommand({
       TableName: table.name,
@@ -85,5 +133,5 @@ export const changePreferences: OperationHandler = async (event, deployment, act
       ReturnValues: "ALL_NEW",
     }),
   );
-  return { statusCode: 200, body: preferencesOf(Attributes) satisfies components["schemas"]["Preferences"] };
+  return { statusCode: 200, body: preferencesOf(Attributes, actor, mailboxes) satisfies components["schemas"]["Preferences"] };
 };

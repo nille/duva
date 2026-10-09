@@ -17,7 +17,7 @@ test("a human's times and dates follow their browser's language until they choos
   const { response, data } = await ada.GET("/preferences");
 
   expect(response.status).toBe(200);
-  expect(data).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "on" });
+  expect(data).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "on", opensOn: "all" });
 });
 
 test("a human chooses 24-hour time and ISO dates, and reads them back", async () => {
@@ -26,8 +26,8 @@ test("a human chooses 24-hour time and ISO dates, and reads them back", async ()
   const { response, data } = await ada.PATCH("/preferences", { body: { hourCycle: "h23", dateFormat: "iso" } });
 
   expect(response.status).toBe(200);
-  expect(data).toEqual({ hourCycle: "h23", dateFormat: "iso", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "on" });
-  expect((await ada.GET("/preferences")).data).toEqual({ hourCycle: "h23", dateFormat: "iso", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "on" });
+  expect(data).toEqual({ hourCycle: "h23", dateFormat: "iso", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "on", opensOn: "all" });
+  expect((await ada.GET("/preferences")).data).toEqual({ hourCycle: "h23", dateFormat: "iso", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "on", opensOn: "all" });
 });
 
 test("changing one preference leaves the other as it was", async () => {
@@ -36,7 +36,7 @@ test("changing one preference leaves the other as it was", async () => {
 
   const { data } = await ada.PATCH("/preferences", { body: { dateFormat: "monthDay" } });
 
-  expect(data).toEqual({ hourCycle: "h12", dateFormat: "monthDay", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "on" });
+  expect(data).toEqual({ hourCycle: "h12", dateFormat: "monthDay", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "on", opensOn: "all" });
 });
 
 test("a human's preferences are their own, so another human's stay as they were", async () => {
@@ -44,8 +44,8 @@ test("a human's preferences are their own, so another human's stay as they were"
 
   await grace.PATCH("/preferences", { body: { hourCycle: "h23" } });
 
-  expect((await grace.GET("/preferences")).data).toEqual({ hourCycle: "h23", dateFormat: "locale", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "on" });
-  expect((await ada.GET("/preferences")).data).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "on" });
+  expect((await grace.GET("/preferences")).data).toEqual({ hourCycle: "h23", dateFormat: "locale", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "on", opensOn: "all" });
+  expect((await ada.GET("/preferences")).data).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "on", opensOn: "all" });
 });
 
 test("a human's mail shows as HTML until they choose text, and then as text", async () => {
@@ -54,7 +54,7 @@ test("a human's mail shows as HTML until they choose text, and then as text", as
 
   const { data } = await ada.PATCH("/preferences", { body: { mailView: "text", keyboardShortcuts: "on" } });
 
-  expect(data).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "text", keyboardShortcuts: "on", cooSpeaksUp: "on" });
+  expect(data).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "text", keyboardShortcuts: "on", cooSpeaksUp: "on", opensOn: "all" });
   expect((await ada.GET("/preferences")).data?.mailView).toBe("text");
 });
 
@@ -64,7 +64,7 @@ test("a human's keyboard shortcuts are on until they turn them off, and then off
 
   const { data } = await ada.PATCH("/preferences", { body: { keyboardShortcuts: "off", cooSpeaksUp: "on" } });
 
-  expect(data).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "html", keyboardShortcuts: "off", cooSpeaksUp: "on" });
+  expect(data).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "html", keyboardShortcuts: "off", cooSpeaksUp: "on", opensOn: "all" });
   expect((await ada.GET("/preferences")).data?.keyboardShortcuts).toBe("off");
 });
 
@@ -74,7 +74,7 @@ test("Coo speaks up until its human turns it off, and then stays quiet in every 
 
   const { data } = await ada.PATCH("/preferences", { body: { cooSpeaksUp: "off" } });
 
-  expect(data).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "off" });
+  expect(data).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "off", opensOn: "all" });
   expect((await ada.GET("/preferences")).data?.cooSpeaksUp).toBe("off");
 });
 
@@ -84,7 +84,7 @@ test("a human chooses their browser's language again", async () => {
 
   const { data } = await ada.PATCH("/preferences", { body: { hourCycle: "locale", dateFormat: "locale" } });
 
-  expect(data).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "on" });
+  expect(data).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "on", opensOn: "all" });
 });
 
 test("an agent has no preferences, so it gets 403 reading or changing them", async () => {
@@ -100,13 +100,13 @@ test("an agent has no preferences, so it gets 403 reading or changing them", asy
 });
 
 test.each([
-  ["no preference", {}, "Give a preference to change: hourCycle, dateFormat, mailView, keyboardShortcuts, cooSpeaksUp, timeZone."],
+  ["no preference", {}, "Give a preference to change: hourCycle, dateFormat, mailView, keyboardShortcuts, cooSpeaksUp, timeZone, opensOn, newMailFrom."],
   ["an hour cycle Duva doesn't have", { hourCycle: "h24" }, "Give hourCycle as locale, h12 or h23."],
   ["a date format Duva doesn't have", { dateFormat: "yearFirst" }, "Give dateFormat as locale, iso, dayMonth or monthDay."],
   ["a mail view Duva doesn't have", { mailView: "markdown" }, "Give mailView as html or text."],
   ["keyboard shortcuts as neither on nor off", { keyboardShortcuts: "true" }, "Give keyboardShortcuts as on or off."],
   ["Coo speaking up as neither on nor off", { cooSpeaksUp: "yes" }, "Give cooSpeaksUp as on or off."],
-  ["a preference Duva doesn't have", { language: "sv" }, 'Duva has no preference "language". Its preferences are hourCycle, dateFormat, mailView, keyboardShortcuts, cooSpeaksUp, timeZone.'],
+  ["a preference Duva doesn't have", { language: "sv" }, 'Duva has no preference "language". Its preferences are hourCycle, dateFormat, mailView, keyboardShortcuts, cooSpeaksUp, timeZone, opensOn, newMailFrom.'],
 ])("changing preferences with %s gets 400, and they stay as they were", async (_, body, message) => {
   const { ada } = await withOrganization();
 
@@ -114,7 +114,7 @@ test.each([
 
   expect(response.status).toBe(400);
   expect(error).toEqual({ message });
-  expect((await ada.GET("/preferences")).data).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "on" });
+  expect((await ada.GET("/preferences")).data).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "on", opensOn: "all" });
 });
 
 test("a human has no time zone until they choose one, and then it is theirs", async () => {
@@ -124,7 +124,7 @@ test("a human has no time zone until they choose one, and then it is theirs", as
   const { response, data } = await ada.PATCH("/preferences", { body: { timeZone: "Europe/Stockholm" } });
 
   expect(response.status).toBe(200);
-  expect(data).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "on", timeZone: "Europe/Stockholm" });
+  expect(data).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "on", timeZone: "Europe/Stockholm", opensOn: "all" });
   expect((await ada.GET("/preferences")).data?.timeZone).toBe("Europe/Stockholm");
 });
 
@@ -135,8 +135,8 @@ test("a human removes their time zone, and has none again, with other preference
   const { response, data } = await ada.PATCH("/preferences", { body: { timeZone: null, hourCycle: "h23" } });
 
   expect(response.status).toBe(200);
-  expect(data).toEqual({ hourCycle: "h23", dateFormat: "locale", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "on" });
-  expect((await ada.GET("/preferences")).data).toEqual({ hourCycle: "h23", dateFormat: "locale", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "on" });
+  expect(data).toEqual({ hourCycle: "h23", dateFormat: "locale", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "on", opensOn: "all" });
+  expect((await ada.GET("/preferences")).data).toEqual({ hourCycle: "h23", dateFormat: "locale", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "on", opensOn: "all" });
 });
 
 test("removing a time zone a human never chose leaves them without one", async () => {
@@ -145,7 +145,7 @@ test("removing a time zone a human never chose leaves them without one", async (
   const { response, data } = await ada.PATCH("/preferences", { body: { timeZone: null } });
 
   expect(response.status).toBe(200);
-  expect(data).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "on" });
+  expect(data).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "on", opensOn: "all" });
 });
 
 test("a time zone that isn't one is refused", async () => {

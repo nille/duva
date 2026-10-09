@@ -2879,6 +2879,642 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+  /all-mailboxes:
+    get:
+      operationId: getAllMailboxes
+      summary: Read All mailboxes, every mailbox you can read taken together, with how many threads in their Inboxes are unread.
+      description: >
+        All mailboxes is a human's own mailboxes, or for an agent its
+        sponsor's that its sponsor access covers. Each list, count and search
+        of one mailbox also works on All mailboxes, under /all-mailboxes, and
+        each thread there names its mailbox and the address it came to. A
+        message delivered to two of them is two threads, one in each, and
+        acting on one leaves the other as it is. Lists each mailbox with its
+        own unread count, and the sum.
+      x-cli-all-mailboxes: mailboxes get
+      responses:
+        "200":
+          description: The mailboxes, with their unread counts.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AllMailboxes"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /all-mailboxes/changes:
+    get:
+      operationId: listAllMailboxesChanges
+      summary: List the changes in each of All mailboxes after where you left off, in one call.
+      description: >
+        Lists up to 100 changes of each mailbox's change feed, oldest first,
+        leaving out the arrivals of mail judged to be spam unless asked for
+        them. To catch up, call again with the position the answer ends at
+        until it lists no more. A mailbox that joins All mailboxes later is
+        listed from its start.
+      x-cli-all-mailboxes: mailboxes changes
+      parameters:
+        - name: after
+          in: query
+          description: The position to list changes after, as an answer gave it. Leave it out to list from the start.
+          schema:
+            type: string
+        - name: spam
+          in: query
+          description: Lists the arrivals of mail judged to be spam too.
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: The changes after the position, by mailbox.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AllMailboxesChangePage"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /all-mailboxes/threads:
+    get:
+      operationId: listAllMailboxesThreads
+      summary: List the threads in All mailboxes with a label, newest first.
+      description: >
+        Lists the threads of every mailbox with the label, merged newest first
+        by their newest message, a page at a time. A label of the mailboxes'
+        own is given by its name, and lists the label of that name in each
+        mailbox that has one. To read the next page, call again with the
+        answer's next as after, until an answer has no next.
+      x-cli-all-mailboxes: threads list
+      parameters:
+        - name: label
+          in: query
+          description: The label the threads carry, a built-in label's ID or the name of a label of the mailboxes' own, in any case. inbox, the default, lists the Inbox.
+          schema:
+            type: string
+            default: inbox
+        - $ref: "#/components/parameters/AllMailboxesLimit"
+        - $ref: "#/components/parameters/AllMailboxesAfter"
+      responses:
+        "200":
+          description: A page of the threads with the label.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AllMailboxesThreadList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /all-mailboxes/sent:
+    get:
+      operationId: listAllMailboxesSentThreads
+      summary: List the threads All mailboxes have sent mail in, newest first.
+      description: >
+        Lists every thread with a message sent from one of the mailboxes,
+        except those in Spam and Trash, merged newest first by its newest
+        message, a page at a time. To read the next page, call again with
+        the answer's next as after, until an answer has no next.
+      x-cli-all-mailboxes: threads sent
+      parameters:
+        - $ref: "#/components/parameters/AllMailboxesLimit"
+        - $ref: "#/components/parameters/AllMailboxesAfter"
+      responses:
+        "200":
+          description: A page of the threads the mailboxes have sent in.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AllMailboxesThreadList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /all-mailboxes/all-mail:
+    get:
+      operationId: listAllMailboxesAllMail
+      summary: List every thread in All mailboxes except those in Spam and Trash, newest first.
+      description: >
+        Lists archived threads too, merged newest first by their newest
+        message, a page at a time. To read the next page, call again with the
+        answer's next as after, until an answer has no next.
+      x-cli-all-mailboxes: threads all-mail
+      parameters:
+        - $ref: "#/components/parameters/AllMailboxesLimit"
+        - $ref: "#/components/parameters/AllMailboxesAfter"
+      responses:
+        "200":
+          description: A page of the threads.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AllMailboxesThreadList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /all-mailboxes/reminders:
+    get:
+      operationId: listAllMailboxesReminders
+      summary: List the threads set aside in All mailboxes' Remind me, the soonest back first.
+      description: >
+        Lists the threads waiting in each mailbox's Remind me, merged so the
+        one that comes back soonest is first, each with its reminder, a page
+        at a time. To read the next page, call again with the answer's next as
+        after, until an answer has no next.
+      x-cli-all-mailboxes: threads reminders
+      parameters:
+        - $ref: "#/components/parameters/AllMailboxesLimit"
+        - $ref: "#/components/parameters/AllMailboxesAfter"
+      responses:
+        "200":
+          description: A page of the threads set aside.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AllMailboxesThreadList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /all-mailboxes/threads/read:
+    post:
+      operationId: markAllMailboxesThreadsRead
+      summary: Mark threads in All mailboxes read, each in its own mailbox.
+      description: >
+        Marks each thread read in the mailbox it is in, as marking it there
+        does, so its copy in another mailbox stays as it is. Each thread that
+        was unread gets a change in its mailbox's change feed, naming you.
+        You need to be able to mark threads in each mailbox the threads are in.
+      x-cli-all-mailboxes: threads mark-read
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ThreadIds"
+      responses:
+        "200":
+          description: The threads, as they are now.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AllMailboxesThreadList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /all-mailboxes/threads/unread:
+    post:
+      operationId: markAllMailboxesThreadsUnread
+      summary: Mark threads in All mailboxes unread, each in its own mailbox.
+      description: >
+        Marks each thread unread in the mailbox it is in, as marking it there
+        does. Each thread that was read gets a change in its mailbox's change
+        feed, naming you. You need to be able to mark threads in each mailbox
+        the threads are in.
+      x-cli-all-mailboxes: threads mark-unread
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ThreadIds"
+      responses:
+        "200":
+          description: The threads, as they are now.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AllMailboxesThreadList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /all-mailboxes/threads/labels:
+    post:
+      operationId: labelAllMailboxesThreads
+      summary: Add labels to threads in All mailboxes, and remove them, each in its own mailbox.
+      description: >
+        Adds and removes the labels on each thread in the mailbox it is in,
+        as labeling it there does, so archiving removes inbox. Give a built-in
+        label by its ID, and a label of the mailboxes' own by its name or its
+        ID. A name stands for the label of that name in each thread's own
+        mailbox, which is created there when added and missing. Removing a
+        name a thread's mailbox has no label of leaves it as it is. Each
+        thread whose labels change gets a change in its mailbox's change
+        feed, naming you. You need to be able to label threads in each
+        mailbox the threads are in.
+      x-cli-all-mailboxes: threads label
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ThreadLabels"
+      responses:
+        "200":
+          description: The threads, as they are now.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AllMailboxesThreadList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /all-mailboxes/threads/remind:
+    post:
+      operationId: remindAllMailboxesThreads
+      summary: Set threads in All mailboxes aside until a time, each in its own mailbox.
+      description: >
+        Sets each thread aside in the Remind me of the mailbox it is in, as
+        setting it aside there does, and it comes back to that mailbox's
+        Inbox. Each thread gets a change in its mailbox's change feed, naming
+        you. You need to be able to set threads aside in each mailbox the
+        threads are in.
+      x-cli-all-mailboxes: threads remind
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ThreadsReminder"
+      responses:
+        "200":
+          description: The threads, as they are now.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AllMailboxesThreadList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /all-mailboxes/threads/remind/cancel:
+    post:
+      operationId: cancelAllMailboxesReminders
+      summary: Cancel the reminders of threads in All mailboxes, which puts each back in its own mailbox's Inbox.
+      description: >
+        Cancels each thread's reminder in the mailbox it is in, as cancelling
+        it there does. Threads not set aside are left as they are. Each
+        thread whose reminder is cancelled gets a change in its mailbox's
+        change feed, naming you.
+      x-cli-all-mailboxes: threads cancel-reminder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ThreadIds"
+      responses:
+        "200":
+          description: The threads, as they are now.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AllMailboxesThreadList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /all-mailboxes/threads/{thread}:
+    get:
+      operationId: getAllMailboxesThread
+      summary: Read a thread in All mailboxes, with each of its messages, oldest first, and the mailbox it is in.
+      x-cli-all-mailboxes: threads get
+      parameters:
+        - name: thread
+          in: path
+          required: true
+          description: The thread's ID.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The thread and its messages.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AllMailboxesThreadDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /all-mailboxes/search:
+    get:
+      operationId: searchAllMailboxes
+      summary: Search All mailboxes' threads by words, meaning and filters.
+      description: >
+        Searches each mailbox's own index as searching it alone does, with
+        the same q, and merges what each finds by rank, so every mailbox's
+        best come first, or newest first when sorted so. Each result names
+        its mailbox. label: finds the label of that name in each mailbox
+        that has one. To read the next page, call again with the answer's
+        next as after.
+      x-cli-all-mailboxes: search
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: >
+            What to search for, as searching one mailbox takes it: words,
+            "quoted phrases", and the filters from:, to:, subject:, label:,
+            has:attachment, is:unread, after: and before:.
+          schema:
+            type: string
+            examples: ['invoice from:ada after:2026-09-01 "hosting plan"']
+        - name: sort
+          in: query
+          description: Best first, or newest first. Without words or phrases, both are newest first.
+          schema:
+            type: string
+            enum: [relevance, newest]
+            default: relevance
+        - name: limit
+          in: query
+          description: How many threads a page lists at most.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - $ref: "#/components/parameters/AllMailboxesAfter"
+      responses:
+        "200":
+          description: A page of the threads found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AllMailboxesSearchResults"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /all-mailboxes/labels:
+    get:
+      operationId: listAllMailboxesLabels
+      summary: List All mailboxes' labels, each name once, with the mailboxes that have it and how many unread threads it has.
+      description: >
+        Lists the built-in labels first, then the mailboxes' own labels by
+        name. Labels of the same name, in any case, in several mailboxes are
+        one label here, whose unread count is the sum of theirs. Each label
+        stays its mailbox's own, with its own prompt, so create, rename and
+        delete labels, and give them prompts, in a mailbox.
+      x-cli-all-mailboxes: labels list
+      responses:
+        "200":
+          description: The labels.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AllMailboxesLabelList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /all-mailboxes/screener:
+    get:
+      operationId: getAllMailboxesScreener
+      summary: Read All mailboxes' Screener, with the first-time senders whose mail waits in each mailbox.
+      description: >
+        Lists each sender whose mail waits in a mailbox, newest first, with
+        their waiting threads there. A sender waiting in two mailboxes is
+        listed for each, since each mailbox decides on its senders: decide in
+        the sender's mailbox. Says for each mailbox whether its Screener is
+        on, and how many senders it has decided where mail goes for.
+      x-cli-all-mailboxes: screener get
+      responses:
+        "200":
+          description: The Screener.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AllMailboxesScreener"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /all-mailboxes/drafts:
+    post:
+      operationId: createAllMailboxesDraft
+      summary: Draft a reply, a forward or a new message in All mailboxes, in the mailbox it goes from.
+      description: >
+        A reply or a forward lives in the mailbox of the message it answers
+        or forwards, and goes from the address a reply there would. A new
+        message lives in the mailbox of the address it goes from: from, or
+        else the address your newMailFrom preference names, or for an agent
+        its sponsor's, while it is one of the mailboxes'. Otherwise it goes
+        from the default address of the first mailbox. Writing it is as
+        writing a draft in that mailbox, recorded in its change feed, naming
+        you, and you need to be able to draft there.
+      x-cli-all-mailboxes: drafts create
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NewDraft"
+      responses:
+        "201":
+          description: The draft, with its mailbox.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AllMailboxesDraft"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+    get:
+      operationId: listAllMailboxesDrafts
+      summary: List the drafts in All mailboxes, newest first, each with its mailbox and where its send stands.
+      x-cli-all-mailboxes: drafts list
+      responses:
+        "200":
+          description: The drafts.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AllMailboxesDraftList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /all-mailboxes/drafts/{draft}:
+    get:
+      operationId: getAllMailboxesDraft
+      summary: Read a draft in All mailboxes, with its mailbox and where its send stands.
+      x-cli-all-mailboxes: drafts get
+      parameters:
+        - $ref: "#/components/parameters/Draft"
+      responses:
+        "200":
+          description: The draft.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AllMailboxesDraft"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: editAllMailboxesDraft
+      summary: Change a draft in All mailboxes, in its own mailbox.
+      description: >
+        As changing it in its mailbox does. Its From can be another of that
+        mailbox's addresses, or a group, but not another mailbox's address,
+        since a draft stays in its mailbox.
+      x-cli-all-mailboxes: drafts edit
+      parameters:
+        - $ref: "#/components/parameters/Draft"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DraftChanges"
+      responses:
+        "200":
+          description: The changed draft.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AllMailboxesDraft"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+    delete:
+      operationId: deleteAllMailboxesDraft
+      summary: Delete a draft in All mailboxes, in its own mailbox.
+      x-cli-all-mailboxes: drafts delete
+      parameters:
+        - $ref: "#/components/parameters/Draft"
+      responses:
+        "200":
+          description: The draft, as it was when it was deleted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AllMailboxesDraft"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /all-mailboxes/drafts/{draft}/send:
+    post:
+      operationId: sendAllMailboxesDraft
+      summary: Ask for a draft in All mailboxes to be sent, from its own mailbox.
+      description: As asking in its mailbox does, approval and all.
+      x-cli-all-mailboxes: drafts send
+      parameters:
+        - $ref: "#/components/parameters/Draft"
+      responses:
+        "202":
+          description: The draft, waiting for approval, or for a human's send, approved and about to be sent.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AllMailboxesDraft"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /all-mailboxes/drafts/{draft}/send-now:
+    post:
+      operationId: sendAllMailboxesDraftNow
+      summary: Send a draft in All mailboxes waiting for an agent's send limits now, past the limits.
+      description: As sending it now in its mailbox does.
+      x-cli-all-mailboxes: drafts send-now
+      parameters:
+        - $ref: "#/components/parameters/Draft"
+      responses:
+        "202":
+          description: The draft, approved and about to be sent.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AllMailboxesDraft"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /all-mailboxes/messages/{message}/attachments/{attachment}:
+    get:
+      operationId: getAllMailboxesAttachment
+      summary: Get a short-lived link that downloads one of the attachments of a message in All mailboxes.
+      description: As getting one in the message's mailbox does. The link works for 5 minutes, for whoever follows it, so keep it to yourself.
+      x-cli-all-mailboxes: attachments link
+      parameters:
+        - name: message
+          in: path
+          required: true
+          description: The message's ID.
+          schema:
+            type: string
+        - name: attachment
+          in: path
+          required: true
+          description: The attachment's place among the message's attachments, from 0.
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: The attachment, with the link that downloads it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AttachmentLink"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /alerts:
     get:
       operationId: listAlerts
@@ -3140,6 +3776,21 @@ components:
       in: path
       required: true
       description: The mailbox's ID.
+      schema:
+        type: string
+    AllMailboxesLimit:
+      name: limit
+      in: query
+      description: How many threads a page lists at most.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 100
+    AllMailboxesAfter:
+      name: after
+      in: query
+      description: Where the page starts, the next of the page before it. Leave it out for the first page.
       schema:
         type: string
     Draft:
@@ -5660,6 +6311,247 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Draft"
+    AllMailboxes:
+      type: object
+      additionalProperties: false
+      required: [mailboxes, unread]
+      description: Every mailbox you can read, taken together.
+      properties:
+        mailboxes:
+          type: array
+          description: The mailboxes, as listing them gives them, each with how many threads in its Inbox are unread.
+          items:
+            allOf:
+              - $ref: "#/components/schemas/ListedMailbox"
+              - type: object
+                required: [unread]
+                properties:
+                  unread:
+                    type: integer
+                    description: How many threads in the mailbox's Inbox are unread.
+        unread:
+          type: integer
+          description: How many threads in all their Inboxes are unread, the sum of theirs.
+          examples: [5]
+    AllMailboxesThread:
+      description: A thread in All mailboxes, which names its mailbox and the address its mail came to.
+      allOf:
+        - $ref: "#/components/schemas/ThreadSummary"
+        - type: object
+          required: [mailbox, recipient]
+          properties:
+            mailbox:
+              type: string
+              description: The ID of the mailbox the thread is in. Act on it there, or here.
+            recipient:
+              type: string
+              description: >-
+                The mailbox's address the thread's first message was delivered
+                to, or sent from, with its plus tag, as Duva recorded it from the
+                envelope, so it holds for Cc, Bcc, mailing lists, groups and
+                catch-alls.
+              examples: ["hermes+news@example.com"]
+    AllMailboxesThreadList:
+      type: object
+      additionalProperties: false
+      required: [threads]
+      properties:
+        threads:
+          type: array
+          items:
+            $ref: "#/components/schemas/AllMailboxesThread"
+        next:
+          type: string
+          description: Present when more threads follow, in any of the mailboxes. Pass it as after to list the next page, which goes on in each mailbox where this one left off.
+    AllMailboxesThreadDetail:
+      description: A thread with its messages, and the mailbox it is in.
+      allOf:
+        - $ref: "#/components/schemas/Thread"
+        - type: object
+          required: [mailbox, recipient]
+          properties:
+            mailbox:
+              type: string
+              description: The ID of the mailbox the thread is in.
+            recipient:
+              type: string
+              description: The mailbox's address the thread's first message was delivered to, or sent from, with its plus tag.
+    AllMailboxesChangePage:
+      type: object
+      additionalProperties: false
+      required: [mailboxes, position]
+      properties:
+        mailboxes:
+          type: array
+          description: Each mailbox's changes after where you left off, oldest first, every mailbox listed.
+          items:
+            type: object
+            additionalProperties: false
+            required: [mailbox, changes, position]
+            properties:
+              mailbox:
+                type: string
+                description: The mailbox's ID.
+              changes:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MailboxChange"
+              position:
+                type: integer
+                description: The position in the mailbox's own feed of its last change read, listed or left out, as listing its changes alone gives it.
+        position:
+          type: string
+          description: Where every mailbox's feed was read up to. Pass it as after to continue.
+    AllMailboxesLabel:
+      type: object
+      additionalProperties: false
+      required: [id, name, builtIn, unread, mailboxes]
+      description: A label of All mailboxes, the labels of one name in each mailbox that has it.
+      properties:
+        id:
+          type: string
+          description: What to give as label to list its threads, its ID for a built-in label, and its name for the mailboxes' own.
+          examples: ["inbox", "Receipts"]
+        name:
+          type: string
+          description: The label's name, as the first mailbox with it gives it.
+          examples: ["Receipts"]
+        builtIn:
+          type: boolean
+          description: Whether the label is built in, so every mailbox has it.
+        unread:
+          type: integer
+          description: How many of its threads are unread in all the mailboxes, the sum of theirs.
+        mailboxes:
+          type: array
+          description: The mailboxes that have the label, each with its own.
+          items:
+            type: object
+            additionalProperties: false
+            required: [mailbox, label, unread]
+            properties:
+              mailbox:
+                type: string
+                description: The mailbox's ID.
+              label:
+                type: string
+                description: The ID of the mailbox's label of this name.
+              unread:
+                type: integer
+                description: How many of its threads in the mailbox are unread.
+              prompt:
+                type: string
+                description: The mailbox's label's prompt, if it has one.
+    AllMailboxesLabelList:
+      type: object
+      additionalProperties: false
+      required: [labels]
+      properties:
+        labels:
+          type: array
+          items:
+            $ref: "#/components/schemas/AllMailboxesLabel"
+    AllMailboxesSearchResults:
+      type: object
+      additionalProperties: false
+      required: [results]
+      properties:
+        results:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [thread, message, snippet, highlights]
+            properties:
+              thread:
+                $ref: "#/components/schemas/AllMailboxesThread"
+              message:
+                type: string
+                description: The ID of the thread's message that matched best, or the newest that matched when sorted by newest.
+              snippet:
+                type: string
+                description: The part of that message's text where the words stand, on one line, without quoted lines.
+              highlights:
+                type: array
+                description: Where in the snippet the words and phrases match, in order.
+                items:
+                  $ref: "#/components/schemas/Highlight"
+        next:
+          type: string
+          description: Present when more threads follow. Pass it as after to read the next page.
+    AllMailboxesScreener:
+      type: object
+      additionalProperties: false
+      required: [mailboxes, senders]
+      description: The Screeners of All mailboxes, taken together.
+      properties:
+        mailboxes:
+          type: array
+          description: Each mailbox's Screener.
+          items:
+            type: object
+            additionalProperties: false
+            required: [mailbox, "on", decided]
+            properties:
+              mailbox:
+                type: string
+                description: The mailbox's ID.
+              "on":
+                type: boolean
+                description: Whether mail from the mailbox's first-time senders waits in its Screener.
+              decided:
+                type: integer
+                description: How many addresses and domains the mailbox has decided where mail goes for.
+        senders:
+          type: array
+          description: The senders whose mail waits, newest first, once for each mailbox it waits in.
+          items:
+            $ref: "#/components/schemas/AllMailboxesWaitingSender"
+    AllMailboxesWaitingSender:
+      type: object
+      additionalProperties: false
+      required: [mailbox, address, latestAt, threads]
+      description: A first-time sender of a mailbox, with their mail that waits in its Screener.
+      properties:
+        mailbox:
+          type: string
+          description: The ID of the mailbox their mail waits in, where to decide on them.
+        address:
+          type: string
+          description: The sender's address, as their newest waiting thread gives it.
+          examples: ["grace@example.org"]
+        name:
+          type: string
+          description: The sender's name, as their newest waiting thread gives it, if it gives one.
+          examples: ["Grace Hopper"]
+        latestAt:
+          type: string
+          format: date-time
+          description: When their newest waiting mail arrived.
+        threads:
+          type: array
+          description: Their waiting threads, newest first.
+          items:
+            $ref: "#/components/schemas/AllMailboxesThread"
+    AllMailboxesDraft:
+      description: A draft, with the mailbox it lives in.
+      allOf:
+        - $ref: "#/components/schemas/Draft"
+        - type: object
+          required: [mailbox]
+          properties:
+            mailbox:
+              type: string
+              description: The ID of the mailbox the draft lives in, whose address it goes from.
+    AllMailboxesDraftList:
+      type: object
+      additionalProperties: false
+      required: [drafts]
+      properties:
+        drafts:
+          type: array
+          items:
+            $ref: "#/components/schemas/AllMailboxesDraft"
     Approval:
       type: object
       additionalProperties: false
@@ -7390,7 +8282,7 @@ components:
     Preferences:
       type: object
       additionalProperties: false
-      required: [hourCycle, dateFormat, mailView, keyboardShortcuts, cooSpeaksUp]
+      required: [hourCycle, dateFormat, mailView, keyboardShortcuts, cooSpeaksUp, opensOn]
       description: A human's own preferences.
       properties:
         hourCycle:
@@ -7405,6 +8297,10 @@ components:
           $ref: "#/components/schemas/CooSpeaksUp"
         timeZone:
           $ref: "#/components/schemas/TimeZone"
+        opensOn:
+          $ref: "#/components/schemas/OpensOn"
+        newMailFrom:
+          $ref: "#/components/schemas/NewMailFrom"
     PreferencesChanges:
       type: object
       additionalProperties: false
@@ -7427,6 +8323,31 @@ components:
           anyOf:
             - $ref: "#/components/schemas/TimeZone"
             - type: "null"
+        opensOn:
+          $ref: "#/components/schemas/OpensOn"
+        newMailFrom:
+          description: >-
+            The address, or null to start from the default again. The CLI
+            gives null with --no-newMailFrom.
+          anyOf:
+            - $ref: "#/components/schemas/NewMailFrom"
+            - type: "null"
+    OpensOn:
+      type: string
+      description: >-
+        Where the web app opens: all, the default, on All mailboxes, or the
+        ID of one of the human's mailboxes, on that one. A mailbox no longer
+        theirs opens All mailboxes.
+      examples: ["all"]
+    NewMailFrom:
+      type: string
+      description: >-
+        Which of the human's addresses new mail written in All mailboxes
+        starts from, one of their mailboxes' addresses. By default, and when
+        the address is no longer theirs, the default address of the mailbox
+        holding their sign-in address, or else of the first mailbox listing
+        their mailboxes gives. Absent while they have no mailbox.
+      examples: ["grace@example.com"]
     TimeZone:
       type: string
       description: >-

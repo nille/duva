@@ -3,7 +3,7 @@
 import { writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { components } from "@duva/openapi";
-import { callApi } from "./api-commands.ts";
+import { allMailboxes, callApi } from "./api-commands.ts";
 import { type Command, optionValues } from "./commands.ts";
 
 export const attachmentsDownload: Command = {
@@ -12,7 +12,7 @@ export const attachmentsDownload: Command = {
   description:
     "Without --file, the attachment goes in the working directory under its own name. An existing file is never overwritten. Only those who can read the mailbox can download from it: its owner, and the agents they give sponsor access.",
   options: [
-    { name: "mailbox", required: true, description: "The mailbox's ID." },
+    { name: "mailbox", required: true, description: "The mailbox's ID. Give all for All mailboxes, every mailbox you can read." },
     { name: "message", required: true, description: "The message's ID." },
     { name: "attachment", required: true, description: "The attachment's place among the message's attachments, from 0." },
     { name: "file", required: false, description: "Where to save it. Without it, the working directory, under the attachment's name." },
@@ -21,9 +21,10 @@ export const attachmentsDownload: Command = {
     const values = optionValues(attachmentsDownload, args);
     for (const name of ["mailbox", "message", "attachment"]) if (typeof values[name] !== "string") throw new Error(`Give --${name}.`);
     if (!/^\d+$/.test(values.attachment as string)) throw new Error(`${JSON.stringify(values.attachment)} isn't a whole number. Give --attachment one from 0.`);
-    const link = (await callApi("getAttachment", {
-      path: { mailbox: values.mailbox as string, message: values.message as string, attachment: Number(values.attachment) },
-    })) as components["schemas"]["AttachmentLink"];
+    const [message, attachment] = [values.message as string, Number(values.attachment)];
+    const link = (await (values.mailbox === allMailboxes
+      ? callApi("getAllMailboxesAttachment", { path: { message, attachment } })
+      : callApi("getAttachment", { path: { mailbox: values.mailbox as string, message, attachment } }))) as components["schemas"]["AttachmentLink"];
     const response = await fetch(link.url).catch((error: unknown) => {
       throw new Error(`Couldn't download the attachment: ${error instanceof Error ? error.message : error}`);
     });

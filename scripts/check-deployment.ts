@@ -16,7 +16,8 @@
 // erased mail for more than a day, and no indexer task waits in its failure queue; nothing but IAM
 // may invoke the sender, and no schedule for sends that wait for an agent's limits, or for threads set aside in Remind me, is overdue; Ask your agent's
 // turns reach the conversation Lambda only through the web app's domain, the mailbox agents' AgentCore Runtime is ready and takes only IAM calls, their unsubscribe browser is ready on the public network and records nothing, the inbound Lambda is given the task runner, only IAM invokes the task runner, which retries no run, and no task is stuck working, every
-// human's mailbox has its mailbox agent, no agent owns a mailbox, and Claude answers from eu-central-1 through the eu profile. Signing in stays
+// human's mailbox has its mailbox agent, no agent owns a mailbox, and Claude answers from eu-central-1 through the eu profile; and with
+// DUVA_TEST_HUMAN_CODES_KEY, All mailboxes answers for the test human's agent as its mailboxes do. Signing in stays
 // with a human. Then prints how many
 // messages Duva dropped on arrival each day of the last 7, by reason. Exits 1 if any check fails.
 import { CloudFormationClient, DescribeStacksCommand, paginateListStackResources } from "@aws-sdk/client-cloudformation";
@@ -456,6 +457,34 @@ await check("cancelling reminders without credentials answers 401", async () =>
 );
 await check("listing Remind me without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/mailboxes/x/reminders`), 401));
 await check("listing All mail without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/mailboxes/x/all-mail`), 401));
+await check("listing All mailboxes' Inbox without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/all-mailboxes/threads`), 401));
+await check("marking threads in All mailboxes read without credentials answers 401", async () =>
+  expectStatus(await fetch(`${apiUrl}/all-mailboxes/threads/read`, { method: "POST", headers: { "content-type": "application/json" }, body: '{"threads":["x"]}' }), 401),
+);
+// The test human's agent reads All mailboxes as the mailboxes its sponsor access covers, with the key of Real run 45 (docs/agents/test-deployment.md).
+const testHumansAgent = process.env.DUVA_TEST_HUMAN_CODES_KEY;
+if (testHumansAgent === undefined) console.log("skip  All mailboxes answers for the test human's agent: set DUVA_TEST_HUMAN_CODES_KEY to check them");
+else {
+  await check("All mailboxes answers for the test human's agent with the mailboxes it reads, their unread counts summed, and their Inboxes merged newest first, each thread naming one of them", async () => {
+    const asAgent = async (path: string) => {
+      const response = await fetch(`${apiUrl}${path}`, { headers: { authorization: `Bearer ${testHumansAgent}` } });
+      if (!response.ok) throw new Error(`${path} answered ${response.status}: ${(await response.text()).slice(0, 200)}`);
+      return response.json();
+    };
+    const { mailboxes } = (await asAgent("/mailboxes")) as { mailboxes: { id: string }[] };
+    const all = (await asAgent("/all-mailboxes")) as { mailboxes: { id: string; unread: number }[]; unread: number };
+    const unread = await Promise.all(mailboxes.map(async ({ id }) => ((await asAgent(`/mailboxes/${id}`)) as { unread: number }).unread));
+    const ids = mailboxes.map(({ id }) => id);
+    if (JSON.stringify(all.mailboxes.map(({ id }) => id)) !== JSON.stringify(ids)) return `lists ${all.mailboxes.length} mailboxes where listing them gives ${ids.length}`;
+    if (all.unread !== unread.reduce((sum, each) => sum + each, 0)) return `counts ${all.unread} unread where its mailboxes count ${unread.join(" and ")}`;
+    const { threads } = (await asAgent("/all-mailboxes/threads?limit=20")) as { threads: { mailbox: string; recipient: string; latestAt: string }[] };
+    const strange = threads.find(({ mailbox, recipient }) => !ids.includes(mailbox) || !recipient.includes("@"));
+    if (strange !== undefined) return `lists a thread in ${strange.mailbox} to ${JSON.stringify(strange.recipient)}`;
+    if (threads.some((thread, index) => index > 0 && thread.latestAt > threads[index - 1]!.latestAt)) return "lists its Inbox out of order";
+    const { labels } = (await asAgent("/all-mailboxes/labels")) as { labels: { id: string }[] };
+    return JSON.stringify(labels.slice(0, 5).map(({ id }) => id)) === JSON.stringify(["inbox", "feed", "paperTrail", "spam", "trash"]) ? undefined : "lists its labels without the built-in ones first";
+  });
+}
 await check("reading a human's preferences without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/preferences`), 401));
 await check("changing a human's preferences without credentials answers 401", async () =>
   expectStatus(await fetch(`${apiUrl}/preferences`, { method: "PATCH", headers: { "content-type": "application/json" }, body: '{"hourCycle":"h23"}' }), 401),

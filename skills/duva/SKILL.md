@@ -15,6 +15,10 @@ duva calls the Duva deployment that `duva deploy` saved in its config, `~/.confi
 
 Every command prints JSON on stdout and exits with 0. When a command fails, it prints `{"error": "..."}` on stderr and exits with 1. The message says what went wrong.
 
+## All mailboxes
+
+Give `--mailbox all` to work on All mailboxes: every mailbox you can read, taken together. Lists, counts and searches merge the mailboxes', and each thread names its `mailbox` and the `recipient` address it came to. A message delivered to two of them is two threads, one in each, and acting on one leaves the other as it is. Commands whose `--mailbox` doesn't say it takes `all`, such as deciding on senders, switching the Screener or changing labels, work in one mailbox at a time.
+
 ## Approval
 
 An agent owns no mailbox. It works in its sponsor's mailboxes, as far as the sponsor access they gave it reaches, and sends as its sponsor. By default, an agent's send waits for its sponsor's approval. Asking to send succeeds once the request is waiting, before any mail goes out. The sponsor then sends the draft as it is, edits and sends it, or rejects it with a note you can read. Changing the draft withdraws a waiting request. The mailbox's change feed records each step.
@@ -51,7 +55,7 @@ Download one of a message's attachments to a file, and say where it went.
 
 Without --file, the attachment goes in the working directory under its own name. An existing file is never overwritten. Only those who can read the mailbox can download from it: its owner, and the agents they give sponsor access.
 
-- `--mailbox` (required): The mailbox's ID.
+- `--mailbox` (required): The mailbox's ID. Give all for All mailboxes, every mailbox you can read.
 - `--message` (required): The message's ID.
 - `--attachment` (required): The attachment's place among the message's attachments, from 0.
 - `--file`: Where to save it. Without it, the working directory, under the attachment's name.
@@ -150,6 +154,8 @@ Give only the preferences to change. They follow you to every browser you sign i
 - `--keyboardShortcuts`: Whether single keys work as shortcuts in the web app, such as j and k to move through a list and e to archive. on, the default, has them work anywhere but in a field. off turns them all off, for speech input or keys pressed by mistake.
 - `--cooSpeaksUp`: Whether Coo, the mailbox agent, says in the web app when there is news worth a glance: new mail since the human last looked, a draft of its waiting for their approval, or a label's task done. on, the default, has it say so in a speech bubble under its nest. off keeps it quiet.
 - `--timeZone` or `--no-timeZone`: The time zone, as an IANA name, or null to remove it, as if the human never chose one. The CLI removes it with --no-timeZone.
+- `--opensOn`: Where the web app opens: all, the default, on All mailboxes, or the ID of one of the human's mailboxes, on that one. A mailbox no longer theirs opens All mailboxes.
+- `--newMailFrom` or `--no-newMailFrom`: The address, or null to start from the default again. The CLI gives null with --no-newMailFrom.
 
 ## duva humans list
 
@@ -538,7 +544,7 @@ Read a mailbox you can read, with how many threads in its Inbox are unread.
 
 Only the mailbox's owner and the agents they give sponsor access can read it.
 
-- `--mailbox` (required): The mailbox's ID.
+- `--mailbox` (required): The mailbox's ID. Give all for All mailboxes, every mailbox you can read.
 
 ## duva mailboxes change
 
@@ -555,7 +561,7 @@ List the changes in a mailbox after a position in its change feed.
 
 Lists up to 100 changes, oldest first, leaving out the arrivals of mail judged to be spam unless asked for them. To catch up, call again with the position the answer ends at until it lists no more. Only the mailbox's owner and the agents they give sponsor access can read it.
 
-- `--mailbox` (required): The mailbox's ID.
+- `--mailbox` (required): The mailbox's ID. Give all for All mailboxes, every mailbox you can read.
 - `--after`: The position to list changes after. 0, the default, lists from the start.
 - `--spam` or `--no-spam`: Lists the arrivals of mail judged to be spam too.
 
@@ -565,7 +571,7 @@ List the threads in a mailbox with a label, newest first.
 
 Lists the threads a page at a time, newest first by their newest message. To read the next page, call again with the answer's next as after, until an answer has no next.
 
-- `--mailbox` (required): The mailbox's ID.
+- `--mailbox` (required): The mailbox's ID. Give all for All mailboxes, every mailbox you can read.
 - `--label`: The label the threads carry. inbox, the default, lists the Inbox.
 - `--limit`: How many threads a page lists at most.
 - `--after`: Where the page starts, the next of the page before it. Leave it out for the first page.
@@ -576,7 +582,7 @@ List the threads a mailbox has sent mail in, newest first.
 
 Lists every thread with a message sent from the mailbox, except those in Spam and Trash, a page at a time, newest first by its newest message. To read the next page, call again with the answer's next as after, until an answer has no next.
 
-- `--mailbox` (required): The mailbox's ID.
+- `--mailbox` (required): The mailbox's ID. Give all for All mailboxes, every mailbox you can read.
 - `--limit`: How many threads a page lists at most.
 - `--after`: Where the page starts, the next of the page before it. Leave it out for the first page.
 
@@ -586,7 +592,7 @@ Mark threads in a mailbox read.
 
 Marks each thread read. Read state belongs to the mailbox, so it is the same for each actor who reads it. Each thread that was unread gets a change in the mailbox's change feed, naming you. Only the mailbox's owner and the agents they give organize sponsor access or more can mark its threads.
 
-- `--mailbox` (required): The mailbox's ID.
+- `--mailbox` (required): The mailbox's ID. Give all for All mailboxes, every mailbox you can read.
 - `--threads` (required) (once for each): The IDs of the threads.
 
 ## duva threads mark-unread
@@ -595,7 +601,7 @@ Mark threads in a mailbox unread.
 
 Marks each thread unread, so it stands out until it is read again. Each thread that was read gets a change in the mailbox's change feed, naming you. Only the mailbox's owner and the agents they give organize sponsor access or more can mark its threads.
 
-- `--mailbox` (required): The mailbox's ID.
+- `--mailbox` (required): The mailbox's ID. Give all for All mailboxes, every mailbox you can read.
 - `--threads` (required) (once for each): The IDs of the threads.
 
 ## duva threads label
@@ -604,7 +610,7 @@ Add labels to threads in a mailbox, and remove them.
 
 Adds and removes the labels on each thread. Archiving removes inbox, and adding inbox moves a thread back to the Inbox, out of Spam, Trash and the Screener. Adding spam or trash takes a thread out of the Inbox. Removing spam (not spam) or trash (restore) puts it back in the Inbox, unless it still has the other, waits in the Screener, or inbox is removed too. Each thread whose labels change gets a change in the mailbox's change feed, naming you. Only the mailbox's owner and the agents they give organize sponsor access or more can label its threads.
 
-- `--mailbox` (required): The mailbox's ID.
+- `--mailbox` (required): The mailbox's ID. Give all for All mailboxes, every mailbox you can read.
 - `--threads` (required) (once for each): The IDs of the threads.
 - `--add` (once for each): The IDs of the labels to add, such as inbox, spam, trash or one of the mailbox's own.
 - `--remove` (once for each): The IDs of the labels to remove.
@@ -613,7 +619,7 @@ Adds and removes the labels on each thread. Archiving removes inbox, and adding 
 
 Read a thread, with each of its messages, oldest first.
 
-- `--mailbox` (required): The mailbox's ID.
+- `--mailbox` (required): The mailbox's ID. Give all for All mailboxes, every mailbox you can read.
 - `--thread` (required): The thread's ID.
 
 ## duva threads remind
@@ -622,7 +628,7 @@ Set threads in a mailbox aside until a time, when they come back to the Inbox.
 
 Remind me: each thread leaves the Inbox, if it is there, and waits in Remind me until the time, given as at or as a preset. Then it comes back to the top of the Inbox, unread, with a Back mark naming when it was set aside. New mail in the thread brings it back early. A thread already set aside gets the new time. A thread in Spam or Trash, or waiting in the Screener, can't be set aside. Each thread gets a change in the mailbox's change feed, naming you. Only the mailbox's owner and the agents they give organize sponsor access or more can set its threads aside.
 
-- `--mailbox` (required): The mailbox's ID.
+- `--mailbox` (required): The mailbox's ID. Give all for All mailboxes, every mailbox you can read.
 - `--threads` (required) (once for each): The IDs of the threads.
 - `--at`: When the threads come back, to the second, at least a minute from now.
 - `--preset`: A time counted from now, in the time zone: laterToday is three hours from now, on the hour after, tomorrowMorning is 8:00 tomorrow, and nextWeek is 8:00 next Monday.
@@ -634,7 +640,7 @@ Cancel the reminders of threads in a mailbox, which puts them back in the Inbox.
 
 Each thread set aside in Remind me goes back to the Inbox now, at its own place and without a Back mark. Threads not set aside are left as they are. Each thread whose reminder is cancelled gets a change in the mailbox's change feed, naming you. Only those who can set the mailbox's threads aside can cancel their reminders.
 
-- `--mailbox` (required): The mailbox's ID.
+- `--mailbox` (required): The mailbox's ID. Give all for All mailboxes, every mailbox you can read.
 - `--threads` (required) (once for each): The IDs of the threads.
 
 ## duva threads reminders
@@ -643,7 +649,7 @@ List the threads set aside in a mailbox's Remind me, the soonest back first.
 
 Lists the threads waiting in Remind me a page at a time, the one that comes back soonest first, each with its reminder. To read the next page, call again with the answer's next as after, until an answer has no next.
 
-- `--mailbox` (required): The mailbox's ID.
+- `--mailbox` (required): The mailbox's ID. Give all for All mailboxes, every mailbox you can read.
 - `--limit`: How many threads a page lists at most.
 - `--after`: Where the page starts, the next of the page before it. Leave it out for the first page.
 
@@ -653,7 +659,7 @@ List every thread in a mailbox except those in Spam and Trash, newest first.
 
 Lists archived threads too, a page at a time, newest first by their newest message. To read the next page, call again with the answer's next as after, until an answer has no next.
 
-- `--mailbox` (required): The mailbox's ID.
+- `--mailbox` (required): The mailbox's ID. Give all for All mailboxes, every mailbox you can read.
 - `--limit`: How many threads a page lists at most.
 - `--after`: Where the page starts, the next of the page before it. Leave it out for the first page.
 
@@ -663,7 +669,7 @@ Search a mailbox's threads by words, meaning and filters.
 
 Finds the threads whose messages have every word in q, or mean what its words say, best first. Each comes with the message that matched best and a snippet of its text where the words stand. A "quoted phrase" or subject: matches by its words alone, and every filter holds. Subjects, senders and recipients by name and address, message text and attachment names are searched, Sent included. A word also finds its other forms in English and Swedish, as invoice finds invoices and faktura finds fakturan. Threads in Spam and Trash, and those waiting in the Screener, are left out unless q has label:spam or label:trash. New mail is found within a minute, and label and read changes count at once. Only those who can read the mailbox can search it. To read the next page, call again with the answer's next as after.
 
-- `--mailbox` (required): The mailbox's ID.
+- `--mailbox` (required): The mailbox's ID. Give all for All mailboxes, every mailbox you can read.
 - `--q` (required): What to search for: words, "quoted phrases", and the filters from: and to: (part of a name or address), subject: (a word or quoted phrase in the subject), label: (a label's name, quoted if it has spaces), has:attachment, is:unread, after: (received on or after the day) and before: (received before the day), with days as YYYY-MM-DD in UTC. Every phrase and filter must hold.
 
 - `--sort`: Best first, or newest first. Without words or phrases, both are newest first.
@@ -676,7 +682,7 @@ List a mailbox's labels, with how many unread threads each has.
 
 Lists the built-in labels inbox, feed, paperTrail, spam and trash first, then the mailbox's own labels by name. Only those who can read the mailbox can list its labels.
 
-- `--mailbox` (required): The mailbox's ID.
+- `--mailbox` (required): The mailbox's ID. Give all for All mailboxes, every mailbox you can read.
 
 ## duva labels create
 
@@ -755,7 +761,7 @@ Read a mailbox's Screener, with the first-time senders whose mail waits there.
 
 Lists each sender whose mail waits, newest first, with their waiting threads, newest first. Mail waiting in the Screener is in no other listing and no unread count. Says whether the Screener is on, and how many senders the mailbox has decided where mail goes for. Deciding where a waiting sender's mail goes takes their threads out of it. Only those who can read the mailbox can read its Screener.
 
-- `--mailbox` (required): The mailbox's ID.
+- `--mailbox` (required): The mailbox's ID. Give all for All mailboxes, every mailbox you can read.
 
 ## duva screener switch
 
@@ -813,7 +819,7 @@ Get a short-lived link that downloads one of a message's attachments.
 
 Duva takes the attachment from the stored message when the link is followed, so nothing is stored twice. The link works for 5 minutes, for whoever follows it, so keep it to yourself. Only those who can read the mailbox get one: its owner and the agents they give sponsor access.
 
-- `--mailbox` (required): The mailbox's ID.
+- `--mailbox` (required): The mailbox's ID. Give all for All mailboxes, every mailbox you can read.
 - `--message` (required): The message's ID.
 - `--attachment` (required): The attachment's place among the message's attachments, from 0.
 
@@ -823,7 +829,7 @@ List the drafts in a mailbox, newest first, with where each send stands.
 
 Only those who can read the mailbox can list them.
 
-- `--mailbox` (required): The mailbox's ID.
+- `--mailbox` (required): The mailbox's ID. Give all for All mailboxes, every mailbox you can read.
 
 ## duva drafts create
 
@@ -831,7 +837,7 @@ Draft a reply to a message in a mailbox, a reply to all, a forward, or a new mes
 
 A reply goes from the address the original was sent to, plus tag kept, or from the default address if the mailbox no longer has it, to the original's Reply-To or, without one, its From, with the subject carrying a single "Re: " prefix. A reply to your own message goes to its recipients instead. A reply to all also goes to every other recipient of the original, except the mailbox's own addresses. A forward goes from the address the original was sent to, to whoever you give, with the subject carrying a single "Fwd: " prefix, the original's text quoted and its attachments, from the same address a reply would. A new message goes from the mailbox's default address. Give from to choose another of the mailbox's addresses, or a group the mailbox's owner is a local member of, to send as the group. Only its members can, so any other group gets 403. A reply to group mail goes from the member's own address unless you give the group. A mailbox with no address can't draft. A draft can be saved before it has recipients, a subject or text, but it needs a recipient in To to be sent. Only the mailbox's owner can draft in it, and for a human's mailbox the agents they give draft sponsor access or more, whose drafts go from the same addresses as the human's own. Writing a draft is recorded in the mailbox's change feed, naming you.
 
-- `--mailbox` (required): The mailbox's ID.
+- `--mailbox` (required): The mailbox's ID. Give all for All mailboxes, every mailbox you can read.
 - `--answers`: The ID of the message the draft replies to. Without it or forwards, the draft is a new message.
 - `--forwards`: The ID of the message the draft forwards, with its text and attachments. Give answers or forwards, not both.
 - `--from`: The address to send from: one of the mailbox's addresses, or a group its owner is a local member of, to send as the group. A reply or a forward goes from the address the original was sent to unless you give one, and a new message from the default address.
@@ -848,7 +854,7 @@ Read a draft, with where its send stands.
 
 Only those who can read the mailbox can read it.
 
-- `--mailbox` (required): The mailbox's ID.
+- `--mailbox` (required): The mailbox's ID. Give all for All mailboxes, every mailbox you can read.
 - `--draft` (required): The draft's ID.
 
 ## duva drafts delete
@@ -857,7 +863,7 @@ Delete a draft.
 
 Deleting a draft that waits for approval withdraws the request. A draft being sent can't be deleted until its send is done. Deleting a sent draft leaves the sent message in its thread. Only the mailbox's owner can delete its drafts, and for a human's mailbox the agents they give draft sponsor access or more, whoever wrote the draft. The deletion, and any withdrawal, is recorded in the mailbox's change feed, naming you.
 
-- `--mailbox` (required): The mailbox's ID.
+- `--mailbox` (required): The mailbox's ID. Give all for All mailboxes, every mailbox you can read.
 - `--draft` (required): The draft's ID.
 
 ## duva drafts edit
@@ -866,7 +872,7 @@ Change a draft's From, recipients, subject or text.
 
 Changing a draft that waits for approval withdraws the request, so an approver never approves text they didn't see. Ask to send it again once it is ready. From can be one of the mailbox's addresses, or a group the mailbox's owner is a local member of, and any other group gets 403. Only the mailbox's owner can edit its drafts, and for a human's mailbox the agents they give draft sponsor access or more, whoever wrote the draft. The change, and any withdrawal, is recorded in the mailbox's change feed, naming you.
 
-- `--mailbox` (required): The mailbox's ID.
+- `--mailbox` (required): The mailbox's ID. Give all for All mailboxes, every mailbox you can read.
 - `--draft` (required): The draft's ID.
 - `--from`: The address to send from, in place of the draft's: one of the mailbox's addresses, or a group its owner is a local member of.
 - `--to` (once for each): The recipients' addresses, in place of the draft's.
@@ -881,7 +887,7 @@ Ask for a draft to be sent.
 
 A human's send from their own mailbox needs no approval, so Duva sends it at once, with no disclosure, also when their agent wrote the draft. An agent's send waits for its sponsor's approval unless the sponsor switched that off. With send sponsor access, an agent sends as its sponsor from the sponsor's mailbox: from the draft's address, under the sponsor's name. Every message an agent sends carries the Duva-Agent header, and a visible line unless its sponsor switched that off. Its send shows where it stands. Bcc recipients get the message, but no header names them. Only the mailbox's owner, and an agent with send sponsor access to it, can ask. The draft needs a recipient in To, and a draft waits for one approval at a time. It goes only from an address the mailbox still has, so a draft from an address since removed fails. A draft from a group goes out from the group's address, as any send does, and only while the mailbox's owner is still a local member: otherwise asking gets 403, and a send asked before fails. Each other local member's mailbox then gets a copy, in the thread of the message it answers, marked with who sent it as the group. External members get none. A send that needs no approval withdraws the request the draft waits for, if it waits. Asking is recorded in the mailbox's change feed. An agent's approved send over its send limits waits, as waitingForLimit, and goes out by itself, oldest first, as the limits allow, or when its sponsor sends it now. Humans have no send limits.
 
-- `--mailbox` (required): The mailbox's ID.
+- `--mailbox` (required): The mailbox's ID. Give all for All mailboxes, every mailbox you can read.
 - `--draft` (required): The draft's ID.
 
 ## duva drafts send-now
@@ -890,7 +896,7 @@ Send a draft waiting for an agent's send limits now, past the limits.
 
 Only the agent's sponsor can, for one draft at a time, and the agent's limits stay as they are. The send still counts toward them. A paused agent's send is held until it is unpaused. Sending now is recorded in the mailbox's change feed under you, and the draft's send shows sending, then sent or failed. A draft that isn't waitingForLimit is 409.
 
-- `--mailbox` (required): The mailbox's ID.
+- `--mailbox` (required): The mailbox's ID. Give all for All mailboxes, every mailbox you can read.
 - `--draft` (required): The draft's ID.
 
 ## duva alerts list

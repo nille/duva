@@ -77,6 +77,8 @@ const entryIn = (mailbox: string, listing: Listing, summary: ThreadSummary) => l
 // A page of a listing's threads ends at an entry, whose sort key is the next page's cursor.
 const labelPosition = /^\d{4}-\d\d-\d\dT[\d:.]+Z#[\w-]+$/;
 const cursorAt = (position: string) => Buffer.from(position).toString("base64url");
+/** Whether the position is one a listing's entry has. */
+export const isPosition = (position: string) => labelPosition.test(position);
 // Each Message-ID points at its message, so a reply can find the thread it belongs in.
 const messageIdKey = (mailbox: string, messageId: string) => ({ [pk]: partition(mailbox), [sk]: `message-id#${messageId}` });
 // Each message in Duva points at its thread and its place there, so a reply can find what it answers.
@@ -148,11 +150,12 @@ export type ErasedLabel = typeof spam | typeof trash;
 const erasedLabels: ErasedLabel[] = [spam, trash];
 
 /**
- * A thread's summary as stored, with whether the mailbox sent in it and when it got Spam and Trash
- * if it has them. Threads stored before Sent existed don't say, and those that got Spam or Trash
- * before erasure existed have no time for it.
+ * A thread's summary as stored, with whether the mailbox sent in it, when it got Spam and Trash
+ * if it has them, and its first message's recipient. Threads stored before Sent existed don't say,
+ * those that got Spam or Trash before erasure existed have no time for it, and those stored before
+ * All mailboxes have no recipient, which their first message gives.
  */
-export type StoredSummary = ThreadSummary & { sent?: boolean; labelledAt?: Partial<Record<ErasedLabel, string>> };
+export type StoredSummary = ThreadSummary & { sent?: boolean; labelledAt?: Partial<Record<ErasedLabel, string>>; recipient?: string };
 
 /** How many of the messages a reply names are looked up, newest first, to find its thread. */
 const answersLookedUp = 100;
@@ -404,6 +407,7 @@ async function storeMessage(
             messages: 1,
             ...(groups !== undefined && { groups }),
             ...(sent && { sent }),
+            recipient: message.recipient,
           }
         : {
             ...joined,
@@ -649,7 +653,7 @@ async function changeThreads(
  * me while it is set aside, or the threads from an address or from everyone at a domain, by the
  * thread's first message, in lower case.
  */
-type Listing = `label#${string}` | "sent" | "all" | typeof reminders | `from#${string}` | `from-domain#${string}`;
+export type Listing = `label#${string}` | "sent" | "all" | typeof reminders | `from#${string}` | `from-domain#${string}`;
 
 /** The listing of the threads set aside in Remind me, soonest back first. */
 const reminders = "reminders";
@@ -827,12 +831,22 @@ const leftOutBy = (listing: Listing): string[] => (listing === `label#${spam}` |
  * gave `after` as its next, leaving out those the listing leaves out unless `withHidden`. The page
  * has a next if more threads follow.
  */
-async function threadsListed(
+async function threadsListed(table: Table, mailbox: string, listing: Listing, page: { limit: number; after?: Cursor; withHidden?: boolean }): Promise<ThreadList> {
+  const { entries, more } = await entriesListed(table, mailbox, listing, page);
+  const last = entries.at(-1);
+  return {
+    threads: entries.map(summaryOf),
+    ...(more && last !== undefined && { next: cursorAt(last.position) }),
+  };
+}
+
+/** A page of the listing's entries as threadsListed reads them, each its thread's stored summary at its position, and whether more follow. */
+async function entriesListed(
   table: Table,
   mailbox: string,
   listing: Listing,
   { limit, after, withHidden = false }: { limit: number; after?: Cursor; withHidden?: boolean },
-): Promise<ThreadList> {
+): Promise<{ entries: (StoredSummary & { position: string })[]; more: boolean }> {
   const partition = listingKey(mailbox, listing, "", "")[pk];
   const leftOut = withHidden ? [] : leftOutBy(listing);
   const shown = (item: ThreadSummary) => !leftOut.some((label) => item.labels.includes(label));
@@ -853,12 +867,57 @@ async function threadsListed(
     items.push(...(read.Items ?? []).filter((item) => shown(item as ThreadSummary)));
     start = read.LastEvaluatedKey as typeof start;
   } while (items.length <= limit && start !== undefined);
-  const page = items.slice(0, limit);
-  const last = page.at(-1);
-  return {
-    threads: page.map((item) => summaryOf(item as ThreadSummary)),
-    ...(items.length > limit && last !== undefined && { next: cursorAt(last[sk] as string) }),
-  };
+  return { entries: items.slice(0, limit).map((item) => ({ ...(item as StoredSummary), position: item[sk] as string })), more: items.length > limit };
+}
+
+/** Each mailbox's place in a view of All mailboxes: the position of the last thread a page listed, "" before its first, and null once it has no more. */
+export type AcrossCursor = Record<string, string | null>;
+
+/** The listings of All mailboxes' views, as threadsWithLabel, sentThreads, allMail and threadsSetAside read them. */
+export const listings = { label: (label: string): Listing => `label#${label}`, sent: "sent" as Listing, allMail: "all" as Listing, reminders: reminders as Listing };
+
+/**
+ * A page of the threads in each mailbox's listing, merged in the listings' own order, newest first
+ * or Remind me's soonest back first, at most `limit` of them, each with its mailbox and stored
+ * summary. Each mailbox goes on where `after` left it, and the cursor says where each stopped, or
+ * is undefined once none has more. A mailbox the cursor doesn't name starts from its first thread.
+ */
+export async function threadsListedAcross(
+  table: Table,
+  mailboxes: { id: string; listing: Listing }[],
+  { limit, after = {} }: { limit: number; after?: AcrossCursor },
+): Promise<{ threads: (StoredSummary & { mailbox: string })[]; next?: AcrossCursor }> {
+  const open = mailboxes.filter(({ id }) => after[id] !== null);
+  const pages = await Promise.all(
+    open.map(async ({ id, listing }) => ({ id, listing, ...(await entriesListed(table, id, listing, { limit, after: after[id] ? { position: after[id] } : undefined })) })),
+  );
+  const soonestFirst = mailboxes.some(({ listing }) => listing === reminders);
+  const merged = pages
+    .flatMap(({ id, entries }) => entries.map((entry) => ({ ...entry, mailbox: id })))
+    .sort((a, b) => (soonestFirst ? a.position.localeCompare(b.position) : b.position.localeCompare(a.position)))
+    .slice(0, limit);
+  const next: AcrossCursor = Object.fromEntries(mailboxes.map(({ id }) => [id, null]));
+  for (const { id, entries, more } of pages) {
+    const taken = merged.filter(({ mailbox }) => mailbox === id);
+    next[id] = !more && taken.length === entries.length ? null : (taken.at(-1)?.position ?? after[id] ?? "");
+  }
+  return { threads: merged.map(({ position: _position, ...thread }) => thread), ...(Object.values(next).some((position) => position !== null) && { next }) };
+}
+
+/** The address the thread's first message came to or went from, which a thread stored before All mailboxes doesn't keep. */
+export async function recipientOf(table: Table, mailbox: string, thread: Pick<StoredSummary, "id" | "recipient">): Promise<string> {
+  if (thread.recipient !== undefined) return thread.recipient;
+  const stored = await threadSummary(table, mailbox, thread.id);
+  if (stored?.recipient !== undefined) return stored.recipient;
+  const { Items = [] } = await documents(table).send(
+    new QueryCommand({
+      TableName: table.name,
+      KeyConditionExpression: `${pk} = :mailbox AND begins_with(${sk}, :messages)`,
+      ExpressionAttributeValues: { ":mailbox": partition(mailbox), ":messages": `${threadPrefix(thread.id)}message#` },
+      Limit: 1,
+    }),
+  );
+  return (Items[0] as StoredMessage | undefined)?.recipient ?? "";
 }
 
 /** How many of the label's threads are unread, leaving out those its listing leaves out. */

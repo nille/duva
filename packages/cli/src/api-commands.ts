@@ -14,22 +14,41 @@ interface Call {
   body?: Record<string, string | number | boolean | string[] | null>;
 }
 
+/** What --mailbox takes for All mailboxes, every mailbox the caller can read. No mailbox has it as its ID. */
+export const allMailboxes = "all";
+
+/** The words that tell a human or agent to give one mailbox where the command can't take All mailboxes. */
+const oneMailboxOnly = (words: readonly string[]) =>
+  `duva ${words.join(" ")} works in one mailbox at a time. Give --mailbox the ID of one, which duva mailboxes list gives.`;
+
 /**
  * One command for each operation in the OpenAPI document, named by its x-cli-command. Query and
  * path parameters and the properties of a JSON body are options, a list is an option given
  * once for each of its items, a boolean is a flag, and a property that may be null is null as
- * --no-<name>.
+ * --no-<name>. Given --mailbox all, a command calls the operation on All mailboxes that serves it,
+ * with the same options.
  */
-export const apiCommands: Command[] = operations.map((operation) => {
-  const command: Command = {
-    words: operation.command,
-    summary: operation.summary,
-    description: operation.description,
-    options: operation.options,
-    run: (args) => callApi(operation.operationId, callOf(operation, optionValues(command, args))),
-  };
-  return command;
-});
+export const apiCommands: Command[] = operations
+  .filter((operation) => !("allMailboxes" in operation))
+  .map((operation) => {
+    const across = operations.find((each) => "allMailboxes" in each && each.command.join(" ") === operation.command.join(" "));
+    const command: Command = {
+      words: operation.command,
+      summary: operation.summary,
+      description: operation.description,
+      options:
+        across === undefined
+          ? operation.options
+          : operation.options.map((option) => (option.name === "mailbox" && option.in === "path" ? { ...option, description: `${option.description} Give all for All mailboxes, every mailbox you can read.` } : option)),
+      run: (args) => {
+        const values = optionValues(command, args);
+        if (values.mailbox !== allMailboxes) return callApi(operation.operationId, callOf(operation, values));
+        if (across === undefined) throw new Error(oneMailboxOnly(operation.command));
+        return callApi(across.operationId, callOf(across, values));
+      },
+    };
+    return command;
+  });
 
 function callOf(operation: Operation, values: OptionValues): Call {
   const call: Required<Call> = { query: {}, path: {}, body: {} };

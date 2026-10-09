@@ -51,6 +51,10 @@ duva calls the Duva deployment that \`duva deploy\` saved in its config, \`~/.co
 
 Every command prints JSON on stdout and exits with 0. When a command fails, it prints \`{"error": "..."}\` on stderr and exits with 1. The message says what went wrong.
 
+## All mailboxes
+
+Give \`--mailbox all\` to work on All mailboxes: every mailbox you can read, taken together. Lists, counts and searches merge the mailboxes', and each thread names its \`mailbox\` and the \`recipient\` address it came to. A message delivered to two of them is two threads, one in each, and acting on one leaves the other as it is. Commands whose \`--mailbox\` doesn't say it takes \`all\`, such as deciding on senders, switching the Screener or changing labels, work in one mailbox at a time.
+
 ## Approval
 
 An agent owns no mailbox. It works in its sponsor's mailboxes, as far as the sponsor access they gave it reaches, and sends as its sponsor. By default, an agent's send waits for its sponsor's approval. Asking to send succeeds once the request is waiting, before any mail goes out. The sponsor then sends the draft as it is, edits and sends it, or rejects it with a note you can read. Changing the draft withdraws a waiting request. The mailbox's change feed records each step.

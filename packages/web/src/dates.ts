@@ -6,7 +6,7 @@ import type { components } from "@duva/openapi";
 export type Preferences = components["schemas"]["Preferences"];
 
 /** The preferences a human has until they choose otherwise, and until theirs are read. */
-export const defaultPreferences: Preferences = { hourCycle: "locale", dateFormat: "locale", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "on" };
+export const defaultPreferences: Preferences = { hourCycle: "locale", dateFormat: "locale", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "on", opensOn: "all" };
 
 /** The signed-in human's preferences, which every time and date on the page follows. */
 export const PreferencesContext = createContext<Preferences>(defaultPreferences);

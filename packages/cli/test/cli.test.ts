@@ -239,7 +239,7 @@ test("a human chooses to read mail as text", async () => {
   const changed = await machine.duva("preferences", "change", "--mailView", "text");
 
   expect(changed.exitCode).toBe(0);
-  expect(JSON.parse(changed.stdout)).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "text", keyboardShortcuts: "on", cooSpeaksUp: "on" });
+  expect(JSON.parse(changed.stdout)).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "text", keyboardShortcuts: "on", cooSpeaksUp: "on", opensOn: "all" });
 });
 
 test("a human chooses 24-hour time and ISO dates, and the CLI's own timestamps stay ISO 8601", async () => {
@@ -253,9 +253,9 @@ test("a human chooses 24-hour time and ISO dates, and the CLI's own timestamps s
   const changed = await machine.duva("preferences", "change", "--hourCycle", "h23", "--dateFormat", "dayMonth");
   const changes = await machine.duva("organization", "changes");
 
-  expect(JSON.parse(before.stdout)).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "on" });
+  expect(JSON.parse(before.stdout)).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "on", opensOn: "all" });
   expect(changed.exitCode).toBe(0);
-  expect(JSON.parse(changed.stdout)).toEqual({ hourCycle: "h23", dateFormat: "dayMonth", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "on" });
+  expect(JSON.parse(changed.stdout)).toEqual({ hourCycle: "h23", dateFormat: "dayMonth", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "on", opensOn: "all" });
   const times = (JSON.parse(changes.stdout) as { changes: { at: string }[] }).changes.map(({ at }) => at);
   expect(times).not.toHaveLength(0);
   for (const at of times) expect(at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
@@ -271,10 +271,10 @@ test("a human chooses a time zone, and removes it again", async () => {
   const chosen = await machine.duva("preferences", "change", "--timeZone", "Europe/Stockholm");
   const removed = await machine.duva("preferences", "change", "--no-timeZone");
 
-  expect(JSON.parse(chosen.stdout)).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "on", timeZone: "Europe/Stockholm" });
+  expect(JSON.parse(chosen.stdout)).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "on", timeZone: "Europe/Stockholm", opensOn: "all" });
   expect(removed.stderr).toBe("");
   expect(removed.exitCode).toBe(0);
-  expect(JSON.parse(removed.stdout)).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "on" });
+  expect(JSON.parse(removed.stdout)).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "on", opensOn: "all" });
 });
 
 test("preferences change with a date format Duva doesn't have says which there are", async () => {
@@ -672,6 +672,33 @@ test("an agent with read sponsor access catches up on its sponsor's mailbox, lis
     id: thread,
     messages: [{ from: { name: "Grace", address: "grace@example.org" }, recipient: "ada+cli@example.com", plusTag: "cli", text: "Hi Ada." }],
   });
+});
+
+test("a human lists and marks threads across All mailboxes with --mailbox all, and a command that works in one mailbox at a time says to give one", async () => {
+  const machine = await newMachine();
+  const { duva, ada, mailbox: work } = await agentInSponsorsMailbox(machine, "read", { screener: false });
+  const home = JSON.parse((await machine.duva("mailboxes", "create", "--owner", ada, "--address", "ada.home@example.com")).stdout) as { id: string };
+  await machine.duva("screener", "switch", "--mailbox", home.id, "--no-on");
+  await duva.receive("From: Grace <grace@example.org>\r\nTo: ada@example.com, ada.home@example.com\r\nSubject: Hello\r\nDate: Sat, 03 Oct 2026 10:00:00 +0000\r\n\r\nHi Ada.\r\n", {
+    to: ["ada@example.com", "ada.home@example.com"],
+  });
+
+  const listed = await machine.duva("threads", "list", "--mailbox", "all");
+  const { threads } = JSON.parse(listed.stdout) as { threads: { id: string; subject: string; mailbox: string; recipient: string }[] };
+  const atHome = threads.find(({ mailbox }) => mailbox === home.id)!;
+  const read = await machine.duva("threads", "mark-read", "--mailbox", "all", "--threads", atHome.id);
+  const refused = await machine.duva("senders", "set", "--mailbox", "all", "--sender", "grace@example.org", "--delivery", "inbox");
+
+  expect(listed.exitCode).toBe(0);
+  expect(threads.map(({ subject, mailbox, recipient }) => ({ subject, mailbox, recipient }))).toEqual(
+    expect.arrayContaining([
+      { subject: "Hello", mailbox: work.id, recipient: "ada@example.com" },
+      { subject: "Hello", mailbox: home.id, recipient: "ada.home@example.com" },
+    ]),
+  );
+  expect(JSON.parse(read.stdout)).toMatchObject({ threads: [{ id: atHome.id, mailbox: home.id, unread: false }] });
+  expect(refused.exitCode).toBe(1);
+  expect(errorIn(refused.stderr)).toBe("duva senders set works in one mailbox at a time. Give --mailbox the ID of one, which duva mailboxes list gives.");
 });
 
 test("an agent sets a thread aside in its sponsor's Remind me with a preset, lists Remind me, changes the time and cancels it", async () => {

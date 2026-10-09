@@ -1407,6 +1407,406 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/all-mailboxes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read All mailboxes, every mailbox you can read taken together, with how many threads in their Inboxes are unread.
+         * @description All mailboxes is a human's own mailboxes, or for an agent its sponsor's that its sponsor access covers. Each list, count and search of one mailbox also works on All mailboxes, under /all-mailboxes, and each thread there names its mailbox and the address it came to. A message delivered to two of them is two threads, one in each, and acting on one leaves the other as it is. Lists each mailbox with its own unread count, and the sum.
+         */
+        get: operations["getAllMailboxes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/all-mailboxes/changes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the changes in each of All mailboxes after where you left off, in one call.
+         * @description Lists up to 100 changes of each mailbox's change feed, oldest first, leaving out the arrivals of mail judged to be spam unless asked for them. To catch up, call again with the position the answer ends at until it lists no more. A mailbox that joins All mailboxes later is listed from its start.
+         */
+        get: operations["listAllMailboxesChanges"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/all-mailboxes/threads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the threads in All mailboxes with a label, newest first.
+         * @description Lists the threads of every mailbox with the label, merged newest first by their newest message, a page at a time. A label of the mailboxes' own is given by its name, and lists the label of that name in each mailbox that has one. To read the next page, call again with the answer's next as after, until an answer has no next.
+         */
+        get: operations["listAllMailboxesThreads"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/all-mailboxes/sent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the threads All mailboxes have sent mail in, newest first.
+         * @description Lists every thread with a message sent from one of the mailboxes, except those in Spam and Trash, merged newest first by its newest message, a page at a time. To read the next page, call again with the answer's next as after, until an answer has no next.
+         */
+        get: operations["listAllMailboxesSentThreads"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/all-mailboxes/all-mail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List every thread in All mailboxes except those in Spam and Trash, newest first.
+         * @description Lists archived threads too, merged newest first by their newest message, a page at a time. To read the next page, call again with the answer's next as after, until an answer has no next.
+         */
+        get: operations["listAllMailboxesAllMail"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/all-mailboxes/reminders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the threads set aside in All mailboxes' Remind me, the soonest back first.
+         * @description Lists the threads waiting in each mailbox's Remind me, merged so the one that comes back soonest is first, each with its reminder, a page at a time. To read the next page, call again with the answer's next as after, until an answer has no next.
+         */
+        get: operations["listAllMailboxesReminders"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/all-mailboxes/threads/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark threads in All mailboxes read, each in its own mailbox.
+         * @description Marks each thread read in the mailbox it is in, as marking it there does, so its copy in another mailbox stays as it is. Each thread that was unread gets a change in its mailbox's change feed, naming you. You need to be able to mark threads in each mailbox the threads are in.
+         */
+        post: operations["markAllMailboxesThreadsRead"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/all-mailboxes/threads/unread": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark threads in All mailboxes unread, each in its own mailbox.
+         * @description Marks each thread unread in the mailbox it is in, as marking it there does. Each thread that was read gets a change in its mailbox's change feed, naming you. You need to be able to mark threads in each mailbox the threads are in.
+         */
+        post: operations["markAllMailboxesThreadsUnread"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/all-mailboxes/threads/labels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add labels to threads in All mailboxes, and remove them, each in its own mailbox.
+         * @description Adds and removes the labels on each thread in the mailbox it is in, as labeling it there does, so archiving removes inbox. Give a built-in label by its ID, and a label of the mailboxes' own by its name or its ID. A name stands for the label of that name in each thread's own mailbox, which is created there when added and missing. Removing a name a thread's mailbox has no label of leaves it as it is. Each thread whose labels change gets a change in its mailbox's change feed, naming you. You need to be able to label threads in each mailbox the threads are in.
+         */
+        post: operations["labelAllMailboxesThreads"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/all-mailboxes/threads/remind": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set threads in All mailboxes aside until a time, each in its own mailbox.
+         * @description Sets each thread aside in the Remind me of the mailbox it is in, as setting it aside there does, and it comes back to that mailbox's Inbox. Each thread gets a change in its mailbox's change feed, naming you. You need to be able to set threads aside in each mailbox the threads are in.
+         */
+        post: operations["remindAllMailboxesThreads"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/all-mailboxes/threads/remind/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel the reminders of threads in All mailboxes, which puts each back in its own mailbox's Inbox.
+         * @description Cancels each thread's reminder in the mailbox it is in, as cancelling it there does. Threads not set aside are left as they are. Each thread whose reminder is cancelled gets a change in its mailbox's change feed, naming you.
+         */
+        post: operations["cancelAllMailboxesReminders"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/all-mailboxes/threads/{thread}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read a thread in All mailboxes, with each of its messages, oldest first, and the mailbox it is in. */
+        get: operations["getAllMailboxesThread"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/all-mailboxes/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search All mailboxes' threads by words, meaning and filters.
+         * @description Searches each mailbox's own index as searching it alone does, with the same q, and merges what each finds by rank, so every mailbox's best come first, or newest first when sorted so. Each result names its mailbox. label: finds the label of that name in each mailbox that has one. To read the next page, call again with the answer's next as after.
+         */
+        get: operations["searchAllMailboxes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/all-mailboxes/labels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List All mailboxes' labels, each name once, with the mailboxes that have it and how many unread threads it has.
+         * @description Lists the built-in labels first, then the mailboxes' own labels by name. Labels of the same name, in any case, in several mailboxes are one label here, whose unread count is the sum of theirs. Each label stays its mailbox's own, with its own prompt, so create, rename and delete labels, and give them prompts, in a mailbox.
+         */
+        get: operations["listAllMailboxesLabels"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/all-mailboxes/screener": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read All mailboxes' Screener, with the first-time senders whose mail waits in each mailbox.
+         * @description Lists each sender whose mail waits in a mailbox, newest first, with their waiting threads there. A sender waiting in two mailboxes is listed for each, since each mailbox decides on its senders: decide in the sender's mailbox. Says for each mailbox whether its Screener is on, and how many senders it has decided where mail goes for.
+         */
+        get: operations["getAllMailboxesScreener"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/all-mailboxes/drafts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the drafts in All mailboxes, newest first, each with its mailbox and where its send stands. */
+        get: operations["listAllMailboxesDrafts"];
+        put?: never;
+        /**
+         * Draft a reply, a forward or a new message in All mailboxes, in the mailbox it goes from.
+         * @description A reply or a forward lives in the mailbox of the message it answers or forwards, and goes from the address a reply there would. A new message lives in the mailbox of the address it goes from: from, or else the address your newMailFrom preference names, or for an agent its sponsor's, while it is one of the mailboxes'. Otherwise it goes from the default address of the first mailbox. Writing it is as writing a draft in that mailbox, recorded in its change feed, naming you, and you need to be able to draft there.
+         */
+        post: operations["createAllMailboxesDraft"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/all-mailboxes/drafts/{draft}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read a draft in All mailboxes, with its mailbox and where its send stands. */
+        get: operations["getAllMailboxesDraft"];
+        put?: never;
+        post?: never;
+        /** Delete a draft in All mailboxes, in its own mailbox. */
+        delete: operations["deleteAllMailboxesDraft"];
+        options?: never;
+        head?: never;
+        /**
+         * Change a draft in All mailboxes, in its own mailbox.
+         * @description As changing it in its mailbox does. Its From can be another of that mailbox's addresses, or a group, but not another mailbox's address, since a draft stays in its mailbox.
+         */
+        patch: operations["editAllMailboxesDraft"];
+        trace?: never;
+    };
+    "/all-mailboxes/drafts/{draft}/send": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask for a draft in All mailboxes to be sent, from its own mailbox.
+         * @description As asking in its mailbox does, approval and all.
+         */
+        post: operations["sendAllMailboxesDraft"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/all-mailboxes/drafts/{draft}/send-now": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send a draft in All mailboxes waiting for an agent's send limits now, past the limits.
+         * @description As sending it now in its mailbox does.
+         */
+        post: operations["sendAllMailboxesDraftNow"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/all-mailboxes/messages/{message}/attachments/{attachment}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a short-lived link that downloads one of the attachments of a message in All mailboxes.
+         * @description As getting one in the message's mailbox does. The link works for 5 minutes, for whoever follows it, so keep it to yourself.
+         */
+        get: operations["getAllMailboxesAttachment"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/alerts": {
         parameters: {
             query?: never;
@@ -3158,6 +3558,142 @@ export interface components {
         DraftList: {
             drafts: components["schemas"]["Draft"][];
         };
+        /** @description Every mailbox you can read, taken together. */
+        AllMailboxes: {
+            /** @description The mailboxes, as listing them gives them, each with how many threads in its Inbox are unread. */
+            mailboxes: (components["schemas"]["ListedMailbox"] & {
+                /** @description How many threads in the mailbox's Inbox are unread. */
+                unread: number;
+            })[];
+            /**
+             * @description How many threads in all their Inboxes are unread, the sum of theirs.
+             * @example 5
+             */
+            unread: number;
+        };
+        /** @description A thread in All mailboxes, which names its mailbox and the address its mail came to. */
+        AllMailboxesThread: components["schemas"]["ThreadSummary"] & {
+            /** @description The ID of the mailbox the thread is in. Act on it there, or here. */
+            mailbox: string;
+            /**
+             * @description The mailbox's address the thread's first message was delivered to, or sent from, with its plus tag, as Duva recorded it from the envelope, so it holds for Cc, Bcc, mailing lists, groups and catch-alls.
+             * @example hermes+news@example.com
+             */
+            recipient: string;
+        };
+        AllMailboxesThreadList: {
+            threads: components["schemas"]["AllMailboxesThread"][];
+            /** @description Present when more threads follow, in any of the mailboxes. Pass it as after to list the next page, which goes on in each mailbox where this one left off. */
+            next?: string;
+        };
+        /** @description A thread with its messages, and the mailbox it is in. */
+        AllMailboxesThreadDetail: components["schemas"]["Thread"] & {
+            /** @description The ID of the mailbox the thread is in. */
+            mailbox: string;
+            /** @description The mailbox's address the thread's first message was delivered to, or sent from, with its plus tag. */
+            recipient: string;
+        };
+        AllMailboxesChangePage: {
+            /** @description Each mailbox's changes after where you left off, oldest first, every mailbox listed. */
+            mailboxes: {
+                /** @description The mailbox's ID. */
+                mailbox: string;
+                changes: components["schemas"]["MailboxChange"][];
+                /** @description The position in the mailbox's own feed of its last change read, listed or left out, as listing its changes alone gives it. */
+                position: number;
+            }[];
+            /** @description Where every mailbox's feed was read up to. Pass it as after to continue. */
+            position: string;
+        };
+        /** @description A label of All mailboxes, the labels of one name in each mailbox that has it. */
+        AllMailboxesLabel: {
+            /**
+             * @description What to give as label to list its threads, its ID for a built-in label, and its name for the mailboxes' own.
+             * @example inbox
+             * @example Receipts
+             */
+            id: string;
+            /**
+             * @description The label's name, as the first mailbox with it gives it.
+             * @example Receipts
+             */
+            name: string;
+            /** @description Whether the label is built in, so every mailbox has it. */
+            builtIn: boolean;
+            /** @description How many of its threads are unread in all the mailboxes, the sum of theirs. */
+            unread: number;
+            /** @description The mailboxes that have the label, each with its own. */
+            mailboxes: {
+                /** @description The mailbox's ID. */
+                mailbox: string;
+                /** @description The ID of the mailbox's label of this name. */
+                label: string;
+                /** @description How many of its threads in the mailbox are unread. */
+                unread: number;
+                /** @description The mailbox's label's prompt, if it has one. */
+                prompt?: string;
+            }[];
+        };
+        AllMailboxesLabelList: {
+            labels: components["schemas"]["AllMailboxesLabel"][];
+        };
+        AllMailboxesSearchResults: {
+            results: {
+                thread: components["schemas"]["AllMailboxesThread"];
+                /** @description The ID of the thread's message that matched best, or the newest that matched when sorted by newest. */
+                message: string;
+                /** @description The part of that message's text where the words stand, on one line, without quoted lines. */
+                snippet: string;
+                /** @description Where in the snippet the words and phrases match, in order. */
+                highlights: components["schemas"]["Highlight"][];
+            }[];
+            /** @description Present when more threads follow. Pass it as after to read the next page. */
+            next?: string;
+        };
+        /** @description The Screeners of All mailboxes, taken together. */
+        AllMailboxesScreener: {
+            /** @description Each mailbox's Screener. */
+            mailboxes: {
+                /** @description The mailbox's ID. */
+                mailbox: string;
+                /** @description Whether mail from the mailbox's first-time senders waits in its Screener. */
+                on: boolean;
+                /** @description How many addresses and domains the mailbox has decided where mail goes for. */
+                decided: number;
+            }[];
+            /** @description The senders whose mail waits, newest first, once for each mailbox it waits in. */
+            senders: components["schemas"]["AllMailboxesWaitingSender"][];
+        };
+        /** @description A first-time sender of a mailbox, with their mail that waits in its Screener. */
+        AllMailboxesWaitingSender: {
+            /** @description The ID of the mailbox their mail waits in, where to decide on them. */
+            mailbox: string;
+            /**
+             * @description The sender's address, as their newest waiting thread gives it.
+             * @example grace@example.org
+             */
+            address: string;
+            /**
+             * @description The sender's name, as their newest waiting thread gives it, if it gives one.
+             * @example Grace Hopper
+             */
+            name?: string;
+            /**
+             * Format: date-time
+             * @description When their newest waiting mail arrived.
+             */
+            latestAt: string;
+            /** @description Their waiting threads, newest first. */
+            threads: components["schemas"]["AllMailboxesThread"][];
+        };
+        /** @description A draft, with the mailbox it lives in. */
+        AllMailboxesDraft: components["schemas"]["Draft"] & {
+            /** @description The ID of the mailbox the draft lives in, whose address it goes from. */
+            mailbox: string;
+        };
+        AllMailboxesDraftList: {
+            drafts: components["schemas"]["AllMailboxesDraft"][];
+        };
         /** @description A request to send a draft, waiting for or decided by its approver. */
         Approval: {
             /** @description The approval's ID. */
@@ -4280,6 +4816,8 @@ export interface components {
             keyboardShortcuts: components["schemas"]["KeyboardShortcuts"];
             cooSpeaksUp: components["schemas"]["CooSpeaksUp"];
             timeZone?: components["schemas"]["TimeZone"];
+            opensOn: components["schemas"]["OpensOn"];
+            newMailFrom?: components["schemas"]["NewMailFrom"];
         };
         /** @description The preferences changed, each with its new value. */
         PreferencesChanges: {
@@ -4290,7 +4828,20 @@ export interface components {
             cooSpeaksUp?: components["schemas"]["CooSpeaksUp"];
             /** @description The time zone, as an IANA name, or null to remove it, as if the human never chose one. The CLI removes it with --no-timeZone. */
             timeZone?: components["schemas"]["TimeZone"] | null;
+            opensOn?: components["schemas"]["OpensOn"];
+            /** @description The address, or null to start from the default again. The CLI gives null with --no-newMailFrom. */
+            newMailFrom?: components["schemas"]["NewMailFrom"] | null;
         };
+        /**
+         * @description Where the web app opens: all, the default, on All mailboxes, or the ID of one of the human's mailboxes, on that one. A mailbox no longer theirs opens All mailboxes.
+         * @example all
+         */
+        OpensOn: string;
+        /**
+         * @description Which of the human's addresses new mail written in All mailboxes starts from, one of their mailboxes' addresses. By default, and when the address is no longer theirs, the default address of the mailbox holding their sign-in address, or else of the first mailbox listing their mailboxes gives. Absent while they have no mailbox.
+         * @example grace@example.com
+         */
+        NewMailFrom: string;
         /**
          * @description The human's time zone, as an IANA name, which the web app shows their agents' events in and Remind me's times count in. Left out until the human chooses one, when the API uses UTC and the web app the browser's time zone.
          * @example Europe/Stockholm
@@ -4395,6 +4946,10 @@ export interface components {
         Sender: string;
         /** @description The mailbox's ID. */
         Mailbox: string;
+        /** @description How many threads a page lists at most. */
+        AllMailboxesLimit: number;
+        /** @description Where the page starts, the next of the page before it. Leave it out for the first page. */
+        AllMailboxesAfter: string;
         /** @description The draft's ID. */
         Draft: string;
         /** @description The label's ID. */
@@ -7025,6 +7580,620 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    getAllMailboxes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The mailboxes, with their unread counts. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AllMailboxes"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    listAllMailboxesChanges: {
+        parameters: {
+            query?: {
+                /** @description The position to list changes after, as an answer gave it. Leave it out to list from the start. */
+                after?: string;
+                /** @description Lists the arrivals of mail judged to be spam too. */
+                spam?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The changes after the position, by mailbox. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AllMailboxesChangePage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    listAllMailboxesThreads: {
+        parameters: {
+            query?: {
+                /** @description The label the threads carry, a built-in label's ID or the name of a label of the mailboxes' own, in any case. inbox, the default, lists the Inbox. */
+                label?: string;
+                /** @description How many threads a page lists at most. */
+                limit?: components["parameters"]["AllMailboxesLimit"];
+                /** @description Where the page starts, the next of the page before it. Leave it out for the first page. */
+                after?: components["parameters"]["AllMailboxesAfter"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of the threads with the label. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AllMailboxesThreadList"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    listAllMailboxesSentThreads: {
+        parameters: {
+            query?: {
+                /** @description How many threads a page lists at most. */
+                limit?: components["parameters"]["AllMailboxesLimit"];
+                /** @description Where the page starts, the next of the page before it. Leave it out for the first page. */
+                after?: components["parameters"]["AllMailboxesAfter"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of the threads the mailboxes have sent in. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AllMailboxesThreadList"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    listAllMailboxesAllMail: {
+        parameters: {
+            query?: {
+                /** @description How many threads a page lists at most. */
+                limit?: components["parameters"]["AllMailboxesLimit"];
+                /** @description Where the page starts, the next of the page before it. Leave it out for the first page. */
+                after?: components["parameters"]["AllMailboxesAfter"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of the threads. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AllMailboxesThreadList"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    listAllMailboxesReminders: {
+        parameters: {
+            query?: {
+                /** @description How many threads a page lists at most. */
+                limit?: components["parameters"]["AllMailboxesLimit"];
+                /** @description Where the page starts, the next of the page before it. Leave it out for the first page. */
+                after?: components["parameters"]["AllMailboxesAfter"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of the threads set aside. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AllMailboxesThreadList"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    markAllMailboxesThreadsRead: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ThreadIds"];
+            };
+        };
+        responses: {
+            /** @description The threads, as they are now. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AllMailboxesThreadList"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    markAllMailboxesThreadsUnread: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ThreadIds"];
+            };
+        };
+        responses: {
+            /** @description The threads, as they are now. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AllMailboxesThreadList"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    labelAllMailboxesThreads: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ThreadLabels"];
+            };
+        };
+        responses: {
+            /** @description The threads, as they are now. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AllMailboxesThreadList"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    remindAllMailboxesThreads: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ThreadsReminder"];
+            };
+        };
+        responses: {
+            /** @description The threads, as they are now. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AllMailboxesThreadList"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    cancelAllMailboxesReminders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ThreadIds"];
+            };
+        };
+        responses: {
+            /** @description The threads, as they are now. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AllMailboxesThreadList"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getAllMailboxesThread: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The thread's ID. */
+                thread: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The thread and its messages. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AllMailboxesThreadDetail"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    searchAllMailboxes: {
+        parameters: {
+            query: {
+                /** @description What to search for, as searching one mailbox takes it: words, "quoted phrases", and the filters from:, to:, subject:, label:, has:attachment, is:unread, after: and before:. */
+                q: string;
+                /** @description Best first, or newest first. Without words or phrases, both are newest first. */
+                sort?: "relevance" | "newest";
+                /** @description How many threads a page lists at most. */
+                limit?: number;
+                /** @description Where the page starts, the next of the page before it. Leave it out for the first page. */
+                after?: components["parameters"]["AllMailboxesAfter"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of the threads found. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AllMailboxesSearchResults"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    listAllMailboxesLabels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The labels. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AllMailboxesLabelList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    getAllMailboxesScreener: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The Screener. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AllMailboxesScreener"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    listAllMailboxesDrafts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The drafts. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AllMailboxesDraftList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    createAllMailboxesDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewDraft"];
+            };
+        };
+        responses: {
+            /** @description The draft, with its mailbox. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AllMailboxesDraft"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getAllMailboxesDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The draft's ID. */
+                draft: components["parameters"]["Draft"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The draft. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AllMailboxesDraft"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deleteAllMailboxesDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The draft's ID. */
+                draft: components["parameters"]["Draft"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The draft, as it was when it was deleted. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AllMailboxesDraft"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    editAllMailboxesDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The draft's ID. */
+                draft: components["parameters"]["Draft"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DraftChanges"];
+            };
+        };
+        responses: {
+            /** @description The changed draft. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AllMailboxesDraft"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    sendAllMailboxesDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The draft's ID. */
+                draft: components["parameters"]["Draft"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The draft, waiting for approval, or for a human's send, approved and about to be sent. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AllMailboxesDraft"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    sendAllMailboxesDraftNow: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The draft's ID. */
+                draft: components["parameters"]["Draft"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The draft, approved and about to be sent. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AllMailboxesDraft"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getAllMailboxesAttachment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The message's ID. */
+                message: string;
+                /** @description The attachment's place among the message's attachments, from 0. */
+                attachment: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The attachment, with the link that downloads it. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttachmentLink"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
         };
     };
     listAlerts: {
