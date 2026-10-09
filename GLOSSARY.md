@@ -21,11 +21,11 @@ An actor that is software. Any human can create one, or approve one's access req
 _Avoid_: bot, assistant
 
 **Mailbox agent**:
-The agent Duva itself runs for each human's personal mailbox, created with the mailbox, with its owner as its sponsor. Every mailbox agent is named Coo, which its owner can't change, and the web app draws it as Coo too, a pigeon, where any other agent has the diamond. It works only in that mailbox, with the sponsor access its owner gives it, by default up to asking to send, each send waiting for their approval and carrying the disclosure's line. Its owner asks it in Ask Coo or through the MCP endpoint, and it acts through Duva's API as itself, so all it does is attributed to it, and it obeys pause, send limits and alerts as any agent does. It has no key: each run gets a token of its own. Admins choose the models it thinks with, one for each job, where the mail it reads is processed, and what all mailbox agents may spend a month (ADR-0027, ADR-0032).
+The agent Duva itself runs for each human, created with their first personal mailbox, with them as its sponsor. Every mailbox agent is named Coo, which its human can't change, and the web app draws it as Coo too, a pigeon, where any other agent has the diamond. It works in all its human's personal mailboxes, and in a mailbox handed to another human that human's Coo works instead. Asked from one mailbox, it works on that one unless its human says otherwise; asked from All mailboxes, on all of them. It has the sponsor access its human gives it, by default up to asking to send, each send waiting for their approval and carrying the disclosure's line. Its human asks it in Ask Coo or through the MCP endpoint, and it acts through Duva's API as itself, so all it does is attributed to it, and it obeys pause, send limits and alerts as any agent does. It has no key: each run gets a token of its own. Admins choose the models it thinks with, one for each job, where the mail it reads is processed, and what all mailbox agents may spend a month (ADR-0027, ADR-0032).
 _Avoid_: assistant, bot, copilot
 
 **Coo**:
-The name of every mailbox agent, after the sound a duva, Swedish for dove, makes. In the web app Coo's portrait heads the side column, where Duva's wordmark was: it bobs its head while it works, and says, in a bubble under it, when there's news worth a glance, unless its human turned Coo speaks up off.
+The name of every mailbox agent, after the sound a duva, Swedish for dove, makes. In the web app Coo's portrait heads the side column, where Duva's wordmark was: it bobs its head while it works, and says, in a bubble under it, when there's news worth a glance in the mailbox open there, or in all of them from All mailboxes, unless its human turned Coo speaks up off.
 _Avoid_: the bot, the assistant
 
 **Harder model**:
@@ -43,10 +43,10 @@ _Avoid_: classifier
 Asking the harder model to answer a human's last turn of Ask Coo again. Its answer is a new turn, and the turn's routing is kept as thought harder (ADR-0032).
 
 **Ask Coo**:
-A human's conversation with Coo, the mailbox agent of one of their mailboxes, in the web app's reading pane. Each thing they ask, and each answer, is a turn; the agent's turns say what it did, with links to the threads and drafts it touched. The agent reads back the last turns, until the human starts over. A thread of mail is never called a conversation.
+A human's conversation with Coo, their mailbox agent, in the web app's reading pane, asked from one of their mailboxes or from All mailboxes. Each thing they ask, and each answer, is a turn; the agent's turns say what it did, with links to the threads and drafts it touched. The agent reads back the last turns, until the human starts over. A thread of mail is never called a conversation.
 
 **MCP endpoint**:
-Duva's remote MCP server, one per deployment at `/mcp` on the API's domain, which an MCP client signs in to with a human's Duva account. Its tools reach the human's own mailbox agents: asking one or giving it a task, and Duva's operations in its mailbox, each called as that agent, so they do only what it may, attributed to it, with its sends waiting for approval as its do (ADR-0028).
+Duva's remote MCP server, one per deployment at `/mcp` on the API's domain, which an MCP client signs in to with a human's Duva account. Its tools reach the human's own mailbox agent: asking it or giving it a task, and Duva's operations in the human's mailboxes, each called as that agent, so they do only what it may, attributed to it, with its sends waiting for approval as its do (ADR-0028).
 _Avoid_: connector, integration, plugin
 
 **MCP client**:
@@ -55,9 +55,14 @@ _Avoid_: connector. The web app calls them AI apps, to humans.
 
 **Mailbox**:
 A store of received and sent mail, reached through one or more addresses, that actors read and act on. Every mailbox is a personal mailbox.
+_Avoid_: account, inbox (for the whole mailbox)
 
 **Personal mailbox**:
-A mailbox owned by one human. Admins cannot read it. When the human is removed, it is handed over or deleted.
+A mailbox owned by one human. Admins cannot read it. When the human is removed, it is handed over or deleted. A human may own several, which admins create.
+
+**All mailboxes**:
+Every mailbox an actor can read, taken together, beside each one alone. Each view, search and count works on All mailboxes as on one mailbox, and each thread there says which address it came to. A message delivered to two of them is two threads there, as it is two copies: reading or replying to one marks only that one, so each mailbox shows whether it has answered. Labels with the same name in several mailboxes are one label there. Deciding on a sender, or writing a reply, still belongs to the mailbox the thread is in. A human with several mailboxes opens the web app on All mailboxes, unless their preference names one.
+_Avoid_: unified inbox, combined inbox, all accounts
 
 **Sponsor access**:
 An agent's access to its sponsor's personal mailboxes, which the sponsor gives per agent and which is off by default. It covers the mailboxes the sponsor chooses, all of theirs unless they choose. Read lets it read everything there. Organize also lets it organize, screen senders, set threads aside and move them to Trash and back. Draft also lets it draft. Send also lets it send as the sponsor, on their behalf with the disclosure's visible line or as them without it. Only the sponsor empties the Trash. Mail that several people need goes to a group, which gives each member their own copy; no actor works in another human's mailbox.
@@ -84,7 +89,7 @@ A sponsor's record of every decision on their agents' sends, newest first: who d
 A human allowed to change the organization's setup: domains, addresses, groups, actors and settings. Admins can't read personal mailboxes. Only humans are admins; no agent is one.
 
 **Preference**:
-A choice a human makes for themselves about how Duva shows things to them, such as how times and dates read in the web app, the time zone their agents' activity gives dates and times in, or whether mail shows as designed or as plain text. It follows them to every browser, and no one else sees or changes it. An agent has none; its sponsor changes its settings.
+A choice a human makes for themselves about how Duva shows things to them, such as how times and dates read in the web app, the time zone their agents' activity gives dates and times in, whether mail shows as designed or as plain text, where the web app opens (All mailboxes or one of them), or which address new mail in All mailboxes starts from. It follows them to every browser, and no one else sees or changes it. An agent has none; its sponsor changes its settings.
 _Avoid_: user setting, profile
 
 **Sponsor**:
@@ -126,7 +131,7 @@ _Avoid_: tag, subaddress, detail
 A domain's optional mailbox or group for mail to addresses that don't exist, removed ones included. Off unless an admin sets one; otherwise such mail is refused.
 
 **Default address**:
-The address a mailbox sends new messages from unless the sender picks another. Replies go out from the address the original was sent to, and replies to group mail from the member's own address unless they choose the group.
+The address a mailbox sends new messages from unless the sender picks another. New mail written in All mailboxes starts from the address the human's preference names, and can go from any of their addresses. Replies go out from the address the original was sent to, and replies to group mail from the member's own address unless they choose the group.
 
 **External address**:
 An email address on a domain the organization does not have.
@@ -213,7 +218,7 @@ A logo the organization publishes through BIMI: each domain's default, which adm
 _Avoid_: avatar, brand icon
 
 **Search**:
-Finding threads in one mailbox by words and meaning together, with filters such as from: and label:. It covers subjects, senders, recipients, message text and attachment names, Sent included, and leaves out Spam and Trash unless asked. An actor searches only mailboxes it can read.
+Finding threads in one mailbox, or in All mailboxes, by words and meaning together, with filters such as from: and label:. It covers subjects, senders, recipients, message text and attachment names, Sent included, and leaves out Spam and Trash unless asked. An actor searches only mailboxes it can read.
 _Avoid_: query, lookup
 
 **Search languages**:
