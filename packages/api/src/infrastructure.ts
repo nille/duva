@@ -26,6 +26,8 @@ export const environmentVariables = {
   version: "DUVA_VERSION",
   tableName: "TABLE_NAME",
   mailBucket: "MAIL_BUCKET",
+  /** The bucket the files uploaded to drafts are in. */
+  uploadsBucket: "UPLOADS_BUCKET",
   /** The user pool humans sign in with. */
   userPoolId: "USER_POOL_ID",
   /** The IDs of the user pool's app clients whose access tokens the authorizer accepts, comma-separated. */

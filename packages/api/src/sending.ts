@@ -43,7 +43,8 @@ import type { MailBucket } from "./mail-bucket.ts";
 import { copyToOtherMembers, fromStanding } from "./group-mail.ts";
 import { bringBack, findMessage } from "./mail.ts";
 import type { RemindEvent } from "./reminders.ts";
-import { buildMail, disclosureHeader } from "./mime.ts";
+import { buildMail, disclosureHeader, type Part } from "./mime.ts";
+import { draftPrefix, uploadedFile, type UploadsBucket } from "./uploads-bucket.ts";
 import type { Dns } from "./dns-records.ts";
 import { bimiSelectorHeader } from "./own-logos.ts";
 import { sponsorAccessAllows, sponsorAccessIn } from "./access.ts";
@@ -68,6 +69,14 @@ export interface Outbound {
 
 /** How many recipients SES sends one message to, in To, Cc and Bcc together (docs/aws.md). */
 const maxRecipients = 50;
+
+/**
+ * How large a message SES sends, encoded, at most: 40 MB (ADR-0034). Base64 makes each 3 bytes of
+ * an attachment 4, with a line break every 76, and each part's header fields take up to about 500
+ * bytes more. The text is counted twice its bytes, as base64 with room for the headers.
+ */
+const maxMessageSize = 40_000_000;
+const encodedSize = (size: number) => Math.ceil(size / 3) * 4 * (78 / 76) + 500;
 
 /** SES refused the message, so it wasn't sent. */
 export class Refused extends Error {}
@@ -106,6 +115,8 @@ export function sesOutbound(ses: SESv2Client, configurationSet: string): Outboun
 interface Sender {
   table: Table;
   mailBucket: MailBucket;
+  /** Where the files uploaded to drafts are, which the sender attaches, then deletes once they went out. */
+  uploads: UploadsBucket;
   outbound: Outbound;
   /** The region SES sends from, which names the Message-ID it gives each message. */
   region: string;
@@ -178,11 +189,12 @@ type Waiting = WaitingSend & { agent: string };
 
 /** One try at sending the draft. `again` says an earlier try found another write in its way. */
 async function sendOnce(
-  { table, mailBucket, outbound, region, schedules, dns }: Sender,
+  sender: Sender,
   { mailbox, draft: id }: { mailbox: string; draft: string },
   waiting: Waiting | undefined,
   again: boolean,
 ): Promise<Outcome | "again"> {
+  const { table, mailBucket, uploads } = sender;
   const draft = await draftToSend(table, mailbox, id);
   const status = draft?.send;
   const expected = waiting === undefined ? "approved" : "waitingForLimit";
@@ -197,6 +209,7 @@ async function sendOnce(
   if (by === undefined) throw new Error(`Draft ${id} was asked to send without an approval or a human who sent it.`);
   if (status.state === "sent") {
     if (approval !== undefined) await keepSent(table, approval.id, { thread: status.thread!, message: status.message! });
+    await uploads.remove(draftPrefix(mailbox, id));
     await copyToOtherMembers({ table, mailBucket }, mailbox, status.message!);
     return "done";
   }
@@ -207,13 +220,13 @@ async function sendOnce(
   }
   // A run that had it wait, then stopped before sending what waits, left the agent's queue to this one.
   if (waiting === undefined && status.state === "waitingForLimit") {
-    await release({ table, mailBucket, outbound, region, schedules, dns }, by);
+    await release(sender, by);
     return "done";
   }
   if (status.state !== expected) return "done";
   // An approved send waits out its undo window, while its approver can undo it, and is handed over again then.
   if (waiting === undefined && undoable(status)) {
-    await schedules.sendAt({ mailbox, draft: id }, new Date(status.undoUntil));
+    await sender.schedules.sendAt({ mailbox, draft: id }, new Date(status.undoUntil));
     return "done";
   }
 
@@ -242,14 +255,24 @@ async function sendOnce(
   const sendsFrom = await findMailbox(table, mailbox);
   if (sendsFrom !== undefined) unsendable ??= unsendableFrom(await fromStanding(table, sendsFrom, draft.from), draft.from);
   const original = draft.answers === undefined ? undefined : await findMessage(table, mailBucket, mailbox, draft.answers);
-  // A forward carries the forwarded message's attachments, taken from it as it is now.
-  const forwarded = draft.forwards === undefined ? undefined : await findMessage(table, mailBucket, mailbox, draft.forwards);
-  // Without the message it forwards, a forward can't carry its attachments.
-  if ((draft.attachments ?? []).length > 0 && forwarded === undefined) {
-    unsendable ??= "The message it forwards is no longer in the mailbox, so its attachments can't go with it. Write a new message instead.";
-  }
   if (draft.to.length + draft.cc.length + draft.bcc.length > maxRecipients) {
     unsendable ??= `SES sends a message to at most ${maxRecipients} recipients, in To, Cc and Bcc together. Send it as several messages.`;
+  }
+  // Until files can go as linked files (#147), every file goes in the message, which SES takes up to its limit.
+  if (draft.files.reduce((total, { size }) => total + encodedSize(size), Buffer.byteLength(draft.text) * 2) > maxMessageSize) {
+    unsendable ??= "Its attachments make the message larger than the 40 MB SES sends. Remove some, and send them in another message.";
+  }
+  // A forward carries the forwarded message's attachments, taken from it as it is now.
+  const forwarded = unsendable !== undefined || !draft.files.some(({ source }) => source === "forwarded") ? undefined : await findMessage(table, mailBucket, mailbox, draft.forwards ?? "");
+  const attachments: Part[] = [];
+  for (const file of unsendable === undefined ? draft.files : []) {
+    const part = file.source === "forwarded" ? forwarded?.parts[file.place!] : await uploadedFile(sender, mailbox, id, file.id).then((content) => content && { ...(file.name !== undefined && { name: file.name }), type: file.type, content: new Uint8Array(content) });
+    if (part === undefined) {
+      // Without the message it forwards, a forward can't carry its attachments.
+      unsendable = file.source === "forwarded" ? "The message it forwards is no longer in the mailbox, so its attachments can't go with it. Write a new message instead." : `The file ${file.name ?? file.id} is missing from the draft. Remove it, and attach it again.`;
+      break;
+    }
+    attachments.push(part);
   }
 
   // Everything is ready before the draft moves to sending, so only SES's answer can leave it unclear.
@@ -271,12 +294,12 @@ async function sendOnce(
       // alert can't join the wait's transaction, whose check that none was raised this window
       // would cancel the wait, so a run that stops in between raises none.
       if (allowed !== undefined) await limitReached(table, { agent: actor, mailbox, draft, window, limits, allowed, now: date });
-      await release({ table, mailBucket, outbound, region, schedules, dns }, actor.id);
+      await release(sender, actor.id);
       return "done";
     }
     if (allowed === "never") return "waitsForSponsor";
     if (allowed !== undefined) {
-      await schedules.releaseAt(actor.id, allowed);
+      await sender.schedules.releaseAt(actor.id, allowed);
       return "waits";
     }
     counted.push(...counting(table, actor.id, window, { message, at: date, fresh: unknown }));
@@ -287,7 +310,7 @@ async function sendOnce(
   const parent = original?.message.messageId;
   const text = disclosure?.line ? `${draft.text}\n\nSent by ${disclosure.naming}` : draft.text;
   // Mail from a human's own address names the selector of their mailbox's own logo, once DNS has its record.
-  const selector = sendsFrom === undefined || unsendable !== undefined ? undefined : await bimiSelectorHeader(table, dns, sendsFrom, draft.from);
+  const selector = sendsFrom === undefined || unsendable !== undefined ? undefined : await bimiSelectorHeader(table, sender.dns, sendsFrom, draft.from);
   const raw = buildMail({
     // SES replaces it with one of its own, which is the one recorded (docs/aws.md).
     messageId: `<${message}@${draft.from.slice(draft.from.lastIndexOf("@") + 1)}>`,
@@ -300,7 +323,7 @@ async function sendOnce(
     references: parent === undefined ? [] : [...(original?.references ?? []).filter((reference) => reference !== parent), parent],
     headers: [...(disclosure === undefined ? [] : [[disclosureHeader, disclosure.naming] as [string, string]]), ...(selector === undefined ? [] : [selector])],
     text,
-    attachments: forwarded?.parts ?? [],
+    attachments,
   });
   const rawKey = `${sentPrefix}${message}`;
   if (unsendable === undefined) await mailBucket.put(rawKey, raw);
@@ -314,7 +337,7 @@ async function sendOnce(
   let sesMessageId: string;
   const addresses = (list: { address: string }[]) => list.map(({ address }) => address);
   try {
-    sesMessageId = await outbound.send(raw, { to: addresses(draft.to), cc: addresses(draft.cc), bcc: addresses(draft.bcc) });
+    sesMessageId = await sender.outbound.send(raw, { to: addresses(draft.to), cc: addresses(draft.cc), bcc: addresses(draft.bcc) });
   } catch (error) {
     if (error instanceof Refused) await markFailed(table, sending, error.message, failedAlert(table, actor, mailbox, draft, error.message));
     else await markUnclear(table, sending, unclearAlert(table, actor, mailbox, draft));
@@ -325,7 +348,7 @@ async function sendOnce(
     text,
     thread: draft.thread,
     sesMessageId,
-    messageId: `<${sesMessageId}@${region}.amazonses.com>`,
+    messageId: `<${sesMessageId}@${sender.region}.amazonses.com>`,
     stored: { from, to: draft.to, cc: draft.cc, bcc: draft.bcc, recipient: draft.from, subject: draft.subject, date: sentAt, receivedAt: sentAt, rawKey, ...(actor.kind === "agent" && { fromAgent: true }) },
     approval,
   });
@@ -335,6 +358,8 @@ async function sendOnce(
     const sent = await draftToSend(table, mailbox, id);
     if (sent?.send?.state === "sent") await keepSent(table, approval.id, { thread: sent.send.thread!, message });
   }
+  // The message carries the draft's files now, so the bucket no longer keeps them.
+  await uploads.remove(draftPrefix(mailbox, id));
   await copyToOtherMembers({ table, mailBucket }, mailbox, message);
   return "done";
 }

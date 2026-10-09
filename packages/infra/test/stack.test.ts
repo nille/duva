@@ -94,7 +94,8 @@ test("every Lambda runs Node.js 24 outside any VPC, on arm64 but for search and 
   }
 });
 
-test("every Lambda carries its own AWS SDK, so a CLI version pins all the code it deploys", () => {
+// esbuild reads every bundle whole, which takes longer than a test usually may.
+test("every Lambda carries its own AWS SDK, so a CLI version pins all the code it deploys", { timeout: 60_000 }, () => {
   const assets = JSON.parse(readFileSync(join(outdir, `${stack.id}.assets.json`), "utf8")) as {
     files: Record<string, { source: { path: string } }>;
   };
@@ -212,8 +213,8 @@ test("the inbound Lambda can erase raw mail for good, every version of it, and o
   const scoped = JSON.stringify(erasing);
   expect(scoped).toContain('"/inbound/*"');
   expect(scoped).toContain('{"StringLike":{"s3:prefix":"inbound/*"}}');
-  // The API deletes only the organization's own logos, never raw mail.
-  const apiDeletes = statements("ApiHandler").filter(({ Action, Resource }) => !JSON.stringify(Resource).includes('"Logos') && [Action].flat().some((action) => /^s3:.*Delete/.test(action)));
+  // The API deletes only the organization's own logos and the files uploaded to drafts, never raw mail.
+  const apiDeletes = statements("ApiHandler").filter(({ Action, Resource }) => !/"(Logos|Uploads)/.test(JSON.stringify(Resource)) && [Action].flat().some((action) => /^s3:.*Delete/.test(action)));
   expect(apiDeletes).toEqual([]);
 });
 
@@ -232,7 +233,8 @@ test("the eraser runs once a day, and has 15 minutes for a run", () => {
 
 test("the eraser can write the table and erase raw mail for good, every version of it, under the inbound and sent prefixes only", () => {
   expect(tableActions("EraserHandler")).toEqual(expect.arrayContaining(["dynamodb:PutItem", "dynamodb:DeleteItem", "dynamodb:Query", "dynamodb:BatchGetItem"]));
-  const erasing = statements("EraserHandler").filter(({ Action }) => [Action].flat().some((action) => action.startsWith("s3:")));
+  // The files uploaded to a deleted mailbox's drafts are in a bucket of their own.
+  const erasing = statements("EraserHandler").filter(({ Action, Resource }) => !JSON.stringify(Resource).includes('"Uploads') && [Action].flat().some((action) => action.startsWith("s3:")));
   expect([...new Set(erasing.flatMap(({ Action }) => [Action].flat()))].sort()).toEqual(["s3:DeleteObjectVersion", "s3:ListBucketVersions"]);
   const scoped = JSON.stringify(erasing);
   for (const prefix of ["inbound", "sent"]) {
@@ -296,6 +298,31 @@ test("search may only read the search bucket, and only the indexer may write it"
     .filter(([id, { Type }]) => Type === "AWS::Lambda::Function" && !id.startsWith("IndexerHandler"))
     .filter(([id]) => onBucket(id).some((action) => /Put|Delete/.test(action)));
   expect(writers).toEqual([]);
+});
+
+test("the uploads bucket keeps no versions, gives up an upload not completed after a day, and takes a browser's parts only from the web app's domain", () => {
+  const [[, { Properties: bucket }]] = ofType("AWS::S3::Bucket").filter(([id]) => id.startsWith("Uploads")) as [[string, Resource]];
+  const [[distributionId]] = ofType("AWS::CloudFront::Distribution") as [[string, Resource]];
+  const webUrl = { "Fn::Join": ["", ["https://", { "Fn::GetAtt": [distributionId, "DomainName"] }]] };
+  // Deleting a draft's file deletes it (ADR-0034), and a versioned bucket would keep it.
+  expect(bucket?.VersioningConfiguration).toBeUndefined();
+  expect(bucket?.LifecycleConfiguration).toEqual({ Rules: [{ AbortIncompleteMultipartUpload: { DaysAfterInitiation: 1 }, Status: "Enabled" }] });
+  expect(bucket?.CorsConfiguration).toEqual({
+    CorsRules: [{ AllowedOrigins: [webUrl], AllowedMethods: ["PUT"], AllowedHeaders: ["*"], ExposedHeaders: ["ETag"], MaxAge: 3600 }],
+  });
+});
+
+test("only the API writes to the uploads bucket, and the sender and the eraser delete from it", () => {
+  const [[bucketId]] = ofType("AWS::S3::Bucket").filter(([id]) => id.startsWith("Uploads")) as [[string, Resource]];
+  const onBucket = (prefix: string) =>
+    statements(prefix)
+      .filter(({ Resource }) => JSON.stringify(Resource).includes(`"${bucketId}"`))
+      .flatMap(({ Action }) => [Action].flat());
+  const lambdas = resources.filter(([, { Type }]) => Type === "AWS::Lambda::Function").map(([id]) => id);
+  const named = (ids: string[]) => ids.map((id) => id.replace(/[A-F0-9]{8}$/, "")).sort();
+  expect(named(lambdas.filter((id) => onBucket(id).some((action) => /Put/.test(action))))).toEqual(["ApiHandler"]);
+  expect(named(lambdas.filter((id) => onBucket(id).some((action) => /Delete/.test(action))))).toEqual(["ApiHandler", "EraserHandler", "SenderHandler"]);
+  for (const id of ["ApiHandler", "SenderHandler", "EraserHandler"]) expect(onBucket(id)).toContain("s3:AbortMultipartUpload");
 });
 
 test("only search, the indexer and the conversation Lambda call Bedrock, each to embed with Titan and search also to translate with Nova Lite, in the deployment's region", () => {

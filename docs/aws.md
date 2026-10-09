@@ -72,6 +72,8 @@ Facts about AWS that shaped Duva's design, each with how it was established. A c
 
 - **So search indexes are in a bucket of their own, without versioning.** LanceDB deletes the files of the versions it prunes, and in the versioned mail bucket each delete would only add a marker, so erased mail's text would stay in S3. _Follows from the fact above; ADR-0007._
 
+- **A presigned UploadPart URL from SDK v3 carries a CRC32 checksum by default,** `x-amz-sdk-checksum-algorithm` and `x-amz-checksum-crc32` in its query, which no part's bytes match. With the client's `requestChecksumCalculation: "WHEN_REQUIRED"` it carries none, and a plain PUT of each part to its URL works; `ListParts` then gives each part's size and ETag, so a browser needn't read the ETag to complete the upload. _Probed for #146 on 2026-10-09: presigning with SDK 3.1148 both ways, then a throwaway bucket in eu-north-1 took two parts by plain PUT, joined them, served the file through a presigned GET with its Content-Disposition, and listed nothing after the prefix's files were deleted and its open upload aborted._
+
 ## DynamoDB
 
 - **Two transactions on the same item at once can cancel one with `TransactionConflict`,** not `ConditionalCheckFailed`. Two messages arriving together in one mailbox both claimed its feed's next position, and one was cancelled that way, so a feed write retries on both. _Real run of #7._

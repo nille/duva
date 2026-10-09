@@ -2666,7 +2666,7 @@ export const operations = [
     "path": "/mailboxes/{mailbox}/drafts/{draft}",
     "routeKey": "DELETE /mailboxes/{mailbox}/drafts/{draft}",
     "summary": "Delete a draft.",
-    "description": "Deleting a draft that waits for approval withdraws the request. A draft being sent can't be deleted until its send is done. Deleting a sent draft leaves the sent message in its thread. Only the mailbox's owner can delete its drafts, and for a human's mailbox the agents they give draft sponsor access or more, whoever wrote the draft. The deletion, and any withdrawal, is recorded in the mailbox's change feed, naming you.",
+    "description": "Deleting a draft deletes the files uploaded to it, and withdraws its request if it waits for approval. A draft being sent can't be deleted until its send is done. Deleting a sent draft leaves the sent message in its thread. Only the mailbox's owner can delete its drafts, and for a human's mailbox the agents they give draft sponsor access or more, whoever wrote the draft. The deletion, and any withdrawal, is recorded in the mailbox's change feed, naming you.",
     "signIn": true,
     "command": [
       "drafts",
@@ -3514,6 +3514,200 @@ export const operations = [
         "type": "integer",
         "required": true,
         "description": "The attachment's place among the message's attachments, from 0."
+      }
+    ]
+  },
+  {
+    "operationId": "startUpload",
+    "method": "post",
+    "path": "/mailboxes/{mailbox}/drafts/{draft}/uploads",
+    "routeKey": "POST /mailboxes/{mailbox}/drafts/{draft}/uploads",
+    "summary": "Start uploading a file to attach to a draft, and get the links its parts go to.",
+    "description": "The file goes straight to Duva's storage, never through the API, in parts of the upload's partSize, the last one smaller: PUT each part's bytes to its URL, in any order, then complete the upload, which attaches the file to the draft. A file is up to 5 GB. The links work for an hour, so get the upload again for new ones if one stops working. An upload never completed is given up after a day. Only those who can draft in the mailbox can upload: its owner, and for a human's mailbox the agents they give draft sponsor access or more. A draft that is approved, being sent or sent takes no more files.",
+    "signIn": true,
+    "command": [
+      "uploads",
+      "start"
+    ],
+    "options": [
+      {
+        "name": "mailbox",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The mailbox's ID."
+      },
+      {
+        "name": "draft",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The draft's ID."
+      },
+      {
+        "name": "name",
+        "in": "body",
+        "type": "string",
+        "required": true,
+        "description": "The file's name, as recipients see it."
+      },
+      {
+        "name": "type",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "The file's media type. Without it, application/octet-stream."
+      },
+      {
+        "name": "size",
+        "in": "body",
+        "type": "integer",
+        "required": true,
+        "description": "The file's size in bytes, up to 5 GB."
+      }
+    ]
+  },
+  {
+    "operationId": "getUpload",
+    "method": "get",
+    "path": "/mailboxes/{mailbox}/drafts/{draft}/uploads/{upload}",
+    "routeKey": "GET /mailboxes/{mailbox}/drafts/{draft}/uploads/{upload}",
+    "summary": "Get new links for the parts of an upload that isn't complete yet.",
+    "description": "Each link works for an hour from now. Parts already uploaded can be uploaded again, and the last one to arrive counts. Only those who can draft in the mailbox can.",
+    "signIn": true,
+    "command": [
+      "uploads",
+      "get"
+    ],
+    "options": [
+      {
+        "name": "mailbox",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The mailbox's ID."
+      },
+      {
+        "name": "draft",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The draft's ID."
+      },
+      {
+        "name": "upload",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The upload's ID."
+      }
+    ]
+  },
+  {
+    "operationId": "completeUpload",
+    "method": "post",
+    "path": "/mailboxes/{mailbox}/drafts/{draft}/uploads/{upload}/complete",
+    "routeKey": "POST /mailboxes/{mailbox}/drafts/{draft}/uploads/{upload}/complete",
+    "summary": "Complete an upload once all its parts are uploaded, which attaches the file to the draft.",
+    "description": "The attachment takes the upload's ID. Completing it changes the draft, so a draft that waits for approval has its request withdrawn, and the change is recorded in the mailbox's change feed, naming you. A part that is missing or the wrong size is 409, saying which. Only those who can draft in the mailbox can.",
+    "signIn": true,
+    "command": [
+      "uploads",
+      "complete"
+    ],
+    "options": [
+      {
+        "name": "mailbox",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The mailbox's ID."
+      },
+      {
+        "name": "draft",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The draft's ID."
+      },
+      {
+        "name": "upload",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The upload's ID."
+      }
+    ]
+  },
+  {
+    "operationId": "getDraftAttachment",
+    "method": "get",
+    "path": "/mailboxes/{mailbox}/drafts/{draft}/attachments/{attachment}",
+    "routeKey": "GET /mailboxes/{mailbox}/drafts/{draft}/attachments/{attachment}",
+    "summary": "Get a short-lived link that downloads one of a draft's attachments, uploaded or forwarded.",
+    "description": "The link works for 5 minutes, for whoever follows it, so keep it to yourself. An approver opens an agent's files this way before deciding. Only those who can read the mailbox get one.",
+    "signIn": true,
+    "command": [
+      "drafts",
+      "attachment-link"
+    ],
+    "options": [
+      {
+        "name": "mailbox",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The mailbox's ID."
+      },
+      {
+        "name": "draft",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The draft's ID."
+      },
+      {
+        "name": "attachment",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The attachment's ID, as the draft lists it."
+      }
+    ]
+  },
+  {
+    "operationId": "removeDraftAttachment",
+    "method": "delete",
+    "path": "/mailboxes/{mailbox}/drafts/{draft}/attachments/{attachment}",
+    "routeKey": "DELETE /mailboxes/{mailbox}/drafts/{draft}/attachments/{attachment}",
+    "summary": "Take an attachment off a draft, uploaded or forwarded.",
+    "description": "An uploaded file is deleted. Removing one changes the draft, so a draft that waits for approval has its request withdrawn, and the change is recorded in the mailbox's change feed, naming you. A draft that is approved, being sent or sent keeps its attachments. Only those who can draft in the mailbox can.",
+    "signIn": true,
+    "command": [
+      "drafts",
+      "remove-attachment"
+    ],
+    "options": [
+      {
+        "name": "mailbox",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The mailbox's ID."
+      },
+      {
+        "name": "draft",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The draft's ID."
+      },
+      {
+        "name": "attachment",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The attachment's ID, as the draft lists it."
       }
     ]
   },

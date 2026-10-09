@@ -856,6 +856,7 @@ A reply goes from the address the original was sent to, plus tag kept, or from t
 - `--bcc` (once for each): The Bcc recipients' addresses, which get the message but appear in no header.
 - `--subject`: The subject. A reply's is the original's with "Re: " unless you give one.
 - `--text`: The plain-text body.
+- `--attach` (once for each): A file to attach, uploaded once the draft is written.
 
 ## duva drafts get
 
@@ -870,7 +871,7 @@ Only those who can read the mailbox can read it.
 
 Delete a draft.
 
-Deleting a draft that waits for approval withdraws the request. A draft being sent can't be deleted until its send is done. Deleting a sent draft leaves the sent message in its thread. Only the mailbox's owner can delete its drafts, and for a human's mailbox the agents they give draft sponsor access or more, whoever wrote the draft. The deletion, and any withdrawal, is recorded in the mailbox's change feed, naming you.
+Deleting a draft deletes the files uploaded to it, and withdraws its request if it waits for approval. A draft being sent can't be deleted until its send is done. Deleting a sent draft leaves the sent message in its thread. Only the mailbox's owner can delete its drafts, and for a human's mailbox the agents they give draft sponsor access or more, whoever wrote the draft. The deletion, and any withdrawal, is recorded in the mailbox's change feed, naming you.
 
 - `--mailbox` (required): The mailbox's ID. Give all for All mailboxes, every mailbox you can read.
 - `--draft` (required): The draft's ID.
@@ -889,6 +890,7 @@ Changing a draft that waits for approval withdraws the request, so an approver n
 - `--bcc` (once for each): The Bcc recipients' addresses, in place of the draft's.
 - `--subject`: The subject, in place of the draft's.
 - `--text`: The plain-text body.
+- `--attach` (once for each): A file to attach, uploaded once the draft is written.
 
 ## duva drafts send
 
@@ -907,6 +909,58 @@ Only the agent's sponsor can, for one draft at a time, and the agent's limits st
 
 - `--mailbox` (required): The mailbox's ID. Give all for All mailboxes, every mailbox you can read.
 - `--draft` (required): The draft's ID.
+
+## duva uploads start
+
+Start uploading a file to attach to a draft, and get the links its parts go to.
+
+The file goes straight to Duva's storage, never through the API, in parts of the upload's partSize, the last one smaller: PUT each part's bytes to its URL, in any order, then complete the upload, which attaches the file to the draft. A file is up to 5 GB. The links work for an hour, so get the upload again for new ones if one stops working. An upload never completed is given up after a day. Only those who can draft in the mailbox can upload: its owner, and for a human's mailbox the agents they give draft sponsor access or more. A draft that is approved, being sent or sent takes no more files.
+
+- `--mailbox` (required): The mailbox's ID.
+- `--draft` (required): The draft's ID.
+- `--name` (required): The file's name, as recipients see it.
+- `--type`: The file's media type. Without it, application/octet-stream.
+- `--size` (required): The file's size in bytes, up to 5 GB.
+
+## duva uploads get
+
+Get new links for the parts of an upload that isn't complete yet.
+
+Each link works for an hour from now. Parts already uploaded can be uploaded again, and the last one to arrive counts. Only those who can draft in the mailbox can.
+
+- `--mailbox` (required): The mailbox's ID.
+- `--draft` (required): The draft's ID.
+- `--upload` (required): The upload's ID.
+
+## duva uploads complete
+
+Complete an upload once all its parts are uploaded, which attaches the file to the draft.
+
+The attachment takes the upload's ID. Completing it changes the draft, so a draft that waits for approval has its request withdrawn, and the change is recorded in the mailbox's change feed, naming you. A part that is missing or the wrong size is 409, saying which. Only those who can draft in the mailbox can.
+
+- `--mailbox` (required): The mailbox's ID.
+- `--draft` (required): The draft's ID.
+- `--upload` (required): The upload's ID.
+
+## duva drafts attachment-link
+
+Get a short-lived link that downloads one of a draft's attachments, uploaded or forwarded.
+
+The link works for 5 minutes, for whoever follows it, so keep it to yourself. An approver opens an agent's files this way before deciding. Only those who can read the mailbox get one.
+
+- `--mailbox` (required): The mailbox's ID.
+- `--draft` (required): The draft's ID.
+- `--attachment` (required): The attachment's ID, as the draft lists it.
+
+## duva drafts remove-attachment
+
+Take an attachment off a draft, uploaded or forwarded.
+
+An uploaded file is deleted. Removing one changes the draft, so a draft that waits for approval has its request withdrawn, and the change is recorded in the mailbox's change feed, naming you. A draft that is approved, being sent or sent keeps its attachments. Only those who can draft in the mailbox can.
+
+- `--mailbox` (required): The mailbox's ID.
+- `--draft` (required): The draft's ID.
+- `--attachment` (required): The attachment's ID, as the draft lists it.
 
 ## duva alerts list
 

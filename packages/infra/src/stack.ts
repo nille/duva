@@ -25,7 +25,7 @@ import { SqsDestination } from "aws-cdk-lib/aws-lambda-destinations";
 import { DynamoEventSource, SqsDlq, SqsEventSource } from "aws-cdk-lib/aws-lambda-event-sources";
 import { NodejsFunction, OutputFormat } from "aws-cdk-lib/aws-lambda-nodejs";
 import { LogGroup, RetentionDays } from "aws-cdk-lib/aws-logs";
-import { BlockPublicAccess, Bucket, BucketEncryption } from "aws-cdk-lib/aws-s3";
+import { BlockPublicAccess, Bucket, BucketEncryption, HttpMethods } from "aws-cdk-lib/aws-s3";
 import { ScheduleGroup } from "aws-cdk-lib/aws-scheduler";
 import { ConfigurationSet, EmailIdentity, EmailSendingEvent, EventDestination, Identity, ReceiptRuleSet } from "aws-cdk-lib/aws-ses";
 import { Topic } from "aws-cdk-lib/aws-sns";
@@ -197,6 +197,26 @@ export class DuvaStack extends Stack {
     });
     const logosUrl = `${webUrl}/${hostedLogosPath}`;
 
+    // Files uploaded to drafts (ADR-0034). Browsers and agents PUT them straight to this bucket, in
+    // parts, with the presigned URLs the API gives, since API Gateway takes at most 10 MB a request.
+    // It keeps no versions, so deleting a file deletes it, and gives up an upload never completed
+    // after a day. A browser may PUT only from the web app's domain, and reads each part's ETag.
+    const uploads = new Bucket(this, "Uploads", {
+      encryption: BucketEncryption.S3_MANAGED,
+      blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
+      enforceSSL: true,
+      versioned: false,
+      lifecycleRules: [{ abortIncompleteMultipartUploadAfter: Duration.days(1) }],
+      cors: [{ allowedOrigins: [webUrl], allowedMethods: [HttpMethods.PUT], allowedHeaders: ["*"], exposedHeaders: ["ETag"], maxAge: 3600 }],
+      removalPolicy: RemovalPolicy.RETAIN_ON_UPDATE_OR_DELETE,
+    });
+    // Those that delete a draft's files list them, and give up the uploads not completed.
+    const removesUploads = (grantee: LambdaFunctionResource) => {
+      uploads.grantRead(grantee);
+      uploads.grantDelete(grantee);
+      grantee.addToRolePolicy(new PolicyStatement({ actions: ["s3:AbortMultipartUpload"], resources: [uploads.arnForObjects("*")] }));
+    };
+
     // Humans sign in through managed login with a code emailed to them. Only Duva adds humans, and
     // without a password. Cognito requires PASSWORD among the first factors, so it is listed, but
     // nobody has one. The pool outlives the stack. It replaced the "Humans" pool, whose sign-in
@@ -330,10 +350,12 @@ export class DuvaStack extends Stack {
     const eraser = lambda(
       "EraserHandler",
       "@duva/api/eraser-lambda",
-      { [environmentVariables.tableName]: table.tableName, [environmentVariables.mailBucket]: mail.bucketName },
+      { [environmentVariables.tableName]: table.tableName, [environmentVariables.mailBucket]: mail.bucketName, [environmentVariables.uploadsBucket]: uploads.bucketName },
       { timeout: Duration.minutes(15) },
     );
     table.grantReadWriteData(eraser);
+    // It erases the files uploaded to a deleted mailbox's drafts.
+    removesUploads(eraser);
     // It erases raw mail, received and sent, which in a versioned bucket means deleting each version.
     for (const prefix of [inboundPrefix, sentPrefix]) {
       eraser.addToRolePolicy(new PolicyStatement({ actions: ["s3:DeleteObjectVersion"], resources: [mail.arnForObjects(`${prefix}*`)] }));
@@ -495,8 +517,13 @@ export class DuvaStack extends Stack {
       [environmentVariables.indexQueue]: indexQueue.queueUrl,
       [environmentVariables.logosBucket]: logos.bucketName,
       [environmentVariables.logosUrl]: logosUrl,
+      [environmentVariables.uploadsBucket]: uploads.bucketName,
     });
     table.grantReadWriteData(handler);
+    // The API starts and completes uploads to drafts, and signs the URLs their parts go to and
+    // their files open from, which work with the API's own permissions.
+    uploads.grantReadWrite(handler);
+    removesUploads(handler);
     // Admins and humans set the organization's own logos, which the API puts in the logos bucket.
     logos.grantPut(handler, `${hostedLogosPath}*`);
     logos.grantDelete(handler, `${hostedLogosPath}*`);
@@ -551,8 +578,10 @@ export class DuvaStack extends Stack {
         [environmentVariables.tableName]: table.tableName,
         [environmentVariables.mailBucket]: mail.bucketName,
         [environmentVariables.configurationSet]: sending.configurationSetName,
+        [environmentVariables.uploadsBucket]: uploads.bucketName,
       },
-      { timeout: Duration.seconds(30) },
+      // A message with its attachments is up to 40 MB, encoded, held whole while it is sent.
+      { memorySize: 1024, timeout: Duration.seconds(60) },
     );
     sender.addEventSource(
       new DynamoEventSource(table, {
@@ -568,6 +597,8 @@ export class DuvaStack extends Stack {
     // The sender reads the message it answers or forwards, and stores the raw MIME it sends.
     mail.grantRead(sender);
     mail.grantPut(sender, `${sentPrefix}*`);
+    // It attaches the files uploaded to a draft, and deletes them once they went out.
+    removesUploads(sender);
     // SES checks both the identity and the configuration set a send uses: any of the organization's
     // domains, which admins add at run time. SESv2 SendEmail with raw content is authorized as
     // ses:SendRawEmail (see docs/aws.md).
@@ -865,6 +896,7 @@ export class DuvaStack extends Stack {
     new CfnOutput(this, stackOutputs.indexFailures, { value: indexFailures.queueUrl, description: "The queue of the indexer's tasks that failed" });
     new CfnOutput(this, stackOutputs.logosBucket, { value: logos.bucketName, description: "The bucket the organization's own logos are in, which CloudFront serves" });
     new CfnOutput(this, stackOutputs.logosUrl, { value: logosUrl, description: "Where the organization's own logos are served, on the web app's domain" });
+    new CfnOutput(this, stackOutputs.uploadsBucket, { value: uploads.bucketName, description: "The bucket the files uploaded to drafts are in" });
     new CfnOutput(this, stackOutputs.searchBucket, { value: search.bucketName, description: "The bucket the mailboxes' search indexes are in" });
     new CfnOutput(this, stackOutputs.inboundFailures, { value: inboundFailures.queueUrl, description: "The queue of received mail that failed processing" });
     ([1, 2, 3] as const).forEach((n, index) => {

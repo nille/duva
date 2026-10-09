@@ -42,7 +42,7 @@ export function Attachments({ list, onDownload, downloading }: { list: Attachmen
   );
 }
 
-const ClipIcon = () => (
+export const ClipIcon = () => (
   <svg className="icon" viewBox="0 0 16 16" aria-hidden="true">
     <path
       d="M10.5 5.5 6.2 9.8a1.2 1.2 0 0 0 1.7 1.7l4.6-4.6a2.6 2.6 0 0 0-3.7-3.7L4.2 7.8a4 4 0 0 0 5.7 5.7l3.6-3.6"

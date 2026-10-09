@@ -31,6 +31,7 @@ export const stackOutputs = {
   searchBucket: "SearchBucket",
   logosBucket: "LogosBucket",
   logosUrl: "LogosUrl",
+  uploadsBucket: "UploadsBucket",
   conversationFunction: "ConversationFunction",
   agentRuntime: "AgentRuntime",
   mcpFunction: "McpFunction",

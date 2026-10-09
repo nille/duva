@@ -4,6 +4,7 @@ import { attachmentsDownload } from "./attachments.ts";
 import { deploy } from "./deploy.ts";
 import { login } from "./login.ts";
 import { skillInstall } from "./skill.ts";
+import { withAttachments } from "./uploads.ts";
 
 export interface Command {
   /** The words that name the command, as in `duva <words>`. */
@@ -27,8 +28,14 @@ export interface CommandOption {
   nullable?: boolean;
 }
 
-/** The hand-written commands, then one for each API operation. */
-export const commands: Command[] = [deploy, login, skillInstall, attachmentsDownload, ...apiCommands];
+/** The hand-written commands, then one for each API operation, drafts create and drafts edit taking files to attach. */
+export const commands: Command[] = [
+  deploy,
+  login,
+  skillInstall,
+  attachmentsDownload,
+  ...apiCommands.map((command) => (["create", "edit"].includes(command.words[1]!) && command.words[0] === "drafts" ? withAttachments(command) : command)),
+];
 
 /** The values of a command's options, by name: null for a nullable option given as --no-<name>. */
 export type OptionValues = Record<string, string | string[] | boolean | null | undefined>;

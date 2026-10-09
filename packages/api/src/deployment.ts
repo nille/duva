@@ -13,6 +13,7 @@ import type { WaitingSends } from "./limits.ts";
 import type { Reminders } from "./reminders.ts";
 import type { HostedLogos } from "./own-logos.ts";
 import type { TaskRunner } from "./tasks.ts";
+import type { UploadsBucket } from "./uploads-bucket.ts";
 
 /** Duva's one DynamoDB table. */
 export interface Table {
@@ -36,6 +37,8 @@ export interface Deployment {
   /** DNS, where admins add the records the domains need. */
   dns: Dns;
   mailBucket: MailBucket;
+  /** Where the files uploaded to drafts are. */
+  uploads: UploadsBucket;
   receiving: Receiving;
   eraser: Eraser;
   downloads: Downloads;

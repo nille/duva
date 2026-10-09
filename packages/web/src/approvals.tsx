@@ -13,7 +13,8 @@ import { agentHref, heldAsked } from "./alerts.tsx";
 import { ApprovalLog, UndoButton } from "./approval-log.tsx";
 import { PreferencesContext } from "./dates.ts";
 import { approvalChanges, type Change, type Connection as ConnectionState, type Follow, SignedOut } from "./feed.ts";
-import { ActorMark, Addresses, Attachments, Connection, Field, Time } from "./mail-parts.tsx";
+import { ActorMark, Addresses, Connection, Field, Time } from "./mail-parts.tsx";
+import { DraftFilesToOpen } from "./draft-files.tsx";
 import { SendNow } from "./send-now.tsx";
 import { useShortcuts } from "./shortcuts.tsx";
 import { strings } from "./strings.ts";
@@ -733,7 +734,9 @@ function Galley({ shown, entry, agent, sponsor, line, outcome, client, onDecided
                   {draft.text}
                 </div>
                 <Disclosure agent={agent} sponsor={sponsor} line={line} />
-                {draft.attachments !== undefined && draft.attachments.length > 0 && <Attachments list={draft.attachments} />}
+                {draft.attachments !== undefined && draft.attachments.length > 0 && (
+                  <DraftFilesToOpen client={client} mailbox={approval.mailbox} draft={draft.id} list={draft.attachments} onSignedOut={onSignedOut} />
+                )}
               </div>
             </>
           )}

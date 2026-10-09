@@ -27,8 +27,9 @@ One organization per deployment (ADR-0002), in its own AWS account. Everything i
   - the **feeder** turns new changes into the indexer's tasks;
   - the **sender** sends what a decision approved;
   - the **task giver** gives label prompts' tasks.
-- **Three S3 buckets hold everything else:**
+- **Four S3 buckets hold everything else:**
   - `Mail`: the raw messages SES stored, and attachments;
+  - `Uploads`: the files uploaded to drafts, which browsers and agents PUT straight to it with presigned URLs, without versions (ADR-0034);
   - `Search`: each mailbox's LanceDB index;
   - `Logos`: the organization's own BIMI logos, served by CloudFront under `/bimi/`.
 - **The web app's build** is in the `Web` bucket.

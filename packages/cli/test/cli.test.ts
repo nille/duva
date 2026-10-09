@@ -996,6 +996,48 @@ test("drafts create takes a new message's recipients as --to, once for each", as
   expect(JSON.parse(result.stdout)).toMatchObject({ from: "ada@example.com", to: [{ address: "grace@example.org" }, { address: "linus@example.org" }] });
 });
 
+test("drafts create uploads each file given with --attach to the new draft, and prints the draft with them", async () => {
+  const machine = await newMachine();
+  const { duva, mailbox, asAgent } = await agentInSponsorsMailbox(machine, "draft");
+  await writeFile(join(machine.home, "rapport.pdf"), "Hello, PDF!");
+  await writeFile(join(machine.home, "data.bin"), Buffer.from([0, 1, 2, 255]));
+
+  const result = await machine.duva("drafts", "create", "--mailbox", mailbox.id, "--to", "grace@example.org", "--attach", join(machine.home, "rapport.pdf"), "--attach", join(machine.home, "data.bin"), asAgent);
+
+  expect(result.exitCode).toBe(0);
+  expect(JSON.parse(result.stdout)).toMatchObject({
+    to: [{ address: "grace@example.org" }],
+    attachments: [
+      { name: "rapport.pdf", type: "application/pdf", size: 11, source: "uploaded" },
+      { name: "data.bin", type: "application/octet-stream", size: 4, source: "uploaded" },
+    ],
+  });
+  expect(duva.uploads().files).toContain("Hello, PDF!");
+});
+
+test("drafts edit with only --attach attaches the file and leaves the rest of the draft as it was", async () => {
+  const machine = await newMachine();
+  const { mailbox, asAgent } = await agentInSponsorsMailbox(machine, "draft");
+  const draft = JSON.parse((await machine.duva("drafts", "create", "--mailbox", mailbox.id, "--subject", "Notes", asAgent)).stdout) as { id: string };
+  await writeFile(join(machine.home, "notes.txt"), "Notes");
+
+  const result = await machine.duva("drafts", "edit", "--mailbox", mailbox.id, "--draft", draft.id, "--attach", join(machine.home, "notes.txt"), asAgent);
+
+  expect(result.exitCode).toBe(0);
+  expect(JSON.parse(result.stdout)).toMatchObject({ id: draft.id, subject: "Notes", attachments: [{ name: "notes.txt", type: "text/plain", size: 5 }] });
+});
+
+test("drafts create with a file to attach that isn't there writes no draft, and says so", async () => {
+  const machine = await newMachine();
+  const { mailbox, asAgent } = await agentInSponsorsMailbox(machine, "draft");
+
+  const result = await machine.duva("drafts", "create", "--mailbox", mailbox.id, "--attach", "missing.pdf", asAgent);
+
+  expect(result.exitCode).toBe(1);
+  expect(errorIn(result.stderr)).toBe("There is no file missing.pdf to attach. Give --attach the path of a file.");
+  expect(JSON.parse((await machine.duva("drafts", "list", "--mailbox", mailbox.id, asAgent)).stdout)).toEqual({ drafts: [] });
+});
+
 /** A message to Ada with one attachment, whose name is in Swedish. */
 const withAttachment = [
   "From: Grace <grace@example.org>",

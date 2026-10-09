@@ -14,6 +14,7 @@ import { mediaTypeOf } from "./mime.ts";
 import { logoAt, storedLogo } from "./sender-logos.ts";
 import { mailboxFor } from "./access.ts";
 import { documents, pk, sk } from "./table.ts";
+import { dispositionOf } from "./uploads-bucket.ts";
 
 /** Where download links lead, and how long each works. */
 export interface Downloads {
@@ -134,14 +135,3 @@ const text = (statusCode: number, line: string): DownloadAnswer => ({
   headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" },
   body: new TextEncoder().encode(`${line}\n`),
 });
-
-/**
- * A Content-Disposition that saves the attachment under its name: in ASCII for old clients, and
- * in UTF-8 (RFC 6266) for the rest, so Swedish and Danish names survive.
- */
-function dispositionOf(name: string | undefined): string {
-  if (name === undefined || name.trim() === "") return "attachment";
-  const ascii = name.replace(/[^\x20-\x7e]|["\\]/g, "_");
-  const utf8 = encodeURIComponent(name).replace(/['()*]/g, (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`);
-  return `attachment; filename="${ascii}"; filename*=UTF-8''${utf8}`;
-}

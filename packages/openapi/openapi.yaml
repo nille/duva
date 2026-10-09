@@ -2809,9 +2809,10 @@ paths:
       operationId: deleteDraft
       summary: Delete a draft.
       description: >
-        Deleting a draft that waits for approval withdraws the request. A
-        draft being sent can't be deleted until its send is done. Deleting a
-        sent draft leaves the sent message in its thread. Only the mailbox's
+        Deleting a draft deletes the files uploaded to it, and withdraws
+        its request if it waits for approval. A draft being sent can't be
+        deleted until its send is done. Deleting a sent draft leaves the
+        sent message in its thread. Only the mailbox's
         owner can delete its drafts, and for a human's mailbox the agents they
         give draft sponsor access or more, whoever wrote the draft. The deletion,
         and any withdrawal, is recorded in the mailbox's change feed, naming you.
@@ -3549,6 +3550,158 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+  /mailboxes/{mailbox}/drafts/{draft}/uploads:
+    post:
+      operationId: startUpload
+      summary: Start uploading a file to attach to a draft, and get the links its parts go to.
+      description: >
+        The file goes straight to Duva's storage, never through the API, in
+        parts of the upload's partSize, the last one smaller: PUT each part's
+        bytes to its URL, in any order, then complete the upload, which
+        attaches the file to the draft. A file is up to 5 GB. The links work
+        for an hour, so get the upload again for new ones if one stops
+        working. An upload never completed is given up after a day. Only
+        those who can draft in the mailbox can upload: its owner, and for a
+        human's mailbox the agents they give draft sponsor access or more. A
+        draft that is approved, being sent or sent takes no more files.
+      x-cli-command: uploads start
+      parameters:
+        - $ref: "#/components/parameters/Mailbox"
+        - $ref: "#/components/parameters/Draft"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NewUpload"
+      responses:
+        "201":
+          description: The upload, with the links its parts go to.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Upload"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /mailboxes/{mailbox}/drafts/{draft}/uploads/{upload}:
+    get:
+      operationId: getUpload
+      summary: Get new links for the parts of an upload that isn't complete yet.
+      description: >
+        Each link works for an hour from now. Parts already uploaded can be
+        uploaded again, and the last one to arrive counts. Only those who can
+        draft in the mailbox can.
+      x-cli-command: uploads get
+      parameters:
+        - $ref: "#/components/parameters/Mailbox"
+        - $ref: "#/components/parameters/Draft"
+        - $ref: "#/components/parameters/Upload"
+      responses:
+        "200":
+          description: The upload, with new links for its parts.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Upload"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /mailboxes/{mailbox}/drafts/{draft}/uploads/{upload}/complete:
+    post:
+      operationId: completeUpload
+      summary: Complete an upload once all its parts are uploaded, which attaches the file to the draft.
+      description: >
+        The attachment takes the upload's ID. Completing it changes the
+        draft, so a draft that waits for approval has its request withdrawn,
+        and the change is recorded in the mailbox's change feed, naming you.
+        A part that is missing or the wrong size is 409, saying which. Only
+        those who can draft in the mailbox can.
+      x-cli-command: uploads complete
+      parameters:
+        - $ref: "#/components/parameters/Mailbox"
+        - $ref: "#/components/parameters/Draft"
+        - $ref: "#/components/parameters/Upload"
+      responses:
+        "200":
+          description: The draft, with the file among its attachments.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Draft"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /mailboxes/{mailbox}/drafts/{draft}/attachments/{attachment}:
+    get:
+      operationId: getDraftAttachment
+      summary: Get a short-lived link that downloads one of a draft's attachments, uploaded or forwarded.
+      description: >
+        The link works for 5 minutes, for whoever follows it, so keep it to
+        yourself. An approver opens an agent's files this way before
+        deciding. Only those who can read the mailbox get one.
+      x-cli-command: drafts attachment-link
+      parameters:
+        - $ref: "#/components/parameters/Mailbox"
+        - $ref: "#/components/parameters/Draft"
+        - $ref: "#/components/parameters/DraftAttachment"
+      responses:
+        "200":
+          description: The attachment, with the link that downloads it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AttachmentLink"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: removeDraftAttachment
+      summary: Take an attachment off a draft, uploaded or forwarded.
+      description: >
+        An uploaded file is deleted. Removing one changes the draft, so a
+        draft that waits for approval has its request withdrawn, and the
+        change is recorded in the mailbox's change feed, naming you. A
+        draft that is approved, being sent or sent keeps its attachments.
+        Only those who can draft in the mailbox can.
+      x-cli-command: drafts remove-attachment
+      parameters:
+        - $ref: "#/components/parameters/Mailbox"
+        - $ref: "#/components/parameters/Draft"
+        - $ref: "#/components/parameters/DraftAttachment"
+      responses:
+        "200":
+          description: The draft, without the attachment.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Draft"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
   /alerts:
     get:
       operationId: listAlerts
@@ -3832,6 +3985,20 @@ components:
       in: path
       required: true
       description: The draft's ID.
+      schema:
+        type: string
+    Upload:
+      name: upload
+      in: path
+      required: true
+      description: The upload's ID.
+      schema:
+        type: string
+    DraftAttachment:
+      name: attachment
+      in: path
+      required: true
+      description: The attachment's ID, as the draft lists it.
       schema:
         type: string
     Label:
@@ -6269,8 +6436,8 @@ components:
         attachments:
           type: array
           items:
-            $ref: "#/components/schemas/Attachment"
-          description: The attachments it carries, those of the message it forwards, if it is a forward.
+            $ref: "#/components/schemas/DraftAttachment"
+          description: The files it carries, those uploaded to it and those of the message it forwards.
         updatedAt:
           type: string
           format: date-time
@@ -6336,6 +6503,89 @@ components:
           items:
             $ref: "#/components/schemas/SendFeedback"
           description: What SES reported about the sent message since, oldest first, if it reported anything.
+    DraftAttachment:
+      type: object
+      additionalProperties: false
+      required: [id, type, size, source]
+      description: A file a draft carries.
+      properties:
+        id:
+          type: string
+          description: The attachment's ID in the draft.
+        name:
+          type: string
+          description: The file's name, if it has one.
+          examples: ["report.pdf"]
+        type:
+          type: string
+          description: The file's media type.
+          examples: ["application/pdf"]
+        size:
+          type: integer
+          description: The file's size in bytes.
+        source:
+          type: string
+          enum: [uploaded, forwarded]
+          description: uploaded to the draft, or one of the attachments of the message it forwards.
+    NewUpload:
+      type: object
+      additionalProperties: false
+      required: [name, size]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: The file's name, as recipients see it.
+          examples: ["report.pdf"]
+        type:
+          type: string
+          description: The file's media type. Without it, application/octet-stream.
+          examples: ["application/pdf"]
+        size:
+          type: integer
+          minimum: 1
+          maximum: 5368709120
+          description: The file's size in bytes, up to 5 GB.
+    Upload:
+      type: object
+      additionalProperties: false
+      required: [id, name, type, size, partSize, parts, expiresAt]
+      description: A file on its way to a draft.
+      properties:
+        id:
+          type: string
+          description: The upload's ID, which the attachment takes once it is complete.
+        name:
+          type: string
+        type:
+          type: string
+        size:
+          type: integer
+          description: The file's size in bytes.
+        partSize:
+          type: integer
+          description: How many bytes each part has, the last one fewer.
+        parts:
+          type: array
+          items:
+            $ref: "#/components/schemas/UploadPart"
+          description: Where each part goes, first to last.
+        expiresAt:
+          type: string
+          format: date-time
+          description: When the links stop working.
+    UploadPart:
+      type: object
+      additionalProperties: false
+      required: [number, url]
+      properties:
+        number:
+          type: integer
+          description: The part's number, from 1. Part 1 holds the file's first partSize bytes, part 2 the next, and so on.
+        url:
+          type: string
+          description: Where to PUT the part's bytes, for whoever has it until it expires.
     DraftList:
       type: object
       additionalProperties: false
@@ -6667,8 +6917,8 @@ components:
         attachments:
           type: array
           items:
-            $ref: "#/components/schemas/Attachment"
-          description: The attachments it carries, those of the message it forwards, if it is a forward.
+            $ref: "#/components/schemas/DraftAttachment"
+          description: The files it carries, those uploaded to it and those of the message it forwards.
     Alert:
       type: object
       additionalProperties: false

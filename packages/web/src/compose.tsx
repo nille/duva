@@ -7,7 +7,8 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
 import { useDates } from "./dates.ts";
-import { Attachments } from "./mail-parts.tsx";
+import { ClipIcon } from "./mail-parts.tsx";
+import { DraftFiles, useUploads } from "./draft-files.tsx";
 import { SendNow } from "./send-now.tsx";
 import { strings } from "./strings.ts";
 
@@ -192,6 +193,30 @@ export function Composer({
 
   useEffect(() => () => clearTimeout(timer.current), []);
 
+  /** Takes the draft Duva answered with, as one more answer than any read on its way. */
+  const adopt = useCallback((data: Draft) => {
+    answered.current++;
+    setDraft(data);
+  }, []);
+  /** The draft's ID, once what was typed is saved, writing the draft first if there is none yet, so files have one to go to. */
+  const draftId = useCallback(async () => {
+    await save();
+    queue.current = queue.current.then(async () => {
+      if (id.current !== undefined) return true;
+      const answer = await client.POST("/mailboxes/{mailbox}/drafts", { params: { path: { mailbox: mailbox.id } }, body: {} }).catch(() => undefined);
+      if (answer?.data === undefined) return false;
+      id.current = answer.data.id;
+      history.replaceState(null, "", `${base}drafts/${encodeURIComponent(answer.data.id)}`);
+      adopt(answer.data);
+      return true;
+    });
+    await queue.current;
+    return id.current;
+  }, [save, client, mailbox.id, base, adopt]);
+  const uploads = useUploads({ client, mailbox: mailbox.id, draftId, onDraft: adopt, onSignedOut });
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [dropping, setDropping] = useState(false);
+
   const change = (field: keyof Fields) => (event: { target: { value: string } }) => {
     setFields((current) => ({ ...current, [field]: event.target.value }));
     clearTimeout(timer.current);
@@ -216,6 +241,7 @@ export function Composer({
   const locked = state === "approved" || state === "waitingForLimit" || state === "sending" || state === "sent" || state === "unclear" || busy !== undefined;
 
   const send = async () => {
+    if (uploads.uploading) return setProblem({ message: strings.compose.stillUploading });
     setBusy("sending");
     setProblem(undefined);
     const saved = await save();
@@ -386,11 +412,28 @@ export function Composer({
   );
   // Send and Delete draft lie at the foot, with when it was saved in a thread, until the send is out of the human's hands.
   const sendable = state !== "sent" && state !== "unclear" && state !== "waitingForLimit";
+  // Files dropped anywhere on the sheet are attached, while it can change.
+  const carriesFiles = (event: React.DragEvent) => !locked && event.dataTransfer.types.includes("Files");
   const sheet = (
     <form
       ref={sheetRef}
-      className={inThread === undefined ? "letter compose" : "letter compose compose-in-thread"}
+      className={["letter compose", inThread !== undefined && "compose-in-thread", dropping && "compose-dropping"].filter(Boolean).join(" ")}
       aria-labelledby={`${formId}-title`}
+      onDragEnter={(event) => carriesFiles(event) && setDropping(true)}
+      onDragOver={(event) => {
+        if (!carriesFiles(event)) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "copy";
+      }}
+      onDragLeave={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropping(false);
+      }}
+      onDrop={(event) => {
+        setDropping(false);
+        if (!carriesFiles(event)) return;
+        event.preventDefault();
+        void uploads.add([...event.dataTransfer.files]);
+      }}
       onSubmit={(event) => {
         event.preventDefault();
         void send();
@@ -482,7 +525,12 @@ export function Composer({
         {strings.compose.message}
       </label>
       <textarea ref={textRef} id={`${formId}-text`} className="compose-body" rows={12} value={fields.text} readOnly={locked} onChange={change("text")} onBlur={() => void save()} lang="" />
-      {draft?.attachments !== undefined && draft.attachments.length > 0 && <Attachments list={draft.attachments} />}
+      <DraftFiles client={client} mailbox={mailbox.id} draft={draft} sending={uploads.sending} locked={locked} onDraft={adopt} onSignedOut={onSignedOut} />
+      {dropping && (
+        <p className="compose-drop" aria-hidden="true">
+          {strings.compose.dropFiles}
+        </p>
+      )}
 
       {problem !== undefined && (
         <p className="notice notice-alert" role="alert" id={problemId}>
@@ -501,6 +549,20 @@ export function Composer({
             {busy === "sending" || state === "approved" || state === "sending" ? strings.compose.sending : state === "failed" ? strings.compose.sendAgain : strings.compose.send}
             <kbd aria-hidden="true">{strings.compose.sendKey(mac)}</kbd>
           </button>
+          <button type="button" className="button compose-attach" disabled={locked} onClick={() => fileInput.current?.click()}>
+            <ClipIcon />
+            {strings.compose.attach}
+          </button>
+          <input
+            ref={fileInput}
+            type="file"
+            multiple
+            hidden
+            onChange={(event) => {
+              void uploads.add([...(event.target.files ?? [])]);
+              event.target.value = "";
+            }}
+          />
           <button type="button" className="button button-quiet" disabled={locked} onClick={() => void remove()}>
             {busy === "deleting" ? strings.compose.deleting : strings.compose.delete}
           </button>

@@ -102,6 +102,9 @@ The mark on mail an agent sends: always a header, even after a human approved it
 **Attachment**:
 A file a message carries. A draft takes attachments its writer uploads, or those of the mail it forwards.
 
+**Upload**:
+A file on its way to a draft: its parts go straight to Duva's storage, and completing the upload attaches it. An upload never completed is given up after a day.
+
 **Linked file**:
 An attachment sent as a link instead of inside the message: Duva links the largest attachments when carrying them all would make the message more than 10 MB, and the sender may link any one. The message lists each with its size and the date its link stops working, 30 days after the send unless the sender chose 7 days or a year. Anyone with the link opens a page with the file and a Download button. The sender sees how often each was downloaded, and Coo tells them the first time. Stopping sharing, undoing the send or erasing the sent mail ends the link at once and deletes the file.
 _Avoid_: share, transfer, large attachment

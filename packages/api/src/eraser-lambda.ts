@@ -9,9 +9,11 @@ import { createEraser } from "./erasure.ts";
 import { sqsIndexQueue } from "./indexing.ts";
 import { environmentVariables } from "./infrastructure.ts";
 import { s3MailBucket } from "./mail-bucket.ts";
+import { s3UploadsBucket } from "./uploads-bucket.ts";
 
 export const handler = createEraser({
   table: { client: new DynamoDBClient({}), name: required(environmentVariables.tableName) },
   mailBucket: s3MailBucket(new S3Client({}), required(environmentVariables.mailBucket)),
+  uploads: s3UploadsBucket(required(environmentVariables.uploadsBucket)),
   indexQueue: sqsIndexQueue(new SQSClient({}), required(environmentVariables.indexQueue)),
 });

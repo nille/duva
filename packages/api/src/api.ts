@@ -46,6 +46,7 @@ import { searchMailbox } from "./search.ts";
 import { getScreener, getSender, listSenders, removeSenderDelivery, setSenderDelivery, switchScreener } from "./screener.ts";
 import { changeOrganizationSettings, getOrganizationSettings, previewRetention } from "./settings.ts";
 import { getStatus } from "./status.ts";
+import { completeUpload, getDraftAttachment, getUpload, removeDraftAttachment, startUpload } from "./uploads.ts";
 import { whoami } from "./whoami.ts";
 
 /**
@@ -147,6 +148,11 @@ export const handlers: Record<OperationId, OperationHandler> = {
   getAttachment,
   getMessageHeaders,
   createDraft,
+  startUpload,
+  getUpload,
+  completeUpload,
+  getDraftAttachment,
+  removeDraftAttachment,
   listDrafts,
   getDraft,
   editDraft,

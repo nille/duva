@@ -27,6 +27,7 @@ import { X509Certificate } from "node:crypto";
 import { markRoots } from "./mark-roots.ts";
 import { s3HostedLogos } from "./own-logos.ts";
 import { lambdaTaskRunner } from "./tasks.ts";
+import { s3UploadsBucket } from "./uploads-bucket.ts";
 
 const mailBucket = required(environmentVariables.mailBucket);
 const lambda = new LambdaClient({});
@@ -44,6 +45,7 @@ export const handler = createApi({
   identities: sesIdentities(sesV2, configurationSet),
   dns: realDns,
   mailBucket: s3MailBucket(new S3Client({}), mailBucket),
+  uploads: s3UploadsBucket(required(environmentVariables.uploadsBucket)),
   receiving: {
     rules: sesReceiptRules(new SESClient({}), required(environmentVariables.receiptRuleSet)),
     bucket: mailBucket,

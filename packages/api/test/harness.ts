@@ -1,6 +1,6 @@
 // The API test harness: the real handlers, authorizer, inbound handler, sender and eraser in-process, with
-// DynamoDB Local (started by dynamodb-local.ts) for DynamoDB and its stream, an in-memory stand-in
-// for the mail bucket and for the inbound Lambda's log, stand-ins for SES receiving and sending, a
+// DynamoDB Local (started by dynamodb-local.ts) for DynamoDB and its stream, in-memory stand-ins
+// for the mail bucket, the uploads bucket and its presigned URLs, and for the inbound Lambda's log, stand-ins for SES receiving and sending, a
 // stand-in internet for the unsubscriber and the logo fetcher, a test Mark Verifying Authority, a test token issuer in place of Cognito, and search indexes
 // in LanceDB on local disk, with a stand-in for the indexer's FIFO queue and Titan's recorded vectors. Tests drive
 // the API only through the generated client, hand mail to SES as a sender's server does, read what
@@ -63,6 +63,7 @@ import { tableStream } from "./streams.ts";
 import { recordedNova } from "./nova.ts";
 import { recordedTitan } from "./titan.ts";
 import { TestTokenIssuer } from "./token-issuer.ts";
+import { memoryUploadsBucket } from "./uploads-bucket.ts";
 import { type ReceivedRequest, standInInternet, type WebServerOptions } from "./web.ts";
 
 /** The root of the tests' own Mark Verifying Authority, whose mark certificates verify logos. */
@@ -211,7 +212,7 @@ export interface Duva {
   /**
    * Moves the clock Duva reads to the time, for the rest of the test, from where it goes on, and
    * has EventBridge Scheduler invoke what it had scheduled until then, in order, as it does at
-   * those times.
+   * those times. The uploads bucket's lifecycle rule gives up each upload started a day before.
    */
   clock(at: Date): Promise<void>;
   /**
@@ -226,6 +227,13 @@ export interface Duva {
   suppressionList(): { address: string; reason: SuppressionReason }[];
   /** The raw messages the mail bucket keeps, received and sent, every version of each. */
   stored(): string[];
+  /**
+   * Sends the bytes to a URL Duva gave for a part of a file, as a browser or the CLI uploads it
+   * straight to S3, and gives what S3 answered.
+   */
+  upload(url: string, body: Uint8Array<ArrayBuffer>): Promise<Response>;
+  /** The files the uploads bucket keeps, as text, and how many uploads to it were neither completed nor given up. */
+  uploads(): { files: string[]; incomplete: number };
   /** Every object the search bucket keeps, each file of each mailbox's index, as text. */
   searchObjects(): string[];
   /**
@@ -323,6 +331,9 @@ export async function startDuva({
   if (undoWindow !== null) await documents(table).send(new PutCommand({ TableName: table.name, Item: { ...settingsKey, undoWindowSeconds: undoWindow, version: 1 } }));
 
   const mailBucket = memoryMailBucket();
+  // The uploads bucket's presigned URLs lead to the API's own URL, under /uploads-bucket/, once it listens.
+  let uploadsUrl = `${inProcess}/uploads-bucket/`;
+  const uploads = memoryUploadsBucket(() => uploadsUrl);
   // Trash emptied and mailboxes deleted in a call, which the eraser erases once the call is answered.
   const handed: EraserEvent[] = [];
   const inboundLog: string[] = [];
@@ -363,7 +374,7 @@ export async function startDuva({
   // indexer each open them, as two Lambdas do. Backfill steps are small, so a few messages take several.
   const indexes = join(searchIndexes, randomUUID());
   const indexQueue = memoryIndexQueue();
-  const eraser = createEraser({ table, mailBucket, indexQueue });
+  const eraser = createEraser({ table, mailBucket, uploads, indexQueue });
   const titan = recordedTitan();
   // A test mailbox is small, so its vector index is built from a few messages.
   const vectorIndexFrom = 5;
@@ -384,6 +395,7 @@ export async function startDuva({
   const sender = createSender({
     table,
     mailBucket,
+    uploads,
     outbound: sending.outbound,
     region,
     dns,
@@ -448,6 +460,7 @@ export async function startDuva({
       identities: identities.service,
       dns,
       mailBucket,
+      uploads,
       receiving,
       downloads,
       unsubscriber,
@@ -479,6 +492,8 @@ export async function startDuva({
   let cooDeployed = !beforeCoo;
   let deliveriesDeployed = !beforeDeliveries;
   const api = async (request: Request) => {
+    const fromBucket = await uploads.handle(request);
+    if (fromBucket !== undefined) return fromBucket;
     if (new URL(request.url).pathname.startsWith("/download/")) return downloaded(request);
     if (new URL(request.url).pathname.startsWith(`/${hostedLogosPath}`)) return hosted(request);
     const response = await gatewayed(request);
@@ -565,7 +580,7 @@ export async function startDuva({
   });
   const isMcp = (request: Request) => mcpRoutes.some(({ path, methods }) => new URL(request.url).pathname === path && (methods as string[]).includes(request.method));
   // The deployment's URLs as the internet reaches them: managed login, the MCP endpoint and the API.
-  const web = async (request: Request) => (await login.handle(request)) ?? (isMcp(request) ? mcp(request) : api(request));
+  const web = async (request: Request) => (await uploads.handle(request)) ?? (await login.handle(request)) ?? (isMcp(request) ? mcp(request) : api(request));
   const settled = async (request: Request) => {
     while (runs.length > 0) await Promise.all(runs.splice(0));
     return api(request);
@@ -619,10 +634,13 @@ export async function startDuva({
         if (!sendsHeld) await stream.deliver();
       }
       setClock(at);
+      uploads.lifecycle(at);
     },
     releaseIndexing: index,
     loseBackfillStep: () => void indexQueue.backfillStepsLost++,
     stored: () => mailBucket.stored(),
+    upload: (url, body) => (url.startsWith(inProcess) ? api(new Request(url, { method: "PUT", body })) : fetch(url, { method: "PUT", body })),
+    uploads: () => ({ files: uploads.files(), incomplete: uploads.incomplete() }),
     searchObjects: () => filesUnder(indexes).map((file) => new TextDecoder().decode(readFileSync(file))),
     async erase(at, { s3DeletesFail = false } = {}) {
       mailBucket.deletesFail = s3DeletesFail;
@@ -681,6 +699,7 @@ export async function startDuva({
     async listen() {
       const server = await listen(async (request) => (new URL(request.url).pathname.startsWith(`/${conversationPath}`) ? agentTurn(request) : web(request)));
       downloadUrl = `${server.url}/download/`;
+      uploadsUrl = `${server.url}/uploads-bucket/`;
       signInUrl = server.url;
       logosUrl = `${server.url}/${hostedLogosPath}`;
       return { ...server, signIn: { url: server.url, clientId: managedLoginClientId } };

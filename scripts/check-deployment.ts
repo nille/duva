@@ -4,7 +4,8 @@
 //
 // Runs the checks of a real run that need no human: the API answers, refuses calls without valid
 // credentials, and lets the web app call it; download links go through the web app's domain, and
-// only its distribution may invoke the download Lambda; the organization's own logos are served to
+// only its distribution may invoke the download Lambda; the bucket of files uploaded to drafts blocks public access, keeps
+// no versions, gives up an upload after a day and takes a browser's parts only from the web app's domain; the organization's own logos are served to
 // anyone there, as SVG or PEM, from a bucket only CloudFront reads; nothing but IAM may invoke the
 // unsubscriber and the logo fetcher, which refuse addresses that aren't public; the web app is served with the config
 // deploy published; the user pool takes sign-in names in any case, sends its codes from a domain
@@ -38,7 +39,7 @@ import { paginateListSchedules, SchedulerClient } from "@aws-sdk/client-schedule
 import { DescribeReceiptRuleSetCommand, SESClient } from "@aws-sdk/client-ses";
 import { GetConfigurationSetEventDestinationsCommand, GetEmailIdentityCommand, SESv2Client } from "@aws-sdk/client-sesv2";
 import { GetQueueAttributesCommand, SQSClient } from "@aws-sdk/client-sqs";
-import { paginateListObjectsV2, S3Client } from "@aws-sdk/client-s3";
+import { GetBucketCorsCommand, GetBucketLifecycleConfigurationCommand, GetBucketVersioningCommand, GetPublicAccessBlockCommand, paginateListObjectsV2, S3Client } from "@aws-sdk/client-s3";
 import { indexedMailboxes, uncompactedSince } from "@duva/api/indexing";
 import { alertMailFilter, authorizationServerPath, conversationPath, taskGiverFilter, mcpAuthorizePath, mcpPath, mcpRegistrationPath, mcpTokenPath, protectedResourcePaths, tokenHeader, dropMetric, dropReasons, environmentVariables, hostedLogoHeaders, hostedLogosPath, inboundPrefix, receiptRuleNumber, recipientsPerRule, senderFilter, signInFrom } from "@duva/api/infrastructure";
 import { rulesTake } from "@duva/api/receiving";
@@ -190,6 +191,24 @@ await check(`the organization's own logos, ${hostedKeys.length} files, are serve
 await check("the logos bucket answers no one but CloudFront", async () => {
   const key = hostedKeys[0] ?? `${hostedLogosPath}domains/check.invalid.svg`;
   return expectStatus(await fetch(`https://${logosBucket}.s3.${region}.amazonaws.com/${key}`), 403);
+});
+// Files uploaded to drafts go straight to a bucket of their own, which keeps no versions, so deleting one deletes it (ADR-0034).
+const uploadsBucket = output(stackOutputs.uploadsBucket);
+const s3 = new S3Client({ region });
+await check("starting an upload to a draft without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/mailboxes/x/drafts/x/uploads`, { method: "POST" }), 401));
+await check("the uploads bucket blocks public access and keeps no versions", async () => {
+  const { PublicAccessBlockConfiguration: block = {} } = await s3.send(new GetPublicAccessBlockCommand({ Bucket: uploadsBucket }));
+  const { Status } = await s3.send(new GetBucketVersioningCommand({ Bucket: uploadsBucket }));
+  const blocked = block.BlockPublicAcls && block.BlockPublicPolicy && block.IgnorePublicAcls && block.RestrictPublicBuckets;
+  if (!blocked) return `blocks public access only as ${JSON.stringify(block)}`;
+  return Status === undefined ? undefined : `has versioning ${Status}`;
+});
+await check("the uploads bucket gives up an upload not completed after a day, and takes a browser's parts only from the web app's domain", async () => {
+  const { Rules = [] } = await s3.send(new GetBucketLifecycleConfigurationCommand({ Bucket: uploadsBucket }));
+  if (!Rules.some(({ Status, AbortIncompleteMultipartUpload }) => Status === "Enabled" && AbortIncompleteMultipartUpload?.DaysAfterInitiation === 1)) return `has the lifecycle rules ${JSON.stringify(Rules)}`;
+  const { CORSRules = [] } = await s3.send(new GetBucketCorsCommand({ Bucket: uploadsBucket }));
+  const origins = CORSRules.flatMap(({ AllowedOrigins = [] }) => AllowedOrigins);
+  return origins.length === 1 && origins[0] === webUrl ? undefined : `lets ${origins.join(", ")} upload from a browser`;
 });
 // The account disables a Lambda anyone may invoke (docs/aws.md), so only CloudFront may call this one.
 const lambda = new LambdaClient({ region });

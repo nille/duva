@@ -207,6 +207,16 @@ export const strings = {
     serviceSaid: (reason: string) => `The mail service said: ${reason}`,
     unclear: "Sending stopped before the mail service answered, so Duva can't tell whether it went out. Duva won't send it again. Ask the recipients whether it arrived.",
     readOnly: "A sent draft can't change. Write a new message instead.",
+    attach: "Attach files",
+    dropFiles: "Drop to attach",
+    remove: "Remove",
+    removeFile: (name: string) => `Remove ${name}`,
+    uploadingFile: (name: string) => `Uploading ${name}`,
+    uploading: (percent: number, of: string) => `Uploading, ${percent}% of ${of}`,
+    uploadFailed: "Didn't upload. Remove it, and attach it again.",
+    emptyFile: "The file is empty, so it can't be attached.",
+    removeFailed: "Duva couldn't remove the file. Try again.",
+    stillUploading: "Files are still uploading. Send once they're attached, or remove them.",
   },
 
   views: {

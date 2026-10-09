@@ -1375,7 +1375,7 @@ export interface paths {
         post?: never;
         /**
          * Delete a draft.
-         * @description Deleting a draft that waits for approval withdraws the request. A draft being sent can't be deleted until its send is done. Deleting a sent draft leaves the sent message in its thread. Only the mailbox's owner can delete its drafts, and for a human's mailbox the agents they give draft sponsor access or more, whoever wrote the draft. The deletion, and any withdrawal, is recorded in the mailbox's change feed, naming you.
+         * @description Deleting a draft deletes the files uploaded to it, and withdraws its request if it waits for approval. A draft being sent can't be deleted until its send is done. Deleting a sent draft leaves the sent message in its thread. Only the mailbox's owner can delete its drafts, and for a human's mailbox the agents they give draft sponsor access or more, whoever wrote the draft. The deletion, and any withdrawal, is recorded in the mailbox's change feed, naming you.
          */
         delete: operations["deleteDraft"];
         options?: never;
@@ -1822,6 +1822,90 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mailboxes/{mailbox}/drafts/{draft}/uploads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start uploading a file to attach to a draft, and get the links its parts go to.
+         * @description The file goes straight to Duva's storage, never through the API, in parts of the upload's partSize, the last one smaller: PUT each part's bytes to its URL, in any order, then complete the upload, which attaches the file to the draft. A file is up to 5 GB. The links work for an hour, so get the upload again for new ones if one stops working. An upload never completed is given up after a day. Only those who can draft in the mailbox can upload: its owner, and for a human's mailbox the agents they give draft sponsor access or more. A draft that is approved, being sent or sent takes no more files.
+         */
+        post: operations["startUpload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mailboxes/{mailbox}/drafts/{draft}/uploads/{upload}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get new links for the parts of an upload that isn't complete yet.
+         * @description Each link works for an hour from now. Parts already uploaded can be uploaded again, and the last one to arrive counts. Only those who can draft in the mailbox can.
+         */
+        get: operations["getUpload"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mailboxes/{mailbox}/drafts/{draft}/uploads/{upload}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Complete an upload once all its parts are uploaded, which attaches the file to the draft.
+         * @description The attachment takes the upload's ID. Completing it changes the draft, so a draft that waits for approval has its request withdrawn, and the change is recorded in the mailbox's change feed, naming you. A part that is missing or the wrong size is 409, saying which. Only those who can draft in the mailbox can.
+         */
+        post: operations["completeUpload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mailboxes/{mailbox}/drafts/{draft}/attachments/{attachment}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a short-lived link that downloads one of a draft's attachments, uploaded or forwarded.
+         * @description The link works for 5 minutes, for whoever follows it, so keep it to yourself. An approver opens an agent's files this way before deciding. Only those who can read the mailbox get one.
+         */
+        get: operations["getDraftAttachment"];
+        put?: never;
+        post?: never;
+        /**
+         * Take an attachment off a draft, uploaded or forwarded.
+         * @description An uploaded file is deleted. Removing one changes the draft, so a draft that waits for approval has its request withdrawn, and the change is recorded in the mailbox's change feed, naming you. A draft that is approved, being sent or sent keeps its attachments. Only those who can draft in the mailbox can.
+         */
+        delete: operations["removeDraftAttachment"];
         options?: never;
         head?: never;
         patch?: never;
@@ -3531,8 +3615,8 @@ export interface components {
             subject: string;
             /** @description The plain-text body. */
             text: string;
-            /** @description The attachments it carries, those of the message it forwards, if it is a forward. */
-            attachments?: components["schemas"]["Attachment"][];
+            /** @description The files it carries, those uploaded to it and those of the message it forwards. */
+            attachments?: components["schemas"]["DraftAttachment"][];
             /**
              * Format: date-time
              * @description When the draft was written or last changed.
@@ -3574,6 +3658,66 @@ export interface components {
             messageId?: string;
             /** @description What SES reported about the sent message since, oldest first, if it reported anything. */
             feedback?: components["schemas"]["SendFeedback"][];
+        };
+        /** @description A file a draft carries. */
+        DraftAttachment: {
+            /** @description The attachment's ID in the draft. */
+            id: string;
+            /**
+             * @description The file's name, if it has one.
+             * @example report.pdf
+             */
+            name?: string;
+            /**
+             * @description The file's media type.
+             * @example application/pdf
+             */
+            type: string;
+            /** @description The file's size in bytes. */
+            size: number;
+            /**
+             * @description uploaded to the draft, or one of the attachments of the message it forwards.
+             * @enum {string}
+             */
+            source: "uploaded" | "forwarded";
+        };
+        NewUpload: {
+            /**
+             * @description The file's name, as recipients see it.
+             * @example report.pdf
+             */
+            name: string;
+            /**
+             * @description The file's media type. Without it, application/octet-stream.
+             * @example application/pdf
+             */
+            type?: string;
+            /** @description The file's size in bytes, up to 5 GB. */
+            size: number;
+        };
+        /** @description A file on its way to a draft. */
+        Upload: {
+            /** @description The upload's ID, which the attachment takes once it is complete. */
+            id: string;
+            name: string;
+            type: string;
+            /** @description The file's size in bytes. */
+            size: number;
+            /** @description How many bytes each part has, the last one fewer. */
+            partSize: number;
+            /** @description Where each part goes, first to last. */
+            parts: components["schemas"]["UploadPart"][];
+            /**
+             * Format: date-time
+             * @description When the links stop working.
+             */
+            expiresAt: string;
+        };
+        UploadPart: {
+            /** @description The part's number, from 1. Part 1 holds the file's first partSize bytes, part 2 the next, and so on. */
+            number: number;
+            /** @description Where to PUT the part's bytes, for whoever has it until it expires. */
+            url: string;
         };
         DraftList: {
             drafts: components["schemas"]["Draft"][];
@@ -3759,8 +3903,8 @@ export interface components {
             bcc: components["schemas"]["EmailAddress"][];
             subject: string;
             text: string;
-            /** @description The attachments it carries, those of the message it forwards, if it is a forward. */
-            attachments?: components["schemas"]["Attachment"][];
+            /** @description The files it carries, those uploaded to it and those of the message it forwards. */
+            attachments?: components["schemas"]["DraftAttachment"][];
         };
         /** @description A notice to a sponsor that one of their agents needs them. */
         Alert: {
@@ -4993,6 +5137,10 @@ export interface components {
         AllMailboxesAfter: string;
         /** @description The draft's ID. */
         Draft: string;
+        /** @description The upload's ID. */
+        Upload: string;
+        /** @description The attachment's ID, as the draft lists it. */
+        DraftAttachment: string;
         /** @description The label's ID. */
         Label: string;
         /** @description The approval's ID. */
@@ -8263,6 +8411,162 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    startUpload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The mailbox's ID. */
+                mailbox: components["parameters"]["Mailbox"];
+                /** @description The draft's ID. */
+                draft: components["parameters"]["Draft"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewUpload"];
+            };
+        };
+        responses: {
+            /** @description The upload, with the links its parts go to. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Upload"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getUpload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The mailbox's ID. */
+                mailbox: components["parameters"]["Mailbox"];
+                /** @description The draft's ID. */
+                draft: components["parameters"]["Draft"];
+                /** @description The upload's ID. */
+                upload: components["parameters"]["Upload"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The upload, with new links for its parts. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Upload"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    completeUpload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The mailbox's ID. */
+                mailbox: components["parameters"]["Mailbox"];
+                /** @description The draft's ID. */
+                draft: components["parameters"]["Draft"];
+                /** @description The upload's ID. */
+                upload: components["parameters"]["Upload"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The draft, with the file among its attachments. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Draft"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getDraftAttachment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The mailbox's ID. */
+                mailbox: components["parameters"]["Mailbox"];
+                /** @description The draft's ID. */
+                draft: components["parameters"]["Draft"];
+                /** @description The attachment's ID, as the draft lists it. */
+                attachment: components["parameters"]["DraftAttachment"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The attachment, with the link that downloads it. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttachmentLink"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    removeDraftAttachment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The mailbox's ID. */
+                mailbox: components["parameters"]["Mailbox"];
+                /** @description The draft's ID. */
+                draft: components["parameters"]["Draft"];
+                /** @description The attachment's ID, as the draft lists it. */
+                attachment: components["parameters"]["DraftAttachment"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The draft, without the attachment. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Draft"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     listAlerts: {

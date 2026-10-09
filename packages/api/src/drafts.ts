@@ -9,6 +9,7 @@ import {
   AlreadyDecided,
   AlreadyWaiting,
   type Approval,
+  approvedOutcomes,
   approvalOf,
   approve,
   askToSend,
@@ -20,6 +21,7 @@ import {
   draftToSend,
   findApproval,
   findDraft,
+  forwardedId,
   NoRecipient,
   NotUndoable,
   NotWaitingForLimit,
@@ -32,6 +34,7 @@ import {
   unsendableFrom,
 } from "./drafting.ts";
 import { attachmentLinks } from "./attachments.ts";
+import { draftPrefix } from "./uploads-bucket.ts";
 import { fromStanding, groupsSentAsBy } from "./group-mail.ts";
 import { findMessage } from "./mail.ts";
 import { mailboxFor } from "./access.ts";
@@ -79,7 +82,7 @@ export const createDraft: OperationHandler = async (event, deployment, actor) =>
       bcc: given.bcc ?? [],
       subject: given.subject ?? `Fwd: ${message.subject.replace(/^(\s*fwd?\s*:\s*)+/i, "")}`,
       text: given.text ?? forwardedText(message),
-      attachments: message.attachments,
+      attachments: message.attachments.map((attachment, place) => ({ id: forwardedId(place), ...attachment, source: "forwarded" as const, place })),
     };
   } else if (typeof body.answers === "string") {
     const original = await findMessage(deployment.table, deployment.mailBucket, mailbox.id, body.answers);
@@ -217,7 +220,11 @@ export const deleteDraft: OperationHandler = async (event, deployment, actor) =>
   const mailbox = await mailboxFor(event, deployment, actor!, "draft");
   if ("statusCode" in mailbox) return mailbox;
   try {
-    const draft = await deleteStoredDraft(deployment.table, { mailbox: mailbox.id, id: event.pathParameters?.draft ?? "", by: actor!.id });
+    const id = event.pathParameters?.draft ?? "";
+    const draft = await deleteStoredDraft(deployment.table, { mailbox: mailbox.id, id, by: actor!.id });
+    // Its uploaded files go with it, those of uploads not completed too, and a deletion that
+    // stopped before they went finishes when it is asked again.
+    if (id !== "") await deployment.uploads.remove(draftPrefix(mailbox.id, id));
     if (draft === undefined) return noDraft(event);
     return { statusCode: 200, body: draft satisfies components["schemas"]["Draft"] };
   } catch (error) {
@@ -285,15 +292,6 @@ export const listApprovals: OperationHandler = async (_event, deployment, actor)
 };
 
 const approvedRefusal = (error: AlreadyApproved) => refusal(409, `The draft ${approvedOutcomes[error.state]}, so it can't change or be sent again. Write a new draft instead.`);
-
-// What became of an approved draft, by its send's state.
-const approvedOutcomes: Partial<Record<AlreadyApproved["state"], string>> = {
-  approved: "is about to be sent",
-  waitingForLimit: "waits for the agent's send limits",
-  sending: "is being sent",
-  sent: "was sent",
-  unclear: "may have been sent, which a human checks",
-};
 
 export const sendApproval: OperationHandler = async (event, deployment, actor) => {
   const approval = await decidable(event, deployment, actor!);

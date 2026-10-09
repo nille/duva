@@ -34,7 +34,13 @@ export type Draft = components["schemas"]["Draft"];
 export type Approval = components["schemas"]["Approval"];
 export type SendStatus = components["schemas"]["SendStatus"];
 type Edits = components["schemas"]["Edits"];
-type DraftContent = Omit<Draft, "id" | "updatedAt" | "updatedBy" | "send">;
+type Attachment = components["schemas"]["Attachment"];
+type DraftAttachment = components["schemas"]["DraftAttachment"];
+/** A draft's attachment as Duva keeps it: a forwarded one with its place among the attachments of the message it forwards. */
+export type DraftFile = DraftAttachment & { place?: number };
+/** Drafts written before their attachments had IDs list those of the message they forward, all of them in order. */
+type StoredFile = DraftFile | Attachment;
+type DraftContent = Omit<Draft, "id" | "updatedAt" | "updatedBy" | "send" | "attachments"> & { attachments?: DraftFile[] };
 /**
  * Where a draft's send stands as stored, with the actor who asked to send it if it needs no
  * approval, and when they asked, which sends held while an agent is paused are released in, and
@@ -46,7 +52,7 @@ type StoredSend = SendStatus & { by?: string; askedAt?: string; pastLimit?: bool
  * retries, and the IDs of the approvals it asked for, so erasure finds them. Drafts written before
  * approvals were listed list none, and erasure finds theirs in the mailbox's change feed.
  */
-type StoredDraft = Omit<Draft, "send"> & { send?: StoredSend; version: number; approvals?: string[] };
+type StoredDraft = Omit<Draft, "send" | "attachments"> & { attachments?: StoredFile[]; send?: StoredSend; version: number; approvals?: string[] };
 /**
  * An approval as stored, with the position of its decision in the mailbox's change feed once it is
  * decided, and of its decisions before that, undone or rejected before it was sent after all, so
@@ -89,17 +95,27 @@ export class AlreadyWaiting extends Error {}
 
 /** The draft was approved, so it is sent or being sent, and can't change. */
 export class AlreadyApproved extends Error {
-  readonly state: SendStatus["state"];
-  constructor(state: SendStatus["state"]) {
+  readonly state: ApprovedState;
+  constructor(state: ApprovedState) {
     super(`The draft is ${state}.`);
     this.state = state;
   }
 }
 
 // The states a send reaches once its approver approved it, after which the draft never changes.
-const approvedStates: SendStatus["state"][] = ["approved", "waitingForLimit", "sending", "sent", "unclear"];
+type ApprovedState = "approved" | "waitingForLimit" | "sending" | "sent" | "unclear";
+const approvedStates: SendStatus["state"][] = ["approved", "waitingForLimit", "sending", "sent", "unclear"] satisfies ApprovedState[];
+/** What became of an approved draft, by its send's state, as a refusal says it. */
+export const approvedOutcomes: Record<ApprovedState, string> = {
+  approved: "is about to be sent",
+  waitingForLimit: "waits for the agent's send limits",
+  sending: "is being sent",
+  sent: "was sent",
+  unclear: "may have been sent, which a human checks",
+};
+
 const refuseApproved = (draft: Pick<Draft, "send">) => {
-  if (draft.send !== undefined && approvedStates.includes(draft.send.state)) throw new AlreadyApproved(draft.send.state);
+  if (draft.send !== undefined && approvedStates.includes(draft.send.state)) throw new AlreadyApproved(draft.send.state as ApprovedState);
 };
 
 /** How long an approver's note on a rejection is at most. */
@@ -116,13 +132,13 @@ export class AlreadyDecided extends Error {
 
 /** Writes a new draft in the mailbox, on behalf of the actor `by`. */
 export async function addDraft(table: Table, { mailbox, by, content }: { mailbox: string; by: string; content: DraftContent }): Promise<Draft> {
-  const draft: Draft = { id: randomUUID(), ...content, updatedAt: new Date().toISOString(), updatedBy: by };
+  const draft = { id: randomUUID(), ...content, updatedAt: new Date().toISOString(), updatedBy: by };
   await recordChanges(table, mailboxFeed(mailbox), {
     by,
     changes: [{ type: "draftWritten", draft: draft.id }],
     items: [{ Put: { TableName: table.name, Item: { ...draftKey(mailbox, draft.id), ...draft, version: 1, approvals: [] }, ...isNew } }],
   });
-  return draft;
+  return draftOf(draft);
 }
 
 /** The draft with the ID in the mailbox, or undefined if it has none. */
@@ -131,11 +147,24 @@ export async function findDraft(table: Table, mailbox: string, id: string): Prom
   return stored && draftOf(stored);
 }
 
-/** The draft as the sender sends it: with the actor who asked to send it, if its send needs no approval. */
-export async function draftToSend(table: Table, mailbox: string, id: string): Promise<(Draft & { send?: StoredSend }) | undefined> {
+/**
+ * The draft as the sender sends it: with the actor who asked to send it, if its send needs no
+ * approval, and its attachments as Duva keeps them.
+ */
+export async function draftToSend(table: Table, mailbox: string, id: string): Promise<(Draft & { send?: StoredSend; files: DraftFile[] }) | undefined> {
   const stored = await storedDraft(table, mailbox, id);
-  return stored && { ...draftOf(stored), ...(stored.send !== undefined && { send: stored.send }) };
+  return stored && { ...draftOf(stored), ...(stored.send !== undefined && { send: stored.send }), files: filesOf(stored.attachments) };
 }
+
+/** The draft's attachments as Duva keeps them, with the IDs and places of those of drafts from before attachments had IDs. */
+export const filesOf = (stored: StoredFile[] | undefined): DraftFile[] =>
+  (stored ?? []).map((file, index) => ("id" in file ? file : { id: forwardedId(index), ...file, source: "forwarded", place: index }));
+
+/** The ID of the forwarded message's attachment at the place, as a draft lists it. */
+export const forwardedId = (place: number) => `forwarded-${place}`;
+
+/** How many files a draft carries at most, which keeps it within what DynamoDB stores in one item. */
+export const maxFiles = 100;
 
 async function storedDraft(table: Table, mailbox: string, id: string): Promise<StoredDraft | undefined> {
   const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: draftKey(mailbox, id), ConsistentRead: true }));
@@ -166,9 +195,68 @@ export async function draftsIn(table: Table, mailbox: string): Promise<Draft[]> 
  * withdraws it, so the approver never decides on text they didn't see. Throws AlreadyApproved
  * once it was approved. Returns undefined if the mailbox has no such draft.
  */
-export async function changeDraft(
+export function changeDraft(
   table: Table,
   { mailbox, id, by, changes }: { mailbox: string; id: string; by: string; changes: Partial<Pick<Draft, "from" | "to" | "cc" | "bcc" | "subject" | "text">> },
+): Promise<Draft | undefined> {
+  return rewrite(table, { mailbox, id, by }, () => Object.fromEntries(Object.entries(changes).filter(([, value]) => value !== undefined)));
+}
+
+/** The draft already carries as many files as it can. */
+export class TooManyFiles extends Error {}
+
+/** The draft already carries the file. */
+export class AlreadyAttached extends Error {}
+
+/**
+ * Attaches the uploaded file to the draft, on behalf of the actor `by`, with the `items` written
+ * too, as a change of the draft is. Throws AlreadyApproved once it was approved, and TooManyFiles
+ * when it carries as many as it can. Returns undefined if the mailbox has no such draft.
+ */
+export function attachFile(table: Table, { mailbox, id, by, file, items }: { mailbox: string; id: string; by: string; file: DraftFile; items: TransactItem[] }): Promise<Draft | undefined> {
+  return rewrite(
+    table,
+    { mailbox, id, by },
+    (draft) => {
+      const files = filesOf(draft.attachments);
+      if (files.some(({ id }) => id === file.id)) throw new AlreadyAttached();
+      if (files.length >= maxFiles) throw new TooManyFiles();
+      return { attachments: [...files, file] };
+    },
+    items,
+  );
+}
+
+/** The draft has no such attachment. */
+export class NoSuchAttachment extends Error {}
+
+/**
+ * Takes the attachment off the draft, on behalf of the actor `by`, as a change of the draft is.
+ * Throws AlreadyApproved once it was approved, and NoSuchAttachment if the draft doesn't carry it.
+ * Returns the draft and the attachment taken off, or undefined if the mailbox has no such draft.
+ */
+export async function removeAttachment(table: Table, { mailbox, id, by, attachment }: { mailbox: string; id: string; by: string; attachment: string }): Promise<{ draft: Draft; removed: DraftFile } | undefined> {
+  let removed: DraftFile | undefined;
+  const draft = await rewrite(table, { mailbox, id, by }, (stored) => {
+    const files = filesOf(stored.attachments);
+    removed = files.find((file) => file.id === attachment);
+    if (removed === undefined) throw new NoSuchAttachment();
+    return { attachments: files.filter((file) => file !== removed) };
+  });
+  return draft && { draft, removed: removed! };
+}
+
+/**
+ * Writes the draft with the `change` made to it as read, on behalf of the actor `by`, with the
+ * `items` written too. If it waits for an approval, the change withdraws it, so the approver never
+ * decides on a draft they didn't see. Throws AlreadyApproved once it was approved. Returns
+ * undefined if the mailbox has no such draft.
+ */
+function rewrite(
+  table: Table,
+  { mailbox, id, by }: { mailbox: string; id: string; by: string },
+  change: (draft: StoredDraft) => Partial<StoredDraft>,
+  items: TransactItem[] = [],
 ): Promise<Draft | undefined> {
   return retried(async () => {
     const draft = await storedDraft(table, mailbox, id);
@@ -177,18 +265,17 @@ export async function changeDraft(
     const waiting = draft.send?.state === "waiting" ? draft.send : undefined;
     const changed: StoredDraft = {
       ...draft,
-      ...Object.fromEntries(Object.entries(changes).filter(([, value]) => value !== undefined)),
+      ...change(draft),
       updatedAt: new Date().toISOString(),
       updatedBy: by,
       send: waiting ? { approval: waiting.approval, state: "withdrawn" } : draft.send,
       version: draft.version + 1,
     };
-    const items: TransactItem[] = [{ Put: { TableName: table.name, Item: { ...draftKey(mailbox, id), ...changed }, ...unchanged(draft) } }];
     const withdrawn = await withdrawing(table, id, waiting);
     await recordChanges(table, mailboxFeed(mailbox), {
       by,
       changes: [{ type: "draftChanged", draft: id }, ...withdrawn.changes],
-      items: [...items, ...withdrawn.items],
+      items: [{ Put: { TableName: table.name, Item: { ...draftKey(mailbox, id), ...changed }, ...unchanged(draft) } }, ...withdrawn.items, ...items],
     });
     return draftOf(changed);
   });
@@ -426,8 +513,9 @@ export async function approve(table: Table, { approval, by, edits }: { approval:
 }
 
 /** Whether the draft is as the agent asked for it to be sent with the approval. */
-export const asAsked = (draft: Pick<Draft, "from" | "to" | "cc" | "bcc" | "subject" | "text">, approval: Approval) => {
-  const fields = ({ from, to, cc = [], bcc = [], subject, text }: Pick<Draft, "from" | "to" | "cc" | "bcc" | "subject" | "text">) => JSON.stringify([from, [to, cc, bcc].map((list) => list.map(({ address }) => address)), subject, text]);
+export const asAsked = (draft: Pick<StoredDraft, "from" | "to" | "cc" | "bcc" | "subject" | "text" | "attachments">, approval: Approval) => {
+  const fields = ({ from, to, cc = [], bcc = [], subject, text, attachments }: Pick<StoredDraft, "from" | "to" | "cc" | "bcc" | "subject" | "text" | "attachments">) =>
+    JSON.stringify([from, [to, cc, bcc].map((list) => list.map(({ address }) => address)), subject, text, filesOf(attachments).map(({ id }) => id)]);
   return fields(draft) === fields(approval.draft);
 };
 
@@ -683,7 +771,7 @@ const editsOf = ({ to, subject, text }: Edits): Edits => ({
 });
 
 // Drafts and approvals stored before Cc and Bcc existed have neither.
-const approvalDraftOf = ({ id, answers, forwards, thread, from, to, cc = [], bcc = [], subject, text, attachments }: Approval["draft"]): Approval["draft"] => ({
+const approvalDraftOf = ({ id, answers, forwards, thread, from, to, cc = [], bcc = [], subject, text, attachments }: Omit<Approval["draft"], "attachments"> & { attachments?: StoredFile[] }): Approval["draft"] => ({
   id,
   ...(answers !== undefined && { answers }),
   ...(forwards !== undefined && { forwards }),
@@ -694,10 +782,10 @@ const approvalDraftOf = ({ id, answers, forwards, thread, from, to, cc = [], bcc
   bcc: bcc.map(addressOf),
   subject,
   text,
-  ...(attachments !== undefined && { attachments: attachments.map(attachmentOf) }),
+  ...(attachments !== undefined && { attachments: filesOf(attachments).map(attachmentOf) }),
 });
 
-const attachmentOf = ({ name, type, size }: components["schemas"]["Attachment"]) => ({ ...(name !== undefined && { name }), type, size });
+const attachmentOf = ({ id, name, type, size, source }: DraftFile): DraftAttachment => ({ id, ...(name !== undefined && { name }), type, size, source });
 
 const addressOf = ({ name, address }: components["schemas"]["EmailAddress"]) => (name === undefined ? { address } : { name, address });
 
@@ -713,7 +801,7 @@ const draftOf = ({ id, answers, forwards, thread, from, to, cc = [], bcc = [], s
   bcc: bcc.map(addressOf),
   subject,
   text,
-  ...(attachments !== undefined && { attachments: attachments.map(attachmentOf) }),
+  ...(attachments !== undefined && { attachments: filesOf(attachments).map(attachmentOf) }),
   updatedAt,
   ...(updatedBy !== undefined && { updatedBy }),
   ...(send !== undefined && { send: sendOf(send) }),
