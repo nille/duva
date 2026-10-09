@@ -99,6 +99,13 @@ _Avoid_: owner (for agents), operator, creator
 **Disclosure**:
 The mark on mail an agent sends: always a header, even after a human approved it, and by default a visible line naming the agent and whom it acts for, its sponsor. The sponsor can turn the line off for that agent. Disclosure follows the actor who sends: a draft an agent wrote that its sponsor sends carries none.
 
+**Attachment**:
+A file a message carries. A draft takes attachments its writer uploads, or those of the mail it forwards.
+
+**Linked file**:
+An attachment sent as a link instead of inside the message: Duva links the largest attachments when carrying them all would make the message more than 10 MB, and the sender may link any one. The message lists each with its size and the date its link stops working, 30 days after the send unless the sender chose 7 days or a year. Anyone with the link opens a page with the file and a Download button. The sender sees how often each was downloaded, and Coo tells them the first time. Stopping sharing, undoing the send or erasing the sent mail ends the link at once and deletes the file.
+_Avoid_: share, transfer, large attachment
+
 **Send limit**:
 How much an agent may send per hour, and to how many new recipients per day: 100 and 50 to start. A sponsor sets their agent's limits up to the organization's cap, which admins set. Mail over the limit waits and goes out by itself as the limit allows, or when the sponsor sends it now. Humans have none.
 
