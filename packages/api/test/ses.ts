@@ -158,7 +158,7 @@ export function sesReceiving({ verified, region, buckets, functions }: { verifie
         const recipients = accepted.filter((recipient) => matching(recipient).includes(rule));
         if (recipients.length === 0) continue;
         const verdict = (given: SESReceiptStatus["status"] | undefined): SESReceiptStatus => ({ status: rule.ScanEnabled ? (given ?? "PASS") : "DISABLED" });
-        const stored = rule.ScanEnabled && headed ? withVerdicts(bytes, parsed, envelope, verdicts) : bytes;
+        const stored = rule.ScanEnabled && headed ? withVerdicts(bytes, parsed, envelope, verdicts, { region, messageId, recipients, at }) : bytes;
         for (const { S3Action, LambdaAction } of rule.Actions ?? []) {
           if (S3Action) await buckets.get(S3Action.BucketName!)!.put(`${S3Action.ObjectKeyPrefix ?? ""}${messageId}`, stored);
           if (LambdaAction) {
@@ -212,19 +212,31 @@ export function sesReceiving({ verified, region, buckets, functions }: { verifie
 }
 
 /**
- * The message as SES stores it when its rule scans: headed by its envelope sender, its verdicts,
- * and an Authentication-Results with a result for each DKIM signature, which names it by its domain.
+ * The message as SES stores it when its rule scans: headed by its envelope sender, the Received of
+ * SES's own server, its verdicts, and an Authentication-Results with a result for each DKIM
+ * signature, which names it by its domain. The sender's server is at 192.0.2.25.
  */
-function withVerdicts(raw: Uint8Array, parsed: Awaited<ReturnType<typeof PostalMime.parse>>, envelope: Envelope, verdicts: Verdicts): Uint8Array {
+function withVerdicts(
+  raw: Uint8Array,
+  parsed: Awaited<ReturnType<typeof PostalMime.parse>>,
+  envelope: Envelope,
+  verdicts: Verdicts,
+  { region, messageId, recipients, at }: { region: string; messageId: string; recipients: string[]; at: Date },
+): Uint8Array {
   const result = (status: SESReceiptStatus["status"] = "PASS") => ({ PASS: "pass", FAIL: "fail", GRAY: "neutral", PROCESSING_FAILED: "temperror", DISABLED: "none" })[status];
   const signers = parsed.headers.filter(({ key }) => key === "dkim-signature").map(({ value }) => /(?:^|;)\s*d\s*=\s*([^;\s]+)/.exec(value)?.[1]?.toLowerCase() ?? "");
   const fromDomain = parsed.from?.address?.split("@")[1] ?? "";
   const header = [
     `Return-Path: <${envelope.from}>`,
+    "Received: from mail.example.net (mail.example.net [192.0.2.25])",
+    ` by inbound-smtp.${region}.amazonaws.com with SMTP id ${messageId}`,
+    ` for ${recipients.join(", ")};`,
+    ` ${at.toUTCString().replace(/GMT$/, "+0000 (UTC)")}`,
     `X-SES-Spam-Verdict: ${verdicts.spam ?? "PASS"}`,
     `X-SES-Virus-Verdict: ${verdicts.virus ?? "PASS"}`,
+    `Received-SPF: ${result(verdicts.spf)} (spfCheck: domain of ${envelope.from.split("@")[1] ?? ""} ${verdicts.spf === undefined || verdicts.spf === "PASS" ? "designates" : "does not designate"} 192.0.2.25 as permitted sender) client-ip=192.0.2.25; envelope-from=${envelope.from}; helo=mail.example.net;`,
     "Authentication-Results: amazonses.com;",
-    ` spf=pass smtp.mailfrom=${envelope.from};`,
+    ` spf=${result(verdicts.spf)} smtp.mailfrom=${envelope.from};`,
     ...(signers.length === 0 ? [" dkim=none;"] : signers.map((domain) => ` dkim=${result(verdicts.dkim?.[domain])} header.i=@${domain};`)),
     ` dmarc=${result(verdicts.dmarc)} header.from=${fromDomain};`,
     "",

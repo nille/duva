@@ -629,9 +629,23 @@ export const strings = {
     removedTrackers,
     showQuoted: "Show quoted text",
     hideQuoted: "Hide quoted text",
+    messageMenu: "Message actions",
+    showHeaders: "Show headers",
     gone: "This thread is no longer in your mailbox.",
     failed: "Duva couldn't open this thread. Try again in a moment.",
     unreachable: "Duva couldn't be reached, so the thread isn't shown. Check your connection and try again.",
+  },
+
+  headers: {
+    title: "Headers",
+    lead: "Every header field as the message came, from the top, each on one line.",
+    decoded: "Decoded",
+    copy: "Copy",
+    copied: "Copied",
+    copyFailed: "The browser didn't allow copying. Select the text and copy it instead.",
+    done: "Done",
+    failed: "Duva couldn't read the message's headers. Try again in a moment.",
+    unreachable: "Duva couldn't be reached, so the headers aren't shown. Check your connection and try again.",
   },
 
   settings: {

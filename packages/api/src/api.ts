@@ -37,6 +37,7 @@ import {
   removeMailboxLabelPrompt,
 } from "./mailboxes.ts";
 import type { Deployment } from "./deployment.ts";
+import { getMessageHeaders } from "./message-headers.ts";
 import { type Actor, actorOf } from "./organization.ts";
 import { getDomainLogo, getMailboxLogo, removeDomainLogo, removeLogoCertificate, removeMailboxLogo, setDomainLogo, setLogoCertificate, setMailboxLogo } from "./own-logos.ts";
 import { changePreferences, getPreferences } from "./preferences.ts";
@@ -144,6 +145,7 @@ export const handlers: Record<OperationId, OperationHandler> = {
   setSenderDelivery,
   removeSenderDelivery,
   getAttachment,
+  getMessageHeaders,
   createDraft,
   listDrafts,
   getDraft,

@@ -2496,6 +2496,35 @@ export const operations = [
     ]
   },
   {
+    "operationId": "getMessageHeaders",
+    "method": "get",
+    "path": "/mailboxes/{mailbox}/messages/{message}/headers",
+    "routeKey": "GET /mailboxes/{mailbox}/messages/{message}/headers",
+    "summary": "Read a message's full header block, every field as it came, in order.",
+    "description": "The fields come from the stored message, unfolded, with those SES added as it received it: its spam and virus verdicts, Received-SPF, Authentication-Results and a Received. A message the mailbox sent has the fields Duva wrote, under the Message-ID SES gave it. A value with encoded words also comes decoded. Only those who can read the mailbox read them: its owner and the agents they give sponsor access.",
+    "signIn": true,
+    "command": [
+      "messages",
+      "headers"
+    ],
+    "options": [
+      {
+        "name": "mailbox",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The mailbox's ID."
+      },
+      {
+        "name": "message",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The message's ID."
+      }
+    ]
+  },
+  {
     "operationId": "listDrafts",
     "method": "get",
     "path": "/mailboxes/{mailbox}/drafts",

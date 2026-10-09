@@ -2639,6 +2639,40 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+  /mailboxes/{mailbox}/messages/{message}/headers:
+    get:
+      operationId: getMessageHeaders
+      summary: Read a message's full header block, every field as it came, in order.
+      description: >
+        The fields come from the stored message, unfolded, with those SES added
+        as it received it: its spam and virus verdicts, Received-SPF,
+        Authentication-Results and a Received. A message the mailbox sent has
+        the fields Duva wrote, under the Message-ID SES gave it. A value with
+        encoded words also comes decoded. Only those who
+        can read the mailbox read them: its owner and the agents they give
+        sponsor access.
+      x-cli-command: messages headers
+      parameters:
+        - $ref: "#/components/parameters/Mailbox"
+        - name: message
+          in: path
+          required: true
+          description: The message's ID.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The message's header fields.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageHeaders"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /mailboxes/{mailbox}/drafts:
     post:
       operationId: createDraft
@@ -7377,6 +7411,33 @@ components:
         size:
           type: integer
           description: The attachment's size in bytes, decoded.
+    MessageHeaders:
+      type: object
+      additionalProperties: false
+      required: [headers]
+      properties:
+        headers:
+          type: array
+          description: The message's header fields from the top, so the ones added on its way, as each Received, come before those its sender wrote.
+          items:
+            $ref: "#/components/schemas/HeaderField"
+    HeaderField:
+      type: object
+      additionalProperties: false
+      required: [name, value]
+      properties:
+        name:
+          type: string
+          description: The field's name, as written.
+          examples: ["Subject"]
+        value:
+          type: string
+          description: The field's value as it came, unfolded onto one line.
+          examples: ["=?UTF-8?Q?R=C3=A4kning?="]
+        decoded:
+          type: string
+          description: The value with its encoded words decoded (RFC 2047), if it has any.
+          examples: ["Räkning"]
     AttachmentLink:
       type: object
       additionalProperties: false

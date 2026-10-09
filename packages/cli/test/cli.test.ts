@@ -648,7 +648,7 @@ test("login takes --name, --mailbox and --wants only with --agent", async () => 
   expect(errorIn(result.stderr)).toMatch(/--agent/);
 });
 
-test("an agent with read sponsor access catches up on its sponsor's mailbox, lists its Inbox and reads the mail", async () => {
+test("an agent with read sponsor access catches up on its sponsor's mailbox, lists its Inbox and reads the mail and its headers", async () => {
   const machine = await newMachine();
   const { duva, ada, mailbox, asAgent } = await agentInSponsorsMailbox(machine, "read", { screener: false });
   const { position } = JSON.parse((await machine.duva("mailboxes", "changes", "--mailbox", mailbox.id)).stdout) as { position: number };
@@ -662,6 +662,8 @@ test("an agent with read sponsor access catches up on its sponsor's mailbox, lis
   const threads = await machine.duva("threads", "list", "--mailbox", mailbox.id, asAgent);
   const { thread } = (JSON.parse(changes.stdout) as { changes: { thread: string }[] }).changes[0]!;
   const read = await machine.duva("threads", "get", "--mailbox", mailbox.id, "--thread", thread, asAgent);
+  const { message } = (JSON.parse(changes.stdout) as { changes: { message: string }[] }).changes[0]!;
+  const headers = await machine.duva("messages", "headers", "--mailbox", mailbox.id, "--message", message, asAgent);
 
   expect(mailbox).toEqual({ id: expect.any(String), kind: "personal", owner: ada, defaultAddress: "ada@example.com", addresses: ["ada@example.com"] });
   expect(JSON.parse(mailboxes.stdout)).toEqual({ mailboxes: [{ ...mailbox, groups: [], sponsorAccess: "read" }] });
@@ -672,6 +674,13 @@ test("an agent with read sponsor access catches up on its sponsor's mailbox, lis
     id: thread,
     messages: [{ from: { name: "Grace", address: "grace@example.org" }, recipient: "ada+cli@example.com", plusTag: "cli", text: "Hi Ada." }],
   });
+  expect(headers.exitCode).toBe(0);
+  expect((JSON.parse(headers.stdout) as { headers: { name: string; value: string }[] }).headers.slice(-4)).toEqual([
+    { name: "From", value: "Grace <grace@example.org>" },
+    { name: "To", value: "ada+cli@example.com" },
+    { name: "Subject", value: "Hello" },
+    { name: "Date", value: "Sat, 03 Oct 2026 10:00:00 +0000" },
+  ]);
 });
 
 test("a human lists and marks threads across All mailboxes with --mailbox all, and a command that works in one mailbox at a time says to give one", async () => {

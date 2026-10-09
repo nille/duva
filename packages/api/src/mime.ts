@@ -3,7 +3,7 @@
 // sends itself: a text part, followed by any attachments a forward carries.
 import { randomUUID } from "node:crypto";
 import { convert } from "html-to-text";
-import PostalMime, { type Address } from "postal-mime";
+import PostalMime, { type Address, decodeWords } from "postal-mime";
 import type { components } from "@duva/openapi";
 
 type EmailAddress = components["schemas"]["EmailAddress"];
@@ -125,6 +125,31 @@ export const searchableText = ({ text, textFromHtml, html }: ParsedMail) =>
   textFromHtml && html !== undefined
     ? convert(html, { wordwrap: false, selectors: [{ selector: "img", format: "skip" }, { selector: "a", options: { ignoreHref: true } }] }).replace(/\n+$/, "")
     : text;
+
+/**
+ * The fields of the raw message's header, from the top, each unfolded onto one line (RFC 5322,
+ * section 2.2.3), and decoded too where it has encoded words (RFC 2047). The header is read as
+ * UTF-8 (RFC 6532), or as Latin-1 where it isn't, so no byte is lost.
+ */
+export function headerFields(raw: Uint8Array): components["schemas"]["HeaderField"][] {
+  // Latin-1 keeps each byte as one character, so the header's end is found at its byte.
+  const latin1 = Buffer.from(raw).toString("latin1");
+  const end = latin1.search(/\r?\n\r?\n/);
+  const head = end < 0 ? raw : raw.subarray(0, end);
+  let text: string;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true }).decode(head);
+  } catch {
+    text = end < 0 ? latin1 : latin1.slice(0, end);
+  }
+  return text.split(/\r?\n(?![ \t])/).flatMap((field) => {
+    const colon = field.indexOf(":");
+    if (colon <= 0) return [];
+    const value = field.slice(colon + 1).replace(/\r?\n(?=[ \t])/g, "").trim();
+    const decoded = decodeWords(value);
+    return [{ name: field.slice(0, colon).trim(), value, ...(decoded !== value && { decoded }) }];
+  });
+}
 
 /** A message Duva sends. */
 export interface OutgoingMail {

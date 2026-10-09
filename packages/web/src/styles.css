@@ -6425,6 +6425,217 @@ mark {
   }
 }
 
+/*
+ * A message's menu: a quiet key at the letter's head, its sheet hanging from it to the left, as
+ * Remind me's does, with each item a line taking the ink wash on hover.
+ */
+.letter-menu {
+  align-self: center;
+  margin-right: calc(-1 * var(--space-2));
+}
+
+.letter-menu-button {
+  width: 1.875rem;
+  padding: 0;
+  justify-content: center;
+}
+
+/* Above the phone's action bar, which a short letter's menu would otherwise fall behind. */
+.letter-menu-panel {
+  z-index: 3;
+  right: 0;
+  left: auto;
+  min-width: 12rem;
+  padding: var(--space-2);
+}
+
+.letter-menu-item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  min-height: 2.25rem;
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: var(--radius);
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.letter-menu-item:hover {
+  background: var(--ink-wash);
+}
+
+.letter-menu-item:active {
+  background: var(--field);
+}
+
+.letter-menu-item:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: -2px;
+}
+
+/*
+ * A message's headers, a sheet over the page as the ? sheet is: its title and tools, then each
+ * field a line parted by seams, the names in one column so every value starts level, and a value
+ * that runs long wrapping under itself. Only the fields scroll, so Copy and Done stay in reach.
+ */
+.headers-sheet {
+  width: min(64rem, calc(100vw - 2 * var(--space-4)));
+  max-height: calc(100dvh - 2 * var(--space-6));
+  margin: auto;
+  padding: var(--space-5) var(--space-6) 0;
+  border: 0;
+  border-radius: var(--radius-sheet);
+  background: var(--raise);
+  color: var(--ink);
+  box-shadow: var(--lift);
+}
+
+.headers-sheet[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.headers-sheet::backdrop {
+  background: var(--scrim);
+}
+
+.headers-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.headers-head h2 {
+  font: 700 var(--text-xl) / 1.05 var(--grotesk);
+  letter-spacing: -0.03em;
+}
+
+.headers-tools {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-right: calc(-1 * var(--space-3));
+}
+
+.headers-lead {
+  margin-top: var(--space-2);
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+}
+
+.headers-sheet > .field-error,
+.headers-sheet > .notice {
+  margin-top: var(--space-3);
+}
+
+.headers-skeleton {
+  margin: var(--space-4) 0 var(--space-5);
+}
+
+.headers-list {
+  display: grid;
+  grid-template-columns: fit-content(15rem) minmax(0, 1fr);
+  column-gap: var(--space-4);
+  min-height: 0;
+  margin: var(--space-4) calc(-1 * var(--space-6)) 0;
+  padding: 0 var(--space-6) var(--space-5);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  font-variant-numeric: tabular-nums;
+}
+
+.header-field {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  padding: 0.3rem 0;
+  box-shadow: inset 0 1px 0 var(--seam);
+}
+
+.header-field:first-child {
+  box-shadow: none;
+}
+
+.header-field dt {
+  color: var(--ink-2);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.header-field dd {
+  display: grid;
+  gap: 0.1rem;
+  margin: 0;
+}
+
+.header-value {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  tab-size: 2;
+}
+
+.header-decoded {
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+
+.header-decoded-name {
+  color: var(--ink-3);
+  font-size: var(--text-xs);
+  font-weight: 500;
+}
+
+/* On a phone the headers take the whole screen, each name over its value. */
+@media (max-width: 48rem) {
+  .headers-sheet {
+    width: 100%;
+    max-width: none;
+    height: 100dvh;
+    max-height: none;
+    margin: 0;
+    padding: var(--space-4) 1.4rem 0;
+    border-radius: 0;
+  }
+
+  .headers-list {
+    grid-template-columns: minmax(0, 1fr);
+    margin-inline: -1.4rem;
+    padding-inline: 1.4rem;
+  }
+
+  .header-field {
+    padding: 0.45rem 0;
+  }
+
+  .headers-tools {
+    margin-right: 0;
+  }
+
+  .headers-tools kbd {
+    display: none;
+  }
+
+  .letter-menu {
+    margin-left: auto;
+  }
+
+  /* The menu rises from the foot as every picker does on a phone, the width of the screen. */
+  .letter-menu .letter-menu-panel {
+    left: var(--space-3);
+    right: var(--space-3);
+    width: auto;
+  }
+}
+
 /* Phones: the columns stack, the message first and the draft under it. */
 @media (max-width: 48rem) {
   /* A box takes a fingertip on a phone, and its row's line stays level with it. */

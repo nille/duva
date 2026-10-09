@@ -10,6 +10,7 @@ import type { components } from "@duva/openapi";
 import { Composer, startDraft } from "./compose.tsx";
 import { PreferencesContext, useDates } from "./dates.ts";
 import { DesignedBody } from "./designed.tsx";
+import { HeadersSheet } from "./headers.tsx";
 import { Addresses, Attachments, Field, nameOf, SenderMark, Time } from "./mail-parts.tsx";
 import { changeFor, type Done, type Label, organize, OrganizeActions, ownLabelsOf, SessionEnded } from "./organize.tsx";
 import { now, useReadMarks } from "./read-marks.ts";
@@ -104,6 +105,8 @@ export function ThreadView({
   const [downloading, setDownloading] = useState<{ message: string; index: number } | "failed">();
   // Whether the phone's action bar shows the rest of the thread's actions.
   const [more, setMore] = useState(false);
+  // The message whose headers are open in their sheet, if one's are.
+  const [headersOf, setHeadersOf] = useState<string>();
   const leaving = useRef(false);
   // Every request to mark the thread read still on its way, which marking it unread waits for, so the human's choice lands last.
   const markingRead = useRef<Promise<unknown>>(Promise.resolve());
@@ -428,6 +431,7 @@ export function ThreadView({
                       fresh={reading.fresh.has(message.id)}
                       downloading={typeof downloading === "object" && downloading.message === message.id ? downloading.index : undefined}
                       onDownload={(index) => void download(message, index)}
+                      onShowHeaders={() => setHeadersOf(message.id)}
                     >
                       {isNewest && !composing && (
                         <div className="letter-actions">
@@ -461,6 +465,7 @@ export function ThreadView({
                 />
             </div>
           )}
+          {headersOf !== undefined && <HeadersSheet client={client} mailbox={mailbox.id} message={headersOf} onClose={() => setHeadersOf(undefined)} onSignedOut={onSignedOut} />}
           {!composing && (
             <div className="thread-bar" role="toolbar" aria-label={strings.thread.bar}>
               {newest !== undefined && (
@@ -650,6 +655,7 @@ export function Letter({
   fresh,
   downloading,
   onDownload,
+  onShowHeaders,
   children,
 }: LetterProps & {
   marked?: boolean;
@@ -657,6 +663,8 @@ export function Letter({
   fresh: boolean;
   downloading?: number;
   onDownload: (index: number) => void;
+  /** Opens the message's headers, which its menu offers when given. */
+  onShowHeaders?: () => void;
   /** What the letter ends in, as the newest's replies. */
   children?: ReactNode;
 }) {
@@ -700,6 +708,7 @@ export function Letter({
             </span>
           )}
         </p>
+        {onShowHeaders !== undefined && <LetterMenu onShowHeaders={onShowHeaders} />}
       </header>
       <dl className="letter-fields">
         <Field label={strings.thread.to}>
@@ -738,6 +747,76 @@ export function Letter({
       {message.attachments.length > 0 && <Attachments list={message.attachments} onDownload={onDownload} downloading={downloading} />}
       {children}
     </article>
+  );
+}
+
+/**
+ * The message's menu, a quiet key at the letter's head that opens Show headers. Escape or a click
+ * elsewhere closes it, and picking gives the focus back to its key, where the sheet returns it.
+ */
+function LetterMenu({ onShowHeaders }: { onShowHeaders: () => void }) {
+  const [open, setOpen] = useState(false);
+  const menuId = useId();
+  const wrapper = useRef<HTMLDivElement>(null);
+  const button = useRef<HTMLButtonElement>(null);
+  const first = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    first.current?.focus();
+    const away = (event: PointerEvent) => {
+      if (!wrapper.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", away);
+    return () => document.removeEventListener("pointerdown", away);
+  }, [open]);
+  const close = () => {
+    setOpen(false);
+    button.current?.focus();
+  };
+  return (
+    <div
+      ref={wrapper}
+      className="picker letter-menu"
+      onKeyDown={(event) => {
+        if (event.key === "Escape" && open) {
+          event.stopPropagation();
+          close();
+        }
+      }}
+      onBlur={(event) => {
+        if (open && !wrapper.current?.contains(event.relatedTarget as Node | null)) setOpen(false);
+      }}
+    >
+      <button
+        ref={button}
+        type="button"
+        className="button button-small button-quiet letter-menu-button"
+        aria-label={strings.thread.messageMenu}
+        aria-haspopup="menu"
+        // Said only while open, as a menu button may, so the letter has no other control that reads as folded.
+        aria-expanded={open || undefined}
+        aria-controls={open ? menuId : undefined}
+        onClick={() => setOpen(!open)}
+      >
+        <MoreIcon />
+      </button>
+      {open && (
+        <div className="picker-panel letter-menu-panel" id={menuId} role="menu" aria-label={strings.thread.messageMenu}>
+          <button
+            ref={first}
+            type="button"
+            role="menuitem"
+            className="letter-menu-item"
+            onClick={() => {
+              close();
+              onShowHeaders();
+            }}
+          >
+            {strings.thread.showHeaders}
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 

@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
 import type { Done, Label } from "./organize.tsx";
+import { HeadersSheet } from "./headers.tsx";
 import { LabelPrompt } from "./tasks.tsx";
 import { ViewMain, ViewTitle, useViewTitle } from "./panes.tsx";
 import { strings } from "./strings.ts";
@@ -96,6 +97,9 @@ export function FeedStream({
     void load();
   }, [load, version]);
 
+  // The message whose headers are open in their sheet, if one's are.
+  const [headersOf, setHeadersOf] = useState<string>();
+
   const download = async (message: Message, index: number) => {
     const { data, response } = await client
       .GET("/mailboxes/{mailbox}/messages/{message}/attachments/{attachment}", { params: { path: { mailbox: mailbox.id, message: message.id, attachment: index } } })
@@ -147,10 +151,11 @@ export function FeedStream({
                 <p className="stream-subject">
                   <a href={threadHref(thread.id, view, base)}>{message.subject || strings.thread.noSubject}</a>
                 </p>
-                <Letter message={message} me={me} agentNames={agentNames} groups={mailbox.groups ?? []} threadSubject={message.subject} fresh={fresh.has(message.id)} onDownload={(index) => void download(message, index)} />
+                <Letter message={message} me={me} agentNames={agentNames} groups={mailbox.groups ?? []} threadSubject={message.subject} fresh={fresh.has(message.id)} onDownload={(index) => void download(message, index)} onShowHeaders={() => setHeadersOf(message.id)} />
               </li>
             ))}
           </ol>
+          {headersOf !== undefined && <HeadersSheet client={client} mailbox={mailbox.id} message={headersOf} onClose={() => setHeadersOf(undefined)} onSignedOut={onSignedOut} />}
           {reading.next !== undefined && (
             <p className="stream-more">
               <button type="button" className="button button-small" onClick={() => setPages((count) => count + 1)}>

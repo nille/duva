@@ -823,6 +823,15 @@ Duva takes the attachment from the stored message when the link is followed, so 
 - `--message` (required): The message's ID.
 - `--attachment` (required): The attachment's place among the message's attachments, from 0.
 
+## duva messages headers
+
+Read a message's full header block, every field as it came, in order.
+
+The fields come from the stored message, unfolded, with those SES added as it received it: its spam and virus verdicts, Received-SPF, Authentication-Results and a Received. A message the mailbox sent has the fields Duva wrote, under the Message-ID SES gave it. A value with encoded words also comes decoded. Only those who can read the mailbox read them: its owner and the agents they give sponsor access.
+
+- `--mailbox` (required): The mailbox's ID.
+- `--message` (required): The message's ID.
+
 ## duva drafts list
 
 List the drafts in a mailbox, newest first, with where each send stands.

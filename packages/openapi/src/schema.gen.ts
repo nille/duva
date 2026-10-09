@@ -1315,6 +1315,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/mailboxes/{mailbox}/messages/{message}/headers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read a message's full header block, every field as it came, in order.
+         * @description The fields come from the stored message, unfolded, with those SES added as it received it: its spam and virus verdicts, Received-SPF, Authentication-Results and a Received. A message the mailbox sent has the fields Duva wrote, under the Message-ID SES gave it. A value with encoded words also comes decoded. Only those who can read the mailbox read them: its owner and the agents they give sponsor access.
+         */
+        get: operations["getMessageHeaders"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/mailboxes/{mailbox}/drafts": {
         parameters: {
             query?: never;
@@ -4213,6 +4233,27 @@ export interface components {
             type: string;
             /** @description The attachment's size in bytes, decoded. */
             size: number;
+        };
+        MessageHeaders: {
+            /** @description The message's header fields from the top, so the ones added on its way, as each Received, come before those its sender wrote. */
+            headers: components["schemas"]["HeaderField"][];
+        };
+        HeaderField: {
+            /**
+             * @description The field's name, as written.
+             * @example Subject
+             */
+            name: string;
+            /**
+             * @description The field's value as it came, unfolded onto one line.
+             * @example =?UTF-8?Q?R=C3=A4kning?=
+             */
+            value: string;
+            /**
+             * @description The value with its encoded words decoded (RFC 2047), if it has any.
+             * @example Räkning
+             */
+            decoded?: string;
         };
         AttachmentLink: {
             /**
@@ -7369,6 +7410,34 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getMessageHeaders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The mailbox's ID. */
+                mailbox: components["parameters"]["Mailbox"];
+                /** @description The message's ID. */
+                message: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The message's header fields. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageHeaders"];
+                };
+            };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
