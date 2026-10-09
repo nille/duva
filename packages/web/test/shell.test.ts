@@ -43,7 +43,7 @@ const views = (page: Page) => page.getByRole("navigation", { name: "Mail" });
 const title = (page: Page) => page.getByRole("heading", { level: 1 }).textContent();
 const fits = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth);
 
-test("a human's own mailboxes are each listed by their address with their unread counts, and each opens as theirs", budget, async () => {
+test("a human's own mailboxes are each listed by their address with their unread counts under All mailboxes, and each opens as theirs", budget, async () => {
   const { page, signIn, receive, lovelace } = await withTwoMailboxes();
   await receive("ada@example.com", "Till Ada");
   await receive("lovelace@example.com", "Till Lovelace");
@@ -51,17 +51,18 @@ test("a human's own mailboxes are each listed by their address with their unread
   await signIn("ada@example.org");
 
   const links = (await mailboxes(page)).getByRole("link");
-  await expect.poll(() => links.count(), wait).toBe(2);
-  // The order doesn't follow the order they were made in.
-  await expect.poll(() => links.nth(0).getAttribute("aria-label"), wait).toBe("ada@example.com, 1 unread");
-  await expect.poll(() => links.nth(1).getAttribute("aria-label"), wait).toBe("lovelace@example.com, 2 unread");
+  await expect.poll(() => links.count(), wait).toBe(3);
+  // All mailboxes comes first, and the order doesn't follow the order they were made in.
+  await expect.poll(() => links.nth(0).getAttribute("aria-label"), wait).toBe("All mailboxes, 3 unread");
+  await expect.poll(() => links.nth(1).getAttribute("aria-label"), wait).toBe("ada@example.com, 1 unread");
+  await expect.poll(() => links.nth(2).getAttribute("aria-label"), wait).toBe("lovelace@example.com, 2 unread");
   expect(await links.nth(0).getAttribute("aria-current")).toBe("page");
 
-  await links.nth(1).click();
+  await links.nth(2).click();
 
   await expect.poll(() => page.getByRole("link", { name: /Igen till Lovelace/ }).count(), wait).toBe(1);
   expect(await page.getByRole("link", { name: /Till Ada/ }).count()).toBe(0);
-  expect(await (await mailboxes(page)).getByRole("link").nth(1).getAttribute("aria-current")).toBe("page");
+  expect(await (await mailboxes(page)).getByRole("link").nth(2).getAttribute("aria-current")).toBe("page");
   expect(await views(page).getByRole("link", { name: "Drafts" }).count()).toBe(1);
   expect(page.url()).toContain(`#/mailboxes/${lovelace}/`);
 
@@ -122,7 +123,7 @@ test("a mailbox an admin gives the human shows beside the mail without a reload,
     if (request.method() === "GET" && new URL(request.url()).pathname === "/api/mailboxes") listed += 1;
   });
   await signIn("ada@example.org");
-  await expect.poll(async () => (await mailboxes(page)).getByRole("link").count(), wait).toBe(2);
+  await expect.poll(async () => (await mailboxes(page)).getByRole("link").count(), wait).toBe(3);
   await expect.poll(() => page.getByRole("contentinfo", { name: "Status" }).getByText(/^Up to date/).count(), wait).toBe(1);
   const opened = listed;
 
@@ -133,13 +134,14 @@ test("a mailbox an admin gives the human shows beside the mail without a reload,
   await ada.POST("/mailboxes", { body: { owner: me.id, address: "countess@example.com" } });
 
   await expect.poll(async () => (await mailboxes(page)).getByRole("link").allInnerTexts(), wait).toEqual([
+    expect.stringContaining("All mailboxes"),
     expect.stringContaining("ada@example.com"),
     expect.stringContaining("countess@example.com"),
     expect.stringContaining("lovelace@example.com"),
   ]);
 });
 
-test("going back to a thread of the first mailbox opens it there, after the human went to their second", budget, async () => {
+test("going back to a thread opened in All mailboxes opens it there, after the human went to their second mailbox", budget, async () => {
   const { page, signIn, receive } = await withTwoMailboxes();
   await receive("ada@example.com", "Till Ada");
   await signIn("ada@example.org");
@@ -151,7 +153,7 @@ test("going back to a thread of the first mailbox opens it there, after the huma
   await page.goBack();
 
   await expect.poll(() => title(page), wait).toBe("Till Ada");
-  expect(await (await mailboxes(page)).getByRole("link", { name: /^ada@/ }).getAttribute("aria-current")).toBe("page");
+  expect(await (await mailboxes(page)).getByRole("link", { name: /^All mailboxes/ }).getAttribute("aria-current")).toBe("page");
 });
 
 test("a member opens a mailbox an admin gave them since the page opened, and it is theirs", budget, async () => {
@@ -168,7 +170,7 @@ test("a member opens a mailbox an admin gave them since the page opened, and it 
 
   await expect.poll(() => page.getByRole("main").getByText("hopper@example.com").first().isVisible(), wait).toBe(true);
   expect(await page.getByText("isn't yours to read").count()).toBe(0);
-  expect(await (await mailboxes(page)).getByRole("link").count()).toBe(2);
+  expect(await (await mailboxes(page)).getByRole("link").count()).toBe(3);
 });
 
 test("on a phone the bar is one row with the search icon and Write, and the places lie in a tab bar at the foot", budget, async () => {
@@ -243,21 +245,23 @@ test("on a phone one switcher names the view and the mailbox, and opens the mail
   await signIn("ada@example.org");
   const switcher = page.getByRole("button", { name: /Mailboxes and views/ });
 
-  await expect.poll(() => switcher.getAttribute("aria-label"), wait).toBe("Inbox, ada@example.com, New mail in another mailbox, Mailboxes and views");
+  await expect.poll(() => switcher.getAttribute("aria-label"), wait).toBe("Inbox, All mailboxes, 1 unread, Mailboxes and views");
   expect(await (await mailboxes(page)).isVisible()).toBe(false);
   expect(await views(page).isVisible()).toBe(false);
 
   await switcher.click();
 
   expect(await switcher.getAttribute("aria-expanded")).toBe("true");
-  // Nothing in it scrolls sideways: the mailboxes and views lie in lines, as on a desk.
-  const sideways = await page.locator(".side-nav, .side-nav *").evaluateAll((all) => all.filter((element) => element.scrollWidth > element.clientWidth + 1 && getComputedStyle(element).overflowX !== "visible").length);
+  // Nothing in it scrolls sideways: the mailboxes and views lie in lines, as on a desk. What only screen readers hear is clipped.
+  const sideways = await page
+    .locator(".side-nav, .side-nav *:not(.visually-hidden)")
+    .evaluateAll((all) => all.filter((element) => element.scrollWidth > element.clientWidth + 1 && getComputedStyle(element).overflowX !== "visible").length);
   expect(sideways).toBe(0);
   expect(await fits(page)).toBe(true);
   for (const link of await page.locator(".side-nav a").all()) expect((await link.boundingBox())!.height).toBeGreaterThanOrEqual(44);
   await views(page).getByRole("link", { name: "Sent" }).click();
 
-  await expect.poll(() => switcher.getAttribute("aria-label"), wait).toBe("Sent, ada@example.com, New mail in another mailbox, Mailboxes and views");
+  await expect.poll(() => switcher.getAttribute("aria-label"), wait).toBe("Sent, All mailboxes, Mailboxes and views");
   expect(await switcher.getAttribute("aria-expanded")).toBe("false");
 
   await switcher.click();
@@ -498,16 +502,17 @@ test.each([
   if (viewport === phone) await page.getByRole("button", { name: /Mailboxes and views/ }).click();
 
   const links = (await mailboxes(page)).getByRole("link");
-  await expect.poll(() => links.count(), wait).toBe(4);
+  await expect.poll(() => links.count(), wait).toBe(5);
   expect(await links.allInnerTexts()).toEqual([
+    expect.stringMatching(/^All mailboxes\s*$/),
     expect.stringMatching(/^ada@example\.com\s*$/),
     expect.stringMatching(/^lovelace@example\.com\s*$/),
     expect.stringMatching(/^planning-committee@example\.com\s*$/),
     expect.stringMatching(/^Mailbox 4, without an address\s*$/),
   ]);
   const shown = (await mailboxes(page)).locator(".mailbox-name, .mailbox-at");
-  expect(await shown.count()).toBe(4);
-  expect(await shown.evaluateAll(readWhole)).toEqual(Array(4).fill(true));
+  expect(await shown.count()).toBe(5);
+  expect(await shown.evaluateAll(readWhole)).toEqual(Array(5).fill(true));
   expect(await fits(page)).toBe(true);
 });
 
@@ -620,13 +625,14 @@ test("on a desk the open mailbox heads the side column as a selector, which open
   await receive("lovelace@example.com", "Till Lovelace");
   await signIn("ada@example.org");
   const selector = page.getByRole("button", { name: /Choose a mailbox$/ });
-  await expect.poll(() => selector.getAttribute("aria-label"), wait).toBe("ada@example.com, New mail in another mailbox, Choose a mailbox");
+  // The web app opens on All mailboxes.
+  await expect.poll(() => selector.getAttribute("aria-label"), wait).toBe("All mailboxes, Choose a mailbox");
   // The side column lists the mailboxes only when the selector opens them.
   expect(await page.getByRole("navigation", { name: "Mailboxes" }).count()).toBe(0);
 
   await selector.click();
   const list = page.getByRole("navigation", { name: "Mailboxes" });
-  await expect.poll(() => list.getByRole("link").count(), wait).toBe(2);
+  await expect.poll(() => list.getByRole("link").count(), wait).toBe(3);
   await page.keyboard.press("Escape");
   expect(await list.count()).toBe(0);
   expect(await selector.evaluate((button) => button === document.activeElement)).toBe(true);

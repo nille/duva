@@ -1,11 +1,13 @@
 // A sender's sheet, in the reading pane: who they are, how many threads the mailbox has from them,
 // where their mail goes now, and the choice of where it goes from here, their delivery, for their
 // address or, except at public mail providers, everyone at their domain. Nowhere erases what the
-// mailbox has from them, so it asks once more, saying it can't be undone.
-import { createContext, useCallback, useContext, useEffect, useId, useState } from "react";
+// mailbox has from them, so it asks once more, saying it can't be undone. In All mailboxes the sheet
+// shows each mailbox's decision on them, each changed there.
+import { createContext, useCallback, useContext, useEffect, useId, useRef, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import { type components, isPublicMailProvider } from "@duva/openapi";
 import { ActorMark } from "./mail-parts.tsx";
+import { type AllMailboxes, isAll, labelsIn } from "./mailboxes.tsx";
 import type { Done, Label } from "./organize.tsx";
 import { strings } from "./strings.ts";
 import { BackIcon } from "./thread.tsx";
@@ -108,11 +110,33 @@ function unsubscribedSaid(unsubscribe: NonNullable<ScreenedSender["unsubscribe"]
   return copy.pageFailed(agent, detail);
 }
 
+/** Reads the sender's sheet in the mailbox, with their domain's and the mailbox agent's name, again whenever `version` grows. */
+function useSenderSheet(client: DuvaClient, mailbox: string, sender: string, version: number, onSignedOut: () => void) {
+  const [reading, setReading] = useState<Reading>({ status: "loading" });
+  const address = sender.includes("@") ? sender : undefined;
+  const domain = sender.slice(sender.lastIndexOf("@") + 1).toLowerCase();
+  const domainChoosable = !isPublicMailProvider(domain);
+  const load = useCallback(async () => {
+    const get = (sender: string) => client.GET("/mailboxes/{mailbox}/senders/{sender}", { params: { path: { mailbox, sender } } }).catch(() => ({ data: undefined, response: undefined }));
+    // The mailbox agent's name says who went on unsubscribing.
+    const agent = client.GET("/mailbox-agent").catch(() => ({ data: undefined }));
+    const [own, atDomain, mailboxAgent] = await Promise.all([get(sender), address !== undefined && domainChoosable ? get(domain) : Promise.resolve(undefined), agent]);
+    if (own.response?.status === 401) return onSignedOut();
+    if (own.data === undefined) return setReading({ status: "failed", message: own.response === undefined ? strings.sender.unreachable : strings.sender.failed(own.response.status) });
+    setReading({ status: "read", sheet: own.data, domain: atDomain?.data, agent: mailboxAgent.data?.agent.name });
+  }, [client, mailbox, sender, address, domain, domainChoosable, onSignedOut]);
+  useEffect(() => {
+    void load();
+  }, [load, version]);
+  return { reading, load, address, domain: domainChoosable ? domain : undefined };
+}
+
 /**
  * The sheet of the sender, an address or a domain for everyone there, in the mailbox, opened from the view at `back`, named
  * `backTo`. `labels` are the mailbox's, to file their mail under one of its own. `version` counts
  * the changes to the mailbox the app has seen, so the sheet is read again when it grows. `onDone`
- * hears what saving did.
+ * hears what saving did. In All mailboxes it shows each mailbox's decision, under the mailbox's
+ * address, since each decides on its senders (ADR-0033).
  */
 export function SenderSheetView({
   client,
@@ -126,7 +150,7 @@ export function SenderSheetView({
   onSignedOut,
 }: {
   client: DuvaClient;
-  mailbox: Mailbox;
+  mailbox: Mailbox | AllMailboxes;
   sender: string;
   labels: Label[];
   back: string;
@@ -135,34 +159,24 @@ export function SenderSheetView({
   onDone: (done: Done) => void;
   onSignedOut: () => void;
 }) {
-  const [reading, setReading] = useState<Reading>({ status: "loading" });
   // What saving last did, said on the sheet, since the list beside it says nothing while it is open.
   const [saved, setSaved] = useState<string>();
+  // Their name, as the first mailbox read says it.
+  const [named, setNamed] = useState<{ name?: string; threads: number }>();
   const address = sender.includes("@") ? sender : undefined;
   const domain = sender.slice(sender.lastIndexOf("@") + 1).toLowerCase();
-  const domainChoosable = !isPublicMailProvider(domain);
-
-  const load = useCallback(async () => {
-    const get = (sender: string) => client.GET("/mailboxes/{mailbox}/senders/{sender}", { params: { path: { mailbox: mailbox.id, sender } } }).catch(() => ({ data: undefined, response: undefined }));
-    // The mailbox agent's name says who went on unsubscribing.
-    const agent = client.GET("/mailbox-agent").catch(() => ({ data: undefined }));
-    const [own, atDomain, mailboxAgent] = await Promise.all([get(sender), address !== undefined && domainChoosable ? get(domain) : Promise.resolve(undefined), agent]);
-    if (own.response?.status === 401) return onSignedOut();
-    if (own.data === undefined) return setReading({ status: "failed", message: own.response === undefined ? strings.sender.unreachable : strings.sender.failed(own.response.status) });
-    setReading({ status: "read", sheet: own.data, domain: atDomain?.data, agent: mailboxAgent.data?.agent.name });
-  }, [client, mailbox.id, sender, address, domain, domainChoosable, onSignedOut]);
-  useEffect(() => {
-    void load();
-  }, [load, version]);
-
-  const sheet = reading.status === "read" ? reading.sheet : undefined;
-  const name = address === undefined ? strings.sender.everyoneAt(domain) : (sheet?.name ?? address);
+  const name = address === undefined ? strings.sender.everyoneAt(domain) : (named?.name ?? address);
   useEffect(() => {
     document.title = strings.title(strings.sender.open(name));
   }, [name]);
+  const onSaved = (done: Done) => {
+    setSaved(done.message);
+    onDone(done);
+  };
+  const parts = isAll(mailbox) ? mailbox.own : [mailbox];
 
   return (
-    <main className="desk desk-reading sender" aria-busy={reading.status === "loading"}>
+    <main className="desk desk-reading sender" aria-busy={named === undefined}>
       <div className="reading-tools">
         <p className="back">
           <a href={back}>
@@ -178,45 +192,103 @@ export function SenderSheetView({
         </h1>
         <div className="reading-meta">
           {address !== undefined && name !== address && <p className="sender-address">{address}</p>}
-          {sheet !== undefined && <p>{address === undefined ? strings.sender.domainThreads(sheet.threads) : strings.sender.threads(sheet.threads)}</p>}
+          {named !== undefined && !isAll(mailbox) && <p>{address === undefined ? strings.sender.domainThreads(named.threads) : strings.sender.threads(named.threads)}</p>}
         </div>
       </div>
       <p className="done-line sender-saved" role="status">
         {saved !== undefined && <span>{saved}</span>}
       </p>
-      {reading.status === "loading" ? (
-        <div className="letter letter-skeleton" aria-hidden="true">
-          <span className="line" style={{ width: "40%" }} />
-          <span className="line" style={{ width: "65%" }} />
-        </div>
-      ) : reading.status === "failed" ? (
-        <div className="notice notice-alert failed-listing" role="alert">
-          <p>{reading.message}</p>
-          <button type="button" className="button button-small" onClick={() => void load()}>
-            {strings.inbox.retry}
-          </button>
-        </div>
-      ) : (
-        <DeliveryForm
-          // A sheet read again after saving starts from where the mail goes then.
-          key={`${reading.sheet.decided?.decidedAt ?? ""}`}
+      {parts.map((each) => (
+        <SenderPart
+          key={each.id}
           client={client}
-          mailbox={mailbox}
-          sheet={reading.sheet}
-          domainSheet={reading.domain}
-          agent={reading.agent ?? strings.sender.agent}
-          address={address}
-          domain={domainChoosable ? domain : undefined}
-          labels={labels}
-          onSaved={(done) => {
-            setSaved(done.message);
-            onDone(done);
-            void load();
-          }}
+          mailbox={each}
+          // In All mailboxes each part names its mailbox, and how many threads it has from them.
+          inAll={isAll(mailbox)}
+          sender={sender}
+          labels={isAll(mailbox) ? labelsIn(mailbox.labels, each.id) : labels}
+          version={version}
+          // In All mailboxes the first mailbox read names them; one mailbox's sheet keeps its count current.
+          onRead={(sheet) => setNamed((current) => (current !== undefined && isAll(mailbox) ? current : { name: sheet.name, threads: sheet.threads }))}
+          onSaved={onSaved}
           onSignedOut={onSignedOut}
         />
-      )}
+      ))}
     </main>
+  );
+}
+
+/** The sender as one mailbox decides on them: where their mail goes there, and the choice, under the mailbox's address in All mailboxes. */
+function SenderPart({
+  client,
+  mailbox,
+  inAll,
+  sender,
+  labels,
+  version,
+  onRead,
+  onSaved,
+  onSignedOut,
+}: {
+  client: DuvaClient;
+  mailbox: Mailbox;
+  inAll: boolean;
+  sender: string;
+  labels: Label[];
+  version: number;
+  onRead: (sheet: SenderSheet) => void;
+  onSaved: (done: Done) => void;
+  onSignedOut: () => void;
+}) {
+  const { reading, load, address, domain } = useSenderSheet(client, mailbox.id, sender, version, onSignedOut);
+  const headingId = useId();
+  const sheet = reading.status === "read" ? reading.sheet : undefined;
+  const read = useRef(onRead);
+  read.current = onRead;
+  useEffect(() => {
+    if (sheet !== undefined) read.current(sheet);
+  }, [sheet]);
+  const body =
+    reading.status === "loading" ? (
+      <div className="letter letter-skeleton" aria-hidden="true">
+        <span className="line" style={{ width: "40%" }} />
+        <span className="line" style={{ width: "65%" }} />
+      </div>
+    ) : reading.status === "failed" ? (
+      <div className="notice notice-alert failed-listing" role="alert">
+        <p>{reading.message}</p>
+        <button type="button" className="button button-small" onClick={() => void load()}>
+          {strings.inbox.retry}
+        </button>
+      </div>
+    ) : (
+      <DeliveryForm
+        // A sheet read again after saving starts from where the mail goes then.
+        key={`${reading.sheet.decided?.decidedAt ?? ""}`}
+        client={client}
+        mailbox={mailbox}
+        sheet={reading.sheet}
+        domainSheet={reading.domain}
+        agent={reading.agent ?? strings.sender.agent}
+        address={address}
+        domain={domain}
+        labels={labels}
+        onSaved={(done) => {
+          onSaved(done);
+          void load();
+        }}
+        onSignedOut={onSignedOut}
+      />
+    );
+  if (!inAll) return body;
+  return (
+    <section className="sender-part" aria-labelledby={headingId}>
+      <h2 className="sender-part-head" id={headingId}>
+        <span className="sender-part-mailbox">{strings.mailboxes.in(strings.mailboxes.address(mailbox))}</span>
+        {sheet !== undefined && <span className="sender-part-threads">{address === undefined ? strings.sender.domainThreads(sheet.threads) : strings.sender.threads(sheet.threads)}</span>}
+      </h2>
+      {body}
+    </section>
   );
 }
 

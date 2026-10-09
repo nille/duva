@@ -219,7 +219,7 @@ export function ThreadView({
   const move = async (thread: Thread, change: { add?: string[]; remove?: string[] }, message: (count: number) => string) => {
     setMoving("busy");
     try {
-      const done = await organize(client, mailbox.id, [thread], change, message);
+      const done = await organize(client, mailbox, [thread], change, message);
       if (done === undefined) return setMoving("failed");
       setMoving("idle");
       organized(done, true);

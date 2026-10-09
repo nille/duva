@@ -8,6 +8,7 @@ import { type RefObject, useContext, useEffect, useId, useRef } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
 import { PreferencesContext } from "./dates.ts";
+import type { AllMailboxes } from "./mailboxes.tsx";
 import { changeFor, type Done, type Labelled, markRead, organize, type Place, SessionEnded } from "./organize.tsx";
 import { openBeside, useBeside } from "./panes.tsx";
 import { strings } from "./strings.ts";
@@ -106,7 +107,7 @@ export function useThreadKeys<Thread extends Labelled>({
 }: {
   list: RefObject<HTMLElement | null>;
   client: DuvaClient;
-  mailbox: Mailbox;
+  mailbox: Mailbox | AllMailboxes;
   threads: Thread[];
   picked: Thread[];
   place: Place;
@@ -202,12 +203,12 @@ export function useThreadKeys<Thread extends Labelled>({
   const relabel = (action: "archive" | "trash" | "spam") => {
     const chosen = targets();
     const what = changeFor(action, chosen, place);
-    if (what !== undefined) void act(chosen, () => organize(client, mailbox.id, chosen, what.change, what.message), true);
+    if (what !== undefined) void act(chosen, () => organize(client, mailbox, chosen, what.change, what.message), true);
   };
 
   const mark = (read: boolean) => {
     const chosen = targets();
-    void act(chosen, () => markRead(client, mailbox.id, chosen, read), false);
+    void act(chosen, () => markRead(client, mailbox, chosen, read), false);
   };
 
   const { thread } = useBeside();

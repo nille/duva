@@ -3,13 +3,15 @@
 // mark, unread threads carry the orange dot, a thread back from Remind me carries its Back mark, and
 // a thread an agent's send waits in says it waits for the human. Chips show a view's unread
 // threads or those with a label, the Inbox says when new senders wait in the Screener, and the human
-// picks threads to organize several at once.
+// picks threads to organize several at once. In All mailboxes each row says quietly which address
+// its mail came to.
 import { type ReactNode, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
 import type { Connection as ConnectionState } from "./feed.ts";
 import { useDates } from "./dates.ts";
 import { ActorMark, Connection, nameOf, SenderMark, Time } from "./mail-parts.tsx";
+import { acrossOf, type AllMailboxes, isAll, mailboxOf, shortAddress } from "./mailboxes.tsx";
 import { Cap, ClockIcon, type Done, type Label, type Labelled, labelRefusal, OrganizeActions, ownLabelsOf, type Place, useKeyed } from "./organize.tsx";
 import { useBeside, useListCount, useViewTitle, ViewMain, ViewTitle } from "./panes.tsx";
 import { now, unreadOf, useReadMarks } from "./read-marks.ts";
@@ -18,8 +20,9 @@ import { LabelPrompt, promptedBuiltIns } from "./tasks.tsx";
 import { strings } from "./strings.ts";
 import { hrefOf, type SearchView, type ThreadsView, threadHref, titleOf } from "./views.tsx";
 
-type ThreadSummary = components["schemas"]["ThreadSummary"];
-type ThreadList = components["schemas"]["ThreadList"];
+/** A thread as a list shows it, which in All mailboxes names its mailbox and the address it came to. */
+type ThreadSummary = components["schemas"]["ThreadSummary"] & Partial<Pick<components["schemas"]["AllMailboxesThread"], "mailbox" | "recipient">>;
+type ThreadList = components["schemas"]["ThreadList"] | components["schemas"]["AllMailboxesThreadList"];
 type Mailbox = components["schemas"]["Mailbox"];
 
 /** What the web app knows of who sent a list's threads, beyond what each says, and which of them wait for the human. */
@@ -74,7 +77,7 @@ export function ThreadIndex({
   onSignedOut,
 }: {
   client: DuvaClient;
-  mailbox: Mailbox;
+  mailbox: Mailbox | AllMailboxes;
   base: string;
   view: ThreadsView;
   labels: Label[];
@@ -94,18 +97,28 @@ export function ThreadIndex({
   listingRef.current = listing;
   const title = titleOf(view, labels);
   const label = "label" in view ? view.label : undefined;
+  // The mailbox's ID, or none for All mailboxes.
+  const id = isAll(mailbox) ? undefined : mailbox.id;
 
   const page = useCallback(
     async (after?: string): Promise<ThreadList> => {
       const query = { limit: pageSize, after };
-      const path = { mailbox: mailbox.id };
-      const { data, response } = await (label !== undefined
-        ? client.GET("/mailboxes/{mailbox}/threads", { params: { path, query: { ...query, label } } })
-        : "sent" in view
-          ? client.GET("/mailboxes/{mailbox}/sent", { params: { path, query } })
-          : "reminders" in view
-            ? client.GET("/mailboxes/{mailbox}/reminders", { params: { path, query } })
-            : client.GET("/mailboxes/{mailbox}/all-mail", { params: { path, query } })
+      const { data, response } = await (
+        id === undefined
+          ? label !== undefined
+            ? client.GET("/all-mailboxes/threads", { params: { query: { ...query, label } } })
+            : "sent" in view
+              ? client.GET("/all-mailboxes/sent", { params: { query } })
+              : "reminders" in view
+                ? client.GET("/all-mailboxes/reminders", { params: { query } })
+                : client.GET("/all-mailboxes/all-mail", { params: { query } })
+          : label !== undefined
+            ? client.GET("/mailboxes/{mailbox}/threads", { params: { path: { mailbox: id }, query: { ...query, label } } })
+            : "sent" in view
+              ? client.GET("/mailboxes/{mailbox}/sent", { params: { path: { mailbox: id }, query } })
+              : "reminders" in view
+                ? client.GET("/mailboxes/{mailbox}/reminders", { params: { path: { mailbox: id }, query } })
+                : client.GET("/mailboxes/{mailbox}/all-mail", { params: { path: { mailbox: id }, query } })
       ).catch(() => ({ data: undefined, response: undefined }));
       if (response?.status === 401) {
         onSignedOut();
@@ -115,7 +128,7 @@ export function ThreadIndex({
       return data;
     },
     // The view's kind, not the object, so a new route to the same view reads nothing again.
-    [client, mailbox.id, label, "sent" in view, "reminders" in view, onSignedOut],
+    [client, id, label, "sent" in view, "reminders" in view, onSignedOut],
   );
 
   // How many pages the human asked to see, and which read is the latest, so an older one that ends later is dropped.
@@ -177,17 +190,19 @@ export function ThreadIndex({
     setLoadingOlder(false);
   };
 
-  // Each thread reads as the human last marked it, though the list was read before.
+  // Each thread reads as the human last marked it, though the list was read before. In All
+  // mailboxes its labels are named as All mailboxes names them.
   const { state: readState } = useReadMarks();
   const threads = useMemo(
     () =>
       listing.status !== "listed"
         ? noThreads
-        : listing.threads.map((thread) => {
-            const unread = unreadOf(readState, mailbox.id, thread.id, thread.unread, listing.at);
+        : listing.threads.map((listed) => {
+            const thread = isAll(mailbox) ? acrossOf(mailbox, listed) : listed;
+            const unread = unreadOf(readState, mailboxOf(mailbox, thread), thread.id, thread.unread, listing.at);
             return unread === thread.unread ? thread : { ...thread, unread };
           }),
-    [listing, readState, mailbox.id],
+    [listing, readState, mailbox],
   );
 
   // The whole list counts its own unread threads. Past the threads shown, Duva's count for a label,
@@ -235,18 +250,19 @@ export function ThreadIndex({
   return (
     <ViewMain className="desk" aria-busy={listing.status === "loading"}>
       <div className="desk-head list-head">
-        {ownLabel === undefined ? (
+        {/* A label is each mailbox's own, so it is renamed or deleted in a mailbox. */}
+        {ownLabel === undefined || id === undefined ? (
           <ViewTitle tabIndex={-1} className="view-title">
             {title}
           </ViewTitle>
         ) : (
-          <LabelHead client={client} mailbox={mailbox} base={base} label={ownLabel} onDone={onDone} onSignedOut={onSignedOut} />
+          <LabelHead client={client} mailbox={id} base={base} label={ownLabel} onDone={onDone} onSignedOut={onSignedOut} />
         )}
         {unread > 0 && <p className="count">{strings.inbox.unread(unread)}</p>}
         {label === "trash" && threads.length > 0 && (
           <EmptyTrash
             client={client}
-            mailbox={mailbox}
+            mailboxes={isAll(mailbox) ? mailbox.own.map((each) => each.id) : [mailbox.id]}
             onEmptied={() => {
               // The eraser erases them right after Duva answers, and the change feed says when each is gone.
               picking.clear();
@@ -258,7 +274,8 @@ export function ThreadIndex({
         )}
         {connection?.ok === false && <Connection state={connection} unreachable={strings.connection.mailUnreachable} />}
       </div>
-      {prompted !== undefined && <LabelPrompt key={prompted.id} client={client} mailbox={mailbox.id} label={prompted} onDone={onDone} onSignedOut={onSignedOut} />}
+      {/* A label's prompt is its mailbox's own, so it is written in a mailbox. */}
+      {prompted !== undefined && id !== undefined && <LabelPrompt key={prompted.id} client={client} mailbox={id} label={prompted} onDone={onDone} onSignedOut={onSignedOut} />}
       {"label" in view && view.label === "inbox" && screener > 0 && <ScreenerWaiting count={screener} href={hrefOf({ screener: true }, base)} />}
       <p className="visually-hidden" role="status">
         {announcement}
@@ -306,6 +323,7 @@ export function ThreadIndex({
                 href={threadHref(thread.id, view, base)}
                 snippet={thread.snippet}
                 marks={marks}
+                to={isAll(mailbox) ? toOf(thread, mailbox) : undefined}
                 comesBack={"reminders" in view}
                 fresh={listing.fresh.has(thread.id)}
                 open={thread.id === open}
@@ -328,6 +346,12 @@ export function ThreadIndex({
 }
 
 const noThreads: ThreadSummary[] = [];
+
+/** The address a thread in All mailboxes came to, as its row names it, unless it came through a group its row names already. */
+export const toOf = (thread: ThreadSummary, all: AllMailboxes) =>
+  thread.recipient === undefined || thread.recipient === "" || thread.groups?.some((group) => group.toLowerCase() === thread.recipient!.toLowerCase())
+    ? undefined
+    : { short: shortAddress(thread.recipient, all.own), address: thread.recipient };
 
 /**
  * The threads of a list the human picked, to organize several at once. Threads that leave the list
@@ -433,7 +457,7 @@ export function DoneLine({ done, onDone, onUndone }: { done: Done | undefined; o
 }
 
 /** What an empty view says, in its own words. Spam and Trash say how long they keep a thread, as the organization's settings do. */
-function Empty({ client, view, mailbox }: { client: DuvaClient; view: ThreadsView; mailbox: Mailbox }) {
+function Empty({ client, view, mailbox }: { client: DuvaClient; view: ThreadsView; mailbox: Mailbox | AllMailboxes }) {
   const kept = "label" in view && (view.label === "spam" || view.label === "trash");
   const [retentionDays, setRetentionDays] = useState<number>();
   useEffect(() => {
@@ -455,7 +479,7 @@ function Empty({ client, view, mailbox }: { client: DuvaClient; view: ThreadsVie
       : "sent" in view
         ? { title: strings.sent.emptyTitle, lead: strings.sent.emptyLead }
         : view.label === "inbox"
-        ? { title: strings.inbox.emptyTitle, lead: strings.inbox.emptyLead(mailbox.defaultAddress) }
+        ? { title: strings.inbox.emptyTitle, lead: strings.inbox.emptyLead(isAll(mailbox) ? undefined : mailbox.defaultAddress) }
         : view.label === "spam"
           ? { title: strings.views.empty.spam.title, lead: strings.views.empty.spam.lead(retentionDays) }
           : view.label === "trash"
@@ -471,15 +495,18 @@ function Empty({ client, view, mailbox }: { client: DuvaClient; view: ThreadsVie
   );
 }
 
-/** Emptying Trash, which erases its threads for good, once the human confirms it in place. */
-function EmptyTrash({ client, mailbox, onEmptied, onSignedOut }: { client: DuvaClient; mailbox: Mailbox; onEmptied: () => void; onSignedOut: () => void }) {
+/** Emptying Trash, which erases its threads for good, once the human confirms it in place, in each of the mailboxes, as All mailboxes' Trash is theirs. */
+function EmptyTrash({ client, mailboxes, onEmptied, onSignedOut }: { client: DuvaClient; mailboxes: string[]; onEmptied: () => void; onSignedOut: () => void }) {
   const [state, setState] = useState<{ status: "shown" | "confirming" | "busy" } | { status: "failed"; message: string }>({ status: "shown" });
 
   const empty = async () => {
     setState({ status: "busy" });
-    const { data, response } = await client.POST("/mailboxes/{mailbox}/trash/empty", { params: { path: { mailbox: mailbox.id } } }).catch(() => ({ data: undefined, response: undefined }));
-    if (response?.status === 401) return onSignedOut();
-    if (data === undefined) return setState({ status: "failed", message: response === undefined ? strings.trash.unreachable : strings.trash.failed(response.status) });
+    const answers = await Promise.all(
+      mailboxes.map((mailbox) => client.POST("/mailboxes/{mailbox}/trash/empty", { params: { path: { mailbox } } }).catch(() => ({ data: undefined, response: undefined }))),
+    );
+    if (answers.some(({ response }) => response?.status === 401)) return onSignedOut();
+    const failed = answers.find(({ data }) => data === undefined);
+    if (failed !== undefined) return setState({ status: "failed", message: failed.response === undefined ? strings.trash.unreachable : strings.trash.failed(failed.response.status) });
     setState({ status: "shown" });
     onEmptied();
   };
@@ -520,7 +547,7 @@ function LabelHead({
   onSignedOut,
 }: {
   client: DuvaClient;
-  mailbox: Mailbox;
+  mailbox: string;
   base: string;
   label: Label;
   onDone: (done: Done) => void;
@@ -531,7 +558,7 @@ function LabelHead({
   const [state, setState] = useState<{ status: "idle" | "busy" } | { status: "failed"; message: string }>({ status: "idle" });
   const fieldId = useId();
   const errorId = useId();
-  const path = { mailbox: mailbox.id, label: label.id };
+  const path = { mailbox, label: label.id };
 
   const rename = async () => {
     if (name.trim() === "") return setState({ status: "failed", message: strings.labelForm.missing });
@@ -648,6 +675,7 @@ export function ThreadRow({
   href,
   snippet,
   marks = noMarks,
+  to,
   comesBack = false,
   fresh = false,
   open = false,
@@ -659,6 +687,8 @@ export function ThreadRow({
   href: string;
   snippet: ReactNode;
   marks?: Marks;
+  /** The address its mail came to, as All mailboxes names it. */
+  to?: To;
   /** Whether the row says when the thread comes back, as Remind me lists it, in place of when its mail arrived. */
   comesBack?: boolean;
   fresh?: boolean;
@@ -674,7 +704,7 @@ export function ThreadRow({
         <input type="checkbox" checked={selected} onChange={onToggle} />
         <span className="visually-hidden">{strings.organize.select(thread.subject || strings.thread.noSubject)}</span>
       </label>
-      <ThreadLine thread={thread} labels={labels} href={href} snippet={snippet} marks={marks} comesBack={comesBack} open={open} />
+      <ThreadLine thread={thread} labels={labels} href={href} snippet={snippet} marks={marks} to={to} comesBack={comesBack} open={open} />
     </li>
   );
 }
@@ -685,6 +715,7 @@ export function ThreadRow({
  * one line, after "Waiting for you" and the agent's name when an agent's send waits in it, or the
  * Back mark and when it was set aside once it came back from Remind me. With `comesBack`, the date
  * is when the thread comes back. A search's results give a snippet of their own, with the words found marked.
+ * In All mailboxes, `to` is the address the mail came to, said quietly before its groups and labels.
  */
 export function ThreadLine({
   thread,
@@ -692,6 +723,7 @@ export function ThreadLine({
   href,
   snippet,
   marks = noMarks,
+  to,
   comesBack = false,
   open = false,
 }: {
@@ -700,6 +732,7 @@ export function ThreadLine({
   href: string;
   snippet: ReactNode;
   marks?: Marks;
+  to?: To;
   comesBack?: boolean;
   open?: boolean;
 }) {
@@ -718,13 +751,14 @@ export function ThreadLine({
     waiting !== undefined && strings.inbox.waitsFor(waiting.agent, waiting.forward),
     back !== undefined && strings.remind.backLabel(day(new Date(back.setAsideAt))),
     thread.messages > 1 && strings.inbox.messages(thread.messages),
+    to !== undefined && strings.mailboxes.to(to.address),
     thread.groups !== undefined && strings.inbox.toGroups(thread.groups),
     labels.length > 0 && strings.inbox.labelled(labels),
     returns === undefined ? day(new Date(thread.latestAt)) : strings.remind.comesBack(when(returns)),
   ]
     .filter(Boolean)
     .join(", ");
-  const labelled = (thread.groups?.length ?? 0) > 0 || labels.length > 0;
+  const labelled = to !== undefined || (thread.groups?.length ?? 0) > 0 || labels.length > 0;
   return (
     <a className={thread.unread ? "thread thread-unread" : "thread"} href={href} aria-label={label} aria-describedby={snippet === "" ? undefined : snippetId} aria-current={open ? "true" : undefined}>
       <span className="thread-mark" aria-hidden="true" />
@@ -735,6 +769,11 @@ export function ThreadLine({
       </span>
       {labelled && (
         <span className="thread-labels" aria-hidden="true">
+          {to !== undefined && (
+            <span className="thread-to" title={to.address}>
+              {strings.mailboxes.to(to.short)}
+            </span>
+          )}
           {thread.groups?.map((group) => (
             <span key={group} className="group-mark">
               <GroupIcon />
@@ -780,6 +819,12 @@ export function ThreadLine({
       </span>
     </a>
   );
+}
+
+/** The address a thread's mail came to, as a row in All mailboxes names it, short and in full. */
+export interface To {
+  short: string;
+  address: string;
 }
 
 /** What a list's chips narrow: a label's threads, the Inbox's among them, or All mail. Spam, Trash and Sent take none. */

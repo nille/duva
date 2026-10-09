@@ -474,7 +474,7 @@ function YouPage({
   }, [client, admin]);
   return (
     <>
-      <YouSheet client={client} onPreferences={onPreferences} onSignedOut={onSignedOut} />
+      <YouSheet client={client} own={mailboxes} onPreferences={onPreferences} onSignedOut={onSignedOut} />
       <MyLogoSheet client={client} mailboxes={mailboxes} onSignedOut={onSignedOut} />
       {mailboxes.length > 0 && <McpSheet />}
       <div className="settings-aside">
@@ -1049,8 +1049,25 @@ const mailViews: Preferences["mailView"][] = ["html", "text"];
 const keyboardShortcuts: Preferences["keyboardShortcuts"][] = ["on", "off"];
 const cooSpeaksUp: Preferences["cooSpeaksUp"][] = ["on", "off"];
 
-/** The human's own preferences: how times and dates show, each choice with an example built from today, how mail shows, whether keyboard shortcuts work, and whether Coo speaks up. */
-function YouSheet({ client, onPreferences, onSignedOut }: { client: DuvaClient; onPreferences: (preferences: Preferences) => void; onSignedOut: () => void }) {
+/**
+ * The human's own preferences: how times and dates show, each choice with an example built from
+ * today, how mail shows, whether keyboard shortcuts work, and whether Coo speaks up. With several
+ * mailboxes, `own`, also where the web app opens and which address new mail in All mailboxes starts from (ADR-0033).
+ */
+function YouSheet({
+  client,
+  own,
+  onPreferences,
+  onSignedOut,
+}: {
+  client: DuvaClient;
+  own: Mailbox[];
+  onPreferences: (preferences: Preferences) => void;
+  onSignedOut: () => void;
+}) {
+  const several = own.length > 1;
+  // New mail starts from one of their mailboxes' addresses, which Duva says it does by default.
+  const fromChoices = own.flatMap(({ addresses }) => addresses);
   const sheet = useSheet<Preferences>({
     read: () => client.GET("/preferences"),
     write: (preferences) => client.PATCH("/preferences", { body: preferences }),
@@ -1145,6 +1162,41 @@ function YouSheet({ client, onPreferences, onSignedOut }: { client: DuvaClient; 
               />
             ))}
           </fieldset>
+          {several && (
+            <fieldset>
+              <legend>{copy.opensOn.legend}</legend>
+              <p className="setting-lead">{copy.opensOn.lead}</p>
+              <Choice name="opensOn" checked={!own.some(({ id }) => id === chosen.opensOn)} onChoose={() => sheet.choose({ opensOn: "all" })} label={strings.mailboxes.all} hint={copy.opensOn.allHint} />
+              {own.map((mailbox) => (
+                <Choice
+                  key={mailbox.id}
+                  name="opensOn"
+                  checked={chosen.opensOn === mailbox.id}
+                  onChoose={() => sheet.choose({ opensOn: mailbox.id })}
+                  label={strings.mailboxes.address(mailbox)}
+                  hint={copy.opensOn.oneHint}
+                />
+              ))}
+            </fieldset>
+          )}
+          {several && (
+            <fieldset>
+              <legend>{copy.newMailFrom.legend}</legend>
+              <p className="setting-lead">{copy.newMailFrom.lead}</p>
+              <div className="setting-select">
+                <label htmlFor="new-mail-from" className="visually-hidden">
+                  {copy.newMailFrom.legend}
+                </label>
+                <select id="new-mail-from" value={chosen.newMailFrom ?? fromChoices[0]} onChange={(event) => sheet.choose({ newMailFrom: event.target.value })}>
+                  {fromChoices.map((address) => (
+                    <option key={address} value={address}>
+                      {address}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </fieldset>
+          )}
           <SaveRow sheet={sheet} saved={copy.preferencesSaved} />
         </>
       )}

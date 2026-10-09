@@ -7572,3 +7572,55 @@ mark {
   color: var(--ink-2);
   white-space: pre-line;
 }
+
+/*
+ * All mailboxes (ADR-0033): the side column's head offers it above each mailbox. A row there says
+ * quietly which address its mail came to, at label size in Third Ink before its groups and labels,
+ * as a label's name is said, so the eye reads it only when it looks for it.
+ */
+.thread-labels .thread-to {
+  flex: none;
+  max-width: 9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.waiting-to,
+.stream-to {
+  color: var(--ink-3);
+  font: 500 var(--text-xs) / 1.4 var(--mono);
+  overflow-wrap: anywhere;
+}
+
+.stream-to {
+  margin: var(--space-1) 0 0;
+}
+
+/* The sender's sheet in All mailboxes: each mailbox's decision as a sheet of its own, parted by a seam and 3rem. */
+.sender-part + .sender-part {
+  margin-top: var(--space-7);
+  padding-top: var(--space-7);
+  box-shadow: inset 0 1px 0 var(--seam);
+}
+
+.sender-part-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 var(--space-3);
+  margin: 0 0 var(--space-4);
+  font: 600 var(--text-md) / 1.3 var(--mono);
+  letter-spacing: 0;
+  overflow-wrap: anywhere;
+}
+
+.sender-part-threads {
+  color: var(--ink-3);
+  font: 400 var(--text-xs) / 1.3 var(--mono);
+}
+
+.setting-select select {
+  width: 100%;
+  max-width: 24rem;
+}

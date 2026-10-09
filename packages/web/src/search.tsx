@@ -1,10 +1,12 @@
 // Searching the open mailbox: a box in the bar, which `/` puts the cursor in, as its cap shows, with a menu that builds
 // the filters into what is typed, and the results, best match or newest first, a page at a time, each
 // a thread with the words highlighted in its snippet. Opening one goes to the message that matched.
+// In All mailboxes it searches each mailbox's index, and each result says which address it came to.
 import { type FormEvent, type ReactNode, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
-import { chipOf, DoneLine, ListChips, ListLine, type Marks, SkeletonIndex, ThreadRow, usePicking } from "./inbox.tsx";
+import { chipOf, DoneLine, ListChips, ListLine, type Marks, SkeletonIndex, ThreadRow, type To, toOf, usePicking } from "./inbox.tsx";
+import { acrossOf, type AllMailboxes, isAll, mailboxOf } from "./mailboxes.tsx";
 import { type Done, type Label, OrganizeActions, ownLabelsOf, useKeyed } from "./organize.tsx";
 import { useBeside, useViewTitle, ViewMain, ViewTitle } from "./panes.tsx";
 import { now, unreadOf, useReadMarks } from "./read-marks.ts";
@@ -13,7 +15,10 @@ import { strings } from "./strings.ts";
 import { hrefOf, type SearchView, threadHref } from "./views.tsx";
 
 type Mailbox = components["schemas"]["Mailbox"];
-type SearchResult = components["schemas"]["SearchResult"];
+/** A thread found, which in All mailboxes names its mailbox and the address it came to. */
+type SearchResult = Omit<components["schemas"]["SearchResult"], "thread"> & {
+  thread: components["schemas"]["SearchResult"]["thread"] & Partial<Pick<components["schemas"]["AllMailboxesThread"], "mailbox" | "recipient">>;
+};
 
 /** The filters the menu builds, each as the search box has it. */
 interface Filters {
@@ -87,18 +92,20 @@ const warmFor = 60_000;
  * the box gets focus. It asks for the Inbox's newest thread, a search as cheap as any, since Duva
  * searches nothing without words or a filter.
  */
-function warm(client: DuvaClient, mailbox: string) {
+function warm(client: DuvaClient, mailbox: Mailbox | AllMailboxes) {
   const now = Date.now();
-  if (now - (warmed.get(mailbox) ?? 0) < warmFor) return;
-  warmed.set(mailbox, now);
-  void client.GET("/mailboxes/{mailbox}/search", { params: { path: { mailbox }, query: { q: "label:inbox", limit: 1 } } }).catch(() => undefined);
+  const key = isAll(mailbox) ? "" : mailbox.id;
+  if (now - (warmed.get(key) ?? 0) < warmFor) return;
+  warmed.set(key, now);
+  const query = { q: "label:inbox", limit: 1 };
+  void (isAll(mailbox) ? client.GET("/all-mailboxes/search", { params: { query } }) : client.GET("/mailboxes/{mailbox}/search", { params: { path: { mailbox: mailbox.id }, query } })).catch(() => undefined);
 }
 
 /**
  * The bar's search box, for the human's mailbox whose Inbox is at `base`. `current` is the search open now, or the one the thread
  * shown was opened from, which the box shows. `labels` are the mailbox's, for the filter menu.
  */
-export function SearchBox({ client, mailbox, base, labels, current }: { client: DuvaClient; mailbox: Mailbox; base: string; labels: Label[]; current?: SearchView["search"] }) {
+export function SearchBox({ client, mailbox, base, labels, current }: { client: DuvaClient; mailbox: Mailbox | AllMailboxes; base: string; labels: Label[]; current?: SearchView["search"] }) {
   const [value, setValue] = useState(current?.q ?? "");
   // The filters chosen in the menu while it is open.
   const [chosen, setChosen] = useState<Filters>();
@@ -167,7 +174,7 @@ export function SearchBox({ client, mailbox, base, labels, current }: { client: 
           enterKeyHint="search"
           aria-keyshortcuts={keyed("/")}
           onChange={(event) => setValue(event.target.value)}
-          onFocus={() => warm(client, mailbox.id)}
+          onFocus={() => warm(client, mailbox)}
         />
         {keyed("/") !== undefined && (
           <kbd className="search-key" aria-hidden="true">
@@ -278,7 +285,7 @@ export function SearchResults({
   onSignedOut,
 }: {
   client: DuvaClient;
-  mailbox: Mailbox;
+  mailbox: Mailbox | AllMailboxes;
   base: string;
   view: SearchView;
   labels: Label[];
@@ -293,13 +300,16 @@ export function SearchResults({
   const [loadingMore, setLoadingMore] = useState(false);
   const [moreFailed, setMoreFailed] = useState<string>();
   const { q, sort } = view.search;
+  // The mailbox's ID, or none for All mailboxes.
+  const id = isAll(mailbox) ? undefined : mailbox.id;
 
   /** A page of results, or the words to show if there is none. */
   const page = useCallback(
     async (after?: string): Promise<{ results: SearchResult[]; next?: string } | { message: string; refused: boolean } | undefined> => {
-      const { data, error, response } = await client
-        .GET("/mailboxes/{mailbox}/search", { params: { path: { mailbox: mailbox.id }, query: { q, sort, limit: pageSize, after } } })
-        .catch(() => ({ data: undefined, error: undefined, response: undefined }));
+      const query = { q, sort, limit: pageSize, after };
+      const { data, error, response } = await (
+        id === undefined ? client.GET("/all-mailboxes/search", { params: { query } }) : client.GET("/mailboxes/{mailbox}/search", { params: { path: { mailbox: id }, query } })
+      ).catch(() => ({ data: undefined, error: undefined, response: undefined }));
       if (response?.status === 401) {
         onSignedOut();
         return undefined;
@@ -308,7 +318,7 @@ export function SearchResults({
       if (response?.status === 400 && error !== undefined && "message" in error) return { message: error.message, refused: true };
       return { message: response === undefined ? strings.search.unreachable : strings.search.failed(response.status), refused: false };
     },
-    [client, mailbox.id, q, sort, onSignedOut],
+    [client, id, q, sort, onSignedOut],
   );
 
   const load = useCallback(async () => {
@@ -376,11 +386,12 @@ export function SearchResults({
     () =>
       finding.status !== "found"
         ? []
-        : finding.results.map((result) => {
-            const unread = unreadOf(readState, mailbox.id, result.thread.id, result.thread.unread, finding.at);
+        : finding.results.map((found) => {
+            const result = isAll(mailbox) ? { ...found, thread: acrossOf(mailbox, found.thread) } : found;
+            const unread = unreadOf(readState, mailboxOf(mailbox, result.thread), result.thread.id, result.thread.unread, finding.at);
             return unread === result.thread.unread ? result : { ...result, thread: { ...result.thread, unread } };
           }),
-    [finding, readState, mailbox.id],
+    [finding, readState, mailbox],
   );
   const threads = useMemo(() => results.map(({ thread }) => thread), [results]);
   const picking = usePicking(threads);
@@ -471,6 +482,7 @@ export function SearchResults({
                 result={result}
                 labels={labels}
                 marks={marks}
+                to={isAll(mailbox) ? toOf(result.thread, mailbox) : undefined}
                 href={threadHref(result.thread.id, view, base, result.message)}
                 open={result.thread.id === open}
                 selected={picking.selected.has(result.thread.id)}
@@ -501,6 +513,7 @@ function ResultRow({
   result,
   labels,
   marks,
+  to,
   href,
   open,
   selected,
@@ -509,6 +522,7 @@ function ResultRow({
   result: SearchResult;
   labels: Label[];
   marks?: Marks;
+  to?: To;
   href: string;
   open: boolean;
   selected: boolean;
@@ -528,6 +542,7 @@ function ResultRow({
       href={href}
       snippet={result.snippet === "" ? "" : <Highlighted text={result.snippet} highlights={result.highlights} />}
       marks={marks}
+      to={to}
       open={open}
       selected={selected}
       onToggle={onToggle}

@@ -2,17 +2,21 @@
 // on it and the text under them. Duva saves it as the human writes, and a human's send from their
 // own mailbox goes out at once, so the composer's foot says how the send went. Ctrl+Enter, or
 // Command+Return on a Mac, sends from anywhere in it. A reply opens in its thread, under the message
-// it answers, and a draft opened on its own has the reading pane to itself.
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+// it answers, and a draft opened on its own has the reading pane to itself. New mail written in All
+// mailboxes starts from the address the human's preference names, can go from any of their addresses
+// and groups, and lives in the mailbox of the address it goes from (ADR-0033).
+import { useCallback, useContext, useEffect, useId, useRef, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
-import { useDates } from "./dates.ts";
+import { PreferencesContext, useDates } from "./dates.ts";
 import { ClipIcon } from "./mail-parts.tsx";
 import { DraftFiles, useUploads } from "./draft-files.tsx";
+import { type AllMailboxes, isAll } from "./mailboxes.tsx";
 import { SendNow } from "./send-now.tsx";
 import { strings } from "./strings.ts";
 
-type Draft = components["schemas"]["Draft"];
+/** A draft, which in All mailboxes names the mailbox it lives in. */
+type Draft = components["schemas"]["Draft"] & Partial<Pick<components["schemas"]["AllMailboxesDraft"], "mailbox">>;
 type Mailbox = components["schemas"]["Mailbox"];
 type NewDraft = components["schemas"]["NewDraft"];
 
@@ -81,8 +85,8 @@ export function Composer({
   onSignedOut,
 }: {
   client: DuvaClient;
-  /** The mailbox, with the groups its owner can send as, when the list of mailboxes gave them. */
-  mailbox: Mailbox & { groups?: string[] };
+  /** The mailbox, with the groups its owner can send as, when the list of mailboxes gave them, or All mailboxes. */
+  mailbox: (Mailbox & { groups?: string[] }) | AllMailboxes;
   /** Where the mailbox's views are, so the draft's address, and the links to its thread and Drafts, name it. */
   base?: string;
   id?: string;
@@ -92,16 +96,34 @@ export function Composer({
   onSignedOut: () => void;
 }) {
   const { clock } = useDates();
+  const { newMailFrom } = useContext(PreferencesContext);
+  // In All mailboxes, every mailbox of the human's; else the one. The ref is for the saves.
+  const inAll = isAll(mailbox);
+  const mailboxes = isAll(mailbox) ? mailbox.own : [mailbox];
+  const mailboxesRef = useRef(mailboxes);
+  mailboxesRef.current = mailboxes;
+  // The ID of the one mailbox, or none in All mailboxes, where Duva finds the draft's.
+  const one = isAll(mailbox) ? undefined : mailbox.id;
+  const groups = [...new Set(mailboxes.flatMap((each) => each.groups ?? []))];
+  const startFrom = inAll && newMailFrom !== undefined && mailboxes.some(({ addresses }) => addresses.includes(newMailFrom)) ? newMailFrom : (mailboxes[0]?.defaultAddress ?? "");
   const [loading, setLoading] = useState<Loading>(given === undefined ? { status: "ready" } : { status: "loading" });
   const [draft, setDraft] = useState<Draft>();
-  const [fields, setFields] = useState<Fields>({ from: mailbox.defaultAddress ?? "", to: "", cc: "", bcc: "", subject: "", text: "" });
+  const [fields, setFields] = useState<Fields>({ from: startFrom, to: "", cc: "", bcc: "", subject: "", text: "" });
   const [copies, setCopies] = useState(false);
+  // The preference read after the composer opened still names where new mail starts, until anything is saved.
+  useEffect(() => {
+    if (given !== undefined || id.current !== undefined) return;
+    setFields((current) => (current.from === startFrom ? current : { ...current, from: startFrom }));
+    stored.current = { ...stored.current, from: startFrom };
+  }, [startFrom, given]);
   const [saving, setSaving] = useState<Saving>({ status: "idle" });
   const [problem, setProblem] = useState<Problem>();
   const [busy, setBusy] = useState<"sending" | "deleting">();
   const formId = useId();
 
   const id = useRef(given);
+  // The mailbox the draft lives in, in All mailboxes, as Duva last said.
+  const homeRef = useRef<string>(undefined);
   const fieldsRef = useRef(fields);
   fieldsRef.current = fields;
   // What the draft holds as Duva last saved it, so a save sends only what changed since.
@@ -120,9 +142,10 @@ export function Composer({
   const read = useCallback(async () => {
     if (id.current === undefined) return;
     const asked = ++answered.current;
-    const { data, response } = await client
-      .GET("/mailboxes/{mailbox}/drafts/{draft}", { params: { path: { mailbox: mailbox.id, draft: id.current } } })
-      .catch(() => ({ data: undefined, response: undefined }));
+    const draft = id.current;
+    const { data, response } = await (
+      one === undefined ? client.GET("/all-mailboxes/drafts/{draft}", { params: { path: { draft } } }) : client.GET("/mailboxes/{mailbox}/drafts/{draft}", { params: { path: { mailbox: one, draft } } })
+    ).catch(() => ({ data: undefined, response: undefined }));
     if (asked !== answered.current) return;
     if (response?.status === 401) return onSignedOut();
     if (data === undefined) {
@@ -133,6 +156,7 @@ export function Composer({
       return;
     }
     setDraft(data);
+    homeRef.current = (data satisfies Draft as Draft).mailbox;
     if (!filled.current) {
       filled.current = true;
       const loaded = fieldsOf(data);
@@ -141,7 +165,7 @@ export function Composer({
       if (loaded.cc !== "" || loaded.bcc !== "") setCopies(true);
     }
     setLoading({ status: "ready" });
-  }, [client, mailbox.id, onSignedOut]);
+  }, [client, one, onSignedOut]);
 
   useEffect(() => {
     void read();
@@ -165,10 +189,19 @@ export function Composer({
       if (differs("text")) changed.text = now.text;
       if (Object.keys(changed).length === 0) return wrong.length === 0;
       setSaving({ status: "saving" });
+      // A draft lives in the mailbox it goes from, so new mail going from another mailbox's address
+      // is written again there, all of it, and the draft it was is deleted.
+      const home = changed.from === undefined ? undefined : mailboxesRef.current.find(({ addresses }) => addresses.some((own) => own.toLowerCase() === changed.from!.toLowerCase()))?.id;
+      const moving = one === undefined && id.current !== undefined && home !== undefined && home !== homeRef.current;
+      const body = moving ? { from: now.from, ...Object.fromEntries(listFields.filter((field) => !wrong.some((each) => each.field === field)).map((field) => [field, addressesIn(now[field])])), subject: now.subject, text: now.text } : changed;
       const answer =
-        id.current === undefined
-          ? await client.POST("/mailboxes/{mailbox}/drafts", { params: { path: { mailbox: mailbox.id } }, body: changed }).catch(() => undefined)
-          : await client.PATCH("/mailboxes/{mailbox}/drafts/{draft}", { params: { path: { mailbox: mailbox.id, draft: id.current } }, body: changed }).catch(() => undefined);
+        one === undefined
+          ? id.current === undefined || moving
+            ? await client.POST("/all-mailboxes/drafts", { body: { ...body, from: now.from } }).catch(() => undefined)
+            : await client.PATCH("/all-mailboxes/drafts/{draft}", { params: { path: { draft: id.current } }, body: changed }).catch(() => undefined)
+          : id.current === undefined
+            ? await client.POST("/mailboxes/{mailbox}/drafts", { params: { path: { mailbox: one } }, body: changed }).catch(() => undefined)
+            : await client.PATCH("/mailboxes/{mailbox}/drafts/{draft}", { params: { path: { mailbox: one, draft: id.current } }, body: changed }).catch(() => undefined);
       if (answer?.response.status === 401) {
         onSignedOut();
         return false;
@@ -177,7 +210,18 @@ export function Composer({
         setSaving({ status: "failed" });
         return false;
       }
-      if (id.current === undefined) {
+      if (moving) {
+        // The draft it was goes, or else the one written again does, so there is never two.
+        const gone = await client.DELETE("/all-mailboxes/drafts/{draft}", { params: { path: { draft: id.current! } } }).catch(() => undefined);
+        if (gone?.response.ok !== true) {
+          await client.DELETE("/all-mailboxes/drafts/{draft}", { params: { path: { draft: answer.data.id } } }).catch(() => undefined);
+          setSaving({ status: "failed" });
+          return false;
+        }
+        stored.current = { ...now };
+      }
+      homeRef.current = (answer.data satisfies Draft as Draft).mailbox;
+      if (id.current === undefined || moving) {
         id.current = answer.data.id;
         // The address now names the draft, so a reload or the back button returns to it.
         history.replaceState(null, "", `${base}drafts/${encodeURIComponent(answer.data.id)}`);
@@ -189,7 +233,7 @@ export function Composer({
       return wrong.length === 0;
     });
     return queue.current;
-  }, [client, mailbox.id, base, onSignedOut]);
+  }, [client, one, base, onSignedOut]);
 
   useEffect(() => () => clearTimeout(timer.current), []);
 
@@ -198,22 +242,31 @@ export function Composer({
     answered.current++;
     setDraft(data);
   }, []);
-  /** The draft's ID, once what was typed is saved, writing the draft first if there is none yet, so files have one to go to. */
+  /**
+   * The draft's ID and the mailbox it lives in, once what was typed is saved, writing the draft first
+   * if there is none yet, so files have one to go to. In All mailboxes it is written from its From.
+   */
   const draftId = useCallback(async () => {
     await save();
     queue.current = queue.current.then(async () => {
       if (id.current !== undefined) return true;
-      const answer = await client.POST("/mailboxes/{mailbox}/drafts", { params: { path: { mailbox: mailbox.id } }, body: {} }).catch(() => undefined);
+      const answer = await (
+        one === undefined
+          ? client.POST("/all-mailboxes/drafts", { body: { from: fieldsRef.current.from } })
+          : client.POST("/mailboxes/{mailbox}/drafts", { params: { path: { mailbox: one } }, body: {} })
+      ).catch(() => undefined);
       if (answer?.data === undefined) return false;
+      homeRef.current = (answer.data satisfies Draft as Draft).mailbox;
       id.current = answer.data.id;
       history.replaceState(null, "", `${base}drafts/${encodeURIComponent(answer.data.id)}`);
       adopt(answer.data);
       return true;
     });
     await queue.current;
-    return id.current;
-  }, [save, client, mailbox.id, base, adopt]);
-  const uploads = useUploads({ client, mailbox: mailbox.id, draftId, onDraft: adopt, onSignedOut });
+    const mailbox = one ?? homeRef.current;
+    return id.current === undefined || mailbox === undefined ? undefined : { mailbox, draft: id.current };
+  }, [save, client, one, base, adopt]);
+  const uploads = useUploads({ client, draftId, onDraft: adopt, onSignedOut });
   const fileInput = useRef<HTMLInputElement>(null);
   const [dropping, setDropping] = useState(false);
 
@@ -230,9 +283,11 @@ export function Composer({
     setFields(next);
     void save();
   };
-  // The draft can go from any of the mailbox's addresses or its owner's groups, and from the address a reply or forward started from.
-  const groups = mailbox.groups ?? [];
-  const fromChoices = [...new Set([...mailbox.addresses, ...(draft === undefined || groups.includes(draft.from) ? [] : [draft.from])])];
+  // The draft can go from any of the mailbox's addresses or its owner's groups, new mail in All
+  // mailboxes from any of theirs, and a reply or forward from the address it started from too.
+  const answering = draft?.answers !== undefined || draft?.forwards !== undefined || (draft?.attachments?.length ?? 0) > 0;
+  const fromMailboxes = inAll && answering ? mailboxes.filter(({ id }) => id === draft?.mailbox) : mailboxes;
+  const fromChoices = [...new Set([...fromMailboxes.flatMap(({ addresses }) => addresses), ...(draft === undefined || groups.includes(draft.from) ? [] : [draft.from])])];
   const asGroup = groups.includes(fields.from);
 
   const state = draft?.send?.state;
@@ -250,8 +305,12 @@ export function Composer({
       if (id.current === undefined && saved) setProblem({ message: strings.compose.noRecipient, field: "to" });
       return;
     }
-    const params = { params: { path: { mailbox: mailbox.id, draft: id.current } } };
-    const { data, error, response } = await client.POST("/mailboxes/{mailbox}/drafts/{draft}/send", params).catch(() => ({ data: undefined, error: undefined, response: undefined }));
+    const draft = id.current;
+    const { data, error, response } = await (
+      one === undefined
+        ? client.POST("/all-mailboxes/drafts/{draft}/send", { params: { path: { draft } } })
+        : client.POST("/mailboxes/{mailbox}/drafts/{draft}/send", { params: { path: { mailbox: one, draft } } })
+    ).catch(() => ({ data: undefined, error: undefined, response: undefined }));
     setBusy(undefined);
     if (response?.status === 401) return onSignedOut();
     if (response?.status === 400) return setProblem({ message: strings.compose.noRecipient, field: "to" });
@@ -269,9 +328,12 @@ export function Composer({
     await queue.current;
     const closed = () => (inThread === undefined ? (location.hash = `${base}drafts`) : inThread.onClosed());
     if (id.current === undefined) return closed();
-    const { response } = await client
-      .DELETE("/mailboxes/{mailbox}/drafts/{draft}", { params: { path: { mailbox: mailbox.id, draft: id.current } } })
-      .catch(() => ({ response: undefined }));
+    const draft = id.current;
+    const { response } = await (
+      one === undefined
+        ? client.DELETE("/all-mailboxes/drafts/{draft}", { params: { path: { draft } } })
+        : client.DELETE("/mailboxes/{mailbox}/drafts/{draft}", { params: { path: { mailbox: one, draft } } })
+    ).catch(() => ({ response: undefined }));
     if (response?.status === 401) return onSignedOut();
     setBusy(undefined);
     if (!response?.ok && response?.status !== 404) return setProblem({ message: strings.compose.deleteFailed });
@@ -456,7 +518,7 @@ export function Composer({
         {groups.length === 0 && fromChoices.length <= 1 ? (
           <div className="compose-field">
             <span className="compose-label">{strings.compose.from}</span>
-            <span className="compose-from">{draft?.from ?? mailbox.defaultAddress}</span>
+            <span className="compose-from">{draft?.from ?? startFrom}</span>
           </div>
         ) : (
           <div className="compose-field">
@@ -525,7 +587,7 @@ export function Composer({
         {strings.compose.message}
       </label>
       <textarea ref={textRef} id={`${formId}-text`} className="compose-body" rows={12} value={fields.text} readOnly={locked} onChange={change("text")} onBlur={() => void save()} lang="" />
-      <DraftFiles client={client} mailbox={mailbox.id} draft={draft} sending={uploads.sending} locked={locked} onDraft={adopt} onSignedOut={onSignedOut} />
+      <DraftFiles client={client} mailbox={draft?.mailbox ?? one ?? ""} draft={draft} sending={uploads.sending} locked={locked} onDraft={adopt} onSignedOut={onSignedOut} />
       {dropping && (
         <p className="compose-drop" aria-hidden="true">
           {strings.compose.dropFiles}
@@ -542,7 +604,7 @@ export function Composer({
           {strings.compose.saveFailed}
         </p>
       )}
-      <Outcome draft={draft} agent={agent} slow={slow} base={base} sendNow={(draft) => <SendNow client={client} mailbox={mailbox.id} draft={draft} onSent={(sent) => sent !== undefined && setDraft(sent)} onSignedOut={onSignedOut} />} />
+      <Outcome draft={draft} agent={agent} slow={slow} base={base} sendNow={(id) => <SendNow client={client} mailbox={draft?.mailbox ?? one ?? ""} draft={id} onSent={(sent) => sent !== undefined && setDraft(sent)} onSignedOut={onSignedOut} />} />
       {sendable && (
         <div className="compose-actions actions">
           <button type="submit" className="button button-primary" aria-keyshortcuts={mac ? "Meta+Enter" : "Control+Enter"} disabled={locked}>

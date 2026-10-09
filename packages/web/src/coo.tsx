@@ -124,7 +124,7 @@ function look(what: string): number {
 
 /** Where the human is looking now, which ends the news about it. */
 export interface Looking {
-  /** The mailbox whose Inbox they are on. */
+  /** The mailboxes whose Inbox they are on, all of them in All mailboxes' Inbox, joined by commas. */
   inbox?: string;
   approvals: boolean;
   /** The thread they have open. */
@@ -231,13 +231,16 @@ export function useCoo({
     return () => document.removeEventListener("visibilitychange", changed);
   }, []);
   const { inbox, approvals, thread } = looking;
-  const hasMail = arrived.some((each) => each.mailbox === inbox);
+  const hasMail = arrived.some((each) => inbox?.split(",").includes(each.mailbox) === true);
   // Leaving counts as looking until then too, since the feeds may bring what the human saw there later.
   useEffect(() => {
     if (!visible || inbox === undefined) return;
-    look(`mail.${inbox}`);
-    if (hasMail) setArrived((current) => current.filter((each) => each.mailbox !== inbox));
-    return () => void look(`mail.${inbox}`);
+    const inboxes = inbox.split(",");
+    for (const each of inboxes) look(`mail.${each}`);
+    if (hasMail) setArrived((current) => current.filter((each) => !inboxes.includes(each.mailbox)));
+    return () => {
+      for (const each of inboxes) look(`mail.${each}`);
+    };
   }, [visible, inbox, hasMail]);
   useEffect(() => {
     if (!visible || !approvals) return;

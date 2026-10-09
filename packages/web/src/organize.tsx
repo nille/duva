@@ -1,9 +1,12 @@
 // Organizing threads with labels: archiving, Spam, Trash and the human's own labels, on one thread
 // or several, and setting them aside in Remind me. Every change but cancelling a reminder can be undone at once.
+// In All mailboxes each thread is organized in its own mailbox, and a label of the human's own is
+// given by its name, which Duva finds, or makes, in each thread's mailbox (ADR-0033).
 import { useContext, useEffect, useId, useRef, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import { clockValue, type components, fromClockValue, presetAt, reminderPresets, soonestReminder } from "@duva/openapi";
 import { PreferencesContext, useDates } from "./dates.ts";
+import { acrossOf, type AllMailboxes, isAll } from "./mailboxes.tsx";
 import { useShortcuts } from "./shortcuts.tsx";
 import { strings } from "./strings.ts";
 
@@ -30,10 +33,14 @@ export class SessionEnded extends Error {}
  * Adds and removes labels on the threads, and answers the threads as they are now, or undefined if
  * Duva couldn't change them. Throws SessionEnded if the session has ended.
  */
-async function relabel(client: DuvaClient, mailbox: string, threads: string[], change: { add?: string[]; remove?: string[] }): Promise<Labelled[] | undefined> {
-  const { data, response } = await client
-    .POST("/mailboxes/{mailbox}/threads/labels", { params: { path: { mailbox } }, body: { threads, ...change } })
-    .catch(() => ({ data: undefined, response: undefined }));
+async function relabel(client: DuvaClient, mailbox: Mailbox | AllMailboxes, threads: string[], change: { add?: string[]; remove?: string[] }): Promise<Labelled[] | undefined> {
+  const body = { threads, ...change };
+  if (isAll(mailbox)) {
+    const { data, response } = await client.POST("/all-mailboxes/threads/labels", { body }).catch(() => ({ data: undefined, response: undefined }));
+    if (response?.status === 401) throw new SessionEnded();
+    return data?.threads.map((thread) => acrossOf(mailbox, thread));
+  }
+  const { data, response } = await client.POST("/mailboxes/{mailbox}/threads/labels", { params: { path: { mailbox: mailbox.id } }, body }).catch(() => ({ data: undefined, response: undefined }));
   if (response?.status === 401) throw new SessionEnded();
   return data?.threads;
 }
@@ -44,7 +51,7 @@ async function relabel(client: DuvaClient, mailbox: string, threads: string[], c
  */
 export async function organize(
   client: DuvaClient,
-  mailbox: string,
+  mailbox: Mailbox | AllMailboxes,
   threads: Labelled[],
   change: { add?: string[]; remove?: string[] },
   message: (count: number) => string,
@@ -81,12 +88,17 @@ export async function organize(
  * Marks the threads read or unread, and answers what was done, or undefined if Duva couldn't.
  * Throws SessionEnded if the session has ended.
  */
-export async function markRead(client: DuvaClient, mailbox: string, threads: Labelled[], read: boolean): Promise<Done | undefined> {
-  const params = { path: { mailbox } };
+export async function markRead(client: DuvaClient, mailbox: Mailbox | AllMailboxes, threads: Labelled[], read: boolean): Promise<Done | undefined> {
   const body = { threads: threads.map(({ id }) => id) };
-  const { data, response } = await (read ? client.POST("/mailboxes/{mailbox}/threads/read", { params, body }) : client.POST("/mailboxes/{mailbox}/threads/unread", { params, body })).catch(
-    () => ({ data: undefined, response: undefined }),
-  );
+  const { data, response } = await (
+    isAll(mailbox)
+      ? read
+        ? client.POST("/all-mailboxes/threads/read", { body })
+        : client.POST("/all-mailboxes/threads/unread", { body })
+      : read
+        ? client.POST("/mailboxes/{mailbox}/threads/read", { params: { path: { mailbox: mailbox.id } }, body })
+        : client.POST("/mailboxes/{mailbox}/threads/unread", { params: { path: { mailbox: mailbox.id } }, body })
+  ).catch(() => ({ data: undefined, response: undefined }));
   if (response?.status === 401) throw new SessionEnded();
   if (data === undefined) return undefined;
   return { message: (read ? strings.organize.markedRead : strings.organize.markedUnread)(threads.length) };
@@ -144,7 +156,7 @@ export function OrganizeActions({
   onSignedOut,
 }: {
   client: DuvaClient;
-  mailbox: Mailbox;
+  mailbox: Mailbox | AllMailboxes;
   threads: Labelled[];
   labels: Label[];
   place: Place;
@@ -170,7 +182,7 @@ export function OrganizeActions({
     setBusy(true);
     setFailed(false);
     try {
-      const done = await organize(client, mailbox.id, threads, change, message);
+      const done = await organize(client, mailbox, threads, change, message);
       if (done === undefined) setFailed(true);
       else onDone(done, moved);
     } catch (error) {
@@ -284,7 +296,7 @@ function LabelPicker({
   onSignedOut,
 }: {
   client: DuvaClient;
-  mailbox: Mailbox;
+  mailbox: Mailbox | AllMailboxes;
   threads: Labelled[];
   labels: Label[];
   disabled: boolean;
@@ -403,34 +415,43 @@ function LabelPicker({
  * others' reminders, leaving out of the Inbox those that weren't in it. Throws SessionEnded if the
  * session has ended.
  */
-export async function remindAt(client: DuvaClient, mailbox: string, threads: Labelled[], at: Date, message: string): Promise<Done | undefined> {
-  const params = { path: { mailbox } };
+export async function remindAt(client: DuvaClient, mailbox: Mailbox | AllMailboxes, threads: Labelled[], at: Date, message: string): Promise<Done | undefined> {
   const call = async (answer: Promise<{ data?: { threads: Labelled[] }; response: Response }>) => {
     const { data, response } = await answer.catch(() => ({ data: undefined, response: undefined }));
     if (response?.status === 401) throw new SessionEnded();
     return data?.threads;
   };
-  const set = await call(client.POST("/mailboxes/{mailbox}/threads/remind", { params, body: { threads: threads.map(({ id }) => id), at: at.toISOString() } }));
+  const remind = (body: { threads: string[]; at: string }) =>
+    call(isAll(mailbox) ? client.POST("/all-mailboxes/threads/remind", { body }) : client.POST("/mailboxes/{mailbox}/threads/remind", { params: { path: { mailbox: mailbox.id } }, body }));
+  const set = await remind({ threads: threads.map(({ id }) => id), at: at.toISOString() });
   if (set === undefined) return undefined;
   const undo = async () => {
     for (const was of threads.filter((thread) => thread.reminder !== undefined)) {
-      if ((await call(client.POST("/mailboxes/{mailbox}/threads/remind", { params, body: { threads: [was.id], at: was.reminder!.at } }))) === undefined) return false;
+      if ((await remind({ threads: [was.id], at: was.reminder!.at })) === undefined) return false;
     }
     const fresh = threads.filter((thread) => thread.reminder === undefined);
     if (fresh.length === 0) return true;
-    if ((await call(client.POST("/mailboxes/{mailbox}/threads/remind/cancel", { params, body: { threads: fresh.map(({ id }) => id) } }))) === undefined) return false;
+    if ((await call(cancelling(client, mailbox, fresh.map(({ id }) => id)))) === undefined) return false;
     const archived = fresh.filter((thread) => !thread.labels.includes("inbox")).map(({ id }) => id);
     return archived.length === 0 || (await relabel(client, mailbox, archived, { remove: ["inbox"] })) !== undefined;
   };
   return { message, undo };
 }
 
+/** Asks Duva to cancel the reminders of the threads with the IDs. */
+const cancelling = (client: DuvaClient, mailbox: Mailbox | AllMailboxes, threads: string[]) =>
+  isAll(mailbox)
+    ? client.POST("/all-mailboxes/threads/remind/cancel", { body: { threads } })
+    : client.POST("/mailboxes/{mailbox}/threads/remind/cancel", { params: { path: { mailbox: mailbox.id } }, body: { threads } });
+
 /** Cancels the threads' reminders, which puts them back in the Inbox, and answers what was done, or undefined if Duva couldn't. */
-async function cancelReminders(client: DuvaClient, mailbox: string, threads: Labelled[]): Promise<Done | undefined> {
+async function cancelReminders(client: DuvaClient, mailbox: Mailbox | AllMailboxes, threads: Labelled[]): Promise<Done | undefined> {
   const set = threads.filter((thread) => thread.reminder !== undefined);
-  const { data, response } = await client
-    .POST("/mailboxes/{mailbox}/threads/remind/cancel", { params: { path: { mailbox } }, body: { threads: set.map(({ id }) => id) } })
-    .catch(() => ({ data: undefined, response: undefined }));
+  const { data, response } = await cancelling(
+    client,
+    mailbox,
+    set.map(({ id }) => id),
+  ).catch(() => ({ data: undefined, response: undefined }));
   if (response?.status === 401) throw new SessionEnded();
   if (data === undefined) return undefined;
   return { message: strings.remind.cancelled(set.length) };
@@ -456,7 +477,7 @@ function RemindPicker({
   onSignedOut,
 }: {
   client: DuvaClient;
-  mailbox: Mailbox;
+  mailbox: Mailbox | AllMailboxes;
   threads: Labelled[];
   disabled: boolean;
   asked: number;
@@ -516,7 +537,7 @@ function RemindPicker({
       onSignedOut();
     }
   };
-  const remind = (at: Date) => act(() => remindAt(client, mailbox.id, threads, at, t.setAside(threads.length, when(at))));
+  const remind = (at: Date) => act(() => remindAt(client, mailbox, threads, at, t.setAside(threads.length, when(at))));
 
   return (
     <div
@@ -548,7 +569,7 @@ function RemindPicker({
           {soonest !== undefined && (
             <p className="remind-now">
               <span>{set.length === threads.length ? t.until(when(new Date(soonest))) : t.someUntil(set.length, when(new Date(soonest)))}</span>
-              <button type="button" className="link" disabled={state === "busy"} onClick={() => void act(() => cancelReminders(client, mailbox.id, threads))}>
+              <button type="button" className="link" disabled={state === "busy"} onClick={() => void act(() => cancelReminders(client, mailbox, threads))}>
                 {t.cancel}
               </button>
             </p>
@@ -604,7 +625,10 @@ function RemindPicker({
   );
 }
 
-/** A form that creates a label in the mailbox, telling the human if the name is taken. */
+/**
+ * A form that creates a label in the mailbox, telling the human if the name is taken. In All
+ * mailboxes it only names the label, which Duva makes in each thread's mailbox once it is added.
+ */
 export function NewLabel({
   client,
   mailbox,
@@ -614,7 +638,7 @@ export function NewLabel({
   onSignedOut,
 }: {
   client: DuvaClient;
-  mailbox: Mailbox;
+  mailbox: Mailbox | AllMailboxes;
   compact?: boolean;
   onCreated: (label: Label) => void;
   onCancel?: () => void;
@@ -627,6 +651,10 @@ export function NewLabel({
 
   const create = async () => {
     if (name.trim() === "") return setState({ status: "failed", message: strings.labelForm.missing });
+    if (isAll(mailbox)) {
+      setName("");
+      return onCreated({ id: name.trim(), name: name.trim(), builtIn: false, unread: 0 });
+    }
     setState({ status: "busy" });
     const { data, response } = await client
       .POST("/mailboxes/{mailbox}/labels", { params: { path: { mailbox: mailbox.id } }, body: { name: name.trim() } })

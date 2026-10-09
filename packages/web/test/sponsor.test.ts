@@ -59,9 +59,10 @@ test("the mailbox switcher lists only the human's own mailboxes, never one for t
   await signIn("ada@example.org");
 
   const links = (await mailboxes(page)).getByRole("link");
-  await expect.poll(() => links.count(), wait).toBe(2);
-  await expect.poll(() => links.nth(0).getAttribute("aria-label"), wait).toBe("ada@example.com, 1 unread");
-  expect(await links.nth(1).getAttribute("aria-label")).toBe("lovelace@example.com");
+  await expect.poll(() => links.count(), wait).toBe(3);
+  await expect.poll(() => links.nth(1).getAttribute("aria-label"), wait).toBe("ada@example.com, 1 unread");
+  expect(await links.nth(0).getAttribute("aria-label")).toBe("All mailboxes, 1 unread");
+  expect(await links.nth(2).getAttribute("aria-label")).toBe("lovelace@example.com");
   expect(await links.nth(0).getAttribute("aria-current")).toBe("page");
   expect(await page.getByRole("navigation", { name: "Agents' mailboxes" }).count()).toBe(0);
   expect(await page.getByRole("link", { name: /^Hermes,/ }).count()).toBe(0);
@@ -77,7 +78,7 @@ test("on a phone the switcher's sheet lists only the human's own mailboxes, and 
   await page.getByRole("button", { name: /Mailboxes and views/ }).click();
 
   const links = (await mailboxes(page)).getByRole("link");
-  await expect.poll(() => links.allInnerTexts(), wait).toEqual(["ada@example.com", "lovelace@example.com"]);
+  await expect.poll(() => links.allInnerTexts(), wait).toEqual(["All mailboxes", "ada@example.com", "lovelace@example.com"]);
   expect(await page.getByRole("link", { name: /^Hermes/ }).count()).toBe(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(phone.width);
 });

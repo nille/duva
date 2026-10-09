@@ -25,10 +25,20 @@ interface Arriving {
 }
 
 /**
- * Uploads files to the draft that `draftId` gives, once it has one, and tells `onDraft` the draft
- * with each as it is attached. Answers the files on their way, and how to add and drop them.
+ * Uploads files to the draft that `draftId` gives, in the mailbox it lives in, once it has one, and
+ * tells `onDraft` the draft with each as it is attached. Answers the files on their way, and how to add and drop them.
  */
-export function useUploads({ client, mailbox, draftId, onDraft, onSignedOut }: { client: DuvaClient; mailbox: string; draftId: () => Promise<string | undefined>; onDraft: (draft: Draft) => void; onSignedOut: () => void }) {
+export function useUploads({
+  client,
+  draftId,
+  onDraft,
+  onSignedOut,
+}: {
+  client: DuvaClient;
+  draftId: () => Promise<{ mailbox: string; draft: string } | undefined>;
+  onDraft: (draft: Draft) => void;
+  onSignedOut: () => void;
+}) {
   const [sending, setSending] = useState<Arriving[]>([]);
   const change = (key: string, next: Partial<Arriving>) => setSending((current) => current.map((each) => (each.key === key ? { ...each, ...next } : each)));
   const live = useRef(true);
@@ -62,13 +72,13 @@ export function useUploads({ client, mailbox, draftId, onDraft, onSignedOut }: {
         return entry;
       });
       setSending((current) => [...current, ...entries]);
-      const draft = await draftId();
+      const given = await draftId();
       for (const entry of entries) {
         void (async () => {
           const failed = (reason: string) => live.current && !entry.cancelled() && change(entry.key, { failed: reason });
-          if (draft === undefined) return failed(strings.compose.uploadFailed);
+          if (given === undefined) return failed(strings.compose.uploadFailed);
           if (entry.file.size === 0) return failed(strings.compose.emptyFile);
-          const path = { mailbox, draft };
+          const path = given;
           const started = await client
             .POST("/mailboxes/{mailbox}/drafts/{draft}/uploads", { params: { path }, body: { name: entry.file.name, ...(entry.file.type !== "" && { type: entry.file.type }), size: entry.file.size } })
             .catch(() => undefined);
@@ -99,7 +109,7 @@ export function useUploads({ client, mailbox, draftId, onDraft, onSignedOut }: {
         })();
       }
     },
-    [client, mailbox, draftId, onDraft, onSignedOut],
+    [client, draftId, onDraft, onSignedOut],
   );
   return { sending, add, uploading: sending.some(({ failed }) => failed === undefined) };
 }

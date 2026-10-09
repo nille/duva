@@ -30,6 +30,16 @@ export const strings = {
     label: "Mailboxes",
     yours: "Your mailbox",
     yourMailboxes: "Your mailboxes",
+    /** All of a human's mailboxes taken together (ADR-0033). */
+    all: "All mailboxes",
+    /** The address the mail of a thread in All mailboxes came to, as its row names it. */
+    to: (address: string) => `to ${address}`,
+    /** What a waiting sender's choices are named in All mailboxes, with the address their mail came to. */
+    sendTo: (sender: string, address: string) => `In ${address}, send mail from ${sender} to`,
+    /** The mailbox something in All mailboxes belongs to, by its address. */
+    in: (address: string) => `In ${address}`,
+    /** A screened sender's line in All mailboxes, before when it was decided: the mailbox and the label. */
+    decidedIn: (address: string, label?: string) => `In ${address}.${label === undefined ? "" : ` ${label}.`} `,
     /** A human's own mailbox that has no address, by its place among theirs, so two never look the same. */
     withoutAddress: (place: number) => `Mailbox ${place}, without an address`,
     unread: (count: number) => `${count} unread`,
@@ -156,6 +166,7 @@ export const strings = {
     noRecipients: "No recipients yet",
     to: (recipients: string) => `To ${recipients}`,
     by: (agent: string) => `By ${agent}`,
+    from: (address: string) => `from ${address}`,
     states: { failed: "Not sent", approved: "Sending", waitingForLimit: "Waiting for the send limit", sending: "Sending", unclear: "Unclear if sent" } as Partial<Record<string, string>>,
     failed: "Duva couldn't list your drafts. Try again in a moment.",
     unreachable: "Duva couldn't be reached, so your drafts aren't listed. Check your connection and try again.",
@@ -851,6 +862,16 @@ export const strings = {
       onHint: "They work anywhere but in a field. This is the default.",
       off: "Off",
       offHint: "For speech input, or if keys set things off by mistake.",
+    },
+    opensOn: {
+      legend: "Where Duva opens",
+      lead: "Duva opens on all your mailboxes taken together, or on one of them. Either way, you can switch to the others where the mailbox is named.",
+      allHint: "Every mailbox's mail together, each thread saying which address it came to. This is the default.",
+      oneHint: "This mailbox's mail alone.",
+    },
+    newMailFrom: {
+      legend: "New mail goes from",
+      lead: "New mail you write in All mailboxes starts from this address. You can choose another as you write.",
     },
     cooSpeaksUp: {
       legend: "Coo speaks up",

@@ -2,7 +2,8 @@
 // organize, write and send their mail. On a desk the mail lies on one plane: the side column, with
 // Coo's portrait, Write, search, Duva's places and the mail's views, then the list, and what is open
 // from it beside the list, with a status strip along the foot. A human with more than one mailbox
-// chooses among their own at the side column's head. Agents own no mailboxes: they work in their
+// chooses among their own at the side column's head, or All mailboxes, all of them taken together,
+// which the web app opens on unless their preference names one (ADR-0033). Agents own no mailboxes: they work in their
 // sponsors' with sponsor access. Sponsors reach the Approvals view from the places once anything has
 // waited for them, where they decide what the agents they sponsor ask to send, and the Alerts view
 // once they have had an alert, where they read what their agents need them for, each with its count.
@@ -29,7 +30,7 @@ import { Drafts } from "./drafts.tsx";
 import { approvalChanges, type Connection, draftChanges, type Follow, labelChanges, mailChanges, mailboxSetupChanges, screenerChanges, SignedOut, useFeeds } from "./feed.ts";
 import { type Marks, ThreadIndex } from "./inbox.tsx";
 import { ActorMark } from "./mail-parts.tsx";
-import { ChevronIcon, MailboxList, MailboxSelector, mailboxHref, mailboxName, ownInOrder } from "./mailboxes.tsx";
+import { type AllMailboxes, ChevronIcon, isAll, labelsAcross, labelsIn, MailboxList, MailboxSelector, mailboxHref, mailboxName, ownInOrder } from "./mailboxes.tsx";
 import { type Beside, BesideContext, ListCountContext, takeOpenedBeside } from "./panes.tsx";
 import { answered, countChange, marked, now, overlapsMark, type Mark, type ReadMarks, ReadMarksContext, type ReadState, saw } from "./read-marks.ts";
 import { readScreener, ScreenedSenders, type ScreenerRead, ScreenerView } from "./screener.tsx";
@@ -57,6 +58,7 @@ addEventListener("pointerdown", () => (document.documentElement.dataset.input = 
 type Human = components["schemas"]["Human"];
 type Mailbox = components["schemas"]["Mailbox"];
 type Agent = components["schemas"]["Agent"];
+type AllMailboxesLabel = components["schemas"]["AllMailboxesLabel"];
 
 type State =
   | { status: "loading" }
@@ -114,9 +116,8 @@ function App() {
 
 /**
  * Where in the web app the human is, from the address's hash, so links and the back button work
- * without a server. A listing without a mailbox is in the human's first own mailbox. A thread or a
- * draft without one, and Drafts and writing, are in the own mailbox the human was last in, since
- * links to them may not say. A thread knows the view it was opened from, to go back there, and from
+ * without a server. A route without a mailbox is in All mailboxes, for a human with several, and
+ * in their mailbox for one with one. A thread knows the view it was opened from, to go back there, and from
  * a search, the message that matched. A sender's sheet knows the view, or the screened senders, it
  * was opened from, at the path `from`. A mailbox's screened senders are reached from its Screener. An
  * agent's activity lies across the plane, opens into one event, and keeps the kinds of event it shows. Settings reads which of its pages
@@ -163,10 +164,6 @@ function routeOf(hash: string): Route {
   return { view: "list", mailbox: decoded, list };
 }
 
-/** Whether the route is one that links reach without naming a mailbox, so it is in the own mailbox the human was last in. */
-const followsLastMailbox = (route: Route) =>
-  (route.view === "thread" || route.view === "draft" || route.view === "drafts" || route.view === "write") && route.mailbox === undefined;
-
 function useRoute(): Route & { hash: string } {
   const [hash, setHash] = useState(location.hash);
   useEffect(() => {
@@ -207,8 +204,8 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
   // How many threads in each mailbox's Inbox are unread, as last read and when.
   const [counted, setCounted] = useState<ReadonlyMap<string, { count: number; at: number }>>(new Map());
   const [connection, setConnection] = useState<Connection>();
-  // The side column's mailbox's labels, as last read and when.
-  const [labelsRead, setLabelsRead] = useState<{ mailbox?: string; labels: Label[]; at: number }>({ labels: [], at: 0 });
+  // The side column's mailbox's labels, or All mailboxes', as last read and when.
+  const [labelsRead, setLabelsRead] = useState<{ mailbox?: string; labels: Label[]; all?: AllMailboxesLabel[]; at: number }>({ labels: [], at: 0 });
   // The read marks the human made, which the lists and the counts show before they read them from Duva.
   const [readState, setReadState] = useState<ReadState>(new Map());
   const readStateRef = useRef(readState);
@@ -218,6 +215,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
   const [done, setDone] = useState<{ done: Done; at: string }>();
   // Times and dates show as the browser's language does until the human's preferences are read.
   const [preferences, setPreferences] = useState<Preferences>(defaultPreferences);
+  const [preferencesRead, setPreferencesRead] = useState(false);
   // How many of the list open are unread, which the phone's switcher says.
   const [listCount, setListCount] = useState(0);
   // On phones, whether the search field and the mailboxes and views are open.
@@ -236,6 +234,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
       const { data, response } = await client.GET("/preferences").catch(() => ({ data: undefined, response: undefined }));
       if (response?.status === 401) return onSignedOut();
       if (data !== undefined) setPreferences(data);
+      setPreferencesRead(true);
     })();
   }, [client, onSignedOut]);
 
@@ -390,41 +389,24 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
   const first = own[0];
   const several = own.length > 1;
   const isOwn = (id: string | undefined) => own.some((mailbox) => mailbox.id === id);
-  // With one mailbox of their own, a link that names none is in it. With several, every link the web
-  // app builds names its mailbox, and one that doesn't, as the composer's and Drafts' don't, says
-  // which once it is opened: a draft is in whichever of them holds it, and a thread, Drafts or
-  // writing in the own mailbox the human was last in. Any other view that names none is in the first.
-  const lastOwn = useRef<string>(undefined);
-  const follows = followsLastMailbox(route);
-  if (listed !== undefined && !follows) lastOwn.current = "mailbox" in route && isOwn(route.mailbox) ? route.mailbox : undefined;
-  const [draftHome, setDraftHome] = useState<{ draft: string; mailbox?: string }>();
-  const unplacedDraft = several && route.view === "draft" && route.mailbox === undefined ? route.id : undefined;
+  // The mailbox the route names, if it names one. With several of their own, one that names none is All mailboxes.
+  const named = "mailbox" in route ? route.mailbox : undefined;
+  // The web app opens on All mailboxes, or the mailbox the human's preference names, once both are read.
+  const [opening, setOpening] = useState(() => routeOf(location.hash).view === "list" && /^#?\/?$/.test(location.hash));
   useEffect(() => {
-    if (unplacedDraft === undefined) return;
-    let looking = true;
-    void Promise.all(
-      own.map(async (mailbox) => {
-        const { response } = await client.GET("/mailboxes/{mailbox}/drafts/{draft}", { params: { path: { mailbox: mailbox.id, draft: unplacedDraft } } }).catch(() => ({ response: undefined }));
-        return response?.ok === true ? mailbox.id : undefined;
-      }),
-    ).then((homes) => {
-      if (looking) setDraftHome({ draft: unplacedDraft, mailbox: homes.find((home) => home !== undefined) });
-    });
-    return () => {
-      looking = false;
-    };
-  }, [client, unplacedDraft, own]);
-  const placingDraft = unplacedDraft !== undefined && draftHome?.draft !== unplacedDraft;
-  // The mailbox the route names, if it names one.
-  const named = "mailbox" in route ? (route.mailbox ?? (follows ? ((unplacedDraft !== undefined ? draftHome?.mailbox : undefined) ?? lastOwn.current) : undefined)) : undefined;
-  useEffect(() => {
-    if (several && follows && !placingDraft) location.replace(`#/mailboxes/${encodeURIComponent(named ?? first!.id)}/${route.hash.replace(/^#\/?/, "")}`);
-  }, [several, follows, placingDraft, named, first, route.hash]);
+    if (!opening || listed === undefined || !preferencesRead) return;
+    setOpening(false);
+    const opensOn = own.find(({ id }) => id === preferences.opensOn);
+    if (several && opensOn !== undefined && /^#?\/?$/.test(location.hash)) location.replace(mailboxHref(opensOn, false));
+  }, [opening, listed, preferencesRead, own, several, preferences.opensOn]);
   // A mailbox the list doesn't have, as one an admin gave the human since, is looked for again once
   // before the web app says it isn't theirs.
   const known = named === undefined || isOwn(named);
   const [rechecked, setRechecked] = useState<ReadonlySet<string>>(new Set());
   const checking = listed !== undefined && !known && named !== undefined && !rechecked.has(named);
+  // All mailboxes, for a human with several, with its labels as last read.
+  const allLabels = labelsRead.all;
+  const all = useMemo<AllMailboxes | undefined>(() => (several ? { all: true, own, labels: allLabels ?? [] } : undefined), [several, own, allLabels]);
   useEffect(() => {
     if (!checking) return;
     void listMailboxes(true).then(() => setRechecked((current) => new Set([...current, named])));
@@ -466,29 +448,53 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
   // Approvals and Alerts are among the places once used, and while open, as a link may open them before.
   const approvalsPlace = approvalsUsed || route.view === "approvals";
   const alertsPlace = alerts.newest !== undefined || route.view === "alerts";
-  // The mailbox the route is in, the human's first own if it names none.
-  const shown = away ? undefined : named === undefined ? first : own.find(({ id }) => id === named);
-  const base = shown === undefined ? "#/" : mailboxHref(shown, !several && shown.id === first?.id);
-  // Outside the mail, the side column keeps the views of the mailbox last open, or the first own.
-  const lastShown = useRef<Mailbox>(undefined);
+  // The mailbox the route is in, or All mailboxes if it names none, the only own one for a human with one.
+  const shown = away ? undefined : named === undefined ? (all ?? first) : own.find(({ id }) => id === named);
+  const hrefIn = (mailbox: Mailbox | AllMailboxes | undefined) => (mailbox === undefined || isAll(mailbox) ? "#/" : mailboxHref(mailbox, !several && mailbox.id === first?.id));
+  const base = hrefIn(shown);
+  // Outside the mail, the side column keeps the views of the mailbox last open, or where the web app opens.
+  const lastShown = useRef<Mailbox | AllMailboxes>(undefined);
   if (shown !== undefined) lastShown.current = shown;
-  const sided = shown ?? (away ? (lastShown.current ?? first) : undefined);
-  const sideBase = sided === undefined ? "#/" : mailboxHref(sided, !several && sided.id === first?.id);
-  const version = sided === undefined ? 0 : (versions.get(sided.id) ?? 0);
+  const sided = shown ?? (away ? (lastShown.current ?? all ?? first) : undefined);
+  const sideBase = hrefIn(sided);
+  // The mailbox the side column shows, or none in All mailboxes.
+  const sidedOne = sided === undefined || isAll(sided) ? undefined : sided;
+  const idsIn = (mailbox: Mailbox | AllMailboxes | undefined) => (mailbox === undefined ? [] : isAll(mailbox) ? mailbox.own.map(({ id }) => id) : [mailbox.id]);
+  // All mailboxes changes with every one of them.
+  const version = idsIn(sided).reduce((sum, id) => sum + (versions.get(id) ?? 0), 0);
+  const sidedKey = sided === undefined ? undefined : isAll(sided) ? "all" : sided.id;
+
+  // A thread opened in All mailboxes is read and acted on in the mailbox it is in, which Duva finds.
+  const [threadHome, setThreadHome] = useState<{ thread: string; mailbox?: string }>();
+  const unplacedThread = shown !== undefined && isAll(shown) && route.view === "thread" ? route.id : undefined;
+  useEffect(() => {
+    if (unplacedThread === undefined || threadHome?.thread === unplacedThread) return;
+    let looking = true;
+    void client
+      .GET("/all-mailboxes/threads/{thread}", { params: { path: { thread: unplacedThread } } })
+      .catch(() => ({ data: undefined, response: undefined }))
+      .then(({ data, response }) => {
+        if (response?.status === 401) return onSignedOut();
+        if (looking) setThreadHome({ thread: unplacedThread, mailbox: data?.mailbox });
+      });
+    return () => {
+      looking = false;
+    };
+  }, [client, unplacedThread, threadHome, onSignedOut]);
+  const placingThread = unplacedThread !== undefined && threadHome?.thread !== unplacedThread;
+  const home = shown === undefined ? undefined : isAll(shown) ? own.find(({ id }) => id === (route.view === "thread" ? threadHome?.mailbox : undefined)) : shown;
 
   // The strip names Coo first, then each self-hosted agent.
   const stripAgents = useMemo(() => [...sponsored.filter(({ mailboxAgent }) => mailboxAgent), ...sponsored.filter(({ mailboxAgent }) => !mailboxAgent)], [sponsored]);
 
   // Each own mailbox by its address, as an agent's activity names where each event happened.
   const addresses = useMemo(() => new Map(own.map(({ id, defaultAddress, addresses }) => [id, defaultAddress ?? addresses[0] ?? id])), [own]);
-  // Ask Coo from All mailboxes, which a human with several reaches at #/agent.
-  const askingAll = route.view === "agent" && route.mailbox === undefined && several;
   // Coo, at the side column's head, works and speaks of the side column's mailbox, or of all of them
-  // from All mailboxes. Where the human looks ends its news of it.
-  const cooMailboxes = useMemo(() => (askingAll ? followed : sided === undefined ? [] : [sided.id]), [askingAll, followed, sided]);
+  // from All mailboxes, whose news it links there. Where the human looks ends its news of it.
+  const cooMailboxes = useMemo(() => (sidedKey === undefined ? [] : sidedKey === "all" ? followed : [sidedKey]), [sidedKey, followed]);
   const cooBaseOf = (id: string) => {
     const found = own.find((each) => each.id === id);
-    return found === undefined ? sideBase : mailboxHref(found, !several && found.id === first?.id);
+    return found === undefined || (sided !== undefined && isAll(sided)) ? sideBase : mailboxHref(found, !several && found.id === first?.id);
   };
   const coo = useCoo({
     client,
@@ -496,7 +502,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
     own: followed,
     coos,
     looking: {
-      inbox: route.view === "list" && "label" in route.list && route.list.label === "inbox" ? shown?.id : undefined,
+      inbox: route.view === "list" && "label" in route.list && route.list.label === "inbox" && shown !== undefined ? (isAll(shown) ? followed.join(",") : shown.id) : undefined,
       approvals: route.view === "approvals",
       thread: route.view === "thread" ? route.id : undefined,
     },
@@ -507,25 +513,30 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
   const labelsReading = useRef(0);
   useEffect(() => {
     const read = ++labelsReading.current;
-    if (sided === undefined) return setLabelsRead({ labels: [], at: now() });
+    if (sidedKey === undefined) return setLabelsRead({ labels: [], at: now() });
+    const ids = sidedKey === "all" ? own.map(({ id }) => id) : [sidedKey];
     void (async () => {
       const at = now();
-      const { data, response } = await client.GET("/mailboxes/{mailbox}/labels", { params: { path: { mailbox: sided.id } } }).catch(() => ({ data: undefined, response: undefined }));
+      const { data, response } = await (
+        sidedKey === "all"
+          ? client.GET("/all-mailboxes/labels").then(({ data, response }) => ({ response, data: data === undefined ? undefined : { labels: labelsAcross(data.labels), all: data.labels } }))
+          : client.GET("/mailboxes/{mailbox}/labels", { params: { path: { mailbox: sidedKey } } }).then(({ data, response }) => ({ response, data: data === undefined ? undefined : { labels: data.labels, mailbox: sidedKey } }))
+      ).catch(() => ({ data: undefined, response: undefined }));
       if (response?.status === 401) return onSignedOut();
       // Labels read while a mark was on its way are dropped, and read again once Duva answers it.
-      if (data !== undefined && read === labelsReading.current && !overlapsMark(readStateRef.current, sided.id, at, now())) setLabelsRead({ mailbox: sided.id, labels: data.labels, at });
+      if (data !== undefined && read === labelsReading.current && !ids.some((id) => overlapsMark(readStateRef.current, id, at, now()))) setLabelsRead({ ...data, at });
     })();
-  }, [client, sided, version, relabelled, onSignedOut]);
+  }, [client, sidedKey, own, version, relabelled, onSignedOut]);
 
   // The labels and the Inboxes count the threads as the human last marked them, though they were read before.
+  // In All mailboxes a label counts what each mailbox's label of its name does.
   const labels = useMemo(
     () =>
-      labelsRead.mailbox === undefined
-        ? labelsRead.labels
-        : labelsRead.labels.map((label) => {
-            const change = countChange(readState, labelsRead.mailbox!, label.id, labelsRead.at);
-            return change === 0 ? label : { ...label, unread: Math.max(0, label.unread + change) };
-          }),
+      labelsRead.labels.map((label) => {
+        const each = labelsRead.all?.find(({ id }) => id === label.id)?.mailboxes ?? (labelsRead.mailbox === undefined ? [] : [{ mailbox: labelsRead.mailbox, label: label.id }]);
+        const change = each.reduce((sum, { mailbox, label }) => sum + countChange(readState, mailbox, label, labelsRead.at), 0);
+        return change === 0 ? label : { ...label, unread: Math.max(0, label.unread + change) };
+      }),
     [labelsRead, readState],
   );
   const unread = useMemo<ReadonlyMap<string, number>>(
@@ -558,14 +569,17 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
   // view. Another mailbox's shows as loading until it is read.
   const [screener, setScreener] = useState<{ mailbox: string; read: ScreenerRead }>();
   const screenerRead = useRef(0);
+  // By the mailbox's key, so All mailboxes' labels read again don't read its Screener again.
+  const sidedRef = useRef(sided);
+  sidedRef.current = sided;
   useEffect(() => {
     const read = ++screenerRead.current;
-    if (sided === undefined) return;
-    void readScreener(client, sided.id, onSignedOut).then((answer) => {
-      if (answer !== undefined && read === screenerRead.current) setScreener({ mailbox: sided.id, read: answer });
+    if (sidedRef.current === undefined || sidedKey === undefined) return;
+    void readScreener(client, sidedRef.current, onSignedOut).then((answer) => {
+      if (answer !== undefined && read === screenerRead.current) setScreener({ mailbox: sidedKey, read: answer });
     });
-  }, [client, sided, version, relabelled, onSignedOut]);
-  const shownScreener: ScreenerRead = screener !== undefined && screener.mailbox === sided?.id ? screener.read : { status: "loading" };
+  }, [client, sidedKey, version, relabelled, onSignedOut]);
+  const shownScreener: ScreenerRead = screener !== undefined && screener.mailbox === sidedKey ? screener.read : { status: "loading" };
   // How many senders wait in its Screener, which the Screener's place counts.
   const screening = shownScreener.status === "read" ? shownScreener.screener.senders.length : 0;
 
@@ -588,19 +602,21 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
     route.view === "list" ? route.list : route.view === "thread" ? route.from : route.view === "screener" ? { screener: true } : route.view === "search" ? route.search : senderFrom;
   // The search box searches the mailbox open, or the human's first own outside the mail, and shows
   // the search open or the one the thread shown was opened from.
-  const searched = away ? first : shown;
+  const searched = away ? (all ?? first) : shown;
   const searching = route.view === "search" ? route.search.search : route.view === "thread" && "search" in route.from ? route.from.search : undefined;
   const doneHere = done !== undefined && done.at === route.hash ? done.done : undefined;
   // Who sent the mail listed, beyond what each thread says: Duva, from its address on the mailbox's domains.
-  const marks = useMemo<Marks>(
-    () => ({
-      duva: new Set(shown?.addresses.map((address) => `no-reply@${address.slice(address.lastIndexOf("@") + 1).toLowerCase()}`)),
+  const marks = useMemo<Marks>(() => {
+    const listedIn = shown === undefined ? [] : isAll(shown) ? shown.own : [shown];
+    return {
+      duva: new Set(listedIn.flatMap(({ addresses }) => addresses).map((address) => `no-reply@${address.slice(address.lastIndexOf("@") + 1).toLowerCase()}`)),
       waiting: new Map(
-        asked.filter(({ mailbox }) => mailbox === shown?.id).map(({ thread, agent, forward }) => [thread, { agent: agentNames.get(agent) ?? strings.galley.anAgent, forward }]),
+        asked
+          .filter(({ mailbox }) => listedIn.some(({ id }) => id === mailbox))
+          .map(({ thread, agent, forward }) => [thread, { agent: agentNames.get(agent) ?? strings.galley.anAgent, forward }]),
       ),
-    }),
-    [shown, asked, agentNames],
-  );
+    };
+  }, [shown, asked, agentNames]);
   const writing = route.view === "drafts" || route.view === "draft" || route.view === "write";
 
   // On phones the search field opens from its icon, and stays open while a search is shown.
@@ -617,16 +633,17 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
   const lastList = useRef<{ mailbox: string; list: Listing }>(undefined);
   const routeList: Listing | undefined =
     route.view === "list" ? route.list : route.view === "search" ? route.search : route.view === "screener" && !route.senders ? { screener: true } : route.view === "drafts" ? { drafts: true } : undefined;
-  if (shown !== undefined && routeList !== undefined) lastList.current = { mailbox: shown.id, list: routeList };
+  const shownKey = shown === undefined ? undefined : isAll(shown) ? "all" : shown.id;
+  if (shownKey !== undefined && routeList !== undefined) lastList.current = { mailbox: shownKey, list: routeList };
   const listing: Listing | undefined =
     shown === undefined
       ? undefined
       : (routeList ??
-        (route.view === "thread" ? route.from : senderFrom !== undefined && !fromSenders ? senderFrom : reading ? (lastList.current?.mailbox === shown.id ? lastList.current.list : { label: "inbox" }) : undefined));
+        (route.view === "thread" ? route.from : senderFrom !== undefined && !fromSenders ? senderFrom : reading ? (lastList.current !== undefined && lastList.current.mailbox === shownKey ? lastList.current.list : { label: "inbox" }) : undefined));
   const openId = "id" in route ? route.id : undefined;
   const besideList = useMemo<Beside>(() => ({ beside: reading, thread: route.view === "thread", open: openId }), [reading, route.view, openId]);
   // A list the human goes to starts at its top, and keeps its place while what is open beside it changes.
-  const listKey = shown === undefined || listing === undefined ? undefined : `${shown.id}/${"drafts" in listing ? "drafts" : pathOf(listing)}`;
+  const listKey = shown === undefined || listing === undefined ? undefined : `${shownKey}/${"drafts" in listing ? "drafts" : pathOf(listing)}`;
   useEffect(() => {
     document.querySelector(".pane-list")?.scrollTo(0, 0);
   }, [listKey]);
@@ -634,7 +651,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
   const list =
     shown === undefined ? undefined : (route.view === "screener" && route.senders) || fromSenders ? (
       <ScreenedSenders
-        key={`${shown.id}/senders`}
+        key={`${shownKey}/senders`}
         client={client}
         mailbox={shown}
         base={base}
@@ -695,26 +712,32 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
       />
     );
 
+  // A thread opened in All mailboxes lies beside its list there, read in its own mailbox, with that mailbox's labels.
+  const threadIn = home ?? first;
   const opened =
-    shown === undefined ? undefined : route.view === "thread" ? (
+    shown === undefined ? undefined : route.view === "thread" && threadIn !== undefined ? (
+      placingThread ? (
+        <main className="desk desk-reading" aria-busy="true" />
+      ) : (
       <ThreadView
-        key={`${shown.id}/${route.id}`}
+        key={`${shownKey}/${route.id}`}
         client={client}
-        mailbox={shown}
+        mailbox={threadIn}
         id={route.id}
         matched={route.message}
         me={actor.id}
         agentNames={agentNames}
-        labels={labels}
+        labels={isAll(shown) ? labelsIn(shown.labels, threadIn.id) : labels}
         back={hrefOf(route.from, base)}
         backTo={titleOf(route.from, labels)}
-        version={version}
+        version={versions.get(threadIn.id) ?? 0}
         onDone={showDoneBeside}
         onSignedOut={onSignedOut}
       />
+      )
     ) : route.view === "sender" ? (
       <SenderSheetView
-        key={`${shown.id}/sender/${route.sender}`}
+        key={`${shownKey}/sender/${route.sender}`}
         client={client}
         mailbox={shown}
         sender={route.sender}
@@ -731,7 +754,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
           key="agent"
           client={client}
           config={config}
-          mailbox={askingAll ? undefined : shown}
+          mailbox={isAll(shown) ? undefined : shown}
           own={own}
           base={base}
           back={listing === undefined || "drafts" in listing ? base : hrefOf(listing, base)}
@@ -748,20 +771,20 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
   const elsewhere =
     shown !== undefined && route.view === "list" && "label" in route.list && route.list.label === "feed" ? (
       <FeedStream
-        key={`${shown.id}/stream`}
+        key={`${shownKey}/stream`}
         client={client}
         mailbox={shown}
         base={base}
         me={actor.id}
         agentNames={agentNames}
         version={version}
-        prompt={labels.find(({ id }) => id === "feed")}
+        prompt={isAll(shown) ? undefined : labels.find(({ id }) => id === "feed")}
         onDone={showDone}
         onSignedOut={onSignedOut}
       />
     ) : route.view === "activity" ? (
       <AgentEvents key={route.agent} client={client} agent={route.agent} name={agentNames.get(route.agent)} open={route.event} filter={route.filter} mine={first?.id} addresses={several ? addresses : undefined} timeZone={preferences.timeZone} onSignedOut={onSignedOut} />
-    ) : mailboxes.status === "loading" || placingDraft || checking ? (
+    ) : mailboxes.status === "loading" || checking || (opening && (listed === undefined || several)) ? (
       <main className="desk" aria-busy="true" />
     ) : mailboxes.status === "failed" ? (
       <main className="desk">
@@ -793,12 +816,12 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
   // What the phone's switcher names: the view open, and the mailbox it is in.
   const viewName =
     route.view === "activity" ? strings.activity.link : writing ? strings.views.drafts : viewed === undefined ? undefined : titleOf(viewed, labels);
-  const mailboxShown = shown !== undefined ? mailboxName(shown, own) : undefined;
-  // Whether a mailbox the switcher hides has unread mail.
-  const unreadElsewhere = columned && [...unread].some(([id, count]) => id !== shown?.id && count > 0);
+  const mailboxShown = shown === undefined ? undefined : isAll(shown) ? strings.mailboxes.all : mailboxName(shown, own);
+  // Whether a mailbox the switcher hides has unread mail. All mailboxes hides none.
+  const unreadElsewhere = columned && shown !== undefined && !isAll(shown) && [...unread].some(([id, count]) => id !== shown.id && count > 0);
   const switcherId = useId();
   const switcherRef = useRef<HTMLButtonElement>(null);
-  // Write writes in the own mailbox open, or the first one anywhere else.
+  // Write writes in the own mailbox open, All mailboxes, or where the web app opens anywhere else.
   const write = first === undefined ? undefined : () => (location.hash = shown !== undefined ? `${base}write` : "#/write");
   const shell = ["shell", away && "shell-away", reading && "shell-reading"].filter(Boolean).join(" ");
   // A sender in a letter opens their sheet beside the view the letter was opened from.
@@ -836,7 +859,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
             {/* On a desk the open mailbox heads the side column as a selector; a phone's switcher does its work. */}
             {listed !== undefined && own.length > 0 && (
               <div className="bar-mailbox">
-                <MailboxSelector own={own} unread={unread} current={sided !== undefined && isOwn(sided.id) ? sided : undefined} />
+                <MailboxSelector own={own} unread={unread} current={sided !== undefined && (isAll(sided) || isOwn(sided.id)) ? sided : undefined} />
               </div>
             )}
           {searched !== undefined && (
@@ -855,7 +878,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
                 <SearchBox
                   client={client}
                   mailbox={searched}
-                  base={away ? mailboxHref(searched, !several) : base}
+                  base={away ? hrefIn(searched) : base}
                   labels={away ? [] : labels}
                   current={searching}
                 />
@@ -951,7 +974,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
                 switcherRef.current?.focus();
               }}
             >
-              {columned && <MailboxList own={own} unread={unread} current={shown?.id} />}
+              {columned && <MailboxList own={own} unread={unread} current={shown === undefined || isAll(shown) ? shown : shown.id} />}
               {sided !== undefined && (
                 <MailViews
                   client={client}

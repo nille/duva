@@ -1,12 +1,14 @@
 // The Screener, where mail from a mailbox's first-time senders waits: each sender, by their mark,
 // with their mail, newest first, and where their mail goes from here: the Inbox, the Feed, the
 // Paper Trail or nowhere at once, or more on their sheet, as a label or everyone at their domain.
-// Screened senders lists the decisions by where they send mail, each opening its sheet.
-import { useCallback, useEffect, useId, useState } from "react";
+// Screened senders lists the decisions by where they send mail, each opening its sheet. In All
+// mailboxes a sender waits once in each mailbox their mail came to, and is decided on there.
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
 import type { Connection as ConnectionState } from "./feed.ts";
 import { Connection, SenderMark, Time } from "./mail-parts.tsx";
+import { type AllMailboxes, isAll, labelsIn, shortAddress, shortAddressOf } from "./mailboxes.tsx";
 import type { Done, Label } from "./organize.tsx";
 import { useBeside, useViewTitle, ViewMain, ViewTitle } from "./panes.tsx";
 import { decideDelivery } from "./sender.tsx";
@@ -14,8 +16,9 @@ import { strings } from "./strings.ts";
 import { hrefOf, pathOf, screenedSendersPath, senderHref } from "./views.tsx";
 
 type Mailbox = components["schemas"]["Mailbox"];
-type Screener = components["schemas"]["Screener"];
-type WaitingSender = components["schemas"]["WaitingSender"];
+/** A Screener, or All mailboxes' taken together, its waiting senders naming their mailbox there. */
+type Screener = Omit<components["schemas"]["Screener"], "senders"> & { senders: WaitingSender[] };
+type WaitingSender = components["schemas"]["WaitingSender"] | components["schemas"]["AllMailboxesWaitingSender"];
 type ScreenedSender = components["schemas"]["ScreenedSender"];
 type Delivery = components["schemas"]["Delivery"];
 
@@ -25,9 +28,22 @@ export type ScreenerRead = { status: "loading" } | { status: "failed"; message: 
 /** The address or domain a mailbox decided on. */
 const valueOf = (sender: ScreenedSender) => sender.address ?? sender.domain ?? "";
 
-/** Reads the mailbox's Screener as the web app keeps it, or calls `onSignedOut` and answers undefined if the session has ended. */
-export async function readScreener(client: DuvaClient, mailbox: string, onSignedOut: () => void): Promise<ScreenerRead | undefined> {
-  const { data, response } = await client.GET("/mailboxes/{mailbox}/screener", { params: { path: { mailbox } } }).catch(() => ({ data: undefined, response: undefined }));
+/**
+ * Reads the mailbox's Screener as the web app keeps it, or calls `onSignedOut` and answers undefined
+ * if the session has ended. All mailboxes' is on while any of theirs is, and counts all their decisions.
+ */
+export async function readScreener(client: DuvaClient, mailbox: Mailbox | AllMailboxes, onSignedOut: () => void): Promise<ScreenerRead | undefined> {
+  const { data, response } = await (
+    isAll(mailbox)
+      ? client.GET("/all-mailboxes/screener").then(({ data, response }) => ({
+          response,
+          data:
+            data === undefined
+              ? undefined
+              : { on: data.mailboxes.some(({ on }) => on), decided: data.mailboxes.reduce((sum, { decided }) => sum + decided, 0), senders: data.senders },
+        }))
+      : client.GET("/mailboxes/{mailbox}/screener", { params: { path: { mailbox: mailbox.id } } })
+  ).catch(() => ({ data: undefined, response: undefined }));
   if (response?.status === 401) {
     onSignedOut();
     return undefined;
@@ -57,7 +73,7 @@ export function ScreenerView({
   onSignedOut,
 }: {
   client: DuvaClient;
-  mailbox: Mailbox;
+  mailbox: Mailbox | AllMailboxes;
   base: string;
   read: ScreenerRead;
   labels: Label[];
@@ -113,7 +129,19 @@ export function ScreenerView({
       ) : (
         <ol className="waiting" aria-label={strings.screener.senders}>
           {read.screener.senders.map((sender) => (
-            <Waiting key={sender.address} client={client} mailbox={mailbox} base={base} sender={sender} labels={labels} open={open} onDone={onDone} onSignedOut={onSignedOut} />
+            <Waiting
+              key={`${"mailbox" in sender ? sender.mailbox : ""}/${sender.address}`}
+              client={client}
+              mailbox={"mailbox" in sender ? sender.mailbox : isAll(mailbox) ? "" : mailbox.id}
+              // In All mailboxes the line says the address their mail came to.
+              to={isAll(mailbox) && "mailbox" in sender ? cameTo(sender, mailbox) : undefined}
+              base={base}
+              sender={sender}
+              labels={labels}
+              open={open}
+              onDone={onDone}
+              onSignedOut={onSignedOut}
+            />
           ))}
         </ol>
       )}
@@ -123,11 +151,13 @@ export function ScreenerView({
 
 /**
  * A waiting sender: who they are, their mail, and where their mail goes from here, chosen at once,
- * nowhere only once asked in place, or on their sheet.
+ * nowhere only once asked in place, or on their sheet. The decision is the mailbox's, its ID
+ * `mailbox`, which in All mailboxes the line names quietly as `to`.
  */
 function Waiting({
   client,
   mailbox,
+  to,
   base,
   sender,
   labels,
@@ -136,7 +166,8 @@ function Waiting({
   onSignedOut,
 }: {
   client: DuvaClient;
-  mailbox: Mailbox;
+  mailbox: string;
+  to?: string;
   base: string;
   sender: WaitingSender;
   labels: Label[];
@@ -154,7 +185,7 @@ function Waiting({
 
   const save = async (delivery: Delivery) => {
     setState({ status: "busy" });
-    const saved = await decideDelivery(client, { mailbox: mailbox.id, sender: { address: sender.address.toLowerCase() }, delivery, labels, onSignedOut });
+    const saved = await decideDelivery(client, { mailbox, sender: { address: sender.address.toLowerCase() }, delivery, labels, onSignedOut });
     if (saved === undefined) return;
     if ("failed" in saved) return setState({ status: "failed", message: saved.failed });
     // The sender leaves the Screener once it is read again, and stays busy until then, so nothing is decided twice.
@@ -168,6 +199,7 @@ function Waiting({
         <SenderMark kind="human" logo={sender.threads.find((thread) => thread.logo !== undefined)?.logo} name={name} />
         <h2 id={headingId}>{name}</h2>
         {name !== sender.address && <span className="waiting-address">{sender.address}</span>}
+        {to !== undefined && <span className="waiting-to">{strings.mailboxes.to(to)}</span>}
       </div>
       <ol className="waiting-threads" aria-label={strings.screener.mailFrom(name)}>
         {sender.threads.map((thread) => (
@@ -207,7 +239,7 @@ function Waiting({
             </div>
           </div>
         ) : (
-          <div className="waiting-choices" role="group" aria-label={strings.screener.sendTo(name)}>
+          <div className="waiting-choices" role="group" aria-label={to === undefined ? strings.screener.sendTo(name) : strings.mailboxes.sendTo(name, to)}>
             {atOnce.map((delivery) => (
               <button
                 key={delivery}
@@ -234,7 +266,13 @@ function Waiting({
   );
 }
 
-type Listed = { status: "loading" } | { status: "failed"; message: string } | { status: "listed"; senders: ScreenedSender[] };
+/** The address the mail of a sender waiting in All mailboxes came to, short, or their mailbox's. */
+const cameTo = (sender: components["schemas"]["AllMailboxesWaitingSender"], all: AllMailboxes) => {
+  const recipient = sender.threads.find(({ recipient }) => recipient !== "")?.recipient;
+  return recipient === undefined ? shortAddressOf(all, sender.mailbox) : shortAddress(recipient, all.own);
+};
+
+type Listed = { status: "loading" } | { status: "failed"; message: string } | { status: "listed"; senders: (ScreenedSender & { mailbox: string })[] };
 
 /** The deliveries the screened senders are grouped by, in the order the list shows them. */
 const groups: Delivery[] = ["inbox", "feed", "paperTrail", "label", "nowhere"];
@@ -243,7 +281,8 @@ const groups: Delivery[] = ["inbox", "feed", "paperTrail", "label", "nowhere"];
  * The senders the mailbox decided on, grouped by where their mail goes, each newest first, to open
  * on their sheet or remove. `version` counts the changes to the mailbox the app has seen, so the
  * list is read again when it grows. `me` is the human's ID and `agentNames` names the agents they
- * sponsor, to say who decided. `open` is the sender whose sheet lies beside it.
+ * sponsor, to say who decided. `open` is the sender whose sheet lies beside it. All mailboxes lists
+ * each mailbox's decisions, each saying its mailbox.
  */
 export function ScreenedSenders({
   client,
@@ -259,7 +298,7 @@ export function ScreenedSenders({
   onSignedOut,
 }: {
   client: DuvaClient;
-  mailbox: Mailbox;
+  mailbox: Mailbox | AllMailboxes;
   base: string;
   me: string;
   agentNames: ReadonlyMap<string, string>;
@@ -276,12 +315,19 @@ export function ScreenedSenders({
   const title = strings.screened.title;
   useViewTitle(strings.title(title));
 
+  const ids = useMemo(() => (isAll(mailbox) ? mailbox.own.map(({ id }) => id) : [mailbox.id]), [mailbox]);
   const load = useCallback(async () => {
-    const { data, response } = await client.GET("/mailboxes/{mailbox}/senders", { params: { path: { mailbox: mailbox.id } } }).catch(() => ({ data: undefined, response: undefined }));
-    if (response?.status === 401) return onSignedOut();
-    if (data === undefined) return setListed({ status: "failed", message: response === undefined ? strings.screened.unreachable : strings.screened.failed(response.status) });
-    setListed({ status: "listed", senders: data.senders });
-  }, [client, mailbox.id, onSignedOut]);
+    const answers = await Promise.all(
+      ids.map(async (id) => ({ id, ...(await client.GET("/mailboxes/{mailbox}/senders", { params: { path: { mailbox: id } } }).catch(() => ({ data: undefined, response: undefined }))) })),
+    );
+    if (answers.some(({ response }) => response?.status === 401)) return onSignedOut();
+    const failed = answers.find(({ data }) => data === undefined);
+    if (failed !== undefined) return setListed({ status: "failed", message: failed.response === undefined ? strings.screened.unreachable : strings.screened.failed(failed.response.status) });
+    setListed({
+      status: "listed",
+      senders: answers.flatMap(({ id, data }) => data!.senders.map((sender) => ({ ...sender, mailbox: id }))).sort((a, b) => b.decidedAt.localeCompare(a.decidedAt)),
+    });
+  }, [client, ids, onSignedOut]);
   useEffect(() => {
     void load();
   }, [load, version]);
@@ -305,13 +351,14 @@ export function ScreenedSenders({
           <ul className="screened" aria-label={name}>
             {senders.map((sender) => (
               <Screened
-                key={valueOf(sender)}
+                key={`${sender.mailbox}/${valueOf(sender)}`}
                 client={client}
-                mailbox={mailbox}
+                mailbox={sender.mailbox}
+                to={isAll(mailbox) ? shortAddressOf(mailbox, sender.mailbox) : undefined}
                 sender={sender}
                 href={senderHref(valueOf(sender), screenedSendersPath, base)}
                 open={open === valueOf(sender)}
-                place={sender.delivery === "label" ? labels.find(({ id }) => id === sender.label)?.name : undefined}
+                place={sender.delivery === "label" ? (isAll(mailbox) ? labelsIn(mailbox.labels, sender.mailbox) : labels).find(({ id }) => id === sender.label)?.name : undefined}
                 by={sender.actor === undefined ? undefined : sender.actor === me ? strings.screened.you : agentNames.get(sender.actor)}
                 onDone={changed}
                 onSignedOut={onSignedOut}
@@ -361,10 +408,14 @@ export function ScreenedSenders({
   );
 }
 
-/** A screened sender: who, opening their sheet, the label their mail is filed under, when and by whom it was decided, then removing it. */
+/**
+ * A screened sender: who, opening their sheet, the label their mail is filed under, when and by whom
+ * it was decided, then removing it, in the mailbox with the ID `mailbox`, which All mailboxes names as `to`.
+ */
 function Screened({
   client,
   mailbox,
+  to,
   sender,
   href,
   open,
@@ -374,7 +425,8 @@ function Screened({
   onSignedOut,
 }: {
   client: DuvaClient;
-  mailbox: Mailbox;
+  mailbox: string;
+  to?: string;
   sender: ScreenedSender;
   href: string;
   open: boolean;
@@ -389,7 +441,7 @@ function Screened({
   const remove = async () => {
     setState({ status: "busy" });
     const { data, response } = await client
-      .DELETE("/mailboxes/{mailbox}/senders/{sender}", { params: { path: { mailbox: mailbox.id, sender: valueOf(sender) } } })
+      .DELETE("/mailboxes/{mailbox}/senders/{sender}", { params: { path: { mailbox, sender: valueOf(sender) } } })
       .catch(() => ({ data: undefined, response: undefined }));
     if (response?.status === 401) return onSignedOut();
     if (data === undefined) return setState({ status: "failed", message: response === undefined ? strings.screener.decideUnreachable : strings.screener.decideFailed(response.status) });
@@ -404,7 +456,7 @@ function Screened({
           {sender.address ?? strings.screened.everyoneAt(sender.domain ?? "")}
         </a>
         <span className="hint">
-          {place !== undefined && `${place}. `}
+          {to !== undefined ? strings.mailboxes.decidedIn(to, place) : place !== undefined && `${place}. `}
           {strings.screened.decided} <Time at={sender.decidedAt} short />
           {by !== undefined && ` ${strings.screened.by(by)}`}
         </span>

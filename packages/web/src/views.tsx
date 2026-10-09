@@ -1,6 +1,7 @@
 // The views of a mailbox's mail: the Inbox, the Screener, Remind me, the Feed, the Paper Trail, Sent, Drafts, All mail, Spam and Trash, its
 // mailbox agent to ask, then its own labels, each a link with how many unread threads it has, the Screener with how many senders wait. It is one component, so the side column can hold it.
-// A search's results are a view too, which the bar opens.
+// A search's results are a view too, which the bar opens. All mailboxes has the same views, its
+// labels those of the mailboxes, one for each name.
 import { useContext, useId, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
@@ -8,6 +9,7 @@ import { type Label, NewLabel } from "./organize.tsx";
 import { strings } from "./strings.ts";
 import { PreferencesContext } from "./dates.ts";
 import { ActorMark } from "./mail-parts.tsx";
+import { type AllMailboxes, isAll } from "./mailboxes.tsx";
 
 type Mailbox = components["schemas"]["Mailbox"];
 
@@ -87,7 +89,7 @@ const builtInName = (label: string) => ({ inbox: strings.views.inbox, feed: stri
 
 /**
  * The mailbox's views as links, the one open marked current, with a form at the foot to create a
- * label. Only the Inbox, the Feed, the Paper Trail and the mailbox's own labels count their unread
+ * label, which in All mailboxes is made in a mailbox, so is left out. Only the Inbox, the Feed, the Paper Trail and the mailbox's own labels count their unread
  * threads, each its own, so Sent, Spam, Trash and All mail never call for attention. The Screener, listed while it is on or something
  * waits there, quietly counts the senders who wait.
  */
@@ -104,7 +106,7 @@ export function MailViews({
   onSignedOut,
 }: {
   client: DuvaClient;
-  mailbox: Mailbox;
+  mailbox: Mailbox | AllMailboxes;
   base: string;
   labels: Label[];
   current: View | undefined;
@@ -185,7 +187,7 @@ export function MailViews({
           {own.map((label) => link({ label: label.id }, label.name, label.unread))}
         </ul>
       )}
-      {creating ? (
+      {isAll(mailbox) ? null : creating ? (
         <NewLabel
           client={client}
           mailbox={mailbox}
