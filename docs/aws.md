@@ -101,6 +101,15 @@ Facts about AWS that shaped Duva's design, each with how it was established. A c
 - **A cold start costs more than its Init Duration.** Seen by the caller, cold invocations of the 213.8 MB x64 zip took about 620 ms longer than init plus handler time, and of the arm64 image about 160 ms. _Search spike, #17, 2026-10-04, 1,080 cold starts._
 - **With LanceDB, the arm64 image inits faster than the x64 zip:** about 0.6 s to 0.8 s at every memory size from 1,769 to 10,240 MB. _Search spike, #17, 2026-10-04._
 
+## S3 Vectors
+
+Measured for `docs/research/s3-vectors.md`, which keeps LanceDB (ADR-0007). Duva doesn't use S3 Vectors.
+
+- **An index's recall can't be tuned, and falls on a large index.** On the spike's 100,000 Titan vectors, an `ENHANCED` cosine index found 0.90 of an exact scan's top 20, 0.82 under a filter matching 1.8% of them, with single queries as low as 0.35. Asking for 100 and keeping the closest 20 found the same. On 2,000 vectors it found 0.99 or more. _`spikes/search/harness/s3vectors/probe.mjs`, eu-north-1, 2026-10-09._
+- **A vector bucket created on or after 2026-09-30 makes `ENHANCED` indexes,** which apply a metadata filter before the search, and refuse a query with `queryMode` `CLASSIC` ("queryMode cannot be CLASSIC when indexMode is ENHANCED"). No result broke its filter, and a narrow filter still returned all 20. _[Pre-filtering launch](https://aws.amazon.com/blogs/aws/amazon-s3-vectors-now-supports-metadata-pre-filtering-for-higher-recall-on-filtered-searches/); probed 2026-10-09._
+- **QueryVectors answers in 64 ms at p50 and 69 ms at p95 from a Lambda in the region,** whatever the filter, with or without metadata, for 20 or 100 results, and in 89 ms at p50 and 106 ms at p95 as a new environment's first call. _Probed 2026-10-09._
+- **Writes and deletes are visible at once.** A vector was found by the first query after PutVectors answered, and gone from search and GetVectors after DeleteVectors answered, in each of 10 trials. AWS documents no time by which a deleted vector leaves storage. _Probed 2026-10-09; [Limitations and restrictions](https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-vectors-limitations.html)._
+
 ## Bedrock
 
 - **Titan Text Embeddings V2 runs on demand in eu-north-1,** at $0.000021 per 1,000 input tokens, so mail embedded with it stays in the region. A message's subject and the first 2,000 characters of its body average 261 tokens, which makes 100,000 messages cost $0.55. It takes one text per request; 64 concurrent requests from one client ran at about 13,000 a minute without throttling. _Search spike, #16, 2026-10-03; AWS Price List._

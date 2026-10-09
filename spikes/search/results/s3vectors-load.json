@@ -1,0 +1,10 @@
+{
+  "mailbox": {
+    "vectors": 100000,
+    "seconds": 214.318
+  },
+  "small": {
+    "vectors": 2000,
+    "seconds": 8.11
+  }
+}

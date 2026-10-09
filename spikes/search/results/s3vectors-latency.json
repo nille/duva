@@ -1,0 +1,315 @@
+{
+  "measuredAt": "2026-10-09T11:23:51.983Z",
+  "lambda": "python3.13 x86_64 1024 MB, boto3 with the CLI 2.37.9 service model",
+  "cold": {
+    "environments": 25,
+    "initDurationMs": {
+      "p50": 646.24,
+      "p95": 877.64
+    },
+    "firstQueryMs": {
+      "p50": 89.2,
+      "p95": 105.7
+    },
+    "durationMs": {
+      "p50": 91.28,
+      "p95": 107.9
+    },
+    "roundTripMs": {
+      "p50": 2033,
+      "p95": 2284
+    },
+    "runs": [
+      {
+        "initDurationMs": null,
+        "durationMs": 62.65,
+        "firstQueryMs": 60.8,
+        "moduleInitMs": 293.8,
+        "roundTripMs": 1211,
+        "firstInEnvironment": false
+      },
+      {
+        "initDurationMs": null,
+        "durationMs": 65.27,
+        "firstQueryMs": 63.5,
+        "moduleInitMs": 293.8,
+        "roundTripMs": 1220,
+        "firstInEnvironment": false
+      },
+      {
+        "initDurationMs": null,
+        "durationMs": 78.18,
+        "firstQueryMs": 76.5,
+        "moduleInitMs": 293.8,
+        "roundTripMs": 1249,
+        "firstInEnvironment": false
+      },
+      {
+        "initDurationMs": null,
+        "durationMs": 71.45,
+        "firstQueryMs": 69.8,
+        "moduleInitMs": 293.8,
+        "roundTripMs": 1224,
+        "firstInEnvironment": false
+      },
+      {
+        "initDurationMs": null,
+        "durationMs": 68.52,
+        "firstQueryMs": 66.8,
+        "moduleInitMs": 293.8,
+        "roundTripMs": 1215,
+        "firstInEnvironment": false
+      },
+      {
+        "initDurationMs": 530.04,
+        "durationMs": 81.69,
+        "firstQueryMs": 79.6,
+        "moduleInitMs": 283,
+        "roundTripMs": 1923,
+        "firstInEnvironment": true
+      },
+      {
+        "initDurationMs": 861.55,
+        "durationMs": 86.55,
+        "firstQueryMs": 83.8,
+        "moduleInitMs": 552.4,
+        "roundTripMs": 2248,
+        "firstInEnvironment": true
+      },
+      {
+        "initDurationMs": 656.64,
+        "durationMs": 83.69,
+        "firstQueryMs": 81.5,
+        "moduleInitMs": 339.6,
+        "roundTripMs": 2005,
+        "firstInEnvironment": true
+      },
+      {
+        "initDurationMs": 686.11,
+        "durationMs": 90.26,
+        "firstQueryMs": 88,
+        "moduleInitMs": 339.3,
+        "roundTripMs": 2067,
+        "firstInEnvironment": true
+      },
+      {
+        "initDurationMs": 639.76,
+        "durationMs": 89.64,
+        "firstQueryMs": 87.7,
+        "moduleInitMs": 333.4,
+        "roundTripMs": 2033,
+        "firstInEnvironment": true
+      },
+      {
+        "initDurationMs": 522.37,
+        "durationMs": 81.51,
+        "firstQueryMs": 79.5,
+        "moduleInitMs": 281.6,
+        "roundTripMs": 1887,
+        "firstInEnvironment": true
+      },
+      {
+        "initDurationMs": 630.9,
+        "durationMs": 82.94,
+        "firstQueryMs": 80.9,
+        "moduleInitMs": 335.9,
+        "roundTripMs": 1962,
+        "firstInEnvironment": true
+      },
+      {
+        "initDurationMs": 649.34,
+        "durationMs": 90.34,
+        "firstQueryMs": 88.3,
+        "moduleInitMs": 341.2,
+        "roundTripMs": 2005,
+        "firstInEnvironment": true
+      },
+      {
+        "initDurationMs": 1155.97,
+        "durationMs": 92.53,
+        "firstQueryMs": 90.4,
+        "moduleInitMs": 766.1,
+        "roundTripMs": 2547,
+        "firstInEnvironment": true
+      },
+      {
+        "initDurationMs": 646.6,
+        "durationMs": 98.07,
+        "firstQueryMs": 96,
+        "moduleInitMs": 342.3,
+        "roundTripMs": 2043,
+        "firstInEnvironment": true
+      },
+      {
+        "initDurationMs": 663.04,
+        "durationMs": 93.99,
+        "firstQueryMs": 91.9,
+        "moduleInitMs": 341.7,
+        "roundTripMs": 2033,
+        "firstInEnvironment": true
+      },
+      {
+        "initDurationMs": 715.6,
+        "durationMs": 99.46,
+        "firstQueryMs": 97.3,
+        "moduleInitMs": 402.1,
+        "roundTripMs": 2115,
+        "firstInEnvironment": true
+      },
+      {
+        "initDurationMs": 526.75,
+        "durationMs": 84.43,
+        "firstQueryMs": 82.3,
+        "moduleInitMs": 281.9,
+        "roundTripMs": 1892,
+        "firstInEnvironment": true
+      },
+      {
+        "initDurationMs": 536.92,
+        "durationMs": 93.76,
+        "firstQueryMs": 91.8,
+        "moduleInitMs": 272.8,
+        "roundTripMs": 1895,
+        "firstInEnvironment": true
+      },
+      {
+        "initDurationMs": 672.81,
+        "durationMs": 94.31,
+        "firstQueryMs": 92.2,
+        "moduleInitMs": 338.4,
+        "roundTripMs": 2046,
+        "firstInEnvironment": true
+      },
+      {
+        "initDurationMs": 535.19,
+        "durationMs": 91.28,
+        "firstQueryMs": 89.2,
+        "moduleInitMs": 284.9,
+        "roundTripMs": 1875,
+        "firstInEnvironment": true
+      },
+      {
+        "initDurationMs": 544.4,
+        "durationMs": 81.77,
+        "firstQueryMs": 79.6,
+        "moduleInitMs": 290,
+        "roundTripMs": 1884,
+        "firstInEnvironment": true
+      },
+      {
+        "initDurationMs": 687.99,
+        "durationMs": 86.27,
+        "firstQueryMs": 83.9,
+        "moduleInitMs": 344.4,
+        "roundTripMs": 2034,
+        "firstInEnvironment": true
+      },
+      {
+        "initDurationMs": 700.26,
+        "durationMs": 88.37,
+        "firstQueryMs": 86.3,
+        "moduleInitMs": 382.8,
+        "roundTripMs": 2055,
+        "firstInEnvironment": true
+      },
+      {
+        "initDurationMs": 522.39,
+        "durationMs": 107.9,
+        "firstQueryMs": 105.7,
+        "moduleInitMs": 278.3,
+        "roundTripMs": 1896,
+        "firstInEnvironment": true
+      },
+      {
+        "initDurationMs": 634.46,
+        "durationMs": 103.49,
+        "firstQueryMs": 101.4,
+        "moduleInitMs": 334.6,
+        "roundTripMs": 2002,
+        "firstInEnvironment": true
+      },
+      {
+        "initDurationMs": 634.98,
+        "durationMs": 96.46,
+        "firstQueryMs": 94.4,
+        "moduleInitMs": 335.5,
+        "roundTripMs": 2035,
+        "firstInEnvironment": true
+      },
+      {
+        "initDurationMs": 550.2,
+        "durationMs": 97.36,
+        "firstQueryMs": 95.3,
+        "moduleInitMs": 289.9,
+        "roundTripMs": 1916,
+        "firstInEnvironment": true
+      },
+      {
+        "initDurationMs": 877.64,
+        "durationMs": 123.52,
+        "firstQueryMs": 121.5,
+        "moduleInitMs": 550.6,
+        "roundTripMs": 2284,
+        "firstInEnvironment": true
+      },
+      {
+        "initDurationMs": 646.24,
+        "durationMs": 94.49,
+        "firstQueryMs": 92.4,
+        "moduleInitMs": 339.3,
+        "roundTripMs": 2063,
+        "firstInEnvironment": true
+      }
+    ]
+  },
+  "warm": {
+    "none": {
+      "p50": 64.5,
+      "p95": 69.3,
+      "p99": 71.4,
+      "max": 71.4
+    },
+    "none keys only": {
+      "p50": 65,
+      "p95": 68.6,
+      "p99": 69.7,
+      "max": 69.7
+    },
+    "none topK 100": {
+      "p50": 65.2,
+      "p95": 70.1
+    },
+    "notSpamTrash": {
+      "p50": 64.4,
+      "p95": 68.6,
+      "p99": 69,
+      "max": 69
+    },
+    "notSpamTrash keys only": {
+      "p50": 64.6,
+      "p95": 68.6,
+      "p99": 69.5,
+      "max": 69.5
+    },
+    "notSpamTrash topK 100": {
+      "p50": 64.9,
+      "p95": 69.8
+    },
+    "travel": {
+      "p50": 64,
+      "p95": 68.6,
+      "p99": 69.4,
+      "max": 69.4
+    },
+    "travel keys only": {
+      "p50": 64.5,
+      "p95": 69.4,
+      "p99": 70.5,
+      "max": 70.5
+    },
+    "travel topK 100": {
+      "p50": 64.1,
+      "p95": 69.6
+    }
+  }
+}

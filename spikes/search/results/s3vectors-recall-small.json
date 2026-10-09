@@ -1,0 +1,55 @@
+{
+  "measuredAt": "2026-10-09T11:17:58.432Z",
+  "k": 20,
+  "vectors": 2000,
+  "small": {
+    "ENHANCED topK 20 none": {
+      "recall": 0.992,
+      "worst": 0.95,
+      "queriesWithFewerThan20": 0,
+      "filterViolations": 0,
+      "p50Ms": 64.1,
+      "p95Ms": 69.1
+    },
+    "ENHANCED topK 20 notSpamTrash": {
+      "recall": 0.993,
+      "worst": 0.95,
+      "queriesWithFewerThan20": 0,
+      "filterViolations": 0,
+      "p50Ms": 63.8,
+      "p95Ms": 68.4
+    },
+    "ENHANCED topK 20 travel": {
+      "recall": 0.998,
+      "worst": 0.95,
+      "queriesWithFewerThan20": 0,
+      "filterViolations": 0,
+      "p50Ms": 63.9,
+      "p95Ms": 68.5
+    },
+    "ENHANCED topK 100 none": {
+      "recall": 0.994,
+      "worst": 0.95,
+      "queriesWithFewerThan20": 0,
+      "filterViolations": 0,
+      "p50Ms": 64.7,
+      "p95Ms": 69.3
+    },
+    "ENHANCED topK 100 notSpamTrash": {
+      "recall": 0.995,
+      "worst": 0.95,
+      "queriesWithFewerThan20": 0,
+      "filterViolations": 0,
+      "p50Ms": 64.6,
+      "p95Ms": 69.1
+    },
+    "ENHANCED topK 100 travel": {
+      "recall": 0.999,
+      "worst": 0.95,
+      "queriesWithFewerThan20": 0,
+      "filterViolations": 0,
+      "p50Ms": 64.3,
+      "p95Ms": 68.6
+    }
+  }
+}

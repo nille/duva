@@ -376,3 +376,9 @@ LanceDB 0.39.0, eu-north-1, 2026-10-06. Raw numbers in `results/67-cutoffs.json`
 - Translating adds about 0.3 s at warm p50 and 0.5 s at warm p95: Nova Lite's answer, then the translation's embedding and searches, which wait for it.
 - Keyword cold missed too, at 3,896 ms, from four slow starts in one batch of ten (3.2 to 3.9 s), where the other 26 took 2.1 to 2.7 s. A keyword search isn't translated and its code didn't change since #62's run, where it was 2,566.
 - Titan failed two runs of the mailbox's 100k embeddings, once with ModelErrorException and once with an answer without a body, neither of which the SDK retries. The harness's embedder now tries a request again up to five times.
+
+S3 Vectors was measured against the same mailbox, after the spike, for `docs/research/s3-vectors.md`. `harness/s3vectors/probe.mjs` makes its own vector bucket, role and Lambda, needs the exported vectors and the AWS CLI 2.37 or newer, and `all` deletes what it made even if a step fails. `harness/keyword/` has the keyword engines measured beside it, on a laptop:
+
+```sh
+node harness/s3vectors/probe.mjs all   # recall, latency and freshness, into results/s3vectors-*.json (about 30 minutes, under $1)
+```

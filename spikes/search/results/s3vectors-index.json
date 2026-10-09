@@ -1,0 +1,15 @@
+{
+  "index": {
+    "vectorBucketName": "duva-s3v-probe-1791538137180",
+    "indexName": "mailbox",
+    "indexArn": "arn:aws:s3vectors:eu-north-1:925039213717:bucket/duva-s3v-probe-1791538137180/index/mailbox",
+    "creationTime": "2026-10-09T11:28:59+02:00",
+    "dataType": "float32",
+    "dimension": 1024,
+    "distanceMetric": "cosine",
+    "encryptionConfiguration": {
+      "sseType": "AES256"
+    },
+    "indexMode": "ENHANCED"
+  }
+}

@@ -1,0 +1,49 @@
+{
+ "mode": "padded",
+ "messages": 100000,
+ "avgTextChars": 1493,
+ "buildMs": 218977,
+ "fileBytes": 425598976,
+ "ftsBytes": 172208128,
+ "messagesTableBytes": 244891648,
+ "zstd3Bytes": 121584357,
+ "gzip6Bytes": 128217725,
+ "openMs": 1,
+ "firstQueryMs": "87.90",
+ "queries": 140,
+ "p50": "24.16",
+ "p95": "87.57",
+ "p99": "406.13",
+ "max": "417.78",
+ "slowest": [
+  [
+   418,
+   "{body subject people}: enron OR stemmed: enron"
+  ],
+  [
+   88,
+   "{body subject people}: meeting OR stemmed: meet"
+  ],
+  [
+   78,
+   "{body subject people}: gas OR stemmed: gas"
+  ],
+  [
+   76,
+   "{body subject people}: price OR stemmed: price"
+  ],
+  [
+   67,
+   "{body subject people}: schedule OR stemmed: schedul"
+  ],
+  [
+   65,
+   "{body subject people}: \"please let me know\""
+  ]
+ ],
+ "erase": {
+  "markerBeforeDelete": "1",
+  "markerAfterSecureDelete": "0",
+  "delete1000Ms": 5208
+ }
+}

@@ -1,0 +1,95 @@
+{
+  "measuredAt": "2026-10-09T11:20:36.193Z",
+  "trials": [
+    {
+      "putMs": 153.9,
+      "searchableMs": 218,
+      "polls": 1,
+      "unfilteredTopIsNew": true,
+      "goneFromSearchMs": 230.8,
+      "deletePolls": 1,
+      "getAfterDelete": 0
+    },
+    {
+      "putMs": 204.1,
+      "searchableMs": 273.9,
+      "polls": 1,
+      "unfilteredTopIsNew": true,
+      "goneFromSearchMs": 222.9,
+      "deletePolls": 1,
+      "getAfterDelete": 0
+    },
+    {
+      "putMs": 210.1,
+      "searchableMs": 271.9,
+      "polls": 1,
+      "unfilteredTopIsNew": true,
+      "goneFromSearchMs": 231.9,
+      "deletePolls": 1,
+      "getAfterDelete": 0
+    },
+    {
+      "putMs": 221.3,
+      "searchableMs": 285.7,
+      "polls": 1,
+      "unfilteredTopIsNew": true,
+      "goneFromSearchMs": 239.1,
+      "deletePolls": 1,
+      "getAfterDelete": 0
+    },
+    {
+      "putMs": 236.4,
+      "searchableMs": 305.5,
+      "polls": 1,
+      "unfilteredTopIsNew": true,
+      "goneFromSearchMs": 208.3,
+      "deletePolls": 1,
+      "getAfterDelete": 0
+    },
+    {
+      "putMs": 158.6,
+      "searchableMs": 218.3,
+      "polls": 1,
+      "unfilteredTopIsNew": true,
+      "goneFromSearchMs": 244,
+      "deletePolls": 1,
+      "getAfterDelete": 0
+    },
+    {
+      "putMs": 210.6,
+      "searchableMs": 274.9,
+      "polls": 1,
+      "unfilteredTopIsNew": true,
+      "goneFromSearchMs": 238.2,
+      "deletePolls": 1,
+      "getAfterDelete": 0
+    },
+    {
+      "putMs": 255.1,
+      "searchableMs": 320.5,
+      "polls": 1,
+      "unfilteredTopIsNew": true,
+      "goneFromSearchMs": 294.5,
+      "deletePolls": 1,
+      "getAfterDelete": 0
+    },
+    {
+      "putMs": 219.5,
+      "searchableMs": 282.5,
+      "polls": 1,
+      "unfilteredTopIsNew": true,
+      "goneFromSearchMs": 239.1,
+      "deletePolls": 1,
+      "getAfterDelete": 0
+    },
+    {
+      "putMs": 212.2,
+      "searchableMs": 272.8,
+      "polls": 1,
+      "unfilteredTopIsNew": true,
+      "goneFromSearchMs": 256.4,
+      "deletePolls": 1,
+      "getAfterDelete": 0
+    }
+  ]
+}

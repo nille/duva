@@ -1,0 +1,54 @@
+{
+  "measuredAt": "2026-10-09T09:41:31.616Z",
+  "k": 20,
+  "mailbox": {
+    "ENHANCED topK 20 none": {
+      "recall": 0.901,
+      "worst": 0.35,
+      "queriesWithFewerThan20": 0,
+      "filterViolations": 0,
+      "p50Ms": 64.5,
+      "p95Ms": 69.1
+    },
+    "ENHANCED topK 20 notSpamTrash": {
+      "recall": 0.899,
+      "worst": 0.35,
+      "queriesWithFewerThan20": 0,
+      "filterViolations": 0,
+      "p50Ms": 63.4,
+      "p95Ms": 68.6
+    },
+    "ENHANCED topK 20 travel": {
+      "recall": 0.817,
+      "worst": 0.4,
+      "queriesWithFewerThan20": 0,
+      "filterViolations": 0,
+      "p50Ms": 63.8,
+      "p95Ms": 68.4
+    },
+    "ENHANCED topK 100 none": {
+      "recall": 0.902,
+      "worst": 0.35,
+      "queriesWithFewerThan20": 0,
+      "filterViolations": 0,
+      "p50Ms": 63.8,
+      "p95Ms": 68.7
+    },
+    "ENHANCED topK 100 notSpamTrash": {
+      "recall": 0.9,
+      "worst": 0.35,
+      "queriesWithFewerThan20": 0,
+      "filterViolations": 0,
+      "p50Ms": 64.4,
+      "p95Ms": 68.8
+    },
+    "ENHANCED topK 100 travel": {
+      "recall": 0.817,
+      "worst": 0.4,
+      "queriesWithFewerThan20": 0,
+      "filterViolations": 0,
+      "p50Ms": 64.5,
+      "p95Ms": 69.1
+    }
+  }
+}
