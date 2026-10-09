@@ -50,7 +50,7 @@ export function AskAgent({
   /** Where the list beside it is, and its name. */
   back: string;
   backTo: string;
-  /** Told as a turn starts, true, and as it ends, false, so Coo bobs in its nest while it works. */
+  /** Told as a turn starts, true, and as it ends, false, so Coo bobs its head while it works. */
   onAsking?: (asking: boolean) => void;
   onSignedOut: () => void;
 }) {

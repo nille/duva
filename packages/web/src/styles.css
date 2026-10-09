@@ -539,42 +539,30 @@ kbd {
 }
 
 /*
- * Coo's nest heads the side column, where the wordmark was: Coo sitting in a small woven nest, both
- * in Coo's one line, in ink. It opens Ask Coo.
+ * Coo's portrait heads the side column on its own, where the wordmark was: its .75 line on its 32
+ * unit grid at 48px, in ink. It opens Ask Coo.
  */
-.nest {
+.coo-link {
   grid-area: brand;
   justify-self: start;
   display: block;
-  width: 3.5rem;
+  width: 3rem;
   height: 3rem;
-  margin: -0.65rem 0 -0.35rem;
+  /* The row keeps its height, and the line's left edge, inset in the grid, meets the mailbox's name. */
+  margin: -0.65rem 0 -0.35rem -0.2rem;
   border-radius: var(--radius-key);
   color: var(--ink);
 }
 
-.nest > svg {
+.coo-link > svg {
   display: block;
   width: 100%;
   height: 100%;
   overflow: visible;
 }
 
-/* Coo's .75 line on its 32 unit grid, drawn 44 units wide in the nest's. */
-.nest-line {
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.03;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.nest-weave {
-  stroke-dasharray: 4.6 2.6;
-}
-
-/* Coo leans about where it sits in the nest, so its head moves most. */
-.nest .coo-portrait {
+/* Coo leans about its open foot, so its head moves most. */
+.coo-link .coo-portrait {
   transform-box: fill-box;
   transform-origin: 50% 100%;
 }
@@ -583,7 +571,7 @@ kbd {
  * While Coo works its head bobs, as a walking pigeon's: it drifts back as the body goes on, then
  * snaps forward. At rest it sits still. Reduced motion keeps it still while it works too.
  */
-.nest-working .coo-portrait {
+.coo-link-working .coo-portrait {
   animation: coo-bob 0.84s cubic-bezier(0.45, 0, 0.2, 1) infinite;
 }
 
@@ -601,13 +589,13 @@ kbd {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .nest-working .coo-portrait {
+  .coo-link-working .coo-portrait {
     animation: none;
   }
 }
 
 /*
- * What Coo says, under the nest, while it has news: a small white bubble that lies in the column's
+ * What Coo says, under its portrait, while it has news: a small white bubble that lies in the column's
  * flow, so it never covers anything, its point up at Coo. Each part is a link to where it is about.
  */
 .coo-say {
@@ -692,7 +680,7 @@ kbd {
   background: var(--side);
 }
 
-/* The bar heads the side column: Coo's nest and Write, the open mailbox, the search box, then Duva's places. */
+/* The bar heads the side column: Coo's portrait and Write, the open mailbox, the search box, then Duva's places. */
 .bar {
   grid-area: 1 / 1;
   display: grid;
@@ -707,7 +695,7 @@ kbd {
   padding: 1.35rem var(--space-4) var(--space-3) var(--gutter);
 }
 
-/* While Coo says something, it lies under the nest. */
+/* While Coo says something, it lies under its portrait. */
 .bar:has(.coo-says) {
   grid-template-areas:
     "brand write"
@@ -1316,7 +1304,7 @@ button.selector[aria-expanded="true"] {
 }
 
 /*
- * Phones: one top row, Coo's nest, the search icon and Write, then one column. The places lie in
+ * Phones: one top row, Coo's portrait, the search icon and Write, then one column. The places lie in
  * a tab bar along the screen's foot, in reach of the thumb, and Sign out moves to Settings. The
  * page scrolls as one, and the status strip stays on a desk.
  */
@@ -1354,10 +1342,10 @@ button.selector[aria-expanded="true"] {
     background: var(--read);
   }
 
-  .bar .nest {
-    width: 2.9rem;
-    height: 2.5rem;
-    margin: -0.4rem auto -0.2rem -0.3rem;
+  .bar .coo-link {
+    width: 2.25rem;
+    height: 2.25rem;
+    margin: -0.3rem auto -0.2rem -0.3rem;
   }
 
   /* On a phone what Coo says takes a row of its own under the top row. */

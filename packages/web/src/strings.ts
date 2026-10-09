@@ -241,10 +241,10 @@ export const strings = {
     },
   },
 
-  /** Coo, the mailbox agent, in its nest at the side column's head, and what it says there. */
+  /** Coo, the mailbox agent, whose portrait heads the side column, and what it says there. */
   coo: {
-    /** The nest's name: Duva's, then how Coo is, then where it goes. */
-    nest: (working: boolean) => `Duva, Coo is ${working ? "working" : "resting"}. Ask Coo`,
+    /** The portrait's name at the side column's head: Duva's, then how Coo is, then where it goes. */
+    link: (working: boolean) => `Duva, Coo is ${working ? "working" : "resting"}. Ask Coo`,
     coo: "Coo.",
     drafts: (count: number) => (count === 1 ? "A draft of mine waits for your approval." : `${count} drafts of mine wait for your approval.`),
     mail: (count: number, from: string[]) => {
@@ -804,7 +804,7 @@ export const strings = {
     },
     cooSpeaksUp: {
       legend: "Coo speaks up",
-      lead: "Coo sits in its nest at the top left. It says so under it when there's news worth a glance: new mail since you looked, a draft of its waiting for you, or a task done.",
+      lead: "Coo looks out from the top left, and speaks up under its portrait when there's news worth a glance: new mail since you looked, a draft of its waiting for you, or a task done.",
       on: "On",
       onHint: "What it says goes away once you look. This is the default.",
       off: "Off",

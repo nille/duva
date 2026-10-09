@@ -33,38 +33,53 @@ async function withGrace(options: Parameters<typeof startWebApp>[0] = {}, before
   const heading = () => app.page.getByRole("heading", { level: 1 }).textContent();
   await expect.poll(heading, wait).toBe("Inbox");
   const banner = app.page.getByRole("banner");
-  const nest = banner.getByRole("link", { name: /^Duva, Coo is/ });
+  const head = banner.getByRole("link", { name: /^Duva, Coo is/ });
   const says = app.page.getByRole("status").filter({ hasText: /^Coo\./ });
   const settings = async () => {
     await app.page.getByRole("link", { name: "Settings", exact: true }).first().click();
     await expect.poll(heading, wait).toBe("Settings");
   };
-  return { ...app, grace, params, heading, banner, nest, says, settings };
+  return { ...app, grace, params, heading, banner, head, says, settings };
 }
 
-for (const [size, viewport] of [
-  ["a desk", { width: 1280, height: 800 }],
-  ["a phone", phone],
-] as const) {
-  test(`on ${size} Coo sits in its nest where the wordmark was, named Duva, and opens Ask Coo, while Mail goes to the Inbox`, budget, async () => {
-    const { page, banner, nest, heading } = await withGrace({ viewport });
-    expect(await nest.getAttribute("aria-label")).toBe("Duva, Coo is resting. Ask Coo");
+const sizes = [
+  ["a desk", { width: 1280, height: 800 }, 48],
+  ["a phone", phone, 36],
+] as const;
 
-    await nest.click();
+for (const [size, viewport, width] of sizes) {
+  test(`on ${size} Coo's portrait heads the page on its own where the wordmark was, named Duva, and opens Ask Coo, while Mail goes to the Inbox`, budget, async () => {
+    const { page, banner, head, heading } = await withGrace({ viewport });
+    expect(await head.getAttribute("aria-label")).toBe("Duva, Coo is resting. Ask Coo");
+    // The link is the portrait alone, its .75 line on its 32 unit grid at its size, with no nest drawn round it.
+    const drawn = await head.evaluate((link) => {
+      const svgs = link.querySelectorAll("svg");
+      const box = svgs[0]!.getBoundingClientRect();
+      return {
+        svgs: svgs.length,
+        grid: svgs[0]!.getAttribute("viewBox"),
+        line: svgs[0]!.getAttribute("stroke-width"),
+        size: [Math.round(box.width), Math.round(box.height)],
+        outside: link.querySelectorAll(":scope > svg > :not(.coo-portrait)").length,
+      };
+    });
+    expect(drawn).toEqual({ svgs: 1, grid: "0 0 32 32", line: ".75", size: [width, width], outside: 0 });
+
+    await head.click();
 
     await expect.poll(heading, wait).toBe("Ask Coo");
-    // The nest leads the side column's head, and on a phone the top row, at its left end.
-    const nestBox = (await nest.boundingBox())!;
+    // The portrait leads the side column's head, and on a phone the top row, at its left end.
+    const headBox = (await head.boundingBox())!;
     const write = (await banner.getByRole("button", { name: "Write" }).boundingBox())!;
-    expect(nestBox.x).toBeLessThan(write.x);
-    expect(Math.abs(nestBox.y + nestBox.height / 2 - (write.y + write.height / 2))).toBeLessThan(8);
+    expect(headBox.x).toBeLessThan(write.x);
+    expect(Math.abs(headBox.y + headBox.height / 2 - (write.y + write.height / 2))).toBeLessThan(8);
     await page.getByRole("link", { name: "Mail", exact: true }).click();
     await expect.poll(heading, wait).toBe("Inbox");
   });
 }
 
-test("Coo is one line in the color of where it is: ink in its nest, and the agent's blue where it marks the mailbox agent", budget, async () => {
-  const { page, nest, heading } = await withGrace();
+test("Coo is one line in the color of where it is: ink at the side column's head, and the agent's blue where it marks the mailbox agent", budget, async () => {
+  const { page, head, heading } = await withGrace();
   /** Each shape of Coo in the element: its fill and its stroke, with the color around it set to `color`, if given. */
   const lines = (where: ReturnType<Page["locator"]>, color?: string) =>
     where.evaluate((element: HTMLElement, color) => {
@@ -85,8 +100,8 @@ test("Coo is one line in the color of where it is: ink in its nest, and the agen
     expect(await lines(where, "rgb(1, 2, 3)")).toEqual(shapes.map(() => one("rgb(1, 2, 3)")));
   };
 
-  await lineOf(nest, "rgb(22, 22, 22)");
-  await nest.click();
+  await lineOf(head, "rgb(22, 22, 22)");
+  await head.click();
   await expect.poll(heading, wait).toBe("Ask Coo");
   await lineOf(page.locator("main .actor-mark-coo").first(), "rgb(46, 98, 255)");
 });
@@ -105,7 +120,7 @@ test.each([
   expect(new Set(strokes)).toEqual(new Set([color]));
 });
 
-test("Coo bobs its head in the nest while it works on a turn, sits still at rest, and keeps still for reduced motion", budget, async () => {
+test.each(sizes)("on %s Coo bobs its head while it works on a turn, sits still at rest, and keeps still for reduced motion", budget, async (_, viewport) => {
   let answer!: () => void;
   const answered = new Promise<void>((resolve) => (answer = resolve));
   const model: Model = async function* () {
@@ -113,21 +128,21 @@ test("Coo bobs its head in the nest while it works on a turn, sits still at rest
     yield { text: "Done." };
     yield { usage: { inputTokens: 1000, outputTokens: 10 } };
   };
-  const { page, nest } = await withGrace({ model });
-  const bobbing = () => nest.locator(".coo-portrait").evaluate((head) => getComputedStyle(head).animationName);
+  const { page, head } = await withGrace({ model, viewport });
+  const bobbing = () => head.locator(".coo-portrait").evaluate((portrait) => getComputedStyle(portrait).animationName);
   expect(await bobbing()).toBe("none");
 
-  await nest.click();
+  await head.click();
   await page.getByRole("textbox", { name: "What do you want to ask?" }).fill("Anything new?");
   await page.getByRole("button", { name: "Ask", exact: true }).click();
 
-  await expect.poll(() => nest.getAttribute("aria-label"), wait).toBe("Duva, Coo is working. Ask Coo");
+  await expect.poll(() => head.getAttribute("aria-label"), wait).toBe("Duva, Coo is working. Ask Coo");
   expect(await bobbing()).toBe("coo-bob");
   await page.emulateMedia({ reducedMotion: "reduce" });
   expect(await bobbing()).toBe("none");
   await page.emulateMedia({ reducedMotion: "no-preference" });
   answer();
-  await expect.poll(() => nest.getAttribute("aria-label"), wait).toBe("Duva, Coo is resting. Ask Coo");
+  await expect.poll(() => head.getAttribute("aria-label"), wait).toBe("Duva, Coo is resting. Ask Coo");
   expect(await bobbing()).toBe("none");
 });
 
@@ -140,7 +155,7 @@ test("Coo says who sent the mail that came since the human last looked, politely
   await expect.poll(() => says.textContent(), wait).toBe("Coo. New mail from Astrid Lindqvist.");
   await duva.receive(mail("SJ <bokning@sj.example>", "Din bokning", "sj"), { to: ["grace@example.com"] });
   await expect.poll(() => says.textContent(), wait).toBe("Coo. 2 new since you looked, from SJ and Astrid Lindqvist.");
-  // It speaks under the nest, in the side column, so it covers none of the page beside it.
+  // It speaks under its portrait, in the side column, so it covers none of the page beside it.
   const bubble = (await says.boundingBox())!;
   const main = (await page.getByRole("main").boundingBox())!;
   expect(bubble.x + bubble.width).toBeLessThanOrEqual(main.x);
@@ -167,10 +182,10 @@ test("Coo says when a draft of its waits for approval, marked as Coo in Approval
     for (const event of steps[step++]?.() ?? [{ text: "It waits for you." }]) yield event;
     yield { usage: { inputTokens: 1000, outputTokens: 10 } };
   };
-  const { page, nest, says, heading, duva } = await withGrace({ model });
+  const { page, head, says, heading, duva } = await withGrace({ model });
   // With Claude Sonnet 5.5 for every job, writing the draft hands nothing over, so the script runs as written.
   await duva.signIn("ada@example.org").PATCH("/organization/settings", { body: { mailboxAgentModel: "anthropic.claude-sonnet-5-5", mailboxAgentTaskModel: "anthropic.claude-sonnet-5-5" } });
-  await nest.click();
+  await head.click();
   await page.getByRole("textbox", { name: "What do you want to ask?" }).fill("Ask Ada to lunch.");
   await page.getByRole("button", { name: "Ask", exact: true }).click();
 

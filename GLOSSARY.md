@@ -25,7 +25,7 @@ The agent Duva itself runs for each human's personal mailbox, created with the m
 _Avoid_: assistant, bot, copilot
 
 **Coo**:
-The name of every mailbox agent, after the sound a duva, Swedish for dove, makes. In the web app Coo sits in its nest at the side column's head, where Duva's wordmark was: it bobs its head while it works, and says, in a bubble under the nest, when there's news worth a glance, unless its human turned Coo speaks up off.
+The name of every mailbox agent, after the sound a duva, Swedish for dove, makes. In the web app Coo's portrait heads the side column, where Duva's wordmark was: it bobs its head while it works, and says, in a bubble under it, when there's news worth a glance, unless its human turned Coo speaks up off.
 _Avoid_: the bot, the assistant
 
 **Harder model**:

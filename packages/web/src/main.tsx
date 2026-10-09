@@ -1,6 +1,6 @@
 // Duva's web app. A human signs in and lands on the Inbox of their personal mailbox, where they read,
 // organize, write and send their mail. On a desk the mail lies on one plane: the side column, with
-// Coo in its nest, Write, search, Duva's places and the mail's views, then the list, and what is open
+// Coo's portrait, Write, search, Duva's places and the mail's views, then the list, and what is open
 // from it beside the list, with a status strip along the foot. A human with more than one mailbox
 // chooses among their own at the side column's head. Agents own no mailboxes: they work in their
 // sponsors' with sponsor access. Sponsors reach the Approvals view from the places once anything has
@@ -23,7 +23,7 @@ import type { components } from "@duva/openapi";
 import { activityHref, AgentEvents, type Filter, filterOf } from "./activity.tsx";
 import { AskAgent } from "./ask.tsx";
 import { Composer } from "./compose.tsx";
-import { CooSays, MailboxAgentsContext, Nest, useCoo } from "./coo.tsx";
+import { CooLink, CooSays, MailboxAgentsContext, useCoo } from "./coo.tsx";
 import { defaultPreferences, type Preferences, PreferencesContext, useDates } from "./dates.ts";
 import { Drafts } from "./drafts.tsx";
 import { approvalChanges, type Connection, draftChanges, type Follow, labelChanges, mailChanges, mailboxSetupChanges, screenerChanges, SignedOut, useFeeds } from "./feed.ts";
@@ -482,7 +482,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
     return [...(coo === undefined ? [] : [coo]), ...sponsored.filter(({ mailbox }) => mailbox === undefined)];
   }, [sponsored, sided, first]);
 
-  // Coo, in its nest, works and speaks of the side column's mailbox. Where the human looks ends its news of it.
+  // Coo, at the side column's head, works and speaks of the side column's mailbox. Where the human looks ends its news of it.
   const coo = useCoo({
     client,
     mailbox: sided?.id,
@@ -814,8 +814,8 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
       </a>
       <div className={shell}>
         <header className="bar">
-          {/* Coo's nest, where the wordmark was, opens Ask Coo for the side column's mailbox. */}
-          <Nest href={sided !== undefined ? `${sideBase}agent` : first !== undefined ? "#/agent" : "#/"} working={coo.working} />
+          {/* Coo's portrait, where the wordmark was, opens Ask Coo for the side column's mailbox. */}
+          <CooLink href={sided !== undefined ? `${sideBase}agent` : first !== undefined ? "#/agent" : "#/"} working={coo.working} />
           {preferences.cooSpeaksUp === "on" && <CooSays news={coo.news} base={sideBase} onTasksSeen={coo.tasksSeen} />}
           {write !== undefined && (
             <button type="button" className="button button-primary button-small bar-write" aria-keyshortcuts={preferences.keyboardShortcuts === "off" ? undefined : "c"} onClick={write}>

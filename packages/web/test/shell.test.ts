@@ -179,10 +179,10 @@ test("on a phone the bar is one row with the search icon and Write, and the plac
   const settings = page.getByRole("banner").getByRole("link", { name: "Settings", exact: true });
   await expect.poll(() => write.isVisible(), wait).toBe(true);
 
-  const nest = (await page.getByRole("banner").getByRole("link", { name: /^Duva, Coo is/ }).boundingBox())!;
+  const head = (await page.getByRole("banner").getByRole("link", { name: /^Duva, Coo is/ }).boundingBox())!;
   for (const control of [write, searchIcon, settings]) {
     const box = (await control.boundingBox())!;
-    expect(Math.abs(box.y + box.height / 2 - (nest.y + nest.height / 2))).toBeLessThan(4);
+    expect(Math.abs(box.y + box.height / 2 - (head.y + head.height / 2))).toBeLessThan(4);
     expect(box.height).toBeGreaterThanOrEqual(44);
   }
   expect(await page.getByRole("button", { name: "Sign out" }).isVisible()).toBe(false);

@@ -1,5 +1,5 @@
-// Coo, the mailbox agent every human's mailbox has (ADR-0027), a duva, Swedish for dove. It sits in
-// its nest at the side column's head, where Duva's wordmark was, and is the mark of the mailbox agent
+// Coo, the mailbox agent every human's mailbox has (ADR-0027), a duva, Swedish for dove. Its portrait
+// heads the side column, where Duva's wordmark was, and is the mark of the mailbox agent
 // wherever it appears, as the diamond is any other agent's. It bobs its head only while it works, a
 // turn of Ask Coo or a label's task, and speaks up only with news worth a glance: new mail since the
 // human last looked, a draft of its waiting for their approval, or a task done. What it said goes
@@ -49,24 +49,13 @@ const CooPortrait = ({ small }: { small: boolean }) => (
 export const CooMark = () => <CooPortrait small />;
 
 /**
- * Coo in its nest at the side column's head, a link to Ask Coo. Its name is Duva's, with how Coo is,
- * and while Coo works its head bobs, as a walking pigeon's does. The nest is woven in Coo's own line.
+ * Coo's portrait on its own at the side column's head, a link to Ask Coo. Its name is Duva's, with
+ * how Coo is, and while Coo works its head bobs, as a walking pigeon's does.
  */
-export function Nest({ href, working }: { href: string; working: boolean }) {
+export function CooLink({ href, working }: { href: string; working: boolean }) {
   return (
-    <a className={working ? "nest nest-working" : "nest"} href={href} aria-label={copy.nest(working)}>
-      <svg viewBox="0 0 56 48" aria-hidden="true">
-        <svg x="7" y="-3.2" width="44" height="44" viewBox="0 0 32 32" overflow="visible">
-          <CooPortrait small={false} />
-        </svg>
-        {/* The nest's back rim either side of Coo, then its woven bowl in front, open at the top for Coo to sit in. */}
-        <g className="nest-line">
-          <path d="M6 33.4c2.6-1.6 6.4-2.4 9.6-2.8M42.4 30.8c3.4.5 6 1.4 7.6 2.6" />
-          <path d="M3.5 33.2c6.4 2.6 42.6 2.6 49 0-.6 8.6-10 13.6-24.5 13.6S4.1 41.8 3.5 33.2Z" />
-          <path className="nest-weave" d="M5.5 37.2c9 2.7 36 2.7 45 0M8.6 41c8 2.4 30.8 2.4 38.8 0" />
-          <path d="M1.6 34.4 4.4 33.6M51.6 33.5l2.6 1" />
-        </g>
-      </svg>
+    <a className={working ? "coo-link coo-link-working" : "coo-link"} href={href} aria-label={copy.link(working)}>
+      <CooPortrait small={false} />
     </a>
   );
 }
@@ -84,7 +73,7 @@ export interface CooNews {
 const quiet: CooNews = { mail: [], drafts: 0, tasks: [] };
 
 /**
- * Coo's speech bubble under the nest, while it has news and its human lets it speak up. It lies in
+ * Coo's speech bubble under its portrait, while it has news and its human lets it speak up. It lies in
  * the page's flow, so it never covers what is under it, and screen readers hear it politely.
  */
 export function CooSays({ news, base, onTasksSeen }: { news: CooNews; base: string; onTasksSeen: () => void }) {
