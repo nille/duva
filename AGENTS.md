@@ -4,6 +4,7 @@ Duva is a self-hosted mailbox platform on Amazon SES where humans and agents are
 
 ## Development
 
+- Read `docs/agents/handbook.md` before your first change, and before a change that crosses packages, adds a Lambda, touches the table's keys or changes the mailbox agent: it explains the architecture, how the code is written and tested, and how a ticket reaches the deployment.
 - Tests run DynamoDB Local on Java, so they need Java 17 or newer on the PATH.
 - The build needs x64 Linux: the search Lambdas ship LanceDB's x64 native module, which npm installs only there.
 - Tests embed with Titan's vectors recorded in `packages/api/test/titan-vectors.json`, and translate searches with Nova Lite's answers recorded in `packages/api/test/nova-translations.json`, so they need no AWS. A text no one recorded gets a vector unlike every other, and words no one recorded have no translation. After changing a search test's mail or words, run that test file with `DUVA_RECORD_EMBEDDINGS=1` and AWS credentials to record both.
