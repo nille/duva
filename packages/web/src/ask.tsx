@@ -139,7 +139,9 @@ export function AskAgent({
           else if (event.type === "searched") setRunning((current) => current && { ...current, searches: [...current.searches, event.search] });
           else if (event.type === "handedOver") setRunning((current) => current && { ...current, handover: event.handover });
           else {
+            // The turn as kept takes the running one's place at once, since the stream goes on a moment after it.
             add(event.turn);
+            setRunning(undefined);
             setAnnounced(`${copy.answered}: ${event.turn.text}`);
           }
         }

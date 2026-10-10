@@ -322,8 +322,12 @@ test("a turn in which Coo searched the web says what it looked up, and links eac
   await page.getByRole("textbox", { name: "What do you want to ask?" }).fill("Which terminal at Arlanda?");
   await page.getByRole("button", { name: "Ask", exact: true }).click();
 
+  // Once Coo has answered, its turn shows the search once, as a human reads it.
+  const turns = page.locator(".ask-turn");
+  await expect.poll(async () => [await turns.count(), await page.locator(".ask-turn-running").count(), await turns.nth(1).locator(".ask-text").innerText()], wait).toEqual([2, 0, "Your flight leaves from Terminal 5."]);
   const searches = page.getByRole("list", { name: "What it looked up on the web" });
-  await expect.poll(() => searches.getByRole("listitem").count(), wait).toBe(1);
+  expect(await searches.count()).toBe(1);
+  expect(await searches.getByRole("listitem").count()).toBe(1);
   expect(await searches.innerText()).toContain("Searched the web for “SAS Arlanda terminal”");
   const source = searches.getByRole("link", { name: /^Terminals at Stockholm Arlanda/ });
   expect(await source.getAttribute("href")).toBe("https://www.swedavia.example/arlanda/terminals");
