@@ -9,7 +9,7 @@ import { costOf, deciderModel, type MailboxAgentModel, type Usage } from "./agen
 import { memoryLines, memoryManager, memoryOperations, memoryUnbacked, unbackedMemoryClaim } from "./agent-memory.ts";
 import type { Browser } from "./browser.ts";
 import { browse, type Browsing, browseTool, mailedLogin, runUnsubscribe } from "./browsing.ts";
-import { asConverse, type Models, saying, strandsAgent, strandsSpec, usageOf } from "./strands.ts";
+import { asConverse, type Models, saying, sayUsage, strandsAgent, strandsSpec } from "./strands.ts";
 import { searchTheWeb, type WebSearch, type WebSearchMade, webSearchTool } from "./web-search.ts";
 
 export type AgentAction = components["schemas"]["AgentAction"];
@@ -495,9 +495,7 @@ export async function* runAgent(
         said.push({ type: "text", text: shown });
       }
     } else if (event.type === "modelMetadataEvent" && event.usage !== undefined) {
-      const usage = usageOf(event.usage);
-      spent += costOf(usage, current, region);
-      said.push({ type: "usage", model: current, ...usage });
+      spent += sayUsage(said, event.usage, current, region);
     }
   });
   agent.addHook(AfterModelCallEvent, async (event) => {

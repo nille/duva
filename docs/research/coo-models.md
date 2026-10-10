@@ -41,10 +41,10 @@ Each model ADR-0035 lists to measure, recorded on Coo's loop on Strands on 2026-
 | GLM-5.3 | anywhere, through `global.` | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 2.15 | $10.80 | 2.8 | 14.5 |
 
 - **Four models did every run alone:** GPT-6 Luna, GPT-6 Sol, Kimi K2.5 and GLM-5.3, as Sonnet 5.5 did, and Luna at 0.05 cents a task, about **$0.28 for a small organization's month**, against Haiku's $9.92 and Sonnet's $25.88. Kimi K2.5 does it in eu-north-1 itself, at 1.06 cents.
-- **Grok 4.7, GLM-5 and Kimi K3 missed one run each,** archiving the newsletters, as Haiku did. Kimi K3 is the dearest of all, at 7.6 cents a task, and Grok 4.7's slowest call took 121 s.
+- **Grok 4.7, GLM-5 and Kimi K3 missed one run each,** archiving the newsletters, as Haiku did. MiniMax M2.5 missed one there too, and counted the invoices wrong in both runs. Kimi K3 is the dearest of all, at 7.6 cents a task, and Grok 4.7 has the slowest tail, 121 s at p95.
 - **gpt-oss-120b did 2 of 8 label tasks:** in the other six it ended with an empty note, no text and no tool call, though it did all the rest. Qwen3 235B A22B triaged nothing right: it looked only in the Feed, or searched with `OR`, which Duva's search doesn't take, found nothing, and said so. DeepSeek V3.2 answered three questions wrong, and wrote `<｜DSML｜function_calls` into its text before tool calls, which its owner would read (docs/aws.md).
 - **As the harder model, each did what the defaults do:** Haiku hands over at writing about a run in five, so the harder model wrote the drafts, and the rest is Haiku's. All but Grok 4.7 and Kimi K2.5 wrote every draft right, and those two missed one each. The triage misses are Haiku's own, archiving the newsletters, so they say nothing of the harder model.
-- **Where the mail goes:** OpenAI's, xAI's and the newest Moonshot and Z.AI models run in the EU only through `global.`, so with them an EU deployment's mail may be processed outside the EU, as the model settings say (ADR-0035).
+- **Where the mail goes:** GPT-6 Luna and Sol, Grok 4.7, Kimi K3 and GLM-5.3 run in the EU only through `global.`, so with them an EU deployment's mail may be processed outside the EU, as the model settings say (ADR-0035).
 - **GLM-5.3's cost is GLM-5's price,** since Bedrock publishes none for it yet (docs/aws.md).
 
 | Harder model, behind Claude Haiku 4.5 | All | Conversation | Drafting | Triage | Label task | Refusal | Cents a task | A month | Handovers |

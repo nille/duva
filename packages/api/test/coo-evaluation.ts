@@ -8,12 +8,13 @@
 // AWS_PROFILE set to the test account: each run of a task not yet recorded asks the model on
 // Bedrock, and the searches it makes are embedded and translated, and recorded beside the mail's.
 // A model not yet measured can't be allowed, so name each such model being recorded in
-// DUVA_MEASURING, comma-separated. Delete a model's runs from coo-answers.json to record them again. That costs about $4 (#132).
+// DUVA_MEASURING, comma-separated. Delete a model's runs from coo-answers.json to record them again.
+// That costs about $4 for a setup of Claude's (#132), cents for the cheapest models (#150).
 import { readFileSync, writeFileSync } from "node:fs";
 import { performance } from "node:perf_hooks";
 import type { components } from "@duva/openapi";
 import type { Decider, Decision, Handover, Model, ModelEvent, ModelMessage } from "../src/agent-loop.ts";
-import { costOf, deciderModel, defaultHarderModel, defaultMailboxAgentModel, type MailboxAgentModel } from "../src/agent-models.ts";
+import { costOf, deciderModel, defaultHarderModel, defaultMailboxAgentModel, isMeasured, type MailboxAgentModel, mailboxAgentModels, measuredModelIds } from "../src/agent-models.ts";
 import { bedrockDecider, bedrockModel } from "../src/bedrock-model.ts";
 import { defaultSettings, type OrganizationSettings } from "../src/organization.ts";
 import { startDuva } from "./harness.ts";
@@ -48,19 +49,21 @@ const harder = (name: string, model: MailboxAgentModel): Setup => ({
  * the default everyday model, twice a task, as Claude is. Llama 4 Maverick isn't one: Bedrock
  * refuses it to callers in the EU, where these are recorded (docs/research/coo-models.md).
  */
-const listed: [string, MailboxAgentModel][] = [
-  ["GPT-6 Luna", "openai.gpt-6-luna"],
-  ["GPT-6 Sol", "openai.gpt-6-sol"],
-  ["Grok 4.7", "xai.grok-4.7"],
-  ["gpt-oss-120b", "openai.gpt-oss-120b-1:0"],
-  ["Qwen3 235B A22B", "qwen.qwen3-235b-a22b-2507-v1:0"],
-  ["DeepSeek V3.2", "deepseek.v3.2"],
-  ["GLM-5", "zai.glm-5"],
-  ["Kimi K2.5", "moonshotai.kimi-k2.5"],
-  ["MiniMax M2.5", "minimax.minimax-m2.5"],
-  ["Kimi K3", "moonshotai.kimi-k3"],
-  ["GLM-5.3", "zai.glm-5.3"],
-];
+const listed = (
+  [
+    "openai.gpt-6-luna",
+    "openai.gpt-6-sol",
+    "xai.grok-4.7",
+    "openai.gpt-oss-120b-1:0",
+    "qwen.qwen3-235b-a22b-2507-v1:0",
+    "deepseek.v3.2",
+    "zai.glm-5",
+    "moonshotai.kimi-k2.5",
+    "minimax.minimax-m2.5",
+    "moonshotai.kimi-k3",
+    "zai.glm-5.3",
+  ] satisfies MailboxAgentModel[]
+).map((model): [string, MailboxAgentModel] => [mailboxAgentModels[model].name, model]);
 
 /**
  * The setups #132 measures: each model alone, called where production would call it, routing with
@@ -393,6 +396,11 @@ type Step = { ms: number; model: MailboxAgentModel; events: ModelEvent[]; error?
 
 const file = new URL("./coo-answers.json", import.meta.url);
 const recording = process.env.DUVA_RECORD_MODELS === "1";
+// A model not yet measured can't be allowed, so a recording measuring it for the first time lets the
+// in-process stack allow the models DUVA_MEASURING names.
+if (recording) {
+  for (const model of (process.env.DUVA_MEASURING ?? "").split(",")) if (model in mailboxAgentModels && !isMeasured(model)) measuredModelIds.push(model as MailboxAgentModel);
+}
 const read = (): Record<string, Step[]> => JSON.parse(readFileSync(file, "utf8"));
 
 // Duva's IDs are UUIDs, new in each run, so a recorded step names those it uses by the order they

@@ -406,7 +406,7 @@ test("admins allow measured models, and set the organization's everyday and hard
   expect(before).toMatchObject({ mailboxAgentAllowedModels: [haiku, sonnet], mailboxAgentModel: haiku, mailboxAgentHarderModel: sonnet, mailboxAgentDecider: false, mailboxAgentSpendCap: 20 });
   expect(before).not.toHaveProperty("mailboxAgentTaskModel");
   expect((unmeasured.error as { message: string }).message).toBe(
-    "Give mailboxAgentAllowedModels as a list of different measured models, anthropic.claude-haiku-4-5-20251001-v1:0, anthropic.claude-sonnet-5-5, deepseek.v3.2, zai.glm-5, zai.glm-5.3, openai.gpt-6-luna, openai.gpt-6-sol, xai.grok-4.7, moonshotai.kimi-k2.5, moonshotai.kimi-k3, minimax.minimax-m2.5, amazon.nova-2-lite-v1:0, amazon.nova-lite-v1:0, amazon.nova-pro-v1:0, qwen.qwen3-235b-a22b-2507-v1:0, openai.gpt-oss-120b-1:0.",
+    "Give mailboxAgentAllowedModels as a list of different measured models, anthropic.claude-haiku-4-5-20251001-v1:0, anthropic.claude-sonnet-5-5, deepseek.v3.2, zai.glm-5, zai.glm-5.3, openai.gpt-6-luna, openai.gpt-6-sol, openai.gpt-oss-120b-1:0, xai.grok-4.7, moonshotai.kimi-k2.5, moonshotai.kimi-k3, minimax.minimax-m2.5, amazon.nova-2-lite-v1:0, amazon.nova-lite-v1:0, amazon.nova-pro-v1:0, qwen.qwen3-235b-a22b-2507-v1:0.",
   );
   expect((notAllowed.error as { message: string }).message).toBe(
     "Amazon Nova 2 Lite is the organization's everyday model, so it must be allowed. Allow it in mailboxAgentAllowedModels, or give mailboxAgentModel as one of those allowed.",
@@ -425,9 +425,9 @@ test("every actor lists the measured models, each with its success by kind of wo
 
   const { data } = await linus.GET("/organization/mailbox-agent-models");
 
-  // From docs/research/coo-models.md and docs/aws.md: Claude in eu-central-1 through eu., Nova Lite in
-  // eu-north-1 itself, OpenAI's, xAI's and the newest Moonshot and Z.AI models only through global.
-  // from eu-central-1, and MiniMax M2.5 in eu-central-1 itself.
+  // From docs/research/coo-models.md and docs/aws.md: Claude through eu. from eu-central-1, the GPT-6
+  // models, Grok 4.7, Kimi K3 and GLM-5.3 through global. from there, MiniMax M2.5 in eu-central-1
+  // itself, and Nova Lite and the open-weight models in eu-north-1 itself.
   expect(data!.models.map(({ model, profileId, region, processedIn }) => [model, profileId, region, processedIn])).toEqual([
     [haiku, `eu.${haiku}`, "eu-central-1", "continent"],
     [sonnet, `eu.${sonnet}`, "eu-central-1", "continent"],
@@ -436,6 +436,7 @@ test("every actor lists the measured models, each with its success by kind of wo
     ["zai.glm-5.3", "global.zai.glm-5.3", "eu-central-1", "anywhere"],
     ["openai.gpt-6-luna", "global.openai.gpt-6-luna", "eu-central-1", "anywhere"],
     ["openai.gpt-6-sol", "global.openai.gpt-6-sol", "eu-central-1", "anywhere"],
+    ["openai.gpt-oss-120b-1:0", "openai.gpt-oss-120b-1:0", "eu-north-1", "region"],
     ["xai.grok-4.7", "global.xai.grok-4.7", "eu-central-1", "anywhere"],
     ["moonshotai.kimi-k2.5", "moonshotai.kimi-k2.5", "eu-north-1", "region"],
     ["moonshotai.kimi-k3", "global.moonshotai.kimi-k3", "eu-central-1", "anywhere"],
@@ -444,7 +445,6 @@ test("every actor lists the measured models, each with its success by kind of wo
     [novaLite, novaLite, "eu-north-1", "region"],
     ["amazon.nova-pro-v1:0", "eu.amazon.nova-pro-v1:0", "eu-central-1", "continent"],
     ["qwen.qwen3-235b-a22b-2507-v1:0", "qwen.qwen3-235b-a22b-2507-v1:0", "eu-north-1", "region"],
-    ["openai.gpt-oss-120b-1:0", "openai.gpt-oss-120b-1:0", "eu-north-1", "region"],
   ]);
   expect(data!.models[0]).toEqual({
     model: haiku,
@@ -475,6 +475,7 @@ test("a deployment in the US calls each measured model in the US, through us-wes
     ["zai.glm-5.3", "us.zai.glm-5.3", "us-west-2", "continent"],
     ["openai.gpt-6-luna", "us.openai.gpt-6-luna", "us-west-2", "continent"],
     ["openai.gpt-6-sol", "us.openai.gpt-6-sol", "us-west-2", "continent"],
+    ["openai.gpt-oss-120b-1:0", "openai.gpt-oss-120b-1:0", "us-west-2", "continent"],
     ["xai.grok-4.7", "us.xai.grok-4.7", "us-west-2", "continent"],
     ["moonshotai.kimi-k2.5", "moonshotai.kimi-k2.5", "us-west-2", "continent"],
     ["moonshotai.kimi-k3", "us.moonshotai.kimi-k3", "us-west-2", "continent"],
@@ -483,7 +484,6 @@ test("a deployment in the US calls each measured model in the US, through us-wes
     [novaLite, novaLite, "us-east-1", "region"],
     ["amazon.nova-pro-v1:0", "amazon.nova-pro-v1:0", "us-east-1", "region"],
     ["qwen.qwen3-235b-a22b-2507-v1:0", "qwen.qwen3-235b-a22b-2507-v1:0", "us-west-2", "continent"],
-    ["openai.gpt-oss-120b-1:0", "openai.gpt-oss-120b-1:0", "us-west-2", "continent"],
   ]);
 });
 
@@ -546,9 +546,26 @@ test("the spend counts what a model read from and wrote to its prompt's cache, a
 
   await ask("Hello?");
 
-  // Claude Sonnet 5.5 through eu.: 1,300 tokens read at $2.20 a million, the cache's included, and 100 written at $11.
+  // Claude Sonnet 5.5 through eu.: 1,300 tokens of input at $2.20 a million, the cache's included, and 100 of output at $11.
   const { data: spend } = await ada.GET("/organization/mailbox-agent-spend");
   expect(spend!.spent).toBeCloseTo(0.00286 + 0.0011, 9);
+});
+
+test("the spend counts what a model read from and wrote to its prompt's cache at the cache's own prices, where Bedrock lists them", async () => {
+  const model: Model = async function* () {
+    yield { text: "Cached." };
+    yield { usage: { inputTokens: 100, outputTokens: 100, cacheReadInputTokens: 1000, cacheWriteInputTokens: 200 } };
+  };
+  const { ada, ask } = await withMailbox({ model });
+  const luna = "openai.gpt-6-luna";
+  await ada.PATCH("/organization/settings", { body: { mailboxAgentAllowedModels: [luna], mailboxAgentModel: luna, mailboxAgentHarderModel: luna } });
+
+  await ask("Hello?");
+
+  // GPT-6 Luna through global., 10% under the us price: 100 tokens of input at $0.11 a million, 100
+  // of output at $0.55, 1,000 read from the cache at $0.011 and 200 written to it at $0.1375.
+  const { data: spend } = await ada.GET("/organization/mailbox-agent-spend");
+  expect(spend!.spent).toBeCloseTo((0.000011 + 0.000055 + 0.000011 + 0.0000275) / 1.1, 12);
 });
 
 test("a label's task runs with its human's everyday model, and the spend counts each model at its own price", async () => {

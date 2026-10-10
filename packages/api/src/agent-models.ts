@@ -7,18 +7,24 @@ export type MailboxAgentModel = components["schemas"]["MailboxAgentModel"];
 export type MailboxAgentProfile = components["schemas"]["MailboxAgentProfile"];
 export type MailboxAgentRegion = components["schemas"]["MailboxAgentRegion"];
 
+/** A model's price in US dollars per million tokens read and written, and read from and written to a cache. */
+interface Price {
+  input: number;
+  output: number;
+  cacheRead?: number;
+  cacheWrite?: number;
+}
+
 /**
  * The models Duva knows on Bedrock, each with its price in US dollars per million input and output
  * tokens through the eu and us profiles, or called in a region itself, the global profile costing
  * 10% less, the profiles that run it, and the regions where it runs without one. A model that
- * caches its prompt on its own reports what it read from and wrote to the cache apart, at prices of
- * their own, or where Bedrock lists none, at its input price. Prices are eu-north-1's
+ * caches its prompt on its own reports what it read from and wrote to the cache apart, at the cache
+ * prices listed here. Duva asks no other model to cache, so it lists no cache prices for them, Claude
+ * included, and counts any cached tokens they report at the input price. Prices are eu-north-1's
  * (docs/research/agentcore.md, docs/research/coo-models.md).
  */
-export const mailboxAgentModels: Record<
-  MailboxAgentModel,
-  { name: string; input: number; output: number; cacheRead?: number; cacheWrite?: number; profiles: MailboxAgentProfile[]; inRegion: MailboxAgentRegion[] }
-> = {
+export const mailboxAgentModels: Record<MailboxAgentModel, Price & { name: string; profiles: MailboxAgentProfile[]; inRegion: MailboxAgentRegion[] }> = {
   "anthropic.claude-sonnet-5-5": { name: "Claude Sonnet 5.5", input: 2.2, output: 11, profiles: ["eu", "us", "global"], inRegion: [] },
   "anthropic.claude-haiku-4-5-20251001-v1:0": { name: "Claude Haiku 4.5", input: 1.1, output: 5.5, profiles: ["eu", "us", "global"], inRegion: [] },
   "anthropic.claude-opus-5-5": { name: "Claude Opus 5.5", input: 4.4, output: 22, profiles: ["eu", "us", "global"], inRegion: [] },
@@ -48,14 +54,13 @@ export const defaultMailboxAgentModel: MailboxAgentModel = "anthropic.claude-hai
 /** The organization's harder model until an admin chooses another (#132). */
 export const defaultHarderModel: MailboxAgentModel = "anthropic.claude-sonnet-5-5";
 
-// The models Coo's evaluation is recording, which it may allow before they are measured. Only a
-// recording names them, in DUVA_MEASURING (#150).
-const measuring = (process.env.DUVA_MEASURING ?? "").split(",").filter((model) => model in mailboxAgentModels && !(model in measuredModels));
+/**
+ * The models admins can allow: those Coo's evaluation measured, by the name of the setup that ran
+ * each alone (ADR-0035). A recording of Coo's evaluation adds those it measures for the first time.
+ */
+export const measuredModelIds = Object.keys(measuredModels) as MailboxAgentModel[];
 
-/** The models admins can allow: those Coo's evaluation measured, in the order it lists them (ADR-0035). */
-export const measuredModelIds = [...Object.keys(measuredModels), ...measuring] as MailboxAgentModel[];
-
-export const isMeasured = (model: string): model is MailboxAgentModel => (measuredModelIds as string[]).includes(model);
+export const isMeasured = (model: string): model is MailboxAgentModel => measuredModelIds.some((measured) => measured === model);
 
 /**
  * Where Bedrock processes what a model reads, for a deployment: in the deployment's region, on its
@@ -82,11 +87,14 @@ export const modelRegion = (region: string): MailboxAgentRegion => (region.start
  * in the deployment's region itself where the model runs there without a profile, through the
  * profile of the deployment's continent from its model region, in its model region itself, through
  * the global profile, and last, for a model available only in the US, through the us profile from
- * us-west-2, or in us-west-2 itself (ADR-0035).
+ * us-west-2, or in us-west-2 itself. A model called in the model region itself processes mail on the
+ * deployment's continent, as MiniMax M2.5 does in eu-central-1 for one in eu-north-1. A model of
+ * neither profile is called in us-west-2 itself, where each Duva lists without a profile runs
+ * (ADR-0035).
  */
 export function callOf(model: MailboxAgentModel, region: string): ModelCall {
   const { profiles, inRegion } = mailboxAgentModels[model];
-  const runsIn = (where: string) => (inRegion as string[]).includes(where);
+  const runsIn = (where: string) => inRegion.some((one) => one === where);
   if (runsIn(region)) return { profile: "none", region: region as MailboxAgentRegion, processedIn: "region" };
   const continent = region.startsWith("eu-") ? "eu" : region.startsWith("us-") ? "us" : undefined;
   if (continent !== undefined && profiles.includes(continent)) return { profile: continent, region: modelRegion(region), processedIn: "continent" };
@@ -118,7 +126,7 @@ export interface Usage {
 
 /** What a model call's tokens cost, in US dollars, as a deployment in the region calls the model, each at its own price. */
 export function costOf({ inputTokens, outputTokens, cacheReadInputTokens = 0, cacheWriteInputTokens = 0 }: Usage, model: MailboxAgentModel | typeof deciderModel, region: string): number {
-  const price: { input: number; output: number; cacheRead?: number; cacheWrite?: number } = model === deciderModel ? deciderPrice : mailboxAgentModels[model];
+  const price: Price = model === deciderModel ? deciderPrice : mailboxAgentModels[model];
   const discount = model !== deciderModel && callOf(model, region).profile === "global" ? 1 / 1.1 : 1;
   const cached = cacheReadInputTokens * (price.cacheRead ?? price.input) + cacheWriteInputTokens * (price.cacheWrite ?? price.input);
   return ((inputTokens * price.input + outputTokens * price.output + cached) * discount) / 1_000_000;

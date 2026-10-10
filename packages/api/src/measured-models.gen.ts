@@ -72,6 +72,16 @@ export const measuredModels = {
     },
     "costPerTask": 0.016843
   },
+  "openai.gpt-oss-120b-1:0": {
+    "success": {
+      "conversation": 1,
+      "drafting": 1,
+      "triage": 1,
+      "labelTask": 0.25,
+      "refusal": 1
+    },
+    "costPerTask": 0.003744
+  },
   "xai.grok-4.7": {
     "success": {
       "conversation": 1,
@@ -151,15 +161,5 @@ export const measuredModels = {
       "refusal": 1
     },
     "costPerTask": 0.003448
-  },
-  "openai.gpt-oss-120b-1:0": {
-    "success": {
-      "conversation": 1,
-      "drafting": 1,
-      "triage": 1,
-      "labelTask": 0.25,
-      "refusal": 1
-    },
-    "costPerTask": 0.003744
   }
 } as const;

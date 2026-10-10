@@ -22,8 +22,8 @@ import {
   type ToolSpec as StrandsToolSpec,
   type Usage as StrandsUsage,
 } from "@strands-agents/sdk";
-import type { ContentBlock, Model, ModelMessage, ToolSpec } from "./agent-loop.ts";
-import type { MailboxAgentModel, Usage } from "./agent-models.ts";
+import type { ContentBlock, Model, ModelMessage, RunEvent, ToolSpec } from "./agent-loop.ts";
+import { costOf, type MailboxAgentModel, type Usage } from "./agent-models.ts";
 
 /** The Strands model for each of the models admins choose. */
 export type Models = (model: MailboxAgentModel) => StrandsModel;
@@ -111,6 +111,13 @@ export const usageOf = ({ inputTokens, outputTokens, cacheReadInputTokens, cache
   ...(cacheReadInputTokens !== undefined && cacheReadInputTokens > 0 && { cacheReadInputTokens }),
   ...(cacheWriteInputTokens !== undefined && cacheWriteInputTokens > 0 && { cacheWriteInputTokens }),
 });
+
+/** Adds a call's tokens to what the run says, and gives what they cost as a deployment in the region calls the model. */
+export function sayUsage(said: RunEvent[], usage: StrandsUsage, model: MailboxAgentModel, region: string): number {
+  const used = usageOf(usage);
+  said.push({ type: "usage", model, ...used });
+  return costOf(used, model, region);
+}
 
 /** The stand-in as a Strands model for each of the models, asked as Bedrock would be. */
 export const standIn =

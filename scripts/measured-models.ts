@@ -31,7 +31,8 @@ export async function measuredModelsSource(root: URL, header: string): Promise<s
     }
   }
   const measured: Record<string, unknown> = {};
-  for (const [name, { models, cost, runs }] of setups) {
+  // By name, whatever its case, so admins see them in one order.
+  for (const [name, { models, cost, runs }] of [...setups].sort(([a], [b]) => a.localeCompare(b, "en"))) {
     // Only a setup that ran one model alone measures that model.
     if (models.size !== 1) continue;
     const [model] = models;
