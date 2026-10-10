@@ -9168,7 +9168,7 @@ components:
           description: Turns kept with their words' embedding.
     MailboxAgentModel:
       type: string
-      enum: [anthropic.claude-sonnet-5-5, anthropic.claude-haiku-4-5-20251001-v1:0, anthropic.claude-opus-5-5, amazon.nova-2-lite-v1:0, amazon.nova-pro-v1:0, amazon.nova-lite-v1:0]
+      enum: [anthropic.claude-sonnet-5-5, anthropic.claude-haiku-4-5-20251001-v1:0, anthropic.claude-opus-5-5, amazon.nova-2-lite-v1:0, amazon.nova-pro-v1:0, amazon.nova-lite-v1:0, openai.gpt-6-luna, openai.gpt-6-sol, xai.grok-4.7, openai.gpt-oss-120b-1:0, qwen.qwen3-235b-a22b-2507-v1:0, deepseek.v3.2, zai.glm-5, moonshotai.kimi-k2.5, minimax.minimax-m2.5, moonshotai.kimi-k3, zai.glm-5.3]
       description: >-
         A model on Amazon Bedrock a mailbox agent thinks with, by its
         Bedrock model ID. Only the measured models can be allowed and

@@ -172,7 +172,7 @@ A new feature usually touches four of these, in this order:
 
 **Recorded answers:** Bedrock's answers are recorded, so tests need no AWS.
 - **Titan's vectors** are in `titan-vectors.json`, and **Nova Lite's translations** in `nova-translations.json`. After changing a search test's mail or words, record them again with `DUVA_RECORD_EMBEDDINGS=1`.
-- **Coo's evaluation** replays `coo-answers.json`. A change to the agent's prompt, tools or loop can make a recorded run diverge. Delete that setup's runs and record them again with `DUVA_RECORD_MODELS=1 DUVA_RECORD_EMBEDDINGS=1`. That costs real money, about $4 for every setup, so say so in the ticket.
+- **Coo's evaluation** replays `coo-answers.json`. A change to the agent's prompt, tools or loop can make a recorded run diverge. Delete that setup's runs and record them again with `DUVA_RECORD_MODELS=1 DUVA_RECORD_EMBEDDINGS=1`, naming in `DUVA_MEASURING` any model recorded for the first time. That costs real money, about $4 for a setup of Claude's, so say so in the ticket.
 
 **The web tests** cover what a human sees and does, through roles and text. They leave the domain rules to the API's tests.
 

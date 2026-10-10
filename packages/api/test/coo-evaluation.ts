@@ -7,7 +7,8 @@
 // To record, run coo-evaluation.test.ts with DUVA_RECORD_MODELS=1, DUVA_RECORD_EMBEDDINGS=1 and
 // AWS_PROFILE set to the test account: each run of a task not yet recorded asks the model on
 // Bedrock, and the searches it makes are embedded and translated, and recorded beside the mail's.
-// Delete a model's runs from coo-answers.json to record them again. That costs about $4 (#132).
+// A model not yet measured can't be allowed, so name each such model being recorded in
+// DUVA_MEASURING, comma-separated. Delete a model's runs from coo-answers.json to record them again. That costs about $4 (#132).
 import { readFileSync, writeFileSync } from "node:fs";
 import { performance } from "node:perf_hooks";
 import type { components } from "@duva/openapi";
@@ -35,11 +36,37 @@ const alone = (name: string, model: MailboxAgentModel, runs = 3): Setup => ({
   runs,
 });
 
+/** The default everyday model, with the model for the harder work, so only that model differs from the defaults. */
+const harder = (name: string, model: MailboxAgentModel): Setup => ({
+  name: `${name} as harder model`,
+  settings: { mailboxAgentAllowedModels: [defaultMailboxAgentModel, model], mailboxAgentModel: defaultMailboxAgentModel, mailboxAgentHarderModel: model, mailboxAgentDecider: false },
+  runs: 2,
+});
+
+/**
+ * The models ADR-0035 lists to measure (#150), each recorded alone and as the harder model behind
+ * the default everyday model, twice a task, as Claude is. Llama 4 Maverick isn't one: Bedrock
+ * refuses it to callers in the EU, where these are recorded (docs/research/coo-models.md).
+ */
+const listed: [string, MailboxAgentModel][] = [
+  ["GPT-6 Luna", "openai.gpt-6-luna"],
+  ["GPT-6 Sol", "openai.gpt-6-sol"],
+  ["Grok 4.7", "xai.grok-4.7"],
+  ["gpt-oss-120b", "openai.gpt-oss-120b-1:0"],
+  ["Qwen3 235B A22B", "qwen.qwen3-235b-a22b-2507-v1:0"],
+  ["DeepSeek V3.2", "deepseek.v3.2"],
+  ["GLM-5", "zai.glm-5"],
+  ["Kimi K2.5", "moonshotai.kimi-k2.5"],
+  ["MiniMax M2.5", "minimax.minimax-m2.5"],
+  ["Kimi K3", "moonshotai.kimi-k3"],
+  ["GLM-5.3", "zai.glm-5.3"],
+];
+
 /**
  * The setups #132 measures: each model alone, called where production would call it, routing with
  * Nova 2 Lite as the everyday model and the decider on, as first built, and the defaults Nicklas
  * chose from those numbers, Claude Haiku 4.5 with Sonnet 5.5 for the harder work and the decider
- * off. Claude runs each task twice, to keep the recording's cost down.
+ * off. Claude runs each task twice, to keep the recording's cost down. Then the models #150 measures.
  */
 export const setups: Setup[] = [
   alone("Nova Lite", "amazon.nova-lite-v1:0"),
@@ -67,6 +94,8 @@ export const setups: Setup[] = [
     },
     runs: 2,
   },
+  ...listed.map(([name, model]) => alone(name, model, 2)),
+  ...listed.map(([name, model]) => harder(name, model)),
 ];
 
 /** A message in the evaluation's mailbox, its key the local part of its Message-ID. */
@@ -497,7 +526,9 @@ export async function runTask(setup: Setup, task: CooTask, attempt: number): Pro
   const duva = await startDuva({ domain: "example.com", admin: "ada@example.org", humans: ["linus@example.org"], model: recorder.model, decider: recorder.decider, webSearch: web });
   const ada = duva.signIn("ada@example.org");
   const linus = duva.signIn("linus@example.org");
-  await ada.PATCH("/organization/settings", { body: setup.settings });
+  const { error } = await ada.PATCH("/organization/settings", { body: setup.settings });
+  // A setup Duva refused would run the defaults instead, and record them under its name.
+  if (error !== undefined) throw new Error(`${setup.name} can't be set up: ${JSON.stringify(error)}. Record a model not yet measured with DUVA_MEASURING naming it.`);
   const { data: owner } = await linus.GET("/whoami");
   const { data: created } = await ada.POST("/mailboxes", { body: { owner: owner!.id, address: "linus@example.com" } });
   const params = { path: { mailbox: created!.id } };

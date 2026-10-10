@@ -15,7 +15,7 @@ import { getDomain } from "tldts";
 import { costOf, type MailboxAgentModel } from "./agent-models.ts";
 import type { RunEvent, RunPayload, ToolSpec } from "./agent-loop.ts";
 import { type Browser, browserSecondCost, type BrowserSession, describePage, type PageElement, type PageView } from "./browser.ts";
-import { type Models, saying, strandsAgent } from "./strands.ts";
+import { type Models, saying, strandsAgent, usageOf } from "./strands.ts";
 import { searchTheWeb, type WebSearch, webSearchTool } from "./web-search.ts";
 
 /** What a browsing run did, as its human reads it: the site, and its sentence. */
@@ -275,9 +275,9 @@ async function browseTimed(run: Run, timed: { seconds: number }): Promise<{ verd
     agent.addHook(ModelStreamUpdateEvent, ({ event }) => {
       if (event.type === "modelContentBlockDeltaEvent" && event.delta.type === "textDelta") text += event.delta.text;
       else if (event.type === "modelMetadataEvent" && event.usage !== undefined) {
-        const { inputTokens, outputTokens } = event.usage;
-        spent += costOf({ inputTokens, outputTokens }, run.model, run.region);
-        said.push({ type: "usage", model: run.model, inputTokens, outputTokens });
+        const usage = usageOf(event.usage);
+        spent += costOf(usage, run.model, run.region);
+        said.push({ type: "usage", model: run.model, ...usage });
       }
     });
     agent.addHook(AfterModelCallEvent, ({ stopData }) => {

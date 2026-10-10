@@ -20,9 +20,10 @@ import {
   type ToolContext,
   ToolResultBlock,
   type ToolSpec as StrandsToolSpec,
+  type Usage as StrandsUsage,
 } from "@strands-agents/sdk";
 import type { ContentBlock, Model, ModelMessage, ToolSpec } from "./agent-loop.ts";
-import type { MailboxAgentModel } from "./agent-models.ts";
+import type { MailboxAgentModel, Usage } from "./agent-models.ts";
 
 /** The Strands model for each of the models admins choose. */
 export type Models = (model: MailboxAgentModel) => StrandsModel;
@@ -48,10 +49,15 @@ export function strandsAgent({ model, messages, tools, run, memory }: { model: S
     conversationManager: new NullConversationManager(),
     ...(memory !== undefined && { memoryManager: memory }),
   });
-  // A call that reached the token limit answered what it wrote, as Duva's own loop took it, where Strands fails the run.
+  // A call that reached the token limit answered what it wrote, as Duva's own loop took it, where
+  // Strands fails the run. Each call is sent no reasoning a model gave before, as Duva's own loop
+  // sent none, and the evaluation records none (#150).
   agent.addMiddleware(InvokeModelStage, async function* (context, next) {
+    const messages = context.messages.map((message) =>
+      message.content.some((block) => block.type === "reasoningBlock") ? new Message({ role: message.role, content: message.content.filter((block) => block.type !== "reasoningBlock") }) : message,
+    );
     try {
-      return yield* next(context);
+      return yield* next({ ...context, messages });
     } catch (error) {
       if (!(error instanceof MaxTokensError)) throw error;
       const message = error.partialMessage;
@@ -97,6 +103,14 @@ export const asConverse = (messages: Message[]): ModelMessage[] =>
       return [];
     }),
   }));
+
+/** A call's tokens as Strands reports them, with what it read from and wrote to a cache only when it did. */
+export const usageOf = ({ inputTokens, outputTokens, cacheReadInputTokens, cacheWriteInputTokens }: StrandsUsage): Usage => ({
+  inputTokens,
+  outputTokens,
+  ...(cacheReadInputTokens !== undefined && cacheReadInputTokens > 0 && { cacheReadInputTokens }),
+  ...(cacheWriteInputTokens !== undefined && cacheWriteInputTokens > 0 && { cacheWriteInputTokens }),
+});
 
 /** The stand-in as a Strands model for each of the models, asked as Bedrock would be. */
 export const standIn =
@@ -160,7 +174,7 @@ export function asModel(models: Models): Model {
       else if (event.type === "modelContentBlockStopEvent" && use !== undefined) {
         yield { toolUse: { toolUseId: use.toolUseId, name: use.name, input: use.input === "" ? {} : (JSON.parse(use.input) as Record<string, unknown>) } };
         use = undefined;
-      } else if (event.type === "modelMetadataEvent" && event.usage !== undefined) yield { usage: { inputTokens: event.usage.inputTokens, outputTokens: event.usage.outputTokens } };
+      } else if (event.type === "modelMetadataEvent" && event.usage !== undefined) yield { usage: usageOf(event.usage) };
     }
   };
 }

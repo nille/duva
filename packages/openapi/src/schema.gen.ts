@@ -5270,7 +5270,7 @@ export interface components {
          * @description A model on Amazon Bedrock a mailbox agent thinks with, by its Bedrock model ID. Only the measured models can be allowed and chosen, those listMailboxAgentModels lists, each with its success on Coo's evaluation, its cost per task and where it processes mail.
          * @enum {string}
          */
-        MailboxAgentModel: "anthropic.claude-sonnet-5-5" | "anthropic.claude-haiku-4-5-20251001-v1:0" | "anthropic.claude-opus-5-5" | "amazon.nova-2-lite-v1:0" | "amazon.nova-pro-v1:0" | "amazon.nova-lite-v1:0";
+        MailboxAgentModel: "anthropic.claude-sonnet-5-5" | "anthropic.claude-haiku-4-5-20251001-v1:0" | "anthropic.claude-opus-5-5" | "amazon.nova-2-lite-v1:0" | "amazon.nova-pro-v1:0" | "amazon.nova-lite-v1:0" | "openai.gpt-6-luna" | "openai.gpt-6-sol" | "xai.grok-4.7" | "openai.gpt-oss-120b-1:0" | "qwen.qwen3-235b-a22b-2507-v1:0" | "deepseek.v3.2" | "zai.glm-5" | "moonshotai.kimi-k2.5" | "minimax.minimax-m2.5" | "moonshotai.kimi-k3" | "zai.glm-5.3";
         /** @description The measured models each human may choose their mailbox agent's everyday and harder model from. They include the organization's two defaults, mailboxAgentModel and mailboxAgentHarderModel. Claude Haiku 4.5 and Claude Sonnet 5.5 by default. A model that processes mail outside the deployment's continent may be allowed too, such as one available only in the US in an EU deployment: what its agents read of the mail then goes there. Taking a model off the list takes it from each human who chose it, whose agent then thinks with the organization's default. */
         MailboxAgentAllowedModels: components["schemas"]["MailboxAgentModel"][];
         /**

@@ -28,6 +28,17 @@ export const models: Record<Model, string> = {
   "amazon.nova-2-lite-v1:0": "Amazon Nova 2 Lite",
   "amazon.nova-pro-v1:0": "Amazon Nova Pro",
   "amazon.nova-lite-v1:0": "Amazon Nova Lite",
+  "openai.gpt-6-luna": "GPT-6 Luna",
+  "openai.gpt-6-sol": "GPT-6 Sol",
+  "xai.grok-4.7": "Grok 4.7",
+  "openai.gpt-oss-120b-1:0": "gpt-oss-120b",
+  "qwen.qwen3-235b-a22b-2507-v1:0": "Qwen3 235B A22B",
+  "deepseek.v3.2": "DeepSeek V3.2",
+  "zai.glm-5": "GLM-5",
+  "moonshotai.kimi-k2.5": "Kimi K2.5",
+  "minimax.minimax-m2.5": "MiniMax M2.5",
+  "moonshotai.kimi-k3": "Kimi K3",
+  "zai.glm-5.3": "GLM-5.3",
 };
 
 export const handoverWhy: Record<components["schemas"]["Handover"]["reason"], string> = {

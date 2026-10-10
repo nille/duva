@@ -5,11 +5,11 @@
 import { type Operation, operations, type OperationId } from "@duva/openapi";
 import type { components } from "@duva/openapi";
 import { AfterInvocationEvent, AfterModelCallEvent, AfterToolsEvent, BeforeModelCallEvent, BeforeToolsEvent, InvokeModelStage, ModelStreamUpdateEvent } from "@strands-agents/sdk";
-import { costOf, deciderModel, type MailboxAgentModel } from "./agent-models.ts";
+import { costOf, deciderModel, type MailboxAgentModel, type Usage } from "./agent-models.ts";
 import { memoryLines, memoryManager, memoryOperations, memoryUnbacked, unbackedMemoryClaim } from "./agent-memory.ts";
 import type { Browser } from "./browser.ts";
 import { browse, type Browsing, browseTool, mailedLogin, runUnsubscribe } from "./browsing.ts";
-import { asConverse, type Models, saying, strandsAgent, strandsSpec } from "./strands.ts";
+import { asConverse, type Models, saying, strandsAgent, strandsSpec, usageOf } from "./strands.ts";
 import { searchTheWeb, type WebSearch, type WebSearchMade, webSearchTool } from "./web-search.ts";
 
 export type AgentAction = components["schemas"]["AgentAction"];
@@ -34,7 +34,7 @@ export interface ToolSpec {
 }
 
 /** What the model says as it answers: text as it streams, each tool it uses, and the tokens it took. */
-export type ModelEvent = { text: string } | { toolUse: { toolUseId: string; name: string; input: Record<string, unknown> } } | { usage: { inputTokens: number; outputTokens: number } };
+export type ModelEvent = { text: string } | { toolUse: { toolUseId: string; name: string; input: Record<string, unknown> } } | { usage: Usage };
 
 /**
  * A model as tests script it, by which of the models admins choose it is, asked as Converse is
@@ -116,7 +116,7 @@ export type RunEvent =
   | { type: "browserTime"; seconds: number }
   | { type: "verdict"; unsubscribed: boolean; detail: string }
   | { type: "action"; action: AgentAction }
-  | { type: "usage"; model: MailboxAgentModel | typeof deciderModel; inputTokens: number; outputTokens: number }
+  | ({ type: "usage"; model: MailboxAgentModel | typeof deciderModel } & Usage)
   | { type: "decided"; decision: Decision }
   | { type: "handedOver"; handover: Handover }
   | { type: "end"; outcome: NonNullable<components["schemas"]["ConversationTurn"]["outcome"]> };
@@ -495,9 +495,9 @@ export async function* runAgent(
         said.push({ type: "text", text: shown });
       }
     } else if (event.type === "modelMetadataEvent" && event.usage !== undefined) {
-      const { inputTokens, outputTokens } = event.usage;
-      spent += costOf({ inputTokens, outputTokens }, current, region);
-      said.push({ type: "usage", model: current, inputTokens, outputTokens });
+      const usage = usageOf(event.usage);
+      spent += costOf(usage, current, region);
+      said.push({ type: "usage", model: current, ...usage });
     }
   });
   agent.addHook(AfterModelCallEvent, async (event) => {
