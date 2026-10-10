@@ -27,6 +27,7 @@ const choices: { [Name in Exclude<keyof Preferences, (typeof notChosen)[number]>
   keyboardShortcuts: ["on", "off"],
   cooSpeaksUp: ["on", "off"],
   cooLearnsFromMail: ["on", "off"],
+  cooWebSearch: ["on", "off"],
 };
 const chosen = Object.keys(choices) as (keyof typeof choices)[];
 const names: string[] = [...chosen, ...notChosen];
@@ -57,6 +58,12 @@ export async function cooModelsOf(table: Table, human: string, settings: Organiz
   const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: preferencesKey(human), ConsistentRead: true }));
   const chosen = (name: keyof typeof cooModels) => (settings.mailboxAgentAllowedModels.includes(Item?.[name] as MailboxAgentModel) ? (Item![name] as MailboxAgentModel) : settings[cooModels[name]]);
   return { everyday: chosen("cooEverydayModel"), harder: chosen("cooHarderModel") };
+}
+
+/** Whether the human lets their mailbox agent search the web, as it may unless they turned it off (ADR-0037). */
+export async function cooSearchesTheWeb(table: Table, human: string): Promise<boolean> {
+  const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: preferencesKey(human), ConsistentRead: true }));
+  return Item?.cooWebSearch !== "off";
 }
 
 /** The address as one of the mailboxes has it, in any case, or undefined if none has it. */

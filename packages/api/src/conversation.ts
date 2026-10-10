@@ -104,7 +104,7 @@ export async function* runTurn(table: Table, runtime: AgentRuntime, embedder: Em
   const ran = runMailboxAgent(table, { agent, payload, runtime, month, cap });
   let next = await ran.next();
   for (; !next.done; next = await ran.next()) yield next.value;
-  const { text, actions, outcome, model, cost, decision, handover } = next.value;
+  const { text, actions, searches, outcome, model, cost, decision, handover } = next.value;
   const answer: Omit<ConversationTurn, "id" | "at"> = {
     from: "agent",
     ...(payload.mailbox !== undefined && { mailbox: payload.mailbox }),
@@ -117,6 +117,7 @@ export async function* runTurn(table: Table, runtime: AgentRuntime, embedder: Em
     ...(harder && { harder }),
     // Its first memory from mail, kept in this turn or a task before it, is said once (ADR-0036).
     ...((await firstMemoryNoted(table, human.id)) && { firstMemory: true }),
+    ...(searches && { searches }),
   };
   const answered = await addTurn(table, human, answer, turn.at);
   // Recorded before the stream ends, so a reader that stops at done still leaves it in the feed.
@@ -300,8 +301,21 @@ export async function turnsOf(table: Table, human: string, limit: number): Promi
     }),
   );
   return Items.reverse().map(
-    ({ id, at, from, mailbox, text, actions, outcome, model, decision, handover, harder }) =>
-      ({ id, at, from, ...(mailbox !== undefined && { mailbox }), text, actions, ...(outcome !== undefined && { outcome }), ...(model !== undefined && { model }), ...(decision !== undefined && { decision }), ...(handover !== undefined && { handover }), ...(harder !== undefined && { harder }) }) as ConversationTurn,
+    ({ id, at, from, mailbox, text, actions, outcome, model, decision, handover, harder, searches }) =>
+      ({
+        id,
+        at,
+        from,
+        ...(mailbox !== undefined && { mailbox }),
+        text,
+        actions,
+        ...(outcome !== undefined && { outcome }),
+        ...(model !== undefined && { model }),
+        ...(decision !== undefined && { decision }),
+        ...(handover !== undefined && { handover }),
+        ...(harder !== undefined && { harder }),
+        ...(searches !== undefined && { searches }),
+      }) as ConversationTurn,
   );
 }
 

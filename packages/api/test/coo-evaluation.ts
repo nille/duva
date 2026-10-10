@@ -136,6 +136,8 @@ interface Mailbox {
   erase(key: string): Promise<void>;
   /** What Coo remembers of its owner. */
   memories(): Promise<components["schemas"]["Memory"][]>;
+  /** The queries Coo searched the web with. */
+  searched(): string[];
 }
 
 /** One of Coo's jobs, with its grader: whether what it answered and did is what its owner asked for. */
@@ -443,11 +445,40 @@ function recorded(setup: Setup, key: string) {
   };
 }
 
+/**
+ * What Web Search finds for any query, in place of Amazon's index, so a lookup replays as recorded:
+ * Swedavia's page on Arlanda's terminals, and one that doesn't answer.
+ */
+const web = async () => [
+  {
+    title: "Terminals at Stockholm Arlanda Airport",
+    url: "https://www.swedavia.example/arlanda/terminals",
+    publishedDate: "09:00AM, Friday, October 09 2026, PDT",
+    text: "Arlanda has four terminals. SAS flights to destinations in Europe outside the Nordics, Lisbon included, depart from Terminal 5. Domestic flights leave from Terminal 4.",
+  },
+  { title: "Arlanda Express timetable", url: "https://www.arlandaexpress.example/timetable", text: "Trains leave Stockholm Central every 15 minutes and stop at Arlanda South, for Terminals 2, 3 and 4, and Arlanda North, for Terminal 5." },
+];
+
+/**
+ * Coo's jobs that need the web, which the defaults alone are recorded on (#152), so the other
+ * setups' measures stay those docs/research/coo-models.md reports.
+ */
+export const lookups: CooTask[] = [
+  {
+    name: "which terminal the Lisbon flight leaves from",
+    kind: "conversation",
+    async passes(mailbox) {
+      const { text } = await mailbox.ask("Which terminal does my flight to Lisbon leave from?");
+      return mailbox.searched().length > 0 && says(text, /\b(terminal|T) ?5\b/i);
+    },
+  },
+];
+
 /** Runs the task once with the setup, in a mailbox of its own, and grades it. */
 export async function runTask(setup: Setup, task: CooTask, attempt: number): Promise<Run> {
   const key = `${setup.name} | ${task.name} | ${attempt}`;
   const recorder = recorded(setup, key);
-  const duva = await startDuva({ domain: "example.com", admin: "ada@example.org", humans: ["linus@example.org"], model: recorder.model, decider: recorder.decider });
+  const duva = await startDuva({ domain: "example.com", admin: "ada@example.org", humans: ["linus@example.org"], model: recorder.model, decider: recorder.decider, webSearch: web });
   const ada = duva.signIn("ada@example.org");
   const linus = duva.signIn("linus@example.org");
   await ada.PATCH("/organization/settings", { body: setup.settings });
@@ -487,6 +518,7 @@ export async function runTask(setup: Setup, task: CooTask, attempt: number): Pro
       await linus.PATCH("/agents/{agent}/settings", { params: { path: { agent: agent.id } }, body: { sponsorAccess: level } });
     },
     sent: () => duva.sent(),
+    searched: () => duva.webSearches(),
     async pausedOnce(name) {
       const { data } = await linus.POST("/agents", { body: { name } });
       const path = { params: { path: { agent: data!.agent.id } } };

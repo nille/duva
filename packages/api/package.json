@@ -7,6 +7,7 @@
     "./lambda": "./src/lambda.ts",
     "./authorizer-lambda": "./src/authorizer-lambda.ts",
     "./setup-lambda": "./src/setup-lambda.ts",
+    "./web-search-gateway-lambda": "./src/web-search-gateway-lambda.ts",
     "./inbound-lambda": "./src/inbound-lambda.ts",
     "./sender-lambda": "./src/sender-lambda.ts",
     "./eraser-lambda": "./src/eraser-lambda.ts",
@@ -29,6 +30,7 @@
     "./removal": "./src/removal.ts",
     "./tasks": "./src/tasks.ts",
     "./agent-models": "./src/agent-models.ts",
+    "./web-search": "./src/web-search.ts",
     "./organization": "./src/organization.ts",
     "./translation": "./src/translation.ts",
     "./receiving": "./src/receiving.ts",
@@ -41,6 +43,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-agentcore": "^3.1147.0",
+    "@aws-sdk/client-bedrock-agentcore-control": "^3.1147.0",
     "@aws-sdk/client-bedrock-runtime": "^3.1146.0",
     "@aws-sdk/client-cognito-identity-provider": "^3.1146.0",
     "@aws-sdk/client-dynamodb": "^3.1146.0",

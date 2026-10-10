@@ -43,6 +43,7 @@ import type { SendEvent } from "../src/limits.ts";
 import { setUpDeliveries, setUpScreeners } from "../src/screening.ts";
 import { type Decider, type Model, runAgent } from "../src/agent-loop.ts";
 import { standIn } from "../src/strands.ts";
+import type { WebSearch } from "../src/web-search.ts";
 import { type AgentRuntime, type ConversationEvent, createConversation, type PreparedTurn } from "../src/conversation.ts";
 import { createTaskGiver, createTaskRunner, type TaskRef, type TaskRunner, type TaskRunnerEvent } from "../src/tasks.ts";
 import { createUnsubscribeRunner } from "../src/unsubscribe-runs.ts";
@@ -162,6 +163,11 @@ export interface DuvaOptions {
    */
   decider?: Decider;
   /**
+   * What Web Search on AgentCore finds for each query the mailbox agents search the web with,
+   * through the stack's gateway, in place of Amazon's index. Unless given, it finds nothing.
+   */
+  webSearch?: WebSearch;
+  /**
    * Whether the task runner runs the tasks labels' prompts give only at releaseTasks(), as when
    * Lambda falls behind, so they wait until then.
    */
@@ -250,6 +256,8 @@ export interface Duva {
   uploads(): { files: string[]; incomplete: number };
   /** Every object the search bucket keeps, each file of each mailbox's index, as text. */
   searchObjects(): string[];
+  /** The queries Web Search on AgentCore got from the mailbox agents, in order. */
+  webSearches(): string[];
   /**
    * Runs the eraser as its daily schedule does, at the time. With `s3DeletesFail`, S3 refuses to
    * delete anything during the run, which then fails, as a run that stops partway does.
@@ -336,6 +344,7 @@ export async function startDuva({
   earlierModelSettings,
   model = standInModel,
   decider = standInDecider,
+  webSearch = async () => [],
   tasksHeld = false,
 }: DuvaOptions = {}): Promise<Duva> {
   const { table, streamArn, database } = await createTable();
@@ -545,8 +554,14 @@ export async function startDuva({
   // it says go through JSON.
   // It unsubscribes in AgentCore Browser, a stand-in here over the stand-in internet.
   const browser = standInBrowser(internet.network);
+  // It searches the web through the stack's gateway to Web Search, a stand-in here that keeps the queries.
+  const queries: string[] = [];
+  const searching: WebSearch = async (query) => {
+    queries.push(query);
+    return JSON.parse(JSON.stringify(await webSearch(query)));
+  };
   const runtime: AgentRuntime = async function* (payload) {
-    for await (const event of runAgent(JSON.parse(JSON.stringify(payload)), { models: standIn(model), decider, fetch: api, browser: browser.start })) yield JSON.parse(JSON.stringify(event));
+    for await (const event of runAgent(JSON.parse(JSON.stringify(payload)), { models: standIn(model), decider, fetch: api, browser: browser.start, webSearch: searching })) yield JSON.parse(JSON.stringify(event));
   };
   // The conversation Lambda, which runs each turn on AgentCore.
   const conversation = createConversation({ table, region, apiUrl: inProcess, fetch: api, runtime, embedder: titan });
@@ -682,6 +697,7 @@ export async function startDuva({
       }
     },
     webServer: (hostname, options) => internet.webServer(hostname, options),
+    webSearches: () => [...queries],
     download: (url) => (url.startsWith(inProcess) ? api(new Request(url)) : fetch(url)),
     setUp: async ({ backfillLost = false, ...options }) => {
       await setUp(options);

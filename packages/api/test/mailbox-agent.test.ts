@@ -541,6 +541,7 @@ test("setup carries over the models admins chose before as the organization's de
     mailboxAgentModel: novaTwo,
     mailboxAgentHarderModel: sonnet,
     mailboxAgentDecider: false,
+    mailboxAgentWebSearch: true,
     mailboxAgentSpendCap: 20,
     linkedFilesCapGb: 20,
   });

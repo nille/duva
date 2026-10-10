@@ -6123,6 +6123,11 @@ components:
                 In the activity the agent's sponsor reads, what the agent said
                 it did, or why it failed, while its thread is kept. The feed
                 itself keeps no note, so an erased thread leaves none.
+            searches:
+              type: array
+              description: In the activity the agent's sponsor reads, the web searches the agent made in the task, while its thread is kept, as its note is. Absent if it made none.
+              items:
+                $ref: "#/components/schemas/WebSearch"
     LabelDeleted:
       allOf:
         - $ref: "#/components/schemas/ChangeBase"
@@ -6337,6 +6342,11 @@ components:
         detail:
           type: string
           description: What the mailbox agent read on the page, or why the method failed, in its words or Duva's.
+        searches:
+          type: array
+          description: The web searches the mailbox agent made while it tried a page. Absent if it made none.
+          items:
+            $ref: "#/components/schemas/WebSearch"
         at:
           type: string
           format: date-time
@@ -6503,6 +6513,11 @@ components:
             detail:
               type: string
               description: What the mailbox agent read on the page, or why the method failed.
+            searches:
+              type: array
+              description: The web searches the mailbox agent made while it tried a page. Absent if it made none.
+              items:
+                $ref: "#/components/schemas/WebSearch"
     SenderScreened:
       allOf:
         - $ref: "#/components/schemas/ChangeBase"
@@ -7760,6 +7775,11 @@ components:
             $ref: "#/components/schemas/AgentAction"
         handover:
           $ref: "#/components/schemas/Handover"
+        searches:
+          type: array
+          description: The agent's web searches in it, in order. Absent if it made none.
+          items:
+            $ref: "#/components/schemas/WebSearch"
     NewLabel:
       type: object
       additionalProperties: false
@@ -8558,7 +8578,7 @@ components:
     OrganizationSettings:
       type: object
       additionalProperties: false
-      required: [erasureErasesApprovals, retentionDays, searchLanguages, agentSendsPerHourCap, agentNewRecipientsPerDayCap, undoWindowSeconds, mailboxAgentAllowedModels, mailboxAgentModel, mailboxAgentHarderModel, mailboxAgentDecider, mailboxAgentSpendCap, linkedFilesCapGb]
+      required: [erasureErasesApprovals, retentionDays, searchLanguages, agentSendsPerHourCap, agentNewRecipientsPerDayCap, undoWindowSeconds, mailboxAgentAllowedModels, mailboxAgentModel, mailboxAgentHarderModel, mailboxAgentDecider, mailboxAgentWebSearch, mailboxAgentSpendCap, linkedFilesCapGb]
       properties:
         erasureErasesApprovals:
           $ref: "#/components/schemas/ErasureErasesApprovals"
@@ -8592,6 +8612,8 @@ components:
             mailboxAgentAllowedModels. Claude Sonnet 5.5 by default.
         mailboxAgentDecider:
           $ref: "#/components/schemas/MailboxAgentDecider"
+        mailboxAgentWebSearch:
+          $ref: "#/components/schemas/MailboxAgentWebSearch"
         mailboxAgentSpendCap:
           $ref: "#/components/schemas/MailboxAgentSpendCap"
         linkedFilesCapGb:
@@ -8633,6 +8655,8 @@ components:
             mailboxAgentAllowedModels. Claude Sonnet 5.5 by default.
         mailboxAgentDecider:
           $ref: "#/components/schemas/MailboxAgentDecider"
+        mailboxAgentWebSearch:
+          $ref: "#/components/schemas/MailboxAgentWebSearch"
         mailboxAgentSpendCap:
           $ref: "#/components/schemas/MailboxAgentSpendCap"
         linkedFilesCapGb:
@@ -8736,6 +8760,11 @@ components:
             Whether the agent's turn is the first since it kept its first
             memory from mail, which it says once, with where to see what it
             remembers (listMemories).
+        searches:
+          type: array
+          description: The agent's web searches in the turn, in order. Absent if it made none.
+          items:
+            $ref: "#/components/schemas/WebSearch"
     RoutingDecision:
       type: object
       additionalProperties: false
@@ -8778,6 +8807,33 @@ components:
         why:
           type: string
           description: What the everyday model said when it asked for help.
+    WebSearch:
+      type: object
+      additionalProperties: false
+      required: [query, sources]
+      description: >-
+        A search the mailbox agent made on the web. A reader with no powers
+        read the results and gave the agent a short answer, citing the sources.
+      properties:
+        query:
+          type: string
+          description: What the agent searched for.
+        sources:
+          type: array
+          description: The results the answer drew on, each a web page.
+          items:
+            $ref: "#/components/schemas/WebSource"
+    WebSource:
+      type: object
+      additionalProperties: false
+      required: [url]
+      properties:
+        url:
+          type: string
+          description: The page's URL.
+        title:
+          type: string
+          description: The page's title, if it has one.
     AgentAction:
       type: object
       additionalProperties: false
@@ -9009,6 +9065,21 @@ components:
         complex to the harder model. Off by default: on Coo's tasks it
         was right on 4 of 10 (docs/research/coo-models.md). Either way a turn
         hands over to the harder model on evidence.
+    MailboxAgentWebSearch:
+      type: boolean
+      description: >-
+        Whether the mailbox agents may search the web, in Ask Coo, in labels'
+        tasks and while unsubscribing, with queries that may carry anything
+        from the mail that helps, as a tracking number. On by default. Queries
+        go to Web Search on Amazon Bedrock AgentCore, Amazon's own index,
+        which runs only in eu-west-1, Ireland, us-east-1, Virginia, and
+        ap-northeast-1, Tokyo: a deployment in the EU searches from Ireland,
+        one in the US from Virginia, and any other from the nearest of them,
+        status's webSearchRegion. AWS documents no retention for queries. A
+        reader with no powers reads the results, and Coo gets only its short
+        answer and sources. Each query costs $0.007, plus the reader's tokens,
+        counted toward mailboxAgentSpendCap. Each human can also turn it off
+        for their own Coo, with the preference cooWebSearch.
     ErasureErasesApprovals:
       type: boolean
       description: >-
@@ -9163,7 +9234,7 @@ components:
     Preferences:
       type: object
       additionalProperties: false
-      required: [hourCycle, dateFormat, mailView, keyboardShortcuts, cooSpeaksUp, cooLearnsFromMail, opensOn]
+      required: [hourCycle, dateFormat, mailView, keyboardShortcuts, cooSpeaksUp, cooLearnsFromMail, cooWebSearch, opensOn]
       description: A human's own preferences.
       properties:
         hourCycle:
@@ -9178,6 +9249,8 @@ components:
           $ref: "#/components/schemas/CooSpeaksUp"
         cooLearnsFromMail:
           $ref: "#/components/schemas/CooLearnsFromMail"
+        cooWebSearch:
+          $ref: "#/components/schemas/CooWebSearch"
         timeZone:
           $ref: "#/components/schemas/TimeZone"
         opensOn:
@@ -9218,6 +9291,8 @@ components:
           $ref: "#/components/schemas/CooSpeaksUp"
         cooLearnsFromMail:
           $ref: "#/components/schemas/CooLearnsFromMail"
+        cooWebSearch:
+          $ref: "#/components/schemas/CooWebSearch"
         timeZone:
           description: >-
             The time zone, as an IANA name, or null to remove it, as if the
@@ -9303,6 +9378,14 @@ components:
         to move through a list and e to archive. on, the default, has them
         work anywhere but in a field. off turns them all off, for speech
         input or keys pressed by mistake.
+    CooWebSearch:
+      type: string
+      enum: ["on", "off"]
+      description: >-
+        Whether the human's own Coo may search the web, while the
+        organization's mailboxAgentWebSearch lets it. on, the default, lets it
+        look things up wherever it helps, with queries that may carry what the
+        mail says, and say so with its sources. off keeps it to the mail.
     CooSpeaksUp:
       type: string
       enum: ["on", "off"]
@@ -9410,7 +9493,7 @@ components:
     Status:
       type: object
       additionalProperties: false
-      required: [version, region]
+      required: [version, region, webSearchRegion]
       properties:
         version:
           type: string
@@ -9420,3 +9503,12 @@ components:
           type: string
           description: The AWS region the deployment runs in.
           examples: ["eu-north-1"]
+        webSearchRegion:
+          type: string
+          enum: [eu-west-1, us-east-1, ap-northeast-1]
+          description: >-
+            The AWS region the mailbox agents' web searches go to, where Web
+            Search on AgentCore runs nearest the deployment: eu-west-1,
+            Ireland, from the EU, us-east-1, Virginia, from the US, and the
+            nearest of those and ap-northeast-1, Tokyo, from anywhere else.
+          examples: ["eu-west-1"]

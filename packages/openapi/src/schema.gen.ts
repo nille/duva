@@ -3311,6 +3311,8 @@ export interface components {
             outcome: "done" | "failed";
             /** @description In the activity the agent's sponsor reads, what the agent said it did, or why it failed, while its thread is kept. The feed itself keeps no note, so an erased thread leaves none. */
             note?: string;
+            /** @description In the activity the agent's sponsor reads, the web searches the agent made in the task, while its thread is kept, as its note is. Absent if it made none. */
+            searches?: components["schemas"]["WebSearch"][];
         } & {
             /**
              * @description discriminator enum property added by openapi-typescript
@@ -3479,6 +3481,8 @@ export interface components {
             status?: number;
             /** @description What the mailbox agent read on the page, or why the method failed, in its words or Duva's. */
             detail?: string;
+            /** @description The web searches the mailbox agent made while it tried a page. Absent if it made none. */
+            searches?: components["schemas"]["WebSearch"][];
             /**
              * Format: date-time
              * @description When it was tried.
@@ -3572,6 +3576,8 @@ export interface components {
             method?: components["schemas"]["UnsubscribeMethod"];
             /** @description What the mailbox agent read on the page, or why the method failed. */
             detail?: string;
+            /** @description The web searches the mailbox agent made while it tried a page. Absent if it made none. */
+            searches?: components["schemas"]["WebSearch"][];
         } & {
             /**
              * @description discriminator enum property added by openapi-typescript
@@ -4367,6 +4373,8 @@ export interface components {
             /** @description What the agent did in it, in order. */
             actions?: components["schemas"]["AgentAction"][];
             handover?: components["schemas"]["Handover"];
+            /** @description The agent's web searches in it, in order. Absent if it made none. */
+            searches?: components["schemas"]["WebSearch"][];
         };
         NewLabel: {
             /**
@@ -4974,6 +4982,7 @@ export interface components {
             /** @description The organization's harder model, for the harder work: writing mail that may be sent, unsubscribing on a sender's page, a turn the decider finds complex, a run the everyday model hands over, and Think harder, unless the agent's human chose another. One of mailboxAgentAllowedModels. Claude Sonnet 5.5 by default. */
             mailboxAgentHarderModel: components["schemas"]["MailboxAgentModel"];
             mailboxAgentDecider: components["schemas"]["MailboxAgentDecider"];
+            mailboxAgentWebSearch: components["schemas"]["MailboxAgentWebSearch"];
             mailboxAgentSpendCap: components["schemas"]["MailboxAgentSpendCap"];
             linkedFilesCapGb: components["schemas"]["LinkedFilesCapGb"];
         };
@@ -4991,6 +5000,7 @@ export interface components {
             /** @description The organization's harder model, for the harder work: writing mail that may be sent, unsubscribing on a sender's page, a turn the decider finds complex, a run the everyday model hands over, and Think harder, unless the agent's human chose another. One of mailboxAgentAllowedModels. Claude Sonnet 5.5 by default. */
             mailboxAgentHarderModel?: components["schemas"]["MailboxAgentModel"];
             mailboxAgentDecider?: components["schemas"]["MailboxAgentDecider"];
+            mailboxAgentWebSearch?: components["schemas"]["MailboxAgentWebSearch"];
             mailboxAgentSpendCap?: components["schemas"]["MailboxAgentSpendCap"];
             linkedFilesCapGb?: components["schemas"]["LinkedFilesCapGb"];
         };
@@ -5039,6 +5049,8 @@ export interface components {
             harder?: boolean;
             /** @description Whether the agent's turn is the first since it kept its first memory from mail, which it says once, with where to see what it remembers (listMemories). */
             firstMemory?: boolean;
+            /** @description The agent's web searches in the turn, in order. Absent if it made none. */
+            searches?: components["schemas"]["WebSearch"][];
         };
         /** @description What the decider, Amazon Nova Micro, made of a turn whose job doesn't settle the model: simple, the everyday model takes it, or complex, the harder model does, as it does when the decider is less than 0.7 sure. */
         RoutingDecision: {
@@ -5055,6 +5067,19 @@ export interface components {
             to: components["schemas"]["MailboxAgentModel"];
             /** @description What the everyday model said when it asked for help. */
             why?: string;
+        };
+        /** @description A search the mailbox agent made on the web. A reader with no powers read the results and gave the agent a short answer, citing the sources. */
+        WebSearch: {
+            /** @description What the agent searched for. */
+            query: string;
+            /** @description The results the answer drew on, each a web page. */
+            sources: components["schemas"]["WebSource"][];
+        };
+        WebSource: {
+            /** @description The page's URL. */
+            url: string;
+            /** @description The page's title, if it has one. */
+            title?: string;
         };
         /** @description One call the mailbox agent made to Duva's API, as its tool. */
         AgentAction: {
@@ -5171,6 +5196,8 @@ export interface components {
         };
         /** @description Whether the decider, Amazon Nova Micro, settles the model for each turn in Ask Coo and over MCP first, sending one it finds complex to the harder model. Off by default: on Coo's tasks it was right on 4 of 10 (docs/research/coo-models.md). Either way a turn hands over to the harder model on evidence. */
         MailboxAgentDecider: boolean;
+        /** @description Whether the mailbox agents may search the web, in Ask Coo, in labels' tasks and while unsubscribing, with queries that may carry anything from the mail that helps, as a tracking number. On by default. Queries go to Web Search on Amazon Bedrock AgentCore, Amazon's own index, which runs only in eu-west-1, Ireland, us-east-1, Virginia, and ap-northeast-1, Tokyo: a deployment in the EU searches from Ireland, one in the US from Virginia, and any other from the nearest of them, status's webSearchRegion. AWS documents no retention for queries. A reader with no powers reads the results, and Coo gets only its short answer and sources. Each query costs $0.007, plus the reader's tokens, counted toward mailboxAgentSpendCap. Each human can also turn it off for their own Coo, with the preference cooWebSearch. */
+        MailboxAgentWebSearch: boolean;
         /** @description Whether erasing a thread also erases the approval records of the agents' sends in it: the draft its approver saw and any edit they made. Off by default, so the records stay as the account of what an agent sent and who approved it. Either way the mailbox's change feed keeps each decision and who made it. */
         ErasureErasesApprovals: boolean;
         /**
@@ -5266,6 +5293,7 @@ export interface components {
             keyboardShortcuts: components["schemas"]["KeyboardShortcuts"];
             cooSpeaksUp: components["schemas"]["CooSpeaksUp"];
             cooLearnsFromMail: components["schemas"]["CooLearnsFromMail"];
+            cooWebSearch: components["schemas"]["CooWebSearch"];
             timeZone?: components["schemas"]["TimeZone"];
             opensOn: components["schemas"]["OpensOn"];
             newMailFrom?: components["schemas"]["NewMailFrom"];
@@ -5282,6 +5310,7 @@ export interface components {
             keyboardShortcuts?: components["schemas"]["KeyboardShortcuts"];
             cooSpeaksUp?: components["schemas"]["CooSpeaksUp"];
             cooLearnsFromMail?: components["schemas"]["CooLearnsFromMail"];
+            cooWebSearch?: components["schemas"]["CooWebSearch"];
             /** @description The time zone, as an IANA name, or null to remove it, as if the human never chose one. The CLI removes it with --no-timeZone. */
             timeZone?: components["schemas"]["TimeZone"] | null;
             opensOn?: components["schemas"]["OpensOn"];
@@ -5327,6 +5356,11 @@ export interface components {
          * @enum {string}
          */
         KeyboardShortcuts: "on" | "off";
+        /**
+         * @description Whether the human's own Coo may search the web, while the organization's mailboxAgentWebSearch lets it. on, the default, lets it look things up wherever it helps, with queries that may carry what the mail says, and say so with its sources. off keeps it to the mail.
+         * @enum {string}
+         */
+        CooWebSearch: "on" | "off";
         /**
          * @description Whether Coo, the mailbox agent, says in the web app when there is news worth a glance: new mail since the human last looked, a draft of its waiting for their approval, or a label's task done. on, the default, has it say so in a speech bubble under its nest. off keeps it quiet.
          * @enum {string}
@@ -5398,6 +5432,12 @@ export interface components {
              * @example eu-north-1
              */
             region: string;
+            /**
+             * @description The AWS region the mailbox agents' web searches go to, where Web Search on AgentCore runs nearest the deployment: eu-west-1, Ireland, from the EU, us-east-1, Virginia, from the US, and the nearest of those and ap-northeast-1, Tokyo, from anywhere else.
+             * @example eu-west-1
+             * @enum {string}
+             */
+            webSearchRegion: "eu-west-1" | "us-east-1" | "ap-northeast-1";
         };
     };
     responses: {

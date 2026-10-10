@@ -304,3 +304,32 @@ test("a human with two mailboxes asks Coo from one of them or from All mailboxes
   await expect.poll(() => turns.nth(3).locator(".ask-text").innerText(), wait).toBe("Nothing at home.");
   expect(await page.evaluate(() => location.hash)).toBe("#/agent");
 });
+
+test("a turn in which Coo searched the web says what it looked up, and links each source it drew on", budget, async () => {
+  const results = [
+    { title: "Terminals at Stockholm Arlanda", url: "https://www.swedavia.example/arlanda/terminals", text: "SAS flights to Europe leave from Terminal 5." },
+    { title: "Arlanda Express", url: "https://www.arlandaexpress.example/", text: "Trains to Terminals 2 to 5." },
+  ];
+  const model = scripted(
+    () => [use("searchWeb", { query: "SAS Arlanda terminal" })],
+    // The reader, asked with no tools, cites the page it drew on.
+    () => [{ text: "SAS flights to Europe leave from Terminal 5 (https://www.swedavia.example/arlanda/terminals)." }],
+    () => [{ text: "Your flight leaves from Terminal 5." }],
+  );
+  const { page, signIn } = await withMailbox({ model, webSearch: async () => results });
+  await signIn("grace@example.org");
+  await page.getByRole("link", { name: "Ask Coo", exact: true }).click();
+  await page.getByRole("textbox", { name: "What do you want to ask?" }).fill("Which terminal at Arlanda?");
+  await page.getByRole("button", { name: "Ask", exact: true }).click();
+
+  const searches = page.getByRole("list", { name: "What it looked up on the web" });
+  await expect.poll(() => searches.getByRole("listitem").count(), wait).toBe(1);
+  expect(await searches.innerText()).toContain("Searched the web for “SAS Arlanda terminal”");
+  const source = searches.getByRole("link", { name: /^Terminals at Stockholm Arlanda/ });
+  expect(await source.getAttribute("href")).toBe("https://www.swedavia.example/arlanda/terminals");
+  expect(await source.innerText()).toContain("swedavia.example");
+  expect(await searches.getByRole("link").count()).toBe(1);
+
+  await page.reload();
+  await expect.poll(() => page.getByRole("list", { name: "What it looked up on the web" }).getByRole("link").count(), wait).toBe(1);
+});

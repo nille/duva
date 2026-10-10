@@ -222,7 +222,7 @@ function startOf(after: string): string | undefined {
 
 /**
  * What the reader reads of the activity's events: each change as they may read it, with its thread,
- * a task's note for the sponsor, and the line it says, its actors named as the reader knows them.
+ * a task's note and web searches for the sponsor, and the line it says, its actors named as the reader knows them.
  */
 function reading(table: Table, agent: Agent, reader: Actor, all: Entry[], ids: Set<string>) {
   const sponsor = reader.id === agent.sponsor;
@@ -249,9 +249,10 @@ function reading(table: Table, agent: Agent, reader: Actor, all: Entry[], ids: S
     const thread =
       (field(recorded, "thread") as string | undefined) ??
       (mailbox === undefined || draft === undefined ? undefined : (sentIn.get(`${mailbox}|${draft}`) ?? (await findDraft(table, mailbox, draft))?.thread));
-    // A task's note is kept with its thread, so the sponsor reads it there.
-    const note = sponsor && recorded.type === "taskEnded" && mailbox !== undefined ? (await threadTasks(table, mailbox, recorded.thread)).find(({ id }) => id === recorded.task)?.note : undefined;
-    const change = sponsor || mailbox === undefined ? { ...recorded, ...(note !== undefined && { note }) } : withoutMail(recorded);
+    // A task's note and web searches are kept with its thread, so the sponsor reads them there.
+    const task = sponsor && recorded.type === "taskEnded" && mailbox !== undefined ? (await threadTasks(table, mailbox, recorded.thread)).find(({ id }) => id === recorded.task) : undefined;
+    const { note, searches } = task ?? {};
+    const change = sponsor || mailbox === undefined ? { ...recorded, ...(note !== undefined && { note }), ...(searches !== undefined && { searches }) } : withoutMail(recorded);
     const actor = field(recorded, "actor") as string | undefined;
     // A turn names the human who asked it.
     const named = recorded.type === "conversationTurn" ? recorded.human : actor;

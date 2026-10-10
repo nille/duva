@@ -44,11 +44,12 @@ import { indexedMailboxes, uncompactedSince } from "@duva/api/indexing";
 import { alertMailFilter, authorizationServerPath, conversationPath, taskGiverFilter, mcpAuthorizePath, mcpPath, mcpRegistrationPath, mcpTokenPath, protectedResourcePaths, tokenHeader, dropMetric, dropReasons, environmentVariables, hostedLogoHeaders, hostedLogosPath, inboundPrefix, receiptRuleNumber, recipientsPerRule, senderFilter, signInFrom } from "@duva/api/infrastructure";
 import { rulesTake } from "@duva/api/receiving";
 import { callOf, defaultMailboxAgentModel, inferenceProfileId } from "@duva/api/agent-models";
+import { webSearchRegion } from "@duva/api/web-search";
 import { earlierModelSettingsLeft, organizationSettings } from "@duva/api/organization";
 import { mailboxAgentsLeft } from "@duva/api/mailbox-agents";
 import { tasksWorkingSince } from "@duva/api/tasks";
 import { agentsMailboxes } from "@duva/api/removal";
-import { BedrockAgentCoreControlClient, GetAgentRuntimeCommand, GetBrowserCommand } from "@aws-sdk/client-bedrock-agentcore-control";
+import { BedrockAgentCoreControlClient, GetAgentRuntimeCommand, GetBrowserCommand, GetGatewayCommand, ListGatewayTargetsCommand } from "@aws-sdk/client-bedrock-agentcore-control";
 import { BedrockRuntimeClient, ConverseCommand } from "@aws-sdk/client-bedrock-runtime";
 import { createHash } from "node:crypto";
 import { sesSuppressionList } from "@duva/api/suppression";
@@ -99,10 +100,10 @@ const stackTable = async () => {
   return name === undefined ? undefined : { client: new DynamoDBClient({ region }), name };
 };
 
-await check("status answers without sign-in, for the region", async () => {
+await check("status answers without sign-in, for the region and the region web searches go to", async () => {
   const response = await fetch(`${apiUrl}/status`);
-  const body = (await response.json()) as { region?: string };
-  return response.ok && body.region === region ? undefined : `answered ${response.status} ${JSON.stringify(body)}`;
+  const body = (await response.json()) as { region?: string; webSearchRegion?: string };
+  return response.ok && body.region === region && body.webSearchRegion === webSearchRegion(region) ? undefined : `answered ${response.status} ${JSON.stringify(body)}`;
 });
 await check("whoami without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/whoami`), 401));
 await check("whoami with a forged token answers 401", async () =>
@@ -274,6 +275,24 @@ await check("the mailbox agents' unsubscribe browser is ready, on the public net
   if (browser.status !== "READY") return `is ${browser.status}${browser.failureReason ? `: ${browser.failureReason}` : ""}`;
   if (browser.networkConfiguration?.networkMode !== "PUBLIC") return `is on ${browser.networkConfiguration?.networkMode}`;
   return browser.recording?.enabled === true ? "records its sessions" : undefined;
+});
+await check("the mailbox agents search the web through a gateway in the search region, taking only IAM calls, with the Web Search target alone (ADR-0037)", async () => {
+  if (agentRuntime === "") return `AgentCore isn't in ${region}, so mailbox agents don't search the web here`;
+  const runtime = await new BedrockAgentCoreControlClient({ region }).send(new GetAgentRuntimeCommand({ agentRuntimeId: agentRuntime.split("/").at(-1)! }));
+  const url = runtime.environmentVariables?.[environmentVariables.webSearchGateway];
+  if (url === undefined || url === "") return "the runtime names no gateway";
+  const searchRegion = webSearchRegion(region);
+  if (!url.includes(`.gateway.bedrock-agentcore.${searchRegion}.amazonaws.com/`)) return `the runtime's gateway is ${url}, outside ${searchRegion}`;
+  const control = new BedrockAgentCoreControlClient({ region: searchRegion });
+  // The gateway's ID is its URL's first label.
+  const gatewayIdentifier = new URL(url).hostname.split(".")[0]!;
+  const gateway = await control.send(new GetGatewayCommand({ gatewayIdentifier }));
+  if (gateway.status !== "READY") return `is ${gateway.status}`;
+  if (gateway.authorizerType !== "AWS_IAM") return `takes ${gateway.authorizerType} calls`;
+  const unsigned = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+  if (unsigned.status !== 401) return `answered an unsigned call ${unsigned.status}`;
+  const { items: targets = [] } = await control.send(new ListGatewayTargetsCommand({ gatewayIdentifier }));
+  return targets.length === 1 && targets[0]!.name === "web-search" && targets[0]!.status === "READY" ? undefined : `has the targets ${JSON.stringify(targets.map(({ name, status }) => ({ name, status })))}`;
 });
 await check("every human with a mailbox has one mailbox agent, those of each mailbox from before merged into it (ADR-0033)", async () => {
   const table = await stackTable();

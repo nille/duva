@@ -57,9 +57,9 @@ export function createUnsubscribeRunner({ table, region, apiUrl, runtime, bounce
       const ran = runMailboxAgent(table, { agent, payload: { ...run.start, history: [], words: "", unsubscribe: { url, address: job.offer.recipient } }, runtime, month: run.month, cap: run.cap });
       let next = await ran.next();
       while (!next.done) next = await ran.next();
-      const { verdict, outcome } = next.value;
-      if (verdict?.unsubscribed === true) return { outcome: "unsubscribed", detail: verdict.detail };
-      return { outcome: "failed", reason: "notDone", detail: verdict?.detail ?? (outcome === "capReached" ? capRefusal(run.cap) : "The model or the runtime failed partway.") };
+      const { verdict, outcome, searches } = next.value;
+      if (verdict?.unsubscribed === true) return { outcome: "unsubscribed", detail: verdict.detail, ...(searches && { searches }) };
+      return { outcome: "failed", reason: "notDone", detail: verdict?.detail ?? (outcome === "capReached" ? capRefusal(run.cap) : "The model or the runtime failed partway."), ...(searches && { searches }) };
     };
     const attempt = async (method: (typeof methods)[number]): Promise<Attempt | undefined> => {
       const { offer } = job;

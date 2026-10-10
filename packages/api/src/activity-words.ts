@@ -96,6 +96,10 @@ function whyNotBounced(change: Extract<Change, { type: "unsubscribeAttempted" }>
 /** The names in a list as a sentence lists them: "A", "A and B", "A, B and C". */
 const list = (names: string[]) => (names.length < 2 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`);
 
+/** What a line adds of the agent's web searches, if it made any and the reader may read them. */
+const searched = (searches: components["schemas"]["WebSearch"][] | undefined) =>
+  searches === undefined || searches.length === 0 ? "" : ` It searched the web for ${list(searches.map(({ query }) => `“${query}”`))}.`;
+
 /** The line of an alert: what it said, for its sponsor, or for anyone else, whom it went to and what it was about. */
 export const alertSaid = (alert: Alert, reader: { sponsor: true } | { sponsor: false; sponsorName: string }) =>
   reader.sponsor ? alert.what : `Duva alerted ${reader.sponsorName} that ${alertAbout[alert.kind]}.`;
@@ -201,8 +205,8 @@ export function changeSaid(change: Change, { who, agent, you }: Named, message?:
     case "agentHandedOver":
       return `${who} handed ${change.task === undefined ? "a turn" : "a task"} to ${models[change.handover.to]}, since ${handoverWhy[change.handover.reason]}.`;
     case "taskEnded":
-      if (change.outcome === "done") return change.note === undefined ? `${who} finished a task.` : `${who} finished a task: “${change.note}”`;
-      return change.note === undefined ? `${who} couldn't finish a task.` : `${who} couldn't finish a task: “${change.note}”`;
+      if (change.outcome === "done") return (change.note === undefined ? `${who} finished a task.` : `${who} finished a task: “${change.note}”`) + searched(change.searches);
+      return (change.note === undefined ? `${who} couldn't finish a task.` : `${who} couldn't finish a task: “${change.note}”`) + searched(change.searches);
     case "threadErased":
       return change.actor !== undefined ? `${who} erased a thread for good, emptying Trash.` : "Duva erased a thread for good, after the retention period.";
     case "agentSettingsChanged":
@@ -228,7 +232,7 @@ export function changeSaid(change: Change, { who, agent, you }: Named, message?:
       const why = change.reason === undefined ? "" : ` (${unsubscribeWhy[change.reason]})`;
       if (change.method === "page" || change.method === "link") {
         const where = change.method === "page" ? "their opt-out page" : "the link in their mail";
-        return change.outcome === "unsubscribed" ? `${who} unsubscribed from ${from} on ${where}.` : `${who} couldn't unsubscribe from ${from} on ${where}${why}.`;
+        return (change.outcome === "unsubscribed" ? `${who} unsubscribed from ${from} on ${where}.` : `${who} couldn't unsubscribe from ${from} on ${where}${why}.`) + searched(change.searches);
       }
       if (change.method === "mailto") return change.outcome === "requested" ? `${who} mailed the unsubscribe address of ${from}.` : `${who} couldn't mail the unsubscribe address of ${from}${why}.`;
       if (change.method === "bounce") return change.outcome === "bounced" ? `${who} bounced mail from ${from}, so their list sees the address as gone.` : `${who} couldn't bounce mail from ${from}. ${whyNotBounced(change, agent)}`;

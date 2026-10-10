@@ -8,6 +8,7 @@ const mailboxAgentDefaults = {
   mailboxAgentModel: "anthropic.claude-haiku-4-5-20251001-v1:0",
   mailboxAgentHarderModel: "anthropic.claude-sonnet-5-5",
   mailboxAgentDecider: false,
+  mailboxAgentWebSearch: true,
   mailboxAgentSpendCap: 20,
 };
 
@@ -349,7 +350,7 @@ test("a human chooses 24-hour time and ISO dates, and the Inbox and a thread sho
   await you(page).getByRole("button", { name: "Save" }).click();
 
   await expect.poll(() => you(page).getByRole("status").textContent(), wait).toBe(saved);
-  expect((await grace.GET("/preferences")).data).toEqual({ hourCycle: "h23", dateFormat: "iso", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "on", cooLearnsFromMail: "on", opensOn: "all", newMailFrom: "grace@example.com" });
+  expect((await grace.GET("/preferences")).data).toEqual({ hourCycle: "h23", dateFormat: "iso", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "on", cooLearnsFromMail: "on", cooWebSearch: "on", opensOn: "all", newMailFrom: "grace@example.com" });
 
   await page.getByRole("navigation").getByRole("link", { name: "Mail", exact: true }).click();
   await expect.poll(() => row(page, "Lunch").textContent(), wait).toBe("09:15");
@@ -369,7 +370,7 @@ test("each choice of how times and dates show has an example from today", budget
 
   await openSettings(page);
 
-  await expect.poll(() => you(page).getByRole("radio").count(), wait).toBe(13);
+  await expect.poll(() => you(page).getByRole("radio").count(), wait).toBe(15);
   const examples = await you(page).locator(".choices-short .choice").evaluateAll((choices) => choices.map((choice) => choice.querySelector(".hint")?.textContent));
   expect(examples).toEqual(["02:30 PM", "2:30 PM", "14:30", "Oct 5, 2026", "2026-10-05", "5 Oct 2026", "Oct 5, 2026"]);
 });
@@ -444,4 +445,37 @@ test("a longer period warns of nothing, and one outside 7 to 365 days can't be s
   await expect.poll(() => mailSheet(page).locator(".field-error").textContent(), wait).toBe("Give a whole number of days from 7 to 365.");
   expect(await save.isDisabled()).toBe(true);
   expect(await field.getAttribute("aria-invalid")).toBe("true");
+});
+
+test("an admin turns web search off for the organization's Coos, on the Mailbox agents sheet, which says queries go to Ireland", budget, async () => {
+  const { page, signIn, duva } = await withOrganization();
+  await signIn("ada@example.org");
+  await openSettings(page, "Mail and agents");
+  const sheet = page.getByRole("region", { name: "Mailbox agents" });
+  const search = sheet.getByRole("checkbox", { name: /^Coo may search the web/ });
+  await expect.poll(() => search.isChecked(), wait).toBe(true);
+  await expect.poll(() => sheet.getByText(/goes to Amazon's own web search in Ireland \(eu-west-1\)/).isVisible(), wait).toBe(true);
+
+  await search.uncheck();
+  await sheet.getByRole("button", { name: "Save" }).click();
+
+  await expect.poll(async () => (await duva.signIn("ada@example.org").GET("/organization/settings")).data?.mailboxAgentWebSearch, wait).toBe(false);
+});
+
+test("a human turns web search off for their own Coo under Preferences, told where queries go, and that an admin turned it off for everyone once one has", budget, async () => {
+  const { page, signIn, duva } = await withOrganization();
+  await signIn("grace@example.org");
+  await openSettings(page);
+  const group = you(page).getByRole("group", { name: "Coo searches the web" });
+  await expect.poll(() => group.getByRole("radio", { name: /^On/ }).isChecked(), wait).toBe(true);
+  expect(await group.innerText()).toContain("goes to Amazon's own web search in Ireland (eu-west-1)");
+
+  await group.getByRole("radio", { name: /^Off/ }).check();
+  await you(page).getByRole("button", { name: "Save" }).click();
+
+  const grace = duva.signIn("grace@example.org");
+  await expect.poll(async () => (await grace.GET("/preferences")).data?.cooWebSearch, wait).toBe("off");
+  await duva.signIn("ada@example.org").PATCH("/organization/settings", { body: { mailboxAgentWebSearch: false } });
+  await page.reload();
+  await expect.poll(() => you(page).getByRole("group", { name: "Coo searches the web" }).getByText("An admin turned web search off for the organization").isVisible(), wait).toBe(true);
 });

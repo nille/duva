@@ -1,5 +1,5 @@
 import { fileURLToPath } from "node:url";
-import { Aws, CfnCondition, CfnOutput, CfnParameter, CfnResource, Duration, Fn, RemovalPolicy, Stack, type StackProps } from "aws-cdk-lib";
+import { Aws, CfnCondition, CfnOutput, CfnParameter, CfnResource, CustomResource, Duration, Fn, RemovalPolicy, Stack, type StackProps } from "aws-cdk-lib";
 import { AgentCoreRuntime, AgentRuntimeArtifact, BrowserCustom, BrowserNetworkConfiguration, Runtime as AgentRuntime } from "aws-cdk-lib/aws-bedrockagentcore";
 import { CorsHttpMethod, HttpApi, HttpMethod } from "aws-cdk-lib/aws-apigatewayv2";
 import { HttpLambdaAuthorizer, HttpLambdaResponseType } from "aws-cdk-lib/aws-apigatewayv2-authorizers";
@@ -745,14 +745,48 @@ export class DuvaStack extends Stack {
       description: "The browser Duva's mailbox agents unsubscribe in",
       networkConfiguration: BrowserNetworkConfiguration.usingPublicNetwork(),
     });
+    // They search the web (ADR-0037) through an AgentCore Gateway with Web Search's target, which
+    // takes only SigV4 calls. Web Search runs only in three regions, so the gateway is in the one
+    // nearest the deployment, where CloudFormation can't create it: a custom resource of the
+    // stack's does, which only CloudFormation invokes, and deletes it with the stack (docs/aws.md).
+    // The gateway searches with a role of its own, allowed only Web Search, AWS's tool.
+    const searchRole = new Role(this, "WebSearchRole", {
+      assumedBy: new ServicePrincipal("bedrock-agentcore.amazonaws.com", { conditions: { StringEquals: { "aws:SourceAccount": Aws.ACCOUNT_ID } } }),
+      description: "The role Duva's gateway to Web Search searches with",
+    });
+    searchRole.addToPolicy(new PolicyStatement({ actions: ["bedrock-agentcore:InvokeWebSearch"], resources: ["arn:aws:bedrock-agentcore:*:aws:tool/web-search.v1"] }));
+    const gatewayMaker = lambda("WebSearchGatewayHandler", "@duva/api/web-search-gateway-lambda", {}, { timeout: Duration.minutes(5) });
+    const gateways = this.formatArn({ service: "bedrock-agentcore", region: "*", resource: "gateway", resourceName: "*" });
+    gatewayMaker.addToRolePolicy(
+      new PolicyStatement({
+        actions: ["bedrock-agentcore:CreateGateway", "bedrock-agentcore:GetGateway", "bedrock-agentcore:UpdateGateway", "bedrock-agentcore:DeleteGateway", "bedrock-agentcore:CreateGatewayTarget", "bedrock-agentcore:GetGatewayTarget", "bedrock-agentcore:DeleteGatewayTarget", "bedrock-agentcore:ListGatewayTargets"],
+        resources: [gateways, `${gateways}/*`],
+      }),
+    );
+    // Listing gateways names no resource, and a gateway's creation gives it a workload identity.
+    gatewayMaker.addToRolePolicy(new PolicyStatement({ actions: ["bedrock-agentcore:ListGateways"], resources: ["*"] }));
+    gatewayMaker.addToRolePolicy(
+      new PolicyStatement({
+        actions: ["bedrock-agentcore:CreateWorkloadIdentity", "bedrock-agentcore:GetWorkloadIdentity", "bedrock-agentcore:DeleteWorkloadIdentity"],
+        resources: [this.formatArn({ service: "bedrock-agentcore", region: "*", resource: "workload-identity-directory", resourceName: "*" })],
+      }),
+    );
+    searchRole.grantPassRole(gatewayMaker.role!);
+    const searchGateway = new CustomResource(this, "WebSearchGateway", {
+      serviceToken: gatewayMaker.functionArn,
+      resourceType: "Custom::WebSearchGateway",
+      properties: { Name: `${Aws.STACK_NAME}-${Aws.REGION}-web-search`, Role: searchRole.roleArn },
+    });
     const agentRuntime = new AgentRuntime(this, "MailboxAgents", {
       description: "Duva's mailbox agents",
       agentRuntimeArtifact: AgentRuntimeArtifact.fromCodeAsset({ path: agentCode(), runtime: AgentCoreRuntime.NODE_22, entrypoint: [agentEntryPoint] }),
       lifecycleConfiguration: { idleRuntimeSessionTimeout: Duration.seconds(60), maxLifetime: Duration.hours(1) },
-      environmentVariables: { [environmentVariables.unsubscribeBrowser]: unsubscribeBrowser.browserId },
+      environmentVariables: { [environmentVariables.unsubscribeBrowser]: unsubscribeBrowser.browserId, [environmentVariables.webSearchGateway]: searchGateway.getAttString("Url") },
     });
     unsubscribeBrowser.grantUse(agentRuntime.role);
-    for (const construct of [agentRuntime, unsubscribeBrowser]) for (const resource of construct.node.findAll()) if (resource instanceof CfnResource) resource.cfnOptions.condition = agentsHere;
+    agentRuntime.addToRolePolicy(new PolicyStatement({ actions: ["bedrock-agentcore:InvokeGateway"], resources: [searchGateway.getAttString("Arn")] }));
+    const searching = [searchRole, gatewayMaker, this.node.findChild("WebSearchGatewayLogs"), searchGateway];
+    for (const construct of [agentRuntime, unsubscribeBrowser, ...searching]) for (const resource of construct.node.findAll()) if (resource instanceof CfnResource) resource.cfnOptions.condition = agentsHere;
     // The agents call their model in the model region the organization chose, through its eu, us or
     // global inference profile, which may send it on to that profile's regions (docs/aws.md). So
     // the role may invoke the models admins can choose through the profiles each has in any region,

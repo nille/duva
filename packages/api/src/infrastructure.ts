@@ -72,6 +72,8 @@ export const environmentVariables = {
   agentRuntime: "AGENT_RUNTIME",
   /** The ID of the AgentCore Browser the mailbox agents unsubscribe in, which their runtime starts a session of for each attempt. */
   unsubscribeBrowser: "UNSUBSCRIBE_BROWSER",
+  /** The MCP URL of the AgentCore Gateway with the Web Search target, in the search region, which the mailbox agents' runtime searches the web through (ADR-0037). */
+  webSearchGateway: "WEB_SEARCH_GATEWAY",
   /** The name of the SSM parameter that holds the URL of Duva's API, which a mailbox agent calls as its tools. */
   apiUrlParameter: "API_URL_PARAMETER",
   /** The URL of managed login, whose authorize and token endpoints MCP clients sign humans in at. */

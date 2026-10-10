@@ -6,5 +6,5 @@ test("status reports the deployment's version and region", async () => {
 
   const { data } = await duva.client.GET("/status");
 
-  expect(data).toEqual({ version: "2.3.4", region: "eu-west-1" });
+  expect(data).toEqual({ version: "2.3.4", region: "eu-west-1", webSearchRegion: "eu-west-1" });
 });

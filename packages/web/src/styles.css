@@ -6257,6 +6257,48 @@ input[aria-invalid="true"] {
   color: var(--alert-ink);
 }
 
+/* A web search is a step on the same rail, its sources after it as links, each its title then its host in the quiet grey. */
+.ask-searches {
+  margin-top: var(--space-1);
+}
+
+.ask-search {
+  min-width: 0;
+}
+
+.ask-search .ask-step-what {
+  display: grid;
+  flex: 1;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+}
+
+.ask-sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--space-3);
+  margin-top: 0.125rem;
+}
+
+.ask-source {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  white-space: nowrap;
+}
+
+.ask-source-title {
+  overflow: hidden;
+  min-width: 0;
+  max-width: 36ch;
+  text-overflow: ellipsis;
+}
+
+.ask-source-host {
+  margin-left: var(--space-1);
+  color: var(--ink-3);
+}
+
 /* A handover, or a turn thought harder about, is a quiet line above the steps, in the small type. */
 .ask-handover {
   max-width: var(--measure);

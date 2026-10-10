@@ -714,10 +714,22 @@ function AgentsSheet({ client, onSignedOut }: { client: DuvaClient; onSignedOut:
   );
 }
 
-type MailboxAgentsSettings = Pick<OrganizationSettings, "mailboxAgentAllowedModels" | "mailboxAgentModel" | "mailboxAgentHarderModel" | "mailboxAgentDecider" | "mailboxAgentSpendCap">;
+type MailboxAgentsSettings = Pick<OrganizationSettings, "mailboxAgentAllowedModels" | "mailboxAgentModel" | "mailboxAgentHarderModel" | "mailboxAgentDecider" | "mailboxAgentWebSearch" | "mailboxAgentSpendCap">;
 type Model = MailboxAgentsSettings["mailboxAgentModel"];
 type MeasuredModel = components["schemas"]["MeasuredModel"];
 const organizationModels = ["mailboxAgentModel", "mailboxAgentHarderModel"] as const;
+
+/** The region the mailbox agents' web searches go to, as Status says, once read (ADR-0037). */
+function useWebSearchRegion(client: DuvaClient): string | undefined {
+  const [region, setRegion] = useState<string>();
+  useEffect(() => {
+    void client
+      .GET("/status")
+      .then(({ data }) => setRegion(data?.webSearchRegion))
+      .catch(() => undefined);
+  }, [client]);
+  return region;
+}
 
 /** The measured models as Duva lists them for this deployment, or whether they couldn't be. */
 function useMeasuredModels(client: DuvaClient): { models?: MeasuredModel[]; failed: boolean } {
@@ -734,17 +746,19 @@ function useMeasuredModels(client: DuvaClient): { models?: MeasuredModel[]; fail
 /**
  * The organization's Mailbox agents sheet: the measured models humans may choose, each with its
  * flag, how it did on Coo's evaluation and what a task costs, the organization's everyday and
- * harder models among them, and the spend cap, with what they spent this month (ADR-0027, ADR-0035).
+ * harder models among them, whether they may search the web, saying where queries go (ADR-0037),
+ * and the spend cap, with what they spent this month (ADR-0027, ADR-0035).
  * Allowing a model that processes mail outside the deployment's continent says so first.
  */
 function MailboxAgentsSheet({ client, onSignedOut }: { client: DuvaClient; onSignedOut: () => void }) {
   const { sheet } = useOrganizationSheet<MailboxAgentsSettings>(
     client,
-    ({ mailboxAgentAllowedModels, mailboxAgentModel, mailboxAgentHarderModel, mailboxAgentDecider, mailboxAgentSpendCap }) => ({
+    ({ mailboxAgentAllowedModels, mailboxAgentModel, mailboxAgentHarderModel, mailboxAgentDecider, mailboxAgentWebSearch, mailboxAgentSpendCap }) => ({
       mailboxAgentAllowedModels,
       mailboxAgentModel,
       mailboxAgentHarderModel,
       mailboxAgentDecider,
+      mailboxAgentWebSearch,
       mailboxAgentSpendCap,
     }),
     onSignedOut,
@@ -755,6 +769,7 @@ function MailboxAgentsSheet({ client, onSignedOut }: { client: DuvaClient; onSig
   const [asking, setAsking] = useState<Model>();
   const saved = sheet.saving.status;
   const { models, failed } = useMeasuredModels(client);
+  const searchRegion = useWebSearchRegion(client);
   useEffect(() => {
     void client
       .GET("/organization/mailbox-agent-spend")
@@ -856,6 +871,16 @@ function MailboxAgentsSheet({ client, onSignedOut }: { client: DuvaClient; onSig
                 <span className="choice-text">
                   <span className="choice-name">{copy.model.decider}</span>
                   <span className="hint">{copy.model.deciderHint}</span>
+                </span>
+              </label>
+            </fieldset>
+            <fieldset>
+              <legend>{copy.webSearch.legend}</legend>
+              <label className="choice">
+                <input type="checkbox" checked={chosen.mailboxAgentWebSearch} onChange={(event) => sheet.choose({ mailboxAgentWebSearch: event.target.checked })} />
+                <span className="choice-text">
+                  <span className="choice-name">{copy.webSearch.label}</span>
+                  <span className="hint">{copy.webSearch.hint(strings.settings.webSearchPlace(searchRegion))}</span>
                 </span>
               </label>
             </fieldset>
@@ -1059,10 +1084,12 @@ const dateFormats: Preferences["dateFormat"][] = ["locale", "iso", "dayMonth", "
 const mailViews: Preferences["mailView"][] = ["html", "text"];
 const keyboardShortcuts: Preferences["keyboardShortcuts"][] = ["on", "off"];
 const cooSpeaksUp: Preferences["cooSpeaksUp"][] = ["on", "off"];
+const cooWebSearch: Preferences["cooWebSearch"][] = ["on", "off"];
 
 /**
  * The human's own preferences: how times and dates show, each choice with an example built from
- * today, how mail shows, whether keyboard shortcuts work, and whether Coo speaks up. With several
+ * today, how mail shows, whether keyboard shortcuts work, whether Coo speaks up, and whether it
+ * searches the web, saying where queries go and whether an admin turned it off (ADR-0037). With several
  * mailboxes, `own`, also where the web app opens and which address new mail in All mailboxes starts from (ADR-0033).
  */
 function YouSheet({
@@ -1096,6 +1123,14 @@ function YouSheet({
   const today = new Date();
   today.setHours(14, 30, 0, 0);
   const copy = strings.settings;
+  const searchRegion = useWebSearchRegion(client);
+  const [organizationSearches, setOrganizationSearches] = useState<boolean>();
+  useEffect(() => {
+    void client
+      .GET("/organization/settings")
+      .then(({ data }) => setOrganizationSearches(data?.mailboxAgentWebSearch))
+      .catch(() => undefined);
+  }, [client]);
   return (
     <Sheet id="your-preferences" name={copy.you} lead={copy.youLead} sheet={sheet}>
       {(chosen) => (
@@ -1171,6 +1206,21 @@ function YouSheet({
                 onChoose={() => sheet.choose({ cooSpeaksUp: choice })}
                 label={copy.cooSpeaksUp[choice]}
                 hint={copy.cooSpeaksUp[`${choice}Hint`]}
+              />
+            ))}
+          </fieldset>
+          <fieldset>
+            <legend>{copy.cooWebSearch.legend}</legend>
+            <p className="setting-lead">{copy.cooWebSearch.lead(copy.webSearchPlace(searchRegion))}</p>
+            {organizationSearches === false && <p className="setting-note">{copy.cooWebSearch.organizationOff}</p>}
+            {cooWebSearch.map((choice) => (
+              <Choice
+                key={choice}
+                name="cooWebSearch"
+                checked={chosen.cooWebSearch === choice}
+                onChoose={() => sheet.choose({ cooWebSearch: choice })}
+                label={copy.cooWebSearch[choice]}
+                hint={copy.cooWebSearch[`${choice}Hint`]}
               />
             ))}
           </fieldset>

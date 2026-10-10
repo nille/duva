@@ -3,7 +3,7 @@
 // On a desk the events lie in the list column, under a heading for each date, and the open event
 // beside them. Chips under the list's head choose the kinds of event shown, and the address keeps
 // them. Dates and times are in the human's time zone, or the browser's until they choose one.
-import { type ReactNode, type RefObject, useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, type ReactNode, type RefObject, useCallback, useEffect, useRef, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
 import { useDates } from "./dates.ts";
@@ -452,6 +452,30 @@ function OpenEvent({
             : undefined;
     if (why !== undefined) facts.push({ term: copy.detail.failure, said: why });
     if (typeof change?.note === "string") facts.push({ term: copy.detail.note, said: change.note });
+    // A task's or an unsubscribe's web searches, each with its sources as links (ADR-0037).
+    const searches = (change?.searches ?? []) as components["schemas"]["WebSearch"][];
+    if (searches.length > 0) {
+      facts.push({
+        term: copy.detail.searches,
+        said: (
+          <ul className="event-links">
+            {searches.map(({ query, sources }, index) => (
+              <li key={index}>
+                {`“${query}”`}
+                {sources.map(({ url, title }) => (
+                  <Fragment key={url}>
+                    {" "}
+                    <a href={url} target="_blank" rel="noopener noreferrer">
+                      {title ?? url}
+                    </a>
+                  </Fragment>
+                ))}
+              </li>
+            ))}
+          </ul>
+        ),
+      });
+    }
     if (detail.alert !== undefined) facts.push({ term: copy.detail.alert, said: <a href="#/alerts">{copy.detail.openAlerts}</a> });
   }
 

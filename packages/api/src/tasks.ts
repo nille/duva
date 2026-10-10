@@ -21,6 +21,7 @@ import { mailboxAgentIn, mergedInto } from "./mailbox-agents.ts";
 import { type Agent, allMailboxes, duva, findActor, findMailbox, type Mailbox, mailboxFeed, mailboxKey } from "./organization.ts";
 import { documents, isNew, pk, sk } from "./table.ts";
 import type { UnsubscribeJob } from "./unsubscribing.ts";
+import type { WebSearchMade } from "./web-search.ts";
 
 export type Task = components["schemas"]["Task"];
 
@@ -113,7 +114,7 @@ export async function tasksWorkingSince(table: Table, before: string): Promise<(
   return stuck;
 }
 
-const taskOf = ({ id, label, labelName, prompt, message, agent, state, givenAt, givenBy, startedAt, endedAt, note, actions, handover }: Record<string, unknown>) =>
+const taskOf = ({ id, label, labelName, prompt, message, agent, state, givenAt, givenBy, startedAt, endedAt, note, actions, handover, searches }: Record<string, unknown>) =>
   ({
     id,
     label,
@@ -129,6 +130,7 @@ const taskOf = ({ id, label, labelName, prompt, message, agent, state, givenAt, 
     ...(note !== undefined && { note }),
     ...(actions !== undefined && { actions }),
     ...(handover !== undefined && { handover }),
+    ...(searches !== undefined && { searches }),
   }) as Task;
 
 async function readTask(table: Table, ref: TaskRef): Promise<(Task & { thread: string }) | undefined> {
@@ -276,8 +278,8 @@ export function createTaskRunner({ table, region, apiUrl, fetch: call = fetch, r
   };
 
   /** Fails the task with the note, and alerts the agent's sponsor, if there is still an agent. */
-  async function fail(ref: TaskRef, task: Task, agent: Agent | undefined, note: string, actions?: AgentAction[]) {
-    if (!(await moveTask(table, ref, task, { from: "working", to: "failed", also: { note, ...(actions !== undefined && { actions }) } }))) return;
+  async function fail(ref: TaskRef, task: Task, agent: Agent | undefined, note: string, actions?: AgentAction[], searches?: WebSearchMade[]) {
+    if (!(await moveTask(table, ref, task, { from: "working", to: "failed", also: { note, ...(actions !== undefined && { actions }), ...(searches !== undefined && { searches }) } }))) return;
     if (agent === undefined) return;
     const what = `${agent.name} couldn't do a task from the label ${task.labelName}: ${note}`;
     await raiseAlert(table, { kind: "taskFailed", agent, what, link: { mailbox: ref.mailbox, thread: ref.thread, message: ref.message } }, { source: `task#${task.id}` });
@@ -326,15 +328,15 @@ export function createTaskRunner({ table, region, apiUrl, fetch: call = fetch, r
     });
     let next = await ran.next();
     while (!next.done) next = await ran.next();
-    const { text, actions, outcome, handover } = next.value;
+    const { text, actions, searches, outcome, handover } = next.value;
     if (threadUnreadable !== undefined) return fail(ref, task, agent, threadUnreadable);
     const note = text.trim().slice(0, longestNote);
     if (outcome === "answered") {
-      await moveTask(table, ref, task, { from: "working", to: "done", also: { note, actions, ...(handover && { handover }) } });
+      await moveTask(table, ref, task, { from: "working", to: "done", also: { note, actions, ...(handover && { handover }), ...(searches && { searches }) } });
       return;
     }
     const why = outOfTime ? `It ran out of time, after ${longestRun / 60_000} minutes.` : outcome === "capReached" ? capRefusal(cap) : "The model or the runtime failed partway.";
-    await fail(ref, task, agent, note === "" ? why : `${why} It had said: ${note}`, actions);
+    await fail(ref, task, agent, note === "" ? why : `${why} It had said: ${note}`, actions, searches);
   }
 }
 

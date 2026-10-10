@@ -129,7 +129,7 @@ test("when one-click isn't offered, the mailbox agent fills in the opt-out page 
     expect.objectContaining({ actor: agent.id, address: "news@lists.example.org", method: "page", outcome: "unsubscribed", detail: "The page said you're unsubscribed." }),
   ]);
   // It is given the page and the tools that act on it, nothing of Duva's, and it is the harder model's work (ADR-0032).
-  expect(asks[0]!.tools.map(({ name }) => name)).toEqual(["fillAddress", "choose", "click", "finish"]);
+  expect(asks[0]!.tools.map(({ name }) => name)).toEqual(["fillAddress", "choose", "click", "finish", "searchWeb"]);
   expect(new Set(asks.map(({ model: asked }) => asked))).toEqual(new Set(["anthropic.claude-sonnet-5-5"]));
   expect(asked(asks[0]!)).toContain('[1] field (email) "Your email"');
   expect(JSON.stringify(asks)).not.toContain("This week's news.");
@@ -147,6 +147,28 @@ test("the mailbox agent's unsubscribe is in its events, and Grace's own isn't", 
   expect(data!.events).toEqual([expect.objectContaining({ type: "unsubscribeAttempted", actor: agent.id, kind: "unsubscribes", failed: false })]);
   const { data: detail } = await grace.GET("/agents/{agent}/events/{event}", { params: { path: { agent: agent.id, event: data!.events[0]!.id } } });
   expect(detail!.change).toEqual(expect.objectContaining({ type: "unsubscribeAttempted", method: "page", outcome: "unsubscribed" }));
+});
+
+test("the agent may search the web while it unsubscribes, and its unsubscribe's activity shows the search", async () => {
+  const { model, requests: asks } = scripted(
+    () => [use("searchWeb", { query: "how to unsubscribe from Example News" })],
+    () => [{ text: "Fill in the form at https://lists.example.org/help." }],
+    ...fillsInThePage,
+  );
+  const results = [{ title: "Leaving Example News", url: "https://lists.example.org/help", text: "Fill in the form on the opt-out page." }];
+  const { duva, grace, receive, setDelivery, agent, attempts, sheet } = await withMailbox({ model, webSearch: async () => results });
+  await receive(newsletter({ unsubscribe: "<https://lists.example.org/optout>" }));
+
+  await setDelivery("nowhere");
+
+  const search = { query: "how to unsubscribe from Example News", sources: [{ url: "https://lists.example.org/help", title: "Leaving Example News" }] };
+  expect(duva.webSearches()).toEqual(["how to unsubscribe from Example News"]);
+  // The reader is asked with no tools, and reads the results with the everyday model.
+  expect(asks[1]).toMatchObject({ model: "anthropic.claude-haiku-4-5-20251001-v1:0", tools: [] });
+  expect((await attempts()).at(-1)).toEqual(expect.objectContaining({ method: "page", outcome: "unsubscribed", searches: [search] }));
+  expect((await sheet()).decided?.unsubscribe).toMatchObject({ method: "page", outcome: "unsubscribed", searches: [search] });
+  const { data } = await grace.GET("/agents/{agent}/events", { params: { path: { agent: agent.id }, query: { kinds: ["unsubscribes"] } } });
+  expect(data!.events[0]!.summary).toBe("Coo unsubscribed from news@lists.example.org on their opt-out page. It searched the web for “how to unsubscribe from Example News”.");
 });
 
 test("the address is all the agent can type, whatever it asks to type", async () => {

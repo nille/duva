@@ -65,6 +65,9 @@ const payPerUse = new Set([
   "AWS::BedrockAgentCore::Runtime",
   // So does AgentCore Browser (docs/research/unsubscribe-browser-and-bounce.md).
   "AWS::BedrockAgentCore::BrowserCustom",
+  // The gateway to Web Search, which the custom resource creates, bills per call and per search, and
+  // $0.0002 a month for its one tool's index (AgentCore's pricing page, ADR-0037).
+  "Custom::WebSearchGateway",
   // A standard parameter costs nothing.
   "AWS::SSM::Parameter",
   "AWS::CloudFront::OriginRequestPolicy",
@@ -1012,13 +1015,46 @@ test("the mailbox agents unsubscribe in an AgentCore Browser of the stack's own,
   expect(browser.Properties?.RecordingConfig).toEqual({ Enabled: false });
   expect((stack.template.Resources[browserId] as { Condition?: string }).Condition).toBe("MailboxAgentsCondition");
   const runtime = resources.find(([, { Type }]) => Type === "AWS::BedrockAgentCore::Runtime")!;
-  expect(runtime[1].Properties?.EnvironmentVariables).toEqual({ [environmentVariables.unsubscribeBrowser]: { "Fn::GetAtt": [browserId, "BrowserId"] } });
+  expect(runtime[1].Properties?.EnvironmentVariables?.[environmentVariables.unsubscribeBrowser]).toEqual({ "Fn::GetAtt": [browserId, "BrowserId"] });
   const onBrowser = ofType("AWS::IAM::Policy")
     .filter(([, { Properties }]) => JSON.stringify(Properties?.PolicyDocument).includes(`"${browserId}"`))
     .map(([, { Properties }]) => (Properties?.Roles ?? []).map((role: { Ref: string }) => role.Ref));
   const role = (runtime[1].Properties?.RoleArn as { "Fn::GetAtt": string[] })["Fn::GetAtt"][0]!;
   expect(onBrowser).toEqual([[role]]);
   expect(actions("TaskRunnerHandler", "bedrock-agentcore").some((action) => action.includes("Browser"))).toBe(false);
+});
+
+test("the mailbox agents search the web through a gateway the stack's custom resource makes, which only CloudFormation invokes, and only their runtime may call", () => {
+  const gateways = ofType("Custom::WebSearchGateway");
+  expect(gateways).toHaveLength(1);
+  const [[gatewayId, gateway]] = gateways as [[string, Resource]];
+  const [makerId] = lambda("WebSearchGatewayHandler");
+  expect(gateway.Properties?.ServiceToken).toEqual({ "Fn::GetAtt": [makerId, "Arn"] });
+  // CloudFormation invokes a custom resource's function with its own credentials, so it needs no permission, and nothing else invokes it.
+  expect(naming("AWS::Lambda::Permission", makerId)).toEqual([]);
+  expect(invokers(makerId)).toEqual([]);
+  for (const id of [gatewayId, makerId]) expect((stack.template.Resources[id] as { Condition?: string }).Condition).toBe("MailboxAgentsCondition");
+  const runtime = resources.find(([, { Type }]) => Type === "AWS::BedrockAgentCore::Runtime")!;
+  expect(runtime[1].Properties?.EnvironmentVariables?.[environmentVariables.webSearchGateway]).toEqual({ "Fn::GetAtt": [gatewayId, "Url"] });
+  const callers = ofType("AWS::IAM::Policy")
+    .filter(([, { Properties }]) => JSON.stringify(Properties?.PolicyDocument).includes("bedrock-agentcore:InvokeGateway"))
+    .map(([, { Properties }]) => [Properties?.Roles.map((role: { Ref: string }) => role.Ref), Properties?.PolicyDocument.Statement.find(({ Action }: { Action: string }) => Action === "bedrock-agentcore:InvokeGateway").Resource]);
+  const role = (runtime[1].Properties?.RoleArn as { "Fn::GetAtt": string[] })["Fn::GetAtt"][0]!;
+  expect(callers).toEqual([[[role], { "Fn::GetAtt": [gatewayId, "Arn"] }]]);
+});
+
+test("the gateway searches with a role of its own, which AgentCore assumes for this account, and which may only invoke Web Search", () => {
+  const [[, gateway]] = ofType("Custom::WebSearchGateway") as [[string, Resource]];
+  const roleId = (gateway.Properties?.Role as { "Fn::GetAtt": string[] })["Fn::GetAtt"][0]!;
+  const role = stack.template.Resources[roleId] as Resource;
+  expect(role.Properties?.AssumeRolePolicyDocument.Statement).toEqual([
+    { Action: "sts:AssumeRole", Effect: "Allow", Principal: { Service: "bedrock-agentcore.amazonaws.com" }, Condition: { StringEquals: { "aws:SourceAccount": { Ref: "AWS::AccountId" } } } },
+  ]);
+  const granted = ofType("AWS::IAM::Policy")
+    .filter(([, { Properties }]) => (Properties?.Roles ?? []).some((ref: { Ref: string }) => ref.Ref === roleId))
+    .flatMap(([, { Properties }]) => Properties?.PolicyDocument.Statement);
+  expect(granted).toEqual([{ Action: "bedrock-agentcore:InvokeWebSearch", Effect: "Allow", Resource: "arn:aws:bedrock-agentcore:*:aws:tool/web-search.v1" }]);
+  expect(actions("WebSearchGatewayHandler", "iam")).toEqual(["iam:PassRole"]);
 });
 
 test("where AgentCore isn't, the stack leaves out the runtime and everything it brings", () => {

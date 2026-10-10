@@ -361,6 +361,10 @@ export const strings = {
     } as const,
     answered: "Coo answered",
     steps: "What it did",
+    searches: "What it looked up on the web",
+    searched: (query: string) => `Searched the web for “${query}”`,
+    sources: "Sources",
+    noSources: "It found nothing.",
     open: {
       thread: "the thread",
       threads: (count: number) => `${count} threads`,
@@ -820,6 +824,12 @@ export const strings = {
         deciderHint: "Amazon Nova Micro judges each question first, and sends one it finds complex straight to the harder model. Off, a question goes there only on evidence.",
         modelsFailed: "Duva couldn't list the measured models. Try again.",
       },
+      webSearch: {
+        legend: "Web search",
+        label: "Coo may search the web",
+        hint: (place: string) =>
+          `In Ask Coo, in labels' tasks and while unsubscribing, Coo looks up what the mail doesn't say, and shows its sources. A query may carry what the mail says, as a tracking number, and goes to Amazon's own web search ${place}. AWS doesn't say how long it keeps queries. Each costs $0.007, counted toward the spend cap. Each human can also turn it off for their own Coo.`,
+      },
       cap: {
         legend: "Spend cap",
         label: "US dollars a month",
@@ -913,6 +923,18 @@ export const strings = {
       legend: "New mail goes from",
       lead: "New mail you write in All mailboxes starts from this address. You can choose another as you write.",
     },
+    cooWebSearch: {
+      legend: "Coo searches the web",
+      lead: (place: string) => `Coo looks up what your mail doesn't say, as where a parcel is, and shows its sources. A query may carry what your mail says, and goes to Amazon's own web search ${place}.`,
+      on: "On",
+      onHint: "Wherever it helps: in Ask Coo, in your labels' tasks and while unsubscribing. This is the default.",
+      off: "Off",
+      offHint: "Coo keeps to your mail.",
+      organizationOff: "An admin turned web search off for the organization, so Coo doesn't search either way.",
+    },
+    /** Where the mailbox agents' web searches go, by the region Status names. */
+    webSearchPlace: (region: string | undefined) =>
+      region === undefined ? "on AWS" : `in ${({ "eu-west-1": "Ireland", "us-east-1": "Virginia", "ap-northeast-1": "Tokyo" } as Record<string, string>)[region] ?? region} (${region})`,
     cooSpeaksUp: {
       legend: "Coo speaks up",
       lead: "Coo looks out from the top left, and speaks up under its portrait when there's news worth a glance: new mail since you looked, a draft of its waiting for you, or a task done.",
@@ -1539,6 +1561,7 @@ export const strings = {
       cost: "Cost",
       failure: "Why it failed",
       note: "Note",
+      searches: "Searched the web",
       alert: "Alert",
       openThread: "Open the thread",
       openDraft: (count: number, of: number) => (of === 1 ? "Open the draft" : `Open draft ${count}`),

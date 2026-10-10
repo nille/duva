@@ -4,19 +4,23 @@
 import { createServer, type Server } from "node:http";
 import { type Decider, type RunPayload, runAgent } from "./agent-loop.ts";
 import { agentCoreBrowser } from "./agentcore-browser.ts";
+import { agentCoreWebSearch } from "./agentcore-web-search.ts";
 import { bedrockDecider, bedrockModels } from "./bedrock-model.ts";
 import type { Browser } from "./browser.ts";
 import type { Models } from "./strands.ts";
 import { environmentVariables } from "./infrastructure.ts";
+import type { WebSearch } from "./web-search.ts";
 
 /**
  * The runtime's server, asking the models and the decider as a deployment in the payload's region
- * calls them, and unsubscribing in the browser, AgentCore Browser's that the stack names unless given.
+ * calls them, unsubscribing in the browser, AgentCore Browser's that the stack names unless given,
+ * and searching the web through the stack's gateway to Web Search unless given (ADR-0037).
  */
 export function createRuntimeServer(
   modelsFor: (payload: RunPayload) => Models = ({ model }) => bedrockModels({ region: model.region }),
   browser: Browser | undefined = agentCoreBrowser(process.env[environmentVariables.unsubscribeBrowser] ?? ""),
   deciderFor: (payload: RunPayload) => Decider = ({ model }) => bedrockDecider({ region: model.region }),
+  webSearch: WebSearch | undefined = agentCoreWebSearch(process.env[environmentVariables.webSearchGateway] ?? ""),
 ): Server {
   // AgentCore reads a busy runtime as one to keep running.
   let running = 0;
@@ -32,7 +36,7 @@ export function createRuntimeServer(
     outgoing.writeHead(200, { "content-type": "application/x-ndjson" });
     try {
       const payload = JSON.parse(Buffer.concat(chunks).toString()) as RunPayload;
-      for await (const event of runAgent(payload, { models: modelsFor(payload), decider: deciderFor(payload), browser })) outgoing.write(`${JSON.stringify(event)}\n`);
+      for await (const event of runAgent(payload, { models: modelsFor(payload), decider: deciderFor(payload), browser, webSearch })) outgoing.write(`${JSON.stringify(event)}\n`);
     } catch (error) {
       console.error(error);
       outgoing.write(`${JSON.stringify({ type: "end", outcome: "failed" })}\n`);

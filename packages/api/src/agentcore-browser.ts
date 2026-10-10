@@ -93,7 +93,7 @@ async function signedHeaders(agentCore: BedrockAgentCoreClient, endpoint: string
 }
 
 /** SHA-256, or HMAC-SHA-256 with a secret, as the signer takes it. */
-class Sha256 {
+export class Sha256 {
   private readonly secret: string | ArrayBuffer | ArrayBufferView | undefined;
   private hash: ReturnType<typeof createHash> | ReturnType<typeof createHmac>;
   constructor(secret?: string | ArrayBuffer | ArrayBufferView) {

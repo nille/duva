@@ -3,7 +3,8 @@
 // which streams back what the agent says as it writes it, and each thing it does as it does it, with
 // links to the threads and drafts it touched. A send it asks for waits in Approvals. When the
 // everyday model hands a turn to the harder one, the turn says so and why, and its last answer can
-// be asked again of the harder model, to think harder (#132).
+// be asked again of the harder model, to think harder (#132). When Coo searches the web, the turn
+// says what it looked up, with the sources the reader drew on as links (ADR-0037).
 import { type FormEvent, type KeyboardEvent, useCallback, useEffect, useId, useRef, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components, ConversationEvent } from "@duva/openapi";
@@ -20,14 +21,16 @@ type Mailbox = components["schemas"]["Mailbox"];
 type Agent = components["schemas"]["Agent"];
 type Turn = components["schemas"]["ConversationTurn"];
 type Action = components["schemas"]["AgentAction"];
+type Search = components["schemas"]["WebSearch"];
 type Settings = components["schemas"]["AgentSettings"];
 
 type Read = { status: "loading" } | { status: "failed" } | { status: "read"; agent: Agent; settings?: Settings; turns: Turn[] };
 
-/** The agent's turn while it is under way: what it said and did so far, and the handover, if any. */
+/** The agent's turn while it is under way: what it said and did so far, what it looked up, and the handover, if any. */
 interface Running {
   text: string;
   actions: Action[];
+  searches: Search[];
   handover?: components["schemas"]["Handover"];
 }
 
@@ -105,7 +108,7 @@ export function AskAgent({
     if ((asked === "" && !harder) || running !== undefined) return;
     setRefused(undefined);
     if (!harder) setWords("");
-    setRunning({ text: "", actions: [] });
+    setRunning({ text: "", actions: [], searches: [] });
     setAnnounced(copy.working);
     onAsking?.(true);
     try {
@@ -133,6 +136,7 @@ export function AskAgent({
           if (event.type === "turn") add(event.turn);
           else if (event.type === "text") setRunning((current) => current && { ...current, text: current.text + event.text });
           else if (event.type === "action") setRunning((current) => current && { ...current, actions: [...current.actions, event.action] });
+          else if (event.type === "searched") setRunning((current) => current && { ...current, searches: [...current.searches, event.search] });
           else if (event.type === "handedOver") setRunning((current) => current && { ...current, handover: event.handover });
           else {
             add(event.turn);
@@ -290,6 +294,7 @@ export function AskAgent({
               </p>
               {running.handover !== undefined && <Handover handover={running.handover} />}
               <Steps actions={running.actions} baseOf={baseOf} approval={approval} />
+              <Searches searches={running.searches} />
               <p className="ask-text">
                 {running.text}
                 <span className="ask-caret" aria-hidden="true" />
@@ -371,6 +376,7 @@ function TurnShown({
       {turn.harder === true && turn.model !== undefined && <p className="ask-handover">{copy.thoughtHarder(copy.models[turn.model])}</p>}
       {turn.handover !== undefined && <Handover handover={turn.handover} />}
       {!human && <Steps actions={turn.actions} baseOf={baseOf} approval={approval} />}
+      {!human && <Searches searches={turn.searches ?? []} />}
       {turn.text !== "" && <p className="ask-text">{turn.text}</p>}
       {turn.firstMemory === true && (
         <p className="ask-memory">
@@ -446,6 +452,54 @@ function Step({ action, base, approval }: { action: Action; base: string; approv
     </>
   );
 }
+
+/** What the agent looked up on the web in a turn, a line each, with the sources the answer drew on as links. */
+function Searches({ searches }: { searches: Search[] }) {
+  if (searches.length === 0) return null;
+  return (
+    <ol className="ask-steps ask-searches" aria-label={copy.searches}>
+      {searches.map(({ query, sources }, index) => (
+        <li key={index} className="ask-step ask-search">
+          <WebIcon />
+          <span className="ask-step-what">
+            {copy.searched(query)}
+            {sources.length === 0 ? (
+              <span className="ask-sources">{copy.noSources}</span>
+            ) : (
+              <span className="ask-sources">
+                <span className="visually-hidden">{copy.sources}: </span>
+                {sources.map(({ url, title }) => (
+                  <a key={url} href={url} target="_blank" rel="noopener noreferrer" className="ask-source">
+                    <span className="ask-source-title">{title ?? hostOf(url)}</span>
+                    {title !== undefined && <span className="ask-source-host">{hostOf(url)}</span>}
+                  </a>
+                ))}
+              </span>
+            )}
+          </span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+/** The host a source's URL names, without www. */
+function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
+}
+
+const WebIcon = () => (
+  <svg className="icon ask-step-icon" viewBox="0 0 16 16" aria-hidden="true">
+    <g fill="none" stroke="currentColor" strokeWidth="1.3">
+      <circle cx="8" cy="8" r="5.75" />
+      <path d="M2.25 8h11.5M8 2.25c1.7 1.6 2.5 3.5 2.5 5.75S9.7 12.15 8 13.75M8 2.25C6.3 3.85 5.5 5.75 5.5 8s.8 4.15 2.5 5.75" strokeLinecap="round" />
+    </g>
+  </svg>
+);
 
 /** A memory kept: a knot in a thread, as one ties to remember. */
 const MemoryIcon = () => (

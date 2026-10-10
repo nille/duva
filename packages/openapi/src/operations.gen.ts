@@ -217,6 +217,13 @@ export const operations = [
         "description": "Whether the decider, Amazon Nova Micro, settles the model for each turn in Ask Coo and over MCP first, sending one it finds complex to the harder model. Off by default: on Coo's tasks it was right on 4 of 10 (docs/research/coo-models.md). Either way a turn hands over to the harder model on evidence."
       },
       {
+        "name": "mailboxAgentWebSearch",
+        "in": "body",
+        "type": "boolean",
+        "required": false,
+        "description": "Whether the mailbox agents may search the web, in Ask Coo, in labels' tasks and while unsubscribing, with queries that may carry anything from the mail that helps, as a tracking number. On by default. Queries go to Web Search on Amazon Bedrock AgentCore, Amazon's own index, which runs only in eu-west-1, Ireland, us-east-1, Virginia, and ap-northeast-1, Tokyo: a deployment in the EU searches from Ireland, one in the US from Virginia, and any other from the nearest of them, status's webSearchRegion. AWS documents no retention for queries. A reader with no powers reads the results, and Coo gets only its short answer and sources. Each query costs $0.007, plus the reader's tokens, counted toward mailboxAgentSpendCap. Each human can also turn it off for their own Coo, with the preference cooWebSearch."
+      },
+      {
         "name": "mailboxAgentSpendCap",
         "in": "body",
         "type": "integer",
@@ -322,6 +329,13 @@ export const operations = [
         "type": "string",
         "required": false,
         "description": "Whether Coo learns from mail it reads while it works, and keeps what it learns as memories, each erased with its threads. on, the default, has it learn. off has it keep only what the human tells it."
+      },
+      {
+        "name": "cooWebSearch",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "Whether the human's own Coo may search the web, while the organization's mailboxAgentWebSearch lets it. on, the default, lets it look things up wherever it helps, with queries that may carry what the mail says, and say so with its sources. off keeps it to the mail."
       },
       {
         "name": "timeZone",

@@ -173,9 +173,16 @@ Coo's memories (ADR-0036) have two cases of their own, recorded for the defaults
 
 All four runs passed. Haiku kept both facts itself. Where it answered the allergy from the memory Duva gave it, without a tool call, the answer check handed the turn to Sonnet, as for any conversation turn that looks nothing up, and Sonnet looked in the memories before it answered. After the erasure Coo searched the mail, found nothing, and said so.
 
+## A lookup on the web (#152)
+
+Coo searches the web through a reader with no tools (ADR-0037). One task needs it, recorded for the defaults alone, so the other setups' numbers above stay as measured: "Which terminal does my flight to Lisbon leave from?", where the booking names the flight and the airport but no terminal, and a stand-in page of Swedavia's says which. It passes when Coo searched and answered Terminal 5.
+
+- **Both runs passed.** In one, Haiku read the booking, searched for "SAS SK1827 Stockholm Arlanda terminal Lisbon" and answered from the reader's answer, in 5 model calls, the reader's one among them, for 3.5 cents. In the other, Haiku answered without looking and the answer check handed the turn to Sonnet, which read the booking and searched, in 6 calls for 9.8 cents.
+- **Each query costs $0.007 more,** which the recording leaves out, as it has no Web Search.
+
 ## What this cost
 
-Bedrock calls kept in the recordings of #132's tasks cost $5.65: $4.79 for the first six setups, and $0.86 for the defaults. The pilots that were recorded again after fixing the grader and the answer check, the probes and the decider trials cost about $0.40 more. #140's task added $0.20 kept in the recordings, and about $0.30 more for those recorded again after listAgents' description and the answer check were fixed. So about $6.55 in all. #148 recorded the defaults again on Strands for $0.95, and #151's memory cases cost $0.32.
+Bedrock calls kept in the recordings of #132's tasks cost $5.65: $4.79 for the first six setups, and $0.86 for the defaults. The pilots that were recorded again after fixing the grader and the answer check, the probes and the decider trials cost about $0.40 more. #140's task added $0.20 kept in the recordings, and about $0.30 more for those recorded again after listAgents' description and the answer check were fixed. So about $6.55 in all. #148 recorded the defaults again on Strands for $0.95, #151's memory cases cost $0.32, and #152's lookup $0.13.
 
 ## Caveats
 
