@@ -402,3 +402,41 @@ test("the sponsor's own send from their mailbox doesn't say an agent sent it", a
   expect(threads).toMatchObject([{ subject: "Hi" }]);
   for (const each of [...sent!.threads, ...threads, ...messages]) expect(each).not.toHaveProperty("fromAgent");
 });
+
+/** The subjects of the threads with the label in Grace's mailbox at grace@example.com. */
+async function subjectsIn({ grace, graceParams }: Awaited<ReturnType<typeof withRecipientsMailbox>>, label: "inbox" | "spam") {
+  const { data } = await grace.GET("/mailboxes/{mailbox}/threads", { params: { ...graceParams, query: { label } } });
+  return data!.threads.map(({ subject }) => subject);
+}
+
+test("a message Duva sent between the organization's mailboxes lands in the Inbox even when SES judges it spam", async () => {
+  const setup = await withRecipientsMailbox();
+  const { duva, ada, params, ask } = setup;
+  const { data: draft } = await ada.POST("/mailboxes/{mailbox}/drafts", { params, body: { to: ["grace@example.com"], subject: "From Ada", text: "Hello from the human." } });
+  await ada.POST("/mailboxes/{mailbox}/drafts/{draft}/send", { params: { path: { ...params.path, draft: draft!.id } } });
+  const { approval } = await ask({ to: ["grace@example.com"], subject: "From Hermes", text: "Hello from the agent." });
+  await ada.POST("/approvals/{approval}/send", { params: { path: { approval } } });
+
+  for (const raw of duva.sent()) await duva.receive(raw, { to: ["grace@example.com"] }, { verdicts: { spam: "FAIL" } });
+
+  expect((await subjectsIn(setup, "inbox")).sort()).toEqual(["From Ada", "From Hermes"]);
+  expect(await subjectsIn(setup, "spam")).toEqual([]);
+});
+
+test("mail Duva didn't send, or that fails DMARC, or from outside the organization's domains, gets SES's spam verdict", async () => {
+  const setup = await withRecipientsMailbox();
+  const { duva, ada, params } = setup;
+  const { data: draft } = await ada.POST("/mailboxes/{mailbox}/drafts", { params, body: { to: ["grace@example.com"], subject: "Hi", text: "Hello." } });
+  await ada.POST("/mailboxes/{mailbox}/drafts/{draft}/send", { params: { path: { ...params.path, draft: draft!.id } } });
+  const [sent] = duva.sent();
+  const lookalike = sent!.replace(/^Message-ID: <[^@]+@/m, "Message-ID: <forged@").replace(/^Subject: .*$/m, "Subject: Lookalike");
+  const failing = sent!.replace(/^Subject: .*$/m, "Subject: Failing DMARC");
+  const elsewhere = sent!.replace(/^From: .*$/m, "From: ada@example.net").replace(/^Subject: .*$/m, "Subject: Elsewhere");
+
+  await duva.receive(lookalike, { to: ["grace@example.com"] }, { verdicts: { spam: "FAIL" } });
+  await duva.receive(failing, { to: ["grace@example.com"] }, { verdicts: { spam: "FAIL", dmarc: "FAIL", dmarcPolicy: "none" } });
+  await duva.receive(elsewhere, { to: ["grace@example.com"] }, { verdicts: { spam: "FAIL" } });
+
+  expect((await subjectsIn(setup, "spam")).sort()).toEqual(["Elsewhere", "Failing DMARC", "Lookalike"]);
+  expect(await subjectsIn(setup, "inbox")).toEqual([]);
+});

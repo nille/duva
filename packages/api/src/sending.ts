@@ -21,7 +21,8 @@ import { randomUUID } from "node:crypto";
 import type { DynamoDBStreamEvent } from "aws-lambda";
 import { GetCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import type { Table } from "./deployment.ts";
-import { approvedAt, type Draft, draftAt, type DraftFile, undoable, draftToSend, findApproval, keepSent, markFailed, markSent, markUnclear, type Sending, sesMessagePartition, startSending, unsendableFrom, waitForLimit } from "./drafting.ts";
+import { domainOf } from "./email-address.ts";
+import { approvedAt, type Draft, draftAt, type DraftFile, undoable, draftToSend, findApproval, keepSent, markFailed, markSent, markUnclear, type Sending, sentBySes, sesMessagePartition, startSending, unsendableFrom, waitForLimit } from "./drafting.ts";
 import { alertAt, alertItems, limitRead, mailingSettled, raiseAlert, startMailing } from "./alerting.ts";
 import {
   allowedAt,
@@ -487,15 +488,17 @@ const systemMailKey = (sesMessageId: string) => ({ [pk]: sesMessagePartition(ses
 const systemMailKept = 14 * 24 * 60 * 60;
 
 /**
- * Whether the message is mail Duva sent from its system address: from that address on one of the
- * organization's `domains`, with a DMARC pass, and with the Message-ID SES gave a message Duva
- * recorded sending. A send recorded only after the mail arrived goes unrecognized. A From forged without Duva's send record isn't.
+ * Whether the message is mail Duva sent: from an address on one of the organization's `domains`,
+ * with a DMARC pass, and with the Message-ID SES gave a message the sender recorded sending, from a
+ * mailbox or from Duva's system address. A send recorded only after the mail arrived goes
+ * unrecognized. A From forged without Duva's send record isn't.
  */
-export async function sentBySystem(table: Table, { from, dmarc, messageId }: { from: string; dmarc: string; messageId?: string }, domains: Set<string>): Promise<boolean> {
-  if (dmarc !== "PASS" || ![...domains].some((domain) => from === systemAddress(domain))) return false;
+export async function sentByDuva(table: Table, { from, dmarc, messageId }: { from: string; dmarc: string; messageId?: string }, domains: Set<string>): Promise<boolean> {
+  if (dmarc !== "PASS" || !domains.has(domainOf(from))) return false;
   // SES replaces the Message-ID of each message it sends with one made of the ID it gave it.
   const sesMessageId = /^<([^@<>\s]+)@[^<>\s]+\.amazonses\.com>$/.exec(messageId ?? "")?.[1];
   if (sesMessageId === undefined) return false;
+  if ((await sentBySes(table, sesMessageId)) !== undefined) return true;
   const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: systemMailKey(sesMessageId), ConsistentRead: true }));
   return Item !== undefined;
 }
