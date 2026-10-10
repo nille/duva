@@ -48,6 +48,7 @@ import { type AgentRuntime, type ConversationEvent, createConversation, type Pre
 import { createTaskGiver, createTaskRunner, type TaskRef, type TaskRunner, type TaskRunnerEvent } from "../src/tasks.ts";
 import { createUnsubscribeRunner } from "../src/unsubscribe-runs.ts";
 import { standInBrowser } from "./browser.ts";
+import { profileName } from "../src/browser-profiles.ts";
 import { createMcp } from "../src/mcp.ts";
 import { giveMailboxAgents, mailboxAgentName, mailboxAgentSettings, turnPrefix } from "../src/mailbox-agents.ts";
 import type { ReminderDue } from "../src/reminders.ts";
@@ -258,6 +259,8 @@ export interface Duva {
   searchObjects(): string[];
   /** The queries Web Search on AgentCore got from the mailbox agents, in order. */
   webSearches(): string[];
+  /** The browser profiles AgentCore Browser keeps, by name, which the humans' Coos browse in. */
+  browserProfiles(): string[];
   /**
    * Runs the eraser as its daily schedule does, at the time. With `s3DeletesFail`, S3 refuses to
    * delete anything during the run, which then fails, as a run that stops partway does.
@@ -366,6 +369,9 @@ export async function startDuva({
   const inboundLog: string[] = [];
   const dns = memoryDns();
   const internet = standInInternet();
+  // The mailbox agents browse in AgentCore Browser, a stand-in here over the stand-in internet,
+  // with the humans' profiles, which the API deletes.
+  const browser = standInBrowser(internet.network);
   const identities = sesIdentities({ region, dns, verified: [domain], others: othersIdentities, configurationSet: "duva-sending" });
   const signInSender = memorySignInSender(domain, identities.verified);
   // SES's events invoke the feedback Lambda, which changes SES's suppression list, so the two are tied once both exist.
@@ -509,6 +515,7 @@ export async function startDuva({
       hostedLogos,
       tasks: taskRunner,
       embedder: titan,
+      browserProfiles: { forget: async (human) => void browser.profiles.delete(profileName(human)) },
     }),
     // Cognito's verifier takes only the web app's and the CLI's app clients, which share the stand-in's one.
     createAuthorizer({
@@ -552,8 +559,6 @@ export async function startDuva({
   };
   // The mailbox agents' runtime on AgentCore, which calls the API over HTTPS. Its payload and what
   // it says go through JSON.
-  // It unsubscribes in AgentCore Browser, a stand-in here over the stand-in internet.
-  const browser = standInBrowser(internet.network);
   // It searches the web through the stack's gateway to Web Search, a stand-in here that keeps the queries.
   const queries: string[] = [];
   const searching: WebSearch = async (query) => {
@@ -698,6 +703,7 @@ export async function startDuva({
     },
     webServer: (hostname, options) => internet.webServer(hostname, options),
     webSearches: () => [...queries],
+    browserProfiles: () => [...browser.profiles.keys()],
     download: (url) => (url.startsWith(inProcess) ? api(new Request(url)) : fetch(url)),
     setUp: async ({ backfillLost = false, ...options }) => {
       await setUp(options);

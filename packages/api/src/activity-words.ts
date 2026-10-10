@@ -100,6 +100,9 @@ const list = (names: string[]) => (names.length < 2 ? names.join("") : `${names.
 const searched = (searches: components["schemas"]["WebSearch"][] | undefined) =>
   searches === undefined || searches.length === 0 ? "" : ` It searched the web for ${list(searches.map(({ query }) => `“${query}”`))}.`;
 
+/** What a line adds of what the agent's browsing did, if it browsed and the reader may read it. */
+const browsedOn = (browsed: components["schemas"]["Browsing"][] | undefined) => (browsed ?? []).map(({ site, said }) => ` On ${site}: “${said}”`).join("");
+
 /** The line of an alert: what it said, for its sponsor, or for anyone else, whom it went to and what it was about. */
 export const alertSaid = (alert: Alert, reader: { sponsor: true } | { sponsor: false; sponsorName: string }) =>
   reader.sponsor ? alert.what : `Duva alerted ${reader.sponsorName} that ${alertAbout[alert.kind]}.`;
@@ -205,8 +208,8 @@ export function changeSaid(change: Change, { who, agent, you }: Named, message?:
     case "agentHandedOver":
       return `${who} handed ${change.task === undefined ? "a turn" : "a task"} to ${models[change.handover.to]}, since ${handoverWhy[change.handover.reason]}.`;
     case "taskEnded":
-      if (change.outcome === "done") return (change.note === undefined ? `${who} finished a task.` : `${who} finished a task: “${change.note}”`) + searched(change.searches);
-      return (change.note === undefined ? `${who} couldn't finish a task.` : `${who} couldn't finish a task: “${change.note}”`) + searched(change.searches);
+      if (change.outcome === "done") return (change.note === undefined ? `${who} finished a task.` : `${who} finished a task: “${change.note}”`) + searched(change.searches) + browsedOn(change.browsed);
+      return (change.note === undefined ? `${who} couldn't finish a task.` : `${who} couldn't finish a task: “${change.note}”`) + searched(change.searches) + browsedOn(change.browsed);
     case "threadErased":
       return change.actor !== undefined ? `${who} erased a thread for good, emptying Trash.` : "Duva erased a thread for good, after the retention period.";
     case "agentSettingsChanged":

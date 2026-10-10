@@ -8,6 +8,7 @@ const mailboxAgentDefaults = {
   mailboxAgentHarderModel: "anthropic.claude-sonnet-5-5",
   mailboxAgentDecider: false,
   mailboxAgentWebSearch: true,
+  mailboxAgentBrowsing: true,
   mailboxAgentSpendCap: 20,
 };
 

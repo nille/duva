@@ -265,16 +265,18 @@ await check("the mailbox agents' AgentCore Runtime is ready, on Node.js 22, taki
   const runs = runtime.agentRuntimeArtifact?.codeConfiguration?.runtime;
   return runs === "NODE_22" ? undefined : `runs ${runs}`;
 });
-await check("the mailbox agents' unsubscribe browser is ready, on the public network, recording nothing (ADR-0031)", async () => {
+await check("the mailbox agents' browser is ready, on the public network, recording nothing, with a managed policy that refuses downloads (ADR-0031, ADR-0038)", async () => {
   if (agentRuntime === "") return `AgentCore isn't in ${region}, so mailbox agents unsubscribe without a browser here`;
   const control = new BedrockAgentCoreControlClient({ region });
   const runtime = await control.send(new GetAgentRuntimeCommand({ agentRuntimeId: agentRuntime.split("/").at(-1)! }));
-  const browserId = runtime.environmentVariables?.[environmentVariables.unsubscribeBrowser];
+  const browserId = runtime.environmentVariables?.[environmentVariables.browser];
   if (browserId === undefined) return "the runtime names no browser";
   const browser = await control.send(new GetBrowserCommand({ browserId }));
   if (browser.status !== "READY") return `is ${browser.status}${browser.failureReason ? `: ${browser.failureReason}` : ""}`;
   if (browser.networkConfiguration?.networkMode !== "PUBLIC") return `is on ${browser.networkConfiguration?.networkMode}`;
-  return browser.recording?.enabled === true ? "records its sessions" : undefined;
+  if (browser.recording?.enabled === true) return "records its sessions";
+  const policies = browser.enterprisePolicies ?? [];
+  return policies.length === 1 && policies[0]!.type === "MANAGED" ? undefined : `has the policies ${JSON.stringify(policies)}`;
 });
 await check("the mailbox agents search the web through a gateway in the search region, taking only IAM calls, with the Web Search target alone (ADR-0037)", async () => {
   if (agentRuntime === "") return `AgentCore isn't in ${region}, so mailbox agents don't search the web here`;

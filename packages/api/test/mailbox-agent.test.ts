@@ -542,6 +542,7 @@ test("setup carries over the models admins chose before as the organization's de
     mailboxAgentHarderModel: sonnet,
     mailboxAgentDecider: false,
     mailboxAgentWebSearch: true,
+    mailboxAgentBrowsing: true,
     mailboxAgentSpendCap: 20,
     linkedFilesCapGb: 20,
   });

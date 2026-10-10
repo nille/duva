@@ -1,6 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { Aws, CfnCondition, CfnOutput, CfnParameter, CfnResource, CustomResource, Duration, Fn, RemovalPolicy, Stack, type StackProps } from "aws-cdk-lib";
-import { AgentCoreRuntime, AgentRuntimeArtifact, BrowserCustom, BrowserNetworkConfiguration, Runtime as AgentRuntime } from "aws-cdk-lib/aws-bedrockagentcore";
+import { AgentCoreRuntime, AgentRuntimeArtifact, BrowserCustom, BrowserNetworkConfiguration, type CfnBrowserCustom, Runtime as AgentRuntime } from "aws-cdk-lib/aws-bedrockagentcore";
 import { CorsHttpMethod, HttpApi, HttpMethod } from "aws-cdk-lib/aws-apigatewayv2";
 import { HttpLambdaAuthorizer, HttpLambdaResponseType } from "aws-cdk-lib/aws-apigatewayv2-authorizers";
 import { HttpLambdaIntegration } from "aws-cdk-lib/aws-apigatewayv2-integrations";
@@ -26,6 +26,7 @@ import { DynamoEventSource, SqsDlq, SqsEventSource } from "aws-cdk-lib/aws-lambd
 import { NodejsFunction, OutputFormat } from "aws-cdk-lib/aws-lambda-nodejs";
 import { LogGroup, RetentionDays } from "aws-cdk-lib/aws-logs";
 import { BlockPublicAccess, Bucket, BucketEncryption, HttpMethods } from "aws-cdk-lib/aws-s3";
+import { Asset } from "aws-cdk-lib/aws-s3-assets";
 import { ScheduleGroup } from "aws-cdk-lib/aws-scheduler";
 import { ConfigurationSet, EmailIdentity, EmailSendingEvent, EventDestination, Identity, ReceiptRuleSet } from "aws-cdk-lib/aws-ses";
 import { Topic } from "aws-cdk-lib/aws-sns";
@@ -737,14 +738,19 @@ export class DuvaStack extends Stack {
     const agentsHere = new CfnCondition(this, "MailboxAgentsCondition", {
       expression: Fn.conditionNot(Fn.conditionOr(...regionsWithoutAgentCore.map((region) => Fn.conditionEquals(Aws.REGION, region)))),
     });
-    // They unsubscribe on senders' pages (ADR-0031) in AgentCore Browser: a fresh browser in a
-    // microVM of its own for each session, wiped when it ends, on AWS's network rather than one of
-    // the account's, recording nothing. It bills only while a session runs, which the runtime
-    // starts and stops (docs/research/unsubscribe-browser-and-bounce.md).
-    const unsubscribeBrowser = new BrowserCustom(this, "UnsubscribeBrowser", {
-      description: "The browser Duva's mailbox agents unsubscribe in",
+    // They browse, and unsubscribe on senders' pages (ADR-0031, ADR-0038), in AgentCore Browser: a
+    // browser in a microVM of its own for each session, wiped when it ends, on AWS's network rather
+    // than one of the account's, recording nothing. It bills only while a session runs, which the
+    // runtime starts and stops (docs/research/unsubscribe-browser-and-bounce.md). Its managed
+    // Chrome policy, which no session can override, refuses every download and saves no password,
+    // card or address. CloudFormation reads the policy from the file's asset as it creates the
+    // browser, which keeps it (docs/aws.md).
+    const browserPolicy = new Asset(this, "BrowserPolicy", { path: fileURLToPath(new URL("browser-policy.json", import.meta.url)) });
+    const browser = new BrowserCustom(this, "Browser", {
+      description: "The browser Duva's mailbox agents browse in",
       networkConfiguration: BrowserNetworkConfiguration.usingPublicNetwork(),
     });
+    (browser.node.defaultChild as CfnBrowserCustom).enterprisePolicies = [{ type: "MANAGED", location: { bucket: browserPolicy.s3BucketName, prefix: browserPolicy.s3ObjectKey } }];
     // They search the web (ADR-0037) through an AgentCore Gateway with Web Search's target, which
     // takes only SigV4 calls. Web Search runs only in three regions, so the gateway is in the one
     // nearest the deployment, where CloudFormation can't create it: a custom resource of the
@@ -781,12 +787,23 @@ export class DuvaStack extends Stack {
       description: "Duva's mailbox agents",
       agentRuntimeArtifact: AgentRuntimeArtifact.fromCodeAsset({ path: agentCode(), runtime: AgentCoreRuntime.NODE_22, entrypoint: [agentEntryPoint] }),
       lifecycleConfiguration: { idleRuntimeSessionTimeout: Duration.seconds(60), maxLifetime: Duration.hours(1) },
-      environmentVariables: { [environmentVariables.unsubscribeBrowser]: unsubscribeBrowser.browserId, [environmentVariables.webSearchGateway]: searchGateway.getAttString("Url") },
+      environmentVariables: { [environmentVariables.browser]: browser.browserId, [environmentVariables.webSearchGateway]: searchGateway.getAttString("Url") },
     });
-    unsubscribeBrowser.grantUse(agentRuntime.role);
+    browser.grantUse(agentRuntime.role);
+    // Each human's Coo browses in a profile of their own, which the runtime finds by its name,
+    // creates on their first browsing run, starts sessions with and saves back to (ADR-0038). Duva's
+    // profiles are named duva_ and the human, and are listed by name. The API deletes one when its
+    // human signs Coo out of every site, or is removed.
+    const browserProfiles = this.formatArn({ service: "bedrock-agentcore", resource: "browser-profile", resourceName: "duva_*" });
+    agentRuntime.addToRolePolicy(new PolicyStatement({ actions: ["bedrock-agentcore:CreateBrowserProfile", "bedrock-agentcore:StartBrowserSession", "bedrock-agentcore:SaveBrowserSessionProfile"], resources: [browserProfiles] }));
+    agentRuntime.addToRolePolicy(new PolicyStatement({ actions: ["bedrock-agentcore:SaveBrowserSessionProfile"], resources: [browser.browserArn] }));
+    handler.addToRolePolicy(new PolicyStatement({ actions: ["bedrock-agentcore:DeleteBrowserProfile"], resources: [browserProfiles] }));
+    const allProfiles = this.formatArn({ service: "bedrock-agentcore", resource: "browser-profile", resourceName: "*" });
+    for (const listing of [agentRuntime, handler]) listing.addToRolePolicy(new PolicyStatement({ actions: ["bedrock-agentcore:ListBrowserProfiles"], resources: [allProfiles] }));
+    handler.addEnvironment(environmentVariables.browser, Fn.conditionIf(agentsHere.logicalId, browser.browserId, "").toString());
     agentRuntime.addToRolePolicy(new PolicyStatement({ actions: ["bedrock-agentcore:InvokeGateway"], resources: [searchGateway.getAttString("Arn")] }));
     const searching = [searchRole, gatewayMaker, this.node.findChild("WebSearchGatewayLogs"), searchGateway];
-    for (const construct of [agentRuntime, unsubscribeBrowser, ...searching]) for (const resource of construct.node.findAll()) if (resource instanceof CfnResource) resource.cfnOptions.condition = agentsHere;
+    for (const construct of [agentRuntime, browser, ...searching]) for (const resource of construct.node.findAll()) if (resource instanceof CfnResource) resource.cfnOptions.condition = agentsHere;
     // The agents call their model in the model region the organization chose, through its eu, us or
     // global inference profile, which may send it on to that profile's regions (docs/aws.md). So
     // the role may invoke the models admins can choose through the profiles each has in any region,

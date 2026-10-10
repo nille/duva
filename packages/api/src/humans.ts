@@ -88,6 +88,8 @@ export const removeHuman: OperationHandler = async (event, deployment, actor) =>
     if (error instanceof LastAdmin) return lastAdmin;
     throw error;
   }
+  // Their Coo is signed out of every site, with the profile it browsed in (ADR-0038).
+  await deployment.browserProfiles.forget(human.id);
   // Their sessions already stop at the authorizer, and from here on they can't sign in or renew one.
   const sub = await deployment.humans.remove(human.email);
   if (sub !== undefined) await forgetSignIn(deployment.table, sub);

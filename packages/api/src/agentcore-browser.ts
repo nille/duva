@@ -1,10 +1,14 @@
-// AgentCore Browser as the mailbox agent's isolated browser (ADR-0031, docs/aws.md): each session is
-// a fresh browser in a microVM of its own, wiped when it ends, which Duva drives over the session's
-// automation stream, a WebSocket speaking the Chrome DevTools Protocol, signed with SigV4. Pages are
-// read and acted on by a script Duva evaluates in them, which numbers their elements.
+// AgentCore Browser as the mailbox agent's isolated browser (ADR-0031, ADR-0038, docs/aws.md): each
+// session is a browser in a microVM of its own, wiped when it ends, which Duva drives over the
+// session's automation stream, a WebSocket speaking the Chrome DevTools Protocol, signed with SigV4.
+// A session with a human's profile starts with what the profile kept, and saves what it holds back
+// to it as it ends. The browser's managed policy refuses every download, and so does each session.
+// Pages are read and acted on by a script Duva evaluates in them, which numbers their elements.
 import { createHash, createHmac } from "node:crypto";
-import { BedrockAgentCoreClient, StartBrowserSessionCommand, StopBrowserSessionCommand } from "@aws-sdk/client-bedrock-agentcore";
+import { BedrockAgentCoreClient, SaveBrowserSessionProfileCommand, StartBrowserSessionCommand, StopBrowserSessionCommand } from "@aws-sdk/client-bedrock-agentcore";
+import { BedrockAgentCoreControlClient } from "@aws-sdk/client-bedrock-agentcore-control";
 import { SignatureV4 } from "@smithy/signature-v4";
+import { profileFor } from "./browser-profiles.ts";
 import { type Browser, type BrowserSession, pageTextAtMost, type PageView } from "./browser.ts";
 
 /** How long a session may last at most, in seconds, in case Duva doesn't stop it. */
@@ -18,14 +22,28 @@ const commandTimeout = 20_000;
 export function agentCoreBrowser(browserId: string): Browser | undefined {
   if (browserId === "") return undefined;
   const agentCore = new BedrockAgentCoreClient({});
-  return async () => {
-    const { sessionId, streams } = await agentCore.send(new StartBrowserSessionCommand({ browserIdentifier: browserId, sessionTimeoutSeconds: sessionTimeout, viewPort: { width: 1280, height: 900 } }));
-    const stop = () => agentCore.send(new StopBrowserSessionCommand({ browserIdentifier: browserId, sessionId })).then(() => undefined);
+  const control = new BedrockAgentCoreControlClient({});
+  return async ({ profile } = {}) => {
+    const profileId = profile === undefined ? undefined : await profileFor(control, profile);
+    const { sessionId, streams } = await agentCore.send(
+      new StartBrowserSessionCommand({
+        browserIdentifier: browserId,
+        sessionTimeoutSeconds: sessionTimeout,
+        viewPort: { width: 1280, height: 900 },
+        ...(profileId !== undefined && { profileConfiguration: { profileIdentifier: profileId } }),
+      }),
+    );
+    const stopSession = () => agentCore.send(new StopBrowserSessionCommand({ browserIdentifier: browserId, sessionId })).then(() => undefined);
+    // A profile is saved from a session still running. One deleted meanwhile, as by signing Coo out, isn't there to save to.
+    const saveAndStop = async () => {
+      if (profileId !== undefined) await agentCore.send(new SaveBrowserSessionProfileCommand({ browserIdentifier: browserId, sessionId, profileIdentifier: profileId })).catch((error: unknown) => console.error(error));
+      await stopSession();
+    };
     try {
       const endpoint = streams!.automationStream!.streamEndpoint!;
-      return await devToolsSession(endpoint, await signedHeaders(agentCore, endpoint), stop);
+      return await devToolsSession(endpoint, await signedHeaders(agentCore, endpoint), saveAndStop);
     } catch (error) {
-      await stop().catch((stopping: unknown) => console.error(stopping));
+      await stopSession().catch((failed: unknown) => console.error(failed));
       throw error;
     }
   };
@@ -36,7 +54,12 @@ export function agentCoreBrowser(browserId: string): Browser | undefined {
  * Closing it closes the connection, then calls `close`.
  */
 export async function devToolsSession(endpoint: string, headers: Record<string, string>, close: () => Promise<void>): Promise<BrowserSession> {
-  const cdp = await devTools(endpoint, headers);
+  // A download the page starts is refused, as the browser's policy refuses it, and the next page read says so.
+  let downloadRefused = false;
+  const cdp = await devTools(endpoint, headers, (method) => {
+    if (method === "Browser.downloadWillBegin" || method === "Browser.downloadProgress") downloadRefused = true;
+  });
+  await cdp.send("Browser.setDownloadBehavior", { behavior: "deny", eventsEnabled: true });
   const { targetId } = (await cdp.send("Target.createTarget", { url: "about:blank" })) as { targetId: string };
   const { sessionId: page } = (await cdp.send("Target.attachToTarget", { targetId, flatten: true })) as { sessionId: string };
   const evaluate = async (expression: string) => {
@@ -53,7 +76,10 @@ export async function devToolsSession(endpoint: string, headers: Record<string, 
       if (state === "complete" || Date.now() > deadline) break;
       await sleep(250);
     }
-    return (await evaluate(readPage)) as PageView;
+    const view = (await evaluate(readPage)) as PageView;
+    const refused = downloadRefused;
+    downloadRefused = false;
+    return refused ? { ...view, downloadRefused: true } : view;
   };
   const act = async (script: string) => {
     await evaluate(script);
@@ -67,6 +93,8 @@ export async function devToolsSession(endpoint: string, headers: Record<string, 
     fill: (index, value) => act(`(${fill})(${index}, ${JSON.stringify(value)})`),
     choose: (index, option) => act(`(${choose})(${index}, ${JSON.stringify(option ?? null)})`),
     click: (index) => act(`(${click})(${index})`),
+    submit: (index) => act(`(${submit})(${index})`),
+    read: () => settled(),
     async close() {
       cdp.close();
       await close();
@@ -117,7 +145,7 @@ export class Sha256 {
 }
 
 /** A connection to a browser over the Chrome DevTools Protocol, sending each command to the browser or to a page's session. */
-async function devTools(endpoint: string, headers: Record<string, string>) {
+async function devTools(endpoint: string, headers: Record<string, string>, onEvent: (method: string) => void = () => {}) {
   // Node's WebSocket takes headers for the handshake, beyond what browsers' does.
   const socket = new WebSocket(endpoint, { headers } as unknown as string[]);
   await new Promise<void>((resolve, reject) => {
@@ -127,7 +155,8 @@ async function devTools(endpoint: string, headers: Record<string, string>) {
   let next = 1;
   const pending = new Map<number, { resolve: (result: unknown) => void; reject: (error: Error) => void }>();
   socket.addEventListener("message", ({ data }) => {
-    const message = JSON.parse(String(data)) as { id?: number; result?: unknown; error?: { message: string } };
+    const message = JSON.parse(String(data)) as { id?: number; method?: string; result?: unknown; error?: { message: string } };
+    if (message.method !== undefined) onEvent(message.method);
     const waiting = message.id === undefined ? undefined : pending.get(message.id);
     if (waiting === undefined) return;
     pending.delete(message.id!);
@@ -178,12 +207,14 @@ const readPage = `(() => {
       const type = (element.getAttribute("type") || "").toLowerCase();
       // A select's own text is its options'.
       if (tag === "select") return { index, kind: "select", label: words(element.labels?.[0]?.innerText) || words(element.getAttribute("aria-label")) || words(element.name), options: [...element.options].map((option) => words(option.text)) };
-      if (tag === "a") return { index, kind: "link", label: labelOf(element) };
+      if (tag === "a") return { index, kind: "link", label: labelOf(element), ...(element.hasAttribute("download") && { download: true }) };
       if (tag === "button" || element.getAttribute("role") === "button" || ["submit", "button", "image", "reset"].includes(type)) return { index, kind: "button", label: labelOf(element) };
       if (type === "checkbox" || type === "radio") return { index, kind: type, label: labelOf(element), checked: element.checked };
-      return { index, kind: "field", label: labelOf(element), type: type || (tag === "textarea" ? "textarea" : "text"), value: element.value };
+      const autocomplete = (element.getAttribute("autocomplete") || "").toLowerCase();
+      return { index, kind: "field", label: labelOf(element), type: type || (tag === "textarea" ? "textarea" : "text"), value: element.value, ...(autocomplete && { autocomplete }) };
     });
-  return { url: location.href, title: document.title, text: (document.body?.innerText || "").slice(0, ${pageTextAtMost}), elements };
+  const frames = [...document.querySelectorAll("iframe[src]")].flatMap((frame) => { try { return [new URL(frame.src).hostname]; } catch { return []; } });
+  return { url: location.href, title: document.title, text: (document.body?.innerText || "").slice(0, ${pageTextAtMost}), elements, frames };
 })()`;
 
 const fill = `(index, value) => {
@@ -207,4 +238,10 @@ const choose = `(index, option) => {
 
 const click = `(index) => {
   document.querySelector('[data-duva-element="' + index + '"]').click();
+}`;
+
+const submit = `(index) => {
+  const form = document.querySelector('[data-duva-element="' + index + '"]').closest("form");
+  if (form === null) throw new Error("The element isn't in a form.");
+  form.requestSubmit();
 }`;

@@ -9,6 +9,7 @@ const mailboxAgentDefaults = {
   mailboxAgentHarderModel: "anthropic.claude-sonnet-5-5",
   mailboxAgentDecider: false,
   mailboxAgentWebSearch: true,
+  mailboxAgentBrowsing: true,
   mailboxAgentSpendCap: 20,
 };
 
@@ -350,7 +351,7 @@ test("a human chooses 24-hour time and ISO dates, and the Inbox and a thread sho
   await you(page).getByRole("button", { name: "Save" }).click();
 
   await expect.poll(() => you(page).getByRole("status").textContent(), wait).toBe(saved);
-  expect((await grace.GET("/preferences")).data).toEqual({ hourCycle: "h23", dateFormat: "iso", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "on", cooLearnsFromMail: "on", cooWebSearch: "on", opensOn: "all", newMailFrom: "grace@example.com" });
+  expect((await grace.GET("/preferences")).data).toEqual({ hourCycle: "h23", dateFormat: "iso", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "on", cooLearnsFromMail: "on", cooWebSearch: "on", cooBrowsing: "on", opensOn: "all", newMailFrom: "grace@example.com" });
 
   await page.getByRole("navigation").getByRole("link", { name: "Mail", exact: true }).click();
   await expect.poll(() => row(page, "Lunch").textContent(), wait).toBe("09:15");
@@ -370,7 +371,7 @@ test("each choice of how times and dates show has an example from today", budget
 
   await openSettings(page);
 
-  await expect.poll(() => you(page).getByRole("radio").count(), wait).toBe(15);
+  await expect.poll(() => you(page).getByRole("radio").count(), wait).toBe(17);
   const examples = await you(page).locator(".choices-short .choice").evaluateAll((choices) => choices.map((choice) => choice.querySelector(".hint")?.textContent));
   expect(examples).toEqual(["02:30 PM", "2:30 PM", "14:30", "Oct 5, 2026", "2026-10-05", "5 Oct 2026", "Oct 5, 2026"]);
 });
@@ -478,4 +479,65 @@ test("a human turns web search off for their own Coo under Preferences, told whe
   await duva.signIn("ada@example.org").PATCH("/organization/settings", { body: { mailboxAgentWebSearch: false } });
   await page.reload();
   await expect.poll(() => you(page).getByRole("group", { name: "Coo searches the web" }).getByText("An admin turned web search off for the organization").isVisible(), wait).toBe(true);
+});
+
+test("an admin turns browsing off for the organization's Coos, on the Mailbox agents sheet, which says plainly that Coo logs in and submits forms without asking", budget, async () => {
+  const { page, signIn, duva } = await withOrganization();
+  await signIn("ada@example.org");
+  await openSettings(page, "Mail and agents");
+  const sheet = page.getByRole("region", { name: "Mailbox agents" });
+  const browsing = sheet.getByRole("checkbox", { name: /^Coo may browse and act on pages/ });
+  await expect.poll(() => browsing.isChecked(), wait).toBe(true);
+  expect(await sheet.getByText(/logs in as its human with a code the site mails them, and submits forms for them without asking/).isVisible()).toBe(true);
+
+  await browsing.uncheck();
+  await sheet.getByRole("button", { name: "Save" }).click();
+
+  await expect.poll(async () => (await duva.signIn("ada@example.org").GET("/organization/settings")).data?.mailboxAgentBrowsing, wait).toBe(false);
+});
+
+test("a human turns browsing off for their own Coo under Preferences, told that it logs in and submits forms for them without asking, and that an admin turned it off once one has", budget, async () => {
+  const { page, signIn, duva } = await withOrganization();
+  await signIn("grace@example.org");
+  await openSettings(page);
+  const group = you(page).getByRole("group", { name: "Coo browses for you" });
+  await expect.poll(() => group.getByRole("radio", { name: /^On/ }).isChecked(), wait).toBe(true);
+  expect(await group.innerText()).toContain("It logs in as you with a code the site mails you, and submits forms for you without asking");
+
+  await group.getByRole("radio", { name: /^Off/ }).check();
+  await you(page).getByRole("button", { name: "Save" }).click();
+
+  const grace = duva.signIn("grace@example.org");
+  await expect.poll(async () => (await grace.GET("/preferences")).data?.cooBrowsing, wait).toBe("off");
+  await duva.signIn("ada@example.org").PATCH("/organization/settings", { body: { mailboxAgentBrowsing: false } });
+  await page.reload();
+  await expect.poll(() => you(page).getByRole("group", { name: "Coo browses for you" }).getByText("An admin turned browsing off for the organization").isVisible(), wait).toBe(true);
+});
+
+test("a human signs their Coo out of every site it logged in to, under Preferences, at once", budget, async () => {
+  // Coo browses once, so its human's profile holds what the site set.
+  let step = 0;
+  const steps = [
+    () => [{ toolUse: { toolUseId: "browse", name: "browse", input: { url: "https://shop.example.net/", goal: "Look at the shop.", values: [] } } }],
+    () => [{ toolUse: { toolUseId: "finish", name: "finish", input: { done: true, said: "It looked at the shop." } } }],
+  ];
+  const model: NonNullable<Parameters<typeof startWebApp>[0]>["model"] = async function* () {
+    for (const event of steps[step++]?.() ?? [{ text: "Done." }]) yield event;
+    yield { usage: { inputTokens: 1000, outputTokens: 100 } };
+  };
+  const { page, signIn, duva } = await startWebApp({ domain: "example.com", admin: "ada@example.org", humans: ["grace@example.org"], model });
+  const ada = duva.signIn("ada@example.org");
+  const { data: whoami } = await duva.signIn("grace@example.org").GET("/whoami");
+  await ada.POST("/mailboxes", { body: { owner: whoami!.id, address: "grace@example.com" } });
+  await duva.webServer("shop.example.net", { answer: () => new Response("<p>Welcome back.</p>", { headers: { "content-type": "text/html", "set-cookie": "session=1" } }) });
+  await duva.askAgent("grace@example.org", { words: "Look at the shop." });
+  expect(duva.browserProfiles()).toHaveLength(1);
+  await signIn("grace@example.org");
+  await openSettings(page);
+  const group = you(page).getByRole("group", { name: "Coo browses for you" });
+
+  await group.getByRole("button", { name: "Sign Coo out of every site" }).click();
+
+  await expect.poll(() => group.getByRole("status").innerText(), wait).toBe("Coo is signed out of every site.");
+  expect(duva.browserProfiles()).toEqual([]);
 });

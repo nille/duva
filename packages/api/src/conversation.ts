@@ -104,7 +104,7 @@ export async function* runTurn(table: Table, runtime: AgentRuntime, embedder: Em
   const ran = runMailboxAgent(table, { agent, payload, runtime, month, cap });
   let next = await ran.next();
   for (; !next.done; next = await ran.next()) yield next.value;
-  const { text, actions, searches, outcome, model, cost, decision, handover } = next.value;
+  const { text, actions, searches, browsed, outcome, model, cost, decision, handover } = next.value;
   const answer: Omit<ConversationTurn, "id" | "at"> = {
     from: "agent",
     ...(payload.mailbox !== undefined && { mailbox: payload.mailbox }),
@@ -118,6 +118,7 @@ export async function* runTurn(table: Table, runtime: AgentRuntime, embedder: Em
     // Its first memory from mail, kept in this turn or a task before it, is said once (ADR-0036).
     ...((await firstMemoryNoted(table, human.id)) && { firstMemory: true }),
     ...(searches && { searches }),
+    ...(browsed && { browsed }),
   };
   const answered = await addTurn(table, human, answer, turn.at);
   // Recorded before the stream ends, so a reader that stops at done still leaves it in the feed.
@@ -301,7 +302,7 @@ export async function turnsOf(table: Table, human: string, limit: number): Promi
     }),
   );
   return Items.reverse().map(
-    ({ id, at, from, mailbox, text, actions, outcome, model, decision, handover, harder, searches }) =>
+    ({ id, at, from, mailbox, text, actions, outcome, model, decision, handover, harder, searches, browsed }) =>
       ({
         id,
         at,
@@ -315,6 +316,7 @@ export async function turnsOf(table: Table, human: string, limit: number): Promi
         ...(handover !== undefined && { handover }),
         ...(harder !== undefined && { harder }),
         ...(searches !== undefined && { searches }),
+        ...(browsed !== undefined && { browsed }),
       }) as ConversationTurn,
   );
 }
@@ -361,4 +363,11 @@ export const getMailboxAgentSpend: OperationHandler = async (_event, deployment,
   const month = monthOf(new Date());
   const { settings } = await organizationSettings(deployment.table);
   return { statusCode: 200, body: { month, spent: await spentIn(deployment.table, month), cap: settings.mailboxAgentSpendCap } satisfies components["schemas"]["MailboxAgentSpend"] };
+};
+
+/** Signs the human's Coo out of every site, deleting the browser profile it browses in (ADR-0038). */
+export const signCooOut: OperationHandler = async (_event, deployment, actor) => {
+  if (actor?.kind !== "human") return refusal(403, "Only humans have a Coo to sign out. Ask a human to sign theirs out.");
+  await deployment.browserProfiles.forget(actor.id);
+  return { statusCode: 200, body: { signedOutAt: new Date().toISOString() } satisfies components["schemas"]["CooSignedOut"] };
 };

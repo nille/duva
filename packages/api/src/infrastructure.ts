@@ -70,8 +70,12 @@ export const environmentVariables = {
   schedulerRole: "SCHEDULER_ROLE",
   /** The ARN of the mailbox agents' AgentCore Runtime, which the conversation Lambda invokes for each turn. */
   agentRuntime: "AGENT_RUNTIME",
-  /** The ID of the AgentCore Browser the mailbox agents unsubscribe in, which their runtime starts a session of for each attempt. */
-  unsubscribeBrowser: "UNSUBSCRIBE_BROWSER",
+  /**
+   * The ID of the AgentCore Browser the mailbox agents browse and unsubscribe in, which their runtime
+   * starts a session of for each run, or empty where the stack left it out. The API, which deletes
+   * the humans' browser profiles, reads it to tell whether there are any (ADR-0038).
+   */
+  browser: "BROWSER",
   /** The MCP URL of the AgentCore Gateway with the Web Search target, in the search region, which the mailbox agents' runtime searches the web through (ADR-0037). */
   webSearchGateway: "WEB_SEARCH_GATEWAY",
   /** The name of the SSM parameter that holds the URL of Duva's API, which a mailbox agent calls as its tools. */

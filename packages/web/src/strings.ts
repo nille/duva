@@ -365,6 +365,8 @@ export const strings = {
     searched: (query: string) => `Searched the web for “${query}”`,
     sources: "Sources",
     noSources: "It found nothing.",
+    browsed: "What it did on web pages",
+    browsedOn: (site: string) => `On ${site}:`,
     open: {
       thread: "the thread",
       threads: (count: number) => `${count} threads`,
@@ -830,6 +832,11 @@ export const strings = {
         hint: (place: string) =>
           `In Ask Coo, in labels' tasks and while unsubscribing, Coo looks up what the mail doesn't say, and shows its sources. A query may carry what the mail says, as a tracking number, and goes to Amazon's own web search ${place}. AWS doesn't say how long it keeps queries. Each costs $0.007, counted toward the spend cap. Each human can also turn it off for their own Coo.`,
       },
+      browsing: {
+        legend: "Browsing",
+        label: "Coo may browse and act on pages",
+        hint: "In Ask Coo and in labels' tasks, Coo opens links from the mail or a web search and acts on the page on its own. It logs in as its human with a code the site mails them, and submits forms for them without asking. It never pays, types a password, or downloads or uploads a file, and Duva keeps only a sentence of what it did. Browser time and the tokens it takes count toward the spend cap. Each human can also turn it off for their own Coo.",
+      },
       cap: {
         legend: "Spend cap",
         label: "US dollars a month",
@@ -931,6 +938,20 @@ export const strings = {
       off: "Off",
       offHint: "Coo keeps to your mail.",
       organizationOff: "An admin turned web search off for the organization, so Coo doesn't search either way.",
+    },
+    cooBrowsing: {
+      legend: "Coo browses for you",
+      lead: "Coo opens links from your mail or a web search and acts on the page on its own. It logs in as you with a code the site mails you, and submits forms for you without asking, then says in a sentence what it did. It never pays, types a password, or downloads a file.",
+      on: "On",
+      onHint: "Coo stays logged in to the sites it used, for next time. This is the default.",
+      off: "Off",
+      offHint: "Coo keeps off web pages. The sites it logged in to stay until you sign it out.",
+      organizationOff: "An admin turned browsing off for the organization, so Coo doesn't browse either way.",
+      signOut: "Sign Coo out of every site",
+      signOutLead: "Clears the logins, cookies and storage Coo keeps. It logs in again, with a code the site mails you, when its work needs it.",
+      signingOut: "Signing Coo out…",
+      signedOut: "Coo is signed out of every site.",
+      signOutFailed: "Duva couldn't sign Coo out. Try again.",
     },
     /** Where the mailbox agents' web searches go, by the region Status names. */
     webSearchPlace: (region: string | undefined) =>
@@ -1562,6 +1583,7 @@ export const strings = {
       failure: "Why it failed",
       note: "Note",
       searches: "Searched the web",
+      browsed: "Browsed",
       alert: "Alert",
       openThread: "Open the thread",
       openDraft: (count: number, of: number) => (of === 1 ? "Open the draft" : `Open draft ${count}`),

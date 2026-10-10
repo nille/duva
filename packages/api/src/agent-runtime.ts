@@ -18,7 +18,7 @@ import type { WebSearch } from "./web-search.ts";
  */
 export function createRuntimeServer(
   modelsFor: (payload: RunPayload) => Models = ({ model }) => bedrockModels({ region: model.region }),
-  browser: Browser | undefined = agentCoreBrowser(process.env[environmentVariables.unsubscribeBrowser] ?? ""),
+  browser: Browser | undefined = agentCoreBrowser(process.env[environmentVariables.browser] ?? ""),
   deciderFor: (payload: RunPayload) => Decider = ({ model }) => bedrockDecider({ region: model.region }),
   webSearch: WebSearch | undefined = agentCoreWebSearch(process.env[environmentVariables.webSearchGateway] ?? ""),
 ): Server {

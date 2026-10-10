@@ -1,0 +1,6 @@
+{
+  "DownloadRestrictions": 3,
+  "PasswordManagerEnabled": false,
+  "AutofillCreditCardEnabled": false,
+  "AutofillAddressEnabled": false
+}

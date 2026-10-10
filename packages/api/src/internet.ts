@@ -4,7 +4,7 @@
 // is public once resolved, and connects to the address it checked, so DNS can't answer differently
 // in between. It sends no cookies and no referrer.
 import { lookup } from "node:dns/promises";
-import { request } from "node:http";
+import { type IncomingHttpHeaders, request } from "node:http";
 import { BlockList, connect, isIP, type Socket } from "node:net";
 import { connect as connectTls } from "node:tls";
 
@@ -24,10 +24,11 @@ export const internet: Network = {
   connect: (address, port) => connect({ host: address, port }),
 };
 
-/** What a server answered: its status, where it redirects to, and with `maxBytes`, its body. */
+/** What a server answered: its status, where it redirects to, its headers, and with `maxBytes`, its body. */
 export interface Answer {
   status: number;
   location?: string;
+  headers?: IncomingHttpHeaders;
   body?: Uint8Array;
 }
 
@@ -69,7 +70,7 @@ export async function sendPublic(
         },
       },
       (incoming) => {
-        const answer = { status: incoming.statusCode ?? 0, location: incoming.headers.location };
+        const answer = { status: incoming.statusCode ?? 0, location: incoming.headers.location, headers: incoming.headers };
         if (maxBytes === undefined) {
           resolve(answer);
           return void incoming.destroy();

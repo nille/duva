@@ -1130,6 +1130,7 @@ export const defaultSettings: OrganizationSettings = {
   mailboxAgentHarderModel: defaultHarderModel,
   mailboxAgentDecider: false,
   mailboxAgentWebSearch: true,
+  mailboxAgentBrowsing: true,
   mailboxAgentSpendCap: 20,
   linkedFilesCapGb: 20,
 };

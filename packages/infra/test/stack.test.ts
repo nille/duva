@@ -1007,7 +1007,7 @@ test("one AgentCore Runtime serves the mailbox agents, on Node.js 22 from the co
   expect(runtime.Properties?.LifecycleConfiguration).toEqual({ IdleRuntimeSessionTimeout: 60, MaxLifetime: 3600 });
 });
 
-test("the mailbox agents unsubscribe in an AgentCore Browser of the stack's own, on the public network, recording nothing, which only their runtime may use", () => {
+test("the mailbox agents browse in an AgentCore Browser of the stack's own, on the public network, recording nothing, which only their runtime may use", () => {
   const browsers = ofType("AWS::BedrockAgentCore::BrowserCustom");
   expect(browsers).toHaveLength(1);
   const [[browserId, browser]] = browsers as [[string, Resource]];
@@ -1015,13 +1015,37 @@ test("the mailbox agents unsubscribe in an AgentCore Browser of the stack's own,
   expect(browser.Properties?.RecordingConfig).toEqual({ Enabled: false });
   expect((stack.template.Resources[browserId] as { Condition?: string }).Condition).toBe("MailboxAgentsCondition");
   const runtime = resources.find(([, { Type }]) => Type === "AWS::BedrockAgentCore::Runtime")!;
-  expect(runtime[1].Properties?.EnvironmentVariables?.[environmentVariables.unsubscribeBrowser]).toEqual({ "Fn::GetAtt": [browserId, "BrowserId"] });
+  expect(runtime[1].Properties?.EnvironmentVariables?.[environmentVariables.browser]).toEqual({ "Fn::GetAtt": [browserId, "BrowserId"] });
   const onBrowser = ofType("AWS::IAM::Policy")
     .filter(([, { Properties }]) => JSON.stringify(Properties?.PolicyDocument).includes(`"${browserId}"`))
     .map(([, { Properties }]) => (Properties?.Roles ?? []).map((role: { Ref: string }) => role.Ref));
   const role = (runtime[1].Properties?.RoleArn as { "Fn::GetAtt": string[] })["Fn::GetAtt"][0]!;
   expect(onBrowser).toEqual([[role]]);
   expect(actions("TaskRunnerHandler", "bedrock-agentcore").some((action) => action.includes("Browser"))).toBe(false);
+});
+
+test("the browser's managed Chrome policy, from a file in the deploy's assets, refuses every download and saves no password, card or address", () => {
+  const [[, browser]] = ofType("AWS::BedrockAgentCore::BrowserCustom") as [[string, Resource]];
+  const [policy, ...others] = browser.Properties?.EnterprisePolicies as { Type: string; Location: { Bucket: unknown; Prefix: string } }[];
+  expect(others).toEqual([]);
+  expect(policy!.Type).toBe("MANAGED");
+  const assets = JSON.parse(readFileSync(join(outdir, `${stack.id}.assets.json`), "utf8")) as { files: Record<string, { source: { path: string } }> };
+  const file = assets.files[policy!.Location.Prefix.replace(/\.json$/, "")];
+  expect(policy!.Location.Prefix).toMatch(/\.json$/);
+  expect(JSON.parse(readFileSync(join(outdir, file!.source.path), "utf8"))).toEqual({ DownloadRestrictions: 3, PasswordManagerEnabled: false, AutofillCreditCardEnabled: false, AutofillAddressEnabled: false });
+});
+
+test("each human's browser profile is Duva's, which the runtime creates, starts sessions with and saves, and the API only deletes", () => {
+  const runtime = resources.find(([, { Type }]) => Type === "AWS::BedrockAgentCore::Runtime")!;
+  const role = (runtime[1].Properties?.RoleArn as { "Fn::GetAtt": string[] })["Fn::GetAtt"][0]!;
+  const runtimeStatements = ofType("AWS::IAM::Policy")
+    .filter(([, { Properties }]) => (Properties?.Roles ?? []).some((ref: { Ref: string }) => ref.Ref === role))
+    .flatMap(([, { Properties }]) => Properties?.PolicyDocument?.Statement as { Action: string | string[]; Resource: unknown }[]);
+  const onProfiles = (found: { Action: string | string[]; Resource: unknown }[]) =>
+    found.filter(({ Resource }) => JSON.stringify(Resource).includes(":browser-profile/duva_*")).flatMap(({ Action }) => [Action].flat()).sort();
+  expect(onProfiles(runtimeStatements)).toEqual(["bedrock-agentcore:CreateBrowserProfile", "bedrock-agentcore:SaveBrowserSessionProfile", "bedrock-agentcore:StartBrowserSession"]);
+  expect(onProfiles(statements("ApiHandler"))).toEqual(["bedrock-agentcore:DeleteBrowserProfile"]);
+  expect(actions("ApiHandler", "bedrock-agentcore").sort()).toEqual(["bedrock-agentcore:DeleteBrowserProfile", "bedrock-agentcore:ListBrowserProfiles"]);
 });
 
 test("the mailbox agents search the web through a gateway the stack's custom resource makes, which only CloudFormation invokes, and only their runtime may call", () => {

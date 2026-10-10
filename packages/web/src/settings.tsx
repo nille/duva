@@ -714,7 +714,7 @@ function AgentsSheet({ client, onSignedOut }: { client: DuvaClient; onSignedOut:
   );
 }
 
-type MailboxAgentsSettings = Pick<OrganizationSettings, "mailboxAgentAllowedModels" | "mailboxAgentModel" | "mailboxAgentHarderModel" | "mailboxAgentDecider" | "mailboxAgentWebSearch" | "mailboxAgentSpendCap">;
+type MailboxAgentsSettings = Pick<OrganizationSettings, "mailboxAgentAllowedModels" | "mailboxAgentModel" | "mailboxAgentHarderModel" | "mailboxAgentDecider" | "mailboxAgentWebSearch" | "mailboxAgentBrowsing" | "mailboxAgentSpendCap">;
 type Model = MailboxAgentsSettings["mailboxAgentModel"];
 type MeasuredModel = components["schemas"]["MeasuredModel"];
 const organizationModels = ["mailboxAgentModel", "mailboxAgentHarderModel"] as const;
@@ -747,18 +747,19 @@ function useMeasuredModels(client: DuvaClient): { models?: MeasuredModel[]; fail
  * The organization's Mailbox agents sheet: the measured models humans may choose, each with its
  * flag, how it did on Coo's evaluation and what a task costs, the organization's everyday and
  * harder models among them, whether they may search the web, saying where queries go (ADR-0037),
- * and the spend cap, with what they spent this month (ADR-0027, ADR-0035).
+ * whether they may browse and act on pages (ADR-0038), and the spend cap, with what they spent this month (ADR-0027, ADR-0035).
  * Allowing a model that processes mail outside the deployment's continent says so first.
  */
 function MailboxAgentsSheet({ client, onSignedOut }: { client: DuvaClient; onSignedOut: () => void }) {
   const { sheet } = useOrganizationSheet<MailboxAgentsSettings>(
     client,
-    ({ mailboxAgentAllowedModels, mailboxAgentModel, mailboxAgentHarderModel, mailboxAgentDecider, mailboxAgentWebSearch, mailboxAgentSpendCap }) => ({
+    ({ mailboxAgentAllowedModels, mailboxAgentModel, mailboxAgentHarderModel, mailboxAgentDecider, mailboxAgentWebSearch, mailboxAgentBrowsing, mailboxAgentSpendCap }) => ({
       mailboxAgentAllowedModels,
       mailboxAgentModel,
       mailboxAgentHarderModel,
       mailboxAgentDecider,
       mailboxAgentWebSearch,
+      mailboxAgentBrowsing,
       mailboxAgentSpendCap,
     }),
     onSignedOut,
@@ -881,6 +882,16 @@ function MailboxAgentsSheet({ client, onSignedOut }: { client: DuvaClient; onSig
                 <span className="choice-text">
                   <span className="choice-name">{copy.webSearch.label}</span>
                   <span className="hint">{copy.webSearch.hint(strings.settings.webSearchPlace(searchRegion))}</span>
+                </span>
+              </label>
+            </fieldset>
+            <fieldset>
+              <legend>{copy.browsing.legend}</legend>
+              <label className="choice">
+                <input type="checkbox" checked={chosen.mailboxAgentBrowsing} onChange={(event) => sheet.choose({ mailboxAgentBrowsing: event.target.checked })} />
+                <span className="choice-text">
+                  <span className="choice-name">{copy.browsing.label}</span>
+                  <span className="hint">{copy.browsing.hint}</span>
                 </span>
               </label>
             </fieldset>
@@ -1085,11 +1096,42 @@ const mailViews: Preferences["mailView"][] = ["html", "text"];
 const keyboardShortcuts: Preferences["keyboardShortcuts"][] = ["on", "off"];
 const cooSpeaksUp: Preferences["cooSpeaksUp"][] = ["on", "off"];
 const cooWebSearch: Preferences["cooWebSearch"][] = ["on", "off"];
+const cooBrowsing: Preferences["cooBrowsing"][] = ["on", "off"];
+
+/** Signs the human's Coo out of every site it logged in to, at once, saying how it went (ADR-0038). */
+function SignCooOut({ client }: { client: DuvaClient }) {
+  const [state, setState] = useState<"idle" | "signingOut" | "signedOut" | "failed">("idle");
+  const copy = strings.settings.cooBrowsing;
+  const signOut = () => {
+    setState("signingOut");
+    void client
+      .DELETE("/mailbox-agent/browser-profile")
+      .then(({ response }) => setState(response.ok ? "signedOut" : "failed"))
+      .catch(() => setState("failed"));
+  };
+  return (
+    <div className="sign-coo-out">
+      <p className="setting-lead">{copy.signOutLead}</p>
+      <div className="sign-coo-out-row">
+        <button type="button" className="button button-small" disabled={state === "signingOut"} onClick={signOut}>
+          {copy.signOut}
+        </button>
+        {/* Only once there is something to say, so the sheet's own status stays the one it has. */}
+        {state !== "idle" && (
+          <p className="setting-note" role="status">
+            {state === "signingOut" ? copy.signingOut : state === "signedOut" ? copy.signedOut : copy.signOutFailed}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
 
 /**
  * The human's own preferences: how times and dates show, each choice with an example built from
  * today, how mail shows, whether keyboard shortcuts work, whether Coo speaks up, and whether it
- * searches the web, saying where queries go and whether an admin turned it off (ADR-0037). With several
+ * searches the web, saying where queries go and whether an admin turned it off (ADR-0037), and whether
+ * it browses for them, with signing it out of every site (ADR-0038). With several
  * mailboxes, `own`, also where the web app opens and which address new mail in All mailboxes starts from (ADR-0033).
  */
 function YouSheet({
@@ -1124,11 +1166,11 @@ function YouSheet({
   today.setHours(14, 30, 0, 0);
   const copy = strings.settings;
   const searchRegion = useWebSearchRegion(client);
-  const [organizationSearches, setOrganizationSearches] = useState<boolean>();
+  const [organization, setOrganization] = useState<{ searches: boolean; browses: boolean }>();
   useEffect(() => {
     void client
       .GET("/organization/settings")
-      .then(({ data }) => setOrganizationSearches(data?.mailboxAgentWebSearch))
+      .then(({ data }) => setOrganization(data && { searches: data.mailboxAgentWebSearch, browses: data.mailboxAgentBrowsing }))
       .catch(() => undefined);
   }, [client]);
   return (
@@ -1212,7 +1254,7 @@ function YouSheet({
           <fieldset>
             <legend>{copy.cooWebSearch.legend}</legend>
             <p className="setting-lead">{copy.cooWebSearch.lead(copy.webSearchPlace(searchRegion))}</p>
-            {organizationSearches === false && <p className="setting-note">{copy.cooWebSearch.organizationOff}</p>}
+            {organization?.searches === false && <p className="setting-note">{copy.cooWebSearch.organizationOff}</p>}
             {cooWebSearch.map((choice) => (
               <Choice
                 key={choice}
@@ -1223,6 +1265,22 @@ function YouSheet({
                 hint={copy.cooWebSearch[`${choice}Hint`]}
               />
             ))}
+          </fieldset>
+          <fieldset>
+            <legend>{copy.cooBrowsing.legend}</legend>
+            <p className="setting-lead">{copy.cooBrowsing.lead}</p>
+            {organization?.browses === false && <p className="setting-note">{copy.cooBrowsing.organizationOff}</p>}
+            {cooBrowsing.map((choice) => (
+              <Choice
+                key={choice}
+                name="cooBrowsing"
+                checked={chosen.cooBrowsing === choice}
+                onChoose={() => sheet.choose({ cooBrowsing: choice })}
+                label={copy.cooBrowsing[choice]}
+                hint={copy.cooBrowsing[`${choice}Hint`]}
+              />
+            ))}
+            <SignCooOut client={client} />
           </fieldset>
           {several && (
             <fieldset>

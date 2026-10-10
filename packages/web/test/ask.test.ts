@@ -337,3 +337,28 @@ test("a turn in which Coo searched the web says what it looked up, and links eac
   await page.reload();
   await expect.poll(() => page.getByRole("list", { name: "What it looked up on the web" }).getByRole("link").count(), wait).toBe(1);
 });
+
+test("a turn in which Coo browsed says in a sentence what it did on each site", budget, async () => {
+  const model = scripted(
+    () => [use("browse", { url: "https://shop.example.net/account", goal: "Read the delivery address.", values: [] })],
+    // The browsing run, with only the page's tools, says what it did.
+    () => [use("finish", { done: true, said: "It read the delivery address, Storgatan 1." })],
+    () => [{ text: "Your delivery address is Storgatan 1." }],
+  );
+  const { page, signIn, duva } = await withMailbox({ model });
+  await duva.webServer("shop.example.net", { answer: () => new Response("<p>Delivery address: Storgatan 1</p>", { headers: { "content-type": "text/html" } }) });
+  await signIn("grace@example.org");
+  await page.getByRole("link", { name: "Ask Coo", exact: true }).click();
+  await page.getByRole("textbox", { name: "What do you want to ask?" }).fill("What's my address at the shop?");
+  await page.getByRole("button", { name: "Ask", exact: true }).click();
+
+  // Once Coo has answered, its turn shows what it did on the page once, as a human reads it.
+  const turns = page.locator(".ask-turn");
+  await expect.poll(async () => [await turns.count(), await page.locator(".ask-turn-running").count(), await turns.nth(1).locator(".ask-text").innerText()], wait).toEqual([2, 0, "Your delivery address is Storgatan 1."]);
+  const browsed = page.getByRole("list", { name: "What it did on web pages" });
+  expect(await browsed.count()).toBe(1);
+  expect(await browsed.innerText()).toBe("On example.net: It read the delivery address, Storgatan 1.");
+
+  await page.reload();
+  await expect.poll(() => page.getByRole("list", { name: "What it did on web pages" }).getByRole("listitem").count(), wait).toBe(1);
+});

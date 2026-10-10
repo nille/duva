@@ -28,6 +28,7 @@ const choices: { [Name in Exclude<keyof Preferences, (typeof notChosen)[number]>
   cooSpeaksUp: ["on", "off"],
   cooLearnsFromMail: ["on", "off"],
   cooWebSearch: ["on", "off"],
+  cooBrowsing: ["on", "off"],
 };
 const chosen = Object.keys(choices) as (keyof typeof choices)[];
 const names: string[] = [...chosen, ...notChosen];
@@ -64,6 +65,12 @@ export async function cooModelsOf(table: Table, human: string, settings: Organiz
 export async function cooSearchesTheWeb(table: Table, human: string): Promise<boolean> {
   const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: preferencesKey(human), ConsistentRead: true }));
   return Item?.cooWebSearch !== "off";
+}
+
+/** Whether the human lets their mailbox agent browse and act on pages for them, as it may unless they turned it off (ADR-0038). */
+export async function cooBrowses(table: Table, human: string): Promise<boolean> {
+  const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: preferencesKey(human), ConsistentRead: true }));
+  return Item?.cooBrowsing !== "off";
 }
 
 /** The address as one of the mailboxes has it, in any case, or undefined if none has it. */

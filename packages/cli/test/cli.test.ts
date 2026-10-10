@@ -14,6 +14,7 @@ const mailboxAgentDefaults = {
   mailboxAgentHarderModel: "anthropic.claude-sonnet-5-5",
   mailboxAgentDecider: false,
   mailboxAgentWebSearch: true,
+  mailboxAgentBrowsing: true,
   mailboxAgentSpendCap: 20,
 };
 
@@ -277,7 +278,7 @@ test("a human chooses to read mail as text", async () => {
   const changed = await machine.duva("preferences", "change", "--mailView", "text");
 
   expect(changed.exitCode).toBe(0);
-  expect(JSON.parse(changed.stdout)).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "text", keyboardShortcuts: "on", cooSpeaksUp: "on", cooLearnsFromMail: "on", cooWebSearch: "on", opensOn: "all" });
+  expect(JSON.parse(changed.stdout)).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "text", keyboardShortcuts: "on", cooSpeaksUp: "on", cooLearnsFromMail: "on", cooWebSearch: "on", cooBrowsing: "on", opensOn: "all" });
 });
 
 test("a human chooses 24-hour time and ISO dates, and the CLI's own timestamps stay ISO 8601", async () => {
@@ -291,9 +292,9 @@ test("a human chooses 24-hour time and ISO dates, and the CLI's own timestamps s
   const changed = await machine.duva("preferences", "change", "--hourCycle", "h23", "--dateFormat", "dayMonth");
   const changes = await machine.duva("organization", "changes");
 
-  expect(JSON.parse(before.stdout)).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "on", cooLearnsFromMail: "on", cooWebSearch: "on", opensOn: "all" });
+  expect(JSON.parse(before.stdout)).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "on", cooLearnsFromMail: "on", cooWebSearch: "on", cooBrowsing: "on", opensOn: "all" });
   expect(changed.exitCode).toBe(0);
-  expect(JSON.parse(changed.stdout)).toEqual({ hourCycle: "h23", dateFormat: "dayMonth", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "on", cooLearnsFromMail: "on", cooWebSearch: "on", opensOn: "all" });
+  expect(JSON.parse(changed.stdout)).toEqual({ hourCycle: "h23", dateFormat: "dayMonth", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "on", cooLearnsFromMail: "on", cooWebSearch: "on", cooBrowsing: "on", opensOn: "all" });
   const times = (JSON.parse(changes.stdout) as { changes: { at: string }[] }).changes.map(({ at }) => at);
   expect(times).not.toHaveLength(0);
   for (const at of times) expect(at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
@@ -309,10 +310,10 @@ test("a human chooses a time zone, and removes it again", async () => {
   const chosen = await machine.duva("preferences", "change", "--timeZone", "Europe/Stockholm");
   const removed = await machine.duva("preferences", "change", "--no-timeZone");
 
-  expect(JSON.parse(chosen.stdout)).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "on", cooLearnsFromMail: "on", cooWebSearch: "on", timeZone: "Europe/Stockholm", opensOn: "all" });
+  expect(JSON.parse(chosen.stdout)).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "on", cooLearnsFromMail: "on", cooWebSearch: "on", cooBrowsing: "on", timeZone: "Europe/Stockholm", opensOn: "all" });
   expect(removed.stderr).toBe("");
   expect(removed.exitCode).toBe(0);
-  expect(JSON.parse(removed.stdout)).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "on", cooLearnsFromMail: "on", cooWebSearch: "on", opensOn: "all" });
+  expect(JSON.parse(removed.stdout)).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "on", cooLearnsFromMail: "on", cooWebSearch: "on", cooBrowsing: "on", opensOn: "all" });
 });
 
 test("a human keeps, lists, corrects and forgets what Coo remembers of them, and switches its learning from mail off", async () => {

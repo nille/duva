@@ -5,12 +5,15 @@ import { randomUUID } from "node:crypto";
 import { GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import type { AgentAction, Decision, Handover, RunEvent, RunPayload } from "./agent-loop.ts";
 import { costOf, type MailboxAgentModel } from "./agent-models.ts";
+import { profileName } from "./browser-profiles.ts";
+import { browserSecondCost } from "./browser.ts";
+import type { Browsing } from "./browsing.ts";
 import { raiseAlert } from "./alerting.ts";
 import type { Table } from "./deployment.ts";
 import { sponsorAccessIn } from "./access.ts";
 import { type Agent, agentSettings, type Mailbox, mailboxesInOrder, mailboxFeed, organizationSettings } from "./organization.ts";
 import { recordChanges } from "./feed.ts";
-import { cooModelsOf, cooSearchesTheWeb, learnsFromMail } from "./preferences.ts";
+import { cooBrowses, cooModelsOf, cooSearchesTheWeb, learnsFromMail } from "./preferences.ts";
 import { endRunToken, issueRunToken } from "./run-tokens.ts";
 import { documents, pk, sk } from "./table.ts";
 import { queryCost, type WebSearchMade } from "./web-search.ts";
@@ -77,11 +80,12 @@ export async function startRun(
   const cap = settings.mailboxAgentSpendCap;
   if (cap === 0) return { refused: "An admin turned the mailbox agents off, with a spend cap of $0. Ask one to raise it." };
   const month = monthOf(new Date());
-  const [spent, { everyday, harder }, fromMail, searches] = await Promise.all([
+  const [spent, { everyday, harder }, fromMail, searches, browses] = await Promise.all([
     spentIn(table, month),
     cooModelsOf(table, agent.sponsor, settings),
     learnsFromMail(table, agent.sponsor),
     cooSearchesTheWeb(table, agent.sponsor),
+    cooBrowses(table, agent.sponsor),
   ]);
   if (spent >= cap) {
     await capReached(table, agent, month, cap);
@@ -96,6 +100,8 @@ export async function startRun(
     approval: given.approvalAsSponsor,
     model: { model: { conversation: everyday, task: everyday, harder, unsubscribe: harder }[job], everyday, harder, region },
     ...(settings.mailboxAgentWebSearch && searches && { webSearch: true }),
+    // Unsubscribing browses in a fresh browser of its own, never its human's profile (ADR-0031).
+    ...(settings.mailboxAgentBrowsing && browses && job !== "unsubscribe" && { browsing: { profile: profileName(agent.sponsor) } }),
     ...(job === "conversation" && settings.mailboxAgentDecider && { decide: true }),
     budget: cap - spent,
     learnsFromMail: fromMail,
@@ -112,19 +118,20 @@ export function capReached(table: Table, agent: Agent, month: string, cap: numbe
 }
 
 /**
- * Runs the agent with a token of its own, which ends with the run, giving its text, actions and web
- * searches as they come, and returns what it said and did, an unsubscribe's verdict, and how it
- * ended. Each model call's and query's cost is counted as it comes, so a run cut off still counts
- * what it spent, and a run that reaches the cap alerts the agent's sponsor.
+ * Runs the agent with a token of its own, which ends with the run, giving its text, actions, web
+ * searches and browsing as they come, and returns what it said and did, an unsubscribe's verdict,
+ * and how it ended. Each model call's, query's and browser session's cost is counted as it comes,
+ * so a run cut off still counts what it spent, and a run that reaches the cap alerts the agent's sponsor.
  */
 export async function* runMailboxAgent(
   table: Table,
   { agent, payload, runtime, month, cap, about = {} }: { agent: Agent; payload: Omit<RunPayload, "token">; runtime: AgentRuntime; month: string; cap: number; about?: { task?: string; thread?: string } },
-): AsyncGenerator<Extract<RunEvent, { type: "text" | "action" | "searched" | "handedOver" }>, RunEnd> {
+): AsyncGenerator<Extract<RunEvent, { type: "text" | "action" | "searched" | "browsed" | "handedOver" }>, RunEnd> {
   const token = await issueRunToken(table, agent.id);
   let text = "";
   const actions: AgentAction[] = [];
   const searches: WebSearchMade[] = [];
+  const browsed: Browsing[] = [];
   let outcome: RunOutcome = "failed";
   let verdict: { unsubscribed: boolean; detail: string } | undefined;
   let total = 0;
@@ -145,6 +152,13 @@ export async function* runMailboxAgent(
         cost += queryCost;
         total = await addSpend(table, month, queryCost);
         yield event;
+      } else if (event.type === "browsed") {
+        browsed.push(event.browsing);
+        yield event;
+      } else if (event.type === "browserTime") {
+        const spent = event.seconds * browserSecondCost;
+        cost += spent;
+        total = await addSpend(table, month, spent);
       } else if (event.type === "usage") {
         const spent = costOf(event, event.model ?? payload.model.model, payload.model.region);
         cost += spent;
@@ -166,7 +180,7 @@ export async function* runMailboxAgent(
     await endRunToken(table, token);
   }
   if (outcome === "capReached" || total >= cap) await capReached(table, agent, month, cap);
-  return { text, actions, outcome, model, cost, ...(searches.length > 0 && { searches }), ...(verdict !== undefined && { verdict }), ...(decision !== undefined && { decision }), ...(handover !== undefined && { handover }) };
+  return { text, actions, outcome, model, cost, ...(searches.length > 0 && { searches }), ...(browsed.length > 0 && { browsed }), ...(verdict !== undefined && { verdict }), ...(decision !== undefined && { decision }), ...(handover !== undefined && { handover }) };
 }
 
 /**
@@ -175,11 +189,15 @@ export async function* runMailboxAgent(
  */
 export const recordingMailbox = (payload: Pick<RunPayload, "mailbox" | "mailboxes">) => payload.mailbox ?? payload.mailboxes[0]!.id;
 
-/** How a run ended: what it said and did, its web searches, an unsubscribe's verdict, the model that ended it, what its model calls and queries cost, and how it was routed. */
+/**
+ * How a run ended: what it said and did, its web searches and browsing, an unsubscribe's verdict,
+ * the model that ended it, what its model calls, queries and browser sessions cost, and how it was routed.
+ */
 export interface RunEnd {
   text: string;
   actions: AgentAction[];
   searches?: WebSearchMade[];
+  browsed?: Browsing[];
   outcome: RunOutcome;
   verdict?: { unsubscribed: boolean; detail: string };
   model: MailboxAgentModel;

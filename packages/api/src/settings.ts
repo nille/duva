@@ -51,6 +51,10 @@ const values: { [Name in keyof OrganizationSettings]: { takes: (value: unknown) 
     takes: (value): value is boolean => typeof value === "boolean",
     refusal: "Give mailboxAgentWebSearch as true to let the mailbox agents search the web, or false to turn it off.",
   },
+  mailboxAgentBrowsing: {
+    takes: (value): value is boolean => typeof value === "boolean",
+    refusal: "Give mailboxAgentBrowsing as true to let the mailbox agents browse and act on pages, or false to turn it off.",
+  },
   mailboxAgentSpendCap: {
     takes: (value): value is number => Number.isInteger(value) && (value as number) >= 0 && (value as number) <= 10_000,
     refusal: "Give mailboxAgentSpendCap as a whole number of US dollars from 0 to 10000.",

@@ -476,6 +476,20 @@ function OpenEvent({
         ),
       });
     }
+    // A task's browsing, a sentence for each site, as all Duva keeps of it (ADR-0038).
+    const browsed = (change?.browsed ?? []) as components["schemas"]["Browsing"][];
+    if (browsed.length > 0) {
+      facts.push({
+        term: copy.detail.browsed,
+        said: (
+          <ul className="event-links">
+            {browsed.map(({ site, said }, index) => (
+              <li key={index}>{`${site}: ${said}`}</li>
+            ))}
+          </ul>
+        ),
+      });
+    }
     if (detail.alert !== undefined) facts.push({ term: copy.detail.alert, said: <a href="#/alerts">{copy.detail.openAlerts}</a> });
   }
 

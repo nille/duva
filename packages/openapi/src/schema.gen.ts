@@ -1295,6 +1295,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/mailbox-agent/browser-profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Sign your Coo out of every site it logged in to.
+         * @description Clears the browser profile your Coo browses in, so it keeps no site's login, cookies or storage. It logs in again, with a code the site mails you, the next time its work needs it.
+         */
+        delete: operations["signCooOut"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/mailboxes/{mailbox}/screener": {
         parameters: {
             query?: never;
@@ -3313,6 +3333,8 @@ export interface components {
             note?: string;
             /** @description In the activity the agent's sponsor reads, the web searches the agent made in the task, while its thread is kept, as its note is. Absent if it made none. */
             searches?: components["schemas"]["WebSearch"][];
+            /** @description In the activity the agent's sponsor reads, what the agent's browsing did in the task, while its thread is kept, as its note is. Absent if it browsed nowhere. */
+            browsed?: components["schemas"]["Browsing"][];
         } & {
             /**
              * @description discriminator enum property added by openapi-typescript
@@ -3690,6 +3712,13 @@ export interface components {
             on: boolean;
             /** @description When switched on, how many of the mailbox's senders without a decision yet it sent to the Inbox. */
             letIn?: number;
+        };
+        CooSignedOut: {
+            /**
+             * Format: date-time
+             * @description When your Coo was signed out of every site.
+             */
+            signedOutAt: string;
         };
         TrashEmptying: {
             /**
@@ -4375,6 +4404,8 @@ export interface components {
             handover?: components["schemas"]["Handover"];
             /** @description The agent's web searches in it, in order. Absent if it made none. */
             searches?: components["schemas"]["WebSearch"][];
+            /** @description What the agent's browsing did in it, a sentence for each page it worked on, in order. Absent if it browsed nowhere. */
+            browsed?: components["schemas"]["Browsing"][];
         };
         NewLabel: {
             /**
@@ -4983,6 +5014,7 @@ export interface components {
             mailboxAgentHarderModel: components["schemas"]["MailboxAgentModel"];
             mailboxAgentDecider: components["schemas"]["MailboxAgentDecider"];
             mailboxAgentWebSearch: components["schemas"]["MailboxAgentWebSearch"];
+            mailboxAgentBrowsing: components["schemas"]["MailboxAgentBrowsing"];
             mailboxAgentSpendCap: components["schemas"]["MailboxAgentSpendCap"];
             linkedFilesCapGb: components["schemas"]["LinkedFilesCapGb"];
         };
@@ -5001,6 +5033,7 @@ export interface components {
             mailboxAgentHarderModel?: components["schemas"]["MailboxAgentModel"];
             mailboxAgentDecider?: components["schemas"]["MailboxAgentDecider"];
             mailboxAgentWebSearch?: components["schemas"]["MailboxAgentWebSearch"];
+            mailboxAgentBrowsing?: components["schemas"]["MailboxAgentBrowsing"];
             mailboxAgentSpendCap?: components["schemas"]["MailboxAgentSpendCap"];
             linkedFilesCapGb?: components["schemas"]["LinkedFilesCapGb"];
         };
@@ -5051,6 +5084,8 @@ export interface components {
             firstMemory?: boolean;
             /** @description The agent's web searches in the turn, in order. Absent if it made none. */
             searches?: components["schemas"]["WebSearch"][];
+            /** @description What the agent's browsing did in the turn, a sentence for each page it worked on, in order. Absent if it browsed nowhere. */
+            browsed?: components["schemas"]["Browsing"][];
         };
         /** @description What the decider, Amazon Nova Micro, made of a turn whose job doesn't settle the model: simple, the everyday model takes it, or complex, the harder model does, as it does when the decider is less than 0.7 sure. */
         RoutingDecision: {
@@ -5067,6 +5102,16 @@ export interface components {
             to: components["schemas"]["MailboxAgentModel"];
             /** @description What the everyday model said when it asked for help. */
             why?: string;
+        };
+        /** @description What the mailbox agent did on a web page, in a browser of its own, on its own: the site, and its sentence. Duva keeps nothing else of it, no steps, screenshots or recording. */
+        Browsing: {
+            /**
+             * @description The site the page was on, as the domain its address is registered under.
+             * @example example.com
+             */
+            site: string;
+            /** @description What it did there, in a sentence, or why it couldn't. */
+            said: string;
         };
         /** @description A search the mailbox agent made on the web. A reader with no powers read the results and gave the agent a short answer, citing the sources. */
         WebSearch: {
@@ -5196,6 +5241,8 @@ export interface components {
         };
         /** @description Whether the decider, Amazon Nova Micro, settles the model for each turn in Ask Coo and over MCP first, sending one it finds complex to the harder model. Off by default: on Coo's tasks it was right on 4 of 10 (docs/research/coo-models.md). Either way a turn hands over to the harder model on evidence. */
         MailboxAgentDecider: boolean;
+        /** @description Whether the mailbox agents may browse, in Ask Coo and in labels' tasks: open a link from the mail or a web search, read the page, and act on it on their own, logging in as their human and submitting forms for them without asking. They log in only with codes and links the site mails their human, never with a password, and stay logged in between runs in a browser profile of their human's own. They never pay, enter card details, or download or upload a file. A browsing run has only the page's tools, so a page can't reach the mailbox, and Duva keeps only a sentence of what it did. On by default. Browser time, at AgentCore Browser's $0.0895 per vCPU-hour and $0.00945 per GB-hour, and the run's tokens count toward mailboxAgentSpendCap. Each human can also turn it off for their own Coo, with the preference cooBrowsing. Unsubscribing on a sender's page doesn't depend on it. */
+        MailboxAgentBrowsing: boolean;
         /** @description Whether the mailbox agents may search the web, in Ask Coo, in labels' tasks and while unsubscribing, with queries that may carry anything from the mail that helps, as a tracking number. On by default. Queries go to Web Search on Amazon Bedrock AgentCore, Amazon's own index, which runs only in eu-west-1, Ireland, us-east-1, Virginia, and ap-northeast-1, Tokyo: a deployment in the EU searches from Ireland, one in the US from Virginia, and any other from the nearest of them, status's webSearchRegion. AWS documents no retention for queries. A reader with no powers reads the results, and Coo gets only its short answer and sources. Each query costs $0.007, plus the reader's tokens, counted toward mailboxAgentSpendCap. Each human can also turn it off for their own Coo, with the preference cooWebSearch. */
         MailboxAgentWebSearch: boolean;
         /** @description Whether erasing a thread also erases the approval records of the agents' sends in it: the draft its approver saw and any edit they made. Off by default, so the records stay as the account of what an agent sent and who approved it. Either way the mailbox's change feed keeps each decision and who made it. */
@@ -5294,6 +5341,7 @@ export interface components {
             cooSpeaksUp: components["schemas"]["CooSpeaksUp"];
             cooLearnsFromMail: components["schemas"]["CooLearnsFromMail"];
             cooWebSearch: components["schemas"]["CooWebSearch"];
+            cooBrowsing: components["schemas"]["CooBrowsing"];
             timeZone?: components["schemas"]["TimeZone"];
             opensOn: components["schemas"]["OpensOn"];
             newMailFrom?: components["schemas"]["NewMailFrom"];
@@ -5311,6 +5359,7 @@ export interface components {
             cooSpeaksUp?: components["schemas"]["CooSpeaksUp"];
             cooLearnsFromMail?: components["schemas"]["CooLearnsFromMail"];
             cooWebSearch?: components["schemas"]["CooWebSearch"];
+            cooBrowsing?: components["schemas"]["CooBrowsing"];
             /** @description The time zone, as an IANA name, or null to remove it, as if the human never chose one. The CLI removes it with --no-timeZone. */
             timeZone?: components["schemas"]["TimeZone"] | null;
             opensOn?: components["schemas"]["OpensOn"];
@@ -5356,6 +5405,11 @@ export interface components {
          * @enum {string}
          */
         KeyboardShortcuts: "on" | "off";
+        /**
+         * @description Whether the human's own Coo may browse, while the organization's mailboxAgentBrowsing lets it. on, the default, lets it open pages and act on them for you on its own: it logs in as you with codes the site mails you, and submits forms for you without asking, saying in a sentence what it did. off keeps it off the web's pages. Turning it off keeps the sites it logged in to; sign Coo out of every site to clear them.
+         * @enum {string}
+         */
+        CooBrowsing: "on" | "off";
         /**
          * @description Whether the human's own Coo may search the web, while the organization's mailboxAgentWebSearch lets it. on, the default, lets it look things up wherever it helps, with queries that may carry what the mail says, and say so with its sources. off keeps it to the mail.
          * @enum {string}
@@ -7880,6 +7934,28 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    signCooOut: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Your Coo is signed out of every site. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CooSignedOut"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
         };
     };
     getScreener: {

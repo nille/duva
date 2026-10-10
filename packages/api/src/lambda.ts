@@ -7,6 +7,7 @@ import { SESClient } from "@aws-sdk/client-ses";
 import { SESv2Client } from "@aws-sdk/client-sesv2";
 import { SQSClient } from "@aws-sdk/client-sqs";
 import { createApi } from "./api.ts";
+import { agentCoreBrowserProfiles } from "./browser-profiles.ts";
 import { downloadLinkLifetime } from "./attachments.ts";
 import { cognitoHumans, cognitoSignInSender } from "./user-pool.ts";
 import { realDns } from "./dns-records.ts";
@@ -72,4 +73,5 @@ export const handler = createApi({
   ),
   tasks: lambdaTaskRunner(lambda, required(environmentVariables.taskRunnerFunction)),
   embedder: titanEmbedder(),
+  browserProfiles: agentCoreBrowserProfiles(process.env[environmentVariables.browser] ?? ""),
 });

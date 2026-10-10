@@ -32,10 +32,10 @@ const asked = (request: ModelRequest) =>
 
 /** The steps that unsubscribe on the opt-out page the tests serve: the address, the choice, the button, and what the page said. */
 const fillsInThePage = [
-  () => [use("fillAddress", { element: 1 })],
+  () => [use("type", { element: 1, value: "grace@example.com" })],
   () => [use("choose", { element: 2 })],
   () => [use("click", { element: 3 })],
-  (request: ModelRequest) => [use("finish", { unsubscribed: /You're unsubscribed/.test(asked(request)), detail: "The page said you're unsubscribed." })],
+  (request: ModelRequest) => [use("finish", { done: /You're unsubscribed/.test(asked(request)), said: "The page said you're unsubscribed." })],
 ];
 
 /** The opt-out page: a form for the address and a choice, which answers that the address is unsubscribed. */
@@ -129,7 +129,7 @@ test("when one-click isn't offered, the mailbox agent fills in the opt-out page 
     expect.objectContaining({ actor: agent.id, address: "news@lists.example.org", method: "page", outcome: "unsubscribed", detail: "The page said you're unsubscribed." }),
   ]);
   // It is given the page and the tools that act on it, nothing of Duva's, and it is the harder model's work (ADR-0032).
-  expect(asks[0]!.tools.map(({ name }) => name)).toEqual(["fillAddress", "choose", "click", "finish", "searchWeb"]);
+  expect(asks[0]!.tools.map(({ name }) => name)).toEqual(["click", "type", "choose", "finish", "searchWeb"]);
   expect(new Set(asks.map(({ model: asked }) => asked))).toEqual(new Set(["anthropic.claude-sonnet-5-5"]));
   expect(asked(asks[0]!)).toContain('[1] field (email) "Your email"');
   expect(JSON.stringify(asks)).not.toContain("This week's news.");
@@ -172,22 +172,22 @@ test("the agent may search the web while it unsubscribes, and its unsubscribe's 
 });
 
 test("the address is all the agent can type, whatever it asks to type", async () => {
-  const { model } = scripted(
-    () => [use("fillAddress", { element: 1, value: "4111 1111 1111 1111" })],
+  const { model, requests: asks } = scripted(
+    () => [use("type", { element: 1, value: "4111 1111 1111 1111" })],
     () => [use("click", { element: 3 })],
-    () => [use("finish", { unsubscribed: true, detail: "Done." })],
+    () => [use("finish", { done: true, said: "Done." })],
   );
   const { receive, setDelivery, requests } = await withMailbox({ model });
   await receive(newsletter({ unsubscribe: "<https://lists.example.org/optout>" }));
 
   await setDelivery("nowhere");
 
-  expect(new URLSearchParams(requests[1]!.body).get("email")).toBe("grace@example.com");
+  expect(asked(asks[1]!)).toBe("You can type only the values you were given: grace@example.com.");
   expect(requests.map(({ body }) => body).join()).not.toContain("4111");
 });
 
 test("a page the agent can't unsubscribe on, as one asking for a CAPTCHA, fails with its words, and it mails the unsubscribe address next, without approval", async () => {
-  const { model } = scripted(() => [use("finish", { unsubscribed: false, detail: "The page asks to solve a CAPTCHA." })]);
+  const { model } = scripted(() => [use("finish", { done: false, said: "The page asks to solve a CAPTCHA." })]);
   const { duva, grace, receive, setDelivery, sheet, attempts, agent } = await withMailbox({ model });
   await receive(newsletter({ unsubscribe: "<https://lists.example.org/optout>, <mailto:leave@lists.example.org?subject=Unsubscribe%20me&body=Please%20remove%20me.>" }));
 
@@ -232,7 +232,7 @@ test("the unsubscribe mail counts toward the mailbox agent's send limits", async
 });
 
 test("with no page and no unsubscribe address, the agent follows an unsubscribe link in the body on the signer's own domain", async () => {
-  const { model } = scripted(() => [use("finish", { unsubscribed: true, detail: "The page said you're unsubscribed." })]);
+  const { model } = scripted(() => [use("finish", { done: true, said: "The page said you're unsubscribed." })]);
   const { duva, receive, setDelivery, requests, sheet } = await withMailbox({ model });
   const elsewhere = await duva.webServer("tracker.example.net");
   const html = `<p>News.</p><p><a href="https://tracker.example.net/unsubscribe?u=grace">Unsubscribe</a> <a href="https://lists.example.org/u/grace">Unsubscribe</a> <a href="https://lists.example.org/archive">Archive</a></p>`;
@@ -246,7 +246,7 @@ test("with no page and no unsubscribe address, the agent follows an unsubscribe 
 });
 
 test("a link on a mailing service's known unsubscribe host counts, whoever signed the mail", async () => {
-  const { model } = scripted(() => [use("finish", { unsubscribed: true, detail: "Unsubscribed." })]);
+  const { model } = scripted(() => [use("finish", { done: true, said: "Unsubscribed." })]);
   const { duva, receive, setDelivery } = await withMailbox({ model });
   const mailchimp = await duva.webServer("us1.list-manage.com", { answer: () => new Response("<p>Unsubscribed.</p>", { headers: { "content-type": "text/html" } }) });
   await receive(newsletter({ html: `<a href="https://us1.list-manage.com/unsubscribe?u=1">unsubscribe from this list</a>`, signatures: { "mailservice.example.net": covering } }));
@@ -360,7 +360,7 @@ test("two messages handed on before the agent goes on get one unsubscribe mail",
 });
 
 test("the address goes only in a field for an email address", async () => {
-  const { model, requests: asks } = scripted(() => [use("fillAddress", { element: 1 })], () => [use("finish", { unsubscribed: false, detail: "No email field." })]);
+  const { model, requests: asks } = scripted(() => [use("type", { element: 1, value: "grace@example.com" })], () => [use("finish", { done: false, said: "No email field." })]);
   const { duva, receive, setDelivery } = await withMailbox({ model });
   await duva.webServer("forms.example.org", { answer: () => new Response(`<form method="post"><label for="n">Your name</label><input id="n" name="name"><button>Unsubscribe</button></form>`) });
   await receive(newsletter({ unsubscribe: "<https://forms.example.org/optout>", signatures: { "lists.example.org": covering } }));
@@ -459,7 +459,7 @@ test("a paused mailbox agent doesn't go on, and one-click alone is tried", async
 test("the agent's model calls count toward the spend cap, and at the cap the page fails and it goes on without the model", async () => {
   // Each call takes a million tokens, $2.20 with the default Claude Sonnet 5.5 through eu, past a $1 cap.
   const model: Model = async function* () {
-    yield use("fillAddress", { element: 1 });
+    yield use("type", { element: 1, value: "grace@example.com" });
     yield { usage: { inputTokens: 1_000_000, outputTokens: 0 } };
   };
   const { duva, receive, setDelivery, attempts } = await withMailbox({ model });

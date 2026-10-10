@@ -224,6 +224,13 @@ export const operations = [
         "description": "Whether the mailbox agents may search the web, in Ask Coo, in labels' tasks and while unsubscribing, with queries that may carry anything from the mail that helps, as a tracking number. On by default. Queries go to Web Search on Amazon Bedrock AgentCore, Amazon's own index, which runs only in eu-west-1, Ireland, us-east-1, Virginia, and ap-northeast-1, Tokyo: a deployment in the EU searches from Ireland, one in the US from Virginia, and any other from the nearest of them, status's webSearchRegion. AWS documents no retention for queries. A reader with no powers reads the results, and Coo gets only its short answer and sources. Each query costs $0.007, plus the reader's tokens, counted toward mailboxAgentSpendCap. Each human can also turn it off for their own Coo, with the preference cooWebSearch."
       },
       {
+        "name": "mailboxAgentBrowsing",
+        "in": "body",
+        "type": "boolean",
+        "required": false,
+        "description": "Whether the mailbox agents may browse, in Ask Coo and in labels' tasks: open a link from the mail or a web search, read the page, and act on it on their own, logging in as their human and submitting forms for them without asking. They log in only with codes and links the site mails their human, never with a password, and stay logged in between runs in a browser profile of their human's own. They never pay, enter card details, or download or upload a file. A browsing run has only the page's tools, so a page can't reach the mailbox, and Duva keeps only a sentence of what it did. On by default. Browser time, at AgentCore Browser's $0.0895 per vCPU-hour and $0.00945 per GB-hour, and the run's tokens count toward mailboxAgentSpendCap. Each human can also turn it off for their own Coo, with the preference cooBrowsing. Unsubscribing on a sender's page doesn't depend on it."
+      },
+      {
         "name": "mailboxAgentSpendCap",
         "in": "body",
         "type": "integer",
@@ -336,6 +343,13 @@ export const operations = [
         "type": "string",
         "required": false,
         "description": "Whether the human's own Coo may search the web, while the organization's mailboxAgentWebSearch lets it. on, the default, lets it look things up wherever it helps, with queries that may carry what the mail says, and say so with its sources. off keeps it to the mail."
+      },
+      {
+        "name": "cooBrowsing",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "Whether the human's own Coo may browse, while the organization's mailboxAgentBrowsing lets it. on, the default, lets it open pages and act on them for you on its own: it logs in as you with codes the site mails you, and submits forms for you without asking, saying in a sentence what it did. off keeps it off the web's pages. Turning it off keeps the sites it logged in to; sign Coo out of every site to clear them."
       },
       {
         "name": "timeZone",
@@ -2433,6 +2447,20 @@ export const operations = [
     "command": [
       "mailbox-agent",
       "clear"
+    ],
+    "options": []
+  },
+  {
+    "operationId": "signCooOut",
+    "method": "delete",
+    "path": "/mailbox-agent/browser-profile",
+    "routeKey": "DELETE /mailbox-agent/browser-profile",
+    "summary": "Sign your Coo out of every site it logged in to.",
+    "description": "Clears the browser profile your Coo browses in, so it keeps no site's login, cookies or storage. It logs in again, with a code the site mails you, the next time its work needs it.",
+    "signIn": true,
+    "command": [
+      "mailbox-agent",
+      "sign-out"
     ],
     "options": []
   },

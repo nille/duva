@@ -15,6 +15,7 @@ import type { HostedLogos } from "./own-logos.ts";
 import type { TaskRunner } from "./tasks.ts";
 import type { Embedder } from "./titan.ts";
 import type { UploadsBucket } from "./uploads-bucket.ts";
+import type { BrowserProfiles } from "./browser-profiles.ts";
 
 /** Duva's one DynamoDB table. */
 export interface Table {
@@ -57,6 +58,8 @@ export interface Deployment {
   hostedLogos: HostedLogos;
   /** Runs the tasks labels' prompts give mailbox agents, as unpausing one hands them over again. */
   tasks: TaskRunner;
+  /** The humans' browser profiles, which Coo's browsing keeps their logins in (ADR-0038). */
+  browserProfiles: BrowserProfiles;
   /** Embeds Coo's memories and what they are searched for, with Titan in the deployment's region (ADR-0036). */
   embedder: Embedder;
 }
