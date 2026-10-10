@@ -276,7 +276,7 @@ test("a human chooses to read mail as text", async () => {
   const changed = await machine.duva("preferences", "change", "--mailView", "text");
 
   expect(changed.exitCode).toBe(0);
-  expect(JSON.parse(changed.stdout)).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "text", keyboardShortcuts: "on", cooSpeaksUp: "on", opensOn: "all" });
+  expect(JSON.parse(changed.stdout)).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "text", keyboardShortcuts: "on", cooSpeaksUp: "on", cooLearnsFromMail: "on", opensOn: "all" });
 });
 
 test("a human chooses 24-hour time and ISO dates, and the CLI's own timestamps stay ISO 8601", async () => {
@@ -290,9 +290,9 @@ test("a human chooses 24-hour time and ISO dates, and the CLI's own timestamps s
   const changed = await machine.duva("preferences", "change", "--hourCycle", "h23", "--dateFormat", "dayMonth");
   const changes = await machine.duva("organization", "changes");
 
-  expect(JSON.parse(before.stdout)).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "on", opensOn: "all" });
+  expect(JSON.parse(before.stdout)).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "on", cooLearnsFromMail: "on", opensOn: "all" });
   expect(changed.exitCode).toBe(0);
-  expect(JSON.parse(changed.stdout)).toEqual({ hourCycle: "h23", dateFormat: "dayMonth", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "on", opensOn: "all" });
+  expect(JSON.parse(changed.stdout)).toEqual({ hourCycle: "h23", dateFormat: "dayMonth", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "on", cooLearnsFromMail: "on", opensOn: "all" });
   const times = (JSON.parse(changes.stdout) as { changes: { at: string }[] }).changes.map(({ at }) => at);
   expect(times).not.toHaveLength(0);
   for (const at of times) expect(at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
@@ -308,10 +308,34 @@ test("a human chooses a time zone, and removes it again", async () => {
   const chosen = await machine.duva("preferences", "change", "--timeZone", "Europe/Stockholm");
   const removed = await machine.duva("preferences", "change", "--no-timeZone");
 
-  expect(JSON.parse(chosen.stdout)).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "on", timeZone: "Europe/Stockholm", opensOn: "all" });
+  expect(JSON.parse(chosen.stdout)).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "on", cooLearnsFromMail: "on", timeZone: "Europe/Stockholm", opensOn: "all" });
   expect(removed.stderr).toBe("");
   expect(removed.exitCode).toBe(0);
-  expect(JSON.parse(removed.stdout)).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "on", opensOn: "all" });
+  expect(JSON.parse(removed.stdout)).toEqual({ hourCycle: "locale", dateFormat: "locale", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "on", cooLearnsFromMail: "on", opensOn: "all" });
+});
+
+test("a human keeps, lists, corrects and forgets what Coo remembers of them, and switches its learning from mail off", async () => {
+  const machine = await newMachine();
+  const server = await (await startDuva({ admin: "ada@example.com" })).listen();
+  onTestFinished(() => server.close());
+  await machine.saveDeployment(server);
+  await machine.duva("login", { browserSignsIn: "ada@example.com" });
+
+  const kept = JSON.parse((await machine.duva("memories", "keep", "--text", "Ada prefers mornings.")).stdout) as { id: string };
+  const corrected = await machine.duva("memories", "correct", "--memory", kept.id, "--text", "Ada prefers evenings.");
+  const listed = await machine.duva("memories", "list");
+  const forgot = await machine.duva("memories", "forget", "--memory", kept.id);
+  const forgotAll = await machine.duva("memories", "forget-all");
+  const off = await machine.duva("preferences", "change", "--cooLearnsFromMail", "off");
+  const missing = await machine.duva("memories", "forget", "--memory", kept.id);
+
+  expect(corrected.exitCode).toBe(0);
+  expect(JSON.parse(listed.stdout)).toEqual({ memories: [{ id: kept.id, text: "Ada prefers evenings.", kept: expect.any(String), corrected: expect.any(String), source: "told" }] });
+  expect(JSON.parse(forgot.stdout)).toMatchObject({ id: kept.id, text: "Ada prefers evenings." });
+  expect(JSON.parse(forgotAll.stdout)).toEqual({ forgotten: 0 });
+  expect(JSON.parse(off.stdout)).toMatchObject({ cooLearnsFromMail: "off" });
+  expect(missing.exitCode).toBe(1);
+  expect(errorIn(missing.stderr)).toMatch(/404.*There is no memory .* List the memories to find its ID\./);
 });
 
 test("preferences change with a date format Duva doesn't have says which there are", async () => {

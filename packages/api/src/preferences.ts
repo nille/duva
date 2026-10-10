@@ -26,6 +26,7 @@ const choices: { [Name in Exclude<keyof Preferences, (typeof notChosen)[number]>
   mailView: ["html", "text"],
   keyboardShortcuts: ["on", "off"],
   cooSpeaksUp: ["on", "off"],
+  cooLearnsFromMail: ["on", "off"],
 };
 const chosen = Object.keys(choices) as (keyof typeof choices)[];
 const names: string[] = [...chosen, ...notChosen];
@@ -74,6 +75,12 @@ export async function newMailFromOf(table: Table, human: Human): Promise<string 
     ownedMailboxes(table, human.id),
   ]);
   return preferencesOf(Item, human, mailboxes, []).newMailFrom;
+}
+
+/** Whether the human's Coo learns from mail it reads, which it does unless they switch it off (ADR-0036). */
+export async function learnsFromMail(table: Table, human: string): Promise<boolean> {
+  const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: preferencesKey(human), ConsistentRead: true }));
+  return Item?.cooLearnsFromMail !== "off";
 }
 
 /** The time zone with the name, as an IANA name or UTC, in the case Intl gives it, or undefined if there is none. */

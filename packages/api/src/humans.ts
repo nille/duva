@@ -1,4 +1,5 @@
 import type { components } from "@duva/openapi";
+import { forgetMailboxMemories } from "./memories.ts";
 import { jsonBody, type OperationHandler, refusal } from "./api.ts";
 import { isEmailAddress } from "./email-address.ts";
 import { linkedSize } from "./linked-files.ts";
@@ -70,6 +71,8 @@ export const removeHuman: OperationHandler = async (event, deployment, actor) =>
   try {
     for (const mailbox of choices.handOver) {
       await handOverMailbox(deployment.table, { mailbox, to: choices.handTo!.id, by: actor!.id });
+      // What its owner's Coo learned from its mail goes, and what they told it stays with them (ADR-0036).
+      await forgetMailboxMemories(deployment.table, mailbox.id, human.id);
       // Its owner's mailbox agent went with them, so the new owner's works in it, given one if they had none.
       await giveMailboxAgent(deployment.table, choices.handTo!.id);
     }

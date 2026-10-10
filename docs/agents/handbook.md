@@ -23,6 +23,7 @@ One organization per deployment (ADR-0002), in its own AWS account. Everything i
 - **One DynamoDB table,** keyed `pk` and `sk`. Its key schema comes from `@duva/api/infrastructure`.
 - **Each mailbox's items sit under `mailbox#<id>` partitions.** Its **change feed** is entries at `change#<position>` there (`packages/api/src/feed.ts`). Every change to a mailbox is recorded in its feed, in the same transaction as the change, attributed to one actor. Clients catch up from a position, and so does Duva itself.
 - **The organization has a change feed of its own** for its setup.
+- **Coo's memories sit in their human's partition,** each with its Titan embedding, and each thread a memory was learned from points at it in that thread's mailbox. Erasing the thread looks those pointers up and erases the memories in the same transaction (`memories.ts`, ADR-0036).
 - **The table's stream drives the work that follows a change.** Each consumer has its filter in `infrastructure.ts`:
   - the **feeder** turns new changes into the indexer's tasks;
   - the **sender** sends what a decision approved;
@@ -81,6 +82,7 @@ One organization per deployment (ADR-0002), in its own AWS account. Everything i
   - **Label prompts:** the **task runner** runs a label prompt's task (`tasks.ts`, ADR-0029).
   - **MCP:** the **MCP** Lambda serves Duva's MCP endpoint (`mcp.ts`, ADR-0028).
   - **Unsubscribing:** when one-click fails for a sender set to Nowhere, the task runner has Coo go on with it (`unsubscribe-runs.ts`, ADR-0031). Coo tries the opt-out page in AgentCore Browser, with only page tools (`unsubscribe-agent.ts`), then mailing the List-Unsubscribe address, then a link in the body, and last bounces the mail. The one-click POST itself is the **unsubscriber** Lambda's (`unsubscriber.ts`).
+- **Memory:** Strands' `MemoryManager`, over a `MemoryStore` that searches the human's memories through the API, gives a run's first model call the memories most like what it is asked. Coo keeps, corrects and forgets them with API operations as tools, since a memory names the threads it came from. Its tools and prompt lines are in `agent-memory.ts` (ADR-0036).
 - **Models:** `agent-models.ts` holds the models, their prices, and how a deployment calls each (`callOf`), which decides where it processes mail. Only measured models can be allowed, those in `measured-models.gen.ts`, which `npm run generate` writes from Coo's evaluation. Each human picks their Coo's everyday and harder model from those admins allow, in their preferences (ADR-0035). Routing and handover are in ADR-0032 and `docs/research/coo-models.md`.
 - **Claude is never called from eu-north-1,** where the Marketplace agreement fails. An EU deployment calls it in eu-central-1 through the `eu.` profile.
 

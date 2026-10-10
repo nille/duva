@@ -162,9 +162,20 @@ Coo's loop moved to the Strands Agents SDK (ADR-0035) with every behavior it had
 - **Drafting cost more,** since its runs took 5.3 model calls where they took 4.5, most of them Sonnet's. Every draft was still Sonnet's, through the writing handover.
 - **Latency held:** 2.8 s p50 and 9.8 s p95 for all tasks, against 3.1 and 10.0.
 
+## Memory (#151)
+
+Coo's memories (ADR-0036) have two cases of their own, recorded for the defaults alone, twice each, and left out of the measures above, so the tables stay comparable:
+
+| Task | Passes when |
+| --- | --- |
+| Remember that I'm allergic to nuts, then, after Start over, what should Erik know before he cooks? | Coo kept it as told, and the later conversation names the allergy |
+| Remember the booking reference of my trip to Lisbon, then, after the thread is erased and Start over, what is it? | Coo kept K7QX2M naming the thread, the erasure took the memory, and the later answer doesn't give it |
+
+All four runs passed. Haiku kept both facts itself. Where it answered the allergy from the memory Duva gave it, without a tool call, the answer check handed the turn to Sonnet, as for any conversation turn that looks nothing up, and Sonnet looked in the memories before it answered. After the erasure Coo searched the mail, found nothing, and said so.
+
 ## What this cost
 
-Bedrock calls kept in the recordings of #132's tasks cost $5.65: $4.79 for the first six setups, and $0.86 for the defaults. The pilots that were recorded again after fixing the grader and the answer check, the probes and the decider trials cost about $0.40 more. #140's task added $0.20 kept in the recordings, and about $0.30 more for those recorded again after listAgents' description and the answer check were fixed. So about $6.55 in all. #148 recorded the defaults again on Strands for $0.95.
+Bedrock calls kept in the recordings of #132's tasks cost $5.65: $4.79 for the first six setups, and $0.86 for the defaults. The pilots that were recorded again after fixing the grader and the answer check, the probes and the decider trials cost about $0.40 more. #140's task added $0.20 kept in the recordings, and about $0.30 more for those recorded again after listAgents' description and the answer check were fixed. So about $6.55 in all. #148 recorded the defaults again on Strands for $0.95, and #151's memory cases cost $0.32.
 
 ## Caveats
 

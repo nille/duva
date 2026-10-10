@@ -7769,3 +7769,125 @@ mark {
   width: 100%;
   max-width: 24rem;
 }
+
+/* What Coo remembers (ADR-0036): each memory a line on the plane, parted by seams, its text in ink,
+   where it came from and when under it in Third Ink, and Correct and Forget quiet at its end. */
+.memories-title {
+  font-size: var(--text-md);
+  font-weight: 600;
+}
+
+.memory-learning .switch {
+  justify-self: start;
+}
+
+.memories-said:empty {
+  display: none;
+}
+
+.memories-said {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-sm);
+  color: var(--ink-2);
+}
+
+.memories-none {
+  max-width: 60ch;
+  margin: var(--space-2) 0 0;
+  color: var(--ink-2);
+}
+
+.memory-lines {
+  margin: var(--space-4) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.memory-line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-1) var(--space-4);
+  padding: var(--space-3) 0;
+  box-shadow: inset 0 1px 0 var(--seam);
+}
+
+.memory-line:last-child {
+  box-shadow:
+    inset 0 1px 0 var(--seam),
+    inset 0 -1px 0 var(--seam);
+}
+
+.memory-text,
+.memory-correct {
+  grid-column: 1;
+  max-width: 64ch;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.memory-correct {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.memory-correct textarea {
+  width: 100%;
+  resize: vertical;
+}
+
+.memory-source {
+  grid-column: 1;
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--ink-3);
+  overflow-wrap: anywhere;
+}
+
+.memory-source a {
+  color: var(--ink-2);
+}
+
+.memory-actions {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  display: flex;
+  align-items: start;
+  gap: var(--space-1);
+}
+
+.memories-foot {
+  padding-top: var(--space-5);
+}
+
+.memories-foot .sender-confirm {
+  padding-top: 0;
+  box-shadow: none;
+}
+
+/* The first memory Coo keeps from mail, said once under its words: a quiet line with the knot. */
+.ask-memory {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  max-width: var(--measure);
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-sm);
+  color: var(--ink-2);
+}
+
+.ask-memory-icon {
+  flex: none;
+  align-self: center;
+}
+
+@media (max-width: 47.99rem) {
+  .memory-line {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .memory-actions {
+    grid-column: 1;
+    grid-row: auto;
+    margin-left: calc(-1 * var(--space-3));
+  }
+}

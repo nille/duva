@@ -6,7 +6,7 @@
 // the numbers in docs/research/coo-models.md. A setup recorded again measures again.
 import { writeFileSync } from "node:fs";
 import { expect, test } from "vitest";
-import { deciderAccuracy, evaluate, handovers, type Kind, measures, monthCost, runTask, setups, tasks } from "./coo-evaluation.ts";
+import { deciderAccuracy, evaluate, handovers, type Kind, measures, memoryTasks, monthCost, runTask, setups, tasks } from "./coo-evaluation.ts";
 
 const defaults = setups.find(({ name }) => name === "Defaults")!;
 
@@ -30,6 +30,17 @@ test("the defaults grade and hand over each task's first run as when it was reco
     "archive with read access only": [true, "none"],
     "send with draft access only": [true, "writing"],
   });
+});
+
+test("the defaults use what Linus told them in an earlier conversation, and no longer know what they learned from a thread he erased, in each recorded run", { timeout: 120_000 }, async () => {
+  const runs = await Promise.all(memoryTasks.flatMap((task) => Array.from({ length: defaults.runs }, (_, at) => runTask(defaults, task, at + 1))));
+
+  expect(runs.map(({ task, passed }) => [task, passed])).toEqual([
+    ["a fact told in an earlier conversation", true],
+    ["a fact told in an earlier conversation", true],
+    ["a fact learned from mail that was then erased", true],
+    ["a fact learned from mail that was then erased", true],
+  ]);
 });
 
 test.runIf(process.env.DUVA_EVALUATE === "1")("Coo's tasks, by setup and kind of work", { timeout: 3_600_000 }, async () => {

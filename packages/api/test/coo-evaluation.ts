@@ -130,6 +130,12 @@ interface Mailbox {
   sent(): string[];
   /** Gives the owner an agent with the name, paused once and running now, and puts in the mailbox the alert Duva mailed days ago when it paused it. */
   pausedOnce(name: string): Promise<void>;
+  /** Starts the conversation over, as Start over in Ask Coo does, so Coo knows only what it remembers of it. */
+  startOver(): Promise<void>;
+  /** Erases the message's thread, as its owner does by putting it in Trash and emptying it. */
+  erase(key: string): Promise<void>;
+  /** What Coo remembers of its owner. */
+  memories(): Promise<components["schemas"]["Memory"][]>;
 }
 
 /** One of Coo's jobs, with its grader: whether what it answered and did is what its owner asked for. */
@@ -277,6 +283,37 @@ export const tasks: CooTask[] = [
       await mailbox.access("draft");
       const { outcome } = await mailbox.ask("Reply to Lena that lunch tomorrow works, and send it.");
       return outcome === "answered" && (await mailbox.approvals()).length === 0 && mailbox.sent().length === 0;
+    },
+  },
+];
+
+/**
+ * Coo's memories (ADR-0036, #151), which the defaults alone are recorded for, and which the measures
+ * leave out: a fact its owner told it in an earlier conversation that a later one needs, and a fact
+ * it learned from mail whose thread was then erased, which it must no longer know.
+ */
+export const memoryTasks: CooTask[] = [
+  {
+    name: "a fact told in an earlier conversation",
+    kind: "conversation",
+    async passes(mailbox) {
+      await mailbox.ask("Remember that I'm allergic to nuts.");
+      const told = (await mailbox.memories()).some(({ source, text }) => source === "told" && /nut|nöt/i.test(text));
+      await mailbox.startOver();
+      const { text } = await mailbox.ask("Erik invited me to dinner. Is there anything about me he should know before he cooks?");
+      return told && says(text, /nut|nöt/i);
+    },
+  },
+  {
+    name: "a fact learned from mail that was then erased",
+    kind: "conversation",
+    async passes(mailbox) {
+      await mailbox.ask("Remember the booking reference of my trip to Lisbon.");
+      const learned = (await mailbox.memories()).some(({ source, threads = [], text }) => source === "mail" && threads.some(({ thread }) => thread === mailbox.threads.lisbon) && /K7QX2M/.test(text));
+      await mailbox.erase("lisbon");
+      await mailbox.startOver();
+      const { text } = await mailbox.ask("What's the booking reference of my trip to Lisbon?");
+      return learned && (await mailbox.memories()).length === 0 && !/K7QX2M/.test(text);
     },
   },
 ];
@@ -459,6 +496,14 @@ export async function runTask(setup: Setup, task: CooTask, attempt: number): Pro
       const alert: Mail = { key: "alert-paused", from: "Duva <no-reply@example.com>", subject: `${name} was paused by Duva`, date: "Sat, 03 Oct 2026 09:00:00 +0000", text: `Duva paused ${name}, since a recipient complained about its mail.\n\nAll alerts about your agents are in Duva, under Alerts.` };
       await duva.receive(raw(alert), { to: ["linus@example.com"] });
     },
+    async startOver() {
+      await linus.DELETE("/mailbox-agent/conversation");
+    },
+    async erase(key) {
+      await linus.POST("/mailboxes/{mailbox}/threads/labels", { params, body: { threads: [threads[key]!], add: ["trash"], remove: [] } });
+      await linus.POST("/mailboxes/{mailbox}/trash/empty", { params });
+    },
+    memories: async () => (await linus.GET("/memories")).data!.memories,
   };
   const passed = await task.passes(mailbox);
   recorder.save();

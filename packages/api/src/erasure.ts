@@ -27,6 +27,7 @@ import { deliveryFor, screenedSenders, type Sender } from "./screening.ts";
 import { documents, pk, sk, type TransactItem } from "./table.ts";
 import { mailboxPrefix, type UploadsBucket } from "./uploads-bucket.ts";
 import { type LinkedEntry, storedLink, unlinkFiles } from "./linked-files.ts";
+import { forgetLearnedFrom, memoriesErasedWith } from "./memories.ts";
 
 // Each thread being erased is listed until its messages are gone, and each of their raw messages,
 // once per mailbox that erased it, until it is gone or another mailbox still has it.
@@ -246,13 +247,17 @@ async function eraseThread(table: Table, { mailbox, thread, by, due }: { mailbox
     const settings = await organizationSettings(table);
     if (summary === undefined || !due(summary, settings.settings)) return;
     erasesApprovals = settings.settings.erasureErasesApprovals;
+    const listings = listingsOf(summary);
+    // The memories learned from it go with it (ADR-0036), beside its items, the counter and the change.
+    const memories = await memoriesErasedWith(table, mailbox, thread, 5 + listings.length + Object.keys(summary.labelledAt ?? {}).length);
     const items: TransactItem[] = [
       { Put: { TableName: table.name, Item: { ...keys.threadKey(mailbox, thread), erasing: true }, ...asTimed(summary) } },
-      ...listingsOf(summary).map((listing) => ({ Delete: { TableName: table.name, Key: keys.entryIn(mailbox, listing, summary) } })),
+      ...listings.map((listing) => ({ Delete: { TableName: table.name, Key: keys.entryIn(mailbox, listing, summary) } })),
       ...Object.entries(summary.labelledAt ?? {}).map(([label, at]) => ({
         Delete: { TableName: table.name, Key: keys.labelledKey(at, mailbox, thread, label as ErasedLabel) },
       })),
       { Put: { TableName: table.name, Item: { ...erasingKey(mailbox, thread), mailbox, thread, erasesApprovals } } },
+      ...memories,
       // An admin who changes the settings meanwhile changes them before or after this erasure, never during it.
       settingsUnchanged(table, settings),
     ];
@@ -345,6 +350,8 @@ async function eraseMessages(table: Table, mailbox: string, thread: string, eras
     const chunk = tasks.slice(index, index + 100);
     await db.send(new TransactWriteCommand({ TransactItems: chunk.map((task) => ({ Delete: { TableName: table.name, Key: { [pk]: task[pk], [sk]: task[sk] } } })) }));
   }
+  // Memories too many for the thread's transaction, or kept from it as it was being erased.
+  await forgetLearnedFrom(table, mailbox, thread);
   await db.send(
     new TransactWriteCommand({
       TransactItems: [

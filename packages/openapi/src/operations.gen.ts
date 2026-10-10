@@ -317,6 +317,13 @@ export const operations = [
         "description": "Whether Coo, the mailbox agent, says in the web app when there is news worth a glance: new mail since the human last looked, a draft of its waiting for their approval, or a label's task done. on, the default, has it say so in a speech bubble under its nest. off keeps it quiet."
       },
       {
+        "name": "cooLearnsFromMail",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "Whether Coo learns from mail it reads while it works, and keeps what it learns as memories, each erased with its threads. on, the default, has it learn. off has it keep only what the human tells it."
+      },
+      {
         "name": "timeZone",
         "in": "body",
         "type": "string",
@@ -354,6 +361,129 @@ export const operations = [
         "required": false,
         "description": "The model, or null to keep the organization's default again. The CLI gives null with --no-cooHarderModel.",
         "nullable": true
+      }
+    ]
+  },
+  {
+    "operationId": "listMemories",
+    "method": "get",
+    "path": "/memories",
+    "routeKey": "GET /memories",
+    "summary": "List what your Coo remembers of you, each memory with when and where it came from.",
+    "description": "Coo keeps memories between conversations: what you tell it, and what it learns from mail it reads in Ask Coo and in the tasks your labels' prompts give, never from mail in the Screener or Spam. Each memory names its source, your own words or the threads it learned it from, and goes when they go: erasing a thread erases what was learned from it. Newest first, or with query, the memories most like it in meaning first. Only humans and their own Coo have memories, and each reads only their own.",
+    "signIn": true,
+    "command": [
+      "memories",
+      "list"
+    ],
+    "options": [
+      {
+        "name": "query",
+        "in": "query",
+        "type": "string",
+        "required": false,
+        "description": "Words to find memories like in meaning, such as a question Coo is asked. The most alike come first."
+      },
+      {
+        "name": "limit",
+        "in": "query",
+        "type": "integer",
+        "required": false,
+        "description": "The most memories to list, from 1 to 500. All of them, unless given."
+      }
+    ]
+  },
+  {
+    "operationId": "keepMemory",
+    "method": "post",
+    "path": "/memories",
+    "routeKey": "POST /memories",
+    "summary": "Keep a memory, a short fact about the human that Coo knows in its later runs.",
+    "description": "Give threads when it was learned from mail, the IDs of the threads it came from, so it goes when they go. Give none for what the human said in their own words. Mail in the Screener or Spam teaches nothing, and nothing is kept from mail while the human has learning from mail off (preferences cooLearnsFromMail). Only humans and their own Coo keep memories, at most 500 each.",
+    "signIn": true,
+    "command": [
+      "memories",
+      "keep"
+    ],
+    "options": [
+      {
+        "name": "text",
+        "in": "body",
+        "type": "string",
+        "required": true,
+        "description": "What to remember, a short fact in a sentence or two."
+      },
+      {
+        "name": "threads",
+        "in": "body",
+        "type": "strings",
+        "required": false,
+        "description": "The IDs of the threads it was learned from, if it was learned from mail. Leave it out for what the human said in their own words."
+      }
+    ]
+  },
+  {
+    "operationId": "forgetMemories",
+    "method": "delete",
+    "path": "/memories",
+    "routeKey": "DELETE /memories",
+    "summary": "Forget everything your Coo remembers of you.",
+    "description": "Erases every memory, whatever it came from. Coo goes on learning from then on, unless you switch learning from mail off (preferences cooLearnsFromMail). Only humans and their own Coo can forget, and each only their own.",
+    "signIn": true,
+    "command": [
+      "memories",
+      "forget-all"
+    ],
+    "options": []
+  },
+  {
+    "operationId": "forgetMemory",
+    "method": "delete",
+    "path": "/memories/{memory}",
+    "routeKey": "DELETE /memories/{memory}",
+    "summary": "Forget a memory.",
+    "description": "Erases the memory. Only humans and their own Coo can forget memories, and each only their own.",
+    "signIn": true,
+    "command": [
+      "memories",
+      "forget"
+    ],
+    "options": [
+      {
+        "name": "memory",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The memory's ID."
+      }
+    ]
+  },
+  {
+    "operationId": "correctMemory",
+    "method": "patch",
+    "path": "/memories/{memory}",
+    "routeKey": "PATCH /memories/{memory}",
+    "summary": "Correct a memory, giving what it should say.",
+    "description": "The memory keeps its sources and when it was kept, so it still goes when they go. Only humans and their own Coo can correct memories, and each only their own.",
+    "signIn": true,
+    "command": [
+      "memories",
+      "correct"
+    ],
+    "options": [
+      {
+        "name": "memory",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The memory's ID."
+      },
+      {
+        "name": "text",
+        "in": "body",
+        "type": "string",
+        "required": true,
+        "description": "What the memory should say."
       }
     ]
   },

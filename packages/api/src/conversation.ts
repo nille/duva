@@ -14,6 +14,7 @@ import { type OperationHandler, refusal } from "./api.ts";
 import type { Table } from "./deployment.ts";
 import { recordChanges } from "./feed.ts";
 import { mailboxAgentIn, mailboxAgentOf, turnKey, turnPrefix } from "./mailbox-agents.ts";
+import { firstMemoryNoted } from "./memories.ts";
 import { type Actor, type Agent, allHumans, type Human, isAdmin, mailboxFeed, organizationSettings, ownedMailboxes } from "./organization.ts";
 import type { Embedder } from "./titan.ts";
 import { tokenHeader } from "./infrastructure.ts";
@@ -114,6 +115,8 @@ export async function* runTurn(table: Table, runtime: AgentRuntime, embedder: Em
     ...(decision && { decision }),
     ...(handover && { handover }),
     ...(harder && { harder }),
+    // Its first memory from mail, kept in this turn or a task before it, is said once (ADR-0036).
+    ...((await firstMemoryNoted(table, human.id)) && { firstMemory: true }),
   };
   const answered = await addTurn(table, human, answer, turn.at);
   // Recorded before the stream ends, so a reader that stops at done still leaves it in the feed.

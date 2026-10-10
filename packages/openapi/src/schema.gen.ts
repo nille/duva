@@ -226,6 +226,58 @@ export interface paths {
         patch: operations["changePreferences"];
         trace?: never;
     };
+    "/memories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List what your Coo remembers of you, each memory with when and where it came from.
+         * @description Coo keeps memories between conversations: what you tell it, and what it learns from mail it reads in Ask Coo and in the tasks your labels' prompts give, never from mail in the Screener or Spam. Each memory names its source, your own words or the threads it learned it from, and goes when they go: erasing a thread erases what was learned from it. Newest first, or with query, the memories most like it in meaning first. Only humans and their own Coo have memories, and each reads only their own.
+         */
+        get: operations["listMemories"];
+        put?: never;
+        /**
+         * Keep a memory, a short fact about the human that Coo knows in its later runs.
+         * @description Give threads when it was learned from mail, the IDs of the threads it came from, so it goes when they go. Give none for what the human said in their own words. Mail in the Screener or Spam teaches nothing, and nothing is kept from mail while the human has learning from mail off (preferences cooLearnsFromMail). Only humans and their own Coo keep memories, at most 500 each.
+         */
+        post: operations["keepMemory"];
+        /**
+         * Forget everything your Coo remembers of you.
+         * @description Erases every memory, whatever it came from. Coo goes on learning from then on, unless you switch learning from mail off (preferences cooLearnsFromMail). Only humans and their own Coo can forget, and each only their own.
+         */
+        delete: operations["forgetMemories"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/memories/{memory}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Forget a memory.
+         * @description Erases the memory. Only humans and their own Coo can forget memories, and each only their own.
+         */
+        delete: operations["forgetMemory"];
+        options?: never;
+        head?: never;
+        /**
+         * Correct a memory, giving what it should say.
+         * @description The memory keeps its sources and when it was kept, so it still goes when they go. Only humans and their own Coo can correct memories, and each only their own.
+         */
+        patch: operations["correctMemory"];
+        trace?: never;
+    };
     "/humans": {
         parameters: {
             query?: never;
@@ -4985,6 +5037,8 @@ export interface components {
             handover?: components["schemas"]["Handover"];
             /** @description Whether the agent's turn is the harder model's answer to the turn before, as you asked it to think harder. */
             harder?: boolean;
+            /** @description Whether the agent's turn is the first since it kept its first memory from mail, which it says once, with where to see what it remembers (listMemories). */
+            firstMemory?: boolean;
         };
         /** @description What the decider, Amazon Nova Micro, made of a turn whose job doesn't settle the model: simple, the everyday model takes it, or complex, the harder model does, as it does when the decider is less than 0.7 sure. */
         RoutingDecision: {
@@ -5211,6 +5265,7 @@ export interface components {
             mailView: components["schemas"]["MailView"];
             keyboardShortcuts: components["schemas"]["KeyboardShortcuts"];
             cooSpeaksUp: components["schemas"]["CooSpeaksUp"];
+            cooLearnsFromMail: components["schemas"]["CooLearnsFromMail"];
             timeZone?: components["schemas"]["TimeZone"];
             opensOn: components["schemas"]["OpensOn"];
             newMailFrom?: components["schemas"]["NewMailFrom"];
@@ -5226,6 +5281,7 @@ export interface components {
             mailView?: components["schemas"]["MailView"];
             keyboardShortcuts?: components["schemas"]["KeyboardShortcuts"];
             cooSpeaksUp?: components["schemas"]["CooSpeaksUp"];
+            cooLearnsFromMail?: components["schemas"]["CooLearnsFromMail"];
             /** @description The time zone, as an IANA name, or null to remove it, as if the human never chose one. The CLI removes it with --no-timeZone. */
             timeZone?: components["schemas"]["TimeZone"] | null;
             opensOn?: components["schemas"]["OpensOn"];
@@ -5276,6 +5332,61 @@ export interface components {
          * @enum {string}
          */
         CooSpeaksUp: "on" | "off";
+        /**
+         * @description Whether Coo learns from mail it reads while it works, and keeps what it learns as memories, each erased with its threads. on, the default, has it learn. off has it keep only what the human tells it.
+         * @enum {string}
+         */
+        CooLearnsFromMail: "on" | "off";
+        /** @description Something Coo remembers of its human, with when and where it came from. */
+        Memory: {
+            /** @description The memory's ID. */
+            id: string;
+            /** @description What Coo remembers. */
+            text: string;
+            /**
+             * Format: date-time
+             * @description When Coo kept it.
+             */
+            kept: string;
+            /**
+             * Format: date-time
+             * @description When it was last corrected, if it was.
+             */
+            corrected?: string;
+            /**
+             * @description Where it came from: told, the human's own words; mail, the threads it was learned from, which threads lists.
+             * @enum {string}
+             */
+            source: "told" | "mail";
+            /** @description For a memory learned from mail, the threads it was learned from. */
+            threads?: components["schemas"]["MemorySource"][];
+        };
+        /** @description A thread a memory was learned from. */
+        MemorySource: {
+            /** @description The ID of the thread's mailbox. */
+            mailbox: string;
+            /** @description The thread's ID. */
+            thread: string;
+            /** @description The thread's subject when the memory was kept. */
+            subject: string;
+        };
+        MemoryList: {
+            memories: components["schemas"]["Memory"][];
+        };
+        NewMemory: {
+            /** @description What to remember, a short fact in a sentence or two. */
+            text: string;
+            /** @description The IDs of the threads it was learned from, if it was learned from mail. Leave it out for what the human said in their own words. */
+            threads?: string[];
+        };
+        MemoryCorrection: {
+            /** @description What the memory should say. */
+            text: string;
+        };
+        MemoriesForgotten: {
+            /** @description How many memories were forgotten. */
+            forgotten: number;
+        };
         Status: {
             /**
              * @description The version of Duva the deployment runs.
@@ -5374,6 +5485,8 @@ export interface components {
         Group: string;
         /** @description The domain. Case doesn't matter. */
         Domain: string;
+        /** @description The memory's ID. */
+        Memory: string;
     };
     requestBodies: never;
     headers: never;
@@ -5678,6 +5791,142 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+        };
+    };
+    listMemories: {
+        parameters: {
+            query?: {
+                /** @description Words to find memories like in meaning, such as a question Coo is asked. The most alike come first. */
+                query?: string;
+                /** @description The most memories to list, from 1 to 500. All of them, unless given. */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The memories. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryList"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    keepMemory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewMemory"];
+            };
+        };
+        responses: {
+            /** @description The memory, kept. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Memory"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    forgetMemories: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description How many memories were forgotten. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoriesForgotten"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    forgetMemory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The memory's ID. */
+                memory: components["parameters"]["Memory"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The memory, as it was before it was forgotten. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Memory"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    correctMemory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The memory's ID. */
+                memory: components["parameters"]["Memory"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MemoryCorrection"];
+            };
+        };
+        responses: {
+            /** @description The memory, corrected. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Memory"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     listHumans: {

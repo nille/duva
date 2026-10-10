@@ -8,6 +8,7 @@ import {
   BeforeToolCallEvent,
   InvokeModelStage,
   MaxTokensError,
+  type MemoryManager,
   Message,
   type MessageData,
   type ModelStreamEvent,
@@ -31,11 +32,12 @@ type Run = (name: string, input: Record<string, unknown>) => Promise<{ ok: boole
 
 /**
  * An agent on the messages so far, oldest first, with the tools, each call of which `run`
- * runs, a tool the model made up too, so Duva refuses it as it refuses its own. It has Duva's
+ * runs, a tool the model made up too, so Duva refuses it as it refuses its own, and the memory
+ * manager that gives it what it remembers, if it has one. It has Duva's
  * defaults: no printer, tool calls one at a time, as the model gave them, no retries of a failed
  * model call, and every message sent each time, as Duva keeps them.
  */
-export function strandsAgent({ model, messages, tools, run }: { model: StrandsModel; messages: ModelMessage[]; tools: ToolSpec[]; run: Run }): Agent {
+export function strandsAgent({ model, messages, tools, run, memory }: { model: StrandsModel; messages: ModelMessage[]; tools: ToolSpec[]; run: Run; memory?: MemoryManager }): Agent {
   const agent = new Agent({
     model,
     messages: messages as MessageData[],
@@ -44,6 +46,7 @@ export function strandsAgent({ model, messages, tools, run }: { model: StrandsMo
     toolExecutor: "sequential",
     retryStrategy: null,
     conversationManager: new NullConversationManager(),
+    ...(memory !== undefined && { memoryManager: memory }),
   });
   // A call that reached the token limit answered what it wrote, as Duva's own loop took it, where Strands fails the run.
   agent.addMiddleware(InvokeModelStage, async function* (context, next) {

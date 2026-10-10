@@ -372,6 +372,14 @@ function TurnShown({
       {turn.handover !== undefined && <Handover handover={turn.handover} />}
       {!human && <Steps actions={turn.actions} baseOf={baseOf} approval={approval} />}
       {turn.text !== "" && <p className="ask-text">{turn.text}</p>}
+      {turn.firstMemory === true && (
+        <p className="ask-memory">
+          <MemoryIcon />
+          <span>
+            {copy.firstMemory} <a href="#/settings/memory">{copy.firstMemoryLink}</a>
+          </span>
+        </p>
+      )}
       {turn.outcome === "capReached" && <p className="notice ask-stopped">{copy.capReached}</p>}
       {turn.outcome === "failed" && (
         <p className="notice notice-alert ask-stopped" role="status">
@@ -431,13 +439,20 @@ function Step({ action, base, approval }: { action: Action; base: string; approv
       </>
     );
   }
-  if (thread === undefined) return <>{phrase}</>;
+  if (thread === undefined) return <>{action.operation === "keepMemory" ? copy.keptTold : phrase}</>;
   return (
     <>
       {phrase} <a href={threadHref(thread, { label: "inbox" }, base)}>{more.length === 0 ? copy.open.thread : copy.open.threads(more.length + 1)}</a>
     </>
   );
 }
+
+/** A memory kept: a knot in a thread, as one ties to remember. */
+const MemoryIcon = () => (
+  <svg className="icon ask-memory-icon" viewBox="0 0 16 16" aria-hidden="true">
+    <path d="M2 11.5c2.5 0 3.6-1.4 4.4-3.2C7.3 6.2 8.3 4.5 10 4.5c1.4 0 2.3 1 2.3 2.2 0 1.5-1.4 2.4-3 2.4-1.8 0-2.6-1.3-2.9-2.6M8.6 9.4c.9 1.4 2.4 2.1 5.4 2.1" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
 
 const StepIcon = ({ ok }: { ok: boolean }) => (
   <svg className="icon ask-step-icon" viewBox="0 0 16 16" aria-hidden="true">

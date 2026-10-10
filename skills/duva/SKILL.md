@@ -158,11 +158,53 @@ Give only the preferences to change. They follow you to every browser you sign i
 - `--mailView`: How the web app shows a message that has HTML. html, the default, shows it as its sender designed it, with known trackers removed. text shows its plain text. Either way, the human can switch each message the other way.
 - `--keyboardShortcuts`: Whether single keys work as shortcuts in the web app, such as j and k to move through a list and e to archive. on, the default, has them work anywhere but in a field. off turns them all off, for speech input or keys pressed by mistake.
 - `--cooSpeaksUp`: Whether Coo, the mailbox agent, says in the web app when there is news worth a glance: new mail since the human last looked, a draft of its waiting for their approval, or a label's task done. on, the default, has it say so in a speech bubble under its nest. off keeps it quiet.
+- `--cooLearnsFromMail`: Whether Coo learns from mail it reads while it works, and keeps what it learns as memories, each erased with its threads. on, the default, has it learn. off has it keep only what the human tells it.
 - `--timeZone` or `--no-timeZone`: The time zone, as an IANA name, or null to remove it, as if the human never chose one. The CLI removes it with --no-timeZone.
 - `--opensOn`: Where the web app opens: all, the default, on All mailboxes, or the ID of one of the human's mailboxes, on that one. A mailbox no longer theirs opens All mailboxes.
 - `--newMailFrom` or `--no-newMailFrom`: The address, or null to start from the default again. The CLI gives null with --no-newMailFrom.
 - `--cooEverydayModel` or `--no-cooEverydayModel`: The model, or null to keep the organization's default again. The CLI gives null with --no-cooEverydayModel.
 - `--cooHarderModel` or `--no-cooHarderModel`: The model, or null to keep the organization's default again. The CLI gives null with --no-cooHarderModel.
+
+## duva memories list
+
+List what your Coo remembers of you, each memory with when and where it came from.
+
+Coo keeps memories between conversations: what you tell it, and what it learns from mail it reads in Ask Coo and in the tasks your labels' prompts give, never from mail in the Screener or Spam. Each memory names its source, your own words or the threads it learned it from, and goes when they go: erasing a thread erases what was learned from it. Newest first, or with query, the memories most like it in meaning first. Only humans and their own Coo have memories, and each reads only their own.
+
+- `--query`: Words to find memories like in meaning, such as a question Coo is asked. The most alike come first.
+- `--limit`: The most memories to list, from 1 to 500. All of them, unless given.
+
+## duva memories keep
+
+Keep a memory, a short fact about the human that Coo knows in its later runs.
+
+Give threads when it was learned from mail, the IDs of the threads it came from, so it goes when they go. Give none for what the human said in their own words. Mail in the Screener or Spam teaches nothing, and nothing is kept from mail while the human has learning from mail off (preferences cooLearnsFromMail). Only humans and their own Coo keep memories, at most 500 each.
+
+- `--text` (required): What to remember, a short fact in a sentence or two.
+- `--threads` (once for each): The IDs of the threads it was learned from, if it was learned from mail. Leave it out for what the human said in their own words.
+
+## duva memories forget-all
+
+Forget everything your Coo remembers of you.
+
+Erases every memory, whatever it came from. Coo goes on learning from then on, unless you switch learning from mail off (preferences cooLearnsFromMail). Only humans and their own Coo can forget, and each only their own.
+
+## duva memories forget
+
+Forget a memory.
+
+Erases the memory. Only humans and their own Coo can forget memories, and each only their own.
+
+- `--memory` (required): The memory's ID.
+
+## duva memories correct
+
+Correct a memory, giving what it should say.
+
+The memory keeps its sources and when it was kept, so it still goes when they go. Only humans and their own Coo can correct memories, and each only their own.
+
+- `--memory` (required): The memory's ID.
+- `--text` (required): What the memory should say.
 
 ## duva humans list
 

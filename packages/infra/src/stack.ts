@@ -459,7 +459,8 @@ export class DuvaStack extends Stack {
     const searcher = lanceLambda("SearchHandler", "search.handler", {}, { memorySize: 10_240, timeout: Duration.seconds(30) });
     search.grantRead(searcher);
     // Search embeds its words, and the indexer each message, with Titan in the deployment's own
-    // region, so mail stays there (ADR-0007). The conversation Lambda embeds each turn's words there too (#132).
+    // region, so mail stays there (ADR-0007). The conversation Lambda embeds each turn's words there too (#132),
+    // and the API Coo's memories (ADR-0036).
     const embedding = new PolicyStatement({ actions: ["bedrock:InvokeModel"], resources: [this.formatArn({ service: "bedrock", account: "", resource: "foundation-model", resourceName: embeddingModel })] });
     searcher.addToRolePolicy(embedding);
     // Search also translates its words with Nova Lite there, into the organization's search languages (#67).
@@ -544,6 +545,8 @@ export class DuvaStack extends Stack {
     logos.grantDelete(handler, `${hostedLogosPath}*`);
     // Each search waits for the search Lambda's answer.
     searcher.grantInvoke(handler);
+    // The API embeds Coo's memories, and what they are searched for, with Titan there too (ADR-0036).
+    handler.addToRolePolicy(embedding);
     // Changing the search languages has the indexer rebuild the indexes that file mail in others (#67).
     indexQueue.grantSendMessages(handler);
     // Message bodies are read from the raw mail.

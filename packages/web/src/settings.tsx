@@ -18,6 +18,7 @@ import { DomainsSheet } from "./domains.tsx";
 import { GroupsSheet } from "./groups.tsx";
 import { ActorMark } from "./mail-parts.tsx";
 import { MyLogoSheet } from "./logos.tsx";
+import { MemoryPage } from "./memory.tsx";
 import { PeopleSheet } from "./people.tsx";
 import { loadConfig, signOut } from "./session.ts";
 import { strings } from "./strings.ts";
@@ -55,7 +56,7 @@ interface SheetState<Values> {
  * A sheet's values as Duva has them, and as the human chooses them until they save. `read` and
  * `write` call Duva, and `onSaved` hears of what Duva saved.
  */
-function useSheet<Values extends object>({
+export function useSheet<Values extends object>({
   read: readValues,
   write,
   copy,
@@ -110,7 +111,7 @@ function useSheet<Values extends object>({
 }
 
 /** Settings' pages, in the index's order: the human's own, then the admins'. */
-const pages = ["you", "screener", "agents", "organization", "domains", "addresses", "people", "groups"] as const;
+const pages = ["you", "screener", "memory", "agents", "organization", "domains", "addresses", "people", "groups"] as const;
 type Page = (typeof pages)[number];
 const adminPages: readonly Page[] = ["organization", "domains", "addresses", "people", "groups"];
 
@@ -155,6 +156,7 @@ function useIndex({
   mailboxes,
   hash,
   changes,
+  learning,
   onSignedOut,
 }: {
   client: DuvaClient;
@@ -162,6 +164,8 @@ function useIndex({
   mailboxes: Mailbox[] | undefined;
   hash: string;
   changes: number;
+  /** Whether the human's Coo learns from mail, which its page's line says when it doesn't. */
+  learning: boolean;
   onSignedOut: () => void;
 }): { agents?: IndexedAgent[]; states: Partial<Record<Page, EntryState>> } {
   const [agents, setAgents] = useState<IndexedAgent[]>();
@@ -177,7 +181,7 @@ function useIndex({
     const quietly = <T,>(call: Promise<T>) => call.catch(() => ({ data: undefined, response: undefined }));
     const none = Promise.resolve({ data: undefined, response: undefined });
     void (async () => {
-      const [list, domains, settings, organizationMailboxes, humans, groups, screeners] = await Promise.all([
+      const [list, domains, settings, organizationMailboxes, humans, groups, screeners, memories] = await Promise.all([
         quietly(client.GET("/agents")),
         admin ? quietly(client.GET("/domains")) : none,
         admin ? quietly(client.GET("/organization/settings")) : none,
@@ -185,9 +189,10 @@ function useIndex({
         admin ? quietly(client.GET("/humans")) : none,
         admin ? quietly(client.GET("/groups")) : none,
         Promise.all(mailboxes.map((mailbox) => quietly(client.GET("/mailboxes/{mailbox}/screener", { params: { path: { mailbox: mailbox.id } } })))),
+        mailboxes.length > 0 ? quietly(client.GET("/memories")) : none,
       ]);
       if (!current) return;
-      if ([list, domains, settings, organizationMailboxes, humans, groups, ...screeners].some(({ response }) => response?.status === 401)) return onSignedOut();
+      if ([list, domains, settings, organizationMailboxes, humans, groups, memories, ...screeners].some(({ response }) => response?.status === 401)) return onSignedOut();
       // An agent's sends wait in the human's mailboxes, where it sends as them. A list Duva can't give now counts none.
       const drafts = await Promise.all(
         mailboxes.map(async (mailbox) => {
@@ -209,6 +214,7 @@ function useIndex({
       if (list.data !== undefined && list.data.agents.length > 0) read.agents = { text: copy.agents(list.data.agents.length) };
       const on = screeners.map(({ data }) => data?.on);
       if (on.every((each) => each !== undefined)) read.screener = { text: copy.screener(on.filter(Boolean).length, on.length) };
+      if (memories.data !== undefined) read.memory = { text: copy.memory(memories.data.memories.length, learning) };
       if (settings.data !== undefined) read.organization = { text: copy.organization(settings.data.retentionDays) };
       if (domains.data !== undefined) {
         const missing = domains.data.domains
@@ -228,7 +234,7 @@ function useIndex({
     return () => {
       current = false;
     };
-  }, [client, admin, mailboxesKey, hash, changes, onSignedOut]);
+  }, [client, admin, mailboxesKey, hash, changes, learning, onSignedOut]);
   return { agents, states };
 }
 
@@ -263,11 +269,11 @@ export function Settings({
   // A pause or a send on the Your agents page changes what the index says of the agent.
   const [agentChanges, setAgentChanges] = useState(0);
   const agentChanged = useCallback(() => setAgentChanges((count) => count + 1), []);
-  const index = useIndex({ client, admin, mailboxes: mailboxes === undefined ? undefined : own, hash, changes: agentChanges, onSignedOut });
+  const index = useIndex({ client, admin, mailboxes: mailboxes === undefined ? undefined : own, hash, changes: agentChanges, learning: preferences.cooLearnsFromMail === "on", onSignedOut });
   const sponsors = (index.agents?.length ?? 0) > 0;
   // Pages a human can't open, such as an admin's for a member, or one with nothing on it, open You instead.
   const canOpen = (page: Page) =>
-    adminPages.includes(page) ? admin : page === "screener" ? mailboxes === undefined || own.length > 0 : page === "agents" ? sponsors || index.agents === undefined : true;
+    adminPages.includes(page) ? admin : page === "screener" || page === "memory" ? mailboxes === undefined || own.length > 0 : page === "agents" ? sponsors || index.agents === undefined : true;
   const page = asked.page !== undefined && canOpen(asked.page) ? asked.page : "you";
   const agent = asked.agent ?? agentAsked;
 
@@ -370,6 +376,7 @@ export function Settings({
           <ul aria-labelledby="settings-group-you">
             <li>{entry("you", copy.you)}</li>
             {own.length > 0 && <li>{entry("screener", copy.screener.title)}</li>}
+            {own.length > 0 && <li>{entry("memory", copy.memory.title)}</li>}
             {sponsors && (
               <li>
                 {entry("agents", strings.agentSettings.title)}
@@ -411,6 +418,7 @@ export function Settings({
         {page === "screener" && own.length > 0 && (
           <ScreenerSheet key={own.map(({ id }) => id).join()} client={client} mailboxes={own} onSignedOut={onSignedOut} />
         )}
+        {page === "memory" && own.length > 0 && <MemoryPage client={client} mailboxes={own} onPreferences={onPreferences} onSignedOut={onSignedOut} />}
         {page === "agents" && <AgentSettingsSheet client={client} me={me} email={email} admin={admin} mailboxes={mailboxes} open={agent} onChange={agentChanged} onSignedOut={onSignedOut} />}
         {page === "organization" && (
           <>
@@ -1347,7 +1355,7 @@ function ScreenerSheet({ client, mailboxes, onSignedOut }: { client: DuvaClient;
 }
 
 /** A sheet: its name and who chooses what's on it, then its settings once they are read. */
-function Sheet<Values extends object>({
+export function Sheet<Values extends object>({
   id,
   name,
   lead,
@@ -1397,7 +1405,7 @@ function Sheet<Values extends object>({
 }
 
 /** Save, which waits until a choice differs from what is saved, and "Saved" beside it once it is. */
-function SaveRow<Values extends object>({ sheet, saved, invalid = false }: { sheet: SheetState<Values>; saved: string; invalid?: boolean }) {
+export function SaveRow<Values extends object>({ sheet, saved, invalid = false }: { sheet: SheetState<Values>; saved: string; invalid?: boolean }) {
   return (
     <div className="setting-foot">
       <button type="submit" className="button button-primary" disabled={sheet.unchanged || invalid || sheet.saving.status === "saving"}>

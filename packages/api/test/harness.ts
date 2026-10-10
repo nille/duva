@@ -499,6 +499,7 @@ export async function startDuva({
       reminders,
       hostedLogos,
       tasks: taskRunner,
+      embedder: titan,
     }),
     // Cognito's verifier takes only the web app's and the CLI's app clients, which share the stand-in's one.
     createAuthorizer({

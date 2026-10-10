@@ -307,6 +307,156 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
+  /memories:
+    get:
+      operationId: listMemories
+      summary: List what your Coo remembers of you, each memory with when and where it came from.
+      description: >
+        Coo keeps memories between conversations: what you tell it, and what
+        it learns from mail it reads in Ask Coo and in the tasks your labels'
+        prompts give, never from mail in the Screener or Spam. Each memory
+        names its source, your own words or the threads it learned it from,
+        and goes when they go: erasing a thread erases what was learned from
+        it. Newest first, or with query, the memories most like it in meaning
+        first. Only humans and their own Coo have memories, and each reads
+        only their own.
+      x-cli-command: memories list
+      parameters:
+        - name: query
+          in: query
+          required: false
+          description: Words to find memories like in meaning, such as a question Coo is asked. The most alike come first.
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          description: The most memories to list, from 1 to 500. All of them, unless given.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+      responses:
+        "200":
+          description: The memories.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemoryList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      operationId: keepMemory
+      summary: Keep a memory, a short fact about the human that Coo knows in its later runs.
+      description: >
+        Give threads when it was learned from mail, the IDs of the threads it
+        came from, so it goes when they go. Give none for what the human said
+        in their own words. Mail in the Screener or Spam teaches nothing, and
+        nothing is kept from mail while the human has learning from mail off
+        (preferences cooLearnsFromMail). Only humans and their own Coo keep
+        memories, at most 500 each.
+      x-cli-command: memories keep
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NewMemory"
+      responses:
+        "201":
+          description: The memory, kept.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Memory"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+    delete:
+      operationId: forgetMemories
+      summary: Forget everything your Coo remembers of you.
+      description: >
+        Erases every memory, whatever it came from. Coo goes on learning
+        from then on, unless you switch learning from mail off (preferences
+        cooLearnsFromMail). Only humans and their own Coo can forget, and
+        each only their own.
+      x-cli-command: memories forget-all
+      responses:
+        "200":
+          description: How many memories were forgotten.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemoriesForgotten"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /memories/{memory}:
+    patch:
+      operationId: correctMemory
+      summary: Correct a memory, giving what it should say.
+      description: >
+        The memory keeps its sources and when it was kept, so it still goes
+        when they go. Only humans and their own Coo can correct memories,
+        and each only their own.
+      x-cli-command: memories correct
+      parameters:
+        - $ref: "#/components/parameters/Memory"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MemoryCorrection"
+      responses:
+        "200":
+          description: The memory, corrected.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Memory"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: forgetMemory
+      summary: Forget a memory.
+      description: >
+        Erases the memory. Only humans and their own Coo can forget
+        memories, and each only their own.
+      x-cli-command: memories forget
+      parameters:
+        - $ref: "#/components/parameters/Memory"
+      responses:
+        "200":
+          description: The memory, as it was before it was forgotten.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Memory"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /humans:
     post:
       operationId: addHuman
@@ -4180,6 +4330,13 @@ components:
       in: path
       required: true
       description: The domain. Case doesn't matter.
+      schema:
+        type: string
+    Memory:
+      name: memory
+      in: path
+      required: true
+      description: The memory's ID.
       schema:
         type: string
   securitySchemes:
@@ -8573,6 +8730,12 @@ components:
         harder:
           type: boolean
           description: Whether the agent's turn is the harder model's answer to the turn before, as you asked it to think harder.
+        firstMemory:
+          type: boolean
+          description: >-
+            Whether the agent's turn is the first since it kept its first
+            memory from mail, which it says once, with where to see what it
+            remembers (listMemories).
     RoutingDecision:
       type: object
       additionalProperties: false
@@ -9000,7 +9163,7 @@ components:
     Preferences:
       type: object
       additionalProperties: false
-      required: [hourCycle, dateFormat, mailView, keyboardShortcuts, cooSpeaksUp, opensOn]
+      required: [hourCycle, dateFormat, mailView, keyboardShortcuts, cooSpeaksUp, cooLearnsFromMail, opensOn]
       description: A human's own preferences.
       properties:
         hourCycle:
@@ -9013,6 +9176,8 @@ components:
           $ref: "#/components/schemas/KeyboardShortcuts"
         cooSpeaksUp:
           $ref: "#/components/schemas/CooSpeaksUp"
+        cooLearnsFromMail:
+          $ref: "#/components/schemas/CooLearnsFromMail"
         timeZone:
           $ref: "#/components/schemas/TimeZone"
         opensOn:
@@ -9051,6 +9216,8 @@ components:
           $ref: "#/components/schemas/KeyboardShortcuts"
         cooSpeaksUp:
           $ref: "#/components/schemas/CooSpeaksUp"
+        cooLearnsFromMail:
+          $ref: "#/components/schemas/CooLearnsFromMail"
         timeZone:
           description: >-
             The time zone, as an IANA name, or null to remove it, as if the
@@ -9144,6 +9311,102 @@ components:
         worth a glance: new mail since the human last looked, a draft of its
         waiting for their approval, or a label's task done. on, the default,
         has it say so in a speech bubble under its nest. off keeps it quiet.
+    CooLearnsFromMail:
+      type: string
+      enum: ["on", "off"]
+      description: >-
+        Whether Coo learns from mail it reads while it works, and keeps what
+        it learns as memories, each erased with its threads. on, the default,
+        has it learn. off has it keep only what the human tells it.
+    Memory:
+      type: object
+      additionalProperties: false
+      required: [id, text, kept, source]
+      description: Something Coo remembers of its human, with when and where it came from.
+      properties:
+        id:
+          type: string
+          description: The memory's ID.
+        text:
+          type: string
+          description: What Coo remembers.
+        kept:
+          type: string
+          format: date-time
+          description: When Coo kept it.
+        corrected:
+          type: string
+          format: date-time
+          description: When it was last corrected, if it was.
+        source:
+          type: string
+          enum: [told, mail]
+          description: >-
+            Where it came from: told, the human's own words; mail, the threads
+            it was learned from, which threads lists.
+        threads:
+          type: array
+          description: For a memory learned from mail, the threads it was learned from.
+          items:
+            $ref: "#/components/schemas/MemorySource"
+    MemorySource:
+      type: object
+      additionalProperties: false
+      required: [mailbox, thread, subject]
+      description: A thread a memory was learned from.
+      properties:
+        mailbox:
+          type: string
+          description: The ID of the thread's mailbox.
+        thread:
+          type: string
+          description: The thread's ID.
+        subject:
+          type: string
+          description: The thread's subject when the memory was kept.
+    MemoryList:
+      type: object
+      additionalProperties: false
+      required: [memories]
+      properties:
+        memories:
+          type: array
+          items:
+            $ref: "#/components/schemas/Memory"
+    NewMemory:
+      type: object
+      additionalProperties: false
+      required: [text]
+      properties:
+        text:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: What to remember, a short fact in a sentence or two.
+        threads:
+          type: array
+          maxItems: 5
+          description: The IDs of the threads it was learned from, if it was learned from mail. Leave it out for what the human said in their own words.
+          items:
+            type: string
+    MemoryCorrection:
+      type: object
+      additionalProperties: false
+      required: [text]
+      properties:
+        text:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: What the memory should say.
+    MemoriesForgotten:
+      type: object
+      additionalProperties: false
+      required: [forgotten]
+      properties:
+        forgotten:
+          type: integer
+          description: How many memories were forgotten.
     Status:
       type: object
       additionalProperties: false

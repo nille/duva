@@ -27,6 +27,7 @@ import { X509Certificate } from "node:crypto";
 import { markRoots } from "./mark-roots.ts";
 import { s3HostedLogos } from "./own-logos.ts";
 import { lambdaTaskRunner } from "./tasks.ts";
+import { titanEmbedder } from "./titan.ts";
 import { s3UploadsBucket } from "./uploads-bucket.ts";
 
 const mailBucket = required(environmentVariables.mailBucket);
@@ -70,4 +71,5 @@ export const handler = createApi({
     markRoots.map((pem) => new X509Certificate(pem)),
   ),
   tasks: lambdaTaskRunner(lambda, required(environmentVariables.taskRunnerFunction)),
+  embedder: titanEmbedder(),
 });

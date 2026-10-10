@@ -325,7 +325,7 @@ test("only the API and the sender write to the uploads bucket, the sender a forw
   for (const id of ["ApiHandler", "SenderHandler", "EraserHandler"]) expect(onBucket(id)).toContain("s3:AbortMultipartUpload");
 });
 
-test("only search, the indexer and the conversation Lambda call Bedrock, each to embed with Titan and search also to translate with Nova Lite, in the deployment's region", () => {
+test("only search, the indexer, the conversation Lambda and the API call Bedrock, each to embed with Titan and search also to translate with Nova Lite, in the deployment's region", () => {
   const model = (id: string) => ({ "Fn::Join": ["", ["arn:", { Ref: "AWS::Partition" }, ":bedrock:", { Ref: "AWS::Region" }, `::foundation-model/${id}`]] });
   const onBedrock = (prefix: string) => statements(prefix).filter(({ Action }) => [Action].flat().some((action) => action.startsWith("bedrock:")));
   // Each Bedrock statement invokes models and nothing else, and these are all the models invoked.
@@ -339,9 +339,11 @@ test("only search, the indexer and the conversation Lambda call Bedrock, each to
   expect(invoked("IndexerHandler")).toEqual([model(embeddingModel)]);
   // The conversation Lambda keeps each turn's routing with its words' embedding (ADR-0032).
   expect(invoked("ConversationHandler")).toEqual([model(embeddingModel)]);
+  // The API embeds Coo's memories, and what they are searched for (ADR-0036).
+  expect(invoked("ApiHandler")).toEqual([model(embeddingModel)]);
   const others = ofType("AWS::Lambda::Function")
     .map(([id]) => id)
-    .filter((id) => !["SearchHandler", "IndexerHandler", "ConversationHandler"].some((name) => id.startsWith(name)) && onBedrock(id).length > 0);
+    .filter((id) => !["SearchHandler", "IndexerHandler", "ConversationHandler", "ApiHandler"].some((name) => id.startsWith(name)) && onBedrock(id).length > 0);
   expect(others).toEqual([]);
 });
 

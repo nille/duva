@@ -349,7 +349,7 @@ test("a human chooses 24-hour time and ISO dates, and the Inbox and a thread sho
   await you(page).getByRole("button", { name: "Save" }).click();
 
   await expect.poll(() => you(page).getByRole("status").textContent(), wait).toBe(saved);
-  expect((await grace.GET("/preferences")).data).toEqual({ hourCycle: "h23", dateFormat: "iso", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "on", opensOn: "all", newMailFrom: "grace@example.com" });
+  expect((await grace.GET("/preferences")).data).toEqual({ hourCycle: "h23", dateFormat: "iso", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "on", cooLearnsFromMail: "on", opensOn: "all", newMailFrom: "grace@example.com" });
 
   await page.getByRole("navigation").getByRole("link", { name: "Mail", exact: true }).click();
   await expect.poll(() => row(page, "Lunch").textContent(), wait).toBe("09:15");

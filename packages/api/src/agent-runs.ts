@@ -10,7 +10,7 @@ import type { Table } from "./deployment.ts";
 import { sponsorAccessIn } from "./access.ts";
 import { type Agent, agentSettings, type Mailbox, mailboxesInOrder, mailboxFeed, organizationSettings } from "./organization.ts";
 import { recordChanges } from "./feed.ts";
-import { cooModelsOf } from "./preferences.ts";
+import { cooModelsOf, learnsFromMail } from "./preferences.ts";
 import { endRunToken, issueRunToken } from "./run-tokens.ts";
 import { documents, pk, sk } from "./table.ts";
 
@@ -76,7 +76,7 @@ export async function startRun(
   const cap = settings.mailboxAgentSpendCap;
   if (cap === 0) return { refused: "An admin turned the mailbox agents off, with a spend cap of $0. Ask one to raise it." };
   const month = monthOf(new Date());
-  const [spent, { everyday, harder }] = await Promise.all([spentIn(table, month), cooModelsOf(table, agent.sponsor, settings)]);
+  const [spent, { everyday, harder }, fromMail] = await Promise.all([spentIn(table, month), cooModelsOf(table, agent.sponsor, settings), learnsFromMail(table, agent.sponsor)]);
   if (spent >= cap) {
     await capReached(table, agent, month, cap);
     return { refused: capRefusal(cap) };
@@ -91,6 +91,7 @@ export async function startRun(
     model: { model: { conversation: everyday, task: everyday, harder, unsubscribe: harder }[job], harder, region },
     ...(job === "conversation" && settings.mailboxAgentDecider && { decide: true }),
     budget: cap - spent,
+    learnsFromMail: fromMail,
     now: new Date().toISOString(),
   };
   return { start, month, cap };
