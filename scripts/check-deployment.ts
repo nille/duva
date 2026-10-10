@@ -291,8 +291,8 @@ await check("Claude answers through the eu profile from eu-central-1, where the 
   const text = answer?.message?.content?.[0]?.text ?? "";
   return /yes/i.test(text) ? undefined : `answered ${JSON.stringify(text)}`;
 });
-await check("reading a mailbox's mailbox agent without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/mailboxes/x/agent`), 401));
-await check("clearing a conversation without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/mailboxes/x/agent/conversation`, { method: "DELETE" }), 401));
+await check("reading the mailbox agent without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/mailbox-agent`), 401));
+await check("clearing a conversation without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/mailbox-agent/conversation`, { method: "DELETE" }), 401));
 await check("reading the mailbox agents' spend without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/organization/mailbox-agent-spend`), 401));
 // Duva's MCP endpoint, on the API's domain (ADR-0028).
 const mcpCall = (headers: Record<string, string> = {}) =>
