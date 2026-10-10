@@ -89,7 +89,7 @@ export async function prepareTurn({ table, region, apiUrl, available }: { table:
   const turn = harder ? turns[asking]! : await addTurn(table, human, { from: "human", ...(mailbox !== undefined && { mailbox: mailbox.id }), text: words, actions: [] });
   const payload: Omit<RunPayload, "token"> = {
     ...start,
-    history: history.map(({ from, text, actions }) => ({ from, text: from === "agent" && actions.length > 0 ? `${text}\n\n(${actionsRead(actions)})` : text })),
+    history: history.map(({ from, text, actions }) => ({ from, text, ...(from === "agent" && actions.length > 0 && { did: actionsRead(actions, "you") }) })),
     words: turn.text,
   };
   return { payload, turn, human, agent, month, cap, ...(harder && { harder }) };

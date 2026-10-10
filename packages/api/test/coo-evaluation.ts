@@ -291,9 +291,13 @@ export const tasks: CooTask[] = [
 
 /**
  * Coo's memories (ADR-0036, #151), which the defaults alone are recorded for, and which the measures
- * leave out: a fact its owner told it in an earlier conversation that a later one needs, and a fact
- * it learned from mail whose thread was then erased, which it must no longer know.
+ * leave out: a fact its owner told it in an earlier conversation that a later one needs, a fact it
+ * learned from mail whose thread was then erased, which it must no longer know, and a fact it is
+ * asked to remember in the turn after one that looked it up, which it keeps rather than says it
+ * kept. Every memory is written about its owner in plain words, never as "the user".
  */
+const plain = (memories: components["schemas"]["Memory"][]) => memories.every(({ text }) => !/\buser\b/i.test(text));
+
 export const memoryTasks: CooTask[] = [
   {
     name: "a fact told in an earlier conversation",
@@ -303,7 +307,7 @@ export const memoryTasks: CooTask[] = [
       const told = (await mailbox.memories()).some(({ source, text }) => source === "told" && /nut|nöt/i.test(text));
       await mailbox.startOver();
       const { text } = await mailbox.ask("Erik invited me to dinner. Is there anything about me he should know before he cooks?");
-      return told && says(text, /nut|nöt/i);
+      return told && plain(await mailbox.memories()) && says(text, /nut|nöt/i);
     },
   },
   {
@@ -311,11 +315,23 @@ export const memoryTasks: CooTask[] = [
     kind: "conversation",
     async passes(mailbox) {
       await mailbox.ask("Remember the booking reference of my trip to Lisbon.");
-      const learned = (await mailbox.memories()).some(({ source, threads = [], text }) => source === "mail" && threads.some(({ thread }) => thread === mailbox.threads.lisbon) && /K7QX2M/.test(text));
+      const learned = plain(await mailbox.memories()) && (await mailbox.memories()).some(({ source, threads = [], text }) => source === "mail" && threads.some(({ thread }) => thread === mailbox.threads.lisbon) && /K7QX2M/.test(text));
       await mailbox.erase("lisbon");
       await mailbox.startOver();
       const { text } = await mailbox.ask("What's the booking reference of my trip to Lisbon?");
       return learned && (await mailbox.memories()).length === 0 && !/K7QX2M/.test(text);
+    },
+  },
+  {
+    name: "a fact to remember from the turn before",
+    kind: "conversation",
+    async passes(mailbox) {
+      await mailbox.ask("Vad är bokningsnumret för min resa till Lissabon?");
+      const { text } = await mailbox.ask("Remember which flight I'm on, and when it leaves.");
+      const memories = await mailbox.memories();
+      const kept = memories.some(({ source, threads = [], text: remembered }) => source === "mail" && threads.some(({ thread }) => thread === mailbox.threads.lisbon) && /SK ?1827/.test(remembered));
+      // What Duva noted of the turn before is never written as Coo's own words.
+      return kept && plain(memories) && !/keepMemory|searchMailbox|you used/i.test(text);
     },
   },
 ];

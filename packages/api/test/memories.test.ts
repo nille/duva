@@ -276,6 +276,76 @@ test("in a label task Coo is told a memory names its threads", budget, async () 
   expect((requests[0]!.tools.find(({ name }) => name === "keepMemory")!.inputSchema.json as { required: string[] }).required).toEqual(["text", "threads"]);
 });
 
+test("what Coo did in an earlier answer reaches it as Duva's note in the turn after, never as words of its own", async () => {
+  const { model, requests } = scripted(() => [use("keepMemory", { text: "Their accountant is Ada Lind." })], () => [{ text: "I'll remember that." }], () => [{ text: "Hello." }]);
+  const { duva } = await withLinus({ model });
+  await duva.askAgent("linus@example.org", { words: "Remember that my accountant is Ada Lind." });
+
+  await duva.askAgent("linus@example.org", { words: "Hi" });
+
+  const messages = requests[2]!.messages;
+  expect(messages.find(({ role }) => role === "assistant")!.content).toEqual([{ text: "I'll remember that." }]);
+  expect(messages.at(-1)!.content[0]).toEqual({ text: "[Duva, not your owner: in your answer above, you used keepMemory.]" });
+  expect(messages.at(-1)!.content[1]).toMatchObject({ text: "Hi" });
+});
+
+test("an everyday answer that says Coo remembered what no call kept is handed to the harder model, told why, which keeps it", budget, async () => {
+  let thread = "";
+  const { model, requests } = scripted(
+    () => [use("searchMailbox", { q: "dentist" })],
+    () => [{ text: "I've saved that you see the dentist on 20 October." }],
+    () => [use("keepMemory", { text: "They see the dentist on 20 October 2026.", threads: [thread] })],
+    () => [{ text: "Kept: you see the dentist on 20 October." }],
+  );
+  const { duva, ada, receive, memories } = await withLinus({ model });
+  await ada.PATCH("/organization/settings", { body: { mailboxAgentModel: "anthropic.claude-haiku-4-5-20251001-v1:0", mailboxAgentHarderModel: "anthropic.claude-sonnet-5-5" } });
+  thread = await receive(dentist);
+
+  const { events } = await duva.askAgent("linus@example.org", { words: "Read my dentist's mail and remember when I go." });
+
+  expect(requests.map(({ model }) => model)).toEqual(["anthropic.claude-haiku-4-5-20251001-v1:0", "anthropic.claude-haiku-4-5-20251001-v1:0", "anthropic.claude-sonnet-5-5", "anthropic.claude-sonnet-5-5"]);
+  expect(requests[2]!.system).toContain("its answer didn't hold up: Duva has kept, corrected or forgotten no memory in this run.");
+  expect(events!.at(-1)).toMatchObject({ type: "done", turn: { text: "Kept: you see the dentist on 20 October.", handover: { reason: "answerCheck" } } });
+  expect((await memories()).map(({ text }) => text)).toEqual(["They see the dentist on 20 October 2026."]);
+});
+
+test("the harder model's answer that says Coo forgot what no call forgot is corrected once, by the model, told what Duva has", async () => {
+  const { model, requests } = scripted(
+    () => [use("listMemories")],
+    () => [{ text: "I've forgotten who your partner is." }],
+    () => [use("forgetMemory", { memory: /<entry id="([^"]+)"/.exec(asked(requests[0]!))![1] })],
+    () => [{ text: "Now it's forgotten." }],
+  );
+  const { duva, linus, memories } = await withLinus({ model });
+  await linus.POST("/memories", { body: { text: "Their partner is Sam." } });
+
+  const { events } = await duva.askAgent("linus@example.org", { words: "Forget who my partner is." });
+
+  expect(asked(requests[2]!)).toBe("This is Duva, not your owner. Your answer says you remembered or forgot something, but Duva has kept, corrected or forgotten no memory in this run. Do it now with the memory tools, or tell your owner briefly that you didn't.");
+  expect(events!.at(-1)).toMatchObject({ type: "done", turn: { actions: [{ operation: "listMemories" }, { operation: "forgetMemory", ok: true }] } });
+  expect(await memories()).toEqual([]);
+});
+
+test("an answer that recalls a memory, or says it saved a draft, claims nothing that needs a call", async () => {
+  const { model, requests } = scripted(() => [use("listMemories")], () => [{ text: "I remember that your partner is Sam. I've saved a draft reply to Erik too." }]);
+  const { duva, linus } = await withLinus({ model });
+  await linus.POST("/memories", { body: { text: "Their partner is Sam." } });
+
+  const { events } = await duva.askAgent("linus@example.org", { words: "Who is my partner?" });
+
+  expect(requests).toHaveLength(2);
+  expect(events!.at(-1)).toMatchObject({ type: "done", turn: { text: "I remember that your partner is Sam. I've saved a draft reply to Erik too." } });
+});
+
+test("Coo is told to write each memory about its human in plain words, never as the user", async () => {
+  const { model, requests } = scripted(() => [{ text: "Hello." }]);
+  const { duva } = await withLinus({ model });
+
+  await duva.askAgent("linus@example.org", { words: "Hi" });
+
+  expect(requests[0]!.system).toContain('Write each memory as a plain sentence about your owner, such as "Their accountant is Ada Lind.", never calling them the user.');
+});
+
 test("told to forget something, Coo forgets it", async () => {
   const { model, requests } = scripted(
     (request) => [use("forgetMemory", { memory: /<entry id="([^"]+)"/.exec(asked(request))![1] })],

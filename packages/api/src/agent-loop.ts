@@ -6,7 +6,7 @@ import { type Operation, operations, type OperationId } from "@duva/openapi";
 import type { components } from "@duva/openapi";
 import { AfterInvocationEvent, AfterModelCallEvent, AfterToolsEvent, BeforeModelCallEvent, BeforeToolsEvent, InvokeModelStage, ModelStreamUpdateEvent } from "@strands-agents/sdk";
 import { costOf, deciderModel, type MailboxAgentModel } from "./agent-models.ts";
-import { memoryLines, memoryManager, memoryOperations } from "./agent-memory.ts";
+import { memoryLines, memoryManager, memoryOperations, memoryUnbacked, unbackedMemoryClaim } from "./agent-memory.ts";
 import type { Browser } from "./browser.ts";
 import { asConverse, type Models, saying, strandsAgent, strandsSpec } from "./strands.ts";
 import { runUnsubscribe } from "./unsubscribe-agent.ts";
@@ -83,8 +83,11 @@ export interface RunPayload {
   decide?: boolean;
   /** What the run may spend on the model, in US dollars, before it stops. */
   budget: number;
-  /** The conversation so far, oldest first. */
-  history: { from: "human" | "agent"; text: string }[];
+  /**
+   * The conversation so far, oldest first, and for each of the agent's turns, what Duva recorded it
+   * did, which the run reads as Duva's note in the turn after, never as words of its own (#151).
+   */
+  history: { from: "human" | "agent"; text: string; did?: string }[];
   /** What the owner asks now, or for a task, its prompt and the thread. */
   words: string;
   /** For a task a label's prompt gave (ADR-0029), the label's name and its prompt. */
@@ -428,7 +431,11 @@ export async function* runAgent(
   const agent = strandsAgent({
     model: models(current),
     messages: merged([
-      ...payload.history.map(({ from, text }) => ({ role: from === "human" ? ("user" as const) : ("assistant" as const), content: [{ text }] })),
+      ...payload.history.flatMap(({ from, text, did }): ModelMessage[] =>
+        from === "human"
+          ? [{ role: "user", content: [{ text }] }]
+          : [{ role: "assistant", content: [{ text }] }, ...(did === undefined ? [] : [{ role: "user" as const, content: [{ text: `[Duva, not your owner: in your answer above, ${did}]` }] }])],
+      ),
       { role: "user", content: [{ text: payload.words }] },
     ]),
     tools,
@@ -479,8 +486,9 @@ export async function* runAgent(
       else if (uses.some(({ name }) => writing.has(name))) said.push(handTo("writing"));
       else if (uses.length === 0) {
         const answer = held.join("");
-        const holds = holdsUp(answer, asConverse(agent.messages), payload.task !== undefined);
-        misstated = holds ? await misstatedIn(answer, payload, call) : [];
+        const messages = asConverse(agent.messages);
+        const holds = holdsUp(answer, messages, payload.task !== undefined);
+        misstated = !holds ? [] : unbackedMemoryClaim(answer, messages) ? [memoryUnbacked] : await misstatedIn(answer, payload, call);
         if (!holds || misstated.length > 0) said.push(handTo("answerCheck"));
       }
       if (current === harder) return void (event.retry = true);
@@ -491,10 +499,15 @@ export async function* runAgent(
     }
     if (uses.length === 0 && !canHandOver && !corrected) {
       // The harder model's answer was read as it streamed, so it corrects itself after it.
-      const wrong = await misstatedIn(step.read, payload, call);
-      if (wrong.length > 0) {
+      if (unbackedMemoryClaim(step.read, asConverse(agent.messages))) {
         corrected = true;
-        correction = `This is Duva, not your owner. Your answer got wrong what Duva has now: ${wrong.join(" and ")}. Correct it to your owner, briefly.`;
+        correction = `This is Duva, not your owner. Your answer says you remembered or forgot something, but Duva has ${memoryUnbacked}. Do it now with the memory tools, or tell your owner briefly that you didn't.`;
+      } else {
+        const wrong = await misstatedIn(step.read, payload, call);
+        if (wrong.length > 0) {
+          corrected = true;
+          correction = `This is Duva, not your owner. Your answer got wrong what Duva has now: ${wrong.join(" and ")}. Correct it to your owner, briefly.`;
+        }
       }
     }
   });

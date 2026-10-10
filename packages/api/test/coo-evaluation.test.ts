@@ -41,7 +41,7 @@ test("the defaults look up on the web what the mail doesn't say, in each recorde
   ]);
 });
 
-test("the defaults use what Linus told them in an earlier conversation, and no longer know what they learned from a thread he erased, in each recorded run", { timeout: 120_000 }, async () => {
+test("the defaults use what Linus told them in an earlier conversation, no longer know what they learned from a thread he erased, and keep what they say they keep, in each recorded run, as when recorded", { timeout: 120_000 }, async () => {
   const runs = await Promise.all(memoryTasks.flatMap((task) => Array.from({ length: defaults.runs }, (_, at) => runTask(defaults, task, at + 1))));
 
   expect(runs.map(({ task, passed }) => [task, passed])).toEqual([
@@ -49,6 +49,9 @@ test("the defaults use what Linus told them in an earlier conversation, and no l
     ["a fact told in an earlier conversation", true],
     ["a fact learned from mail that was then erased", true],
     ["a fact learned from mail that was then erased", true],
+    ["a fact to remember from the turn before", true],
+    // Haiku kept it, but as told, naming no thread, since the turn before only searched (#151).
+    ["a fact to remember from the turn before", false],
   ]);
 });
 
