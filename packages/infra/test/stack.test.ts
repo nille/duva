@@ -1035,16 +1035,41 @@ test("the browser's managed Chrome policy, from a file in the deploy's assets, r
   expect(JSON.parse(readFileSync(join(outdir, file!.source.path), "utf8"))).toEqual({ DownloadRestrictions: 3, PasswordManagerEnabled: false, AutofillCreditCardEnabled: false, AutofillAddressEnabled: false });
 });
 
-test("each human's browser profile is Duva's, which the runtime creates, starts sessions with and saves, and the API only deletes", () => {
+test("each human's browser profile is Duva's, which the runtime creates tagged, starts sessions with and saves, and the API only deletes", () => {
+  type Statement = { Action: string | string[]; Resource: unknown; Condition?: unknown };
   const runtime = resources.find(([, { Type }]) => Type === "AWS::BedrockAgentCore::Runtime")!;
   const role = (runtime[1].Properties?.RoleArn as { "Fn::GetAtt": string[] })["Fn::GetAtt"][0]!;
   const runtimeStatements = ofType("AWS::IAM::Policy")
     .filter(([, { Properties }]) => (Properties?.Roles ?? []).some((ref: { Ref: string }) => ref.Ref === role))
-    .flatMap(([, { Properties }]) => Properties?.PolicyDocument?.Statement as { Action: string | string[]; Resource: unknown }[]);
-  const onProfiles = (found: { Action: string | string[]; Resource: unknown }[]) =>
-    found.filter(({ Resource }) => JSON.stringify(Resource).includes(":browser-profile/duva_*")).flatMap(({ Action }) => [Action].flat()).sort();
-  expect(onProfiles(runtimeStatements)).toEqual(["bedrock-agentcore:CreateBrowserProfile", "bedrock-agentcore:SaveBrowserSessionProfile", "bedrock-agentcore:StartBrowserSession"]);
-  expect(onProfiles(statements("ApiHandler"))).toEqual(["bedrock-agentcore:DeleteBrowserProfile"]);
+    .flatMap(([, { Properties }]) => Properties?.PolicyDocument?.Statement as Statement[]);
+  // Each grant of a profile action, as the action, the profiles it names and its condition.
+  const onProfiles = (found: Statement[]) =>
+    found
+      .flatMap(({ Action, Resource, Condition }) => [Action].flat().map((action) => ({ action, profiles: JSON.stringify(Resource).match(/:browser-profile\/[^"]*/g)?.join(" ") ?? "", condition: Condition })))
+      .filter(({ profiles }) => profiles !== "")
+      .sort((a, b) => a.action.localeCompare(b.action));
+  // CreateBrowserProfile and ListBrowserProfiles name no profile: IAM asks for them on browser-profile/* (docs/aws.md).
+  const tagged = { StringEquals: { "aws:RequestTag/duva": "browser-profile" }, "ForAllValues:StringEquals": { "aws:TagKeys": ["duva"] } };
+  expect(onProfiles(runtimeStatements)).toEqual([
+    { action: "bedrock-agentcore:CreateBrowserProfile", profiles: ":browser-profile/*", condition: tagged },
+    { action: "bedrock-agentcore:ListBrowserProfiles", profiles: ":browser-profile/*", condition: undefined },
+    { action: "bedrock-agentcore:SaveBrowserSessionProfile", profiles: ":browser-profile/duva_*", condition: undefined },
+    { action: "bedrock-agentcore:StartBrowserSession", profiles: ":browser-profile/duva_*", condition: undefined },
+    { action: "bedrock-agentcore:TagResource", profiles: ":browser-profile/*", condition: tagged },
+  ]);
+  const [[browserId]] = ofType("AWS::BedrockAgentCore::BrowserCustom") as [[string, Resource]];
+  const onBrowser = runtimeStatements.filter(({ Resource }) => JSON.stringify(Resource).includes(`"${browserId}","BrowserArn"`)).flatMap(({ Action }) => [Action].flat());
+  expect([...new Set(onBrowser)].sort()).toEqual([
+    "bedrock-agentcore:ConnectBrowserAutomationStream",
+    "bedrock-agentcore:SaveBrowserSessionProfile",
+    "bedrock-agentcore:StartBrowserSession",
+    "bedrock-agentcore:StopBrowserSession",
+    "bedrock-agentcore:UpdateBrowserStream",
+  ]);
+  expect(onProfiles(statements("ApiHandler"))).toEqual([
+    { action: "bedrock-agentcore:DeleteBrowserProfile", profiles: ":browser-profile/duva_*", condition: undefined },
+    { action: "bedrock-agentcore:ListBrowserProfiles", profiles: ":browser-profile/*", condition: undefined },
+  ]);
   expect(actions("ApiHandler", "bedrock-agentcore").sort()).toEqual(["bedrock-agentcore:DeleteBrowserProfile", "bedrock-agentcore:ListBrowserProfiles"]);
 });
 

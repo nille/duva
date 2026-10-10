@@ -25,6 +25,7 @@ import { CloudFormationClient, DescribeStacksCommand, paginateListStackResources
 import { CloudWatchClient, GetMetricDataCommand } from "@aws-sdk/client-cloudwatch";
 import { CognitoIdentityProviderClient, DescribeUserPoolCommand, paginateListUserPools } from "@aws-sdk/client-cognito-identity-provider";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { GetPolicyCommand as GetIamPolicyCommand, GetPolicyVersionCommand, GetRolePolicyCommand, IAMClient, paginateListAttachedRolePolicies, paginateListRolePolicies } from "@aws-sdk/client-iam";
 import {
   GetFunctionConfigurationCommand,
   GetFunctionEventInvokeConfigCommand,
@@ -41,7 +42,7 @@ import { GetConfigurationSetEventDestinationsCommand, GetEmailIdentityCommand, S
 import { GetQueueAttributesCommand, SQSClient } from "@aws-sdk/client-sqs";
 import { GetBucketCorsCommand, GetBucketLifecycleConfigurationCommand, GetBucketVersioningCommand, GetPublicAccessBlockCommand, paginateListObjectsV2, S3Client } from "@aws-sdk/client-s3";
 import { indexedMailboxes, uncompactedSince } from "@duva/api/indexing";
-import { alertMailFilter, authorizationServerPath, conversationPath, taskGiverFilter, mcpAuthorizePath, mcpPath, mcpRegistrationPath, mcpTokenPath, protectedResourcePaths, tokenHeader, dropMetric, dropReasons, environmentVariables, hostedLogoHeaders, hostedLogosPath, inboundPrefix, receiptRuleNumber, recipientsPerRule, senderFilter, signInFrom } from "@duva/api/infrastructure";
+import { alertMailFilter, authorizationServerPath, browserProfileTagged, conversationPath, taskGiverFilter, mcpAuthorizePath, mcpPath, mcpRegistrationPath, mcpTokenPath, protectedResourcePaths, tokenHeader, dropMetric, dropReasons, environmentVariables, hostedLogoHeaders, hostedLogosPath, inboundPrefix, receiptRuleNumber, recipientsPerRule, senderFilter, signInFrom } from "@duva/api/infrastructure";
 import { rulesTake } from "@duva/api/receiving";
 import { callOf, defaultMailboxAgentModel, inferenceProfileId } from "@duva/api/agent-models";
 import { webSearchRegion } from "@duva/api/web-search";
@@ -281,6 +282,45 @@ await check("the mailbox agents' browser is ready, on the public network, record
   if (browser.recording?.enabled === true) return "records its sessions";
   const policies = browser.enterprisePolicies ?? [];
   return policies.length === 1 && policies[0]!.type === "MANAGED" ? undefined : `has the policies ${JSON.stringify(policies)}`;
+});
+await check("the mailbox agents' role may create Duva's browser profiles, tagged, find them, and browse in and save to them (ADR-0038)", async () => {
+  if (agentRuntime === "") return `AgentCore isn't in ${region}, so mailbox agents don't browse here`;
+  const control = new BedrockAgentCoreControlClient({ region });
+  const runtime = await control.send(new GetAgentRuntimeCommand({ agentRuntimeId: agentRuntime.split("/").at(-1)! }));
+  const { browserArn } = await control.send(new GetBrowserCommand({ browserId: runtime.environmentVariables![environmentVariables.browser]! }));
+  // IAM's policy simulator denies the actions that name no resource type, which AgentCore allows on
+  // browser-profile/* and the browser, so the role's own statements are read (docs/aws.md).
+  const iam = new IAMClient({ region });
+  const RoleName = runtime.roleArn!.split("/").at(-1)!;
+  type Statement = { Effect: string; Action: string | string[]; Resource: string | string[]; Condition?: unknown };
+  const documents: string[] = [];
+  for await (const { PolicyNames = [] } of paginateListRolePolicies({ client: iam }, { RoleName }))
+    for (const PolicyName of PolicyNames) documents.push((await iam.send(new GetRolePolicyCommand({ RoleName, PolicyName }))).PolicyDocument!);
+  // CDK moves statements to managed policies once the role's own outgrows its limit.
+  for await (const { AttachedPolicies = [] } of paginateListAttachedRolePolicies({ client: iam }, { RoleName }))
+    for (const { PolicyArn } of AttachedPolicies) {
+      const { Policy } = await iam.send(new GetIamPolicyCommand({ PolicyArn }));
+      documents.push((await iam.send(new GetPolicyVersionCommand({ PolicyArn, VersionId: Policy!.DefaultVersionId }))).PolicyVersion!.Document!);
+    }
+  const statements = documents.flatMap((document): Statement[] => [JSON.parse(decodeURIComponent(document)).Statement].flat());
+  // A condition as IAM may give it back, its keys in any order and a value of one alone or in a list.
+  const canonical = (condition: unknown): string =>
+    JSON.stringify(condition, (_, value: unknown) =>
+      Array.isArray(value) && value.length === 1 ? value[0] : value !== null && typeof value === "object" && !Array.isArray(value) ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b))) : value,
+    );
+  const allows = (statement: Statement, action: string) => statement.Effect === "Allow" && [statement.Action].flat().includes(action);
+  const profiles = browserArn!.replace(/:browser-custom\/.*/, ":browser-profile/");
+  const needed: { action: string; resource: string; condition?: unknown }[] = [
+    { action: "bedrock-agentcore:CreateBrowserProfile", resource: `${profiles}*`, condition: browserProfileTagged },
+    { action: "bedrock-agentcore:TagResource", resource: `${profiles}*`, condition: browserProfileTagged },
+    { action: "bedrock-agentcore:ListBrowserProfiles", resource: `${profiles}*` },
+    ...["bedrock-agentcore:StartBrowserSession", "bedrock-agentcore:SaveBrowserSessionProfile"].map((action) => ({ action, resource: `${profiles}duva_*` })),
+    ...["bedrock-agentcore:StartBrowserSession", "bedrock-agentcore:SaveBrowserSessionProfile", "bedrock-agentcore:ConnectBrowserAutomationStream", "bedrock-agentcore:StopBrowserSession"].map((action) => ({ action, resource: browserArn! })),
+  ];
+  const lacking = needed.filter(({ action, resource, condition }) => !statements.some((statement) => allows(statement, action) && [statement.Resource].flat().includes(resource) && canonical(statement.Condition) === canonical(condition)));
+  const creatingOthers = statements.filter((statement) => allows(statement, "bedrock-agentcore:CreateBrowserProfile") && canonical(statement.Condition) !== canonical(browserProfileTagged));
+  if (creatingOthers.length > 0) return `may create profiles without Duva's tag: ${JSON.stringify(creatingOthers)}`;
+  return lacking.length === 0 ? undefined : `lacks ${lacking.map(({ action, resource }) => `${action} on ${resource}`).join(", ")}`;
 });
 await check("the mailbox agents search the web through a gateway in the search region, taking only IAM calls, with the Web Search target alone (ADR-0037)", async () => {
   if (agentRuntime === "") return `AgentCore isn't in ${region}, so mailbox agents don't search the web here`;

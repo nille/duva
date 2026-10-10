@@ -35,6 +35,7 @@ import { Queue, QueueEncryption } from "aws-cdk-lib/aws-sqs";
 import { StringParameter } from "aws-cdk-lib/aws-ssm";
 import type { Construct } from "constructs";
 import {
+  browserProfileTagged,
   embeddingModel,
   translationModel,
   environmentVariables,
@@ -793,12 +794,21 @@ export class DuvaStack extends Stack {
     // Each human's Coo browses in a profile of their own, which the runtime finds by its name,
     // creates on their first browsing run, starts sessions with and saves back to (ADR-0038). Duva's
     // profiles are named duva_ and the human, and are listed by name. The API deletes one when its
-    // human signs Coo out of every site, or is removed.
+    // human signs Coo out of every site, or is removed. Creating and listing name no profile, so IAM
+    // asks for them on browser-profile/*, and the runtime may create only profiles it tags as Duva's
+    // (docs/aws.md).
     const browserProfiles = this.formatArn({ service: "bedrock-agentcore", resource: "browser-profile", resourceName: "duva_*" });
-    agentRuntime.addToRolePolicy(new PolicyStatement({ actions: ["bedrock-agentcore:CreateBrowserProfile", "bedrock-agentcore:StartBrowserSession", "bedrock-agentcore:SaveBrowserSessionProfile"], resources: [browserProfiles] }));
-    agentRuntime.addToRolePolicy(new PolicyStatement({ actions: ["bedrock-agentcore:SaveBrowserSessionProfile"], resources: [browser.browserArn] }));
-    handler.addToRolePolicy(new PolicyStatement({ actions: ["bedrock-agentcore:DeleteBrowserProfile"], resources: [browserProfiles] }));
     const allProfiles = this.formatArn({ service: "bedrock-agentcore", resource: "browser-profile", resourceName: "*" });
+    agentRuntime.addToRolePolicy(new PolicyStatement({ actions: ["bedrock-agentcore:StartBrowserSession", "bedrock-agentcore:SaveBrowserSessionProfile"], resources: [browserProfiles] }));
+    agentRuntime.addToRolePolicy(new PolicyStatement({ actions: ["bedrock-agentcore:SaveBrowserSessionProfile"], resources: [browser.browserArn] }));
+    agentRuntime.addToRolePolicy(
+      new PolicyStatement({
+        actions: ["bedrock-agentcore:CreateBrowserProfile", "bedrock-agentcore:TagResource"],
+        resources: [allProfiles],
+        conditions: browserProfileTagged,
+      }),
+    );
+    handler.addToRolePolicy(new PolicyStatement({ actions: ["bedrock-agentcore:DeleteBrowserProfile"], resources: [browserProfiles] }));
     for (const listing of [agentRuntime, handler]) listing.addToRolePolicy(new PolicyStatement({ actions: ["bedrock-agentcore:ListBrowserProfiles"], resources: [allProfiles] }));
     handler.addEnvironment(environmentVariables.browser, Fn.conditionIf(agentsHere.logicalId, browser.browserId, "").toString());
     agentRuntime.addToRolePolicy(new PolicyStatement({ actions: ["bedrock-agentcore:InvokeGateway"], resources: [searchGateway.getAttString("Arn")] }));

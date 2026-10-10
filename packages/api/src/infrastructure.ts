@@ -21,6 +21,18 @@ export const hostedLogosPath = "bimi/";
  */
 export const hostedLogoHeaders = { "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox", "x-content-type-options": "nosniff" } as const;
 
+/**
+ * The tag each human's browser profile is created with (ADR-0038). Creating one names no profile, so
+ * the runtime may create only profiles tagged so (docs/aws.md).
+ */
+export const browserProfileTag = { key: "duva", value: "browser-profile" } as const;
+
+/** The IAM condition that allows creating, and tagging, only a profile tagged so and with no other tag. */
+export const browserProfileTagged = {
+  StringEquals: { [`aws:RequestTag/${browserProfileTag.key}`]: browserProfileTag.value },
+  "ForAllValues:StringEquals": { "aws:TagKeys": [browserProfileTag.key] },
+};
+
 /** The environment variables the CDK app gives the API's Lambdas. Each Lambda gets those it reads. */
 export const environmentVariables = {
   version: "DUVA_VERSION",
