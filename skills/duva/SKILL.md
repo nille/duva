@@ -102,6 +102,12 @@ Show how the mailbox agents' conversation turns were routed this month.
 
 Counts each turn of Ask Coo and over MCP by how it went: the everyday model took it alone, the decider sent it to the harder model, the everyday model handed it over, and why, or its owner had the harder model think harder. Duva keeps each turn's routing with its words' embedding, in the owner's own records, for a router that learns from them later. Neither words nor embeddings are shown. Only admins can read it.
 
+## duva organization mailbox-agent-models
+
+List the measured models mailbox agents may think with, and which admins allow.
+
+Lists each model Duva recorded on its mailbox agent's evaluation, the only ones admins can allow, with how often it did each kind of work there, what a task cost, and where Bedrock processes what it reads of the mail, as this deployment calls it. Each human chooses their Coo's everyday and harder model from the allowed ones, with preferences change, and admins the organization's defaults and the allowed ones, with organization change-settings. Every actor can list them.
+
 ## duva organization settings
 
 Read the organization's settings.
@@ -120,12 +126,10 @@ Give only the settings to change. A setting applies from when it changes, so tur
 - `--agentSendsPerHourCap`: The most sendsPerHour a sponsor can give an agent. 100 by default. Lowering it lowers each agent above it to it, recorded as a change to the agent's settings under you. Raising it raises no agent.
 - `--agentNewRecipientsPerDayCap`: The most newRecipientsPerDay a sponsor can give an agent. 50 by default. Lowering it lowers each agent above it to it, recorded as a change to the agent's settings under you. Raising it raises no agent.
 - `--undoWindowSeconds`: How many seconds an approved send waits before the sender takes it, so its approver can undo the approval meanwhile. 30 by default, and a whole number from 0 to 120, where 0 sends at once. A change applies to approvals from then on. A human's own sends never wait.
-- `--mailboxAgentModel`: The model a mailbox agent answers its owner with in Ask Coo and over MCP, unless the decider finds a turn complex. Claude Haiku 4.5 by default.
-- `--mailboxAgentTaskModel`: The model that does the tasks labels' prompts give. Claude Haiku 4.5 by default.
-- `--mailboxAgentHarderModel`: The model for the harder work: writing mail that may be sent, a turn the decider finds complex, a run the everyday model hands over, and Think harder. Claude Sonnet 5.5 by default.
-- `--mailboxAgentDecider` or `--no-mailboxAgentDecider`: Whether the decider, Amazon Nova Micro, settles the model for each turn in Ask Coo and over MCP first, sending one it finds complex to mailboxAgentHarderModel. Off by default: on Coo's tasks it was right on 4 of 10 (docs/research/coo-models.md). Either way a turn hands over to the harder model on evidence.
-- `--mailboxAgentProfile`: The inference profile Bedrock runs the model through, which decides where the mail the agents read is processed: eu keeps it in the EU's AWS regions, us in the US's, and global sends it to any region with capacity, for about 10% less. none runs the model in mailboxAgentRegion itself, which keeps the mail there: Nova Lite runs so in eu-north-1, us-east-1, us-east-2 and us-west-2, and Nova Pro in us-east-1. eu by default for a deployment in the EU, us for one in the US, and global elsewhere. eu needs an EU mailboxAgentRegion, us a US one.
-- `--mailboxAgentRegion`: The AWS region the mailbox agents call Bedrock in, which the profile sends on from. eu-central-1 by default for a deployment in the EU, us-west-2 for one in the US.
+- `--mailboxAgentAllowedModels` (once for each): The measured models each human may choose their mailbox agent's everyday and harder model from. They include the organization's two defaults, mailboxAgentModel and mailboxAgentHarderModel. Claude Haiku 4.5 and Claude Sonnet 5.5 by default. A model that processes mail outside the deployment's continent may be allowed too, such as one available only in the US in an EU deployment: what its agents read of the mail then goes there. Taking a model off the list takes it from each human who chose it, whose agent then thinks with the organization's default.
+- `--mailboxAgentModel`: The organization's everyday model, which a mailbox agent answers its human with in Ask Coo and over MCP, unless the decider finds a turn complex, and does the tasks labels' prompts give, unless its human chose another. One of mailboxAgentAllowedModels. Claude Haiku 4.5 by default.
+- `--mailboxAgentHarderModel`: The organization's harder model, for the harder work: writing mail that may be sent, unsubscribing on a sender's page, a turn the decider finds complex, a run the everyday model hands over, and Think harder, unless the agent's human chose another. One of mailboxAgentAllowedModels. Claude Sonnet 5.5 by default.
+- `--mailboxAgentDecider` or `--no-mailboxAgentDecider`: Whether the decider, Amazon Nova Micro, settles the model for each turn in Ask Coo and over MCP first, sending one it finds complex to the harder model. Off by default: on Coo's tasks it was right on 4 of 10 (docs/research/coo-models.md). Either way a turn hands over to the harder model on evidence.
 - `--mailboxAgentSpendCap`: The most the mailbox agents may spend on their model a month, in whole US dollars, 20 by default. At the cap a run stops, its agent's sponsor gets an alert, and runs are refused until the month ends or an admin raises it. 0 turns the mailbox agents off.
 - `--linkedFilesCapGb`: How much each human may have linked at once, in whole gigabytes (GiB), 20 by default. Their agents' linked files count toward it. Past it, a send that would link more is refused, until they stop sharing older files or an admin raises it. 0 lets no one link files, so mail too large to carry its files can't be sent.
 
@@ -139,7 +143,7 @@ Counts the threads in every mailbox's Trash and Spam that are older than retenti
 
 ## duva preferences get
 
-Read your own preferences, such as how the web app shows times, dates and mail.
+Read your own preferences, such as how the web app shows times, dates and mail, and the models your Coo thinks with.
 
 Only humans have preferences, and each reads only their own.
 
@@ -147,7 +151,7 @@ Only humans have preferences, and each reads only their own.
 
 Change your own preferences.
 
-Give only the preferences to change. They follow you to every browser you sign in from. Only humans have preferences, and each changes only their own. The CLI prints timestamps as ISO 8601 whatever they are.
+Give only the preferences to change. They follow you to every browser you sign in from. Only humans have preferences, and each changes only their own. Your Coo's models are among those admins allow, which organization mailbox-agent-models lists. The CLI prints timestamps as ISO 8601 whatever they are.
 
 - `--hourCycle`: How the web app shows times. Locale, the default, follows the browser's language. h12 shows 12-hour time, as 2:30 PM, and h23 24-hour time, as 14:30.
 - `--dateFormat`: How the web app shows dates. Locale, the default, follows the browser's language. iso shows 2026-10-05, dayMonth 5 Oct 2026 and monthDay Oct 5, 2026, with month names in the browser's language. Without the year, they show 10-05, 5 Oct and Oct 5.
@@ -157,6 +161,8 @@ Give only the preferences to change. They follow you to every browser you sign i
 - `--timeZone` or `--no-timeZone`: The time zone, as an IANA name, or null to remove it, as if the human never chose one. The CLI removes it with --no-timeZone.
 - `--opensOn`: Where the web app opens: all, the default, on All mailboxes, or the ID of one of the human's mailboxes, on that one. A mailbox no longer theirs opens All mailboxes.
 - `--newMailFrom` or `--no-newMailFrom`: The address, or null to start from the default again. The CLI gives null with --no-newMailFrom.
+- `--cooEverydayModel` or `--no-cooEverydayModel`: The model, or null to keep the organization's default again. The CLI gives null with --no-cooEverydayModel.
+- `--cooHarderModel` or `--no-cooHarderModel`: The model, or null to keep the organization's default again. The CLI gives null with --no-cooHarderModel.
 
 ## duva humans list
 

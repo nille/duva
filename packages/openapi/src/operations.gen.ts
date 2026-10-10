@@ -106,6 +106,20 @@ export const operations = [
     "options": []
   },
   {
+    "operationId": "listMailboxAgentModels",
+    "method": "get",
+    "path": "/organization/mailbox-agent-models",
+    "routeKey": "GET /organization/mailbox-agent-models",
+    "summary": "List the measured models mailbox agents may think with, and which admins allow.",
+    "description": "Lists each model Duva recorded on its mailbox agent's evaluation, the only ones admins can allow, with how often it did each kind of work there, what a task cost, and where Bedrock processes what it reads of the mail, as this deployment calls it. Each human chooses their Coo's everyday and harder model from the allowed ones, with preferences change, and admins the organization's defaults and the allowed ones, with organization change-settings. Every actor can list them.",
+    "signIn": true,
+    "command": [
+      "organization",
+      "mailbox-agent-models"
+    ],
+    "options": []
+  },
+  {
     "operationId": "getOrganizationSettings",
     "method": "get",
     "path": "/organization/settings",
@@ -175,46 +189,32 @@ export const operations = [
         "description": "How many seconds an approved send waits before the sender takes it, so its approver can undo the approval meanwhile. 30 by default, and a whole number from 0 to 120, where 0 sends at once. A change applies to approvals from then on. A human's own sends never wait."
       },
       {
+        "name": "mailboxAgentAllowedModels",
+        "in": "body",
+        "type": "strings",
+        "required": false,
+        "description": "The measured models each human may choose their mailbox agent's everyday and harder model from. They include the organization's two defaults, mailboxAgentModel and mailboxAgentHarderModel. Claude Haiku 4.5 and Claude Sonnet 5.5 by default. A model that processes mail outside the deployment's continent may be allowed too, such as one available only in the US in an EU deployment: what its agents read of the mail then goes there. Taking a model off the list takes it from each human who chose it, whose agent then thinks with the organization's default."
+      },
+      {
         "name": "mailboxAgentModel",
         "in": "body",
         "type": "string",
         "required": false,
-        "description": "The model a mailbox agent answers its owner with in Ask Coo and over MCP, unless the decider finds a turn complex. Claude Haiku 4.5 by default."
-      },
-      {
-        "name": "mailboxAgentTaskModel",
-        "in": "body",
-        "type": "string",
-        "required": false,
-        "description": "The model that does the tasks labels' prompts give. Claude Haiku 4.5 by default."
+        "description": "The organization's everyday model, which a mailbox agent answers its human with in Ask Coo and over MCP, unless the decider finds a turn complex, and does the tasks labels' prompts give, unless its human chose another. One of mailboxAgentAllowedModels. Claude Haiku 4.5 by default."
       },
       {
         "name": "mailboxAgentHarderModel",
         "in": "body",
         "type": "string",
         "required": false,
-        "description": "The model for the harder work: writing mail that may be sent, a turn the decider finds complex, a run the everyday model hands over, and Think harder. Claude Sonnet 5.5 by default."
+        "description": "The organization's harder model, for the harder work: writing mail that may be sent, unsubscribing on a sender's page, a turn the decider finds complex, a run the everyday model hands over, and Think harder, unless the agent's human chose another. One of mailboxAgentAllowedModels. Claude Sonnet 5.5 by default."
       },
       {
         "name": "mailboxAgentDecider",
         "in": "body",
         "type": "boolean",
         "required": false,
-        "description": "Whether the decider, Amazon Nova Micro, settles the model for each turn in Ask Coo and over MCP first, sending one it finds complex to mailboxAgentHarderModel. Off by default: on Coo's tasks it was right on 4 of 10 (docs/research/coo-models.md). Either way a turn hands over to the harder model on evidence."
-      },
-      {
-        "name": "mailboxAgentProfile",
-        "in": "body",
-        "type": "string",
-        "required": false,
-        "description": "The inference profile Bedrock runs the model through, which decides where the mail the agents read is processed: eu keeps it in the EU's AWS regions, us in the US's, and global sends it to any region with capacity, for about 10% less. none runs the model in mailboxAgentRegion itself, which keeps the mail there: Nova Lite runs so in eu-north-1, us-east-1, us-east-2 and us-west-2, and Nova Pro in us-east-1. eu by default for a deployment in the EU, us for one in the US, and global elsewhere. eu needs an EU mailboxAgentRegion, us a US one."
-      },
-      {
-        "name": "mailboxAgentRegion",
-        "in": "body",
-        "type": "string",
-        "required": false,
-        "description": "The AWS region the mailbox agents call Bedrock in, which the profile sends on from. eu-central-1 by default for a deployment in the EU, us-west-2 for one in the US."
+        "description": "Whether the decider, Amazon Nova Micro, settles the model for each turn in Ask Coo and over MCP first, sending one it finds complex to the harder model. Off by default: on Coo's tasks it was right on 4 of 10 (docs/research/coo-models.md). Either way a turn hands over to the harder model on evidence."
       },
       {
         "name": "mailboxAgentSpendCap",
@@ -259,7 +259,7 @@ export const operations = [
     "method": "get",
     "path": "/preferences",
     "routeKey": "GET /preferences",
-    "summary": "Read your own preferences, such as how the web app shows times, dates and mail.",
+    "summary": "Read your own preferences, such as how the web app shows times, dates and mail, and the models your Coo thinks with.",
     "description": "Only humans have preferences, and each reads only their own.",
     "signIn": true,
     "command": [
@@ -274,7 +274,7 @@ export const operations = [
     "path": "/preferences",
     "routeKey": "PATCH /preferences",
     "summary": "Change your own preferences.",
-    "description": "Give only the preferences to change. They follow you to every browser you sign in from. Only humans have preferences, and each changes only their own. The CLI prints timestamps as ISO 8601 whatever they are.",
+    "description": "Give only the preferences to change. They follow you to every browser you sign in from. Only humans have preferences, and each changes only their own. Your Coo's models are among those admins allow, which organization mailbox-agent-models lists. The CLI prints timestamps as ISO 8601 whatever they are.",
     "signIn": true,
     "command": [
       "preferences",
@@ -337,6 +337,22 @@ export const operations = [
         "type": "string",
         "required": false,
         "description": "The address, or null to start from the default again. The CLI gives null with --no-newMailFrom.",
+        "nullable": true
+      },
+      {
+        "name": "cooEverydayModel",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "The model, or null to keep the organization's default again. The CLI gives null with --no-cooEverydayModel.",
+        "nullable": true
+      },
+      {
+        "name": "cooHarderModel",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "The model, or null to keep the organization's default again. The CLI gives null with --no-cooHarderModel.",
         "nullable": true
       }
     ]

@@ -40,7 +40,7 @@ async function withMailbox({ models = "sonnet", ...options }: Parameters<typeof 
   const app = await startWebApp({ domain: "example.com", admin: "ada@example.org", humans: ["grace@example.org"], ...options });
   const ada = app.duva.signIn("ada@example.org");
   const everyday = models === "nova" ? "amazon.nova-2-lite-v1:0" : "anthropic.claude-sonnet-5-5";
-  if (models !== "defaults") await ada.PATCH("/organization/settings", { body: { mailboxAgentModel: everyday, mailboxAgentTaskModel: everyday } });
+  if (models !== "defaults") await ada.PATCH("/organization/settings", { body: { mailboxAgentAllowedModels: [...new Set(["anthropic.claude-haiku-4-5-20251001-v1:0", "anthropic.claude-sonnet-5-5", everyday] as const)], mailboxAgentModel: everyday } });
   const grace = app.duva.signIn("grace@example.org");
   const { data: whoami } = await grace.GET("/whoami");
   const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: whoami!.id, address: "grace@example.com" } });
@@ -176,42 +176,98 @@ test("on a phone, Ask Coo takes the screen, with the field at its foot", budget,
   await expect.poll(() => page.locator(".ask-turn").count(), wait).toBe(2);
 });
 
-test("an admin chooses the mailbox agents' model for each job, where the mail they read is processed and their spend cap, and reads what they spent", budget, async () => {
+test("an admin allows measured models, each flagged with where it processes mail, sets the organization's models among them and the spend cap, and reads what they spent", budget, async () => {
   const { page, signIn, duva } = await withMailbox({ models: "defaults" });
   await signIn("ada@example.org");
   await page.getByRole("link", { name: "Settings", exact: true }).click();
   await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: /^Mail and agents/ }).click();
   const sheet = page.getByRole("region", { name: "Mailbox agents" });
   await sheet.getByText("Spent $0.00 in").waitFor(wait);
-  expect(await sheet.getByRole("combobox", { name: "Answering in Ask Coo" }).inputValue()).toBe("anthropic.claude-haiku-4-5-20251001-v1:0");
-  expect(await sheet.getByRole("combobox", { name: "Tasks from labels' prompts" }).inputValue()).toBe("anthropic.claude-haiku-4-5-20251001-v1:0");
+  const haiku = sheet.getByRole("checkbox", { name: /^Claude Haiku 4\.5/ });
+  const novaLite = sheet.getByRole("checkbox", { name: /^Amazon Nova Lite/ });
+  await haiku.waitFor(wait);
+  // The organization's own models stay allowed while they are its models.
+  expect(await haiku.isChecked()).toBe(true);
+  expect(await haiku.isDisabled()).toBe(true);
+  expect(await sheet.getByRole("checkbox", { name: /^Claude Sonnet 5\.5/ }).isChecked()).toBe(true);
+  expect(await novaLite.isChecked()).toBe(false);
+  // Each model is flagged with where it processes mail, which a screen reader hears as a sentence.
+  for (const [model, place] of [["Claude Haiku 4\\.5", "the EU"], ["Claude Sonnet 5\\.5", "the EU"], ["Amazon Nova 2 Lite", "the EU"], ["Amazon Nova Lite", "eu-north-1"], ["Amazon Nova Pro", "the EU"]]) {
+    expect(await sheet.getByRole("checkbox", { name: new RegExp(`^${model}\\s*, processed in ${place}`) }).count()).toBe(1);
+  }
+  expect(await sheet.getByText("Questions 100%, drafting 100%, triage 75%, label tasks 100%. About 2.0 cents a task.").isVisible()).toBe(true);
+  expect(await sheet.getByRole("combobox", { name: "Everyday model" }).inputValue()).toBe("anthropic.claude-haiku-4-5-20251001-v1:0");
+  expect(await sheet.getByRole("combobox", { name: "Harder model" }).inputValue()).toBe("anthropic.claude-sonnet-5-5");
   expect(await sheet.getByRole("checkbox", { name: /^Ask the decider first/ }).isChecked()).toBe(false);
-  expect(await sheet.getByRole("combobox", { name: "The harder work" }).inputValue()).toBe("anthropic.claude-sonnet-5-5");
-  expect(await sheet.getByRole("radio", { name: /^In the EU/ }).isChecked()).toBe(true);
-  expect(await sheet.getByRole("combobox", { name: "Called from" }).inputValue()).toBe("eu-central-1");
 
-  await sheet.getByRole("combobox", { name: "Tasks from labels' prompts" }).selectOption({ label: "Amazon Nova Lite" });
-  await sheet.getByRole("radio", { name: /^In the region Duva calls/ }).check();
-  await expect.poll(() => sheet.getByText("Claude Haiku 4.5 doesn't run that way. Choose another place, or another model.").isVisible(), wait).toBe(true);
-  await sheet.getByRole("combobox", { name: "Tasks from labels' prompts" }).selectOption({ label: "Claude Haiku 4.5" });
+  // Nova Lite runs in eu-north-1 itself, inside the deployment's continent, so it is allowed at once.
+  await novaLite.check();
+  await sheet.getByRole("combobox", { name: "Everyday model" }).selectOption({ label: "Amazon Nova Lite, in eu-north-1" });
   await sheet.getByRole("checkbox", { name: /^Ask the decider first/ }).check();
-  await sheet.getByRole("combobox", { name: "The harder work" }).selectOption({ label: "Claude Haiku 4.5" });
-  await sheet.getByRole("radio", { name: /^In the EU/ }).check();
-  await sheet.getByRole("combobox", { name: "Called from" }).selectOption("us-west-2");
-  await expect.poll(() => sheet.getByText("Choose an EU region for that, or In any region.").isVisible(), wait).toBe(true);
-  expect(await sheet.getByRole("button", { name: "Save" }).isDisabled()).toBe(true);
-  await sheet.getByRole("radio", { name: /^In any region/ }).check();
   await sheet.getByRole("textbox", { name: "US dollars a month" }).fill("5");
   await sheet.getByRole("button", { name: "Save" }).click();
 
   await expect.poll(async () => (await duva.signIn("ada@example.org").GET("/organization/settings")).data, wait).toMatchObject({
-    mailboxAgentModel: "anthropic.claude-haiku-4-5-20251001-v1:0",
-    mailboxAgentHarderModel: "anthropic.claude-haiku-4-5-20251001-v1:0",
+    mailboxAgentAllowedModels: ["anthropic.claude-haiku-4-5-20251001-v1:0", "anthropic.claude-sonnet-5-5", "amazon.nova-lite-v1:0"],
+    mailboxAgentModel: "amazon.nova-lite-v1:0",
+    mailboxAgentHarderModel: "anthropic.claude-sonnet-5-5",
     mailboxAgentDecider: true,
-    mailboxAgentProfile: "global",
-    mailboxAgentRegion: "us-west-2",
     mailboxAgentSpendCap: 5,
   });
+  // Haiku is no longer the everyday model, so it may be taken off the list.
+  expect(await haiku.isDisabled()).toBe(false);
+});
+
+test("allowing a model that processes mail outside the deployment's continent says so first, and waits for the admin", budget, async () => {
+  // In Sydney, Claude runs only through the global profile, so anywhere, and Nova Lite through the US's.
+  const { page, signIn, duva } = await withMailbox({ models: "defaults", region: "ap-southeast-2" });
+  await signIn("ada@example.org");
+  await page.getByRole("link", { name: "Settings", exact: true }).click();
+  await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: /^Mail and agents/ }).click();
+  const sheet = page.getByRole("region", { name: "Mailbox agents" });
+  const novaLite = sheet.getByRole("checkbox", { name: /^Amazon Nova Lite/ });
+  await novaLite.waitFor(wait);
+  expect(await sheet.getByRole("checkbox", { name: /^Claude Haiku 4\.5\s*, processed in any AWS region with room/ }).count()).toBe(1);
+  expect(await sheet.getByRole("checkbox", { name: /^Amazon Nova Lite\s*, processed in the US/ }).count()).toBe(1);
+
+  await novaLite.click();
+  const said = sheet.getByRole("alert").filter({ hasText: "Amazon Nova Lite processes what Coo reads of the mail in the US, outside the continent Duva is deployed on." });
+  await said.waitFor(wait);
+  expect(await novaLite.isChecked()).toBe(false);
+  await said.getByRole("button", { name: "Keep it off" }).click();
+  expect(await novaLite.isChecked()).toBe(false);
+  expect(await said.count()).toBe(0);
+  await novaLite.click();
+  await said.getByRole("button", { name: "Allow it" }).click();
+  expect(await novaLite.isChecked()).toBe(true);
+  await sheet.getByRole("button", { name: "Save" }).click();
+
+  await expect.poll(async () => (await duva.signIn("ada@example.org").GET("/organization/settings")).data!.mailboxAgentAllowedModels, wait).toContain("amazon.nova-lite-v1:0");
+});
+
+test("a human picks their Coo's everyday model from those admins allow, each flagged with where it processes mail, and keeps the organization's harder one", budget, async () => {
+  const { page, signIn, duva } = await withMailbox({ models: "defaults" });
+  await duva.signIn("ada@example.org").PATCH("/organization/settings", { body: { mailboxAgentAllowedModels: ["anthropic.claude-haiku-4-5-20251001-v1:0", "anthropic.claude-sonnet-5-5", "amazon.nova-lite-v1:0"] } });
+  await signIn("grace@example.org");
+  await page.getByRole("link", { name: "Settings", exact: true }).click();
+  await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: /^Preferences/ }).click();
+  const sheet = page.getByRole("region", { name: "Coo's models" });
+  const everyday = sheet.getByRole("group", { name: "Everyday model" });
+  const organizations = everyday.getByRole("radio", { name: /^The organization's, Claude Haiku 4\.5/ });
+  await organizations.waitFor(wait);
+  expect(await organizations.isChecked()).toBe(true);
+  // Nova Pro and Nova 2 Lite aren't allowed, so they aren't offered.
+  for (const name of ["Claude Haiku 4\\.5\\s*, processed in the EU", "Claude Sonnet 5\\.5\\s*, processed in the EU", "Amazon Nova Lite\\s*, processed in eu-north-1"]) {
+    expect(await everyday.getByRole("radio", { name: new RegExp(`^${name}`) }).count()).toBe(1);
+  }
+  expect(await everyday.getByRole("radio").count()).toBe(4);  await everyday.getByRole("radio", { name: /^Amazon Nova Lite/ }).check();
+  await sheet.getByRole("button", { name: "Save" }).click();
+  await sheet.getByText("Saved. Coo thinks with these from its next run.").waitFor(wait);
+
+  const { data } = await duva.signIn("grace@example.org").GET("/preferences");
+  expect(data).toMatchObject({ cooEverydayModel: "amazon.nova-lite-v1:0" });
+  expect(data).not.toHaveProperty("cooHarderModel");
+  expect(await sheet.getByRole("group", { name: "Harder model" }).getByRole("radio", { name: /^The organization's, Claude Sonnet 5\.5/ }).isChecked()).toBe(true);
 });
 
 test("a human with two mailboxes asks Coo from one of them or from All mailboxes, in one conversation, each turn saying where it was asked", budget, async () => {

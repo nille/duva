@@ -2,7 +2,13 @@ import { expect, test } from "vitest";
 import { startDuva } from "./harness.ts";
 
 /** Where the mailbox agents call their model, and what they may spend, in a deployment in eu-north-1 until an admin chooses. */
-const mailboxAgentDefaults = { mailboxAgentModel: "anthropic.claude-haiku-4-5-20251001-v1:0", mailboxAgentTaskModel: "anthropic.claude-haiku-4-5-20251001-v1:0", mailboxAgentHarderModel: "anthropic.claude-sonnet-5-5", mailboxAgentDecider: false, mailboxAgentProfile: "eu", mailboxAgentRegion: "eu-central-1", mailboxAgentSpendCap: 20 } as const;
+const mailboxAgentDefaults = {
+  mailboxAgentAllowedModels: ["anthropic.claude-haiku-4-5-20251001-v1:0", "anthropic.claude-sonnet-5-5"],
+  mailboxAgentModel: "anthropic.claude-haiku-4-5-20251001-v1:0",
+  mailboxAgentHarderModel: "anthropic.claude-sonnet-5-5",
+  mailboxAgentDecider: false,
+  mailboxAgentSpendCap: 20,
+};
 
 /** A deployment where Ada is the first admin, Grace another human, and Ada sponsors the agent Hermes. */
 async function withOrganization() {

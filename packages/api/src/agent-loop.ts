@@ -3,7 +3,7 @@
 // OpenAPI contract, which it calls over HTTP with its run's token, as any agent calls Duva.
 import { type Operation, operations, type OperationId } from "@duva/openapi";
 import type { components } from "@duva/openapi";
-import { costOf, deciderModel, deciderProfile, type MailboxAgentModel, type MailboxAgentProfile } from "./agent-models.ts";
+import { costOf, deciderModel, type MailboxAgentModel } from "./agent-models.ts";
 import type { Browser } from "./browser.ts";
 import { runUnsubscribe } from "./unsubscribe-agent.ts";
 
@@ -64,9 +64,10 @@ export interface RunPayload {
   approval: boolean;
   /**
    * The model the run starts with, the one its job takes, and the harder model it hands over to,
-   * through the profile from the region. A run that starts with the harder model hands over to none.
+   * each called as a deployment in the region calls it (callOf, ADR-0035). A run that starts with
+   * the harder model hands over to none.
    */
-  model: { model: MailboxAgentModel; harder: MailboxAgentModel; profile: MailboxAgentProfile; region: string };
+  model: { model: MailboxAgentModel; harder: MailboxAgentModel; region: string };
   /** Whether the decider settles the model first, for a conversation turn its job doesn't. */
   decide?: boolean;
   /** What the run may spend on the model, in US dollars, before it stops. */
@@ -362,7 +363,7 @@ export async function* runAgent(
     ...payload.history.map(({ from, text }) => ({ role: from === "human" ? ("user" as const) : ("assistant" as const), content: [{ text }] })),
     { role: "user", content: [{ text: payload.words }] },
   ];
-  const { harder, profile } = payload.model;
+  const { harder, region } = payload.model;
   let current = payload.model.model;
   let handover: Handover | undefined;
   let spent = 0;
@@ -377,7 +378,7 @@ export async function* runAgent(
   };
   if (payload.decide && decider !== undefined && current !== harder) {
     const { inputTokens, outputTokens, ...decision } = await decider(payload.words);
-    spent += costOf({ inputTokens, outputTokens }, deciderModel, deciderProfile(payload.model.region));
+    spent += costOf({ inputTokens, outputTokens }, deciderModel, region);
     yield { type: "usage", model: deciderModel, inputTokens, outputTokens };
     yield { type: "decided", decision };
     if (decision.route === "complex" || decision.confidence < confidenceNeeded) yield handTo("decided");
@@ -405,7 +406,7 @@ export async function* runAgent(
         }
       } else if ("toolUse" in event) content.push(event);
       else {
-        spent += costOf(event.usage, current, profile);
+        spent += costOf(event.usage, current, region);
         yield { type: "usage", model: current, ...event.usage };
       }
     }

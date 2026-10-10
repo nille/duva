@@ -1,12 +1,14 @@
-// The models the mailbox agents think with, where Bedrock runs them, and what they cost (ADR-0027).
+// The models the mailbox agents think with, where Bedrock runs them, and what they cost (ADR-0027),
+// and how a deployment calls each, which decides where it processes mail (ADR-0035).
 import type { components } from "@duva/openapi";
+import { measuredModels } from "./measured-models.gen.ts";
 
 export type MailboxAgentModel = components["schemas"]["MailboxAgentModel"];
 export type MailboxAgentProfile = components["schemas"]["MailboxAgentProfile"];
 export type MailboxAgentRegion = components["schemas"]["MailboxAgentRegion"];
 
 /**
- * The models an admin can choose, each with its price in US dollars per million input and output
+ * The models Duva knows on Bedrock, each with its price in US dollars per million input and output
  * tokens through the eu and us profiles, or called in a region itself, the global profile costing
  * 10% less, the profiles that run it, and the regions where it runs without one. Prices are
  * eu-north-1's (docs/research/agentcore.md, docs/research/coo-models.md).
@@ -20,46 +22,50 @@ export const mailboxAgentModels: Record<MailboxAgentModel, { name: string; input
   "amazon.nova-lite-v1:0": { name: "Amazon Nova Lite", input: 0.065, output: 0.26, profiles: ["eu", "us", "none"], inRegion: ["eu-north-1", "us-east-1", "us-east-2", "us-west-2"] },
 };
 
-/** The model the mailbox agents answer and do tasks with until an admin chooses another, as Nicklas chose from #132's measurements. */
+/** The organization's everyday model until an admin chooses another, as Nicklas chose from #132's measurements. */
 export const defaultMailboxAgentModel: MailboxAgentModel = "anthropic.claude-haiku-4-5-20251001-v1:0";
 
-/** The model for the harder work until an admin chooses another (#132). */
+/** The organization's harder model until an admin chooses another (#132). */
 export const defaultHarderModel: MailboxAgentModel = "anthropic.claude-sonnet-5-5";
 
-export const mailboxAgentProfiles: MailboxAgentProfile[] = ["eu", "us", "global", "none"];
+/** The models admins can allow: those Coo's evaluation measured, in the order it lists them (ADR-0035). */
+export const measuredModelIds = Object.keys(measuredModels) as MailboxAgentModel[];
 
-export const mailboxAgentRegions: MailboxAgentRegion[] = ["eu-central-1", "eu-west-1", "eu-west-3", "eu-north-1", "us-east-1", "us-east-2", "us-west-2"];
+export const isMeasured = (model: string): model is MailboxAgentModel => model in measuredModels;
 
 /**
- * Why Bedrock in the region doesn't run the model through the profile, if it doesn't: eu runs only
- * from the EU's regions, us from the US's, global from any, and none only where the model runs on
- * demand. A model runs only through the profiles it has.
+ * Where Bedrock processes what a model reads, for a deployment: in the deployment's region, on its
+ * continent, in the US, or in any region with capacity.
  */
-export function wontRun(model: MailboxAgentModel, profile: MailboxAgentProfile, region: string): string | undefined {
-  const { name, profiles, inRegion } = mailboxAgentModels[model];
-  if (!profiles.includes(profile)) {
-    const through = profiles.filter((each) => each !== "none");
-    const named = `${through.slice(0, -1).join(", ")} or ${through.at(-1)}`;
-    return `${name} runs only through the ${named} profile${profiles.includes("none") ? ", or with none" : ""}. Give mailboxAgentProfile as one of those.`;
-  }
-  if (profile === "none" && !(inRegion as string[]).includes(region)) {
-    return `${name} runs without a profile only in ${inRegion.join(", ")}, and not in ${region}. Give mailboxAgentRegion as one of them, or mailboxAgentProfile as a profile.`;
-  }
-  if (profile === "eu" || profile === "us") {
-    if (!region.startsWith(`${profile}-`)) return `The ${profile} profile runs only from ${profile === "eu" ? "an EU" : "a US"} region, and ${region} isn't one. Give mailboxAgentRegion as one, or mailboxAgentProfile as ${profiles.includes("global") ? "global" : "another"}.`;
-  }
-  return undefined;
+export type ProcessedIn = components["schemas"]["ProcessedIn"];
+
+/** How Duva calls a model for a deployment: through the profile, from the region, and so where it processes mail. */
+export interface ModelCall {
+  profile: MailboxAgentProfile;
+  region: MailboxAgentRegion;
+  processedIn: ProcessedIn;
 }
 
 /**
- * Where a deployment in the region has its mailbox agents call Bedrock until an admin chooses: from
- * eu-central-1 with the eu profile in the EU, since Claude's Marketplace agreement fails when called
- * from eu-north-1 (docs/aws.md), from us-west-2 with the us profile in the US, and with the global
- * profile from eu-central-1 elsewhere.
+ * The region a deployment calls Bedrock from: eu-central-1 in the EU, since Claude's Marketplace
+ * agreement fails when called from eu-north-1 (docs/aws.md), us-west-2 in the US, and eu-central-1
+ * elsewhere.
  */
-export function defaultModelRegion(region: string): { mailboxAgentProfile: MailboxAgentProfile; mailboxAgentRegion: MailboxAgentRegion } {
-  if (region.startsWith("us-")) return { mailboxAgentProfile: "us", mailboxAgentRegion: "us-west-2" };
-  return { mailboxAgentProfile: region.startsWith("eu-") ? "eu" : "global", mailboxAgentRegion: "eu-central-1" };
+export const modelRegion = (region: string): MailboxAgentRegion => (region.startsWith("us-") ? "us-west-2" : "eu-central-1");
+
+/**
+ * How a deployment in the region calls the model, keeping the mail as close as the model allows:
+ * in the deployment's region itself where the model runs there without a profile, through the
+ * profile of the deployment's continent from its model region, through the global profile, and
+ * last, for a model available only in the US, through the us profile from us-west-2 (ADR-0035).
+ */
+export function callOf(model: MailboxAgentModel, region: string): ModelCall {
+  const { profiles, inRegion } = mailboxAgentModels[model];
+  if ((inRegion as string[]).includes(region)) return { profile: "none", region: region as MailboxAgentRegion, processedIn: "region" };
+  const continent = region.startsWith("eu-") ? "eu" : region.startsWith("us-") ? "us" : undefined;
+  if (continent !== undefined && profiles.includes(continent)) return { profile: continent, region: modelRegion(region), processedIn: "continent" };
+  if (profiles.includes("global")) return { profile: "global", region: modelRegion(region), processedIn: "anywhere" };
+  return { profile: "us", region: "us-west-2", processedIn: "us" };
 }
 
 /** The ID Converse takes for the model through the profile: the profile's, or without one, the model's own. */
@@ -72,12 +78,12 @@ export const inferenceProfileId = (model: MailboxAgentModel, profile: MailboxAge
 export const deciderModel = "amazon.nova-micro-v1:0";
 const deciderPrice = { input: 0.038, output: 0.152 };
 
-/** The decider's profile for the mailbox agents' region: eu in the EU, us elsewhere, as Nova Micro has no other. */
+/** The decider's profile for the region it is called from: eu in the EU, us elsewhere, as Nova Micro has no other. */
 export const deciderProfile = (region: string): MailboxAgentProfile => (region.startsWith("eu-") ? "eu" : "us");
 
-/** What a model call's tokens cost, in US dollars. */
-export function costOf({ inputTokens, outputTokens }: { inputTokens: number; outputTokens: number }, model: MailboxAgentModel | typeof deciderModel, profile: MailboxAgentProfile): number {
+/** What a model call's tokens cost, in US dollars, as a deployment in the region calls the model, each at its own price. */
+export function costOf({ inputTokens, outputTokens }: { inputTokens: number; outputTokens: number }, model: MailboxAgentModel | typeof deciderModel, region: string): number {
   const price = model === deciderModel ? deciderPrice : mailboxAgentModels[model];
-  const discount = profile === "global" ? 1 / 1.1 : 1;
+  const discount = model !== deciderModel && callOf(model, region).profile === "global" ? 1 / 1.1 : 1;
   return ((inputTokens * price.input + outputTokens * price.output) * discount) / 1_000_000;
 }

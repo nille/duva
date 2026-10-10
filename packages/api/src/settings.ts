@@ -4,19 +4,20 @@ import { jsonBody, type OperationHandler, refusal } from "./api.ts";
 import { threadsPastRetention } from "./erasure.ts";
 import { indexMailboxes } from "./indexing.ts";
 import { type Language, languages } from "./languages.ts";
-import { type MailboxAgentModel, mailboxAgentModels, type MailboxAgentProfile, mailboxAgentProfiles, type MailboxAgentRegion, mailboxAgentRegions, wontRun } from "./agent-models.ts";
+import { callOf, inferenceProfileId, isMeasured, type MailboxAgentModel, mailboxAgentModels, measuredModelIds } from "./agent-models.ts";
+import { measuredModels } from "./measured-models.gen.ts";
 import { changeSettings, defaultSettings, isAdmin, lowerLimitsToCaps, organizationSettings, type OrganizationSettings } from "./organization.ts";
 
 /** Whether the value is a send limit or a cap on one: a whole number from 1 to 10,000. */
 export const isLimit = (value: unknown): value is number => Number.isInteger(value) && (value as number) >= 1 && (value as number) <= 10_000;
 
-/** Which values each setting takes, and what refuses one it doesn't. */
-/** A setting that takes one of the models admins can choose. */
+/** A setting that takes one of the measured models. */
 const aModel = (name: string) => ({
-  takes: (value: unknown): value is MailboxAgentModel => typeof value === "string" && value in mailboxAgentModels,
-  refusal: `Give ${name} as one of ${Object.keys(mailboxAgentModels).join(", ")}.`,
+  takes: (value: unknown): value is MailboxAgentModel => typeof value === "string" && isMeasured(value),
+  refusal: `Give ${name} as one of the measured models, ${measuredModelIds.join(", ")}.`,
 });
 
+/** Which values each setting takes, and what refuses one it doesn't. */
 const values: { [Name in keyof OrganizationSettings]: { takes: (value: unknown) => value is OrganizationSettings[Name]; refusal: string } } = {
   erasureErasesApprovals: {
     takes: (value) => typeof value === "boolean",
@@ -36,20 +37,15 @@ const values: { [Name in keyof OrganizationSettings]: { takes: (value: unknown) 
     takes: (value): value is number => Number.isInteger(value) && (value as number) >= 0 && (value as number) <= 120,
     refusal: "Give undoWindowSeconds as a whole number of seconds from 0 to 120.",
   },
+  mailboxAgentAllowedModels: {
+    takes: (value): value is MailboxAgentModel[] => Array.isArray(value) && value.length > 0 && value.every((model) => typeof model === "string" && isMeasured(model)) && new Set(value).size === value.length,
+    refusal: `Give mailboxAgentAllowedModels as a list of different measured models, ${measuredModelIds.join(", ")}.`,
+  },
   mailboxAgentModel: aModel("mailboxAgentModel"),
-  mailboxAgentTaskModel: aModel("mailboxAgentTaskModel"),
   mailboxAgentHarderModel: aModel("mailboxAgentHarderModel"),
   mailboxAgentDecider: {
     takes: (value): value is boolean => typeof value === "boolean",
     refusal: "Give mailboxAgentDecider as true to turn the decider on, or false to turn it off.",
-  },
-  mailboxAgentProfile: {
-    takes: (value): value is MailboxAgentProfile => mailboxAgentProfiles.includes(value as MailboxAgentProfile),
-    refusal: `Give mailboxAgentProfile as one of ${mailboxAgentProfiles.join(", ")}.`,
-  },
-  mailboxAgentRegion: {
-    takes: (value): value is MailboxAgentRegion => mailboxAgentRegions.includes(value as MailboxAgentRegion),
-    refusal: `Give mailboxAgentRegion as one of ${mailboxAgentRegions.join(", ")}.`,
   },
   mailboxAgentSpendCap: {
     takes: (value): value is number => Number.isInteger(value) && (value as number) >= 0 && (value as number) <= 10_000,
@@ -62,7 +58,7 @@ const values: { [Name in keyof OrganizationSettings]: { takes: (value: unknown) 
 };
 
 export const getOrganizationSettings: OperationHandler = async (_event, deployment) => {
-  const { settings } = await organizationSettings(deployment.table, deployment.region);
+  const { settings } = await organizationSettings(deployment.table);
   return { statusCode: 200, body: settings satisfies components["schemas"]["OrganizationSettings"] };
 };
 
@@ -76,15 +72,19 @@ export const changeOrganizationSettings: OperationHandler = async (event, deploy
   const refused = (Object.keys(body) as (keyof OrganizationSettings)[]).find((name) => !values[name].takes(body[name]));
   if (refused !== undefined) return refusal(400, values[refused].refusal);
   const changes = body as Partial<OrganizationSettings>;
-  const { settings: current } = await organizationSettings(deployment.table, deployment.region);
-  const profile = changes.mailboxAgentProfile ?? current.mailboxAgentProfile;
-  const region = changes.mailboxAgentRegion ?? current.mailboxAgentRegion;
-  const models = [changes.mailboxAgentModel ?? current.mailboxAgentModel, changes.mailboxAgentTaskModel ?? current.mailboxAgentTaskModel, changes.mailboxAgentHarderModel ?? current.mailboxAgentHarderModel];
-  const unrunnable = [...new Set(models)].map((model) => wontRun(model, profile, region)).find((why) => why !== undefined);
-  if (unrunnable !== undefined) return refusal(400, unrunnable);
+  const { settings: current } = await organizationSettings(deployment.table);
+  const allowed = changes.mailboxAgentAllowedModels ?? current.mailboxAgentAllowedModels;
+  for (const name of ["mailboxAgentModel", "mailboxAgentHarderModel"] as const) {
+    const model = changes[name] ?? current[name];
+    if (!allowed.includes(model)) {
+      return refusal(400, `${mailboxAgentModels[model].name} is the organization's ${name === "mailboxAgentModel" ? "everyday" : "harder"} model, so it must be allowed. Allow it in mailboxAgentAllowedModels, or give ${name} as one of those allowed.`);
+    }
+  }
+  // Kept in the measured models' order, so a list is the same list however it was given.
+  if (changes.mailboxAgentAllowedModels !== undefined) changes.mailboxAgentAllowedModels = measuredModelIds.filter((model) => allowed.includes(model));
   // Kept in one order, so a list is the same list however it was given.
   if (changes.searchLanguages !== undefined) changes.searchLanguages = languages.filter((language) => changes.searchLanguages!.includes(language));
-  const settings = await changeSettings(deployment.table, { by: actor!.id, changes, region: deployment.region });
+  const settings = await changeSettings(deployment.table, { by: actor!.id, changes });
   // Each mailbox's index files mail by language, so the indexer rebuilds those whose languages are
   // no longer the ones mail is indexed in.
   if (changes.searchLanguages !== undefined) await indexMailboxes(deployment.table, deployment.indexQueue);
@@ -108,4 +108,21 @@ export const previewRetention: OperationHandler = async (event, deployment, acto
   if (!values.retentionDays.takes(retentionDays)) return refusal(400, values.retentionDays.refusal);
   const threads = await threadsPastRetention(deployment.table, retentionDays, new Date());
   return { statusCode: 200, body: { retentionDays, threads } satisfies components["schemas"]["RetentionPreview"] };
+};
+
+export const listMailboxAgentModels: OperationHandler = async (_event, deployment) => {
+  const { settings } = await organizationSettings(deployment.table);
+  const models = measuredModelIds.map((model) => {
+    const { profile, region, processedIn } = callOf(model, deployment.region);
+    return {
+      model,
+      name: mailboxAgentModels[model].name,
+      profileId: inferenceProfileId(model, profile),
+      region,
+      processedIn,
+      ...measuredModels[model as keyof typeof measuredModels],
+      allowed: settings.mailboxAgentAllowedModels.includes(model),
+    };
+  });
+  return { statusCode: 200, body: { models } satisfies components["schemas"]["MeasuredModelList"] };
 };

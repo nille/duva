@@ -81,7 +81,7 @@ One organization per deployment (ADR-0002), in its own AWS account. Everything i
   - **Label prompts:** the **task runner** runs a label prompt's task (`tasks.ts`, ADR-0029).
   - **MCP:** the **MCP** Lambda serves Duva's MCP endpoint (`mcp.ts`, ADR-0028).
   - **Unsubscribing:** when one-click fails for a sender set to Nowhere, the task runner has Coo go on with it (`unsubscribe-runs.ts`, ADR-0031). Coo tries the opt-out page in AgentCore Browser, with only page tools (`unsubscribe-agent.ts`), then mailing the List-Unsubscribe address, then a link in the body, and last bounces the mail. The one-click POST itself is the **unsubscriber** Lambda's (`unsubscriber.ts`).
-- **Models:** `agent-models.ts` holds the models, the regions and the prices. Routing and handover are in ADR-0032 and `docs/research/coo-models.md`.
+- **Models:** `agent-models.ts` holds the models, their prices, and how a deployment calls each (`callOf`), which decides where it processes mail. Only measured models can be allowed, those in `measured-models.gen.ts`, which `npm run generate` writes from Coo's evaluation. Each human picks their Coo's everyday and harder model from those admins allow, in their preferences (ADR-0035). Routing and handover are in ADR-0032 and `docs/research/coo-models.md`.
 - **Claude is never called from eu-north-1,** where the Marketplace agreement fails. An EU deployment calls it in eu-central-1 through the `eu.` profile.
 
 ### Sign-in and the web app

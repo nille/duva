@@ -40,7 +40,7 @@ const deciding = (route: "simple" | "complex", confidence: number): Decider => a
 async function withMailbox({ defaults = false, ...options }: DuvaOptions & { defaults?: boolean } = {}) {
   const duva = await startDuva({ domain: "example.com", admin: "ada@example.org", humans: ["linus@example.org"], ...options });
   const ada = duva.signIn("ada@example.org");
-  if (!defaults) await ada.PATCH("/organization/settings", { body: { mailboxAgentModel: nova, mailboxAgentTaskModel: nova, mailboxAgentDecider: true } });
+  if (!defaults) await ada.PATCH("/organization/settings", { body: { mailboxAgentAllowedModels: ["anthropic.claude-haiku-4-5-20251001-v1:0", "anthropic.claude-sonnet-5-5", nova], mailboxAgentModel: nova, mailboxAgentDecider: true } });
   const linus = duva.signIn("linus@example.org");
   const { data: linusActor } = await linus.GET("/whoami");
   const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: linusActor!.id, address: "linus@example.com" } });

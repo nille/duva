@@ -81,7 +81,7 @@ export async function* runUnsubscribe(payload: RunPayload, { model, browser }: {
         if ("text" in event) text += event.text;
         else if ("toolUse" in event) content.push(event);
         else {
-          spent += costOf(event.usage, payload.model.model, payload.model.profile);
+          spent += costOf(event.usage, payload.model.model, payload.model.region);
           yield { type: "usage", model: payload.model.model, ...event.usage };
         }
       }

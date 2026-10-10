@@ -9,11 +9,11 @@ import type { Browser } from "./browser.ts";
 import { environmentVariables } from "./infrastructure.ts";
 
 /**
- * The runtime's server, asking the models and the decider in the region and through the profile
- * the payload names, and unsubscribing in the browser, AgentCore Browser's that the stack names unless given.
+ * The runtime's server, asking the models and the decider as a deployment in the payload's region
+ * calls them, and unsubscribing in the browser, AgentCore Browser's that the stack names unless given.
  */
 export function createRuntimeServer(
-  modelFor: (payload: RunPayload) => Model = ({ model }) => bedrockModel({ region: model.region, profile: model.profile }),
+  modelFor: (payload: RunPayload) => Model = ({ model }) => bedrockModel({ region: model.region }),
   browser: Browser | undefined = agentCoreBrowser(process.env[environmentVariables.unsubscribeBrowser] ?? ""),
   deciderFor: (payload: RunPayload) => Decider = ({ model }) => bedrockDecider({ region: model.region }),
 ): Server {

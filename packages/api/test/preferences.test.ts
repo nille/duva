@@ -100,13 +100,13 @@ test("an agent has no preferences, so it gets 403 reading or changing them", asy
 });
 
 test.each([
-  ["no preference", {}, "Give a preference to change: hourCycle, dateFormat, mailView, keyboardShortcuts, cooSpeaksUp, timeZone, opensOn, newMailFrom."],
+  ["no preference", {}, "Give a preference to change: hourCycle, dateFormat, mailView, keyboardShortcuts, cooSpeaksUp, timeZone, opensOn, newMailFrom, cooEverydayModel, cooHarderModel."],
   ["an hour cycle Duva doesn't have", { hourCycle: "h24" }, "Give hourCycle as locale, h12 or h23."],
   ["a date format Duva doesn't have", { dateFormat: "yearFirst" }, "Give dateFormat as locale, iso, dayMonth or monthDay."],
   ["a mail view Duva doesn't have", { mailView: "markdown" }, "Give mailView as html or text."],
   ["keyboard shortcuts as neither on nor off", { keyboardShortcuts: "true" }, "Give keyboardShortcuts as on or off."],
   ["Coo speaking up as neither on nor off", { cooSpeaksUp: "yes" }, "Give cooSpeaksUp as on or off."],
-  ["a preference Duva doesn't have", { language: "sv" }, 'Duva has no preference "language". Its preferences are hourCycle, dateFormat, mailView, keyboardShortcuts, cooSpeaksUp, timeZone, opensOn, newMailFrom.'],
+  ["a preference Duva doesn't have", { language: "sv" }, 'Duva has no preference "language". Its preferences are hourCycle, dateFormat, mailView, keyboardShortcuts, cooSpeaksUp, timeZone, opensOn, newMailFrom, cooEverydayModel, cooHarderModel.'],
 ])("changing preferences with %s gets 400, and they stay as they were", async (_, body, message) => {
   const { ada } = await withOrganization();
 

@@ -11,7 +11,7 @@ import type { components } from "@duva/openapi";
 import { AddressesSheet, type Giving } from "./addresses.tsx";
 import { AgentSettingsSheet } from "./agent-settings.tsx";
 import { agentHref } from "./alerts.tsx";
-import { Choice, wholeNumber } from "./setting-parts.tsx";
+import { Choice, ModelName, ModelPlace, outsideContinent, wholeNumber } from "./setting-parts.tsx";
 import { CopyButton } from "./dns-parts.tsx";
 import { datesFor, type Preferences, PreferencesContext } from "./dates.ts";
 import { DomainsSheet } from "./domains.tsx";
@@ -475,6 +475,7 @@ function YouPage({
   return (
     <>
       <YouSheet client={client} own={mailboxes} onPreferences={onPreferences} onSignedOut={onSignedOut} />
+      {mailboxes.length > 0 && <CooModelsSheet client={client} onSignedOut={onSignedOut} />}
       <MyLogoSheet client={client} mailboxes={mailboxes} onSignedOut={onSignedOut} />
       {mailboxes.length > 0 && <McpSheet />}
       <div className="settings-aside">
@@ -705,60 +706,47 @@ function AgentsSheet({ client, onSignedOut }: { client: DuvaClient; onSignedOut:
   );
 }
 
-type MailboxAgentsSettings = Pick<
-  OrganizationSettings,
-  "mailboxAgentModel" | "mailboxAgentTaskModel" | "mailboxAgentHarderModel" | "mailboxAgentDecider" | "mailboxAgentProfile" | "mailboxAgentRegion" | "mailboxAgentSpendCap"
->;
+type MailboxAgentsSettings = Pick<OrganizationSettings, "mailboxAgentAllowedModels" | "mailboxAgentModel" | "mailboxAgentHarderModel" | "mailboxAgentDecider" | "mailboxAgentSpendCap">;
 type Model = MailboxAgentsSettings["mailboxAgentModel"];
-type Profile = MailboxAgentsSettings["mailboxAgentProfile"];
+type MeasuredModel = components["schemas"]["MeasuredModel"];
+const organizationModels = ["mailboxAgentModel", "mailboxAgentHarderModel"] as const;
 
-/** The models, each with the profiles it runs through, and the regions it runs in without one, as agent-models.ts has them. */
-const mailboxAgentModels: Record<Model, { profiles: Profile[]; inRegion: string[] }> = {
-  "amazon.nova-2-lite-v1:0": { profiles: ["eu", "us", "global"], inRegion: [] },
-  "anthropic.claude-sonnet-5-5": { profiles: ["eu", "us", "global"], inRegion: [] },
-  "anthropic.claude-haiku-4-5-20251001-v1:0": { profiles: ["eu", "us", "global"], inRegion: [] },
-  "anthropic.claude-opus-5-5": { profiles: ["eu", "us", "global"], inRegion: [] },
-  "amazon.nova-pro-v1:0": { profiles: ["eu", "us", "none"], inRegion: ["us-east-1"] },
-  "amazon.nova-lite-v1:0": { profiles: ["eu", "us", "none"], inRegion: ["eu-north-1", "us-east-1", "us-east-2", "us-west-2"] },
-};
-const mailboxAgentProfiles = ["eu", "us", "global", "none"] as const;
-const jobs = ["mailboxAgentModel", "mailboxAgentTaskModel", "mailboxAgentHarderModel"] as const;
-
-/** Why the chosen models don't all run through the profile from the region, if they don't. */
-function wontRun(chosen: MailboxAgentsSettings): string | undefined {
-  const copy = strings.settings.mailboxAgents.where;
-  const { mailboxAgentProfile: profile, mailboxAgentRegion: region } = chosen;
-  for (const model of new Set(jobs.map((job) => chosen[job]))) {
-    const { profiles, inRegion } = mailboxAgentModels[model];
-    if (!profiles.includes(profile)) return copy.noProfile(strings.ask.models[model]);
-    if (profile === "none" && !inRegion.includes(region)) return copy.notHere(strings.ask.models[model], inRegion);
-  }
-  if ((profile === "eu" || profile === "us") && !region.startsWith(`${profile}-`)) return copy.mismatch(profile);
-  return undefined;
+/** The measured models as Duva lists them for this deployment, or whether they couldn't be. */
+function useMeasuredModels(client: DuvaClient): { models?: MeasuredModel[]; failed: boolean } {
+  const [read, setRead] = useState<{ models?: MeasuredModel[]; failed: boolean }>({ failed: false });
+  useEffect(() => {
+    void client
+      .GET("/organization/mailbox-agent-models")
+      .then(({ data }) => setRead(data === undefined ? { failed: true } : { models: data.models, failed: false }))
+      .catch(() => setRead({ failed: true }));
+  }, [client]);
+  return read;
 }
-const mailboxAgentRegions = ["eu-central-1", "eu-west-1", "eu-west-3", "eu-north-1", "us-east-1", "us-east-2", "us-west-2"] as const;
 
 /**
- * The organization's Mailbox agents sheet: the model they think with, where the mail they read is
- * processed, and their spend cap, with what they spent this month (ADR-0027).
+ * The organization's Mailbox agents sheet: the measured models humans may choose, each with its
+ * flag, how it did on Coo's evaluation and what a task costs, the organization's everyday and
+ * harder models among them, and the spend cap, with what they spent this month (ADR-0027, ADR-0035).
+ * Allowing a model that processes mail outside the deployment's continent says so first.
  */
 function MailboxAgentsSheet({ client, onSignedOut }: { client: DuvaClient; onSignedOut: () => void }) {
   const { sheet } = useOrganizationSheet<MailboxAgentsSettings>(
     client,
-    ({ mailboxAgentModel, mailboxAgentTaskModel, mailboxAgentHarderModel, mailboxAgentDecider, mailboxAgentProfile, mailboxAgentRegion, mailboxAgentSpendCap }) => ({
+    ({ mailboxAgentAllowedModels, mailboxAgentModel, mailboxAgentHarderModel, mailboxAgentDecider, mailboxAgentSpendCap }) => ({
+      mailboxAgentAllowedModels,
       mailboxAgentModel,
-      mailboxAgentTaskModel,
       mailboxAgentHarderModel,
       mailboxAgentDecider,
-      mailboxAgentProfile,
-      mailboxAgentRegion,
       mailboxAgentSpendCap,
     }),
     onSignedOut,
   );
   const [capText, setCapText] = useState<string>();
   const [spend, setSpend] = useState<components["schemas"]["MailboxAgentSpend"]>();
+  // A model outside the deployment's continent, ticked but not yet allowed, until the admin says.
+  const [asking, setAsking] = useState<Model>();
   const saved = sheet.saving.status;
+  const { models, failed } = useMeasuredModels(client);
   useEffect(() => {
     void client
       .GET("/organization/mailbox-agent-spend")
@@ -772,34 +760,86 @@ function MailboxAgentsSheet({ client, onSignedOut }: { client: DuvaClient; onSig
       {(chosen) => {
         const text = capText ?? String(chosen.mailboxAgentSpendCap);
         const capValid = /^\d+$/.test(text.trim()) && Number(text.trim()) <= 10_000;
-        const unrunnable = wontRun(chosen);
-        const runs = unrunnable === undefined;
+        const allowed = chosen.mailboxAgentAllowedModels;
+        // Kept in the measured models' order, as Duva keeps the list.
+        const allow = (model: Model, on: boolean) =>
+          sheet.choose({ mailboxAgentAllowedModels: (models ?? []).map(({ model }) => model).filter((each) => (each === model ? on : allowed.includes(each))) });
         return (
           <>
             <fieldset>
               <legend>{copy.model.legend}</legend>
               <p className="setting-lead">{copy.model.lead}</p>
+              {failed && (
+                <p className="field-error" role="alert">
+                  {copy.model.modelsFailed}
+                </p>
+              )}
+              {models?.map((model) => {
+                const job = organizationModels.find((each) => chosen[each] === model.model);
+                return (
+                  <div key={model.model} className="model-choice">
+                    <label className="choice">
+                      <input
+                        type="checkbox"
+                        checked={allowed.includes(model.model)}
+                        disabled={job !== undefined}
+                        aria-describedby={`allow-${model.model}-hint`}
+                        onChange={(event) => {
+                          if (event.target.checked && outsideContinent(model)) return setAsking(model.model);
+                          setAsking(undefined);
+                          allow(model.model, event.target.checked);
+                        }}
+                      />
+                      <span className="choice-text">
+                        <ModelName model={model} />
+                        <span className="hint" id={`allow-${model.model}-hint`}>
+                          {strings.settings.modelMeasured(model)}
+                          {job !== undefined && ` ${copy.model.isDefault(job === "mailboxAgentModel" ? "everyday" : "harder")}`}
+                        </span>
+                      </span>
+                    </label>
+                    {asking === model.model && (
+                      <div className="notice notice-call model-outside" role="alert">
+                        <p>{copy.model.outside(model.name, strings.settings.modelPlaceSaid(model.processedIn, model.profileId, model.region))}</p>
+                        <div className="model-outside-actions">
+                          <button
+                            type="button"
+                            className="button button-small button-primary"
+                            onClick={() => {
+                              setAsking(undefined);
+                              allow(model.model, true);
+                            }}
+                          >
+                            {copy.model.allow}
+                          </button>
+                          <button type="button" className="button button-small button-quiet" onClick={() => setAsking(undefined)}>
+                            {copy.model.keepOff}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </fieldset>
+            <fieldset>
+              <legend>{copy.model.defaultsLegend}</legend>
+              <p className="setting-lead">{copy.model.defaultsLead}</p>
               <div className="limits">
-                {jobs.map((job) => (
+                {organizationModels.map((job) => (
                   <div className="limit" key={job}>
                     <label htmlFor={`mailbox-agent-${job}`} className="limit-name">
                       {copy.model.jobs[job]}
                     </label>
-                    <select
-                      id={`mailbox-agent-${job}`}
-                      aria-describedby={`mailbox-agent-${job}-hint`}
-                      value={chosen[job]}
-                      onChange={(event) => sheet.choose({ [job]: event.target.value as Model })}
-                    >
-                      {(Object.keys(mailboxAgentModels) as Model[]).map((model) => (
-                        <option key={model} value={model}>
-                          {strings.ask.models[model]}
-                        </option>
-                      ))}
+                    <select id={`mailbox-agent-${job}`} value={chosen[job]} onChange={(event) => sheet.choose({ [job]: event.target.value as Model })}>
+                      {(models ?? [])
+                        .filter(({ model }) => allowed.includes(model))
+                        .map((model) => (
+                          <option key={model.model} value={model.model}>
+                            {`${model.name}, ${strings.settings.modelPlaceSaid(model.processedIn, model.profileId, model.region)}`}
+                          </option>
+                        ))}
                     </select>
-                    <p id={`mailbox-agent-${job}-hint`} className="hint">
-                      {copy.model.hints[chosen[job]]}
-                    </p>
                   </div>
                 ))}
               </div>
@@ -810,43 +850,6 @@ function MailboxAgentsSheet({ client, onSignedOut }: { client: DuvaClient; onSig
                   <span className="hint">{copy.model.deciderHint}</span>
                 </span>
               </label>
-            </fieldset>
-            <fieldset>
-              <legend>{copy.where.legend}</legend>
-              <p className="setting-lead">{copy.where.lead}</p>
-              {mailboxAgentProfiles.map((profile) => (
-                <Choice
-                  key={profile}
-                  name="mailboxAgentProfile"
-                  checked={chosen.mailboxAgentProfile === profile}
-                  onChoose={() => sheet.choose({ mailboxAgentProfile: profile })}
-                  label={copy.where.names[profile]}
-                  hint={copy.where.hints[profile]}
-                />
-              ))}
-              <div className="limits">
-                <div className="limit">
-                  <label htmlFor="mailbox-agent-region" className="limit-name">
-                    {copy.where.region}
-                  </label>
-                  <select
-                    id="mailbox-agent-region"
-                    aria-describedby="mailbox-agent-region-hint"
-                    aria-invalid={!runs}
-                    value={chosen.mailboxAgentRegion}
-                    onChange={(event) => sheet.choose({ mailboxAgentRegion: event.target.value as MailboxAgentsSettings["mailboxAgentRegion"] })}
-                  >
-                    {mailboxAgentRegions.map((region) => (
-                      <option key={region} value={region}>
-                        {region}
-                      </option>
-                    ))}
-                  </select>
-                  <p id="mailbox-agent-region-hint" className={runs ? "hint" : "field-error"}>
-                    {unrunnable ?? copy.where.regionHint}
-                  </p>
-                </div>
-              </div>
             </fieldset>
             <fieldset>
               <legend>{copy.cap.legend}</legend>
@@ -875,7 +878,7 @@ function MailboxAgentsSheet({ client, onSignedOut }: { client: DuvaClient; onSig
                 </div>
               </div>
             </fieldset>
-            <SaveRow sheet={sheet} saved={strings.settings.saved([])} invalid={!capValid || !runs} />
+            <SaveRow sheet={sheet} saved={strings.settings.saved([])} invalid={!capValid} />
           </>
         );
       }}
@@ -1070,7 +1073,8 @@ function YouSheet({
   const fromChoices = own.flatMap(({ addresses }) => addresses);
   const sheet = useSheet<Preferences>({
     read: () => client.GET("/preferences"),
-    write: (preferences) => client.PATCH("/preferences", { body: preferences }),
+    // Coo's models are their own sheet's to save, so this one leaves them as they are.
+    write: ({ cooEverydayModel: _everyday, cooHarderModel: _harder, ...preferences }) => client.PATCH("/preferences", { body: preferences }),
     copy: {
       failed: strings.settings.preferencesFailed,
       unreachable: strings.settings.preferencesUnreachable,
@@ -1198,6 +1202,85 @@ function YouSheet({
             </fieldset>
           )}
           <SaveRow sheet={sheet} saved={copy.preferencesSaved} />
+        </>
+      )}
+    </Sheet>
+  );
+}
+
+/** A choice of one of Coo's models: one the human picked, or the organization's. */
+type CooModels = { cooEverydayModel: Model | "organization"; cooHarderModel: Model | "organization" };
+const cooChoices = [
+  ["cooEverydayModel", "everyday", "mailboxAgentModel"],
+  ["cooHarderModel", "harder", "mailboxAgentHarderModel"],
+] as const;
+
+/**
+ * The human's picks of their Coo's everyday and harder models, from those admins allow, each with
+ * its flag and how it did on Coo's evaluation, or the organization's, as they are by default (ADR-0035).
+ */
+function CooModelsSheet({ client, onSignedOut }: { client: DuvaClient; onSignedOut: () => void }) {
+  const copy = strings.settings.cooModels;
+  const { models } = useMeasuredModels(client);
+  const [organization, setOrganization] = useState<OrganizationSettings>();
+  useEffect(() => {
+    void client
+      .GET("/organization/settings")
+      .then(({ data }) => setOrganization(data))
+      .catch(() => undefined);
+  }, [client]);
+  const picked = async (answer: Answer<Preferences>) => {
+    const { data, response } = await answer;
+    return { data: data === undefined ? undefined : { cooEverydayModel: data.cooEverydayModel ?? "organization", cooHarderModel: data.cooHarderModel ?? "organization" }, response } as { data?: CooModels; response: Response };
+  };
+  const sheet = useSheet<CooModels>({
+    read: () => picked(client.GET("/preferences")),
+    // The organization's is kept by giving no model of one's own.
+    write: ({ cooEverydayModel, cooHarderModel }) =>
+      picked(client.PATCH("/preferences", { body: { cooEverydayModel: cooEverydayModel === "organization" ? null : cooEverydayModel, cooHarderModel: cooHarderModel === "organization" ? null : cooHarderModel } })),
+    copy,
+    onSignedOut,
+  });
+  const allowed = models?.filter(({ allowed }) => allowed) ?? [];
+  const named = (model: Model | undefined) => models?.find((each) => each.model === model);
+  return (
+    <Sheet id="coo-models" name={copy.title} lead={copy.lead} sheet={sheet}>
+      {(chosen) => (
+        <>
+          {cooChoices.map(([name, job, setting]) => {
+            const theirs = named(organization?.[setting]);
+            return (
+              <fieldset key={name}>
+                <legend>{copy[job].legend}</legend>
+                <p className="setting-lead">{copy[job].lead}</p>
+                {theirs !== undefined && (
+                  <Choice
+                    name={name}
+                    checked={chosen[name] === "organization"}
+                    onChoose={() => sheet.choose({ [name]: "organization" })}
+                    label={
+                      <span className="model-name">
+                        {copy.organizations(theirs.name)}
+                        <ModelPlace model={theirs} />
+                      </span>
+                    }
+                    hint={strings.settings.modelMeasured(theirs)}
+                  />
+                )}
+                {allowed.map((model) => (
+                  <Choice
+                    key={model.model}
+                    name={name}
+                    checked={chosen[name] === model.model}
+                    onChoose={() => sheet.choose({ [name]: model.model })}
+                    label={<ModelName model={model} />}
+                    hint={strings.settings.modelMeasured(model)}
+                  />
+                ))}
+              </fieldset>
+            );
+          })}
+          <SaveRow sheet={sheet} saved={copy.saved} invalid={models === undefined} />
         </>
       )}
     </Sheet>

@@ -46,7 +46,7 @@ async function withMailbox(options: DuvaOptions = {}) {
   await linus.PATCH("/mailboxes/{mailbox}/screener", { params, body: { on: false } });
   const ask = (words: string, email = "linus@example.org", mailboxId = mailbox!.id) => duva.askAgent(email, { mailbox: mailboxId, words });
   // With Claude Sonnet 5.5 for every job, nothing is routed, so a script runs as written.
-  const sonnetOnly = () => ada.PATCH("/organization/settings", { body: { mailboxAgentModel: "anthropic.claude-sonnet-5-5", mailboxAgentTaskModel: "anthropic.claude-sonnet-5-5" } });
+  const sonnetOnly = () => ada.PATCH("/organization/settings", { body: { mailboxAgentModel: "anthropic.claude-sonnet-5-5" } });
   const agent = async () => (await linus.GET("/mailbox-agent")).data!.agent;
   return { duva, ada, linus, grace, linusId: linusActor!.id, graceId: graceActor!.id, mailbox: mailbox!, params, ask, agent, sonnetOnly };
 }
@@ -376,55 +376,183 @@ test("a run stops at the organization's spend cap, with an alert to its sponsor,
   expect((await ask("Now?")).status).toBe(200);
 });
 
-test("admins choose the model, the profile and the region the mailbox agents call it from, by default in the EU through eu-central-1", async () => {
-  const { ada } = await withMailbox();
+const haiku = "anthropic.claude-haiku-4-5-20251001-v1:0";
+const sonnet = "anthropic.claude-sonnet-5-5";
+const novaLite = "amazon.nova-lite-v1:0";
+const novaTwo = "amazon.nova-2-lite-v1:0";
+
+test("admins allow measured models, and set the organization's everyday and harder models from them, by default Claude Haiku 4.5 and Claude Sonnet 5.5", async () => {
+  const { ada, linus } = await withMailbox();
   const { data: before } = await ada.GET("/organization/settings");
 
-  const mismatched = await ada.PATCH("/organization/settings", { body: { mailboxAgentRegion: "us-west-2" } });
-  const changed = await ada.PATCH("/organization/settings", { body: { mailboxAgentModel: "anthropic.claude-haiku-4-5-20251001-v1:0", mailboxAgentProfile: "global", mailboxAgentRegion: "us-west-2" } });
+  const unmeasured = await ada.PATCH("/organization/settings", { body: { mailboxAgentAllowedModels: [haiku, sonnet, "anthropic.claude-opus-5-5"] } });
+  const notAllowed = await ada.PATCH("/organization/settings", { body: { mailboxAgentModel: novaTwo } });
+  const defaultTaken = await ada.PATCH("/organization/settings", { body: { mailboxAgentAllowedModels: [sonnet] } });
+  const notAdmin = await linus.PATCH("/organization/settings", { body: { mailboxAgentAllowedModels: [haiku, sonnet, novaTwo] } });
+  const changed = await ada.PATCH("/organization/settings", { body: { mailboxAgentAllowedModels: [novaTwo, sonnet, haiku], mailboxAgentModel: novaTwo } });
 
-  expect(before).toMatchObject({
-    mailboxAgentModel: "anthropic.claude-haiku-4-5-20251001-v1:0",
-    mailboxAgentTaskModel: "anthropic.claude-haiku-4-5-20251001-v1:0",
-    mailboxAgentHarderModel: "anthropic.claude-sonnet-5-5",
-    mailboxAgentDecider: false,
-    mailboxAgentProfile: "eu",
-    mailboxAgentRegion: "eu-central-1",
-    mailboxAgentSpendCap: 20,
-  });
-  expect(mismatched.response.status).toBe(400);
-  expect((mismatched.error as { message: string }).message).toBe("The eu profile runs only from an EU region, and us-west-2 isn't one. Give mailboxAgentRegion as one, or mailboxAgentProfile as global.");
-  expect(changed.data).toMatchObject({ mailboxAgentModel: "anthropic.claude-haiku-4-5-20251001-v1:0", mailboxAgentProfile: "global", mailboxAgentRegion: "us-west-2" });
-});
-
-test("admins may choose Amazon's Nova models, each through the profiles it has, and Nova Lite in eu-north-1 itself without one", async () => {
-  const { ada } = await withMailbox();
-  const choose = (body: { mailboxAgentModel?: string; mailboxAgentTaskModel?: string; mailboxAgentHarderModel?: string; mailboxAgentProfile?: string; mailboxAgentRegion?: string }) => ada.PATCH("/organization/settings", { body: body as never });
-
-  const novaTwo = await choose({ mailboxAgentModel: "amazon.nova-2-lite-v1:0", mailboxAgentProfile: "global", mailboxAgentRegion: "eu-north-1" });
-  const liteGlobal = await choose({ mailboxAgentModel: "amazon.nova-lite-v1:0" });
-  const harderHere = await choose({ mailboxAgentModel: "amazon.nova-lite-v1:0", mailboxAgentProfile: "none" });
-  const liteHere = await choose({ mailboxAgentModel: "amazon.nova-lite-v1:0", mailboxAgentTaskModel: "amazon.nova-lite-v1:0", mailboxAgentHarderModel: "amazon.nova-lite-v1:0", mailboxAgentProfile: "none" });
-  const proHere = await choose({ mailboxAgentModel: "amazon.nova-pro-v1:0" });
-  const claudeHere = await choose({ mailboxAgentModel: "anthropic.claude-haiku-4-5-20251001-v1:0" });
-  const pro = await choose({ mailboxAgentModel: "amazon.nova-pro-v1:0", mailboxAgentProfile: "eu" });
-
-  expect(novaTwo.data).toMatchObject({ mailboxAgentModel: "amazon.nova-2-lite-v1:0", mailboxAgentProfile: "global", mailboxAgentRegion: "eu-north-1" });
-  expect((liteGlobal.error as { message: string }).message).toBe("Amazon Nova Lite runs only through the eu or us profile, or with none. Give mailboxAgentProfile as one of those.");
-  // Each job's model must run through the profile, Claude Haiku 4.5 for tasks among them.
-  expect((harderHere.error as { message: string }).message).toBe("Claude Haiku 4.5 runs only through the eu, us or global profile. Give mailboxAgentProfile as one of those.");
-  expect(liteHere.data).toMatchObject({ mailboxAgentModel: "amazon.nova-lite-v1:0", mailboxAgentProfile: "none", mailboxAgentRegion: "eu-north-1" });
-  expect((proHere.error as { message: string }).message).toBe(
-    "Amazon Nova Pro runs without a profile only in us-east-1, and not in eu-north-1. Give mailboxAgentRegion as one of them, or mailboxAgentProfile as a profile.",
+  expect(before).toMatchObject({ mailboxAgentAllowedModels: [haiku, sonnet], mailboxAgentModel: haiku, mailboxAgentHarderModel: sonnet, mailboxAgentDecider: false, mailboxAgentSpendCap: 20 });
+  expect(before).not.toHaveProperty("mailboxAgentTaskModel");
+  expect((unmeasured.error as { message: string }).message).toBe(
+    "Give mailboxAgentAllowedModels as a list of different measured models, anthropic.claude-haiku-4-5-20251001-v1:0, anthropic.claude-sonnet-5-5, amazon.nova-2-lite-v1:0, amazon.nova-lite-v1:0, amazon.nova-pro-v1:0.",
   );
-  expect((claudeHere.error as { message: string }).message).toBe("Claude Haiku 4.5 runs only through the eu, us or global profile. Give mailboxAgentProfile as one of those.");
-  expect(pro.data).toMatchObject({ mailboxAgentModel: "amazon.nova-pro-v1:0", mailboxAgentProfile: "eu", mailboxAgentRegion: "eu-north-1" });
+  expect((notAllowed.error as { message: string }).message).toBe(
+    "Amazon Nova 2 Lite is the organization's everyday model, so it must be allowed. Allow it in mailboxAgentAllowedModels, or give mailboxAgentModel as one of those allowed.",
+  );
+  expect((defaultTaken.error as { message: string }).message).toBe(
+    "Claude Haiku 4.5 is the organization's everyday model, so it must be allowed. Allow it in mailboxAgentAllowedModels, or give mailboxAgentModel as one of those allowed.",
+  );
+  expect(notAdmin.response.status).toBe(403);
+  // The list is kept in the measured models' order.
+  expect(changed.data).toMatchObject({ mailboxAgentAllowedModels: [haiku, sonnet, novaTwo], mailboxAgentModel: novaTwo, mailboxAgentHarderModel: sonnet });
 });
 
-test("a deployment in the US has its mailbox agents call the model in the US, through us-west-2", async () => {
-  const { ada } = await withMailbox({ region: "us-east-1" });
+test("every actor lists the measured models, each with its success by kind of work, its cost per task, and where an EU deployment processes the mail it reads", async () => {
+  const { ada, linus } = await withMailbox();
+  await ada.PATCH("/organization/settings", { body: { mailboxAgentAllowedModels: [haiku, sonnet, novaLite] } });
 
+  const { data } = await linus.GET("/organization/mailbox-agent-models");
+
+  // From docs/research/coo-models.md: Claude in eu-central-1 through eu., Nova Lite in eu-north-1 itself.
+  expect(data!.models.map(({ model }) => model)).toEqual([haiku, sonnet, novaTwo, novaLite, "amazon.nova-pro-v1:0"]);
+  expect(data!.models[0]).toEqual({
+    model: haiku,
+    name: "Claude Haiku 4.5",
+    profileId: "eu.anthropic.claude-haiku-4-5-20251001-v1:0",
+    region: "eu-central-1",
+    processedIn: "continent",
+    success: { conversation: 1, drafting: 1, triage: 0.75, labelTask: 1, refusal: 1 },
+    costPerTask: expect.closeTo(0.0199, 4),
+    allowed: true,
+  });
+  expect(data!.models[3]).toMatchObject({ name: "Amazon Nova Lite", profileId: novaLite, region: "eu-north-1", processedIn: "region", success: { drafting: 0, labelTask: 0.83 }, costPerTask: expect.closeTo(0.001, 4), allowed: true });
+  expect(data!.models[2]).toMatchObject({ name: "Amazon Nova 2 Lite", profileId: `eu.${novaTwo}`, region: "eu-central-1", processedIn: "continent", costPerTask: expect.closeTo(0.008, 4), allowed: false });
+});
+
+test("a deployment in the US calls each measured model in the US, through us-west-2, or in its own region where the model runs there", async () => {
+  const { linus } = await withMailbox({ region: "us-east-1" });
+
+  const { data } = await linus.GET("/organization/mailbox-agent-models");
+
+  expect(data!.models.map(({ model, profileId, region, processedIn }) => [model, profileId, region, processedIn])).toEqual([
+    [haiku, `us.${haiku}`, "us-west-2", "continent"],
+    [sonnet, `us.${sonnet}`, "us-west-2", "continent"],
+    [novaTwo, `us.${novaTwo}`, "us-west-2", "continent"],
+    [novaLite, novaLite, "us-east-1", "region"],
+    ["amazon.nova-pro-v1:0", "amazon.nova-pro-v1:0", "us-east-1", "region"],
+  ]);
+});
+
+test("each human picks their Coo's everyday and harder models from those admins allow, or keeps the organization's defaults", async () => {
+  const { model, requests } = scripted(
+    () => [use("listLabels")],
+    () => [{ text: "Nova Lite read your labels." }],
+    () => [{ text: "Sonnet thought harder." }],
+    () => [use("listLabels")],
+    () => [{ text: "Haiku read your labels." }],
+  );
+  const { duva, ada, linus, grace, params } = await withMailbox({ model });
+  const { data: kept } = await linus.GET("/preferences");
+
+  const refused = await linus.PATCH("/preferences", { body: { cooEverydayModel: novaLite } });
+  await ada.PATCH("/organization/settings", { body: { mailboxAgentAllowedModels: [haiku, sonnet, novaLite] } });
+  const { data: picked } = await linus.PATCH("/preferences", { body: { cooEverydayModel: novaLite } });
+  await duva.askAgent("linus@example.org", { mailbox: params.path.mailbox, words: "Hello?" });
+  await duva.askAgent("linus@example.org", { mailbox: params.path.mailbox, harder: true });
+  await ada.PATCH("/organization/settings", { body: { mailboxAgentAllowedModels: [haiku, sonnet] } });
+  const { data: taken } = await linus.GET("/preferences");
+  await duva.askAgent("linus@example.org", { mailbox: params.path.mailbox, words: "And now?" });
+
+  expect(kept).not.toHaveProperty("cooEverydayModel");
+  expect(kept).not.toHaveProperty("cooHarderModel");
+  expect(refused.response.status).toBe(400);
+  expect((refused.error as { message: string }).message).toBe(
+    '"amazon.nova-lite-v1:0" isn\'t a model admins allow. Give cooEverydayModel as one of anthropic.claude-haiku-4-5-20251001-v1:0 (Claude Haiku 4.5), anthropic.claude-sonnet-5-5 (Claude Sonnet 5.5), or null to keep the organization\'s default.',
+  );
+  expect(picked).toMatchObject({ cooEverydayModel: novaLite });
+  expect(picked).not.toHaveProperty("cooHarderModel");
+  // Think harder takes the organization's harder model, which Linus kept.
+  expect(requests.map(({ model }) => model)).toEqual([novaLite, novaLite, sonnet, haiku, haiku]);
+  // Admins took Nova Lite off the list, so Linus's Coo thinks with the organization's default again.
+  expect(taken).not.toHaveProperty("cooEverydayModel");
+  // Grace's choice is her own.
+  expect((await grace.GET("/preferences")).data).not.toHaveProperty("cooEverydayModel");
+});
+
+test("a human keeps the organization's default again by giving null, and agents have no Coo's models to pick", async () => {
+  const { ada, linus, duva } = await withMailbox();
+  await ada.PATCH("/organization/settings", { body: { mailboxAgentAllowedModels: [haiku, sonnet, novaTwo] } });
+  await linus.PATCH("/preferences", { body: { cooEverydayModel: novaTwo, cooHarderModel: haiku } });
+
+  const { data } = await linus.PATCH("/preferences", { body: { cooHarderModel: null } });
+
+  expect(data).toMatchObject({ cooEverydayModel: novaTwo });
+  expect(data).not.toHaveProperty("cooHarderModel");
+  const { data: created } = await linus.POST("/agents", { body: { name: "Helper" } });
+  expect((await duva.withKey(created!.key).PATCH("/preferences", { body: { cooEverydayModel: haiku } })).response.status).toBe(403);
+});
+
+test("a label's task runs with its human's everyday model, and the spend counts each model at its own price", async () => {
+  const { model, requests } = scripted(
+    () => [use("listLabels")],
+    () => [{ text: "Nova Lite read your labels." }],
+    (request) => [use("getThread", { thread: /thread with the ID ([0-9a-f-]+)/.exec(JSON.stringify(request.messages))![1]! })],
+    () => [{ text: "Noted: 12 kr." }],
+    () => [{ text: "Sonnet thought harder." }],
+  );
+  const { duva, ada, linus, params, ask } = await withMailbox({ model });
+  await ada.PATCH("/organization/settings", { body: { mailboxAgentAllowedModels: [haiku, sonnet, novaLite] } });
+  await linus.PATCH("/preferences", { body: { cooEverydayModel: novaLite } });
+  const { data: receipts } = await linus.POST("/mailboxes/{mailbox}/labels", { params, body: { name: "Receipts" } });
+  await linus.PUT("/mailboxes/{mailbox}/labels/{label}/prompt", { params: { path: { ...params.path, label: receipts!.id } }, body: { prompt: "Note the amount." } });
+  await duva.receive(fromGrace("Receipt", "You paid 12 kr."), { to: ["linus@example.com"] });
+  const { data: inbox } = await linus.GET("/mailboxes/{mailbox}/threads", { params: { ...params, query: { label: "inbox" } } });
+
+  await ask("Hello?");
+  await linus.POST("/mailboxes/{mailbox}/threads/labels", { params, body: { threads: [inbox!.threads[0]!.id], add: [receipts!.id], remove: [] } });
+  await duva.askAgent("linus@example.org", { mailbox: params.path.mailbox, harder: true });
+
+  expect(requests.map(({ model }) => model)).toEqual([novaLite, novaLite, novaLite, novaLite, sonnet]);
+  // Each call reads 1,000 tokens and writes 100: Nova Lite at $0.065 and $0.26 a million, four times, and Sonnet 5.5 at $2.2 and $11.
+  const { data: spend } = await ada.GET("/organization/mailbox-agent-spend");
+  expect(spend!.spent).toBeCloseTo(4 * 0.000091 + 0.0033, 9);
+});
+
+test("setup carries over the models admins chose before as the organization's defaults, allowed with Duva's own, and the task model now follows the everyday one", async () => {
+  const duva = await startDuva({
+    admin: "ada@example.org",
+    earlierModelSettings: { mailboxAgentModel: novaTwo, mailboxAgentTaskModel: novaLite, mailboxAgentHarderModel: "anthropic.claude-opus-5-5", mailboxAgentProfile: "global", mailboxAgentRegion: "eu-north-1" },
+  });
+  const ada = duva.signIn("ada@example.org");
+
+  await duva.setUp({ admin: "ada@example.org" });
   const { data } = await ada.GET("/organization/settings");
+  await duva.setUp({ admin: "ada@example.org" });
 
-  expect(data).toMatchObject({ mailboxAgentProfile: "us", mailboxAgentRegion: "us-west-2" });
+  // Claude Opus 5.5 was never measured, so Duva's harder model takes its place.
+  expect(data).toEqual({
+    erasureErasesApprovals: false,
+    retentionDays: 30,
+    searchLanguages: ["English", "Swedish"],
+    agentSendsPerHourCap: 100,
+    agentNewRecipientsPerDayCap: 50,
+    undoWindowSeconds: 0,
+    mailboxAgentAllowedModels: [haiku, sonnet, novaTwo, novaLite],
+    mailboxAgentModel: novaTwo,
+    mailboxAgentHarderModel: sonnet,
+    mailboxAgentDecider: false,
+    mailboxAgentSpendCap: 20,
+    linkedFilesCapGb: 20,
+  });
+  expect((await ada.GET("/organization/settings")).data).toEqual(data);
+});
+
+test("setup carries over an everyday model an admin chose before, when it was the only model setting they changed", async () => {
+  const duva = await startDuva({ admin: "ada@example.org", earlierModelSettings: { mailboxAgentModel: novaTwo } });
+  const ada = duva.signIn("ada@example.org");
+
+  await duva.setUp({ admin: "ada@example.org" });
+
+  expect((await ada.GET("/organization/settings")).data).toMatchObject({ mailboxAgentAllowedModels: [haiku, sonnet, novaTwo], mailboxAgentModel: novaTwo, mailboxAgentHarderModel: sonnet });
+  expect((await ada.PATCH("/organization/settings", { body: { mailboxAgentSpendCap: 30 } })).response.status).toBe(200);
 });

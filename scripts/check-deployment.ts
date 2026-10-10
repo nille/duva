@@ -43,7 +43,8 @@ import { GetBucketCorsCommand, GetBucketLifecycleConfigurationCommand, GetBucket
 import { indexedMailboxes, uncompactedSince } from "@duva/api/indexing";
 import { alertMailFilter, authorizationServerPath, conversationPath, taskGiverFilter, mcpAuthorizePath, mcpPath, mcpRegistrationPath, mcpTokenPath, protectedResourcePaths, tokenHeader, dropMetric, dropReasons, environmentVariables, hostedLogoHeaders, hostedLogosPath, inboundPrefix, receiptRuleNumber, recipientsPerRule, senderFilter, signInFrom } from "@duva/api/infrastructure";
 import { rulesTake } from "@duva/api/receiving";
-import { defaultMailboxAgentModel, inferenceProfileId } from "@duva/api/agent-models";
+import { callOf, defaultMailboxAgentModel, inferenceProfileId } from "@duva/api/agent-models";
+import { earlierModelSettingsLeft, organizationSettings } from "@duva/api/organization";
 import { mailboxAgentsLeft } from "@duva/api/mailbox-agents";
 import { tasksWorkingSince } from "@duva/api/tasks";
 import { agentsMailboxes } from "@duva/api/removal";
@@ -297,6 +298,27 @@ await check("Claude answers through the eu profile from eu-central-1, where the 
   const text = answer?.message?.content?.[0]?.text ?? "";
   return /yes/i.test(text) ? undefined : `answered ${JSON.stringify(text)}`;
 });
+await check("the models admins chose before each human picked their Coo's are carried over as the organization's defaults (ADR-0035)", async () => {
+  const table = await stackTable();
+  if (table === undefined) return "the stack has no table";
+  const left = await earlierModelSettingsLeft(table);
+  return left.length === 0 ? undefined : `the settings still hold ${left.join(", ")}. Run duva deploy again.`;
+});
+await check("each model admins allow answers where Duva calls it for this deployment's region (ADR-0035)", async () => {
+  const table = await stackTable();
+  if (table === undefined) return "the stack has no table";
+  const { settings } = await organizationSettings(table);
+  const silent: string[] = [];
+  for (const model of settings.mailboxAgentAllowedModels) {
+    const call = callOf(model, region!);
+    const { output: answer } = await new BedrockRuntimeClient({ region: call.region }).send(
+      new ConverseCommand({ modelId: inferenceProfileId(model, call.profile), messages: [{ role: "user", content: [{ text: "Answer with the word yes." }] }], inferenceConfig: { maxTokens: 5 } }),
+    );
+    if (!/yes/i.test(answer?.message?.content?.[0]?.text ?? "")) silent.push(`${inferenceProfileId(model, call.profile)} in ${call.region}`);
+  }
+  return silent.length === 0 ? undefined : `${silent.join(", ")} didn't answer yes`;
+});
+await check("listing the measured models without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/organization/mailbox-agent-models`), 401));
 await check("reading the mailbox agent without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/mailbox-agent`), 401));
 await check("clearing a conversation without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/mailbox-agent/conversation`, { method: "DELETE" }), 401));
 await check("reading the mailbox agents' spend without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/organization/mailbox-agent-spend`), 401));

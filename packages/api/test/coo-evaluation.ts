@@ -1,7 +1,7 @@
 // Coo's model evaluation (#132): Coo's real jobs, each run through the mailbox agent's own loop
 // against startDuva()'s in-process stack, in a mailbox of Swedish and English mail, and graded from
 // what Coo answered and what it did there, as its owner would see it through the API. Each model is
-// called as production calls it, from the region and through the profile its setting names, and
+// called as production calls it, from the region and through the profile that suit the deployment's, and
 // what it answered is recorded in coo-answers.json, so the evaluation replays without AWS.
 //
 // To record, run coo-evaluation.test.ts with DUVA_RECORD_MODELS=1, DUVA_RECORD_EMBEDDINGS=1 and
@@ -12,7 +12,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { performance } from "node:perf_hooks";
 import type { components } from "@duva/openapi";
 import type { Decider, Decision, Handover, Model, ModelEvent, ModelMessage } from "../src/agent-loop.ts";
-import { costOf, deciderModel, defaultHarderModel, defaultMailboxAgentModel, type MailboxAgentModel, type MailboxAgentProfile, type MailboxAgentRegion } from "../src/agent-models.ts";
+import { costOf, deciderModel, defaultHarderModel, defaultMailboxAgentModel, type MailboxAgentModel } from "../src/agent-models.ts";
 import { bedrockDecider, bedrockModel } from "../src/bedrock-model.ts";
 import { defaultSettings, type OrganizationSettings } from "../src/organization.ts";
 import { startDuva } from "./harness.ts";
@@ -23,15 +23,15 @@ export type Kind = "conversation" | "drafting" | "triage" | "label task" | "refu
 /** A setup of the mailbox agents' models, as an admin chooses it in Settings. */
 export interface Setup {
   name: string;
-  settings: Pick<OrganizationSettings, "mailboxAgentModel" | "mailboxAgentTaskModel" | "mailboxAgentHarderModel" | "mailboxAgentDecider" | "mailboxAgentProfile" | "mailboxAgentRegion">;
+  settings: Pick<OrganizationSettings, "mailboxAgentAllowedModels" | "mailboxAgentModel" | "mailboxAgentHarderModel" | "mailboxAgentDecider">;
   /** How many times each task runs, since outputs vary at temperature 0 (docs/aws.md). */
   runs: number;
 }
 
 /** One model for every job, so nothing is routed or handed over. */
-const alone = (name: string, model: MailboxAgentModel, profile: MailboxAgentProfile, region: MailboxAgentRegion, runs = 3): Setup => ({
+const alone = (name: string, model: MailboxAgentModel, runs = 3): Setup => ({
   name,
-  settings: { mailboxAgentModel: model, mailboxAgentTaskModel: model, mailboxAgentHarderModel: model, mailboxAgentDecider: false, mailboxAgentProfile: profile, mailboxAgentRegion: region },
+  settings: { mailboxAgentAllowedModels: [model], mailboxAgentModel: model, mailboxAgentHarderModel: model, mailboxAgentDecider: false },
   runs,
 });
 
@@ -42,32 +42,28 @@ const alone = (name: string, model: MailboxAgentModel, profile: MailboxAgentProf
  * off. Claude runs each task twice, to keep the recording's cost down.
  */
 export const setups: Setup[] = [
-  alone("Nova Lite", "amazon.nova-lite-v1:0", "none", "eu-north-1"),
-  alone("Nova 2 Lite", "amazon.nova-2-lite-v1:0", "eu", "eu-north-1"),
-  alone("Nova Pro", "amazon.nova-pro-v1:0", "eu", "eu-north-1"),
-  alone("Claude Haiku 4.5", "anthropic.claude-haiku-4-5-20251001-v1:0", "eu", "eu-central-1", 2),
-  alone("Claude Sonnet 5.5", "anthropic.claude-sonnet-5-5", "eu", "eu-central-1", 2),
+  alone("Nova Lite", "amazon.nova-lite-v1:0"),
+  alone("Nova 2 Lite", "amazon.nova-2-lite-v1:0"),
+  alone("Nova Pro", "amazon.nova-pro-v1:0"),
+  alone("Claude Haiku 4.5", "anthropic.claude-haiku-4-5-20251001-v1:0", 2),
+  alone("Claude Sonnet 5.5", "anthropic.claude-sonnet-5-5", 2),
   {
     name: "Nova routed",
     settings: {
+      mailboxAgentAllowedModels: ["anthropic.claude-sonnet-5-5", "amazon.nova-2-lite-v1:0"],
       mailboxAgentModel: "amazon.nova-2-lite-v1:0",
-      mailboxAgentTaskModel: "amazon.nova-2-lite-v1:0",
       mailboxAgentHarderModel: "anthropic.claude-sonnet-5-5",
       mailboxAgentDecider: true,
-      mailboxAgentProfile: "eu",
-      mailboxAgentRegion: "eu-central-1",
     },
     runs: 3,
   },
   {
     name: "Defaults",
     settings: {
+      mailboxAgentAllowedModels: defaultSettings.mailboxAgentAllowedModels,
       mailboxAgentModel: defaultMailboxAgentModel,
-      mailboxAgentTaskModel: defaultMailboxAgentModel,
       mailboxAgentHarderModel: defaultHarderModel,
       mailboxAgentDecider: defaultSettings.mailboxAgentDecider,
-      mailboxAgentProfile: "eu",
-      mailboxAgentRegion: "eu-central-1",
     },
     runs: 2,
   },
@@ -338,9 +334,10 @@ function recorded(setup: Setup, key: string) {
   const stored = read()[key];
   const steps: Step[] = [];
   const run = { turns: 0, failedCalls: 0, ms: 0, cost: 0, decision: undefined as Decision | undefined };
-  const { mailboxAgentProfile: profile, mailboxAgentRegion: region } = setup.settings;
+  // Called as a deployment in eu-north-1, the harness's, calls them.
+  const region = "eu-north-1";
   const live = stored === undefined && recording;
-  const bedrock = live ? bedrockModel({ region, profile }) : undefined;
+  const bedrock = live ? bedrockModel({ region }) : undefined;
   const deciding = live ? bedrockDecider({ region }) : undefined;
   const next = () => {
     if (stored === undefined) {
@@ -375,7 +372,7 @@ function recorded(setup: Setup, key: string) {
     }
     run.ms += answer.ms;
     for (const event of answer.events) {
-      if ("usage" in event) run.cost += costOf(event.usage, request.model, profile);
+      if ("usage" in event) run.cost += costOf(event.usage, request.model, region);
       yield event;
     }
     if ("error" in answer) throw new Error(answer.error);
@@ -393,7 +390,7 @@ function recorded(setup: Setup, key: string) {
       steps.push(decided);
     }
     run.ms += decided.ms;
-    run.cost += costOf(decided.decision, deciderModel, profile);
+    run.cost += costOf(decided.decision, deciderModel, region);
     run.decision = { route: decided.decision.route, confidence: decided.decision.confidence };
     return decided.decision;
   };

@@ -1,9 +1,9 @@
-// The mailbox agent's models on Bedrock, through ConverseStream in the model region the
-// organization chose, with its inference profile (ADR-0027, docs/aws.md), and the decider, Nova
-// Micro, which answers through a tool it must use (#132).
+// The mailbox agent's models on Bedrock, through ConverseStream, each called from the region and
+// through the inference profile that suit the deployment's region (ADR-0035, docs/aws.md), and the
+// decider, Nova Micro, which answers through a tool it must use (#132).
 import { BedrockRuntimeClient, ConverseCommand, ConverseStreamCommand, type Message, type Tool } from "@aws-sdk/client-bedrock-runtime";
 import type { Decider, Model } from "./agent-loop.ts";
-import { deciderModel, deciderProfile, inferenceProfileId, type MailboxAgentProfile } from "./agent-models.ts";
+import { callOf, deciderModel, deciderProfile, inferenceProfileId, modelRegion } from "./agent-models.ts";
 
 // Clients by region, so a runtime's sessions share their connections.
 const clients = new Map<string, BedrockRuntimeClient>();
@@ -14,13 +14,13 @@ const clientIn = (region: string) => {
   return client;
 };
 
-/** The models through the profile, called in the region. */
-export function bedrockModel({ region, profile }: { region: string; profile: MailboxAgentProfile }): Model {
-  const client = clientIn(region);
+/** The models, each called as a deployment in the region calls it. */
+export function bedrockModel({ region }: { region: string }): Model {
   return async function* ({ model, system, messages, tools }) {
-    const { stream } = await client.send(
+    const call = callOf(model, region);
+    const { stream } = await clientIn(call.region).send(
       new ConverseStreamCommand({
-        modelId: inferenceProfileId(model, profile),
+        modelId: inferenceProfileId(model, call.profile),
         system: [{ text: system }],
         messages: messages as Message[],
         toolConfig: { tools: tools.map((tool) => ({ toolSpec: { ...tool, inputSchema: { json: tool.inputSchema.json as never } } }) satisfies Tool) },
@@ -62,11 +62,12 @@ const route: Tool = {
 };
 
 /**
- * The decider: Nova Micro, called in the region through its eu or us profile, which must use the
+ * The decider: Nova Micro, called from the deployment's model region through its eu or us profile, which must use the
  * route tool. An answer it can't give, or a call that fails, is complex, with no confidence, so
  * the harder model takes the turn.
  */
-export function bedrockDecider({ region }: { region: string }): Decider {
+export function bedrockDecider({ region: deployed }: { region: string }): Decider {
+  const region = modelRegion(deployed);
   const client = clientIn(region);
   return async (words) => {
     const answer = await client.send(

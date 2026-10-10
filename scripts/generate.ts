@@ -1,4 +1,5 @@
-// Generates code from the OpenAPI document, the only source of Duva's API contract (ADR-0009).
+// Generates code from the OpenAPI document, the only source of Duva's API contract (ADR-0009), and
+// the list of measured models from Coo's evaluation (ADR-0035).
 //
 //   node scripts/generate.ts           writes the generated files
 //   node scripts/generate.ts --check   fails if any generated file is stale
@@ -6,6 +7,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import openapiTS, { astToString } from "openapi-typescript";
 import { parse } from "yaml";
 import duva from "../package.json" with { type: "json" };
+import { answersPath, measuredModelsSource, researchPath } from "./measured-models.ts";
 
 const documentPath = "packages/openapi/openapi.yaml";
 const header = `// Generated from ${documentPath} by scripts/generate.ts. Do not edit. Run npm run generate.\n\n`;
@@ -63,6 +65,10 @@ const files = new Map([
   [
     "packages/openapi/src/operations.gen.ts",
     `${header}export const operations = ${JSON.stringify(operationsOf(document), null, 2)} as const;\n`,
+  ],
+  [
+    "packages/api/src/measured-models.gen.ts",
+    await measuredModelsSource(root, `// Generated from ${answersPath} and ${researchPath} by scripts/generate.ts. Do not edit. Run npm run generate.\n\n`).catch((error: Error) => fail(error.message)),
   ],
 ]);
 

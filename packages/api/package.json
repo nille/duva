@@ -29,6 +29,7 @@
     "./removal": "./src/removal.ts",
     "./tasks": "./src/tasks.ts",
     "./agent-models": "./src/agent-models.ts",
+    "./organization": "./src/organization.ts",
     "./translation": "./src/translation.ts",
     "./receiving": "./src/receiving.ts",
     "./suppression": "./src/suppression.ts",

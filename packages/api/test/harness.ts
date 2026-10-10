@@ -38,7 +38,7 @@ import { createSearcher } from "../src/searching.ts";
 import type { Table } from "../src/deployment.ts";
 import type { MailBucket } from "../src/mail-bucket.ts";
 import { keys, timeEarlierLabels } from "../src/mail.ts";
-import { actorKey, addHumanToOrganization, addKeylessAgent, addMailbox, agentSettingsKey, firstAgentSettings, mailboxKey, ownedMailboxes, screenerKey, settingsKey, setUpOrganization } from "../src/organization.ts";
+import { actorKey, addHumanToOrganization, addKeylessAgent, addMailbox, agentSettingsKey, carryOverModelChoices, firstAgentSettings, mailboxKey, ownedMailboxes, screenerKey, settingsKey, setUpOrganization } from "../src/organization.ts";
 import type { SendEvent } from "../src/limits.ts";
 import { setUpDeliveries, setUpScreeners } from "../src/screening.ts";
 import { type Decider, type Model, runAgent } from "../src/agent-loop.ts";
@@ -143,6 +143,13 @@ export interface DuvaOptions {
    * conversation with each (ADR-0033).
    */
   beforeOneCoo?: boolean;
+  /**
+   * The model settings admins chose on a version from before each human picked their mailbox
+   * agent's models from measured ones (ADR-0035), stored as that version stored them, until
+   * setUp() deploys this one: mailboxAgentModel, mailboxAgentTaskModel, mailboxAgentHarderModel,
+   * mailboxAgentProfile and mailboxAgentRegion.
+   */
+  earlierModelSettings?: Record<string, string>;
   /**
    * The model the mailbox agents ask, in place of Claude on Bedrock: a stand-in that answers as a
    * test scripts it, from what it is asked. Unless given, it answers every turn with "Stand-in answer."
@@ -325,6 +332,7 @@ export async function startDuva({
   beforeMailboxAgents = false,
   beforeCoo = false,
   beforeOneCoo = false,
+  earlierModelSettings,
   model = standInModel,
   decider = standInDecider,
   tasksHeld = false,
@@ -335,7 +343,9 @@ export async function startDuva({
   const setUp = (options: { admin: string }) => setUpOrganization({ table, humans }, { domain, ...options });
   const firstAdmin = await setUp({ admin });
   for (const email of others) await addHumanToOrganization({ table, humans }, { email, by: firstAdmin.id });
-  if (undoWindow !== null) await documents(table).send(new PutCommand({ TableName: table.name, Item: { ...settingsKey, undoWindowSeconds: undoWindow, version: 1 } }));
+  if (undoWindow !== null || earlierModelSettings !== undefined) {
+    await documents(table).send(new PutCommand({ TableName: table.name, Item: { ...settingsKey, ...(undoWindow !== null && { undoWindowSeconds: undoWindow }), ...earlierModelSettings, version: 1 } }));
+  }
 
   const mailBucket = memoryMailBucket();
   // The uploads bucket's presigned URLs lead to the API's own URL, under /uploads-bucket/, once it listens.
@@ -686,6 +696,7 @@ export async function startDuva({
       cooDeployed = true;
       oneCooDeployed = true;
       await giveMailboxAgents(table);
+      await carryOverModelChoices(table);
       approvalLogDeployed = true;
       await listEarlierDecisions(table);
       // The feeder starts with this version, and reads only what is written from then on.

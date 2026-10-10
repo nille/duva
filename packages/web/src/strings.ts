@@ -796,41 +796,20 @@ export const strings = {
     saving: "Saving…",
     mailboxAgents: {
       title: "Mailbox agents",
-      lead: "Every human's mailbox has a mailbox agent Duva runs, which its owner asks in Ask Coo. Admins choose the model it thinks with, where the mail it reads is processed, and what all of them may spend.",
+      lead: "Every human has a mailbox agent, Coo, which they ask in Ask Coo. Each human picks the models their Coo thinks with from those you allow here, or keeps the organization's. You choose what all of them may spend.",
       model: {
-        legend: "Models",
-        lead: "Models on Amazon Bedrock, paid per word they read and write. A cheap model does the everyday work, and hands a turn to the harder model when it comes to writing mail that may be sent, gets stuck, or asks for help.",
-        jobs: {
-          mailboxAgentModel: "Answering in Ask Coo",
-          mailboxAgentTaskModel: "Tasks from labels' prompts",
-          mailboxAgentHarderModel: "The harder work",
-        },
+        legend: "Models humans may choose",
+        lead: "Only models Duva measured on Coo's work can be allowed. Each shows how often it did each kind of work there, what a task cost, and where Bedrock processes what Coo reads of the mail. The mail itself stays where Duva keeps it.",
+        isDefault: (job: "everyday" | "harder") => `The organization's ${job} model, so it stays allowed. Choose another below first.`,
+        outside: (model: string, place: string) => `${model} processes what Coo reads of the mail ${place}, outside the continent Duva is deployed on. Allow it only if that is fine for your organization's mail.`,
+        allow: "Allow it",
+        keepOff: "Keep it off",
+        defaultsLegend: "The organization's models",
+        defaultsLead: "Every Coo thinks with these until its human picks others. A cheap model does the everyday work and the tasks labels' prompts give, and hands a turn to the harder model when it comes to writing mail that may be sent, gets stuck, or asks for help.",
+        jobs: { mailboxAgentModel: "Everyday model", mailboxAgentHarderModel: "Harder model" },
         decider: "Ask the decider first",
         deciderHint: "Amazon Nova Micro judges each question first, and sends one it finds complex straight to the harder model. Off, a question goes there only on evidence.",
-        hints: {
-          "amazon.nova-2-lite-v1:0": "Quick and cheap, about a sixth of Claude Sonnet's price, but it guesses and writes poorly. Runs in the EU, the US or any region.",
-          "anthropic.claude-sonnet-5-5": "Capable and careful. The default for the harder work. Runs in the EU, the US or any region.",
-          "anthropic.claude-haiku-4-5-20251001-v1:0": "Nearly as good on everyday work, at about half of Claude Sonnet's price. The default for answering and tasks. Runs in the EU, the US or any region.",
-          "anthropic.claude-opus-5-5": "The most capable, at about twice Claude Sonnet's price. Runs in the EU, the US or any region.",
-          "amazon.nova-pro-v1:0": "At about a third of Claude Sonnet's price. Runs in the EU or the US, or in us-east-1 itself.",
-          "amazon.nova-lite-v1:0": "The cheapest, but weak with tools. Runs in the EU or the US, or in eu-north-1 itself.",
-        },
-      },
-      where: {
-        legend: "Where mail is processed",
-        lead: "What a mailbox agent reads of the mail goes to the model in these AWS regions. The mail itself stays where Duva keeps it.",
-        names: { eu: "In the EU", us: "In the US", global: "In any region", none: "In the region Duva calls" },
-        hints: {
-          eu: "Bedrock keeps the mail in the EU's AWS regions.",
-          us: "Bedrock keeps the mail in the US's AWS regions.",
-          global: "Bedrock sends it to any region with room, for about 10% less.",
-          none: "Bedrock keeps the mail in the region Duva calls it in. Only Nova Lite and Nova Pro run so.",
-        },
-        region: "Called from",
-        regionHint: "The region Duva calls Bedrock in, which the choice above sends on from.",
-        mismatch: (profile: string) => `Choose ${profile === "eu" ? "an EU" : "a US"} region for that, or In any region.`,
-        noProfile: (model: string) => `${model} doesn't run that way. Choose another place, or another model.`,
-        notHere: (model: string, regions: string[]) => `${model} runs in the region Duva calls only from ${regions.join(", ")}. Choose one of those, or another place.`,
+        modelsFailed: "Duva couldn't list the measured models. Try again.",
       },
       cap: {
         legend: "Spend cap",
@@ -868,6 +847,30 @@ export const strings = {
     saveUnreachable: "Duva couldn't be reached, so the setting isn't saved. Check your connection and try again.",
     you: "Preferences",
     youLead: "You choose these for yourself, and they follow you to every browser you sign in from.",
+    cooModels: {
+      title: "Coo's models",
+      lead: "Coo thinks with an everyday model, and a harder one for writing mail that may be sent and for work the everyday one hands over. Pick each from the models your admins allow, or keep the organization's.",
+      everyday: { legend: "Everyday model", lead: "Answers in Ask Coo and over MCP, and does the tasks your labels' prompts give." },
+      harder: { legend: "Harder model", lead: "Writes mail that may be sent, unsubscribes on a sender's page, takes over when the everyday model gets stuck, and thinks harder when you ask." },
+      organizations: (model: string) => `The organization's, ${model}`,
+      saved: "Saved. Coo thinks with these from its next run.",
+      failed: (status: number) => `Duva couldn't read Coo's models (${status}). Try again.`,
+      unreachable: "Duva couldn't be reached to read Coo's models. Try again.",
+      saveFailed: (status: number) => `Duva couldn't save Coo's models (${status}). Try again.`,
+      saveUnreachable: "Duva couldn't be reached to save Coo's models. Try again.",
+    },
+    /** Where Bedrock processes what a measured model reads, as its flag says it. */
+    modelPlace: (processedIn: "region" | "continent" | "us" | "anywhere", profileId: string, region: string) =>
+      ({ region: `In ${region}`, continent: profileId.startsWith("eu.") ? "In the EU" : "In the US", us: "In the US", anywhere: "Anywhere" })[processedIn],
+    /** The same, said in a sentence. */
+    modelPlaceSaid: (processedIn: "region" | "continent" | "us" | "anywhere", profileId: string, region: string) =>
+      ({ region: `in ${region}`, continent: profileId.startsWith("eu.") ? "in the EU" : "in the US", us: "in the US", anywhere: "in any AWS region with room" })[processedIn],
+    /** How a measured model did on Coo's evaluation, and what a task cost. */
+    modelMeasured: ({ success, costPerTask }: { success: Record<"conversation" | "drafting" | "triage" | "labelTask" | "refusal", number>; costPerTask: number }) => {
+      const percent = (rate: number) => `${Math.round(rate * 100)}%`;
+      const cents = costPerTask * 100;
+      return `Questions ${percent(success.conversation)}, drafting ${percent(success.drafting)}, triage ${percent(success.triage)}, label tasks ${percent(success.labelTask)}. About ${cents < 0.1 ? "a tenth of a cent" : `${cents.toFixed(1)} cents`} a task.`;
+    },
     hourCycle: {
       legend: "How times show",
       lead: "Default follows your browser's language.",

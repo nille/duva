@@ -184,7 +184,7 @@ test("Coo says when a draft of its waits for approval, marked as Coo in Approval
   };
   const { page, head, says, heading, duva } = await withGrace({ model });
   // With Claude Sonnet 5.5 for every job, writing the draft hands nothing over, so the script runs as written.
-  await duva.signIn("ada@example.org").PATCH("/organization/settings", { body: { mailboxAgentModel: "anthropic.claude-sonnet-5-5", mailboxAgentTaskModel: "anthropic.claude-sonnet-5-5" } });
+  await duva.signIn("ada@example.org").PATCH("/organization/settings", { body: { mailboxAgentModel: "anthropic.claude-sonnet-5-5" } });
   await head.click();
   await page.getByRole("textbox", { name: "What do you want to ask?" }).fill("Ask Ada to lunch.");
   await page.getByRole("button", { name: "Ask", exact: true }).click();

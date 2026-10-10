@@ -342,6 +342,6 @@ export const clearConversation: OperationHandler = async (_event, deployment, ac
 export const getMailboxAgentSpend: OperationHandler = async (_event, deployment, actor) => {
   if (!isAdmin(actor)) return refusal(403, "Only admins can read what the mailbox agents spent. Ask an admin.");
   const month = monthOf(new Date());
-  const { settings } = await organizationSettings(deployment.table, deployment.region);
+  const { settings } = await organizationSettings(deployment.table);
   return { statusCode: 200, body: { month, spent: await spentIn(deployment.table, month), cap: settings.mailboxAgentSpendCap } satisfies components["schemas"]["MailboxAgentSpend"] };
 };

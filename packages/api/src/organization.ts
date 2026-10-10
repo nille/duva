@@ -8,7 +8,7 @@ import { agentKeyHash, newAgentKey } from "./agent-keys.ts";
 import type { Humans } from "./user-pool.ts";
 import type { Table } from "./deployment.ts";
 import { changesAfter, entryKey, type Feed, recordChanges, recordInFeeds } from "./feed.ts";
-import { defaultHarderModel, defaultMailboxAgentModel, defaultModelRegion } from "./agent-models.ts";
+import { defaultHarderModel, defaultMailboxAgentModel, isMeasured, type MailboxAgentModel, measuredModelIds } from "./agent-models.ts";
 import { defaultSearchLanguages } from "./languages.ts";
 import { documents, isNew, pk, sk, type TransactItem } from "./table.ts";
 
@@ -1125,11 +1125,10 @@ export const defaultSettings: OrganizationSettings = {
   agentSendsPerHourCap: 100,
   agentNewRecipientsPerDayCap: 50,
   undoWindowSeconds: 30,
+  mailboxAgentAllowedModels: [defaultMailboxAgentModel, defaultHarderModel],
   mailboxAgentModel: defaultMailboxAgentModel,
-  mailboxAgentTaskModel: defaultMailboxAgentModel,
   mailboxAgentHarderModel: defaultHarderModel,
   mailboxAgentDecider: false,
-  ...defaultModelRegion("eu-north-1"),
   mailboxAgentSpendCap: 20,
   linkedFilesCapGb: 20,
 };
@@ -1140,14 +1139,10 @@ export interface ReadSettings<Settings = OrganizationSettings> {
   version: number;
 }
 
-/**
- * The organization's settings, each with its default until an admin changed it. Where the mailbox
- * agents call their model defaults to what suits the deployment's region, when it is given.
- */
-export async function organizationSettings(table: Table, region?: string): Promise<ReadSettings> {
+/** The organization's settings, each with its default until an admin changed it. */
+export async function organizationSettings(table: Table): Promise<ReadSettings> {
   const { settings, version } = await storedSettings(table);
-  const defaults = { ...defaultSettings, ...(region !== undefined && defaultModelRegion(region)) };
-  return { settings: { ...defaults, ...settings } as OrganizationSettings, version };
+  return { settings: { ...defaultSettings, ...settings } as OrganizationSettings, version };
 }
 
 /** The settings an admin changed, with the version a write that relies on them checks. */
@@ -1155,6 +1150,50 @@ async function storedSettings(table: Table): Promise<ReadSettings<Partial<Organi
   const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: settingsKey, ConsistentRead: true }));
   const settings = Object.fromEntries(Object.keys(defaultSettings).flatMap((name) => (Item?.[name] === undefined ? [] : [[name, Item[name]]])));
   return { settings, version: (Item?.version as number | undefined) ?? 0 };
+}
+
+/** The model settings admins chose before each human picked their mailbox agent's, which setup carries over. */
+const earlierModelSettings = ["mailboxAgentTaskModel", "mailboxAgentProfile", "mailboxAgentRegion"];
+
+/** Which of the model settings from before setup carries over the organization's settings still hold, and whether they hold models with no allowed list. */
+export async function earlierModelSettingsLeft(table: Table): Promise<string[]> {
+  const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: settingsKey, ConsistentRead: true }));
+  if (Item === undefined) return [];
+  const unlisted = !("mailboxAgentAllowedModels" in Item) && ("mailboxAgentModel" in Item || "mailboxAgentHarderModel" in Item);
+  return [...earlierModelSettings.filter((name) => name in Item), ...(unlisted ? ["models with no mailboxAgentAllowedModels"] : [])];
+}
+
+/**
+ * Carries over the models admins chose before each human picked their mailbox agent's from measured
+ * ones (ADR-0035): the everyday and harder models become the organization's defaults, allowed with
+ * the defaults Duva ships and the task model, which now follows the everyday one. A choice Duva never
+ * measured gives way to Duva's default. Where the agents called them from, and through which
+ * profile, now follows from each model and the deployment's region. Once carried over, it does
+ * nothing again.
+ */
+export async function carryOverModelChoices(table: Table): Promise<void> {
+  const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: settingsKey, ConsistentRead: true }));
+  // Settings stored before carry over hold models but no allowed list; once carried over, they hold one.
+  if (Item === undefined || "mailboxAgentAllowedModels" in Item || ![...earlierModelSettings, "mailboxAgentModel", "mailboxAgentHarderModel"].some((name) => name in Item)) return;
+  const measuredOr = (model: unknown, otherwise: MailboxAgentModel) => (typeof model === "string" && isMeasured(model) ? model : otherwise);
+  const everyday = measuredOr(Item.mailboxAgentModel, defaultMailboxAgentModel);
+  const harder = measuredOr(Item.mailboxAgentHarderModel, defaultHarderModel);
+  const chosen = [defaultMailboxAgentModel, defaultHarderModel, everyday, harder, measuredOr(Item.mailboxAgentTaskModel, everyday)];
+  await documents(table)
+    .send(
+      new UpdateCommand({
+        TableName: table.name,
+        Key: settingsKey,
+        UpdateExpression: `SET mailboxAgentAllowedModels = :allowed, mailboxAgentModel = :everyday, mailboxAgentHarderModel = :harder, version = :next REMOVE ${earlierModelSettings.join(", ")}`,
+        ConditionExpression: "version = :version",
+        ExpressionAttributeValues: { ":allowed": measuredModelIds.filter((model) => chosen.includes(model)), ":everyday": everyday, ":harder": harder, ":version": Item.version, ":next": (Item.version as number) + 1 },
+      }),
+    )
+    // An admin changed the settings meanwhile, so they are read and carried over again.
+    .catch((error: unknown) => {
+      if (!(error instanceof ConditionalCheckFailedException)) throw error;
+      return carryOverModelChoices(table);
+    });
 }
 
 /** The write that holds only while the settings are still as read. */
@@ -1169,11 +1208,11 @@ const atVersion = ({ version }: { version: number }) => (version === 0 ? isNew :
  * the organization's change feed, and returns them all. Giving a setting the value it has records
  * nothing.
  */
-export async function changeSettings(table: Table, { by, changes, region }: { by: string; changes: Partial<OrganizationSettings>; region?: string }): Promise<OrganizationSettings> {
+export async function changeSettings(table: Table, { by, changes }: { by: string; changes: Partial<OrganizationSettings> }): Promise<OrganizationSettings> {
   // recordChange gives the items' cancellation reasons after the counter's and the one change's.
   const settingsReason = 2;
   for (let attempt = 1; ; attempt++) {
-    const read = await organizationSettings(table, region);
+    const read = await organizationSettings(table);
     // A list of languages is a value too, so values are compared as JSON.
     const changed = Object.fromEntries(Object.entries(changes).filter(([name, value]) => JSON.stringify(read.settings[name as keyof OrganizationSettings]) !== JSON.stringify(value)));
     if (Object.keys(changed).length === 0) return read.settings;

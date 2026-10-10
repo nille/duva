@@ -8,7 +8,13 @@ import { startDuva } from "@duva/api/harness";
 import { expect, onTestFinished, test, vi } from "vitest";
 
 /** Where the mailbox agents call their model, and what they may spend, in a deployment in eu-north-1 until an admin chooses. */
-const mailboxAgentDefaults = { mailboxAgentModel: "anthropic.claude-haiku-4-5-20251001-v1:0", mailboxAgentTaskModel: "anthropic.claude-haiku-4-5-20251001-v1:0", mailboxAgentHarderModel: "anthropic.claude-sonnet-5-5", mailboxAgentDecider: false, mailboxAgentProfile: "eu", mailboxAgentRegion: "eu-central-1", mailboxAgentSpendCap: 20 } as const;
+const mailboxAgentDefaults = {
+  mailboxAgentAllowedModels: ["anthropic.claude-haiku-4-5-20251001-v1:0", "anthropic.claude-sonnet-5-5"],
+  mailboxAgentModel: "anthropic.claude-haiku-4-5-20251001-v1:0",
+  mailboxAgentHarderModel: "anthropic.claude-sonnet-5-5",
+  mailboxAgentDecider: false,
+  mailboxAgentSpendCap: 20,
+};
 
 test("deploy refuses a region where SES can't receive mail", async () => {
   const machine = await newMachine();
@@ -214,6 +220,37 @@ test("an admin gives the search languages to organization change-settings, once 
 
   expect(result.exitCode).toBe(0);
   expect(JSON.parse(result.stdout)).toEqual({ erasureErasesApprovals: false, retentionDays: 30, searchLanguages: ["English", "Swedish", "Danish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50, undoWindowSeconds: 0, ...mailboxAgentDefaults, linkedFilesCapGb: 20 });
+});
+
+test("an admin allows a measured model with organization change-settings, and a human picks it for their Coo, and keeps the default again", async () => {
+  const machine = await newMachine();
+  const server = await (await startDuva({ admin: "ada@example.com" })).listen();
+  onTestFinished(() => server.close());
+  await machine.saveDeployment(server);
+  await machine.duva("login", { browserSignsIn: "ada@example.com" });
+
+  const allowed = await machine.duva(
+    "organization",
+    "change-settings",
+    "--mailboxAgentAllowedModels",
+    "amazon.nova-2-lite-v1:0",
+    "--mailboxAgentAllowedModels",
+    "anthropic.claude-haiku-4-5-20251001-v1:0",
+    "--mailboxAgentAllowedModels",
+    "anthropic.claude-sonnet-5-5",
+  );
+  const listed = await machine.duva("organization", "mailbox-agent-models");
+  const picked = await machine.duva("preferences", "change", "--cooEverydayModel", "amazon.nova-2-lite-v1:0");
+  const kept = await machine.duva("preferences", "change", "--no-cooEverydayModel");
+
+  expect(allowed.exitCode).toBe(0);
+  expect(JSON.parse(allowed.stdout).mailboxAgentAllowedModels).toEqual(["anthropic.claude-haiku-4-5-20251001-v1:0", "anthropic.claude-sonnet-5-5", "amazon.nova-2-lite-v1:0"]);
+  const models = (JSON.parse(listed.stdout) as { models: { model: string; processedIn: string; allowed: boolean }[] }).models;
+  expect(models.find(({ model }) => model === "amazon.nova-2-lite-v1:0")).toMatchObject({ processedIn: "continent", allowed: true });
+  expect(models.find(({ model }) => model === "amazon.nova-pro-v1:0")).toMatchObject({ allowed: false });
+  expect(JSON.parse(picked.stdout)).toMatchObject({ cooEverydayModel: "amazon.nova-2-lite-v1:0" });
+  expect(kept.exitCode).toBe(0);
+  expect(JSON.parse(kept.stdout)).not.toHaveProperty("cooEverydayModel");
 });
 
 test("organization change-settings with no setting says which there are", async () => {

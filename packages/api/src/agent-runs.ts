@@ -4,13 +4,13 @@
 import { randomUUID } from "node:crypto";
 import { GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import type { AgentAction, Decision, Handover, RunEvent, RunPayload } from "./agent-loop.ts";
-import { deciderModel, deciderProfile, type MailboxAgentModel } from "./agent-models.ts";
-import { costOf } from "./agent-models.ts";
+import { costOf, type MailboxAgentModel } from "./agent-models.ts";
 import { raiseAlert } from "./alerting.ts";
 import type { Table } from "./deployment.ts";
 import { sponsorAccessIn } from "./access.ts";
 import { type Agent, agentSettings, type Mailbox, mailboxesInOrder, mailboxFeed, organizationSettings } from "./organization.ts";
 import { recordChanges } from "./feed.ts";
+import { cooModelsOf } from "./preferences.ts";
 import { endRunToken, issueRunToken } from "./run-tokens.ts";
 import { documents, pk, sk } from "./table.ts";
 
@@ -47,8 +47,9 @@ export const noMailboxAgent = "You have no mailbox agent yet. Ask an admin to ru
 
 /**
  * The job a run does, which decides the model it starts with (ADR-0032): a conversation turn, with
- * the everyday model unless the decider finds it complex, a label's task, with the task model, and
- * with the harder model a turn its owner asked to think harder, or unsubscribing on a sender's page.
+ * the everyday model unless the decider finds it complex, a label's task, with the everyday model,
+ * and with the harder model a turn its owner asked to think harder, or unsubscribing on a sender's
+ * page. Each is the model the agent's human chose, or the organization's default (ADR-0035).
  */
 export type Job = "conversation" | "task" | "harder" | "unsubscribe";
 
@@ -71,11 +72,11 @@ export async function startRun(
   if (working.length === 0) return { refused: "Your mailbox agent has no access to your mailboxes. Give it some in Settings, under Your agents." };
   // Sponsor access is one level in every mailbox it covers.
   const access = given.sponsorAccess;
-  const { settings } = await organizationSettings(table, region);
+  const { settings } = await organizationSettings(table);
   const cap = settings.mailboxAgentSpendCap;
   if (cap === 0) return { refused: "An admin turned the mailbox agents off, with a spend cap of $0. Ask one to raise it." };
   const month = monthOf(new Date());
-  const spent = await spentIn(table, month);
+  const [spent, { everyday, harder }] = await Promise.all([spentIn(table, month), cooModelsOf(table, agent.sponsor, settings)]);
   if (spent >= cap) {
     await capReached(table, agent, month, cap);
     return { refused: capRefusal(cap) };
@@ -87,12 +88,7 @@ export async function startRun(
     owner,
     access,
     approval: given.approvalAsSponsor,
-    model: {
-      model: { conversation: settings.mailboxAgentModel, task: settings.mailboxAgentTaskModel, harder: settings.mailboxAgentHarderModel, unsubscribe: settings.mailboxAgentHarderModel }[job],
-      harder: settings.mailboxAgentHarderModel,
-      profile: settings.mailboxAgentProfile,
-      region: settings.mailboxAgentRegion,
-    },
+    model: { model: { conversation: everyday, task: everyday, harder, unsubscribe: harder }[job], harder, region },
     ...(job === "conversation" && settings.mailboxAgentDecider && { decide: true }),
     budget: cap - spent,
     now: new Date().toISOString(),
@@ -136,8 +132,7 @@ export async function* runMailboxAgent(
         actions.push(event.action);
         yield event;
       } else if (event.type === "usage") {
-        const profile = event.model === deciderModel ? deciderProfile(payload.model.region) : payload.model.profile;
-        const spent = costOf(event, event.model ?? payload.model.model, profile);
+        const spent = costOf(event, event.model ?? payload.model.model, payload.model.region);
         cost += spent;
         total = await addSpend(table, month, spent);
       } else if (event.type === "verdict") verdict = { unsubscribed: event.unsubscribed, detail: event.detail };

@@ -46,7 +46,7 @@ async function withTwoMailboxes(options: DuvaOptions = {}) {
   const { data: work } = await ada.POST("/mailboxes", { body: { owner: linusActor!.id, address: "linus@example.com" } });
   const { data: home } = await ada.POST("/mailboxes", { body: { owner: linusActor!.id, address: "linus.home@example.com" } });
   for (const mailbox of [work!, home!]) await linus.PATCH("/mailboxes/{mailbox}/screener", { params: { path: { mailbox: mailbox.id } }, body: { on: false } });
-  await ada.PATCH("/organization/settings", { body: { mailboxAgentModel: "anthropic.claude-sonnet-5-5", mailboxAgentTaskModel: "anthropic.claude-sonnet-5-5" } });
+  await ada.PATCH("/organization/settings", { body: { mailboxAgentModel: "anthropic.claude-sonnet-5-5" } });
   const changes = async (mailbox: string) => (await linus.GET("/mailboxes/{mailbox}/changes", { params: { path: { mailbox } } })).data!.changes;
   return { duva, ada, linus, linusId: linusActor!.id, work: work!, home: home!, changes };
 }

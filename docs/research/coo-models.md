@@ -51,6 +51,8 @@ The Nova setups ran each task 3 times, and the Claude ones, Defaults included, t
 
 ## Success, by kind of work
 
+`npm run generate` reads this table, with the costs recorded in `coo-answers.json`, into the measured models Duva lists for admins to allow (#149), so a setup that runs one model alone needs its row here.
+
 | Setup | All | Conversation | Drafting | Triage | Label task | Refusal |
 | --- | --- | --- | --- | --- | --- | --- |
 | Nova Lite | 0.62 | 0.60 | 0.00 | 0.50 | 0.83 | 1.00 |

@@ -158,6 +158,28 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
+  /organization/mailbox-agent-models:
+    get:
+      operationId: listMailboxAgentModels
+      summary: List the measured models mailbox agents may think with, and which admins allow.
+      description: >
+        Lists each model Duva recorded on its mailbox agent's evaluation, the
+        only ones admins can allow, with how often it did each kind of work
+        there, what a task cost, and where Bedrock processes what it reads of
+        the mail, as this deployment calls it. Each human chooses their Coo's
+        everyday and harder model from the allowed ones, with preferences
+        change, and admins the organization's defaults and the allowed ones,
+        with organization change-settings. Every actor can list them.
+      x-cli-command: organization mailbox-agent-models
+      responses:
+        "200":
+          description: The measured models.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeasuredModelList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
   /organization/settings:
     get:
       operationId: getOrganizationSettings
@@ -242,7 +264,7 @@ paths:
   /preferences:
     get:
       operationId: getPreferences
-      summary: Read your own preferences, such as how the web app shows times, dates and mail.
+      summary: Read your own preferences, such as how the web app shows times, dates and mail, and the models your Coo thinks with.
       description: Only humans have preferences, and each reads only their own.
       x-cli-command: preferences get
       responses:
@@ -262,7 +284,9 @@ paths:
       description: >
         Give only the preferences to change. They follow you to every browser
         you sign in from. Only humans have preferences, and each changes only
-        their own. The CLI prints timestamps as ISO 8601 whatever they are.
+        their own. Your Coo's models are among those admins allow, which
+        organization mailbox-agent-models lists. The CLI prints timestamps as
+        ISO 8601 whatever they are.
       x-cli-command: preferences change
       requestBody:
         required: true
@@ -8377,7 +8401,7 @@ components:
     OrganizationSettings:
       type: object
       additionalProperties: false
-      required: [erasureErasesApprovals, retentionDays, searchLanguages, agentSendsPerHourCap, agentNewRecipientsPerDayCap, undoWindowSeconds, mailboxAgentModel, mailboxAgentTaskModel, mailboxAgentHarderModel, mailboxAgentDecider, mailboxAgentProfile, mailboxAgentRegion, mailboxAgentSpendCap, linkedFilesCapGb]
+      required: [erasureErasesApprovals, retentionDays, searchLanguages, agentSendsPerHourCap, agentNewRecipientsPerDayCap, undoWindowSeconds, mailboxAgentAllowedModels, mailboxAgentModel, mailboxAgentHarderModel, mailboxAgentDecider, mailboxAgentSpendCap, linkedFilesCapGb]
       properties:
         erasureErasesApprovals:
           $ref: "#/components/schemas/ErasureErasesApprovals"
@@ -8391,27 +8415,26 @@ components:
           $ref: "#/components/schemas/AgentNewRecipientsPerDayCap"
         undoWindowSeconds:
           $ref: "#/components/schemas/UndoWindowSeconds"
+        mailboxAgentAllowedModels:
+          $ref: "#/components/schemas/MailboxAgentAllowedModels"
         mailboxAgentModel:
           $ref: "#/components/schemas/MailboxAgentModel"
           description: >-
-            The model a mailbox agent answers its owner with in Ask Coo
-            and over MCP, unless the decider finds a turn complex. Claude
-            Haiku 4.5 by default.
-        mailboxAgentTaskModel:
-          $ref: "#/components/schemas/MailboxAgentModel"
-          description: The model that does the tasks labels' prompts give. Claude Haiku 4.5 by default.
+            The organization's everyday model, which a mailbox agent answers
+            its human with in Ask Coo and over MCP, unless the decider finds
+            a turn complex, and does the tasks labels' prompts give, unless
+            its human chose another. One of mailboxAgentAllowedModels.
+            Claude Haiku 4.5 by default.
         mailboxAgentHarderModel:
           $ref: "#/components/schemas/MailboxAgentModel"
           description: >-
-            The model for the harder work: writing mail that may be sent, a
-            turn the decider finds complex, a run the everyday model hands
-            over, and Think harder. Claude Sonnet 5.5 by default.
+            The organization's harder model, for the harder work: writing
+            mail that may be sent, unsubscribing on a sender's page, a turn
+            the decider finds complex, a run the everyday model hands over,
+            and Think harder, unless the agent's human chose another. One of
+            mailboxAgentAllowedModels. Claude Sonnet 5.5 by default.
         mailboxAgentDecider:
           $ref: "#/components/schemas/MailboxAgentDecider"
-        mailboxAgentProfile:
-          $ref: "#/components/schemas/MailboxAgentProfile"
-        mailboxAgentRegion:
-          $ref: "#/components/schemas/MailboxAgentRegion"
         mailboxAgentSpendCap:
           $ref: "#/components/schemas/MailboxAgentSpendCap"
         linkedFilesCapGb:
@@ -8433,27 +8456,26 @@ components:
           $ref: "#/components/schemas/AgentNewRecipientsPerDayCap"
         undoWindowSeconds:
           $ref: "#/components/schemas/UndoWindowSeconds"
+        mailboxAgentAllowedModels:
+          $ref: "#/components/schemas/MailboxAgentAllowedModels"
         mailboxAgentModel:
           $ref: "#/components/schemas/MailboxAgentModel"
           description: >-
-            The model a mailbox agent answers its owner with in Ask Coo
-            and over MCP, unless the decider finds a turn complex. Claude
-            Haiku 4.5 by default.
-        mailboxAgentTaskModel:
-          $ref: "#/components/schemas/MailboxAgentModel"
-          description: The model that does the tasks labels' prompts give. Claude Haiku 4.5 by default.
+            The organization's everyday model, which a mailbox agent answers
+            its human with in Ask Coo and over MCP, unless the decider finds
+            a turn complex, and does the tasks labels' prompts give, unless
+            its human chose another. One of mailboxAgentAllowedModels.
+            Claude Haiku 4.5 by default.
         mailboxAgentHarderModel:
           $ref: "#/components/schemas/MailboxAgentModel"
           description: >-
-            The model for the harder work: writing mail that may be sent, a
-            turn the decider finds complex, a run the everyday model hands
-            over, and Think harder. Claude Sonnet 5.5 by default.
+            The organization's harder model, for the harder work: writing
+            mail that may be sent, unsubscribing on a sender's page, a turn
+            the decider finds complex, a run the everyday model hands over,
+            and Think harder, unless the agent's human chose another. One of
+            mailboxAgentAllowedModels. Claude Sonnet 5.5 by default.
         mailboxAgentDecider:
           $ref: "#/components/schemas/MailboxAgentDecider"
-        mailboxAgentProfile:
-          $ref: "#/components/schemas/MailboxAgentProfile"
-        mailboxAgentRegion:
-          $ref: "#/components/schemas/MailboxAgentRegion"
         mailboxAgentSpendCap:
           $ref: "#/components/schemas/MailboxAgentSpendCap"
         linkedFilesCapGb:
@@ -8657,7 +8679,7 @@ components:
           description: Turns the everyday model took alone.
         harder:
           type: integer
-          description: Turns the harder model took from the start, as the model admins chose for answering.
+          description: Turns the harder model took from the start, as the everyday model was the harder one too.
         decided:
           type: integer
           description: Turns the decider sent to the harder model.
@@ -8687,35 +8709,105 @@ components:
       type: string
       enum: [anthropic.claude-sonnet-5-5, anthropic.claude-haiku-4-5-20251001-v1:0, anthropic.claude-opus-5-5, amazon.nova-2-lite-v1:0, amazon.nova-pro-v1:0, amazon.nova-lite-v1:0]
       description: >-
-        A model on Amazon Bedrock the mailbox agents think with: Claude
-        Sonnet 5.5, Claude Haiku 4.5, which costs about a half as much,
-        Claude Opus 5.5, which costs about twice as much, or one of Amazon's
-        Nova models, which cost from a sixth (Nova 2 Lite) to a fiftieth
-        (Nova Lite) as much a task as Claude Sonnet 5.5 and need no AWS
-        Marketplace agreement (docs/research/coo-models.md). Nova Pro and Nova Lite run through the eu or us profiles,
-        or without one, and Nova 2 Lite through any. Each of the three
-        models chosen must run through mailboxAgentProfile from
-        mailboxAgentRegion.
+        A model on Amazon Bedrock a mailbox agent thinks with, by its
+        Bedrock model ID. Only the measured models can be allowed and
+        chosen, those listMailboxAgentModels lists, each with its success
+        on Coo's evaluation, its cost per task and where it processes mail.
+    MailboxAgentAllowedModels:
+      type: array
+      minItems: 1
+      uniqueItems: true
+      items:
+        $ref: "#/components/schemas/MailboxAgentModel"
+      description: >-
+        The measured models each human may choose their mailbox agent's
+        everyday and harder model from. They include the organization's
+        two defaults, mailboxAgentModel and mailboxAgentHarderModel.
+        Claude Haiku 4.5 and Claude Sonnet 5.5 by default. A model that
+        processes mail outside the deployment's continent may be allowed
+        too, such as one available only in the US in an EU deployment:
+        what its agents read of the mail then goes there. Taking a model
+        off the list takes it from each human who chose it, whose agent
+        then thinks with the organization's default.
     MailboxAgentProfile:
       type: string
       enum: [eu, us, global, none]
       description: >-
-        The inference profile Bedrock runs the model through, which decides
+        The inference profile Bedrock runs a model through, which decides
         where the mail the agents read is processed: eu keeps it in the EU's
         AWS regions, us in the US's, and global sends it to any region with
-        capacity, for about 10% less. none runs the model in
-        mailboxAgentRegion itself, which keeps the mail there: Nova Lite runs
-        so in eu-north-1, us-east-1, us-east-2 and us-west-2, and Nova Pro in
-        us-east-1. eu by default for a deployment in the EU, us for one in the
-        US, and global elsewhere. eu needs an EU mailboxAgentRegion, us a US
-        one.
+        capacity. none runs the model in the region it is called in itself.
     MailboxAgentRegion:
       type: string
       enum: [eu-central-1, eu-west-1, eu-west-3, eu-north-1, us-east-1, us-east-2, us-west-2]
+      description: The AWS region Duva calls Bedrock in for a model, which its profile sends on from.
+    ProcessedIn:
+      type: string
+      enum: [region, continent, us, anywhere]
       description: >-
-        The AWS region the mailbox agents call Bedrock in, which the
-        profile sends on from. eu-central-1 by default for a deployment in the
-        EU, us-west-2 for one in the US.
+        Where Bedrock processes what a model reads of the mail: region, in
+        the deployment's own AWS region; continent, in the AWS regions of
+        its continent, such as the EU's; us, in the US's; anywhere, in any
+        region with capacity. Duva calls each model as close as it runs:
+        in the deployment's region, through its continent's profile, through
+        the global profile, or for a model available only in the US, through
+        the us profile.
+    MeasuredModel:
+      type: object
+      additionalProperties: false
+      required: [model, name, profileId, region, processedIn, success, costPerTask, allowed]
+      description: A model Duva recorded on its mailbox agent's evaluation, as this deployment calls it.
+      properties:
+        model:
+          $ref: "#/components/schemas/MailboxAgentModel"
+        name:
+          type: string
+          examples: ["Claude Haiku 4.5"]
+        profileId:
+          type: string
+          description: >-
+            The ID Duva calls the model by on Bedrock: its inference
+            profile's, or the model's own where it runs without one.
+          examples: ["eu.anthropic.claude-haiku-4-5-20251001-v1:0"]
+        region:
+          $ref: "#/components/schemas/MailboxAgentRegion"
+        processedIn:
+          $ref: "#/components/schemas/ProcessedIn"
+        success:
+          type: object
+          additionalProperties: false
+          required: [conversation, drafting, triage, labelTask, refusal]
+          description: >-
+            How often the model alone did each kind of work on Coo's
+            evaluation, from 0 to 1: answering questions in Ask Coo, drafting
+            a reply, triage, a label's task, and keeping to the access it
+            was given (docs/research/coo-models.md).
+          properties:
+            conversation:
+              type: number
+            drafting:
+              type: number
+            triage:
+              type: number
+            labelTask:
+              type: number
+            refusal:
+              type: number
+        costPerTask:
+          type: number
+          description: What a task of the evaluation cost the model alone, on average, in US dollars.
+        allowed:
+          type: boolean
+          description: Whether admins allow it, so each human may choose it.
+    MeasuredModelList:
+      type: object
+      additionalProperties: false
+      required: [models]
+      properties:
+        models:
+          type: array
+          items:
+            $ref: "#/components/schemas/MeasuredModel"
     LinkedFilesCapGb:
       type: integer
       minimum: 0
@@ -8751,7 +8843,7 @@ components:
       description: >-
         Whether the decider, Amazon Nova Micro, settles the model for each
         turn in Ask Coo and over MCP first, sending one it finds
-        complex to mailboxAgentHarderModel. Off by default: on Coo's tasks it
+        complex to the harder model. Off by default: on Coo's tasks it
         was right on 4 of 10 (docs/research/coo-models.md). Either way a turn
         hands over to the harder model on evidence.
     ErasureErasesApprovals:
@@ -8927,6 +9019,23 @@ components:
           $ref: "#/components/schemas/OpensOn"
         newMailFrom:
           $ref: "#/components/schemas/NewMailFrom"
+        cooEverydayModel:
+          $ref: "#/components/schemas/MailboxAgentModel"
+          description: >-
+            The everyday model the human chose for their Coo, which answers in
+            Ask Coo and over MCP and does labels' tasks, one of the models
+            admins allow (listMailboxAgentModels). Absent while they keep the
+            organization's default, mailboxAgentModel, and when admins no
+            longer allow the one they chose.
+        cooHarderModel:
+          $ref: "#/components/schemas/MailboxAgentModel"
+          description: >-
+            The harder model the human chose for their Coo, which writes mail
+            that may be sent, unsubscribes on a sender's page, takes a run the
+            everyday model hands over and thinks harder, one of the models
+            admins allow (listMailboxAgentModels). Absent while they keep the
+            organization's default, mailboxAgentHarderModel, and when admins no
+            longer allow the one they chose.
     PreferencesChanges:
       type: object
       additionalProperties: false
@@ -8957,6 +9066,20 @@ components:
             gives null with --no-newMailFrom.
           anyOf:
             - $ref: "#/components/schemas/NewMailFrom"
+            - type: "null"
+        cooEverydayModel:
+          description: >-
+            The model, or null to keep the organization's default again. The
+            CLI gives null with --no-cooEverydayModel.
+          anyOf:
+            - $ref: "#/components/schemas/MailboxAgentModel"
+            - type: "null"
+        cooHarderModel:
+          description: >-
+            The model, or null to keep the organization's default again. The
+            CLI gives null with --no-cooHarderModel.
+          anyOf:
+            - $ref: "#/components/schemas/MailboxAgentModel"
             - type: "null"
     OpensOn:
       type: string
