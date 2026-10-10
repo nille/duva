@@ -1,4 +1,5 @@
 import { expect, test } from "vitest";
+import { fromClockValue } from "@duva/openapi";
 import { startWebApp } from "./web-app.ts";
 
 // The page reads the change feeds every 250 ms in these tests, but a page under the full suite's
@@ -20,15 +21,14 @@ const note = (subject: string) =>
     "Hej Grace.",
   ].join("\r\n");
 
-/** The day so many days from today in the browser, as a date field takes it. */
-const daysOn = (days: number) => {
-  const at = new Date(Date.now() + days * 86_400_000);
-  return `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, "0")}-${String(at.getDate()).padStart(2, "0")}`;
-};
-
-/** The web app for Grace, with her mailbox at grace@example.com, its Screener off. */
-async function withGrace() {
-  const app = await startWebApp({ domain: "example.com", admin: "ada@example.org", humans: ["grace@example.org"] });
+/** The web app for Grace, with her mailbox at grace@example.com, its Screener off, and her browser in the time zone, at the time on its clock if given. */
+async function withGrace({ timeZone, at }: { timeZone?: string; at?: string } = {}) {
+  const app = await startWebApp({ domain: "example.com", admin: "ada@example.org", humans: ["grace@example.org"], ...(timeZone !== undefined && { timeZone }) });
+  if (at !== undefined) {
+    const now = fromClockValue(at, timeZone ?? "UTC")!;
+    await app.duva.clock(now);
+    await app.page.clock.setFixedTime(now);
+  }
   const ada = app.duva.signIn("ada@example.org");
   const grace = app.duva.signIn("grace@example.org");
   const { data: me } = await grace.GET("/whoami");
@@ -57,19 +57,34 @@ test("Grace writes her away message on Preferences and switches it on, and the s
   expect(await strip.getByRole("link", { name: "Away", exact: true }).getAttribute("href")).toBe("#/settings/you");
   expect((await grace.GET("/away-message")).data).toMatchObject({ on: true, away: true, mailboxes: [{ text: "I'm away until next week, without mail." }] });
 
-  await sheet.getByRole("radio", { name: /^On these days/ }).check();
-  await sheet.getByRole("textbox", { name: "First day" }).fill(daysOn(0));
-  await sheet.getByRole("textbox", { name: "Last day" }).fill(daysOn(3));
-  await sheet.getByRole("button", { name: "Save" }).click();
-
-  const lastDay = new Date(`${daysOn(3)}T12:00:00`).getDate();
-  await expect.poll(() => strip.getByRole("link", { name: /^Away until / }).textContent(), wait).toMatch(new RegExp(`^Away until \\D*${lastDay}\\b`));
-  expect((await grace.GET("/away-message")).data).toMatchObject({ on: true, away: true, firstDay: daysOn(0), lastDay: daysOn(3) });
-
   await sheet.getByRole("radio", { name: "Off", exact: true }).check();
   await sheet.getByRole("button", { name: "Save" }).click();
 
   await expect.poll(() => strip.getByRole("link", { name: /^Away/ }).count(), wait).toBe(0);
+});
+
+// Wednesday 18 November 2026 in a time zone ahead of UTC and one behind, at either end of the day and at noon.
+test.each([
+  ["Europe/Stockholm", "00:05"],
+  ["Europe/Stockholm", "12:00"],
+  ["Europe/Stockholm", "23:55"],
+  ["America/New_York", "00:05"],
+  ["America/New_York", "12:00"],
+  ["America/New_York", "23:55"],
+])("Grace away from today to a last day, with her browser in %s at %s, sees the strip say she's away until her last day", budget, async (timeZone, time) => {
+  const { page, sheet, strip, grace, mailbox } = await withGrace({ timeZone, at: `2026-11-18T${time}` });
+  await grace.PATCH("/away-message", { body: { mailbox, text: "Away." } });
+  await page.getByRole("link", { name: "Settings", exact: true }).click();
+  await expect.poll(() => sheet.isVisible(), wait).toBe(true);
+
+  await sheet.getByRole("radio", { name: "On", exact: true }).check();
+  await sheet.getByRole("radio", { name: /^On these days/ }).check();
+  await sheet.getByRole("textbox", { name: "First day" }).fill("2026-11-18");
+  await sheet.getByRole("textbox", { name: "Last day" }).fill("2026-11-21");
+  await sheet.getByRole("button", { name: "Save" }).click();
+
+  await expect.poll(() => strip.getByRole("link", { name: /^Away/ }).textContent(), wait).toBe("Away until Nov 21");
+  expect((await grace.GET("/away-message")).data).toMatchObject({ on: true, away: true, firstDay: "2026-11-18", lastDay: "2026-11-21" });
 });
 
 test("a thread notes the away message Grace's sender got, as it arrives", budget, async () => {

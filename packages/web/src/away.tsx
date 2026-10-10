@@ -1,9 +1,10 @@
 // The human's away message (#155) on Preferences: one switch for all their mailboxes, the days
 // they're away or until they switch it off, the replies' subject, and each mailbox's text. The
 // status strip's line is away-line.tsx's, so the strip loads none of Settings.
-import { useRef } from "react";
+import { useContext, useRef } from "react";
 import type { DuvaClient } from "@duva/client";
-import type { components } from "@duva/openapi";
+import { clockValue, type components } from "@duva/openapi";
+import { PreferencesContext } from "./dates.ts";
 import { Choice } from "./setting-parts.tsx";
 import { SaveRow, Sheet, useSheet } from "./settings.tsx";
 import { strings } from "./strings.ts";
@@ -32,25 +33,25 @@ const chosenOf = (away: AwayMessage): Chosen => ({
   addresses: Object.fromEntries(away.mailboxes.map(({ mailbox, address }) => [mailbox, address])),
 });
 
-/** Today in the browser, as a date field holds it. */
-const today = () => {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-};
+/** Today in the time zone, as a date field holds it. */
+const todayIn = (timeZone: string) => clockValue(new Date(), timeZone).slice(0, 10);
 
-/** Why the chosen values can't be saved, if they can't. */
-function invalidOf(chosen: Chosen): string | undefined {
+/** Why the chosen values can't be saved, if they can't, today being `today`. */
+function invalidOf(chosen: Chosen, today: string): string | undefined {
   const copy = strings.away;
   if (chosen.on && Object.values(chosen.texts).every((text) => text.trim() === "")) return copy.needsText;
   if (!chosen.days) return undefined;
   if (chosen.firstDay === "" || chosen.lastDay === "") return copy.needsDays;
   if (chosen.lastDay < chosen.firstDay) return copy.backwards;
-  if (chosen.lastDay < today()) return copy.passed;
+  if (chosen.lastDay < today) return copy.passed;
   return undefined;
 }
 
 export function AwaySheet({ client, onAway, onSignedOut }: { client: DuvaClient; onAway: (away: AwayMessage) => void; onSignedOut: () => void }) {
   const copy = strings.away;
+  // The days count in the human's time zone, or while they chose none, the browser's, which goes with them.
+  const timeZone = useContext(PreferencesContext).timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const today = todayIn(timeZone);
   // The texts as Duva has them, so saving sends only those changed.
   const saved = useRef<Record<string, string>>({});
   const read = (data: AwayMessage | undefined) => {
@@ -70,7 +71,7 @@ export function AwaySheet({ client, onAway, onSignedOut }: { client: DuvaClient;
       const texts = Object.entries(chosen.texts).filter(([mailbox, text]) => text !== saved.current[mailbox]).map(([mailbox, text]) => () => client.PATCH("/away-message", { body: { mailbox, text: text.trim() === "" ? null : text } }));
       const rest = () =>
         client.PATCH("/away-message", {
-          body: { on: chosen.on, firstDay: chosen.days ? chosen.firstDay : null, lastDay: chosen.days ? chosen.lastDay : null, subject: chosen.subject.trim() === "" ? null : chosen.subject },
+          body: { on: chosen.on, firstDay: chosen.days ? chosen.firstDay : null, lastDay: chosen.days ? chosen.lastDay : null, ...(chosen.days && { timeZone }), subject: chosen.subject.trim() === "" ? null : chosen.subject },
         });
       let answer: Awaited<ReturnType<typeof rest>> | undefined;
       for (const call of chosen.on ? [...texts, rest] : [rest, ...texts]) {
@@ -86,7 +87,7 @@ export function AwaySheet({ client, onAway, onSignedOut }: { client: DuvaClient;
   return (
     <Sheet id="away" name={copy.title} lead={copy.lead} sheet={sheet}>
       {(chosen) => {
-        const invalid = invalidOf(chosen);
+        const invalid = invalidOf(chosen, today);
         return (
           <>
             <fieldset className="away-switch">
@@ -109,11 +110,11 @@ export function AwaySheet({ client, onAway, onSignedOut }: { client: DuvaClient;
                 <div className="away-days">
                   <label className="setting-field">
                     {copy.firstDay}
-                    <input type="date" value={chosen.firstDay} min={today()} onChange={(event) => sheet.choose({ firstDay: event.target.value })} />
+                    <input type="date" value={chosen.firstDay} min={today} onChange={(event) => sheet.choose({ firstDay: event.target.value })} />
                   </label>
                   <label className="setting-field">
                     {copy.lastDay}
-                    <input type="date" value={chosen.lastDay} min={chosen.firstDay || today()} onChange={(event) => sheet.choose({ lastDay: event.target.value })} />
+                    <input type="date" value={chosen.lastDay} min={chosen.firstDay || today} onChange={(event) => sheet.choose({ lastDay: event.target.value })} />
                   </label>
                 </div>
               )}

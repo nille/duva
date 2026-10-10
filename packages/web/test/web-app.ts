@@ -62,14 +62,15 @@ export interface WebApp {
 /**
  * Starts Duva with the options, serves the web app for it, and opens a browser page there. Everything stops when the test ends.
  * The page reads the change feeds every 250 ms, hidden or not, unless `hiddenPollInterval` says how often to while hidden.
+ * The browser is in UTC unless `timeZone` names another.
  */
-export async function startWebApp(options: DuvaOptions & { viewport?: { width: number; height: number }; hiddenPollInterval?: number } = {}): Promise<WebApp> {
-  const { viewport, hiddenPollInterval = 250, ...duvaOptions } = options;
+export async function startWebApp(options: DuvaOptions & { viewport?: { width: number; height: number }; hiddenPollInterval?: number; timeZone?: string } = {}): Promise<WebApp> {
+  const { viewport, hiddenPollInterval = 250, timeZone = "UTC", ...duvaOptions } = options;
   const duva = await startDuva(duvaOptions);
   const harness = await duva.listen();
   const site = await serve(await builtWebApp(), harness, hiddenPollInterval);
-  // The browser is set to American English in UTC, so what a test expects of times and dates doesn't depend on the machine.
-  const context = await (await browser()).newContext({ viewport: viewport ?? { width: 1280, height: 800 }, locale: "en-US", timezoneId: "UTC" });
+  // The browser is set to American English, in UTC unless the test says, so what a test expects of times and dates doesn't depend on the machine.
+  const context = await (await browser()).newContext({ viewport: viewport ?? { width: 1280, height: 800 }, locale: "en-US", timezoneId: timeZone });
   onTestFinished(async () => {
     await context.close();
     await site.close();

@@ -1,5 +1,6 @@
 // Away messages (#155): the reply Duva sends for a human while they're away, from a first day to a
-// last day in their time zone, or from when they switch it on until they switch it off. One switch
+// last day in their time zone, or while they chose none, the one given with the days, such as their
+// browser's (#159), or from when they switch it on until they switch it off. One switch
 // covers all their mailboxes, and each mailbox has its own text. The setting is the human's, in
 // their partition, so it goes with them, and a mailbox handed over answers with its new owner's.
 // The inbound handler hands each message stored in an Inbox here. A reply goes once per sender per
@@ -23,7 +24,7 @@ import { scheduleOnce, type ScheduleGroup } from "./limits.ts";
 import { awayMessageNoted, inbox, type StoredSummary } from "./mail.ts";
 import { buildMail, headerFields, type ParsedMail } from "./mime.ts";
 import { duva, findMailbox, type Human, mailboxesInOrder, mailboxFeed, mailboxKey, ownedMailboxes } from "./organization.ts";
-import { timeZoneOf } from "./preferences.ts";
+import { noTimeZone, timeZoneNamed, timeZoneOf } from "./preferences.ts";
 import { type Outbound, Refused } from "./sending.ts";
 import { timeToLiveAttribute } from "./infrastructure.ts";
 import { documents, isNew, pk, sk } from "./table.ts";
@@ -35,6 +36,8 @@ interface Stored {
   on: boolean;
   firstDay?: string;
   lastDay?: string;
+  /** The time zone given with the days, which they count in while the human has none of their own. */
+  timeZone?: string;
   subject?: string;
   texts: Record<string, string>;
   period?: string;
@@ -53,6 +56,9 @@ async function storedAway(table: Table, human: string): Promise<Stored> {
 /** The day after the day, as YYYY-MM-DD. */
 const dayAfter = (day: string) => new Date(Date.parse(`${day}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
 
+/** The time zone the days count in: the human's own, else the one given with them, else UTC. */
+const zoneOf = (stored: Pick<Stored, "timeZone">, own: string | undefined) => own ?? stored.timeZone ?? "UTC";
+
 /** When the time away's days begin and end, on the time zone's clock, or undefined without days. */
 const daysOf = ({ firstDay, lastDay }: Pick<Stored, "firstDay" | "lastDay">, timeZone: string) =>
   firstDay === undefined || lastDay === undefined ? undefined : { start: fromClockValue(`${firstDay}T00:00`, timeZone)!, end: fromClockValue(`${dayAfter(lastDay)}T00:00`, timeZone)! };
@@ -67,7 +73,7 @@ async function awayMessageOf(table: Table, human: Human, stored: Stored): Promis
   const [owned, timeZone] = await Promise.all([ownedMailboxes(table, human.id), timeZoneOf(table, human.id)]);
   const mailboxes = mailboxesInOrder(owned, human.email);
   const now = new Date();
-  const zone = timeZone ?? "UTC";
+  const zone = zoneOf(stored, timeZone);
   return {
     on: switchedOn(stored, zone, now),
     away: awayAt(stored, zone, now),
@@ -123,7 +129,7 @@ export const getAwayMessage: OperationHandler = async (_event, deployment, actor
   return { statusCode: 200, body: await awayMessageOf(deployment.table, actor, await storedAway(deployment.table, actor.id)) };
 };
 
-const fields = ["on", "firstDay", "lastDay", "subject", "mailbox", "text"];
+const fields = ["on", "firstDay", "lastDay", "timeZone", "subject", "mailbox", "text"];
 const isDay = (value: unknown) => typeof value === "string" && /^\d{4}-\d\d-\d\d$/.test(value) && new Date(`${value}T00:00:00Z`).toISOString().startsWith(value);
 
 export const changeAwayMessage: OperationHandler = async (event, deployment, actor) => {
@@ -137,8 +143,13 @@ export const changeAwayMessage: OperationHandler = async (event, deployment, act
   if ((body.firstDay === undefined) !== (body.lastDay === undefined) || (body.firstDay === null) !== (body.lastDay === null)) {
     return refusal(400, "Give firstDay and lastDay together, as days, or both as null to be away until you switch it off.");
   }
-  const timeZone = (await timeZoneOf(table, actor.id)) ?? "UTC";
-  if (body.firstDay !== undefined && body.firstDay !== null) {
+  const givesDays = body.firstDay !== undefined && body.firstDay !== null;
+  if (body.timeZone !== undefined && !givesDays) return refusal(400, "Give timeZone with firstDay and lastDay, as the time zone they count in.");
+  const given = body.timeZone === undefined ? undefined : timeZoneNamed(body.timeZone);
+  if (body.timeZone !== undefined && given === undefined) return noTimeZone(body.timeZone);
+  const own = await timeZoneOf(table, actor.id);
+  if (givesDays) {
+    const timeZone = zoneOf({ timeZone: given }, own);
     for (const name of ["firstDay", "lastDay"]) if (!isDay(body[name])) return refusal(400, `${JSON.stringify(body[name])} isn't a day. Give ${name} as YYYY-MM-DD, such as 2026-11-18.`);
     if ((body.lastDay as string) < (body.firstDay as string)) return refusal(400, "The last day is before the first. Give a lastDay from firstDay on.");
     if ((body.lastDay as string) < clockValue(new Date(), timeZone).slice(0, 10)) return refusal(400, `The last day has passed in your time zone, ${timeZone}. Give a lastDay from today on.`);
@@ -170,12 +181,15 @@ export const changeAwayMessage: OperationHandler = async (event, deployment, act
     if (body.firstDay === null) {
       delete is.firstDay;
       delete is.lastDay;
+      delete is.timeZone;
     } else if (body.firstDay !== undefined) {
       is.firstDay = body.firstDay as string;
       is.lastDay = body.lastDay as string;
+      if (given === undefined) delete is.timeZone;
+      else is.timeZone = given;
     }
     // One that ended is off, whatever the item says, so switching it on again begins anew.
-    const wasOn = switchedOn(was, timeZone, new Date());
+    const wasOn = switchedOn(was, zoneOf(was, own), new Date());
     if (body.on !== undefined) is.on = body.on as boolean;
     else is.on = wasOn;
     if (is.on && Object.keys(is.texts).length === 0) return refusal(400, "Give a text for at least one of your mailboxes first, with mailbox and text, then switch it on.");
@@ -184,8 +198,8 @@ export const changeAwayMessage: OperationHandler = async (event, deployment, act
     if (begins) is.period = randomUUID();
     // Scheduled first, so it is never on with days and nothing to end it. A schedule for the same
     // time away and end is the same one, and one whose change didn't hold finds it otherwise, and does nothing.
-    const days = daysOf(is, timeZone);
-    if (is.on && days !== undefined) await deployment.awayEnds.endAt({ human: actor.id, period: is.period!, lastDay: is.lastDay! }, days.end);
+    const ends = daysOf(is, zoneOf(is, own))?.end;
+    if (is.on && ends !== undefined) await deployment.awayEnds.endAt({ human: actor.id, period: is.period!, lastDay: is.lastDay! }, ends);
     try {
       await documents(table).send(
         new PutCommand({
@@ -251,12 +265,13 @@ export async function sendAwayMessage({ table, outbound, log }: { table: Table; 
   const human = mailbox.owner;
   // Mail from the human themselves, from any of their mailboxes, isn't answered.
   if ((await ownedMailboxes(table, human)).some(({ addresses }) => addresses.includes(to))) return;
-  const [stored, timeZone] = await Promise.all([storedAway(table, human), timeZoneOf(table, human)]);
+  const [stored, own] = await Promise.all([storedAway(table, human), timeZoneOf(table, human)]);
+  const timeZone = zoneOf(stored, own);
   const text = stored.texts[id];
-  if (text === undefined || stored.period === undefined || !awayAt(stored, timeZone ?? "UTC", new Date())) return;
+  if (text === undefined || stored.period === undefined || !awayAt(stored, timeZone, new Date())) return;
   const claim = repliedKey(id, stored.period, to);
   // The claim, which keeps the sender's address, goes once the time away ends, or a year on without days.
-  const ends = daysOf(stored, timeZone ?? "UTC")?.end ?? new Date(Date.now() + 365 * 86_400_000);
+  const ends = daysOf(stored, timeZone)?.end ?? new Date(Date.now() + 365 * 86_400_000);
   try {
     await documents(table).send(new PutCommand({ TableName: table.name, Item: { ...claim, to, [timeToLiveAttribute]: Math.ceil(ends.getTime() / 1000) }, ...isNew }));
   } catch (error) {

@@ -245,7 +245,7 @@ export interface paths {
         head?: never;
         /**
          * Switch your away message on or off, choose the days you're away, or change its subject or a mailbox's text.
-         * @description Give only what to change. Without days, you're away from when you switch it on until you switch it off. With a first and a last day, in your time zone, you're away from the first day's start to the last day's end, and it switches itself off then. Switching it on starts a new time away, so everyone gets the text once again, while changing the days or the text goes on with the same one. Give mailbox and text together to change one mailbox's text. Your Coo can help write it when you ask, but only you save it.
+         * @description Give only what to change. Without days, you're away from when you switch it on until you switch it off. With a first and a last day, in your time zone, or the one given with them while you have none, you're away from the first day's start to the last day's end, and it switches itself off then. Switching it on starts a new time away, so everyone gets the text once again, while changing the days or the text goes on with the same one. Give mailbox and text together to change one mailbox's text. Your Coo can help write it when you ask, but only you save it.
          */
         patch: operations["changeAwayMessage"];
         trace?: never;
@@ -5614,6 +5614,11 @@ export interface components {
             firstDay?: components["schemas"]["AwayDay"] | null;
             /** @description The last day away, from today on, given with firstDay, or null. The CLI gives null with --no-lastDay. */
             lastDay?: components["schemas"]["AwayDay"] | null;
+            /**
+             * @description The time zone the days count in while you have none of your own, as an IANA name, given with firstDay and lastDay. Your own time zone preference counts first, and without either the days count in UTC. The web app gives your browser's.
+             * @example Europe/Stockholm
+             */
+            timeZone?: string;
             /** @description The replies' subject, or null for the default, "Away: " followed by the subject answered. The CLI gives null with --no-subject. */
             subject?: string | null;
             /** @description The ID of the mailbox whose text changes, one of yours, given with text. */

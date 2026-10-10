@@ -197,7 +197,7 @@ The rest of a sentence Duva offers in grey after the cursor while a human writes
 _Avoid_: autocomplete, smart compose, prediction
 
 **Away message**:
-A reply Duva sends for a human while they're away, from a first day to a last day in their time zone, or from now until they switch it off. One switch covers all their mailboxes, and each mailbox has its own text. It goes once per sender per time away, only to people whose mail reaches the Inbox. Never to mailing lists, newsletters, other automatic replies, no-reply or bounce addresses, Spam, the Feed, the Paper Trail, senders sent nowhere, or mail to a group. It goes from the address the mail came to, as the human, and the thread notes it was sent. Coo can help write the text, but never writes the replies.
+A reply Duva sends for a human while they're away, from a first day to a last day in their time zone, or while they chose none, their browser's, or from now until they switch it off. One switch covers all their mailboxes, and each mailbox has its own text. It goes once per sender per time away, only to people whose mail reaches the Inbox. Never to mailing lists, newsletters, other automatic replies, no-reply or bounce addresses, Spam, the Feed, the Paper Trail, senders sent nowhere, or mail to a group. It goes from the address the mail came to, as the human, and the thread notes it was sent. Coo can help write the text, but never writes the replies.
 _Avoid_: out of office, vacation responder, autoresponder
 
 **Inbox**:

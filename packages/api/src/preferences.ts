@@ -114,6 +114,9 @@ export function timeZoneNamed(name: unknown): string | undefined {
   }
 }
 
+/** The refusal of a timeZone there is none of. */
+export const noTimeZone = (name: unknown) => refusal(400, `${JSON.stringify(name)} isn't a time zone. Give timeZone as an IANA name, such as Europe/Stockholm.`);
+
 /** The human's time zone, or undefined if they never chose one. */
 export async function timeZoneOf(table: Table, human: string): Promise<string | undefined> {
   const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: preferencesKey(human), ConsistentRead: true }));
@@ -145,7 +148,7 @@ export const changePreferences: OperationHandler = async (event, deployment, act
   }
   if (body.timeZone !== undefined && body.timeZone !== null) {
     const timeZone = timeZoneNamed(body.timeZone);
-    if (timeZone === undefined) return refusal(400, `${JSON.stringify(body.timeZone)} isn't a time zone. Give timeZone as an IANA name, such as Europe/Stockholm.`);
+    if (timeZone === undefined) return noTimeZone(body.timeZone);
     body.timeZone = timeZone;
   }
   const { table } = deployment;

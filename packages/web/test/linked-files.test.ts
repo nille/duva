@@ -6,9 +6,13 @@ import { startWebApp } from "./web-app.ts";
 const wait = { timeout: 10_000 };
 const budget = { timeout: 60_000 };
 
-/** The web app for a deployment where the human Grace has a personal mailbox at grace@example.com, and is signed in. */
-async function withGrace() {
+/** The web app for a deployment where the human Grace has a personal mailbox at grace@example.com, and is signed in, at the time if given. */
+async function withGrace({ at }: { at?: Date } = {}) {
   const app = await startWebApp({ domain: "example.com", admin: "ada@example.org", humans: ["grace@example.org"] });
+  if (at !== undefined) {
+    await app.duva.clock(at);
+    await app.page.clock.setFixedTime(at);
+  }
   const ada = app.duva.signIn("ada@example.org");
   const grace = app.duva.signIn("grace@example.org");
   const { data: me } = await grace.GET("/whoami");
@@ -32,7 +36,8 @@ async function sendFilm({ duva, grace, mailbox }: Awaited<ReturnType<typeof with
 }
 
 test("the composer shows which files go as links, a large one by itself and a small one by choice, and how long the links work", budget, async () => {
-  const { page, duva } = await withGrace();
+  // The last hour of 2026 in UTC, so a year on is still 2027 there.
+  const { page, duva } = await withGrace({ at: new Date("2026-12-31T23:00:00Z") });
   await page.getByRole("button", { name: "Write" }).click();
   await page.getByLabel("To", { exact: true }).fill("ada@example.org");
   await page.getByLabel("Subject", { exact: true }).fill("Filmen");
@@ -58,7 +63,7 @@ test("the composer shows which files go as links, a large one by itself and a sm
   await page.getByRole("button", { name: "Send" }).click();
 
   await expect.poll(() => page.getByRole("status").filter({ hasText: "Sent to ada@example.org." }).count(), wait).toBe(1);
-  expect(duva.sent()[0]).toMatch(/2 files, until \d+ \w+ 2027/);
+  expect(duva.sent()[0]).toMatch(/2 files, until 31 December 2027/);
 });
 
 test("a sent message lists its linked files with their downloads, and Stop sharing ends a link", budget, async () => {

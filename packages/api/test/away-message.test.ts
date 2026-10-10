@@ -25,8 +25,8 @@ const tuesday = new Date("2026-11-10T09:00:00Z");
 // Tests move the clock days ahead, and sessions last as long.
 const tokensLast = 30 * 24 * 3600;
 
-/** A deployment where the human Grace has a mailbox at grace@example.com, its Screener off, and lives in Stockholm. */
-async function withGrace({ screener = false }: { screener?: boolean } = {}) {
+/** A deployment where the human Grace has a mailbox at grace@example.com, its Screener off, and lives in Stockholm, unless she chose no time zone. */
+async function withGrace({ screener = false, timeZone = "Europe/Stockholm" }: { screener?: boolean; timeZone?: string | null } = {}) {
   const duva = await startDuva({ domain: "example.com", admin: "ada@example.org", humans: ["grace@example.org"], accessTokenLifetime: tokensLast });
   await duva.clock(tuesday);
   const ada = duva.signIn("ada@example.org");
@@ -35,7 +35,7 @@ async function withGrace({ screener = false }: { screener?: boolean } = {}) {
   const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: me!.id, address: "grace@example.com" } });
   const params = { path: { mailbox: mailbox!.id } };
   await grace.PATCH("/mailboxes/{mailbox}/screener", { params, body: { on: screener } });
-  await grace.PATCH("/preferences", { body: { timeZone: "Europe/Stockholm" } });
+  if (timeZone !== null) await grace.PATCH("/preferences", { body: { timeZone } });
   const away = (body: components["schemas"]["AwayMessageChanges"]) => grace.PATCH("/away-message", { body });
   /** Switches Grace's away message on, with her text for the mailbox and any days. */
   const goAway = async (days: { firstDay: string; lastDay: string } | object = {}) => {
@@ -121,6 +121,25 @@ test("the away message goes from the first day's start to the last day's end in 
   // Changing her time zone later doesn't bring it back.
   await grace.PATCH("/preferences", { body: { timeZone: "America/Los_Angeles" } });
   expect((await away({ subject: "Away" })).data).toMatchObject({ on: false, away: false });
+});
+
+test("without a time zone of her own, Grace's days count in the one given with them, as her browser's, and once she chooses one, in hers", async () => {
+  const { duva, away, goAway, grace } = await withGrace({ timeZone: null });
+  // Half past midnight on 11 November in Stockholm, still the 10th in UTC.
+  await duva.clock(new Date("2026-11-10T23:30:00Z"));
+
+  const passed = await away({ firstDay: "2026-11-10", lastDay: "2026-11-10", timeZone: "Europe/Stockholm" });
+  expect(passed.error).toEqual({ message: "The last day has passed in your time zone, Europe/Stockholm. Give a lastDay from today on." });
+  expect((await goAway({ firstDay: "2026-11-11", lastDay: "2026-11-14", timeZone: "Europe/Stockholm" })).data).toMatchObject({ on: true, away: true, firstDay: "2026-11-11", lastDay: "2026-11-14" });
+
+  // In New York it is still the evening of the 10th.
+  await grace.PATCH("/preferences", { body: { timeZone: "America/New_York" } });
+  expect((await grace.GET("/away-message")).data).toMatchObject({ on: true, away: false });
+  await grace.PATCH("/preferences", { body: { timeZone: null } });
+  expect((await grace.GET("/away-message")).data).toMatchObject({ on: true, away: true });
+
+  await duva.clock(new Date("2026-11-14T23:00:00Z"));
+  expect((await grace.GET("/away-message")).data).toMatchObject({ on: false, away: false });
 });
 
 test("switching the away message on again starts a new time away, so a sender who got it gets it again", async () => {
@@ -301,7 +320,7 @@ test("a message SES hands Duva twice gets one away message", async () => {
   expect(replies()).toHaveLength(1);
 });
 
-test("the away message can't be switched on without a text, nor have days that have passed or a mailbox that isn't Grace's", async () => {
+test("the away message can't be switched on without a text, nor have days that have passed, in a time zone there is none of, or a mailbox that isn't Grace's", async () => {
   const { away, mailbox } = await withGrace();
 
   const noText = await away({ on: true });
@@ -310,6 +329,8 @@ test("the away message can't be switched on without a text, nor have days that h
   const alone = await away({ firstDay: "2026-11-18" });
   const notHers = await away({ mailbox: "someone-else", text });
   const textAlone = await away({ text });
+  const noZone = await away({ firstDay: "2026-11-18", lastDay: "2026-11-20", timeZone: "Mars/Olympus" });
+  const zoneAlone = await away({ timeZone: "Europe/Stockholm" });
 
   expect(noText.response.status).toBe(400);
   expect(noText.error).toEqual({ message: "Give a text for at least one of your mailboxes first, with mailbox and text, then switch it on." });
@@ -318,6 +339,8 @@ test("the away message can't be switched on without a text, nor have days that h
   expect(alone.error).toEqual({ message: "Give firstDay and lastDay together, as days, or both as null to be away until you switch it off." });
   expect(notHers.error).toEqual({ message: "\"someone-else\" isn't one of your mailboxes. Give mailbox as the ID of one of yours, which listing your mailboxes gives." });
   expect(textAlone.error).toEqual({ message: "Give mailbox and text together, to change that mailbox's text." });
+  expect(noZone.error).toEqual({ message: "\"Mars/Olympus\" isn't a time zone. Give timeZone as an IANA name, such as Europe/Stockholm." });
+  expect(zoneAlone.error).toEqual({ message: "Give timeZone with firstDay and lastDay, as the time zone they count in." });
   expect((await away({ mailbox, text: null })).data).toMatchObject({ on: false, away: false, mailboxes: [{ mailbox, address: "grace@example.com" }] });
 });
 
