@@ -158,6 +158,10 @@ A domain's optional mailbox or group for mail to addresses that don't exist, rem
 **Default address**:
 The address a mailbox sends new messages from unless the sender picks another. New mail written in All mailboxes starts from the address the human's preference names, and can go from any of their addresses. Replies go out from the address the original was sent to, and replies to group mail from the member's own address unless they choose the group.
 
+**Signature**:
+Text a mailbox's owner sets to close the mail sent from it: one for the mailbox, and optionally one for any of its addresses, which wins. It goes below what was written and above the quoted text, on new mail, replies and forwards, including drafts an agent writes there, with the disclosure's line below it. The writer can change or drop it for one message. Away messages carry none.
+_Avoid_: footer, sig
+
 **External address**:
 An email address on a domain the organization does not have.
 _Avoid_: remote user, outside user
