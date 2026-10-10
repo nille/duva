@@ -35,6 +35,10 @@ The model a mailbox agent's harder work goes to: writing mail that may be sent, 
 What Coo keeps about its human between conversations: what they tell it, and what it learns from mail it reads while it works. Each memory names where it came from, the human's own words or the threads it learned it from, and goes when they go: erasing a thread erases what was learned from it, and handing a mailbox over erases what was learned from its mail. The human sees every memory with its source, corrects or forgets any, and can stop Coo learning from mail, which it does by default.
 _Avoid_: knowledge, profile, context
 
+**Web search**:
+Coo looking something up on the web, wherever it helps: in Ask Coo, in a label prompt's task, or while unsubscribing. Its queries may carry anything from the mail that helps, and go to Amazon's own search, in another region where the deployment's has none. A reader with no powers reads the results and hands Coo a short answer with its sources, so what a page says never steers Coo. Coo says when it searched, with the sources. On unless an admin turns it off for the organization, or a human for their own Coo.
+_Avoid_: browsing, googling, research
+
 **Measured model**:
 A model on Amazon Bedrock that Duva has recorded on its mailbox agent's evaluation, with how often it does each kind of work, what a task costs, and where it processes the mail it reads: in the deployment's region, its continent, the US, or anywhere. Only measured models can be allowed or chosen, and wherever they're chosen the place shows beside each.
 
