@@ -1,5 +1,5 @@
 import { fileURLToPath } from "node:url";
-import { Aws, CfnCondition, CfnOutput, CfnParameter, CfnResource, CustomResource, Duration, Fn, RemovalPolicy, Stack, type StackProps } from "aws-cdk-lib";
+import { Aspects, Aws, CfnCondition, CfnOutput, CfnParameter, CfnResource, CustomResource, Duration, Fn, RemovalPolicy, Stack, type StackProps } from "aws-cdk-lib";
 import { AgentCoreRuntime, AgentRuntimeArtifact, BrowserCustom, BrowserNetworkConfiguration, type CfnBrowserCustom, Runtime as AgentRuntime } from "aws-cdk-lib/aws-bedrockagentcore";
 import { CorsHttpMethod, HttpApi, HttpMethod } from "aws-cdk-lib/aws-apigatewayv2";
 import { HttpLambdaAuthorizer, HttpLambdaResponseType } from "aws-cdk-lib/aws-apigatewayv2-authorizers";
@@ -33,7 +33,7 @@ import { Topic } from "aws-cdk-lib/aws-sns";
 import { LambdaSubscription } from "aws-cdk-lib/aws-sns-subscriptions";
 import { Queue, QueueEncryption } from "aws-cdk-lib/aws-sqs";
 import { StringParameter } from "aws-cdk-lib/aws-ssm";
-import type { Construct } from "constructs";
+import type { Construct, IConstruct } from "constructs";
 import {
   browserProfileTagged,
   embeddingModel,
@@ -813,7 +813,13 @@ export class DuvaStack extends Stack {
     handler.addEnvironment(environmentVariables.browser, Fn.conditionIf(agentsHere.logicalId, browser.browserId, "").toString());
     agentRuntime.addToRolePolicy(new PolicyStatement({ actions: ["bedrock-agentcore:InvokeGateway"], resources: [searchGateway.getAttString("Arn")] }));
     const searching = [searchRole, gatewayMaker, this.node.findChild("WebSearchGatewayLogs"), searchGateway];
-    for (const construct of [agentRuntime, browser, ...searching]) for (const resource of construct.node.findAll()) if (resource instanceof CfnResource) resource.cfnOptions.condition = agentsHere;
+    // As an aspect, so it reaches what CDK adds as it synthesizes too, as the policy the runtime's role outgrows.
+    const conditioned = {
+      visit(node: IConstruct) {
+        if (node instanceof CfnResource) node.cfnOptions.condition = agentsHere;
+      },
+    };
+    for (const construct of [agentRuntime, browser, ...searching]) Aspects.of(construct).add(conditioned);
     // The agents call their model in the model region the organization chose, through its eu, us or
     // global inference profile, which may send it on to that profile's regions (docs/aws.md). So
     // the role may invoke the models admins can choose through the profiles each has in any region,

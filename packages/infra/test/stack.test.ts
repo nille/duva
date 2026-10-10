@@ -37,6 +37,8 @@ const payPerUse = new Set([
   "AWS::DynamoDB::GlobalTable",
   // A scheduled rule on the default event bus costs nothing; only the invocations it makes do.
   "AWS::Events::Rule",
+  // A managed policy costs nothing, as a role's own policy doesn't.
+  "AWS::IAM::ManagedPolicy",
   "AWS::IAM::Policy",
   "AWS::IAM::Role",
   "AWS::Lambda::EventInvokeConfig",
@@ -1112,36 +1114,47 @@ test("where AgentCore isn't, the stack leaves out the runtime and everything it 
   const runtime = resources.find(([, { Type }]) => Type === "AWS::BedrockAgentCore::Runtime")!;
   const role = (runtime[1].Properties?.RoleArn as { "Fn::GetAtt": string[] })["Fn::GetAtt"][0]!;
   for (const id of [runtime[0], role]) expect((stack.template.Resources[id] as { Condition?: string }).Condition).toBe("MailboxAgentsCondition");
+  const policies = [...ofType("AWS::IAM::Policy"), ...ofType("AWS::IAM::ManagedPolicy")].filter(([, { Properties }]) => (Properties?.Roles ?? []).some((ref: { Ref?: string }) => ref.Ref === role));
+  expect(policies.length).toBeGreaterThan(0);
+  for (const [id] of policies) expect((stack.template.Resources[id] as { Condition?: string }).Condition, id).toBe("MailboxAgentsCondition");
 });
 
 test("the mailbox agents may call only the models admins can choose, through the profiles each has in any region, or in the regions where they run without one, and the decider through the eu and us profiles", () => {
   const runtime = resources.find(([, { Type }]) => Type === "AWS::BedrockAgentCore::Runtime")!;
   const role = JSON.stringify((runtime[1].Properties?.RoleArn as { "Fn::GetAtt": string[] })["Fn::GetAtt"][0]);
-  const onBedrock = ofType("AWS::IAM::Policy")
+  // So many models' statements outgrow a role's own policy, so CDK moves some to a managed policy of its own.
+  const onBedrock = [...ofType("AWS::IAM::Policy"), ...ofType("AWS::IAM::ManagedPolicy")]
     .filter(([, { Properties }]) => (Properties?.Roles ?? []).some((ref: { Ref?: string }) => JSON.stringify(ref.Ref) === role))
     .flatMap(([, { Properties }]) => (Properties?.PolicyDocument?.Statement ?? []) as { Action: string | string[]; Resource: unknown; Condition?: unknown }[])
     .filter(({ Action }) => [Action].flat().some((action) => action.startsWith("bedrock:")));
   const claude = ["anthropic.claude-sonnet-5-5", "anthropic.claude-haiku-4-5-20251001-v1:0", "anthropic.claude-opus-5-5"];
-  const models = [...claude, "amazon.nova-2-lite-v1:0", "amazon.nova-pro-v1:0", "amazon.nova-lite-v1:0", "amazon.nova-micro-v1:0"];
+  const globalAndUs = ["openai.gpt-6-luna", "openai.gpt-6-sol", "xai.grok-4.7", "moonshotai.kimi-k3", "zai.glm-5.3"];
+  const onDemand = ["openai.gpt-oss-120b-1:0", "qwen.qwen3-235b-a22b-2507-v1:0", "deepseek.v3.2", "zai.glm-5", "moonshotai.kimi-k2.5", "minimax.minimax-m2.5"];
+  const models = [...claude, "amazon.nova-2-lite-v1:0", "amazon.nova-pro-v1:0", "amazon.nova-lite-v1:0", ...globalAndUs, ...onDemand, "amazon.nova-micro-v1:0"];
   const profile = (id: string) => ({ "Fn::Join": ["", ["arn:", { Ref: "AWS::Partition" }, ":bedrock:*:", { Ref: "AWS::AccountId" }, `:inference-profile/${id}`]] });
   const profiles = [
     ...[...claude, "amazon.nova-2-lite-v1:0"].flatMap((model) => ["eu", "us", "global"].map((name) => profile(`${name}.${model}`))),
     ...["amazon.nova-pro-v1:0", "amazon.nova-lite-v1:0", "amazon.nova-micro-v1:0"].flatMap((model) => ["eu", "us"].map((name) => profile(`${name}.${model}`))),
+    ...globalAndUs.flatMap((model) => ["global", "us"].map((name) => profile(`${name}.${model}`))),
   ];
   // IAM's order of a statement's resources means nothing, and CDK sorts them.
   const sorted = (values: unknown[]) => values.map((value) => JSON.stringify(value)).sort();
-  // Nova Lite runs without a profile in eu-north-1 and three US regions, and Nova Pro in us-east-1 (docs/research/coo-models.md).
+  // Nova Lite runs without a profile in eu-north-1 and three US regions, Nova Pro in us-east-1, and
+  // the open-weight models on demand where docs/aws.md found them (docs/research/coo-models.md).
   const inRegion = [
     "arn:aws:bedrock:us-east-1::foundation-model/amazon.nova-pro-v1:0",
     ...["eu-north-1", "us-east-1", "us-east-2", "us-west-2"].map((region) => `arn:aws:bedrock:${region}::foundation-model/amazon.nova-lite-v1:0`),
+    ...["openai.gpt-oss-120b-1:0", "qwen.qwen3-235b-a22b-2507-v1:0"].flatMap((model) => ["eu-north-1", "eu-central-1", "us-west-2"].map((region) => `arn:aws:bedrock:${region}::foundation-model/${model}`)),
+    ...["deepseek.v3.2", "zai.glm-5", "moonshotai.kimi-k2.5"].flatMap((model) => ["eu-north-1", "us-west-2"].map((region) => `arn:aws:bedrock:${region}::foundation-model/${model}`)),
+    ...["eu-central-1", "us-west-2"].map((region) => `arn:aws:bedrock:${region}::foundation-model/minimax.minimax-m2.5`),
   ];
   expect(onBedrock).toHaveLength(2);
-  const [unconditioned, onModels] = onBedrock as { Effect: string; Action: string[]; Resource: unknown[]; Condition?: { StringLike: Record<string, unknown[]> } }[];
+  const [unconditioned, onModels] = onBedrock as { Effect: string; Action: string[]; Resource: unknown[]; Condition?: { StringLike: Record<string, unknown> } }[];
   for (const statement of [unconditioned!, onModels!]) expect(statement).toMatchObject({ Effect: "Allow", Action: ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"] });
   expect(sorted(unconditioned!.Resource)).toEqual(sorted([...profiles, ...inRegion]));
   expect(unconditioned!.Condition).toBeUndefined();
   expect(sorted(onModels!.Resource)).toEqual(sorted(models.flatMap((model) => [`arn:aws:bedrock:*::foundation-model/${model}`, `arn:aws:bedrock:::foundation-model/${model}`])));
-  expect(sorted(onModels!.Condition!.StringLike["bedrock:InferenceProfileArn"]!)).toEqual(sorted(profiles));
+  expect(sorted(onModels!.Condition!.StringLike["bedrock:InferenceProfileArn"] as unknown[])).toEqual(sorted(profiles));
 });
 
 test("Ask Coo posts to the web app's domain under /agent/, where CloudFront signs each request to the conversation Lambda's function URL, which streams its answer", () => {
