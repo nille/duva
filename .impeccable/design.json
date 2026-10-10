@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-07T08:24:20.983Z",
+  "generatedAt": "2026-10-10T13:32:22.000Z",
   "title": "Design System: Duva",
   "extensions": {
     "colorMeta": {
@@ -383,7 +383,7 @@
     "typographyMeta": {
       "display": {
         "displayName": "Display",
-        "purpose": "The door's title, and a thread's subject."
+        "purpose": "The door's title, a thread's subject and a draft's title."
       },
       "headline": {
         "displayName": "Headline",
@@ -391,7 +391,7 @@
       },
       "wordmark": {
         "displayName": "Wordmark",
-        "purpose": "Duva at the side column's head and the door."
+        "purpose": "Duva at the door. In the side column's head Coo's portrait takes its place."
       },
       "body": {
         "displayName": "Body",
@@ -446,6 +446,16 @@
         "name": "raise",
         "value": "320ms ease-out, from 0.5rem below and transparent",
         "purpose": "A reply's composer rising into place under the message it answers."
+      },
+      {
+        "name": "bob",
+        "value": "0.84s loop: leans back over 0.54s, snaps forward, settles",
+        "purpose": "Coo's head while it works, skewing about its open foot; still at rest and under reduced motion."
+      },
+      {
+        "name": "say",
+        "value": "240ms ease-out, from 0.25rem above and transparent",
+        "purpose": "What Coo says rising in under its portrait."
       }
     ],
     "breakpoints": [
@@ -547,7 +557,7 @@
   ],
   "narrative": {
     "northStar": "The Field Desk",
-    "overview": "Duva's web app is one precise instrument, laid flat. The side column, the list and the open thread lie side by side on a single plane, in three tones of aluminium grey that step lighter toward what is being read. Nothing is boxed: columns and rows part by tone, by a seam one shade off the grey, and by space. The direction was chosen in impeccable's direction round, seed 6c0f3a48, the North Window Desk re-rolled to Field Desk on Nicklas's steer, and `packages/web/index.html` carries its contract as the body's first comment, which the build keeps.\n\nThe voice is Teenage Engineering's: exact, a little playful, and sparing with color. Color never decorates. It is a function code, and each of the four hues says one thing: orange needs you, blue marks an agent, green is sent or healthy, red is an alert. All text, mail included, is set in JetBrains Mono with its ligatures on; the headings are Familjen Grotesk, tight and printed-looking. Shortcuts show as key caps, and who did something shows as a shape before their name.\n\nThe system is code-led: plain CSS with custom properties in one stylesheet (`packages/web/src/styles.css`), no component library, light only (`color-scheme: light`). Every string lives in `packages/web/src/strings.ts`. This file records the foundation, the tokens, the type, the shell and the shared controls. The areas (the thread and composer, the lists and the Screener, Approvals and Alerts, Settings and the admin sheets) are restyled in their own tickets, and until then they reach the new tokens through the old names, aliased in `:root`.",
+    "overview": "Duva's web app is one precise instrument, laid flat. The side column, the list and the open thread lie side by side on a single plane, in three tones of aluminium grey that step lighter toward what is being read. Nothing is boxed: columns and rows part by tone, by a seam one shade off the grey, and by space. The direction was chosen in impeccable's direction round, seed 6c0f3a48, the North Window Desk re-rolled to Field Desk on Nicklas's steer, and `packages/web/index.html` carries its contract as the body's first comment, which the build keeps.\n\nThe voice is Teenage Engineering's: exact, a little playful, and sparing with color. Color never decorates. It is a function code, and each of the four hues says one thing: orange needs you, blue marks an agent, green is sent or healthy, red is an alert. All text, mail included, is set in JetBrains Mono with its ligatures on; the headings are Familjen Grotesk, tight and printed-looking. Shortcuts show as key caps, and who did something shows as a shape before their name.\n\nThe system is code-led: plain CSS with custom properties in one stylesheet (`packages/web/src/styles.css`), no component library, light only (`color-scheme: light`). Every string lives in `packages/web/src/strings.ts`. This file records the whole app as it shipped: the foundation's tokens, type, shell and shared controls, then each area built on them (the thread and composer, the lists and the Screener, Approvals and Alerts, Settings and the admin sheets), and what came after, All mailboxes, the headers sheet, attachments and linked files, and Coo's portrait at the head. Every area uses the tokens by their own names.",
     "keyCharacteristics": [
       "One plane in three aluminium greys, no boxed sections.",
       "Mono text with ligatures, grotesk headings.",

@@ -359,10 +359,11 @@ async function counted(table: Table, shared: StoredLink): Promise<void> {
 }
 
 const style = `body{margin:0;padding:0 1rem;background:#efefec;color:#161616;font:13.5px/1.6 ui-monospace,"SF Mono",Menlo,Consolas,monospace}
-main{max-width:30rem;margin:12vh auto;padding:2rem;box-sizing:border-box;background:#fff;border:1px solid #dededa;border-radius:10px}
+main{max-width:30rem;margin:12vh auto;padding:2rem;box-sizing:border-box;background:#fff;border-radius:10px;box-shadow:0 1px 0 rgb(22 22 22/.03),0 12px 32px -18px rgb(22 22 22/.22)}
 h1{margin:0 0 .25rem;font:700 1.625rem/1.05 system-ui,sans-serif;letter-spacing:-.03em;overflow-wrap:anywhere}
 p{margin:0 0 1rem;color:#56564f}
-button{font:inherit;font-weight:600;color:#161616;background:#ff5a1f;border:0;border-radius:7px;padding:.6rem 1.2rem;cursor:pointer}
+button{font:inherit;font-size:.78125rem;font-weight:600;color:#161616;background:#ff5a1f;border:0;border-radius:999px;height:2.25rem;padding:0 1rem;cursor:pointer}
+button:active{translate:0 1px}
 button:hover{background:#e5470d}
 button:focus-visible{outline:2px solid #161616;outline-offset:2px}`;
 

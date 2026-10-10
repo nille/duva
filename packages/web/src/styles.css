@@ -91,23 +91,6 @@
   /* The phone's tab bar, which anything kept at the screen's foot sits above. There is none on a desk. */
   --tab-bar-height: 0px;
 
-  /*
-   * The names the areas were built with, each now the Field Desk token that takes its place, until
-   * each area's restyle uses the tokens above by their own names.
-   */
-  --desk: var(--read);
-  --paper: var(--raise);
-  --paper-source: var(--list);
-  --rule: var(--seam);
-  --rule-strong: var(--edge);
-  --rule-desk: var(--edge);
-  --pencil: var(--ink);
-  --pencil-deep: var(--ink-deep);
-  --pencil-wash: var(--field);
-  --sans: var(--mono);
-  --serif: var(--mono);
-  --sheet-shadow: 0 0 0 0 transparent;
-
   color-scheme: light;
   accent-color: var(--ink);
   scrollbar-color: var(--edge) transparent;
@@ -602,6 +585,14 @@ kbd {
   grid-area: say;
 }
 
+/*
+ * While Coo is quiet its live region stays in the page, out of the bar's flow: in the grid it would
+ * open a track of its own, a hole under the places and a column that narrows them.
+ */
+.coo-say:empty {
+  position: absolute;
+}
+
 .coo-says {
   position: relative;
   margin: 0;
@@ -823,6 +814,7 @@ button.selector[aria-expanded="true"] {
 .bar .search input[type="search"] {
   border-color: var(--edge);
   background: var(--raise);
+  text-overflow: ellipsis;
 }
 
 /*
@@ -1317,6 +1309,11 @@ button.selector[aria-expanded="true"] {
     padding-bottom: var(--tab-bar-height);
   }
 
+  /* What scrolls into view, as a reply's composer does, stops above the tab bar. */
+  html {
+    scroll-padding-bottom: var(--tab-bar-height);
+  }
+
   .shell {
     display: block;
     height: auto;
@@ -1448,7 +1445,9 @@ button.selector[aria-expanded="true"] {
     font-weight: 600;
   }
 
+  /* The second selector matches the desk's raised place, so this outweighs it. */
   .bar nav a[aria-current="page"],
+  .bar nav a[aria-current="page"]:not(.place-mail),
   .bar nav .place-approvals:has(.nav-count) {
     background: none;
     box-shadow: none;
@@ -1543,8 +1542,13 @@ button.selector[aria-expanded="true"] {
     font-size: var(--text-sm);
   }
 
-  /* The switcher is a list's head, so the list names itself and counts its unread only for screen readers. */
-  .list-head > :is(.view-title, .count) {
+  /*
+   * The switcher is a list's head, so the list names itself and counts its unread only for screen
+   * readers. The Feed's stream and the Screener are lists it names too.
+   */
+  .list-head > :is(.view-title, .count),
+  .stream > .desk-head > .view-title,
+  .desk > .desk-head:first-child:has(+ .screener-lead) > .view-title {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -2364,6 +2368,12 @@ button.selector[aria-expanded="true"] {
     padding-top: var(--space-2);
   }
 
+  /* With no status strip, when Duva was last up to date is a quiet line of its own under the title. */
+  .queue-head .connection {
+    flex-basis: 100%;
+    margin-left: 0;
+  }
+
   .queue-read {
     padding: var(--space-2) 1.4rem var(--space-6);
   }
@@ -2401,8 +2411,8 @@ button.selector[aria-expanded="true"] {
 .mark-new {
   padding: 0.125rem var(--space-2);
   border-radius: var(--radius-pill);
-  background: var(--pencil);
-  color: var(--paper);
+  background: var(--ink);
+  color: var(--raise);
   font-size: var(--text-xs);
   font-weight: 650;
 }
@@ -2418,7 +2428,7 @@ button.selector[aria-expanded="true"] {
 
 .field:nth-child(4) {
   padding-bottom: var(--space-4);
-  border-bottom: 1px solid var(--rule);
+  border-bottom: 1px solid var(--seam);
   margin-bottom: var(--space-4);
 }
 
@@ -2456,7 +2466,7 @@ button.selector[aria-expanded="true"] {
 }
 
 .body {
-  font: 400 var(--text-proof) / 1.6 var(--serif);
+  font: 400 var(--text-proof) / 1.6 var(--mono);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   max-width: 68ch;
@@ -2490,7 +2500,7 @@ button.selector[aria-expanded="true"] {
   display: flex;
   gap: var(--space-3);
   padding: var(--space-4) var(--space-5);
-  background: var(--paper);
+  background: var(--raise);
   border-radius: var(--radius-mark);
   box-shadow: var(--shade);
 }
@@ -2503,7 +2513,7 @@ button.selector[aria-expanded="true"] {
 }
 
 .slip-pending .slip-icon {
-  color: var(--pencil);
+  color: var(--ink);
 }
 
 .slip-sent .slip-icon {
@@ -2538,7 +2548,7 @@ button.selector[aria-expanded="true"] {
 }
 
 .slip-subject {
-  font: 400 var(--text-md) / 1.4 var(--serif);
+  font: 400 var(--text-md) / 1.4 var(--mono);
   color: var(--ink-2);
   overflow-wrap: anywhere;
 }
@@ -3035,9 +3045,14 @@ a.thread:focus-visible {
     color: var(--ink);
   }
 
-  /* A pane narrower than the tools' one line keeps them on it: back is its cap and arrow, and the keys sit closer. */
+  /*
+   * A pane narrower than the tools' one line: back is its cap and arrow, and the keys sit closer.
+   * Where they still don't fit, they wrap among themselves past the seam, back beside them.
+   */
   @container reading (max-width: 46rem) {
     .reading-tools {
+      flex-wrap: nowrap;
+      align-items: flex-start;
       gap: var(--space-2);
     }
 
@@ -3059,6 +3074,8 @@ a.thread:focus-visible {
     }
 
     .reading-tools .reading-actions {
+      flex: 1 1 auto;
+      min-width: 0;
       gap: 0;
       padding-left: var(--space-1);
     }
@@ -3584,6 +3601,8 @@ a.thread:focus-visible {
 
 .compose-from-choice select {
   max-width: 28rem;
+  /* Chromium sets a select's text in from its edge, so it pulls back level with To and Subject. */
+  margin-left: -0.25rem;
 }
 
 .compose-from-choice .hint {
@@ -3613,6 +3632,13 @@ a.thread:focus-visible {
   font: 400 var(--text-proof) / 1.75 var(--mono);
   resize: vertical;
   field-sizing: content;
+}
+
+/* Where the text grows as the human writes, a grip to drag would only clutter its corner. */
+@supports (field-sizing: content) {
+  .compose .compose-body {
+    resize: none;
+  }
 }
 
 .compose-body:focus-visible {
@@ -3920,7 +3946,30 @@ input[aria-invalid="true"] {
     padding-bottom: var(--space-5);
   }
 
+  /*
+   * A letter's head keeps who wrote it beside their mark, with the message's menu at the end of
+   * that line, and when it came under them.
+   */
+  .letter-head {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+  }
+
+  .letter-head > .avatar {
+    grid-area: 1 / 1;
+  }
+
+  .letter-from {
+    grid-area: 1 / 2;
+  }
+
+  .letter-head > .letter-menu {
+    grid-area: 1 / 3;
+  }
+
   .letter-meta {
+    grid-area: 2 / 2 / 3 / 4;
     margin-left: 0;
   }
 
@@ -4253,9 +4302,9 @@ input[aria-invalid="true"] {
 .label-name {
   flex: none;
   padding: 0 var(--space-2);
-  border: 1px solid var(--rule-strong);
+  border: 1px solid var(--edge);
   border-radius: var(--radius-key);
-  font: 600 var(--text-xs) / 1.4 var(--sans);
+  font: 600 var(--text-xs) / 1.4 var(--mono);
   color: var(--ink-2);
 }
 
@@ -4266,9 +4315,9 @@ input[aria-invalid="true"] {
   align-items: center;
   gap: var(--space-1);
   padding: 0 var(--space-2) 0 var(--space-1);
-  border: 1px solid var(--rule-strong);
+  border: 1px solid var(--edge);
   border-radius: var(--radius-key);
-  font: 600 var(--text-xs) / 1.4 var(--sans);
+  font: 600 var(--text-xs) / 1.4 var(--mono);
   color: var(--ink-2);
 }
 
@@ -7438,7 +7487,8 @@ mark {
   --measure: 72ch;
 }
 
-.stream .desk-head {
+.stream .desk-head,
+.stream > :is(.label-prompt, .label-prompt-form, .notice) {
   max-width: var(--measure);
   margin-inline: auto;
 }
