@@ -2,7 +2,7 @@
 // raw message in the mail bucket, in order and unfolded, with SES's own fields above the sender's.
 import type { components } from "@duva/openapi";
 import { mailboxFor } from "./access.ts";
-import { type OperationHandler, refusal } from "./api.ts";
+import { type OperationHandler, refusal } from "./operation-handler.ts";
 import { sentPrefix } from "./infrastructure.ts";
 import { storedMessage } from "./mail.ts";
 import { headerFields } from "./mime.ts";

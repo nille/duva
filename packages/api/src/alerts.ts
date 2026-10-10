@@ -1,6 +1,6 @@
 import type { components } from "@duva/openapi";
 import { alertsPage, seeAlerts, unseenAlerts } from "./alerting.ts";
-import { jsonBody, type OperationHandler, refusal } from "./api.ts";
+import { jsonBody, type OperationHandler, refusal } from "./operation-handler.ts";
 
 export const listAlerts: OperationHandler = async (event, deployment, actor) => {
   const { agent: asked, limit: givenLimit = "100", after } = event.queryStringParameters ?? {};

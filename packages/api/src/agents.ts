@@ -1,7 +1,7 @@
 import type { components } from "@duva/openapi";
 import { waitingTasks } from "./tasks.ts";
 import { mergedInto } from "./mailbox-agents.ts";
-import { jsonBody, type OperationHandler, refusal } from "./api.ts";
+import { jsonBody, type OperationHandler, refusal } from "./operation-handler.ts";
 import { sponsorAccessAllows, sponsorAccessIn } from "./access.ts";
 import { actorNamed, alertWrites, raiseAlert } from "./alerting.ts";
 import { releaseHeldSends, withdrawPendingApprovals } from "./drafting.ts";

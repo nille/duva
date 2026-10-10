@@ -1,6 +1,6 @@
 # Coding standards
 
-What a review of a change in Duva checks. `npm run check` already enforces the mechanical rules: generated code matches `packages/openapi/openapi.yaml`, Duva's own text has no em dash, the tests pass and the code typechecks. A review covers the judgement calls below.
+What a review of a change in Duva checks. `npm run check` already enforces the mechanical rules: generated code matches `packages/openapi/openapi.yaml`, Duva's own text has no em dash, the API's modules import each other in no cycle and each `@duva/api` entry loads on its own, the tests pass and the code typechecks. A review covers the judgement calls below.
 
 ## Sources
 

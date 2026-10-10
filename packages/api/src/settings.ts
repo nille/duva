@@ -1,6 +1,6 @@
 import type { components } from "@duva/openapi";
 import { actorNamed, alertItems, limitsRead } from "./alerting.ts";
-import { jsonBody, type OperationHandler, refusal } from "./api.ts";
+import { jsonBody, type OperationHandler, refusal } from "./operation-handler.ts";
 import { threadsPastRetention } from "./erasure.ts";
 import { indexMailboxes } from "./indexing.ts";
 import { type Language, languages } from "./languages.ts";

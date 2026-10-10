@@ -1,5 +1,5 @@
 import type { components } from "@duva/openapi";
-import { jsonBody, type OperationHandler, refusal } from "./api.ts";
+import { jsonBody, type OperationHandler, refusal } from "./operation-handler.ts";
 import { isEmailAddress } from "./email-address.ts";
 import type { Deployment } from "./deployment.ts";
 import {

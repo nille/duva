@@ -6,7 +6,7 @@ import { createHash, randomBytes, randomInt } from "node:crypto";
 import { TransactionCanceledException } from "@aws-sdk/client-dynamodb";
 import { GetCommand, PutCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import type { components } from "@duva/openapi";
-import { jsonBody, type OperationHandler, refusal } from "./api.ts";
+import { jsonBody, type OperationHandler, refusal } from "./operation-handler.ts";
 import { nameIn, notSponsorsMailboxes, sponsorAccesses } from "./agents.ts";
 import type { Table } from "./deployment.ts";
 import { timeToLiveAttribute } from "./infrastructure.ts";

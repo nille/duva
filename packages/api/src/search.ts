@@ -3,7 +3,7 @@
 // so a thread erased, or whose labels or read state changed since the index caught up, is shown
 // as it is, and left out if it no longer matches.
 import type { components } from "@duva/openapi";
-import { type OperationHandler, refusal } from "./api.ts";
+import { type OperationHandler, refusal } from "./operation-handler.ts";
 import type { Deployment } from "./deployment.ts";
 import { mailboxFor } from "./access.ts";
 import { changedSinceIndexed } from "./indexing.ts";

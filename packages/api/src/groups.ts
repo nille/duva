@@ -2,7 +2,7 @@
 // so the receipt rules follow every change of addresses before it is answered, as for a mailbox's.
 import type { components } from "@duva/openapi";
 import { addressGiven, addressTaken } from "./addresses.ts";
-import { jsonBody, type OperationHandler, refusal } from "./api.ts";
+import { jsonBody, type OperationHandler, refusal } from "./operation-handler.ts";
 import { domainOf, isEmailAddress } from "./email-address.ts";
 import type { Deployment } from "./deployment.ts";
 import {

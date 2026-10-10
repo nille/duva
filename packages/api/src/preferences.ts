@@ -3,7 +3,7 @@
 // them, and they sit beside the human's actor in its partition.
 import { GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import type { components } from "@duva/openapi";
-import { jsonBody, type OperationHandler, refusal } from "./api.ts";
+import { jsonBody, type OperationHandler, refusal } from "./operation-handler.ts";
 import type { Table } from "./deployment.ts";
 import { mailboxAgentModels, type MailboxAgentModel } from "./agent-models.ts";
 import { type Human, type Mailbox, organizationSettings, type OrganizationSettings, ownedMailboxes } from "./organization.ts";

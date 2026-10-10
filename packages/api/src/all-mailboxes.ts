@@ -7,8 +7,8 @@
 // one mailbox holds as it is there. A message delivered to two of them is two copies, so two threads.
 import type { APIGatewayProxyEventV2 } from "aws-lambda";
 import type { components } from "@duva/openapi";
-import { type Ability, mailboxesReadBy, mailboxFor } from "./access.ts";
-import { jsonBody, type OperationHandler, refusal } from "./api.ts";
+import { type Ability, mailboxFor } from "./access.ts";
+import { jsonBody, type OperationHandler, refusal } from "./operation-handler.ts";
 import { getAttachment, stopSharing } from "./attachments.ts";
 import type { Deployment } from "./deployment.ts";
 import { draftsIn, findDraft } from "./drafting.ts";
@@ -33,7 +33,7 @@ import {
   trash,
   unreadWithLabel,
 } from "./mail.ts";
-import { getThread, labelMailboxThreads, markThreadsRead, markThreadsUnread, threadsGiven } from "./mailboxes.ts";
+import { getThread, labelMailboxThreads, mailboxesReadBy, markThreadsRead, markThreadsUnread, threadsGiven } from "./mailboxes.ts";
 import { type Actor, aliasDomains, findActor, isAddressOf } from "./organization.ts";
 import { newMailFromOf } from "./preferences.ts";
 import { cancelReminders, remindThreads } from "./reminders.ts";

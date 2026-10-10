@@ -1,12 +1,14 @@
-// The organization, its actors, mailboxes and addresses, and its change feed, in Duva's one table.
-// Each change to the setup is written in one transaction with its change-feed entry.
+// The organization, its actors, mailboxes, domains and addresses, and its change feed, in Duva's
+// one table. Each change to the setup is written in one transaction with its change-feed entry.
 import { randomUUID } from "node:crypto";
 import { ConditionalCheckFailedException, TransactionCanceledException } from "@aws-sdk/client-dynamodb";
 import { DeleteCommand, GetCommand, PutCommand, QueryCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import type { components } from "@duva/openapi";
 import { agentKeyHash, newAgentKey } from "./agent-keys.ts";
 import type { Humans } from "./user-pool.ts";
-import type { Table } from "./deployment.ts";
+import type { Deployment, Table } from "./deployment.ts";
+import { asciiDomain } from "./dns-records.ts";
+import { type OperationHandler, refusal } from "./operation-handler.ts";
 import { changesAfter, entryKey, type Feed, recordChanges, recordInFeeds } from "./feed.ts";
 import { defaultHarderModel, defaultMailboxAgentModel, defaultSuggestionModel, isMeasured, type MailboxAgentModel, measuredModelIds } from "./agent-models.ts";
 import { defaultSearchLanguages } from "./languages.ts";
@@ -594,6 +596,15 @@ export async function allDomains(table: Table): Promise<OrganizationDomain[]> {
     domains.push({ domain: organization.domain as string });
   }
   return domains.sort((a, b) => a.domain.localeCompare(b.domain));
+}
+
+/** The organization's domain the call's path names, or a refusal if it has none. */
+export async function domainAsked(event: Parameters<OperationHandler>[0], deployment: Deployment): Promise<OrganizationDomain | ReturnType<typeof refusal>> {
+  const given = event.pathParameters?.domain ?? "";
+  const name = asciiDomain(given);
+  const domain = (await allDomains(deployment.table)).find((each) => each.domain === name);
+  if (domain === undefined) return refusal(404, `The organization has no domain ${JSON.stringify(given)}. List its domains to find it.`);
+  return domain;
 }
 
 /** Each alias domain of the organization, with the standalone domain it mirrors. */

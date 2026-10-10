@@ -5,7 +5,7 @@
 // of their own. A mailbox agent's are those of the mailbox agents merged into it too (ADR-0033).
 import type { components } from "@duva/openapi";
 import { alertSaid, changeSaid, type MessageNamed } from "./activity-words.ts";
-import { type OperationHandler, refusal } from "./api.ts";
+import { type OperationHandler, refusal } from "./operation-handler.ts";
 import { actorNamed, alertsAbout } from "./alerting.ts";
 import type { Table } from "./deployment.ts";
 import { findDraft } from "./drafting.ts";

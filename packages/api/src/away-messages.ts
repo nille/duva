@@ -16,7 +16,7 @@ import { ConditionalCheckFailedException, TransactionCanceledException } from "@
 import type { SchedulerClient } from "@aws-sdk/client-scheduler";
 import { DeleteCommand, GetCommand, PutCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { clockValue, type components, fromClockValue } from "@duva/openapi";
-import { jsonBody, type OperationHandler, refusal } from "./api.ts";
+import { jsonBody, type OperationHandler, refusal } from "./operation-handler.ts";
 import type { Table } from "./deployment.ts";
 import { domainOf } from "./email-address.ts";
 import { recordChanges } from "./feed.ts";
@@ -25,7 +25,7 @@ import { awayMessageNoted, inbox, type StoredSummary } from "./mail.ts";
 import { buildMail, headerFields, type ParsedMail } from "./mime.ts";
 import { duva, findMailbox, type Human, mailboxesInOrder, mailboxFeed, mailboxKey, ownedMailboxes } from "./organization.ts";
 import { noTimeZone, timeZoneNamed, timeZoneOf } from "./preferences.ts";
-import { type Outbound, Refused } from "./sending.ts";
+import { type Outbound, Refused } from "./outbound.ts";
 import { timeToLiveAttribute } from "./infrastructure.ts";
 import { documents, isNew, pk, sk } from "./table.ts";
 

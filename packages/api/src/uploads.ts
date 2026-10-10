@@ -10,7 +10,7 @@
 import { randomUUID } from "node:crypto";
 import { DeleteCommand, GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 import type { components } from "@duva/openapi";
-import { jsonBody, type OperationHandler, refusal } from "./api.ts";
+import { jsonBody, type OperationHandler, refusal } from "./operation-handler.ts";
 import { mailboxFor } from "./access.ts";
 import { downloadLink } from "./attachments.ts";
 import type { Deployment } from "./deployment.ts";

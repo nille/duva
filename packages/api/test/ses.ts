@@ -7,7 +7,7 @@ import type { EmailIdentities } from "../src/identities.ts";
 import type { MailBucket } from "../src/mail-bucket.ts";
 import { BounceRefused, type Bounces } from "../src/group-mail.ts";
 import type { ReceiptRules } from "../src/receiving.ts";
-import { type Outbound, Refused } from "../src/sending.ts";
+import { type Outbound, Refused } from "../src/outbound.ts";
 import type { SuppressionList, SuppressionReason } from "../src/suppression.ts";
 
 /** The envelope SES receives a message with. */

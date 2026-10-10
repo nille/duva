@@ -2,7 +2,7 @@
 // one sign-in codes come from (ADR-0018). Each domain is an SES identity that the API creates and
 // deletes. Duva shows the DNS records each needs and checks them, but never changes anyone's DNS.
 import type { components } from "@duva/openapi";
-import { jsonBody, type OperationHandler, refusal } from "./api.ts";
+import { jsonBody, type OperationHandler, refusal } from "./operation-handler.ts";
 import type { Deployment } from "./deployment.ts";
 import { asciiDomain, dkimRecord, domainRecords, verification } from "./dns-records.ts";
 import {
@@ -10,6 +10,7 @@ import {
   allAddresses,
   allDomains,
   allMailboxes,
+  domainAsked,
   DomainTaken,
   findGroup,
   findMailbox,
@@ -72,15 +73,6 @@ async function domainView(deployment: Deployment, { domain, aliasOf, catchAll }:
       ...(found !== undefined && { found }),
     })),
   };
-}
-
-/** The organization's domain the call's path names, or a refusal if it has none. */
-export async function domainAsked(event: Parameters<OperationHandler>[0], deployment: Deployment): Promise<OrganizationDomain | ReturnType<typeof refusal>> {
-  const given = event.pathParameters?.domain ?? "";
-  const name = asciiDomain(given);
-  const domain = (await allDomains(deployment.table)).find((each) => each.domain === name);
-  if (domain === undefined) return refusal(404, `The organization has no domain ${JSON.stringify(given)}. List its domains to find it.`);
-  return domain;
 }
 
 export const addDomain: OperationHandler = async (event, deployment, actor) => {

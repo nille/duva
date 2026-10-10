@@ -16,7 +16,7 @@ import { environmentVariables } from "./infrastructure.ts";
 import { s3MailBucket } from "./mail-bucket.ts";
 import { markRoots } from "./mark-roots.ts";
 import { lambdaLogoFetcher, logoUrl } from "./sender-logos.ts";
-import { sesOutbound } from "./sending.ts";
+import { sesOutbound } from "./outbound.ts";
 import { lambdaTaskRunner } from "./tasks.ts";
 import { lambdaUnsubscriber } from "./unsubscriber.ts";
 

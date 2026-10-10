@@ -1,5 +1,5 @@
 import type { components } from "@duva/openapi";
-import type { OperationHandler } from "./api.ts";
+import type { OperationHandler } from "./operation-handler.ts";
 import { webSearchRegion } from "./web-search.ts";
 
 export const getStatus: OperationHandler = async (_event, deployment) => ({

@@ -10,7 +10,7 @@ import { type AgentAction, type RunPayload, writing } from "./agent-loop.ts";
 import type { MailboxAgentModel } from "./agent-models.ts";
 import { type AgentRuntime, monthOf, noMailboxAgent, recordingMailbox, type RunEnd, runMailboxAgent, runtimeMissing, spentIn, startRun } from "./agent-runs.ts";
 import { actorNamed } from "./alerting.ts";
-import { type OperationHandler, refusal } from "./api.ts";
+import { type OperationHandler, refusal } from "./operation-handler.ts";
 import type { Table } from "./deployment.ts";
 import { recordChanges } from "./feed.ts";
 import { mailboxAgentIn, mailboxAgentOf, turnKey, turnPrefix } from "./mailbox-agents.ts";

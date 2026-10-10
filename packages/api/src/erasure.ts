@@ -24,7 +24,7 @@ import { eraseApprovals } from "./drafting.ts";
 import { compactIndexes, type IndexQueue } from "./indexing.ts";
 import { allMailboxes, mailboxFeed, mailboxKey, type OrganizationSettings, organizationSettings, settingsUnchanged } from "./organization.ts";
 import { deliveryFor, screenedSenders, type Sender } from "./screening.ts";
-import { documents, pk, sk, type TransactItem } from "./table.ts";
+import { allItems, documents, pk, sk, type TransactItem } from "./table.ts";
 import { mailboxPrefix, type UploadsBucket } from "./uploads-bucket.ts";
 import { type LinkedEntry, storedLink, unlinkFiles } from "./linked-files.ts";
 import { forgetLearnedFrom, memoriesErasedWith } from "./memories.ts";
@@ -397,18 +397,6 @@ async function finishErasures(table: Table, { mailBucket, uploads }: Buckets, in
 
 /** The ID SES gave the message stored at the raw key, if SES received it, or none for a sent one. */
 const receivedAs = (rawKey: string): string[] => (rawKey.startsWith(inboundPrefix) ? [rawKey.slice(inboundPrefix.length)] : []);
-
-/** Every item the query finds, all its pages read. */
-export async function allItems(table: Table, query: Omit<ConstructorParameters<typeof QueryCommand>[0], "TableName">): Promise<Record<string, unknown>[]> {
-  const items: Record<string, unknown>[] = [];
-  let start: Record<string, unknown> | undefined;
-  do {
-    const page = await documents(table).send(new QueryCommand({ TableName: table.name, ConsistentRead: true, ...query, ExclusiveStartKey: start }));
-    items.push(...(page.Items ?? []));
-    start = page.LastEvaluatedKey;
-  } while (start !== undefined);
-  return items;
-}
 
 /** What invokes the eraser: its daily schedule, emptying a Trash, deleting a mailbox, or sending a sender's mail nowhere. */
 export type EraserEvent = Pick<ScheduledEvent, "time"> | { emptyTrash: TrashEmptied } | { eraseMailbox: MailboxDeleted } | { eraseSender: SenderErased };

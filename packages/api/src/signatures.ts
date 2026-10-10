@@ -8,7 +8,7 @@
 // links, never an image. Away messages are sent without drafts, so they carry none.
 import { QueryCommand } from "@aws-sdk/lib-dynamodb";
 import type { components } from "@duva/openapi";
-import { jsonBody, type OperationHandler, refusal } from "./api.ts";
+import { jsonBody, type OperationHandler, refusal } from "./operation-handler.ts";
 import { mailboxFor } from "./access.ts";
 import type { Table } from "./deployment.ts";
 import { recordChanges } from "./feed.ts";

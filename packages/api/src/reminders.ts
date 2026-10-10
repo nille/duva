@@ -4,7 +4,7 @@
 import { createHash } from "node:crypto";
 import type { SchedulerClient } from "@aws-sdk/client-scheduler";
 import { type components, presetAt, reminderPresets, soonestReminder } from "@duva/openapi";
-import { jsonBody, type OperationHandler, refusal } from "./api.ts";
+import { jsonBody, type OperationHandler, refusal } from "./operation-handler.ts";
 import { mailboxFor } from "./access.ts";
 import { scheduleOnce, type ScheduleGroup } from "./limits.ts";
 import { endReminders, setThreadsAside, threadsSetAside } from "./mail.ts";

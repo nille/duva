@@ -11,7 +11,7 @@ import { GetCommand, PutCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import type { components } from "@duva/openapi";
 import { addSpend, capRefusal, monthOf, spentIn } from "./agent-runs.ts";
 import { type SuggestionModel, suggestionCost, suggestionModels } from "./agent-models.ts";
-import { jsonBody, type OperationHandler, refusal } from "./api.ts";
+import { jsonBody, type OperationHandler, refusal } from "./operation-handler.ts";
 import type { Table } from "./deployment.ts";
 import type { MailBucket } from "./mail-bucket.ts";
 import { findMessage, screener, spam, threadSummary } from "./mail.ts";

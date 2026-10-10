@@ -39,7 +39,7 @@ import {
 import type { Deployment } from "./deployment.ts";
 import { getMessageHeaders } from "./message-headers.ts";
 import { correctMemory, forgetMemories, forgetMemory, keepMemory, listMemories } from "./memories.ts";
-import { type Actor, actorOf } from "./organization.ts";
+import { actorOf } from "./organization.ts";
 import { getDomainLogo, getMailboxLogo, removeDomainLogo, removeLogoCertificate, removeMailboxLogo, setDomainLogo, setLogoCertificate, setMailboxLogo } from "./own-logos.ts";
 import { changePreferences, getPreferences } from "./preferences.ts";
 import { suggest } from "./suggestions.ts";
@@ -52,16 +52,7 @@ import { changeOrganizationSettings, getOrganizationSettings, listMailboxAgentMo
 import { getStatus } from "./status.ts";
 import { changeDraftAttachment, completeUpload, getDraftAttachment, getUpload, removeDraftAttachment, startUpload } from "./uploads.ts";
 import { whoami } from "./whoami.ts";
-
-/**
- * Handles one operation. `actor` is the actor the authorizer resolved the call to, and is
- * undefined only for operations that need no sign-in.
- */
-export type OperationHandler = (
-  event: APIGatewayProxyEventV2,
-  deployment: Deployment,
-  actor: Actor | undefined,
-) => Promise<{ statusCode: number; body: unknown }>;
+import type { OperationHandler } from "./operation-handler.ts";
 
 export const handlers: Record<OperationId, OperationHandler> = {
   getStatus,
@@ -202,16 +193,3 @@ export function createApi(deployment: Deployment) {
     return { statusCode, headers: { "content-type": "application/json" }, body: JSON.stringify(body) };
   };
 }
-
-/** The call's JSON body, or undefined if it has none that parses. */
-export function jsonBody(event: APIGatewayProxyEventV2): Record<string, unknown> | undefined {
-  try {
-    const parsed: unknown = JSON.parse(event.isBase64Encoded ? Buffer.from(event.body ?? "", "base64").toString() : (event.body ?? ""));
-    return typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-/** An answer that the call can't be done, with what to do about it. */
-export const refusal = (statusCode: number, message: string) => ({ statusCode, body: { message } });

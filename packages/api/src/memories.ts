@@ -9,9 +9,9 @@ import { ConditionalCheckFailedException, TransactionCanceledException } from "@
 import { GetCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import type { components } from "@duva/openapi";
 import { sponsorAccessIn } from "./access.ts";
-import { jsonBody, type OperationHandler, refusal } from "./api.ts";
+import { jsonBody, type OperationHandler, refusal } from "./operation-handler.ts";
 import type { Table } from "./deployment.ts";
-import { allItems } from "./erasure.ts";
+import { allItems } from "./table.ts";
 import { keys, screener, spam, threadSummary } from "./mail.ts";
 import { actorKey, type Actor, agentSettings, mailboxKey, ownedMailboxes } from "./organization.ts";
 import { learnsFromMail } from "./preferences.ts";

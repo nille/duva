@@ -4,7 +4,7 @@
 // are listed by setup, once, from the change feeds that recorded them.
 import { GetCommand, PutCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
 import type { components } from "@duva/openapi";
-import { type OperationHandler, refusal } from "./api.ts";
+import { type OperationHandler, refusal } from "./operation-handler.ts";
 import type { Table } from "./deployment.ts";
 import { type Decision, decisionKey, decisionPrefix, listDecision } from "./decisions.ts";
 import { asAsked, findDraft, storedApproval, undoable } from "./drafting.ts";

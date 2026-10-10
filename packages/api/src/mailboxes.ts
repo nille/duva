@@ -1,8 +1,11 @@
+// Mailboxes and what is done in one: admins create them, and their owners, and the agents their
+// sponsor access lets (ADR-0015), list them and their changes, read, mark and label their threads,
+// keep their labels and empty their Trash.
 import type { components } from "@duva/openapi";
-import { jsonBody, type OperationHandler, refusal } from "./api.ts";
-import { mailboxesReadBy, mailboxFor } from "./access.ts";
+import { jsonBody, type OperationHandler, refusal } from "./operation-handler.ts";
+import { mailboxFor, sponsorAccessIn } from "./access.ts";
 import type { Deployment } from "./deployment.ts";
-import { AddressTaken, addMailbox, allMailboxes, findActor, findMailbox, isAdmin } from "./organization.ts";
+import { type Actor, AddressTaken, addMailbox, agentSettings, allMailboxes, findActor, findMailbox, isAdmin, ownedMailboxes } from "./organization.ts";
 import { addressGiven, addressTaken } from "./addresses.ts";
 import { builtInLabels, changeLabelPrompt, createLabel, deleteLabel, hasLabel, labelWithId, listLabels, longestPrompt, NameTaken, promptedBuiltIns, renameLabel } from "./labels.ts";
 import { noMailboxAgent } from "./agent-runs.ts";
@@ -13,6 +16,23 @@ import { giveMailboxAgent, mailboxAgentIn } from "./mailbox-agents.ts";
 import { threadTasks } from "./tasks.ts";
 import { syncRecipients } from "./receiving.ts";
 import { groupsSentAsBy } from "./group-mail.ts";
+
+/**
+ * The mailboxes the actor can read: a human's own, or an agent's sponsor's that its sponsor
+ * access covers, with that access. Each lists the groups its owner can send as.
+ */
+export async function mailboxesReadBy(deployment: Deployment, actor: Actor): Promise<components["schemas"]["ListedMailbox"][]> {
+  const owned = async (owner: string) => {
+    const groups = await groupsSentAsBy(deployment.table, owner);
+    return (await ownedMailboxes(deployment.table, owner)).map((mailbox) => ({ ...mailbox, groups }));
+  };
+  if (actor.kind === "human") return owned(actor.id);
+  const { settings } = await agentSettings(deployment.table, actor.id);
+  return (await owned(actor.sponsor)).flatMap((mailbox) => {
+    const sponsorAccess = sponsorAccessIn(settings, mailbox.id);
+    return sponsorAccess === "none" ? [] : [{ ...mailbox, sponsorAccess }];
+  });
+}
 
 export const createMailbox: OperationHandler = async (event, deployment, actor) => {
   if (!isAdmin(actor)) return refusal(403, "Only admins can create mailboxes. Ask an admin to create one.");

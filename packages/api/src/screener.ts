@@ -1,5 +1,5 @@
 import { type components, isPublicMailProvider } from "@duva/openapi";
-import { jsonBody, type OperationHandler, refusal } from "./api.ts";
+import { jsonBody, type OperationHandler, refusal } from "./operation-handler.ts";
 import { mailboxFor } from "./access.ts";
 import { isEmailAddress } from "./email-address.ts";
 import { senderErasure } from "./erasure.ts";

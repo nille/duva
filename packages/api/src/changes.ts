@@ -1,5 +1,5 @@
 import type { components } from "@duva/openapi";
-import { type OperationHandler, refusal } from "./api.ts";
+import { type OperationHandler, refusal } from "./operation-handler.ts";
 import { isAdmin, organizationChanges } from "./organization.ts";
 
 export const listOrganizationChanges: OperationHandler = async (event, deployment, actor) => {

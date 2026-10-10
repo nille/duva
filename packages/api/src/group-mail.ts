@@ -16,7 +16,7 @@ import type { MailBucket } from "./mail-bucket.ts";
 import { type ParsedMail, parseMail, resentMail } from "./mime.ts";
 import { sentFromMailbox, storedMessage, storeGroupCopy } from "./mail.ts";
 import { addressTarget, aliasDomains, allDomains, allGroups, findActor, findMailbox, type Group, isAddressOf, type Mailbox, ownedMailboxes } from "./organization.ts";
-import { type Outbound, Refused } from "./sending.ts";
+import { type Outbound, Refused } from "./outbound.ts";
 import { pk, sk, documents, isNew } from "./table.ts";
 
 type EmailAddress = components["schemas"]["EmailAddress"];

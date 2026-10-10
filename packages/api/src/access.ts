@@ -1,11 +1,9 @@
 // Who may do what in a mailbox. Every mailbox operation asks this one check, which answers from
 // two relations (ADR-0015, ADR-0030): the owner, a human, and the agent in its sponsor's mailboxes
 // its sponsor access covers. No other actor reaches a mailbox.
-import { type OperationHandler, refusal } from "./api.ts";
+import { type OperationHandler, refusal } from "./operation-handler.ts";
 import type { Deployment } from "./deployment.ts";
-import type { components } from "@duva/openapi";
-import { groupsSentAsBy } from "./group-mail.ts";
-import { type Actor, type AgentSettings, agentSettings, findMailbox, type Mailbox, ownedMailboxes } from "./organization.ts";
+import { type Actor, type AgentSettings, agentSettings, findMailbox, type Mailbox } from "./organization.ts";
 
 /** What an operation does in a mailbox, which the actor needs to be allowed. */
 export type Ability = "read" | "organize" | "trash" | "draft" | "send" | "emptyTrash" | "erase" | "switchScreener";
@@ -63,21 +61,4 @@ export async function mailboxFor(
     return refusal(403, `Your sponsor access is ${sponsorAccess}, which doesn't let you ${words}. Ask your sponsor for ${access} access.`);
   }
   return refusal(403, "Only the mailbox's owner can read it, and the agents its owner gives sponsor access.");
-}
-
-/**
- * The mailboxes the actor can read: a human's own, or an agent's sponsor's that its sponsor
- * access covers, with that access. Each lists the groups its owner can send as.
- */
-export async function mailboxesReadBy(deployment: Deployment, actor: Actor): Promise<components["schemas"]["ListedMailbox"][]> {
-  const owned = async (owner: string) => {
-    const groups = await groupsSentAsBy(deployment.table, owner);
-    return (await ownedMailboxes(deployment.table, owner)).map((mailbox) => ({ ...mailbox, groups }));
-  };
-  if (actor.kind === "human") return owned(actor.id);
-  const { settings } = await agentSettings(deployment.table, actor.id);
-  return (await owned(actor.sponsor)).flatMap((mailbox) => {
-    const sponsorAccess = sponsorAccessIn(settings, mailbox.id);
-    return sponsorAccess === "none" ? [] : [{ ...mailbox, sponsorAccess }];
-  });
 }

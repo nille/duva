@@ -2,7 +2,7 @@
 // receipt rules follow every change before it is answered, so mail to a removed address is refused
 // from then on.
 import type { components } from "@duva/openapi";
-import { jsonBody, type OperationHandler, refusal } from "./api.ts";
+import { jsonBody, type OperationHandler, refusal } from "./operation-handler.ts";
 import type { Deployment } from "./deployment.ts";
 import {
   addAddress as addStoredAddress,
