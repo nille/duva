@@ -4,8 +4,10 @@
 // click and say how it went. It has none of Duva's operations, so a page that tells it to do
 // something else reaches nothing.
 import { costOf } from "./agent-models.ts";
-import { type ContentBlock, merged, type Model, type ModelMessage, type RunEvent, type RunPayload, type ToolSpec } from "./agent-loop.ts";
+import { AfterModelCallEvent, AfterToolsEvent, BeforeModelCallEvent, BeforeToolsEvent, InvokeModelStage, ModelStreamUpdateEvent } from "@strands-agents/sdk";
+import type { RunEvent, RunPayload, ToolSpec } from "./agent-loop.ts";
 import { type Browser, type BrowserSession, describePage, type PageElement, type PageView } from "./browser.ts";
+import { type Models, saying, strandsAgent } from "./strands.ts";
 
 // The most model calls one attempt makes, and the most clicks, so the agent follows a few steps at most.
 const maxSteps = 10;
@@ -52,7 +54,7 @@ function systemPrompt(payload: RunPayload, address: string): string {
 }
 
 /** Unsubscribes on the page the payload names, saying what it does as it goes, and ends with its verdict. */
-export async function* runUnsubscribe(payload: RunPayload, { model, browser }: { model: Model; browser: Browser | undefined }): AsyncGenerator<RunEvent> {
+export async function* runUnsubscribe(payload: RunPayload, { models, browser }: { models: Models; browser: Browser | undefined }): AsyncGenerator<RunEvent> {
   const { url, address } = payload.unsubscribe!;
   const verdict = (unsubscribed: boolean, detail: string): RunEvent => ({ type: "verdict", unsubscribed, detail });
   if (browser === undefined) {
@@ -70,64 +72,72 @@ export async function* runUnsubscribe(payload: RunPayload, { model, browser }: {
       yield verdict(false, "The page couldn't be opened.");
       return yield { type: "end", outcome: "answered" };
     }
-    const messages: ModelMessage[] = [{ role: "user", content: [{ text: `Here is the sender's page:\n${describePage(page)}` }] }];
     const system = systemPrompt(payload, address);
+    const { model, region } = payload.model;
+    let calls = 0;
     let spent = 0;
     let clicks = 0;
-    for (let step = 0; step < maxSteps; step++) {
-      const content: ContentBlock[] = [];
-      let text = "";
-      for await (const event of model({ model: payload.model.model, system, messages: merged(messages), tools: unsubscribeTools })) {
-        if ("text" in event) text += event.text;
-        else if ("toolUse" in event) content.push(event);
-        else {
-          spent += costOf(event.usage, payload.model.model, payload.model.region);
-          yield { type: "usage", model: payload.model.model, ...event.usage };
-        }
+    let text = "";
+    let ended = false;
+    const said: RunEvent[] = [];
+    const end = (outcome: "answered" | "capReached", ...events: RunEvent[]) => {
+      said.push(...events, { type: "end", outcome });
+      ended = true;
+    };
+    const act = async (name: string, input: Record<string, unknown>) => {
+      const index = Number(input.element);
+      const done = await (async (): Promise<{ result: string; ok: boolean }> => {
+        const target = page.elements.find((each) => each.index === index);
+        if (target === undefined) return { result: `The page has no element ${input.element}.`, ok: false };
+        if (name === "fillAddress") {
+          if (!takesAddress(target)) return { result: `Element ${index} isn't an email address field, and the address goes in nothing else.`, ok: false };
+          page = await session!.fill(index, address);
+        } else if (name === "choose") {
+          if (!["checkbox", "radio", "select"].includes(target.kind)) return { result: `Element ${index} isn't a checkbox, a radio button or a select.`, ok: false };
+          page = await session!.choose(index, typeof input.option === "string" ? input.option : undefined);
+        } else if (name === "click") {
+          if (target.kind !== "button" && target.kind !== "link") return { result: `Element ${index} isn't a button or a link.`, ok: false };
+          if (++clicks > maxClicks) return { result: "You took too many steps. Finish now.", ok: false };
+          page = await session!.click(index);
+        } else return { result: `There is no tool ${name}.`, ok: false };
+        return { result: describePage(page), ok: true };
+      })().catch((error: unknown) => {
+        console.error(error);
+        return { result: "The browser failed at that.", ok: false };
+      });
+      said.push({ type: "action", action: { operation: name, what: `${name} ${index}`, ok: done.ok } });
+      return done;
+    };
+    const agent = strandsAgent({ model: models(model), messages: [{ role: "user", content: [{ text: `Here is the sender's page:\n${describePage(page)}` }] }], tools: unsubscribeTools, run: act });
+    agent.addMiddleware(InvokeModelStage.Input, async (context) => ({ ...context, systemPrompt: system }));
+    agent.addHook(BeforeModelCallEvent, (event) => {
+      if (calls++ < maxSteps) return void (text = "");
+      end("answered", verdict(false, "It took more steps than an unsubscribe should."));
+      event.cancel = true;
+    });
+    agent.addHook(ModelStreamUpdateEvent, ({ event }) => {
+      if (event.type === "modelContentBlockDeltaEvent" && event.delta.type === "textDelta") text += event.delta.text;
+      else if (event.type === "modelMetadataEvent" && event.usage !== undefined) {
+        const { inputTokens, outputTokens } = event.usage;
+        spent += costOf({ inputTokens, outputTokens }, model, region);
+        said.push({ type: "usage", model, inputTokens, outputTokens });
       }
-      if (text !== "") content.unshift({ text });
-      if (content.length === 0) content.push({ text: "…" });
-      messages.push({ role: "assistant", content });
-      const uses = content.flatMap((block) => ("toolUse" in block ? [block.toolUse] : []));
-      const finished = uses.find(({ name }) => name === "finish");
-      if (finished !== undefined) {
-        yield verdict(finished.input.unsubscribed === true, String(finished.input.detail ?? "").slice(0, 500));
-        return yield { type: "end", outcome: "answered" };
-      }
-      if (uses.length === 0) {
-        yield verdict(false, text.trim().slice(0, 500) || "The agent stopped without saying how it went.");
-        return yield { type: "end", outcome: "answered" };
-      }
-      if (spent >= payload.budget) return yield { type: "end", outcome: "capReached" };
-      const results: ContentBlock[] = [];
-      for (const use of uses) {
-        const index = Number(use.input.element);
-        const done = await (async (): Promise<{ result: string; ok: boolean }> => {
-          const target = page.elements.find((each) => each.index === index);
-          if (target === undefined) return { result: `The page has no element ${use.input.element}.`, ok: false };
-          if (use.name === "fillAddress") {
-            if (!takesAddress(target)) return { result: `Element ${index} isn't an email address field, and the address goes in nothing else.`, ok: false };
-            page = await session!.fill(index, address);
-          } else if (use.name === "choose") {
-            if (!["checkbox", "radio", "select"].includes(target.kind)) return { result: `Element ${index} isn't a checkbox, a radio button or a select.`, ok: false };
-            page = await session!.choose(index, typeof use.input.option === "string" ? use.input.option : undefined);
-          } else if (use.name === "click") {
-            if (target.kind !== "button" && target.kind !== "link") return { result: `Element ${index} isn't a button or a link.`, ok: false };
-            if (++clicks > maxClicks) return { result: "You took too many steps. Finish now.", ok: false };
-            page = await session!.click(index);
-          } else return { result: `There is no tool ${use.name}.`, ok: false };
-          return { result: describePage(page), ok: true };
-        })().catch((error: unknown) => {
-          console.error(error);
-          return { result: "The browser failed at that.", ok: false };
-        });
-        yield { type: "action", action: { operation: use.name, what: `${use.name} ${index}`, ok: done.ok } };
-        results.push({ toolResult: { toolUseId: use.toolUseId, content: [{ text: done.result }], status: done.ok ? "success" : "error" } });
-      }
-      messages.push({ role: "user", content: results });
-    }
-    yield verdict(false, "It took more steps than an unsubscribe should.");
-    yield { type: "end", outcome: "answered" };
+    });
+    agent.addHook(AfterModelCallEvent, ({ stopData }) => {
+      if (ended || stopData === undefined || stopData.stopReason === "toolUse") return;
+      end("answered", verdict(false, text.trim().slice(0, 500) || "The agent stopped without saying how it went."));
+    });
+    agent.addHook(BeforeToolsEvent, (event) => {
+      const finished = event.message.content.find((block) => block.type === "toolUseBlock" && block.name === "finish");
+      const input = (finished?.type === "toolUseBlock" ? finished.input : undefined) as { unsubscribed?: unknown; detail?: unknown } | undefined;
+      if (input !== undefined) end("answered", verdict(input.unsubscribed === true, String(input.detail ?? "").slice(0, 500)));
+      else if (spent >= payload.budget) end("capReached");
+      event.cancel = ended;
+    });
+    agent.addHook(AfterToolsEvent, (event) => {
+      event.endTurn = ended;
+    });
+    yield* saying(agent, said);
   } finally {
     await session?.close().catch((error: unknown) => console.error(error));
   }

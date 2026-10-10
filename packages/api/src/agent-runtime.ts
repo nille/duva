@@ -2,10 +2,11 @@
 // contract asks, with GET /ping and POST /invocations. Each invocation is one run of a mailbox
 // agent, whose events it streams back as lines of JSON while the run goes.
 import { createServer, type Server } from "node:http";
-import { type Decider, type Model, type RunPayload, runAgent } from "./agent-loop.ts";
+import { type Decider, type RunPayload, runAgent } from "./agent-loop.ts";
 import { agentCoreBrowser } from "./agentcore-browser.ts";
-import { bedrockDecider, bedrockModel } from "./bedrock-model.ts";
+import { bedrockDecider, bedrockModels } from "./bedrock-model.ts";
 import type { Browser } from "./browser.ts";
+import type { Models } from "./strands.ts";
 import { environmentVariables } from "./infrastructure.ts";
 
 /**
@@ -13,7 +14,7 @@ import { environmentVariables } from "./infrastructure.ts";
  * calls them, and unsubscribing in the browser, AgentCore Browser's that the stack names unless given.
  */
 export function createRuntimeServer(
-  modelFor: (payload: RunPayload) => Model = ({ model }) => bedrockModel({ region: model.region }),
+  modelsFor: (payload: RunPayload) => Models = ({ model }) => bedrockModels({ region: model.region }),
   browser: Browser | undefined = agentCoreBrowser(process.env[environmentVariables.unsubscribeBrowser] ?? ""),
   deciderFor: (payload: RunPayload) => Decider = ({ model }) => bedrockDecider({ region: model.region }),
 ): Server {
@@ -31,7 +32,7 @@ export function createRuntimeServer(
     outgoing.writeHead(200, { "content-type": "application/x-ndjson" });
     try {
       const payload = JSON.parse(Buffer.concat(chunks).toString()) as RunPayload;
-      for await (const event of runAgent(payload, { model: modelFor(payload), decider: deciderFor(payload), browser })) outgoing.write(`${JSON.stringify(event)}\n`);
+      for await (const event of runAgent(payload, { models: modelsFor(payload), decider: deciderFor(payload), browser })) outgoing.write(`${JSON.stringify(event)}\n`);
     } catch (error) {
       console.error(error);
       outgoing.write(`${JSON.stringify({ type: "end", outcome: "failed" })}\n`);

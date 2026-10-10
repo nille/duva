@@ -1,12 +1,16 @@
-// The mailbox agent's models on Bedrock, through ConverseStream, each called from the region and
-// through the inference profile that suit the deployment's region (ADR-0035, docs/aws.md), and the
-// decider, Nova Micro, which answers through a tool it must use (#132).
-import { BedrockRuntimeClient, ConverseCommand, ConverseStreamCommand, type Message, type Tool } from "@aws-sdk/client-bedrock-runtime";
+// The mailbox agent's models on Bedrock, through Strands' Bedrock provider, which calls
+// ConverseStream, each model from the region and through the inference profile that suit the
+// deployment's region (ADR-0035, docs/aws.md), and the decider, Nova Micro, which answers through a
+// tool it must use (#132).
+import { BedrockRuntimeClient, ConverseCommand, type Tool } from "@aws-sdk/client-bedrock-runtime";
+import { BedrockModel } from "@strands-agents/sdk";
 import type { Decider, Model } from "./agent-loop.ts";
 import { callOf, deciderModel, deciderProfile, inferenceProfileId, modelRegion } from "./agent-models.ts";
+import { asModel, type Models } from "./strands.ts";
 
-// Clients by region, so a runtime's sessions share their connections.
+// Clients and models by region, so a runtime's sessions share their connections.
 const clients = new Map<string, BedrockRuntimeClient>();
+const models = new Map<string, BedrockModel>();
 
 const clientIn = (region: string) => {
   const client = clients.get(region) ?? new BedrockRuntimeClient({ region });
@@ -14,40 +18,23 @@ const clientIn = (region: string) => {
   return client;
 };
 
-/** The models, each called as a deployment in the region calls it. */
-export function bedrockModel({ region }: { region: string }): Model {
-  return async function* ({ model, system, messages, tools }) {
+/**
+ * The models, each called as a deployment in the region calls it. Each tool result says whether Duva
+ * refused the call, for every model, as Duva's own loop told them before Strands (#148).
+ */
+export function bedrockModels({ region }: { region: string }): Models {
+  return (model) => {
     const call = callOf(model, region);
-    const { stream } = await clientIn(call.region).send(
-      new ConverseStreamCommand({
-        modelId: inferenceProfileId(model, call.profile),
-        system: [{ text: system }],
-        messages: messages as Message[],
-        toolConfig: { tools: tools.map((tool) => ({ toolSpec: { ...tool, inputSchema: { json: tool.inputSchema.json as never } } }) satisfies Tool) },
-        inferenceConfig: { maxTokens: 4096 },
-      }),
-    );
-    // A tool's input streams as JSON in pieces, complete at its block's stop.
-    const uses = new Map<number, { toolUseId: string; name: string; input: string }>();
-    for await (const event of stream ?? []) {
-      if (event.contentBlockStart?.start?.toolUse !== undefined) {
-        const { toolUseId = "", name = "" } = event.contentBlockStart.start.toolUse;
-        uses.set(event.contentBlockStart.contentBlockIndex ?? 0, { toolUseId, name, input: "" });
-      } else if (event.contentBlockDelta !== undefined) {
-        const { delta, contentBlockIndex = 0 } = event.contentBlockDelta;
-        if (delta?.text !== undefined) yield { text: delta.text };
-        else if (delta?.toolUse?.input !== undefined) uses.get(contentBlockIndex)!.input += delta.toolUse.input;
-      } else if (event.contentBlockStop !== undefined) {
-        const use = uses.get(event.contentBlockStop.contentBlockIndex ?? 0);
-        if (use === undefined) continue;
-        uses.delete(event.contentBlockStop.contentBlockIndex ?? 0);
-        yield { toolUse: { toolUseId: use.toolUseId, name: use.name, input: use.input === "" ? {} : (JSON.parse(use.input) as Record<string, unknown>) } };
-      } else if (event.metadata?.usage !== undefined) {
-        yield { usage: { inputTokens: event.metadata.usage.inputTokens ?? 0, outputTokens: event.metadata.usage.outputTokens ?? 0 } };
-      }
-    }
+    const modelId = inferenceProfileId(model, call.profile);
+    const key = `${call.region} ${modelId}`;
+    const bedrock = models.get(key) ?? new BedrockModel({ region: call.region, modelId, maxTokens: 4096, includeToolResultStatus: true });
+    models.set(key, bedrock);
+    return bedrock;
   };
 }
+
+/** The models, each called as a deployment in the region calls it, as Duva's `Model`, which the evaluation records through. */
+export const bedrockModel = (where: { region: string }): Model => asModel(bedrockModels(where));
 
 /** What the decider is told: when a turn is simple enough for the everyday model, and when it is complex. */
 const deciding =

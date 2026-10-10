@@ -21,7 +21,7 @@ test("the defaults grade and hand over each task's first run as when it was reco
     "whether an agent is paused, after an old alert": [true, "none"],
     "draft a reply to Grace": [true, "writing"],
     "svara Erik och skicka": [true, "writing"],
-    "archive the newsletters": [true, "none"],
+    "archive the newsletters": [false, "none"],
     "label the receipts": [true, "none"],
     "note a Swedish receipt's amount and date": [true, "none"],
     "note an English receipt's amount and date": [true, "none"],
@@ -59,7 +59,7 @@ test.runIf(process.env.DUVA_EVALUATE === "1")("Coo's tasks, by setup and kind of
 });
 
 // What the recordings measured, as docs/research/coo-models.md reports them.
-const ROUTING = { handovers: { "Nova routed": { answerCheck: 6, decided: 12, none: 23, stepBudget: 4 }, Defaults: { answerCheck: 1, none: 24, writing: 5 } }, decider: 0.45 };
+const ROUTING = { handovers: { "Nova routed": { answerCheck: 6, decided: 12, none: 23, stepBudget: 4 }, Defaults: { none: 24, writing: 6 } }, decider: 0.45 };
 
 const TABLE = {
   "Nova Lite": {
@@ -117,12 +117,12 @@ const TABLE = {
     month: 16.65,
   },
   Defaults: {
-    all: { passed: 1, failedCalls: 0.1, turns: 2.8, p50: 3.1, p95: 10, cents: 2.97, handedOver: 0.2 },
-    conversation: { passed: 1, failedCalls: 0, turns: 2, p50: 2.8, p95: 3.6, cents: 1.53, handedOver: 0 },
-    drafting: { passed: 1, failedCalls: 0, turns: 4.5, p50: 6.6, p95: 8.8, cents: 6.99, handedOver: 1 },
-    triage: { passed: 1, failedCalls: 0, turns: 4.8, p50: 6.9, p95: 9.7, cents: 4.27, handedOver: 0 },
-    "label task": { passed: 1, failedCalls: 0, turns: 1.3, p50: 1.7, p95: 4.1, cents: 1.08, handedOver: 0 },
-    refusal: { passed: 1, failedCalls: 0.8, turns: 4, p50: 3.4, p95: 10.8, cents: 5.04, handedOver: 0.5 },
-    month: 13.28,
+    all: { passed: 0.97, failedCalls: 0, turns: 2.7, p50: 2.8, p95: 9.8, cents: 3.18, handedOver: 0.2 },
+    conversation: { passed: 1, failedCalls: 0, turns: 2, p50: 2.6, p95: 4.1, cents: 1.61, handedOver: 0 },
+    drafting: { passed: 1, failedCalls: 0, turns: 5.3, p50: 7.3, p95: 9.8, cents: 8.71, handedOver: 1 },
+    triage: { passed: 0.75, failedCalls: 0, turns: 3.5, p50: 6, p95: 7.7, cents: 3.16, handedOver: 0 },
+    "label task": { passed: 1, failedCalls: 0, turns: 1.3, p50: 1.5, p95: 3, cents: 1.13, handedOver: 0 },
+    refusal: { passed: 1, failedCalls: 0.3, turns: 4, p50: 2.7, p95: 9.9, cents: 5.68, handedOver: 0.5 },
+    month: 13.99,
   },
 };

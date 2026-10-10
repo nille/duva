@@ -42,6 +42,7 @@ import { actorKey, addHumanToOrganization, addKeylessAgent, addMailbox, agentSet
 import type { SendEvent } from "../src/limits.ts";
 import { setUpDeliveries, setUpScreeners } from "../src/screening.ts";
 import { type Decider, type Model, runAgent } from "../src/agent-loop.ts";
+import { standIn } from "../src/strands.ts";
 import { type AgentRuntime, type ConversationEvent, createConversation, type PreparedTurn } from "../src/conversation.ts";
 import { createTaskGiver, createTaskRunner, type TaskRef, type TaskRunner, type TaskRunnerEvent } from "../src/tasks.ts";
 import { createUnsubscribeRunner } from "../src/unsubscribe-runs.ts";
@@ -544,7 +545,7 @@ export async function startDuva({
   // It unsubscribes in AgentCore Browser, a stand-in here over the stand-in internet.
   const browser = standInBrowser(internet.network);
   const runtime: AgentRuntime = async function* (payload) {
-    for await (const event of runAgent(JSON.parse(JSON.stringify(payload)), { model, decider, fetch: api, browser: browser.start })) yield JSON.parse(JSON.stringify(event));
+    for await (const event of runAgent(JSON.parse(JSON.stringify(payload)), { models: standIn(model), decider, fetch: api, browser: browser.start })) yield JSON.parse(JSON.stringify(event));
   };
   // The conversation Lambda, which runs each turn on AgentCore.
   const conversation = createConversation({ table, region, apiUrl: inProcess, fetch: api, runtime, embedder: titan });

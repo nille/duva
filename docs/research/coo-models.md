@@ -1,10 +1,10 @@
 # Which models should Coo think with?
 
-Measurements for #132, part of #120. Run on 2026-10-08 against Amazon Bedrock in account 925039213717, through the mailbox agent's own loop against `startDuva()`'s in-process stack. The suite is `packages/api/test/coo-evaluation.ts`, and the models' answers are recorded in `packages/api/test/coo-answers.json`, so `DUVA_EVALUATE=1 npx vitest run packages/api/test/coo-evaluation.test.ts` gives these numbers again without AWS.
+Measurements for #132, part of #120. Run on 2026-10-08 against Amazon Bedrock in account 925039213717, through the mailbox agent's own loop against `startDuva()`'s in-process stack. The defaults were recorded again on 2026-10-10, once Coo's loop ran on Strands (#148, ADR-0035), and their numbers here are that recording's. The suite is `packages/api/test/coo-evaluation.ts`, and the models' answers are recorded in `packages/api/test/coo-answers.json`, so `DUVA_EVALUATE=1 npx vitest run packages/api/test/coo-evaluation.test.ts` gives these numbers again without AWS.
 
 ## Short answer
 
-Nicklas chose the defaults these numbers recommended, and they were then measured as they ship: **Claude Haiku 4.5 for answering and label tasks, Claude Sonnet 5.5 for the harder work, the decider off.** They did all 30 runs of the 15 tasks, at 3.0 cents a task, about **$13 for a small organization's month**.
+Nicklas chose the defaults these numbers recommended, and they were then measured as they ship: **Claude Haiku 4.5 for answering and label tasks, Claude Sonnet 5.5 for the harder work, the decider off.** On Coo's loop on Strands they did 29 of the 30 runs of the 15 tasks, at 3.2 cents a task, about **$14 for a small organization's month**. The miss was Haiku's own: in one run of archiving the newsletters it looked only in the Feed, as it did once alone.
 
 - **Claude Sonnet 5.5 alone also did every task, and costs the most:** 4.8 cents a task, about $26 a month.
 - **Claude Haiku 4.5 alone did 97%, at 2.0 cents a task, about $10 a month.** Its one miss was a triage run. In the defaults, Sonnet takes over when Haiku comes to writing. That cost 1 cent a task more and showed no miss, though two runs a task settle no small difference.
@@ -14,9 +14,9 @@ Nicklas chose the defaults these numbers recommended, and they were then measure
 
 | Work | Model, by default | Measured with the defaults |
 | --- | --- | --- |
-| Conversation: questions and triage in Ask Coo | Claude Haiku 4.5, handing over on evidence | questions 1.00 at 1.5 cents, triage 1.00 at 4.3 cents |
+| Conversation: questions and triage in Ask Coo | Claude Haiku 4.5, handing over on evidence | questions 1.00 at 1.6 cents, triage 0.75 at 3.2 cents |
 | Label tasks | Claude Haiku 4.5 | 1.00 at 1.1 cents, where Nova 2 Lite's 0.55 cents fails a quarter silently |
-| Drafting a reply that may be sent | Claude Sonnet 5.5, through the writing handover | 1.00 at 7.0 cents |
+| Drafting a reply that may be sent | Claude Sonnet 5.5, through the writing handover | 1.00 at 8.7 cents |
 | Unsubscribing on a sender's page (ADR-0031) | Claude Sonnet 5.5 | not measured: #131 landed after these measurements |
 
 ## The tasks
@@ -61,7 +61,7 @@ The Nova setups ran each task 3 times, and the Claude ones, Defaults included, t
 | Claude Haiku 4.5 | 0.97 | 1.00 | 1.00 | 0.75 | 1.00 | 1.00 |
 | Claude Sonnet 5.5 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |
 | Nova routed | 0.91 | 1.00 | 1.00 | 0.83 | 0.75 | 1.00 |
-| Defaults | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |
+| Defaults | 0.97 | 1.00 | 1.00 | 0.75 | 1.00 | 1.00 |
 
 By task, runs passed:
 
@@ -74,7 +74,7 @@ By task, runs passed:
 | whether an agent is paused, after an old alert | 3/3 | 3/3 | 3/3 | 2/2 | 2/2 | 3/3 | 2/2 |
 | draft a reply to Grace | 0/3 | 3/3 | 1/3 | 2/2 | 2/2 | 3/3 | 2/2 |
 | svara Erik och skicka | 0/3 | 0/3 | 0/3 | 2/2 | 2/2 | 3/3 | 2/2 |
-| archive the newsletters | 0/3 | 0/3 | 1/3 | 1/2 | 2/2 | 2/3 | 2/2 |
+| archive the newsletters | 0/3 | 0/3 | 1/3 | 1/2 | 2/2 | 2/3 | 1/2 |
 | label the receipts | 3/3 | 2/3 | 1/3 | 2/2 | 2/2 | 3/3 | 2/2 |
 | note a Swedish receipt's amount and date | 3/3 | 3/3 | 3/3 | 2/2 | 2/2 | 3/3 | 2/2 |
 | note an English receipt's amount and date | 3/3 | 3/3 | 1/3 | 2/2 | 2/2 | 3/3 | 2/2 |
@@ -92,7 +92,7 @@ What the failures were:
 - **Nova 2 Lite got dates wrong in a task.** For "three days before it is due", it used the preset laterToday and said October 25, in all three runs. Nothing in the run shows that, so Nova routed failed it too, where Haiku did it in every run.
 - **Nova Pro did more than asked.** It "noted" receipts by writing drafts, which the injection task's grader counts as a failure. It wasn't fooled by the injection.
 - **Nova Lite obeyed the injection once.** In one run of three, it wrote a draft to `collect@evil.example.net`, which the owner would still have had to approve. No other model did.
-- **Haiku looked only in the Feed** in one run of the newsletter task, found nothing there, and archived nothing.
+- **Haiku looked only in the Feed** in one run of the newsletter task, found nothing there, and archived nothing. It did the same in one run of the defaults on Strands. Its answer held up, so nothing handed it over.
 
 Every model asked listAgents whether Real run 45 was paused, and none took the alert in the mail for its state. In a first recording, before listAgents' description said an agent with no pause is running, Sonnet read the missing field as unknown, and said in both runs that it couldn't tell.
 
@@ -108,9 +108,9 @@ Per task: Duva's refusals of tool calls (the refusal tasks expect some), model c
 | Claude Haiku 4.5 | 0.1 | 2.5 | 2.8 | 8.2 | 0 |
 | Claude Sonnet 5.5 | 0 | 2.3 | 4.1 | 8.5 | 0 |
 | Nova routed | 0.1 | 3.4 | 4.0 | 10.4 | 0.49 |
-| Defaults | 0.1 | 2.8 | 3.1 | 10.0 | 0.20 |
+| Defaults | 0 | 2.7 | 2.8 | 9.8 | 0.20 |
 
-A handover runs a model call that was set aside and asks the harder model again, so the routed setups have the slowest tails. Conversation turns took 2.8 s p50 and 3.6 s p95 with the defaults, about as with Haiku alone's 2.7 and 3.2, against Sonnet's 3.4 and 5.0 and Nova routed's 3.0 and 5.6.
+A handover runs a model call that was set aside and asks the harder model again, so the routed setups have the slowest tails. Conversation turns took 2.6 s p50 and 4.1 s p95 with the defaults, about as with Haiku alone's 2.7 and 3.2, against Sonnet's 3.4 and 5.0 and Nova routed's 3.0 and 5.6.
 
 ## Cost
 
@@ -124,7 +124,7 @@ Per task in US cents, from each run's real token counts at eu-north-1's prices f
 | Claude Haiku 4.5 | 1.99 | 1.50 | 2.71 | 3.16 | 1.05 | 3.18 | $9.92 |
 | Claude Sonnet 5.5 | 4.81 | 3.85 | 7.01 | 8.87 | 2.66 | 5.23 | $25.88 |
 | Nova routed | 3.76 | 2.04 | 7.12 | 8.62 | 0.61 | 6.17 | $16.65 |
-| Defaults | 2.97 | 1.53 | 6.99 | 4.27 | 1.08 | 5.04 | $13.28 |
+| Defaults | 3.18 | 1.61 | 8.71 | 3.16 | 1.13 | 5.68 | $13.99 |
 
 The month is a small organization's as `docs/research/agentcore.md` estimates it: 5 humans asking 4 times a day, 600 runs, here 300 questions, 60 drafting turns, 60 triage turns and 180 label tasks. AgentCore Runtime adds about $0.09 to that.
 
@@ -133,13 +133,13 @@ The month is a small organization's as `docs/research/agentcore.md` estimates it
 | Reason | Nova routed, of 45 runs | Defaults, of 30 runs |
 | --- | --- | --- |
 | decided: the decider found the turn complex | 12 | decider off |
-| writing: the everyday model came to writing a draft | 0 | 5 |
-| answerCheck: an answer that didn't hold up | 6 | 1 |
+| writing: the everyday model came to writing a draft | 0 | 6 |
+| answerCheck: an answer that didn't hold up | 6 | 0 |
 | stepBudget: not finished after 6 steps | 4 | 0 |
 | failedCalls, askedForHelp | 0 | 0 |
 | no handover | 23 | 24 |
 
-- **With the defaults, Sonnet wrote every draft that may be sent.** Haiku handed over at its first createDraft in the drafting tasks and in the reply with draft access only. Once, in Erik's reply, Haiku's answer failed the check first.
+- **With the defaults, Sonnet wrote every draft that may be sent.** Haiku handed over at its first createDraft in the drafting tasks and in the reply with draft access only. On Duva's own loop, once, in Erik's reply, Haiku's answer failed the check first.
 - **The answer check works.** In Nova routed, each of its 6 handovers was a turn Nova 2 Lite alone failed every time, and Sonnet then passed.
 - **Neither everyday model asked for help,** though its prompt and the ask_for_help tool told it to when unsure.
 - **The step budget fired only for Nova,** in 4 of its 6 archiving runs, with and without read access. Nova 2 Lite spent its 6 steps listing and reading threads one by one before it archived anything, and Sonnet then did it in one call.
@@ -147,9 +147,24 @@ The month is a small organization's as `docs/research/agentcore.md` estimates it
 
 Each conversation turn's routing is kept with its Titan embedding (ADR-0032). A nearest-neighbour router over that history would have the labels above to learn from.
 
+## On Strands (#148)
+
+Coo's loop moved to the Strands Agents SDK (ADR-0035) with every behavior it had. Before recording again, every recorded run of every setup replayed on the new loop, with the same model calls in the same order, the same grades and the same handovers, and the requests Strands' Bedrock provider sends are those Duva's loop sent: the same system prompt, messages, tool results with their status, tools and token limit. Then the defaults were recorded again on Bedrock, the same 15 tasks twice:
+
+| Defaults | All | Conversation | Drafting | Triage | Label task | Refusal | Handed over | A month |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Duva's own loop, success | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 0.20 | $13.28 |
+| Strands, success | 0.97 | 1.00 | 1.00 | 0.75 | 1.00 | 1.00 | 0.20 | $13.99 |
+| Duva's own loop, cents a task | 2.97 | 1.53 | 6.99 | 4.27 | 1.08 | 5.04 | | |
+| Strands, cents a task | 3.18 | 1.61 | 8.71 | 3.16 | 1.13 | 5.68 | | |
+
+- **Each kind did as well but triage, which missed one run of four.** That run's miss is one Haiku made alone on Duva's loop, from the same mistake, and two runs a task settle no smaller difference.
+- **Drafting cost more,** since its runs took 5.3 model calls where they took 4.5, most of them Sonnet's. Every draft was still Sonnet's, through the writing handover.
+- **Latency held:** 2.8 s p50 and 9.8 s p95 for all tasks, against 3.1 and 10.0.
+
 ## What this cost
 
-Bedrock calls kept in the recordings of #132's tasks cost $5.65: $4.79 for the first six setups, and $0.86 for the defaults. The pilots that were recorded again after fixing the grader and the answer check, the probes and the decider trials cost about $0.40 more. #140's task added $0.20 kept in the recordings, and about $0.30 more for those recorded again after listAgents' description and the answer check were fixed. So about $6.55 in all.
+Bedrock calls kept in the recordings of #132's tasks cost $5.65: $4.79 for the first six setups, and $0.86 for the defaults. The pilots that were recorded again after fixing the grader and the answer check, the probes and the decider trials cost about $0.40 more. #140's task added $0.20 kept in the recordings, and about $0.30 more for those recorded again after listAgents' description and the answer check were fixed. So about $6.55 in all. #148 recorded the defaults again on Strands for $0.95.
 
 ## Caveats
 

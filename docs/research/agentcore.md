@@ -53,7 +53,7 @@ ListFoundationModels lists 14 Anthropic models there, each supporting `INFERENCE
 
 Claude Sonnet 4 is Legacy. _ListFoundationModels and ListInferenceProfiles in eu-north-1, 2026-10-07; [Claude Sonnet 5.5 model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-sonnet-5-5.html)._
 
-All of them need a Marketplace subscription, which Bedrock creates the first time a model is called. That's the step that fails in 925039213717. Bedrock's OpenAI, Mistral, Meta, DeepSeek, Qwen and Amazon models aren't sold through Marketplace. _[re:Post, Marketplace permissions errors](https://repost.aws/knowledge-center/bedrock-resolve-marketplace-permission); [Request access to models](https://docs.aws.amazon.com/bedrock/latest/userguide/model-access.html)._
+All of them need a Marketplace subscription, which Bedrock creates the first time a model is called. That's the step that fails in 925039213717. Bedrock's Mistral, Meta, DeepSeek, Qwen and Amazon models aren't sold through Marketplace. _[re:Post, Marketplace permissions errors](https://repost.aws/knowledge-center/bedrock-resolve-marketplace-permission); [Request access to models](https://docs.aws.amazon.com/bedrock/latest/userguide/model-access.html)._ OpenAI's are, at least GPT-6 Luna, whose model card lists the Marketplace product `prod-fiwlckcpwkwli`. Yet in 925039213717 Luna answered Converse from eu-north-1, where its `agreementAvailability` is NOT_AVAILABLE as Claude's is. _[GPT-6 Luna model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-luna.html), read 2026-10-10; Converse and GetFoundationModelAvailability, 2026-10-10._
 
 ## How the agent calls Duva's API as its agent actor
 

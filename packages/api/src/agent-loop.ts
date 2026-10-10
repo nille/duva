@@ -1,10 +1,13 @@
-// The mailbox agent's own Converse tool loop (ADR-0027). It knows nothing of where it runs: AgentCore
-// Runtime in a deployment, in-process in tests. Its tools are operations of Duva's API, from the
-// OpenAPI contract, which it calls over HTTP with its run's token, as any agent calls Duva.
+// The mailbox agent's tool loop (ADR-0027), on the Strands Agents SDK (ADR-0035). It knows nothing of
+// where it runs: AgentCore Runtime in a deployment, in-process in tests. Its tools are operations of
+// Duva's API, from the OpenAPI contract, which it calls over HTTP with its run's token, as any agent
+// calls Duva.
 import { type Operation, operations, type OperationId } from "@duva/openapi";
 import type { components } from "@duva/openapi";
+import { AfterInvocationEvent, AfterModelCallEvent, AfterToolsEvent, BeforeModelCallEvent, BeforeToolsEvent, InvokeModelStage, ModelStreamUpdateEvent } from "@strands-agents/sdk";
 import { costOf, deciderModel, type MailboxAgentModel } from "./agent-models.ts";
 import type { Browser } from "./browser.ts";
+import { asConverse, type Models, saying, strandsAgent, strandsSpec } from "./strands.ts";
 import { runUnsubscribe } from "./unsubscribe-agent.ts";
 
 export type AgentAction = components["schemas"]["AgentAction"];
@@ -31,7 +34,11 @@ export interface ToolSpec {
 /** What the model says as it answers: text as it streams, each tool it uses, and the tokens it took. */
 export type ModelEvent = { text: string } | { toolUse: { toolUseId: string; name: string; input: Record<string, unknown> } } | { usage: { inputTokens: number; outputTokens: number } };
 
-/** A model the loop asks, by which of the models admins choose it is: Bedrock's in a deployment, a stand-in in tests. */
+/**
+ * A model as tests script it, by which of the models admins choose it is, asked as Converse is
+ * asked: the loop reaches it through a Strands model (`standIn`), and the evaluation records Bedrock's
+ * answers as it answers (`bedrockModel`).
+ */
 export type Model = (request: { model: MailboxAgentModel; system: string; messages: ModelMessage[]; tools: ToolSpec[] }) => AsyncIterable<ModelEvent>;
 
 /** What the decider makes of a conversation turn's words: whether the everyday model can do it, and how sure it is, from 0 to 1. */
@@ -343,34 +350,36 @@ async function misstatedIn(answer: string, { apiUrl, token }: RunPayload, call: 
 }
 
 /**
- * Runs the agent on what its owner asked, saying what it does as it goes. `call` reaches Duva's
- * API, and `decider` settles the model for a turn its job doesn't (#132). The run starts with the
- * job's model, or the harder one if the decider finds the turn complex or isn't sure, and the
- * everyday model hands over to the harder one, with the work so far, when it comes to writing mail
- * that may be sent, Duva refuses its calls twice, it passes the step budget, it asks for help, or
- * its answer doesn't hold up, as when it says an agent is paused that Duva has running. Until it
- * can't hand over, each step's text waits for the step to end, so its owner reads no answer that was
- * set aside. An answer the harder model gave that misstates an agent's state is corrected once,
- * by the model, told what Duva has. An unsubscribe runs on the page in `browser`
- * instead, with no tool of Duva's.
+ * Runs the agent on what its owner asked, saying what it does as it goes, on Strands (ADR-0035).
+ * `call` reaches Duva's API, and `decider` settles the model for a turn its job doesn't (#132). The
+ * run starts with the job's model, or the harder one if the decider finds the turn complex or isn't
+ * sure, and the everyday model hands over to the harder one, with the work so far, when it comes to
+ * writing mail that may be sent, Duva refuses its calls twice, it passes the step budget, it asks
+ * for help, or its answer doesn't hold up, as when it says an agent is paused that Duva has running.
+ * Until it can't hand over, each step's text waits for the step to end, so its owner reads no answer
+ * that was set aside. An answer the harder model gave that misstates an agent's state is corrected
+ * once, by the model, told what Duva has. An unsubscribe runs on the page in `browser` instead,
+ * with no tool of Duva's.
  */
 export async function* runAgent(
   payload: RunPayload,
-  { model, decider, fetch: call = fetch, browser }: { model: Model; decider?: Decider; fetch?: (request: Request) => Promise<Response>; browser?: Browser },
+  { models, decider, fetch: call = fetch, browser }: { models: Models; decider?: Decider; fetch?: (request: Request) => Promise<Response>; browser?: Browser },
 ): AsyncGenerator<RunEvent> {
-  if (payload.unsubscribe !== undefined) return yield* runUnsubscribe(payload, { model, browser });
-  const messages: ModelMessage[] = [
-    ...payload.history.map(({ from, text }) => ({ role: from === "human" ? ("user" as const) : ("assistant" as const), content: [{ text }] })),
-    { role: "user", content: [{ text: payload.words }] },
-  ];
+  if (payload.unsubscribe !== undefined) return yield* runUnsubscribe(payload, { models, browser });
   const { harder, region } = payload.model;
   let current = payload.model.model;
   let handover: Handover | undefined;
   let spent = 0;
   let failures = 0;
-  let steps = 0;
+  let calls = 0;
   let misstated: string[] = [];
   let corrected = false;
+  let correction: string | undefined;
+  let outcome: "capReached" | "failed" | undefined;
+  // The model call under way: whether it may hand over, what of its text waits to be read, what of
+  // it its owner read, and what of it is read at all.
+  let step = { canHandOver: false, held: [] as string[], read: "", visible: withoutThinking() };
+  const said: RunEvent[] = [];
   const handTo = (reason: Handover["reason"], why?: string): RunEvent => {
     handover = { reason, from: current, to: harder, ...(why !== undefined && { why: why.slice(0, 500) }) };
     current = harder;
@@ -383,88 +392,99 @@ export async function* runAgent(
     yield { type: "decided", decision };
     if (decision.route === "complex" || decision.confidence < confidenceNeeded) yield handTo("decided");
   }
-  for (let step = 0; step < maxSteps; step++) {
-    // A step set aside is taken again, unless the run already spent what it may.
-    if (step > 0 && spent >= payload.budget) return yield { type: "end", outcome: "capReached" };
-    const canHandOver = current !== harder;
-    const content: ContentBlock[] = [];
-    let text = "";
-    const held: string[] = [];
-    let read = "";
-    const said = withoutThinking();
-    const system = systemPrompt(payload, { helps: canHandOver, handover, misstated });
-    const tools = toolsFor(payload);
-    for await (const event of model({ model: current, system, messages: merged(messages), tools: canHandOver ? [...tools, askForHelp] : tools })) {
-      if ("text" in event) {
-        text += event.text;
-        const shown = said(event.text);
-        if (shown === "") continue;
-        if (canHandOver) held.push(shown);
-        else {
-          read += shown;
-          yield { type: "text", text: shown };
-        }
-      } else if ("toolUse" in event) content.push(event);
+  const run = async (name: string, input: Record<string, unknown>) => {
+    const { action, result } = await callOperation({ apiUrl: payload.apiUrl, token: payload.token, mailbox: mailboxOfCall(payload, input) }, name, input, call);
+    said.push({ type: "action", action });
+    if (!action.ok) failures++;
+    return { ok: action.ok, result: result.slice(0, maxResult) };
+  };
+  const tools = toolsFor(payload);
+  const agent = strandsAgent({
+    model: models(current),
+    messages: merged([
+      ...payload.history.map(({ from, text }) => ({ role: from === "human" ? ("user" as const) : ("assistant" as const), content: [{ text }] })),
+      { role: "user", content: [{ text: payload.words }] },
+    ]),
+    tools,
+    run,
+  });
+  // Each call asks the model the run is on, told why if it took the run over, with ask_for_help while it may hand over.
+  agent.addMiddleware(InvokeModelStage.Input, async (context) => ({
+    ...context,
+    model: models(current),
+    systemPrompt: systemPrompt(payload, { helps: step.canHandOver, handover, misstated }),
+    toolSpecs: (step.canHandOver ? [...tools, askForHelp] : tools).map(strandsSpec),
+  }));
+  agent.addHook(BeforeModelCallEvent, (event) => {
+    // A step set aside is taken again, unless the run already spent what it may. A model that
+    // keeps using tools never answered.
+    if (calls >= maxSteps) outcome = "failed";
+    else if (calls > 0 && spent >= payload.budget) outcome = "capReached";
+    if (outcome !== undefined) return void (event.cancel = true);
+    calls++;
+    step = { canHandOver: current !== harder, held: [], read: "", visible: withoutThinking() };
+  });
+  agent.addHook(ModelStreamUpdateEvent, ({ event }) => {
+    if (event.type === "modelContentBlockDeltaEvent" && event.delta.type === "textDelta") {
+      const shown = step.visible(event.delta.text);
+      if (shown === "") return;
+      if (step.canHandOver) step.held.push(shown);
       else {
-        spent += costOf(event.usage, current, region);
-        yield { type: "usage", model: current, ...event.usage };
+        step.read += shown;
+        said.push({ type: "text", text: shown });
       }
+    } else if (event.type === "modelMetadataEvent" && event.usage !== undefined) {
+      const { inputTokens, outputTokens } = event.usage;
+      spent += costOf({ inputTokens, outputTokens }, current, region);
+      said.push({ type: "usage", model: current, inputTokens, outputTokens });
     }
-    held.push(said("", true));
-    steps++;
-    const uses = content.flatMap((block) => ("toolUse" in block ? [block.toolUse] : []));
+  });
+  agent.addHook(AfterModelCallEvent, async (event) => {
+    if (outcome !== undefined || event.stopData === undefined) return;
+    const { canHandOver, held } = step;
+    held.push(step.visible("", true));
+    const uses = event.stopData.message.content.flatMap((block) => (block.type === "toolUseBlock" ? [block] : []));
     // A step set aside is left out of the run, and the harder model takes it again.
     if (canHandOver) {
       const asked = uses.find(({ name }) => name === askForHelp.name);
-      if (asked !== undefined) {
-        yield handTo("askedForHelp", typeof asked.input.why === "string" ? asked.input.why : undefined);
-        continue;
-      }
-      if (uses.some(({ name }) => writing.has(name))) {
-        yield handTo("writing");
-        continue;
-      }
-      if (uses.length === 0) {
+      const why = (asked?.input as { why?: unknown } | undefined)?.why;
+      if (asked !== undefined) said.push(handTo("askedForHelp", typeof why === "string" ? why : undefined));
+      else if (uses.some(({ name }) => writing.has(name))) said.push(handTo("writing"));
+      else if (uses.length === 0) {
         const answer = held.join("");
-        const holds = holdsUp(answer, messages, payload.task !== undefined);
+        const holds = holdsUp(answer, asConverse(agent.messages), payload.task !== undefined);
         misstated = holds ? await misstatedIn(answer, payload, call) : [];
-        if (!holds || misstated.length > 0) {
-          yield handTo("answerCheck");
-          continue;
-        }
+        if (!holds || misstated.length > 0) said.push(handTo("answerCheck"));
       }
-      for (const shown of held) if (shown !== "") yield { type: "text", text: shown };
+      if (current === harder) return void (event.retry = true);
+      for (const shown of held) if (shown !== "") said.push({ type: "text", text: shown });
     } else if (held[0] !== "") {
-      read += held[0];
-      yield { type: "text", text: held[0]! };
+      step.read += held[0];
+      said.push({ type: "text", text: held[0]! });
     }
-    if (text !== "") content.unshift({ text });
-    if (content.length === 0) content.push({ text: "…" });
-    messages.push({ role: "assistant", content });
     if (uses.length === 0 && !canHandOver && !corrected) {
       // The harder model's answer was read as it streamed, so it corrects itself after it.
-      const wrong = await misstatedIn(read, payload, call);
+      const wrong = await misstatedIn(step.read, payload, call);
       if (wrong.length > 0) {
         corrected = true;
-        messages.push({ role: "user", content: [{ text: `This is Duva, not your owner. Your answer got wrong what Duva has now: ${wrong.join(" and ")}. Correct it to your owner, briefly.` }] });
-        continue;
+        correction = `This is Duva, not your owner. Your answer got wrong what Duva has now: ${wrong.join(" and ")}. Correct it to your owner, briefly.`;
       }
     }
-    if (uses.length === 0) return yield { type: "end", outcome: "answered" };
-    if (spent >= payload.budget) return yield { type: "end", outcome: "capReached" };
-    const results: ContentBlock[] = [];
-    for (const use of uses) {
-      const { action, result } = await callOperation({ apiUrl: payload.apiUrl, token: payload.token, mailbox: mailboxOfCall(payload, use.input) }, use.name, use.input, call);
-      yield { type: "action", action };
-      if (!action.ok) failures++;
-      results.push({ toolResult: { toolUseId: use.toolUseId, content: [{ text: result.slice(0, maxResult) }], status: action.ok ? "success" : "error" } });
-    }
-    messages.push({ role: "user", content: results });
-    if (canHandOver && failures > failuresAllowed) yield handTo("failedCalls");
-    else if (canHandOver && steps >= stepBudget) yield handTo("stepBudget");
-  }
-  // A model that keeps using tools never answered.
-  yield { type: "end", outcome: "failed" };
+  });
+  agent.addHook(AfterInvocationEvent, (event) => {
+    event.resume = correction;
+    correction = undefined;
+  });
+  agent.addHook(BeforeToolsEvent, (event) => {
+    if (spent >= payload.budget) [outcome, event.cancel] = ["capReached", true];
+  });
+  agent.addHook(AfterToolsEvent, (event) => {
+    if (outcome !== undefined) return void (event.endTurn = true);
+    if (current !== harder && failures > failuresAllowed) said.push(handTo("failedCalls"));
+    else if (current !== harder && calls >= stepBudget) said.push(handTo("stepBudget"));
+  });
+  yield* saying(agent, said);
+  yield { type: "end", outcome: outcome ?? "answered" };
 }
 
 /**
