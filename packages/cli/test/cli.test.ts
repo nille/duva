@@ -180,11 +180,11 @@ test("an admin turns erasure of approval records on with a flag, and off with it
   const on = await machine.duva("organization", "change-settings", "--erasureErasesApprovals");
   const off = await machine.duva("organization", "change-settings", "--no-erasureErasesApprovals");
 
-  expect(JSON.parse(before.stdout)).toEqual({ erasureErasesApprovals: false, retentionDays: 30, searchLanguages: ["English", "Swedish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50, undoWindowSeconds: 0, ...mailboxAgentDefaults });
+  expect(JSON.parse(before.stdout)).toEqual({ erasureErasesApprovals: false, retentionDays: 30, searchLanguages: ["English", "Swedish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50, undoWindowSeconds: 0, ...mailboxAgentDefaults, linkedFilesCapGb: 20 });
   expect(on.exitCode).toBe(0);
-  expect(JSON.parse(on.stdout)).toEqual({ erasureErasesApprovals: true, retentionDays: 30, searchLanguages: ["English", "Swedish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50, undoWindowSeconds: 0, ...mailboxAgentDefaults });
+  expect(JSON.parse(on.stdout)).toEqual({ erasureErasesApprovals: true, retentionDays: 30, searchLanguages: ["English", "Swedish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50, undoWindowSeconds: 0, ...mailboxAgentDefaults, linkedFilesCapGb: 20 });
   expect(off.exitCode).toBe(0);
-  expect(JSON.parse(off.stdout)).toEqual({ erasureErasesApprovals: false, retentionDays: 30, searchLanguages: ["English", "Swedish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50, undoWindowSeconds: 0, ...mailboxAgentDefaults });
+  expect(JSON.parse(off.stdout)).toEqual({ erasureErasesApprovals: false, retentionDays: 30, searchLanguages: ["English", "Swedish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50, undoWindowSeconds: 0, ...mailboxAgentDefaults, linkedFilesCapGb: 20 });
 });
 
 test("an admin previews a retention period and sets it", async () => {
@@ -200,7 +200,7 @@ test("an admin previews a retention period and sets it", async () => {
   expect(preview.exitCode).toBe(0);
   expect(JSON.parse(preview.stdout)).toEqual({ retentionDays: 7, threads: 0 });
   expect(changed.exitCode).toBe(0);
-  expect(JSON.parse(changed.stdout)).toEqual({ erasureErasesApprovals: false, retentionDays: 7, searchLanguages: ["English", "Swedish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50, undoWindowSeconds: 0, ...mailboxAgentDefaults });
+  expect(JSON.parse(changed.stdout)).toEqual({ erasureErasesApprovals: false, retentionDays: 7, searchLanguages: ["English", "Swedish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50, undoWindowSeconds: 0, ...mailboxAgentDefaults, linkedFilesCapGb: 20 });
 });
 
 test("an admin gives the search languages to organization change-settings, once for each", async () => {
@@ -213,7 +213,7 @@ test("an admin gives the search languages to organization change-settings, once 
   const result = await machine.duva("organization", "change-settings", "--searchLanguages", "Swedish", "--searchLanguages", "Danish", "--searchLanguages", "English");
 
   expect(result.exitCode).toBe(0);
-  expect(JSON.parse(result.stdout)).toEqual({ erasureErasesApprovals: false, retentionDays: 30, searchLanguages: ["English", "Swedish", "Danish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50, undoWindowSeconds: 0, ...mailboxAgentDefaults });
+  expect(JSON.parse(result.stdout)).toEqual({ erasureErasesApprovals: false, retentionDays: 30, searchLanguages: ["English", "Swedish", "Danish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50, undoWindowSeconds: 0, ...mailboxAgentDefaults, linkedFilesCapGb: 20 });
 });
 
 test("organization change-settings with no setting says which there are", async () => {
@@ -427,8 +427,9 @@ test("an admin removes a human from the CLI, first with --dryRun, handing their 
   onTestFinished(() => server.close());
   await machine.saveDeployment(server);
   await machine.duva("login", { browserSignsIn: "ada@example.com" });
-  const { humans } = JSON.parse((await machine.duva("humans", "list")).stdout) as { humans: { id: string; email: string }[] };
-  const [grace, linus] = ["grace@example.com", "linus@example.com"].map((email) => humans.find((human) => human.email === email)!);
+  const { humans } = JSON.parse((await machine.duva("humans", "list")).stdout) as { humans: { id: string; email: string; linkedSize?: number }[] };
+  // The list gives admins each human's linked files' size, which a human's own record leaves out.
+  const [grace, linus] = ["grace@example.com", "linus@example.com"].map((email) => (({ linkedSize: _, ...human }) => human)(humans.find((human) => human.email === email)!));
   const mailbox = JSON.parse((await machine.duva("mailboxes", "create", "--owner", grace!.id, "--address", "grace@example.com")).stdout) as { id: string };
 
   const dryRun = await machine.duva("humans", "remove", "--human", grace!.id, "--dryRun");
@@ -446,9 +447,9 @@ test("an admin makes a human an admin with --admin, and the last admin can't tak
   onTestFinished(() => server.close());
   await machine.saveDeployment(server);
   await machine.duva("login", { browserSignsIn: "ada@example.com" });
-  const { humans } = JSON.parse((await machine.duva("humans", "list")).stdout) as { humans: { id: string; email: string }[] };
+  const { humans } = JSON.parse((await machine.duva("humans", "list")).stdout) as { humans: { id: string; email: string; linkedSize?: number }[] };
   const ada = humans.find(({ email }) => email === "ada@example.com")!;
-  const grace = humans.find(({ email }) => email === "grace@example.com")!;
+  const { linkedSize: _, ...grace } = humans.find(({ email }) => email === "grace@example.com")!;
 
   const last = await machine.duva("humans", "change", "--human", ada.id, "--no-admin");
   const made = await machine.duva("humans", "change", "--human", grace.id, "--admin");
@@ -1025,6 +1026,25 @@ test("drafts edit with only --attach attaches the file and leaves the rest of th
 
   expect(result.exitCode).toBe(0);
   expect(JSON.parse(result.stdout)).toMatchObject({ id: draft.id, subject: "Notes", attachments: [{ name: "notes.txt", type: "text/plain", size: 5 }] });
+});
+
+test("drafts create sends a file given with --link as a linked file, the sent message counts its downloads, and linked-files stop-sharing ends its link", async () => {
+  const machine = await newMachine();
+  const { mailbox } = await agentInSponsorsMailbox(machine, "draft", { screener: false });
+  await writeFile(join(machine.home, "film.mov"), "A film");
+
+  const created = await machine.duva("drafts", "create", "--mailbox", mailbox.id, "--to", "grace@example.org", "--text", "The film.", "--link", join(machine.home, "film.mov"));
+  const draft = JSON.parse(created.stdout) as { id: string };
+  await machine.duva("drafts", "send", "--mailbox", mailbox.id, "--draft", draft.id);
+  const { threads } = JSON.parse((await machine.duva("threads", "sent", "--mailbox", mailbox.id)).stdout) as { threads: { id: string }[] };
+  const { messages } = JSON.parse((await machine.duva("threads", "get", "--mailbox", mailbox.id, "--thread", threads[0]!.id)).stdout) as { messages: { id: string; linkedFiles: { id: string }[] }[] };
+  const stopped = await machine.duva("linked-files", "stop-sharing", "--mailbox", mailbox.id, "--message", messages[0]!.id, "--file", messages[0]!.linkedFiles[0]!.id);
+
+  expect(created.exitCode).toBe(0);
+  expect(JSON.parse(created.stdout)).toMatchObject({ attachments: [{ name: "film.mov", size: 6, source: "uploaded", linked: "chosen" }] });
+  expect(messages[0]!.linkedFiles).toEqual([{ id: expect.any(String), name: "film.mov", type: "application/octet-stream", size: 6, until: expect.any(String), state: "sharing", downloads: 0 }]);
+  expect(stopped.exitCode).toBe(0);
+  expect(JSON.parse(stopped.stdout)).toMatchObject({ name: "film.mov", state: "stopped", downloads: 0 });
 });
 
 test("drafts create with a file to attach that isn't there writes no draft, and says so", async () => {

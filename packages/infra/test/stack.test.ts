@@ -312,7 +312,7 @@ test("the uploads bucket keeps no versions, gives up an upload not completed aft
   });
 });
 
-test("only the API writes to the uploads bucket, and the sender and the eraser delete from it", () => {
+test("only the API and the sender write to the uploads bucket, the sender a forwarded file it links, and the sender and the eraser delete from it", () => {
   const [[bucketId]] = ofType("AWS::S3::Bucket").filter(([id]) => id.startsWith("Uploads")) as [[string, Resource]];
   const onBucket = (prefix: string) =>
     statements(prefix)
@@ -320,7 +320,7 @@ test("only the API writes to the uploads bucket, and the sender and the eraser d
       .flatMap(({ Action }) => [Action].flat());
   const lambdas = resources.filter(([, { Type }]) => Type === "AWS::Lambda::Function").map(([id]) => id);
   const named = (ids: string[]) => ids.map((id) => id.replace(/[A-F0-9]{8}$/, "")).sort();
-  expect(named(lambdas.filter((id) => onBucket(id).some((action) => /Put/.test(action))))).toEqual(["ApiHandler"]);
+  expect(named(lambdas.filter((id) => onBucket(id).some((action) => /Put/.test(action))))).toEqual(["ApiHandler", "SenderHandler"]);
   expect(named(lambdas.filter((id) => onBucket(id).some((action) => /Delete/.test(action))))).toEqual(["ApiHandler", "EraserHandler", "SenderHandler"]);
   for (const id of ["ApiHandler", "SenderHandler", "EraserHandler"]) expect(onBucket(id)).toContain("s3:AbortMultipartUpload");
 });
@@ -980,10 +980,9 @@ test("only the web app's distribution may invoke the download Lambda, as its fun
   }
 });
 
-test("the download Lambda only reads: the table and raw mail", () => {
-  expect(tableActions("DownloadHandler")).toContain("dynamodb:GetItem");
-  expect(tableActions("DownloadHandler").filter((action) => /Put|Update|Delete|Write/.test(action))).toEqual([]);
-  expect(actions("DownloadHandler", "s3")).toContain("s3:GetObject*");
+test("the download Lambda reads raw mail and linked files, and writes only the table, where it counts linked files' downloads", () => {
+  expect(tableActions("DownloadHandler")).toEqual(expect.arrayContaining(["dynamodb:GetItem", "dynamodb:UpdateItem"]));
+  expect(actions("DownloadHandler", "s3")).toEqual(expect.arrayContaining(["s3:GetObject*", "s3:GetObject"]));
   expect(actions("DownloadHandler", "s3").filter((action) => /Put|Delete/.test(action))).toEqual([]);
 });
 

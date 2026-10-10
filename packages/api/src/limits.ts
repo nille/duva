@@ -5,10 +5,12 @@
 // is as read, makes two at once take turns. The sender sends what waits once the limits allow, when
 // EventBridge Scheduler invokes it at the time it set, or when the API hands it the agent, as
 // unpausing and raising a limit do.
+import { createHash } from "node:crypto";
 import { CreateScheduleCommand, ConflictException, type SchedulerClient } from "@aws-sdk/client-scheduler";
 import { InvokeCommand, type LambdaClient } from "@aws-sdk/client-lambda";
 import { BatchGetCommand, GetCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
 import type { Table } from "./deployment.ts";
+import type { ExpireEvent } from "./linked-files.ts";
 import { timeToLiveAttribute } from "./infrastructure.ts";
 import { type AgentSettings, agentSettings, organizationSettings } from "./organization.ts";
 import { documents, pk, sk, type TransactItem } from "./table.ts";
@@ -215,11 +217,14 @@ export interface SendEvent {
 
 /**
  * Has the sender handed an agent at a time, when its limits allow what waits, or a draft, when its
- * undo window is over. EventBridge Scheduler's, or a stand-in in tests.
+ * undo window is over, or a linked file, when its link ends. EventBridge Scheduler's, or a stand-in
+ * in tests.
  */
 export interface Schedules {
   releaseAt(agent: string, at: Date): Promise<void>;
   sendAt(draft: SendEvent["send"], at: Date): Promise<void>;
+  /** Has the sender delete a linked file when its link ends. */
+  expireAt(file: ExpireEvent["expire"], at: Date): Promise<void>;
 }
 
 /**
@@ -232,6 +237,13 @@ export function eventBridgeSchedules(scheduler: SchedulerClient, schedule: Sched
     releaseAt: (agent, at) => scheduleOnce(scheduler, schedule, { name: (second) => `release-${agent}-${second}`, at, input: { release: agent } satisfies ReleaseEvent }),
     // A draft's ID is unique across mailboxes, and keeps the name within Scheduler's 64 characters.
     sendAt: (draft, at) => scheduleOnce(scheduler, schedule, { name: (second) => `send-${draft.draft}-${second}`, at, input: { send: draft } satisfies SendEvent }),
+    // A name is at most 64 characters, so the file is named by a hash.
+    expireAt: (file, at) =>
+      scheduleOnce(scheduler, schedule, {
+        name: (second) => `expire-${createHash("sha256").update(`${file.holder}#${file.mailbox}#${file.draft}#${file.file}`).digest("hex").slice(0, 32)}-${second}`,
+        at,
+        input: { expire: file } satisfies ExpireEvent,
+      }),
   };
 }
 

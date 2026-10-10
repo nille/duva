@@ -9,7 +9,7 @@ import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
 import { ChevronIcon, Choice } from "./setting-parts.tsx";
 import { attempt, byText, change, ownersOrder } from "./setup.ts";
-import { strings } from "./strings.ts";
+import { size, strings } from "./strings.ts";
 
 type Human = components["schemas"]["Human"];
 type Agent = components["schemas"]["Agent"];
@@ -181,7 +181,7 @@ function HumanLine({
   // A human's mailbox agent goes with them, so the sheet lists the agents they brought themselves.
   const agents = people.agents.filter(({ sponsor, mailboxAgent }) => sponsor === human.id && !mailboxAgent).sort((a, b) => a.name.localeCompare(b.name));
   const lastAdmin = human.admin && !people.humans.some(({ id, admin }) => admin && id !== human.id);
-  const summary = copy.summary([...(me ? [copy.you] : []), ...(human.admin ? [copy.admin] : []), copy.mailboxes(mailboxes.length), copy.agents(agents.length)]);
+  const summary = copy.summary([...(me ? [copy.you] : []), ...(human.admin ? [copy.admin] : []), copy.mailboxes(mailboxes.length), copy.agents(agents.length), ...(human.linkedSize ? [copy.linked(size(human.linkedSize))] : [])]);
 
   return (
     <details className="setting-line" name="people" ref={details}>

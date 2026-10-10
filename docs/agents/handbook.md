@@ -29,7 +29,7 @@ One organization per deployment (ADR-0002), in its own AWS account. Everything i
   - the **task giver** gives label prompts' tasks.
 - **Four S3 buckets hold everything else:**
   - `Mail`: the raw messages SES stored, and attachments;
-  - `Uploads`: the files uploaded to drafts, which browsers and agents PUT straight to it with presigned URLs, without versions (ADR-0034);
+  - `Uploads`: the files uploaded to drafts, which browsers and agents PUT straight to it with presigned URLs, without versions, and the linked files sent from them until their links end (ADR-0034);
   - `Search`: each mailbox's LanceDB index;
   - `Logos`: the organization's own BIMI logos, served by CloudFront under `/bimi/`.
 - **The web app's build** is in the `Web` bucket.
@@ -87,7 +87,7 @@ One organization per deployment (ADR-0002), in its own AWS account. Everything i
 ### Sign-in and the web app
 
 - **Humans sign in through Cognito managed login,** with a code emailed from the organization's domain (ADR-0010). PKCE is in `packages/web/src/session.ts`.
-- **The web app is React and Vite,** served from S3 through one CloudFront distribution. That distribution also fronts the download, conversation and logo paths.
+- **The web app is React and Vite,** served from S3 through one CloudFront distribution. That distribution also fronts the download, conversation and logo paths. Linked files' pages are under the download path, served by the download Lambda, whose Download sends the browser on to S3 (`linked-files.ts`).
 - **Every string it shows is in `packages/web/src/strings.ts`.**
 
 ### Security posture

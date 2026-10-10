@@ -21,7 +21,7 @@ test("erasure keeps approval records and Trash and Spam keep mail 30 days unless
   for (const actor of [ada, grace, hermes]) {
     const { response, data } = await actor.GET("/organization/settings");
     expect(response.status).toBe(200);
-    expect(data).toEqual({ erasureErasesApprovals: false, retentionDays: 30, searchLanguages: ["English", "Swedish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50, undoWindowSeconds: 30, ...mailboxAgentDefaults });
+    expect(data).toEqual({ erasureErasesApprovals: false, retentionDays: 30, searchLanguages: ["English", "Swedish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50, undoWindowSeconds: 30, ...mailboxAgentDefaults, linkedFilesCapGb: 20 });
   }
 });
 
@@ -31,8 +31,8 @@ test("an admin turns on erasure of approval records, which is a setup change in 
   const { response, data } = await ada.PATCH("/organization/settings", { body: { erasureErasesApprovals: true } });
 
   expect(response.status).toBe(200);
-  expect(data).toEqual({ erasureErasesApprovals: true, retentionDays: 30, searchLanguages: ["English", "Swedish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50, undoWindowSeconds: 30, ...mailboxAgentDefaults });
-  expect((await grace.GET("/organization/settings")).data).toEqual({ erasureErasesApprovals: true, retentionDays: 30, searchLanguages: ["English", "Swedish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50, undoWindowSeconds: 30, ...mailboxAgentDefaults });
+  expect(data).toEqual({ erasureErasesApprovals: true, retentionDays: 30, searchLanguages: ["English", "Swedish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50, undoWindowSeconds: 30, ...mailboxAgentDefaults, linkedFilesCapGb: 20 });
+  expect((await grace.GET("/organization/settings")).data).toEqual({ erasureErasesApprovals: true, retentionDays: 30, searchLanguages: ["English", "Swedish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50, undoWindowSeconds: 30, ...mailboxAgentDefaults, linkedFilesCapGb: 20 });
   const { data: changes } = await ada.GET("/organization/changes");
   expect(changes!.changes.at(-1)).toEqual({ position: expect.any(Number), at: expect.any(String), actor: adaId, type: "settingsChanged", settings: { erasureErasesApprovals: true } });
 });
@@ -43,7 +43,7 @@ test("an admin turns erasure of approval records off again", async () => {
 
   const { data } = await ada.PATCH("/organization/settings", { body: { erasureErasesApprovals: false } });
 
-  expect(data).toEqual({ erasureErasesApprovals: false, retentionDays: 30, searchLanguages: ["English", "Swedish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50, undoWindowSeconds: 30, ...mailboxAgentDefaults });
+  expect(data).toEqual({ erasureErasesApprovals: false, retentionDays: 30, searchLanguages: ["English", "Swedish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50, undoWindowSeconds: 30, ...mailboxAgentDefaults, linkedFilesCapGb: 20 });
   const { data: changes } = await ada.GET("/organization/changes");
   expect(changes!.changes.filter(({ type }) => type === "settingsChanged").map((change) => "settings" in change && change.settings)).toEqual([
     { erasureErasesApprovals: true },
@@ -56,7 +56,7 @@ test("an admin adds Danish to the search languages, which is a setup change in t
 
   const { data } = await ada.PATCH("/organization/settings", { body: { searchLanguages: ["Danish", "English", "Swedish"] } });
 
-  expect(data).toEqual({ erasureErasesApprovals: false, retentionDays: 30, searchLanguages: ["English", "Swedish", "Danish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50, undoWindowSeconds: 30, ...mailboxAgentDefaults });
+  expect(data).toEqual({ erasureErasesApprovals: false, retentionDays: 30, searchLanguages: ["English", "Swedish", "Danish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50, undoWindowSeconds: 30, ...mailboxAgentDefaults, linkedFilesCapGb: 20 });
   const { data: changes } = await ada.GET("/organization/changes");
   expect(changes!.changes.at(-1)).toEqual({ position: expect.any(Number), at: expect.any(String), actor: adaId, type: "settingsChanged", settings: { searchLanguages: ["English", "Swedish", "Danish"] } });
 });
@@ -67,7 +67,7 @@ test("giving the search languages in another order records no change", async () 
 
   const { data } = await ada.PATCH("/organization/settings", { body: { searchLanguages: ["Swedish", "English"] } });
 
-  expect(data).toEqual({ erasureErasesApprovals: false, retentionDays: 30, searchLanguages: ["English", "Swedish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50, undoWindowSeconds: 30, ...mailboxAgentDefaults });
+  expect(data).toEqual({ erasureErasesApprovals: false, retentionDays: 30, searchLanguages: ["English", "Swedish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50, undoWindowSeconds: 30, ...mailboxAgentDefaults, linkedFilesCapGb: 20 });
   expect((await ada.GET("/organization/changes")).data).toEqual(before);
 });
 
@@ -78,7 +78,7 @@ test("giving a setting the value it has records no change", async () => {
   const { response, data } = await ada.PATCH("/organization/settings", { body: { erasureErasesApprovals: false, retentionDays: 30, searchLanguages: ["English", "Swedish"] } });
 
   expect(response.status).toBe(200);
-  expect(data).toEqual({ erasureErasesApprovals: false, retentionDays: 30, searchLanguages: ["English", "Swedish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50, undoWindowSeconds: 30, ...mailboxAgentDefaults });
+  expect(data).toEqual({ erasureErasesApprovals: false, retentionDays: 30, searchLanguages: ["English", "Swedish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50, undoWindowSeconds: 30, ...mailboxAgentDefaults, linkedFilesCapGb: 20 });
   expect((await ada.GET("/organization/changes")).data).toEqual(before);
 });
 
@@ -90,7 +90,7 @@ test("a human who isn't an admin, and an agent, get 403 changing the settings, a
     expect(response.status).toBe(403);
     expect(error).toEqual({ message: "Only admins can change the organization's settings. Ask an admin to change them." });
   }
-  expect((await grace.GET("/organization/settings")).data).toEqual({ erasureErasesApprovals: false, retentionDays: 30, searchLanguages: ["English", "Swedish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50, undoWindowSeconds: 30, ...mailboxAgentDefaults });
+  expect((await grace.GET("/organization/settings")).data).toEqual({ erasureErasesApprovals: false, retentionDays: 30, searchLanguages: ["English", "Swedish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50, undoWindowSeconds: 30, ...mailboxAgentDefaults, linkedFilesCapGb: 20 });
 });
 
 test.each([
@@ -110,7 +110,7 @@ test.each([
   const { response } = await ada.PATCH("/organization/settings", { body: body as never });
 
   expect(response.status).toBe(400);
-  expect((await ada.GET("/organization/settings")).data).toEqual({ erasureErasesApprovals: false, retentionDays: 30, searchLanguages: ["English", "Swedish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50, undoWindowSeconds: 30, ...mailboxAgentDefaults });
+  expect((await ada.GET("/organization/settings")).data).toEqual({ erasureErasesApprovals: false, retentionDays: 30, searchLanguages: ["English", "Swedish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50, undoWindowSeconds: 30, ...mailboxAgentDefaults, linkedFilesCapGb: 20 });
 });
 
 test("an admin sets how long Trash and Spam keep mail, from 7 to 365 days, which is a setup change in the organization's change feed under them", async () => {
@@ -119,9 +119,9 @@ test("an admin sets how long Trash and Spam keep mail, from 7 to 365 days, which
   const shortest = await ada.PATCH("/organization/settings", { body: { retentionDays: 7 } });
   const longest = await ada.PATCH("/organization/settings", { body: { retentionDays: 365 } });
 
-  expect(shortest.data).toEqual({ erasureErasesApprovals: false, retentionDays: 7, searchLanguages: ["English", "Swedish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50, undoWindowSeconds: 30, ...mailboxAgentDefaults });
-  expect(longest.data).toEqual({ erasureErasesApprovals: false, retentionDays: 365, searchLanguages: ["English", "Swedish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50, undoWindowSeconds: 30, ...mailboxAgentDefaults });
-  expect((await grace.GET("/organization/settings")).data).toEqual({ erasureErasesApprovals: false, retentionDays: 365, searchLanguages: ["English", "Swedish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50, undoWindowSeconds: 30, ...mailboxAgentDefaults });
+  expect(shortest.data).toEqual({ erasureErasesApprovals: false, retentionDays: 7, searchLanguages: ["English", "Swedish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50, undoWindowSeconds: 30, ...mailboxAgentDefaults, linkedFilesCapGb: 20 });
+  expect(longest.data).toEqual({ erasureErasesApprovals: false, retentionDays: 365, searchLanguages: ["English", "Swedish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50, undoWindowSeconds: 30, ...mailboxAgentDefaults, linkedFilesCapGb: 20 });
+  expect((await grace.GET("/organization/settings")).data).toEqual({ erasureErasesApprovals: false, retentionDays: 365, searchLanguages: ["English", "Swedish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50, undoWindowSeconds: 30, ...mailboxAgentDefaults, linkedFilesCapGb: 20 });
   const { data: changes } = await ada.GET("/organization/changes");
   expect(changes!.changes.filter(({ type }) => type === "settingsChanged")).toEqual([
     { position: expect.any(Number), at: expect.any(String), actor: adaId, type: "settingsChanged", settings: { retentionDays: 7 } },
@@ -145,5 +145,5 @@ test("a human who isn't an admin, and an agent, get 403 changing the retention p
     const { response } = await actor.PATCH("/organization/settings", { body: { retentionDays: 7 } });
     expect(response.status).toBe(403);
   }
-  expect((await grace.GET("/organization/settings")).data).toEqual({ erasureErasesApprovals: false, retentionDays: 30, searchLanguages: ["English", "Swedish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50, undoWindowSeconds: 30, ...mailboxAgentDefaults });
+  expect((await grace.GET("/organization/settings")).data).toEqual({ erasureErasesApprovals: false, retentionDays: 30, searchLanguages: ["English", "Swedish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50, undoWindowSeconds: 30, ...mailboxAgentDefaults, linkedFilesCapGb: 20 });
 });

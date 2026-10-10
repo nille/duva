@@ -167,6 +167,8 @@ export interface OutgoingMail {
   /** More header fields, each unstructured text. */
   headers: [name: string, value: string][];
   text: string;
+  /** An HTML body with the same content as the text, if it has one. */
+  html?: string;
   /** The attachments it carries, after the text. */
   attachments: Part[];
 }
@@ -174,25 +176,30 @@ export interface OutgoingMail {
 /**
  * The raw MIME of the message, with CRLF line endings. Text outside ASCII, and any subject too long
  * for one line, is written as encoded words. The text is 7bit when it can be and base64 otherwise.
- * With attachments, the message is multipart/mixed, the text first, and each attachment is base64.
+ * With HTML, the text and the HTML are multipart/alternative. With attachments, the message is
+ * multipart/mixed, the body first, and each attachment is base64.
  */
-export function buildMail({ messageId, from, to, cc, subject, date, inReplyTo, references, headers, text, attachments }: OutgoingMail): Uint8Array {
-  const body = text.replace(/\r\n?/g, "\n").split("\n").join("\r\n");
-  const plain = isAscii(body) && body.split("\r\n").every((line) => line.length <= 998);
-  const textPart = [
-    "Content-Type: text/plain; charset=utf-8",
-    `Content-Transfer-Encoding: ${plain ? "7bit" : "base64"}`,
-    "",
-    plain ? body : base64Lines(Buffer.from(body)),
-  ];
+export function buildMail({ messageId, from, to, cc, subject, date, inReplyTo, references, headers, text, html, attachments }: OutgoingMail): Uint8Array {
+  const textPart = textualPart("plain", text);
+  // With HTML, the text and the HTML are alternatives, the HTML last, as clients prefer it.
+  const alternatives = `duva-${randomUUID()}`;
+  const bodyPart =
+    html === undefined
+      ? textPart
+      : [
+          `Content-Type: multipart/alternative;\r\n boundary="${alternatives}"`,
+          "",
+          ...[textPart, textualPart("html", html)].flatMap((part) => [`--${alternatives}`, ...part]),
+          `--${alternatives}--`,
+        ];
   const boundary = `duva-${randomUUID()}`;
   const content =
     attachments.length === 0
-      ? textPart
+      ? bodyPart
       : [
           `Content-Type: multipart/mixed;\r\n boundary="${boundary}"`,
           "",
-          ...[textPart, ...attachments.map(attachmentPart)].flatMap((part) => [`--${boundary}`, ...part]),
+          ...[bodyPart, ...attachments.map(attachmentPart)].flatMap((part) => [`--${boundary}`, ...part]),
           `--${boundary}--`,
         ];
   const lines = [
@@ -209,6 +216,13 @@ export function buildMail({ messageId, from, to, cc, subject, date, inReplyTo, r
     ...content,
   ];
   return new TextEncoder().encode(`${lines.join("\r\n")}\r\n`);
+}
+
+/** A text/plain or text/html part with the text, 7bit when it can be and base64 otherwise. */
+function textualPart(subtype: "plain" | "html", text: string): string[] {
+  const body = text.replace(/\r\n?/g, "\n").split("\n").join("\r\n");
+  const plain = isAscii(body) && body.split("\r\n").every((line) => line.length <= 998);
+  return [`Content-Type: text/${subtype}; charset=utf-8`, `Content-Transfer-Encoding: ${plain ? "7bit" : "base64"}`, "", plain ? body : base64Lines(Buffer.from(body))];
 }
 
 const base64Lines = (bytes: Uint8Array) => (Buffer.from(bytes).toString("base64").match(/.{1,76}/g) ?? []).join("\r\n");

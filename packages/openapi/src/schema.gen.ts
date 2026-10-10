@@ -1315,6 +1315,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/mailboxes/{mailbox}/messages/{message}/linked-files/{file}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Stop sharing a linked file of a message sent from the mailbox.
+         * @description Its link ends at once, for everyone who has it, and the file is deleted. The message keeps listing it, stopped, with how often it was downloaded. A forward that carried the same link ends with it, and stopping it in the forward stops the link of the message it forwards. Stopping again changes nothing. Only those who can send from the mailbox can. It is recorded in the mailbox's change feed, naming you.
+         */
+        delete: operations["stopSharing"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/mailboxes/{mailbox}/messages/{message}/headers": {
         parameters: {
             query?: never;
@@ -1827,6 +1847,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/all-mailboxes/messages/{message}/linked-files/{file}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Stop sharing a linked file of a message sent from one of All mailboxes.
+         * @description As stopping it in the message's mailbox does.
+         */
+        delete: operations["stopSharingInAllMailboxes"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/mailboxes/{mailbox}/drafts/{draft}/uploads": {
         parameters: {
             query?: never;
@@ -1908,7 +1948,11 @@ export interface paths {
         delete: operations["removeDraftAttachment"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Choose whether a draft's file goes as a linked file.
+         * @description A linked file goes as a link to a download page, listed after the text, which anyone with the link may open until the link ends, 30 days after the send unless the draft's linkDays say otherwise. When carrying every attachment would make the message more than 10 MB, encoded, the largest go as links anyway until it fits. Choosing changes the draft, so a draft that waits for approval has its request withdrawn, and the change is recorded in the mailbox's change feed, naming you. Only those who can draft in the mailbox can.
+         */
+        patch: operations["changeDraftAttachment"];
         trace?: never;
     };
     "/alerts": {
@@ -2077,6 +2121,8 @@ export interface components {
             email: string;
             /** @description Whether the human may change the organization's setup. */
             admin: boolean;
+            /** @description How many bytes of linked files the human has linked now, their agents' included, which counts toward the organization's linkedFilesCapGb. Only admins see it, when they list the humans. */
+            linkedSize?: number;
         };
         NewHuman: {
             /**
@@ -2669,7 +2715,7 @@ export interface components {
             position: number;
         };
         /** @description A change in a mailbox. */
-        MailboxChange: components["schemas"]["MessageReceived"] | components["schemas"]["DraftWritten"] | components["schemas"]["DraftChanged"] | components["schemas"]["DraftDeleted"] | components["schemas"]["SendAsked"] | components["schemas"]["ApprovalAsked"] | components["schemas"]["ApprovalWithdrawn"] | components["schemas"]["ApprovalDecided"] | components["schemas"]["ApprovalUndone"] | components["schemas"]["MessageSent"] | components["schemas"]["SendWaitingForLimit"] | components["schemas"]["SentNow"] | components["schemas"]["SendFailed"] | components["schemas"]["SendUnclear"] | components["schemas"]["FeedbackReceived"] | components["schemas"]["ThreadRead"] | components["schemas"]["ThreadUnread"] | components["schemas"]["ThreadLabelsChanged"] | components["schemas"]["ReminderSet"] | components["schemas"]["ReminderCancelled"] | components["schemas"]["ThreadBack"] | components["schemas"]["LabelCreated"] | components["schemas"]["LabelRenamed"] | components["schemas"]["LabelDeleted"] | components["schemas"]["ThreadErased"] | components["schemas"]["AgentSettingsChanged"] | components["schemas"]["AgentPaused"] | components["schemas"]["AgentUnpaused"] | components["schemas"]["SenderScreened"] | components["schemas"]["ScreenerSwitched"] | components["schemas"]["ScreenedSenderRemoved"] | components["schemas"]["UnsubscribeAttempted"] | components["schemas"]["SenderDeliverySet"] | components["schemas"]["SenderDeliveryRemoved"] | components["schemas"]["MessageDropped"] | components["schemas"]["LabelPromptSet"] | components["schemas"]["LabelPromptRemoved"] | components["schemas"]["TaskGiven"] | components["schemas"]["TaskStarted"] | components["schemas"]["TaskEnded"] | components["schemas"]["AgentHandedOver"] | components["schemas"]["ConversationTurnTaken"] | components["schemas"]["MailboxAgentsMerged"];
+        MailboxChange: components["schemas"]["MessageReceived"] | components["schemas"]["DraftWritten"] | components["schemas"]["DraftChanged"] | components["schemas"]["DraftDeleted"] | components["schemas"]["SendAsked"] | components["schemas"]["ApprovalAsked"] | components["schemas"]["ApprovalWithdrawn"] | components["schemas"]["ApprovalDecided"] | components["schemas"]["ApprovalUndone"] | components["schemas"]["MessageSent"] | components["schemas"]["SendWaitingForLimit"] | components["schemas"]["SentNow"] | components["schemas"]["SendFailed"] | components["schemas"]["SendUnclear"] | components["schemas"]["FeedbackReceived"] | components["schemas"]["ThreadRead"] | components["schemas"]["ThreadUnread"] | components["schemas"]["ThreadLabelsChanged"] | components["schemas"]["ReminderSet"] | components["schemas"]["ReminderCancelled"] | components["schemas"]["ThreadBack"] | components["schemas"]["LabelCreated"] | components["schemas"]["LabelRenamed"] | components["schemas"]["LabelDeleted"] | components["schemas"]["ThreadErased"] | components["schemas"]["AgentSettingsChanged"] | components["schemas"]["AgentPaused"] | components["schemas"]["AgentUnpaused"] | components["schemas"]["SenderScreened"] | components["schemas"]["ScreenerSwitched"] | components["schemas"]["ScreenedSenderRemoved"] | components["schemas"]["UnsubscribeAttempted"] | components["schemas"]["SenderDeliverySet"] | components["schemas"]["SenderDeliveryRemoved"] | components["schemas"]["MessageDropped"] | components["schemas"]["LabelPromptSet"] | components["schemas"]["LabelPromptRemoved"] | components["schemas"]["TaskGiven"] | components["schemas"]["TaskStarted"] | components["schemas"]["TaskEnded"] | components["schemas"]["AgentHandedOver"] | components["schemas"]["ConversationTurnTaken"] | components["schemas"]["MailboxAgentsMerged"] | components["schemas"]["LinkedFileDownloaded"] | components["schemas"]["SharingStopped"];
         /** @description Mail arrived. No actor made this change, so it names none. */
         MessageReceived: {
             /** @description The change's position in the mailbox's feed, counting from 1. */
@@ -3212,6 +3258,46 @@ export interface components {
              */
             type: "labelDeleted";
         };
+        /** @description A linked file of a message sent from the mailbox was downloaded for the first time, from its page's Download button. Later downloads only count. No actor made this change, and Duva keeps no downloader's address. */
+        LinkedFileDownloaded: {
+            /** @description The change's position in the mailbox's feed, counting from 1. */
+            position: number;
+            /**
+             * Format: date-time
+             * @description When it was downloaded.
+             */
+            at: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "linkedFileDownloaded";
+            /** @description The ID of the sent message's thread. */
+            thread: string;
+            /** @description The sent message's ID. */
+            message: string;
+            /** @description The linked file's ID in the message. */
+            file: string;
+            /**
+             * @description The file's name.
+             * @example film.mov
+             */
+            name: string;
+        };
+        SharingStopped: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "sharingStopped";
+            /** @description The sent message's ID. */
+            message: string;
+            /** @description The linked file's ID in the message. */
+            file: string;
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "sharingStopped";
+        };
         /** @description A thread was erased for good, with its messages. The change keeps none of their content. Emptying Trash names the actor who emptied it. Erasing Trash and Spam after the retention period names none. */
         ThreadErased: {
             /** @description The change's position in the mailbox's feed, counting from 1. */
@@ -3561,6 +3647,7 @@ export interface components {
             subject?: string;
             /** @description The plain-text body. */
             text?: string;
+            linkDays?: components["schemas"]["LinkDays"];
         };
         DraftChanges: {
             /** @description The address to send from, in place of the draft's: one of the mailbox's addresses, or a group its owner is a local member of. */
@@ -3575,6 +3662,7 @@ export interface components {
             subject?: string;
             /** @description The plain-text body. */
             text?: string;
+            linkDays?: components["schemas"]["LinkDays"];
         };
         ApproverEdits: {
             /**
@@ -3619,6 +3707,7 @@ export interface components {
             text: string;
             /** @description The files it carries, those uploaded to it and those of the message it forwards. */
             attachments?: components["schemas"]["DraftAttachment"][];
+            linkDays?: components["schemas"]["LinkDays"];
             /**
              * Format: date-time
              * @description When the draft was written or last changed.
@@ -3678,10 +3767,52 @@ export interface components {
             /** @description The file's size in bytes. */
             size: number;
             /**
-             * @description uploaded to the draft, or one of the attachments of the message it forwards.
+             * @description uploaded to the draft, one of the attachments of the message it forwards, or one of that message's linked files, which the forward carries as the same link, until the same date.
              * @enum {string}
              */
-            source: "uploaded" | "forwarded";
+            source: "uploaded" | "forwarded" | "linked";
+            /**
+             * @description Present when the file goes as a linked file, listed after the text with a link to a download page: chosen, as its sender chose, or needed, since carrying every attachment would make the message more than 10 MB, encoded, so the largest go as links until it fits. A linked file of the message it forwards always goes as its link, so it has none.
+             * @enum {string}
+             */
+            linked?: "chosen" | "needed";
+            /**
+             * Format: date-time
+             * @description When its link stops working, for a linked file of the message it forwards.
+             */
+            until?: string;
+        };
+        /**
+         * @description How many days the links of its linked files work after it is sent: 7, 30 or 365. 30 when left out. When a link ends, its file is deleted.
+         * @enum {integer}
+         */
+        LinkDays: 7 | 30 | 365;
+        DraftAttachmentChanges: {
+            /** @description true sends the file as a linked file by choice. false carries it in the message, unless carrying every attachment would make the message more than 10 MB, encoded, and it is among the largest. */
+            linked: boolean;
+        };
+        /** @description A file a message sent from the mailbox carried as a link to a download page, which anyone with the link may open. */
+        LinkedFile: {
+            /** @description The linked file's ID in the message. */
+            id: string;
+            /** @example film.mov */
+            name: string;
+            /** @example video/quicktime */
+            type: string;
+            /** @description The file's size in bytes. */
+            size: number;
+            /**
+             * Format: date-time
+             * @description When its link stops working and the file is deleted.
+             */
+            until: string;
+            /**
+             * @description sharing while its link works; stopped, when its sender stopped sharing it, the send was undone or the mail erased; or expired, past until. A file no longer shared is deleted.
+             * @enum {string}
+             */
+            state: "sharing" | "stopped" | "expired";
+            /** @description How many times it was downloaded from its page's Download button. Duva keeps no downloader's address. */
+            downloads: number;
         };
         NewUpload: {
             /**
@@ -3907,6 +4038,7 @@ export interface components {
             text: string;
             /** @description The files it carries, those uploaded to it and those of the message it forwards. */
             attachments?: components["schemas"]["DraftAttachment"][];
+            linkDays?: components["schemas"]["LinkDays"];
         };
         /** @description A notice to a sponsor that one of their agents needs them. */
         Alert: {
@@ -4320,6 +4452,8 @@ export interface components {
              */
             removedTrackers?: string[];
             attachments: components["schemas"]["Attachment"][];
+            /** @description The files a message sent from the mailbox carried as links, each with how often it was downloaded, if it carried any. The message's text leaves out the list of them that recipients see, and it has no HTML. */
+            linkedFiles?: components["schemas"]["LinkedFile"][];
         };
         /** @description A sender's logo, which their domain publishes through BIMI. Duva fetched it when the mail arrived, checked that it is SVG Tiny PS and wrote it out again without anything that could run or fetch, so showing it never reaches the sender (ADR-0023). */
         SenderLogo: {
@@ -4772,6 +4906,7 @@ export interface components {
             mailboxAgentProfile: components["schemas"]["MailboxAgentProfile"];
             mailboxAgentRegion: components["schemas"]["MailboxAgentRegion"];
             mailboxAgentSpendCap: components["schemas"]["MailboxAgentSpendCap"];
+            linkedFilesCapGb: components["schemas"]["LinkedFilesCapGb"];
         };
         /** @description The settings changed, each with its new value. */
         SettingsChanges: {
@@ -4791,6 +4926,7 @@ export interface components {
             mailboxAgentProfile?: components["schemas"]["MailboxAgentProfile"];
             mailboxAgentRegion?: components["schemas"]["MailboxAgentRegion"];
             mailboxAgentSpendCap?: components["schemas"]["MailboxAgentSpendCap"];
+            linkedFilesCapGb?: components["schemas"]["LinkedFilesCapGb"];
         };
         /** @description How many days Trash and Spam keep a thread, counted from when it got the label, before the eraser erases it for good. 30 by default, and a whole number from 7 to 365. It applies to all Trash and Spam, threads already there included. */
         RetentionDays: number;
@@ -4921,6 +5057,8 @@ export interface components {
          * @enum {string}
          */
         MailboxAgentRegion: "eu-central-1" | "eu-west-1" | "eu-west-3" | "eu-north-1" | "us-east-1" | "us-east-2" | "us-west-2";
+        /** @description How much each human may have linked at once, in whole gigabytes (GiB), 20 by default. Their agents' linked files count toward it. Past it, a send that would link more is refused, until they stop sharing older files or an admin raises it. 0 lets no one link files, so mail too large to carry its files can't be sent. */
+        LinkedFilesCapGb: number;
         /** @description The most the mailbox agents may spend on their model a month, in whole US dollars, 20 by default. At the cap a run stops, its agent's sponsor gets an alert, and runs are refused until the month ends or an admin raises it. 0 turns the mailbox agents off. */
         MailboxAgentSpendCap: number;
         RetentionPreview: {
@@ -7581,6 +7719,36 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
+    stopSharing: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The mailbox's ID. */
+                mailbox: components["parameters"]["Mailbox"];
+                /** @description The sent message's ID. */
+                message: string;
+                /** @description The linked file's ID in the message. */
+                file: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The linked file, no longer shared. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkedFile"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     getMessageHeaders: {
         parameters: {
             query?: never;
@@ -8431,6 +8599,34 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
+    stopSharingInAllMailboxes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The sent message's ID. */
+                message: string;
+                /** @description The linked file's ID in the message. */
+                file: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The linked file, no longer shared. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkedFile"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     startUpload: {
         parameters: {
             query?: never;
@@ -8581,6 +8777,42 @@ export interface operations {
                     "application/json": components["schemas"]["Draft"];
                 };
             };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    changeDraftAttachment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The mailbox's ID. */
+                mailbox: components["parameters"]["Mailbox"];
+                /** @description The draft's ID. */
+                draft: components["parameters"]["Draft"];
+                /** @description The attachment's ID, as the draft lists it. */
+                attachment: components["parameters"]["DraftAttachment"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DraftAttachmentChanges"];
+            };
+        };
+        responses: {
+            /** @description The draft, with which of its files go as links. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Draft"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];

@@ -11,6 +11,7 @@ import { changesAfter, changesPerPage, recordChanges } from "./feed.ts";
 import type { MailBucket } from "./mail-bucket.ts";
 import { contentIdsIn, serveHtml, type ServedHtml } from "./html.ts";
 import { type ParsedMail, type Part, parseMail } from "./mime.ts";
+import { type LinkedEntry, linkedFilesOf, withoutLinkedFiles } from "./linked-files.ts";
 import { readableLine } from "./readable-line.ts";
 import { allMailboxes, defaultAgentSettings, mailboxFeed, mailboxKey } from "./organization.ts";
 import { documents, isNew, pk, sk, type TransactItem } from "./table.ts";
@@ -187,6 +188,8 @@ interface StoredMessage {
   approval?: components["schemas"]["SentApproval"];
   /** What SES reported about a message sent from the mailbox, oldest first. */
   feedback?: SendFeedback[];
+  /** The files a message sent from the mailbox carried as links. */
+  linkedFiles?: LinkedEntry[];
   /** Where the raw message is in the mail bucket. */
   rawKey: string;
   /**
@@ -977,7 +980,7 @@ export async function readThread(table: Table, mailBucket: MailBucket, mailbox: 
   const thread = items.find((item) => item[sk] === threadKey(mailbox, id)[sk]);
   if (thread === undefined || thread.erasing === true) return undefined;
   const stored = items.filter((item) => item !== thread);
-  const messages = await Promise.all(stored.map(async (item) => (await readMessage(mailBucket, item as StoredMessage, linkTo)).message));
+  const messages = await Promise.all(stored.map(async (item) => (await readMessage({ table, mailBucket }, mailbox, item as StoredMessage, linkTo)).message));
   const { reminder, back } = summaryOf(thread as ThreadSummary);
   return { id, subject: thread.subject, labels: thread.labels, unread: thread.unread ?? false, ...(reminder !== undefined && { reminder }), ...(back !== undefined && { back }), messages };
 }
@@ -996,7 +999,7 @@ export async function findMessage(
 ): Promise<{ message: Message; thread: string; replyTo: components["schemas"]["EmailAddress"][]; references: string[]; parts: Part[] } | undefined> {
   const stored = await storedMessage(table, mailbox, id);
   if (stored === undefined) return undefined;
-  const { message, parsed } = await readMessage(mailBucket, stored, linkTo);
+  const { message, parsed } = await readMessage({ table, mailBucket }, mailbox, stored, linkTo);
   return { message, thread: stored.thread, replyTo: parsed.replyTo, references: parsed.references, parts: parsed.parts };
 }
 
@@ -1037,12 +1040,16 @@ function inContractOrder(change: Record<string, unknown>): Record<string, unknow
  * its fields, and the raw message parsed. With `linkTo`, its HTML is served too, its images of its
  * own parts leading to the links `linkTo` gives.
  */
-async function readMessage(mailBucket: MailBucket, stored: StoredMessage, linkTo?: AttachmentLinks): Promise<{ message: Message; parsed: ParsedMail }> {
+async function readMessage({ table, mailBucket }: { table: Table; mailBucket: MailBucket }, mailbox: string, stored: StoredMessage, linkTo?: AttachmentLinks): Promise<{ message: Message; parsed: ParsedMail }> {
   const raw = await mailBucket.get(stored.rawKey);
   if (raw === undefined) throw new Error(`The raw message ${stored.rawKey} is missing from the mail bucket.`);
   const parsed = await parseMail(raw);
-  const { text, attachments } = parsed;
-  const html = parsed.html === undefined || linkTo === undefined ? undefined : await servedHtml(parsed.html, parsed.parts, (attachment) => linkTo(stored.id, attachment));
+  const { attachments } = parsed;
+  const { linkedFiles: linked } = stored;
+  // Mail Duva sent with linked files lists them after its text, and in an HTML part made only for
+  // that list, which Duva shows as the linked files themselves instead.
+  const text = linked === undefined ? parsed.text : withoutLinkedFiles(parsed.text, linked);
+  const html = parsed.html === undefined || linkTo === undefined || linked !== undefined ? undefined : await servedHtml(parsed.html, parsed.parts, (attachment) => linkTo(stored.id, attachment));
   const { id, messageId, from, to, cc, bcc, recipient, plusTag, group, subject, date, receivedAt, sentBy, sentAs, fromAgent, logo, approval, feedback } = stored;
   const message = {
     id,
@@ -1066,6 +1073,7 @@ async function readMessage(mailBucket: MailBucket, stored: StoredMessage, linkTo
     text,
     ...html,
     attachments,
+    ...(linked !== undefined && { linkedFiles: await linkedFilesOf(table, mailbox, linked) }),
   };
   return { message, parsed };
 }

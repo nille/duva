@@ -11,6 +11,7 @@ import { Composer, startDraft } from "./compose.tsx";
 import { PreferencesContext, useDates } from "./dates.ts";
 import { DesignedBody } from "./designed.tsx";
 import { HeadersSheet } from "./headers.tsx";
+import { LinkedFiles } from "./linked-files.tsx";
 import { Addresses, Attachments, Field, nameOf, SenderMark, Time } from "./mail-parts.tsx";
 import { changeFor, type Done, type Label, organize, OrganizeActions, ownLabelsOf, SessionEnded } from "./organize.tsx";
 import { now, useReadMarks } from "./read-marks.ts";
@@ -291,6 +292,14 @@ export function ThreadView({
     link.click();
   };
 
+  const stopSharing = async (message: Message, file: string) => {
+    const { data, error, response } = await client
+      .DELETE("/mailboxes/{mailbox}/messages/{message}/linked-files/{file}", { params: { path: { mailbox: mailbox.id, message: message.id, file } } })
+      .catch(() => ({ data: undefined, error: undefined, response: undefined }));
+    if (response?.status === 401) onSignedOut();
+    return data ?? error?.message ?? strings.linkedFiles.stopFailed;
+  };
+
   // Escape closes More, and gives focus back to it.
   const actionsId = useId();
   const moreRef = useRef<HTMLButtonElement>(null);
@@ -432,6 +441,7 @@ export function ThreadView({
                       downloading={typeof downloading === "object" && downloading.message === message.id ? downloading.index : undefined}
                       onDownload={(index) => void download(message, index)}
                       onShowHeaders={() => setHeadersOf(message.id)}
+                      onStopSharing={(file) => stopSharing(message, file)}
                     >
                       {isNewest && !composing && (
                         <div className="letter-actions">
@@ -656,6 +666,7 @@ export function Letter({
   downloading,
   onDownload,
   onShowHeaders,
+  onStopSharing,
   children,
 }: LetterProps & {
   marked?: boolean;
@@ -665,6 +676,8 @@ export function Letter({
   onDownload: (index: number) => void;
   /** Opens the message's headers, which its menu offers when given. */
   onShowHeaders?: () => void;
+  /** Stops sharing one of the message's linked files, answering it as it is then, or why it couldn't. */
+  onStopSharing?: (file: string) => Promise<components["schemas"]["LinkedFile"] | string>;
   /** What the letter ends in, as the newest's replies. */
   children?: ReactNode;
 }) {
@@ -745,6 +758,7 @@ export function Letter({
         </p>
       )}
       {message.attachments.length > 0 && <Attachments list={message.attachments} onDownload={onDownload} downloading={downloading} />}
+      {message.linkedFiles !== undefined && <LinkedFiles files={message.linkedFiles} onStop={onStopSharing && ((file) => onStopSharing(file))} />}
       {children}
     </article>
   );

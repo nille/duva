@@ -14,11 +14,26 @@ import { jsonBody, type OperationHandler, refusal } from "./api.ts";
 import { mailboxFor } from "./access.ts";
 import { downloadLink } from "./attachments.ts";
 import type { Deployment } from "./deployment.ts";
-import { AlreadyApproved, AlreadyAttached, approvedOutcomes, attachFile, type Draft, type DraftFile, findDraft, draftToSend, maxFiles, NoSuchAttachment, removeAttachment, TooManyFiles } from "./drafting.ts";
+import {
+  AlreadyApproved,
+  AlreadyAttached,
+  approvedOutcomes,
+  attachFile,
+  CarriedLink,
+  chooseLink,
+  type Draft,
+  type DraftFile,
+  findDraft,
+  draftToSend,
+  maxFiles,
+  NoSuchAttachment,
+  removeAttachment,
+  TooManyFiles,
+} from "./drafting.ts";
 import { timeToLiveAttribute } from "./infrastructure.ts";
 import { mediaTypeOf } from "./mime.ts";
 import { mailboxKey } from "./organization.ts";
-import { draftPrefix, fileKey, type UploadedPart } from "./uploads-bucket.ts";
+import { fileKey, type UploadedPart } from "./uploads-bucket.ts";
 import { documents, isNew, pk, sk } from "./table.ts";
 
 /** How large a file is at most: 5 GB (ADR-0034). */
@@ -104,7 +119,7 @@ export const completeUpload: OperationHandler = async (event, deployment, actor)
   try {
     const attached = await attachFile(deployment.table, { mailbox: mailbox.id, id: draftId, by: actor!.id, file, items });
     if (attached !== undefined) return { statusCode: 200, body: attached satisfies components["schemas"]["Draft"] };
-    await deployment.uploads.remove(draftPrefix(mailbox.id, draftId));
+    await deployment.uploads.remove(key);
     return noDraft(draftId);
   } catch (error) {
     // Another call completed it at the same time.
@@ -138,6 +153,24 @@ export const getDraftAttachment: OperationHandler = async (event, deployment, ac
   const expires = new Date(Date.now() + deployment.downloads.lifetime * 1000);
   const url = await deployment.uploads.downloadUrl(fileKey(mailbox.id, draftId, id), attachment, expires);
   return { statusCode: 200, body: { name: attachment.name, type: attachment.type, size: attachment.size, url, expiresAt: expires.toISOString() } satisfies components["schemas"]["AttachmentLink"] };
+};
+
+export const changeDraftAttachment: OperationHandler = async (event, deployment, actor) => {
+  const mailbox = await mailboxFor(event, deployment, actor!, "draft");
+  if ("statusCode" in mailbox) return mailbox;
+  const { draft: draftId = "", attachment: id = "" } = event.pathParameters ?? {};
+  const linked = jsonBody(event)?.linked;
+  if (typeof linked !== "boolean") return refusal(400, "Give linked as true to send the file as a linked file, or false to carry it in the message.");
+  try {
+    const draft = await chooseLink(deployment.table, { mailbox: mailbox.id, id: draftId, by: actor!.id, attachment: id, linked });
+    if (draft === undefined) return noDraft(draftId);
+    return { statusCode: 200, body: draft satisfies components["schemas"]["Draft"] };
+  } catch (error) {
+    if (error instanceof NoSuchAttachment) return noAttachment(id);
+    if (error instanceof CarriedLink) return refusal(409, "It's a linked file of the message the draft forwards, so it goes as that message's link. Remove it to leave it out.");
+    if (error instanceof AlreadyApproved) return refusal(409, `The draft ${approvedOutcomes[error.state]}, so its attachments stay as they are.`);
+    throw error;
+  }
 };
 
 export const removeDraftAttachment: OperationHandler = async (event, deployment, actor) => {

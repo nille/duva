@@ -58,6 +58,9 @@ export function memoryUploadsBucket(url: () => string): UploadsBucket & {
       objects.set(key, { body: new Uint8Array(Buffer.concat(bodies)), type: started.type });
       uploads.delete(upload);
     },
+    async put(key, content, type) {
+      objects.set(key, { body: new Uint8Array(content), type });
+    },
     async get(key) {
       return objects.get(key)?.body;
     },

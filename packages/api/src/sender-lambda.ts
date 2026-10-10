@@ -1,7 +1,7 @@
 // The Lambda entry point the table's stream invokes for each draft a decision approved and each
 // urgent alert to mail, the API and EventBridge Scheduler for an agent whose sends wait for its
-// limits, and EventBridge Scheduler for each thread due back from Remind me and each draft whose
-// undo window is over. The CDK app sets the environment and the filters.
+// limits, and EventBridge Scheduler for each thread due back from Remind me, each draft whose
+// undo window is over and each linked file whose link ended. The CDK app sets the environment and the filters.
 import type { Context } from "aws-lambda";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { S3Client } from "@aws-sdk/client-s3";
@@ -23,7 +23,8 @@ const region = required("AWS_REGION");
 const outbound = sesOutbound(new SESv2Client({ maxAttempts: 1 }), required(environmentVariables.configurationSet));
 const scheduler = new SchedulerClient({});
 const schedule = { group: required(environmentVariables.scheduleGroup), role: required(environmentVariables.schedulerRole) };
+const downloads = { url: required(environmentVariables.downloadUrl) };
 
 export const handler = (event: Parameters<ReturnType<typeof createSender>>[0], context: Context) =>
   // The schedules invoke this function, which the CDK app can't name in its own environment.
-  createSender({ table, mailBucket, uploads, region, outbound, dns: realDns, schedules: eventBridgeSchedules(scheduler, { ...schedule, sender: context.invokedFunctionArn }) })(event);
+  createSender({ table, mailBucket, uploads, region, outbound, dns: realDns, downloads, schedules: eventBridgeSchedules(scheduler, { ...schedule, sender: context.invokedFunctionArn }) })(event);

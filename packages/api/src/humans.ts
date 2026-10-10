@@ -1,6 +1,7 @@
 import type { components } from "@duva/openapi";
 import { jsonBody, type OperationHandler, refusal } from "./api.ts";
 import { isEmailAddress } from "./email-address.ts";
+import { linkedSize } from "./linked-files.ts";
 import {
   addHumanToOrganization,
   allHumans,
@@ -44,7 +45,9 @@ export const addHuman: OperationHandler = async (event, deployment, actor) => {
 
 export const listHumans: OperationHandler = async (_event, deployment, actor) => {
   if (!isAdmin(actor)) return refusal(403, "Only admins can list the organization's humans. Ask an admin who has access.");
-  return { statusCode: 200, body: { humans: await allHumans(deployment.table) } satisfies components["schemas"]["HumanList"] };
+  // Admins see how much each shares as linked files, toward the organization's cap.
+  const humans = await Promise.all((await allHumans(deployment.table)).map(async (human) => ({ ...human, linkedSize: await linkedSize(deployment.table, human.id) })));
+  return { statusCode: 200, body: { humans } satisfies components["schemas"]["HumanList"] };
 };
 
 export const removeHuman: OperationHandler = async (event, deployment, actor) => {

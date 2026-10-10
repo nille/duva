@@ -1131,6 +1131,7 @@ export const defaultSettings: OrganizationSettings = {
   mailboxAgentDecider: false,
   ...defaultModelRegion("eu-north-1"),
   mailboxAgentSpendCap: 20,
+  linkedFilesCapGb: 20,
 };
 
 /** Settings as read, with the version a write that relies on them checks. */

@@ -19,7 +19,7 @@ import {
 import { AttributeType, Billing, StreamViewType, TableV2 } from "aws-cdk-lib/aws-dynamodb";
 import { Rule, Schedule } from "aws-cdk-lib/aws-events";
 import { LambdaFunction } from "aws-cdk-lib/aws-events-targets";
-import { PolicyStatement, Role, ServicePrincipal } from "aws-cdk-lib/aws-iam";
+import { Policy, PolicyStatement, Role, ServicePrincipal } from "aws-cdk-lib/aws-iam";
 import { Architecture, Code, FilterCriteria, Function as LambdaFunctionResource, FunctionUrlAuthType, InvokeMode, Runtime, StartingPosition } from "aws-cdk-lib/aws-lambda";
 import { SqsDestination } from "aws-cdk-lib/aws-lambda-destinations";
 import { DynamoEventSource, SqsDlq, SqsEventSource } from "aws-cdk-lib/aws-lambda-event-sources";
@@ -368,15 +368,30 @@ export class DuvaStack extends Stack {
     // without credentials: the link's ticket is what the download Lambda checks. CloudFront signs
     // each request to its function URL, which only the distribution may call, since the account
     // disables a Lambda anyone may invoke (docs/aws.md). It streams its answer, since a buffered one
-    // can't exceed 6 MB, and takes the attachment from the raw message, which is parsed whole.
+    // can't exceed 6 MB, and takes the attachment from the raw message, which is parsed whole. It
+    // also serves linked files' pages, and their Download hands out a URL that reads the file from
+    // the uploads bucket for minutes, so it never carries a file itself, and counts the download,
+    // recording the first in the mailbox's change feed (ADR-0034).
+    // The uploads bucket names the distribution in its CORS, so its name reaches the Lambda through a
+    // parameter, and its grant is a policy the Lambda doesn't wait for, as the API's URL does the
+    // conversation Lambda's.
+    const uploadsBucketParameter = `/${Aws.STACK_NAME}/${this.region}/UploadsBucket`;
     const download = lambda(
       "DownloadHandler",
       "@duva/api/download-lambda",
-      { [environmentVariables.tableName]: table.tableName, [environmentVariables.mailBucket]: mail.bucketName },
+      { [environmentVariables.tableName]: table.tableName, [environmentVariables.mailBucket]: mail.bucketName, [environmentVariables.uploadsBucketParameter]: uploadsBucketParameter },
       { memorySize: 1024, timeout: Duration.seconds(60) },
     );
-    table.grantReadData(download);
+    table.grantReadWriteData(download);
     mail.grantRead(download);
+    new StringParameter(this, "UploadsBucketParameter", { parameterName: uploadsBucketParameter, simpleName: false, stringValue: uploads.bucketName, description: "The bucket of the files uploaded to drafts" });
+    new Policy(this, "DownloadReadsUploads", {
+      roles: [download.role!],
+      statements: [
+        new PolicyStatement({ actions: ["s3:GetObject"], resources: [uploads.arnForObjects("*")] }),
+        new PolicyStatement({ actions: ["ssm:GetParameter"], resources: [this.formatArn({ service: "ssm", resource: "parameter", resourceName: uploadsBucketParameter.slice(1) })] }),
+      ],
+    });
     const downloadFunctionUrl = download.addFunctionUrl({ authType: FunctionUrlAuthType.AWS_IAM, invokeMode: InvokeMode.RESPONSE_STREAM });
     // A GET has no body, so it needs no payload hash, which OAC asks of a POST or PUT.
     distribution.addBehavior(
@@ -579,8 +594,11 @@ export class DuvaStack extends Stack {
         [environmentVariables.mailBucket]: mail.bucketName,
         [environmentVariables.configurationSet]: sending.configurationSetName,
         [environmentVariables.uploadsBucket]: uploads.bucketName,
+        // Linked files' pages are under the download URL (ADR-0034).
+        [environmentVariables.downloadUrl]: downloadUrl,
       },
-      // A message with its attachments is up to 40 MB, encoded, held whole while it is sent.
+      // A message with its attachments is up to 10 MB, encoded, past which files go as links, and a
+      // forwarded attachment it links up to SES's 40 MB, held whole while it is sent or put.
       { memorySize: 1024, timeout: Duration.seconds(60) },
     );
     sender.addEventSource(
@@ -597,8 +615,10 @@ export class DuvaStack extends Stack {
     // The sender reads the message it answers or forwards, and stores the raw MIME it sends.
     mail.grantRead(sender);
     mail.grantPut(sender, `${sentPrefix}*`);
-    // It attaches the files uploaded to a draft, and deletes them once they went out.
+    // It attaches the files uploaded to a draft, and deletes them once they went out, or their
+    // links ended. A forwarded attachment it links goes to the bucket first.
     removesUploads(sender);
+    uploads.grantPut(sender);
     // SES checks both the identity and the configuration set a send uses: any of the organization's
     // domains, which admins add at run time. SESv2 SendEmail with raw content is authorized as
     // ses:SendRawEmail (see docs/aws.md).

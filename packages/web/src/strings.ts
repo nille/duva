@@ -228,6 +228,33 @@ export const strings = {
     emptyFile: "The file is empty, so it can't be attached.",
     removeFailed: "Duva couldn't remove the file. Try again.",
     stillUploading: "Files are still uploading. Send once they're attached, or remove them.",
+    linkTag: "Link",
+    /** Why a file goes as a linked file: chosen, needed past 10 MB, or the link of the mail it forwards, until the day. */
+    linkedMeta: (meta: string, linked: "chosen" | "needed" | "carried", until?: string) =>
+      linked === "needed" ? `${meta}, too large to carry, so it goes as a link` : linked === "carried" ? `${meta}, its link works until ${until}` : `${meta}, goes as a link`,
+    linkInstead: "Link instead",
+    linkInsteadFile: (name: string) => `Link ${name} instead`,
+    attachInstead: "Attach instead",
+    attachInsteadFile: (name: string) => `Attach ${name} instead`,
+    linksFor: "Links work for",
+    linkDays: { 7: "7 days", 30: "30 days", 365: "a year" } as Record<7 | 30 | 365, string>,
+    linksNote: "after the send. Then the files are deleted.",
+    linksFixed: (days: string) => `Links work for ${days} after the send, then the files are deleted.`,
+    linkFailed: "Duva couldn't change how the file goes. Try again.",
+  },
+
+  /** The linked files of a message sent from the mailbox, each with how often it was downloaded. */
+  linkedFiles: {
+    title: "Linked files",
+    meta: (size: string, state: "sharing" | "stopped" | "expired", until: string, downloads: number) => {
+      const count = downloads === 0 ? "not downloaded yet" : downloads === 1 ? "downloaded once" : `downloaded ${downloads} times`;
+      const standing = state === "sharing" ? `until ${until}` : state === "stopped" ? "no longer shared" : `link ended ${until}`;
+      return `${size}, ${standing}, ${count}`;
+    },
+    stop: "Stop sharing",
+    stopping: "Stopping…",
+    stopFile: (name: string) => `Stop sharing ${name}`,
+    stopFailed: "Duva couldn't stop sharing the file. Try again.",
   },
 
   views: {
@@ -276,6 +303,7 @@ export const strings = {
       const what = subject === undefined ? "" : label === undefined ? ` ${subject}` : ` ${subject}, from ${label}`;
       return count === 1 ? `Done:${what || " a task"}.` : `${count} tasks done${what === "" ? "" : `, the last${what}`}.`;
     },
+    downloads: (count: number, name: string) => (count === 1 ? `${name} was downloaded.` : `${count} of your linked files were downloaded, the last ${name}.`),
   },
 
   /** Ask Coo: the human's conversation with their mailbox's mailbox agent, Coo, in the reading pane. */
@@ -1085,6 +1113,7 @@ export const strings = {
     admin: "Admin",
     mailboxes: (count: number) => (count === 0 ? "No mailbox" : count === 1 ? "1 mailbox" : `${count} mailboxes`),
     agents: (count: number) => (count === 0 ? "No agents" : count === 1 ? "1 agent" : `${count} agents`),
+    linked: (size: string) => `${size} of linked files`,
     summary: (parts: string[]) => `${parts.join(". ")}.`,
     adminLead: "An admin changes the organization's setup: domains, addresses, groups, people and settings. Admins can't read anyone's mail.",
     lastAdmin: "The organization's only admin. Make another human an admin before taking it away or removing them.",
@@ -1682,11 +1711,12 @@ export const strings = {
   },
 };
 
-/** A size in bytes as people read it: 11 bytes, 12 KB, 1.4 MB. */
+/** A size in bytes as people read it: 11 bytes, 12 KB, 1.4 MB, 2.1 GB. */
 export function size(bytes: number): string {
   if (bytes < 1024) return bytes === 1 ? "1 byte" : `${bytes} bytes`;
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  if (bytes < 1024 ** 3) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
 }
 
 /** "1 thread", "2 threads". */

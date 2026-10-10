@@ -260,18 +260,6 @@ test("a draft that was sent takes no more files and keeps those it has", async (
   expect(remove.error!.message).toBe("The draft was sent, so its attachments stay as they are.");
 });
 
-test("a draft whose files make the message larger than SES's 40 MB fails, and says why", async () => {
-  const { duva, ada, mailbox, draft, at } = await withMailbox();
-  const { id } = await draft();
-  await attach(duva, ada, mailbox.id, id, { name: "video.mp4", type: "video/mp4", content: new Uint8Array(mebibytes(31)) });
-
-  await ada.POST("/mailboxes/{mailbox}/drafts/{draft}/send", at(id));
-  const { data } = await ada.GET("/mailboxes/{mailbox}/drafts/{draft}", at(id));
-
-  expect(data!.send).toEqual({ state: "failed", reason: "Its attachments make the message larger than the 40 MB SES sends. Remove some, and send them in another message." });
-  expect(duva.sent()).toEqual([]);
-});
-
 test("erasing a deleted mailbox erases the files uploaded to its drafts", async () => {
   const duva = await startDuva({ domain: "example.com", admin: "ada@example.org" });
   const ada = duva.signIn("ada@example.org");

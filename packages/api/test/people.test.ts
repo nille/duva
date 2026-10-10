@@ -70,7 +70,7 @@ test("a dry run of removing a human lists their mailboxes and their agents, and 
   expect(data!.agents).toHaveLength(2);
   expect((await grace.GET("/whoami")).response.status).toBe(200);
   expect((await hermes.GET("/whoami")).response.status).toBe(200);
-  expect((await ada.GET("/humans")).data?.humans).toContainEqual(graceActor);
+  expect((await ada.GET("/humans")).data?.humans).toContainEqual({ ...graceActor, linkedSize: 0 });
   expect(keeps(duva, "Hej. Till Grace.")).toBe(true);
 });
 
@@ -115,7 +115,7 @@ test("a removed human's sessions stop working at once, and they are no longer am
   await remove({ delete: [mailbox.id] });
 
   expect((await grace.GET("/whoami")).response.status).toBe(401);
-  expect((await ada.GET("/humans")).data?.humans).not.toContainEqual(graceActor);
+  expect((await ada.GET("/humans")).data?.humans).not.toContainEqual({ ...graceActor, linkedSize: 0 });
 });
 
 test("an address freed by a deleted mailbox can be given to another mailbox at once", async () => {

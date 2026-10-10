@@ -15,12 +15,25 @@ type SenderLogo = components["schemas"]["SenderLogo"];
  * its type and size. With `onDownload`, each name is a button that downloads it, and `downloading`
  * says which one is on its way.
  */
-export function Attachments({ list, onDownload, downloading }: { list: Attachment[]; onDownload?: (index: number) => void; downloading?: number }) {
+export function Attachments({
+  list,
+  onDownload,
+  downloading,
+  linked,
+}: {
+  list: Attachment[];
+  onDownload?: (index: number) => void;
+  downloading?: number;
+  /** Whether each goes as a linked file, and why, for a draft's files. */
+  linked?: (index: number) => { as: "chosen" | "needed" | "carried"; until?: string } | undefined;
+}) {
   return (
     <section className="letter-attachments" aria-label={strings.thread.attachments}>
       <ul>
         {list.map((attachment, index) => {
           const name = attachment.name ?? strings.thread.unnamed;
+          const meta = strings.thread.attachment(attachment.type, size(attachment.size));
+          const link = linked?.(index);
           return (
             <li key={index}>
               <ClipIcon />
@@ -32,7 +45,8 @@ export function Attachments({ list, onDownload, downloading }: { list: Attachmen
                     {name}
                   </button>
                 )}{" "}
-                <span className="attachment-meta">{downloading === index ? strings.thread.downloading : strings.thread.attachment(attachment.type, size(attachment.size))}</span>
+                {link !== undefined && <span className="file-tag">{strings.compose.linkTag}</span>}{" "}
+                <span className="attachment-meta">{downloading === index ? strings.thread.downloading : link === undefined ? meta : strings.compose.linkedMeta(meta, link.as, link.until)}</span>
               </span>
             </li>
           );

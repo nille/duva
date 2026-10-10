@@ -13,13 +13,15 @@
 // alerts to its sponsor. The sender also mails each urgent alert to its sponsor, from Duva, and
 // records that it did, so the inbound handler knows the mail for Duva's own when it arrives. And
 // when a thread set aside in Remind me is due, EventBridge Scheduler hands it to the sender, which
-// brings it back.
+// brings it back. Files too large to carry go as linked files (ADR-0034): the sender shares each
+// under a new link, lists them after the text, and asks to be handed each when its link ends, to
+// delete it.
 import { randomUUID } from "node:crypto";
 import { SendEmailCommand, SESv2ServiceException, type SESv2Client } from "@aws-sdk/client-sesv2";
 import type { DynamoDBStreamEvent } from "aws-lambda";
 import { GetCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import type { Table } from "./deployment.ts";
-import { approvedAt, type Draft, draftAt, undoable, draftToSend, findApproval, keepSent, markFailed, markSent, markUnclear, type Sending, sesMessagePartition, startSending, unsendableFrom, waitForLimit } from "./drafting.ts";
+import { approvedAt, type Draft, draftAt, type DraftFile, undoable, draftToSend, findApproval, keepSent, markFailed, markSent, markUnclear, type Sending, sesMessagePartition, startSending, unsendableFrom, waitForLimit } from "./drafting.ts";
 import { alertAt, alertItems, limitRead, mailingSettled, raiseAlert, startMailing } from "./alerting.ts";
 import {
   allowedAt,
@@ -41,10 +43,12 @@ import { documents, pk, sk, type TransactItem } from "./table.ts";
 import { sentPrefix, systemAddress, timeToLiveAttribute } from "./infrastructure.ts";
 import type { MailBucket } from "./mail-bucket.ts";
 import { copyToOtherMembers, fromStanding } from "./group-mail.ts";
-import { bringBack, findMessage } from "./mail.ts";
+import { bringBack, findMessage, storedMessage } from "./mail.ts";
 import type { RemindEvent } from "./reminders.ts";
-import { buildMail, disclosureHeader, type Part } from "./mime.ts";
-import { draftPrefix, uploadedFile, type UploadsBucket } from "./uploads-bucket.ts";
+import { buildMail, disclosureHeader, mediaTypeOf, parseMail, type Part } from "./mime.ts";
+import { fileKey, uploadedFile, type UploadsBucket } from "./uploads-bucket.ts";
+import type { Downloads } from "./attachments.ts";
+import { carriedKey, carriedUrls, defaultLinkDays, type ExpireEvent, expireFile, holderOf, type LinkedEntry, linksOf, overCap, linkFiles, unlinkFiles, withLinkedFiles } from "./linked-files.ts";
 import type { Dns } from "./dns-records.ts";
 import { bimiSelectorHeader } from "./own-logos.ts";
 import { sponsorAccessAllows, sponsorAccessIn } from "./access.ts";
@@ -69,14 +73,6 @@ export interface Outbound {
 
 /** How many recipients SES sends one message to, in To, Cc and Bcc together (docs/aws.md). */
 const maxRecipients = 50;
-
-/**
- * How large a message SES sends, encoded, at most: 40 MB (ADR-0034). Base64 makes each 3 bytes of
- * an attachment 4, with a line break every 76, and each part's header fields take up to about 500
- * bytes more. The text is counted twice its bytes, as base64 with room for the headers.
- */
-const maxMessageSize = 40_000_000;
-const encodedSize = (size: number) => Math.ceil(size / 3) * 4 * (78 / 76) + 500;
 
 /** SES refused the message, so it wasn't sent. */
 export class Refused extends Error {}
@@ -124,10 +120,17 @@ interface Sender {
   schedules: Schedules;
   /** DNS, where the sender looks for the record of a mailbox's own logo before naming its selector. */
   dns: Dns;
+  /** Where linked files' pages are, under files/. */
+  downloads: Pick<Downloads, "url">;
 }
 
 export function createSender(sender: Sender) {
-  return async (event: DynamoDBStreamEvent | ReleaseEvent | RemindEvent | SendEvent): Promise<void> => {
+  return async (event: DynamoDBStreamEvent | ReleaseEvent | RemindEvent | SendEvent | ExpireEvent): Promise<void> => {
+    // A linked file's link ended.
+    if ("expire" in event) {
+      await expireFile(sender.table, sender.uploads, event.expire);
+      return;
+    }
     if ("release" in event) {
       await release(sender, event.release);
       return;
@@ -209,7 +212,7 @@ async function sendOnce(
   if (by === undefined) throw new Error(`Draft ${id} was asked to send without an approval or a human who sent it.`);
   if (status.state === "sent") {
     if (approval !== undefined) await keepSent(table, approval.id, { thread: status.thread!, message: status.message! });
-    await uploads.remove(draftPrefix(mailbox, id));
+    await removeAttached(uploads, mailbox, draft);
     await copyToOtherMembers({ table, mailBucket }, mailbox, status.message!);
     return "done";
   }
@@ -258,22 +261,47 @@ async function sendOnce(
   if (draft.to.length + draft.cc.length + draft.bcc.length > maxRecipients) {
     unsendable ??= `SES sends a message to at most ${maxRecipients} recipients, in To, Cc and Bcc together. Send it as several messages.`;
   }
-  // Until files can go as linked files (#147), every file goes in the message, which SES takes up to its limit.
-  if (draft.files.reduce((total, { size }) => total + encodedSize(size), Buffer.byteLength(draft.text) * 2) > maxMessageSize) {
-    unsendable ??= "Its attachments make the message larger than the 40 MB SES sends. Remove some, and send them in another message.";
-  }
   // A forward carries the forwarded message's attachments, taken from it as it is now.
   const forwarded = unsendable !== undefined || !draft.files.some(({ source }) => source === "forwarded") ? undefined : await findMessage(table, mailBucket, mailbox, draft.forwards ?? "");
+  const noForwarded = "The message it forwards is no longer in the mailbox, so its attachments can't go with it. Write a new message instead.";
+  const missing = (file: DraftFile) => `The file ${file.name ?? file.id} is missing from the draft. Remove it, and attach it again.`;
+  // The largest files go as links while carrying them would make the message more than 10 MB,
+  // and those the sender chose. Each stays in the uploads bucket, where a forwarded one is put.
+  const links = linksOf(draft.files, draft.text);
   const attachments: Part[] = [];
+  const linking: { id: string; key: string; name: string; type: string; size: number }[] = [];
   for (const file of unsendable === undefined ? draft.files : []) {
+    if (file.source === "linked") continue;
+    if (links.has(file.id)) {
+      const key = fileKey(mailbox, id, file.id);
+      if (file.source === "forwarded") {
+        const part = forwarded?.parts[file.place!];
+        if (part === undefined) {
+          unsendable = noForwarded;
+          break;
+        }
+        await uploads.put(key, part.content, mediaTypeOf(part.type));
+      } else if (!(await uploads.has(key))) {
+        unsendable = missing(file);
+        break;
+      }
+      linking.push({ id: file.id, key, name: file.name ?? file.id, type: file.type, size: file.size });
+      continue;
+    }
     const part = file.source === "forwarded" ? forwarded?.parts[file.place!] : await uploadedFile(sender, mailbox, id, file.id).then((content) => content && { ...(file.name !== undefined && { name: file.name }), type: file.type, content: new Uint8Array(content) });
     if (part === undefined) {
       // Without the message it forwards, a forward can't carry its attachments.
-      unsendable = file.source === "forwarded" ? "The message it forwards is no longer in the mailbox, so its attachments can't go with it. Write a new message instead." : `The file ${file.name ?? file.id} is missing from the draft. Remove it, and attach it again.`;
+      unsendable = file.source === "forwarded" ? noForwarded : missing(file);
       break;
     }
     attachments.push(part);
   }
+  // A forward of mail sent with linked files carries the same links, as the forwarded message's raw text gives them.
+  const carried = unsendable === undefined ? draft.files.filter(({ source }) => source === "linked") : [];
+  const carriedLinks = carried.length === 0 ? new Map<string, string>() : await carriedUrls(table, mailbox, await rawText(sender, mailbox, draft.forwards ?? ""), sender.downloads.url, carried.map(({ carries }) => carries!));
+  const lost = carried.find(({ carries }) => !carriedLinks.has(carriedKey(carries!)));
+  if (lost !== undefined) unsendable = `The linked file ${lost.name ?? lost.id} of the message it forwards is no longer shared, so it can't go with it. Remove it, and send the rest.`;
+  unsendable ??= await overCap(table, actor, linking.reduce((total, { size }) => total + size, 0), { mailbox, draft: id });
 
   // Everything is ready before the draft moves to sending, so only SES's answer can leave it unclear.
   const message = randomUUID();
@@ -309,6 +337,17 @@ async function sendOnce(
   const from = { address: draft.from };
   const parent = original?.message.messageId;
   const text = disclosure?.line ? `${draft.text}\n\nSent by ${disclosure.naming}` : draft.text;
+  // Each file it links is shared under a new link from now on, and deleted when its link ends.
+  const holder = holderOf(actor);
+  const until = new Date(date.getTime() + (draft.linkDays ?? defaultLinkDays) * day).toISOString();
+  const shared = unsendable !== undefined || linking.length === 0 ? new Map<string, string>() : await linkFiles(table, { holder, mailbox, draft: id, message, from: draft.from, until, downloadUrl: sender.downloads.url, files: linking });
+  for (const { id: file } of shared.size === 0 ? [] : linking) await sender.schedules.expireAt({ holder, mailbox, draft: id, file }, new Date(until));
+  const linkedFiles: LinkedEntry[] = [
+    ...linking.map(({ id: file, name, type, size }) => ({ id: file, holder, draft: id, file, name, type, size, until })),
+    ...carried.map(({ id: file, name, type, size, until: carriedUntil, carries }) => ({ id: file, ...carries!, name: name ?? file, type, size, until: carriedUntil!, carried: true as const })),
+  ];
+  const urlOf = (entry: LinkedEntry) => (entry.carried ? carriedLinks.get(carriedKey(entry)) : shared.get(entry.file)) ?? "";
+  const body = linkedFiles.length === 0 || unsendable !== undefined ? { text } : withLinkedFiles(text, linkedFiles.map((entry) => ({ ...entry, url: urlOf(entry) })));
   // Mail from a human's own address names the selector of their mailbox's own logo, once DNS has its record.
   const selector = sendsFrom === undefined || unsendable !== undefined ? undefined : await bimiSelectorHeader(table, sender.dns, sendsFrom, draft.from);
   const raw = buildMail({
@@ -322,7 +361,7 @@ async function sendOnce(
     inReplyTo: parent,
     references: parent === undefined ? [] : [...(original?.references ?? []).filter((reference) => reference !== parent), parent],
     headers: [...(disclosure === undefined ? [] : [[disclosureHeader, disclosure.naming] as [string, string]]), ...(selector === undefined ? [] : [selector])],
-    text,
+    ...body,
     attachments,
   });
   const rawKey = `${sentPrefix}${message}`;
@@ -339,8 +378,11 @@ async function sendOnce(
   try {
     sesMessageId = await sender.outbound.send(raw, { to: addresses(draft.to), cc: addresses(draft.cc), bcc: addresses(draft.bcc) });
   } catch (error) {
-    if (error instanceof Refused) await markFailed(table, sending, error.message, failedAlert(table, actor, mailbox, draft, error.message));
-    else await markUnclear(table, sending, unclearAlert(table, actor, mailbox, draft));
+    if (error instanceof Refused) {
+      await markFailed(table, sending, error.message, failedAlert(table, actor, mailbox, draft, error.message));
+      // Its links never went out, and its files stay with the draft, which can be sent again.
+      await unlinkFiles(table, { holder, mailbox, draft: id, files: linking.map(({ id: file }) => file) });
+    } else await markUnclear(table, sending, unclearAlert(table, actor, mailbox, draft));
     return "done";
   }
   const sentAt = date.toISOString();
@@ -349,7 +391,19 @@ async function sendOnce(
     thread: draft.thread,
     sesMessageId,
     messageId: `<${sesMessageId}@${sender.region}.amazonses.com>`,
-    stored: { from, to: draft.to, cc: draft.cc, bcc: draft.bcc, recipient: draft.from, subject: draft.subject, date: sentAt, receivedAt: sentAt, rawKey, ...(actor.kind === "agent" && { fromAgent: true }) },
+    stored: {
+      from,
+      to: draft.to,
+      cc: draft.cc,
+      bcc: draft.bcc,
+      recipient: draft.from,
+      subject: draft.subject,
+      date: sentAt,
+      receivedAt: sentAt,
+      rawKey,
+      ...(actor.kind === "agent" && { fromAgent: true }),
+      ...(linkedFiles.length > 0 && { linkedFiles }),
+    },
     approval,
   });
   if (!marked) return "done";
@@ -358,10 +412,25 @@ async function sendOnce(
     const sent = await draftToSend(table, mailbox, id);
     if (sent?.send?.state === "sent") await keepSent(table, approval.id, { thread: sent.send.thread!, message });
   }
-  // The message carries the draft's files now, so the bucket no longer keeps them.
-  await uploads.remove(draftPrefix(mailbox, id));
+  await removeAttached(uploads, mailbox, draft);
   await copyToOtherMembers({ table, mailBucket }, mailbox, message);
   return "done";
+}
+
+/**
+ * Deletes the files the sent draft's message carries, which no longer need the bucket. Its linked
+ * files stay there until their links end.
+ */
+async function removeAttached(uploads: UploadsBucket, mailbox: string, draft: Draft & { files: DraftFile[] }): Promise<void> {
+  const links = linksOf(draft.files, draft.text);
+  for (const file of draft.files) if (file.source === "uploaded" && !links.has(file.id)) await uploads.remove(fileKey(mailbox, draft.id, file.id));
+}
+
+/** The text of the message in the mailbox as its raw message has it, or nothing if it is gone. */
+async function rawText({ table, mailBucket }: Sender, mailbox: string, message: string): Promise<string> {
+  const stored = await storedMessage(table, mailbox, message);
+  const raw = stored === undefined ? undefined : await mailBucket.get(stored.rawKey);
+  return raw === undefined ? "" : (await parseMail(raw)).text;
 }
 
 /** How an agent's draft reads in an alert about its send: its subject and its recipients. */

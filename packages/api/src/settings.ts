@@ -55,6 +55,10 @@ const values: { [Name in keyof OrganizationSettings]: { takes: (value: unknown) 
     takes: (value): value is number => Number.isInteger(value) && (value as number) >= 0 && (value as number) <= 10_000,
     refusal: "Give mailboxAgentSpendCap as a whole number of US dollars from 0 to 10000.",
   },
+  linkedFilesCapGb: {
+    takes: (value): value is number => Number.isInteger(value) && (value as number) >= 0 && (value as number) <= 10_000,
+    refusal: "Give linkedFilesCapGb as a whole number of gigabytes from 0 to 10000.",
+  },
 };
 
 export const getOrganizationSettings: OperationHandler = async (_event, deployment) => {

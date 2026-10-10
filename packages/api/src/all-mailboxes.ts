@@ -9,7 +9,7 @@ import type { APIGatewayProxyEventV2 } from "aws-lambda";
 import type { components } from "@duva/openapi";
 import { type Ability, mailboxesReadBy, mailboxFor } from "./access.ts";
 import { jsonBody, type OperationHandler, refusal } from "./api.ts";
-import { getAttachment } from "./attachments.ts";
+import { getAttachment, stopSharing } from "./attachments.ts";
 import type { Deployment } from "./deployment.ts";
 import { draftsIn, findDraft } from "./drafting.ts";
 import { createDraft, deleteDraft, editDraft, getDraft, sendDraft, sendDraftNow } from "./drafts.ts";
@@ -407,4 +407,11 @@ export const getAllMailboxesAttachment: OperationHandler = async (event, deploym
   const mailbox = await mailboxHolding(deployment, actor!, (each) => storedMessage(deployment.table, each, id));
   if (mailbox === undefined) return refusal(404, `None of the mailboxes you can read has a message ${JSON.stringify(id)}. Read their threads to find the message.`);
   return getAttachment(inMailbox(event, mailbox), deployment, actor);
+};
+
+export const stopSharingInAllMailboxes: OperationHandler = async (event, deployment, actor) => {
+  const id = event.pathParameters?.message ?? "";
+  const mailbox = await mailboxHolding(deployment, actor!, (each) => storedMessage(deployment.table, each, id));
+  if (mailbox === undefined) return refusal(404, `None of the mailboxes you can read has a message ${JSON.stringify(id)}. Read their sent threads to find the message.`);
+  return stopSharing(inMailbox(event, mailbox), deployment, actor);
 };

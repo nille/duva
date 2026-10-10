@@ -15,6 +15,7 @@ import { type SendFeedback, type StoredMessage, storeSentMessage } from "./mail.
 import { startWaiting, stopWaiting, type WaitingSend } from "./limits.ts";
 import { sponsorAccessAllows, sponsorAccessIn } from "./access.ts";
 import { listDecision, unlistDecision } from "./decisions.ts";
+import { linksOf } from "./linked-files.ts";
 import {
   type Actor,
   type Agent,
@@ -36,8 +37,12 @@ export type SendStatus = components["schemas"]["SendStatus"];
 type Edits = components["schemas"]["Edits"];
 type Attachment = components["schemas"]["Attachment"];
 type DraftAttachment = components["schemas"]["DraftAttachment"];
-/** A draft's attachment as Duva keeps it: a forwarded one with its place among the attachments of the message it forwards. */
-export type DraftFile = DraftAttachment & { place?: number };
+/**
+ * A draft's attachment as Duva keeps it: a forwarded one with its place among the attachments of
+ * the message it forwards, and a linked file of that message with the shared file it carries. Of
+ * the others, only those chosen keep linked, since which are needed follows from their sizes.
+ */
+export type DraftFile = Omit<DraftAttachment, "linked"> & { linked?: "chosen"; place?: number; carries?: { holder: string; draft: string; file: string } };
 /** Drafts written before their attachments had IDs list those of the message they forward, all of them in order. */
 type StoredFile = DraftFile | Attachment;
 type DraftContent = Omit<Draft, "id" | "updatedAt" | "updatedBy" | "send" | "attachments"> & { attachments?: DraftFile[] };
@@ -197,7 +202,7 @@ export async function draftsIn(table: Table, mailbox: string): Promise<Draft[]> 
  */
 export function changeDraft(
   table: Table,
-  { mailbox, id, by, changes }: { mailbox: string; id: string; by: string; changes: Partial<Pick<Draft, "from" | "to" | "cc" | "bcc" | "subject" | "text">> },
+  { mailbox, id, by, changes }: { mailbox: string; id: string; by: string; changes: Partial<Pick<Draft, "from" | "to" | "cc" | "bcc" | "subject" | "text" | "linkDays">> },
 ): Promise<Draft | undefined> {
   return rewrite(table, { mailbox, id, by }, () => Object.fromEntries(Object.entries(changes).filter(([, value]) => value !== undefined)));
 }
@@ -229,6 +234,26 @@ export function attachFile(table: Table, { mailbox, id, by, file, items }: { mai
 
 /** The draft has no such attachment. */
 export class NoSuchAttachment extends Error {}
+
+/** The attachment is a linked file of the message the draft forwards, which always goes as its link. */
+export class CarriedLink extends Error {}
+
+/**
+ * Has the draft's attachment go as a linked file by choice, or not, on behalf of the actor `by`,
+ * as a change of the draft is. Throws AlreadyApproved once it was approved, NoSuchAttachment if
+ * the draft doesn't carry it, and CarriedLink for a linked file of the message it forwards.
+ * Returns undefined if the mailbox has no such draft.
+ */
+export function chooseLink(table: Table, { mailbox, id, by, attachment, linked }: { mailbox: string; id: string; by: string; attachment: string; linked: boolean }): Promise<Draft | undefined> {
+  return rewrite(table, { mailbox, id, by }, (stored) => {
+    const files = filesOf(stored.attachments);
+    const file = files.find((each) => each.id === attachment);
+    if (file === undefined) throw new NoSuchAttachment();
+    if (file.source === "linked") throw new CarriedLink();
+    const { linked: _, ...carried } = file;
+    return { attachments: files.map((each) => (each !== file ? each : linked ? { ...carried, linked: "chosen" as const } : carried)) };
+  });
+}
 
 /**
  * Takes the attachment off the draft, on behalf of the actor `by`, as a change of the draft is.
@@ -513,9 +538,9 @@ export async function approve(table: Table, { approval, by, edits }: { approval:
 }
 
 /** Whether the draft is as the agent asked for it to be sent with the approval. */
-export const asAsked = (draft: Pick<StoredDraft, "from" | "to" | "cc" | "bcc" | "subject" | "text" | "attachments">, approval: Approval) => {
-  const fields = ({ from, to, cc = [], bcc = [], subject, text, attachments }: Pick<StoredDraft, "from" | "to" | "cc" | "bcc" | "subject" | "text" | "attachments">) =>
-    JSON.stringify([from, [to, cc, bcc].map((list) => list.map(({ address }) => address)), subject, text, filesOf(attachments).map(({ id }) => id)]);
+export const asAsked = (draft: Pick<StoredDraft, "from" | "to" | "cc" | "bcc" | "subject" | "text" | "attachments" | "linkDays">, approval: Approval) => {
+  const fields = ({ from, to, cc = [], bcc = [], subject, text, attachments, linkDays }: Pick<StoredDraft, "from" | "to" | "cc" | "bcc" | "subject" | "text" | "attachments" | "linkDays">) =>
+    JSON.stringify([from, [to, cc, bcc].map((list) => list.map(({ address }) => address)), subject, text, filesOf(attachments).map(({ id, linked }) => [id, linked ?? null]), linkDays ?? null]);
   return fields(draft) === fields(approval.draft);
 };
 
@@ -771,7 +796,7 @@ const editsOf = ({ to, subject, text }: Edits): Edits => ({
 });
 
 // Drafts and approvals stored before Cc and Bcc existed have neither.
-const approvalDraftOf = ({ id, answers, forwards, thread, from, to, cc = [], bcc = [], subject, text, attachments }: Omit<Approval["draft"], "attachments"> & { attachments?: StoredFile[] }): Approval["draft"] => ({
+const approvalDraftOf = ({ id, answers, forwards, thread, from, to, cc = [], bcc = [], subject, text, attachments, linkDays }: Omit<Approval["draft"], "attachments"> & { attachments?: StoredFile[] }): Approval["draft"] => ({
   id,
   ...(answers !== undefined && { answers }),
   ...(forwards !== undefined && { forwards }),
@@ -782,15 +807,24 @@ const approvalDraftOf = ({ id, answers, forwards, thread, from, to, cc = [], bcc
   bcc: bcc.map(addressOf),
   subject,
   text,
-  ...(attachments !== undefined && { attachments: filesOf(attachments).map(attachmentOf) }),
+  ...(attachments !== undefined && { attachments: attachmentsOf(attachments, text) }),
+  ...(linkDays !== undefined && { linkDays }),
 });
 
-const attachmentOf = ({ id, name, type, size, source }: DraftFile): DraftAttachment => ({ id, ...(name !== undefined && { name }), type, size, source });
+/** The draft's attachments as the contract lists them, each with whether it goes as a linked file. */
+const attachmentsOf = (stored: StoredFile[], text: string): DraftAttachment[] => {
+  const files = filesOf(stored);
+  const links = linksOf(files, text);
+  return files.map(({ id, name, type, size, source, until }) => {
+    const linked = links.get(id);
+    return { id, ...(name !== undefined && { name }), type, size, source, ...(linked !== undefined && { linked }), ...(until !== undefined && { until }) };
+  });
+};
 
 const addressOf = ({ name, address }: components["schemas"]["EmailAddress"]) => (name === undefined ? { address } : { name, address });
 
 /** The draft in the order the contract lists its fields, without what only Duva keeps. */
-const draftOf = ({ id, answers, forwards, thread, from, to, cc = [], bcc = [], subject, text, attachments, updatedAt, updatedBy, send }: Omit<StoredDraft, "version">): Draft => ({
+const draftOf = ({ id, answers, forwards, thread, from, to, cc = [], bcc = [], subject, text, attachments, linkDays, updatedAt, updatedBy, send }: Omit<StoredDraft, "version">): Draft => ({
   id,
   ...(answers !== undefined && { answers }),
   ...(forwards !== undefined && { forwards }),
@@ -801,7 +835,8 @@ const draftOf = ({ id, answers, forwards, thread, from, to, cc = [], bcc = [], s
   bcc: bcc.map(addressOf),
   subject,
   text,
-  ...(attachments !== undefined && { attachments: filesOf(attachments).map(attachmentOf) }),
+  ...(attachments !== undefined && { attachments: attachmentsOf(attachments, text) }),
+  ...(linkDays !== undefined && { linkDays }),
   updatedAt,
   ...(updatedBy !== undefined && { updatedBy }),
   ...(send !== undefined && { send: sendOf(send) }),

@@ -406,7 +406,16 @@ export async function startDuva({
     outbound: sending.outbound,
     region,
     dns,
-    schedules: { releaseAt: async (agent, at) => void schedules.push({ event: { release: agent }, at }), sendAt: async (draft, at) => void schedules.push({ event: { send: draft }, at }) },
+    schedules: {
+      releaseAt: async (agent, at) => void schedules.push({ event: { release: agent }, at }),
+      sendAt: async (draft, at) => void schedules.push({ event: { send: draft }, at }),
+      expireAt: async (file, at) => void schedules.push({ event: { expire: file }, at }),
+    },
+    downloads: {
+      get url() {
+        return downloadUrl;
+      },
+    },
   });
   const reminders = { remindAt: async (due: ReminderDue) => void schedules.push({ event: { remind: due }, at: new Date(due.at) }) };
   const stream = tableStream(database, streamArn, [
@@ -425,7 +434,7 @@ export async function startDuva({
     },
     lifetime: downloadLinkLifetime,
   };
-  const download = createDownloads({ table, mailBucket });
+  const download = createDownloads({ table, mailBucket, uploads });
   const downloaded = async (request: Request) => {
     const { statusCode, headers, body } = await download(new URL(request.url).pathname);
     return new Response(body, { status: statusCode, headers });

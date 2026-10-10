@@ -119,7 +119,7 @@ test("an admin lists the organization's humans, the first admin included", async
 
   expect(response.status).toBe(200);
   expect(data?.humans).toHaveLength(2);
-  expect(data?.humans).toEqual(expect.arrayContaining([admin, grace]));
+  expect(data?.humans).toEqual(expect.arrayContaining([{ ...admin, linkedSize: 0 }, { ...grace, linkedSize: 0 }]));
 });
 
 test("only an admin can list the organization's humans", async () => {

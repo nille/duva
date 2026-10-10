@@ -36,7 +36,8 @@ import {
 import { attachmentLinks } from "./attachments.ts";
 import { draftPrefix } from "./uploads-bucket.ts";
 import { fromStanding, groupsSentAsBy } from "./group-mail.ts";
-import { findMessage } from "./mail.ts";
+import { carriedFiles, linkDays, newlyLinked, overCap } from "./linked-files.ts";
+import { findMessage, storedMessage } from "./mail.ts";
 import { mailboxFor } from "./access.ts";
 import { type Actor, aliasDomains, findActor, isAddressOf, type Mailbox } from "./organization.ts";
 
@@ -82,7 +83,12 @@ export const createDraft: OperationHandler = async (event, deployment, actor) =>
       bcc: given.bcc ?? [],
       subject: given.subject ?? `Fwd: ${message.subject.replace(/^(\s*fwd?\s*:\s*)+/i, "")}`,
       text: given.text ?? forwardedText(message),
-      attachments: message.attachments.map((attachment, place) => ({ id: forwardedId(place), ...attachment, source: "forwarded" as const, place })),
+      attachments: [
+        ...message.attachments.map((attachment, place) => ({ id: forwardedId(place), ...attachment, source: "forwarded" as const, place })),
+        // Mail sent with linked files is forwarded with the same links, those still shared.
+        ...(await carriedFiles(deployment.table, mailbox.id, (await storedMessage(deployment.table, mailbox.id, message.id))?.linkedFiles)),
+      ],
+      ...(given.linkDays !== undefined && { linkDays: given.linkDays }),
     };
   } else if (typeof body.answers === "string") {
     const original = await findMessage(deployment.table, deployment.mailBucket, mailbox.id, body.answers);
@@ -104,9 +110,18 @@ export const createDraft: OperationHandler = async (event, deployment, actor) =>
       bcc: given.bcc ?? [],
       subject: given.subject ?? `Re: ${message.subject.replace(/^(\s*re\s*:\s*)+/i, "")}`,
       text: given.text ?? "",
+      ...(given.linkDays !== undefined && { linkDays: given.linkDays }),
     };
   } else {
-    content = { from: chosen ?? mailbox.defaultAddress, to: given.to ?? [], cc: given.cc ?? [], bcc: given.bcc ?? [], subject: given.subject ?? "", text: given.text ?? "" };
+    content = {
+      from: chosen ?? mailbox.defaultAddress,
+      to: given.to ?? [],
+      cc: given.cc ?? [],
+      bcc: given.bcc ?? [],
+      subject: given.subject ?? "",
+      text: given.text ?? "",
+      ...(given.linkDays !== undefined && { linkDays: given.linkDays }),
+    };
   }
   return { statusCode: 201, body: (await addDraft(deployment.table, { mailbox: mailbox.id, by: actor!.id, content })) satisfies components["schemas"]["Draft"] };
 };
@@ -128,6 +143,9 @@ function forwardedText(message: Message): string {
     ...quoted,
   ].join("\n");
 }
+
+/** The states of a send the sender still needs its draft in. */
+const beingSent: (string | undefined)[] = ["approved", "waitingForLimit", "sending"];
 
 const noAddress = () => refusal(409, "The mailbox has no address, so it can't send mail. Ask an admin to give it one.");
 
@@ -161,16 +179,17 @@ const othersThan =
     return kept;
   };
 
-type Fields = { to?: EmailAddress[]; cc?: EmailAddress[]; bcc?: EmailAddress[]; subject?: string; text?: string };
+type Fields = { to?: EmailAddress[]; cc?: EmailAddress[]; bcc?: EmailAddress[]; subject?: string; text?: string; linkDays?: components["schemas"]["Draft"]["linkDays"] };
 
-/** The recipients, subject and text the body gives, each checked, or why one doesn't fit. A list of recipients can be empty. */
+/** The recipients, subject, text and links' days the body gives, each checked, or why one doesn't fit. A list of recipients can be empty. */
 function fieldsIn(body: Record<string, unknown>): Fields | ReturnType<typeof refusal> {
-  const { subject, text } = body;
+  const { subject, text, linkDays: days } = body;
+  if (days !== undefined && !linkDays.includes(days as never)) return refusal(400, "Give linkDays as 7, 30 or 365: how many days the links of its linked files work after the send.");
   if (text !== undefined && (typeof text !== "string" || text.length > maxText)) return refusal(400, `Give the text as at most ${maxText} characters.`);
   if (subject !== undefined && (typeof subject !== "string" || subject.length > maxSubject || /[\r\n]/.test(subject))) {
     return refusal(400, `Give the subject as one line of at most ${maxSubject} characters.`);
   }
-  const fields: Fields = { subject, text };
+  const fields: Fields = { subject, text, linkDays: days as Fields["linkDays"] };
   for (const name of ["to", "cc", "bcc"] as const) {
     const list = body[name];
     if (list === undefined) continue;
@@ -205,7 +224,7 @@ export const editDraft: OperationHandler = async (event, deployment, actor) => {
   const from = body.from === undefined ? undefined : await fromGiven(deployment, mailbox, body.from);
   if (typeof from === "object") return from;
   const changes = { ...fields, from };
-  if (Object.values(changes).every((value) => value === undefined)) return refusal(400, "Give the draft's new From, recipients, Cc, Bcc, subject or text.");
+  if (Object.values(changes).every((value) => value === undefined)) return refusal(400, "Give the draft's new From, recipients, Cc, Bcc, subject, text or linkDays.");
   try {
     const draft = await changeDraft(deployment.table, { mailbox: mailbox.id, id: event.pathParameters?.draft ?? "", by: actor!.id, changes });
     if (draft === undefined) return noDraft(event);
@@ -221,10 +240,14 @@ export const deleteDraft: OperationHandler = async (event, deployment, actor) =>
   if ("statusCode" in mailbox) return mailbox;
   try {
     const id = event.pathParameters?.draft ?? "";
+    const found = await findDraft(deployment.table, mailbox.id, id);
+    if (found === undefined) return noDraft(event);
+    // Its uploaded files go first, those of uploads not completed too, so a deletion that stopped
+    // before they went finishes when it is asked again. A sent draft's files went with its
+    // message, and its linked files stay shared until their links end.
+    const sent = found.send?.state === "sent" || found.send?.state === "unclear";
+    if (!sent && !beingSent.includes(found.send?.state)) await deployment.uploads.remove(draftPrefix(mailbox.id, id));
     const draft = await deleteStoredDraft(deployment.table, { mailbox: mailbox.id, id, by: actor!.id });
-    // Its uploaded files go with it, those of uploads not completed too, and a deletion that
-    // stopped before they went finishes when it is asked again.
-    if (id !== "") await deployment.uploads.remove(draftPrefix(mailbox.id, id));
     if (draft === undefined) return noDraft(event);
     return { statusCode: 200, body: draft satisfies components["schemas"]["Draft"] };
   } catch (error) {
@@ -242,6 +265,8 @@ export const sendDraft: OperationHandler = async (event, deployment, actor) => {
     const standing = await fromStanding(deployment.table, mailbox, asked.from);
     const unsendable = unsendableFrom(standing, asked.from);
     if (unsendable !== undefined) return refusal(standing === "notMember" ? 403 : 409, unsendable);
+    const over = await overCap(deployment.table, actor!, newlyLinked(asked.attachments ?? []), { mailbox: mailbox.id, draft: id });
+    if (over !== undefined) return refusal(409, over);
   }
   try {
     const draft = await askToSend(deployment.table, { mailbox, id, actor: actor! });

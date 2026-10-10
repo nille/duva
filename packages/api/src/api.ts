@@ -6,7 +6,7 @@ import * as allMailboxes from "./all-mailboxes.ts";
 import { getAgentEvent, listAgentEvents } from "./activity.ts";
 import { listApprovalLog } from "./approval-log.ts";
 import { listAlerts, markAlertsSeen } from "./alerts.ts";
-import { getAttachment } from "./attachments.ts";
+import { getAttachment, stopSharing } from "./attachments.ts";
 import { changeAgentSettings, createAgent, getAgentSettings, listAgents, listOrganizationAgents, pauseAgent, pausedRefusal, removeAgent, rotateAgentKey, unpauseAgent } from "./agents.ts";
 import type { AuthorizerContext } from "./authorizer.ts";
 import { clearConversation, getMailboxAgent, getMailboxAgentRouting, getMailboxAgentSpend } from "./conversation.ts";
@@ -46,7 +46,7 @@ import { searchMailbox } from "./search.ts";
 import { getScreener, getSender, listSenders, removeSenderDelivery, setSenderDelivery, switchScreener } from "./screener.ts";
 import { changeOrganizationSettings, getOrganizationSettings, previewRetention } from "./settings.ts";
 import { getStatus } from "./status.ts";
-import { completeUpload, getDraftAttachment, getUpload, removeDraftAttachment, startUpload } from "./uploads.ts";
+import { changeDraftAttachment, completeUpload, getDraftAttachment, getUpload, removeDraftAttachment, startUpload } from "./uploads.ts";
 import { whoami } from "./whoami.ts";
 
 /**
@@ -146,12 +146,14 @@ export const handlers: Record<OperationId, OperationHandler> = {
   setSenderDelivery,
   removeSenderDelivery,
   getAttachment,
+  stopSharing,
   getMessageHeaders,
   createDraft,
   startUpload,
   getUpload,
   completeUpload,
   getDraftAttachment,
+  changeDraftAttachment,
   removeDraftAttachment,
   listDrafts,
   getDraft,

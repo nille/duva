@@ -6,7 +6,8 @@
 // the agents' sends in it go too if the organization's setting says so when the thread is erased,
 // so turning the setting on doesn't reach back. A thread's messages leave search at once, and the
 // daily run has the indexer compact each mailbox's index, so their text leaves its files within a
-// day (ADR-0007). A deleted mailbox is erased the same way, thread by thread, and then everything
+// day (ADR-0007). The links of the files its sent mail linked end with it, and the files are
+// deleted (ADR-0034). A deleted mailbox is erased the same way, thread by thread, and then everything
 // else it holds but its change feed, and its index is dropped (ADR-0020). So are the threads of a
 // sender whose mail goes nowhere (ADR-0025).
 import { DeleteCommand, GetCommand, PutCommand, QueryCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
@@ -25,11 +26,14 @@ import { allMailboxes, mailboxFeed, mailboxKey, type OrganizationSettings, organ
 import { deliveryFor, screenedSenders, type Sender } from "./screening.ts";
 import { documents, pk, sk, type TransactItem } from "./table.ts";
 import { mailboxPrefix, type UploadsBucket } from "./uploads-bucket.ts";
+import { type LinkedEntry, storedLink, unlinkFiles } from "./linked-files.ts";
 
 // Each thread being erased is listed until its messages are gone, and each of their raw messages,
 // once per mailbox that erased it, until it is gone or another mailbox still has it.
 const erasingKey = (mailbox: string, thread: string) => ({ [pk]: "erasure#threads", [sk]: `${mailbox}#${thread}` });
 const rawErasureKey = (mailbox: string, rawKey: string) => ({ [pk]: "erasure#raw", [sk]: `${mailbox}#${rawKey}` });
+// Each linked file whose link erasure ended, until the file is deleted.
+const fileErasureKey = (key: string) => ({ [pk]: "erasure#files", [sk]: key });
 // Each Trash emptied is listed until its threads are erased, so a run that fails is finished by the next.
 const emptiedKey = ({ mailbox, before }: TrashEmptied) => ({ [pk]: "erasure#emptied", [sk]: `${mailbox}#${before}` });
 // Each mailbox deleted is listed until its mail is erased, likewise.
@@ -294,7 +298,17 @@ async function eraseMessages(table: Table, mailbox: string, thread: string, eras
     KeyConditionExpression: `${pk} = :mailbox AND begins_with(${sk}, :thread)`,
     ExpressionAttributeValues: { ":mailbox": keys.partition(mailbox), ":thread": keys.threadPrefix(thread) },
   });
-  const stored = messages.filter((item) => item[sk] !== keys.threadKey(mailbox, thread)[sk]) as { [key: string]: unknown; id: string; messageId?: string; rawKey: string }[];
+  const stored = messages.filter((item) => item[sk] !== keys.threadKey(mailbox, thread)[sk]) as { [key: string]: unknown; id: string; messageId?: string; rawKey: string; linkedFiles?: LinkedEntry[] }[];
+  // The files its sent mail linked are listed for deletion before their links end, and a forward's
+  // link to another message's file ends with that message.
+  for (const { linkedFiles = [] } of stored) {
+    for (const { holder, draft, file, carried } of linkedFiles) {
+      if (carried) continue;
+      const shared = await storedLink(table, { holder, mailbox, draft, file });
+      if (shared !== undefined) await db.send(new PutCommand({ TableName: table.name, Item: { ...fileErasureKey(shared.key), key: shared.key } }));
+      await unlinkFiles(table, { holder, mailbox, draft, files: [file] });
+    }
+  }
   for (let index = 0; index < stored.length; index += messagesAtOnce) {
     const chunk = stored.slice(index, index + messagesAtOnce);
     // A Message-ID points at the last message stored with it, which may be another thread's.
@@ -358,6 +372,10 @@ async function finishErasures(table: Table, { mailBucket, uploads }: Buckets, in
   }
   for (const item of await allItems(table, { KeyConditionExpression: `${pk} = :threads`, ExpressionAttributeValues: { ":threads": erasingKey("", "")[pk] } })) {
     await eraseMessages(table, item.mailbox as string, item.thread as string, item.erasesApprovals === true);
+  }
+  for (const item of await allItems(table, { KeyConditionExpression: `${pk} = :files`, ExpressionAttributeValues: { ":files": fileErasureKey("")[pk] } })) {
+    await uploads.remove(item.key as string);
+    await documents(table).send(new DeleteCommand({ TableName: table.name, Key: { [pk]: item[pk], [sk]: item[sk] } }));
   }
   const raw = await allItems(table, { KeyConditionExpression: `${pk} = :raw`, ExpressionAttributeValues: { ":raw": rawErasureKey("", "")[pk] } });
   if (raw.length === 0) return;

@@ -3,7 +3,7 @@
 //   AWS_REGION=eu-north-1 node scripts/check-deployment.ts
 //
 // Runs the checks of a real run that need no human: the API answers, refuses calls without valid
-// credentials, and lets the web app call it; download links go through the web app's domain, and
+// credentials, and lets the web app call it; download links and linked files' pages go through the web app's domain, and
 // only its distribution may invoke the download Lambda; the bucket of files uploaded to drafts blocks public access, keeps
 // no versions, gives up an upload after a day and takes a browser's parts only from the web app's domain; the organization's own logos are served to
 // anyone there, as SVG or PEM, from a bucket only CloudFront reads; nothing but IAM may invoke the
@@ -163,6 +163,12 @@ await check("a download link Duva never gave answers 404 through the web app's d
   const response = await fetch(`${output(stackOutputs.downloadUrl)}${"A".repeat(43)}`);
   const text = await response.text();
   return response.status === 404 && /expired/.test(text) ? undefined : `answered ${response.status}: ${text.slice(0, 200)}`;
+});
+// A linked file's page is on the web app's domain, served through the download Lambda (ADR-0034).
+await check("a linked file's page with a made-up token answers 404 through the web app's domain, as a small page", async () => {
+  const response = await fetch(`${output(stackOutputs.downloadUrl)}files/${"A".repeat(43)}`);
+  const text = await response.text();
+  return response.status === 404 && (response.headers.get("content-type") ?? "").startsWith("text/html") && /never worked/.test(text) ? undefined : `answered ${response.status}: ${text.slice(0, 200)}`;
 });
 // The organization's own logos are public, served by CloudFront from a bucket only it reads (ADR-0026).
 const logosBucket = output(stackOutputs.logosBucket);

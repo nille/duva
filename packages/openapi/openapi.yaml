@@ -2636,6 +2636,45 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+  /mailboxes/{mailbox}/messages/{message}/linked-files/{file}:
+    delete:
+      operationId: stopSharing
+      summary: Stop sharing a linked file of a message sent from the mailbox.
+      description: >
+        Its link ends at once, for everyone who has it, and the file is
+        deleted. The message keeps listing it, stopped, with how often it was
+        downloaded. A forward that carried the same link ends with it, and
+        stopping it in the forward stops the link of the message it forwards.
+        Stopping again changes nothing. Only those who can send from the
+        mailbox can. It is recorded in the mailbox's change feed, naming you.
+      x-cli-command: linked-files stop-sharing
+      parameters:
+        - $ref: "#/components/parameters/Mailbox"
+        - name: message
+          in: path
+          required: true
+          description: The sent message's ID.
+          schema:
+            type: string
+        - name: file
+          in: path
+          required: true
+          description: The linked file's ID in the message.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The linked file, no longer shared.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LinkedFile"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /mailboxes/{mailbox}/messages/{message}/headers:
     get:
       operationId: getMessageHeaders
@@ -3547,6 +3586,38 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+  /all-mailboxes/messages/{message}/linked-files/{file}:
+    delete:
+      operationId: stopSharingInAllMailboxes
+      summary: Stop sharing a linked file of a message sent from one of All mailboxes.
+      description: As stopping it in the message's mailbox does.
+      x-cli-all-mailboxes: linked-files stop-sharing
+      parameters:
+        - name: message
+          in: path
+          required: true
+          description: The sent message's ID.
+          schema:
+            type: string
+        - name: file
+          in: path
+          required: true
+          description: The linked file's ID in the message.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The linked file, no longer shared.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LinkedFile"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /mailboxes/{mailbox}/drafts/{draft}/uploads:
     post:
       operationId: startUpload
@@ -3670,6 +3741,46 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: changeDraftAttachment
+      summary: Choose whether a draft's file goes as a linked file.
+      description: >
+        A linked file goes as a link to a download page, listed after the
+        text, which anyone with the link may open until the link ends, 30
+        days after the send unless the draft's linkDays say otherwise. When
+        carrying every attachment would make the message more than 10 MB,
+        encoded, the largest go as links anyway until it fits. Choosing
+        changes the draft, so a draft that waits for approval has its
+        request withdrawn, and the change is recorded in the mailbox's change
+        feed, naming you. Only those who can draft in the mailbox can.
+      x-cli-command: drafts link-attachment
+      parameters:
+        - $ref: "#/components/parameters/Mailbox"
+        - $ref: "#/components/parameters/Draft"
+        - $ref: "#/components/parameters/DraftAttachment"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DraftAttachmentChanges"
+      responses:
+        "200":
+          description: The draft, with which of its files go as links.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Draft"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
     delete:
       operationId: removeDraftAttachment
       summary: Take an attachment off a draft, uploaded or forwarded.
@@ -4130,6 +4241,12 @@ components:
         admin:
           type: boolean
           description: Whether the human may change the organization's setup.
+        linkedSize:
+          type: integer
+          description: >-
+            How many bytes of linked files the human has linked now, their agents'
+            included, which counts toward the organization's linkedFilesCapGb.
+            Only admins see it, when they list the humans.
     NewHuman:
       type: object
       additionalProperties: false
@@ -5127,6 +5244,8 @@ components:
         - $ref: "#/components/schemas/AgentHandedOver"
         - $ref: "#/components/schemas/ConversationTurnTaken"
         - $ref: "#/components/schemas/MailboxAgentsMerged"
+        - $ref: "#/components/schemas/LinkedFileDownloaded"
+        - $ref: "#/components/schemas/SharingStopped"
       discriminator:
         propertyName: type
         mapping:
@@ -5173,6 +5292,8 @@ components:
           agentHandedOver: "#/components/schemas/AgentHandedOver"
           conversationTurn: "#/components/schemas/ConversationTurnTaken"
           mailboxAgentsMerged: "#/components/schemas/MailboxAgentsMerged"
+          linkedFileDownloaded: "#/components/schemas/LinkedFileDownloaded"
+          sharingStopped: "#/components/schemas/SharingStopped"
     MessageReceived:
       type: object
       additionalProperties: false
@@ -5833,6 +5954,54 @@ components:
             label:
               type: string
               description: The ID of the label deleted.
+    LinkedFileDownloaded:
+      type: object
+      additionalProperties: false
+      required: [position, at, type, thread, message, file, name]
+      description: >-
+        A linked file of a message sent from the mailbox was downloaded for
+        the first time, from its page's Download button. Later downloads only
+        count. No actor made this change, and Duva keeps no downloader's address.
+      properties:
+        position:
+          type: integer
+          description: The change's position in the mailbox's feed, counting from 1.
+        at:
+          type: string
+          format: date-time
+          description: When it was downloaded.
+        type:
+          type: string
+          const: linkedFileDownloaded
+        thread:
+          type: string
+          description: The ID of the sent message's thread.
+        message:
+          type: string
+          description: The sent message's ID.
+        file:
+          type: string
+          description: The linked file's ID in the message.
+        name:
+          type: string
+          description: The file's name.
+          examples: ["film.mov"]
+    SharingStopped:
+      allOf:
+        - $ref: "#/components/schemas/ChangeBase"
+        - type: object
+          required: [type, message, file]
+          description: An actor stopped sharing a linked file of a message sent from the mailbox, so its link ended and the file was deleted.
+          properties:
+            type:
+              type: string
+              const: sharingStopped
+            message:
+              type: string
+              description: The sent message's ID.
+            file:
+              type: string
+              description: The linked file's ID in the message.
     ThreadErased:
       type: object
       additionalProperties: false
@@ -6334,6 +6503,8 @@ components:
           type: string
           maxLength: 50000
           description: The plain-text body.
+        linkDays:
+          $ref: "#/components/schemas/LinkDays"
     DraftChanges:
       type: object
       additionalProperties: false
@@ -6367,6 +6538,8 @@ components:
           type: string
           maxLength: 50000
           description: The plain-text body.
+        linkDays:
+          $ref: "#/components/schemas/LinkDays"
     ApproverEdits:
       type: object
       additionalProperties: false
@@ -6443,6 +6616,8 @@ components:
           items:
             $ref: "#/components/schemas/DraftAttachment"
           description: The files it carries, those uploaded to it and those of the message it forwards.
+        linkDays:
+          $ref: "#/components/schemas/LinkDays"
         updatedAt:
           type: string
           format: date-time
@@ -6530,8 +6705,73 @@ components:
           description: The file's size in bytes.
         source:
           type: string
-          enum: [uploaded, forwarded]
-          description: uploaded to the draft, or one of the attachments of the message it forwards.
+          enum: [uploaded, forwarded, linked]
+          description: >-
+            uploaded to the draft, one of the attachments of the message it
+            forwards, or one of that message's linked files, which the
+            forward carries as the same link, until the same date.
+        linked:
+          type: string
+          enum: [chosen, needed]
+          description: >-
+            Present when the file goes as a linked file, listed after the
+            text with a link to a download page: chosen, as its sender
+            chose, or needed, since carrying every attachment would make the
+            message more than 10 MB, encoded, so the largest go as links
+            until it fits. A linked file of the message it forwards always
+            goes as its link, so it has none.
+        until:
+          type: string
+          format: date-time
+          description: When its link stops working, for a linked file of the message it forwards.
+    LinkDays:
+      type: integer
+      enum: [7, 30, 365]
+      description: >-
+        How many days the links of its linked files work after it is sent:
+        7, 30 or 365. 30 when left out. When a link ends, its file is deleted.
+    DraftAttachmentChanges:
+      type: object
+      additionalProperties: false
+      required: [linked]
+      properties:
+        linked:
+          type: boolean
+          description: >-
+            true sends the file as a linked file by choice. false carries it
+            in the message, unless carrying every attachment would make the
+            message more than 10 MB, encoded, and it is among the largest.
+    LinkedFile:
+      type: object
+      additionalProperties: false
+      required: [id, name, type, size, until, state, downloads]
+      description: >-
+        A file a message sent from the mailbox carried as a link to a
+        download page, which anyone with the link may open.
+      properties:
+        id:
+          type: string
+          description: The linked file's ID in the message.
+        name:
+          type: string
+          examples: ["film.mov"]
+        type:
+          type: string
+          examples: ["video/quicktime"]
+        size:
+          type: integer
+          description: The file's size in bytes.
+        until:
+          type: string
+          format: date-time
+          description: When its link stops working and the file is deleted.
+        state:
+          type: string
+          enum: [sharing, stopped, expired]
+          description: sharing while its link works; stopped, when its sender stopped sharing it, the send was undone or the mail erased; or expired, past until. A file no longer shared is deleted.
+        downloads:
+          type: integer
+          description: How many times it was downloaded from its page's Download button. Duva keeps no downloader's address.
     NewUpload:
       type: object
       additionalProperties: false
@@ -6924,6 +7164,8 @@ components:
           items:
             $ref: "#/components/schemas/DraftAttachment"
           description: The files it carries, those uploaded to it and those of the message it forwards.
+        linkDays:
+          $ref: "#/components/schemas/LinkDays"
     Alert:
       type: object
       additionalProperties: false
@@ -7582,6 +7824,15 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Attachment"
+        linkedFiles:
+          type: array
+          items:
+            $ref: "#/components/schemas/LinkedFile"
+          description: >-
+            The files a message sent from the mailbox carried as links, each
+            with how often it was downloaded, if it carried any. The message's
+            text leaves out the list of them that recipients see, and it has
+            no HTML.
     SenderLogo:
       type: object
       additionalProperties: false
@@ -8126,7 +8377,7 @@ components:
     OrganizationSettings:
       type: object
       additionalProperties: false
-      required: [erasureErasesApprovals, retentionDays, searchLanguages, agentSendsPerHourCap, agentNewRecipientsPerDayCap, undoWindowSeconds, mailboxAgentModel, mailboxAgentTaskModel, mailboxAgentHarderModel, mailboxAgentDecider, mailboxAgentProfile, mailboxAgentRegion, mailboxAgentSpendCap]
+      required: [erasureErasesApprovals, retentionDays, searchLanguages, agentSendsPerHourCap, agentNewRecipientsPerDayCap, undoWindowSeconds, mailboxAgentModel, mailboxAgentTaskModel, mailboxAgentHarderModel, mailboxAgentDecider, mailboxAgentProfile, mailboxAgentRegion, mailboxAgentSpendCap, linkedFilesCapGb]
       properties:
         erasureErasesApprovals:
           $ref: "#/components/schemas/ErasureErasesApprovals"
@@ -8163,6 +8414,8 @@ components:
           $ref: "#/components/schemas/MailboxAgentRegion"
         mailboxAgentSpendCap:
           $ref: "#/components/schemas/MailboxAgentSpendCap"
+        linkedFilesCapGb:
+          $ref: "#/components/schemas/LinkedFilesCapGb"
     SettingsChanges:
       type: object
       additionalProperties: false
@@ -8203,6 +8456,8 @@ components:
           $ref: "#/components/schemas/MailboxAgentRegion"
         mailboxAgentSpendCap:
           $ref: "#/components/schemas/MailboxAgentSpendCap"
+        linkedFilesCapGb:
+          $ref: "#/components/schemas/LinkedFilesCapGb"
     RetentionDays:
       type: integer
       minimum: 7
@@ -8461,6 +8716,16 @@ components:
         The AWS region the mailbox agents call Bedrock in, which the
         profile sends on from. eu-central-1 by default for a deployment in the
         EU, us-west-2 for one in the US.
+    LinkedFilesCapGb:
+      type: integer
+      minimum: 0
+      maximum: 10000
+      description: >-
+        How much each human may have linked at once, in
+        whole gigabytes (GiB), 20 by default. Their agents' linked files count
+        toward it. Past it, a send that would link more is refused, until
+        they stop sharing older files or an admin raises it. 0 lets no one
+        link files, so mail too large to carry its files can't be sent.
     MailboxAgentSpendCap:
       type: integer
       minimum: 0

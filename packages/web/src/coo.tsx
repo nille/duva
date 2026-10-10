@@ -2,8 +2,8 @@
 // duva, Swedish for dove. Its portrait heads the side column, where Duva's wordmark was, and is the mark of the mailbox agent
 // wherever it appears, as the diamond is any other agent's. It bobs its head only while it works, a
 // turn of Ask Coo or a label's task, and speaks up only with news worth a glance: new mail since the
-// human last looked, a draft of its waiting for their approval, or a task done. What it said goes
-// away once they look.
+// human last looked, a draft of its waiting for their approval, a task done, or a linked file of
+// theirs downloaded for the first time. What it said goes away once they look.
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
@@ -68,17 +68,19 @@ export interface CooNews {
   drafts: number;
   /** Tasks Coo did in the mailboxes since the human last looked, newest first. */
   tasks: { mailbox: string; task: string; thread: string; label?: string; subject?: string }[];
+  /** Linked files of mail sent from the mailboxes downloaded for the first time since the human last looked, newest first. */
+  downloads: { mailbox: string; thread: string; file: string; name: string }[];
 }
 
-const quiet: CooNews = { mail: [], drafts: 0, tasks: [] };
+const quiet: CooNews = { mail: [], drafts: 0, tasks: [], downloads: [] };
 
 /**
  * Coo's speech bubble under its portrait, while it has news and its human lets it speak up. It lies in
  * the page's flow, so it never covers what is under it, and screen readers hear it politely.
  */
 export function CooSays({ news, baseOf, onTasksSeen }: { news: CooNews; baseOf: (mailbox: string) => string; onTasksSeen: () => void }) {
-  const { mail, drafts, tasks } = news;
-  const said = mail.length > 0 || drafts > 0 || tasks.length > 0;
+  const { mail, drafts, tasks, downloads } = news;
+  const said = mail.length > 0 || drafts > 0 || tasks.length > 0 || downloads.length > 0;
   // The live region stays in the page while Coo is quiet, so a screen reader hears what it then says.
   return (
     <div className="coo-say" role="status">
@@ -93,6 +95,12 @@ export function CooSays({ news, baseOf, onTasksSeen }: { news: CooNews; baseOf: 
               <a href={threadHref(tasks[0]!.thread, { label: "inbox" }, baseOf(tasks[0]!.mailbox))} onClick={onTasksSeen}>
                 {copy.tasks(tasks.length, tasks[0]!.subject, tasks[0]!.label)}
               </a>
+            </>
+          )}
+          {downloads.length > 0 && (
+            <>
+              {" "}
+              <a href={threadHref(downloads[0]!.thread, { sent: true }, baseOf(downloads[0]!.mailbox))}>{copy.downloads(downloads.length, downloads[0]!.name)}</a>
             </>
           )}
         </p>
@@ -158,6 +166,7 @@ export function useCoo({
   const [started, setStarted] = useState<ReadonlyMap<string, number>>(new Map());
   const [arrived, setArrived] = useState<{ mailbox: string; thread: string; message: string; from?: string }[]>([]);
   const [done, setDone] = useState<{ mailbox: string; task: string; thread: string; label?: string; subject?: string }[]>([]);
+  const [downloaded, setDownloaded] = useState<CooNews["downloads"]>([]);
   const [waiting, setWaiting] = useState<Approval[]>([]);
   const [approvalsLooked, setApprovalsLooked] = useState(() => lookedSince("approvals"));
   // The clock, read again with each read of the feeds, so a task whose end was lost stops counting.
@@ -187,7 +196,7 @@ export function useCoo({
 
   // A mailbox first seen in this browser has been looked at now, so its past is no news.
   useEffect(() => {
-    for (const id of own) for (const what of ["mail", "tasks"]) lookedSince(`${what}.${id}`);
+    for (const id of own) for (const what of ["mail", "tasks", "downloads"]) lookedSince(`${what}.${id}`);
   }, [own]);
 
   const onChanges = useCallback(
@@ -195,6 +204,7 @@ export function useCoo({
       setNow(Date.now());
       const arrivals: typeof arrived = [];
       const ended: typeof done = [];
+      const firsts: typeof downloaded = [];
       const starts = new Map<string, number>();
       const ends = new Set<string>();
       for (const { mailbox, change } of changes) {
@@ -209,11 +219,14 @@ export function useCoo({
           starts.delete(change.task);
           ends.add(change.task);
           if (change.outcome === "done" && at > lookedSince(`tasks.${mailbox}`)) ended.push({ mailbox, task: change.task, thread: change.thread });
+        } else if (change.type === "linkedFileDownloaded" && at > lookedSince(`downloads.${mailbox}`)) {
+          firsts.push({ mailbox, thread: change.thread, file: change.file, name: change.name });
         }
       }
       if (starts.size > 0 || ends.size > 0) setStarted((current) => new Map([...[...current].filter(([task]) => !ends.has(task)), ...starts]));
       // A read the app couldn't act on comes again, so what it already has isn't news twice.
       if (arrivals.length > 0) setArrived((current) => [...arrivals.filter(({ message }) => !current.some((each) => each.message === message)).toReversed(), ...current]);
+      if (firsts.length > 0) setDownloaded((current) => [...firsts.filter(({ file, thread }) => !current.some((each) => each.file === file && each.thread === thread)).toReversed(), ...current]);
       if (ended.length > 0) setDone((current) => [...ended.filter(({ task }) => !current.some((each) => each.task === task)).toReversed(), ...current]);
       for (const { mailbox, thread } of new Map([...arrivals, ...ended].map((each) => [`${each.mailbox}/${each.thread}`, each])).values()) void describe(mailbox, thread);
     },
@@ -251,6 +264,13 @@ export function useCoo({
   useEffect(() => {
     if (visible && thread !== undefined && hasTask) setDone((current) => current.filter((each) => each.thread !== thread));
   }, [visible, thread, hasTask]);
+  // Opening the sent mail sees the news of its downloads.
+  const downloadedHere = downloaded.find((each) => each.thread === thread);
+  useEffect(() => {
+    if (!visible || downloadedHere === undefined) return;
+    look(`downloads.${downloadedHere.mailbox}`);
+    setDownloaded((current) => current.filter((each) => each.thread !== downloadedHere.thread));
+  }, [visible, downloadedHere]);
   const tasksSeen = useCallback(() => {
     for (const mailbox of mailboxes) look(`tasks.${mailbox}`);
     setDone((current) => current.filter((each) => !mailboxes.includes(each.mailbox)));
@@ -262,8 +282,9 @@ export function useCoo({
       mail: arrived.filter((each) => mailboxes.includes(each.mailbox)),
       drafts: waiting.filter((approval) => mailboxes.includes(approval.mailbox) && coos.has(approval.agent) && Date.parse(approval.askedAt) > approvalsLooked).length,
       tasks: done.filter((each) => mailboxes.includes(each.mailbox)),
+      downloads: downloaded.filter((each) => mailboxes.includes(each.mailbox)),
     };
-  }, [mailboxes, arrived, waiting, coos, approvalsLooked, done]);
+  }, [mailboxes, arrived, waiting, coos, approvalsLooked, done, downloaded]);
   const working = asking > 0 || [...started.values()].some((at) => now - at < taskRunsFor);
   return { working, news, onChanges, onApprovals, onAsking, tasksSeen };
 }

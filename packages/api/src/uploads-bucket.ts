@@ -14,6 +14,7 @@ import {
   NoSuchKey,
   NoSuchUpload,
   NotFound,
+  PutObjectCommand,
   S3Client,
   UploadPartCommand,
 } from "@aws-sdk/client-s3";
@@ -29,6 +30,8 @@ export interface UploadsBucket {
   parts(key: string, upload: string): Promise<UploadedPart[] | undefined>;
   /** Joins the parts into the file at the key. */
   complete(key: string, upload: string, parts: UploadedPart[]): Promise<void>;
+  /** Puts the file at the key, as one with the media type. */
+  put(key: string, content: Uint8Array, type: string): Promise<void>;
   /** The file at the key, or undefined if there is none. */
   get(key: string): Promise<Uint8Array | undefined>;
   /** Whether there is a file at the key. */
@@ -93,6 +96,9 @@ export function s3UploadsBucket(bucket: string, s3 = new S3Client({ requestCheck
           MultipartUpload: { Parts: [...parts].sort((a, b) => a.number - b.number).map(({ number, etag }) => ({ PartNumber: number, ETag: etag })) },
         }),
       );
+    },
+    async put(key, content, type) {
+      await s3.send(new PutObjectCommand({ Bucket: bucket, Key: key, Body: content, ContentType: type }));
     },
     async get(key) {
       try {

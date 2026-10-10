@@ -1,10 +1,14 @@
 // The files a draft carries, in the composer: those it has, each with its type and size, opened
 // through a link that works for minutes and taken off with Remove, and those on their way, each
 // going straight to Duva's storage a part at a time (ADR-0034), with how far it got along a
-// hairline under its line. A part's link that stopped working is asked for anew, once.
+// hairline under its line. A part's link that stopped working is asked for anew, once. A file that
+// goes as a linked file carries the Link tag (ADR-0034): the sender may link any by choice, Duva
+// links the largest when carrying them all would make the message more than 10 MB, and the links'
+// lifetime is chosen under the files.
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
+import { useDates } from "./dates.ts";
 import { Attachments, ClipIcon } from "./mail-parts.tsx";
 import { size, strings } from "./strings.ts";
 
@@ -154,8 +158,11 @@ export function DraftFiles({
 }) {
   const [busy, setBusy] = useState<string>();
   const [problem, setProblem] = useState<string>();
+  const { date } = useDates();
   const files = draft?.attachments ?? [];
   if (files.length === 0 && sending.length === 0) return null;
+  const linking = files.some(({ linked }) => linked !== undefined);
+  const days = draft?.linkDays ?? 30;
 
   const path = (attachment: DraftAttachment) => ({ params: { path: { mailbox, draft: draft!.id, attachment: attachment.id } } });
   const open = async (attachment: DraftAttachment) => {
@@ -168,6 +175,26 @@ export function DraftFiles({
     const link = document.createElement("a");
     link.href = data.url;
     link.click();
+  };
+  const relink = async (attachment: DraftAttachment, linked: boolean) => {
+    setBusy(attachment.id);
+    setProblem(undefined);
+    const { data, error, response } = await client
+      .PATCH("/mailboxes/{mailbox}/drafts/{draft}/attachments/{attachment}", { ...path(attachment), body: { linked } })
+      .catch(() => ({ data: undefined, error: undefined, response: undefined }));
+    setBusy(undefined);
+    if (response?.status === 401) return onSignedOut();
+    if (data === undefined) return setProblem(error?.message ?? strings.compose.linkFailed);
+    onDraft(data);
+  };
+  const lastFor = async (linkDays: 7 | 30 | 365) => {
+    setProblem(undefined);
+    const { data, error, response } = await client
+      .PATCH("/mailboxes/{mailbox}/drafts/{draft}", { params: { path: { mailbox, draft: draft!.id } }, body: { linkDays } })
+      .catch(() => ({ data: undefined, error: undefined, response: undefined }));
+    if (response?.status === 401) return onSignedOut();
+    if (data === undefined) return setProblem(error?.message ?? strings.compose.linkFailed);
+    onDraft(data);
   };
   const remove = async (attachment: DraftAttachment) => {
     setBusy(attachment.id);
@@ -184,19 +211,44 @@ export function DraftFiles({
       <ul>
         {files.map((attachment) => {
           const name = attachment.name ?? strings.thread.unnamed;
+          const meta = strings.thread.attachment(attachment.type, size(attachment.size));
+          const linked = attachment.source === "linked" ? "carried" : attachment.linked;
+          // The link of the mail it forwards, or one Duva needs, can't be attached instead.
+          const choosable = attachment.source !== "linked" && attachment.linked !== "needed";
           return (
-            <li key={attachment.id}>
+            <li key={attachment.id} className={linked === undefined ? undefined : "draft-file-linked"}>
               <ClipIcon />
               <span>
-                <button type="button" className="link attachment-name" aria-label={strings.thread.download(name)} disabled={busy !== undefined} onClick={() => void open(attachment)}>
-                  {name}
-                </button>{" "}
-                <span className="attachment-meta">{busy === attachment.id ? strings.thread.downloading : strings.thread.attachment(attachment.type, size(attachment.size))}</span>
+                {/* A forwarded link opens on its page, which only its recipients have. */}
+                {attachment.source === "linked" ? (
+                  <span className="attachment-name">{name}</span>
+                ) : (
+                  <button type="button" className="link attachment-name" aria-label={strings.thread.download(name)} disabled={busy !== undefined} onClick={() => void open(attachment)}>
+                    {name}
+                  </button>
+                )}{" "}
+                {linked !== undefined && <span className="file-tag">{strings.compose.linkTag}</span>}{" "}
+                <span className="attachment-meta">
+                  {busy === attachment.id ? strings.thread.downloading : linked === undefined ? meta : strings.compose.linkedMeta(meta, linked, attachment.until && date(new Date(attachment.until)))}
+                </span>
               </span>
               {!locked && (
-                <button type="button" className="link draft-file-remove" aria-label={strings.compose.removeFile(name)} disabled={busy !== undefined} onClick={() => void remove(attachment)}>
-                  {strings.compose.remove}
-                </button>
+                <span className="draft-file-actions">
+                  {choosable && (
+                    <button
+                      type="button"
+                      className="link draft-file-remove"
+                      aria-label={linked === undefined ? strings.compose.linkInsteadFile(name) : strings.compose.attachInsteadFile(name)}
+                      disabled={busy !== undefined}
+                      onClick={() => void relink(attachment, linked === undefined)}
+                    >
+                      {linked === undefined ? strings.compose.linkInstead : strings.compose.attachInstead}
+                    </button>
+                  )}
+                  <button type="button" className="link draft-file-remove" aria-label={strings.compose.removeFile(name)} disabled={busy !== undefined} onClick={() => void remove(attachment)}>
+                    {strings.compose.remove}
+                  </button>
+                </span>
               )}
             </li>
           );
@@ -225,6 +277,22 @@ export function DraftFiles({
           );
         })}
       </ul>
+      {linking &&
+        (locked ? (
+          <p className="draft-file-links">{strings.compose.linksFixed(strings.compose.linkDays[days])}</p>
+        ) : (
+          <p className="draft-file-links">
+            <label htmlFor={`link-days-${draft!.id}`}>{strings.compose.linksFor}</label>{" "}
+            <select id={`link-days-${draft!.id}`} value={days} onChange={(event) => void lastFor(Number(event.target.value) as 7 | 30 | 365)}>
+              {([7, 30, 365] as const).map((each) => (
+                <option key={each} value={each}>
+                  {strings.compose.linkDays[each]}
+                </option>
+              ))}
+            </select>{" "}
+            {strings.compose.linksNote}
+          </p>
+        ))}
       {problem !== undefined && (
         <p className="draft-file-problem" role="alert">
           {problem}
@@ -236,6 +304,7 @@ export function DraftFiles({
 
 /** A draft's files as an approver reads them, each name opening its file before they decide. */
 export function DraftFilesToOpen({ client, mailbox, draft, list, onSignedOut }: { client: DuvaClient; mailbox: string; draft: string; list: DraftAttachment[]; onSignedOut: () => void }) {
+  const { date } = useDates();
   const [downloading, setDownloading] = useState<number>();
   const [failed, setFailed] = useState(false);
   const open = async (index: number) => {
@@ -253,7 +322,15 @@ export function DraftFilesToOpen({ client, mailbox, draft, list, onSignedOut }: 
   };
   return (
     <>
-      <Attachments list={list} onDownload={(index) => void open(index)} downloading={downloading} />
+      <Attachments
+        list={list}
+        onDownload={(index) => void open(index)}
+        downloading={downloading}
+        linked={(index) => {
+          const { source, linked, until } = list[index]!;
+          return source === "linked" ? { as: "carried", until: until && date(new Date(until)) } : linked && { as: linked };
+        }}
+      />
       {failed && (
         <p className="draft-file-problem" role="alert">
           {strings.thread.downloadFailed}

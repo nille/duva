@@ -1,20 +1,25 @@
 // Downloading attachments. Asking for one gives a short-lived link, and following it takes the
 // attachment from the raw message there and then, so nothing is stored twice. The link's ticket is
 // the only thing kept, under the hash of its token, until the table's time to live removes it.
-// Senders' logos are served under the same URL, at logos/ and their ID.
+// Senders' logos are served under the same URL, at logos/ and their ID, and linked files' pages at
+// files/ and their token (ADR-0034). Stopping sharing a linked file is here too.
 import { createHash, randomBytes } from "node:crypto";
+import { TransactionCanceledException } from "@aws-sdk/client-dynamodb";
 import { GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 import type { components } from "@duva/openapi";
 import { type OperationHandler, refusal } from "./api.ts";
 import type { Table } from "./deployment.ts";
 import { timeToLiveAttribute } from "./infrastructure.ts";
 import type { MailBucket } from "./mail-bucket.ts";
-import { type AttachmentLinks, findMessage } from "./mail.ts";
+import { type AttachmentLinks, findMessage, storedMessage } from "./mail.ts";
 import { mediaTypeOf } from "./mime.ts";
 import { logoAt, storedLogo } from "./sender-logos.ts";
 import { mailboxFor } from "./access.ts";
+import { recordChanges } from "./feed.ts";
+import { linkedAt, linkedFilesOf, linkedPage, storedLink, linkKey } from "./linked-files.ts";
+import { mailboxFeed } from "./organization.ts";
 import { documents, pk, sk } from "./table.ts";
-import { dispositionOf } from "./uploads-bucket.ts";
+import { dispositionOf, type UploadsBucket } from "./uploads-bucket.ts";
 
 /** Where download links lead, and how long each works. */
 export interface Downloads {
@@ -86,10 +91,12 @@ export interface DownloadAnswer {
  * Follows the download link at the path, whose last segment is its token: answers with the
  * attachment, taken from the raw message, while the link works and the mailbox still has it.
  */
-export function createDownloads({ table, mailBucket }: { table: Table; mailBucket: MailBucket }) {
+export function createDownloads({ table, mailBucket, uploads }: { table: Table; mailBucket: MailBucket; uploads: UploadsBucket }) {
   return async (path: string): Promise<DownloadAnswer> => {
     const logo = logoAt(path);
     if (logo !== undefined) return logoAnswer(table, logo);
+    const linked = linkedAt(path);
+    if (linked !== undefined) return linkedPage(table, uploads, linked);
     const token = path.split("/").at(-1) ?? "";
     const { Item } = token === "" ? { Item: undefined } : await documents(table).send(new GetCommand({ TableName: table.name, Key: ticketKey(token), ConsistentRead: true }));
     const ticket = Item as Ticket | undefined;
@@ -135,3 +142,44 @@ const text = (statusCode: number, line: string): DownloadAnswer => ({
   headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" },
   body: new TextEncoder().encode(`${line}\n`),
 });
+export const stopSharing: OperationHandler = async (event, deployment, actor) => {
+  const mailbox = await mailboxFor(event, deployment, actor!, "send");
+  if ("statusCode" in mailbox) return mailbox;
+  const { message: id = "", file: fileId = "" } = event.pathParameters ?? {};
+  const stored = await storedMessage(deployment.table, mailbox.id, id);
+  if (stored === undefined) return refusal(404, `The mailbox has no message ${JSON.stringify(id)}. Read its sent threads to find the message.`);
+  const entry = stored.linkedFiles?.find((each) => each.id === fileId);
+  if (entry === undefined) {
+    const count = stored.linkedFiles?.length ?? 0;
+    return refusal(404, count === 0 ? "The message carried no linked files." : `The message has no linked file ${JSON.stringify(fileId)}. Read the message to see its linked files.`);
+  }
+  const ticket = { holder: entry.holder, mailbox: mailbox.id, draft: entry.draft, file: entry.file };
+  const shared = await storedLink(deployment.table, ticket);
+  if (shared !== undefined && shared.stoppedAt === undefined) {
+    try {
+      await recordChanges(deployment.table, mailboxFeed(mailbox.id), {
+        by: actor!.id,
+        changes: [{ type: "sharingStopped", message: id, file: fileId }],
+        items: [
+          {
+            Update: {
+              TableName: deployment.table.name,
+              Key: linkKey(ticket),
+              UpdateExpression: "SET stoppedAt = :now",
+              ConditionExpression: `attribute_exists(${pk}) AND attribute_not_exists(stoppedAt)`,
+              ExpressionAttributeValues: { ":now": new Date().toISOString() },
+            },
+          },
+        ],
+      });
+    } catch (error) {
+      // Stopped at the same time by another call, or erased.
+      if (!(error instanceof TransactionCanceledException)) throw error;
+    }
+  }
+  // Deleted after it stopped, so a call that stopped before deleting it finishes here.
+  if (shared !== undefined) await deployment.uploads.remove(shared.key);
+  const [file] = await linkedFilesOf(deployment.table, mailbox.id, [entry]);
+  return { statusCode: 200, body: file! satisfies components["schemas"]["LinkedFile"] };
+};
+

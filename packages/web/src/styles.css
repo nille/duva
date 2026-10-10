@@ -3666,6 +3666,46 @@ input[aria-invalid="true"] {
   color: var(--ink);
 }
 
+/* Its actions at the line's end: Link instead or Attach instead, then Remove. */
+.draft-file-actions {
+  display: inline-flex;
+  gap: var(--space-3);
+  white-space: nowrap;
+}
+
+/* A file that goes as a link carries the printed Link tag, on Field Grey in Second Ink, as a held send's kind does. */
+.file-tag {
+  display: inline-block;
+  padding: 0.22rem 0.42rem;
+  border-radius: var(--radius-key);
+  background: var(--field);
+  color: var(--ink-2);
+  font: 700 0.65625rem / 1 var(--mono);
+  vertical-align: 0.1em;
+}
+
+/* How long the links work, under the files, its choice an inline field. */
+.draft-file-links {
+  margin: var(--space-3) 0 0;
+  color: var(--ink-2);
+}
+
+.draft-file-links select {
+  width: auto;
+  padding: var(--space-1) var(--space-2);
+}
+
+/* A sent message's linked files lie as its attachments do, Stop sharing at the line's end. */
+.linked-files li {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+}
+
+.linked-file-ended .attachment-name {
+  color: var(--ink-2);
+  font-weight: 400;
+}
+
 .draft-file-sending {
   padding-bottom: var(--space-2);
   background: linear-gradient(var(--ink), var(--ink)) no-repeat 0 100% / var(--sent) 2px, linear-gradient(var(--seam), var(--seam)) no-repeat 0 100% / 100% 2px;

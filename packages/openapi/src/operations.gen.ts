@@ -222,6 +222,13 @@ export const operations = [
         "type": "integer",
         "required": false,
         "description": "The most the mailbox agents may spend on their model a month, in whole US dollars, 20 by default. At the cap a run stops, its agent's sponsor gets an alert, and runs are refused until the month ends or an admin raises it. 0 turns the mailbox agents off."
+      },
+      {
+        "name": "linkedFilesCapGb",
+        "in": "body",
+        "type": "integer",
+        "required": false,
+        "description": "How much each human may have linked at once, in whole gigabytes (GiB), 20 by default. Their agents' linked files count toward it. Past it, a send that would link more is refused, until they stop sharing older files or an admin raises it. 0 lets no one link files, so mail too large to carry its files can't be sent."
       }
     ]
   },
@@ -2480,6 +2487,42 @@ export const operations = [
     ]
   },
   {
+    "operationId": "stopSharing",
+    "method": "delete",
+    "path": "/mailboxes/{mailbox}/messages/{message}/linked-files/{file}",
+    "routeKey": "DELETE /mailboxes/{mailbox}/messages/{message}/linked-files/{file}",
+    "summary": "Stop sharing a linked file of a message sent from the mailbox.",
+    "description": "Its link ends at once, for everyone who has it, and the file is deleted. The message keeps listing it, stopped, with how often it was downloaded. A forward that carried the same link ends with it, and stopping it in the forward stops the link of the message it forwards. Stopping again changes nothing. Only those who can send from the mailbox can. It is recorded in the mailbox's change feed, naming you.",
+    "signIn": true,
+    "command": [
+      "linked-files",
+      "stop-sharing"
+    ],
+    "options": [
+      {
+        "name": "mailbox",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The mailbox's ID."
+      },
+      {
+        "name": "message",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The sent message's ID."
+      },
+      {
+        "name": "file",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The linked file's ID in the message."
+      }
+    ]
+  },
+  {
     "operationId": "getMessageHeaders",
     "method": "get",
     "path": "/mailboxes/{mailbox}/messages/{message}/headers",
@@ -2612,6 +2655,13 @@ export const operations = [
         "type": "string",
         "required": false,
         "description": "The plain-text body."
+      },
+      {
+        "name": "linkDays",
+        "in": "body",
+        "type": "integer",
+        "required": false,
+        "description": "How many days the links of its linked files work after it is sent: 7, 30 or 365. 30 when left out. When a link ends, its file is deleted."
       }
     ]
   },
@@ -2741,6 +2791,13 @@ export const operations = [
         "type": "string",
         "required": false,
         "description": "The plain-text body."
+      },
+      {
+        "name": "linkDays",
+        "in": "body",
+        "type": "integer",
+        "required": false,
+        "description": "How many days the links of its linked files work after it is sent: 7, 30 or 365. 30 when left out. When a link ends, its file is deleted."
       }
     ]
   },
@@ -3311,6 +3368,13 @@ export const operations = [
         "type": "string",
         "required": false,
         "description": "The plain-text body."
+      },
+      {
+        "name": "linkDays",
+        "in": "body",
+        "type": "integer",
+        "required": false,
+        "description": "How many days the links of its linked files work after it is sent: 7, 30 or 365. 30 when left out. When a link ends, its file is deleted."
       }
     ]
   },
@@ -3422,6 +3486,13 @@ export const operations = [
         "type": "string",
         "required": false,
         "description": "The plain-text body."
+      },
+      {
+        "name": "linkDays",
+        "in": "body",
+        "type": "integer",
+        "required": false,
+        "description": "How many days the links of its linked files work after it is sent: 7, 30 or 365. 30 when left out. When a link ends, its file is deleted."
       }
     ]
   },
@@ -3498,6 +3569,36 @@ export const operations = [
         "type": "integer",
         "required": true,
         "description": "The attachment's place among the message's attachments, from 0."
+      }
+    ]
+  },
+  {
+    "operationId": "stopSharingInAllMailboxes",
+    "method": "delete",
+    "path": "/all-mailboxes/messages/{message}/linked-files/{file}",
+    "routeKey": "DELETE /all-mailboxes/messages/{message}/linked-files/{file}",
+    "summary": "Stop sharing a linked file of a message sent from one of All mailboxes.",
+    "description": "As stopping it in the message's mailbox does.",
+    "signIn": true,
+    "command": [
+      "linked-files",
+      "stop-sharing"
+    ],
+    "allMailboxes": true,
+    "options": [
+      {
+        "name": "message",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The sent message's ID."
+      },
+      {
+        "name": "file",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The linked file's ID in the message."
       }
     ]
   },
@@ -3692,6 +3793,49 @@ export const operations = [
         "type": "string",
         "required": true,
         "description": "The attachment's ID, as the draft lists it."
+      }
+    ]
+  },
+  {
+    "operationId": "changeDraftAttachment",
+    "method": "patch",
+    "path": "/mailboxes/{mailbox}/drafts/{draft}/attachments/{attachment}",
+    "routeKey": "PATCH /mailboxes/{mailbox}/drafts/{draft}/attachments/{attachment}",
+    "summary": "Choose whether a draft's file goes as a linked file.",
+    "description": "A linked file goes as a link to a download page, listed after the text, which anyone with the link may open until the link ends, 30 days after the send unless the draft's linkDays say otherwise. When carrying every attachment would make the message more than 10 MB, encoded, the largest go as links anyway until it fits. Choosing changes the draft, so a draft that waits for approval has its request withdrawn, and the change is recorded in the mailbox's change feed, naming you. Only those who can draft in the mailbox can.",
+    "signIn": true,
+    "command": [
+      "drafts",
+      "link-attachment"
+    ],
+    "options": [
+      {
+        "name": "mailbox",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The mailbox's ID."
+      },
+      {
+        "name": "draft",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The draft's ID."
+      },
+      {
+        "name": "attachment",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The attachment's ID, as the draft lists it."
+      },
+      {
+        "name": "linked",
+        "in": "body",
+        "type": "boolean",
+        "required": true,
+        "description": "true sends the file as a linked file by choice. false carries it in the message, unless carrying every attachment would make the message more than 10 MB, encoded, and it is among the largest."
       }
     ]
   },

@@ -127,6 +127,7 @@ Give only the settings to change. A setting applies from when it changes, so tur
 - `--mailboxAgentProfile`: The inference profile Bedrock runs the model through, which decides where the mail the agents read is processed: eu keeps it in the EU's AWS regions, us in the US's, and global sends it to any region with capacity, for about 10% less. none runs the model in mailboxAgentRegion itself, which keeps the mail there: Nova Lite runs so in eu-north-1, us-east-1, us-east-2 and us-west-2, and Nova Pro in us-east-1. eu by default for a deployment in the EU, us for one in the US, and global elsewhere. eu needs an EU mailboxAgentRegion, us a US one.
 - `--mailboxAgentRegion`: The AWS region the mailbox agents call Bedrock in, which the profile sends on from. eu-central-1 by default for a deployment in the EU, us-west-2 for one in the US.
 - `--mailboxAgentSpendCap`: The most the mailbox agents may spend on their model a month, in whole US dollars, 20 by default. At the cap a run stops, its agent's sponsor gets an alert, and runs are refused until the month ends or an admin raises it. 0 turns the mailbox agents off.
+- `--linkedFilesCapGb`: How much each human may have linked at once, in whole gigabytes (GiB), 20 by default. Their agents' linked files count toward it. Past it, a send that would link more is refused, until they stop sharing older files or an admin raises it. 0 lets no one link files, so mail too large to carry its files can't be sent.
 
 ## duva organization preview-retention
 
@@ -819,6 +820,16 @@ Duva takes the attachment from the stored message when the link is followed, so 
 - `--message` (required): The message's ID.
 - `--attachment` (required): The attachment's place among the message's attachments, from 0.
 
+## duva linked-files stop-sharing
+
+Stop sharing a linked file of a message sent from the mailbox.
+
+Its link ends at once, for everyone who has it, and the file is deleted. The message keeps listing it, stopped, with how often it was downloaded. A forward that carried the same link ends with it, and stopping it in the forward stops the link of the message it forwards. Stopping again changes nothing. Only those who can send from the mailbox can. It is recorded in the mailbox's change feed, naming you.
+
+- `--mailbox` (required): The mailbox's ID. Give all for All mailboxes, every mailbox you can read.
+- `--message` (required): The sent message's ID.
+- `--file` (required): The linked file's ID in the message.
+
 ## duva messages headers
 
 Read a message's full header block, every field as it came, in order.
@@ -852,7 +863,9 @@ A reply goes from the address the original was sent to, plus tag kept, or from t
 - `--bcc` (once for each): The Bcc recipients' addresses, which get the message but appear in no header.
 - `--subject`: The subject. A reply's is the original's with "Re: " unless you give one.
 - `--text`: The plain-text body.
-- `--attach` (once for each): A file to attach, uploaded once the draft is written.
+- `--linkDays`: How many days the links of its linked files work after it is sent: 7, 30 or 365. 30 when left out. When a link ends, its file is deleted.
+- `--attach` (once for each): A file to attach, uploaded once the draft is written. Files that would make the message more than 10 MB go as linked files anyway.
+- `--link` (once for each): A file to send as a linked file, a link to a download page listed after the text, uploaded once the draft is written.
 
 ## duva drafts get
 
@@ -886,7 +899,9 @@ Changing a draft that waits for approval withdraws the request, so an approver n
 - `--bcc` (once for each): The Bcc recipients' addresses, in place of the draft's.
 - `--subject`: The subject, in place of the draft's.
 - `--text`: The plain-text body.
-- `--attach` (once for each): A file to attach, uploaded once the draft is written.
+- `--linkDays`: How many days the links of its linked files work after it is sent: 7, 30 or 365. 30 when left out. When a link ends, its file is deleted.
+- `--attach` (once for each): A file to attach, uploaded once the draft is written. Files that would make the message more than 10 MB go as linked files anyway.
+- `--link` (once for each): A file to send as a linked file, a link to a download page listed after the text, uploaded once the draft is written.
 
 ## duva drafts send
 
@@ -957,6 +972,17 @@ An uploaded file is deleted. Removing one changes the draft, so a draft that wai
 - `--mailbox` (required): The mailbox's ID.
 - `--draft` (required): The draft's ID.
 - `--attachment` (required): The attachment's ID, as the draft lists it.
+
+## duva drafts link-attachment
+
+Choose whether a draft's file goes as a linked file.
+
+A linked file goes as a link to a download page, listed after the text, which anyone with the link may open until the link ends, 30 days after the send unless the draft's linkDays say otherwise. When carrying every attachment would make the message more than 10 MB, encoded, the largest go as links anyway until it fits. Choosing changes the draft, so a draft that waits for approval has its request withdrawn, and the change is recorded in the mailbox's change feed, naming you. Only those who can draft in the mailbox can.
+
+- `--mailbox` (required): The mailbox's ID.
+- `--draft` (required): The draft's ID.
+- `--attachment` (required): The attachment's ID, as the draft lists it.
+- `--linked` or `--no-linked` (required): true sends the file as a linked file by choice. false carries it in the message, unless carrying every attachment would make the message more than 10 MB, encoded, and it is among the largest.
 
 ## duva alerts list
 
