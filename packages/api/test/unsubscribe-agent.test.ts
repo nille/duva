@@ -1,5 +1,6 @@
 import { expect, test } from "vitest";
 import type { Model, ModelEvent } from "../src/agent-loop.ts";
+import { defaultHarderModel, defaultMailboxAgentModel } from "../src/agent-models.ts";
 import { type DuvaOptions, startDuva } from "./harness.ts";
 import type { Verdicts } from "./ses.ts";
 import type { ReceivedRequest } from "./web.ts";
@@ -130,7 +131,7 @@ test("when one-click isn't offered, the mailbox agent fills in the opt-out page 
   ]);
   // It is given the page and the tools that act on it, nothing of Duva's, and it is the harder model's work (ADR-0032).
   expect(asks[0]!.tools.map(({ name }) => name)).toEqual(["click", "type", "choose", "finish", "searchWeb"]);
-  expect(new Set(asks.map(({ model: asked }) => asked))).toEqual(new Set(["anthropic.claude-sonnet-5-5"]));
+  expect(new Set(asks.map(({ model: asked }) => asked))).toEqual(new Set([defaultHarderModel]));
   expect(asked(asks[0]!)).toContain('[1] field (email) "Your email"');
   expect(JSON.stringify(asks)).not.toContain("This week's news.");
 });
@@ -164,7 +165,7 @@ test("the agent may search the web while it unsubscribes, and its unsubscribe's 
   const search = { query: "how to unsubscribe from Example News", sources: [{ url: "https://lists.example.org/help", title: "Leaving Example News" }] };
   expect(duva.webSearches()).toEqual(["how to unsubscribe from Example News"]);
   // The reader is asked with no tools, and reads the results with the everyday model.
-  expect(asks[1]).toMatchObject({ model: "anthropic.claude-haiku-4-5-20251001-v1:0", tools: [] });
+  expect(asks[1]).toMatchObject({ model: defaultMailboxAgentModel, tools: [] });
   expect((await attempts()).at(-1)).toEqual(expect.objectContaining({ method: "page", outcome: "unsubscribed", searches: [search] }));
   expect((await sheet()).decided?.unsubscribe).toMatchObject({ method: "page", outcome: "unsubscribed", searches: [search] });
   const { data } = await grace.GET("/agents/{agent}/events", { params: { path: { agent: agent.id }, query: { kinds: ["unsubscribes"] } } });
@@ -457,7 +458,7 @@ test("a paused mailbox agent doesn't go on, and one-click alone is tried", async
 });
 
 test("the agent's model calls count toward the spend cap, and at the cap the page fails and it goes on without the model", async () => {
-  // Each call takes a million tokens, $2.20 with the default Claude Sonnet 5.5 through eu, past a $1 cap.
+  // Each call takes a million tokens, $2 with the default harder model, GPT-6 Sol through global, past a $1 cap.
   const model: Model = async function* () {
     yield use("type", { element: 1, value: "grace@example.com" });
     yield { usage: { inputTokens: 1_000_000, outputTokens: 0 } };

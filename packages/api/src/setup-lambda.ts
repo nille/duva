@@ -14,7 +14,7 @@ import { eraseBlockedSenders, lambdaEraser } from "./erasure.ts";
 import { indexMailboxes, sqsIndexQueue } from "./indexing.ts";
 import { timeEarlierLabels } from "./mail.ts";
 import { giveMailboxAgents } from "./mailbox-agents.ts";
-import { carryOverModelChoices, setUpOrganization } from "./organization.ts";
+import { carryOverModelChoices, keepEarlierModels, setUpOrganization } from "./organization.ts";
 import { sesReceiptRules } from "./receiving.ts";
 import { eraseAgentsMailboxes } from "./removal.ts";
 import { setUpDeliveries, setUpScreeners } from "./screening.ts";
@@ -51,6 +51,8 @@ export const handler = async () => {
   await giveMailboxAgents(table);
   // The models admins chose before each human picked their mailbox agent's become the organization's defaults, once (ADR-0035).
   await carryOverModelChoices(table);
+  // An organization from before GPT-6 Luna and Sol became the defaults keeps the models it had, once (#158).
+  await keepEarlierModels(table);
   // Decisions on approvals from before the approval log are listed in it, once.
   await listEarlierDecisions(table);
   // Each mailbox's index is backfilled with the mail it has, or its backfill finished if one stopped.

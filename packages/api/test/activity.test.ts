@@ -435,6 +435,8 @@ const use = (name: string, input: Record<string, unknown> = {}): ModelEvent => (
 
 const haiku = "anthropic.claude-haiku-4-5-20251001-v1:0";
 const sonnet = "anthropic.claude-sonnet-5-5";
+/** Claude Haiku 4.5 for the everyday work and Sonnet 5.5 for the harder, whose prices the costs below are worked from. */
+const haikuWithSonnet = { mailboxAgentModel: haiku, mailboxAgentHarderModel: sonnet } as const;
 
 test("each turn of Ask Coo is one event under Coo, saying what was asked, and opening into what Coo read, the models, a handover and the cost", async () => {
   const words = "Is the receipt from Linus about the dinner last Friday, and did he say whether the restaurant takes cards or only cash at the door?";
@@ -446,7 +448,8 @@ test("each turn of Ask Coo is one event under Coo, saying what was asked, and op
     () => [{ text: "Hej!" }],
     () => [{ text: "Hej Ada!" }],
   );
-  const { duva, ada, params, receive, adaId } = await withAgent({ model });
+  const { duva, ada, grace, params, receive, adaId } = await withAgent({ model });
+  await grace.PATCH("/organization/settings", { body: haikuWithSonnet });
   const coo = (await ada.GET("/mailbox-agent")).data!.agent;
   await duva.clock(new Date("2026-09-15T10:00:00Z"));
   thread = await receive("Kvitto");
@@ -496,6 +499,7 @@ test("an admin who isn't the sponsor reads Coo's turns without what was asked or
     () => [{ text: "There are none." }],
   );
   const { duva, ada, grace, params } = await withAgent({ model });
+  await grace.PATCH("/organization/settings", { body: haikuWithSonnet });
   const coo = (await ada.GET("/mailbox-agent")).data!.agent;
   await duva.askAgent("ada@example.org", { mailbox: params.path.mailbox, words: "Find Linus's receipt." });
 

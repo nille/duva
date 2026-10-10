@@ -897,6 +897,10 @@ export const strings = {
         defaultsLegend: "The organization's models",
         defaultsLead: "Every Coo thinks with these until its human picks others. A cheap model does the everyday work and the tasks labels' prompts give, and hands a turn to the harder model when it comes to writing mail that may be sent, gets stuck, or asks for help.",
         jobs: { mailboxAgentModel: "Everyday model", mailboxAgentHarderModel: "Harder model" },
+        defaultsOutside: (models: string[], place: string, region: string) => {
+          const [away, home] = region.startsWith("eu-") ? ["the EU", "in the EU"] : ["the continent Duva is deployed on", "on this continent"];
+          return `With ${models.join(" and ")}, what Coo reads of the mail may be processed outside ${away}, ${place}. To keep it ${home}, choose models that run ${home}.`;
+        },
         decider: "Ask the decider first",
         deciderHint: "Amazon Nova Micro judges each question first, and sends one it finds complex straight to the harder model. Off, a question goes there only on evidence.",
         modelsFailed: "Duva couldn't list the measured models. Try again.",

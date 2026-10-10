@@ -48,7 +48,7 @@ async function withMailbox(options: DuvaOptions = {}) {
   const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: linusActor!.id, address: "linus@example.com" } });
   const params = { path: { mailbox: mailbox!.id } };
   await linus.PATCH("/mailboxes/{mailbox}/screener", { params, body: { on: false } });
-  await ada.PATCH("/organization/settings", { body: { mailboxAgentModel: "anthropic.claude-sonnet-5-5" } });
+  await ada.PATCH("/organization/settings", { body: { mailboxAgentModel: "anthropic.claude-sonnet-5-5", mailboxAgentHarderModel: "anthropic.claude-sonnet-5-5" } });
   const agent = (await linus.GET("/mailbox-agent")).data!.agent;
   const ask = (words: string) => duva.askAgent("linus@example.org", { mailbox: mailbox!.id, words });
   return { duva, ada, linus, params, agent, ask };

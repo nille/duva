@@ -52,7 +52,7 @@ async function withShop(options: DuvaOptions = {}, { mails = "code" }: { mails?:
   const { data: linusActor } = await linus.GET("/whoami");
   const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: linusActor!.id, address: "linus@example.com" } });
   const params = { path: { mailbox: mailbox!.id } };
-  await ada.PATCH("/organization/settings", { body: { mailboxAgentModel: "anthropic.claude-sonnet-5-5" } });
+  await ada.PATCH("/organization/settings", { body: { mailboxAgentModel: "anthropic.claude-sonnet-5-5", mailboxAgentHarderModel: "anthropic.claude-sonnet-5-5" } });
   const agent = (await linus.GET("/mailbox-agent")).data!.agent;
   let mailed = 0;
   const mail = (to: string, text: string) =>

@@ -1,11 +1,12 @@
 import { expect, onTestFinished, test, vi } from "vitest";
+import { defaultAllowedModels, defaultHarderModel, defaultMailboxAgentModel } from "../src/agent-models.ts";
 import { type DuvaOptions, startDuva } from "./harness.ts";
 
 /** Where the mailbox agents call their model, and what they may spend, in a deployment in eu-north-1 until an admin chooses. */
 const mailboxAgentDefaults = {
-  mailboxAgentAllowedModels: ["anthropic.claude-haiku-4-5-20251001-v1:0", "anthropic.claude-sonnet-5-5"],
-  mailboxAgentModel: "anthropic.claude-haiku-4-5-20251001-v1:0",
-  mailboxAgentHarderModel: "anthropic.claude-sonnet-5-5",
+  mailboxAgentAllowedModels: defaultAllowedModels,
+  mailboxAgentModel: defaultMailboxAgentModel,
+  mailboxAgentHarderModel: defaultHarderModel,
   mailboxAgentDecider: false,
   mailboxAgentWebSearch: true,
   mailboxAgentBrowsing: true,

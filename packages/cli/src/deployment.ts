@@ -1,6 +1,7 @@
 // What duva deploy does in an AWS account and region, given the organization's first domain and
 // first admin. AWS and DNS sit behind small interfaces: aws.ts and the API's dns-records.ts have the
 // real ones. Every later domain is the API's to add and remove at run time (ADR-0018).
+import { callOf, defaultHarderModel, defaultMailboxAgentModel, mailboxAgentModels } from "@duva/api/agent-models";
 import { asciiDomain, type Dns, type DnsRecord, domainRecords, verification } from "@duva/api/dns-records";
 import { signInSender } from "@duva/api/infrastructure";
 import type { WebAppConfig } from "@duva/client";
@@ -161,8 +162,24 @@ export async function deployDuva({ aws, dns, ...given }: { aws: Aws; dns: Dns; d
         : { ses: { dkim: verification(identity.dkimStatus), mailFrom: verification(identity.mailFromStatus) } }),
     } as { name: string; records: DnsRecord[]; dmarc?: string; ses?: { dkim: string; mailFrom: string }; removed?: string },
     sending: sendingReport,
+    // Said once, on the first deploy, as admins choose other models in Settings from then on.
+    ...(stack === undefined && cooModels(aws.region)),
     /** How the CLI signs in, for its config. */
     signIn: { url: signInUrl, clientId: output(outputs, stackOutputs.cliClientId), redirectUri: cliRedirectUri } satisfies SignInConfig,
+  };
+}
+
+/** Where Coo's default models process what it reads of the mail, if that may be outside the deployment's continent (#158). */
+function cooModels(region: string): { cooModels?: string } {
+  const outside = [defaultMailboxAgentModel, defaultHarderModel].filter((model) => ["us", "anywhere"].includes(callOf(model, region).processedIn));
+  if (outside.length === 0) return {};
+  const name = (model: keyof typeof mailboxAgentModels) => mailboxAgentModels[model].name;
+  const place = { us: "in the US", anywhere: "in any AWS region with room" }[callOf(outside[0]!, region).processedIn as "us" | "anywhere"];
+  const continent = region.startsWith("eu-") ? "the EU" : "the continent Duva is deployed on";
+  return {
+    cooModels:
+      `Coo thinks with ${name(defaultMailboxAgentModel)}, and ${name(defaultHarderModel)} for the harder work. For ${region}, Bedrock runs ${outside.map(name).join(" and ")} ${place}, ` +
+      `so what Coo reads of the mail may be processed outside ${continent}. To keep it there, allow and choose other models in Settings, under Mailbox agents.`,
   };
 }
 

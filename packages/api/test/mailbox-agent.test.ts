@@ -1,6 +1,8 @@
 import PostalMime from "postal-mime";
 import { expect, test } from "vitest";
 import type { Model, ModelEvent, ModelMessage } from "../src/agent-loop.ts";
+import { defaultAllowedModels, defaultHarderModel, defaultMailboxAgentModel, type MailboxAgentModel, mailboxAgentModels } from "../src/agent-models.ts";
+import type { OrganizationSettings } from "../src/organization.ts";
 import { type DuvaOptions, startDuva } from "./harness.ts";
 
 type Request = Parameters<Model>[0];
@@ -46,7 +48,7 @@ async function withMailbox(options: DuvaOptions = {}) {
   await linus.PATCH("/mailboxes/{mailbox}/screener", { params, body: { on: false } });
   const ask = (words: string, email = "linus@example.org", mailboxId = mailbox!.id) => duva.askAgent(email, { mailbox: mailboxId, words });
   // With Claude Sonnet 5.5 for every job, nothing is routed, so a script runs as written.
-  const sonnetOnly = () => ada.PATCH("/organization/settings", { body: { mailboxAgentModel: "anthropic.claude-sonnet-5-5" } });
+  const sonnetOnly = () => ada.PATCH("/organization/settings", { body: { mailboxAgentModel: "anthropic.claude-sonnet-5-5", mailboxAgentHarderModel: "anthropic.claude-sonnet-5-5" } });
   const agent = async () => (await linus.GET("/mailbox-agent")).data!.agent;
   return { duva, ada, linus, grace, linusId: linusActor!.id, graceId: graceActor!.id, mailbox: mailbox!, params, ask, agent, sonnetOnly };
 }
@@ -164,7 +166,7 @@ test("the mailbox agent answers from what its tools read in the mailbox, streami
       text: "Let me look. You have 1 thread about the report.",
       actions: [expect.objectContaining({ operation: "searchMailbox" })],
       outcome: "answered",
-      model: "anthropic.claude-haiku-4-5-20251001-v1:0",
+      model: defaultMailboxAgentModel,
     },
   });
   // The model's tools are Duva's operations, in the agent's own mailbox.
@@ -392,8 +394,10 @@ const haiku = "anthropic.claude-haiku-4-5-20251001-v1:0";
 const sonnet = "anthropic.claude-sonnet-5-5";
 const novaLite = "amazon.nova-lite-v1:0";
 const novaTwo = "amazon.nova-2-lite-v1:0";
+/** Claude Haiku 4.5 as the organization's everyday model and Sonnet 5.5 as its harder one, allowed with the models given. */
+const haikuWithSonnet = (...more: MailboxAgentModel[]): Partial<OrganizationSettings> => ({ mailboxAgentAllowedModels: [haiku, sonnet, ...more], mailboxAgentModel: haiku, mailboxAgentHarderModel: sonnet });
 
-test("admins allow measured models, and set the organization's everyday and harder models from them, by default Claude Haiku 4.5 and Claude Sonnet 5.5", async () => {
+test("admins allow measured models, and set the organization's everyday and harder models from them, by default those Duva ships", async () => {
   const { ada, linus } = await withMailbox();
   const { data: before } = await ada.GET("/organization/settings");
 
@@ -401,9 +405,9 @@ test("admins allow measured models, and set the organization's everyday and hard
   const notAllowed = await ada.PATCH("/organization/settings", { body: { mailboxAgentModel: novaTwo } });
   const defaultTaken = await ada.PATCH("/organization/settings", { body: { mailboxAgentAllowedModels: [sonnet] } });
   const notAdmin = await linus.PATCH("/organization/settings", { body: { mailboxAgentAllowedModels: [haiku, sonnet, novaTwo] } });
-  const changed = await ada.PATCH("/organization/settings", { body: { mailboxAgentAllowedModels: [novaTwo, sonnet, haiku], mailboxAgentModel: novaTwo } });
+  const changed = await ada.PATCH("/organization/settings", { body: { mailboxAgentAllowedModels: [novaTwo, sonnet], mailboxAgentModel: novaTwo, mailboxAgentHarderModel: sonnet } });
 
-  expect(before).toMatchObject({ mailboxAgentAllowedModels: [haiku, sonnet], mailboxAgentModel: haiku, mailboxAgentHarderModel: sonnet, mailboxAgentDecider: false, mailboxAgentSpendCap: 20 });
+  expect(before).toMatchObject({ mailboxAgentAllowedModels: defaultAllowedModels, mailboxAgentModel: defaultMailboxAgentModel, mailboxAgentHarderModel: defaultHarderModel, mailboxAgentDecider: false, mailboxAgentSpendCap: 20 });
   expect(before).not.toHaveProperty("mailboxAgentTaskModel");
   expect((unmeasured.error as { message: string }).message).toBe(
     "Give mailboxAgentAllowedModels as a list of different measured models, anthropic.claude-haiku-4-5-20251001-v1:0, anthropic.claude-sonnet-5-5, deepseek.v3.2, zai.glm-5, zai.glm-5.3, openai.gpt-6-luna, openai.gpt-6-sol, openai.gpt-oss-120b-1:0, xai.grok-4.7, moonshotai.kimi-k2.5, moonshotai.kimi-k3, minimax.minimax-m2.5, amazon.nova-2-lite-v1:0, amazon.nova-lite-v1:0, amazon.nova-pro-v1:0, qwen.qwen3-235b-a22b-2507-v1:0.",
@@ -412,16 +416,16 @@ test("admins allow measured models, and set the organization's everyday and hard
     "Amazon Nova 2 Lite is the organization's everyday model, so it must be allowed. Allow it in mailboxAgentAllowedModels, or give mailboxAgentModel as one of those allowed.",
   );
   expect((defaultTaken.error as { message: string }).message).toBe(
-    "Claude Haiku 4.5 is the organization's everyday model, so it must be allowed. Allow it in mailboxAgentAllowedModels, or give mailboxAgentModel as one of those allowed.",
+    `${mailboxAgentModels[defaultMailboxAgentModel].name} is the organization's everyday model, so it must be allowed. Allow it in mailboxAgentAllowedModels, or give mailboxAgentModel as one of those allowed.`,
   );
   expect(notAdmin.response.status).toBe(403);
   // The list is kept in the measured models' order.
-  expect(changed.data).toMatchObject({ mailboxAgentAllowedModels: [haiku, sonnet, novaTwo], mailboxAgentModel: novaTwo, mailboxAgentHarderModel: sonnet });
+  expect(changed.data).toMatchObject({ mailboxAgentAllowedModels: [sonnet, novaTwo], mailboxAgentModel: novaTwo, mailboxAgentHarderModel: sonnet });
 });
 
 test("every actor lists the measured models, each with its success by kind of work, its cost per task, and where an EU deployment processes the mail it reads", async () => {
   const { ada, linus } = await withMailbox();
-  await ada.PATCH("/organization/settings", { body: { mailboxAgentAllowedModels: [haiku, sonnet, novaLite] } });
+  await ada.PATCH("/organization/settings", { body: haikuWithSonnet(novaLite) });
 
   const { data } = await linus.GET("/organization/mailbox-agent-models");
 
@@ -496,6 +500,7 @@ test("each human picks their Coo's everyday and harder models from those admins 
     () => [{ text: "Haiku read your labels." }],
   );
   const { duva, ada, linus, grace, params } = await withMailbox({ model });
+  await ada.PATCH("/organization/settings", { body: haikuWithSonnet() });
   const { data: kept } = await linus.GET("/preferences");
 
   const refused = await linus.PATCH("/preferences", { body: { cooEverydayModel: novaLite } });
@@ -525,7 +530,7 @@ test("each human picks their Coo's everyday and harder models from those admins 
 
 test("a human keeps the organization's default again by giving null, and agents have no Coo's models to pick", async () => {
   const { ada, linus, duva } = await withMailbox();
-  await ada.PATCH("/organization/settings", { body: { mailboxAgentAllowedModels: [haiku, sonnet, novaTwo] } });
+  await ada.PATCH("/organization/settings", { body: haikuWithSonnet(novaTwo) });
   await linus.PATCH("/preferences", { body: { cooEverydayModel: novaTwo, cooHarderModel: haiku } });
 
   const { data } = await linus.PATCH("/preferences", { body: { cooHarderModel: null } });
@@ -577,7 +582,7 @@ test("a label's task runs with its human's everyday model, and the spend counts 
     () => [{ text: "Sonnet thought harder." }],
   );
   const { duva, ada, linus, params, ask } = await withMailbox({ model });
-  await ada.PATCH("/organization/settings", { body: { mailboxAgentAllowedModels: [haiku, sonnet, novaLite] } });
+  await ada.PATCH("/organization/settings", { body: haikuWithSonnet(novaLite) });
   await linus.PATCH("/preferences", { body: { cooEverydayModel: novaLite } });
   const { data: receipts } = await linus.POST("/mailboxes/{mailbox}/labels", { params, body: { name: "Receipts" } });
   await linus.PUT("/mailboxes/{mailbox}/labels/{label}/prompt", { params: { path: { ...params.path, label: receipts!.id } }, body: { prompt: "Note the amount." } });
@@ -625,6 +630,44 @@ test("setup carries over the models admins chose before as the organization's de
     suggestionModel: "qwen.qwen3-32b-v1:0",
   });
   expect((await ada.GET("/organization/settings")).data).toEqual(data);
+});
+
+test("a new organization's Coo thinks with GPT-6 Luna, and GPT-6 Sol for the harder work, and admins may allow Claude Haiku 4.5 and Sonnet 5.5 besides", async () => {
+  const duva = await startDuva({ admin: "ada@example.org" });
+  const ada = duva.signIn("ada@example.org");
+
+  await duva.setUp({ admin: "ada@example.org" });
+
+  expect((await ada.GET("/organization/settings")).data).toMatchObject({
+    mailboxAgentAllowedModels: [haiku, sonnet, "openai.gpt-6-luna", "openai.gpt-6-sol"],
+    mailboxAgentModel: "openai.gpt-6-luna",
+    mailboxAgentHarderModel: "openai.gpt-6-sol",
+  });
+});
+
+test("setup keeps Claude Haiku 4.5 and Sonnet 5.5 for an organization from before GPT-6 Luna and Sol were the defaults, once, and admins change them in Settings", async () => {
+  const duva = await startDuva({ admin: "ada@example.org", beforeLunaAndSol: true });
+  const ada = duva.signIn("ada@example.org");
+
+  await duva.setUp({ admin: "ada@example.org" });
+  const kept = (await ada.GET("/organization/settings")).data;
+  const { response } = await ada.PATCH("/organization/settings", { body: { mailboxAgentAllowedModels: [haiku, sonnet, "openai.gpt-6-luna"], mailboxAgentModel: "openai.gpt-6-luna" } });
+  await duva.setUp({ admin: "ada@example.org" });
+
+  expect(kept).toMatchObject({ mailboxAgentAllowedModels: [haiku, sonnet], mailboxAgentModel: haiku, mailboxAgentHarderModel: sonnet });
+  expect(response.status).toBe(200);
+  expect((await ada.GET("/organization/settings")).data).toMatchObject({ mailboxAgentAllowedModels: [haiku, sonnet, "openai.gpt-6-luna"], mailboxAgentModel: "openai.gpt-6-luna", mailboxAgentHarderModel: sonnet });
+});
+
+test("setup leaves the models an admin of an organization from before GPT-6 Luna and Sol chose", async () => {
+  const duva = await startDuva({ admin: "ada@example.org", beforeLunaAndSol: true });
+  const ada = duva.signIn("ada@example.org");
+  const chosen: Partial<OrganizationSettings> = { mailboxAgentAllowedModels: [sonnet, "moonshotai.kimi-k2.5"], mailboxAgentModel: "moonshotai.kimi-k2.5", mailboxAgentHarderModel: sonnet };
+  await ada.PATCH("/organization/settings", { body: chosen });
+
+  await duva.setUp({ admin: "ada@example.org" });
+
+  expect((await ada.GET("/organization/settings")).data).toMatchObject(chosen);
 });
 
 test("setup carries over an everyday model an admin chose before, when it was the only model setting they changed", async () => {

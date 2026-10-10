@@ -44,10 +44,10 @@ import { GetBucketCorsCommand, GetBucketLifecycleConfigurationCommand, GetBucket
 import { indexedMailboxes, uncompactedSince } from "@duva/api/indexing";
 import { alertMailFilter, authorizationServerPath, browserProfileTagged, conversationPath, taskGiverFilter, mcpAuthorizePath, mcpPath, mcpRegistrationPath, mcpTokenPath, protectedResourcePaths, tokenHeader, dropMetric, dropReasons, environmentVariables, hostedLogoHeaders, hostedLogosPath, inboundPrefix, receiptRuleNumber, recipientsPerRule, senderFilter, signInFrom } from "@duva/api/infrastructure";
 import { rulesTake } from "@duva/api/receiving";
-import { callOf, defaultMailboxAgentModel, inferenceProfileId } from "@duva/api/agent-models";
+import { callOf, defaultHarderModel, defaultMailboxAgentModel, inferenceProfileId } from "@duva/api/agent-models";
 import { webSearchRegion } from "@duva/api/web-search";
 import { bedrockSuggester } from "@duva/api/suggestions";
-import { earlierModelSettingsLeft, organizationSettings } from "@duva/api/organization";
+import { earlierModelSettingsLeft, earlierModelsKept, organizationSettings } from "@duva/api/organization";
 import { mailboxAgentsLeft } from "@duva/api/mailbox-agents";
 import { tasksWorkingSince } from "@duva/api/tasks";
 import { agentsMailboxes } from "@duva/api/removal";
@@ -361,12 +361,21 @@ await check("no agent owns a mailbox, since setup erased those they owned (ADR-0
   const owned = await agentsMailboxes(table);
   return owned.length === 0 ? undefined : `${owned.map(({ mailbox, agent }) => `${agent.name}'s ${mailbox.addresses[0] ?? mailbox.id}`).join(", ")} ${owned.length === 1 ? "is" : "are"} left. Run duva deploy again.`;
 });
-await check("Claude answers through the eu profile from eu-central-1, where the mailbox agents call it by default (docs/aws.md)", async () => {
-  const { output: answer } = await new BedrockRuntimeClient({ region: "eu-central-1" }).send(
-    new ConverseCommand({ modelId: inferenceProfileId(defaultMailboxAgentModel, "eu"), messages: [{ role: "user", content: [{ text: "Answer with the word yes." }] }], inferenceConfig: { maxTokens: 5 } }),
-  );
-  const text = answer?.message?.content?.[0]?.text ?? "";
-  return /yes/i.test(text) ? undefined : `answered ${JSON.stringify(text)}`;
+await check("Duva's default models answer where a deployment in this region calls them (#158)", async () => {
+  const silent: string[] = [];
+  for (const model of [defaultMailboxAgentModel, defaultHarderModel]) {
+    const call = callOf(model, region!);
+    const { output: answer } = await new BedrockRuntimeClient({ region: call.region }).send(
+      new ConverseCommand({ modelId: inferenceProfileId(model, call.profile), messages: [{ role: "user", content: [{ text: "Answer with the word yes." }] }], inferenceConfig: { maxTokens: 5 } }),
+    );
+    if (!/yes/i.test(answer?.message?.content?.[0]?.text ?? "")) silent.push(`${inferenceProfileId(model, call.profile)} in ${call.region}`);
+  }
+  return silent.length === 0 ? undefined : `${silent.join(", ")} didn't answer yes`;
+});
+await check("the organization kept the models it had before GPT-6 Luna and Sol became the defaults (#158)", async () => {
+  const table = await stackTable();
+  if (table === undefined) return "the stack has no table";
+  return (await earlierModelsKept(table)) ? undefined : "setup hasn't kept them. Run duva deploy again.";
 });
 await check("the models admins chose before each human picked their Coo's are carried over as the organization's defaults (ADR-0035)", async () => {
   const table = await stackTable();

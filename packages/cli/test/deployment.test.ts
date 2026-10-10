@@ -51,8 +51,31 @@ test("re-running with the same domain changes nothing", async () => {
 
   const again = await deployDuva({ ...world, admin, domain: "duva.example.com" });
 
-  expect(again).toEqual(first);
+  // What Coo's models mean for the mail is said on the first deploy only.
+  const { cooModels: _, ...report } = first;
+  expect(again).toEqual(report);
   expect(world.aws.changes).toEqual(changes);
+});
+
+test("the first deploy in the EU says once that Coo's models may process the mail outside the EU, and how to keep it there", async () => {
+  const world = newWorld();
+
+  const first = await deployDuva({ ...world, admin, domain: "duva.example.com" });
+  const again = await deployDuva(world);
+
+  expect(first.cooModels).toBe(
+    "Coo thinks with GPT-6 Luna, and GPT-6 Sol for the harder work. For eu-north-1, Bedrock runs GPT-6 Luna and GPT-6 Sol in any AWS region with room, so what Coo reads of the mail may be processed outside the EU. To keep it there, allow and choose other models in Settings, under Mailbox agents.",
+  );
+  expect(again).not.toHaveProperty("cooModels");
+});
+
+test("the first deploy in the US says nothing of where Coo's models run, as they run in the US", async () => {
+  const world = newWorld();
+  world.aws.region = "us-east-1";
+
+  const first = await deployDuva({ ...world, admin, domain: "duva.example.com" });
+
+  expect(first).not.toHaveProperty("cooModels");
 });
 
 test("a re-run without a domain keeps the deployed one", async () => {

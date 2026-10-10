@@ -60,7 +60,7 @@ async function withLinus(options: DuvaOptions & { screener?: boolean } = {}) {
   const { data: work } = await ada.POST("/mailboxes", { body: { owner: linusActor!.id, address: "linus@example.com" } });
   const { data: home } = await ada.POST("/mailboxes", { body: { owner: linusActor!.id, address: "linus.home@example.com" } });
   if (!screener) for (const mailbox of [work!, home!]) await linus.PATCH("/mailboxes/{mailbox}/screener", { params: { path: { mailbox: mailbox.id } }, body: { on: false } });
-  await ada.PATCH("/organization/settings", { body: { mailboxAgentModel: "anthropic.claude-sonnet-5-5" } });
+  await ada.PATCH("/organization/settings", { body: { mailboxAgentModel: "anthropic.claude-sonnet-5-5", mailboxAgentHarderModel: "anthropic.claude-sonnet-5-5" } });
   /** Receives the message in the mailbox, and gives its thread's ID. */
   const receive = async (raw: string, { mailbox = work!, ...given }: { mailbox?: typeof work; verdicts?: Record<string, string> } = {}) => {
     await duva.receive(raw, { to: [mailbox!.addresses[0]!] }, given.verdicts === undefined ? undefined : ({ verdicts: given.verdicts } as never));

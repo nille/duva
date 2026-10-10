@@ -35,7 +35,7 @@ async function openMemory(page: Page) {
 async function withMailbox(options: Parameters<typeof startWebApp>[0] = {}) {
   const app = await startWebApp({ domain: "example.com", admin: "ada@example.org", humans: ["grace@example.org"], ...options });
   const ada = app.duva.signIn("ada@example.org");
-  await ada.PATCH("/organization/settings", { body: { mailboxAgentModel: "anthropic.claude-sonnet-5-5" } });
+  await ada.PATCH("/organization/settings", { body: { mailboxAgentModel: "anthropic.claude-sonnet-5-5", mailboxAgentHarderModel: "anthropic.claude-sonnet-5-5" } });
   const grace = app.duva.signIn("grace@example.org");
   const { data: whoami } = await grace.GET("/whoami");
   const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: whoami!.id, address: "grace@example.com" } });

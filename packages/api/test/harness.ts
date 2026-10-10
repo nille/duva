@@ -38,7 +38,7 @@ import { createSearcher } from "../src/searching.ts";
 import type { Table } from "../src/deployment.ts";
 import type { MailBucket } from "../src/mail-bucket.ts";
 import { keys, timeEarlierLabels } from "../src/mail.ts";
-import { actorKey, addHumanToOrganization, addKeylessAgent, addMailbox, agentSettingsKey, carryOverModelChoices, firstAgentSettings, mailboxKey, ownedMailboxes, screenerKey, settingsKey, setUpOrganization } from "../src/organization.ts";
+import { actorKey, addHumanToOrganization, addKeylessAgent, addMailbox, agentSettingsKey, carryOverModelChoices, firstAgentSettings, keepEarlierModels, mailboxKey, organizationKey, ownedMailboxes, screenerKey, settingsKey, setUpOrganization } from "../src/organization.ts";
 import type { SendEvent } from "../src/limits.ts";
 import { setUpDeliveries, setUpScreeners } from "../src/screening.ts";
 import { type Decider, type Model, runAgent } from "../src/agent-loop.ts";
@@ -155,6 +155,12 @@ export interface DuvaOptions {
    * mailboxAgentProfile and mailboxAgentRegion.
    */
   earlierModelSettings?: Record<string, string>;
+  /**
+   * Whether the deployment's organization was set up on a version from before GPT-6 Luna and Sol
+   * became the defaults (#158), so until setUp() deploys this one it has kept no models of the
+   * defaults before them.
+   */
+  beforeLunaAndSol?: boolean;
   /**
    * The model the mailbox agents ask, in place of Claude on Bedrock: a stand-in that answers as a
    * test scripts it, from what it is asked. Unless given, it answers every turn with "Stand-in answer."
@@ -352,6 +358,7 @@ export async function startDuva({
   beforeCoo = false,
   beforeOneCoo = false,
   earlierModelSettings,
+  beforeLunaAndSol = false,
   model = standInModel,
   decider = standInDecider,
   webSearch = async () => [],
@@ -364,6 +371,7 @@ export async function startDuva({
   const setUp = (options: { admin: string }) => setUpOrganization({ table, humans }, { domain, ...options });
   const firstAdmin = await setUp({ admin });
   for (const email of others) await addHumanToOrganization({ table, humans }, { email, by: firstAdmin.id });
+  if (beforeLunaAndSol) await documents(table).send(new UpdateCommand({ TableName: table.name, Key: organizationKey, UpdateExpression: "REMOVE earlierModelsKept" }));
   if (undoWindow !== null || earlierModelSettings !== undefined) {
     await documents(table).send(new PutCommand({ TableName: table.name, Item: { ...settingsKey, ...(undoWindow !== null && { undoWindowSeconds: undoWindow }), ...earlierModelSettings, version: 1 } }));
   }
@@ -735,6 +743,7 @@ export async function startDuva({
       oneCooDeployed = true;
       await giveMailboxAgents(table);
       await carryOverModelChoices(table);
+      await keepEarlierModels(table);
       approvalLogDeployed = true;
       await listEarlierDecisions(table);
       // The feeder starts with this version, and reads only what is written from then on.

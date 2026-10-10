@@ -732,16 +732,16 @@ type Model = MailboxAgentsSettings["mailboxAgentModel"];
 type MeasuredModel = components["schemas"]["MeasuredModel"];
 const organizationModels = ["mailboxAgentModel", "mailboxAgentHarderModel"] as const;
 
-/** The region the mailbox agents' web searches go to, as Status says, once read (ADR-0037). */
-function useWebSearchRegion(client: DuvaClient): string | undefined {
-  const [region, setRegion] = useState<string>();
+/** The deployment's status, once read: the region it runs in, and where its web searches go (ADR-0037). */
+function useStatus(client: DuvaClient): components["schemas"]["Status"] | undefined {
+  const [status, setStatus] = useState<components["schemas"]["Status"]>();
   useEffect(() => {
     void client
       .GET("/status")
-      .then(({ data }) => setRegion(data?.webSearchRegion))
+      .then(({ data }) => setStatus(data))
       .catch(() => undefined);
   }, [client]);
-  return region;
+  return status;
 }
 
 /** The measured models as Duva lists them for this deployment, or whether they couldn't be. */
@@ -761,7 +761,8 @@ function useMeasuredModels(client: DuvaClient): { models?: MeasuredModel[]; fail
  * flag, how it did on Coo's evaluation and what a task costs, the organization's everyday and
  * harder models among them, whether they may search the web, saying where queries go (ADR-0037),
  * whether they may browse and act on pages (ADR-0038), and the spend cap, with what they spent this month (ADR-0027, ADR-0035).
- * Allowing a model that processes mail outside the deployment's continent says so first.
+ * Allowing a model that processes mail outside the deployment's continent says so first, and the
+ * organization's models say so while one of them does (#158).
  */
 function MailboxAgentsSheet({ client, onSignedOut }: { client: DuvaClient; onSignedOut: () => void }) {
   const { sheet } = useOrganizationSheet<MailboxAgentsSettings>(
@@ -785,7 +786,8 @@ function MailboxAgentsSheet({ client, onSignedOut }: { client: DuvaClient; onSig
   const [asking, setAsking] = useState<Model>();
   const saved = sheet.saving.status;
   const { models, failed } = useMeasuredModels(client);
-  const searchRegion = useWebSearchRegion(client);
+  const status = useStatus(client);
+  const searchRegion = status?.webSearchRegion;
   useEffect(() => {
     void client
       .GET("/organization/mailbox-agent-spend")
@@ -800,6 +802,7 @@ function MailboxAgentsSheet({ client, onSignedOut }: { client: DuvaClient; onSig
         const text = capText ?? String(chosen.mailboxAgentSpendCap);
         const capValid = /^\d+$/.test(text.trim()) && Number(text.trim()) <= 10_000;
         const allowed = chosen.mailboxAgentAllowedModels;
+        const outside = organizationModels.flatMap((job) => models?.filter((model) => model.model === chosen[job] && outsideContinent(model)) ?? []);
         // Kept in the measured models' order, as Duva keeps the list.
         const allow = (model: Model, on: boolean) =>
           sheet.choose({ mailboxAgentAllowedModels: (models ?? []).map(({ model }) => model).filter((each) => (each === model ? on : allowed.includes(each))) });
@@ -882,6 +885,15 @@ function MailboxAgentsSheet({ client, onSignedOut }: { client: DuvaClient; onSig
                   </div>
                 ))}
               </div>
+              {outside.length > 0 && status !== undefined && (
+                <p className="notice notice-call model-outside">
+                  {copy.model.defaultsOutside(
+                    [...new Set(outside.map(({ name }) => name))],
+                    strings.settings.modelPlaceSaid(outside[0]!.processedIn, outside[0]!.profileId, outside[0]!.region),
+                    status.region,
+                  )}
+                </p>
+              )}
               <label className="choice">
                 <input type="checkbox" checked={chosen.mailboxAgentDecider} onChange={(event) => sheet.choose({ mailboxAgentDecider: event.target.checked })} />
                 <span className="choice-text">
@@ -1205,7 +1217,8 @@ function YouSheet({
   const today = new Date();
   today.setHours(14, 30, 0, 0);
   const copy = strings.settings;
-  const searchRegion = useWebSearchRegion(client);
+  const status = useStatus(client);
+  const searchRegion = status?.webSearchRegion;
   const [organization, setOrganization] = useState<{ searches: boolean; browses: boolean; suggests: boolean }>();
   useEffect(() => {
     void client

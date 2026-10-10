@@ -4,14 +4,15 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { defaultAllowedModels, defaultHarderModel, defaultMailboxAgentModel } from "@duva/api/agent-models";
 import { startDuva } from "@duva/api/harness";
 import { expect, onTestFinished, test, vi } from "vitest";
 
 /** Where the mailbox agents call their model, and what they may spend, in a deployment in eu-north-1 until an admin chooses. */
 const mailboxAgentDefaults = {
-  mailboxAgentAllowedModels: ["anthropic.claude-haiku-4-5-20251001-v1:0", "anthropic.claude-sonnet-5-5"],
-  mailboxAgentModel: "anthropic.claude-haiku-4-5-20251001-v1:0",
-  mailboxAgentHarderModel: "anthropic.claude-sonnet-5-5",
+  mailboxAgentAllowedModels: defaultAllowedModels,
+  mailboxAgentModel: defaultMailboxAgentModel,
+  mailboxAgentHarderModel: defaultHarderModel,
   mailboxAgentDecider: false,
   mailboxAgentWebSearch: true,
   mailboxAgentBrowsing: true,
@@ -240,13 +241,17 @@ test("an admin allows a measured model with organization change-settings, and a 
     "anthropic.claude-haiku-4-5-20251001-v1:0",
     "--mailboxAgentAllowedModels",
     "anthropic.claude-sonnet-5-5",
+    "--mailboxAgentAllowedModels",
+    "openai.gpt-6-luna",
+    "--mailboxAgentAllowedModels",
+    "openai.gpt-6-sol",
   );
   const listed = await machine.duva("organization", "mailbox-agent-models");
   const picked = await machine.duva("preferences", "change", "--cooEverydayModel", "amazon.nova-2-lite-v1:0");
   const kept = await machine.duva("preferences", "change", "--no-cooEverydayModel");
 
   expect(allowed.exitCode).toBe(0);
-  expect(JSON.parse(allowed.stdout).mailboxAgentAllowedModels).toEqual(["anthropic.claude-haiku-4-5-20251001-v1:0", "anthropic.claude-sonnet-5-5", "amazon.nova-2-lite-v1:0"]);
+  expect(JSON.parse(allowed.stdout).mailboxAgentAllowedModels).toEqual(["anthropic.claude-haiku-4-5-20251001-v1:0", "anthropic.claude-sonnet-5-5", "openai.gpt-6-luna", "openai.gpt-6-sol", "amazon.nova-2-lite-v1:0"]);
   const models = (JSON.parse(listed.stdout) as { models: { model: string; processedIn: string; allowed: boolean }[] }).models;
   expect(models.find(({ model }) => model === "amazon.nova-2-lite-v1:0")).toMatchObject({ processedIn: "continent", allowed: true });
   expect(models.find(({ model }) => model === "amazon.nova-pro-v1:0")).toMatchObject({ allowed: false });

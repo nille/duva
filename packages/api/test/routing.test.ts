@@ -1,5 +1,6 @@
 import { expect, test } from "vitest";
 import type { Decider, Model, ModelEvent, ModelMessage } from "../src/agent-loop.ts";
+import { defaultHarderModel, defaultMailboxAgentModel } from "../src/agent-models.ts";
 import { type DuvaOptions, startDuva } from "./harness.ts";
 
 type Request = Parameters<Model>[0];
@@ -40,7 +41,7 @@ const deciding = (route: "simple" | "complex", confidence: number): Decider => a
 async function withMailbox({ defaults = false, ...options }: DuvaOptions & { defaults?: boolean } = {}) {
   const duva = await startDuva({ domain: "example.com", admin: "ada@example.org", humans: ["linus@example.org"], ...options });
   const ada = duva.signIn("ada@example.org");
-  if (!defaults) await ada.PATCH("/organization/settings", { body: { mailboxAgentAllowedModels: ["anthropic.claude-haiku-4-5-20251001-v1:0", "anthropic.claude-sonnet-5-5", nova], mailboxAgentModel: nova, mailboxAgentDecider: true } });
+  if (!defaults) await ada.PATCH("/organization/settings", { body: { mailboxAgentAllowedModels: [sonnet, nova], mailboxAgentModel: nova, mailboxAgentHarderModel: sonnet, mailboxAgentDecider: true } });
   const linus = duva.signIn("linus@example.org");
   const { data: linusActor } = await linus.GET("/whoami");
   const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: linusActor!.id, address: "linus@example.com" } });
@@ -61,13 +62,13 @@ async function withMailbox({ defaults = false, ...options }: DuvaOptions & { def
 const done = (events: { type: string }[] | undefined) => events!.at(-1) as { type: "done"; turn: Record<string, any> };
 const said = (events: { type: string; text?: string }[] | undefined) => events!.flatMap((event) => (event.type === "text" ? [event.text] : [])).join("");
 
-test("by default, Claude Haiku 4.5 answers with no decider asked, and hands over to Claude Sonnet 5.5 on evidence, as when it comes to writing", async () => {
-  const haiku = "anthropic.claude-haiku-4-5-20251001-v1:0";
+test("by default, the everyday model answers with no decider asked, and hands over to the harder model on evidence, as when it comes to writing", async () => {
+  const [everyday, harder] = [defaultMailboxAgentModel, defaultHarderModel];
   let decided = 0;
   const requests: Request[] = [];
   const model: Model = async function* (request) {
     requests.push(structuredClone(request));
-    yield request.model === haiku ? use("createDraft", { to: ["grace@example.org"], text: "Hi" }) : { text: "Sonnet takes it." };
+    yield request.model === everyday ? use("createDraft", { to: ["grace@example.org"], text: "Hi" }) : { text: "The harder model takes it." };
     yield { usage: { inputTokens: 1000, outputTokens: 100 } };
   };
   const { ask } = await withMailbox({ defaults: true, model, decider: async () => (decided++, { route: "simple", confidence: 1, inputTokens: 1, outputTokens: 1 }) });
@@ -75,8 +76,8 @@ test("by default, Claude Haiku 4.5 answers with no decider asked, and hands over
   const { events } = await ask("Write to Grace.");
 
   expect(decided).toBe(0);
-  expect(requests.map(({ model: asked }) => asked)).toEqual([haiku, sonnet]);
-  expect(done(events).turn).toMatchObject({ model: sonnet, handover: { reason: "writing", from: haiku, to: sonnet } });
+  expect(requests.map(({ model: asked }) => asked)).toEqual([everyday, harder]);
+  expect(done(events).turn).toMatchObject({ model: harder, handover: { reason: "writing", from: everyday, to: harder } });
   expect(done(events).turn.decision).toBeUndefined();
 });
 

@@ -10,7 +10,7 @@ import type { Deployment, Table } from "./deployment.ts";
 import { asciiDomain } from "./dns-records.ts";
 import { type OperationHandler, refusal } from "./operation-handler.ts";
 import { changesAfter, entryKey, type Feed, recordChanges, recordInFeeds } from "./feed.ts";
-import { defaultHarderModel, defaultMailboxAgentModel, defaultSuggestionModel, isMeasured, type MailboxAgentModel, measuredModelIds } from "./agent-models.ts";
+import { defaultAllowedModels, defaultHarderModel, defaultMailboxAgentModel, defaultSuggestionModel, earlierDefaultModels, isMeasured, type MailboxAgentModel, measuredModelIds } from "./agent-models.ts";
 import { defaultSearchLanguages } from "./languages.ts";
 import { documents, isNew, pk, sk, type TransactItem } from "./table.ts";
 
@@ -29,7 +29,7 @@ export const isAdmin = (actor: Actor | undefined): boolean => actor?.kind === "h
 /** A change as its maker describes it, before the feed gives it a position, a time and its actor. */
 type ChangeDetails = OrganizationChange extends infer Change ? (Change extends unknown ? Omit<Change, "position" | "at" | "actor"> : never) : never;
 
-const organizationKey = { [pk]: "organization", [sk]: "organization" };
+export const organizationKey = { [pk]: "organization", [sk]: "organization" };
 export const actorKey = (id: string) => ({ [pk]: `actor#${id}`, [sk]: "actor" });
 // Each agent is listed in its sponsor's partition, so a human's agents are one query away.
 export const sponsoredKey = (sponsor: string, agent: string) => ({ [pk]: `actor#${sponsor}`, [sk]: `agent#${agent}` });
@@ -121,7 +121,7 @@ export async function setUpOrganization(
     await db.send(
       new TransactWriteCommand({
         TransactItems: [
-          { Put: { TableName: table.name, Item: { ...organizationKey, domain, firstAdmin: actor.id, domainsListed: true, position: changes.length }, ...isNew } },
+          { Put: { TableName: table.name, Item: { ...organizationKey, domain, firstAdmin: actor.id, domainsListed: true, earlierModelsKept: true, position: changes.length }, ...isNew } },
           { Put: { TableName: table.name, Item: { ...domainKey(domain), domain } } },
           { Put: { TableName: table.name, Item: { ...actorKey(actor.id), ...actor }, ...isNew } },
           { Put: { TableName: table.name, Item: humanListedKey(actor.id) } },
@@ -1136,7 +1136,7 @@ export const defaultSettings: OrganizationSettings = {
   agentSendsPerHourCap: 100,
   agentNewRecipientsPerDayCap: 50,
   undoWindowSeconds: 30,
-  mailboxAgentAllowedModels: [defaultMailboxAgentModel, defaultHarderModel],
+  mailboxAgentAllowedModels: defaultAllowedModels,
   mailboxAgentModel: defaultMailboxAgentModel,
   mailboxAgentHarderModel: defaultHarderModel,
   mailboxAgentDecider: false,
@@ -1181,8 +1181,8 @@ export async function earlierModelSettingsLeft(table: Table): Promise<string[]> 
 /**
  * Carries over the models admins chose before each human picked their mailbox agent's from measured
  * ones (ADR-0035): the everyday and harder models become the organization's defaults, allowed with
- * the defaults Duva ships and the task model, which now follows the everyday one. A choice Duva never
- * measured gives way to Duva's default. Where the agents called them from, and through which
+ * the defaults Duva shipped then and the task model, which now follows the everyday one. A choice
+ * Duva never measured gives way to the default then. Where the agents called them from, and through which
  * profile, now follows from each model and the deployment's region. Once carried over, it does
  * nothing again.
  */
@@ -1191,9 +1191,9 @@ export async function carryOverModelChoices(table: Table): Promise<void> {
   // Settings stored before carry over hold models but no allowed list; once carried over, they hold one.
   if (Item === undefined || "mailboxAgentAllowedModels" in Item || ![...earlierModelSettings, "mailboxAgentModel", "mailboxAgentHarderModel"].some((name) => name in Item)) return;
   const measuredOr = (model: unknown, otherwise: MailboxAgentModel) => (typeof model === "string" && isMeasured(model) ? model : otherwise);
-  const everyday = measuredOr(Item.mailboxAgentModel, defaultMailboxAgentModel);
-  const harder = measuredOr(Item.mailboxAgentHarderModel, defaultHarderModel);
-  const chosen = [defaultMailboxAgentModel, defaultHarderModel, everyday, harder, measuredOr(Item.mailboxAgentTaskModel, everyday)];
+  const everyday = measuredOr(Item.mailboxAgentModel, earlierDefaultModels.everyday);
+  const harder = measuredOr(Item.mailboxAgentHarderModel, earlierDefaultModels.harder);
+  const chosen = [earlierDefaultModels.everyday, earlierDefaultModels.harder, everyday, harder, measuredOr(Item.mailboxAgentTaskModel, everyday)];
   await documents(table)
     .send(
       new UpdateCommand({
@@ -1209,6 +1209,46 @@ export async function carryOverModelChoices(table: Table): Promise<void> {
       if (!(error instanceof ConditionalCheckFailedException)) throw error;
       return carryOverModelChoices(table);
     });
+}
+
+/**
+ * Keeps the models an organization set up before GPT-6 Luna and Sol became the defaults (#158)
+ * thought with: where its settings hold no everyday model, harder model or allowed list, they get
+ * Claude Haiku 4.5, Sonnet 5.5, and those two allowed, as Duva read them until then. What an admin
+ * chose stays, and admins change the rest in Settings. Once kept, it does nothing again, and an
+ * organization set up since has nothing to keep.
+ */
+export async function keepEarlierModels(table: Table): Promise<void> {
+  const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: organizationKey, ConsistentRead: true }));
+  if (Item === undefined || Item.earlierModelsKept === true) return;
+  await documents(table)
+    .send(
+      new TransactWriteCommand({
+        TransactItems: [
+          {
+            Update: {
+              TableName: table.name,
+              Key: settingsKey,
+              // The version moves on, so an admin's change read before this one is read again.
+              UpdateExpression:
+                "SET mailboxAgentAllowedModels = if_not_exists(mailboxAgentAllowedModels, :allowed), mailboxAgentModel = if_not_exists(mailboxAgentModel, :everyday), mailboxAgentHarderModel = if_not_exists(mailboxAgentHarderModel, :harder), version = if_not_exists(version, :none) + :one",
+              ExpressionAttributeValues: { ":allowed": [earlierDefaultModels.everyday, earlierDefaultModels.harder], ":everyday": earlierDefaultModels.everyday, ":harder": earlierDefaultModels.harder, ":none": 0, ":one": 1 },
+            },
+          },
+          { Update: { TableName: table.name, Key: organizationKey, UpdateExpression: "SET earlierModelsKept = :kept", ConditionExpression: "attribute_not_exists(earlierModelsKept)", ExpressionAttributeValues: { ":kept": true } } },
+        ],
+      }),
+    )
+    // Another setup kept them first.
+    .catch((error: unknown) => {
+      if (!(error instanceof TransactionCanceledException)) throw error;
+    });
+}
+
+/** Whether setup has kept the models of an organization from before GPT-6 Luna and Sol became the defaults, or it had none to keep. */
+export async function earlierModelsKept(table: Table): Promise<boolean> {
+  const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: organizationKey, ConsistentRead: true }));
+  return Item?.earlierModelsKept === true;
 }
 
 /** The write that holds only while the settings are still as read. */

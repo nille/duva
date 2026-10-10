@@ -347,7 +347,7 @@ test("a turn of Ask Coo is an event saying what was asked, opening into the thre
   await expect.poll(() => heading(page), wait).toBe("You asked Coo “What came in?”");
   const fact = (term: string) => page.getByRole("main").locator(".event-fact").filter({ has: page.getByRole("term").filter({ hasText: term }) }).getByRole("definition").innerText();
   expect(await fact("Asked")).toBe("“What came in?”");
-  expect(await fact("Models")).toBe("Claude Haiku 4.5");
+  expect(await fact("Models")).toBe("GPT-6 Luna");
   expect(await fact("Cost")).toMatch(/^[\d.]+ cents?$/);
   await expect.poll(() => fact("Threads"), wait).toBe("Möte");
   await page.getByRole("main").getByRole("link", { name: "Möte" }).click();

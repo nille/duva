@@ -8860,7 +8860,7 @@ components:
             its human with in Ask Coo and over MCP, unless the decider finds
             a turn complex, and does the tasks labels' prompts give, unless
             its human chose another. One of mailboxAgentAllowedModels.
-            Claude Haiku 4.5 by default.
+            GPT-6 Luna by default.
         mailboxAgentHarderModel:
           $ref: "#/components/schemas/MailboxAgentModel"
           description: >-
@@ -8868,7 +8868,7 @@ components:
             mail that may be sent, unsubscribing on a sender's page, a turn
             the decider finds complex, a run the everyday model hands over,
             and Think harder, unless the agent's human chose another. One of
-            mailboxAgentAllowedModels. Claude Sonnet 5.5 by default.
+            mailboxAgentAllowedModels. GPT-6 Sol by default.
         mailboxAgentDecider:
           $ref: "#/components/schemas/MailboxAgentDecider"
         mailboxAgentWebSearch:
@@ -8912,7 +8912,7 @@ components:
             its human with in Ask Coo and over MCP, unless the decider finds
             a turn complex, and does the tasks labels' prompts give, unless
             its human chose another. One of mailboxAgentAllowedModels.
-            Claude Haiku 4.5 by default.
+            GPT-6 Luna by default.
         mailboxAgentHarderModel:
           $ref: "#/components/schemas/MailboxAgentModel"
           description: >-
@@ -8920,7 +8920,7 @@ components:
             mail that may be sent, unsubscribing on a sender's page, a turn
             the decider finds complex, a run the everyday model hands over,
             and Think harder, unless the agent's human chose another. One of
-            mailboxAgentAllowedModels. Claude Sonnet 5.5 by default.
+            mailboxAgentAllowedModels. GPT-6 Sol by default.
         mailboxAgentDecider:
           $ref: "#/components/schemas/MailboxAgentDecider"
         mailboxAgentWebSearch:
@@ -9305,7 +9305,8 @@ components:
         The measured models each human may choose their mailbox agent's
         everyday and harder model from. They include the organization's
         two defaults, mailboxAgentModel and mailboxAgentHarderModel.
-        Claude Haiku 4.5 and Claude Sonnet 5.5 by default. A model that
+        GPT-6 Luna, GPT-6 Sol, Claude Haiku 4.5 and Claude Sonnet 5.5 by
+        default. A model that
         processes mail outside the deployment's continent may be allowed
         too, such as one available only in the US in an EU deployment:
         what its agents read of the mail then goes there. Taking a model

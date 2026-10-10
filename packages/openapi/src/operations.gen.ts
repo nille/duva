@@ -193,21 +193,21 @@ export const operations = [
         "in": "body",
         "type": "strings",
         "required": false,
-        "description": "The measured models each human may choose their mailbox agent's everyday and harder model from. They include the organization's two defaults, mailboxAgentModel and mailboxAgentHarderModel. Claude Haiku 4.5 and Claude Sonnet 5.5 by default. A model that processes mail outside the deployment's continent may be allowed too, such as one available only in the US in an EU deployment: what its agents read of the mail then goes there. Taking a model off the list takes it from each human who chose it, whose agent then thinks with the organization's default."
+        "description": "The measured models each human may choose their mailbox agent's everyday and harder model from. They include the organization's two defaults, mailboxAgentModel and mailboxAgentHarderModel. GPT-6 Luna, GPT-6 Sol, Claude Haiku 4.5 and Claude Sonnet 5.5 by default. A model that processes mail outside the deployment's continent may be allowed too, such as one available only in the US in an EU deployment: what its agents read of the mail then goes there. Taking a model off the list takes it from each human who chose it, whose agent then thinks with the organization's default."
       },
       {
         "name": "mailboxAgentModel",
         "in": "body",
         "type": "string",
         "required": false,
-        "description": "The organization's everyday model, which a mailbox agent answers its human with in Ask Coo and over MCP, unless the decider finds a turn complex, and does the tasks labels' prompts give, unless its human chose another. One of mailboxAgentAllowedModels. Claude Haiku 4.5 by default."
+        "description": "The organization's everyday model, which a mailbox agent answers its human with in Ask Coo and over MCP, unless the decider finds a turn complex, and does the tasks labels' prompts give, unless its human chose another. One of mailboxAgentAllowedModels. GPT-6 Luna by default."
       },
       {
         "name": "mailboxAgentHarderModel",
         "in": "body",
         "type": "string",
         "required": false,
-        "description": "The organization's harder model, for the harder work: writing mail that may be sent, unsubscribing on a sender's page, a turn the decider finds complex, a run the everyday model hands over, and Think harder, unless the agent's human chose another. One of mailboxAgentAllowedModels. Claude Sonnet 5.5 by default."
+        "description": "The organization's harder model, for the harder work: writing mail that may be sent, unsubscribing on a sender's page, a turn the decider finds complex, a run the everyday model hands over, and Think harder, unless the agent's human chose another. One of mailboxAgentAllowedModels. GPT-6 Sol by default."
       },
       {
         "name": "mailboxAgentDecider",

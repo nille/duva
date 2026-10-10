@@ -49,17 +49,27 @@ export const mailboxAgentModels: Record<MailboxAgentModel, Price & { name: strin
   "minimax.minimax-m2.5": { name: "MiniMax M2.5", input: 0.36, output: 1.44, profiles: ["none"], inRegion: ["eu-central-1", "us-west-2"] },
 };
 
-/** The organization's everyday model until an admin chooses another, as Nicklas chose from #132's measurements. */
-export const defaultMailboxAgentModel: MailboxAgentModel = "anthropic.claude-haiku-4-5-20251001-v1:0";
+/**
+ * The organization's everyday model until an admin chooses another, as Nicklas chose from #150's
+ * measurements (#158). In the EU it runs only through the global profile, so with it an EU
+ * deployment's mail may be processed outside the EU.
+ */
+export const defaultMailboxAgentModel: MailboxAgentModel = "openai.gpt-6-luna";
 
-/** The organization's harder model until an admin chooses another (#132). */
-export const defaultHarderModel: MailboxAgentModel = "anthropic.claude-sonnet-5-5";
+/** The organization's harder model until an admin chooses another (#158), through the global profile in the EU as well. */
+export const defaultHarderModel: MailboxAgentModel = "openai.gpt-6-sol";
+
+/** The defaults before them, Claude Haiku 4.5 and Sonnet 5.5, as Nicklas chose from #132's measurements, which organizations set up before #158 keep. */
+export const earlierDefaultModels = { everyday: "anthropic.claude-haiku-4-5-20251001-v1:0", harder: "anthropic.claude-sonnet-5-5" } as const satisfies Record<string, MailboxAgentModel>;
 
 /**
  * The models admins can allow: those Coo's evaluation measured, by the name of the setup that ran
  * each alone (ADR-0035). A recording of Coo's evaluation adds those it measures for the first time.
  */
 export const measuredModelIds = Object.keys(measuredModels) as MailboxAgentModel[];
+
+/** The models a new organization allows: the defaults, and the defaults before them (#158), in the measured models' order, as Duva keeps the list. */
+export const defaultAllowedModels = measuredModelIds.filter((model) => ([defaultMailboxAgentModel, defaultHarderModel, earlierDefaultModels.everyday, earlierDefaultModels.harder] as MailboxAgentModel[]).includes(model));
 
 export const isMeasured = (model: string): model is MailboxAgentModel => measuredModelIds.some((measured) => measured === model);
 

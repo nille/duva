@@ -30,6 +30,9 @@ export interface Setup {
   runs: number;
 }
 
+const haiku = "anthropic.claude-haiku-4-5-20251001-v1:0";
+const sonnet = "anthropic.claude-sonnet-5-5";
+
 /** One model for every job, so nothing is routed or handed over. */
 const alone = (name: string, model: MailboxAgentModel, runs = 3): Setup => ({
   name,
@@ -37,16 +40,16 @@ const alone = (name: string, model: MailboxAgentModel, runs = 3): Setup => ({
   runs,
 });
 
-/** The default everyday model, with the model for the harder work, so only that model differs from the defaults. */
+/** Claude Haiku 4.5, the everyday model #150 measured behind, with the model for the harder work, so only that model differs from #132's defaults. */
 const harder = (name: string, model: MailboxAgentModel): Setup => ({
   name: `${name} as harder model`,
-  settings: { mailboxAgentAllowedModels: [defaultMailboxAgentModel, model], mailboxAgentModel: defaultMailboxAgentModel, mailboxAgentHarderModel: model, mailboxAgentDecider: false },
+  settings: { mailboxAgentAllowedModels: [haiku, model], mailboxAgentModel: haiku, mailboxAgentHarderModel: model, mailboxAgentDecider: false },
   runs: 2,
 });
 
 /**
  * The models ADR-0035 lists to measure (#150), each recorded alone and as the harder model behind
- * the default everyday model, twice a task, as Claude is. Llama 4 Maverick isn't one: Bedrock
+ * Claude Haiku 4.5, twice a task, as Claude is. Llama 4 Maverick isn't one: Bedrock
  * refuses it to callers in the EU, where these are recorded (docs/research/coo-models.md).
  */
 const listed = (
@@ -69,23 +72,30 @@ const listed = (
  * The setups #132 measures: each model alone, called where production would call it, routing with
  * Nova 2 Lite as the everyday model and the decider on, as first built, and the defaults Nicklas
  * chose from those numbers, Claude Haiku 4.5 with Sonnet 5.5 for the harder work and the decider
- * off. Claude runs each task twice, to keep the recording's cost down. Then the models #150 measures.
+ * off. Claude runs each task twice, to keep the recording's cost down. Then the models #150 measures,
+ * and the defaults Duva ships, GPT-6 Luna with Sol for the harder work since Nicklas chose them from
+ * #150's numbers (#158).
  */
 export const setups: Setup[] = [
   alone("Nova Lite", "amazon.nova-lite-v1:0"),
   alone("Nova 2 Lite", "amazon.nova-2-lite-v1:0"),
   alone("Nova Pro", "amazon.nova-pro-v1:0"),
-  alone("Claude Haiku 4.5", "anthropic.claude-haiku-4-5-20251001-v1:0", 2),
-  alone("Claude Sonnet 5.5", "anthropic.claude-sonnet-5-5", 2),
+  alone("Claude Haiku 4.5", haiku, 2),
+  alone("Claude Sonnet 5.5", sonnet, 2),
   {
     name: "Nova routed",
     settings: {
-      mailboxAgentAllowedModels: ["anthropic.claude-sonnet-5-5", "amazon.nova-2-lite-v1:0"],
+      mailboxAgentAllowedModels: [sonnet, "amazon.nova-2-lite-v1:0"],
       mailboxAgentModel: "amazon.nova-2-lite-v1:0",
-      mailboxAgentHarderModel: "anthropic.claude-sonnet-5-5",
+      mailboxAgentHarderModel: sonnet,
       mailboxAgentDecider: true,
     },
     runs: 3,
+  },
+  {
+    name: "Claude Haiku 4.5 with Sonnet 5.5",
+    settings: { mailboxAgentAllowedModels: [haiku, sonnet], mailboxAgentModel: haiku, mailboxAgentHarderModel: sonnet, mailboxAgentDecider: false },
+    runs: 2,
   },
   {
     name: "Defaults",
