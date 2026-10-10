@@ -54,6 +54,7 @@ import { giveMailboxAgents, mailboxAgentName, mailboxAgentSettings, turnPrefix }
 import type { ReminderDue } from "../src/reminders.ts";
 import type { AwayEnds } from "../src/away-messages.ts";
 import { createSender } from "../src/sending.ts";
+import type { Suggester } from "../src/suggestions.ts";
 import type { SuppressionReason } from "../src/suppression.ts";
 import { fetchForLogo, logoUrl } from "../src/sender-logos.ts";
 import { postOneClick } from "../src/unsubscriber.ts";
@@ -174,6 +175,11 @@ export interface DuvaOptions {
    * Lambda falls behind, so they wait until then.
    */
   tasksHeld?: boolean;
+  /**
+   * The model suggestions and style notes ask, in place of the organization's suggestion model on Bedrock: a stand-in that
+   * answers as a test scripts it, from what it is told and asked. Unless given, it answers nothing.
+   */
+  suggester?: Suggester;
 }
 
 /** A Duva deployment running in-process, set up as duva deploy sets one up, with its own table and mail bucket. */
@@ -350,6 +356,7 @@ export async function startDuva({
   decider = standInDecider,
   webSearch = async () => [],
   tasksHeld = false,
+  suggester = standInSuggester,
 }: DuvaOptions = {}): Promise<Duva> {
   const { table, streamArn, database } = await createTable();
   const humans = memoryHumans();
@@ -434,6 +441,8 @@ export async function startDuva({
     outbound: sending.outbound,
     region,
     dns,
+    embedder: titan,
+    suggester,
     schedules: {
       releaseAt: async (agent, at) => void schedules.push({ event: { release: agent }, at }),
       sendAt: async (draft, at) => void schedules.push({ event: { send: draft }, at }),
@@ -519,6 +528,7 @@ export async function startDuva({
       hostedLogos,
       tasks: taskRunner,
       embedder: titan,
+      suggester,
       browserProfiles: { forget: async (human) => void browser.profiles.delete(profileName(human)) },
     }),
     // Cognito's verifier takes only the web app's and the CLI's app clients, which share the stand-in's one.
@@ -930,6 +940,9 @@ const standInModel: Model = async function* () {
   yield { text: "Stand-in answer." };
   yield { usage: { inputTokens: 1000, outputTokens: 10 } };
 };
+
+/** The model suggestions ask unless a test gives one: it answers nothing. */
+const standInSuggester: Suggester = async () => ({ text: "", inputTokens: 400, outputTokens: 1 });
 
 /** The decider mailbox agents ask unless a test gives one: every turn is simple, for sure. */
 const standInDecider: Decider = async () => ({ route: "simple", confidence: 1, inputTokens: 500, outputTokens: 20 });

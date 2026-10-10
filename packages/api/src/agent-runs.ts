@@ -36,7 +36,7 @@ export async function spentIn(table: Table, month: string): Promise<number> {
 }
 
 /** Adds what a run cost to the month's spend, and returns the month's spend with it. */
-async function addSpend(table: Table, month: string, cost: number): Promise<number> {
+export async function addSpend(table: Table, month: string, cost: number): Promise<number> {
   const { Attributes } = await documents(table).send(
     new UpdateCommand({ TableName: table.name, Key: spendKey(month), UpdateExpression: "ADD spent :cost", ExpressionAttributeValues: { ":cost": cost }, ReturnValues: "ALL_NEW" }),
   );

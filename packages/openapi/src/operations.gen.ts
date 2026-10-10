@@ -243,6 +243,20 @@ export const operations = [
         "type": "integer",
         "required": false,
         "description": "How much each human may have linked at once, in whole gigabytes (GiB), 20 by default. Their agents' linked files count toward it. Past it, a send that would link more is refused, until they stop sharing older files or an admin raises it. 0 lets no one link files, so mail too large to carry its files can't be sent."
+      },
+      {
+        "name": "suggestions",
+        "in": "body",
+        "type": "boolean",
+        "required": false,
+        "description": "Whether humans get suggestions while they write mail: the rest of a sentence in grey after the cursor, which Tab takes. On by default. Each costs a small call to suggestionModel, about $0.000075 with Qwen3 32B, counted toward mailboxAgentSpendCap. Each human can also switch them off for themselves, with the preference suggestions."
+      },
+      {
+        "name": "suggestionModel",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "The model that suggests the rest of a sentence while humans write, one of those measured for it. Qwen3 32B by default."
       }
     ]
   },
@@ -350,6 +364,13 @@ export const operations = [
         "type": "string",
         "required": false,
         "description": "Whether the human's own Coo may browse, while the organization's mailboxAgentBrowsing lets it. on, the default, lets it open pages and act on them for you on its own: it logs in as you with codes the site mails you, and submits forms for you without asking, saying in a sentence what it did. off keeps it off the web's pages. Turning it off keeps the sites it logged in to; sign Coo out of every site to clear them."
+      },
+      {
+        "name": "suggestions",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "Whether the human gets suggestions while they write mail, while the organization's suggestions setting has them on. on, the default, offers the rest of a sentence in grey after the cursor once they pause, from the draft, the message it answers, what Coo remembers and their style note, which Tab takes. off offers none."
       },
       {
         "name": "timeZone",
@@ -2870,6 +2891,69 @@ export const operations = [
         "type": "string",
         "required": true,
         "description": "The message's ID."
+      }
+    ]
+  },
+  {
+    "operationId": "suggest",
+    "method": "post",
+    "path": "/mailboxes/{mailbox}/suggestions",
+    "routeKey": "POST /mailboxes/{mailbox}/suggestions",
+    "summary": "Suggest the rest of the sentence a human is writing in a draft.",
+    "description": "Give the draft's text up to the cursor, its subject and recipients, and the message it answers or forwards, if it does. Duva answers the rest of the sentence the text ends in, from those, the message, what Coo remembers of you and your style note, or nothing when no sentence is begun or it can't tell how it goes on. One small call to the organization's suggestionModel, never a run of Coo. A later call of yours supersedes one still being answered, which then answers nothing, as when you type on. Its cost counts toward the organization's mailboxAgentSpendCap. Only humans get suggestions, in their own mailboxes, while they and the organization have them on (preference suggestions, setting suggestions).",
+    "signIn": true,
+    "command": [
+      "suggest"
+    ],
+    "options": [
+      {
+        "name": "mailbox",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The mailbox's ID."
+      },
+      {
+        "name": "text",
+        "in": "body",
+        "type": "string",
+        "required": true,
+        "description": "The draft's text up to the cursor."
+      },
+      {
+        "name": "subject",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "The draft's subject."
+      },
+      {
+        "name": "to",
+        "in": "body",
+        "type": "strings",
+        "required": false,
+        "description": "The addresses in To."
+      },
+      {
+        "name": "cc",
+        "in": "body",
+        "type": "strings",
+        "required": false,
+        "description": "The addresses in Cc."
+      },
+      {
+        "name": "answers",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "The ID of the message in the mailbox the draft answers, if it is a reply."
+      },
+      {
+        "name": "forwards",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "The ID of the message in the mailbox the draft forwards, if it is a forward."
       }
     ]
   },

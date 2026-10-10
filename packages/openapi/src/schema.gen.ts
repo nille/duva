@@ -1495,6 +1495,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/mailboxes/{mailbox}/suggestions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Suggest the rest of the sentence a human is writing in a draft.
+         * @description Give the draft's text up to the cursor, its subject and recipients, and the message it answers or forwards, if it does. Duva answers the rest of the sentence the text ends in, from those, the message, what Coo remembers of you and your style note, or nothing when no sentence is begun or it can't tell how it goes on. One small call to the organization's suggestionModel, never a run of Coo. A later call of yours supersedes one still being answered, which then answers nothing, as when you type on. Its cost counts toward the organization's mailboxAgentSpendCap. Only humans get suggestions, in their own mailboxes, while they and the organization have them on (preference suggestions, setting suggestions).
+         */
+        post: operations["suggest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/mailboxes/{mailbox}/drafts": {
         parameters: {
             query?: never;
@@ -5103,6 +5123,9 @@ export interface components {
             mailboxAgentBrowsing: components["schemas"]["MailboxAgentBrowsing"];
             mailboxAgentSpendCap: components["schemas"]["MailboxAgentSpendCap"];
             linkedFilesCapGb: components["schemas"]["LinkedFilesCapGb"];
+            suggestions: components["schemas"]["Suggestions"];
+            /** @description The model that suggests the rest of a sentence while humans write, one of those measured for it. Qwen3 32B by default. */
+            suggestionModel: components["schemas"]["SuggestionModel"];
         };
         /** @description The settings changed, each with its new value. */
         SettingsChanges: {
@@ -5122,6 +5145,9 @@ export interface components {
             mailboxAgentBrowsing?: components["schemas"]["MailboxAgentBrowsing"];
             mailboxAgentSpendCap?: components["schemas"]["MailboxAgentSpendCap"];
             linkedFilesCapGb?: components["schemas"]["LinkedFilesCapGb"];
+            suggestions?: components["schemas"]["Suggestions"];
+            /** @description The model that suggests the rest of a sentence while humans write, one of those measured for it. Qwen3 32B by default. */
+            suggestionModel?: components["schemas"]["SuggestionModel"];
         };
         /** @description How many days Trash and Spam keep a thread, counted from when it got the label, before the eraser erases it for good. 30 by default, and a whole number from 7 to 365. It applies to all Trash and Spam, threads already there included. */
         RetentionDays: number;
@@ -5266,6 +5292,36 @@ export interface components {
             /** @description Turns kept with their words' embedding. */
             embedded: number;
         };
+        SuggestionAsked: {
+            /** @description The draft's text up to the cursor. */
+            text: string;
+            /** @description The draft's subject. */
+            subject?: string;
+            /** @description The addresses in To. */
+            to?: string[];
+            /** @description The addresses in Cc. */
+            cc?: string[];
+            /** @description The ID of the message in the mailbox the draft answers, if it is a reply. */
+            answers?: string;
+            /** @description The ID of the message in the mailbox the draft forwards, if it is a forward. */
+            forwards?: string;
+        };
+        Suggestion: {
+            /** @description The rest of the sentence, to follow the text as it is, starting with a space where it starts a new word. Absent when Duva has none. */
+            suggestion?: string;
+        };
+        /**
+         * @description A model on Amazon Bedrock that suggests the rest of a sentence, by its Bedrock model ID, each measured for it (docs/research/suggestions.md): gpt-oss-20b, and Qwen3 32B, the default, on demand in the deployment's region, Amazon Nova Micro through the continent's profile, and Claude Haiku 4.5, the best and slowest, through it from eu-central-1 in the EU.
+         * @enum {string}
+         */
+        SuggestionModel: "openai.gpt-oss-20b-1:0" | "qwen.qwen3-32b-v1:0" | "amazon.nova-micro-v1:0" | "anthropic.claude-haiku-4-5-20251001-v1:0";
+        /** @description Whether humans get suggestions while they write mail: the rest of a sentence in grey after the cursor, which Tab takes. On by default. Each costs a small call to suggestionModel, about $0.000075 with Qwen3 32B, counted toward mailboxAgentSpendCap. Each human can also switch them off for themselves, with the preference suggestions. */
+        Suggestions: boolean;
+        /**
+         * @description Whether the human gets suggestions while they write mail, while the organization's suggestions setting has them on. on, the default, offers the rest of a sentence in grey after the cursor once they pause, from the draft, the message it answers, what Coo remembers and their style note, which Tab takes. off offers none.
+         * @enum {string}
+         */
+        SuggestionsPreference: "on" | "off";
         /**
          * @description A model on Amazon Bedrock a mailbox agent thinks with, by its Bedrock model ID. Only the measured models can be allowed and chosen, those listMailboxAgentModels lists, each with its success on Coo's evaluation, its cost per task and where it processes mail.
          * @enum {string}
@@ -5428,6 +5484,7 @@ export interface components {
             cooLearnsFromMail: components["schemas"]["CooLearnsFromMail"];
             cooWebSearch: components["schemas"]["CooWebSearch"];
             cooBrowsing: components["schemas"]["CooBrowsing"];
+            suggestions: components["schemas"]["SuggestionsPreference"];
             timeZone?: components["schemas"]["TimeZone"];
             opensOn: components["schemas"]["OpensOn"];
             newMailFrom?: components["schemas"]["NewMailFrom"];
@@ -5446,6 +5503,7 @@ export interface components {
             cooLearnsFromMail?: components["schemas"]["CooLearnsFromMail"];
             cooWebSearch?: components["schemas"]["CooWebSearch"];
             cooBrowsing?: components["schemas"]["CooBrowsing"];
+            suggestions?: components["schemas"]["SuggestionsPreference"];
             /** @description The time zone, as an IANA name, or null to remove it, as if the human never chose one. The CLI removes it with --no-timeZone. */
             timeZone?: components["schemas"]["TimeZone"] | null;
             opensOn?: components["schemas"]["OpensOn"];
@@ -8519,6 +8577,38 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    suggest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The mailbox's ID. */
+                mailbox: components["parameters"]["Mailbox"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SuggestionAsked"];
+            };
+        };
+        responses: {
+            /** @description The suggestion, or none. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Suggestion"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     listDrafts: {

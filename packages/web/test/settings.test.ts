@@ -108,7 +108,7 @@ test("an admin opens the Organization page and chooses that erasing a thread era
 
   await expect.poll(() => agentsSheet(page).getByRole("status").textContent(), wait).toBe("Saved. This applies to threads erased from now on.");
   const ada = duva.signIn("ada@example.org");
-  expect((await ada.GET("/organization/settings")).data).toEqual({ erasureErasesApprovals: true, retentionDays: 30, searchLanguages: ["English", "Swedish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50, undoWindowSeconds: 0, ...mailboxAgentDefaults, linkedFilesCapGb: 20 });
+  expect((await ada.GET("/organization/settings")).data).toEqual({ erasureErasesApprovals: true, retentionDays: 30, searchLanguages: ["English", "Swedish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50, undoWindowSeconds: 0, ...mailboxAgentDefaults, linkedFilesCapGb: 20, suggestions: true, suggestionModel: "qwen.qwen3-32b-v1:0" });
 
   await page.reload();
 
@@ -180,7 +180,7 @@ test("an admin reads what translating searches does, and adds Danish to the sear
     .poll(() => mailSheet(page).getByRole("status").textContent(), wait)
     .toBe("Saved. Searches use these languages from now on. Each mailbox's search index is being rebuilt, and finds less until it is done.");
   const ada = duva.signIn("ada@example.org");
-  expect((await ada.GET("/organization/settings")).data).toEqual({ erasureErasesApprovals: false, retentionDays: 30, searchLanguages: ["English", "Swedish", "Danish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50, undoWindowSeconds: 0, ...mailboxAgentDefaults, linkedFilesCapGb: 20 });
+  expect((await ada.GET("/organization/settings")).data).toEqual({ erasureErasesApprovals: false, retentionDays: 30, searchLanguages: ["English", "Swedish", "Danish"], agentSendsPerHourCap: 100, agentNewRecipientsPerDayCap: 50, undoWindowSeconds: 0, ...mailboxAgentDefaults, linkedFilesCapGb: 20, suggestions: true, suggestionModel: "qwen.qwen3-32b-v1:0" });
   expect(await mailSheet(page).getByRole("button", { name: "Save" }).isDisabled()).toBe(true);
   expect(await languages.innerText()).not.toContain(rebuilds);
 });
@@ -351,7 +351,7 @@ test("a human chooses 24-hour time and ISO dates, and the Inbox and a thread sho
   await you(page).getByRole("button", { name: "Save" }).click();
 
   await expect.poll(() => you(page).getByRole("status").textContent(), wait).toBe(saved);
-  expect((await grace.GET("/preferences")).data).toEqual({ hourCycle: "h23", dateFormat: "iso", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "on", cooLearnsFromMail: "on", cooWebSearch: "on", cooBrowsing: "on", opensOn: "all", newMailFrom: "grace@example.com" });
+  expect((await grace.GET("/preferences")).data).toEqual({ hourCycle: "h23", dateFormat: "iso", mailView: "html", keyboardShortcuts: "on", cooSpeaksUp: "on", cooLearnsFromMail: "on", cooWebSearch: "on", cooBrowsing: "on", suggestions: "on", opensOn: "all", newMailFrom: "grace@example.com" });
 
   await page.getByRole("navigation").getByRole("link", { name: "Mail", exact: true }).click();
   await expect.poll(() => row(page, "Lunch").textContent(), wait).toBe("09:15");
@@ -371,7 +371,7 @@ test("each choice of how times and dates show has an example from today", budget
 
   await openSettings(page);
 
-  await expect.poll(() => you(page).getByRole("radio").count(), wait).toBe(17);
+  await expect.poll(() => you(page).getByRole("radio").count(), wait).toBe(19);
   const examples = await you(page).locator(".choices-short .choice").evaluateAll((choices) => choices.map((choice) => choice.querySelector(".hint")?.textContent));
   expect(examples).toEqual(["02:30 PM", "2:30 PM", "14:30", "Oct 5, 2026", "2026-10-05", "5 Oct 2026", "Oct 5, 2026"]);
 });

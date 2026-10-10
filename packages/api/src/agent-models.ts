@@ -1,5 +1,6 @@
 // The models the mailbox agents think with, where Bedrock runs them, and what they cost (ADR-0027),
-// and how a deployment calls each, which decides where it processes mail (ADR-0035).
+// and how a deployment calls each, which decides where it processes mail (ADR-0035), and the models
+// measured for suggestions, which admins choose among (#156).
 import type { components } from "@duva/openapi";
 import { measuredModels } from "./measured-models.gen.ts";
 
@@ -131,3 +132,48 @@ export function costOf({ inputTokens, outputTokens, cacheReadInputTokens = 0, ca
   const cached = cacheReadInputTokens * (price.cacheRead ?? price.input) + cacheWriteInputTokens * (price.cacheWrite ?? price.input);
   return ((inputTokens * price.input + outputTokens * price.output + cached) * discount) / 1_000_000;
 }
+
+export type SuggestionModel = components["schemas"]["SuggestionModel"];
+
+/** How a deployment calls a model: its ID for Converse, from the region. */
+interface SuggestionCall {
+  modelId: string;
+  region: string;
+}
+
+/**
+ * The models measured for suggestions, each with its price in US dollars per million input and
+ * output tokens in eu-north-1, and how a deployment in the region calls it: gpt-oss-20b and Qwen3
+ * 32B on demand in the deployment's region, Nova Micro through the continent's profile there, and
+ * Claude Haiku 4.5 through it from the model region, since Claude fails from eu-north-1
+ * (docs/aws.md). A deployment outside the EU and the US calls them as the decider is called, from
+ * eu-central-1 and through eu.
+ */
+export const suggestionModels: Record<SuggestionModel, { name: string; input: number; output: number; profiled: boolean; call: (region: string) => SuggestionCall }> = {
+  "openai.gpt-oss-20b-1:0": { name: "gpt-oss-20b", input: 0.07, output: 0.3, profiled: false, call: (region) => ({ modelId: "openai.gpt-oss-20b-1:0", region: nearest(region) }) },
+  "qwen.qwen3-32b-v1:0": { name: "Qwen3 32B", input: 0.15, output: 0.6, profiled: false, call: (region) => ({ modelId: "qwen.qwen3-32b-v1:0", region: nearest(region) }) },
+  "amazon.nova-micro-v1:0": {
+    name: "Amazon Nova Micro",
+    input: 0.038,
+    output: 0.152,
+    profiled: true,
+    call: (region) => ({ modelId: `${deciderProfile(nearest(region))}.amazon.nova-micro-v1:0`, region: nearest(region) }),
+  },
+  "anthropic.claude-haiku-4-5-20251001-v1:0": {
+    name: "Claude Haiku 4.5",
+    input: 1.1,
+    output: 5.5,
+    profiled: true,
+    call: (region) => ({ modelId: `${deciderProfile(modelRegion(region))}.anthropic.claude-haiku-4-5-20251001-v1:0`, region: modelRegion(region) }),
+  },
+};
+
+/** The deployment's region in the EU and the US, and its model region elsewhere. */
+const nearest = (region: string) => (region.startsWith("eu-") || region.startsWith("us-") ? region : modelRegion(region));
+
+/** What a suggestion's tokens cost, in US dollars. */
+export const suggestionCost = ({ inputTokens, outputTokens }: { inputTokens: number; outputTokens: number }, model: SuggestionModel) =>
+  (inputTokens * suggestionModels[model].input + outputTokens * suggestionModels[model].output) / 1_000_000;
+
+/** The model that suggests the rest of a sentence until an admin chooses another, the fastest measured for it (docs/research/suggestions.md). */
+export const defaultSuggestionModel: SuggestionModel = "qwen.qwen3-32b-v1:0";

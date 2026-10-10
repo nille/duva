@@ -17,6 +17,7 @@ import type { TaskRunner } from "./tasks.ts";
 import type { Embedder } from "./titan.ts";
 import type { UploadsBucket } from "./uploads-bucket.ts";
 import type { BrowserProfiles } from "./browser-profiles.ts";
+import type { Suggester } from "./suggestions.ts";
 
 /** Duva's one DynamoDB table. */
 export interface Table {
@@ -65,4 +66,6 @@ export interface Deployment {
   browserProfiles: BrowserProfiles;
   /** Embeds Coo's memories and what they are searched for, with Titan in the deployment's region (ADR-0036). */
   embedder: Embedder;
+  /** Suggests the rest of a sentence a human is writing, with the organization's suggestion model on Bedrock (#156). */
+  suggester: Suggester;
 }

@@ -63,7 +63,7 @@ import { operations } from "@duva/openapi";
 import { cliRedirectUri, stackOutputs, stackParameters } from "./outputs.ts";
 import { searchCode } from "./search-code.ts";
 import { agentCode, agentEntryPoint } from "./agent-code.ts";
-import { deciderModel, type MailboxAgentModel, mailboxAgentModels } from "@duva/api/agent-models";
+import { deciderModel, type MailboxAgentModel, mailboxAgentModels, type SuggestionModel, suggestionModels } from "@duva/api/agent-models";
 
 /** The regions where SES receives mail but AgentCore Runtime doesn't run (docs/research/agentcore.md). */
 export const regionsWithoutAgentCore = ["af-south-1", "ap-northeast-3", "ap-southeast-3", "il-central-1", "me-south-1"];
@@ -840,6 +840,35 @@ export class DuvaStack extends Stack {
         conditions: { StringLike: { "bedrock:InferenceProfileArn": profiles } },
       }),
     );
+
+    // Suggestions and style notes call their model from the API and the sender (#156): gpt-oss-20b
+    // and Qwen3 32B on demand, in the deployment's region or, outside the EU and the US, eu-central-1,
+    // and Nova Micro and Claude Haiku 4.5 through their eu or us profile, which may send them on to
+    // that profile's regions (docs/aws.md).
+    const suggesting = (Object.keys(suggestionModels) as SuggestionModel[]).map((model) => ({ model, profiled: suggestionModels[model].profiled }));
+    const suggestionProfiles = suggesting
+      .filter(({ profiled }) => profiled)
+      .flatMap(({ model }) => ["eu", "us"].map((profile) => this.formatArn({ service: "bedrock", region: "*", resource: "inference-profile", resourceName: `${profile}.${model}` })));
+    for (const writer of [handler, sender]) {
+      writer.addToRolePolicy(
+        new PolicyStatement({
+          actions: ["bedrock:InvokeModel"],
+          resources: [
+            ...suggesting.filter(({ profiled }) => !profiled).map(({ model }) => `arn:aws:bedrock:*::foundation-model/${model}`),
+            ...suggestionProfiles,
+          ],
+        }),
+      );
+      writer.addToRolePolicy(
+        new PolicyStatement({
+          actions: ["bedrock:InvokeModel"],
+          resources: suggesting.filter(({ profiled }) => profiled).map(({ model }) => `arn:aws:bedrock:*::foundation-model/${model}`),
+          conditions: { StringLike: { "bedrock:InferenceProfileArn": suggestionProfiles } },
+        }),
+      );
+    }
+    // The sender embeds each style note it writes, as memories are, with Titan in the deployment's region.
+    sender.addToRolePolicy(embedding);
 
     // Ask Coo posts each turn to the web app's domain, under /agent/, where CloudFront signs
     // the request to the conversation Lambda's function URL, which only the distribution may call

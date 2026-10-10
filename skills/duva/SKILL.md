@@ -134,6 +134,8 @@ Give only the settings to change. A setting applies from when it changes, so tur
 - `--mailboxAgentBrowsing` or `--no-mailboxAgentBrowsing`: Whether the mailbox agents may browse, in Ask Coo and in labels' tasks: open a link from the mail or a web search, read the page, and act on it on their own, logging in as their human and submitting forms for them without asking. They log in only with codes and links the site mails their human, never with a password, and stay logged in between runs in a browser profile of their human's own. They never pay, enter card details, or download or upload a file. A browsing run has only the page's tools, so a page can't reach the mailbox, and Duva keeps only a sentence of what it did. On by default. Browser time, at AgentCore Browser's $0.0895 per vCPU-hour and $0.00945 per GB-hour, and the run's tokens count toward mailboxAgentSpendCap. Each human can also turn it off for their own Coo, with the preference cooBrowsing. Unsubscribing on a sender's page doesn't depend on it.
 - `--mailboxAgentSpendCap`: The most the mailbox agents may spend on their model a month, in whole US dollars, 20 by default. At the cap a run stops, its agent's sponsor gets an alert, and runs are refused until the month ends or an admin raises it. 0 turns the mailbox agents off.
 - `--linkedFilesCapGb`: How much each human may have linked at once, in whole gigabytes (GiB), 20 by default. Their agents' linked files count toward it. Past it, a send that would link more is refused, until they stop sharing older files or an admin raises it. 0 lets no one link files, so mail too large to carry its files can't be sent.
+- `--suggestions` or `--no-suggestions`: Whether humans get suggestions while they write mail: the rest of a sentence in grey after the cursor, which Tab takes. On by default. Each costs a small call to suggestionModel, about $0.000075 with Qwen3 32B, counted toward mailboxAgentSpendCap. Each human can also switch them off for themselves, with the preference suggestions.
+- `--suggestionModel`: The model that suggests the rest of a sentence while humans write, one of those measured for it. Qwen3 32B by default.
 
 ## duva organization preview-retention
 
@@ -163,6 +165,7 @@ Give only the preferences to change. They follow you to every browser you sign i
 - `--cooLearnsFromMail`: Whether Coo learns from mail it reads while it works, and keeps what it learns as memories, each erased with its threads. on, the default, has it learn. off has it keep only what the human tells it.
 - `--cooWebSearch`: Whether the human's own Coo may search the web, while the organization's mailboxAgentWebSearch lets it. on, the default, lets it look things up wherever it helps, with queries that may carry what the mail says, and say so with its sources. off keeps it to the mail.
 - `--cooBrowsing`: Whether the human's own Coo may browse, while the organization's mailboxAgentBrowsing lets it. on, the default, lets it open pages and act on them for you on its own: it logs in as you with codes the site mails you, and submits forms for you without asking, saying in a sentence what it did. off keeps it off the web's pages. Turning it off keeps the sites it logged in to; sign Coo out of every site to clear them.
+- `--suggestions`: Whether the human gets suggestions while they write mail, while the organization's suggestions setting has them on. on, the default, offers the rest of a sentence in grey after the cursor once they pause, from the draft, the message it answers, what Coo remembers and their style note, which Tab takes. off offers none.
 - `--timeZone` or `--no-timeZone`: The time zone, as an IANA name, or null to remove it, as if the human never chose one. The CLI removes it with --no-timeZone.
 - `--opensOn`: Where the web app opens: all, the default, on All mailboxes, or the ID of one of the human's mailboxes, on that one. A mailbox no longer theirs opens All mailboxes.
 - `--newMailFrom` or `--no-newMailFrom`: The address, or null to start from the default again. The CLI gives null with --no-newMailFrom.
@@ -933,6 +936,20 @@ The fields come from the stored message, unfolded, with those SES added as it re
 
 - `--mailbox` (required): The mailbox's ID.
 - `--message` (required): The message's ID.
+
+## duva suggest
+
+Suggest the rest of the sentence a human is writing in a draft.
+
+Give the draft's text up to the cursor, its subject and recipients, and the message it answers or forwards, if it does. Duva answers the rest of the sentence the text ends in, from those, the message, what Coo remembers of you and your style note, or nothing when no sentence is begun or it can't tell how it goes on. One small call to the organization's suggestionModel, never a run of Coo. A later call of yours supersedes one still being answered, which then answers nothing, as when you type on. Its cost counts toward the organization's mailboxAgentSpendCap. Only humans get suggestions, in their own mailboxes, while they and the organization have them on (preference suggestions, setting suggestions).
+
+- `--mailbox` (required): The mailbox's ID.
+- `--text` (required): The draft's text up to the cursor.
+- `--subject`: The draft's subject.
+- `--to` (once for each): The addresses in To.
+- `--cc` (once for each): The addresses in Cc.
+- `--answers`: The ID of the message in the mailbox the draft answers, if it is a reply.
+- `--forwards`: The ID of the message in the mailbox the draft forwards, if it is a forward.
 
 ## duva drafts list
 

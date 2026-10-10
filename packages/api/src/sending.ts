@@ -15,7 +15,8 @@
 // when a thread set aside in Remind me is due, EventBridge Scheduler hands it to the sender, which
 // brings it back, and when an away message's last day ends, switches it off. Files too large to carry go as linked files (ADR-0034): the sender shares each
 // under a new link, lists them after the text, and asks to be handed each when its link ends, to
-// delete it. A draft's signature closes its text, above a forward's quoted original (#157).
+// delete it. A draft's signature closes its text, above a forward's quoted original (#157). After
+// every tenth message a human sends, it updates their style note (#156).
 import { randomUUID } from "node:crypto";
 import { SendEmailCommand, SESv2ServiceException, type SESv2Client } from "@aws-sdk/client-sesv2";
 import type { DynamoDBStreamEvent } from "aws-lambda";
@@ -55,6 +56,8 @@ import { bimiSelectorHeader } from "./own-logos.ts";
 import { signed, signedBody } from "./signatures.ts";
 import { sponsorAccessAllows, sponsorAccessIn } from "./access.ts";
 import { type Actor, type Agent, agentSettings, agentUnpaused, findActor, findMailbox, organizationDomain } from "./organization.ts";
+import { noteSent, type Suggester } from "./suggestions.ts";
+import type { Embedder } from "./titan.ts";
 
 /** Who SES delivers a message to. Bcc recipients are here only, since no header names them. */
 export interface Destination {
@@ -124,6 +127,10 @@ interface Sender {
   dns: Dns;
   /** Where linked files' pages are, under files/. */
   downloads: Pick<Downloads, "url">;
+  /** What a human's style note is embedded with, after their sends (#156). */
+  embedder: Embedder;
+  /** What writes a human's style note, after their sends (#156). */
+  suggester: Suggester;
 }
 
 export function createSender(sender: Sender) {
@@ -221,6 +228,8 @@ async function sendOnce(
     if (approval !== undefined) await keepSent(table, approval.id, { thread: status.thread!, message: status.message! });
     await removeAttached(uploads, mailbox, draft);
     await copyToOtherMembers({ table, mailBucket }, mailbox, status.message!);
+    // A run that stopped before noting a human's send notes it now; noting it twice counts it once.
+    if ((await findActor(table, by))?.kind === "human") await noteSent(sender, { human: by, mailbox, message: status.message! }).catch((error: unknown) => console.error(error));
     return "done";
   }
   if (status.state === "sending") {
@@ -423,6 +432,8 @@ async function sendOnce(
   }
   await removeAttached(uploads, mailbox, draft);
   await copyToOtherMembers({ table, mailBucket }, mailbox, message);
+  // A style note that fails is only left as it was, since the message went.
+  if (actor.kind === "human") await noteSent(sender, { human: actor.id, mailbox, message }).catch((error: unknown) => console.error(error));
   return "done";
 }
 

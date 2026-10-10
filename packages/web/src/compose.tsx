@@ -15,6 +15,7 @@ import { type AllMailboxes, isAll } from "./mailboxes.tsx";
 import { SendNow } from "./send-now.tsx";
 import { joinText, SignatureField, splitText, useSignatures } from "./signatures.tsx";
 import { strings } from "./strings.ts";
+import { SuggestionShown, useSuggestion } from "./suggestion.tsx";
 
 /** A draft, which in All mailboxes names the mailbox it lives in. */
 type Draft = components["schemas"]["Draft"] & Partial<Pick<components["schemas"]["AllMailboxesDraft"], "mailbox">>;
@@ -98,7 +99,7 @@ export function Composer({
   onSignedOut: () => void;
 }) {
   const { clock } = useDates();
-  const { newMailFrom } = useContext(PreferencesContext);
+  const { newMailFrom, suggestions } = useContext(PreferencesContext);
   // In All mailboxes, every mailbox of the human's; else the one. The ref is for the saves.
   const inAll = isAll(mailbox);
   const mailboxes = isAll(mailbox) ? mailbox.own : [mailbox];
@@ -420,6 +421,21 @@ export function Composer({
 
   const titleRef = useRef<HTMLHeadingElement>(null);
   const textRef = useRef<HTMLTextAreaElement>(null);
+  // Suggestions follow the text written only, never the signature, from the mailbox of the address the draft goes from.
+  const suggestion = useSuggestion({
+    client,
+    enabled: suggestions === "on" && !locked,
+    about: () => ({
+      mailbox: one ?? mailboxes.find(({ addresses }) => addresses.includes(fieldsRef.current.from))?.id ?? homeRef.current,
+      subject: fieldsRef.current.subject,
+      to: addressesIn(fieldsRef.current.to),
+      cc: addressesIn(fieldsRef.current.cc),
+      ...(draft?.answers !== undefined && { answers: draft.answers }),
+      ...(draft?.forwards !== undefined && { forwards: draft.forwards }),
+    }),
+    // The text written above a forward's signature and quoted original takes it, which stay as they are.
+    onTake: (text) => edit({ text: joinText(text, splitText(fieldsRef.current.text, draft?.forwards !== undefined).quoted) }),
+  });
   const toRef = useRef<HTMLInputElement>(null);
   const ready = loading.status === "ready";
   const sheetRef = useRef<HTMLFormElement>(null);
@@ -617,7 +633,31 @@ export function Composer({
       <label htmlFor={`${formId}-text`} className="visually-hidden">
         {strings.compose.message}
       </label>
-      <textarea ref={textRef} id={`${formId}-text`} className={quoted === "" ? "compose-body" : "compose-body compose-body-above"} rows={12} value={written} readOnly={locked} onChange={(event) => edit({ text: joinText(event.target.value, quoted) })} onBlur={() => void save()} lang="" />
+      <div className="compose-writing">
+        <textarea
+          ref={textRef}
+          id={`${formId}-text`}
+          className={quoted === "" ? "compose-body" : "compose-body compose-body-above"}
+          rows={12}
+          value={written}
+          readOnly={locked}
+          onChange={(event) => {
+            edit({ text: joinText(event.target.value, quoted) });
+            suggestion.typed(event.currentTarget);
+          }}
+          onKeyDown={suggestion.keyDown}
+          onSelect={(event) => {
+            const { selectionStart, selectionEnd, value } = event.currentTarget;
+            if (selectionStart !== value.length || selectionEnd !== value.length) suggestion.hide();
+          }}
+          onBlur={() => {
+            suggestion.hide();
+            void save();
+          }}
+          lang=""
+        />
+        <SuggestionShown shown={suggestion.shown} />
+      </div>
       <SignatureField id={`${formId}-signature`} value={fields.signature} fromHas={fromHas(fields.from)} locked={locked} onChange={(signature) => edit({ signature })} onChosen={(signature) => choose({ signature })} onBlur={() => void save()} />
       {quoted !== "" && (
         <>

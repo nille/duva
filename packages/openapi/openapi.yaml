@@ -3021,6 +3021,48 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+  /mailboxes/{mailbox}/suggestions:
+    post:
+      operationId: suggest
+      summary: Suggest the rest of the sentence a human is writing in a draft.
+      description: >
+        Give the draft's text up to the cursor, its subject and recipients,
+        and the message it answers or forwards, if it does. Duva answers the
+        rest of the sentence the text ends in, from those, the message, what
+        Coo remembers of you and your style note, or nothing when no sentence
+        is begun or it can't tell how it goes on. One small call to the
+        organization's suggestionModel, never a run of Coo. A later call of
+        yours supersedes one still being answered, which then answers nothing,
+        as when you type on. Its cost counts toward the organization's
+        mailboxAgentSpendCap. Only humans get suggestions, in their own
+        mailboxes, while they and the organization have them on (preference
+        suggestions, setting suggestions).
+      x-cli-command: suggest
+      parameters:
+        - $ref: "#/components/parameters/Mailbox"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SuggestionAsked"
+      responses:
+        "200":
+          description: The suggestion, or none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Suggestion"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
   /mailboxes/{mailbox}/drafts:
     post:
       operationId: createDraft
@@ -8795,7 +8837,7 @@ components:
     OrganizationSettings:
       type: object
       additionalProperties: false
-      required: [erasureErasesApprovals, retentionDays, searchLanguages, agentSendsPerHourCap, agentNewRecipientsPerDayCap, undoWindowSeconds, mailboxAgentAllowedModels, mailboxAgentModel, mailboxAgentHarderModel, mailboxAgentDecider, mailboxAgentWebSearch, mailboxAgentBrowsing, mailboxAgentSpendCap, linkedFilesCapGb]
+      required: [erasureErasesApprovals, retentionDays, searchLanguages, agentSendsPerHourCap, agentNewRecipientsPerDayCap, undoWindowSeconds, mailboxAgentAllowedModels, mailboxAgentModel, mailboxAgentHarderModel, mailboxAgentDecider, mailboxAgentWebSearch, mailboxAgentBrowsing, mailboxAgentSpendCap, linkedFilesCapGb, suggestions, suggestionModel]
       properties:
         erasureErasesApprovals:
           $ref: "#/components/schemas/ErasureErasesApprovals"
@@ -8837,6 +8879,13 @@ components:
           $ref: "#/components/schemas/MailboxAgentSpendCap"
         linkedFilesCapGb:
           $ref: "#/components/schemas/LinkedFilesCapGb"
+        suggestions:
+          $ref: "#/components/schemas/Suggestions"
+        suggestionModel:
+          $ref: "#/components/schemas/SuggestionModel"
+          description: >-
+            The model that suggests the rest of a sentence while humans write,
+            one of those measured for it. Qwen3 32B by default.
     SettingsChanges:
       type: object
       additionalProperties: false
@@ -8882,6 +8931,13 @@ components:
           $ref: "#/components/schemas/MailboxAgentSpendCap"
         linkedFilesCapGb:
           $ref: "#/components/schemas/LinkedFilesCapGb"
+        suggestions:
+          $ref: "#/components/schemas/Suggestions"
+        suggestionModel:
+          $ref: "#/components/schemas/SuggestionModel"
+          description: >-
+            The model that suggests the rest of a sentence while humans write,
+            one of those measured for it. Qwen3 32B by default.
     RetentionDays:
       type: integer
       minimum: 7
@@ -9166,6 +9222,71 @@ components:
         embedded:
           type: integer
           description: Turns kept with their words' embedding.
+    SuggestionAsked:
+      type: object
+      additionalProperties: false
+      required: [text]
+      properties:
+        text:
+          type: string
+          maxLength: 50000
+          description: The draft's text up to the cursor.
+        subject:
+          type: string
+          description: The draft's subject.
+        to:
+          type: array
+          maxItems: 50
+          description: The addresses in To.
+          items:
+            type: string
+        cc:
+          type: array
+          maxItems: 50
+          description: The addresses in Cc.
+          items:
+            type: string
+        answers:
+          type: string
+          description: The ID of the message in the mailbox the draft answers, if it is a reply.
+        forwards:
+          type: string
+          description: The ID of the message in the mailbox the draft forwards, if it is a forward.
+    Suggestion:
+      type: object
+      additionalProperties: false
+      properties:
+        suggestion:
+          type: string
+          description: >-
+            The rest of the sentence, to follow the text as it is, starting
+            with a space where it starts a new word. Absent when Duva has none.
+    SuggestionModel:
+      type: string
+      enum: [openai.gpt-oss-20b-1:0, qwen.qwen3-32b-v1:0, amazon.nova-micro-v1:0, anthropic.claude-haiku-4-5-20251001-v1:0]
+      description: >-
+        A model on Amazon Bedrock that suggests the rest of a sentence, by its
+        Bedrock model ID, each measured for it (docs/research/suggestions.md):
+        gpt-oss-20b, and Qwen3 32B, the default, on demand in the deployment's
+        region, Amazon Nova Micro through the continent's profile, and Claude
+        Haiku 4.5, the best and slowest, through it from eu-central-1 in the EU.
+    Suggestions:
+      type: boolean
+      description: >-
+        Whether humans get suggestions while they write mail: the rest of a
+        sentence in grey after the cursor, which Tab takes. On by default.
+        Each costs a small call to suggestionModel, about $0.000075 with Qwen3
+        32B, counted toward mailboxAgentSpendCap. Each human can also switch
+        them off for themselves, with the preference suggestions.
+    SuggestionsPreference:
+      type: string
+      enum: ["on", "off"]
+      description: >-
+        Whether the human gets suggestions while they write mail, while the
+        organization's suggestions setting has them on. on, the default,
+        offers the rest of a sentence in grey after the cursor once they
+        pause, from the draft, the message it answers, what Coo remembers and
+        their style note, which Tab takes. off offers none.
     MailboxAgentModel:
       type: string
       enum: [anthropic.claude-sonnet-5-5, anthropic.claude-haiku-4-5-20251001-v1:0, anthropic.claude-opus-5-5, amazon.nova-2-lite-v1:0, amazon.nova-pro-v1:0, amazon.nova-lite-v1:0, openai.gpt-6-luna, openai.gpt-6-sol, xai.grok-4.7, openai.gpt-oss-120b-1:0, qwen.qwen3-235b-a22b-2507-v1:0, deepseek.v3.2, zai.glm-5, moonshotai.kimi-k2.5, minimax.minimax-m2.5, moonshotai.kimi-k3, zai.glm-5.3]
@@ -9492,7 +9613,7 @@ components:
     Preferences:
       type: object
       additionalProperties: false
-      required: [hourCycle, dateFormat, mailView, keyboardShortcuts, cooSpeaksUp, cooLearnsFromMail, cooWebSearch, cooBrowsing, opensOn]
+      required: [hourCycle, dateFormat, mailView, keyboardShortcuts, cooSpeaksUp, cooLearnsFromMail, cooWebSearch, cooBrowsing, suggestions, opensOn]
       description: A human's own preferences.
       properties:
         hourCycle:
@@ -9511,6 +9632,8 @@ components:
           $ref: "#/components/schemas/CooWebSearch"
         cooBrowsing:
           $ref: "#/components/schemas/CooBrowsing"
+        suggestions:
+          $ref: "#/components/schemas/SuggestionsPreference"
         timeZone:
           $ref: "#/components/schemas/TimeZone"
         opensOn:
@@ -9555,6 +9678,8 @@ components:
           $ref: "#/components/schemas/CooWebSearch"
         cooBrowsing:
           $ref: "#/components/schemas/CooBrowsing"
+        suggestions:
+          $ref: "#/components/schemas/SuggestionsPreference"
         timeZone:
           description: >-
             The time zone, as an IANA name, or null to remove it, as if the

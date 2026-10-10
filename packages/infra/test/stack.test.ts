@@ -330,7 +330,7 @@ test("only the API and the sender write to the uploads bucket, the sender a forw
   for (const id of ["ApiHandler", "SenderHandler", "EraserHandler"]) expect(onBucket(id)).toContain("s3:AbortMultipartUpload");
 });
 
-test("only search, the indexer, the conversation Lambda and the API call Bedrock, each to embed with Titan and search also to translate with Nova Lite, in the deployment's region", () => {
+test("only search, the indexer, the conversation Lambda, the API and the sender call Bedrock, each to embed with Titan and search also to translate with Nova Lite, in the deployment's region, and the API and the sender to suggest", () => {
   const model = (id: string) => ({ "Fn::Join": ["", ["arn:", { Ref: "AWS::Partition" }, ":bedrock:", { Ref: "AWS::Region" }, `::foundation-model/${id}`]] });
   const onBedrock = (prefix: string) => statements(prefix).filter(({ Action }) => [Action].flat().some((action) => action.startsWith("bedrock:")));
   // Each Bedrock statement invokes models and nothing else, and these are all the models invoked.
@@ -344,11 +344,12 @@ test("only search, the indexer, the conversation Lambda and the API call Bedrock
   expect(invoked("IndexerHandler")).toEqual([model(embeddingModel)]);
   // The conversation Lambda keeps each turn's routing with its words' embedding (ADR-0032).
   expect(invoked("ConversationHandler")).toEqual([model(embeddingModel)]);
-  // The API embeds Coo's memories, and what they are searched for (ADR-0036).
-  expect(invoked("ApiHandler")).toEqual([model(embeddingModel)]);
+  // The API embeds Coo's memories, and what they are searched for (ADR-0036), and the sender style notes (#156).
+  expect(invoked("ApiHandler")).toContainEqual(model(embeddingModel));
+  expect(invoked("SenderHandler")).toContainEqual(model(embeddingModel));
   const others = ofType("AWS::Lambda::Function")
     .map(([id]) => id)
-    .filter((id) => !["SearchHandler", "IndexerHandler", "ConversationHandler", "ApiHandler"].some((name) => id.startsWith(name)) && onBedrock(id).length > 0);
+    .filter((id) => !["SearchHandler", "IndexerHandler", "ConversationHandler", "ApiHandler", "SenderHandler"].some((name) => id.startsWith(name)) && onBedrock(id).length > 0);
   expect(others).toEqual([]);
 });
 
@@ -1155,6 +1156,23 @@ test("the mailbox agents may call only the models admins can choose, through the
   expect(unconditioned!.Condition).toBeUndefined();
   expect(sorted(onModels!.Resource)).toEqual(sorted(models.flatMap((model) => [`arn:aws:bedrock:*::foundation-model/${model}`, `arn:aws:bedrock:::foundation-model/${model}`])));
   expect(sorted(onModels!.Condition!.StringLike["bedrock:InferenceProfileArn"] as unknown[])).toEqual(sorted(profiles));
+});
+
+test("the API and the sender may call only the suggestion models: gpt-oss-20b and Qwen3 32B on demand, and Nova Micro and Claude Haiku 4.5 through their eu and us profiles", () => {
+  const onDemand = ["openai.gpt-oss-20b-1:0", "qwen.qwen3-32b-v1:0"].map((model) => `arn:aws:bedrock:*::foundation-model/${model}`);
+  const profiled = ["amazon.nova-micro-v1:0", "anthropic.claude-haiku-4-5-20251001-v1:0"];
+  const profiles = profiled.flatMap((model) => ["eu", "us"].map((name) => ({ "Fn::Join": ["", ["arn:", { Ref: "AWS::Partition" }, ":bedrock:*:", { Ref: "AWS::AccountId" }, `:inference-profile/${name}.${model}`]] })));
+  const sorted = (values: unknown) => [values].flat().map((value) => JSON.stringify(value)).sort();
+  for (const prefix of ["ApiHandler", "SenderHandler"]) {
+    const suggesting = (statements(prefix) as { Action: string | string[]; Resource: unknown; Condition?: { StringLike: Record<string, unknown[]> } }[]).filter(({ Action }) => [Action].flat().includes("bedrock:InvokeModel"));
+    expect(suggesting.map(({ Action }) => Action)).toEqual(["bedrock:InvokeModel", "bedrock:InvokeModel"]);
+    const [unconditioned, onModels] = suggesting;
+    // CDK merges Titan's statement, which the test above covers, into the unconditioned one.
+    expect(sorted(unconditioned!.Resource).filter((resource) => !resource.includes("titan-embed"))).toEqual(sorted([...onDemand, ...profiles]));
+    expect(unconditioned!.Condition).toBeUndefined();
+    expect(sorted(onModels!.Resource)).toEqual(sorted(profiled.map((model) => `arn:aws:bedrock:*::foundation-model/${model}`)));
+    expect(sorted(onModels!.Condition!.StringLike["bedrock:InferenceProfileArn"])).toEqual(sorted(profiles));
+  }
 });
 
 test("Ask Coo posts to the web app's domain under /agent/, where CloudFront signs each request to the conversation Lambda's function URL, which streams its answer", () => {

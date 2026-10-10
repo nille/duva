@@ -16,6 +16,7 @@ import { keys, screener, spam, threadSummary } from "./mail.ts";
 import { actorKey, type Actor, agentSettings, mailboxKey, ownedMailboxes } from "./organization.ts";
 import { learnsFromMail } from "./preferences.ts";
 import { documents, isNew, pk, sk, type TransactItem } from "./table.ts";
+import type { Embedder } from "./titan.ts";
 
 type Memory = components["schemas"]["Memory"];
 
@@ -42,6 +43,8 @@ interface StoredMemory {
   corrected?: string;
   threads?: components["schemas"]["MemorySource"][];
   vector: Uint8Array;
+  /** Whether it is the human's style note, which Coo writes itself (#156). */
+  style?: true;
 }
 
 const memoryOf = ({ id, text, kept, corrected, threads }: StoredMemory): Memory => ({
@@ -80,6 +83,22 @@ async function storedMemory(table: Table, human: string, memory: string): Promis
   const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: memoryKey(human, memory), ConsistentRead: true }));
   return Item as StoredMemory | undefined;
 }
+
+/**
+ * The writes of a memory's pointers from the threads it was learned from, each with a check that
+ * its thread is there and not being erased, so one being erased teaches nothing and one erased
+ * meanwhile has its memories erased after it, and the note that the human's Coo kept one from mail.
+ */
+const sourcing = (table: Table, { human, id, kept, threads = [] }: Pick<StoredMemory, "human" | "id" | "kept" | "threads">): TransactItem[] =>
+  threads.length === 0
+    ? []
+    : [
+        ...threads.flatMap(({ mailbox, thread }) => [
+          { Put: { TableName: table.name, Item: { ...sourceKey(mailbox, thread, id), human, memory: id, mailbox, thread } } },
+          { ConditionCheck: { TableName: table.name, Key: keys.threadKey(mailbox, thread), ConditionExpression: `attribute_exists(${pk}) AND attribute_not_exists(erasing)` } },
+        ]),
+        { Update: { TableName: table.name, Key: noteKey(human), UpdateExpression: "SET fromMail = if_not_exists(fromMail, :now)", ExpressionAttributeValues: { ":now": kept } } },
+      ];
 
 /** The deletes that forget the memory and its pointers. */
 const forgetting = (table: Table, { human, id, threads = [] }: Forgotten): TransactItem[] => [
@@ -161,6 +180,50 @@ function textIn(body: Record<string, unknown>) {
   return text;
 }
 
+/** How alike in meaning the memory is to the vector: Titan's are unit vectors, so their dot product is their cosine. */
+const alikeness = (memory: StoredMemory, asked: Float32Array) => vectorOf(memory.vector).reduce((sum, value, at) => sum + value * asked[at]!, 0);
+
+/**
+ * What a suggestion for the human draws on (#156): their style note, and the texts of their other
+ * memories most alike to what `embed` gives, the most alike first. No memory, no embedding.
+ */
+export async function memoriesFor(table: Table, human: string, embed: () => Promise<Float32Array>, most: number): Promise<{ style?: string; memories: string[] }> {
+  const stored = await storedMemories(table, human);
+  const style = stored.find((memory) => memory.style === true)?.text;
+  const others = stored.filter((memory) => memory.style !== true);
+  if (others.length === 0) return { ...(style !== undefined && { style }), memories: [] };
+  const asked = await embed();
+  const scores = new Map(others.map((memory) => [memory, alikeness(memory, asked)]));
+  const memories = others.toSorted((a, b) => scores.get(b)! - scores.get(a)!).slice(0, most).map(({ text }) => text);
+  return { ...(style !== undefined && { style }), memories };
+}
+
+/**
+ * Keeps the text as the human's style note in place of the one they had, naming the threads of the
+ * sent messages it was written from, so erasing any of them erases it (ADR-0036). False if one was
+ * erased meanwhile, which keeps the note as it was.
+ */
+export async function keepStyleNote(table: Table, embedder: Embedder, human: string, text: string, threads: components["schemas"]["MemorySource"][]): Promise<boolean> {
+  const [vector] = await embedder.embed([text]);
+  const earlier = (await storedMemories(table, human)).find((memory) => memory.style === true);
+  const memory: StoredMemory = { id: randomUUID(), human, text: text.slice(0, longestMemory), kept: new Date().toISOString(), threads, vector: bytesOf(vector!), style: true };
+  try {
+    await documents(table).send(
+      new TransactWriteCommand({
+        TransactItems: [
+          ...(earlier === undefined ? [] : forgetting(table, earlier)),
+          { Put: { TableName: table.name, Item: { ...memoryKey(human, memory.id), ...memory }, ...isNew } },
+          ...sourcing(table, memory),
+        ],
+      }),
+    );
+    return true;
+  } catch (error) {
+    if (!(error instanceof TransactionCanceledException) || !error.CancellationReasons?.some(({ Code }) => Code === "ConditionalCheckFailed")) throw error;
+    return false;
+  }
+}
+
 export const listMemories: OperationHandler = async (event, { table, embedder }, actor) => {
   const human = humanOf(actor);
   if (human === undefined) return othersRefused();
@@ -171,11 +234,10 @@ export const listMemories: OperationHandler = async (event, { table, embedder },
   const settings = actor!.kind === "agent" ? (await agentSettings(table, actor!.id)).settings : undefined;
   const memories = (await storedMemories(table, human)).filter(({ threads }) => settings === undefined || (threads ?? []).every(({ mailbox }) => sponsorAccessIn(settings, mailbox) !== "none"));
   let ordered = memories.toSorted((a, b) => (a.kept < b.kept ? 1 : -1));
-  // Titan's vectors are unit vectors, so their dot product is their cosine. No memory, no embedding.
+  // No memory, no embedding.
   if (query.trim() !== "" && memories.length > 0) {
     const [asked] = await embedder.embed([query.trim()]);
-    const alike = (memory: StoredMemory) => vectorOf(memory.vector).reduce((sum, value, at) => sum + value * asked![at]!, 0);
-    const scores = new Map(memories.map((memory) => [memory, alike(memory)]));
+    const scores = new Map(memories.map((memory) => [memory, alikeness(memory, asked!)]));
     ordered = memories.toSorted((a, b) => scores.get(b)! - scores.get(a)!);
   }
   return { statusCode: 200, body: { memories: ordered.slice(0, most).map(memoryOf) } satisfies components["schemas"]["MemoryList"] };
@@ -213,18 +275,7 @@ export const keepMemory: OperationHandler = async (event, { table, embedder }, a
       new TransactWriteCommand({
         TransactItems: [
           { Put: { TableName: table.name, Item: { ...memoryKey(human, memory.id), ...memory }, ...isNew } },
-          ...threads.flatMap(({ mailbox, thread }) => [
-            { Put: { TableName: table.name, Item: { ...sourceKey(mailbox, thread, memory.id), human, memory: memory.id, mailbox, thread } } },
-            // A thread being erased teaches nothing, and one erased meanwhile has its memories erased after it.
-            {
-              ConditionCheck: {
-                TableName: table.name,
-                Key: keys.threadKey(mailbox, thread),
-                ConditionExpression: `attribute_exists(${pk}) AND attribute_not_exists(erasing)`,
-              },
-            },
-          ]),
-          ...(threads.length > 0 ? [{ Update: { TableName: table.name, Key: noteKey(human), UpdateExpression: "SET fromMail = if_not_exists(fromMail, :now)", ExpressionAttributeValues: { ":now": memory.kept } } }] : []),
+          ...sourcing(table, memory),
         ],
       }),
     );

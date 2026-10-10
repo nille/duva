@@ -28,6 +28,7 @@
     "./indexing": "./src/indexing.ts",
     "./mailbox-agents": "./src/mailbox-agents.ts",
     "./removal": "./src/removal.ts",
+    "./suggestions": "./src/suggestions.ts",
     "./tasks": "./src/tasks.ts",
     "./agent-models": "./src/agent-models.ts",
     "./web-search": "./src/web-search.ts",

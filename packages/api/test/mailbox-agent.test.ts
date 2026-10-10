@@ -621,6 +621,8 @@ test("setup carries over the models admins chose before as the organization's de
     mailboxAgentBrowsing: true,
     mailboxAgentSpendCap: 20,
     linkedFilesCapGb: 20,
+    suggestions: true,
+    suggestionModel: "qwen.qwen3-32b-v1:0",
   });
   expect((await ada.GET("/organization/settings")).data).toEqual(data);
 });

@@ -1,7 +1,8 @@
 // The Lambda entry point the table's stream invokes for each draft a decision approved and each
 // urgent alert to mail, the API and EventBridge Scheduler for an agent whose sends wait for its
 // limits, and EventBridge Scheduler for each thread due back from Remind me, each draft whose
-// undo window is over and each linked file whose link ended. The CDK app sets the environment and the filters.
+// undo window is over and each linked file whose link ended. After a human's sends, it updates their
+// style note with the suggestion model and Titan. The CDK app sets the environment and the filters.
 import type { Context } from "aws-lambda";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { S3Client } from "@aws-sdk/client-s3";
@@ -14,6 +15,8 @@ import { s3MailBucket } from "./mail-bucket.ts";
 import { realDns } from "./dns-records.ts";
 import { createSender, sesOutbound } from "./sending.ts";
 import { s3UploadsBucket } from "./uploads-bucket.ts";
+import { bedrockSuggester } from "./suggestions.ts";
+import { titanEmbedder } from "./titan.ts";
 
 const table = { client: new DynamoDBClient({}), name: required(environmentVariables.tableName) };
 const mailBucket = s3MailBucket(new S3Client({}), required(environmentVariables.mailBucket));
@@ -24,7 +27,8 @@ const outbound = sesOutbound(new SESv2Client({ maxAttempts: 1 }), required(envir
 const scheduler = new SchedulerClient({});
 const schedule = { group: required(environmentVariables.scheduleGroup), role: required(environmentVariables.schedulerRole) };
 const downloads = { url: required(environmentVariables.downloadUrl) };
+const styleNotes = { embedder: titanEmbedder(), suggester: bedrockSuggester({ region }) };
 
 export const handler = (event: Parameters<ReturnType<typeof createSender>>[0], context: Context) =>
   // The schedules invoke this function, which the CDK app can't name in its own environment.
-  createSender({ table, mailBucket, uploads, region, outbound, dns: realDns, downloads, schedules: eventBridgeSchedules(scheduler, { ...schedule, sender: context.invokedFunctionArn }) })(event);
+  createSender({ table, mailBucket, uploads, region, outbound, dns: realDns, downloads, ...styleNotes, schedules: eventBridgeSchedules(scheduler, { ...schedule, sender: context.invokedFunctionArn }) })(event);

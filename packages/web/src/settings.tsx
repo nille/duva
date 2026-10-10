@@ -28,6 +28,7 @@ import { SignatureSheet } from "./signature-sheet.tsx";
 import type { AwayMessage } from "./away-line.tsx";
 
 type OrganizationSettings = components["schemas"]["OrganizationSettings"];
+type SuggestionModel = components["schemas"]["SuggestionModel"];
 type Language = components["schemas"]["SearchLanguage"];
 type Mailbox = components["schemas"]["Mailbox"];
 
@@ -726,7 +727,7 @@ function AgentsSheet({ client, onSignedOut }: { client: DuvaClient; onSignedOut:
   );
 }
 
-type MailboxAgentsSettings = Pick<OrganizationSettings, "mailboxAgentAllowedModels" | "mailboxAgentModel" | "mailboxAgentHarderModel" | "mailboxAgentDecider" | "mailboxAgentWebSearch" | "mailboxAgentBrowsing" | "mailboxAgentSpendCap">;
+type MailboxAgentsSettings = Pick<OrganizationSettings, "mailboxAgentAllowedModels" | "mailboxAgentModel" | "mailboxAgentHarderModel" | "mailboxAgentDecider" | "mailboxAgentWebSearch" | "mailboxAgentBrowsing" | "mailboxAgentSpendCap" | "suggestions" | "suggestionModel">;
 type Model = MailboxAgentsSettings["mailboxAgentModel"];
 type MeasuredModel = components["schemas"]["MeasuredModel"];
 const organizationModels = ["mailboxAgentModel", "mailboxAgentHarderModel"] as const;
@@ -765,7 +766,7 @@ function useMeasuredModels(client: DuvaClient): { models?: MeasuredModel[]; fail
 function MailboxAgentsSheet({ client, onSignedOut }: { client: DuvaClient; onSignedOut: () => void }) {
   const { sheet } = useOrganizationSheet<MailboxAgentsSettings>(
     client,
-    ({ mailboxAgentAllowedModels, mailboxAgentModel, mailboxAgentHarderModel, mailboxAgentDecider, mailboxAgentWebSearch, mailboxAgentBrowsing, mailboxAgentSpendCap }) => ({
+    ({ mailboxAgentAllowedModels, mailboxAgentModel, mailboxAgentHarderModel, mailboxAgentDecider, mailboxAgentWebSearch, mailboxAgentBrowsing, mailboxAgentSpendCap, suggestions, suggestionModel }) => ({
       mailboxAgentAllowedModels,
       mailboxAgentModel,
       mailboxAgentHarderModel,
@@ -773,6 +774,8 @@ function MailboxAgentsSheet({ client, onSignedOut }: { client: DuvaClient; onSig
       mailboxAgentWebSearch,
       mailboxAgentBrowsing,
       mailboxAgentSpendCap,
+      suggestions,
+      suggestionModel,
     }),
     onSignedOut,
   );
@@ -906,6 +909,30 @@ function MailboxAgentsSheet({ client, onSignedOut }: { client: DuvaClient; onSig
                   <span className="hint">{copy.browsing.hint}</span>
                 </span>
               </label>
+            </fieldset>
+            <fieldset>
+              <legend>{copy.suggestions.legend}</legend>
+              <label className="choice">
+                <input type="checkbox" checked={chosen.suggestions} onChange={(event) => sheet.choose({ suggestions: event.target.checked })} />
+                <span className="choice-text">
+                  <span className="choice-name">{copy.suggestions.label}</span>
+                  <span className="hint">{copy.suggestions.hint}</span>
+                </span>
+              </label>
+              <div className="limits">
+                <div className="limit">
+                  <label htmlFor="suggestion-model" className="limit-name">
+                    {copy.suggestions.model}
+                  </label>
+                  <select id="suggestion-model" value={chosen.suggestionModel} onChange={(event) => sheet.choose({ suggestionModel: event.target.value as SuggestionModel })}>
+                    {(Object.keys(copy.suggestions.models) as SuggestionModel[]).map((model) => (
+                      <option key={model} value={model}>
+                        {copy.suggestions.models[model]}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
             </fieldset>
             <fieldset>
               <legend>{copy.cap.legend}</legend>
@@ -1109,6 +1136,7 @@ const keyboardShortcuts: Preferences["keyboardShortcuts"][] = ["on", "off"];
 const cooSpeaksUp: Preferences["cooSpeaksUp"][] = ["on", "off"];
 const cooWebSearch: Preferences["cooWebSearch"][] = ["on", "off"];
 const cooBrowsing: Preferences["cooBrowsing"][] = ["on", "off"];
+const suggestionChoices: Preferences["suggestions"][] = ["on", "off"];
 
 /** Signs the human's Coo out of every site it logged in to, at once, saying how it went (ADR-0038). */
 function SignCooOut({ client }: { client: DuvaClient }) {
@@ -1178,11 +1206,11 @@ function YouSheet({
   today.setHours(14, 30, 0, 0);
   const copy = strings.settings;
   const searchRegion = useWebSearchRegion(client);
-  const [organization, setOrganization] = useState<{ searches: boolean; browses: boolean }>();
+  const [organization, setOrganization] = useState<{ searches: boolean; browses: boolean; suggests: boolean }>();
   useEffect(() => {
     void client
       .GET("/organization/settings")
-      .then(({ data }) => setOrganization(data && { searches: data.mailboxAgentWebSearch, browses: data.mailboxAgentBrowsing }))
+      .then(({ data }) => setOrganization(data && { searches: data.mailboxAgentWebSearch, browses: data.mailboxAgentBrowsing, suggests: data.suggestions }))
       .catch(() => undefined);
   }, [client]);
   return (
@@ -1260,6 +1288,21 @@ function YouSheet({
                 onChoose={() => sheet.choose({ cooSpeaksUp: choice })}
                 label={copy.cooSpeaksUp[choice]}
                 hint={copy.cooSpeaksUp[`${choice}Hint`]}
+              />
+            ))}
+          </fieldset>
+          <fieldset>
+            <legend>{copy.suggestions.legend}</legend>
+            <p className="setting-lead">{copy.suggestions.lead}</p>
+            {organization?.suggests === false && <p className="setting-note">{copy.suggestions.organizationOff}</p>}
+            {suggestionChoices.map((choice) => (
+              <Choice
+                key={choice}
+                name="suggestions"
+                checked={chosen.suggestions === choice}
+                onChoose={() => sheet.choose({ suggestions: choice })}
+                label={copy.suggestions[choice]}
+                hint={copy.suggestions[`${choice}Hint`]}
               />
             ))}
           </fieldset>

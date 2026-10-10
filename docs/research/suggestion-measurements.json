@@ -1,0 +1,3320 @@
+{
+  "measuredOn": "2026-10-10",
+  "region": "eu-north-1",
+  "runs": 3,
+  "drafts": 30,
+  "titan": {
+    "p50": 96,
+    "p95": 138
+  },
+  "summary": [
+    {
+      "model": "openai.gpt-oss-20b-1:0",
+      "name": "gpt-oss-20b",
+      "calls": 90,
+      "failed": 0,
+      "p50": 282,
+      "p95": 609,
+      "exact": 0.35555555555555557,
+      "begins": 0.4777777777777778,
+      "nothing": 0.011111111111111112,
+      "costPerSuggestion": 0.000053218000000000004,
+      "inputTokens": 427,
+      "outputTokens": 78
+    },
+    {
+      "model": "qwen.qwen3-32b-v1:0",
+      "name": "Qwen3 32B",
+      "calls": 90,
+      "failed": 0,
+      "p50": 241,
+      "p95": 435,
+      "exact": 0.3,
+      "begins": 0.5555555555555556,
+      "nothing": 0.011111111111111112,
+      "costPerSuggestion": 0.00007456,
+      "inputTokens": 385,
+      "outputTokens": 28
+    },
+    {
+      "model": "amazon.nova-micro-v1:0",
+      "name": "Amazon Nova Micro",
+      "calls": 90,
+      "failed": 0,
+      "p50": 330,
+      "p95": 583,
+      "exact": 0.23333333333333334,
+      "begins": 0.3888888888888889,
+      "nothing": 0.3111111111111111,
+      "costPerSuggestion": 0.000016960244444444443,
+      "inputTokens": 380,
+      "outputTokens": 16
+    },
+    {
+      "model": "anthropic.claude-haiku-4-5-20251001-v1:0",
+      "name": "Claude Haiku 4.5",
+      "calls": 90,
+      "failed": 0,
+      "p50": 655,
+      "p95": 944,
+      "exact": 0.6,
+      "begins": 0.7333333333333333,
+      "nothing": 0,
+      "costPerSuggestion": 0.0005429600000000002,
+      "inputTokens": 408,
+      "outputTokens": 17
+    }
+  ],
+  "measured": {
+    "titan": [
+      110.48896200000001,
+      126.35759599999994,
+      100.89185599999996,
+      131.2378930000001,
+      156.9286820000002,
+      119.57238300000017,
+      95.78440300000011,
+      96.659179,
+      85.21652199999994,
+      106.00336200000015,
+      87.65888399999994,
+      83.96165999999994,
+      87.48686300000008,
+      91.51244500000007,
+      106.16719499999999,
+      95.25055199999997,
+      58.069070999999894,
+      138.10768899999994,
+      98.66095200000018,
+      90.61018999999987,
+      68.43859500000008,
+      92.74723899999981,
+      99.94956000000002,
+      81.02093399999967,
+      110.31305599999996,
+      95.73826699999972,
+      104.96354900000006,
+      78.39057099999991,
+      61.08620199999996,
+      109.19569899999988
+    ],
+    "openai.gpt-oss-20b-1:0": [
+      {
+        "ms": 235.50227200000063,
+        "text": "Jonas and I would love to come over for dinner on Friday.",
+        "inputTokens": 454,
+        "outputTokens": 46,
+        "draft": "en-reply-dinner",
+        "run": 1,
+        "suggestion": " come over for dinner on Friday."
+      },
+      {
+        "ms": 204.54075600000033,
+        "text": "Hi Grace,\n\nThanks for sending the report. I'll read it and send you my comments by Friday.",
+        "inputTokens": 450,
+        "outputTokens": 47,
+        "draft": "en-reply-report-start",
+        "run": 1,
+        "suggestion": " comments by Friday."
+      },
+      {
+        "ms": 272.721098,
+        "text": "Hi Tom,\n\nTuesday works for me. Could we meet at 10am?",
+        "inputTokens": 451,
+        "outputTokens": 71,
+        "draft": "en-reply-meeting-time",
+        "run": 1,
+        "suggestion": "am?"
+      },
+      {
+        "ms": 268.8740799999996,
+        "text": "Lunch tomorrow sounds great, but I have a meeting at 11:30.",
+        "inputTokens": 429,
+        "outputTokens": 53,
+        "draft": "en-reply-mid-word",
+        "run": 1,
+        "suggestion": "at, but I have a meeting at 11:30."
+      },
+      {
+        "ms": 248.30967899999996,
+        "text": "Thank you for sending a replacement so I can get my items soon.",
+        "inputTokens": 463,
+        "outputTokens": 77,
+        "draft": "en-reply-thanks",
+        "run": 1,
+        "suggestion": " I can get my items soon."
+      },
+      {
+        "ms": 336.86226199999965,
+        "text": "Hi Karin,\n\nThat sounds lovely, and I'd love to come. Should I bring a bottle of wine?",
+        "inputTokens": 462,
+        "outputTokens": 89,
+        "draft": "en-reply-question",
+        "run": 1,
+        "suggestion": " a bottle of wine?"
+      },
+      {
+        "ms": 221.5433920000005,
+        "text": "I'm afraid I can't join on Saturday, since Elsa has a football match.",
+        "inputTokens": 451,
+        "outputTokens": 48,
+        "draft": "en-reply-saturday",
+        "run": 1,
+        "suggestion": " a football match."
+      },
+      {
+        "ms": 193.17623600000024,
+        "text": "Could you please pay it before the due date, 28 October?",
+        "inputTokens": 463,
+        "outputTokens": 46,
+        "draft": "en-forward-invoice",
+        "run": 1,
+        "suggestion": " the due date, 28 October?"
+      },
+      {
+        "ms": 225.2184700000007,
+        "text": "Hi Grace,\n\nI've read the report and I think it looks really good.",
+        "inputTokens": 390,
+        "outputTokens": 43,
+        "draft": "en-new-follow-up",
+        "run": 1,
+        "suggestion": " good."
+      },
+      {
+        "ms": 413.56675599999926,
+        "text": "Would you have time for a meeting next week to talk about the new logo?",
+        "inputTokens": 402,
+        "outputTokens": 110,
+        "draft": "en-new-meeting-request",
+        "run": 1,
+        "suggestion": " logo?"
+      },
+      {
+        "ms": 285.59625099999994,
+        "text": "Just a reminder that the office is closed on Monday.",
+        "inputTokens": 393,
+        "outputTokens": 57,
+        "draft": "en-new-mid-word",
+        "run": 1,
+        "suggestion": "day."
+      },
+      {
+        "ms": 398.3595400000004,
+        "text": "Be Best,",
+        "inputTokens": 394,
+        "outputTokens": 108,
+        "draft": "en-new-sign-off",
+        "run": 1,
+        "suggestion": " Best,"
+      },
+      {
+        "ms": 173.03918200000044,
+        "text": "Something came up at work and I completely forgot to let you know.",
+        "inputTokens": 400,
+        "outputTokens": 44,
+        "draft": "en-new-apology",
+        "run": 1,
+        "suggestion": " you know."
+      },
+      {
+        "ms": 240.0727569999999,
+        "text": "Hi Grace,\n\nPlease find the updated slides attached.",
+        "inputTokens": 378,
+        "outputTokens": 33,
+        "draft": "en-new-attachment",
+        "run": 1,
+        "suggestion": " attached."
+      },
+      {
+        "ms": 271.73985600000015,
+        "text": "Shall we have the next review on Thursday at 10 am?",
+        "inputTokens": 388,
+        "outputTokens": 69,
+        "draft": "en-new-morning",
+        "run": 1,
+        "suggestion": " at 10 am?"
+      },
+      {
+        "ms": 437.2404919999999,
+        "text": "Hej Erik!\n\nTack för inbjudan! Jonas och jag kommer ja, vi ser fram emot det! Ha det fint, Ada",
+        "inputTokens": 453,
+        "outputTokens": 99,
+        "draft": "sv-reply-dinner",
+        "run": 1,
+        "suggestion": " ja, vi ser fram emot det!"
+      },
+      {
+        "ms": 577.9734829999998,
+        "text": "Lunch imorgon låter bra, men jag har ett möte innan.",
+        "inputTokens": 438,
+        "outputTokens": 132,
+        "draft": "sv-reply-time",
+        "run": 1,
+        "suggestion": " bra, men jag har ett möte innan."
+      },
+      {
+        "ms": 281.6086180000002,
+        "text": "Hej Karin!\n\nVad roligt, jag kommer gär**går.**",
+        "inputTokens": 461,
+        "outputTokens": 53,
+        "draft": "sv-reply-mid-word",
+        "run": 1,
+        "suggestion": "**går.**"
+      },
+      {
+        "ms": 375.5516349999998,
+        "text": "Jag behöver tyvärr boka om min tid den 20 oktober på grund av ett annat möte.",
+        "inputTokens": 493,
+        "outputTokens": 83,
+        "draft": "sv-reply-dentist",
+        "run": 1,
+        "suggestion": " oktober på grund av ett annat möte."
+      },
+      {
+        "ms": 273.4454960000003,
+        "text": "Hej,\n\nTack för beskedet om den nya hyran.",
+        "inputTokens": 484,
+        "outputTokens": 67,
+        "draft": "sv-reply-rent",
+        "run": 1,
+        "suggestion": " hyran."
+      },
+      {
+        "ms": 391.7655960000011,
+        "text": "Hej Tom!\n\nJag kan tyvärr inte på lördag, eftersom Elsa har en fotbollsmatch.",
+        "inputTokens": 467,
+        "outputTokens": 99,
+        "draft": "sv-reply-football",
+        "run": 1,
+        "suggestion": " en fotbollsmatch."
+      },
+      {
+        "ms": 289.53547999999864,
+        "text": "Passar det på tisdag förmiddag?",
+        "inputTokens": 463,
+        "outputTokens": 73,
+        "draft": "sv-reply-meeting",
+        "run": 1,
+        "suggestion": "?"
+      },
+      {
+        "ms": 346.40788800000155,
+        "text": "Hej Jonas!\n\nHär är kvittot från apoteket som du har betalat för.",
+        "inputTokens": 468,
+        "outputTokens": 86,
+        "draft": "sv-forward-receipt",
+        "run": 1,
+        "suggestion": " har betalat för."
+      },
+      {
+        "ms": 721.562992000001,
+        "text": "Hej allihop!\n\nJag är tyvärr sjuk idag och jobbar inte från kontoret.",
+        "inputTokens": 394,
+        "outputTokens": 177,
+        "draft": "sv-new-sick",
+        "run": 1,
+        "suggestion": " inte från kontoret."
+      },
+      {
+        "ms": 644.9170130000002,
+        "text": "Hej Karin!\n\nTack för en jättetrevlig tillfälle",
+        "inputTokens": 385,
+        "outputTokens": 199,
+        "draft": "sv-new-thanks",
+        "run": 1,
+        "suggestion": " tillfälle"
+      },
+      {
+        "ms": 409.13457599999856,
+        "text": "Jag har läst rapporten och tycker att den är jättebra, men jag har några små förslag.",
+        "inputTokens": 396,
+        "outputTokens": 112,
+        "draft": "sv-new-mid-word",
+        "run": 1,
+        "suggestion": "a, men jag har några små förslag."
+      },
+      {
+        "ms": 176.8694489999998,
+        "text": "Ha det fint, Ada",
+        "inputTokens": 383,
+        "outputTokens": 31,
+        "draft": "sv-new-sign-off",
+        "run": 1,
+        "suggestion": " fint, Ada"
+      },
+      {
+        "ms": 339.17507899999873,
+        "text": "Hej Oskar!\n\nHär kommer de första skisserna på den nya logotypen. Vad tycker du?",
+        "inputTokens": 389,
+        "outputTokens": 67,
+        "draft": "sv-new-question",
+        "run": 1,
+        "suggestion": " du?"
+      },
+      {
+        "ms": 203.9994399999996,
+        "text": "Kom ihåg att kontoret är stängt på måndag.",
+        "inputTokens": 398,
+        "outputTokens": 42,
+        "draft": "sv-new-office",
+        "run": 1,
+        "suggestion": " måndag."
+      },
+      {
+        "ms": 365.78353100000095,
+        "text": "Hej Tom!\n\nJag blir tyvärr tio minuter senare än planerat.",
+        "inputTokens": 382,
+        "outputTokens": 94,
+        "draft": "sv-new-late",
+        "run": 1,
+        "suggestion": " senare än planerat."
+      },
+      {
+        "ms": 168.713115999999,
+        "text": "Jonas and I would love to come over for dinner on Friday.",
+        "inputTokens": 454,
+        "outputTokens": 46,
+        "draft": "en-reply-dinner",
+        "run": 2,
+        "suggestion": " come over for dinner on Friday."
+      },
+      {
+        "ms": 182.31309900000088,
+        "text": "Hi Grace,\n\nThanks for sending the report. I'll read it and send you my comments by Friday.",
+        "inputTokens": 450,
+        "outputTokens": 47,
+        "draft": "en-reply-report-start",
+        "run": 2,
+        "suggestion": " comments by Friday."
+      },
+      {
+        "ms": 280.36807300000146,
+        "text": "Hi Tom,\n\nTuesday works for me. Could we meet at 10am?",
+        "inputTokens": 451,
+        "outputTokens": 71,
+        "draft": "en-reply-meeting-time",
+        "run": 2,
+        "suggestion": "am?"
+      },
+      {
+        "ms": 257.3826449999997,
+        "text": "Hi Lena,\n\nLunch tomorrow sounds great, but I have a meeting at 11:30 that I need to finish.",
+        "inputTokens": 429,
+        "outputTokens": 66,
+        "draft": "en-reply-mid-word",
+        "run": 2,
+        "suggestion": "at, but I have a meeting at 11:30 that I need to finish."
+      },
+      {
+        "ms": 291.2835240000004,
+        "text": "Thank you for sending a replacement so I can get my items soon.",
+        "inputTokens": 463,
+        "outputTokens": 69,
+        "draft": "en-reply-thanks",
+        "run": 2,
+        "suggestion": " I can get my items soon."
+      },
+      {
+        "ms": 337.9515569999985,
+        "text": "Hi Karin,\n\nThat sounds lovely, and I'd love to come. Should I bring a bottle of wine.",
+        "inputTokens": 462,
+        "outputTokens": 89,
+        "draft": "en-reply-question",
+        "run": 2,
+        "suggestion": " a bottle of wine."
+      },
+      {
+        "ms": 228.05775899999935,
+        "text": "I'm afraid I can't join on Saturday, since Elsa has a football match.",
+        "inputTokens": 451,
+        "outputTokens": 48,
+        "draft": "en-reply-saturday",
+        "run": 2,
+        "suggestion": " a football match."
+      },
+      {
+        "ms": 236.58992500000022,
+        "text": "Could you please pay it before the due date, 28 October?",
+        "inputTokens": 463,
+        "outputTokens": 46,
+        "draft": "en-forward-invoice",
+        "run": 2,
+        "suggestion": " the due date, 28 October?"
+      },
+      {
+        "ms": 205.92303800000082,
+        "text": "Hi Grace,\n\nI've read the report and I think it looks really good.",
+        "inputTokens": 390,
+        "outputTokens": 43,
+        "draft": "en-new-follow-up",
+        "run": 2,
+        "suggestion": " good."
+      },
+      {
+        "ms": 378.94725800000197,
+        "text": "Would you have time for a meeting next week to talk about the new logo?",
+        "inputTokens": 402,
+        "outputTokens": 110,
+        "draft": "en-new-meeting-request",
+        "run": 2,
+        "suggestion": " logo?"
+      },
+      {
+        "ms": 256.29587300000276,
+        "text": "Just a reminder that the office is closed on Monday.",
+        "inputTokens": 393,
+        "outputTokens": 57,
+        "draft": "en-new-mid-word",
+        "run": 2,
+        "suggestion": "day."
+      },
+      {
+        "ms": 544.67814,
+        "text": "",
+        "inputTokens": 394,
+        "outputTokens": 200,
+        "draft": "en-new-sign-off",
+        "run": 2
+      },
+      {
+        "ms": 171.6873029999988,
+        "text": "Something came up at work and I completely forgot to let you know.",
+        "inputTokens": 400,
+        "outputTokens": 44,
+        "draft": "en-new-apology",
+        "run": 2,
+        "suggestion": " you know."
+      },
+      {
+        "ms": 221.2956460000023,
+        "text": "Hi Grace,\n\nPlease find the updated slides attached.",
+        "inputTokens": 378,
+        "outputTokens": 33,
+        "draft": "en-new-attachment",
+        "run": 2,
+        "suggestion": " attached."
+      },
+      {
+        "ms": 279.79020800000217,
+        "text": "Shall we have the next review on Thursday at 10 am?",
+        "inputTokens": 388,
+        "outputTokens": 68,
+        "draft": "en-new-morning",
+        "run": 2,
+        "suggestion": " at 10 am?"
+      },
+      {
+        "ms": 467.8373439999996,
+        "text": "Hej Erik!\n\nTack för inbjudan! Jonas och jag kommer ja, vi ser fram emot det! Ha det fint, Ada",
+        "inputTokens": 453,
+        "outputTokens": 99,
+        "draft": "sv-reply-dinner",
+        "run": 2,
+        "suggestion": " ja, vi ser fram emot det!"
+      },
+      {
+        "ms": 523.950297000003,
+        "text": "Lunch imorgon låter bra, men jag har ett möte innan.",
+        "inputTokens": 438,
+        "outputTokens": 132,
+        "draft": "sv-reply-time",
+        "run": 2,
+        "suggestion": " bra, men jag har ett möte innan."
+      },
+      {
+        "ms": 213.26419899999746,
+        "text": "Hej Karin!\n\nVad roligt, jag kommer gärna.",
+        "inputTokens": 461,
+        "outputTokens": 46,
+        "draft": "sv-reply-mid-word",
+        "run": 2,
+        "suggestion": "na."
+      },
+      {
+        "ms": 440.52461400000175,
+        "text": "Jag behöver tyvärr boka om min tid den 20 oktober på grund av ett annat möte.",
+        "inputTokens": 493,
+        "outputTokens": 83,
+        "draft": "sv-reply-dentist",
+        "run": 2,
+        "suggestion": " oktober på grund av ett annat möte."
+      },
+      {
+        "ms": 289.7336660000001,
+        "text": "Hej,\n\nTack för beskedet om den nya hyran.",
+        "inputTokens": 484,
+        "outputTokens": 67,
+        "draft": "sv-reply-rent",
+        "run": 2,
+        "suggestion": " hyran."
+      },
+      {
+        "ms": 410.236664,
+        "text": "Hej Tom!\n\nJag kan tyvärr inte på lördag, eftersom Elsa har en fotbollsmatch.",
+        "inputTokens": 467,
+        "outputTokens": 99,
+        "draft": "sv-reply-football",
+        "run": 2,
+        "suggestion": " en fotbollsmatch."
+      },
+      {
+        "ms": 298.29457900000125,
+        "text": "Passar det på tisdag förmiddag?",
+        "inputTokens": 463,
+        "outputTokens": 73,
+        "draft": "sv-reply-meeting",
+        "run": 2,
+        "suggestion": "?"
+      },
+      {
+        "ms": 460.4304030000021,
+        "text": "Hej Jonas!\n\nHär är kvittot från apoteket som du har betalat för.",
+        "inputTokens": 468,
+        "outputTokens": 86,
+        "draft": "sv-forward-receipt",
+        "run": 2,
+        "suggestion": " har betalat för."
+      },
+      {
+        "ms": 661.1921729999995,
+        "text": "Hej allihop!\n\nJag är tyvärr sjuk idag och jobbar inte från kontoret.",
+        "inputTokens": 394,
+        "outputTokens": 174,
+        "draft": "sv-new-sick",
+        "run": 2,
+        "suggestion": " inte från kontoret."
+      },
+      {
+        "ms": 674.7345690000002,
+        "text": "Hej Karin!\n\nTack för en jättetrevlig tillfälle",
+        "inputTokens": 385,
+        "outputTokens": 199,
+        "draft": "sv-new-thanks",
+        "run": 2,
+        "suggestion": " tillfälle"
+      },
+      {
+        "ms": 433.1750890000003,
+        "text": "Jag har läst rapporten och tycker att den är jättebra, men jag har några små förslag.",
+        "inputTokens": 396,
+        "outputTokens": 113,
+        "draft": "sv-new-mid-word",
+        "run": 2,
+        "suggestion": "a, men jag har några små förslag."
+      },
+      {
+        "ms": 173.05227999999988,
+        "text": "Ha det fint, Ada",
+        "inputTokens": 383,
+        "outputTokens": 31,
+        "draft": "sv-new-sign-off",
+        "run": 2,
+        "suggestion": " fint, Ada"
+      },
+      {
+        "ms": 235.18259200000102,
+        "text": "Vad tycker du?",
+        "inputTokens": 389,
+        "outputTokens": 53,
+        "draft": "sv-new-question",
+        "run": 2,
+        "suggestion": " du?"
+      },
+      {
+        "ms": 237.75492200000008,
+        "text": "Kom ihåg att kontoret är stängt på måndag.",
+        "inputTokens": 398,
+        "outputTokens": 42,
+        "draft": "sv-new-office",
+        "run": 2,
+        "suggestion": " måndag."
+      },
+      {
+        "ms": 399.38441500000044,
+        "text": "Hej Tom!\n\nJag blir tyvärr tio minuter senare än planerat.",
+        "inputTokens": 382,
+        "outputTokens": 94,
+        "draft": "sv-new-late",
+        "run": 2,
+        "suggestion": " senare än planerat."
+      },
+      {
+        "ms": 228.4004840000016,
+        "text": "Jonas and I would love to come over for dinner on Friday.",
+        "inputTokens": 454,
+        "outputTokens": 46,
+        "draft": "en-reply-dinner",
+        "run": 3,
+        "suggestion": " come over for dinner on Friday."
+      },
+      {
+        "ms": 213.15287199999875,
+        "text": "Hi Grace,\n\nThanks for sending the report. I'll read it and send you my comments by Friday.",
+        "inputTokens": 450,
+        "outputTokens": 47,
+        "draft": "en-reply-report-start",
+        "run": 3,
+        "suggestion": " comments by Friday."
+      },
+      {
+        "ms": 315.93253800000093,
+        "text": "Hi Tom,\n\nTuesday works for me. Could we meet at 10am?",
+        "inputTokens": 451,
+        "outputTokens": 71,
+        "draft": "en-reply-meeting-time",
+        "run": 3,
+        "suggestion": "am?"
+      },
+      {
+        "ms": 396.89709700000094,
+        "text": "Hi Lena,\n\nLunch tomorrow sounds great, but I have a meeting before that I need to finish.",
+        "inputTokens": 429,
+        "outputTokens": 64,
+        "draft": "en-reply-mid-word",
+        "run": 3,
+        "suggestion": "at, but I have a meeting before that I need to finish."
+      },
+      {
+        "ms": 290.96766699999716,
+        "text": "Thank you for sending a replacement so I can get my items soon.",
+        "inputTokens": 463,
+        "outputTokens": 77,
+        "draft": "en-reply-thanks",
+        "run": 3,
+        "suggestion": " I can get my items soon."
+      },
+      {
+        "ms": 312.45440099999905,
+        "text": "Hi Karin,\n\nThat sounds lovely, and I'd love to come. Should I bring a bottle of wine.",
+        "inputTokens": 462,
+        "outputTokens": 89,
+        "draft": "en-reply-question",
+        "run": 3,
+        "suggestion": " a bottle of wine."
+      },
+      {
+        "ms": 280.0371430000014,
+        "text": "Hi Tom,\n\nI'm afraid I can't join on Saturday, since Elsa has a football match.",
+        "inputTokens": 451,
+        "outputTokens": 51,
+        "draft": "en-reply-saturday",
+        "run": 3,
+        "suggestion": " a football match."
+      },
+      {
+        "ms": 178.4382590000023,
+        "text": "Could you please pay it before the due date, 28 October?",
+        "inputTokens": 463,
+        "outputTokens": 46,
+        "draft": "en-forward-invoice",
+        "run": 3,
+        "suggestion": " the due date, 28 October?"
+      },
+      {
+        "ms": 217.75486400000227,
+        "text": "Hi Grace,\n\nI've read the report and I think it looks really good and well-structured.",
+        "inputTokens": 390,
+        "outputTokens": 51,
+        "draft": "en-new-follow-up",
+        "run": 3,
+        "suggestion": " good and well-structured."
+      },
+      {
+        "ms": 339.9802070000005,
+        "text": "Would you have time for a meeting next week to talk about the new logo design?",
+        "inputTokens": 402,
+        "outputTokens": 97,
+        "draft": "en-new-meeting-request",
+        "run": 3,
+        "suggestion": " logo design?"
+      },
+      {
+        "ms": 280.04517900000064,
+        "text": "Just a reminder that the office is closed on Monday.",
+        "inputTokens": 393,
+        "outputTokens": 57,
+        "draft": "en-new-mid-word",
+        "run": 3,
+        "suggestion": "day."
+      },
+      {
+        "ms": 393.91805800000293,
+        "text": "Be Best,",
+        "inputTokens": 394,
+        "outputTokens": 108,
+        "draft": "en-new-sign-off",
+        "run": 3,
+        "suggestion": " Best,"
+      },
+      {
+        "ms": 245.16966300000058,
+        "text": "Something came up at work and I completely forgot to let you know.",
+        "inputTokens": 400,
+        "outputTokens": 44,
+        "draft": "en-new-apology",
+        "run": 3,
+        "suggestion": " you know."
+      },
+      {
+        "ms": 155.286838,
+        "text": "Hi Grace,\n\nPlease find the updated slides attached.",
+        "inputTokens": 378,
+        "outputTokens": 33,
+        "draft": "en-new-attachment",
+        "run": 3,
+        "suggestion": " attached."
+      },
+      {
+        "ms": 248.36548100000073,
+        "text": "Shall we have the next review on Thursday at 10 am?",
+        "inputTokens": 388,
+        "outputTokens": 68,
+        "draft": "en-new-morning",
+        "run": 3,
+        "suggestion": " at 10 am?"
+      },
+      {
+        "ms": 390.89113200000065,
+        "text": "Hej Erik!\n\nTack för inbjudan! Jonas och jag kommer ja, vi ser fram emot det! Ha det fint, Ada",
+        "inputTokens": 453,
+        "outputTokens": 99,
+        "draft": "sv-reply-dinner",
+        "run": 3,
+        "suggestion": " ja, vi ser fram emot det!"
+      },
+      {
+        "ms": 375.4040980000027,
+        "text": "Lunch imorgon låter bra, men jag har ett möte innan.",
+        "inputTokens": 438,
+        "outputTokens": 85,
+        "draft": "sv-reply-time",
+        "run": 3,
+        "suggestion": " bra, men jag har ett möte innan."
+      },
+      {
+        "ms": 223.84855999999854,
+        "text": "Hej Karin!\n\nVad roligt, jag kommer gärna.",
+        "inputTokens": 461,
+        "outputTokens": 44,
+        "draft": "sv-reply-mid-word",
+        "run": 3,
+        "suggestion": "na."
+      },
+      {
+        "ms": 380.7741700000006,
+        "text": "Jag behöver tyvärr boka om min tid den 20 oktober på grund av ett annat möte.",
+        "inputTokens": 493,
+        "outputTokens": 83,
+        "draft": "sv-reply-dentist",
+        "run": 3,
+        "suggestion": " oktober på grund av ett annat möte."
+      },
+      {
+        "ms": 264.31719499999963,
+        "text": "Hej,\n\nTack för beskedet om den nya hyran.",
+        "inputTokens": 484,
+        "outputTokens": 67,
+        "draft": "sv-reply-rent",
+        "run": 3,
+        "suggestion": " hyran."
+      },
+      {
+        "ms": 358.8578259999995,
+        "text": "Hej Tom!\n\nJag kan tyvärr inte på lördag, eftersom Elsa har en fotbollsmatch.",
+        "inputTokens": 467,
+        "outputTokens": 99,
+        "draft": "sv-reply-football",
+        "run": 3,
+        "suggestion": " en fotbollsmatch."
+      },
+      {
+        "ms": 259.42515099999946,
+        "text": "Passar det på tisdag förmiddag?",
+        "inputTokens": 463,
+        "outputTokens": 73,
+        "draft": "sv-reply-meeting",
+        "run": 3,
+        "suggestion": "?"
+      },
+      {
+        "ms": 401.5751780000028,
+        "text": "Hej Jonas!\n\nHär är kvittot från apoteket som du har betalat för.",
+        "inputTokens": 468,
+        "outputTokens": 86,
+        "draft": "sv-forward-receipt",
+        "run": 3,
+        "suggestion": " har betalat för."
+      },
+      {
+        "ms": 609.4683449999975,
+        "text": "Hej allihop!\n\nJag är tyvärr sjuk idag och jobbar inte från kontoret.",
+        "inputTokens": 394,
+        "outputTokens": 174,
+        "draft": "sv-new-sick",
+        "run": 3,
+        "suggestion": " inte från kontoret."
+      },
+      {
+        "ms": 406.5137250000007,
+        "text": "Tack för en jättetrevlig kväll.",
+        "inputTokens": 385,
+        "outputTokens": 93,
+        "draft": "sv-new-thanks",
+        "run": 3,
+        "suggestion": " kväll."
+      },
+      {
+        "ms": 412.41847899999993,
+        "text": "Jag har läst rapporten och tycker att den är jättebra, men jag har några små förslag.",
+        "inputTokens": 396,
+        "outputTokens": 113,
+        "draft": "sv-new-mid-word",
+        "run": 3,
+        "suggestion": "a, men jag har några små förslag."
+      },
+      {
+        "ms": 189.37772899999982,
+        "text": "Ha det fint,",
+        "inputTokens": 383,
+        "outputTokens": 39,
+        "draft": "sv-new-sign-off",
+        "run": 3,
+        "suggestion": " fint,"
+      },
+      {
+        "ms": 250.94978999999876,
+        "text": "Hej Oskar!\n\nHär kommer de första skisserna på den nya logotypen. Vad tycker du?",
+        "inputTokens": 389,
+        "outputTokens": 67,
+        "draft": "sv-new-question",
+        "run": 3,
+        "suggestion": " du?"
+      },
+      {
+        "ms": 173.73257100000046,
+        "text": "Kom ihåg att kontoret är stängt på måndag.",
+        "inputTokens": 398,
+        "outputTokens": 42,
+        "draft": "sv-new-office",
+        "run": 3,
+        "suggestion": " måndag."
+      },
+      {
+        "ms": 380.61493899999914,
+        "text": "Hej Tom!\n\nJag blir tyvärr tio minuter senare än planerat.",
+        "inputTokens": 382,
+        "outputTokens": 94,
+        "draft": "sv-new-late",
+        "run": 3,
+        "suggestion": " senare än planerat."
+      }
+    ],
+    "qwen.qwen3-32b-v1:0": [
+      {
+        "ms": 269.73658999999316,
+        "text": "Jonas and I would love to come over for dinner on Friday at 7. Thank you for the kind invitation!",
+        "inputTokens": 406,
+        "outputTokens": 25,
+        "draft": "en-reply-dinner",
+        "run": 1,
+        "suggestion": " come over for dinner on Friday at 7."
+      },
+      {
+        "ms": 164.01395800000319,
+        "text": "I'll read it and send you my comments by Friday. Thanks again!",
+        "inputTokens": 406,
+        "outputTokens": 16,
+        "draft": "en-reply-report-start",
+        "run": 1,
+        "suggestion": " comments by Friday."
+      },
+      {
+        "ms": 212.46753900000476,
+        "text": "Could we meet at 10? I find that time works best for me before lunch.",
+        "inputTokens": 405,
+        "outputTokens": 20,
+        "draft": "en-reply-meeting-time",
+        "run": 1,
+        "suggestion": "?"
+      },
+      {
+        "ms": 239.3189029999994,
+        "text": "Hi Lena,\n\nLunch tomorrow sounds great—12 it is! Thanks for the invite, I'm looking forward to it. Best, Ada",
+        "inputTokens": 384,
+        "outputTokens": 30,
+        "draft": "en-reply-mid-word",
+        "run": 1,
+        "suggestion": "at—12 it is!"
+      },
+      {
+        "ms": 202.99111899999843,
+        "text": "Thank you for sending a replacement so quickly – I really appreciate it.",
+        "inputTokens": 423,
+        "outputTokens": 15,
+        "draft": "en-reply-thanks",
+        "run": 1,
+        "suggestion": " quickly – I really appreciate it."
+      },
+      {
+        "ms": 207.87070500000118,
+        "text": "Should I bring a bottle of wine or is there a specific type you'd prefer?",
+        "inputTokens": 424,
+        "outputTokens": 18,
+        "draft": "en-reply-question",
+        "run": 1,
+        "suggestion": " a bottle of wine or is there a specific type you'd prefer?"
+      },
+      {
+        "ms": 325.51835700000083,
+        "text": "I'm afraid I can't join on Saturday, since Elsa has a football match in the morning and I’d like to be there. Thanks for the invite—maybe next time?\n\nBest,  \nAda",
+        "inputTokens": 409,
+        "outputTokens": 41,
+        "draft": "en-reply-saturday",
+        "run": 1,
+        "suggestion": " a football match in the morning and I’d like to be there."
+      },
+      {
+        "ms": 244.85668599999917,
+        "text": "Could you please pay it before the 28th so we can settle it on time? Thanks so much!",
+        "inputTokens": 428,
+        "outputTokens": 24,
+        "draft": "en-forward-invoice",
+        "run": 1,
+        "suggestion": " the 28th so we can settle it on time?"
+      },
+      {
+        "ms": 213.31705699999293,
+        "text": "I've read the report and I think it looks really good overall—thank you for putting it together!",
+        "inputTokens": 341,
+        "outputTokens": 22,
+        "draft": "en-new-follow-up",
+        "run": 1,
+        "suggestion": " good overall—thank you for putting it together!"
+      },
+      {
+        "ms": 258.4567719999977,
+        "text": "Would you have time for a meeting next week to talk about the new logo? I’d prefer something before lunch if possible, as I have a football game with my daughter in the afternoon on Saturdays.",
+        "inputTokens": 352,
+        "outputTokens": 41,
+        "draft": "en-new-meeting-request",
+        "run": 1,
+        "suggestion": " logo?"
+      },
+      {
+        "ms": 206.64593199999945,
+        "text": "Just a reminder that the office is closed on Monday, so please plan accordingly. Thank you!",
+        "inputTokens": 342,
+        "outputTokens": 20,
+        "draft": "en-new-mid-word",
+        "run": 1,
+        "suggestion": "day, so please plan accordingly."
+      },
+      {
+        "ms": 238.85892500000045,
+        "text": "Be sure to let me know if you'd like to discuss any of them in more detail—happy to go through them over a quick call or meeting.",
+        "inputTokens": 344,
+        "outputTokens": 32,
+        "draft": "en-new-sign-off",
+        "run": 1,
+        "suggestion": " sure to let me know if you'd like to discuss any of them in more detail—happy to go through them over a quick call or meeting."
+      },
+      {
+        "ms": 174.38577400000213,
+        "text": "Something came up at work and I completely forgot to let you know. I really hope we can reschedule soon.",
+        "inputTokens": 351,
+        "outputTokens": 24,
+        "draft": "en-new-apology",
+        "run": 1,
+        "suggestion": " you know."
+      },
+      {
+        "ms": 193.44617400000425,
+        "text": "Please find the updated slides attached. Let me know if you need any adjustments before the meeting tomorrow.",
+        "inputTokens": 327,
+        "outputTokens": 21,
+        "draft": "en-new-attachment",
+        "run": 1,
+        "suggestion": " attached."
+      },
+      {
+        "ms": 146.86387300000206,
+        "text": "Shall we have the next review on Thursday before lunch?",
+        "inputTokens": 338,
+        "outputTokens": 13,
+        "draft": "en-new-morning",
+        "run": 1,
+        "suggestion": " before lunch?"
+      },
+      {
+        "ms": 279.6749920000002,
+        "text": "Jonas och jag kommer gärna – det låter häftigt med lasagne! Vi ses på fredag.",
+        "inputTokens": 415,
+        "outputTokens": 26,
+        "draft": "sv-reply-dinner",
+        "run": 1,
+        "suggestion": " gärna – det låter häftigt med lasagne!"
+      },
+      {
+        "ms": 455.6303900000057,
+        "text": "Hej Lena!\n\nLunch imorgon låter bra, men kan vi mötas en halv tolv istället? Så har jag lite tid kvar på mig efter att ha droppat Elsa på fotboll. Ha det fint, Ada",
+        "inputTokens": 400,
+        "outputTokens": 54,
+        "draft": "sv-reply-time",
+        "run": 1,
+        "suggestion": " bra, men kan vi mötas en halv tolv istället?"
+      },
+      {
+        "ms": 171.9846550000002,
+        "text": "Hej Karin!\n\nVad roligt, jag kommer gärna! Ha det fint, Ada",
+        "inputTokens": 428,
+        "outputTokens": 22,
+        "draft": "sv-reply-mid-word",
+        "run": 1,
+        "suggestion": "na!"
+      },
+      {
+        "ms": 367.5941299999977,
+        "text": "Jag behöver tyvärr boka om min tid den 20 oktober. En tid före lunch skulle vara perfekt, men jag är också ledig senare på dagen om det passar bättre.",
+        "inputTokens": 470,
+        "outputTokens": 49,
+        "draft": "sv-reply-dentist",
+        "run": 1,
+        "suggestion": " oktober."
+      },
+      {
+        "ms": 349.3065349999961,
+        "text": "Hej,  \n\nTack för beskedet om den nya hyran. Vi kommer att granska detta och hör av oss om vi har frågor.  \n\nHa det fint,  \nAda",
+        "inputTokens": 453,
+        "outputTokens": 43,
+        "draft": "sv-reply-rent",
+        "run": 1,
+        "suggestion": " hyran."
+      },
+      {
+        "ms": 322.3722099999941,
+        "text": "Hej Tom!\n\nJag kan tyvärr inte på lördag, eftersom Elsa har fotboll och jag föredrar att vara där. Tack för att du frågade!\n\nHa det fint, Ada",
+        "inputTokens": 431,
+        "outputTokens": 50,
+        "draft": "sv-reply-football",
+        "run": 1,
+        "suggestion": " fotboll och jag föredrar att vara där."
+      },
+      {
+        "ms": 242.0765739999988,
+        "text": "Passar det på tisdag förmiddag kl 10? Jag har en ledig halvdag då.",
+        "inputTokens": 434,
+        "outputTokens": 27,
+        "draft": "sv-reply-meeting",
+        "run": 1,
+        "suggestion": " kl 10?"
+      },
+      {
+        "ms": 259.9756839999973,
+        "text": "Här är kvittot från apoteket som du frågade efter. Tack för att du plockade upp det!",
+        "inputTokens": 432,
+        "outputTokens": 31,
+        "draft": "sv-forward-receipt",
+        "run": 1,
+        "suggestion": " frågade efter."
+      },
+      {
+        "ms": 249.79987300000357,
+        "text": "Jag är tyvärr sjuk idag och jobbar inte, så jag är inte tillgänglig. Tack för förståelsen!",
+        "inputTokens": 351,
+        "outputTokens": 32,
+        "draft": "sv-new-sick",
+        "run": 1,
+        "suggestion": " inte, så jag är inte tillgänglig."
+      },
+      {
+        "ms": 319.16439099999843,
+        "text": "Tack för en jättetrevlig kväll igår – det var så roligt att få chansa på er båda!  \nHa det fint, Ada",
+        "inputTokens": 341,
+        "outputTokens": 36,
+        "draft": "sv-new-thanks",
+        "run": 1,
+        "suggestion": " kväll igår – det var så roligt att få chansa på er båda!"
+      },
+      {
+        "ms": 325.436483999998,
+        "text": "Jag har läst rapporten och tycker att den är jättebra, men det finns några ställen där jag tänker att det kan förtydligas lite.",
+        "inputTokens": 352,
+        "outputTokens": 42,
+        "draft": "sv-new-mid-word",
+        "run": 1,
+        "suggestion": "a, men det finns några ställen där jag tänker att det kan förtydligas lite."
+      },
+      {
+        "ms": 142.09344899999996,
+        "text": "Ha det fint, Ada",
+        "inputTokens": 337,
+        "outputTokens": 6,
+        "draft": "sv-new-sign-off",
+        "run": 1,
+        "suggestion": " fint, Ada"
+      },
+      {
+        "ms": 489.013890000002,
+        "text": "Vad tycker du om dem? Jag tänkte gärna få ditt åsikt innan vi går vidare med färgval och detaljer.",
+        "inputTokens": 345,
+        "outputTokens": 37,
+        "draft": "sv-new-question",
+        "run": 1,
+        "suggestion": " du om dem?"
+      },
+      {
+        "ms": 146.15206799999578,
+        "text": "Kom ihåg att kontoret är stängt på måndag.",
+        "inputTokens": 354,
+        "outputTokens": 17,
+        "draft": "sv-new-office",
+        "run": 1,
+        "suggestion": " måndag."
+      },
+      {
+        "ms": 250.6561490000022,
+        "text": "Hej Tom!\n\nJag blir tyvärr tio minuter senare än planerat idag.  \nHa det fint, Ada",
+        "inputTokens": 337,
+        "outputTokens": 30,
+        "draft": "sv-new-late",
+        "run": 1,
+        "suggestion": " senare än planerat idag."
+      },
+      {
+        "ms": 178.24271500000032,
+        "text": "Jonas and I would love to come over for dinner on Friday at 7. Thank you for the kind invitation!",
+        "inputTokens": 406,
+        "outputTokens": 25,
+        "draft": "en-reply-dinner",
+        "run": 2,
+        "suggestion": " come over for dinner on Friday at 7."
+      },
+      {
+        "ms": 187.66331300000456,
+        "text": "I'll read it and send you my comments by Friday. Thanks again!",
+        "inputTokens": 406,
+        "outputTokens": 16,
+        "draft": "en-reply-report-start",
+        "run": 2,
+        "suggestion": " comments by Friday."
+      },
+      {
+        "ms": 331.89574499999435,
+        "text": "Could we meet at 10? I find mornings more productive and would prefer to wrap up before lunch if possible.",
+        "inputTokens": 405,
+        "outputTokens": 25,
+        "draft": "en-reply-meeting-time",
+        "run": 2,
+        "suggestion": "?"
+      },
+      {
+        "ms": 181.9921119999999,
+        "text": "Hi Lena,\n\nLunch tomorrow sounds great—thanks for the invite! I’ll be there. Best, Ada",
+        "inputTokens": 384,
+        "outputTokens": 23,
+        "draft": "en-reply-mid-word",
+        "run": 2,
+        "suggestion": "at—thanks for the invite!"
+      },
+      {
+        "ms": 189.19356499999412,
+        "text": "Thank you for sending a replacement so quickly – I really appreciate it. Best, Ada",
+        "inputTokens": 423,
+        "outputTokens": 18,
+        "draft": "en-reply-thanks",
+        "run": 2,
+        "suggestion": " quickly – I really appreciate it."
+      },
+      {
+        "ms": 171.9828290000005,
+        "text": "Should I bring a bottle of something, or is there a theme?",
+        "inputTokens": 424,
+        "outputTokens": 15,
+        "draft": "en-reply-question",
+        "run": 2,
+        "suggestion": " a bottle of something, or is there a theme?"
+      },
+      {
+        "ms": 312.26738900000055,
+        "text": "I'm afraid I can't join on Saturday, since Elsa has a football match in the morning and I’d like to be there for her. Thanks for the invite—maybe next time?  \nBest, Ada",
+        "inputTokens": 409,
+        "outputTokens": 43,
+        "draft": "en-reply-saturday",
+        "run": 2,
+        "suggestion": " a football match in the morning and I’d like to be there for her."
+      },
+      {
+        "ms": 206.15440600000147,
+        "text": "Could you please pay it before the 28th so we can settle the account on time? Thank you!",
+        "inputTokens": 428,
+        "outputTokens": 24,
+        "draft": "en-forward-invoice",
+        "run": 2,
+        "suggestion": " the 28th so we can settle the account on time?"
+      },
+      {
+        "ms": 198.59838700000546,
+        "text": "I've read the report and I think it looks really good overall—thank you for putting it together!",
+        "inputTokens": 341,
+        "outputTokens": 22,
+        "draft": "en-new-follow-up",
+        "run": 2,
+        "suggestion": " good overall—thank you for putting it together!"
+      },
+      {
+        "ms": 224.78502399999707,
+        "text": "logo? I prefer meetings before lunch if possible, and I'm free most days except Saturdays.",
+        "inputTokens": 352,
+        "outputTokens": 20,
+        "draft": "en-new-meeting-request",
+        "run": 2
+      },
+      {
+        "ms": 157.1084550000014,
+        "text": "Just a reminder that the office is closed on Monday, so please plan accordingly. Thank you!",
+        "inputTokens": 342,
+        "outputTokens": 20,
+        "draft": "en-new-mid-word",
+        "run": 2,
+        "suggestion": "day, so please plan accordingly."
+      },
+      {
+        "ms": 280.87686699999904,
+        "text": "Be sure to let me know if you'd like to discuss any of them in more detail—I'm happy to go through them anytime.",
+        "inputTokens": 344,
+        "outputTokens": 28,
+        "draft": "en-new-sign-off",
+        "run": 2,
+        "suggestion": " sure to let me know if you'd like to discuss any of them in more detail—I'm happy to go through them anytime."
+      },
+      {
+        "ms": 217.5029099999956,
+        "text": "Something came up at work and I completely forgot to let you know. I really hope you understand and that we can reschedule soon.",
+        "inputTokens": 351,
+        "outputTokens": 28,
+        "draft": "en-new-apology",
+        "run": 2,
+        "suggestion": " you know."
+      },
+      {
+        "ms": 169.98769899999752,
+        "text": "Please find the updated slides attached. Let me know if you need any adjustments before the meeting tomorrow.",
+        "inputTokens": 327,
+        "outputTokens": 21,
+        "draft": "en-new-attachment",
+        "run": 2,
+        "suggestion": " attached."
+      },
+      {
+        "ms": 220.3357939999987,
+        "text": "Shall we have the next review on Thursday before lunch?",
+        "inputTokens": 338,
+        "outputTokens": 13,
+        "draft": "en-new-morning",
+        "run": 2,
+        "suggestion": " before lunch?"
+      },
+      {
+        "ms": 263.49743899999885,
+        "text": "Jonas och jag kommer gärna – det låter häftigt med Marias lasagne! Vi ses på fredag.",
+        "inputTokens": 415,
+        "outputTokens": 28,
+        "draft": "sv-reply-dinner",
+        "run": 2,
+        "suggestion": " gärna – det låter häftigt med Marias lasagne!"
+      },
+      {
+        "ms": 445.0554010000051,
+        "text": "Hej Lena!\n\nLunch imorgon låter bra, men kan vi mötas en halvtimme tidigare? Jag har en möjlig kund efter lunch. Ha det fint, Ada",
+        "inputTokens": 400,
+        "outputTokens": 44,
+        "draft": "sv-reply-time",
+        "run": 2,
+        "suggestion": " bra, men kan vi mötas en halvtimme tidigare?"
+      },
+      {
+        "ms": 189.8758799999996,
+        "text": "Hej Karin!\n\nVad roligt, jag kommer gärna! Ha det fint, Ada",
+        "inputTokens": 428,
+        "outputTokens": 22,
+        "draft": "sv-reply-mid-word",
+        "run": 2,
+        "suggestion": "na!"
+      },
+      {
+        "ms": 301.9425199999969,
+        "text": "Jag behöver tyvärr boka om min tid den 20 oktober. En tid före lunch skulle vara perfekt, gärna under veckan. Tack så mycket!  \n\nHa det fint,  \nAda",
+        "inputTokens": 470,
+        "outputTokens": 51,
+        "draft": "sv-reply-dentist",
+        "run": 2,
+        "suggestion": " oktober."
+      },
+      {
+        "ms": 314.94937599999685,
+        "text": "Hej,\n\nTack för beskedet om den nya hyran. Vi kommer att granska detta och hör av oss om vi har frågor. \n\nHa det fint,  \nAda",
+        "inputTokens": 453,
+        "outputTokens": 42,
+        "draft": "sv-reply-rent",
+        "run": 2,
+        "suggestion": " hyran."
+      },
+      {
+        "ms": 320.136851999996,
+        "text": "Hej Tom!\n\nJag kan tyvärr inte på lördag, eftersom Elsa har fotboll och jag föredrar att vara med henne då. Tack för att du frågade!\n\nHa det fint, Ada",
+        "inputTokens": 431,
+        "outputTokens": 52,
+        "draft": "sv-reply-football",
+        "run": 2,
+        "suggestion": " fotboll och jag föredrar att vara med henne då."
+      },
+      {
+        "ms": 248.70233699999517,
+        "text": "Passar det på tisdag förmiddag kl 10? Jag har ledigt innan lunch.",
+        "inputTokens": 434,
+        "outputTokens": 25,
+        "draft": "sv-reply-meeting",
+        "run": 2,
+        "suggestion": " kl 10?"
+      },
+      {
+        "ms": 263.97656100000313,
+        "text": "Här är kvittot från apoteket som du frågade efter. Tack för att du plockade upp det!",
+        "inputTokens": 432,
+        "outputTokens": 31,
+        "draft": "sv-forward-receipt",
+        "run": 2,
+        "suggestion": " frågade efter."
+      },
+      {
+        "ms": 254.77672700000403,
+        "text": "Jag är tyvärr sjuk idag och jobbar inte, så jag är inte tillgänglig. Tack för förståelsen!",
+        "inputTokens": 351,
+        "outputTokens": 32,
+        "draft": "sv-new-sick",
+        "run": 2,
+        "suggestion": " inte, så jag är inte tillgänglig."
+      },
+      {
+        "ms": 274.8068710000007,
+        "text": "Tack för en jättetrevlig kväll igår – det var så roligt att få chansa på er!  \nHa det fint, Ada",
+        "inputTokens": 341,
+        "outputTokens": 33,
+        "draft": "sv-new-thanks",
+        "run": 2,
+        "suggestion": " kväll igår – det var så roligt att få chansa på er!"
+      },
+      {
+        "ms": 240.78913399999874,
+        "text": "Jag har läst rapporten och tycker att den är jättebra, men det finns några ställen där vi kan förtydliga.",
+        "inputTokens": 352,
+        "outputTokens": 35,
+        "draft": "sv-new-mid-word",
+        "run": 2,
+        "suggestion": "a, men det finns några ställen där vi kan förtydliga."
+      },
+      {
+        "ms": 160.65679700000328,
+        "text": "Ha det fint, Ada",
+        "inputTokens": 337,
+        "outputTokens": 6,
+        "draft": "sv-new-sign-off",
+        "run": 2,
+        "suggestion": " fint, Ada"
+      },
+      {
+        "ms": 267.1131039999964,
+        "text": "Vad tycker du om dem? Jag ser gärna ditt åsikt innan vi går vidare.",
+        "inputTokens": 345,
+        "outputTokens": 26,
+        "draft": "sv-new-question",
+        "run": 2,
+        "suggestion": " du om dem?"
+      },
+      {
+        "ms": 223.06901899999502,
+        "text": "Kom ihåg att kontoret är stängt på måndag.",
+        "inputTokens": 354,
+        "outputTokens": 17,
+        "draft": "sv-new-office",
+        "run": 2,
+        "suggestion": " måndag."
+      },
+      {
+        "ms": 745.9041959999959,
+        "text": "Hej Tom!\n\nJag blir tyvärr tio minuter senare än planerat, men jag kommer ändå att vara där före lunch.  \nHa det fint, Ada",
+        "inputTokens": 337,
+        "outputTokens": 41,
+        "draft": "sv-new-late",
+        "run": 2,
+        "suggestion": " senare än planerat, men jag kommer ändå att vara där före lunch."
+      },
+      {
+        "ms": 252.72001699999964,
+        "text": "Jonas and I would love to come over for dinner on Friday at 7. Thank you for including us!",
+        "inputTokens": 406,
+        "outputTokens": 24,
+        "draft": "en-reply-dinner",
+        "run": 3,
+        "suggestion": " come over for dinner on Friday at 7."
+      },
+      {
+        "ms": 167.55568399999902,
+        "text": "I'll read it and send you my comments by Friday. Thanks again!  \nBest, Ada",
+        "inputTokens": 406,
+        "outputTokens": 20,
+        "draft": "en-reply-report-start",
+        "run": 3,
+        "suggestion": " comments by Friday."
+      },
+      {
+        "ms": 257.75930900000094,
+        "text": "Could we meet at 10? I find that time works best for me before lunch.",
+        "inputTokens": 405,
+        "outputTokens": 20,
+        "draft": "en-reply-meeting-time",
+        "run": 3,
+        "suggestion": "?"
+      },
+      {
+        "ms": 224.8307300000015,
+        "text": "Hi Lena,\n\nLunch tomorrow sounds great! I’d love to join you. Is the Thai place the one on Storgatan? Best, Ada",
+        "inputTokens": 384,
+        "outputTokens": 31,
+        "draft": "en-reply-mid-word",
+        "run": 3,
+        "suggestion": "at!"
+      },
+      {
+        "ms": 161.99366200000077,
+        "text": "Thank you for sending a replacement so quickly – I really appreciate it.",
+        "inputTokens": 423,
+        "outputTokens": 15,
+        "draft": "en-reply-thanks",
+        "run": 3,
+        "suggestion": " quickly – I really appreciate it."
+      },
+      {
+        "ms": 213.78228799999488,
+        "text": "Should I bring a bottle of something, or is there a theme?",
+        "inputTokens": 424,
+        "outputTokens": 15,
+        "draft": "en-reply-question",
+        "run": 3,
+        "suggestion": " a bottle of something, or is there a theme?"
+      },
+      {
+        "ms": 314.0922799999971,
+        "text": "I'm afraid I can't join on Saturday, since Elsa has a football match in the morning and I'd like to be there before lunch. Thanks for the invite—maybe next time?  \nBest, Ada",
+        "inputTokens": 409,
+        "outputTokens": 43,
+        "draft": "en-reply-saturday",
+        "run": 3,
+        "suggestion": " a football match in the morning and I'd like to be there before lunch."
+      },
+      {
+        "ms": 324.1359420000008,
+        "text": "Could you please pay it before the 28th so we can settle it on time? Thanks!",
+        "inputTokens": 428,
+        "outputTokens": 22,
+        "draft": "en-forward-invoice",
+        "run": 3,
+        "suggestion": " the 28th so we can settle it on time?"
+      },
+      {
+        "ms": 172.08351599999878,
+        "text": "I've read the report and I think it looks really good overall—thank you for putting it together!",
+        "inputTokens": 341,
+        "outputTokens": 22,
+        "draft": "en-new-follow-up",
+        "run": 3,
+        "suggestion": " good overall—thank you for putting it together!"
+      },
+      {
+        "ms": 261.5325389999998,
+        "text": "Would you have time for a meeting next week to talk about the new logo? I’d prefer something before lunch if possible, as I have a football game with my daughter in the afternoon on Saturdays.",
+        "inputTokens": 352,
+        "outputTokens": 41,
+        "draft": "en-new-meeting-request",
+        "run": 3,
+        "suggestion": " logo?"
+      },
+      {
+        "ms": 212.38680000000022,
+        "text": "Just a reminder that the office is closed on Monday, so please plan accordingly. Thank you!",
+        "inputTokens": 342,
+        "outputTokens": 20,
+        "draft": "en-new-mid-word",
+        "run": 3,
+        "suggestion": "day, so please plan accordingly."
+      },
+      {
+        "ms": 262.6099630000026,
+        "text": "Be sure to let me know if you'd like to discuss any of them in more detail—I'm happy to go through them anytime.",
+        "inputTokens": 344,
+        "outputTokens": 28,
+        "draft": "en-new-sign-off",
+        "run": 3,
+        "suggestion": " sure to let me know if you'd like to discuss any of them in more detail—I'm happy to go through them anytime."
+      },
+      {
+        "ms": 192.4512190000023,
+        "text": "Something came up at work and I completely forgot to let you know. I really hope you understand.",
+        "inputTokens": 351,
+        "outputTokens": 21,
+        "draft": "en-new-apology",
+        "run": 3,
+        "suggestion": " you know."
+      },
+      {
+        "ms": 214.93123999999807,
+        "text": "Please find the updated slides attached. Let me know if you need any adjustments before the meeting tomorrow.",
+        "inputTokens": 327,
+        "outputTokens": 21,
+        "draft": "en-new-attachment",
+        "run": 3,
+        "suggestion": " attached."
+      },
+      {
+        "ms": 138.76260500000353,
+        "text": "Shall we have the next review on Thursday before lunch?",
+        "inputTokens": 338,
+        "outputTokens": 13,
+        "draft": "en-new-morning",
+        "run": 3,
+        "suggestion": " before lunch?"
+      },
+      {
+        "ms": 252.30137200000172,
+        "text": "Jonas och jag kommer gärna – det låter häftigt med lasagne! Vi ses på fredag.",
+        "inputTokens": 415,
+        "outputTokens": 26,
+        "draft": "sv-reply-dinner",
+        "run": 3,
+        "suggestion": " gärna – det låter häftigt med lasagne!"
+      },
+      {
+        "ms": 434.8037420000037,
+        "text": "Hej Lena!\n\nLunch imorgon låter bra, men kan vi mötas en halv tolv istället? Så har jag lite tid kvar på mig efter att ha hunnit med barnen. Tack så himla mycket! Ha det fint, Ada",
+        "inputTokens": 400,
+        "outputTokens": 59,
+        "draft": "sv-reply-time",
+        "run": 3,
+        "suggestion": " bra, men kan vi mötas en halv tolv istället?"
+      },
+      {
+        "ms": 201.42974400000094,
+        "text": "Hej Karin!\n\nVad roligt, jag kommer gärna! Ha det fint, Ada",
+        "inputTokens": 428,
+        "outputTokens": 22,
+        "draft": "sv-reply-mid-word",
+        "run": 3,
+        "suggestion": "na!"
+      },
+      {
+        "ms": 331.81435200000124,
+        "text": "Jag behöver tyvärr boka om min tid den 20 oktober. Kanske kan vi hitta en tid på eftermiddagen istället?",
+        "inputTokens": 470,
+        "outputTokens": 37,
+        "draft": "sv-reply-dentist",
+        "run": 3,
+        "suggestion": " oktober."
+      },
+      {
+        "ms": 384.66864099999657,
+        "text": "Tack för beskedet om den nya hyran. Vi kommer att granska detta och hör av oss om vi har frågor.",
+        "inputTokens": 453,
+        "outputTokens": 32,
+        "draft": "sv-reply-rent",
+        "run": 3,
+        "suggestion": " hyran."
+      },
+      {
+        "ms": 253.96274599999742,
+        "text": "Hej Tom!\n\nJag kan tyvärr inte på lördag, eftersom Elsa har fotboll och jag föredrar att vara där. Ha det fint, Ada",
+        "inputTokens": 431,
+        "outputTokens": 40,
+        "draft": "sv-reply-football",
+        "run": 3,
+        "suggestion": " fotboll och jag föredrar att vara där."
+      },
+      {
+        "ms": 201.49520699999994,
+        "text": "Passar det på tisdag förmiddag kl 10? Jag har ledig efter det.",
+        "inputTokens": 434,
+        "outputTokens": 24,
+        "draft": "sv-reply-meeting",
+        "run": 3,
+        "suggestion": " kl 10?"
+      },
+      {
+        "ms": 232.89832000000024,
+        "text": "Här är kvittot från apoteket som du frågade efter. Tack för att du plockade upp det!",
+        "inputTokens": 432,
+        "outputTokens": 31,
+        "draft": "sv-forward-receipt",
+        "run": 3,
+        "suggestion": " frågade efter."
+      },
+      {
+        "ms": 186.83866699999635,
+        "text": "Jag är tyvärr sjuk idag och jobbar inte alls. Ha det fint, Ada",
+        "inputTokens": 351,
+        "outputTokens": 23,
+        "draft": "sv-new-sick",
+        "run": 3,
+        "suggestion": " inte alls."
+      },
+      {
+        "ms": 419.05381900000066,
+        "text": "Tack för en jättetrevlig kväll igår – det var så roligt att få chansa på er båda!  \nHa det fint, Ada",
+        "inputTokens": 341,
+        "outputTokens": 36,
+        "draft": "sv-new-thanks",
+        "run": 3,
+        "suggestion": " kväll igår – det var så roligt att få chansa på er båda!"
+      },
+      {
+        "ms": 410.3494559999963,
+        "text": "Hej Grace!\n\nJag har läst rapporten och tycker att den är jättebra, men det finns några ställen där jag tänkte att det kunde förtydligas lite.",
+        "inputTokens": 352,
+        "outputTokens": 47,
+        "draft": "sv-new-mid-word",
+        "run": 3,
+        "suggestion": "a, men det finns några ställen där jag tänkte att det kunde förtydligas lite."
+      },
+      {
+        "ms": 140.893505,
+        "text": "Ha det fint, Ada",
+        "inputTokens": 337,
+        "outputTokens": 6,
+        "draft": "sv-new-sign-off",
+        "run": 3,
+        "suggestion": " fint, Ada"
+      },
+      {
+        "ms": 258.70744099999865,
+        "text": "Vad tycker du om dem? Jag ser gärna ditt åsikt innan vi går vidare.",
+        "inputTokens": 345,
+        "outputTokens": 26,
+        "draft": "sv-new-question",
+        "run": 3,
+        "suggestion": " du om dem?"
+      },
+      {
+        "ms": 140.9100460000045,
+        "text": "Kom ihåg att kontoret är stängt på måndag.",
+        "inputTokens": 354,
+        "outputTokens": 17,
+        "draft": "sv-new-office",
+        "run": 3,
+        "suggestion": " måndag."
+      },
+      {
+        "ms": 339.7376710000026,
+        "text": "Hej Tom!\n\nJag blir tyvärr tio minuter senare än planerat, men jag kommer ändå att hinna dit före lunch.  \nHa det fint, Ada",
+        "inputTokens": 337,
+        "outputTokens": 42,
+        "draft": "sv-new-late",
+        "run": 3,
+        "suggestion": " senare än planerat, men jag kommer ändå att hinna dit före lunch."
+      }
+    ],
+    "amazon.nova-micro-v1:0": [
+      {
+        "ms": 300.4960990000036,
+        "text": "Jonas and I would love to come. Best, Ada",
+        "inputTokens": 400,
+        "outputTokens": 12,
+        "draft": "en-reply-dinner",
+        "run": 1,
+        "suggestion": " come."
+      },
+      {
+        "ms": 335.0858189999999,
+        "text": "I'll read it and send you my thoughts by Friday. Best, Ada",
+        "inputTokens": 403,
+        "outputTokens": 17,
+        "draft": "en-reply-report-start",
+        "run": 1,
+        "suggestion": " thoughts by Friday."
+      },
+      {
+        "ms": 396.24641800000245,
+        "text": "Could we meet at 10 a.m.? Best, Ada",
+        "inputTokens": 402,
+        "outputTokens": 15,
+        "draft": "en-reply-meeting-time",
+        "run": 1,
+        "suggestion": " a.m.?"
+      },
+      {
+        "ms": 340.65363799999614,
+        "text": "at! I'll be there at 12. Best, Ada",
+        "inputTokens": 378,
+        "outputTokens": 16,
+        "draft": "en-reply-mid-word",
+        "run": 1
+      },
+      {
+        "ms": 277.12931799999933,
+        "text": "Thank you for sending a replacement so quickly, Best, Ada",
+        "inputTokens": 419,
+        "outputTokens": 13,
+        "draft": "en-reply-thanks",
+        "run": 1,
+        "suggestion": " quickly, Best, Ada"
+      },
+      {
+        "ms": 346.28984499999933,
+        "text": "wine? Best, Ada",
+        "inputTokens": 420,
+        "outputTokens": 6,
+        "draft": "en-reply-question",
+        "run": 1
+      },
+      {
+        "ms": 268.4688099999985,
+        "text": "football practice that day. Best, Ada",
+        "inputTokens": 411,
+        "outputTokens": 9,
+        "draft": "en-reply-saturday",
+        "run": 1
+      },
+      {
+        "ms": 312.1439590000009,
+        "text": "the due date? Thank you.",
+        "inputTokens": 421,
+        "outputTokens": 8,
+        "draft": "en-forward-invoice",
+        "run": 1
+      },
+      {
+        "ms": 274.2046380000029,
+        "text": "I've read the report and I think it looks really good, Best, Ada",
+        "inputTokens": 336,
+        "outputTokens": 18,
+        "draft": "en-new-follow-up",
+        "run": 1,
+        "suggestion": " good, Best, Ada"
+      },
+      {
+        "ms": 301.09684500000003,
+        "text": "logo? I'd prefer something before lunch. Best, Ada",
+        "inputTokens": 342,
+        "outputTokens": 14,
+        "draft": "en-new-meeting-request",
+        "run": 1
+      },
+      {
+        "ms": 363.3927360000016,
+        "text": "Just a reminder that the office is closed on Monday for our team meeting.",
+        "inputTokens": 334,
+        "outputTokens": 16,
+        "draft": "en-new-mid-word",
+        "run": 1,
+        "suggestion": "day for our team meeting."
+      },
+      {
+        "ms": 266.98590500000137,
+        "text": "Best, Ada",
+        "inputTokens": 333,
+        "outputTokens": 4,
+        "draft": "en-new-sign-off",
+        "run": 1,
+        "suggestion": "st, Ada"
+      },
+      {
+        "ms": 289.41095700000005,
+        "text": "Something came up at work and I completely forgot to let you know in advance. Best, Ada",
+        "inputTokens": 345,
+        "outputTokens": 20,
+        "draft": "en-new-apology",
+        "run": 1,
+        "suggestion": " you know in advance."
+      },
+      {
+        "ms": 343.3996580000021,
+        "text": "Please find the updated slides attached to this email",
+        "inputTokens": 320,
+        "outputTokens": 10,
+        "draft": "en-new-attachment",
+        "run": 1,
+        "suggestion": " attached to this email"
+      },
+      {
+        "ms": 274.65173000000505,
+        "text": "Shall we have the next review on Thursday before lunch? Best, Ada",
+        "inputTokens": 327,
+        "outputTokens": 15,
+        "draft": "en-new-morning",
+        "run": 1,
+        "suggestion": " before lunch?"
+      },
+      {
+        "ms": 403.3635729999951,
+        "text": "Jonas och jag kommer gärna. Ha det fint, Ada",
+        "inputTokens": 411,
+        "outputTokens": 18,
+        "draft": "sv-reply-dinner",
+        "run": 1,
+        "suggestion": " gärna."
+      },
+      {
+        "ms": 347.8191000000006,
+        "text": "Lunch imorgon låter bra, tack! Ha det fint, Ada",
+        "inputTokens": 396,
+        "outputTokens": 19,
+        "draft": "sv-reply-time",
+        "run": 1,
+        "suggestion": " bra, tack!"
+      },
+      {
+        "ms": 770.9171879999994,
+        "text": "Vad roligt, jag kommer gärna! Ha det fint, Ada",
+        "inputTokens": 427,
+        "outputTokens": 20,
+        "draft": "sv-reply-mid-word",
+        "run": 1,
+        "suggestion": "na!"
+      },
+      {
+        "ms": 279.97336599999835,
+        "text": "Jag behöver tyvärr boka om min tid den 20 oktober. Ha det fint, Ada",
+        "inputTokens": 475,
+        "outputTokens": 29,
+        "draft": "sv-reply-dentist",
+        "run": 1,
+        "suggestion": " oktober."
+      },
+      {
+        "ms": 307.9905690000014,
+        "text": "Tack för beskedet om den nya hyran.",
+        "inputTokens": 448,
+        "outputTokens": 13,
+        "draft": "sv-reply-rent",
+        "run": 1,
+        "suggestion": " hyran."
+      },
+      {
+        "ms": 518.7650909999938,
+        "text": "fotbollsträning klockan 9. Ha det fint, Ada",
+        "inputTokens": 428,
+        "outputTokens": 20,
+        "draft": "sv-reply-football",
+        "run": 1
+      },
+      {
+        "ms": 335.0603240000055,
+        "text": "Passar det på tisdag förmiddag innan lunch? Ha det fint, Ada",
+        "inputTokens": 421,
+        "outputTokens": 23,
+        "draft": "sv-reply-meeting",
+        "run": 1,
+        "suggestion": " innan lunch?"
+      },
+      {
+        "ms": 298.58863500000734,
+        "text": "köpte. Ha det fint, Ada",
+        "inputTokens": 426,
+        "outputTokens": 11,
+        "draft": "sv-forward-receipt",
+        "run": 1
+      },
+      {
+        "ms": 267.5007469999982,
+        "text": "Jag är tyvärr sjuk idag och jobbar hemifrån. Ha det fint, Ada",
+        "inputTokens": 346,
+        "outputTokens": 26,
+        "draft": "sv-new-sick",
+        "run": 1,
+        "suggestion": " hemifrån."
+      },
+      {
+        "ms": 333.47599599999376,
+        "text": "Tack för en jättetrevlig kväll!",
+        "inputTokens": 331,
+        "outputTokens": 13,
+        "draft": "sv-new-thanks",
+        "run": 1,
+        "suggestion": " kväll!"
+      },
+      {
+        "ms": 321.28126200000406,
+        "text": "Jag har läst rapporten och tycker att den är jättebra, Grace! Ha det fint, Ada",
+        "inputTokens": 346,
+        "outputTokens": 28,
+        "draft": "sv-new-mid-word",
+        "run": 1,
+        "suggestion": "a, Grace!"
+      },
+      {
+        "ms": 240.4916680000024,
+        "text": "det fint, Ada",
+        "inputTokens": 334,
+        "outputTokens": 7,
+        "draft": "sv-new-sign-off",
+        "run": 1
+      },
+      {
+        "ms": 317.41650500000105,
+        "text": "du om dem? Ha det fint, Ada",
+        "inputTokens": 339,
+        "outputTokens": 12,
+        "draft": "sv-new-question",
+        "run": 1
+      },
+      {
+        "ms": 421.3478349999932,
+        "text": "måndag för våra årliga mötena. Ha det fint, Ada",
+        "inputTokens": 354,
+        "outputTokens": 21,
+        "draft": "sv-new-office",
+        "run": 1
+      },
+      {
+        "ms": 242.07145299999684,
+        "text": "Jag blir tyvärr tio minuter sent.",
+        "inputTokens": 338,
+        "outputTokens": 15,
+        "draft": "sv-new-late",
+        "run": 1,
+        "suggestion": " sent."
+      },
+      {
+        "ms": 342.6891170000017,
+        "text": "Jonas and I would love to join you for dinner on Friday.",
+        "inputTokens": 400,
+        "outputTokens": 14,
+        "draft": "en-reply-dinner",
+        "run": 2,
+        "suggestion": " join you for dinner on Friday."
+      },
+      {
+        "ms": 347.66728000000876,
+        "text": "I'll read it and send you my comments by Friday. Best, Ada",
+        "inputTokens": 403,
+        "outputTokens": 17,
+        "draft": "en-reply-report-start",
+        "run": 2,
+        "suggestion": " comments by Friday."
+      },
+      {
+        "ms": 384.9668240000028,
+        "text": "Could we meet at 10? I'll bring some coffee. Best, Ada",
+        "inputTokens": 402,
+        "outputTokens": 19,
+        "draft": "en-reply-meeting-time",
+        "run": 2,
+        "suggestion": "?"
+      },
+      {
+        "ms": 403.84319400000095,
+        "text": "at! I prefer meetings before lunch, so how about 11 instead? Best, Ada",
+        "inputTokens": 378,
+        "outputTokens": 20,
+        "draft": "en-reply-mid-word",
+        "run": 2
+      },
+      {
+        "ms": 403.05561700000544,
+        "text": "Thank you for sending a replacement so quickly, Best, Ada",
+        "inputTokens": 419,
+        "outputTokens": 13,
+        "draft": "en-reply-thanks",
+        "run": 2,
+        "suggestion": " quickly, Best, Ada"
+      },
+      {
+        "ms": 821.1148249999969,
+        "text": "Should I bring a bottle of wine?",
+        "inputTokens": 420,
+        "outputTokens": 9,
+        "draft": "en-reply-question",
+        "run": 2,
+        "suggestion": " a bottle of wine?"
+      },
+      {
+        "ms": 313.93662799999584,
+        "text": "football practice that day. Best, Ada",
+        "inputTokens": 411,
+        "outputTokens": 9,
+        "draft": "en-reply-saturday",
+        "run": 2
+      },
+      {
+        "ms": 244.1946190000017,
+        "text": "the due date on the 28th of October? Thank you.",
+        "inputTokens": 421,
+        "outputTokens": 16,
+        "draft": "en-forward-invoice",
+        "run": 2
+      },
+      {
+        "ms": 331.7949319999898,
+        "text": "I've read the report and I think it looks really good, Grace. Best, Ada",
+        "inputTokens": 336,
+        "outputTokens": 20,
+        "draft": "en-new-follow-up",
+        "run": 2,
+        "suggestion": " good, Grace."
+      },
+      {
+        "ms": 261.5654349999968,
+        "text": "logo? I'd prefer something before lunch. Best, Ada",
+        "inputTokens": 342,
+        "outputTokens": 14,
+        "draft": "en-new-meeting-request",
+        "run": 2
+      },
+      {
+        "ms": 582.6600399999879,
+        "text": "Just a reminder that the office is closed on Monday. Best, Ada",
+        "inputTokens": 334,
+        "outputTokens": 15,
+        "draft": "en-new-mid-word",
+        "run": 2,
+        "suggestion": "day."
+      },
+      {
+        "ms": 329.91890600000625,
+        "text": "Best, Ada",
+        "inputTokens": 333,
+        "outputTokens": 4,
+        "draft": "en-new-sign-off",
+        "run": 2,
+        "suggestion": "st, Ada"
+      },
+      {
+        "ms": 281.41317999998864,
+        "text": "you know in time. I hope you understand. Best, Ada",
+        "inputTokens": 345,
+        "outputTokens": 14,
+        "draft": "en-new-apology",
+        "run": 2
+      },
+      {
+        "ms": 226.55997699999716,
+        "text": "Please find the updated slides attached to this email",
+        "inputTokens": 320,
+        "outputTokens": 10,
+        "draft": "en-new-attachment",
+        "run": 2,
+        "suggestion": " attached to this email"
+      },
+      {
+        "ms": 322.89805299999716,
+        "text": "Shall we have the next review on Thursday before lunch?",
+        "inputTokens": 327,
+        "outputTokens": 12,
+        "draft": "en-new-morning",
+        "run": 2,
+        "suggestion": " before lunch?"
+      },
+      {
+        "ms": 324.666842000006,
+        "text": "Jonas och jag kommer gärna. Ha det fint, Ada",
+        "inputTokens": 411,
+        "outputTokens": 18,
+        "draft": "sv-reply-dinner",
+        "run": 2,
+        "suggestion": " gärna."
+      },
+      {
+        "ms": 253.3303079999896,
+        "text": "Lunch imorgon låter bra, tack! Ha det fint, Ada",
+        "inputTokens": 396,
+        "outputTokens": 19,
+        "draft": "sv-reply-time",
+        "run": 2,
+        "suggestion": " bra, tack!"
+      },
+      {
+        "ms": 400.398932000011,
+        "text": "Vad roligt, jag kommer gärna! Ha det fint, Ada",
+        "inputTokens": 427,
+        "outputTokens": 20,
+        "draft": "sv-reply-mid-word",
+        "run": 2,
+        "suggestion": "na!"
+      },
+      {
+        "ms": 314.08733100000245,
+        "text": "Jag behöver tyvärr boka om min tid den 20 oktober. Ha det fint, Ada",
+        "inputTokens": 475,
+        "outputTokens": 29,
+        "draft": "sv-reply-dentist",
+        "run": 2,
+        "suggestion": " oktober."
+      },
+      {
+        "ms": 351.50488799999584,
+        "text": "Tack för beskedet om den nya hyrans höjning.",
+        "inputTokens": 448,
+        "outputTokens": 18,
+        "draft": "sv-reply-rent",
+        "run": 2,
+        "suggestion": " hyrans höjning."
+      },
+      {
+        "ms": 325.1540699999896,
+        "text": "fotbollsträning klockan 9. Ha det fint, Ada",
+        "inputTokens": 428,
+        "outputTokens": 20,
+        "draft": "sv-reply-football",
+        "run": 2
+      },
+      {
+        "ms": 423.4759239999985,
+        "text": "Passar det på tisdag förmiddag klockan 10? Ha det fint, Ada",
+        "inputTokens": 421,
+        "outputTokens": 26,
+        "draft": "sv-reply-meeting",
+        "run": 2,
+        "suggestion": " klockan 10?"
+      },
+      {
+        "ms": 297.89892400000826,
+        "text": "Här är kvittot från apoteket som du beställt. Ha det fint, Ada",
+        "inputTokens": 426,
+        "outputTokens": 24,
+        "draft": "sv-forward-receipt",
+        "run": 2,
+        "suggestion": " beställt."
+      },
+      {
+        "ms": 254.99204800000007,
+        "text": "Jag är tyvärr sjuk idag och jobbar hemifrån. Ha det fint, Ada",
+        "inputTokens": 346,
+        "outputTokens": 26,
+        "draft": "sv-new-sick",
+        "run": 2,
+        "suggestion": " hemifrån."
+      },
+      {
+        "ms": 349.4680660000013,
+        "text": "Tack för en jättetrevlig kväll!",
+        "inputTokens": 331,
+        "outputTokens": 13,
+        "draft": "sv-new-thanks",
+        "run": 2,
+        "suggestion": " kväll!"
+      },
+      {
+        "ms": 347.44451200000185,
+        "text": "Jag har läst rapporten och tycker att den är jättebra, Grace! Ha det fint, Ada",
+        "inputTokens": 346,
+        "outputTokens": 28,
+        "draft": "sv-new-mid-word",
+        "run": 2,
+        "suggestion": "a, Grace!"
+      },
+      {
+        "ms": 366.4166039999982,
+        "text": "det fint, Ada",
+        "inputTokens": 334,
+        "outputTokens": 7,
+        "draft": "sv-new-sign-off",
+        "run": 2
+      },
+      {
+        "ms": 396.22953099998995,
+        "text": "du om dem? Ha det fint, Ada",
+        "inputTokens": 339,
+        "outputTokens": 12,
+        "draft": "sv-new-question",
+        "run": 2
+      },
+      {
+        "ms": 578.8272699999943,
+        "text": "måndag för att vi ska ha vår regelbundna mötesdag. Ha det fint, Ada",
+        "inputTokens": 354,
+        "outputTokens": 28,
+        "draft": "sv-new-office",
+        "run": 2
+      },
+      {
+        "ms": 332.5394319999905,
+        "text": "Jag blir tyvärr tio minuter sent till mötet.",
+        "inputTokens": 338,
+        "outputTokens": 19,
+        "draft": "sv-new-late",
+        "run": 2,
+        "suggestion": " sent till mötet."
+      },
+      {
+        "ms": 279.2978690000018,
+        "text": "Jonas and I would love to join you for dinner on Friday.",
+        "inputTokens": 400,
+        "outputTokens": 14,
+        "draft": "en-reply-dinner",
+        "run": 3,
+        "suggestion": " join you for dinner on Friday."
+      },
+      {
+        "ms": 248.97491599999194,
+        "text": "I'll read it and send you my comments by Friday. Best, Ada",
+        "inputTokens": 403,
+        "outputTokens": 17,
+        "draft": "en-reply-report-start",
+        "run": 3,
+        "suggestion": " comments by Friday."
+      },
+      {
+        "ms": 319.99018700000306,
+        "text": "Could we meet at 10? I'll bring some coffee. Best, Ada",
+        "inputTokens": 402,
+        "outputTokens": 19,
+        "draft": "en-reply-meeting-time",
+        "run": 3,
+        "suggestion": "?"
+      },
+      {
+        "ms": 418.5992189999961,
+        "text": "at! I prefer meetings before lunch, how about 11:30 instead? Best, Ada",
+        "inputTokens": 378,
+        "outputTokens": 22,
+        "draft": "en-reply-mid-word",
+        "run": 3
+      },
+      {
+        "ms": 629.5200919999916,
+        "text": "Thank you for sending a replacement so quickly, Best, Ada",
+        "inputTokens": 419,
+        "outputTokens": 13,
+        "draft": "en-reply-thanks",
+        "run": 3,
+        "suggestion": " quickly, Best, Ada"
+      },
+      {
+        "ms": 279.488777999999,
+        "text": "Should I bring a bottle of wine?",
+        "inputTokens": 420,
+        "outputTokens": 9,
+        "draft": "en-reply-question",
+        "run": 3,
+        "suggestion": " a bottle of wine?"
+      },
+      {
+        "ms": 291.48340300000564,
+        "text": "football practice that day. Best, Ada",
+        "inputTokens": 411,
+        "outputTokens": 9,
+        "draft": "en-reply-saturday",
+        "run": 3
+      },
+      {
+        "ms": 332.51655799998844,
+        "text": "the due date on the 28th of October? Thank you.",
+        "inputTokens": 421,
+        "outputTokens": 16,
+        "draft": "en-forward-invoice",
+        "run": 3
+      },
+      {
+        "ms": 359.6494459999958,
+        "text": "I've read the report and I think it looks really good. Best, Ada",
+        "inputTokens": 336,
+        "outputTokens": 18,
+        "draft": "en-new-follow-up",
+        "run": 3,
+        "suggestion": " good."
+      },
+      {
+        "ms": 356.6564379999909,
+        "text": "logo? I'd prefer something before lunch. Best, Ada",
+        "inputTokens": 342,
+        "outputTokens": 14,
+        "draft": "en-new-meeting-request",
+        "run": 3
+      },
+      {
+        "ms": 277.31584500000463,
+        "text": "Just a reminder that the office is closed on Monday for our holiday.",
+        "inputTokens": 334,
+        "outputTokens": 15,
+        "draft": "en-new-mid-word",
+        "run": 3,
+        "suggestion": "day for our holiday."
+      },
+      {
+        "ms": 230.23139499999525,
+        "text": "Best, Ada",
+        "inputTokens": 333,
+        "outputTokens": 4,
+        "draft": "en-new-sign-off",
+        "run": 3,
+        "suggestion": "st, Ada"
+      },
+      {
+        "ms": 286.5530859999999,
+        "text": "you know in time. I hope you understand. Best, Ada",
+        "inputTokens": 345,
+        "outputTokens": 14,
+        "draft": "en-new-apology",
+        "run": 3
+      },
+      {
+        "ms": 213.4727200000052,
+        "text": "Please find the updated slides attached to this email",
+        "inputTokens": 320,
+        "outputTokens": 10,
+        "draft": "en-new-attachment",
+        "run": 3,
+        "suggestion": " attached to this email"
+      },
+      {
+        "ms": 312.36431799999264,
+        "text": "Shall we have the next review on Thursday before lunch?",
+        "inputTokens": 327,
+        "outputTokens": 12,
+        "draft": "en-new-morning",
+        "run": 3,
+        "suggestion": " before lunch?"
+      },
+      {
+        "ms": 294.71699400000216,
+        "text": "Jonas och jag kommer gärna. Ha det fint, Ada",
+        "inputTokens": 411,
+        "outputTokens": 18,
+        "draft": "sv-reply-dinner",
+        "run": 3,
+        "suggestion": " gärna."
+      },
+      {
+        "ms": 378.78209400000924,
+        "text": "Lunch imorgon låter bra, tack! Ha det fint, Ada",
+        "inputTokens": 396,
+        "outputTokens": 19,
+        "draft": "sv-reply-time",
+        "run": 3,
+        "suggestion": " bra, tack!"
+      },
+      {
+        "ms": 336.802617999987,
+        "text": "Vad roligt, jag kommer gärna! Ha det fint, Ada",
+        "inputTokens": 427,
+        "outputTokens": 20,
+        "draft": "sv-reply-mid-word",
+        "run": 3,
+        "suggestion": "na!"
+      },
+      {
+        "ms": 404.873523000002,
+        "text": "Jag behöver tyvärr boka om min tid den 20 oktober.\n\nHa det fint, Ada",
+        "inputTokens": 475,
+        "outputTokens": 29,
+        "draft": "sv-reply-dentist",
+        "run": 3,
+        "suggestion": " oktober."
+      },
+      {
+        "ms": 241.86365299999306,
+        "text": "Tack för beskedet om den nya hyran.",
+        "inputTokens": 448,
+        "outputTokens": 13,
+        "draft": "sv-reply-rent",
+        "run": 3,
+        "suggestion": " hyran."
+      },
+      {
+        "ms": 453.99768299999414,
+        "text": "fotbollsträning klockan 9. Ha det fint, Ada",
+        "inputTokens": 428,
+        "outputTokens": 20,
+        "draft": "sv-reply-football",
+        "run": 3
+      },
+      {
+        "ms": 404.44341500000155,
+        "text": "Passar det på tisdag förmiddag klockan 10? Ha det fint, Ada",
+        "inputTokens": 421,
+        "outputTokens": 26,
+        "draft": "sv-reply-meeting",
+        "run": 3,
+        "suggestion": " klockan 10?"
+      },
+      {
+        "ms": 434.4419440000056,
+        "text": "Här är kvittot från apoteket som du beställt. Ha det fint, Ada",
+        "inputTokens": 426,
+        "outputTokens": 24,
+        "draft": "sv-forward-receipt",
+        "run": 3,
+        "suggestion": " beställt."
+      },
+      {
+        "ms": 465.12060300000303,
+        "text": "Jag är tyvärr sjuk idag och jobbar hemifrån. Ha det fint, Ada",
+        "inputTokens": 346,
+        "outputTokens": 26,
+        "draft": "sv-new-sick",
+        "run": 3,
+        "suggestion": " hemifrån."
+      },
+      {
+        "ms": 238.52915000000212,
+        "text": "Tack för en jättetrevlig kväll!",
+        "inputTokens": 331,
+        "outputTokens": 13,
+        "draft": "sv-new-thanks",
+        "run": 3,
+        "suggestion": " kväll!"
+      },
+      {
+        "ms": 329.9022260000056,
+        "text": "Jag har läst rapporten och tycker att den är jättebra, Grace! Ha det fint, Ada",
+        "inputTokens": 346,
+        "outputTokens": 28,
+        "draft": "sv-new-mid-word",
+        "run": 3,
+        "suggestion": "a, Grace!"
+      },
+      {
+        "ms": 295.97542099999555,
+        "text": "det fint, Ada",
+        "inputTokens": 334,
+        "outputTokens": 7,
+        "draft": "sv-new-sign-off",
+        "run": 3
+      },
+      {
+        "ms": 828.9461729999894,
+        "text": "du om dem? Ha det fint, Ada",
+        "inputTokens": 339,
+        "outputTokens": 12,
+        "draft": "sv-new-question",
+        "run": 3
+      },
+      {
+        "ms": 368.2545309999987,
+        "text": "måndag för att vi kan ha vårt regelbundna möte. Ha det fint, Ada",
+        "inputTokens": 354,
+        "outputTokens": 27,
+        "draft": "sv-new-office",
+        "run": 3
+      },
+      {
+        "ms": 314.8986270000023,
+        "text": "Jag blir tyvärr tio minuter sent.",
+        "inputTokens": 338,
+        "outputTokens": 15,
+        "draft": "sv-new-late",
+        "run": 3,
+        "suggestion": " sent."
+      }
+    ],
+    "anthropic.claude-haiku-4-5-20251001-v1:0": [
+      {
+        "ms": 589.1005250000017,
+        "text": "Jonas and I would love to come.",
+        "inputTokens": 426,
+        "outputTokens": 11,
+        "draft": "en-reply-dinner",
+        "run": 1,
+        "suggestion": " come."
+      },
+      {
+        "ms": 709.9936480000033,
+        "text": "I'll read it and send you my comments by Friday.",
+        "inputTokens": 430,
+        "outputTokens": 15,
+        "draft": "en-reply-report-start",
+        "run": 1,
+        "suggestion": " comments by Friday."
+      },
+      {
+        "ms": 927.3690720000013,
+        "text": "Could we meet at 10 am?",
+        "inputTokens": 424,
+        "outputTokens": 12,
+        "draft": "en-reply-meeting-time",
+        "run": 1,
+        "suggestion": " am?"
+      },
+      {
+        "ms": 1087.9261340000085,
+        "text": "Lunch tomorrow sounds great, but I have a meeting until 1. Can we do 1:30 instead?",
+        "inputTokens": 417,
+        "outputTokens": 28,
+        "draft": "en-reply-mid-word",
+        "run": 1,
+        "suggestion": "at, but I have a meeting until 1."
+      },
+      {
+        "ms": 728.3114880000066,
+        "text": "Thank you for sending a replacement so quickly.",
+        "inputTokens": 439,
+        "outputTokens": 12,
+        "draft": "en-reply-thanks",
+        "run": 1,
+        "suggestion": " quickly."
+      },
+      {
+        "ms": 635.0071489999973,
+        "text": "Should I bring anything?",
+        "inputTokens": 451,
+        "outputTokens": 8,
+        "draft": "en-reply-question",
+        "run": 1,
+        "suggestion": " anything?"
+      },
+      {
+        "ms": 673.3055380000005,
+        "text": "I'm afraid I can't join on Saturday, since Elsa has football.",
+        "inputTokens": 434,
+        "outputTokens": 20,
+        "draft": "en-reply-saturday",
+        "run": 1,
+        "suggestion": " football."
+      },
+      {
+        "ms": 617.8911709999957,
+        "text": "Could you please pay it before 28 October?",
+        "inputTokens": 439,
+        "outputTokens": 14,
+        "draft": "en-forward-invoice",
+        "run": 1,
+        "suggestion": " 28 October?"
+      },
+      {
+        "ms": 654.8020749999996,
+        "text": "I've read the report and I think it looks really good.",
+        "inputTokens": 358,
+        "outputTokens": 16,
+        "draft": "en-new-follow-up",
+        "run": 1,
+        "suggestion": " good."
+      },
+      {
+        "ms": 596.1127930000075,
+        "text": "Would you have time for a meeting next week to talk about the new logo?",
+        "inputTokens": 368,
+        "outputTokens": 19,
+        "draft": "en-new-meeting-request",
+        "run": 1,
+        "suggestion": " logo?"
+      },
+      {
+        "ms": 606.9658609999897,
+        "text": "Just a reminder that the office is closed on Monday.",
+        "inputTokens": 359,
+        "outputTokens": 14,
+        "draft": "en-new-mid-word",
+        "run": 1,
+        "suggestion": "day."
+      },
+      {
+        "ms": 787.4718390000053,
+        "text": "Be sure to send me your feedback by Friday so we can move forward.",
+        "inputTokens": 363,
+        "outputTokens": 18,
+        "draft": "en-new-sign-off",
+        "run": 1,
+        "suggestion": " sure to send me your feedback by Friday so we can move forward."
+      },
+      {
+        "ms": 647.6305999999895,
+        "text": "Something came up at work and I completely forgot to let you know.",
+        "inputTokens": 370,
+        "outputTokens": 17,
+        "draft": "en-new-apology",
+        "run": 1,
+        "suggestion": " you know."
+      },
+      {
+        "ms": 593.8611659999879,
+        "text": "Please find the updated slides attached.",
+        "inputTokens": 344,
+        "outputTokens": 10,
+        "draft": "en-new-attachment",
+        "run": 1,
+        "suggestion": " attached."
+      },
+      {
+        "ms": 4546.737372000003,
+        "text": "Shall we have the next review on Thursday morning?",
+        "inputTokens": 355,
+        "outputTokens": 14,
+        "draft": "en-new-morning",
+        "run": 1,
+        "suggestion": " morning?"
+      },
+      {
+        "ms": 659.4186239999981,
+        "text": "Jonas och jag kommer gärna på fredag.",
+        "inputTokens": 441,
+        "outputTokens": 15,
+        "draft": "sv-reply-dinner",
+        "run": 1,
+        "suggestion": " gärna på fredag."
+      },
+      {
+        "ms": 888.3599179999874,
+        "text": "Lunch imorgon låter bra, men kan vi säga halv tolv istället?",
+        "inputTokens": 434,
+        "outputTokens": 25,
+        "draft": "sv-reply-time",
+        "run": 1,
+        "suggestion": " bra, men kan vi säga halv tolv istället?"
+      },
+      {
+        "ms": 664.5421300000016,
+        "text": "Vad roligt, jag kommer gärna!",
+        "inputTokens": 467,
+        "outputTokens": 16,
+        "draft": "sv-reply-mid-word",
+        "run": 1,
+        "suggestion": "na!"
+      },
+      {
+        "ms": 721.2931320000062,
+        "text": "Jag behöver tyvärr boka om min tid den 20 oktober.",
+        "inputTokens": 492,
+        "outputTokens": 24,
+        "draft": "sv-reply-dentist",
+        "run": 1,
+        "suggestion": " oktober."
+      },
+      {
+        "ms": 665.7582709999988,
+        "text": "Tack för beskedet om den nya hyran.",
+        "inputTokens": 475,
+        "outputTokens": 16,
+        "draft": "sv-reply-rent",
+        "run": 1,
+        "suggestion": " hyran."
+      },
+      {
+        "ms": 779.8605490000045,
+        "text": "Jag kan tyvärr inte på lördag, eftersom Elsa har fotbollsmatch då.",
+        "inputTokens": 459,
+        "outputTokens": 29,
+        "draft": "sv-reply-football",
+        "run": 1,
+        "suggestion": " fotbollsmatch då."
+      },
+      {
+        "ms": 700.8130269999965,
+        "text": "Passar det på tisdag förmiddag klockan 10?",
+        "inputTokens": 457,
+        "outputTokens": 19,
+        "draft": "sv-reply-meeting",
+        "run": 1,
+        "suggestion": " klockan 10?"
+      },
+      {
+        "ms": 626.0305999999982,
+        "text": "Här är kvittot från apoteket som du bad om.",
+        "inputTokens": 454,
+        "outputTokens": 18,
+        "draft": "sv-forward-receipt",
+        "run": 1,
+        "suggestion": " bad om."
+      },
+      {
+        "ms": 576.1730300000054,
+        "text": "Jag är tyvärr sjuk idag och jobbar inte.",
+        "inputTokens": 374,
+        "outputTokens": 20,
+        "draft": "sv-new-sick",
+        "run": 1,
+        "suggestion": " inte."
+      },
+      {
+        "ms": 696.0388609999936,
+        "text": "Tack för en jättetrevlig kväll igår!",
+        "inputTokens": 363,
+        "outputTokens": 19,
+        "draft": "sv-new-thanks",
+        "run": 1,
+        "suggestion": " kväll igår!"
+      },
+      {
+        "ms": 655.6976670000004,
+        "text": "Jag har läst rapporten och tycker att den är jättebra.",
+        "inputTokens": 373,
+        "outputTokens": 22,
+        "draft": "sv-new-mid-word",
+        "run": 1,
+        "suggestion": "a."
+      },
+      {
+        "ms": 547.7065290000028,
+        "text": "Ha det fint, Ada",
+        "inputTokens": 362,
+        "outputTokens": 9,
+        "draft": "sv-new-sign-off",
+        "run": 1,
+        "suggestion": " fint, Ada"
+      },
+      {
+        "ms": 621.3045849999908,
+        "text": "Vad tycker du om dem?",
+        "inputTokens": 367,
+        "outputTokens": 12,
+        "draft": "sv-new-question",
+        "run": 1,
+        "suggestion": " du om dem?"
+      },
+      {
+        "ms": 636.4226379999891,
+        "text": "Kom ihåg att kontoret är stängt på måndag.",
+        "inputTokens": 377,
+        "outputTokens": 20,
+        "draft": "sv-new-office",
+        "run": 1,
+        "suggestion": " måndag."
+      },
+      {
+        "ms": 729.5259510000033,
+        "text": "Jag blir tyvärr tio minuter sen till mötet imorgon.",
+        "inputTokens": 361,
+        "outputTokens": 23,
+        "draft": "sv-new-late",
+        "run": 1,
+        "suggestion": " sen till mötet imorgon."
+      },
+      {
+        "ms": 673.3723899999895,
+        "text": "Jonas and I would love to come.",
+        "inputTokens": 426,
+        "outputTokens": 11,
+        "draft": "en-reply-dinner",
+        "run": 2,
+        "suggestion": " come."
+      },
+      {
+        "ms": 569.5536609999981,
+        "text": "I'll read it and send you my comments by Friday.",
+        "inputTokens": 430,
+        "outputTokens": 15,
+        "draft": "en-reply-report-start",
+        "run": 2,
+        "suggestion": " comments by Friday."
+      },
+      {
+        "ms": 658.0485160000098,
+        "text": "Could we meet at 10 am?",
+        "inputTokens": 424,
+        "outputTokens": 12,
+        "draft": "en-reply-meeting-time",
+        "run": 2,
+        "suggestion": " am?"
+      },
+      {
+        "ms": 903.4112900000036,
+        "text": "Lunch tomorrow sounds great, but I have a meeting until 1. Can we do 1:30 instead?",
+        "inputTokens": 417,
+        "outputTokens": 28,
+        "draft": "en-reply-mid-word",
+        "run": 2,
+        "suggestion": "at, but I have a meeting until 1."
+      },
+      {
+        "ms": 559.8297889999958,
+        "text": "Thank you for sending a replacement so quickly.",
+        "inputTokens": 439,
+        "outputTokens": 12,
+        "draft": "en-reply-thanks",
+        "run": 2,
+        "suggestion": " quickly."
+      },
+      {
+        "ms": 588.2311869999976,
+        "text": "Should I bring anything?",
+        "inputTokens": 451,
+        "outputTokens": 8,
+        "draft": "en-reply-question",
+        "run": 2,
+        "suggestion": " anything?"
+      },
+      {
+        "ms": 751.370397000006,
+        "text": "I'm afraid I can't join on Saturday, since Elsa has football.",
+        "inputTokens": 434,
+        "outputTokens": 20,
+        "draft": "en-reply-saturday",
+        "run": 2,
+        "suggestion": " football."
+      },
+      {
+        "ms": 586.1640699999989,
+        "text": "Could you please pay it before 28 October?",
+        "inputTokens": 439,
+        "outputTokens": 14,
+        "draft": "en-forward-invoice",
+        "run": 2,
+        "suggestion": " 28 October?"
+      },
+      {
+        "ms": 773.7761549999996,
+        "text": "I've read the report and I think it looks really good.",
+        "inputTokens": 358,
+        "outputTokens": 16,
+        "draft": "en-new-follow-up",
+        "run": 2,
+        "suggestion": " good."
+      },
+      {
+        "ms": 605.1854460000031,
+        "text": "Would you have time for a meeting next week to talk about the new logo?",
+        "inputTokens": 368,
+        "outputTokens": 19,
+        "draft": "en-new-meeting-request",
+        "run": 2,
+        "suggestion": " logo?"
+      },
+      {
+        "ms": 655.1638939999975,
+        "text": "Just a reminder that the office is closed on Monday.",
+        "inputTokens": 359,
+        "outputTokens": 14,
+        "draft": "en-new-mid-word",
+        "run": 2,
+        "suggestion": "day."
+      },
+      {
+        "ms": 867.3655200000067,
+        "text": "Be sure to send me your feedback by Friday so we can move forward.",
+        "inputTokens": 363,
+        "outputTokens": 18,
+        "draft": "en-new-sign-off",
+        "run": 2,
+        "suggestion": " sure to send me your feedback by Friday so we can move forward."
+      },
+      {
+        "ms": 700.7211570000072,
+        "text": "Something came up at work and I completely forgot to let you know.",
+        "inputTokens": 370,
+        "outputTokens": 17,
+        "draft": "en-new-apology",
+        "run": 2,
+        "suggestion": " you know."
+      },
+      {
+        "ms": 520.2888919999968,
+        "text": "Please find the updated slides attached.",
+        "inputTokens": 344,
+        "outputTokens": 10,
+        "draft": "en-new-attachment",
+        "run": 2,
+        "suggestion": " attached."
+      },
+      {
+        "ms": 540.2493039999972,
+        "text": "Shall we have the next review on Thursday morning?",
+        "inputTokens": 355,
+        "outputTokens": 14,
+        "draft": "en-new-morning",
+        "run": 2,
+        "suggestion": " morning?"
+      },
+      {
+        "ms": 600.3857950000092,
+        "text": "Jonas och jag kommer gärna på fredag.",
+        "inputTokens": 441,
+        "outputTokens": 15,
+        "draft": "sv-reply-dinner",
+        "run": 2,
+        "suggestion": " gärna på fredag."
+      },
+      {
+        "ms": 876.1504180000047,
+        "text": "Lunch imorgon låter bra, men kan vi säga halv tolv istället?",
+        "inputTokens": 434,
+        "outputTokens": 25,
+        "draft": "sv-reply-time",
+        "run": 2,
+        "suggestion": " bra, men kan vi säga halv tolv istället?"
+      },
+      {
+        "ms": 649.0488520000072,
+        "text": "Vad roligt, jag kommer gärna!",
+        "inputTokens": 467,
+        "outputTokens": 16,
+        "draft": "sv-reply-mid-word",
+        "run": 2,
+        "suggestion": "na!"
+      },
+      {
+        "ms": 623.9645029999956,
+        "text": "Jag behöver tyvärr boka om min tid den 20 oktober.",
+        "inputTokens": 492,
+        "outputTokens": 24,
+        "draft": "sv-reply-dentist",
+        "run": 2,
+        "suggestion": " oktober."
+      },
+      {
+        "ms": 695.4121000000014,
+        "text": "Tack för beskedet om den nya hyran.",
+        "inputTokens": 475,
+        "outputTokens": 16,
+        "draft": "sv-reply-rent",
+        "run": 2,
+        "suggestion": " hyran."
+      },
+      {
+        "ms": 643.7478149999952,
+        "text": "Jag kan tyvärr inte på lördag, eftersom Elsa har fotbollsmatch då.",
+        "inputTokens": 459,
+        "outputTokens": 29,
+        "draft": "sv-reply-football",
+        "run": 2,
+        "suggestion": " fotbollsmatch då."
+      },
+      {
+        "ms": 654.8391950000077,
+        "text": "Passar det på tisdag förmiddag klockan 10?",
+        "inputTokens": 457,
+        "outputTokens": 19,
+        "draft": "sv-reply-meeting",
+        "run": 2,
+        "suggestion": " klockan 10?"
+      },
+      {
+        "ms": 725.460653999995,
+        "text": "Här är kvittot från apoteket som du bad om.",
+        "inputTokens": 454,
+        "outputTokens": 18,
+        "draft": "sv-forward-receipt",
+        "run": 2,
+        "suggestion": " bad om."
+      },
+      {
+        "ms": 631.7982220000122,
+        "text": "Jag är tyvärr sjuk idag och jobbar inte.",
+        "inputTokens": 374,
+        "outputTokens": 20,
+        "draft": "sv-new-sick",
+        "run": 2,
+        "suggestion": " inte."
+      },
+      {
+        "ms": 733.9707669999916,
+        "text": "Tack för en jättetrevlig kväll igår!",
+        "inputTokens": 363,
+        "outputTokens": 19,
+        "draft": "sv-new-thanks",
+        "run": 2,
+        "suggestion": " kväll igår!"
+      },
+      {
+        "ms": 700.4773949999944,
+        "text": "Jag har läst rapporten och tycker att den är jättebra.",
+        "inputTokens": 373,
+        "outputTokens": 22,
+        "draft": "sv-new-mid-word",
+        "run": 2,
+        "suggestion": "a."
+      },
+      {
+        "ms": 652.3405340000172,
+        "text": "Ha det fint, Ada",
+        "inputTokens": 362,
+        "outputTokens": 9,
+        "draft": "sv-new-sign-off",
+        "run": 2,
+        "suggestion": " fint, Ada"
+      },
+      {
+        "ms": 758.5301129999862,
+        "text": "Vad tycker du om dem?",
+        "inputTokens": 367,
+        "outputTokens": 12,
+        "draft": "sv-new-question",
+        "run": 2,
+        "suggestion": " du om dem?"
+      },
+      {
+        "ms": 755.3988679999893,
+        "text": "Kom ihåg att kontoret är stängt på måndag.",
+        "inputTokens": 377,
+        "outputTokens": 20,
+        "draft": "sv-new-office",
+        "run": 2,
+        "suggestion": " måndag."
+      },
+      {
+        "ms": 830.2312439999951,
+        "text": "Jag blir tyvärr tio minuter sen till mötet imorgon.",
+        "inputTokens": 361,
+        "outputTokens": 23,
+        "draft": "sv-new-late",
+        "run": 2,
+        "suggestion": " sen till mötet imorgon."
+      },
+      {
+        "ms": 685.3103779999947,
+        "text": "Jonas and I would love to come.",
+        "inputTokens": 426,
+        "outputTokens": 11,
+        "draft": "en-reply-dinner",
+        "run": 3,
+        "suggestion": " come."
+      },
+      {
+        "ms": 719.477493000013,
+        "text": "I'll read it and send you my comments by Friday.",
+        "inputTokens": 430,
+        "outputTokens": 15,
+        "draft": "en-reply-report-start",
+        "run": 3,
+        "suggestion": " comments by Friday."
+      },
+      {
+        "ms": 653.1404559999937,
+        "text": "Could we meet at 10 am?",
+        "inputTokens": 424,
+        "outputTokens": 12,
+        "draft": "en-reply-meeting-time",
+        "run": 3,
+        "suggestion": " am?"
+      },
+      {
+        "ms": 1038.9190370000142,
+        "text": "Lunch tomorrow sounds great, but I have a meeting until 1. Can we do 1:30 instead?",
+        "inputTokens": 417,
+        "outputTokens": 28,
+        "draft": "en-reply-mid-word",
+        "run": 3,
+        "suggestion": "at, but I have a meeting until 1."
+      },
+      {
+        "ms": 599.2388860000065,
+        "text": "Thank you for sending a replacement so quickly.",
+        "inputTokens": 439,
+        "outputTokens": 12,
+        "draft": "en-reply-thanks",
+        "run": 3,
+        "suggestion": " quickly."
+      },
+      {
+        "ms": 507.8078459999815,
+        "text": "Should I bring anything?",
+        "inputTokens": 451,
+        "outputTokens": 8,
+        "draft": "en-reply-question",
+        "run": 3,
+        "suggestion": " anything?"
+      },
+      {
+        "ms": 569.6282269999792,
+        "text": "I'm afraid I can't join on Saturday, since Elsa has football.",
+        "inputTokens": 434,
+        "outputTokens": 20,
+        "draft": "en-reply-saturday",
+        "run": 3,
+        "suggestion": " football."
+      },
+      {
+        "ms": 596.590922000003,
+        "text": "Could you please pay it before 28 October?",
+        "inputTokens": 439,
+        "outputTokens": 14,
+        "draft": "en-forward-invoice",
+        "run": 3,
+        "suggestion": " 28 October?"
+      },
+      {
+        "ms": 546.939664000005,
+        "text": "I've read the report and I think it looks really good.",
+        "inputTokens": 358,
+        "outputTokens": 16,
+        "draft": "en-new-follow-up",
+        "run": 3,
+        "suggestion": " good."
+      },
+      {
+        "ms": 608.6931449999975,
+        "text": "Would you have time for a meeting next week to talk about the new logo?",
+        "inputTokens": 368,
+        "outputTokens": 19,
+        "draft": "en-new-meeting-request",
+        "run": 3,
+        "suggestion": " logo?"
+      },
+      {
+        "ms": 532.1367059999902,
+        "text": "Just a reminder that the office is closed on Monday.",
+        "inputTokens": 359,
+        "outputTokens": 14,
+        "draft": "en-new-mid-word",
+        "run": 3,
+        "suggestion": "day."
+      },
+      {
+        "ms": 713.8701549999823,
+        "text": "Be sure to send me your feedback by Friday so we can move forward.",
+        "inputTokens": 363,
+        "outputTokens": 18,
+        "draft": "en-new-sign-off",
+        "run": 3,
+        "suggestion": " sure to send me your feedback by Friday so we can move forward."
+      },
+      {
+        "ms": 640.904548999999,
+        "text": "Something came up at work and I completely forgot to let you know.",
+        "inputTokens": 370,
+        "outputTokens": 17,
+        "draft": "en-new-apology",
+        "run": 3,
+        "suggestion": " you know."
+      },
+      {
+        "ms": 514.7860900000087,
+        "text": "Please find the updated slides attached.",
+        "inputTokens": 344,
+        "outputTokens": 10,
+        "draft": "en-new-attachment",
+        "run": 3,
+        "suggestion": " attached."
+      },
+      {
+        "ms": 617.7665589999815,
+        "text": "Shall we have the next review on Thursday morning?",
+        "inputTokens": 355,
+        "outputTokens": 14,
+        "draft": "en-new-morning",
+        "run": 3,
+        "suggestion": " morning?"
+      },
+      {
+        "ms": 617.0719899999967,
+        "text": "Jonas och jag kommer gärna på fredag.",
+        "inputTokens": 441,
+        "outputTokens": 15,
+        "draft": "sv-reply-dinner",
+        "run": 3,
+        "suggestion": " gärna på fredag."
+      },
+      {
+        "ms": 970.2436729999899,
+        "text": "Lunch imorgon låter bra, men kan vi säga halv tolv istället?",
+        "inputTokens": 434,
+        "outputTokens": 25,
+        "draft": "sv-reply-time",
+        "run": 3,
+        "suggestion": " bra, men kan vi säga halv tolv istället?"
+      },
+      {
+        "ms": 734.7470739999844,
+        "text": "Vad roligt, jag kommer gärna!",
+        "inputTokens": 467,
+        "outputTokens": 16,
+        "draft": "sv-reply-mid-word",
+        "run": 3,
+        "suggestion": "na!"
+      },
+      {
+        "ms": 739.6646990000154,
+        "text": "Jag behöver tyvärr boka om min tid den 20 oktober.",
+        "inputTokens": 492,
+        "outputTokens": 24,
+        "draft": "sv-reply-dentist",
+        "run": 3,
+        "suggestion": " oktober."
+      },
+      {
+        "ms": 944.2537339999981,
+        "text": "Tack för beskedet om den nya hyran.",
+        "inputTokens": 475,
+        "outputTokens": 16,
+        "draft": "sv-reply-rent",
+        "run": 3,
+        "suggestion": " hyran."
+      },
+      {
+        "ms": 764.5202109999955,
+        "text": "Jag kan tyvärr inte på lördag, eftersom Elsa har fotbollsmatch då.",
+        "inputTokens": 459,
+        "outputTokens": 29,
+        "draft": "sv-reply-football",
+        "run": 3,
+        "suggestion": " fotbollsmatch då."
+      },
+      {
+        "ms": 685.5863900000113,
+        "text": "Passar det på tisdag förmiddag klockan 10?",
+        "inputTokens": 457,
+        "outputTokens": 19,
+        "draft": "sv-reply-meeting",
+        "run": 3,
+        "suggestion": " klockan 10?"
+      },
+      {
+        "ms": 647.2738440000103,
+        "text": "Här är kvittot från apoteket som du bad om.",
+        "inputTokens": 454,
+        "outputTokens": 18,
+        "draft": "sv-forward-receipt",
+        "run": 3,
+        "suggestion": " bad om."
+      },
+      {
+        "ms": 642.4795640000084,
+        "text": "Jag är tyvärr sjuk idag och jobbar inte.",
+        "inputTokens": 374,
+        "outputTokens": 20,
+        "draft": "sv-new-sick",
+        "run": 3,
+        "suggestion": " inte."
+      },
+      {
+        "ms": 614.7914349999919,
+        "text": "Tack för en jättetrevlig kväll igår!",
+        "inputTokens": 363,
+        "outputTokens": 19,
+        "draft": "sv-new-thanks",
+        "run": 3,
+        "suggestion": " kväll igår!"
+      },
+      {
+        "ms": 665.1995299999835,
+        "text": "Jag har läst rapporten och tycker att den är jättebra.",
+        "inputTokens": 373,
+        "outputTokens": 22,
+        "draft": "sv-new-mid-word",
+        "run": 3,
+        "suggestion": "a."
+      },
+      {
+        "ms": 536.7663569999859,
+        "text": "Ha det fint, Ada",
+        "inputTokens": 362,
+        "outputTokens": 9,
+        "draft": "sv-new-sign-off",
+        "run": 3,
+        "suggestion": " fint, Ada"
+      },
+      {
+        "ms": 613.1756370000076,
+        "text": "Vad tycker du om dem?",
+        "inputTokens": 367,
+        "outputTokens": 12,
+        "draft": "sv-new-question",
+        "run": 3,
+        "suggestion": " du om dem?"
+      },
+      {
+        "ms": 568.0477400000091,
+        "text": "Kom ihåg att kontoret är stängt på måndag.",
+        "inputTokens": 377,
+        "outputTokens": 20,
+        "draft": "sv-new-office",
+        "run": 3,
+        "suggestion": " måndag."
+      },
+      {
+        "ms": 695.173111000011,
+        "text": "Jag blir tyvärr tio minuter sen till mötet imorgon.",
+        "inputTokens": 361,
+        "outputTokens": 23,
+        "draft": "sv-new-late",
+        "run": 3,
+        "suggestion": " sen till mötet imorgon."
+      }
+    ]
+  }
+}

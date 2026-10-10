@@ -46,6 +46,7 @@ import { alertMailFilter, authorizationServerPath, browserProfileTagged, convers
 import { rulesTake } from "@duva/api/receiving";
 import { callOf, defaultMailboxAgentModel, inferenceProfileId } from "@duva/api/agent-models";
 import { webSearchRegion } from "@duva/api/web-search";
+import { bedrockSuggester } from "@duva/api/suggestions";
 import { earlierModelSettingsLeft, organizationSettings } from "@duva/api/organization";
 import { mailboxAgentsLeft } from "@duva/api/mailbox-agents";
 import { tasksWorkingSince } from "@duva/api/tasks";
@@ -387,6 +388,16 @@ await check("each model admins allow answers where Duva calls it for this deploy
   }
   return silent.length === 0 ? undefined : `${silent.join(", ")} didn't answer yes`;
 });
+await check("the organization's suggestion model answers where Duva calls it for this deployment's region (#156)", async () => {
+  const table = await stackTable();
+  if (table === undefined) return "the stack has no table";
+  const { settings } = await organizationSettings(table);
+  const answer = await bedrockSuggester({ region: region! })({ model: settings.suggestionModel, system: "Answer with the word yes.", prompt: "Answer with the word yes.", maxTokens: 200, seconds: 30 });
+  return /yes/i.test(answer.text) ? undefined : `${settings.suggestionModel} answered ${JSON.stringify(answer.text)}`;
+});
+await check("asking for a suggestion without credentials answers 401", async () =>
+  expectStatus(await fetch(`${apiUrl}/mailboxes/none/suggestions`, { method: "POST", headers: { "content-type": "application/json" }, body: '{"text":"Hi"}' }), 401),
+);
 await check("listing the measured models without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/organization/mailbox-agent-models`), 401));
 await check("reading the mailbox agent without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/mailbox-agent`), 401));
 await check("clearing a conversation without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/mailbox-agent/conversation`, { method: "DELETE" }), 401));

@@ -1,11 +1,11 @@
 // Fails if Duva's own text uses an em dash. Its copy rules never use one (PRODUCT.md). What
-// models answered on Coo's evaluation, recorded as they wrote it, isn't Duva's.
+// models answered on Coo's evaluation and in measurements, recorded as they wrote it, isn't Duva's.
 import { spawnSync } from "node:child_process";
 
 const emDash = "\u2014";
 const grep = spawnSync(
   "git",
-  ["grep", "--untracked", "-n", "-I", "-F", emDash, "--", ".", ":!.agents", ":!*package-lock.json", ":!packages/api/test/coo-answers.json"],
+  ["grep", "--untracked", "-n", "-I", "-F", emDash, "--", ".", ":!.agents", ":!*package-lock.json", ":!packages/api/test/coo-answers.json", ":!docs/research/*-measurements.json"],
   { encoding: "utf8" },
 );
 if (grep.status === 0) {

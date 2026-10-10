@@ -1,0 +1,298 @@
+{
+  "writer": "Ada Lind <ada@example.com>",
+  "style": "Writing style: In Swedish she opens with \"Hej <name>!\" and signs off \"Ha det fint, Ada\". In English she opens with \"Hi <name>,\" and signs off \"Best, Ada\". Short, warm sentences, getting to the point at once, and she thanks people often.",
+  "memories": [
+    "Ada's partner is Jonas.",
+    "Ada works as a designer at Studio Norr in Umeå.",
+    "Ada's daughter Elsa plays football on Saturdays.",
+    "Ada prefers meetings before lunch."
+  ],
+  "drafts": [
+    {
+      "id": "en-reply-dinner",
+      "language": "en",
+      "kind": "reply",
+      "to": ["erik@example.org"],
+      "subject": "Re: Dinner on Friday",
+      "message": { "from": "Erik Berg <erik@example.org>", "date": "2026-10-08", "subject": "Dinner on Friday", "text": "Hi Ada,\n\nWould you and Jonas like to come over for dinner on Friday at 7? Maria is making her lasagne.\n\nErik" },
+      "text": "Hi Erik,\n\nThanks for the invitation! Jonas and I would love to",
+      "wrote": " come on Friday."
+    },
+    {
+      "id": "en-reply-report-start",
+      "language": "en",
+      "kind": "reply",
+      "to": ["grace@example.org"],
+      "subject": "Re: Quarterly report",
+      "message": { "from": "Grace Hopper <grace@example.org>", "date": "2026-10-07", "subject": "Quarterly report", "text": "Hi Ada,\n\nI've attached the quarterly report. Could you read it and send me your comments by Friday?\n\nThanks,\nGrace" },
+      "text": "Hi Grace,\n\nThanks for sending the report. I'll read it and send you my",
+      "wrote": " comments by Friday."
+    },
+    {
+      "id": "en-reply-meeting-time",
+      "language": "en",
+      "kind": "reply",
+      "to": ["tom@example.org"],
+      "subject": "Re: Meeting next week",
+      "message": { "from": "Tom Reed <tom@example.org>", "date": "2026-10-08", "subject": "Meeting next week", "text": "Hi Ada,\n\nCan we meet next week to go over the new brand guidelines? Tuesday or Wednesday works for me, any time.\n\nTom" },
+      "text": "Hi Tom,\n\nTuesday works for me. Could we meet at 10",
+      "wrote": " in the morning?"
+    },
+    {
+      "id": "en-reply-mid-word",
+      "language": "en",
+      "kind": "reply",
+      "to": ["lena@example.org"],
+      "subject": "Re: Lunch tomorrow?",
+      "message": { "from": "Lena Holm <lena@example.org>", "date": "2026-10-09", "subject": "Lunch tomorrow?", "text": "Hi Ada! Lunch tomorrow at the Thai place at 12? Lena" },
+      "text": "Hi Lena,\n\nLunch tomorrow sounds gre",
+      "wrote": "at!"
+    },
+    {
+      "id": "en-reply-thanks",
+      "language": "en",
+      "kind": "reply",
+      "to": ["support@shop.example"],
+      "subject": "Re: Your order 4417 has shipped",
+      "message": { "from": "Shop Support <support@shop.example>", "date": "2026-10-06", "subject": "Your order 4417 has shipped", "text": "Hello,\n\nWe're sorry your first package went missing. We've sent a replacement for order 4417, which should arrive within three working days.\n\nKind regards,\nShop Support" },
+      "text": "Hello,\n\nThank you for sending a replacement so",
+      "wrote": " quickly."
+    },
+    {
+      "id": "en-reply-question",
+      "language": "en",
+      "kind": "reply",
+      "to": ["karin@example.org"],
+      "subject": "Re: Wine tasting on 14 November",
+      "message": { "from": "Karin Ek <karin@example.org>", "date": "2026-10-05", "subject": "Wine tasting on 14 November", "text": "Hi Ada,\n\nWe're holding a wine tasting at our place on 14 November at 18:00. Let me know if you can make it!\n\nKarin" },
+      "text": "Hi Karin,\n\nThat sounds lovely, and I'd love to come. Should I bring",
+      "wrote": " anything?"
+    },
+    {
+      "id": "en-reply-saturday",
+      "language": "en",
+      "kind": "reply",
+      "to": ["tom@example.org"],
+      "subject": "Re: Workshop on Saturday",
+      "message": { "from": "Tom Reed <tom@example.org>", "date": "2026-10-08", "subject": "Workshop on Saturday", "text": "Hi Ada,\n\nWe're running the client workshop this Saturday from 9 to 12. Can you join?\n\nTom" },
+      "text": "Hi Tom,\n\nI'm afraid I can't join on Saturday, since Elsa has",
+      "wrote": " football then."
+    },
+    {
+      "id": "en-forward-invoice",
+      "language": "en",
+      "kind": "forward",
+      "to": ["accounts@studionorr.example"],
+      "subject": "Fwd: Invoice 2026-118",
+      "message": { "from": "Print House <billing@printhouse.example>", "date": "2026-10-04", "subject": "Invoice 2026-118", "text": "Please find attached invoice 2026-118 for the posters printed for Studio Norr, due 28 October." },
+      "text": "Hi,\n\nHere is the invoice for the posters we printed. Could you please pay it before",
+      "wrote": " 28 October?"
+    },
+    {
+      "id": "en-new-follow-up",
+      "language": "en",
+      "kind": "new",
+      "to": ["grace@example.org"],
+      "subject": "Comments on the report",
+      "text": "Hi Grace,\n\nI've read the report and I think it looks really",
+      "wrote": " good."
+    },
+    {
+      "id": "en-new-meeting-request",
+      "language": "en",
+      "kind": "new",
+      "to": ["oskar@client.example"],
+      "subject": "Meeting about the new logo",
+      "text": "Hi Oskar,\n\nWould you have time for a meeting next week to talk about the new",
+      "wrote": " logo?"
+    },
+    {
+      "id": "en-new-mid-word",
+      "language": "en",
+      "kind": "new",
+      "to": ["team@studionorr.example"],
+      "subject": "Office closed on Monday",
+      "text": "Hi everyone,\n\nJust a reminder that the office is closed on Mon",
+      "wrote": "day."
+    },
+    {
+      "id": "en-new-sign-off",
+      "language": "en",
+      "kind": "new",
+      "to": ["oskar@client.example"],
+      "subject": "Sketches for the new logo",
+      "text": "Hi Oskar,\n\nHere are the first sketches for the new logo. Let me know what you think.\n\nBe",
+      "wrote": "st, Ada"
+    },
+    {
+      "id": "en-new-apology",
+      "language": "en",
+      "kind": "new",
+      "to": ["lena@example.org"],
+      "subject": "Sorry about yesterday",
+      "text": "Hi Lena,\n\nI'm so sorry I missed our lunch yesterday. Something came up at work and I completely forgot to let",
+      "wrote": " you know."
+    },
+    {
+      "id": "en-new-attachment",
+      "language": "en",
+      "kind": "new",
+      "to": ["grace@example.org"],
+      "subject": "Updated slides",
+      "text": "Hi Grace,\n\nPlease find the updated slides",
+      "wrote": " attached."
+    },
+    {
+      "id": "en-new-morning",
+      "language": "en",
+      "kind": "new",
+      "to": ["oskar@client.example"],
+      "subject": "Next review",
+      "text": "Hi Oskar,\n\nShall we have the next review on Thursday",
+      "wrote": " morning?"
+    },
+    {
+      "id": "sv-reply-dinner",
+      "language": "sv",
+      "kind": "reply",
+      "to": ["erik@example.org"],
+      "subject": "Sv: Middag på fredag",
+      "message": { "from": "Erik Berg <erik@example.org>", "date": "2026-10-08", "subject": "Middag på fredag", "text": "Hej Ada!\n\nVill du och Jonas komma på middag på fredag klockan sju? Maria gör sin lasagne.\n\nErik" },
+      "text": "Hej Erik!\n\nTack för inbjudan! Jonas och jag kommer",
+      "wrote": " gärna."
+    },
+    {
+      "id": "sv-reply-time",
+      "language": "sv",
+      "kind": "reply",
+      "to": ["lena@example.org"],
+      "subject": "Sv: Lunch imorgon?",
+      "message": { "from": "Lena Holm <lena@example.org>", "date": "2026-10-09", "subject": "Lunch imorgon?", "text": "Hej Ada! Lunch imorgon på thaistället klockan tolv? /Lena" },
+      "text": "Hej Lena!\n\nLunch imorgon låter",
+      "wrote": " jättebra."
+    },
+    {
+      "id": "sv-reply-mid-word",
+      "language": "sv",
+      "kind": "reply",
+      "to": ["karin@example.org"],
+      "subject": "Sv: Vinprovning den 14 november",
+      "message": { "from": "Karin Ek <karin@example.org>", "date": "2026-10-05", "subject": "Vinprovning den 14 november", "text": "Hej Ada!\n\nVi har vinprovning hemma hos oss den 14 november klockan 18. Säg till om du kan komma!\n\nKarin" },
+      "text": "Hej Karin!\n\nVad roligt, jag kommer gär",
+      "wrote": "na!"
+    },
+    {
+      "id": "sv-reply-dentist",
+      "language": "sv",
+      "kind": "reply",
+      "to": ["bokning@tandvard.example"],
+      "subject": "Sv: Påminnelse om din tid den 20 oktober",
+      "message": { "from": "Tandvården <bokning@tandvard.example>", "date": "2026-10-03", "subject": "Påminnelse om din tid den 20 oktober", "text": "Hej!\n\nDu har en tid hos tandläkaren den 20 oktober klockan 08.30. Svara på mejlet om du behöver boka om.\n\nVälkommen!" },
+      "text": "Hej!\n\nJag behöver tyvärr boka om min tid den 20",
+      "wrote": " oktober."
+    },
+    {
+      "id": "sv-reply-rent",
+      "language": "sv",
+      "kind": "reply",
+      "to": ["forvaltning@bostad.example"],
+      "subject": "Sv: Ny hyra från januari",
+      "message": { "from": "Bostadsbolaget <forvaltning@bostad.example>", "date": "2026-10-02", "subject": "Ny hyra från januari", "text": "Hej,\n\nFrån den 1 januari höjs hyran för din lägenhet med 4 procent, till 9 360 kronor i månaden.\n\nMed vänlig hälsning,\nBostadsbolaget" },
+      "text": "Hej,\n\nTack för beskedet om den nya",
+      "wrote": " hyran."
+    },
+    {
+      "id": "sv-reply-football",
+      "language": "sv",
+      "kind": "reply",
+      "to": ["tom@example.org"],
+      "subject": "Sv: Workshop på lördag",
+      "message": { "from": "Tom Reed <tom@example.org>", "date": "2026-10-08", "subject": "Workshop på lördag", "text": "Hej Ada!\n\nVi kör kundworkshopen på lördag klockan 9 till 12. Kan du vara med?\n\nTom" },
+      "text": "Hej Tom!\n\nJag kan tyvärr inte på lördag, eftersom Elsa har",
+      "wrote": " fotboll då."
+    },
+    {
+      "id": "sv-reply-meeting",
+      "language": "sv",
+      "kind": "reply",
+      "to": ["oskar@kund.example"],
+      "subject": "Sv: Möte om logotypen",
+      "message": { "from": "Oskar Lund <oskar@kund.example>", "date": "2026-10-08", "subject": "Möte om logotypen", "text": "Hej Ada,\n\nKan vi ses nästa vecka och prata om den nya logotypen? När passar det dig?\n\nOskar" },
+      "text": "Hej Oskar!\n\nGärna! Passar det på tisdag förmiddag",
+      "wrote": "?"
+    },
+    {
+      "id": "sv-forward-receipt",
+      "language": "sv",
+      "kind": "forward",
+      "to": ["jonas@example.org"],
+      "subject": "Vb: Ditt kvitto från Apoteket",
+      "message": { "from": "Apoteket <kvitto@apoteket.example>", "date": "2026-10-01", "subject": "Ditt kvitto från Apoteket", "text": "Tack för ditt köp! Totalt: 289 kr. Betalt med kort den 1 oktober." },
+      "text": "Hej Jonas!\n\nHär är kvittot från apoteket som du",
+      "wrote": " bad om."
+    },
+    {
+      "id": "sv-new-sick",
+      "language": "sv",
+      "kind": "new",
+      "to": ["team@studionorr.example"],
+      "subject": "Sjuk idag",
+      "text": "Hej allihop!\n\nJag är tyvärr sjuk idag och jobbar",
+      "wrote": " hemifrån."
+    },
+    {
+      "id": "sv-new-thanks",
+      "language": "sv",
+      "kind": "new",
+      "to": ["karin@example.org"],
+      "subject": "Tack för igår",
+      "text": "Hej Karin!\n\nTack för en jättetrevlig",
+      "wrote": " kväll igår!"
+    },
+    {
+      "id": "sv-new-mid-word",
+      "language": "sv",
+      "kind": "new",
+      "to": ["grace@example.org"],
+      "subject": "Rapporten",
+      "text": "Hej Grace!\n\nJag har läst rapporten och tycker att den är jättebr",
+      "wrote": "a."
+    },
+    {
+      "id": "sv-new-sign-off",
+      "language": "sv",
+      "kind": "new",
+      "to": ["lena@example.org"],
+      "subject": "Fika på torsdag?",
+      "text": "Hej Lena!\n\nSka vi ta en fika på torsdag?\n\nHa det",
+      "wrote": " fint, Ada"
+    },
+    {
+      "id": "sv-new-question",
+      "language": "sv",
+      "kind": "new",
+      "to": ["oskar@kund.example"],
+      "subject": "Skisser",
+      "text": "Hej Oskar!\n\nHär kommer de första skisserna på den nya logotypen. Vad tycker",
+      "wrote": " du?"
+    },
+    {
+      "id": "sv-new-office",
+      "language": "sv",
+      "kind": "new",
+      "to": ["team@studionorr.example"],
+      "subject": "Kontoret stängt på måndag",
+      "text": "Hej allihop!\n\nKom ihåg att kontoret är stängt på",
+      "wrote": " måndag."
+    },
+    {
+      "id": "sv-new-late",
+      "language": "sv",
+      "kind": "new",
+      "to": ["tom@example.org"],
+      "subject": "Lite sen",
+      "text": "Hej Tom!\n\nJag blir tyvärr tio minuter",
+      "wrote": " sen."
+    }
+  ]
+}

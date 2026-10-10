@@ -4,7 +4,7 @@ import { jsonBody, type OperationHandler, refusal } from "./api.ts";
 import { threadsPastRetention } from "./erasure.ts";
 import { indexMailboxes } from "./indexing.ts";
 import { type Language, languages } from "./languages.ts";
-import { callOf, inferenceProfileId, isMeasured, type MailboxAgentModel, mailboxAgentModels, measuredModelIds } from "./agent-models.ts";
+import { callOf, inferenceProfileId, isMeasured, type MailboxAgentModel, mailboxAgentModels, measuredModelIds, type SuggestionModel, suggestionModels } from "./agent-models.ts";
 import { measuredModels } from "./measured-models.gen.ts";
 import { changeSettings, defaultSettings, isAdmin, lowerLimitsToCaps, organizationSettings, type OrganizationSettings } from "./organization.ts";
 
@@ -58,6 +58,14 @@ const values: { [Name in keyof OrganizationSettings]: { takes: (value: unknown) 
   mailboxAgentSpendCap: {
     takes: (value): value is number => Number.isInteger(value) && (value as number) >= 0 && (value as number) <= 10_000,
     refusal: "Give mailboxAgentSpendCap as a whole number of US dollars from 0 to 10000.",
+  },
+  suggestions: {
+    takes: (value): value is boolean => typeof value === "boolean",
+    refusal: "Give suggestions as true to have humans get suggestions while they write, or false to switch them off.",
+  },
+  suggestionModel: {
+    takes: (value): value is SuggestionModel => typeof value === "string" && value in suggestionModels,
+    refusal: `Give suggestionModel as one of the models measured for suggestions, ${Object.keys(suggestionModels).join(", ")}.`,
   },
   linkedFilesCapGb: {
     takes: (value): value is number => Number.isInteger(value) && (value as number) >= 0 && (value as number) <= 10_000,

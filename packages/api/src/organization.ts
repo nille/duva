@@ -8,7 +8,7 @@ import { agentKeyHash, newAgentKey } from "./agent-keys.ts";
 import type { Humans } from "./user-pool.ts";
 import type { Table } from "./deployment.ts";
 import { changesAfter, entryKey, type Feed, recordChanges, recordInFeeds } from "./feed.ts";
-import { defaultHarderModel, defaultMailboxAgentModel, isMeasured, type MailboxAgentModel, measuredModelIds } from "./agent-models.ts";
+import { defaultHarderModel, defaultMailboxAgentModel, defaultSuggestionModel, isMeasured, type MailboxAgentModel, measuredModelIds } from "./agent-models.ts";
 import { defaultSearchLanguages } from "./languages.ts";
 import { documents, isNew, pk, sk, type TransactItem } from "./table.ts";
 
@@ -1133,6 +1133,8 @@ export const defaultSettings: OrganizationSettings = {
   mailboxAgentBrowsing: true,
   mailboxAgentSpendCap: 20,
   linkedFilesCapGb: 20,
+  suggestions: true,
+  suggestionModel: defaultSuggestionModel,
 };
 
 /** Settings as read, with the version a write that relies on them checks. */

@@ -29,6 +29,7 @@ const choices: { [Name in Exclude<keyof Preferences, (typeof notChosen)[number]>
   cooLearnsFromMail: ["on", "off"],
   cooWebSearch: ["on", "off"],
   cooBrowsing: ["on", "off"],
+  suggestions: ["on", "off"],
 };
 const chosen = Object.keys(choices) as (keyof typeof choices)[];
 const names: string[] = [...chosen, ...notChosen];
@@ -71,6 +72,12 @@ export async function cooSearchesTheWeb(table: Table, human: string): Promise<bo
 export async function cooBrowses(table: Table, human: string): Promise<boolean> {
   const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: preferencesKey(human), ConsistentRead: true }));
   return Item?.cooBrowsing !== "off";
+}
+
+/** Whether the human gets suggestions while they write, as they do unless they switched them off (#156). */
+export async function suggestionsOn(table: Table, human: string): Promise<boolean> {
+  const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: preferencesKey(human), ConsistentRead: true }));
+  return Item?.suggestions !== "off";
 }
 
 /** The address as one of the mailboxes has it, in any case, or undefined if none has it. */

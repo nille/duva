@@ -30,6 +30,7 @@ import { markRoots } from "./mark-roots.ts";
 import { s3HostedLogos } from "./own-logos.ts";
 import { lambdaTaskRunner } from "./tasks.ts";
 import { titanEmbedder } from "./titan.ts";
+import { bedrockSuggester } from "./suggestions.ts";
 import { s3UploadsBucket } from "./uploads-bucket.ts";
 
 const mailBucket = required(environmentVariables.mailBucket);
@@ -77,5 +78,6 @@ export const handler = createApi({
   ),
   tasks: lambdaTaskRunner(lambda, required(environmentVariables.taskRunnerFunction)),
   embedder: titanEmbedder(),
+  suggester: bedrockSuggester({ region: required("AWS_REGION") }),
   browserProfiles: agentCoreBrowserProfiles(process.env[environmentVariables.browser] ?? ""),
 });

@@ -3733,6 +3733,57 @@ a.thread:focus-visible {
     inset 0 1px 0 var(--seam);
 }
 
+/*
+ * A suggestion (#156): a copy of the text over the field, set exactly as the field sets it and
+ * clear, so the rest of the sentence in Third Ink starts at the cursor and wraps with its lines.
+ */
+.compose-writing {
+  position: relative;
+}
+
+.compose .compose-ghost {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  padding: var(--space-4) var(--space-4);
+  color: transparent;
+  font: 400 var(--text-proof) / 1.75 var(--mono);
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  pointer-events: none;
+}
+
+.compose-suggestion {
+  color: var(--ink-3);
+  animation: suggestion-in 140ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.compose-ghost kbd {
+  margin-left: 0.6ch;
+  vertical-align: 0.08em;
+  animation: suggestion-in 140ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes suggestion-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .compose-suggestion,
+  .compose-ghost kbd {
+    animation: none;
+  }
+}
+
+/* A phone has no Tab to show. */
+@media (max-width: 48rem) {
+  .compose-ghost kbd {
+    display: none;
+  }
+}
+
 input[readonly],
 textarea[readonly] {
   border-color: var(--seam);

@@ -241,6 +241,8 @@ export const strings = {
     draft: "Draft",
     backToThread: "Thread",
     backToDrafts: "Drafts",
+    suggestionKey: "Tab",
+    suggested: (rest: string) => `Suggested: “${rest}”. Tab takes it.`,
     from: "From",
     asGroup: "As a group",
     asGroupHint: "Sent as the group. Its other members in the organization get a copy, so they see it was answered.",
@@ -910,6 +912,18 @@ export const strings = {
         label: "Coo may browse and act on pages",
         hint: "In Ask Coo and in labels' tasks, Coo opens links from the mail or a web search and acts on the page on its own. It logs in as its human with a code the site mails them, and submits forms for them without asking. It never pays, types a password, or downloads or uploads a file, and Duva keeps only a sentence of what it did. Browser time and the tokens it takes count toward the spend cap. Each human can also turn it off for their own Coo.",
       },
+      suggestions: {
+        legend: "Suggestions",
+        label: "Humans get suggestions while they write",
+        hint: "The rest of a sentence in grey after the cursor, which Tab takes. Each is one small model call, which counts toward the spend cap. Each human can also switch them off for themselves.",
+        model: "Suggestion model",
+        models: {
+          "qwen.qwen3-32b-v1:0": "Qwen3 32B, the fastest, in this region. The default",
+          "openai.gpt-oss-20b-1:0": "gpt-oss-20b, in this region",
+          "amazon.nova-micro-v1:0": "Amazon Nova Micro, the cheapest, in this continent's regions",
+          "anthropic.claude-haiku-4-5-20251001-v1:0": "Claude Haiku 4.5, the best and twice as slow, in this continent's regions",
+        },
+      },
       cap: {
         legend: "Spend cap",
         label: "US dollars a month",
@@ -1002,6 +1016,15 @@ export const strings = {
     newMailFrom: {
       legend: "New mail goes from",
       lead: "New mail you write in All mailboxes starts from this address. You can choose another as you write.",
+    },
+    suggestions: {
+      legend: "Suggestions",
+      lead: "While you write mail, Duva offers the rest of a sentence in grey once you pause, from the mail you answer, what Coo remembers and how you write. Tab takes it, typing on passes it by, and Escape hides it.",
+      on: "On",
+      onHint: "Coo keeps a note of how you write from every tenth message you send, which you see with what it remembers. This is the default.",
+      off: "Off",
+      offHint: "Duva offers nothing while you write.",
+      organizationOff: "An admin switched suggestions off for the organization, so Duva offers none either way.",
     },
     cooWebSearch: {
       legend: "Coo searches the web",
