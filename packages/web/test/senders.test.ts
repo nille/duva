@@ -45,6 +45,8 @@ async function withNewsletters() {
 const heading = (page: Page) => page.getByRole("heading", { level: 1 }).textContent();
 const side = (page: Page) => page.getByRole("navigation", { name: "Mail" });
 const sheet = (page: Page) => page.getByRole("main");
+/** How unsubscribing from them went last, as their sheet says it. */
+const unsubscribing = (page: Page) => sheet(page).locator(".sender-unsubscribe").innerText();
 
 /** Opens the thread with the subject from the Inbox, then its sender's sheet from its letter. */
 async function openSheet(page: Page, subject: string) {
@@ -65,7 +67,7 @@ test("the sender's name in a letter opens their sheet in the reading pane, sayin
   expect(await sheet(page).getByRole("radio", { name: "Just news@example.net" }).isChecked()).toBe(true);
   // The Inbox stays beside the sheet, as it does beside a thread.
   expect(await page.getByRole("region", { name: "Inbox" }).count()).toBe(1);
-  expect(await page.title()).toBe("Where mail from Example News goes · Duva");
+  await expect.poll(() => page.title(), wait).toBe("Where mail from Example News goes · Duva");
 });
 
 test("choosing the Feed moves their threads there, and the Feed reads as a stream, newest first, each message open", budget, async () => {
@@ -144,7 +146,8 @@ test("choosing nowhere asks once more, saying it can't be undone, then erases th
 });
 
 test("when their newest mail is too old to bounce, the sheet and Coo's activity say Coo bounces their next message, which it does as it arrives", budget, async () => {
-  const app = await startWebApp({ domain: "example.com", admin: "ada@example.org", humans: ["grace@example.org"] });
+  // The mailbox agent goes on only once the sheet shows what one-click did, so what it does comes last.
+  const app = await startWebApp({ domain: "example.com", admin: "ada@example.org", humans: ["grace@example.org"], tasksHeld: true });
   const { duva, page } = app;
   const grace = duva.signIn("grace@example.org");
   const { data: me } = await grace.GET("/whoami");
@@ -158,10 +161,15 @@ test("when their newest mail is too old to bounce, the sheet and Coo's activity 
   await sheet(page).getByRole("button", { name: "Save" }).click();
   await sheet(page).getByRole("button", { name: "Erase and send nowhere" }).click();
 
+  const noOneClick = "Their mail offers no one-click unsubscribe, so Duva sent none.";
+  await expect.poll(() => unsubscribing(page), wait).toBe(noOneClick);
+  await duva.releaseTasks();
   const tooLate = "Their newest mail is more than 24 hours old, so Coo bounces their next message as it arrives.";
-  await expect.poll(() => sheet(page).innerText(), wait).toContain(`Coo didn't bounce their mail. ${tooLate}`);
+  await expect.poll(() => unsubscribing(page), wait).toBe(`Coo didn't bounce their mail. ${tooLate}`);
   await duva.receive(note("Example News <news@example.net>", "Issue 2"), { to: ["grace@example.com"] });
-  await expect.poll(() => sheet(page).innerText(), wait).toContain("Coo bounced their mail, so their list sees the address as gone.");
+  await expect.poll(() => unsubscribing(page), wait).toBe(noOneClick);
+  await duva.releaseTasks();
+  await expect.poll(() => unsubscribing(page), wait).toBe("Coo bounced their mail, so their list sees the address as gone.");
   expect(duva.bounces()).toHaveLength(1);
 
   await page.getByRole("link", { name: "Ask Coo", exact: true }).click();

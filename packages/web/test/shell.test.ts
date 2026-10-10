@@ -60,9 +60,10 @@ test("a human's own mailboxes are each listed by their address with their unread
 
   await links.nth(2).click();
 
-  await expect.poll(() => page.getByRole("link", { name: /Igen till Lovelace/ }).count(), wait).toBe(1);
-  expect(await page.getByRole("link", { name: /Till Ada/ }).count()).toBe(0);
-  expect(await (await mailboxes(page)).getByRole("link").nth(2).getAttribute("aria-current")).toBe("page");
+  // All mailboxes showed Lovelace's thread too, so the poll waits for Ada's to go as well.
+  const shown = async () => ({ ada: await page.getByRole("link", { name: /Till Ada/ }).count(), lovelace: await page.getByRole("link", { name: /Igen till Lovelace/ }).count() });
+  await expect.poll(shown, wait).toEqual({ ada: 0, lovelace: 1 });
+  await expect.poll(async () => (await mailboxes(page)).getByRole("link").nth(2).getAttribute("aria-current"), wait).toBe("page");
   expect(await views(page).getByRole("link", { name: "Drafts" }).count()).toBe(1);
   expect(page.url()).toContain(`#/mailboxes/${lovelace}/`);
 
@@ -366,7 +367,7 @@ test("on a desk a thread opens beside its list, which stays and marks the open l
   expect(await open.evaluate((line) => getComputedStyle(line.closest("li")!).boxShadow)).toContain("rgb(255, 90, 31)");
   const [listBox, letterBox] = [(await threads.boundingBox())!, (await page.getByRole("article").boundingBox())!];
   expect(letterBox.x).toBeGreaterThanOrEqual(listBox.x + listBox.width);
-  expect(await page.title()).toBe("Lunch · Duva");
+  await expect.poll(() => page.title(), wait).toBe("Lunch · Duva");
 
   // j and k still move through the list beside the thread, and Enter opens the line they reach.
   await page.keyboard.press("j");

@@ -134,7 +134,7 @@ test("a send waiting for the send limit shows on its agent's line, and Send now 
   await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "Your agents" }).click();
 
   await expect.poll(() => summary(page).innerText(), wait).toMatch(/1 send waits for the send limit\./);
-  expect(await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: /^Hermes/ }).innerText()).toBe("Hermes\nRunning, 1 waiting");
+  await expect.poll(() => page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: /^Hermes/ }).innerText(), wait).toBe("Hermes\nRunning, 1 waiting");
   await agentsSheet(page).getByRole("heading", { level: 3, name: "Hermes" }).click();
   const waiting = agentsSheet(page).getByRole("region", { name: "Waiting for the send limit" });
   await expect.poll(async () => (await waiting.getByRole("listitem").allInnerTexts()).map(lines), wait).toEqual([expect.stringMatching(/^Second\nTo lou@example\.net\nSend now$/)]);
@@ -175,6 +175,29 @@ test("while its agent is paused, a send waiting for the send limit is held until
   await expect.poll(() => waiting.count(), wait).toBe(0);
   expect(await summary(page).innerText()).not.toMatch(/waits for the send limit|Paused/);
   await expect.poll(() => index.getByRole("link", { name: /^Hermes/ }).innerText(), wait).toBe("Hermes\nRunning");
+});
+
+test("a send the sender finds over the send limit shows as waiting for it in Drafts, without reloading", budget, async () => {
+  const { page, signIn, duva, grace, hermes, settings } = await withAgent({ sendsHeld: true });
+  await grace.PATCH("/agents/{agent}/settings", { ...settings, body: { sponsorAccess: "send", approvalAsSponsor: false, sendsPerHour: 1 } });
+  const { data: mailboxes } = await grace.GET("/mailboxes");
+  const own = { path: { mailbox: mailboxes!.mailboxes.find(({ defaultAddress }) => defaultAddress === "grace@example.com")!.id } };
+  const ask = async (subject: string) => {
+    const { data: draft } = await hermes.POST("/mailboxes/{mailbox}/drafts", { params: own, body: { to: ["ken@example.net"], subject, text: "Hej." } });
+    await hermes.POST("/mailboxes/{mailbox}/drafts/{draft}/send", { params: { path: { ...own.path, draft: draft!.id } } });
+  };
+  // The first goes out before the page opens, so the sender's finding the second over the limit comes last.
+  await ask("First");
+  await duva.releaseSends();
+  await ask("Second");
+  await signIn("grace@example.org");
+  await page.getByRole("link", { name: /^Drafts/ }).click();
+  const second = page.getByRole("link", { name: /Second/ });
+  await expect.poll(() => second.textContent(), wait).toContain("By HermesSendingSecond");
+
+  await duva.releaseSends();
+
+  await expect.poll(() => second.textContent(), wait).toContain("By HermesWaiting for the send limitSecond");
 });
 
 test("a send waiting for the send limit as the sponsor shows in their draft, with Send now", budget, async () => {

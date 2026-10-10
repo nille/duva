@@ -20,14 +20,17 @@ export const approvalChanges = new Set<Change["type"]>(["approvalAsked", "approv
 /** The changes that alter what a mailbox's threads show: mail in or out, read state, labels, Remind me and erasure. */
 export const mailChanges = new Set<Change["type"]>(["messageReceived", "messageSent", "threadRead", "threadUnread", "threadLabelsChanged", "reminderSet", "reminderCancelled", "threadBack", "threadErased"]);
 
-/** The changes to a mailbox's Screener: its decisions on senders, and switching it. */
-export const screenerChanges = new Set<Change["type"]>(["senderScreened", "screenedSenderRemoved", "senderDeliverySet", "senderDeliveryRemoved", "screenerSwitched"]);
+/** The changes to a mailbox's Screener: its decisions on senders, how unsubscribing from them went, and switching it. */
+export const screenerChanges = new Set<Change["type"]>(["senderScreened", "screenedSenderRemoved", "senderDeliverySet", "senderDeliveryRemoved", "unsubscribeAttempted", "screenerSwitched"]);
 
-/** The changes to a mailbox's own labels. */
-export const labelChanges = new Set<Change["type"]>(["labelCreated", "labelRenamed", "labelDeleted"]);
+/** The changes to a mailbox's own labels, and to the prompts of its labels. */
+export const labelChanges = new Set<Change["type"]>(["labelCreated", "labelRenamed", "labelDeleted", "labelPromptSet", "labelPromptRemoved"]);
 
-/** The changes that alter a mailbox's drafts: writing, deleting and sending them, and erasing the threads they sent in. */
-export const draftChanges = new Set<Change["type"]>(["draftWritten", "draftChanged", "draftDeleted", "sendAsked", "approvalAsked", "approvalDecided", "approvalUndone", "sendFailed", "sendUnclear", "threadErased"]);
+/** The changes a thread shows besides its mail: the tasks labels' prompts give the mailbox agent, and its linked files' downloads and sharing. */
+export const threadChanges = new Set<Change["type"]>(["taskGiven", "taskStarted", "taskEnded", "linkedFileDownloaded", "sharingStopped"]);
+
+/** The changes that alter a mailbox's drafts: writing, deleting and sending them, a send waiting for its send limit, and erasing the threads they sent in. */
+export const draftChanges = new Set<Change["type"]>(["draftWritten", "draftChanged", "draftDeleted", "sendAsked", "approvalAsked", "approvalDecided", "approvalUndone", "sendWaitingForLimit", "sentNow", "sendFailed", "sendUnclear", "threadErased"]);
 
 /** How often the signed-in app reads the change feeds while its tab is visible, unless config.json says otherwise. */
 export const defaultPollInterval = 5_000;

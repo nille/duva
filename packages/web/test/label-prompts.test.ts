@@ -16,9 +16,12 @@ const receipt = [
   "You paid 42 euros.",
 ].join("\r\n");
 
-/** The web app where Grace has the mailbox grace@example.com, its Screener off, with a label Receipts and a receipt in her Inbox. */
-async function withReceipt() {
-  const app = await startWebApp({ domain: "example.com", admin: "ada@example.org", humans: ["grace@example.org"] });
+/**
+ * The web app where Grace has the mailbox grace@example.com, its Screener off, with a label
+ * Receipts and a receipt in her Inbox, the task runner holding the tasks prompts give if `tasksHeld`.
+ */
+async function withReceipt({ tasksHeld = false } = {}) {
+  const app = await startWebApp({ domain: "example.com", admin: "ada@example.org", humans: ["grace@example.org"], tasksHeld });
   const ada = app.duva.signIn("ada@example.org");
   const grace = app.duva.signIn("grace@example.org");
   const { data: me } = await grace.GET("/whoami");
@@ -50,6 +53,33 @@ test("a human writes a label's prompt in its head, and a thread given the label 
   await page.getByRole("link", { name: /^Unread, Shop, Your receipt/ }).click();
   const tasks = page.getByRole("region", { name: "Tasks" });
   await expect.poll(() => tasks.getByRole("listitem").first().textContent(), wait).toMatch(/^Coofrom ReceiptsDone.*Stand-in answer\.$/);
+});
+
+test("a thread open while the mailbox agent works on its task shows how the task goes, without reloading", budget, async () => {
+  const { page, grace, params, receipts, thread, duva } = await withReceipt({ tasksHeld: true });
+  await grace.PUT("/mailboxes/{mailbox}/labels/{label}/prompt", { params: { path: { ...params.path, label: receipts } }, body: { prompt: "Note the amount." } });
+  await grace.POST("/mailboxes/{mailbox}/threads/labels", { params, body: { threads: [thread], add: [receipts] } });
+  // Read already, so opening it changes nothing, and what the agent does comes last.
+  await grace.POST("/mailboxes/{mailbox}/threads/read", { params, body: { threads: [thread] } });
+  await page.getByRole("link", { name: /^Shop, Your receipt/ }).click();
+  const task = page.getByRole("region", { name: "Tasks" }).getByRole("listitem").first();
+  await expect.poll(() => task.textContent(), wait).toMatch(/^Coofrom ReceiptsWaiting/);
+
+  await duva.releaseTasks();
+
+  await expect.poll(() => task.textContent(), wait).toMatch(/^Coofrom ReceiptsDone.*Stand-in answer\.$/);
+});
+
+test("a label's prompt written elsewhere, as with the CLI, shows in the label's head without reloading, and so does removing it", budget, async () => {
+  const { page, grace, params, receipts, heading, views } = await withReceipt();
+  await views.getByRole("link", { name: /^Receipts/ }).click();
+  await expect.poll(heading, wait).toBe("Receipts");
+  const path = { ...params.path, label: receipts };
+
+  await grace.PUT("/mailboxes/{mailbox}/labels/{label}/prompt", { params: { path }, body: { prompt: "Note the amount." } });
+  await expect.poll(() => page.getByText(/^Coo gets each message here, with this prompt:/).textContent(), wait).toBe("Coo gets each message here, with this prompt: Note the amount.");
+  await grace.DELETE("/mailboxes/{mailbox}/labels/{label}/prompt", { params: { path } });
+  await expect.poll(() => page.getByRole("button", { name: "Add a prompt" }).isVisible(), wait).toBe(true);
 });
 
 test("a human edits and removes a label's prompt, and the Feed takes one while the Inbox doesn't", budget, async () => {

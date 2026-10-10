@@ -243,7 +243,7 @@ test("on a phone Settings opens on its index, each page links back to it, and Si
   await page.getByRole("main").getByRole("link", { name: "Settings" }).click();
 
   await expect.poll(() => settingsIndex(page).isVisible(), wait).toBe(true);
-  expect(await page.evaluate(() => document.activeElement?.tagName)).toBe("H1");
+  await expect.poll(() => page.evaluate(() => document.activeElement?.tagName), wait).toBe("H1");
   expect(await page.getByRole("region", { name: "Preferences" }).isVisible()).toBe(false);
   await openPage(page, "Mail and agents");
   await expect.poll(() => agentsSheet(page).isVisible(), wait).toBe(true);
@@ -429,7 +429,7 @@ test("an admin shortens how long Trash and Spam keep mail, warned first how many
 
   await expect.poll(() => mailSheet(page).getByRole("status").last().textContent(), wait).toBe("Saved. The eraser's next daily run follows it.");
   expect((await duva.signIn("ada@example.org").GET("/organization/settings")).data).toMatchObject({ erasureErasesApprovals: false, retentionDays: 7 });
-  expect(await mailSheet(page).locator(".setting-note").count()).toBe(0);
+  await expect.poll(() => mailSheet(page).locator(".setting-note").count(), wait).toBe(0);
 });
 
 test("a longer period warns of nothing, and one outside 7 to 365 days can't be saved", budget, async () => {

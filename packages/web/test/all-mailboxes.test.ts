@@ -117,8 +117,8 @@ test("labels of one name in both mailboxes are one label in All mailboxes, listi
   await expect.poll(() => labels.allInnerTexts(), wait).toEqual([expect.stringMatching(/^receipts\s+2\b/i)]);
   await labels.first().click();
 
+  await expect.poll(() => page.getByRole("heading", { level: 1 }).textContent(), wait).toMatch(/^receipts$/i);
   await expect.poll(() => rows(page).count(), wait).toBe(2);
-  expect(await page.getByRole("heading", { level: 1 }).textContent()).toMatch(/^receipts$/i);
 });
 
 test("new mail in All mailboxes starts from the human's preference, can go from any of their addresses, and a reply goes from where the original came", budget, async () => {
@@ -203,7 +203,7 @@ test("on a phone the switcher names All mailboxes and offers it above each mailb
   const switcher = page.getByRole("button", { name: /Mailboxes and views$/ });
 
   await expect.poll(() => switcher.getAttribute("aria-label"), wait).toBe("Inbox, All mailboxes, 2 unread, Mailboxes and views");
-  expect(await rows(page).allInnerTexts()).toEqual([expect.stringContaining("to work@"), expect.stringContaining("to home@")]);
+  await expect.poll(() => rows(page).allInnerTexts(), wait).toEqual([expect.stringContaining("to work@"), expect.stringContaining("to home@")]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 
   await switcher.click();

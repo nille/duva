@@ -77,6 +77,31 @@ test("a sent message lists its linked files with their downloads, and Stop shari
   expect((await app.duva.download(page)).status).toBe(410);
 });
 
+test("a sent message open in its thread shows its first download, and sharing stopped elsewhere, as Duva records them, without reloading", budget, async () => {
+  const app = await withGrace();
+  const params = { path: { mailbox: app.mailbox.id } };
+  await app.grace.PATCH("/mailboxes/{mailbox}/screener", { params, body: { on: false } });
+  const page = await sendFilm(app);
+  // The Inbox counts mail it hears of from the feed, so its count says the page has read it this far.
+  await app.duva.receive(["From: Ada <ada@example.org>", "To: grace@example.com", "Subject: Tack", "Message-ID: <tack@example.org>", "", "Tack för filmen."].join("\r\n"), { to: ["grace@example.com"] });
+  const inbox = app.page.getByRole("navigation", { name: "Mail" }).getByRole("link", { name: /^Inbox/ }).locator(".view-count");
+  await expect.poll(() => inbox.allInnerTexts(), wait).toEqual(["1"]);
+  await app.page.getByRole("navigation").getByRole("link", { name: /^Sent/ }).click();
+  await app.page.getByRole("link", { name: /Filmen/ }).click();
+  const linked = app.page.getByRole("region", { name: "Linked files" });
+  await expect.poll(() => linked.innerText(), wait).toContain("not downloaded yet");
+
+  await app.duva.download(`${page}/file`);
+
+  await expect.poll(() => linked.innerText(), wait).toContain("downloaded once");
+  const thread = decodeURIComponent(/threads\/([^?]+)/.exec(app.page.url())![1]!);
+  const { data } = await app.grace.GET("/mailboxes/{mailbox}/threads/{thread}", { params: { path: { ...params.path, thread } } });
+  const message = data!.messages.find(({ linkedFiles }) => linkedFiles !== undefined)!;
+  await app.grace.DELETE("/mailboxes/{mailbox}/messages/{message}/linked-files/{file}", { params: { path: { ...params.path, message: message.id, file: message.linkedFiles![0]!.id } } });
+
+  await expect.poll(() => linked.innerText(), wait).toContain("no longer shared, downloaded once");
+});
+
 test("a linked file's page shows the file and its sender, its Download button saves it, and Coo says it was downloaded", budget, async () => {
   const app = await withGrace();
   const link = await sendFilm(app);

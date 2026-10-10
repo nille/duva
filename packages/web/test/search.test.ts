@@ -67,7 +67,7 @@ test("a human searches their mailbox from the bar and finds the threads with the
   expect(result).toContain("Här kommer fakturan för hyran i oktober.");
   expect(await results(page).first().locator("mark").allInnerTexts()).toEqual(["fakturan", "oktober"]);
   expect(await searchBox(page).inputValue()).toBe("fakturan oktober");
-  expect(await page.title()).toBe("fakturan oktober · Duva");
+  await expect.poll(() => page.title(), wait).toBe("fakturan oktober · Duva");
 });
 
 test("the search box shows its / key, and pressing / anywhere outside a field puts the cursor there", budget, async () => {
@@ -231,8 +231,9 @@ test("results come a page at a time", budget, async () => {
   await search(page, "rapport");
   await page.getByRole("navigation", { name: "Sort" }).getByRole("link", { name: "Newest" }).click();
 
-  await expect.poll(() => results(page).count(), wait).toBe(20);
-  expect((await subjects(page))[0]).toBe("Rapport 21");
+  // Best match showed 20 results too, so the poll waits for the newest to come first.
+  await expect.poll(async () => (await subjects(page))[0], wait).toBe("Rapport 21");
+  expect(await results(page).count()).toBe(20);
   await page.getByRole("button", { name: "Show more results" }).click();
   await expect.poll(() => results(page).count(), wait).toBe(21);
   expect((await subjects(page)).at(-1)).toBe("Rapport 1");

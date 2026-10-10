@@ -194,7 +194,7 @@ test("chips choose the kinds of event shown, several at once, the address keepin
   await chip(page, "Pauses and limits").click();
 
   await expect.poll(() => page.evaluate(() => location.hash), wait).toBe(`#/agents/${agent.id}`);
-  expect(await chip(page, "All").getAttribute("aria-pressed")).toBe("true");
+  await expect.poll(() => chip(page, "All").getAttribute("aria-pressed"), wait).toBe("true");
 
   // Failures are any events that failed, whatever their kind.
   await chip(page, "Failures").click();
@@ -237,9 +237,12 @@ test("each chip shows its kind of event alone, and a kind with none says so", bu
     if (said === undefined) {
       await expect.poll(() => page.getByRole("heading", { name: "No events of these kinds." }).isVisible(), wait).toBe(true);
     } else {
-      await expect.poll(lines, wait).toContainEqual(expect.stringMatching(said));
-      // Nothing of another kind shows beside it.
-      expect((await lines()).filter((line) => shown.some(([other, its]) => other !== name && its?.test(line)))).toEqual([]);
+      // It shows, and nothing of another kind beside it, as the list before the click still did.
+      const read = async () => {
+        const now = await lines();
+        return { said: now.some((line) => said.test(line)), others: now.filter((line) => shown.some(([other, its]) => other !== name && its?.test(line))) };
+      };
+      await expect.poll(read, wait).toEqual({ said: true, others: [] });
     }
     await chip(page, name).click();
     await expect.poll(() => chip(page, "All").getAttribute("aria-pressed"), wait).toBe("true");

@@ -228,7 +228,8 @@ test("in a reply Ctrl+Enter sends it", budget, async () => {
 
 test("with shortcuts off on You, r, a, f, e, #, !, l, u and Shift+U do nothing in a thread, which shows no caps for them", budget, async () => {
   const { page } = await withThreadOpen(note("Möte"), { shortcuts: "off" });
-  expect(await page.getByRole("main").locator("kbd").count()).toBe(0);
+  // Shortcuts count as on until the preferences are read, so the caps going says they are off.
+  await expect.poll(() => page.getByRole("main").locator("kbd").count(), wait).toBe(0);
   expect(await page.getByRole("main").locator("[aria-keyshortcuts]").count()).toBe(0);
 
   for (const key of ["r", "a", "f", "e", "#", "!", "l", "u", "Shift+U"]) await page.keyboard.press(key);

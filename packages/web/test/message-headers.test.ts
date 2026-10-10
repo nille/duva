@@ -52,7 +52,7 @@ test("a human shows a message's headers from its menu, copies them and closes th
 
   await sheet.getByRole("button", { name: "Copy" }).click();
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText()), wait).toContain("\nSubject: =?UTF-8?B?UsOka25pbmc=?=\nDate: Sun, 04 Oct 2026 09:00:00 +0200\n");
-  expect(await sheet.getByRole("button", { name: "Copied" }).count()).toBe(1);
+  await expect.poll(() => sheet.getByRole("button", { name: "Copied" }).count(), wait).toBe(1);
 
   await page.keyboard.press("Escape");
   await expect.poll(() => sheet.count(), wait).toBe(0);

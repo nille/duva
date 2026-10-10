@@ -27,7 +27,7 @@ import { Composer } from "./compose.tsx";
 import { CooLink, CooSays, MailboxAgentsContext, useCoo } from "./coo.tsx";
 import { defaultPreferences, type Preferences, PreferencesContext, useDates } from "./dates.ts";
 import { Drafts } from "./drafts.tsx";
-import { approvalChanges, type Connection, draftChanges, type Follow, labelChanges, mailChanges, mailboxSetupChanges, screenerChanges, SignedOut, useFeeds } from "./feed.ts";
+import { approvalChanges, type Connection, draftChanges, type Follow, labelChanges, mailChanges, mailboxSetupChanges, screenerChanges, SignedOut, threadChanges, useFeeds } from "./feed.ts";
 import { type Marks, ThreadIndex } from "./inbox.tsx";
 import { ActorMark } from "./mail-parts.tsx";
 import { type AllMailboxes, ChevronIcon, isAll, labelsAcross, labelsIn, MailboxList, MailboxSelector, mailboxHref, mailboxName, ownInOrder } from "./mailboxes.tsx";
@@ -372,7 +372,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
       const mail = new Set(changes.filter(({ change }) => mailChanges.has(change.type)).map(({ mailbox }) => mailbox));
       const changed = new Set([
         ...mail,
-        ...changes.filter(({ change }) => draftChanges.has(change.type) || labelChanges.has(change.type) || screenerChanges.has(change.type)).map(({ mailbox }) => mailbox),
+        ...changes.filter(({ change }) => draftChanges.has(change.type) || labelChanges.has(change.type) || screenerChanges.has(change.type) || threadChanges.has(change.type)).map(({ mailbox }) => mailbox),
       ]);
       if (changed.size > 0) {
         setVersions((current) => new Map([...current, ...[...changed].map((mailbox) => [mailbox, (current.get(mailbox) ?? 0) + 1] as const)]));

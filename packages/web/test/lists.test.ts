@@ -354,7 +354,7 @@ for (const [size, viewport] of [
     await expect.poll(() => heading(page), wait).toBe("Screener");
     expect(await places.nth(1).getAttribute("aria-current")).toBe("page");
     expect(await places.nth(0).getAttribute("aria-current")).toBeNull();
-    expect(await page.getByText("linus@example.net").first().isVisible()).toBe(true);
+    await expect.poll(() => page.getByText("linus@example.net").first().isVisible(), wait).toBe(true);
   });
 }
 

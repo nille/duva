@@ -76,7 +76,7 @@ test("the side column shows the Screener with how many senders wait, outside the
   await signIn("grace@example.org");
 
   await expect.poll(() => screenerLink(page).textContent(), wait).toBe("Screener2, 2 senders waiting");
-  expect(await page.title()).toBe("Inbox · Duva");
+  await expect.poll(() => page.title(), wait).toBe("Inbox · Duva");
   expect(await side(page).getByRole("link", { name: /^Inbox/ }).textContent()).toBe("Inbox");
 
   // A third sender's mail arrives while the page is open.
@@ -106,7 +106,7 @@ test("the Screener lists waiting senders newest first, each with their mail to o
 
   await expect.poll(() => page.getByRole("heading", { level: 1 }).textContent(), wait).toBe("Screener");
   await expect.poll(() => waiting(page).getByRole("heading").allTextContents(), wait).toEqual(["Bob", "Carol"]);
-  expect(await page.title()).toBe("Screener · Duva");
+  await expect.poll(() => page.title(), wait).toBe("Screener · Duva");
   const bob = sender(page, "bob@example.net");
   expect(await bob.getByRole("list", { name: "Mail from Bob" }).getByRole("link").allTextContents()).toEqual([expect.stringContaining("Hello again"), expect.stringContaining("Hello")]);
 
