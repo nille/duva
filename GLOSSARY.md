@@ -21,7 +21,7 @@ An actor that is software. Any human can create one, or approve one's access req
 _Avoid_: bot, assistant
 
 **Mailbox agent**:
-The agent Duva itself runs for each human, created with their first personal mailbox, with them as its sponsor. Every mailbox agent is named Coo, which its human can't change, and the web app draws it as Coo too, a pigeon, where any other agent has the diamond. It works in all its human's personal mailboxes, and in a mailbox handed to another human that human's Coo works instead. Asked from one mailbox, it works on that one unless its human says otherwise; asked from All mailboxes, on all of them. It has the sponsor access its human gives it, by default up to asking to send, each send waiting for their approval and carrying the disclosure's line. Its human asks it in Ask Coo or through the MCP endpoint, and it acts through Duva's API as itself, so all it does is attributed to it, and it obeys pause, send limits and alerts as any agent does. It has no key: each run gets a token of its own. Admins choose the models it thinks with, one for each job, where the mail it reads is processed, and what all mailbox agents may spend a month (ADR-0027, ADR-0032).
+The agent Duva itself runs for each human, created with their first personal mailbox, with them as its sponsor. Every mailbox agent is named Coo, which its human can't change, and the web app draws it as Coo too, a pigeon, where any other agent has the diamond. It works in all its human's personal mailboxes, and in a mailbox handed to another human that human's Coo works instead. Asked from one mailbox, it works on that one unless its human says otherwise; asked from All mailboxes, on all of them. It has the sponsor access its human gives it, by default up to asking to send, each send waiting for their approval and carrying the disclosure's line. Its human asks it in Ask Coo or through the MCP endpoint, and it acts through Duva's API as itself, so all it does is attributed to it, and it obeys pause, send limits and alerts as any agent does. It has no key: each run gets a token of its own. Its human chooses the models it thinks with, an everyday one and a harder one, from the measured models admins allow. Admins set the organization's defaults and what all mailbox agents may spend a month (ADR-0027, ADR-0032, ADR-0035).
 _Avoid_: assistant, bot, copilot
 
 **Coo**:
@@ -29,7 +29,10 @@ The name of every mailbox agent, after the sound a duva, Swedish for dove, makes
 _Avoid_: the bot, the assistant
 
 **Harder model**:
-The model a mailbox agent's harder work goes to: writing mail that may be sent, unsubscribing on a sender's page, a turn the decider finds complex, a run the everyday model hands over, and Think harder. Claude Sonnet 5.5 by default, where the everyday model is Claude Haiku 4.5 (ADR-0032).
+The model a mailbox agent's harder work goes to: writing mail that may be sent, unsubscribing on a sender's page, a turn the decider finds complex, a run the everyday model hands over, and Think harder. Its human chooses it, as they choose the everyday model, from the measured models admins allow (ADR-0032, ADR-0035).
+
+**Measured model**:
+A model on Amazon Bedrock that Duva has recorded on its mailbox agent's evaluation, with how often it does each kind of work, what a task costs, and where it processes the mail it reads: in the deployment's region, its continent, the US, or anywhere. Only measured models can be allowed or chosen, and wherever they're chosen the place shows beside each.
 
 **Handover**:
 A run going over from the everyday model to the harder one, with the work so far, and why: decided, writing, failed calls, step budget, asked for help, or an answer that didn't hold up. The turn or the task, and the agent's activity, show it (ADR-0032).
