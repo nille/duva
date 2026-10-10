@@ -169,6 +169,25 @@ Give only the preferences to change. They follow you to every browser you sign i
 - `--cooEverydayModel` or `--no-cooEverydayModel`: The model, or null to keep the organization's default again. The CLI gives null with --no-cooEverydayModel.
 - `--cooHarderModel` or `--no-cooHarderModel`: The model, or null to keep the organization's default again. The CLI gives null with --no-cooHarderModel.
 
+## duva away-message get
+
+Read your away message, the reply Duva sends for you while you're away, and whether you're away now.
+
+One switch covers all your mailboxes, and each has its own text. While you're away, each person whose mail reaches one of your Inboxes gets the text once, from the address their mail came to, as you. Mailing lists, newsletters, other automatic replies, no-reply and bounce addresses, Spam, the Feed, the Paper Trail, senders sent nowhere, mail waiting in the Screener and mail to a group get none. Only humans have an away message, and each reads only their own.
+
+## duva away-message change
+
+Switch your away message on or off, choose the days you're away, or change its subject or a mailbox's text.
+
+Give only what to change. Without days, you're away from when you switch it on until you switch it off. With a first and a last day, in your time zone, you're away from the first day's start to the last day's end, and it switches itself off then. Switching it on starts a new time away, so everyone gets the text once again, while changing the days or the text goes on with the same one. Give mailbox and text together to change one mailbox's text. Your Coo can help write it when you ask, but only you save it.
+
+- `--on` or `--no-on`: True to switch it on, which needs a text for at least one mailbox, or false to switch it off. The CLI switches it off with --no-on.
+- `--firstDay` or `--no-firstDay`: The first day away, given with lastDay, or null with lastDay null to be away from now until switched off. The CLI gives null with --no-firstDay.
+- `--lastDay` or `--no-lastDay`: The last day away, from today on, given with firstDay, or null. The CLI gives null with --no-lastDay.
+- `--subject` or `--no-subject`: The replies' subject, or null for the default, "Away: " followed by the subject answered. The CLI gives null with --no-subject.
+- `--mailbox`: The ID of the mailbox whose text changes, one of yours, given with text.
+- `--text` or `--no-text`: The mailbox's text, or null to remove it, so mail to it gets no reply. The CLI gives null with --no-text.
+
 ## duva memories list
 
 List what your Coo remembers of you, each memory with when and where it came from.

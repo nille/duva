@@ -393,6 +393,81 @@ export const operations = [
     ]
   },
   {
+    "operationId": "getAwayMessage",
+    "method": "get",
+    "path": "/away-message",
+    "routeKey": "GET /away-message",
+    "summary": "Read your away message, the reply Duva sends for you while you're away, and whether you're away now.",
+    "description": "One switch covers all your mailboxes, and each has its own text. While you're away, each person whose mail reaches one of your Inboxes gets the text once, from the address their mail came to, as you. Mailing lists, newsletters, other automatic replies, no-reply and bounce addresses, Spam, the Feed, the Paper Trail, senders sent nowhere, mail waiting in the Screener and mail to a group get none. Only humans have an away message, and each reads only their own.",
+    "signIn": true,
+    "command": [
+      "away-message",
+      "get"
+    ],
+    "options": []
+  },
+  {
+    "operationId": "changeAwayMessage",
+    "method": "patch",
+    "path": "/away-message",
+    "routeKey": "PATCH /away-message",
+    "summary": "Switch your away message on or off, choose the days you're away, or change its subject or a mailbox's text.",
+    "description": "Give only what to change. Without days, you're away from when you switch it on until you switch it off. With a first and a last day, in your time zone, you're away from the first day's start to the last day's end, and it switches itself off then. Switching it on starts a new time away, so everyone gets the text once again, while changing the days or the text goes on with the same one. Give mailbox and text together to change one mailbox's text. Your Coo can help write it when you ask, but only you save it.",
+    "signIn": true,
+    "command": [
+      "away-message",
+      "change"
+    ],
+    "options": [
+      {
+        "name": "on",
+        "in": "body",
+        "type": "boolean",
+        "required": false,
+        "description": "True to switch it on, which needs a text for at least one mailbox, or false to switch it off. The CLI switches it off with --no-on."
+      },
+      {
+        "name": "firstDay",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "The first day away, given with lastDay, or null with lastDay null to be away from now until switched off. The CLI gives null with --no-firstDay.",
+        "nullable": true
+      },
+      {
+        "name": "lastDay",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "The last day away, from today on, given with firstDay, or null. The CLI gives null with --no-lastDay.",
+        "nullable": true
+      },
+      {
+        "name": "subject",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "The replies' subject, or null for the default, \"Away: \" followed by the subject answered. The CLI gives null with --no-subject.",
+        "nullable": true
+      },
+      {
+        "name": "mailbox",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "The ID of the mailbox whose text changes, one of yours, given with text."
+      },
+      {
+        "name": "text",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "The mailbox's text, or null to remove it, so mail to it gets no reply. The CLI gives null with --no-text.",
+        "nullable": true
+      }
+    ]
+  },
+  {
     "operationId": "listMemories",
     "method": "get",
     "path": "/memories",

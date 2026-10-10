@@ -52,6 +52,7 @@ import { profileName } from "../src/browser-profiles.ts";
 import { createMcp } from "../src/mcp.ts";
 import { giveMailboxAgents, mailboxAgentName, mailboxAgentSettings, turnPrefix } from "../src/mailbox-agents.ts";
 import type { ReminderDue } from "../src/reminders.ts";
+import type { AwayEnds } from "../src/away-messages.ts";
 import { createSender } from "../src/sending.ts";
 import type { SuppressionReason } from "../src/suppression.ts";
 import { fetchForLogo, logoUrl } from "../src/sender-logos.ts";
@@ -423,7 +424,8 @@ export async function startDuva({
   };
   const searcher = createSearcher(lanceSearch({ uri: indexes, embedder: titan, translator: recordedNova() }));
   // EventBridge Scheduler's one-time schedules, each invoking the sender at a time, with an agent
-  // whose sends wait, a draft whose undo window is over, or a thread due back from Remind me.
+  // whose sends wait, a draft whose undo window is over, a thread due back from Remind me, or an
+  // away message whose last day ended.
   const schedules: { event: Parameters<typeof sender>[0]; at: Date }[] = [];
   const sender = createSender({
     table,
@@ -444,6 +446,7 @@ export async function startDuva({
     },
   });
   const reminders = { remindAt: async (due: ReminderDue) => void schedules.push({ event: { remind: due }, at: new Date(due.at) }) };
+  const awayEnds: AwayEnds = { endAt: async (end, at) => void schedules.push({ event: { awayEnds: end }, at }) };
   const stream = tableStream(database, streamArn, [
     { filter: senderFilter, handler: sender, retries: senderRetries, invocations: senderInvocations },
     { filter: alertMailFilter, handler: sender, retries: senderRetries, invocations: senderInvocations },
@@ -512,6 +515,7 @@ export async function startDuva({
       indexQueue,
       waitingSends: { release: async (agent) => void released.push(agent) },
       reminders,
+      awayEnds,
       hostedLogos,
       tasks: taskRunner,
       embedder: titan,

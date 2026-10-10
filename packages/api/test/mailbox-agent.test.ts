@@ -277,6 +277,18 @@ test("the mailbox agent can do only what its sponsor access lets it, and says Du
   expect(requests[0]!.system).toContain("not change it");
 });
 
+test("the mailbox agent drafts its owner's away message in its answer, for them to save, and is told it never sets it or writes the replies", async () => {
+  const draft = "I'm away until 18 November, without mail.";
+  const { model, requests } = scripted(() => [use("listThreads")], () => [{ text: draft }]);
+  const { linus, ask } = await withMailbox({ model });
+
+  const { events } = await ask("Write my away message: I'm off until 18 November.");
+
+  expect(requests[0]!.system).toContain("When they ask you to write it, draft the text in your answer for them to save there: you can't set it, and you never write the replies.");
+  expect(events!.filter((event) => event.type === "text").map((event) => (event as { text: string }).text).join("")).toContain(draft);
+  expect((await linus.GET("/away-message")).data).toMatchObject({ on: false, mailboxes: [expect.not.objectContaining({ text: expect.anything() })] });
+});
+
 test("a mailbox agent with no access, or paused, isn't asked", async () => {
   const { linus, ask, agent } = await withMailbox();
   const path = { params: { path: { agent: (await agent()).id } } };

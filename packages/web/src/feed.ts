@@ -26,8 +26,8 @@ export const screenerChanges = new Set<Change["type"]>(["senderScreened", "scree
 /** The changes to a mailbox's own labels, and to the prompts of its labels. */
 export const labelChanges = new Set<Change["type"]>(["labelCreated", "labelRenamed", "labelDeleted", "labelPromptSet", "labelPromptRemoved"]);
 
-/** The changes a thread shows besides its mail: the tasks labels' prompts give the mailbox agent, and its linked files' downloads and sharing. */
-export const threadChanges = new Set<Change["type"]>(["taskGiven", "taskStarted", "taskEnded", "linkedFileDownloaded", "sharingStopped"]);
+/** The changes a thread shows besides its mail: the tasks labels' prompts give the mailbox agent, its linked files' downloads and sharing, and away messages sent. */
+export const threadChanges = new Set<Change["type"]>(["taskGiven", "taskStarted", "taskEnded", "linkedFileDownloaded", "sharingStopped", "awayMessageSent"]);
 
 /** The changes that alter a mailbox's drafts: writing, deleting and sending them, a send waiting for its send limit, and erasing the threads they sent in. */
 export const draftChanges = new Set<Change["type"]>(["draftWritten", "draftChanged", "draftDeleted", "sendAsked", "approvalAsked", "approvalDecided", "approvalUndone", "sendWaitingForLimit", "sentNow", "sendFailed", "sendUnclear", "threadErased"]);

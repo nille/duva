@@ -24,6 +24,7 @@ import { lambdaUnsubscriber } from "./unsubscriber.ts";
 import { lambdaWaitingSends } from "./limits.ts";
 import { SchedulerClient } from "@aws-sdk/client-scheduler";
 import { eventBridgeReminders } from "./reminders.ts";
+import { eventBridgeAwayEnds } from "./away-messages.ts";
 import { X509Certificate } from "node:crypto";
 import { markRoots } from "./mark-roots.ts";
 import { s3HostedLogos } from "./own-logos.ts";
@@ -37,6 +38,12 @@ const cognito = new CognitoIdentityProviderClient({});
 const userPoolId = required(environmentVariables.userPoolId);
 const configurationSet = required(environmentVariables.configurationSet);
 const sesV2 = new SESv2Client({});
+const scheduler = new SchedulerClient({});
+const scheduleGroup = {
+  group: required(environmentVariables.scheduleGroup),
+  sender: required(environmentVariables.senderFunction),
+  role: required(environmentVariables.schedulerRole),
+};
 
 export const handler = createApi({
   version: required(environmentVariables.version),
@@ -59,11 +66,8 @@ export const handler = createApi({
   searcher: lambdaSearcher(lambda, required(environmentVariables.searchFunction)),
   indexQueue: sqsIndexQueue(new SQSClient({}), required(environmentVariables.indexQueue)),
   waitingSends: lambdaWaitingSends(lambda, required(environmentVariables.senderFunction)),
-  reminders: eventBridgeReminders(new SchedulerClient({}), {
-    group: required(environmentVariables.scheduleGroup),
-    sender: required(environmentVariables.senderFunction),
-    role: required(environmentVariables.schedulerRole),
-  }),
+  reminders: eventBridgeReminders(scheduler, scheduleGroup),
+  awayEnds: eventBridgeAwayEnds(scheduler, scheduleGroup),
   downloads: { url: required(environmentVariables.downloadUrl), lifetime: downloadLinkLifetime },
   hostedLogos: s3HostedLogos(
     new S3Client({}),

@@ -192,21 +192,27 @@ const inboxItem = (table: Table, mailbox: string, address: string, at: string, b
   },
 });
 
+/** A message the mailbox stored: its ID and its thread as stored. */
+export type Received = NonNullable<Awaited<ReturnType<typeof receiveMessage>>>;
+
 /**
  * Receives the message as receiveMessage does, screened by its mailbox's Screener unless it is a
  * group member's copy, since the group's send policy is its gate (ADR-0019), and screened again if
  * what the Screener decided from changed before it was stored. Spam goes to Spam, unless its
  * sender's mail goes nowhere. `dmarcPassed` says whether SES's DMARC verdict on it was PASS.
- * Says whether the mailbox stored it, dropped it, or had done either already.
+ * Gives the message's ID and its thread if the mailbox stored it, or says it dropped it, or had done either already.
  */
-export async function receiveScreened(table: Table, { dmarcPassed, ...arrival }: Omit<Arrival, "screening"> & { dmarcPassed: boolean }): Promise<"stored" | "dropped" | "had"> {
-  if (arrival.group !== undefined) return (await receiveMessage(table, arrival)) ? "stored" : "had";
+export async function receiveScreened(
+  table: Table,
+  { dmarcPassed, ...arrival }: Omit<Arrival, "screening"> & { dmarcPassed: boolean },
+): Promise<Received | "dropped" | "had"> {
+  if (arrival.group !== undefined) return (await receiveMessage(table, arrival)) ?? "had";
   const address = (arrival.parsed.from?.address ?? arrival.sender).toLowerCase();
   for (let attempt = 1; ; attempt++) {
     try {
       const verdict = await screeningOf(table, arrival.mailbox, address, dmarcPassed);
       if ("drop" in verdict) return (await dropMessage(table, { mailbox: arrival.mailbox, sesMessageId: arrival.sesMessageId, address, checks: verdict.items })) ? "dropped" : "had";
-      return (await receiveMessage(table, { ...arrival, screening: verdict })) ? "stored" : "had";
+      return (await receiveMessage(table, { ...arrival, screening: verdict })) ?? "had";
     } catch (error) {
       if (!(error instanceof ScreeningChanged) || attempt === 10) throw error;
     }

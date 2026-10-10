@@ -23,6 +23,8 @@ import { PeopleSheet } from "./people.tsx";
 import { loadConfig, signOut } from "./session.ts";
 import { strings } from "./strings.ts";
 import { BackIcon } from "./thread.tsx";
+import { AwaySheet } from "./away.tsx";
+import type { AwayMessage } from "./away-line.tsx";
 
 type OrganizationSettings = components["schemas"]["OrganizationSettings"];
 type Language = components["schemas"]["SearchLanguage"];
@@ -250,6 +252,7 @@ export function Settings({
   mailboxes,
   agent: agentAsked,
   onPreferences,
+  onAway,
   onSignedOut,
 }: {
   client: DuvaClient;
@@ -260,6 +263,8 @@ export function Settings({
   agent?: string;
   mailboxes: { mine?: Mailbox; own?: Mailbox[] } | undefined;
   onPreferences: (preferences: Preferences) => void;
+  /** Hears of the away message as saved, which the status strip says. */
+  onAway: (away: AwayMessage) => void;
   onSignedOut: () => void;
 }) {
   const hash = useHash();
@@ -414,7 +419,7 @@ export function Settings({
             {copy.index.back}
           </a>
         </p>
-        {page === "you" && <YouPage client={client} admin={admin} email={email} mailboxes={own} onPreferences={onPreferences} onSignedOut={onSignedOut} />}
+        {page === "you" && <YouPage client={client} admin={admin} email={email} mailboxes={own} onPreferences={onPreferences} onAway={onAway} onSignedOut={onSignedOut} />}
         {page === "screener" && own.length > 0 && (
           <ScreenerSheet key={own.map(({ id }) => id).join()} client={client} mailboxes={own} onSignedOut={onSignedOut} />
         )}
@@ -449,7 +454,7 @@ export function Settings({
 }
 
 /**
- * The You page: the human's preferences and their own logo, then who is signed in, with Sign out,
+ * The You page: the human's preferences, their away message and their own logo, then who is signed in, with Sign out,
  * and for a human who isn't an admin, the one organization setting that touches their mail, in a sentence.
  */
 function YouPage({
@@ -458,14 +463,16 @@ function YouPage({
   email,
   mailboxes,
   onPreferences,
+  onAway,
   onSignedOut,
 }: {
   client: DuvaClient;
   admin: boolean;
   email: string;
-  /** The human's own mailboxes, whose own logos they set. */
+  /** The human's own mailboxes, whose own logos and away texts they set. */
   mailboxes: Mailbox[];
   onPreferences: (preferences: Preferences) => void;
+  onAway: (away: AwayMessage) => void;
   onSignedOut: () => void;
 }) {
   const [retention, setRetention] = useState<number>();
@@ -483,6 +490,7 @@ function YouPage({
   return (
     <>
       <YouSheet client={client} own={mailboxes} onPreferences={onPreferences} onSignedOut={onSignedOut} />
+      {mailboxes.length > 0 && <AwaySheet client={client} onAway={onAway} onSignedOut={onSignedOut} />}
       {mailboxes.length > 0 && <CooModelsSheet client={client} onSignedOut={onSignedOut} />}
       <MyLogoSheet client={client} mailboxes={mailboxes} onSignedOut={onSignedOut} />
       {mailboxes.length > 0 && <McpSheet />}

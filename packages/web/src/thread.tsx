@@ -759,6 +759,11 @@ export function Letter({
       )}
       {message.attachments.length > 0 && <Attachments list={message.attachments} onDownload={onDownload} downloading={downloading} />}
       {message.linkedFiles !== undefined && <LinkedFiles files={message.linkedFiles} onStop={onStopSharing && ((file) => onStopSharing(file))} />}
+      {message.awayMessage !== undefined && (
+        <p className="letter-note letter-away">
+          <Time at={message.awayMessage.sentAt} format={strings.away.sent} />
+        </p>
+      )}
       {children}
     </article>
   );

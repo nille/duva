@@ -340,6 +340,30 @@ test("a human keeps, lists, corrects and forgets what Coo remembers of them, and
   expect(errorIn(missing.stderr)).toMatch(/404.*There is no memory .* List the memories to find its ID\./);
 });
 
+test("a human writes their away message, switches it on, and off again", async () => {
+  const machine = await newMachine();
+  const duva = await startDuva({ admin: "ada@example.com" });
+  const server = await duva.listen();
+  onTestFinished(() => server.close());
+  const ada = duva.signIn("ada@example.com");
+  const { data: me } = await ada.GET("/whoami");
+  const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: me!.id, address: "ada@example.com" } });
+  await machine.saveDeployment(server);
+  await machine.duva("login", { browserSignsIn: "ada@example.com" });
+
+  const tooSoon = await machine.duva("away-message", "change", "--on");
+  await machine.duva("away-message", "change", "--mailbox", mailbox!.id, "--text", "Away until Monday.");
+  const on = await machine.duva("away-message", "change", "--on");
+  const off = await machine.duva("away-message", "change", "--no-on");
+  const read = await machine.duva("away-message", "get");
+
+  expect(tooSoon.exitCode).toBe(1);
+  expect(errorIn(tooSoon.stderr)).toMatch(/400.*Give a text for at least one of your mailboxes first/);
+  expect(JSON.parse(on.stdout)).toEqual({ on: true, away: true, mailboxes: [{ mailbox: mailbox!.id, address: "ada@example.com", text: "Away until Monday." }] });
+  expect(JSON.parse(off.stdout)).toMatchObject({ on: false, away: false });
+  expect(JSON.parse(read.stdout)).toEqual(JSON.parse(off.stdout));
+});
+
 test("preferences change with a date format Duva doesn't have says which there are", async () => {
   const machine = await newMachine();
   const server = await (await startDuva({ admin: "ada@example.com" })).listen();

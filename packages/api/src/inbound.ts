@@ -6,7 +6,8 @@
 // goes to its members, as group-mail.ts has it. Mail to an address the organization doesn't have
 // goes to its domain's catch-all, which SES takes it for, as if to the catch-all's mailbox or group.
 // Mail that passed DMARC carries its sender's logo, if their domain publishes one Duva shows
-// (ADR-0023), except mail from an agent, which keeps the agent's mark, and spam.
+// (ADR-0023), except mail from an agent, which keeps the agent's mark, and spam. Mail stored in
+// an Inbox while its mailbox's owner is away gets their away message, as away-messages.ts has it.
 import type { SESEvent } from "aws-lambda";
 import type { Table } from "./deployment.ts";
 import { dropLogLine, dropReason } from "./drops.ts";
@@ -20,6 +21,7 @@ import { type Outbound, sentBySystem } from "./sending.ts";
 import { receivedByAny } from "./mail.ts";
 import { receiveScreened } from "./screening.ts";
 import { senderLogo, type SenderLogos } from "./sender-logos.ts";
+import { sendAwayMessage } from "./away-messages.ts";
 import type { TaskRunner } from "./tasks.ts";
 import type { Unsubscriber } from "./unsubscriber.ts";
 import { unsubscribeDropped } from "./unsubscribing.ts";
@@ -125,6 +127,7 @@ export function createInbound({
       for (const [mailbox, to] of delivered) {
         const received = await receiveScreened(table, { mailbox, sesMessageId: ses.mail.messageId, rawKey, ...to, sender: ses.mail.source, receivedAt: ses.mail.timestamp, verdicts, parsed, spam, dmarcPassed, fromAgent, logo });
         if (received === "dropped") dropped.push([mailbox, to]);
+        else if (received !== "had") await sendAwayMessage({ table, outbound, log }, { mailbox, ...received, ...to, envelopeSender: ses.mail.source, spam, fromAgent, raw, parsed });
       }
       // Unsubscribing from spam would confirm a live address (ADR-0031).
       if (!spam) {

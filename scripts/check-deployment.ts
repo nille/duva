@@ -158,6 +158,10 @@ for (const read of ["read", "unread"]) {
   );
 }
 await check("listing a mailbox's Sent without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/mailboxes/x/sent`), 401));
+await check("reading or changing an away message without credentials answers 401", async () =>
+  (await expectStatus(await fetch(`${apiUrl}/away-message`), 401)) ??
+  expectStatus(await fetch(`${apiUrl}/away-message`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ on: true }) }), 401),
+);
 await check("getting an attachment's link without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/mailboxes/x/messages/x/attachments/0`), 401));
 // A message's headers are seen only by reading mail, which this check never does, so it sees only that they need sign-in (#145).
 await check("reading a message's headers without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/mailboxes/x/messages/x/headers`), 401));

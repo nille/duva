@@ -310,6 +310,7 @@ function systemPrompt(
           "When you are done, end with a short note to your owner of what you did, which Duva shows in the thread.",
         ]),
     ...memoryLines(payload),
+    "Your owner's away message, the reply Duva sends for them while they're away, is theirs to set in Settings, under Preferences. When they ask you to write it, draft the text in your answer for them to save there: you can't set it, and you never write the replies.",
     "Answer briefly and plainly, in the language your owner writes in, as plain text without Markdown. Name threads by their subject and sender, never by their IDs.",
     ...(helps ? ["When you are unsure what your owner means, which mail they mean, or how to do it, use ask_for_help rather than guess."] : []),
     ...(handover === undefined ? [] : [`Another model began this and handed it to you, with its work so far above, since ${handoverWhy(handover)}${misstated.length === 0 ? "" : `: Duva has ${misstated.join(" and ")}`}. Carry on from there.`]),

@@ -43,6 +43,7 @@ import type { Done, Label } from "./organize.tsx";
 import { FeedStream } from "./stream.tsx";
 import { ThreadView } from "./thread.tsx";
 import { hrefOf, MailViews, pathOf, screenedSendersPath, type SearchView, senderHref, type ThreadsView, titleOf, type View, viewOf } from "./views.tsx";
+import { type AwayMessage, AwayLine } from "./away-line.tsx";
 
 // Views only some humans open, or open seldom, load when first opened, so the mail opens sooner.
 const Approvals = lazy(() => import("./approvals.tsx").then(({ Approvals }) => ({ default: Approvals })));
@@ -216,6 +217,8 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
   // Times and dates show as the browser's language does until the human's preferences are read.
   const [preferences, setPreferences] = useState<Preferences>(defaultPreferences);
   const [preferencesRead, setPreferencesRead] = useState(false);
+  // The human's away message, which the status strip says while it's on.
+  const [awayMessage, setAwayMessage] = useState<AwayMessage>();
   // How many of the list open are unread, which the phone's switcher says.
   const [listCount, setListCount] = useState(0);
   // On phones, whether the search field and the mailboxes and views are open.
@@ -237,6 +240,19 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
       setPreferencesRead(true);
     })();
   }, [client, onSignedOut]);
+
+  // The away message is read again whenever the tab is shown, since its days begin and end by themselves.
+  useEffect(() => {
+    const read = () =>
+      void client
+        .GET("/away-message")
+        .then(({ data }) => data !== undefined && setAwayMessage(data))
+        .catch(() => undefined);
+    const shown = () => document.visibilityState === "visible" && read();
+    read();
+    document.addEventListener("visibilitychange", shown);
+    return () => document.removeEventListener("visibilitychange", shown);
+  }, [client]);
 
   /** Lists the mailboxes, showing them as loading first unless `quietly`, as when the feeds say they changed. */
   const listMailboxes = useCallback(
@@ -1046,6 +1062,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
                 email={actor.email}
                 mailboxes={listed === undefined ? undefined : { mine: first, own }}
                 onPreferences={setPreferences}
+                onAway={setAwayMessage}
                 onSignedOut={onSignedOut}
               />
             </div>
@@ -1070,6 +1087,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
         <Strip
           connection={connection}
           agents={listed?.sponsorsAgents === true ? stripAgents : noAgents}
+          away={awayMessage}
           onShortcuts={preferences.keyboardShortcuts === "off" ? undefined : () => setShortcutsOpen(true)}
           email={actor.email}
           admin={actor.admin}
@@ -1108,7 +1126,8 @@ function UpToDate({ connection }: { connection: Connection }) {
 }
 
 /**
- * The status strip along a desk's foot: whether Duva is up to date, how Coo stands, the mailbox
+ * The status strip along a desk's foot: whether Duva is up to date, that the human is away while
+ * their away message is on, how Coo stands, the mailbox
  * agent of the mailbox beside or else of the first own, and how each self-hosted agent the human
  * sponsors does, each a link to its activity, the key that lists the shortcuts while they are on,
  * Settings, and who is signed in, with Sign out.
@@ -1116,6 +1135,7 @@ function UpToDate({ connection }: { connection: Connection }) {
 function Strip({
   connection,
   agents,
+  away,
   onShortcuts,
   email,
   admin,
@@ -1125,6 +1145,7 @@ function Strip({
 }: {
   connection: Connection;
   agents: Agent[];
+  away: AwayMessage | undefined;
   onShortcuts?: () => void;
   email: string;
   admin: boolean;
@@ -1143,6 +1164,7 @@ function Strip({
           {connection.ok ? strings.connection.upToDate(clock(connection.at)) : strings.strip.unreachable}
         </p>
       )}
+      <AwayLine away={away} />
       {agents.length > 0 && (
         <ul className="strip-agents">
           {agents.map((agent) => (

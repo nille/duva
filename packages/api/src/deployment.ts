@@ -11,6 +11,7 @@ import type { Searcher } from "./searching.ts";
 import type { Unsubscriber } from "./unsubscriber.ts";
 import type { WaitingSends } from "./limits.ts";
 import type { Reminders } from "./reminders.ts";
+import type { AwayEnds } from "./away-messages.ts";
 import type { HostedLogos } from "./own-logos.ts";
 import type { TaskRunner } from "./tasks.ts";
 import type { Embedder } from "./titan.ts";
@@ -54,6 +55,8 @@ export interface Deployment {
   waitingSends: WaitingSends;
   /** Has the sender bring back each thread set aside in Remind me when its time comes. */
   reminders: Reminders;
+  /** Has the sender switch each away message off when its last day ends. */
+  awayEnds: AwayEnds;
   /** Serves the organization's own logos, and the mark certificates attached to them. */
   hostedLogos: HostedLogos;
   /** Runs the tasks labels' prompts give mailbox agents, as unpausing one hands them over again. */

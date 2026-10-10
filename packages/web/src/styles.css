@@ -1164,6 +1164,19 @@ button.selector[aria-expanded="true"] {
   background: var(--alert);
 }
 
+/* While the away message is on, the strip says so in ink, a link to it. */
+.strip-away {
+  color: var(--ink);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.strip-away:hover {
+  text-decoration: underline;
+  text-decoration-color: var(--seam);
+  text-underline-offset: 0.25em;
+}
+
 .strip-agents {
   display: flex;
   gap: var(--space-5);
@@ -3353,6 +3366,12 @@ a.thread:focus-visible {
   margin-top: var(--space-1);
   color: var(--ink-2);
   font-size: var(--text-sm);
+}
+
+/* The away message Duva sent its sender, quiet after the letter's body and files. */
+.letter-away {
+  margin-top: var(--space-4);
+  color: var(--ink-3);
 }
 
 /* The body is mail, in the mono at the proof's size, a little more open than the interface, under 80ch. */
@@ -5730,6 +5749,45 @@ input[aria-invalid="true"] {
 .setting-field select {
   font-weight: 400;
   font-size: var(--text-md);
+}
+
+/* The away message's switch is as wide as its two sides, as the Screener's is. */
+.away-switch .switch {
+  justify-self: start;
+  width: max-content;
+}
+
+/* The away message: its two days side by side, each mailbox's text a field under the one before. */
+.away-days {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3) var(--space-5);
+  margin-top: var(--space-3);
+}
+
+.away-days .setting-field {
+  max-width: 12rem;
+}
+
+.away-subject input {
+  width: 100%;
+}
+
+.away-texts {
+  display: grid;
+  gap: var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.away-texts .setting-field {
+  max-width: 60ch;
+}
+
+.away-texts textarea {
+  font: 400 var(--text-proof) / 1.6 var(--mono);
+  resize: vertical;
 }
 
 /* Retention: a short field of whole days, and the word after it. */

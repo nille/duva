@@ -226,6 +226,30 @@ export interface paths {
         patch: operations["changePreferences"];
         trace?: never;
     };
+    "/away-message": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read your away message, the reply Duva sends for you while you're away, and whether you're away now.
+         * @description One switch covers all your mailboxes, and each has its own text. While you're away, each person whose mail reaches one of your Inboxes gets the text once, from the address their mail came to, as you. Mailing lists, newsletters, other automatic replies, no-reply and bounce addresses, Spam, the Feed, the Paper Trail, senders sent nowhere, mail waiting in the Screener and mail to a group get none. Only humans have an away message, and each reads only their own.
+         */
+        get: operations["getAwayMessage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Switch your away message on or off, choose the days you're away, or change its subject or a mailbox's text.
+         * @description Give only what to change. Without days, you're away from when you switch it on until you switch it off. With a first and a last day, in your time zone, you're away from the first day's start to the last day's end, and it switches itself off then. Switching it on starts a new time away, so everyone gets the text once again, while changing the days or the text goes on with the same one. Give mailbox and text together to change one mailbox's text. Your Coo can help write it when you ask, but only you save it.
+         */
+        patch: operations["changeAwayMessage"];
+        trace?: never;
+    };
     "/memories": {
         parameters: {
             query?: never;
@@ -2807,7 +2831,7 @@ export interface components {
             position: number;
         };
         /** @description A change in a mailbox. */
-        MailboxChange: components["schemas"]["MessageReceived"] | components["schemas"]["DraftWritten"] | components["schemas"]["DraftChanged"] | components["schemas"]["DraftDeleted"] | components["schemas"]["SendAsked"] | components["schemas"]["ApprovalAsked"] | components["schemas"]["ApprovalWithdrawn"] | components["schemas"]["ApprovalDecided"] | components["schemas"]["ApprovalUndone"] | components["schemas"]["MessageSent"] | components["schemas"]["SendWaitingForLimit"] | components["schemas"]["SentNow"] | components["schemas"]["SendFailed"] | components["schemas"]["SendUnclear"] | components["schemas"]["FeedbackReceived"] | components["schemas"]["ThreadRead"] | components["schemas"]["ThreadUnread"] | components["schemas"]["ThreadLabelsChanged"] | components["schemas"]["ReminderSet"] | components["schemas"]["ReminderCancelled"] | components["schemas"]["ThreadBack"] | components["schemas"]["LabelCreated"] | components["schemas"]["LabelRenamed"] | components["schemas"]["LabelDeleted"] | components["schemas"]["ThreadErased"] | components["schemas"]["AgentSettingsChanged"] | components["schemas"]["AgentPaused"] | components["schemas"]["AgentUnpaused"] | components["schemas"]["SenderScreened"] | components["schemas"]["ScreenerSwitched"] | components["schemas"]["ScreenedSenderRemoved"] | components["schemas"]["UnsubscribeAttempted"] | components["schemas"]["SenderDeliverySet"] | components["schemas"]["SenderDeliveryRemoved"] | components["schemas"]["MessageDropped"] | components["schemas"]["LabelPromptSet"] | components["schemas"]["LabelPromptRemoved"] | components["schemas"]["TaskGiven"] | components["schemas"]["TaskStarted"] | components["schemas"]["TaskEnded"] | components["schemas"]["AgentHandedOver"] | components["schemas"]["ConversationTurnTaken"] | components["schemas"]["MailboxAgentsMerged"] | components["schemas"]["LinkedFileDownloaded"] | components["schemas"]["SharingStopped"];
+        MailboxChange: components["schemas"]["MessageReceived"] | components["schemas"]["DraftWritten"] | components["schemas"]["DraftChanged"] | components["schemas"]["DraftDeleted"] | components["schemas"]["SendAsked"] | components["schemas"]["ApprovalAsked"] | components["schemas"]["ApprovalWithdrawn"] | components["schemas"]["ApprovalDecided"] | components["schemas"]["ApprovalUndone"] | components["schemas"]["MessageSent"] | components["schemas"]["SendWaitingForLimit"] | components["schemas"]["SentNow"] | components["schemas"]["SendFailed"] | components["schemas"]["SendUnclear"] | components["schemas"]["FeedbackReceived"] | components["schemas"]["ThreadRead"] | components["schemas"]["ThreadUnread"] | components["schemas"]["ThreadLabelsChanged"] | components["schemas"]["ReminderSet"] | components["schemas"]["ReminderCancelled"] | components["schemas"]["ThreadBack"] | components["schemas"]["LabelCreated"] | components["schemas"]["LabelRenamed"] | components["schemas"]["LabelDeleted"] | components["schemas"]["ThreadErased"] | components["schemas"]["AgentSettingsChanged"] | components["schemas"]["AgentPaused"] | components["schemas"]["AgentUnpaused"] | components["schemas"]["SenderScreened"] | components["schemas"]["ScreenerSwitched"] | components["schemas"]["ScreenedSenderRemoved"] | components["schemas"]["UnsubscribeAttempted"] | components["schemas"]["SenderDeliverySet"] | components["schemas"]["SenderDeliveryRemoved"] | components["schemas"]["MessageDropped"] | components["schemas"]["LabelPromptSet"] | components["schemas"]["LabelPromptRemoved"] | components["schemas"]["TaskGiven"] | components["schemas"]["TaskStarted"] | components["schemas"]["TaskEnded"] | components["schemas"]["AgentHandedOver"] | components["schemas"]["ConversationTurnTaken"] | components["schemas"]["MailboxAgentsMerged"] | components["schemas"]["LinkedFileDownloaded"] | components["schemas"]["SharingStopped"] | components["schemas"]["AwayMessageSent"];
         /** @description Mail arrived. No actor made this change, so it names none. */
         MessageReceived: {
             /** @description The change's position in the mailbox's feed, counting from 1. */
@@ -4565,6 +4589,20 @@ export interface components {
             attachments: components["schemas"]["Attachment"][];
             /** @description The files a message sent from the mailbox carried as links, each with how often it was downloaded, if it carried any. The message's text leaves out the list of them that recipients see, and it has no HTML. */
             linkedFiles?: components["schemas"]["LinkedFile"][];
+            /** @description Present on received mail whose sender got the human's away message. */
+            awayMessage?: components["schemas"]["AwayMessageNote"];
+        };
+        AwayMessageNote: {
+            /**
+             * Format: date-time
+             * @description When Duva sent the away message.
+             */
+            sentAt: string;
+            /**
+             * @description The address it went to.
+             * @example ada@example.org
+             */
+            to: string;
         };
         /** @description A sender's logo, which their domain publishes through BIMI. Duva fetched it when the mail arrived, checked that it is SVG Tiny PS and wrote it out again without anything that could run or fetch, so showing it never reaches the sender (ADR-0023). */
         SenderLogo: {
@@ -5425,6 +5463,84 @@ export interface components {
          * @enum {string}
          */
         CooLearnsFromMail: "on" | "off";
+        /** @description A human's away message. */
+        AwayMessage: {
+            /** @description Whether the away message is switched on. */
+            on: boolean;
+            /** @description Whether the human is away now, so replies go: switched on, and without days, or on one of the days. */
+            away: boolean;
+            /** @description The first day the human is away, in their time zone. Absent without days. */
+            firstDay?: components["schemas"]["AwayDay"];
+            /** @description The last day the human is away, in their time zone. Absent without days. */
+            lastDay?: components["schemas"]["AwayDay"];
+            /**
+             * @description The replies' subject. Absent for the default, "Away: " followed by the subject of the mail answered.
+             * @example Away until 18 November
+             */
+            subject?: string;
+            /** @description Each of the human's mailboxes, with its text, in the order listing their mailboxes gives. */
+            mailboxes: components["schemas"]["AwayText"][];
+        };
+        AwayText: {
+            /** @description The mailbox's ID. */
+            mailbox: string;
+            /**
+             * @description The mailbox's default address.
+             * @example grace@example.com
+             */
+            address: string;
+            /**
+             * @description The text its replies say. Absent while it has none, when mail to it gets no reply.
+             * @example I'm away until 18 November, without mail. Write again after that, or to support@example.com if it can't wait.
+             */
+            text?: string;
+        };
+        /**
+         * @description A day, as YYYY-MM-DD.
+         * @example 2026-11-18
+         */
+        AwayDay: string;
+        /** @description What changes in the away message. */
+        AwayMessageChanges: {
+            /** @description True to switch it on, which needs a text for at least one mailbox, or false to switch it off. The CLI switches it off with --no-on. */
+            on?: boolean;
+            /** @description The first day away, given with lastDay, or null with lastDay null to be away from now until switched off. The CLI gives null with --no-firstDay. */
+            firstDay?: components["schemas"]["AwayDay"] | null;
+            /** @description The last day away, from today on, given with firstDay, or null. The CLI gives null with --no-lastDay. */
+            lastDay?: components["schemas"]["AwayDay"] | null;
+            /** @description The replies' subject, or null for the default, "Away: " followed by the subject answered. The CLI gives null with --no-subject. */
+            subject?: string | null;
+            /** @description The ID of the mailbox whose text changes, one of yours, given with text. */
+            mailbox?: string;
+            /** @description The mailbox's text, or null to remove it, so mail to it gets no reply. The CLI gives null with --no-text. */
+            text?: string | null;
+        };
+        /** @description Duva sent the human's away message, as them, to the sender of a message that reached the Inbox, once for each sender each time they're away. Duva sent it by itself, so it names duva. */
+        AwayMessageSent: {
+            /** @description The change's position in the mailbox's feed, counting from 1. */
+            position: number;
+            /**
+             * Format: date-time
+             * @description When it was sent.
+             */
+            at: string;
+            /** @constant */
+            actor: "duva";
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "awayMessageSent";
+            /** @description The ID of the thread of the message answered. */
+            thread: string;
+            /** @description The ID of the message answered. */
+            message: string;
+            /**
+             * @description The address it was sent to.
+             * @example ada@example.org
+             */
+            to: string;
+        };
         /** @description Something Coo remembers of its human, with when and where it came from. */
         Memory: {
             /** @description The memory's ID. */
@@ -5880,6 +5996,55 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Preferences"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getAwayMessage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Your away message. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AwayMessage"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    changeAwayMessage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AwayMessageChanges"];
+            };
+        };
+        responses: {
+            /** @description Your away message, changed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AwayMessage"];
                 };
             };
             400: components["responses"]["BadRequest"];

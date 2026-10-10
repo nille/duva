@@ -42,6 +42,7 @@ import { correctMemory, forgetMemories, forgetMemory, keepMemory, listMemories }
 import { type Actor, actorOf } from "./organization.ts";
 import { getDomainLogo, getMailboxLogo, removeDomainLogo, removeLogoCertificate, removeMailboxLogo, setDomainLogo, setLogoCertificate, setMailboxLogo } from "./own-logos.ts";
 import { changePreferences, getPreferences } from "./preferences.ts";
+import { changeAwayMessage, getAwayMessage } from "./away-messages.ts";
 import { cancelReminders, listReminders, remindThreads } from "./reminders.ts";
 import { searchMailbox } from "./search.ts";
 import { getScreener, getSender, listSenders, removeSenderDelivery, setSenderDelivery, switchScreener } from "./screener.ts";
@@ -72,6 +73,8 @@ export const handlers: Record<OperationId, OperationHandler> = {
   previewRetention,
   getPreferences,
   changePreferences,
+  getAwayMessage,
+  changeAwayMessage,
   listMemories,
   keepMemory,
   forgetMemories,

@@ -190,6 +190,8 @@ interface StoredMessage {
   feedback?: SendFeedback[];
   /** The files a message sent from the mailbox carried as links. */
   linkedFiles?: LinkedEntry[];
+  /** On received mail, the away message its sender got (#155). */
+  awayMessage?: components["schemas"]["AwayMessageNote"];
   /** Where the raw message is in the mail bucket. */
   rawKey: string;
   /**
@@ -212,15 +214,15 @@ export interface Verdicts {
  * order of ParsedMail's answers, or as a new thread, with the label its screening gives either,
  * the Inbox without one. Spam is kept apart instead: it starts its own thread with the Spam label,
  * and no reply joins that thread. Records its arrival in the mailbox's change feed, naming no
- * actor. Returns false if the mailbox already has it, and throws ScreeningChanged if a condition
- * of its screening failed.
+ * actor. Returns the message's ID and its thread as stored, or undefined if the mailbox already
+ * has it, and throws ScreeningChanged if a condition of its screening failed.
  */
-export async function receiveMessage(table: Table, arrival: Arrival): Promise<boolean> {
+export async function receiveMessage(table: Table, arrival: Arrival): Promise<{ message: string; thread: StoredSummary } | undefined> {
   const { mailbox, sesMessageId, rawKey, recipient, plusTag, group, sender, receivedAt, parsed } = arrival;
   const screening = arrival.spam ? undefined : arrival.screening;
   const label = (joined: boolean) => (arrival.spam ? spam : ((joined ? screening?.joined : screening?.label) ?? inbox));
   const { Item: received } = await documents(table).send(new GetCommand({ TableName: table.name, Key: receivedKey(mailbox, sesMessageId), ConsistentRead: true }));
-  if (received !== undefined) return false;
+  if (received !== undefined) return undefined;
 
   const message: StoredMessage = {
     id: randomUUID(),
@@ -239,7 +241,7 @@ export async function receiveMessage(table: Table, arrival: Arrival): Promise<bo
     ...(arrival.fromAgent && { fromAgent: true }),
     ...(arrival.logo !== undefined && { logo: arrival.logo }),
   };
-  return storeMessage(table, {
+  const thread = await storeMessage(table, {
     mailbox,
     message,
     text: parsed.text,
@@ -262,6 +264,7 @@ export async function receiveMessage(table: Table, arrival: Arrival): Promise<bo
     once: () => ({ Put: { TableName: table.name, Item: receivedKey(mailbox, sesMessageId), ...isNew } }),
     checks: screening?.items ?? [],
   });
+  return thread === undefined ? undefined : { message: message.id, thread };
 }
 
 /**
@@ -312,7 +315,7 @@ export async function storeSentMessage(
   // SES accepted the message, so the mailbox has sent to its recipients whether or not it is stored.
   const recipients = new Set([...message.to, ...message.cc, ...(message.bcc ?? [])].map(({ address }) => address.toLowerCase()));
   await noteSentTo(table, mailbox, recipients);
-  return storeMessage(table, {
+  const stored = await storeMessage(table, {
     mailbox,
     message,
     text,
@@ -324,6 +327,7 @@ export async function storeSentMessage(
     once,
     also,
   });
+  return stored !== undefined;
 }
 
 /**
@@ -333,11 +337,11 @@ export async function storeSentMessage(
  * thread. Records it in the mailbox's change feed as arriving mail, naming no actor. Returns false if
  * the mailbox already has it.
  */
-export function storeGroupCopy(
+export async function storeGroupCopy(
   table: Table,
   { mailbox, sent, message, text, answers }: { mailbox: string; sent: string; message: StoredMessage & { sentAs: components["schemas"]["SentAsGroup"] }; text: string; answers: string[] },
 ): Promise<boolean> {
-  return storeMessage(table, {
+  return (await storeMessage(table, {
     mailbox,
     message,
     text,
@@ -346,7 +350,7 @@ export function storeGroupCopy(
     by: undefined,
     change: (thread) => ({ type: "messageReceived", thread, message: message.id }),
     once: () => ({ Put: { TableName: table.name, Item: copiedKey(mailbox, sent), ...isNew } }),
-  });
+  })) !== undefined;
 }
 
 /** Whether Duva sent the message with the Message-ID from the mailbox. */
@@ -362,8 +366,8 @@ export async function sentFromMailbox(table: Table, mailbox: string, messageId: 
  * the checks, and the change in the mailbox's change feed. If `findable`, its Message-ID points at
  * it, so replies to it join its thread. If `unread` is given, the thread becomes unread or read. If
  * `sent`, Sent lists the thread from then on. If the message is the thread's newest, its text gives the thread's snippet. `also`
- * gives unconditional writes that go with it. Returns false if that write's condition failed, since then the
- * message is already stored, and throws ScreeningChanged if a check's did.
+ * gives unconditional writes that go with it. Returns the thread as stored, or undefined if that write's
+ * condition failed, since then the message is already stored, and throws ScreeningChanged if a check's did.
  */
 async function storeMessage(
   table: Table,
@@ -382,7 +386,7 @@ async function storeMessage(
     also?: TransactItem[];
     checks?: TransactItem[];
   },
-): Promise<boolean> {
+): Promise<StoredSummary | undefined> {
   const { id, receivedAt } = message;
   // recordChanges gives the items' cancellation reasons after the counter's and the one change's.
   const [onceReason, threadReason] = [2, 3];
@@ -442,11 +446,11 @@ async function storeMessage(
     try {
       const changes = [change(thread, joined !== undefined, summary.labels), ...(early ? [{ type: "threadBack", thread, setAsideAt: joined.reminder!.setAt, early: true }] : [])];
       await recordChanges(table, mailboxFeed(mailbox), { by, changes, items });
-      return true;
+      return summary;
     } catch (error) {
       const reasons = error instanceof TransactionCanceledException ? (error.CancellationReasons ?? []) : [];
       // Another processing of the same event stored it first.
-      if (reasons[onceReason]?.Code === "ConditionalCheckFailed") return false;
+      if (reasons[onceReason]?.Code === "ConditionalCheckFailed") return undefined;
       if (reasons.slice(onceReason + items.length - checks.length).some((reason) => reason.Code === "ConditionalCheckFailed")) throw new ScreeningChanged();
       // Another message changed the thread since it was read, so it is read again.
       if (reasons[threadReason]?.Code !== "ConditionalCheckFailed" || attempt === 10) throw error;
@@ -1050,7 +1054,7 @@ async function readMessage({ table, mailBucket }: { table: Table; mailBucket: Ma
   // that list, which Duva shows as the linked files themselves instead.
   const text = linked === undefined ? parsed.text : withoutLinkedFiles(parsed.text, linked);
   const html = parsed.html === undefined || linkTo === undefined || linked !== undefined ? undefined : await servedHtml(parsed.html, parsed.parts, (attachment) => linkTo(stored.id, attachment));
-  const { id, messageId, from, to, cc, bcc, recipient, plusTag, group, subject, date, receivedAt, sentBy, sentAs, fromAgent, logo, approval, feedback } = stored;
+  const { id, messageId, from, to, cc, bcc, recipient, plusTag, group, subject, date, receivedAt, sentBy, sentAs, fromAgent, logo, approval, feedback, awayMessage } = stored;
   const message = {
     id,
     messageId,
@@ -1070,6 +1074,7 @@ async function readMessage({ table, mailBucket }: { table: Table; mailBucket: Ma
     ...(logo !== undefined && { logo }),
     ...(approval !== undefined && { approval }),
     ...(feedback !== undefined && { feedback }),
+    ...(awayMessage !== undefined && { awayMessage }),
     text,
     ...html,
     attachments,
@@ -1096,6 +1101,22 @@ export async function feedbackOnMessage(table: Table, mailbox: string, message: 
         ConditionExpression: `attribute_exists(${pk})`,
         ExpressionAttributeValues: { ":none": [], ":feedback": [feedback] },
       },
+    },
+  };
+}
+
+/** The write that notes the away message the received message's sender got, or undefined if the message is no longer there. */
+export async function awayMessageNoted(table: Table, mailbox: string, message: string, note: NonNullable<StoredMessage["awayMessage"]>): Promise<TransactItem | undefined> {
+  const { Item: ref } = await documents(table).send(new GetCommand({ TableName: table.name, Key: messageRefKey(mailbox, message), ConsistentRead: true }));
+  if (ref === undefined) return undefined;
+  const { thread, receivedAt } = ref as { thread: string; receivedAt: string };
+  return {
+    Update: {
+      TableName: table.name,
+      Key: messageKey(mailbox, thread, receivedAt, message),
+      UpdateExpression: "SET awayMessage = :note",
+      ConditionExpression: `attribute_exists(${pk})`,
+      ExpressionAttributeValues: { ":note": note },
     },
   };
 }

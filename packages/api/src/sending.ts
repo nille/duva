@@ -13,7 +13,7 @@
 // alerts to its sponsor. The sender also mails each urgent alert to its sponsor, from Duva, and
 // records that it did, so the inbound handler knows the mail for Duva's own when it arrives. And
 // when a thread set aside in Remind me is due, EventBridge Scheduler hands it to the sender, which
-// brings it back. Files too large to carry go as linked files (ADR-0034): the sender shares each
+// brings it back, and when an away message's last day ends, switches it off. Files too large to carry go as linked files (ADR-0034): the sender shares each
 // under a new link, lists them after the text, and asks to be handed each when its link ends, to
 // delete it.
 import { randomUUID } from "node:crypto";
@@ -45,6 +45,7 @@ import type { MailBucket } from "./mail-bucket.ts";
 import { copyToOtherMembers, fromStanding } from "./group-mail.ts";
 import { bringBack, findMessage, storedMessage } from "./mail.ts";
 import type { RemindEvent } from "./reminders.ts";
+import { type AwayEndEvent, endAway } from "./away-messages.ts";
 import { buildMail, disclosureHeader, mediaTypeOf, parseMail, type Part } from "./mime.ts";
 import { fileKey, uploadedFile, type UploadsBucket } from "./uploads-bucket.ts";
 import type { Downloads } from "./attachments.ts";
@@ -125,7 +126,7 @@ interface Sender {
 }
 
 export function createSender(sender: Sender) {
-  return async (event: DynamoDBStreamEvent | ReleaseEvent | RemindEvent | SendEvent | ExpireEvent): Promise<void> => {
+  return async (event: DynamoDBStreamEvent | ReleaseEvent | RemindEvent | SendEvent | ExpireEvent | AwayEndEvent): Promise<void> => {
     // A linked file's link ended.
     if ("expire" in event) {
       await expireFile(sender.table, sender.uploads, event.expire);
@@ -142,6 +143,11 @@ export function createSender(sender: Sender) {
     }
     if ("send" in event) {
       await send(sender, event.send);
+      return;
+    }
+    // An away message's last day ended.
+    if ("awayEnds" in event) {
+      await endAway(sender.table, event.awayEnds);
       return;
     }
     for (const record of event.Records) {
