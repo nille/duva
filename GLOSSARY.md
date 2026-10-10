@@ -35,6 +35,10 @@ The model a mailbox agent's harder work goes to: writing mail that may be sent, 
 What Coo keeps about its human between conversations: what they tell it, and what it learns from mail it reads while it works. Each memory names where it came from, the human's own words or the threads it learned it from, and goes when they go: erasing a thread erases what was learned from it, and handing a mailbox over erases what was learned from its mail. The human sees every memory with its source, corrects or forgets any, and can stop Coo learning from mail, which it does by default.
 _Avoid_: knowledge, profile, context
 
+**Browsing**:
+Coo using a web browser for its work, beyond unsubscribing: opening any link from mail or web search, reading the page, and acting on it on its own, by logging in, clicking and submitting forms, as its human. It logs in only by codes and links mailed to its human, and stays logged in between runs in a browser profile of the human's own. It never pays or enters card details, and never downloads or uploads a file. A browsing run has only the page's tools and one more, to fetch a login code just mailed from that site, so what a page says can't reach the mailbox. Coo says in a sentence what it did. On unless an admin turns it off for the organization, or a human for their own Coo, who can also sign Coo out of every site.
+_Avoid_: scraping, automation, surfing
+
 **Web search**:
 Coo looking something up on the web, wherever it helps: in Ask Coo, in a label prompt's task, or while unsubscribing. Its queries may carry anything from the mail that helps, and go to Amazon's own search, in another region where the deployment's has none. A reader with no powers reads the results and hands Coo a short answer with its sources, so what a page says never steers Coo. Coo says when it searched, with the sources. On unless an admin turns it off for the organization, or a human for their own Coo.
 _Avoid_: browsing, googling, research
