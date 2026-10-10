@@ -902,6 +902,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/mailboxes/{mailbox}/signature": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read a mailbox's signature, and each of its addresses' own.
+         * @description The signature closes the mail sent from the mailbox, after a line of "-- ": below what was written and above a forward's quoted original, on new mail, replies and forwards, agents' and Coo's drafts included, with the disclosure's line below it. An address's own signature wins for mail from it, and mail sent as a group carries the mailbox's. Away messages carry none. Only the mailbox's owner and the agents they give sponsor access can read it.
+         */
+        get: operations["getSignature"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Set or remove a mailbox's signature, or one of its addresses' own.
+         * @description Give text alone for the mailbox's signature, or address and text for one of its addresses' own, which wins for mail from that address. Plain text, links as they are, up to 1,000 characters. Drafts written from then on carry it, and the writer can change or drop it for one message. Only the mailbox's owner, and agents with organize sponsor access or more, can change it, and the change is in the mailbox's change feed.
+         */
+        patch: operations["changeSignature"];
+        trace?: never;
+    };
     "/mailboxes": {
         parameters: {
             query?: never;
@@ -2831,7 +2855,7 @@ export interface components {
             position: number;
         };
         /** @description A change in a mailbox. */
-        MailboxChange: components["schemas"]["MessageReceived"] | components["schemas"]["DraftWritten"] | components["schemas"]["DraftChanged"] | components["schemas"]["DraftDeleted"] | components["schemas"]["SendAsked"] | components["schemas"]["ApprovalAsked"] | components["schemas"]["ApprovalWithdrawn"] | components["schemas"]["ApprovalDecided"] | components["schemas"]["ApprovalUndone"] | components["schemas"]["MessageSent"] | components["schemas"]["SendWaitingForLimit"] | components["schemas"]["SentNow"] | components["schemas"]["SendFailed"] | components["schemas"]["SendUnclear"] | components["schemas"]["FeedbackReceived"] | components["schemas"]["ThreadRead"] | components["schemas"]["ThreadUnread"] | components["schemas"]["ThreadLabelsChanged"] | components["schemas"]["ReminderSet"] | components["schemas"]["ReminderCancelled"] | components["schemas"]["ThreadBack"] | components["schemas"]["LabelCreated"] | components["schemas"]["LabelRenamed"] | components["schemas"]["LabelDeleted"] | components["schemas"]["ThreadErased"] | components["schemas"]["AgentSettingsChanged"] | components["schemas"]["AgentPaused"] | components["schemas"]["AgentUnpaused"] | components["schemas"]["SenderScreened"] | components["schemas"]["ScreenerSwitched"] | components["schemas"]["ScreenedSenderRemoved"] | components["schemas"]["UnsubscribeAttempted"] | components["schemas"]["SenderDeliverySet"] | components["schemas"]["SenderDeliveryRemoved"] | components["schemas"]["MessageDropped"] | components["schemas"]["LabelPromptSet"] | components["schemas"]["LabelPromptRemoved"] | components["schemas"]["TaskGiven"] | components["schemas"]["TaskStarted"] | components["schemas"]["TaskEnded"] | components["schemas"]["AgentHandedOver"] | components["schemas"]["ConversationTurnTaken"] | components["schemas"]["MailboxAgentsMerged"] | components["schemas"]["LinkedFileDownloaded"] | components["schemas"]["SharingStopped"] | components["schemas"]["AwayMessageSent"];
+        MailboxChange: components["schemas"]["MessageReceived"] | components["schemas"]["DraftWritten"] | components["schemas"]["DraftChanged"] | components["schemas"]["DraftDeleted"] | components["schemas"]["SendAsked"] | components["schemas"]["ApprovalAsked"] | components["schemas"]["ApprovalWithdrawn"] | components["schemas"]["ApprovalDecided"] | components["schemas"]["ApprovalUndone"] | components["schemas"]["MessageSent"] | components["schemas"]["SendWaitingForLimit"] | components["schemas"]["SentNow"] | components["schemas"]["SendFailed"] | components["schemas"]["SendUnclear"] | components["schemas"]["FeedbackReceived"] | components["schemas"]["ThreadRead"] | components["schemas"]["ThreadUnread"] | components["schemas"]["ThreadLabelsChanged"] | components["schemas"]["ReminderSet"] | components["schemas"]["ReminderCancelled"] | components["schemas"]["ThreadBack"] | components["schemas"]["LabelCreated"] | components["schemas"]["LabelRenamed"] | components["schemas"]["LabelDeleted"] | components["schemas"]["ThreadErased"] | components["schemas"]["AgentSettingsChanged"] | components["schemas"]["AgentPaused"] | components["schemas"]["AgentUnpaused"] | components["schemas"]["SenderScreened"] | components["schemas"]["ScreenerSwitched"] | components["schemas"]["ScreenedSenderRemoved"] | components["schemas"]["UnsubscribeAttempted"] | components["schemas"]["SenderDeliverySet"] | components["schemas"]["SenderDeliveryRemoved"] | components["schemas"]["MessageDropped"] | components["schemas"]["LabelPromptSet"] | components["schemas"]["LabelPromptRemoved"] | components["schemas"]["TaskGiven"] | components["schemas"]["TaskStarted"] | components["schemas"]["TaskEnded"] | components["schemas"]["AgentHandedOver"] | components["schemas"]["ConversationTurnTaken"] | components["schemas"]["MailboxAgentsMerged"] | components["schemas"]["LinkedFileDownloaded"] | components["schemas"]["SharingStopped"] | components["schemas"]["AwayMessageSent"] | components["schemas"]["SignatureChanged"];
         /** @description Mail arrived. No actor made this change, so it names none. */
         MessageReceived: {
             /** @description The change's position in the mailbox's feed, counting from 1. */
@@ -3251,6 +3275,18 @@ export interface components {
              * @enum {string}
              */
             type: "labelPromptRemoved";
+        };
+        SignatureChanged: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "signatureChanged";
+            /** @description The address whose own signature changed. Absent for the mailbox's. */
+            address?: string;
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "signatureChanged";
         };
         TaskGiven: components["schemas"]["ChangeBase"] & {
             /** @constant */
@@ -3778,6 +3814,8 @@ export interface components {
             subject?: string;
             /** @description The plain-text body. */
             text?: string;
+            /** @description The signature to close it with, in place of the one its From has: the address's own, else the mailbox's. Give null for none. */
+            signature?: string | null;
             linkDays?: components["schemas"]["LinkDays"];
         };
         DraftChanges: {
@@ -3793,6 +3831,8 @@ export interface components {
             subject?: string;
             /** @description The plain-text body. */
             text?: string;
+            /** @description The signature for this message alone, or null for none. Changing From without it swaps the signature for the new From's, unless the writer changed it. */
+            signature?: string | null;
             linkDays?: components["schemas"]["LinkDays"];
         };
         ApproverEdits: {
@@ -3836,6 +3876,12 @@ export interface components {
             subject: string;
             /** @description The plain-text body. */
             text: string;
+            /**
+             * @description The signature it closes with, which Duva adds after a line of "-- ", below the text and above a forward's quoted original. Absent for none.
+             * @example Grace Hopper
+             *     https://example.com
+             */
+            signature?: string;
             /** @description The files it carries, those uploaded to it and those of the message it forwards. */
             attachments?: components["schemas"]["DraftAttachment"][];
             linkDays?: components["schemas"]["LinkDays"];
@@ -4167,6 +4213,8 @@ export interface components {
             bcc: components["schemas"]["EmailAddress"][];
             subject: string;
             text: string;
+            /** @description The signature it closes with, after a line of "-- ". Absent for none. */
+            signature?: string;
             /** @description The files it carries, those uploaded to it and those of the message it forwards. */
             attachments?: components["schemas"]["DraftAttachment"][];
             linkDays?: components["schemas"]["LinkDays"];
@@ -5514,6 +5562,37 @@ export interface components {
             mailbox?: string;
             /** @description The mailbox's text, or null to remove it, so mail to it gets no reply. The CLI gives null with --no-text. */
             text?: string | null;
+        };
+        /** @description A mailbox's signature, and its addresses' own. */
+        Signature: {
+            /**
+             * @description The mailbox's signature. Absent while it has none.
+             * @example Grace Hopper
+             *     https://example.com
+             */
+            text?: string;
+            /** @description Each of the mailbox's addresses, with its own signature if it has one. */
+            addresses: components["schemas"]["AddressSignature"][];
+        };
+        AddressSignature: {
+            /**
+             * @description One of the mailbox's addresses.
+             * @example support@example.com
+             */
+            address: string;
+            /**
+             * @description Its own signature, which wins for mail from it. Absent while it has none, when its mail carries the mailbox's.
+             * @example Support at Example
+             *     https://example.com/help
+             */
+            text?: string;
+        };
+        /** @description The signature that changes. */
+        SignatureChanges: {
+            /** @description The address whose own signature changes, one of the mailbox's. Without it, the mailbox's changes. */
+            address?: string;
+            /** @description The signature, plain text with links as they are, or null to remove it. The CLI gives null with --no-text. */
+            text: string | null;
         };
         /** @description Duva sent the human's away message, as them, to the sender of a message that reached the Inbox, once for each sender each time they're away. Duva sent it by itself, so it names duva. */
         AwayMessageSent: {
@@ -7352,6 +7431,63 @@ export interface operations {
                     "application/json": components["schemas"]["MailboxLogo"];
                 };
             };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getSignature: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The mailbox's ID. */
+                mailbox: components["parameters"]["Mailbox"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The mailbox's signatures. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Signature"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    changeSignature: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The mailbox's ID. */
+                mailbox: components["parameters"]["Mailbox"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignatureChanges"];
+            };
+        };
+        responses: {
+            /** @description The mailbox's signatures, changed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Signature"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];

@@ -202,9 +202,22 @@ export async function draftsIn(table: Table, mailbox: string): Promise<Draft[]> 
  */
 export function changeDraft(
   table: Table,
-  { mailbox, id, by, changes }: { mailbox: string; id: string; by: string; changes: Partial<Pick<Draft, "from" | "to" | "cc" | "bcc" | "subject" | "text" | "linkDays">> },
+  {
+    mailbox,
+    id,
+    by,
+    changes: { signature, ...changes },
+  }: {
+    mailbox: string;
+    id: string;
+    by: string;
+    /** The signature may follow from the draft as the change finds it, or stay as it is for undefined. */
+    changes: Partial<Pick<Draft, "from" | "to" | "cc" | "bcc" | "subject" | "text" | "linkDays">> & { signature?: string | ((draft: StoredDraft) => string | undefined) };
+  },
 ): Promise<Draft | undefined> {
-  return rewrite(table, { mailbox, id, by }, () => Object.fromEntries(Object.entries(changes).filter(([, value]) => value !== undefined)));
+  return rewrite(table, { mailbox, id, by }, (draft) =>
+    Object.fromEntries(Object.entries({ ...changes, signature: typeof signature === "function" ? signature(draft) : signature }).filter(([, value]) => value !== undefined)),
+  );
 }
 
 /** The draft already carries as many files as it can. */
@@ -796,7 +809,7 @@ const editsOf = ({ to, subject, text }: Edits): Edits => ({
 });
 
 // Drafts and approvals stored before Cc and Bcc existed have neither.
-const approvalDraftOf = ({ id, answers, forwards, thread, from, to, cc = [], bcc = [], subject, text, attachments, linkDays }: Omit<Approval["draft"], "attachments"> & { attachments?: StoredFile[] }): Approval["draft"] => ({
+const approvalDraftOf = ({ id, answers, forwards, thread, from, to, cc = [], bcc = [], subject, text, signature, attachments, linkDays }: Omit<Approval["draft"], "attachments"> & { attachments?: StoredFile[] }): Approval["draft"] => ({
   id,
   ...(answers !== undefined && { answers }),
   ...(forwards !== undefined && { forwards }),
@@ -807,6 +820,8 @@ const approvalDraftOf = ({ id, answers, forwards, thread, from, to, cc = [], bcc
   bcc: bcc.map(addressOf),
   subject,
   text,
+  // A signature the writer dropped is kept as none.
+  ...(signature !== undefined && signature !== "" && { signature }),
   ...(attachments !== undefined && { attachments: attachmentsOf(attachments, text) }),
   ...(linkDays !== undefined && { linkDays }),
 });
@@ -824,7 +839,7 @@ const attachmentsOf = (stored: StoredFile[], text: string): DraftAttachment[] =>
 const addressOf = ({ name, address }: components["schemas"]["EmailAddress"]) => (name === undefined ? { address } : { name, address });
 
 /** The draft in the order the contract lists its fields, without what only Duva keeps. */
-const draftOf = ({ id, answers, forwards, thread, from, to, cc = [], bcc = [], subject, text, attachments, linkDays, updatedAt, updatedBy, send }: Omit<StoredDraft, "version">): Draft => ({
+const draftOf = ({ id, answers, forwards, thread, from, to, cc = [], bcc = [], subject, text, signature, attachments, linkDays, updatedAt, updatedBy, send }: Omit<StoredDraft, "version">): Draft => ({
   id,
   ...(answers !== undefined && { answers }),
   ...(forwards !== undefined && { forwards }),
@@ -835,6 +850,8 @@ const draftOf = ({ id, answers, forwards, thread, from, to, cc = [], bcc = [], s
   bcc: bcc.map(addressOf),
   subject,
   text,
+  // A signature the writer dropped is kept as none.
+  ...(signature !== undefined && signature !== "" && { signature }),
   ...(attachments !== undefined && { attachments: attachmentsOf(attachments, text) }),
   ...(linkDays !== undefined && { linkDays }),
   updatedAt,

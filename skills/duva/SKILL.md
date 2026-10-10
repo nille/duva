@@ -595,6 +595,24 @@ Duva stops adding BIMI-Selector to its mail and serving the logo. The records fo
 
 - `--mailbox` (required): The mailbox's ID.
 
+## duva mailboxes get-signature
+
+Read a mailbox's signature, and each of its addresses' own.
+
+The signature closes the mail sent from the mailbox, after a line of "-- ": below what was written and above a forward's quoted original, on new mail, replies and forwards, agents' and Coo's drafts included, with the disclosure's line below it. An address's own signature wins for mail from it, and mail sent as a group carries the mailbox's. Away messages carry none. Only the mailbox's owner and the agents they give sponsor access can read it.
+
+- `--mailbox` (required): The mailbox's ID.
+
+## duva mailboxes change-signature
+
+Set or remove a mailbox's signature, or one of its addresses' own.
+
+Give text alone for the mailbox's signature, or address and text for one of its addresses' own, which wins for mail from that address. Plain text, links as they are, up to 1,000 characters. Drafts written from then on carry it, and the writer can change or drop it for one message. Only the mailbox's owner, and agents with organize sponsor access or more, can change it, and the change is in the mailbox's change feed.
+
+- `--mailbox` (required): The mailbox's ID.
+- `--address`: The address whose own signature changes, one of the mailbox's. Without it, the mailbox's changes.
+- `--text` or `--no-text` (required): The signature, plain text with links as they are, or null to remove it. The CLI gives null with --no-text.
+
 ## duva mailboxes list
 
 List the mailboxes you can read, your own, or as an agent your sponsor's that your sponsor access covers.
@@ -940,6 +958,7 @@ A reply goes from the address the original was sent to, plus tag kept, or from t
 - `--bcc` (once for each): The Bcc recipients' addresses, which get the message but appear in no header.
 - `--subject`: The subject. A reply's is the original's with "Re: " unless you give one.
 - `--text`: The plain-text body.
+- `--signature` or `--no-signature`: The signature to close it with, in place of the one its From has: the address's own, else the mailbox's. Give null for none.
 - `--linkDays`: How many days the links of its linked files work after it is sent: 7, 30 or 365. 30 when left out. When a link ends, its file is deleted.
 - `--attach` (once for each): A file to attach, uploaded once the draft is written. Files that would make the message more than 10 MB go as linked files anyway.
 - `--link` (once for each): A file to send as a linked file, a link to a download page listed after the text, uploaded once the draft is written.
@@ -976,6 +995,7 @@ Changing a draft that waits for approval withdraws the request, so an approver n
 - `--bcc` (once for each): The Bcc recipients' addresses, in place of the draft's.
 - `--subject`: The subject, in place of the draft's.
 - `--text`: The plain-text body.
+- `--signature` or `--no-signature`: The signature for this message alone, or null for none. Changing From without it swaps the signature for the new From's, unless the writer changed it.
 - `--linkDays`: How many days the links of its linked files work after it is sent: 7, 30 or 365. 30 when left out. When a link ends, its file is deleted.
 - `--attach` (once for each): A file to attach, uploaded once the draft is written. Files that would make the message more than 10 MB go as linked files anyway.
 - `--link` (once for each): A file to send as a linked file, a link to a download page listed after the text, uploaded once the draft is written.

@@ -73,6 +73,28 @@ export const strings = {
     shortcuts: "Shortcuts",
   },
 
+  /** Each mailbox's signature on Preferences, and the composer's, for one message (#157). */
+  signature: {
+    title: "Signature",
+    titleFor: (address: string) => `Signature for ${address}`,
+    lead: "It closes the mail you send from this mailbox, replies and forwards too, and your agents' and Coo's drafts here. Plain text, and links as you write them. You can change or drop it in any one message.",
+    mailboxLegend: "For the mailbox",
+    placeholder: "Grace Hopper\nExample Ltd\nhttps://example.com",
+    addressesLegend: "For one address",
+    addressesLead: "An address's own signature wins for mail from it. Left empty, its mail carries the mailbox's.",
+    addressPlaceholder: "The mailbox's",
+    tooLong: "A signature takes at most 1,000 characters.",
+    saved: "Saved.",
+    failed: (status: number) => `Duva couldn't read the signature (error ${status}). Try again in a moment.`,
+    unreachable: "Duva couldn't be reached, so the signature isn't shown. Check your connection and try again.",
+    saveFailed: (status: number) => `Duva couldn't save the signature (error ${status}). Try again in a moment.`,
+    saveUnreachable: "Duva couldn't be reached, so the signature isn't saved. Check your connection and try again.",
+    // In the composer.
+    field: "Signature, for this message",
+    remove: "Remove signature",
+    add: "Add signature",
+    forwarded: "The forwarded message",
+  },
   /** The human's away message, on Preferences, and what the strip says while it's on (#155). */
   away: {
     title: "Away",

@@ -17,6 +17,7 @@ import { ActorMark, Addresses, Connection, Field, Time } from "./mail-parts.tsx"
 import { DraftFilesToOpen } from "./draft-files.tsx";
 import { SendNow } from "./send-now.tsx";
 import { useShortcuts } from "./shortcuts.tsx";
+import { splitText } from "./signatures.tsx";
 import { strings } from "./strings.ts";
 import { BackIcon } from "./thread.tsx";
 
@@ -537,9 +538,7 @@ function HeldSend({
             </Field>
             <Field label={strings.galley.subject}>{draft.subject || strings.galley.noSubject}</Field>
           </dl>
-          <div className="body" lang="">
-            {draft.text}
-          </div>
+          <DraftText draft={draft} />
         </section>
       </div>
       <footer className="decision">
@@ -730,9 +729,7 @@ function Galley({ shown, entry, agent, sponsor, line, outcome, client, onDecided
                 <Field label={strings.galley.date}>{strings.galley.whenSent}</Field>
               </dl>
               <div>
-                <div className="body" lang="">
-                  {draft.text}
-                </div>
+                <DraftText draft={draft} />
                 <Disclosure agent={agent} sponsor={sponsor} line={line} />
                 {draft.attachments !== undefined && draft.attachments.length > 0 && (
                   <DraftFilesToOpen client={client} mailbox={approval.mailbox} draft={draft.id} list={draft.attachments} onSignedOut={onSignedOut} />
@@ -878,6 +875,24 @@ function Original({ message }: { message: Message }) {
 }
 
 /** The line Duva adds to the message, as recipients get it, or that it adds none, as the sponsor chose. */
+/** The draft's text as it goes out: what was written, its signature, and a forward's quoted original under them. */
+function DraftText({ draft }: { draft: Approval["draft"] }) {
+  const { written, quoted } = splitText(draft.text, draft.forwards !== undefined);
+  return (
+    <>
+      <div className="body" lang="">
+        {written}
+      </div>
+      {draft.signature !== undefined && <div className="body galley-signature" lang="">{`-- \n${draft.signature}`}</div>}
+      {quoted !== "" && (
+        <div className="body galley-signature" lang="">
+          {quoted}
+        </div>
+      )}
+    </>
+  );
+}
+
 function Disclosure({ agent, sponsor, line }: { agent: string; sponsor: string; line: boolean }) {
   return (
     <p className="disclosure">

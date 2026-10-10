@@ -40,6 +40,7 @@ import { carriedFiles, linkDays, newlyLinked, overCap } from "./linked-files.ts"
 import { findMessage, storedMessage } from "./mail.ts";
 import { mailboxFor } from "./access.ts";
 import { type Actor, aliasDomains, findActor, isAddressOf, type Mailbox } from "./organization.ts";
+import { forwardedHeading, maxSignatureRead, signaturesIn, signatureGiven } from "./signatures.ts";
 
 type EmailAddress = components["schemas"]["EmailAddress"];
 type Message = components["schemas"]["Message"];
@@ -60,6 +61,8 @@ export const createDraft: OperationHandler = async (event, deployment, actor) =>
     return refusal(400, "Give forwards as the ID of the message to forward, without answers. A draft replies or forwards, not both.");
   }
 
+  const signature = body.signature === undefined ? undefined : signatureGiven(body.signature);
+  if (signature === false) return badSignature();
   if (mailbox.defaultAddress === undefined) return noAddress();
   const chosen = body.from === undefined ? undefined : await fromGiven(deployment, mailbox, body.from);
   if (typeof chosen === "object") return chosen;
@@ -123,6 +126,9 @@ export const createDraft: OperationHandler = async (event, deployment, actor) =>
       ...(given.linkDays !== undefined && { linkDays: given.linkDays }),
     };
   }
+  // It takes its From's signature, unless the writer gave one for it, or none.
+  const carried = signature === undefined ? (await signaturesIn(deployment.table, mailbox))(content.from) : (signature ?? undefined);
+  content = { ...content, ...(carried !== undefined && { signature: carried }) };
   return { statusCode: 201, body: (await addDraft(deployment.table, { mailbox: mailbox.id, by: actor!.id, content })) satisfies components["schemas"]["Draft"] };
 };
 
@@ -133,7 +139,7 @@ function forwardedText(message: Message): string {
   return [
     "",
     "",
-    "Forwarded message",
+    forwardedHeading,
     `From: ${list([message.from])}`,
     `Date: ${new Date(message.date).toUTCString()}`,
     `Subject: ${message.subject}`,
@@ -146,6 +152,8 @@ function forwardedText(message: Message): string {
 
 /** The states of a send the sender still needs its draft in. */
 const beingSent: (string | undefined)[] = ["approved", "waitingForLimit", "sending"];
+
+const badSignature = () => refusal(400, `Give signature as up to ${maxSignatureRead} characters of plain text, or null for none.`);
 
 const noAddress = () => refusal(409, "The mailbox has no address, so it can't send mail. Ask an admin to give it one.");
 
@@ -223,8 +231,20 @@ export const editDraft: OperationHandler = async (event, deployment, actor) => {
   if ("statusCode" in fields) return fields;
   const from = body.from === undefined ? undefined : await fromGiven(deployment, mailbox, body.from);
   if (typeof from === "object") return from;
-  const changes = { ...fields, from };
-  if (Object.values(changes).every((value) => value === undefined)) return refusal(400, "Give the draft's new From, recipients, Cc, Bcc, subject, text or linkDays.");
+  const given = body.signature === undefined ? undefined : signatureGiven(body.signature);
+  if (given === false) return badSignature();
+  // A new From brings its own signature, unless the writer changed the one the draft has, decided
+  // on the draft as the change finds it. A dropped signature is kept as an empty one.
+  const signatureOf = given === undefined && from !== undefined ? await signaturesIn(deployment.table, mailbox) : undefined;
+  const to = from ?? "";
+  const signature =
+    signatureOf === undefined
+      ? given === null
+        ? ""
+        : given
+      : (draft: { from: string; signature?: string }) => (to !== draft.from && (draft.signature ?? "") === (signatureOf(draft.from) ?? "") ? (signatureOf(to) ?? "") : undefined);
+  const changes = { ...fields, from, signature };
+  if (Object.values(changes).every((value) => value === undefined)) return refusal(400, "Give the draft's new From, recipients, Cc, Bcc, subject, text, signature or linkDays.");
   try {
     const draft = await changeDraft(deployment.table, { mailbox: mailbox.id, id: event.pathParameters?.draft ?? "", by: actor!.id, changes });
     if (draft === undefined) return noDraft(event);

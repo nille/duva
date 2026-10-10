@@ -65,6 +65,7 @@ const kinds: Partial<Record<Change["type"], Kind>> = {
   labelRenamed: "organizing",
   labelDeleted: "organizing",
   threadErased: "organizing",
+  signatureChanged: "organizing",
   senderScreened: "screening",
   screenedSenderRemoved: "screening",
   senderDeliverySet: "screening",

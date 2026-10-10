@@ -364,6 +364,30 @@ test("a human writes their away message, switches it on, and off again", async (
   expect(JSON.parse(read.stdout)).toEqual(JSON.parse(off.stdout));
 });
 
+test("a human sets their mailbox's signature and an address's own, and drafts carry the one for their From", async () => {
+  const machine = await newMachine();
+  const duva = await startDuva({ admin: "ada@example.com" });
+  const server = await duva.listen();
+  onTestFinished(() => server.close());
+  const ada = duva.signIn("ada@example.com");
+  const { data: me } = await ada.GET("/whoami");
+  const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: me!.id, address: "ada@example.com" } });
+  await ada.POST("/addresses", { body: { address: "support@example.com", mailbox: mailbox!.id } });
+  await machine.saveDeployment(server);
+  await machine.duva("login", { browserSignsIn: "ada@example.com" });
+
+  await machine.duva("mailboxes", "change-signature", "--mailbox", mailbox!.id, "--text", "Ada Lovelace");
+  const set = await machine.duva("mailboxes", "change-signature", "--mailbox", mailbox!.id, "--address", "support@example.com", "--text", "Example Support");
+  const draft = await machine.duva("drafts", "create", "--mailbox", mailbox!.id, "--from", "support@example.com", "--text", "Hi.");
+  const removed = await machine.duva("mailboxes", "change-signature", "--mailbox", mailbox!.id, "--no-text");
+  const read = await machine.duva("mailboxes", "get-signature", "--mailbox", mailbox!.id);
+
+  expect(JSON.parse(set.stdout)).toEqual({ text: "Ada Lovelace", addresses: [{ address: "ada@example.com" }, { address: "support@example.com", text: "Example Support" }] });
+  expect(JSON.parse(draft.stdout)).toMatchObject({ from: "support@example.com", text: "Hi.", signature: "Example Support" });
+  expect(JSON.parse(removed.stdout)).toEqual({ addresses: [{ address: "ada@example.com" }, { address: "support@example.com", text: "Example Support" }] });
+  expect(JSON.parse(read.stdout)).toEqual(JSON.parse(removed.stdout));
+});
+
 test("preferences change with a date format Duva doesn't have says which there are", async () => {
   const machine = await newMachine();
   const server = await (await startDuva({ admin: "ada@example.com" })).listen();

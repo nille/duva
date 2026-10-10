@@ -1769,6 +1769,69 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+  /mailboxes/{mailbox}/signature:
+    get:
+      operationId: getSignature
+      summary: Read a mailbox's signature, and each of its addresses' own.
+      description: >
+        The signature closes the mail sent from the mailbox, after a line of
+        "-- ": below what was written and above a forward's quoted original,
+        on new mail, replies and forwards, agents' and Coo's drafts included,
+        with the disclosure's line below it. An address's own signature wins
+        for mail from it, and mail sent as a group carries the mailbox's.
+        Away messages carry none. Only the mailbox's owner and the agents
+        they give sponsor access can read it.
+      x-cli-command: mailboxes get-signature
+      parameters:
+        - $ref: "#/components/parameters/Mailbox"
+      responses:
+        "200":
+          description: The mailbox's signatures.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Signature"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: changeSignature
+      summary: Set or remove a mailbox's signature, or one of its addresses' own.
+      description: >
+        Give text alone for the mailbox's signature, or address and text for
+        one of its addresses' own, which wins for mail from that address.
+        Plain text, links as they are, up to 1,000 characters. Drafts written
+        from then on carry it, and the writer can change or drop it for one
+        message. Only the mailbox's owner, and agents with organize sponsor
+        access or more, can change it, and the change is in the mailbox's
+        change feed.
+      x-cli-command: mailboxes change-signature
+      parameters:
+        - $ref: "#/components/parameters/Mailbox"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SignatureChanges"
+      responses:
+        "200":
+          description: The mailbox's signatures, changed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Signature"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /mailboxes:
     post:
       operationId: createMailbox
@@ -5503,6 +5566,7 @@ components:
         - $ref: "#/components/schemas/LinkedFileDownloaded"
         - $ref: "#/components/schemas/SharingStopped"
         - $ref: "#/components/schemas/AwayMessageSent"
+        - $ref: "#/components/schemas/SignatureChanged"
       discriminator:
         propertyName: type
         mapping:
@@ -5552,6 +5616,7 @@ components:
           linkedFileDownloaded: "#/components/schemas/LinkedFileDownloaded"
           sharingStopped: "#/components/schemas/SharingStopped"
           awayMessageSent: "#/components/schemas/AwayMessageSent"
+          signatureChanged: "#/components/schemas/SignatureChanged"
     MessageReceived:
       type: object
       additionalProperties: false
@@ -6043,6 +6108,19 @@ components:
             label:
               type: string
               description: The label's ID.
+    SignatureChanged:
+      allOf:
+        - $ref: "#/components/schemas/ChangeBase"
+        - type: object
+          required: [type]
+          description: The mailbox's signature was set or removed, or one of its addresses' own.
+          properties:
+            type:
+              type: string
+              const: signatureChanged
+            address:
+              type: string
+              description: The address whose own signature changed. Absent for the mailbox's.
     TaskGiven:
       allOf:
         - $ref: "#/components/schemas/ChangeBase"
@@ -6790,6 +6868,14 @@ components:
           type: string
           maxLength: 50000
           description: The plain-text body.
+        signature:
+          description: >-
+            The signature to close it with, in place of the one its From has:
+            the address's own, else the mailbox's. Give null for none.
+          anyOf:
+            - type: string
+              maxLength: 1000
+            - type: "null"
         linkDays:
           $ref: "#/components/schemas/LinkDays"
     DraftChanges:
@@ -6825,6 +6911,15 @@ components:
           type: string
           maxLength: 50000
           description: The plain-text body.
+        signature:
+          description: >-
+            The signature for this message alone, or null for none. Changing
+            From without it swaps the signature for the new From's, unless the
+            writer changed it.
+          anyOf:
+            - type: string
+              maxLength: 1000
+            - type: "null"
         linkDays:
           $ref: "#/components/schemas/LinkDays"
     ApproverEdits:
@@ -6898,6 +6993,13 @@ components:
         text:
           type: string
           description: The plain-text body.
+        signature:
+          type: string
+          description: >-
+            The signature it closes with, which Duva adds after a line of
+            "-- ", below the text and above a forward's quoted original. Absent
+            for none.
+          examples: ["Grace Hopper\nhttps://example.com"]
         attachments:
           type: array
           items:
@@ -7446,6 +7548,9 @@ components:
           type: string
         text:
           type: string
+        signature:
+          type: string
+          description: The signature it closes with, after a line of "-- ". Absent for none.
         attachments:
           type: array
           items:
@@ -9666,6 +9771,52 @@ components:
             - type: string
               minLength: 1
               maxLength: 5000
+            - type: "null"
+    Signature:
+      type: object
+      additionalProperties: false
+      required: [addresses]
+      description: A mailbox's signature, and its addresses' own.
+      properties:
+        text:
+          type: string
+          description: The mailbox's signature. Absent while it has none.
+          examples: ["Grace Hopper\nhttps://example.com"]
+        addresses:
+          type: array
+          description: Each of the mailbox's addresses, with its own signature if it has one.
+          items:
+            $ref: "#/components/schemas/AddressSignature"
+    AddressSignature:
+      type: object
+      additionalProperties: false
+      required: [address]
+      properties:
+        address:
+          type: string
+          description: One of the mailbox's addresses.
+          examples: ["support@example.com"]
+        text:
+          type: string
+          description: Its own signature, which wins for mail from it. Absent while it has none, when its mail carries the mailbox's.
+          examples: ["Support at Example\nhttps://example.com/help"]
+    SignatureChanges:
+      type: object
+      additionalProperties: false
+      required: [text]
+      description: The signature that changes.
+      properties:
+        address:
+          type: string
+          description: The address whose own signature changes, one of the mailbox's. Without it, the mailbox's changes.
+        text:
+          description: >-
+            The signature, plain text with links as they are, or null to
+            remove it. The CLI gives null with --no-text.
+          anyOf:
+            - type: string
+              minLength: 1
+              maxLength: 1000
             - type: "null"
     AwayMessageSent:
       type: object

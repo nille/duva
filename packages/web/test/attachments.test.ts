@@ -62,7 +62,7 @@ test("a human forwards a message, and it goes out with its attachments", budget,
   const forward = page.getByRole("form", { name: "Forward" });
   await expect.poll(() => forward.getByLabel("Subject", { exact: true }).inputValue(), wait).toBe("Fwd: Ritningar");
   expect(await forward.getByLabel("To", { exact: true }).evaluate((field) => field === document.activeElement)).toBe(true);
-  expect(await page.getByLabel("Message", { exact: true }).inputValue()).toContain("> Här är ritningarna.");
+  expect(await page.getByLabel("The forwarded message", { exact: true }).inputValue()).toContain("> Här är ritningarna.");
   expect(await forward.getByRole("region", { name: "Attachments" }).innerText()).toContain("blå æble.txt");
   await page.getByLabel("To", { exact: true }).fill("iris@example.net");
   await page.getByRole("button", { name: "Send" }).click();

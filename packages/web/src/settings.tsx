@@ -24,6 +24,7 @@ import { loadConfig, signOut } from "./session.ts";
 import { strings } from "./strings.ts";
 import { BackIcon } from "./thread.tsx";
 import { AwaySheet } from "./away.tsx";
+import { SignatureSheet } from "./signature-sheet.tsx";
 import type { AwayMessage } from "./away-line.tsx";
 
 type OrganizationSettings = components["schemas"]["OrganizationSettings"];
@@ -454,7 +455,7 @@ export function Settings({
 }
 
 /**
- * The You page: the human's preferences, their away message and their own logo, then who is signed in, with Sign out,
+ * The You page: the human's preferences, their away message, each mailbox's signature and their own logo, then who is signed in, with Sign out,
  * and for a human who isn't an admin, the one organization setting that touches their mail, in a sentence.
  */
 function YouPage({
@@ -491,6 +492,9 @@ function YouPage({
     <>
       <YouSheet client={client} own={mailboxes} onPreferences={onPreferences} onSignedOut={onSignedOut} />
       {mailboxes.length > 0 && <AwaySheet client={client} onAway={onAway} onSignedOut={onSignedOut} />}
+      {mailboxes.map((mailbox) => (
+        <SignatureSheet key={mailbox.id} client={client} mailbox={mailbox} several={mailboxes.length > 1} onSignedOut={onSignedOut} />
+      ))}
       {mailboxes.length > 0 && <CooModelsSheet client={client} onSignedOut={onSignedOut} />}
       <MyLogoSheet client={client} mailboxes={mailboxes} onSignedOut={onSignedOut} />
       {mailboxes.length > 0 && <McpSheet />}

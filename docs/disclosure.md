@@ -24,6 +24,8 @@ Sent by Hermes for n@nille.dev
 
 Humans have no names in Duva yet, so the line names the sponsor by their email address.
 
+A signature the mailbox has, or the agent gave its draft, comes before the line, so the line always closes the text.
+
 The sponsor can switch the line off for each agent (`disclosureLineAsSponsor`). It is on by default.
 
 ## Sends as the sponsor

@@ -15,7 +15,7 @@
 // when a thread set aside in Remind me is due, EventBridge Scheduler hands it to the sender, which
 // brings it back, and when an away message's last day ends, switches it off. Files too large to carry go as linked files (ADR-0034): the sender shares each
 // under a new link, lists them after the text, and asks to be handed each when its link ends, to
-// delete it.
+// delete it. A draft's signature closes its text, above a forward's quoted original (#157).
 import { randomUUID } from "node:crypto";
 import { SendEmailCommand, SESv2ServiceException, type SESv2Client } from "@aws-sdk/client-sesv2";
 import type { DynamoDBStreamEvent } from "aws-lambda";
@@ -52,6 +52,7 @@ import type { Downloads } from "./attachments.ts";
 import { carriedKey, carriedUrls, defaultLinkDays, type ExpireEvent, expireFile, holderOf, type LinkedEntry, linksOf, overCap, linkFiles, unlinkFiles, withLinkedFiles } from "./linked-files.ts";
 import type { Dns } from "./dns-records.ts";
 import { bimiSelectorHeader } from "./own-logos.ts";
+import { signed, signedBody } from "./signatures.ts";
 import { sponsorAccessAllows, sponsorAccessIn } from "./access.ts";
 import { type Actor, type Agent, agentSettings, agentUnpaused, findActor, findMailbox, organizationDomain } from "./organization.ts";
 
@@ -342,7 +343,9 @@ async function sendOnce(
   if (waiting !== undefined) counted.push(stopWaiting(table, waiting.agent, waiting));
   const from = { address: draft.from };
   const parent = original?.message.messageId;
-  const text = disclosure?.line ? `${draft.text}\n\nSent by ${disclosure.naming}` : draft.text;
+  // The signature closes what was written, above a forward's quoted original, and the disclosure's line follows.
+  const signedText = signed(draft.text, draft.signature, draft.forwards !== undefined);
+  const text = disclosure?.line ? `${signedText}\n\nSent by ${disclosure.naming}` : signedText;
   // Each file it links is shared under a new link from now on, and deleted when its link ends.
   const holder = holderOf(actor);
   const until = new Date(date.getTime() + (draft.linkDays ?? defaultLinkDays) * day).toISOString();
@@ -353,7 +356,7 @@ async function sendOnce(
     ...carried.map(({ id: file, name, type, size, until: carriedUntil, carries }) => ({ id: file, ...carries!, name: name ?? file, type, size, until: carriedUntil!, carried: true as const })),
   ];
   const urlOf = (entry: LinkedEntry) => (entry.carried ? carriedLinks.get(carriedKey(entry)) : shared.get(entry.file)) ?? "";
-  const body = linkedFiles.length === 0 || unsendable !== undefined ? { text } : withLinkedFiles(text, linkedFiles.map((entry) => ({ ...entry, url: urlOf(entry) })));
+  const body = linkedFiles.length === 0 || unsendable !== undefined ? signedBody(text, draft.signature) : withLinkedFiles(text, linkedFiles.map((entry) => ({ ...entry, url: urlOf(entry) })), draft.signature);
   // Mail from a human's own address names the selector of their mailbox's own logo, once DNS has its record.
   const selector = sendsFrom === undefined || unsendable !== undefined ? undefined : await bimiSelectorHeader(table, sender.dns, sendsFrom, draft.from);
   const raw = buildMail({

@@ -13,6 +13,7 @@ import { ClipIcon } from "./mail-parts.tsx";
 import { DraftFiles, useUploads } from "./draft-files.tsx";
 import { type AllMailboxes, isAll } from "./mailboxes.tsx";
 import { SendNow } from "./send-now.tsx";
+import { joinText, SignatureField, splitText, useSignatures } from "./signatures.tsx";
 import { strings } from "./strings.ts";
 
 /** A draft, which in All mailboxes names the mailbox it lives in. */
@@ -30,8 +31,8 @@ const leaveAfter = 30_000;
 /** Whether the keyboard is a Mac's, where Command and Return send, as Ctrl and Enter do elsewhere. */
 const mac = /Mac|iPhone|iPad/.test(navigator.platform);
 
-/** The fields the human types in, as they typed them, and the address they chose to send from. */
-type Fields = { from: string; to: string; cc: string; bcc: string; subject: string; text: string };
+/** The fields the human types in, as they typed them, and the address they chose to send from. The signature is empty for none. */
+type Fields = { from: string; to: string; cc: string; bcc: string; subject: string; text: string; signature: string };
 type ListField = "to" | "cc" | "bcc";
 const listFields: ListField[] = ["to", "cc", "bcc"];
 
@@ -61,6 +62,7 @@ const fieldsOf = (draft: Draft): Fields => ({
   bcc: draft.bcc.map(({ address }) => address).join(", "),
   subject: draft.subject,
   text: draft.text,
+  signature: draft.signature ?? "",
 });
 
 type Loading = { status: "loading" } | { status: "failed"; message: string; gone?: boolean } | { status: "ready" };
@@ -108,7 +110,7 @@ export function Composer({
   const startFrom = inAll && newMailFrom !== undefined && mailboxes.some(({ addresses }) => addresses.includes(newMailFrom)) ? newMailFrom : (mailboxes[0]?.defaultAddress ?? "");
   const [loading, setLoading] = useState<Loading>(given === undefined ? { status: "ready" } : { status: "loading" });
   const [draft, setDraft] = useState<Draft>();
-  const [fields, setFields] = useState<Fields>({ from: startFrom, to: "", cc: "", bcc: "", subject: "", text: "" });
+  const [fields, setFields] = useState<Fields>({ from: startFrom, to: "", cc: "", bcc: "", subject: "", text: "", signature: "" });
   const [copies, setCopies] = useState(false);
   // The preference read after the composer opened still names where new mail starts, until anything is saved.
   useEffect(() => {
@@ -128,6 +130,17 @@ export function Composer({
   fieldsRef.current = fields;
   // What the draft holds as Duva last saved it, so a save sends only what changed since.
   const stored = useRef<Fields>(fields);
+  // The signature each From has, once Duva answered, which new mail starts with and a new From swaps in.
+  const signatureOf = useSignatures(client, mailboxes);
+  const fromHas = (from: string) => signatureOf?.(from, homeRef.current ?? one ?? mailboxes[0]?.id) ?? "";
+  useEffect(() => {
+    if (signatureOf === undefined || given !== undefined || id.current !== undefined || fieldsRef.current.signature !== stored.current.signature) return;
+    const was = stored.current.signature;
+    const signature = fromHas(fieldsRef.current.from);
+    setFields((current) => (current.signature === was ? { ...current, signature } : current));
+    stored.current = { ...stored.current, signature };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signatureOf, given, one]);
   // Saves run one after another, so the first one's draft is the one every later save changes.
   const queue = useRef<Promise<boolean>>(Promise.resolve(true));
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -187,13 +200,15 @@ export function Composer({
       if (differs("from")) changed.from = now.from;
       if (differs("subject")) changed.subject = now.subject;
       if (differs("text")) changed.text = now.text;
+      // Unless the writer changed it, Duva gives a new draft its From's signature, which the composer then takes.
+      if (differs("signature")) changed.signature = now.signature === "" ? null : now.signature;
       if (Object.keys(changed).length === 0) return wrong.length === 0;
       setSaving({ status: "saving" });
       // A draft lives in the mailbox it goes from, so new mail going from another mailbox's address
       // is written again there, all of it, and the draft it was is deleted.
       const home = changed.from === undefined ? undefined : mailboxesRef.current.find(({ addresses }) => addresses.some((own) => own.toLowerCase() === changed.from!.toLowerCase()))?.id;
       const moving = one === undefined && id.current !== undefined && home !== undefined && home !== homeRef.current;
-      const body = moving ? { from: now.from, ...Object.fromEntries(listFields.filter((field) => !wrong.some((each) => each.field === field)).map((field) => [field, addressesIn(now[field])])), subject: now.subject, text: now.text } : changed;
+      const body = moving ? { from: now.from, ...Object.fromEntries(listFields.filter((field) => !wrong.some((each) => each.field === field)).map((field) => [field, addressesIn(now[field])])), subject: now.subject, text: now.text, signature: now.signature === "" ? null : now.signature } : changed;
       const answer =
         one === undefined
           ? id.current === undefined || moving
@@ -227,6 +242,13 @@ export function Composer({
         history.replaceState(null, "", `${base}drafts/${encodeURIComponent(answer.data.id)}`);
       }
       stored.current = { ...stored.current, ...Object.fromEntries(Object.keys(changed).map((field) => [field, now[field as keyof Fields]])) };
+      // The signature the writer left as it was is the one Duva gave the draft, as its alias domains and groups decide.
+      if (changed.signature === undefined && (answer.data.signature ?? "") !== stored.current.signature) {
+        const was = stored.current.signature;
+        const signature = answer.data.signature ?? "";
+        stored.current = { ...stored.current, signature };
+        setFields((current) => (current.signature === was ? { ...current, signature } : current));
+      }
       answered.current++;
       setDraft(answer.data);
       setSaving({ status: "saved", at: new Date() });
@@ -270,18 +292,25 @@ export function Composer({
   const fileInput = useRef<HTMLInputElement>(null);
   const [dropping, setDropping] = useState(false);
 
-  const change = (field: keyof Fields) => (event: { target: { value: string } }) => {
-    setFields((current) => ({ ...current, [field]: event.target.value }));
+  const edit = (changes: Partial<Fields>) => {
+    setFields((current) => ({ ...current, ...changes }));
     clearTimeout(timer.current);
     timer.current = setTimeout(() => void save(), saveDelay);
   };
-
-  /** Chooses the address to send from, saved at once, since nothing more is typed in it. */
-  const chooseFrom = (from: string) => {
-    const next = { ...fieldsRef.current, from };
+  const change = (field: keyof Fields) => (event: { target: { value: string } }) => edit({ [field]: event.target.value });
+  /** Changes the fields at once and saves them, for a choice that needs no more typing. */
+  const choose = (changes: Partial<Fields>) => {
+    const next = { ...fieldsRef.current, ...changes };
     fieldsRef.current = next;
     setFields(next);
     void save();
+  };
+
+  /** Chooses the address to send from, saved at once, since nothing more is typed in it. */
+  // A new From brings its own signature, unless the writer changed the one the draft has.
+  const chooseFrom = (from: string) => {
+    const { from: was, signature } = fieldsRef.current;
+    choose({ from, ...(signature === fromHas(was) && { signature: fromHas(from) }) });
   };
   // The draft can go from any of the mailbox's addresses or its owner's groups, new mail in All
   // mailboxes from any of theirs, and a reply or forward from the address it started from too.
@@ -445,6 +474,8 @@ export function Composer({
   }
 
   const hintId = `${formId}-hint`;
+  // A forward's quoted original lies under the signature, which goes above it.
+  const { written, quoted } = splitText(fields.text, forward);
   const problemId = `${formId}-problem`;
   const field = (name: ListField, label: string, hint?: string) => (
     <div className="compose-field">
@@ -586,7 +617,16 @@ export function Composer({
       <label htmlFor={`${formId}-text`} className="visually-hidden">
         {strings.compose.message}
       </label>
-      <textarea ref={textRef} id={`${formId}-text`} className="compose-body" rows={12} value={fields.text} readOnly={locked} onChange={change("text")} onBlur={() => void save()} lang="" />
+      <textarea ref={textRef} id={`${formId}-text`} className={quoted === "" ? "compose-body" : "compose-body compose-body-above"} rows={12} value={written} readOnly={locked} onChange={(event) => edit({ text: joinText(event.target.value, quoted) })} onBlur={() => void save()} lang="" />
+      <SignatureField id={`${formId}-signature`} value={fields.signature} fromHas={fromHas(fields.from)} locked={locked} onChange={(signature) => edit({ signature })} onChosen={(signature) => choose({ signature })} onBlur={() => void save()} />
+      {quoted !== "" && (
+        <>
+          <label htmlFor={`${formId}-quoted`} className="visually-hidden">
+            {strings.signature.forwarded}
+          </label>
+          <textarea id={`${formId}-quoted`} className="compose-body compose-quoted" value={quoted} readOnly={locked} onChange={(event) => edit({ text: joinText(written, event.target.value) })} onBlur={() => void save()} lang="" />
+        </>
+      )}
       <DraftFiles client={client} mailbox={draft?.mailbox ?? one ?? ""} draft={draft} sending={uploads.sending} locked={locked} onDraft={adopt} onSignedOut={onSignedOut} />
       {dropping && (
         <p className="compose-drop" aria-hidden="true">

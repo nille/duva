@@ -18,6 +18,7 @@ import { recordChanges } from "./feed.ts";
 import { timeToLiveAttribute } from "./infrastructure.ts";
 import { storedMessage } from "./mail.ts";
 import { type Actor, mailboxFeed, organizationSettings } from "./organization.ts";
+import { escapeHtml, textHtml } from "./signatures.ts";
 import { documents, pk, sk } from "./table.ts";
 import type { UploadsBucket } from "./uploads-bucket.ts";
 
@@ -267,11 +268,11 @@ const groupsOf = <Link extends { until: string }>(links: Link[]) => {
  * banner or logo: a line saying how many until when, then each file's name and size, with the link
  * to its page.
  */
-export function withLinkedFiles(text: string, links: { name: string; size: number; until: string; url: string }[]): { text: string; html: string } {
+export function withLinkedFiles(text: string, links: { name: string; size: number; until: string; url: string }[], signature?: string): { text: string; html: string } {
   const groups = groupsOf(links);
   const listed = groups.map(({ heading, files }) => [heading, ...files.map(({ name, size, url }) => `${name}, ${sizeRead(size)}: ${url}`)].join("\n"));
   const html = [
-    `<div style="white-space:pre-wrap">${escapeHtml(text)}</div>`,
+    textHtml(text, signature),
     ...groups.map(({ heading, files }) => `<p>${escapeHtml(heading)}</p>\n<ul>\n${files.map(({ name, size, url }) => `<li><a href="${escapeHtml(url)}">${escapeHtml(name)}</a>, ${escapeHtml(sizeRead(size))}</li>`).join("\n")}\n</ul>`),
   ].join("\n");
   return { text: [text, ...listed].join("\n\n"), html: `<!doctype html>\n<html><body>\n${html}\n</body></html>` };
@@ -418,4 +419,3 @@ ${main}
   };
 }
 
-const escapeHtml = (value: string) => value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");

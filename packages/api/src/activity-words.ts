@@ -189,6 +189,8 @@ export function changeSaid(change: Change, { who, agent, you }: Named, message?:
       return change.name === undefined ? `${who} renamed a label.` : `${who} renamed a label to ${change.name}.`;
     case "labelDeleted":
       return `${who} deleted a label.`;
+    case "signatureChanged":
+      return change.address === undefined ? `${who} changed the mailbox's signature.` : `${who} changed the signature of ${change.address}.`;
     case "labelPromptSet":
       return `${who} gave a label a prompt for ${agent}.`;
     case "labelPromptRemoved":

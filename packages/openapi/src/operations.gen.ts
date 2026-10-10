@@ -1756,6 +1756,65 @@ export const operations = [
     ]
   },
   {
+    "operationId": "getSignature",
+    "method": "get",
+    "path": "/mailboxes/{mailbox}/signature",
+    "routeKey": "GET /mailboxes/{mailbox}/signature",
+    "summary": "Read a mailbox's signature, and each of its addresses' own.",
+    "description": "The signature closes the mail sent from the mailbox, after a line of \"-- \": below what was written and above a forward's quoted original, on new mail, replies and forwards, agents' and Coo's drafts included, with the disclosure's line below it. An address's own signature wins for mail from it, and mail sent as a group carries the mailbox's. Away messages carry none. Only the mailbox's owner and the agents they give sponsor access can read it.",
+    "signIn": true,
+    "command": [
+      "mailboxes",
+      "get-signature"
+    ],
+    "options": [
+      {
+        "name": "mailbox",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The mailbox's ID."
+      }
+    ]
+  },
+  {
+    "operationId": "changeSignature",
+    "method": "patch",
+    "path": "/mailboxes/{mailbox}/signature",
+    "routeKey": "PATCH /mailboxes/{mailbox}/signature",
+    "summary": "Set or remove a mailbox's signature, or one of its addresses' own.",
+    "description": "Give text alone for the mailbox's signature, or address and text for one of its addresses' own, which wins for mail from that address. Plain text, links as they are, up to 1,000 characters. Drafts written from then on carry it, and the writer can change or drop it for one message. Only the mailbox's owner, and agents with organize sponsor access or more, can change it, and the change is in the mailbox's change feed.",
+    "signIn": true,
+    "command": [
+      "mailboxes",
+      "change-signature"
+    ],
+    "options": [
+      {
+        "name": "mailbox",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The mailbox's ID."
+      },
+      {
+        "name": "address",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "The address whose own signature changes, one of the mailbox's. Without it, the mailbox's changes."
+      },
+      {
+        "name": "text",
+        "in": "body",
+        "type": "string",
+        "required": true,
+        "description": "The signature, plain text with links as they are, or null to remove it. The CLI gives null with --no-text.",
+        "nullable": true
+      }
+    ]
+  },
+  {
     "operationId": "listMailboxes",
     "method": "get",
     "path": "/mailboxes",
@@ -2920,6 +2979,14 @@ export const operations = [
         "description": "The plain-text body."
       },
       {
+        "name": "signature",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "The signature to close it with, in place of the one its From has: the address's own, else the mailbox's. Give null for none.",
+        "nullable": true
+      },
+      {
         "name": "linkDays",
         "in": "body",
         "type": "integer",
@@ -3054,6 +3121,14 @@ export const operations = [
         "type": "string",
         "required": false,
         "description": "The plain-text body."
+      },
+      {
+        "name": "signature",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "The signature for this message alone, or null for none. Changing From without it swaps the signature for the new From's, unless the writer changed it.",
+        "nullable": true
       },
       {
         "name": "linkDays",
@@ -3633,6 +3708,14 @@ export const operations = [
         "description": "The plain-text body."
       },
       {
+        "name": "signature",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "The signature to close it with, in place of the one its From has: the address's own, else the mailbox's. Give null for none.",
+        "nullable": true
+      },
+      {
         "name": "linkDays",
         "in": "body",
         "type": "integer",
@@ -3749,6 +3832,14 @@ export const operations = [
         "type": "string",
         "required": false,
         "description": "The plain-text body."
+      },
+      {
+        "name": "signature",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "The signature for this message alone, or null for none. Changing From without it swaps the signature for the new From's, unless the writer changed it.",
+        "nullable": true
       },
       {
         "name": "linkDays",

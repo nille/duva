@@ -3664,6 +3664,75 @@ a.thread:focus-visible {
   box-shadow: inset 2px 0 0 var(--call);
 }
 
+/* The signature closes the text as it goes out: the "--" line in Third Ink, then its text in the
+   proof, in Second Ink, so the writer's words stay the loudest, with the same bar while it has the cursor. */
+.compose-signature {
+  padding: 0 var(--space-4) var(--space-3);
+  transition: box-shadow 150ms var(--ease-out);
+}
+
+.compose-signature:focus-within {
+  box-shadow: inset 2px 0 0 var(--call);
+}
+
+.compose-signature-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.compose-signature-dashes {
+  color: var(--ink-3);
+  font: 400 var(--text-proof) / 1.75 var(--mono);
+}
+
+.compose-signature .link {
+  margin: 0;
+  color: var(--ink-2);
+  font-weight: 400;
+}
+
+.compose-signature-none {
+  padding-top: var(--space-1);
+}
+
+.compose .compose-signature-text {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink-2);
+  font: 400 var(--text-proof) / 1.75 var(--mono);
+  resize: none;
+  field-sizing: content;
+}
+
+.compose .compose-signature-text:focus-visible {
+  outline: none;
+  color: var(--ink);
+}
+
+/* Above a forward's signature and quoted original, the text needs less room to start. */
+.compose .compose-body-above {
+  min-height: calc(1.75em * 4 + 2rem);
+}
+
+/* A forward's quoted original lies under the signature, after a seam, in Second Ink. */
+.compose .compose-quoted {
+  min-height: calc(1.75em * 4 + 2rem);
+  box-shadow: inset 0 1px 0 var(--seam);
+  color: var(--ink-2);
+}
+
+.compose .compose-quoted:focus-visible {
+  box-shadow:
+    inset 2px 0 0 var(--call),
+    inset 0 1px 0 var(--seam);
+}
+
 input[readonly],
 textarea[readonly] {
   border-color: var(--seam);
@@ -5788,6 +5857,32 @@ input[aria-invalid="true"] {
 .away-texts textarea {
   font: 400 var(--text-proof) / 1.6 var(--mono);
   resize: vertical;
+}
+
+/* Signatures: the mailbox's, then each address's own, in the proof as they go out. */
+.signature-addresses {
+  display: grid;
+  gap: var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.signature-text {
+  max-width: 60ch;
+}
+
+.signature-text textarea {
+  font: 400 var(--text-proof) / 1.6 var(--mono);
+  resize: vertical;
+  field-sizing: content;
+  min-height: calc(1.6em * 2 + 1rem);
+}
+
+/* In a galley the signature follows the draft's text as it goes out, in Second Ink. */
+.galley-signature {
+  margin-top: var(--space-4);
+  color: var(--ink-2);
 }
 
 /* Retention: a short field of whole days, and the word after it. */
