@@ -188,6 +188,10 @@ _Avoid_: rule, filter, automation
 Work a label prompt gave the mailbox agent: the prompt, with a message that got the label and its thread. It waits, works, and is done or fails, with the agent's note, which the thread and the agent's activity show. A failed one is an alert to its sponsor. Removing the label doesn't recall it.
 _Avoid_: job
 
+**Away message**:
+A reply Duva sends for a human while they're away, from a first day to a last day in their time zone, or from now until they switch it off. One switch covers all their mailboxes, and each mailbox has its own text. It goes once per sender per time away, only to people whose mail reaches the Inbox. Never to mailing lists, newsletters, other automatic replies, no-reply or bounce addresses, Spam, the Feed, the Paper Trail, senders sent nowhere, or mail to a group. It goes from the address the mail came to, as the human, and the thread notes it was sent. Coo can help write the text, but never writes the replies.
+_Avoid_: out of office, vacation responder, autoresponder
+
 **Inbox**:
 A built-in label for threads that want attention. New mail adds it, unless its sender's delivery files it elsewhere; archiving removes it. A thread lies in at most one of the Inbox, the Feed and the Paper Trail.
 
