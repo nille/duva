@@ -366,7 +366,7 @@ await check("Duva's default models answer where a deployment in this region call
   for (const model of [defaultMailboxAgentModel, defaultHarderModel]) {
     const call = callOf(model, region!);
     const { output: answer } = await new BedrockRuntimeClient({ region: call.region }).send(
-      new ConverseCommand({ modelId: inferenceProfileId(model, call.profile), messages: [{ role: "user", content: [{ text: "Answer with the word yes." }] }], inferenceConfig: { maxTokens: 5 } }),
+      new ConverseCommand({ modelId: inferenceProfileId(model, call.profile), messages: [{ role: "user", content: [{ text: "Answer with the word yes." }] }], inferenceConfig: { maxTokens: 16 } }),
     );
     if (!/yes/i.test(answer?.message?.content?.[0]?.text ?? "")) silent.push(`${inferenceProfileId(model, call.profile)} in ${call.region}`);
   }
@@ -391,7 +391,7 @@ await check("each model admins allow answers where Duva calls it for this deploy
   for (const model of settings.mailboxAgentAllowedModels) {
     const call = callOf(model, region!);
     const { output: answer } = await new BedrockRuntimeClient({ region: call.region }).send(
-      new ConverseCommand({ modelId: inferenceProfileId(model, call.profile), messages: [{ role: "user", content: [{ text: "Answer with the word yes." }] }], inferenceConfig: { maxTokens: 5 } }),
+      new ConverseCommand({ modelId: inferenceProfileId(model, call.profile), messages: [{ role: "user", content: [{ text: "Answer with the word yes." }] }], inferenceConfig: { maxTokens: 16 } }),
     );
     if (!/yes/i.test(answer?.message?.content?.[0]?.text ?? "")) silent.push(`${inferenceProfileId(model, call.profile)} in ${call.region}`);
   }
