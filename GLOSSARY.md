@@ -29,7 +29,7 @@ The name of every mailbox agent, after the sound a duva, Swedish for dove, makes
 _Avoid_: the bot, the assistant
 
 **Coo's address**:
-The address their allowed senders mail to ask a human's Coo: by default their default address's local part with -coo, on its domain, such as nicklas-coo@, which an admin can change. Their own addresses are allowed from the start, and they list others. When DMARC passed for its sender's domain, or, from the organization's own addresses, Duva sent it, Coo takes the request at once. Otherwise it first mails the From address a code, and takes the request only when a reply brings that code back. It always answers the From address, never a Reply-To. Each request is a turn of the human's Ask Coo and an event in Coo's activity, and is never filed in a mailbox. Mail from anyone else is dropped.
+The address their allowed senders mail to ask a human's Coo: by default their default address's local part with -coo, on its domain, such as nicklas-coo@, which an admin can change. Their own addresses are allowed from the start, and they list others. When DMARC passed for its sender's domain, or, from the organization's own addresses, Duva sent it, Coo takes the request at once. Otherwise it first mails the From address a code, and takes the request only when a reply brings that code back. It always answers the From address, never a Reply-To, with what it did and how each action went, and again in the same thread when something that waited, such as a send for approval, is decided. Each request is a turn of the human's Ask Coo and an event in Coo's activity, and is never filed in a mailbox. Mail from anyone else is dropped.
 _Avoid_: agent inbox, bot address
 
 **Harder model**:
