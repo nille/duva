@@ -28,6 +28,10 @@ _Avoid_: assistant, bot, copilot
 The name of every mailbox agent, after the sound a duva, Swedish for dove, makes. In the web app Coo's portrait heads the side column, where Duva's wordmark was: it bobs its head while it works, and says, in a bubble under it, when there's news worth a glance in the mailbox open there, or in all of them from All mailboxes, unless its human turned Coo speaks up off.
 _Avoid_: the bot, the assistant
 
+**Coo's address**:
+The address their allowed senders mail to ask a human's Coo: by default their default address's local part with -coo, on its domain, such as nicklas-coo@, which an admin can change. Their own addresses are allowed from the start, and they list others. When DMARC passed for its sender's domain, or, from the organization's own addresses, Duva sent it, Coo takes the request at once. Otherwise it first mails the From address a code, and takes the request only when a reply brings that code back. It always answers the From address, never a Reply-To. Each request is a turn of the human's Ask Coo and an event in Coo's activity, and is never filed in a mailbox. Mail from anyone else is dropped.
+_Avoid_: agent inbox, bot address
+
 **Harder model**:
 The model a mailbox agent's harder work goes to: writing mail that may be sent, unsubscribing on a sender's page, a turn the decider finds complex, a run the everyday model hands over, and Think harder. Its human chooses it, as they choose the everyday model, from the measured models admins allow (ADR-0032, ADR-0035).
 
