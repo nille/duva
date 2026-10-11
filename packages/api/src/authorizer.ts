@@ -4,6 +4,9 @@ import type { Table } from "./deployment.ts";
 import { findAgentByRunToken, runTokenPrefix } from "./run-tokens.ts";
 import { type Actor, findAgentByKey, findHumanBySignIn } from "./organization.ts";
 
+/** The bearer token in an authorization header, if it carries one. */
+export const bearerToken = (header: string | undefined) => /^Bearer (.+)$/i.exec(header ?? "")?.[1];
+
 /** What the authorizer passes the API about a call: the one actor it is attributed to. */
 export interface AuthorizerContext {
   actor: Actor;
@@ -24,7 +27,7 @@ export type VerifyAccessToken = (token: string) => Promise<string>;
  */
 export function createAuthorizer({ table, verifyAccessToken }: { table: Table; verifyAccessToken: VerifyAccessToken }) {
   return async (event: APIGatewayRequestAuthorizerEventV2): Promise<APIGatewaySimpleAuthorizerWithContextResult<AuthorizerContext>> => {
-    const token = /^Bearer (.+)$/i.exec(event.headers?.authorization ?? "")?.[1];
+    const token = bearerToken(event.headers?.authorization);
     const actor =
       token === undefined
         ? undefined

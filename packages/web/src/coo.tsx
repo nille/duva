@@ -2,16 +2,19 @@
 // duva, Swedish for dove. Its portrait heads the side column, where Duva's wordmark was, and is the mark of the mailbox agent
 // wherever it appears, as the diamond is any other agent's. It bobs its head only while it works, a
 // turn of Ask Coo or a label's task, and speaks up only with news worth a glance: new mail since the
-// human last looked, a draft of its waiting for their approval, a task done, or a linked file of
-// theirs downloaded for the first time. What it said goes away once they look.
+// human last looked, a draft or a payment of its waiting for their approval, a task done, a payment
+// it made (ADR-0039), or a linked file of theirs downloaded for the first time. What it said goes
+// away once they look.
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
+import { activityHref } from "./activity.tsx";
 import type { MailboxChange } from "./feed.ts";
 import { strings } from "./strings.ts";
 import { hrefOf, threadHref } from "./views.tsx";
 
 type Approval = components["schemas"]["Approval"];
+type Payment = components["schemas"]["Payment"];
 
 const copy = strings.coo;
 
@@ -70,17 +73,24 @@ export interface CooNews {
   tasks: { mailbox: string; task: string; thread: string; label?: string; subject?: string }[];
   /** Linked files of mail sent from the mailboxes downloaded for the first time since the human last looked, newest first. */
   downloads: { mailbox: string; thread: string; file: string; name: string }[];
+  /** How many of Coo's payments wait for the human's approval since they last looked at Approvals. */
+  payments: number;
+  /** Payments Coo made from the mailboxes' runs since the human last looked, newest first, each an event of its activity. */
+  paid: Paid[];
 }
 
-const quiet: CooNews = { mail: [], drafts: 0, tasks: [], downloads: [] };
+/** A payment Coo made, as its bubble says it: the amount and site, and the event in its activity. */
+type Paid = { mailbox: string; agent: string; event: string; amount: string; currency: string; site: string };
+
+const quiet: CooNews = { mail: [], drafts: 0, tasks: [], downloads: [], payments: 0, paid: [] };
 
 /**
  * Coo's speech bubble under its portrait, while it has news and its human lets it speak up. It lies in
  * the page's flow, so it never covers what is under it, and screen readers hear it politely.
  */
-export function CooSays({ news, baseOf, onTasksSeen }: { news: CooNews; baseOf: (mailbox: string) => string; onTasksSeen: () => void }) {
-  const { mail, drafts, tasks, downloads } = news;
-  const said = mail.length > 0 || drafts > 0 || tasks.length > 0 || downloads.length > 0;
+export function CooSays({ news, baseOf, onTasksSeen, onPaidSeen }: { news: CooNews; baseOf: (mailbox: string) => string; onTasksSeen: () => void; onPaidSeen: () => void }) {
+  const { mail, drafts, tasks, downloads, payments, paid } = news;
+  const said = mail.length > 0 || drafts > 0 || tasks.length > 0 || downloads.length > 0 || payments > 0 || paid.length > 0;
   // The live region stays in the page while Coo is quiet, so a screen reader hears what it then says.
   return (
     <div className="coo-say" role="status">
@@ -88,6 +98,15 @@ export function CooSays({ news, baseOf, onTasksSeen }: { news: CooNews; baseOf: 
         <p className="coo-says">
           <span className="coo-says-coo">{copy.coo}</span>
           {drafts > 0 && <> <a href="#/approvals">{copy.drafts(drafts)}</a></>}
+          {payments > 0 && <> <a href="#/approvals">{copy.payments(payments)}</a></>}
+          {paid.length > 0 && (
+            <>
+              {" "}
+              <a href={activityHref(paid[0]!.agent, paid[0]!.event)} onClick={onPaidSeen}>
+                {copy.paid(paid.length, paid[0]!.amount, paid[0]!.currency, paid[0]!.site)}
+              </a>
+            </>
+          )}
           {mail.length > 0 && <> <a href={hrefOf({ label: "inbox" }, baseOf(mail[0]!.mailbox))}>{copy.mail(mail.length, names(mail.flatMap(({ from }) => (from === undefined ? [] : [from]))))}</a></>}
           {tasks.length > 0 && (
             <>
@@ -168,6 +187,8 @@ export function useCoo({
   const [done, setDone] = useState<{ mailbox: string; task: string; thread: string; label?: string; subject?: string }[]>([]);
   const [downloaded, setDownloaded] = useState<CooNews["downloads"]>([]);
   const [waiting, setWaiting] = useState<Approval[]>([]);
+  const [paymentsWaiting, setPaymentsWaiting] = useState<Payment[]>([]);
+  const [paid, setPaid] = useState<Paid[]>([]);
   const [approvalsLooked, setApprovalsLooked] = useState(() => lookedSince("approvals"));
   // The clock, read again with each read of the feeds, so a task whose end was lost stops counting.
   const [now, setNow] = useState(Date.now);
@@ -196,7 +217,7 @@ export function useCoo({
 
   // A mailbox first seen in this browser has been looked at now, so its past is no news.
   useEffect(() => {
-    for (const id of own) for (const what of ["mail", "tasks", "downloads"]) lookedSince(`${what}.${id}`);
+    for (const id of own) for (const what of ["mail", "tasks", "downloads", "payments"]) lookedSince(`${what}.${id}`);
   }, [own]);
 
   const onChanges = useCallback(
@@ -205,6 +226,7 @@ export function useCoo({
       const arrivals: typeof arrived = [];
       const ended: typeof done = [];
       const firsts: typeof downloaded = [];
+      const payments: Paid[] = [];
       const starts = new Map<string, number>();
       const ends = new Set<string>();
       for (const { mailbox, change } of changes) {
@@ -221,12 +243,16 @@ export function useCoo({
           if (change.outcome === "done" && at > lookedSince(`tasks.${mailbox}`)) ended.push({ mailbox, task: change.task, thread: change.thread });
         } else if (change.type === "linkedFileDownloaded" && at > lookedSince(`downloads.${mailbox}`)) {
           firsts.push({ mailbox, thread: change.thread, file: change.file, name: change.name });
+        } else if (change.type === "paymentMade" && at > lookedSince(`payments.${mailbox}`)) {
+          // The event's ID in the activity is its feed's and its position there.
+          payments.push({ mailbox, agent: change.agent, event: `${mailbox}:${change.position}`, amount: change.amount, currency: change.currency, site: change.site });
         }
       }
       if (starts.size > 0 || ends.size > 0) setStarted((current) => new Map([...[...current].filter(([task]) => !ends.has(task)), ...starts]));
       // A read the app couldn't act on comes again, so what it already has isn't news twice.
       if (arrivals.length > 0) setArrived((current) => [...arrivals.filter(({ message }) => !current.some((each) => each.message === message)).toReversed(), ...current]);
       if (firsts.length > 0) setDownloaded((current) => [...firsts.filter(({ file, thread }) => !current.some((each) => each.file === file && each.thread === thread)).toReversed(), ...current]);
+      if (payments.length > 0) setPaid((current) => [...payments.filter(({ event }) => !current.some((each) => each.event === event)).toReversed(), ...current]);
       if (ended.length > 0) setDone((current) => [...ended.filter(({ task }) => !current.some((each) => each.task === task)).toReversed(), ...current]);
       for (const { mailbox, thread } of new Map([...arrivals, ...ended].map((each) => [`${each.mailbox}/${each.thread}`, each])).values()) void describe(mailbox, thread);
     },
@@ -234,6 +260,7 @@ export function useCoo({
   );
 
   const onApprovals = useCallback((approvals: Approval[]) => setWaiting(approvals), []);
+  const onPayments = useCallback((payments: Payment[]) => setPaymentsWaiting(payments), []);
   const onAsking = useCallback((running: boolean) => setAsking((current) => current + (running ? 1 : -1)), []);
 
   // Where the human looks ends the news about it, while the page is in sight.
@@ -259,7 +286,7 @@ export function useCoo({
     if (!visible || !approvals) return;
     setApprovalsLooked(look("approvals"));
     return () => setApprovalsLooked(look("approvals"));
-  }, [visible, approvals, waiting]);
+  }, [visible, approvals, waiting, paymentsWaiting]);
   const hasTask = done.some((each) => each.thread === thread);
   useEffect(() => {
     if (visible && thread !== undefined && hasTask) setDone((current) => current.filter((each) => each.thread !== thread));
@@ -271,6 +298,10 @@ export function useCoo({
     look(`downloads.${downloadedHere.mailbox}`);
     setDownloaded((current) => current.filter((each) => each.thread !== downloadedHere.thread));
   }, [visible, downloadedHere]);
+  const paidSeen = useCallback(() => {
+    for (const mailbox of mailboxes) look(`payments.${mailbox}`);
+    setPaid((current) => current.filter((each) => !mailboxes.includes(each.mailbox)));
+  }, [mailboxes]);
   const tasksSeen = useCallback(() => {
     for (const mailbox of mailboxes) look(`tasks.${mailbox}`);
     setDone((current) => current.filter((each) => !mailboxes.includes(each.mailbox)));
@@ -283,8 +314,10 @@ export function useCoo({
       drafts: waiting.filter((approval) => mailboxes.includes(approval.mailbox) && coos.has(approval.agent) && Date.parse(approval.askedAt) > approvalsLooked).length,
       tasks: done.filter((each) => mailboxes.includes(each.mailbox)),
       downloads: downloaded.filter((each) => mailboxes.includes(each.mailbox)),
+      payments: paymentsWaiting.filter((payment) => mailboxes.includes(payment.mailbox) && Date.parse(payment.at) > approvalsLooked).length,
+      paid: paid.filter((each) => mailboxes.includes(each.mailbox)),
     };
-  }, [mailboxes, arrived, waiting, coos, approvalsLooked, done, downloaded]);
+  }, [mailboxes, arrived, waiting, paymentsWaiting, coos, approvalsLooked, done, downloaded, paid]);
   const working = asking > 0 || [...started.values()].some((at) => now - at < taskRunsFor);
-  return { working, news, onChanges, onApprovals, onAsking, tasksSeen };
+  return { working, news, onChanges, onApprovals, onPayments, onAsking, tasksSeen, paidSeen };
 }

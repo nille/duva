@@ -21,7 +21,8 @@ import { setUpDeliveries, setUpScreeners } from "./screening.ts";
 import { sesSuppressionList } from "./suppression.ts";
 
 const table = { client: new DynamoDBClient({}), name: required(environmentVariables.tableName) };
-const humans = cognitoHumans(new CognitoIdentityProviderClient({}), required(environmentVariables.userPoolId));
+// Setup only adds humans, and mails no sign-in codes, so it names no app client for them.
+const humans = cognitoHumans(new CognitoIdentityProviderClient({}), required(environmentVariables.userPoolId), "");
 const eraser = lambdaEraser(new LambdaClient({}), required(environmentVariables.eraserFunction));
 const receiving = {
   rules: sesReceiptRules(new SESClient({}), required(environmentVariables.receiptRuleSet)),

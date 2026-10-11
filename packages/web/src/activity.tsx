@@ -19,7 +19,7 @@ type Detail = components["schemas"]["AgentEventDetail"];
 type Kind = components["schemas"]["AgentEventKind"];
 
 /** The kinds a chip chooses, in the order the chips show. Setup has no chip, so it shows under All alone. */
-export const chipKinds = ["conversations", "tasks", "draftsAndSends", "approvals", "organizing", "screening", "unsubscribes", "pausesAndLimits", "alerts"] as const satisfies readonly Kind[];
+export const chipKinds = ["conversations", "tasks", "draftsAndSends", "approvals", "payments", "organizing", "screening", "unsubscribes", "pausesAndLimits", "alerts"] as const satisfies readonly Kind[];
 type ChipKind = (typeof chipKinds)[number];
 
 /** Which events show: those of the kinds chosen, or of any kind if none is, and only those that failed if `failed`. */

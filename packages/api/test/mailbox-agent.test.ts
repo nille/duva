@@ -624,6 +624,7 @@ test("setup carries over the models admins chose before as the organization's de
     mailboxAgentDecider: false,
     mailboxAgentWebSearch: true,
     mailboxAgentBrowsing: true,
+    mailboxAgentPayments: true,
     mailboxAgentSpendCap: 20,
     linkedFilesCapGb: 20,
     suggestions: true,

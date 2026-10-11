@@ -78,8 +78,11 @@ const kinds: Partial<Record<Change["type"], Kind>> = {
   agentSettingsChanged: "pausesAndLimits",
   sendWaitingForLimit: "pausesAndLimits",
   sentNow: "pausesAndLimits",
+  paymentMade: "payments",
+  paymentAsked: "payments",
+  paymentDecided: "payments",
 };
-const allKinds: Kind[] = ["conversations", "tasks", "draftsAndSends", "approvals", "organizing", "screening", "unsubscribes", "pausesAndLimits", "alerts", "setup"];
+const allKinds: Kind[] = ["conversations", "tasks", "draftsAndSends", "approvals", "payments", "organizing", "screening", "unsubscribes", "pausesAndLimits", "alerts", "setup"];
 
 /** Whether the change failed: a send SES refused, bounced, didn't send after all or never answered, a turn or a task that couldn't finish, or an unsubscribe that didn't work. */
 function failedOf(change: Change): boolean {
@@ -167,7 +170,8 @@ async function activityOf(table: Table, agent: Agent): Promise<Entry[]> {
 
 /**
  * The IDs of the events that wait for the agent's sponsor: each approval's newest change, while it
- * asks or was undone, so the send waits again, and each alert they haven't seen.
+ * asks or was undone, so the send waits again, each payment's while it waits for them, and each
+ * alert they haven't seen.
  */
 function waitingForSponsor(entries: Entry[]): Set<string> {
   const settled = new Set<string>();
@@ -178,10 +182,10 @@ function waitingForSponsor(entries: Entry[]): Set<string> {
       if (!entry.alert.seen) waiting.add(entry.id);
       continue;
     }
-    const approval = field(entry.change, "approval") as string | undefined;
-    if (approval === undefined || entry.kind !== "approvals" || settled.has(approval)) continue;
+    const approval = (entry.kind === "approvals" ? field(entry.change, "approval") : entry.kind === "payments" ? field(entry.change, "payment") : undefined) as string | undefined;
+    if (approval === undefined || settled.has(approval)) continue;
     settled.add(approval);
-    if (entry.change.type === "approvalAsked" || entry.change.type === "approvalUndone") waiting.add(entry.id);
+    if (entry.change.type === "approvalAsked" || entry.change.type === "approvalUndone" || entry.change.type === "paymentAsked") waiting.add(entry.id);
   }
   return waiting;
 }
@@ -200,7 +204,7 @@ async function activityAsked(event: Parameters<OperationHandler>[0], table: Tabl
  * isn't the sponsor reads. Any other field is left out, so a field added later stays out until
  * it is listed here.
  */
-const mailFree = new Set(["position", "at", "actor", "type", "task", "thread", "message", "draft", "approval", "decision", "label", "added", "removed", "spam", "screened", "delivery", "delivered", "agent", "before", "after", "on", "letIn", "outcome", "status", "feedback", "human", "threads", "drafts", "models", "handover", "harder", "cost", "method", "until", "setAsideAt", "allMailboxes", "merged"]);
+const mailFree = new Set(["position", "at", "actor", "type", "task", "thread", "message", "draft", "approval", "payment", "decision", "label", "added", "removed", "spam", "screened", "delivery", "delivered", "agent", "before", "after", "on", "letIn", "outcome", "status", "feedback", "human", "threads", "drafts", "models", "handover", "harder", "cost", "method", "until", "setAsideAt", "allMailboxes", "merged"]);
 /** The fields of what SES reported about a send that say nothing of its recipients. */
 const feedbackFree = new Set(["kind", "at", "reason"]);
 /** The fields of a handover that say nothing of the mail, as what the everyday model said in asking for help can. */

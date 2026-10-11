@@ -19,6 +19,7 @@ import { GroupsSheet } from "./groups.tsx";
 import { ActorMark } from "./mail-parts.tsx";
 import { MyLogoSheet } from "./logos.tsx";
 import { MemoryPage } from "./memory.tsx";
+import { SecretsPage } from "./secrets.tsx";
 import { PeopleSheet } from "./people.tsx";
 import { loadConfig, signOut } from "./session.ts";
 import { strings } from "./strings.ts";
@@ -115,7 +116,7 @@ export function useSheet<Values extends object>({
 }
 
 /** Settings' pages, in the index's order: the human's own, then the admins'. */
-const pages = ["you", "screener", "memory", "agents", "organization", "domains", "addresses", "people", "groups"] as const;
+const pages = ["you", "screener", "memory", "secrets", "agents", "organization", "domains", "addresses", "people", "groups"] as const;
 type Page = (typeof pages)[number];
 const adminPages: readonly Page[] = ["organization", "domains", "addresses", "people", "groups"];
 
@@ -185,7 +186,7 @@ function useIndex({
     const quietly = <T,>(call: Promise<T>) => call.catch(() => ({ data: undefined, response: undefined }));
     const none = Promise.resolve({ data: undefined, response: undefined });
     void (async () => {
-      const [list, domains, settings, organizationMailboxes, humans, groups, screeners, memories] = await Promise.all([
+      const [list, domains, settings, organizationMailboxes, humans, groups, screeners, memories, secrets] = await Promise.all([
         quietly(client.GET("/agents")),
         admin ? quietly(client.GET("/domains")) : none,
         admin ? quietly(client.GET("/organization/settings")) : none,
@@ -194,9 +195,10 @@ function useIndex({
         admin ? quietly(client.GET("/groups")) : none,
         Promise.all(mailboxes.map((mailbox) => quietly(client.GET("/mailboxes/{mailbox}/screener", { params: { path: { mailbox: mailbox.id } } })))),
         mailboxes.length > 0 ? quietly(client.GET("/memories")) : none,
+        mailboxes.length > 0 ? quietly(client.GET("/secrets")) : none,
       ]);
       if (!current) return;
-      if ([list, domains, settings, organizationMailboxes, humans, groups, memories, ...screeners].some(({ response }) => response?.status === 401)) return onSignedOut();
+      if ([list, domains, settings, organizationMailboxes, humans, groups, memories, secrets, ...screeners].some(({ response }) => response?.status === 401)) return onSignedOut();
       // An agent's sends wait in the human's mailboxes, where it sends as them. A list Duva can't give now counts none.
       const drafts = await Promise.all(
         mailboxes.map(async (mailbox) => {
@@ -219,6 +221,11 @@ function useIndex({
       const on = screeners.map(({ data }) => data?.on);
       if (on.every((each) => each !== undefined)) read.screener = { text: copy.screener(on.filter(Boolean).length, on.length) };
       if (memories.data !== undefined) read.memory = { text: copy.memory(memories.data.memories.length, learning) };
+      if (secrets.data !== undefined) {
+        // A card without limits doesn't pay, which the human may not mean, so it is said in orange.
+        const unlimited = secrets.data.secrets.filter(({ kind, limits }) => kind === "card" && limits === undefined).length;
+        read.secrets = { text: copy.secrets(secrets.data.secrets.length, unlimited), ...(unlimited > 0 && { code: "call" as const }) };
+      }
       if (settings.data !== undefined) read.organization = { text: copy.organization(settings.data.retentionDays) };
       if (domains.data !== undefined) {
         const missing = domains.data.domains
@@ -280,7 +287,7 @@ export function Settings({
   const sponsors = (index.agents?.length ?? 0) > 0;
   // Pages a human can't open, such as an admin's for a member, or one with nothing on it, open You instead.
   const canOpen = (page: Page) =>
-    adminPages.includes(page) ? admin : page === "screener" || page === "memory" ? mailboxes === undefined || own.length > 0 : page === "agents" ? sponsors || index.agents === undefined : true;
+    adminPages.includes(page) ? admin : page === "screener" || page === "memory" || page === "secrets" ? mailboxes === undefined || own.length > 0 : page === "agents" ? sponsors || index.agents === undefined : true;
   const page = asked.page !== undefined && canOpen(asked.page) ? asked.page : "you";
   const agent = asked.agent ?? agentAsked;
 
@@ -384,6 +391,7 @@ export function Settings({
             <li>{entry("you", copy.you)}</li>
             {own.length > 0 && <li>{entry("screener", copy.screener.title)}</li>}
             {own.length > 0 && <li>{entry("memory", copy.memory.title)}</li>}
+            {own.length > 0 && <li>{entry("secrets", copy.secrets.title)}</li>}
             {sponsors && (
               <li>
                 {entry("agents", strings.agentSettings.title)}
@@ -425,6 +433,7 @@ export function Settings({
         {page === "screener" && own.length > 0 && (
           <ScreenerSheet key={own.map(({ id }) => id).join()} client={client} mailboxes={own} onSignedOut={onSignedOut} />
         )}
+        {page === "secrets" && own.length > 0 && <SecretsPage client={client} email={email} onChange={agentChanged} onSignedOut={onSignedOut} />}
         {page === "memory" && own.length > 0 && <MemoryPage client={client} mailboxes={own} onPreferences={onPreferences} onSignedOut={onSignedOut} />}
         {page === "agents" && <AgentSettingsSheet client={client} me={me} email={email} admin={admin} mailboxes={mailboxes} open={agent} onChange={agentChanged} onSignedOut={onSignedOut} />}
         {page === "organization" && (
@@ -727,7 +736,10 @@ function AgentsSheet({ client, onSignedOut }: { client: DuvaClient; onSignedOut:
   );
 }
 
-type MailboxAgentsSettings = Pick<OrganizationSettings, "mailboxAgentAllowedModels" | "mailboxAgentModel" | "mailboxAgentHarderModel" | "mailboxAgentDecider" | "mailboxAgentWebSearch" | "mailboxAgentBrowsing" | "mailboxAgentSpendCap" | "suggestions" | "suggestionModel">;
+type MailboxAgentsSettings = Pick<
+  OrganizationSettings,
+  "mailboxAgentAllowedModels" | "mailboxAgentModel" | "mailboxAgentHarderModel" | "mailboxAgentDecider" | "mailboxAgentWebSearch" | "mailboxAgentBrowsing" | "mailboxAgentPayments" | "mailboxAgentSpendCap" | "suggestions" | "suggestionModel"
+>;
 type Model = MailboxAgentsSettings["mailboxAgentModel"];
 type MeasuredModel = components["schemas"]["MeasuredModel"];
 const organizationModels = ["mailboxAgentModel", "mailboxAgentHarderModel"] as const;
@@ -767,13 +779,14 @@ function useMeasuredModels(client: DuvaClient): { models?: MeasuredModel[]; fail
 function MailboxAgentsSheet({ client, onSignedOut }: { client: DuvaClient; onSignedOut: () => void }) {
   const { sheet } = useOrganizationSheet<MailboxAgentsSettings>(
     client,
-    ({ mailboxAgentAllowedModels, mailboxAgentModel, mailboxAgentHarderModel, mailboxAgentDecider, mailboxAgentWebSearch, mailboxAgentBrowsing, mailboxAgentSpendCap, suggestions, suggestionModel }) => ({
+    ({ mailboxAgentAllowedModels, mailboxAgentModel, mailboxAgentHarderModel, mailboxAgentDecider, mailboxAgentWebSearch, mailboxAgentBrowsing, mailboxAgentPayments, mailboxAgentSpendCap, suggestions, suggestionModel }) => ({
       mailboxAgentAllowedModels,
       mailboxAgentModel,
       mailboxAgentHarderModel,
       mailboxAgentDecider,
       mailboxAgentWebSearch,
       mailboxAgentBrowsing,
+      mailboxAgentPayments,
       mailboxAgentSpendCap,
       suggestions,
       suggestionModel,
@@ -919,6 +932,16 @@ function MailboxAgentsSheet({ client, onSignedOut }: { client: DuvaClient; onSig
                 <span className="choice-text">
                   <span className="choice-name">{copy.browsing.label}</span>
                   <span className="hint">{copy.browsing.hint}</span>
+                </span>
+              </label>
+            </fieldset>
+            <fieldset>
+              <legend>{copy.payments.legend}</legend>
+              <label className="choice">
+                <input type="checkbox" checked={chosen.mailboxAgentPayments} onChange={(event) => sheet.choose({ mailboxAgentPayments: event.target.checked })} />
+                <span className="choice-text">
+                  <span className="choice-name">{copy.payments.label}</span>
+                  <span className="hint">{copy.payments.hint}</span>
                 </span>
               </label>
             </fieldset>

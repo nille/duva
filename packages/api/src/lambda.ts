@@ -32,6 +32,7 @@ import { lambdaTaskRunner } from "./tasks.ts";
 import { titanEmbedder } from "./titan.ts";
 import { bedrockSuggester } from "./suggestions.ts";
 import { s3UploadsBucket } from "./uploads-bucket.ts";
+import { kmsSecretKeys } from "./secret-keys.ts";
 
 const mailBucket = required(environmentVariables.mailBucket);
 const lambda = new LambdaClient({});
@@ -50,7 +51,7 @@ export const handler = createApi({
   version: required(environmentVariables.version),
   region: required("AWS_REGION"),
   table: { client: new DynamoDBClient({}), name: required(environmentVariables.tableName) },
-  humans: cognitoHumans(cognito, userPoolId),
+  humans: cognitoHumans(cognito, userPoolId, required(environmentVariables.signInClientId)),
   signInSender: cognitoSignInSender(cognito, userPoolId, configurationSet),
   identities: sesIdentities(sesV2, configurationSet),
   dns: realDns,
@@ -80,4 +81,5 @@ export const handler = createApi({
   embedder: titanEmbedder(),
   suggester: bedrockSuggester({ region: required("AWS_REGION") }),
   browserProfiles: agentCoreBrowserProfiles(process.env[environmentVariables.browser] ?? ""),
+  secretKeys: kmsSecretKeys(required(environmentVariables.secretsKey)),
 });

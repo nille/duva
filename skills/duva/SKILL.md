@@ -131,7 +131,8 @@ Give only the settings to change. A setting applies from when it changes, so tur
 - `--mailboxAgentHarderModel`: The organization's harder model, for the harder work: writing mail that may be sent, unsubscribing on a sender's page, a turn the decider finds complex, a run the everyday model hands over, and Think harder, unless the agent's human chose another. One of mailboxAgentAllowedModels. GPT-6 Sol by default.
 - `--mailboxAgentDecider` or `--no-mailboxAgentDecider`: Whether the decider, Amazon Nova Micro, settles the model for each turn in Ask Coo and over MCP first, sending one it finds complex to the harder model. Off by default: on Coo's tasks it was right on 4 of 10 (docs/research/coo-models.md). Either way a turn hands over to the harder model on evidence.
 - `--mailboxAgentWebSearch` or `--no-mailboxAgentWebSearch`: Whether the mailbox agents may search the web, in Ask Coo, in labels' tasks and while unsubscribing, with queries that may carry anything from the mail that helps, as a tracking number. On by default. Queries go to Web Search on Amazon Bedrock AgentCore, Amazon's own index, which runs only in eu-west-1, Ireland, us-east-1, Virginia, and ap-northeast-1, Tokyo: a deployment in the EU searches from Ireland, one in the US from Virginia, and any other from the nearest of them, status's webSearchRegion. AWS documents no retention for queries. A reader with no powers reads the results, and Coo gets only its short answer and sources. Each query costs $0.007, plus the reader's tokens, counted toward mailboxAgentSpendCap. Each human can also turn it off for their own Coo, with the preference cooWebSearch.
-- `--mailboxAgentBrowsing` or `--no-mailboxAgentBrowsing`: Whether the mailbox agents may browse, in Ask Coo and in labels' tasks: open a link from the mail or a web search, read the page, and act on it on their own, logging in as their human and submitting forms for them without asking. They log in only with codes and links the site mails their human, never with a password, and stay logged in between runs in a browser profile of their human's own. They never pay, enter card details, or download or upload a file. A browsing run has only the page's tools, so a page can't reach the mailbox, and Duva keeps only a sentence of what it did. On by default. Browser time, at AgentCore Browser's $0.0895 per vCPU-hour and $0.00945 per GB-hour, and the run's tokens count toward mailboxAgentSpendCap. Each human can also turn it off for their own Coo, with the preference cooBrowsing. Unsubscribing on a sender's page doesn't depend on it.
+- `--mailboxAgentBrowsing` or `--no-mailboxAgentBrowsing`: Whether the mailbox agents may browse, in Ask Coo and in labels' tasks: open a link from the mail or a web search, read the page, and act on it on their own, logging in as their human and submitting forms for them without asking. They log in with codes and links the site mails their human, or with a login among their human's secrets, which Duva types without the model seeing it, and stay logged in between runs in a browser profile of their human's own. They pay only with a card among their human's secrets, within its limits, while mailboxAgentPayments lets them, and never download or upload a file. A browsing run has only the page's tools, so a page can't reach the mailbox, and Duva keeps only a sentence of what it did. On by default. Browser time, at AgentCore Browser's $0.0895 per vCPU-hour and $0.00945 per GB-hour, and the run's tokens count toward mailboxAgentSpendCap. Each human can also turn it off for their own Coo, with the preference cooBrowsing. Unsubscribing on a sender's page doesn't depend on it.
+- `--mailboxAgentPayments` or `--no-mailboxAgentPayments`: Whether the mailbox agents may pay with their humans' cards while they browse, each card only within the per-payment and per-month limits its human set, and above them only once its human approves. A card without limits never pays. On by default; off, no card pays.
 - `--mailboxAgentSpendCap`: The most the mailbox agents may spend on their model a month, in whole US dollars, 20 by default. At the cap a run stops, its agent's sponsor gets an alert, and runs are refused until the month ends or an admin raises it. 0 turns the mailbox agents off.
 - `--linkedFilesCapGb`: How much each human may have linked at once, in whole gigabytes (GiB), 20 by default. Their agents' linked files count toward it. Past it, a send that would link more is refused, until they stop sharing older files or an admin raises it. 0 lets no one link files, so mail too large to carry its files can't be sent.
 - `--suggestions` or `--no-suggestions`: Whether humans get suggestions while they write mail: the rest of a sentence in grey after the cursor, which Tab takes. On by default. Each costs a small call to suggestionModel, about $0.000075 with Qwen3 32B, counted toward mailboxAgentSpendCap. Each human can also switch them off for themselves, with the preference suggestions.
@@ -164,7 +165,7 @@ Give only the preferences to change. They follow you to every browser you sign i
 - `--cooSpeaksUp`: Whether Coo, the mailbox agent, says in the web app when there is news worth a glance: new mail since the human last looked, a draft of its waiting for their approval, or a label's task done. on, the default, has it say so in a speech bubble under its nest. off keeps it quiet.
 - `--cooLearnsFromMail`: Whether Coo learns from mail it reads while it works, and keeps what it learns as memories, each erased with its threads. on, the default, has it learn. off has it keep only what the human tells it.
 - `--cooWebSearch`: Whether the human's own Coo may search the web, while the organization's mailboxAgentWebSearch lets it. on, the default, lets it look things up wherever it helps, with queries that may carry what the mail says, and say so with its sources. off keeps it to the mail.
-- `--cooBrowsing`: Whether the human's own Coo may browse, while the organization's mailboxAgentBrowsing lets it. on, the default, lets it open pages and act on them for you on its own: it logs in as you with codes the site mails you, and submits forms for you without asking, saying in a sentence what it did. off keeps it off the web's pages. Turning it off keeps the sites it logged in to; sign Coo out of every site to clear them.
+- `--cooBrowsing`: Whether the human's own Coo may browse, while the organization's mailboxAgentBrowsing lets it. on, the default, lets it open pages and act on them for you on its own: it logs in as you with codes the site mails you, or with your logins among your secrets, pays with your cards within their limits, and submits forms for you without asking, saying in a sentence what it did. off keeps it off the web's pages. Turning it off keeps the sites it logged in to; sign Coo out of every site to clear them.
 - `--suggestions`: Whether the human gets suggestions while they write mail, while the organization's suggestions setting has them on. on, the default, offers the rest of a sentence in grey after the cursor once they pause, from the draft, the message it answers, what Coo remembers and their style note, which Tab takes. off offers none.
 - `--timeZone` or `--no-timeZone`: The time zone, as an IANA name, or null to remove it, as if the human never chose one. The CLI removes it with --no-timeZone.
 - `--opensOn`: Where the web app opens: all, the default, on All mailboxes, or the ID of one of the human's mailboxes, on that one. A mailbox no longer theirs opens All mailboxes.
@@ -851,6 +852,90 @@ Sign your Coo out of every site it logged in to.
 
 Clears the browser profile your Coo browses in, so it keeps no site's login, cookies or storage. It logs in again, with a code the site mails you, the next time its work needs it.
 
+## duva secrets list
+
+List the secrets your Coo uses but never reads, each with its kind and last four characters.
+
+A secret is something you keep for Coo to use while it browses: a site's login, with its username, password and any one-time-code seed, a payment card, or any other value, such as a membership number. Coo fills one into a page where its work needs it, and Duva types it there, so Coo's model never sees a value. Listing shows each one's name, kind and the last four characters of its username, card number or value, never more. Only you see your secrets: admins, agents and other humans can't, and they go when you are removed.
+
+## duva secrets add
+
+Keep a secret for your Coo to use, a login, a card or another value, under a name you give it.
+
+Give kind and name, and the parts of its kind: a login's username and password, and its totpSeed if the site asks for a one-time code, a card's number, expiry, cvc and cardholder, or another value's value. Each value is encrypted with a KMS key of the deployment's own, in its region. A card pays only within the limits you set on it, with currency, perPayment and perMonth: until then it doesn't pay. Names are your own, each used once. Only humans keep secrets, at most 100.
+
+- `--kind` (required): What a secret is. login, a site's username and password, with a one-time-code seed if the site asks for codes; card, a payment card; other, any other value, such as a membership number.
+- `--name` (required): What to call it, as Coo and you know it by, at most 60 characters.
+- `--username`: A login's username or email address.
+- `--password`: A login's password.
+- `--totpSeed`: A login's one-time-code seed, the base32 key or the otpauth:// URI a site's setup gives. Optional.
+- `--number`: A card's number, with or without spaces.
+- `--expiry`: A card's expiry, as MM/YY.
+- `--cvc`: A card's security code, three or four digits.
+- `--cardholder`: The name on a card.
+- `--value`: Another value, at most 1,000 characters.
+- `--currency`: The currency of a card's limits.
+- `--perPayment`: The most one payment of a card's may be without your approval.
+- `--perMonth`: The most a card pays in a month without your approval.
+
+## duva secrets get
+
+Read a secret, with every use of it, newest first.
+
+Its history lists each time Coo filled it into a page, with when, the site and the run, a turn of Ask Coo or a label's task, each payment with its amount, and each time you revealed it. Never its value: reveal it for that.
+
+- `--secret` (required): The secret's ID.
+
+## duva secrets delete
+
+Delete a secret, with its history.
+
+Coo can't use it from then on. A payment of the card's waiting in Approvals goes with it.
+
+- `--secret` (required): The secret's ID.
+
+## duva secrets change
+
+Rename a secret, replace its parts, or set a card's limits.
+
+Give name to rename it. Give any of its kind's parts to replace them, each as a whole: a part you leave out stays as it was. For a card, give currency, perPayment and perMonth together to set its limits, or null for each to clear them, after which it doesn't pay. A secret's kind stays what it was.
+
+- `--secret` (required): The secret's ID.
+- `--name`: Its new name.
+- `--username`: 
+- `--password`: 
+- `--totpSeed` or `--no-totpSeed`: A login's new one-time-code seed, or null to remove it.
+- `--number`: 
+- `--expiry`: 
+- `--cvc`: 
+- `--cardholder`: 
+- `--value`: 
+- `--currency` or `--no-currency`: The currency of a card's limits, or null with the others to clear them.
+- `--perPayment` or `--no-perPayment`: The most one payment may be, or null with the others to clear the limits.
+- `--perMonth` or `--no-perMonth`: The most the card pays in a month, or null with the others to clear the limits.
+
+## duva secrets reveal
+
+Reveal a secret's value, after a fresh sign-in code.
+
+Call it first without code: Duva mails you a sign-in code, as signing in does, and answers where it went. Then call it again with the code within three minutes, and it answers the secret's parts. Each reveal is recorded in the secret's history. Only you can reveal your own secrets.
+
+- `--secret` (required): The secret's ID.
+- `--code`: The sign-in code Duva mailed you. Leave it out to have one mailed.
+
+## duva secrets use
+
+Answer a part of a secret for a browsing run of your human's Coo to type into a page.
+
+Only a browsing run of a human's own Coo can call it, with its run's token, which never reaches the model: Duva types what it answers into the page, outside the model. Each use is recorded in the secret's history, with the site and the run. A login's code part is the one-time code its seed gives now. A card's parts need the amount and currency of the payment: it pays only within the card's per-payment and per-month limits, while the organization lets mailbox agents pay. Above a limit, the payment waits in its human's Approvals, which is 202, and a fresh run pays once they approve it. A run that already paid on the site with the card, then ran again, is 409, so a retry never pays twice.
+
+- `--secret` (required): The secret's ID.
+- `--part` (required): A part of a secret to type into a page. A login's username, password, and code, the one-time code its seed gives at that moment; a card's number, expiry as MM/YY, expiryMonth as MM, expiryYear as YYYY, cvc and cardholder; another value's value.
+- `--site` (required): The site of the page it goes into, as example.com.
+- `--amount`: For a card, what the payment is.
+- `--currency`: For a card, the payment's currency.
+- `--for`: For a card, what the payment is for, in a few words.
+
 ## duva screener get
 
 Read a mailbox's Screener, with the first-time senders whose mail waits there.
@@ -1159,3 +1244,25 @@ Undo an approved send during the undo window, so it waits for your approval agai
 An approved send waits the organization's undo window, undoWindowSeconds, before the sender takes it, as the draft's undoUntil says. Until then its approver can undo the approval: the draft waits for approval again as the agent asked it, without your edits, and nothing is sent. Once the window is over, or the sender took it, that is 409, and mail that went out can't be called back. Only the approver can undo. Undoing is recorded in the mailbox's change feed under you.
 
 - `--approval` (required): The approval's ID.
+
+## duva payments list
+
+List your Coo's payments, newest first, those waiting for your approval among them.
+
+Coo pays with one of your cards on its own only within the limits you set on it. A payment above them waits here, with its site, amount, card and what it is for, until you approve or decline it. Paid ones show with when, and approved ones until a run pays them. Only you see your Coo's payments.
+
+## duva payments approve
+
+Approve a payment waiting for you, so Coo's next run on the site pays it.
+
+The next browsing run that pays its amount on the site with the card pays it, outside the card's limits, once: ask Coo again for that. It still counts toward the card's month. Recorded in the mailbox's change feed under you.
+
+- `--payment` (required): The payment's ID.
+
+## duva payments decline
+
+Decline a payment waiting for you, so it isn't paid.
+
+Recorded in the mailbox's change feed under you.
+
+- `--payment` (required): The payment's ID.

@@ -15,6 +15,7 @@ import { type Agent, agentSettings, type Mailbox, mailboxesInOrder, mailboxFeed,
 import { recordChanges } from "./feed.ts";
 import { cooBrowses, cooModelsOf, cooSearchesTheWeb, learnsFromMail } from "./preferences.ts";
 import { endRunToken, issueRunToken } from "./run-tokens.ts";
+import { secretsForRun } from "./secrets.ts";
 import { documents, pk, sk } from "./table.ts";
 import { queryCost, type WebSearchMade } from "./web-search.ts";
 
@@ -80,12 +81,13 @@ export async function startRun(
   const cap = settings.mailboxAgentSpendCap;
   if (cap === 0) return { refused: "An admin turned the mailbox agents off, with a spend cap of $0. Ask one to raise it." };
   const month = monthOf(new Date());
-  const [spent, { everyday, harder }, fromMail, searches, browses] = await Promise.all([
+  const [spent, { everyday, harder }, fromMail, searches, browses, secrets] = await Promise.all([
     spentIn(table, month),
     cooModelsOf(table, agent.sponsor, settings),
     learnsFromMail(table, agent.sponsor),
     cooSearchesTheWeb(table, agent.sponsor),
     cooBrowses(table, agent.sponsor),
+    secretsForRun(table, agent.sponsor),
   ]);
   if (spent >= cap) {
     await capReached(table, agent, month, cap);
@@ -101,7 +103,7 @@ export async function startRun(
     model: { model: { conversation: everyday, task: everyday, harder, unsubscribe: harder }[job], everyday, harder, region },
     ...(settings.mailboxAgentWebSearch && searches && { webSearch: true }),
     // Unsubscribing browses in a fresh browser of its own, never its human's profile (ADR-0031).
-    ...(settings.mailboxAgentBrowsing && browses && job !== "unsubscribe" && { browsing: { profile: profileName(agent.sponsor) } }),
+    ...(settings.mailboxAgentBrowsing && browses && job !== "unsubscribe" && { browsing: { profile: profileName(agent.sponsor) }, ...(secrets.length > 0 && { secrets }) }),
     ...(job === "conversation" && settings.mailboxAgentDecider && { decide: true }),
     budget: cap - spent,
     learnsFromMail: fromMail,
@@ -122,12 +124,24 @@ export function capReached(table: Table, agent: Agent, month: string, cap: numbe
  * searches and browsing as they come, and returns what it said and did, an unsubscribe's verdict,
  * and how it ended. Each model call's, query's and browser session's cost is counted as it comes,
  * so a run cut off still counts what it spent, and a run that reaches the cap alerts the agent's sponsor.
+ * A turn, named by the human's turn it answers, and a task, in `about`, may use its human's secrets.
  */
 export async function* runMailboxAgent(
   table: Table,
-  { agent, payload, runtime, month, cap, about = {} }: { agent: Agent; payload: Omit<RunPayload, "token">; runtime: AgentRuntime; month: string; cap: number; about?: { task?: string; thread?: string } },
+  {
+    agent,
+    payload,
+    runtime,
+    month,
+    cap,
+    about = {},
+    turn,
+  }: { agent: Agent; payload: Omit<RunPayload, "token">; runtime: AgentRuntime; month: string; cap: number; about?: { task?: string; thread?: string }; turn?: string },
 ): AsyncGenerator<Extract<RunEvent, { type: "text" | "action" | "searched" | "browsed" | "handedOver" }>, RunEnd> {
-  const token = await issueRunToken(table, agent.id);
+  const session = `${agent.id}-${randomUUID()}`;
+  // A turn or a task uses its human's secrets, an unsubscribe none (ADR-0039).
+  const run = turn !== undefined || about.task !== undefined ? { ...about, ...(turn !== undefined && { turn }), mailbox: recordingMailbox(payload), session } : undefined;
+  const token = await issueRunToken(table, agent.id, run);
   let text = "";
   const actions: AgentAction[] = [];
   const searches: WebSearchMade[] = [];
@@ -140,7 +154,7 @@ export async function* runMailboxAgent(
   let decision: Decision | undefined;
   let handover: Handover | undefined;
   try {
-    for await (const event of runtime({ ...payload, token } as RunPayload, `${agent.id}-${randomUUID()}`)) {
+    for await (const event of runtime({ ...payload, token } as RunPayload, session)) {
       if (event.type === "text") {
         text += event.text;
         yield event;

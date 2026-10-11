@@ -17,7 +17,7 @@
 // erased mail for more than a day, and no indexer task waits in its failure queue; nothing but IAM
 // may invoke the sender, and no schedule for sends that wait for an agent's limits, or for threads set aside in Remind me, is overdue; Ask your agent's
 // turns reach the conversation Lambda only through the web app's domain, the mailbox agents' AgentCore Runtime is ready and takes only IAM calls, their unsubscribe browser is ready on the public network and records nothing, the inbound Lambda is given the task runner, only IAM invokes the task runner, which retries no run, and no task is stuck working, every
-// human's mailbox has its mailbox agent, no agent owns a mailbox, and Claude answers from eu-central-1 through the eu profile; and with
+// human's mailbox has its mailbox agent, no agent owns a mailbox, the humans' secrets are sealed with the stack's own rotating key the mailbox agents' role can't use, and Claude answers from eu-central-1 through the eu profile; and with
 // DUVA_TEST_HUMAN_CODES_KEY, All mailboxes answers for the test human's agent as its mailboxes do. Signing in stays
 // with a human. Then prints how many
 // messages Duva dropped on arrival each day of the last 7, by reason. Exits 1 if any check fails.
@@ -25,6 +25,7 @@ import { CloudFormationClient, DescribeStacksCommand, paginateListStackResources
 import { CloudWatchClient, GetMetricDataCommand } from "@aws-sdk/client-cloudwatch";
 import { CognitoIdentityProviderClient, DescribeUserPoolCommand, paginateListUserPools } from "@aws-sdk/client-cognito-identity-provider";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { DescribeKeyCommand, GetKeyRotationStatusCommand, KMSClient } from "@aws-sdk/client-kms";
 import { GetPolicyCommand as GetIamPolicyCommand, GetPolicyVersionCommand, GetRolePolicyCommand, IAMClient, paginateListAttachedRolePolicies, paginateListRolePolicies } from "@aws-sdk/client-iam";
 import {
   GetFunctionConfigurationCommand,
@@ -90,6 +91,24 @@ const expectStatus = async (response: Response, status: number) =>
 
 // The stack's table, found once, inside the checks that need it.
 let found: Promise<string | undefined> | undefined;
+type Statement = { Effect: string; Action: string | string[]; Resource: string | string[]; Condition?: unknown };
+
+/** Every statement of the role's own policies and those attached to it. */
+async function roleStatements(roleArn: string): Promise<Statement[]> {
+  const iam = new IAMClient({ region });
+  const RoleName = roleArn.split("/").at(-1)!;
+  const documents: string[] = [];
+  for await (const { PolicyNames = [] } of paginateListRolePolicies({ client: iam }, { RoleName }))
+    for (const PolicyName of PolicyNames) documents.push((await iam.send(new GetRolePolicyCommand({ RoleName, PolicyName }))).PolicyDocument!);
+  // CDK moves statements to managed policies once the role's own outgrows its limit.
+  for await (const { AttachedPolicies = [] } of paginateListAttachedRolePolicies({ client: iam }, { RoleName }))
+    for (const { PolicyArn } of AttachedPolicies) {
+      const { Policy } = await iam.send(new GetIamPolicyCommand({ PolicyArn }));
+      documents.push((await iam.send(new GetPolicyVersionCommand({ PolicyArn, VersionId: Policy!.DefaultVersionId }))).PolicyVersion!.Document!);
+    }
+  return documents.flatMap((document): Statement[] => [JSON.parse(decodeURIComponent(document)).Statement].flat());
+}
+
 const stackTable = async () => {
   found ??= (async () => {
     for await (const { StackResourceSummaries = [] } of paginateListStackResources({ client: cloudFormation }, { StackName: stackName })) {
@@ -295,19 +314,7 @@ await check("the mailbox agents' role may create Duva's browser profiles, tagged
   const { browserArn } = await control.send(new GetBrowserCommand({ browserId: runtime.environmentVariables![environmentVariables.browser]! }));
   // IAM's policy simulator denies the actions that name no resource type, which AgentCore allows on
   // browser-profile/* and the browser, so the role's own statements are read (docs/aws.md).
-  const iam = new IAMClient({ region });
-  const RoleName = runtime.roleArn!.split("/").at(-1)!;
-  type Statement = { Effect: string; Action: string | string[]; Resource: string | string[]; Condition?: unknown };
-  const documents: string[] = [];
-  for await (const { PolicyNames = [] } of paginateListRolePolicies({ client: iam }, { RoleName }))
-    for (const PolicyName of PolicyNames) documents.push((await iam.send(new GetRolePolicyCommand({ RoleName, PolicyName }))).PolicyDocument!);
-  // CDK moves statements to managed policies once the role's own outgrows its limit.
-  for await (const { AttachedPolicies = [] } of paginateListAttachedRolePolicies({ client: iam }, { RoleName }))
-    for (const { PolicyArn } of AttachedPolicies) {
-      const { Policy } = await iam.send(new GetIamPolicyCommand({ PolicyArn }));
-      documents.push((await iam.send(new GetPolicyVersionCommand({ PolicyArn, VersionId: Policy!.DefaultVersionId }))).PolicyVersion!.Document!);
-    }
-  const statements = documents.flatMap((document): Statement[] => [JSON.parse(decodeURIComponent(document)).Statement].flat());
+  const statements = await roleStatements(runtime.roleArn!);
   // A condition as IAM may give it back, its keys in any order and a value of one alone or in a list.
   const canonical = (condition: unknown): string =>
     JSON.stringify(condition, (_, value: unknown) =>
@@ -326,6 +333,27 @@ await check("the mailbox agents' role may create Duva's browser profiles, tagged
   const creatingOthers = statements.filter((statement) => allows(statement, "bedrock-agentcore:CreateBrowserProfile") && canonical(statement.Condition) !== canonical(browserProfileTagged));
   if (creatingOthers.length > 0) return `may create profiles without Duva's tag: ${JSON.stringify(creatingOthers)}`;
   return lacking.length === 0 ? undefined : `lacks ${lacking.map(({ action, resource }) => `${action} on ${resource}`).join(", ")}`;
+});
+await check("the humans' secrets are sealed with the stack's own key, enabled and rotating, which the mailbox agents' role can't use, and the secrets and payments need sign-in (ADR-0039)", async () => {
+  let keyId: string | undefined;
+  for await (const { StackResourceSummaries = [] } of paginateListStackResources({ client: cloudFormation }, { StackName: stackName })) {
+    keyId ??= StackResourceSummaries.find(({ ResourceType }) => ResourceType === "AWS::KMS::Key")?.PhysicalResourceId;
+  }
+  if (keyId === undefined) return "the stack has no key";
+  const kms = new KMSClient({ region });
+  const { KeyMetadata } = await kms.send(new DescribeKeyCommand({ KeyId: keyId }));
+  if (KeyMetadata?.KeyState !== "Enabled" || KeyMetadata.KeyManager !== "CUSTOMER") return `is ${KeyMetadata?.KeyState}, managed by ${KeyMetadata?.KeyManager}`;
+  if (!(await kms.send(new GetKeyRotationStatusCommand({ KeyId: keyId }))).KeyRotationEnabled) return "doesn't rotate";
+  for (const path of ["/secrets", "/secrets/x", "/payments"]) {
+    const refused = await expectStatus(await fetch(`${apiUrl}${path}`), 401);
+    if (refused !== undefined) return `${path}: ${refused}`;
+  }
+  const used = await expectStatus(await fetch(`${apiUrl}/secrets/x/use`, { method: "POST", body: "{}" }), 401);
+  if (used !== undefined) return `using a secret: ${used}`;
+  if (agentRuntime === "") return undefined;
+  const runtime = await new BedrockAgentCoreControlClient({ region }).send(new GetAgentRuntimeCommand({ agentRuntimeId: agentRuntime.split("/").at(-1)! }));
+  const decrypting = (await roleStatements(runtime.roleArn!)).filter(({ Effect, Action }) => Effect === "Allow" && [Action].flat().some((action) => action.startsWith("kms:") || action === "*"));
+  return decrypting.length === 0 ? undefined : `the mailbox agents' role may use KMS: ${JSON.stringify(decrypting)}`;
 });
 await check("the mailbox agents search the web through a gateway in the search region, taking only IAM calls, with the Web Search target alone (ADR-0037)", async () => {
   if (agentRuntime === "") return `AgentCore isn't in ${region}, so mailbox agents don't search the web here`;

@@ -207,6 +207,16 @@ export function changeSaid(change: Change, { who, agent, you }: Named, message?:
     case "taskEnded":
       if (change.outcome === "done") return (change.note === undefined ? `${who} finished a task.` : `${who} finished a task: “${change.note}”`) + searched(change.searches) + browsedOn(change.browsed);
       return (change.note === undefined ? `${who} couldn't finish a task.` : `${who} couldn't finish a task: “${change.note}”`) + searched(change.searches) + browsedOn(change.browsed);
+    // An admin who isn't the sponsor reads no site, card or amount.
+    case "paymentMade":
+      if (change.site === undefined) return `${who} paid on a site.`;
+      return `${who} paid ${change.amount} ${change.currency} on ${change.site} with ${change.cardName}${change.approved ? ", as approved" : ""}, for ${change.for}.`;
+    case "paymentAsked":
+      if (change.site === undefined) return `${who} asked for approval to pay.`;
+      return `${who} asked for approval to pay ${change.amount} ${change.currency} on ${change.site} with ${change.cardName}, for ${change.for}, above the card's limits.`;
+    case "paymentDecided":
+      if (change.site === undefined) return change.approved ? `${who} approved ${agent}'s payment.` : `${who} declined ${agent}'s payment.`;
+      return `${who} ${change.approved ? "approved" : "declined"} ${agent}'s payment of ${change.amount} ${change.currency} on ${change.site}.`;
     case "threadErased":
       return change.actor !== undefined ? `${who} erased a thread for good, emptying Trash.` : "Duva erased a thread for good, after the retention period.";
     case "agentSettingsChanged":

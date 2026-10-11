@@ -1142,6 +1142,7 @@ export const defaultSettings: OrganizationSettings = {
   mailboxAgentDecider: false,
   mailboxAgentWebSearch: true,
   mailboxAgentBrowsing: true,
+  mailboxAgentPayments: true,
   mailboxAgentSpendCap: 20,
   linkedFilesCapGb: 20,
   suggestions: true,

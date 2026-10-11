@@ -44,6 +44,11 @@ export interface BrowserSession {
   open(url: string): Promise<PageView>;
   /** Types the value into the field. */
   fill(index: number, value: string): Promise<PageView>;
+  /**
+   * Types the value into the field as a keyboard does, through the browser, so no script Duva
+   * evaluates in the page carries it, as for a secret's part (ADR-0039).
+   */
+  typeIn(index: number, value: string): Promise<PageView>;
   /** Checks or unchecks a checkbox, checks a radio button, or picks a select's option by its text. */
   choose(index: number, option?: string): Promise<PageView>;
   /** Clicks the button or the link, and waits for the page it leads to. */

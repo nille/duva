@@ -10,6 +10,7 @@ const mailboxAgentDefaults = {
   mailboxAgentDecider: false,
   mailboxAgentWebSearch: true,
   mailboxAgentBrowsing: true,
+  mailboxAgentPayments: true,
   mailboxAgentSpendCap: 20,
 };
 

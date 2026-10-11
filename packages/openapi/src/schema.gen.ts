@@ -1363,6 +1363,98 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/secrets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the secrets your Coo uses but never reads, each with its kind and last four characters.
+         * @description A secret is something you keep for Coo to use while it browses: a site's login, with its username, password and any one-time-code seed, a payment card, or any other value, such as a membership number. Coo fills one into a page where its work needs it, and Duva types it there, so Coo's model never sees a value. Listing shows each one's name, kind and the last four characters of its username, card number or value, never more. Only you see your secrets: admins, agents and other humans can't, and they go when you are removed.
+         */
+        get: operations["listSecrets"];
+        put?: never;
+        /**
+         * Keep a secret for your Coo to use, a login, a card or another value, under a name you give it.
+         * @description Give kind and name, and the parts of its kind: a login's username and password, and its totpSeed if the site asks for a one-time code, a card's number, expiry, cvc and cardholder, or another value's value. Each value is encrypted with a KMS key of the deployment's own, in its region. A card pays only within the limits you set on it, with currency, perPayment and perMonth: until then it doesn't pay. Names are your own, each used once. Only humans keep secrets, at most 100.
+         */
+        post: operations["addSecret"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/secrets/{secret}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read a secret, with every use of it, newest first.
+         * @description Its history lists each time Coo filled it into a page, with when, the site and the run, a turn of Ask Coo or a label's task, each payment with its amount, and each time you revealed it. Never its value: reveal it for that.
+         */
+        get: operations["getSecret"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete a secret, with its history.
+         * @description Coo can't use it from then on. A payment of the card's waiting in Approvals goes with it.
+         */
+        delete: operations["deleteSecret"];
+        options?: never;
+        head?: never;
+        /**
+         * Rename a secret, replace its parts, or set a card's limits.
+         * @description Give name to rename it. Give any of its kind's parts to replace them, each as a whole: a part you leave out stays as it was. For a card, give currency, perPayment and perMonth together to set its limits, or null for each to clear them, after which it doesn't pay. A secret's kind stays what it was.
+         */
+        patch: operations["changeSecret"];
+        trace?: never;
+    };
+    "/secrets/{secret}/reveal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reveal a secret's value, after a fresh sign-in code.
+         * @description Call it first without code: Duva mails you a sign-in code, as signing in does, and answers where it went. Then call it again with the code within three minutes, and it answers the secret's parts. Each reveal is recorded in the secret's history. Only you can reveal your own secrets.
+         */
+        post: operations["revealSecret"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/secrets/{secret}/use": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Answer a part of a secret for a browsing run of your human's Coo to type into a page.
+         * @description Only a browsing run of a human's own Coo can call it, with its run's token, which never reaches the model: Duva types what it answers into the page, outside the model. Each use is recorded in the secret's history, with the site and the run. A login's code part is the one-time code its seed gives now. A card's parts need the amount and currency of the payment: it pays only within the card's per-payment and per-month limits, while the organization lets mailbox agents pay. Above a limit, the payment waits in its human's Approvals, which is 202, and a fresh run pays once they approve it. A run that already paid on the site with the card, then ran again, is 409, so a retry never pays twice.
+         */
+        post: operations["useSecret"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/mailboxes/{mailbox}/screener": {
         parameters: {
             query?: never;
@@ -2255,6 +2347,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/payments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List your Coo's payments, newest first, those waiting for your approval among them.
+         * @description Coo pays with one of your cards on its own only within the limits you set on it. A payment above them waits here, with its site, amount, card and what it is for, until you approve or decline it. Paid ones show with when, and approved ones until a run pays them. Only you see your Coo's payments.
+         */
+        get: operations["listPayments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/payments/{payment}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve a payment waiting for you, so Coo's next run on the site pays it.
+         * @description The next browsing run that pays its amount on the site with the card pays it, outside the card's limits, once: ask Coo again for that. It still counts toward the card's month. Recorded in the mailbox's change feed under you.
+         */
+        post: operations["approvePayment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/payments/{payment}/decline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decline a payment waiting for you, so it isn't paid.
+         * @description Recorded in the mailbox's change feed under you.
+         */
+        post: operations["declinePayment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2875,7 +3027,7 @@ export interface components {
             position: number;
         };
         /** @description A change in a mailbox. */
-        MailboxChange: components["schemas"]["MessageReceived"] | components["schemas"]["DraftWritten"] | components["schemas"]["DraftChanged"] | components["schemas"]["DraftDeleted"] | components["schemas"]["SendAsked"] | components["schemas"]["ApprovalAsked"] | components["schemas"]["ApprovalWithdrawn"] | components["schemas"]["ApprovalDecided"] | components["schemas"]["ApprovalUndone"] | components["schemas"]["MessageSent"] | components["schemas"]["SendWaitingForLimit"] | components["schemas"]["SentNow"] | components["schemas"]["SendFailed"] | components["schemas"]["SendUnclear"] | components["schemas"]["FeedbackReceived"] | components["schemas"]["ThreadRead"] | components["schemas"]["ThreadUnread"] | components["schemas"]["ThreadLabelsChanged"] | components["schemas"]["ReminderSet"] | components["schemas"]["ReminderCancelled"] | components["schemas"]["ThreadBack"] | components["schemas"]["LabelCreated"] | components["schemas"]["LabelRenamed"] | components["schemas"]["LabelDeleted"] | components["schemas"]["ThreadErased"] | components["schemas"]["AgentSettingsChanged"] | components["schemas"]["AgentPaused"] | components["schemas"]["AgentUnpaused"] | components["schemas"]["SenderScreened"] | components["schemas"]["ScreenerSwitched"] | components["schemas"]["ScreenedSenderRemoved"] | components["schemas"]["UnsubscribeAttempted"] | components["schemas"]["SenderDeliverySet"] | components["schemas"]["SenderDeliveryRemoved"] | components["schemas"]["MessageDropped"] | components["schemas"]["LabelPromptSet"] | components["schemas"]["LabelPromptRemoved"] | components["schemas"]["TaskGiven"] | components["schemas"]["TaskStarted"] | components["schemas"]["TaskEnded"] | components["schemas"]["AgentHandedOver"] | components["schemas"]["ConversationTurnTaken"] | components["schemas"]["MailboxAgentsMerged"] | components["schemas"]["LinkedFileDownloaded"] | components["schemas"]["SharingStopped"] | components["schemas"]["AwayMessageSent"] | components["schemas"]["SignatureChanged"];
+        MailboxChange: components["schemas"]["MessageReceived"] | components["schemas"]["DraftWritten"] | components["schemas"]["DraftChanged"] | components["schemas"]["DraftDeleted"] | components["schemas"]["SendAsked"] | components["schemas"]["ApprovalAsked"] | components["schemas"]["ApprovalWithdrawn"] | components["schemas"]["ApprovalDecided"] | components["schemas"]["ApprovalUndone"] | components["schemas"]["MessageSent"] | components["schemas"]["SendWaitingForLimit"] | components["schemas"]["SentNow"] | components["schemas"]["SendFailed"] | components["schemas"]["SendUnclear"] | components["schemas"]["FeedbackReceived"] | components["schemas"]["ThreadRead"] | components["schemas"]["ThreadUnread"] | components["schemas"]["ThreadLabelsChanged"] | components["schemas"]["ReminderSet"] | components["schemas"]["ReminderCancelled"] | components["schemas"]["ThreadBack"] | components["schemas"]["LabelCreated"] | components["schemas"]["LabelRenamed"] | components["schemas"]["LabelDeleted"] | components["schemas"]["ThreadErased"] | components["schemas"]["AgentSettingsChanged"] | components["schemas"]["AgentPaused"] | components["schemas"]["AgentUnpaused"] | components["schemas"]["SenderScreened"] | components["schemas"]["ScreenerSwitched"] | components["schemas"]["ScreenedSenderRemoved"] | components["schemas"]["UnsubscribeAttempted"] | components["schemas"]["SenderDeliverySet"] | components["schemas"]["SenderDeliveryRemoved"] | components["schemas"]["MessageDropped"] | components["schemas"]["LabelPromptSet"] | components["schemas"]["LabelPromptRemoved"] | components["schemas"]["TaskGiven"] | components["schemas"]["TaskStarted"] | components["schemas"]["TaskEnded"] | components["schemas"]["AgentHandedOver"] | components["schemas"]["ConversationTurnTaken"] | components["schemas"]["MailboxAgentsMerged"] | components["schemas"]["LinkedFileDownloaded"] | components["schemas"]["SharingStopped"] | components["schemas"]["AwayMessageSent"] | components["schemas"]["SignatureChanged"] | components["schemas"]["PaymentMade"] | components["schemas"]["PaymentAsked"] | components["schemas"]["PaymentDecided"];
         /** @description Mail arrived. No actor made this change, so it names none. */
         MessageReceived: {
             /** @description The change's position in the mailbox's feed, counting from 1. */
@@ -5121,6 +5273,7 @@ export interface components {
             mailboxAgentDecider: components["schemas"]["MailboxAgentDecider"];
             mailboxAgentWebSearch: components["schemas"]["MailboxAgentWebSearch"];
             mailboxAgentBrowsing: components["schemas"]["MailboxAgentBrowsing"];
+            mailboxAgentPayments: components["schemas"]["MailboxAgentPayments"];
             mailboxAgentSpendCap: components["schemas"]["MailboxAgentSpendCap"];
             linkedFilesCapGb: components["schemas"]["LinkedFilesCapGb"];
             suggestions: components["schemas"]["Suggestions"];
@@ -5143,6 +5296,7 @@ export interface components {
             mailboxAgentDecider?: components["schemas"]["MailboxAgentDecider"];
             mailboxAgentWebSearch?: components["schemas"]["MailboxAgentWebSearch"];
             mailboxAgentBrowsing?: components["schemas"]["MailboxAgentBrowsing"];
+            mailboxAgentPayments?: components["schemas"]["MailboxAgentPayments"];
             mailboxAgentSpendCap?: components["schemas"]["MailboxAgentSpendCap"];
             linkedFilesCapGb?: components["schemas"]["LinkedFilesCapGb"];
             suggestions?: components["schemas"]["Suggestions"];
@@ -5383,7 +5537,7 @@ export interface components {
         };
         /** @description Whether the decider, Amazon Nova Micro, settles the model for each turn in Ask Coo and over MCP first, sending one it finds complex to the harder model. Off by default: on Coo's tasks it was right on 4 of 10 (docs/research/coo-models.md). Either way a turn hands over to the harder model on evidence. */
         MailboxAgentDecider: boolean;
-        /** @description Whether the mailbox agents may browse, in Ask Coo and in labels' tasks: open a link from the mail or a web search, read the page, and act on it on their own, logging in as their human and submitting forms for them without asking. They log in only with codes and links the site mails their human, never with a password, and stay logged in between runs in a browser profile of their human's own. They never pay, enter card details, or download or upload a file. A browsing run has only the page's tools, so a page can't reach the mailbox, and Duva keeps only a sentence of what it did. On by default. Browser time, at AgentCore Browser's $0.0895 per vCPU-hour and $0.00945 per GB-hour, and the run's tokens count toward mailboxAgentSpendCap. Each human can also turn it off for their own Coo, with the preference cooBrowsing. Unsubscribing on a sender's page doesn't depend on it. */
+        /** @description Whether the mailbox agents may browse, in Ask Coo and in labels' tasks: open a link from the mail or a web search, read the page, and act on it on their own, logging in as their human and submitting forms for them without asking. They log in with codes and links the site mails their human, or with a login among their human's secrets, which Duva types without the model seeing it, and stay logged in between runs in a browser profile of their human's own. They pay only with a card among their human's secrets, within its limits, while mailboxAgentPayments lets them, and never download or upload a file. A browsing run has only the page's tools, so a page can't reach the mailbox, and Duva keeps only a sentence of what it did. On by default. Browser time, at AgentCore Browser's $0.0895 per vCPU-hour and $0.00945 per GB-hour, and the run's tokens count toward mailboxAgentSpendCap. Each human can also turn it off for their own Coo, with the preference cooBrowsing. Unsubscribing on a sender's page doesn't depend on it. */
         MailboxAgentBrowsing: boolean;
         /** @description Whether the mailbox agents may search the web, in Ask Coo, in labels' tasks and while unsubscribing, with queries that may carry anything from the mail that helps, as a tracking number. On by default. Queries go to Web Search on Amazon Bedrock AgentCore, Amazon's own index, which runs only in eu-west-1, Ireland, us-east-1, Virginia, and ap-northeast-1, Tokyo: a deployment in the EU searches from Ireland, one in the US from Virginia, and any other from the nearest of them, status's webSearchRegion. AWS documents no retention for queries. A reader with no powers reads the results, and Coo gets only its short answer and sources. Each query costs $0.007, plus the reader's tokens, counted toward mailboxAgentSpendCap. Each human can also turn it off for their own Coo, with the preference cooWebSearch. */
         MailboxAgentWebSearch: boolean;
@@ -5403,10 +5557,10 @@ export interface components {
          */
         SearchLanguage: "English" | "Swedish" | "Danish";
         /**
-         * @description What an event is about. conversations, turns of Ask Coo; tasks, the tasks labels' prompts give a mailbox agent, from the prompt to its end; draftsAndSends, drafts, sends and what SES reported about them; approvals, asking for approval and the sponsor's decisions; organizing, marking threads read or unread, labels, Remind me and erasing; screening, the Screener and where senders' mail goes; unsubscribes, each try to unsubscribe from a sender's mail; pausesAndLimits, pauses, settings and send limits, and sends waiting for them; alerts, the alerts about the agent its sponsor got; setup, the agent's creation and removal, its key and the organization's setup it made.
+         * @description What an event is about. conversations, turns of Ask Coo; tasks, the tasks labels' prompts give a mailbox agent, from the prompt to its end; draftsAndSends, drafts, sends and what SES reported about them; approvals, asking for approval and the sponsor's decisions; payments, a mailbox agent's payments, those waiting for approval and its human's decisions on them; organizing, marking threads read or unread, labels, Remind me and erasing; screening, the Screener and where senders' mail goes; unsubscribes, each try to unsubscribe from a sender's mail; pausesAndLimits, pauses, settings and send limits, and sends waiting for them; alerts, the alerts about the agent its sponsor got; setup, the agent's creation and removal, its key and the organization's setup it made.
          * @enum {string}
          */
-        AgentEventKind: "conversations" | "tasks" | "draftsAndSends" | "approvals" | "organizing" | "screening" | "unsubscribes" | "pausesAndLimits" | "alerts" | "setup";
+        AgentEventKind: "conversations" | "tasks" | "draftsAndSends" | "approvals" | "payments" | "organizing" | "screening" | "unsubscribes" | "pausesAndLimits" | "alerts" | "setup";
         /** @description One event in an agent's activity. */
         AgentEvent: {
             /**
@@ -5550,7 +5704,7 @@ export interface components {
          */
         KeyboardShortcuts: "on" | "off";
         /**
-         * @description Whether the human's own Coo may browse, while the organization's mailboxAgentBrowsing lets it. on, the default, lets it open pages and act on them for you on its own: it logs in as you with codes the site mails you, and submits forms for you without asking, saying in a sentence what it did. off keeps it off the web's pages. Turning it off keeps the sites it logged in to; sign Coo out of every site to clear them.
+         * @description Whether the human's own Coo may browse, while the organization's mailboxAgentBrowsing lets it. on, the default, lets it open pages and act on them for you on its own: it logs in as you with codes the site mails you, or with your logins among your secrets, pays with your cards within their limits, and submits forms for you without asking, saying in a sentence what it did. off keeps it off the web's pages. Turning it off keeps the sites it logged in to; sign Coo out of every site to clear them.
          * @enum {string}
          */
         CooBrowsing: "on" | "off";
@@ -5751,6 +5905,279 @@ export interface components {
              */
             webSearchRegion: "eu-west-1" | "us-east-1" | "ap-northeast-1";
         };
+        /**
+         * @description What a secret is. login, a site's username and password, with a one-time-code seed if the site asks for codes; card, a payment card; other, any other value, such as a membership number.
+         * @enum {string}
+         */
+        SecretKind: "login" | "card" | "other";
+        /**
+         * @description A part of a secret to type into a page. A login's username, password, and code, the one-time code its seed gives at that moment; a card's number, expiry as MM/YY, expiryMonth as MM, expiryYear as YYYY, cvc and cardholder; another value's value.
+         * @enum {string}
+         */
+        SecretPartName: "username" | "password" | "code" | "number" | "expiry" | "expiryMonth" | "expiryYear" | "cvc" | "cardholder" | "value";
+        /**
+         * @description An amount of money in its currency, with a period before at most two decimals, like 49.90.
+         * @example 49.90
+         */
+        Amount: string;
+        /**
+         * @description The ISO 4217 code of a currency, like SEK or EUR.
+         * @example SEK
+         */
+        Currency: string;
+        /** @description What a card pays on its own, without your approval. */
+        CardLimits: {
+            currency: components["schemas"]["Currency"];
+            /** @description The most one payment may be. */
+            perPayment: components["schemas"]["Amount"];
+            /** @description The most the card pays in a calendar month, in UTC, payments you approved included. */
+            perMonth: components["schemas"]["Amount"];
+            /** @description What it paid this month. */
+            spentThisMonth: components["schemas"]["Amount"];
+        };
+        /** @description A secret, as its human sees it without revealing it. */
+        Secret: {
+            /** @description The secret's ID. */
+            id: string;
+            /**
+             * @description The name its human gave it, which Coo knows it by.
+             * @example Example Shop
+             */
+            name: string;
+            kind: components["schemas"]["SecretKind"];
+            /**
+             * @description The last four characters of a login's username, a card's number or another value's value.
+             * @example 4242
+             */
+            lastFour: string;
+            /**
+             * @description Present when a login has a one-time-code seed, so Coo can type its codes.
+             * @constant
+             */
+            oneTimeCodes?: true;
+            /** @description A card's limits, when its human set them. A card without them doesn't pay. */
+            limits?: components["schemas"]["CardLimits"];
+            /** Format: date-time */
+            addedAt: string;
+            /**
+             * Format: date-time
+             * @description When it was last renamed or replaced, or its limits changed, if it was.
+             */
+            changedAt?: string;
+        };
+        SecretList: {
+            secrets: components["schemas"]["Secret"][];
+        };
+        /** @description The run of Coo's that used a secret: a turn of Ask Coo, by the ID of the human's turn it answered, or a label's task, by its ID, with its mailbox and thread. */
+        SecretRun: {
+            turn?: string;
+            task?: string;
+            mailbox?: string;
+            thread?: string;
+        };
+        /** @description One use of a secret. */
+        SecretUseEntry: {
+            /** Format: date-time */
+            at: string;
+            /**
+             * @description filled, Coo had a part of it typed into a page; paid, it paid with the card; waited, a payment was above the card's limits and waited in Approvals; revealed, its human revealed it.
+             * @enum {string}
+             */
+            kind: "filled" | "paid" | "waited" | "revealed";
+            /** @description The site, the domain the page was on, as example.com. */
+            site?: string;
+            part?: components["schemas"]["SecretPartName"];
+            run?: components["schemas"]["SecretRun"];
+            amount?: components["schemas"]["Amount"];
+            currency?: components["schemas"]["Currency"];
+        };
+        SecretWithHistory: components["schemas"]["Secret"] & {
+            /** @description Every use, newest first, at most the last 500. */
+            uses: components["schemas"]["SecretUseEntry"][];
+        };
+        NewSecret: {
+            kind: components["schemas"]["SecretKind"];
+            /** @description What to call it, as Coo and you know it by, at most 60 characters. */
+            name: string;
+            /** @description A login's username or email address. */
+            username?: string;
+            /** @description A login's password. */
+            password?: string;
+            /** @description A login's one-time-code seed, the base32 key or the otpauth:// URI a site's setup gives. Optional. */
+            totpSeed?: string;
+            /** @description A card's number, with or without spaces. */
+            number?: string;
+            /** @description A card's expiry, as MM/YY. */
+            expiry?: string;
+            /** @description A card's security code, three or four digits. */
+            cvc?: string;
+            /** @description The name on a card. */
+            cardholder?: string;
+            /** @description Another value, at most 1,000 characters. */
+            value?: string;
+            /** @description The currency of a card's limits. */
+            currency?: components["schemas"]["Currency"];
+            /** @description The most one payment of a card's may be without your approval. */
+            perPayment?: components["schemas"]["Amount"];
+            /** @description The most a card pays in a month without your approval. */
+            perMonth?: components["schemas"]["Amount"];
+        };
+        SecretChanges: {
+            /** @description Its new name. */
+            name?: string;
+            username?: string;
+            password?: string;
+            /** @description A login's new one-time-code seed, or null to remove it. */
+            totpSeed?: string | null;
+            number?: string;
+            expiry?: string;
+            cvc?: string;
+            cardholder?: string;
+            value?: string;
+            /** @description The currency of a card's limits, or null with the others to clear them. */
+            currency?: components["schemas"]["Currency"] | null;
+            /** @description The most one payment may be, or null with the others to clear the limits. */
+            perPayment?: components["schemas"]["Amount"] | null;
+            /** @description The most the card pays in a month, or null with the others to clear the limits. */
+            perMonth?: components["schemas"]["Amount"] | null;
+        };
+        RevealCode: {
+            /** @description The sign-in code Duva mailed you. Leave it out to have one mailed. */
+            code?: string;
+        };
+        RevealCodeSent: {
+            /** @description The address the sign-in code went to. */
+            sentTo: string;
+        };
+        /** @description A secret with its parts, as its human revealed it. */
+        RevealedSecret: {
+            id: string;
+            name: string;
+            kind: components["schemas"]["SecretKind"];
+            username?: string;
+            password?: string;
+            totpSeed?: string;
+            number?: string;
+            expiry?: string;
+            cvc?: string;
+            cardholder?: string;
+            value?: string;
+        };
+        SecretUse: {
+            part: components["schemas"]["SecretPartName"];
+            /** @description The site of the page it goes into, as example.com. */
+            site: string;
+            /** @description For a card, what the payment is. */
+            amount?: components["schemas"]["Amount"];
+            /** @description For a card, the payment's currency. */
+            currency?: components["schemas"]["Currency"];
+            /** @description For a card, what the payment is for, in a few words. */
+            for?: string;
+        };
+        SecretPart: {
+            /** @description The part, to type into the page and never show the model. */
+            value: string;
+        };
+        /**
+         * @description waiting, above the card's limits and waiting for its human; approved, until a run pays it; paid; declined by its human.
+         * @enum {string}
+         */
+        PaymentState: "waiting" | "approved" | "paid" | "declined";
+        /** @description A payment Coo made, or one waiting for its human's approval. */
+        Payment: {
+            id: string;
+            /** @description The ID of the mailbox agent whose run made it. */
+            agent: string;
+            state: components["schemas"]["PaymentState"];
+            /** @description The ID of the card's secret. */
+            card: string;
+            /** @description The card's name. */
+            cardName: string;
+            /** @description The site it pays on, as example.com. */
+            site: string;
+            amount: components["schemas"]["Amount"];
+            currency: components["schemas"]["Currency"];
+            /** @description What it is for, as Coo's run said. */
+            for: string;
+            /**
+             * Format: date-time
+             * @description When it was paid, or asked for.
+             */
+            at: string;
+            /**
+             * Format: date-time
+             * @description When its human approved or declined it, if they did.
+             */
+            decidedAt?: string;
+            /**
+             * Format: date-time
+             * @description When an approved payment was paid.
+             */
+            paidAt?: string;
+            /** @description The ID of the mailbox whose change feed records it, as Coo's activity shows it. */
+            mailbox: string;
+            run: components["schemas"]["SecretRun"];
+        };
+        PaymentList: {
+            payments: components["schemas"]["Payment"][];
+        };
+        PaymentMade: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "paymentMade";
+            agent: string;
+            payment: string;
+            cardName: string;
+            site: string;
+            amount: components["schemas"]["Amount"];
+            currency: components["schemas"]["Currency"];
+            for: string;
+            /**
+             * @description Present when its human approved it, above the card's limits.
+             * @constant
+             */
+            approved?: true;
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "paymentMade";
+        };
+        PaymentAsked: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "paymentAsked";
+            agent: string;
+            payment: string;
+            cardName: string;
+            site: string;
+            amount: components["schemas"]["Amount"];
+            currency: components["schemas"]["Currency"];
+            for: string;
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "paymentAsked";
+        };
+        PaymentDecided: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "paymentDecided";
+            agent: string;
+            payment: string;
+            approved: boolean;
+            site: string;
+            amount: components["schemas"]["Amount"];
+            currency: components["schemas"]["Currency"];
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "paymentDecided";
+        };
+        /** @description Whether the mailbox agents may pay with their humans' cards while they browse, each card only within the per-payment and per-month limits its human set, and above them only once its human approves. A card without limits never pays. On by default; off, no card pays. */
+        MailboxAgentPayments: boolean;
     };
     responses: {
         /** @description The request is malformed. */
@@ -5839,6 +6266,10 @@ export interface components {
         Domain: string;
         /** @description The memory's ID. */
         Memory: string;
+        /** @description The secret's ID. */
+        Secret: string;
+        /** @description The payment's ID. */
+        Payment: string;
     };
     requestBodies: never;
     headers: never;
@@ -8322,6 +8753,222 @@ export interface operations {
             403: components["responses"]["Forbidden"];
         };
     };
+    listSecrets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Your secrets, by name. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecretList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    addSecret: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewSecret"];
+            };
+        };
+        responses: {
+            /** @description The secret, kept. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Secret"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getSecret: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The secret's ID. */
+                secret: components["parameters"]["Secret"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The secret and its history. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecretWithHistory"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deleteSecret: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The secret's ID. */
+                secret: components["parameters"]["Secret"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The secret, as it was before it was deleted. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Secret"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    changeSecret: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The secret's ID. */
+                secret: components["parameters"]["Secret"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SecretChanges"];
+            };
+        };
+        responses: {
+            /** @description The secret, changed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Secret"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    revealSecret: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The secret's ID. */
+                secret: components["parameters"]["Secret"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["RevealCode"];
+            };
+        };
+        responses: {
+            /** @description The secret's parts. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RevealedSecret"];
+                };
+            };
+            /** @description A sign-in code is on its way. Call again with it. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RevealCodeSent"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    useSecret: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The secret's ID. */
+                secret: components["parameters"]["Secret"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SecretUse"];
+            };
+        };
+        responses: {
+            /** @description The part to type. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecretPart"];
+                };
+            };
+            /** @description The payment is above the card's limits, so it waits in its human's Approvals. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Payment"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
     getScreener: {
         parameters: {
             query?: never;
@@ -9845,6 +10492,82 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Approval"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listPayments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The payments. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    approvePayment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The payment's ID. */
+                payment: components["parameters"]["Payment"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The payment, approved. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Payment"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    declinePayment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The payment's ID. */
+                payment: components["parameters"]["Payment"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The payment, declined. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Payment"];
                 };
             };
             401: components["responses"]["Unauthorized"];

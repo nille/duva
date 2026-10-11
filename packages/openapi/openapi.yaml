@@ -2707,6 +2707,236 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
+  /secrets:
+    get:
+      operationId: listSecrets
+      summary: List the secrets your Coo uses but never reads, each with its kind and last four characters.
+      description: >
+        A secret is something you keep for Coo to use while it browses: a
+        site's login, with its username, password and any one-time-code seed,
+        a payment card, or any other value, such as a membership number. Coo
+        fills one into a page where its work needs it, and Duva types it
+        there, so Coo's model never sees a value. Listing shows each one's
+        name, kind and the last four characters of its username, card number
+        or value, never more. Only you see your secrets: admins, agents and
+        other humans can't, and they go when you are removed.
+      x-cli-command: secrets list
+      responses:
+        "200":
+          description: Your secrets, by name.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SecretList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      operationId: addSecret
+      summary: Keep a secret for your Coo to use, a login, a card or another value, under a name you give it.
+      description: >
+        Give kind and name, and the parts of its kind: a login's username and
+        password, and its totpSeed if the site asks for a one-time code, a
+        card's number, expiry, cvc and cardholder, or another value's value.
+        Each value is encrypted with a KMS key of the deployment's own, in its
+        region. A card pays only within the limits you set on it, with
+        currency, perPayment and perMonth: until then it doesn't pay. Names
+        are your own, each used once. Only humans keep secrets, at most 100.
+      x-cli-command: secrets add
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NewSecret"
+      responses:
+        "201":
+          description: The secret, kept.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Secret"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /secrets/{secret}:
+    get:
+      operationId: getSecret
+      summary: Read a secret, with every use of it, newest first.
+      description: >
+        Its history lists each time Coo filled it into a page, with when, the
+        site and the run, a turn of Ask Coo or a label's task, each payment
+        with its amount, and each time you revealed it. Never its value: reveal
+        it for that.
+      x-cli-command: secrets get
+      parameters:
+        - $ref: "#/components/parameters/Secret"
+      responses:
+        "200":
+          description: The secret and its history.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SecretWithHistory"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: changeSecret
+      summary: Rename a secret, replace its parts, or set a card's limits.
+      description: >
+        Give name to rename it. Give any of its kind's parts to replace them,
+        each as a whole: a part you leave out stays as it was. For a card, give
+        currency, perPayment and perMonth together to set its limits, or null
+        for each to clear them, after which it doesn't pay. A secret's kind
+        stays what it was.
+      x-cli-command: secrets change
+      parameters:
+        - $ref: "#/components/parameters/Secret"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SecretChanges"
+      responses:
+        "200":
+          description: The secret, changed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Secret"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+    delete:
+      operationId: deleteSecret
+      summary: Delete a secret, with its history.
+      description: >
+        Coo can't use it from then on. A payment of the card's waiting in
+        Approvals goes with it.
+      x-cli-command: secrets delete
+      parameters:
+        - $ref: "#/components/parameters/Secret"
+      responses:
+        "200":
+          description: The secret, as it was before it was deleted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Secret"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /secrets/{secret}/reveal:
+    post:
+      operationId: revealSecret
+      summary: Reveal a secret's value, after a fresh sign-in code.
+      description: >
+        Call it first without code: Duva mails you a sign-in code, as signing
+        in does, and answers where it went. Then call it again with the code
+        within three minutes, and it answers the secret's parts. Each reveal
+        is recorded in the secret's history. Only you can reveal your own
+        secrets.
+      x-cli-command: secrets reveal
+      parameters:
+        - $ref: "#/components/parameters/Secret"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RevealCode"
+      responses:
+        "200":
+          description: The secret's parts.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RevealedSecret"
+        "202":
+          description: A sign-in code is on its way. Call again with it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RevealCodeSent"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /secrets/{secret}/use:
+    post:
+      operationId: useSecret
+      summary: Answer a part of a secret for a browsing run of your human's Coo to type into a page.
+      description: >
+        Only a browsing run of a human's own Coo can call it, with its run's
+        token, which never reaches the model: Duva types what it answers into
+        the page, outside the model. Each use is recorded in the secret's
+        history, with the site and the run. A login's code part is the
+        one-time code its seed gives now. A card's parts need the amount and
+        currency of the payment: it pays only within the card's per-payment
+        and per-month limits, while the organization lets mailbox agents pay.
+        Above a limit, the payment waits in its human's Approvals, which is
+        202, and a fresh run pays once they approve it. A run that already
+        paid on the site with the card, then ran again, is 409, so a retry
+        never pays twice.
+      x-cli-command: secrets use
+      parameters:
+        - $ref: "#/components/parameters/Secret"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SecretUse"
+      responses:
+        "200":
+          description: The part to type.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SecretPart"
+        "202":
+          description: The payment is above the card's limits, so it waits in its human's Approvals.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Payment"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
   /mailboxes/{mailbox}/screener:
     get:
       operationId: getScreener
@@ -4408,6 +4638,79 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+  /payments:
+    get:
+      operationId: listPayments
+      summary: List your Coo's payments, newest first, those waiting for your approval among them.
+      description: >
+        Coo pays with one of your cards on its own only within the limits you
+        set on it. A payment above them waits here, with its site, amount,
+        card and what it is for, until you approve or decline it. Paid ones
+        show with when, and approved ones until a run pays them. Only you see
+        your Coo's payments.
+      x-cli-command: payments list
+      responses:
+        "200":
+          description: The payments.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /payments/{payment}/approve:
+    post:
+      operationId: approvePayment
+      summary: Approve a payment waiting for you, so Coo's next run on the site pays it.
+      description: >
+        The next browsing run that pays its amount on the site with the card
+        pays it, outside the card's limits, once: ask Coo again for
+        that. It still counts toward the card's month. Recorded in the
+        mailbox's change feed under you.
+      x-cli-command: payments approve
+      parameters:
+        - $ref: "#/components/parameters/Payment"
+      responses:
+        "200":
+          description: The payment, approved.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Payment"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /payments/{payment}/decline:
+    post:
+      operationId: declinePayment
+      summary: Decline a payment waiting for you, so it isn't paid.
+      description: >
+        Recorded in the mailbox's change feed under you.
+      x-cli-command: payments decline
+      parameters:
+        - $ref: "#/components/parameters/Payment"
+      responses:
+        "200":
+          description: The payment, declined.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Payment"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
 components:
   parameters:
     Sender:
@@ -4517,6 +4820,20 @@ components:
       in: path
       required: true
       description: The memory's ID.
+      schema:
+        type: string
+    Secret:
+      name: secret
+      in: path
+      required: true
+      description: The secret's ID.
+      schema:
+        type: string
+    Payment:
+      name: payment
+      in: path
+      required: true
+      description: The payment's ID.
       schema:
         type: string
   securitySchemes:
@@ -5609,6 +5926,9 @@ components:
         - $ref: "#/components/schemas/SharingStopped"
         - $ref: "#/components/schemas/AwayMessageSent"
         - $ref: "#/components/schemas/SignatureChanged"
+        - $ref: "#/components/schemas/PaymentMade"
+        - $ref: "#/components/schemas/PaymentAsked"
+        - $ref: "#/components/schemas/PaymentDecided"
       discriminator:
         propertyName: type
         mapping:
@@ -5659,6 +5979,9 @@ components:
           sharingStopped: "#/components/schemas/SharingStopped"
           awayMessageSent: "#/components/schemas/AwayMessageSent"
           signatureChanged: "#/components/schemas/SignatureChanged"
+          paymentMade: "#/components/schemas/PaymentMade"
+          paymentAsked: "#/components/schemas/PaymentAsked"
+          paymentDecided: "#/components/schemas/PaymentDecided"
     MessageReceived:
       type: object
       additionalProperties: false
@@ -8837,7 +9160,7 @@ components:
     OrganizationSettings:
       type: object
       additionalProperties: false
-      required: [erasureErasesApprovals, retentionDays, searchLanguages, agentSendsPerHourCap, agentNewRecipientsPerDayCap, undoWindowSeconds, mailboxAgentAllowedModels, mailboxAgentModel, mailboxAgentHarderModel, mailboxAgentDecider, mailboxAgentWebSearch, mailboxAgentBrowsing, mailboxAgentSpendCap, linkedFilesCapGb, suggestions, suggestionModel]
+      required: [erasureErasesApprovals, retentionDays, searchLanguages, agentSendsPerHourCap, agentNewRecipientsPerDayCap, undoWindowSeconds, mailboxAgentAllowedModels, mailboxAgentModel, mailboxAgentHarderModel, mailboxAgentDecider, mailboxAgentWebSearch, mailboxAgentBrowsing, mailboxAgentPayments, mailboxAgentSpendCap, linkedFilesCapGb, suggestions, suggestionModel]
       properties:
         erasureErasesApprovals:
           $ref: "#/components/schemas/ErasureErasesApprovals"
@@ -8875,6 +9198,8 @@ components:
           $ref: "#/components/schemas/MailboxAgentWebSearch"
         mailboxAgentBrowsing:
           $ref: "#/components/schemas/MailboxAgentBrowsing"
+        mailboxAgentPayments:
+          $ref: "#/components/schemas/MailboxAgentPayments"
         mailboxAgentSpendCap:
           $ref: "#/components/schemas/MailboxAgentSpendCap"
         linkedFilesCapGb:
@@ -8927,6 +9252,8 @@ components:
           $ref: "#/components/schemas/MailboxAgentWebSearch"
         mailboxAgentBrowsing:
           $ref: "#/components/schemas/MailboxAgentBrowsing"
+        mailboxAgentPayments:
+          $ref: "#/components/schemas/MailboxAgentPayments"
         mailboxAgentSpendCap:
           $ref: "#/components/schemas/MailboxAgentSpendCap"
         linkedFilesCapGb:
@@ -9435,10 +9762,12 @@ components:
         Whether the mailbox agents may browse, in Ask Coo and in labels'
         tasks: open a link from the mail or a web search, read the page, and
         act on it on their own, logging in as their human and submitting
-        forms for them without asking. They log in only with codes and links
-        the site mails their human, never with a password, and stay logged in
-        between runs in a browser profile of their human's own. They never
-        pay, enter card details, or download or upload a file. A browsing run
+        forms for them without asking. They log in with codes and links the
+        site mails their human, or with a login among their human's secrets,
+        which Duva types without the model seeing it, and stay logged in
+        between runs in a browser profile of their human's own. They pay only
+        with a card among their human's secrets, within its limits, while
+        mailboxAgentPayments lets them, and never download or upload a file. A browsing run
         has only the page's tools, so a page can't reach the mailbox, and Duva
         keeps only a sentence of what it did. On by default. Browser time, at
         AgentCore Browser's $0.0895 per vCPU-hour and $0.00945 per GB-hour,
@@ -9490,13 +9819,14 @@ components:
       description: A language search knows.
     AgentEventKind:
       type: string
-      enum: [conversations, tasks, draftsAndSends, approvals, organizing, screening, unsubscribes, pausesAndLimits, alerts, setup]
+      enum: [conversations, tasks, draftsAndSends, approvals, payments, organizing, screening, unsubscribes, pausesAndLimits, alerts, setup]
       description: >
         What an event is about. conversations, turns of Ask Coo; tasks, the
         tasks labels' prompts give a mailbox agent, from the prompt to its
         end; draftsAndSends, drafts, sends and what SES reported about them;
         approvals, asking for approval and the sponsor's decisions;
-        organizing, marking threads read or unread, labels, Remind me and
+        payments, a mailbox agent's payments, those waiting for approval and
+        its human's decisions on them; organizing, marking threads read or unread, labels, Remind me and
         erasing; screening, the Screener and where senders' mail goes;
         unsubscribes, each try to unsubscribe from a sender's mail; pausesAndLimits,
         pauses, settings and send limits, and sends waiting for them; alerts,
@@ -9773,7 +10103,8 @@ components:
         Whether the human's own Coo may browse, while the organization's
         mailboxAgentBrowsing lets it. on, the default, lets it open pages and
         act on them for you on its own: it logs in as you with codes the site
-        mails you, and submits forms for you without asking, saying in a
+        mails you, or with your logins among your secrets, pays with your
+        cards within their limits, and submits forms for you without asking, saying in a
         sentence what it did. off keeps it off the web's pages. Turning it off
         keeps the sites it logged in to; sign Coo out of every site to clear
         them.
@@ -10095,3 +10426,442 @@ components:
             Ireland, from the EU, us-east-1, Virginia, from the US, and the
             nearest of those and ap-northeast-1, Tokyo, from anywhere else.
           examples: ["eu-west-1"]
+    SecretKind:
+      type: string
+      enum: [login, card, other]
+      description: >-
+        What a secret is. login, a site's username and password, with a
+        one-time-code seed if the site asks for codes; card, a payment card;
+        other, any other value, such as a membership number.
+    SecretPartName:
+      type: string
+      enum: [username, password, code, number, expiry, expiryMonth, expiryYear, cvc, cardholder, value]
+      description: >-
+        A part of a secret to type into a page. A login's username, password,
+        and code, the one-time code its seed gives at that moment; a card's
+        number, expiry as MM/YY, expiryMonth as MM, expiryYear as YYYY, cvc
+        and cardholder; another value's value.
+    Amount:
+      type: string
+      pattern: "^[0-9]{1,9}([.][0-9]{1,2})?$"
+      description: An amount of money in its currency, with a period before at most two decimals, like 49.90.
+      examples: ["49.90"]
+    Currency:
+      type: string
+      pattern: "^[A-Z]{3}$"
+      description: The ISO 4217 code of a currency, like SEK or EUR.
+      examples: ["SEK"]
+    CardLimits:
+      type: object
+      additionalProperties: false
+      required: [currency, perPayment, perMonth, spentThisMonth]
+      description: What a card pays on its own, without your approval.
+      properties:
+        currency:
+          $ref: "#/components/schemas/Currency"
+        perPayment:
+          $ref: "#/components/schemas/Amount"
+          description: The most one payment may be.
+        perMonth:
+          $ref: "#/components/schemas/Amount"
+          description: The most the card pays in a calendar month, in UTC, payments you approved included.
+        spentThisMonth:
+          $ref: "#/components/schemas/Amount"
+          description: What it paid this month.
+    Secret:
+      type: object
+      additionalProperties: false
+      required: [id, name, kind, lastFour, addedAt]
+      description: A secret, as its human sees it without revealing it.
+      properties:
+        id:
+          type: string
+          description: The secret's ID.
+        name:
+          type: string
+          description: The name its human gave it, which Coo knows it by.
+          examples: ["Example Shop"]
+        kind:
+          $ref: "#/components/schemas/SecretKind"
+        lastFour:
+          type: string
+          description: The last four characters of a login's username, a card's number or another value's value.
+          examples: ["4242"]
+        oneTimeCodes:
+          type: boolean
+          const: true
+          description: Present when a login has a one-time-code seed, so Coo can type its codes.
+        limits:
+          $ref: "#/components/schemas/CardLimits"
+          description: A card's limits, when its human set them. A card without them doesn't pay.
+        addedAt:
+          type: string
+          format: date-time
+        changedAt:
+          type: string
+          format: date-time
+          description: When it was last renamed or replaced, or its limits changed, if it was.
+    SecretList:
+      type: object
+      additionalProperties: false
+      required: [secrets]
+      properties:
+        secrets:
+          type: array
+          items:
+            $ref: "#/components/schemas/Secret"
+    SecretRun:
+      type: object
+      additionalProperties: false
+      description: >-
+        The run of Coo's that used a secret: a turn of Ask Coo, by the ID of
+        the human's turn it answered, or a label's task, by its ID, with its
+        mailbox and thread.
+      properties:
+        turn:
+          type: string
+        task:
+          type: string
+        mailbox:
+          type: string
+        thread:
+          type: string
+    SecretUseEntry:
+      type: object
+      additionalProperties: false
+      required: [at, kind]
+      description: One use of a secret.
+      properties:
+        at:
+          type: string
+          format: date-time
+        kind:
+          type: string
+          enum: [filled, paid, waited, revealed]
+          description: >-
+            filled, Coo had a part of it typed into a page; paid, it paid with
+            the card; waited, a payment was above the card's limits and waited
+            in Approvals; revealed, its human revealed it.
+        site:
+          type: string
+          description: The site, the domain the page was on, as example.com.
+        part:
+          $ref: "#/components/schemas/SecretPartName"
+        run:
+          $ref: "#/components/schemas/SecretRun"
+        amount:
+          $ref: "#/components/schemas/Amount"
+        currency:
+          $ref: "#/components/schemas/Currency"
+    SecretWithHistory:
+      allOf:
+        - $ref: "#/components/schemas/Secret"
+        - type: object
+          required: [uses]
+          properties:
+            uses:
+              type: array
+              description: Every use, newest first, at most the last 500.
+              items:
+                $ref: "#/components/schemas/SecretUseEntry"
+    NewSecret:
+      type: object
+      additionalProperties: false
+      required: [kind, name]
+      properties:
+        kind:
+          $ref: "#/components/schemas/SecretKind"
+        name:
+          type: string
+          minLength: 1
+          maxLength: 60
+          description: What to call it, as Coo and you know it by, at most 60 characters.
+        username:
+          type: string
+          description: A login's username or email address.
+        password:
+          type: string
+          description: A login's password.
+        totpSeed:
+          type: string
+          description: A login's one-time-code seed, the base32 key or the otpauth:// URI a site's setup gives. Optional.
+        number:
+          type: string
+          description: A card's number, with or without spaces.
+        expiry:
+          type: string
+          description: A card's expiry, as MM/YY.
+        cvc:
+          type: string
+          description: A card's security code, three or four digits.
+        cardholder:
+          type: string
+          description: The name on a card.
+        value:
+          type: string
+          description: Another value, at most 1,000 characters.
+        currency:
+          $ref: "#/components/schemas/Currency"
+          description: The currency of a card's limits.
+        perPayment:
+          $ref: "#/components/schemas/Amount"
+          description: The most one payment of a card's may be without your approval.
+        perMonth:
+          $ref: "#/components/schemas/Amount"
+          description: The most a card pays in a month without your approval.
+    SecretChanges:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 60
+          description: Its new name.
+        username:
+          type: string
+        password:
+          type: string
+        totpSeed:
+          anyOf:
+            - type: string
+            - type: "null"
+          description: A login's new one-time-code seed, or null to remove it.
+        number:
+          type: string
+        expiry:
+          type: string
+        cvc:
+          type: string
+        cardholder:
+          type: string
+        value:
+          type: string
+        currency:
+          anyOf:
+            - $ref: "#/components/schemas/Currency"
+            - type: "null"
+          description: The currency of a card's limits, or null with the others to clear them.
+        perPayment:
+          anyOf:
+            - $ref: "#/components/schemas/Amount"
+            - type: "null"
+          description: The most one payment may be, or null with the others to clear the limits.
+        perMonth:
+          anyOf:
+            - $ref: "#/components/schemas/Amount"
+            - type: "null"
+          description: The most the card pays in a month, or null with the others to clear the limits.
+    RevealCode:
+      type: object
+      additionalProperties: false
+      properties:
+        code:
+          type: string
+          description: The sign-in code Duva mailed you. Leave it out to have one mailed.
+    RevealCodeSent:
+      type: object
+      additionalProperties: false
+      required: [sentTo]
+      properties:
+        sentTo:
+          type: string
+          description: The address the sign-in code went to.
+    RevealedSecret:
+      type: object
+      additionalProperties: false
+      required: [id, name, kind]
+      description: A secret with its parts, as its human revealed it.
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        kind:
+          $ref: "#/components/schemas/SecretKind"
+        username:
+          type: string
+        password:
+          type: string
+        totpSeed:
+          type: string
+        number:
+          type: string
+        expiry:
+          type: string
+        cvc:
+          type: string
+        cardholder:
+          type: string
+        value:
+          type: string
+    SecretUse:
+      type: object
+      additionalProperties: false
+      required: [part, site]
+      properties:
+        part:
+          $ref: "#/components/schemas/SecretPartName"
+        site:
+          type: string
+          description: The site of the page it goes into, as example.com.
+        amount:
+          $ref: "#/components/schemas/Amount"
+          description: For a card, what the payment is.
+        currency:
+          $ref: "#/components/schemas/Currency"
+          description: For a card, the payment's currency.
+        for:
+          type: string
+          maxLength: 200
+          description: For a card, what the payment is for, in a few words.
+    SecretPart:
+      type: object
+      additionalProperties: false
+      required: [value]
+      properties:
+        value:
+          type: string
+          description: The part, to type into the page and never show the model.
+    PaymentState:
+      type: string
+      enum: [waiting, approved, paid, declined]
+      description: >-
+        waiting, above the card's limits and waiting for its human; approved,
+        until a run pays it; paid; declined by its human.
+    Payment:
+      type: object
+      additionalProperties: false
+      required: [id, state, agent, card, cardName, site, amount, currency, for, at, mailbox, run]
+      description: A payment Coo made, or one waiting for its human's approval.
+      properties:
+        id:
+          type: string
+        agent:
+          type: string
+          description: The ID of the mailbox agent whose run made it.
+        state:
+          $ref: "#/components/schemas/PaymentState"
+        card:
+          type: string
+          description: The ID of the card's secret.
+        cardName:
+          type: string
+          description: The card's name.
+        site:
+          type: string
+          description: The site it pays on, as example.com.
+        amount:
+          $ref: "#/components/schemas/Amount"
+        currency:
+          $ref: "#/components/schemas/Currency"
+        for:
+          type: string
+          description: What it is for, as Coo's run said.
+        at:
+          type: string
+          format: date-time
+          description: When it was paid, or asked for.
+        decidedAt:
+          type: string
+          format: date-time
+          description: When its human approved or declined it, if they did.
+        paidAt:
+          type: string
+          format: date-time
+          description: When an approved payment was paid.
+        mailbox:
+          type: string
+          description: The ID of the mailbox whose change feed records it, as Coo's activity shows it.
+        run:
+          $ref: "#/components/schemas/SecretRun"
+    PaymentList:
+      type: object
+      additionalProperties: false
+      required: [payments]
+      properties:
+        payments:
+          type: array
+          items:
+            $ref: "#/components/schemas/Payment"
+    PaymentMade:
+      allOf:
+        - $ref: "#/components/schemas/ChangeBase"
+        - type: object
+          required: [type, agent, payment, cardName, site, amount, currency, for]
+          description: A mailbox agent paid on a site with one of its human's cards, within the card's limits or as its human approved.
+          properties:
+            type:
+              type: string
+              const: paymentMade
+            agent:
+              type: string
+            payment:
+              type: string
+            cardName:
+              type: string
+            site:
+              type: string
+            amount:
+              $ref: "#/components/schemas/Amount"
+            currency:
+              $ref: "#/components/schemas/Currency"
+            for:
+              type: string
+            approved:
+              type: boolean
+              const: true
+              description: Present when its human approved it, above the card's limits.
+    PaymentAsked:
+      allOf:
+        - $ref: "#/components/schemas/ChangeBase"
+        - type: object
+          required: [type, agent, payment, cardName, site, amount, currency, for]
+          description: A mailbox agent's payment was above the card's limits, so it waits for its human in Approvals.
+          properties:
+            type:
+              type: string
+              const: paymentAsked
+            agent:
+              type: string
+            payment:
+              type: string
+            cardName:
+              type: string
+            site:
+              type: string
+            amount:
+              $ref: "#/components/schemas/Amount"
+            currency:
+              $ref: "#/components/schemas/Currency"
+            for:
+              type: string
+    PaymentDecided:
+      allOf:
+        - $ref: "#/components/schemas/ChangeBase"
+        - type: object
+          required: [type, agent, payment, approved, site, amount, currency]
+          description: A human approved or declined a payment of their mailbox agent's.
+          properties:
+            type:
+              type: string
+              const: paymentDecided
+            agent:
+              type: string
+            payment:
+              type: string
+            approved:
+              type: boolean
+            site:
+              type: string
+            amount:
+              $ref: "#/components/schemas/Amount"
+            currency:
+              $ref: "#/components/schemas/Currency"
+    MailboxAgentPayments:
+      type: boolean
+      description: >-
+        Whether the mailbox agents may pay with their humans' cards while they
+        browse, each card only within the per-payment and per-month limits its
+        human set, and above them only once its human approves. A card without
+        limits never pays. On by default; off, no card pays.

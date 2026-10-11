@@ -42,6 +42,9 @@ import { correctMemory, forgetMemories, forgetMemory, keepMemory, listMemories }
 import { actorOf } from "./organization.ts";
 import { getDomainLogo, getMailboxLogo, removeDomainLogo, removeLogoCertificate, removeMailboxLogo, setDomainLogo, setLogoCertificate, setMailboxLogo } from "./own-logos.ts";
 import { changePreferences, getPreferences } from "./preferences.ts";
+import { approvePayment, declinePayment, deleteSecret, listPayments } from "./payments.ts";
+import { useSecret } from "./secret-uses.ts";
+import { addSecret, changeSecret, getSecret, listSecrets, revealSecret } from "./secrets.ts";
 import { suggest } from "./suggestions.ts";
 import { changeAwayMessage, getAwayMessage } from "./away-messages.ts";
 import { changeSignature, getSignature } from "./signatures.ts";
@@ -146,6 +149,13 @@ export const handlers: Record<OperationId, OperationHandler> = {
   getMailboxAgent,
   clearConversation,
   signCooOut,
+  listSecrets,
+  addSecret,
+  getSecret,
+  changeSecret,
+  deleteSecret,
+  revealSecret,
+  useSecret,
   getScreener,
   switchScreener,
   listSenders,
@@ -176,6 +186,9 @@ export const handlers: Record<OperationId, OperationHandler> = {
   sendApproval,
   rejectApproval,
   undoApproval,
+  listPayments,
+  approvePayment,
+  declinePayment,
 };
 
 const operationByRouteKey = new Map<string, Operation>(operations.map((operation) => [operation.routeKey, operation]));

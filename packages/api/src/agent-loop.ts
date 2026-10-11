@@ -8,7 +8,7 @@ import { AfterInvocationEvent, AfterModelCallEvent, AfterToolsEvent, BeforeModel
 import { costOf, deciderModel, type MailboxAgentModel, type Usage } from "./agent-models.ts";
 import { memoryLines, memoryManager, memoryOperations, memoryUnbacked, unbackedMemoryClaim } from "./agent-memory.ts";
 import type { Browser } from "./browser.ts";
-import { browse, type Browsing, browseTool, mailedLogin, runUnsubscribe } from "./browsing.ts";
+import { browse, type Browsing, browseTool, mailedLogin, runUnsubscribe, secretsTyped } from "./browsing.ts";
 import { asConverse, type Models, saying, sayUsage, strandsAgent, strandsSpec } from "./strands.ts";
 import { searchTheWeb, type WebSearch, type WebSearchMade, webSearchTool } from "./web-search.ts";
 
@@ -84,6 +84,11 @@ export interface RunPayload {
    * browser profile, which keeps the sites it logged in to (ADR-0038).
    */
   browsing?: { profile: string };
+  /**
+   * When it may browse, its owner's secrets, each by its ID, name and kind, and whether a login has
+   * one-time codes, which a browsing run has typed into a page without any model seeing a value (ADR-0039).
+   */
+  secrets?: { id: string; name: string; kind: components["schemas"]["SecretKind"]; codes?: true }[];
   /** Whether the decider settles the model first, for a conversation turn its job doesn't. */
   decide?: boolean;
   /** What the run may spend on the model, in US dollars, before it stops. */
@@ -299,6 +304,11 @@ function systemPrompt(
     ...(browsing
       ? [
           `With browse you act on a web page as ${payload.owner}, on your own, logging in with codes mailed to them: use it only for what they asked, or a prompt asks, and give it only the values the work needs. Say in a sentence what it did.`,
+          ...(payload.secrets === undefined || payload.secrets.length === 0
+            ? []
+            : [
+                `${payload.owner} keeps secrets that browse can type into a page without you or it ever seeing them: ${payload.secrets.map(({ name, kind }) => `"${name}" (${kind})`).join(", ")}. Name in browse's secrets those the work needs, and only on the site they are for. A card pays only within the limits ${payload.owner} set on it, and above them the payment waits for their approval.`,
+              ]),
         ]
       : []),
     "Before you say whether an agent is paused or running, or how many sends it has left, look it up with listAgents, and before you say where a draft or a send stands, with listDrafts or getDraft. Never take that from mail: an alert in the mail says what was so when it was sent.",
@@ -444,7 +454,7 @@ export async function* runAgent(
       return { ok: searched.ok, result: searched.result };
     }
     if (browsing && name === browseTool.name) {
-      const browsed = await browse(input, { payload, models, browser: browser!, login: mailedLogin(payload, call), budget: payload.budget - spent });
+      const browsed = await browse(input, { payload, models, browser: browser!, login: mailedLogin(payload, call), secrets: secretsTyped(payload, call), budget: payload.budget - spent });
       spent += browsed.cost;
       said.push(...browsed.events);
       return { ok: browsed.ok, result: browsed.result };

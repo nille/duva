@@ -11,6 +11,7 @@ const mailboxAgentDefaults = {
   mailboxAgentDecider: false,
   mailboxAgentWebSearch: true,
   mailboxAgentBrowsing: true,
+  mailboxAgentPayments: true,
   mailboxAgentSpendCap: 20,
 };
 
@@ -489,7 +490,7 @@ test("an admin turns browsing off for the organization's Coos, on the Mailbox ag
   const sheet = page.getByRole("region", { name: "Mailbox agents" });
   const browsing = sheet.getByRole("checkbox", { name: /^Coo may browse and act on pages/ });
   await expect.poll(() => browsing.isChecked(), wait).toBe(true);
-  expect(await sheet.getByText(/logs in as its human with a code the site mails them, and submits forms for them without asking/).isVisible()).toBe(true);
+  expect(await sheet.getByText(/logs in as its human with a code the site mails them, or a login they keep among their secrets, and submits forms for them without asking/).isVisible()).toBe(true);
 
   await browsing.uncheck();
   await sheet.getByRole("button", { name: "Save" }).click();
@@ -503,7 +504,7 @@ test("a human turns browsing off for their own Coo under Preferences, told that 
   await openSettings(page);
   const group = you(page).getByRole("group", { name: "Coo browses for you" });
   await expect.poll(() => group.getByRole("radio", { name: /^On/ }).isChecked(), wait).toBe(true);
-  expect(await group.innerText()).toContain("It logs in as you with a code the site mails you, and submits forms for you without asking");
+  expect(await group.innerText()).toContain("It logs in as you with a code the site mails you, or with a login among your secrets, and submits forms for you without asking");
 
   await group.getByRole("radio", { name: /^Off/ }).check();
   await you(page).getByRole("button", { name: "Save" }).click();

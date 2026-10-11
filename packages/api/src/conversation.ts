@@ -101,7 +101,7 @@ export async function prepareTurn({ table, region, apiUrl, available }: { table:
  */
 export async function* runTurn(table: Table, runtime: AgentRuntime, embedder: Embedder, { payload, turn, human, agent, month, cap, harder }: PreparedTurn): AsyncGenerator<ConversationEvent> {
   yield { type: "turn", turn };
-  const ran = runMailboxAgent(table, { agent, payload, runtime, month, cap });
+  const ran = runMailboxAgent(table, { agent, payload, runtime, month, cap, turn: turn.id });
   let next = await ran.next();
   for (; !next.done; next = await ran.next()) yield next.value;
   const { text, actions, searches, browsed, outcome, model, cost, decision, handover } = next.value;

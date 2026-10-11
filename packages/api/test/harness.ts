@@ -10,7 +10,7 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AddressInfo } from "node:net";
-import { randomUUID, X509Certificate } from "node:crypto";
+import { createCipheriv, createDecipheriv, randomBytes, randomInt, randomUUID, X509Certificate } from "node:crypto";
 import { CreateTableCommand, DeleteItemCommand, PutItemCommand, ScanCommand } from "@aws-sdk/client-dynamodb";
 import type { ReceiptRule } from "@aws-sdk/client-ses";
 import type { SESEvent, SNSEvent } from "aws-lambda";
@@ -26,6 +26,7 @@ import { createFeedback } from "../src/feedback.ts";
 import { createDownloads, downloadLinkLifetime as linkLifetime } from "../src/attachments.ts";
 import { createAuthorizer } from "../src/authorizer.ts";
 import type { Humans, SignInSender } from "../src/user-pool.ts";
+import type { SecretKeys } from "../src/secrets.ts";
 import type { RecordType } from "../src/dns-records.ts";
 import { createEraser, eraseBlockedSenders, type Eraser, type EraserEvent } from "../src/erasure.ts";
 import { syncRecipients } from "../src/receiving.ts";
@@ -230,6 +231,8 @@ export interface Duva {
   dnsRecord(type: RecordType, name: string, values: string[]): void;
   /** The address the user pool sends sign-in codes from, as Cognito's EmailConfiguration names it. */
   signInCodesFrom(): string;
+  /** The sign-in code the user pool last mailed the human at `email`, as they read it in their mail, or undefined if it mailed none. */
+  signInCode(email: string): string | undefined;
   /** The raw messages SES accepted for sending, oldest first. Each API call returns once the sends it led to are done. */
   sent(): string[];
   /**
@@ -538,6 +541,7 @@ export async function startDuva({
       embedder: titan,
       suggester,
       browserProfiles: { forget: async (human) => void browser.profiles.delete(profileName(human)) },
+      secretKeys: memorySecretKeys(),
     }),
     // Cognito's verifier takes only the web app's and the CLI's app clients, which share the stand-in's one.
     createAuthorizer({
@@ -687,6 +691,7 @@ export async function startDuva({
     emailIdentities: () => identities.identities(),
     dnsRecord: (type, name, values) => dns.set(type, name, values),
     signInCodesFrom: () => signInSender.from,
+    signInCode: (email) => humans.codes.get(email.toLowerCase()),
     sent: () => sending.sent(),
     sentTo: () => sending.sentTo(),
     suppressionList: () => sending.suppressed(),
@@ -871,7 +876,7 @@ function memorySignInSender(domain: string, verified: (domain: string) => Promis
  * Humans who can sign in, by email address, with the IDs their sign-ins carry. As in Duva's user
  * pool, an address is the same sign-in name in any case.
  */
-function memoryHumans(): Humans & { ids: Map<string, string> } {
+function memoryHumans(): Humans & { ids: Map<string, string>; codes: Map<string, string> } {
   const ids = new (class extends Map<string, string> {
     override get(email: string) {
       return super.get(email.toLowerCase());
@@ -886,8 +891,25 @@ function memoryHumans(): Humans & { ids: Map<string, string> } {
       return super.delete(email.toLowerCase());
     }
   })();
+  // The code each session mailed, and the last code each address got.
+  const sessions = new Map<string, { email: string; code: string }>();
+  const codes = new Map<string, string>();
   return {
     ids,
+    codes,
+    async sendSignInCode(email) {
+      if (!ids.has(email)) throw new Error(`${email} can't sign in.`);
+      const code = String(randomInt(0, 100_000_000)).padStart(8, "0");
+      const session = randomUUID();
+      sessions.set(session, { email: email.toLowerCase(), code });
+      codes.set(email.toLowerCase(), code);
+      return session;
+    },
+    async checkSignInCode(email, session, code) {
+      const mailed = sessions.get(session);
+      sessions.delete(session);
+      return mailed !== undefined && mailed.email === email.toLowerCase() && mailed.code === code && ids.has(email);
+    },
     async add(email) {
       const id = ids.get(email) ?? randomUUID();
       ids.set(email, id);
@@ -897,6 +919,25 @@ function memoryHumans(): Humans & { ids: Map<string, string> } {
       const id = ids.get(email);
       ids.delete(email);
       return id;
+    },
+  };
+}
+
+/** Stands in for the stack's KMS key: AES-256-GCM with a key of its own, the context as its additional data. */
+function memorySecretKeys(): SecretKeys {
+  const key = randomBytes(32);
+  return {
+    async seal(value, context) {
+      const iv = randomBytes(12);
+      const cipher = createCipheriv("aes-256-gcm", key, iv).setAAD(Buffer.from(JSON.stringify(context)));
+      const sealed = Buffer.concat([cipher.update(value), cipher.final()]);
+      return Buffer.concat([iv, cipher.getAuthTag(), sealed]).toString("base64");
+    },
+    async open(sealed, context) {
+      const bytes = Buffer.from(sealed, "base64");
+      const decipher = createDecipheriv("aes-256-gcm", key, bytes.subarray(0, 12)).setAAD(Buffer.from(JSON.stringify(context)));
+      decipher.setAuthTag(bytes.subarray(12, 28));
+      return Buffer.concat([decipher.update(bytes.subarray(28)), decipher.final()]).toString();
     },
   };
 }

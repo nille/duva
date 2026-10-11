@@ -18,6 +18,7 @@ import type { Embedder } from "./titan.ts";
 import type { UploadsBucket } from "./uploads-bucket.ts";
 import type { BrowserProfiles } from "./browser-profiles.ts";
 import type { Suggester } from "./suggestions.ts";
+import type { SecretKeys } from "./secrets.ts";
 
 /** Duva's one DynamoDB table. */
 export interface Table {
@@ -68,4 +69,6 @@ export interface Deployment {
   embedder: Embedder;
   /** Suggests the rest of a sentence a human is writing, with the organization's suggestion model on Bedrock (#156). */
   suggester: Suggester;
+  /** Seals and opens the humans' secrets, with the stack's own KMS key (ADR-0039). */
+  secretKeys: SecretKeys;
 }

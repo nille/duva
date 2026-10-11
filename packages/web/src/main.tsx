@@ -27,7 +27,7 @@ import { Composer } from "./compose.tsx";
 import { CooLink, CooSays, MailboxAgentsContext, useCoo } from "./coo.tsx";
 import { defaultPreferences, type Preferences, PreferencesContext, useDates } from "./dates.ts";
 import { Drafts } from "./drafts.tsx";
-import { approvalChanges, type Connection, draftChanges, type Follow, labelChanges, mailChanges, mailboxSetupChanges, screenerChanges, SignedOut, threadChanges, useFeeds } from "./feed.ts";
+import { approvalChanges, type Connection, draftChanges, type Follow, labelChanges, mailChanges, mailboxSetupChanges, paymentChanges, screenerChanges, SignedOut, threadChanges, useFeeds } from "./feed.ts";
 import { type Marks, ThreadIndex } from "./inbox.tsx";
 import { ActorMark } from "./mail-parts.tsx";
 import { type AllMailboxes, ChevronIcon, isAll, labelsAcross, labelsIn, MailboxList, MailboxSelector, mailboxHref, mailboxName, ownInOrder } from "./mailboxes.tsx";
@@ -186,6 +186,9 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
   const route = useRoute();
   const [mailboxes, setMailboxes] = useState<Mailboxes>({ status: "loading" });
   const [waiting, setWaiting] = useState<number>();
+  // Coo's payments waiting for the human, which Approvals counts with the sends (ADR-0039).
+  const [paymentsWaiting, setPaymentsWaiting] = useState(0);
+  const waitingAll = waiting === undefined ? undefined : waiting + paymentsWaiting;
   // Whether anything has ever waited for the human in Approvals, so it is among the places. This
   // browser keeps it, since a held send that went out leaves no trace Duva lists. The ref is for the feeds' reads.
   const usedKey = `duva.approvals.used.${actor.id}`;
@@ -361,6 +364,16 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
           );
         }
       }
+      if (first || changes.some(({ change }) => paymentChanges.has(change.type))) {
+        const { data, response } = await client.GET("/payments");
+        if (response.status === 401) throw new SignedOut();
+        if (data !== undefined) {
+          const waitingPayments = data.payments.filter(({ state }) => state === "waiting");
+          setPaymentsWaiting(waitingPayments.length);
+          if (waitingPayments.length > 0) markApprovalsUsed();
+          coo.onPayments(waitingPayments);
+        }
+      }
       // Until anything has waited for the human, a send held for its agent's send limit, which
       // Approvals shows too, is looked for whenever an agent asks to send.
       if (!approvalsUsedRef.current && !first && changes.some(({ change }) => change.type === "sendAsked") && (await holdsSends(client, followed, actor.id))) markApprovalsUsed();
@@ -457,8 +470,8 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
   }, [routeKey]);
   // The title counts what waits, so a sponsor sees a new request from another tab.
   useEffect(() => {
-    if (route.view === "approvals") document.title = strings.title(strings.approvals.title, waiting);
-  }, [route.view, waiting]);
+    if (route.view === "approvals") document.title = strings.title(strings.approvals.title, waitingAll);
+  }, [route.view, waitingAll]);
 
   const agentNames = listed?.agentNames ?? noNames;
   // Approvals and Alerts are among the places once used, and while open, as a link may open them before.
@@ -864,7 +877,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
         <header className="bar">
           {/* Coo's portrait, where the wordmark was, opens Ask Coo for the side column's mailbox. */}
           <CooLink href={sided !== undefined ? `${sideBase}agent` : first !== undefined ? "#/agent" : "#/"} working={coo.working} />
-          {preferences.cooSpeaksUp === "on" && <CooSays news={coo.news} baseOf={cooBaseOf} onTasksSeen={coo.tasksSeen} />}
+          {preferences.cooSpeaksUp === "on" && <CooSays news={coo.news} baseOf={cooBaseOf} onTasksSeen={coo.tasksSeen} onPaidSeen={coo.paidSeen} />}
           {write !== undefined && (
             <button type="button" className="button button-primary button-small bar-write" aria-keyshortcuts={preferences.keyboardShortcuts === "off" ? undefined : "c"} onClick={write}>
               <WriteIcon />
@@ -932,12 +945,12 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
               <a href="#/approvals" className="place-approvals" aria-current={route.view === "approvals" ? "page" : undefined}>
                 <ApprovalsIcon />
                 {strings.nav.approvals}
-                {waiting !== undefined && waiting > 0 && (
+                {waitingAll !== undefined && waitingAll > 0 && (
                   <>
                     <span className="nav-count" aria-hidden="true">
-                      {waiting}
+                      {waitingAll}
                     </span>
-                    <span className="visually-hidden">{strings.nav.waiting(waiting)}</span>
+                    <span className="visually-hidden">{strings.nav.waiting(waitingAll)}</span>
                   </>
                 )}
               </a>

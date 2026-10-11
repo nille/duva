@@ -40,12 +40,16 @@ What Coo keeps about its human between conversations: what they tell it, and wha
 _Avoid_: knowledge, profile, context
 
 **Browsing**:
-Coo using a web browser for its work, beyond unsubscribing: opening any link from mail or web search, reading the page, and acting on it on its own, by logging in, clicking and submitting forms, as its human. It logs in only by codes and links mailed to its human, and stays logged in between runs in a browser profile of the human's own. It never pays or enters card details, and never downloads or uploads a file. A browsing run has only the page's tools and one more, to fetch a login code just mailed from that site, so what a page says can't reach the mailbox. Coo says in a sentence what it did. On unless an admin turns it off for the organization, or a human for their own Coo, who can also sign Coo out of every site.
+Coo using a web browser for its work, beyond unsubscribing: opening any link from mail or web search, reading the page, and acting on it on its own, by logging in, clicking and submitting forms, as its human. It logs in by codes and links mailed to its human, or with a login among their secrets, and stays logged in between runs in a browser profile of the human's own. It pays only with a card among their secrets, within its limits, and never downloads or uploads a file. A browsing run has only the page's tools and two more, to fetch a login code just mailed from that site and to have Duva type a secret Coo named, so what a page says can't reach the mailbox. Coo says in a sentence what it did. On unless an admin turns it off for the organization, or a human for their own Coo, who can also sign Coo out of every site.
 _Avoid_: scraping, automation, surfing
 
 **Secret**:
 Something a human keeps for Coo to use but never read: a site's username and password, a one-time-code seed, a card, or any other value such as a membership number. Coo fills it into a page where its work needs it, and Duva types it there, outside Coo's model. A card pays on its own only within the per-payment and per-month limits its human set, and above them waits in Approvals. Until limits are set, a card doesn't pay. Every use is listed with the secret, and every payment shows in Coo's activity and its bubble. Only the human sees a value again, after a sign-in code, and secrets go with the human.
 _Avoid_: password, vault, credential
+
+**Payment**:
+Coo paying on a site with one of its human's cards while it browses. A card's limits, per payment and per calendar month in one currency, which its human sets, say what it pays on its own; a payment above either waits in Approvals with its site, amount, card and what it is for, and once approved, the next run that pays that amount there with the card pays it, once. Each run of a turn or a task pays on a site once, counted toward the card's month as Duva types the card in. Every payment shows in Coo's activity and its bubble. Admins can turn paying off for the organization.
+_Avoid_: purchase, charge, transaction
 
 **Web search**:
 Coo looking something up on the web, wherever it helps: in Ask Coo, in a label prompt's task, or while unsubscribing. Its queries may carry anything from the mail that helps, and go to Amazon's own search, in another region where the deployment's has none. A reader with no powers reads the results and hands Coo a short answer with its sources, so what a page says never steers Coo. Coo says when it searched, with the sources. On unless an admin turns it off for the organization, or a human for their own Coo.
@@ -100,7 +104,7 @@ A notice to a sponsor that one of their agents needs them: a failed, bounced or 
 _Avoid_: notification, warning
 
 **Approval**:
-Sign-off from an agent's sponsor before the agent's send from the sponsor's mailbox goes out. The sponsor can switch it off for that agent.
+Sign-off from an agent's sponsor before the agent's send from the sponsor's mailbox goes out. The sponsor can switch it off for that agent. A human also approves, or declines, a payment of their Coo's above a card's limits, which waits in Approvals beside the sends.
 
 **Undo window**:
 How long an agent's approved send waits before it goes out, so its approver can undo the approval, which puts it back among the requests that wait, as the agent asked it. Admins set it for the organization, from 0 to 120 seconds, 30 by default (ADR-0022). A send held after the window, while its agent is paused or by its send limits, stays approved. A human's own sends never wait.

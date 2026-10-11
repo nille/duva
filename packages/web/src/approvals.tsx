@@ -12,7 +12,7 @@ import type { components } from "@duva/openapi";
 import { agentHref, heldAsked } from "./alerts.tsx";
 import { ApprovalLog, UndoButton } from "./approval-log.tsx";
 import { PreferencesContext } from "./dates.ts";
-import { approvalChanges, type Change, type Connection as ConnectionState, type Follow, SignedOut } from "./feed.ts";
+import { approvalChanges, type Change, type Connection as ConnectionState, type Follow, paymentChanges, SignedOut } from "./feed.ts";
 import { ActorMark, Addresses, Connection, Field, Time } from "./mail-parts.tsx";
 import { DraftFilesToOpen } from "./draft-files.tsx";
 import { SendNow } from "./send-now.tsx";
@@ -28,6 +28,13 @@ type EmailAddress = components["schemas"]["EmailAddress"];
 type AgentSettings = components["schemas"]["AgentSettings"];
 type Draft = components["schemas"]["Draft"];
 type Agent = components["schemas"]["Agent"];
+type Payment = components["schemas"]["Payment"];
+
+/** A payment of Coo's waiting for the human (ADR-0039), and how they decided it here, if they did. */
+interface PaymentEntry {
+  payment: Payment;
+  decided?: "approved" | "declined";
+}
 
 /** An approval the view shows: waiting, or decided while the page was open. */
 interface Entry {
@@ -118,6 +125,8 @@ export function Approvals({
   const [settings, setSettings] = useState<Record<string, AgentSettings>>({});
   // The sends approved that haven't gone out, once read.
   const [approved, setApproved] = useState<Approved[]>();
+  // Coo's payments waiting for the human, and those they decided here, which keep saying so.
+  const [payments, setPayments] = useState<PaymentEntry[]>();
   // Those sent now from this page, which keep saying so after they leave the list.
   const [sentNow, setSentNow] = useState<Approved[]>([]);
   // The kind the chips show, the row chosen, and whether it was opened to read, which on a phone
@@ -187,6 +196,15 @@ export function Approvals({
     [client, loadAgents, loadSettings],
   );
 
+  // A list Duva can't give now keeps what it had, and is read again with the next change.
+  const loadPayments = useCallback(async () => {
+    const { data, response } = await client.GET("/payments").catch(() => ({ data: undefined, response: undefined }));
+    if (response?.status === 401) return onSignedOut();
+    if (data === undefined) return setPayments((current) => current ?? []);
+    const waiting = data.payments.filter(({ state }) => state === "waiting");
+    setPayments((current = []) => [...waiting.map((payment) => ({ payment })), ...current.filter(({ decided, payment }) => decided !== undefined && !waiting.some(({ id }) => id === payment.id))]);
+  }, [client, onSignedOut]);
+
   // A list Duva can't give now shows none, and is read again with the next change.
   const loadApproved = useCallback(async () => {
     const read = await latest(approvedRead, readApproved(client, me));
@@ -201,7 +219,9 @@ export function Approvals({
       if (!stopped && error instanceof SignedOut) onSignedOut();
     });
     void loadApproved();
+    void loadPayments();
     const unfollow = follow(async (changes) => {
+      if (changes.some(({ change }) => paymentChanges.has(change.type))) void loadPayments();
       const touched = changes.some(({ change }) => approvalChanges.has(change.type));
       if (touched || changes.some(({ change }) => pauseChanges.has(change.type))) void loadApproved();
       if (entriesRef.current === undefined || touched) await refresh(entriesRef.current === undefined);
@@ -216,7 +236,7 @@ export function Approvals({
       approvedRead.current++;
       unfollow();
     };
-  }, [follow, refresh, loadOutcome, loadApproved, onSignedOut]);
+  }, [follow, refresh, loadOutcome, loadApproved, loadPayments, onSignedOut]);
 
   // A decided approval shows how its send went, so read its draft once it's decided.
   const outcomesRead = useRef(new Set<string>());
@@ -257,11 +277,12 @@ export function Approvals({
   const pausedAgents = new Map(unslipped.flatMap(({ agent }) => (agent?.paused !== undefined ? [[agent.id, agent] as const] : [])));
   const items: Item[] = [
     ...newest((entries ?? []).map((entry) => ({ askedAt: entry.approval.askedAt, entry }))).map(({ entry }) => ({ kind: "send" as const, key: `send-${entry.approval.id}`, entry })),
+    ...newest((payments ?? []).map((entry) => ({ askedAt: entry.payment.at, entry }))).map(({ entry }) => ({ kind: "payment" as const, key: `payment-${entry.payment.id}`, entry })),
     ...forLimit.map((send) => ({ kind: "held" as const, key: `held-${send.draft.id}`, send })),
     ...[...pausedAgents.values()].flatMap((agent) => unslipped.filter((send) => send.agent?.id === agent.id).map((send) => ({ kind: "held" as const, key: `held-${send.draft.id}`, send, pause: agent }))),
   ];
-  const waiting = entries?.filter((entry) => entry.decision === undefined).length ?? 0;
-  const loaded = entries !== undefined && approved !== undefined;
+  const waiting = (entries?.filter((entry) => entry.decision === undefined).length ?? 0) + (payments?.filter(({ decided }) => decided === undefined).length ?? 0);
+  const loaded = entries !== undefined && approved !== undefined && payments !== undefined;
 
   // The chips offer only the kinds there are, and All shows them all.
   const kinds = new Set(items.map(({ kind }) => kind));
@@ -380,6 +401,19 @@ export function Approvals({
         </button>
         {items.map((item) => {
           const shownHere = item.key === open?.key;
+          if (item.kind === "payment") {
+            return (
+              <PaymentGalley
+                key={item.key}
+                shown={shownHere}
+                entry={item.entry}
+                agent={agents[item.entry.payment.agent] ?? strings.galley.anAgent}
+                client={client}
+                onDecided={(decided) => setPayments((current) => current?.map((each) => (each.payment.id === item.entry.payment.id ? { ...each, decided } : each)))}
+                onSignedOut={onSignedOut}
+              />
+            );
+          }
           if (item.kind === "held") {
             return (
               <HeldSend
@@ -417,15 +451,15 @@ export function Approvals({
   );
 }
 
-/** What the queue lists: a send to decide, or a send approved that hasn't gone out. */
-type Item = { kind: "send"; key: string; entry: Entry } | { kind: "held"; key: string; send: Approved; pause?: Agent };
+/** What the queue lists: a send to decide, a payment of Coo's to decide, or a send approved that hasn't gone out. */
+type Item = { kind: "send"; key: string; entry: Entry } | { kind: "payment"; key: string; entry: PaymentEntry } | { kind: "held"; key: string; send: Approved; pause?: Agent };
 
 type Kind = Item["kind"];
 
 /** The kinds, in the order the queue lists them. */
-const order: Kind[] = ["send", "held"];
+const order: Kind[] = ["send", "payment", "held"];
 
-const undecided = (item: Item) => item.kind === "send" && item.entry.decision === undefined;
+const undecided = (item: Item) => (item.kind === "send" && item.entry.decision === undefined) || (item.kind === "payment" && item.entry.decided === undefined);
 
 /** What a row says of its item: who, when, the subject, its recipients, and what a decided one became. */
 function rowOf(item: Item, agents: Record<string, string>, outcomes: Record<string, Outcome>) {
@@ -434,6 +468,12 @@ function rowOf(item: Item, agents: Record<string, string>, outcomes: Record<stri
     const { approval, decision, fresh } = item.entry;
     const agent = agents[approval.agent] ?? anAgent;
     return { agent, agentId: approval.agent, at: approval.askedAt, subject: approval.draft.subject || strings.galley.noSubject, to: approval.draft.to, state: decision && slipOf(approval, agent, decision, outcomes[approval.id]), fresh };
+  }
+  if (item.kind === "payment") {
+    const { payment, decided } = item.entry;
+    const pay = strings.approvals.payment;
+    const state = decided === undefined ? undefined : { tone: decided === "approved" ? ("done" as const) : ("rejected" as const), headline: decided === "approved" ? pay.approvedRow : pay.declinedRow };
+    return { agent: agents[payment.agent] ?? anAgent, agentId: payment.agent, at: payment.at, subject: pay.title(payment.amount, payment.currency, payment.site), line: pay.line(payment.cardName, payment.for), state, fresh: false };
   }
   const { agent, draft } = item.send;
   return { agent: agent?.name ?? anAgent, agentId: agent?.id, at: draft.updatedAt, subject: draft.subject || strings.galley.noSubject, to: draft.to, state: undefined, fresh: false };
@@ -462,7 +502,7 @@ function Row({
   const to = (list: EmailAddress[]) => copy.to(list.map(({ address }) => address).join(", "));
   const row = rowOf(item, agents, outcomes);
   const { agent, agentId, at, subject, state, fresh } = row;
-  const line = "to" in row && row.to !== undefined ? to(row.to) : undefined;
+  const line = "to" in row && row.to !== undefined ? to(row.to) : "line" in row ? row.line : undefined;
   const why = item.kind === "held" ? (item.pause === undefined ? copy.limitTitle : copy.heldTitle(item.pause.name)) : undefined;
   const classes = ["queue-row", undecided(item) && "queue-row-waiting", state !== undefined && "queue-row-decided"].filter(Boolean).join(" ");
   return (
@@ -551,6 +591,86 @@ function HeldSend({
             <SendNow client={client} mailbox={mailbox} draft={draft.id} labelledBy={`${id}-subject`} done={sent} onSent={(went) => went !== undefined && onSent()} onSignedOut={onSignedOut} />
           )}
         </div>
+      </footer>
+    </section>
+  );
+}
+
+/**
+ * A payment of Coo's above its card's limits, in the reading pane: who asks, the amount and site as
+ * the title, the card and what it is for, and the decision: Approve as the call, or Decline.
+ */
+function PaymentGalley({
+  shown,
+  entry: { payment, decided },
+  agent,
+  client,
+  onDecided,
+  onSignedOut,
+}: {
+  shown: boolean;
+  entry: PaymentEntry;
+  agent: string;
+  client: DuvaClient;
+  onDecided: (decided: "approved" | "declined") => void;
+  onSignedOut: () => void;
+}) {
+  const id = useId();
+  const copy = strings.approvals.payment;
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string>();
+  const decide = async (approve: boolean) => {
+    setBusy(true);
+    setFailed(undefined);
+    const path = { params: { path: { payment: payment.id } } };
+    const { data, error, response } = await (approve ? client.POST("/payments/{payment}/approve", path) : client.POST("/payments/{payment}/decline", path)).catch(() => ({ data: undefined, error: undefined, response: undefined }));
+    setBusy(false);
+    if (response?.status === 401) return onSignedOut();
+    if (data !== undefined) return onDecided(approve ? "approved" : "declined");
+    setFailed((error as { message?: string } | undefined)?.message ?? strings.setup.unreachable);
+  };
+  return (
+    <section className="galley galley-payment" aria-labelledby={`${id}-title`} hidden={!shown}>
+      <header className="galley-head">
+        <h2 id={`${id}-title`}>
+          <span className="galley-asks">
+            <ActorMark kind="agent" agent={payment.agent} />
+            {copy.asks(agent)}
+          </span>{" "}
+          <span className="galley-subject" id={`${id}-subject`}>
+            {copy.title(payment.amount, payment.currency, payment.site)}
+          </span>
+        </h2>
+        <p className="galley-meta">
+          <Time at={payment.at} />
+        </p>
+      </header>
+      <p className="galley-lead">{copy.lead(payment.cardName)}</p>
+      <dl className="galley-fields galley-payment-fields">
+        <Field label={copy.what}>{payment.for}</Field>
+        <Field label={copy.card}>{payment.cardName}</Field>
+        <Field label={copy.site}>{payment.site}</Field>
+      </dl>
+      <footer className="decision">
+        {decided === undefined ? (
+          <div className="actions">
+            <button type="button" className="button button-call" aria-describedby={`${id}-subject`} disabled={busy} onClick={() => void decide(true)}>
+              {copy.approve}
+            </button>
+            <button type="button" className="button button-quiet" aria-describedby={`${id}-subject`} disabled={busy} onClick={() => void decide(false)}>
+              {copy.decline}
+            </button>
+          </div>
+        ) : (
+          <p className={`payment-decided payment-decided-${decided}`} role="status">
+            {decided === "approved" ? copy.approved : copy.declined}
+          </p>
+        )}
+        {failed !== undefined && (
+          <p className="notice notice-alert" role="alert">
+            {failed}
+          </p>
+        )}
       </footer>
     </section>
   );

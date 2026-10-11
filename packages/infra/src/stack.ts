@@ -20,6 +20,7 @@ import { AttributeType, Billing, StreamViewType, TableV2 } from "aws-cdk-lib/aws
 import { Rule, Schedule } from "aws-cdk-lib/aws-events";
 import { LambdaFunction } from "aws-cdk-lib/aws-events-targets";
 import { Policy, PolicyStatement, Role, ServicePrincipal } from "aws-cdk-lib/aws-iam";
+import { Key } from "aws-cdk-lib/aws-kms";
 import { Architecture, Code, FilterCriteria, Function as LambdaFunctionResource, FunctionUrlAuthType, InvokeMode, Runtime, StartingPosition } from "aws-cdk-lib/aws-lambda";
 import { SqsDestination } from "aws-cdk-lib/aws-lambda-destinations";
 import { DynamoEventSource, SqsDlq, SqsEventSource } from "aws-cdk-lib/aws-lambda-event-sources";
@@ -520,6 +521,14 @@ export class DuvaStack extends Stack {
     eraser.addEnvironment(environmentVariables.indexQueue, indexQueue.queueUrl);
     indexQueue.grantSendMessages(eraser);
 
+    // The humans' secrets are sealed with a key of the stack's own, in its region, which only the
+    // API uses (ADR-0039). It stays with the table, which keeps the sealed values.
+    const secretsKey = new Key(this, "SecretsKey", {
+      description: "Seals the secrets each Duva human keeps for Coo to use but never read",
+      enableKeyRotation: true,
+      removalPolicy: RemovalPolicy.RETAIN_ON_UPDATE_OR_DELETE,
+    });
+
     const handler = lambda("ApiHandler", "@duva/api/lambda", {
       [environmentVariables.version]: version,
       [environmentVariables.tableName]: table.tableName,
@@ -536,8 +545,12 @@ export class DuvaStack extends Stack {
       [environmentVariables.logosBucket]: logos.bucketName,
       [environmentVariables.logosUrl]: logosUrl,
       [environmentVariables.uploadsBucket]: uploads.bucketName,
+      [environmentVariables.signInClientId]: webClient.userPoolClientId,
+      [environmentVariables.secretsKey]: secretsKey.keyArn,
     });
     table.grantReadWriteData(handler);
+    // Only the API seals and opens the humans' secrets; a browsing run gets a part through it (ADR-0039).
+    secretsKey.grantEncryptDecrypt(handler);
     // The API starts and completes uploads to drafts, and signs the URLs their parts go to and
     // their files open from, which work with the API's own permissions.
     uploads.grantReadWrite(handler);
@@ -559,6 +572,8 @@ export class DuvaStack extends Stack {
     unsubscriber.grantInvoke(handler);
     // Admins add humans, who can then sign in, and remove them, who then can't.
     humans.grant(handler, "cognito-idp:AdminCreateUser", "cognito-idp:AdminGetUser", "cognito-idp:AdminDeleteUser");
+    // Revealing a secret mails the human a sign-in code and checks it, as signing in does (ADR-0039).
+    humans.grant(handler, "cognito-idp:AdminInitiateAuth", "cognito-idp:AdminRespondToAuthChallenge");
     // Choosing the sign-in domain changes the pool's sender, which UpdateUserPool can do only by
     // giving every setting the pool has.
     humans.grant(handler, "cognito-idp:DescribeUserPool", "cognito-idp:UpdateUserPool");

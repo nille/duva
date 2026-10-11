@@ -72,6 +72,9 @@ const payPerUse = new Set([
   "Custom::WebSearchGateway",
   // A standard parameter costs nothing.
   "AWS::SSM::Parameter",
+  // The key that seals the humans' secrets costs $1 a month, $3 at most once rotated twice, which
+  // ADR-0039 chose over $0.40 a month for each secret in Secrets Manager. Its calls are per use.
+  "AWS::KMS::Key",
   "AWS::CloudFront::OriginRequestPolicy",
 ]);
 
@@ -204,6 +207,21 @@ test("the API can write the table, and the authorizer can only read it", () => {
   const authorizer = tableActions("AuthorizerHandler");
   expect(authorizer).toContain("dynamodb:GetItem");
   expect(authorizer.filter((action) => /Put|Update|Delete|Write/.test(action))).toEqual([]);
+});
+
+test("the humans' secrets are sealed with a key of the stack's own, which rotates and stays with the table, and only the API may use it, through the web app's client for sign-in codes", () => {
+  const [[keyId, key]] = ofType("AWS::KMS::Key") as [[string, Resource & { DeletionPolicy?: string; UpdateReplacePolicy?: string }]];
+  expect(key.Properties?.EnableKeyRotation).toBe(true);
+  // As the table is kept, so the secrets it keeps can be opened.
+  expect([key.DeletionPolicy, key.UpdateReplacePolicy]).toEqual(["RetainExceptOnCreate", "Retain"]);
+  const apiRole = { Ref: lambda("ApiHandler")[1].Properties?.Role?.["Fn::GetAtt"]?.[0] };
+  const kmsGranted = ofType("AWS::IAM::Policy").filter(([, { Properties }]) => JSON.stringify(Properties?.PolicyDocument).includes('"kms:'));
+  expect(kmsGranted.map(([, { Properties }]) => Properties?.Roles)).toEqual([[apiRole]]);
+  for (const { Resource } of statements("ApiHandler").filter(({ Action }) => [Action].flat().some((action) => action.startsWith("kms:")))) expect(Resource).toEqual({ "Fn::GetAtt": [keyId, "Arn"] });
+  const variables = lambda("ApiHandler")[1].Properties?.Environment?.Variables;
+  expect(variables?.[environmentVariables.secretsKey]).toEqual({ "Fn::GetAtt": [keyId, "Arn"] });
+  const [[webClientId]] = ofType("AWS::Cognito::UserPoolClient").filter(([id]) => id.startsWith("UsersWebClient") || id.includes("WebClient")) as [[string, Resource]];
+  expect(variables?.[environmentVariables.signInClientId]).toEqual({ Ref: webClientId });
 });
 
 test("the inbound Lambda can write the table and read raw mail, and the API can read raw mail too", () => {
@@ -742,12 +760,14 @@ test("setup has minutes to move every human to the user pool, one at a time", ()
   expect(lambda("SetupHandler")[1].Properties?.Timeout).toBe(300);
 });
 
-test("the API adds humans to the user pool, deletes them from it and changes its sender, and may take no other Cognito action", () => {
+test("the API adds humans to the user pool, deletes them from it, changes its sender and mails a human a sign-in code to reveal a secret, and may take no other Cognito action", () => {
   const [[userPoolId]] = ofType("AWS::Cognito::UserPool") as [[string, Resource]];
   expect(actions("ApiHandler", "cognito-idp").sort()).toEqual([
     "cognito-idp:AdminCreateUser",
     "cognito-idp:AdminDeleteUser",
     "cognito-idp:AdminGetUser",
+    "cognito-idp:AdminInitiateAuth",
+    "cognito-idp:AdminRespondToAuthChallenge",
     "cognito-idp:DescribeUserPool",
     "cognito-idp:UpdateUserPool",
   ]);

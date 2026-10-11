@@ -1,5 +1,11 @@
 import {
   AdminCreateUserCommand,
+  AdminInitiateAuthCommand,
+  AdminRespondToAuthChallengeCommand,
+  CodeMismatchException,
+  ExpiredCodeException,
+  NotAuthorizedException,
+  RevokeTokenCommand,
   AdminDeleteUserCommand,
   AdminGetUserCommand,
   type AttributeType,
@@ -25,14 +31,43 @@ export interface Humans {
    * their sign-ins carried, or undefined if they had none.
    */
   remove(email: string): Promise<string | undefined>;
+  /**
+   * Mails the human a sign-in code, as signing in does, and gives the session that checks it, as
+   * before revealing a secret (ADR-0039).
+   */
+  sendSignInCode(email: string): Promise<string>;
+  /** Whether the code is the one mailed to the human for the session, which it then ends. */
+  checkSignInCode(email: string, session: string, code: string): Promise<boolean>;
 }
 
 /**
  * The deployment's user pool. Sign-in names are email addresses, in any case, and the ID a human's
- * sign-ins carry is their Cognito sub.
+ * sign-ins carry is their Cognito sub. Sign-in codes go through the app client `clientId`, by
+ * choice-based sign-in with email codes, as managed login signs in.
  */
-export function cognitoHumans(cognito: CognitoIdentityProviderClient, userPoolId: string): Humans {
+export function cognitoHumans(cognito: CognitoIdentityProviderClient, userPoolId: string, clientId: string): Humans {
   return {
+    async sendSignInCode(email) {
+      const { Session } = await cognito.send(
+        new AdminInitiateAuthCommand({ UserPoolId: userPoolId, ClientId: clientId, AuthFlow: "USER_AUTH", AuthParameters: { USERNAME: email, PREFERRED_CHALLENGE: "EMAIL_OTP" } }),
+      );
+      if (Session === undefined) throw new Error("Cognito answered no sign-in session.");
+      return Session;
+    },
+    async checkSignInCode(email, session, code) {
+      try {
+        const { AuthenticationResult } = await cognito.send(
+          new AdminRespondToAuthChallengeCommand({ UserPoolId: userPoolId, ClientId: clientId, ChallengeName: "EMAIL_OTP", Session: session, ChallengeResponses: { USERNAME: email, EMAIL_OTP_CODE: code } }),
+        );
+        if (AuthenticationResult === undefined) return false;
+        // The sign-in only proves the code: its session is ended at once.
+        if (AuthenticationResult.RefreshToken !== undefined) await cognito.send(new RevokeTokenCommand({ ClientId: clientId, Token: AuthenticationResult.RefreshToken })).catch((error: unknown) => console.error(error));
+        return true;
+      } catch (error) {
+        if (error instanceof CodeMismatchException || error instanceof ExpiredCodeException || error instanceof NotAuthorizedException) return false;
+        throw error;
+      }
+    },
     async add(email) {
       try {
         // With no temporary password, the human never has one. Signing in with an emailed code

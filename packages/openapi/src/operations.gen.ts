@@ -228,7 +228,14 @@ export const operations = [
         "in": "body",
         "type": "boolean",
         "required": false,
-        "description": "Whether the mailbox agents may browse, in Ask Coo and in labels' tasks: open a link from the mail or a web search, read the page, and act on it on their own, logging in as their human and submitting forms for them without asking. They log in only with codes and links the site mails their human, never with a password, and stay logged in between runs in a browser profile of their human's own. They never pay, enter card details, or download or upload a file. A browsing run has only the page's tools, so a page can't reach the mailbox, and Duva keeps only a sentence of what it did. On by default. Browser time, at AgentCore Browser's $0.0895 per vCPU-hour and $0.00945 per GB-hour, and the run's tokens count toward mailboxAgentSpendCap. Each human can also turn it off for their own Coo, with the preference cooBrowsing. Unsubscribing on a sender's page doesn't depend on it."
+        "description": "Whether the mailbox agents may browse, in Ask Coo and in labels' tasks: open a link from the mail or a web search, read the page, and act on it on their own, logging in as their human and submitting forms for them without asking. They log in with codes and links the site mails their human, or with a login among their human's secrets, which Duva types without the model seeing it, and stay logged in between runs in a browser profile of their human's own. They pay only with a card among their human's secrets, within its limits, while mailboxAgentPayments lets them, and never download or upload a file. A browsing run has only the page's tools, so a page can't reach the mailbox, and Duva keeps only a sentence of what it did. On by default. Browser time, at AgentCore Browser's $0.0895 per vCPU-hour and $0.00945 per GB-hour, and the run's tokens count toward mailboxAgentSpendCap. Each human can also turn it off for their own Coo, with the preference cooBrowsing. Unsubscribing on a sender's page doesn't depend on it."
+      },
+      {
+        "name": "mailboxAgentPayments",
+        "in": "body",
+        "type": "boolean",
+        "required": false,
+        "description": "Whether the mailbox agents may pay with their humans' cards while they browse, each card only within the per-payment and per-month limits its human set, and above them only once its human approves. A card without limits never pays. On by default; off, no card pays."
       },
       {
         "name": "mailboxAgentSpendCap",
@@ -363,7 +370,7 @@ export const operations = [
         "in": "body",
         "type": "string",
         "required": false,
-        "description": "Whether the human's own Coo may browse, while the organization's mailboxAgentBrowsing lets it. on, the default, lets it open pages and act on them for you on its own: it logs in as you with codes the site mails you, and submits forms for you without asking, saying in a sentence what it did. off keeps it off the web's pages. Turning it off keeps the sites it logged in to; sign Coo out of every site to clear them."
+        "description": "Whether the human's own Coo may browse, while the organization's mailboxAgentBrowsing lets it. on, the default, lets it open pages and act on them for you on its own: it logs in as you with codes the site mails you, or with your logins among your secrets, pays with your cards within their limits, and submits forms for you without asking, saying in a sentence what it did. off keeps it off the web's pages. Turning it off keeps the sites it logged in to; sign Coo out of every site to clear them."
       },
       {
         "name": "suggestions",
@@ -2627,6 +2634,366 @@ export const operations = [
     "options": []
   },
   {
+    "operationId": "listSecrets",
+    "method": "get",
+    "path": "/secrets",
+    "routeKey": "GET /secrets",
+    "summary": "List the secrets your Coo uses but never reads, each with its kind and last four characters.",
+    "description": "A secret is something you keep for Coo to use while it browses: a site's login, with its username, password and any one-time-code seed, a payment card, or any other value, such as a membership number. Coo fills one into a page where its work needs it, and Duva types it there, so Coo's model never sees a value. Listing shows each one's name, kind and the last four characters of its username, card number or value, never more. Only you see your secrets: admins, agents and other humans can't, and they go when you are removed.",
+    "signIn": true,
+    "command": [
+      "secrets",
+      "list"
+    ],
+    "options": []
+  },
+  {
+    "operationId": "addSecret",
+    "method": "post",
+    "path": "/secrets",
+    "routeKey": "POST /secrets",
+    "summary": "Keep a secret for your Coo to use, a login, a card or another value, under a name you give it.",
+    "description": "Give kind and name, and the parts of its kind: a login's username and password, and its totpSeed if the site asks for a one-time code, a card's number, expiry, cvc and cardholder, or another value's value. Each value is encrypted with a KMS key of the deployment's own, in its region. A card pays only within the limits you set on it, with currency, perPayment and perMonth: until then it doesn't pay. Names are your own, each used once. Only humans keep secrets, at most 100.",
+    "signIn": true,
+    "command": [
+      "secrets",
+      "add"
+    ],
+    "options": [
+      {
+        "name": "kind",
+        "in": "body",
+        "type": "string",
+        "required": true,
+        "description": "What a secret is. login, a site's username and password, with a one-time-code seed if the site asks for codes; card, a payment card; other, any other value, such as a membership number."
+      },
+      {
+        "name": "name",
+        "in": "body",
+        "type": "string",
+        "required": true,
+        "description": "What to call it, as Coo and you know it by, at most 60 characters."
+      },
+      {
+        "name": "username",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "A login's username or email address."
+      },
+      {
+        "name": "password",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "A login's password."
+      },
+      {
+        "name": "totpSeed",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "A login's one-time-code seed, the base32 key or the otpauth:// URI a site's setup gives. Optional."
+      },
+      {
+        "name": "number",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "A card's number, with or without spaces."
+      },
+      {
+        "name": "expiry",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "A card's expiry, as MM/YY."
+      },
+      {
+        "name": "cvc",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "A card's security code, three or four digits."
+      },
+      {
+        "name": "cardholder",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "The name on a card."
+      },
+      {
+        "name": "value",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "Another value, at most 1,000 characters."
+      },
+      {
+        "name": "currency",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "The currency of a card's limits."
+      },
+      {
+        "name": "perPayment",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "The most one payment of a card's may be without your approval."
+      },
+      {
+        "name": "perMonth",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "The most a card pays in a month without your approval."
+      }
+    ]
+  },
+  {
+    "operationId": "getSecret",
+    "method": "get",
+    "path": "/secrets/{secret}",
+    "routeKey": "GET /secrets/{secret}",
+    "summary": "Read a secret, with every use of it, newest first.",
+    "description": "Its history lists each time Coo filled it into a page, with when, the site and the run, a turn of Ask Coo or a label's task, each payment with its amount, and each time you revealed it. Never its value: reveal it for that.",
+    "signIn": true,
+    "command": [
+      "secrets",
+      "get"
+    ],
+    "options": [
+      {
+        "name": "secret",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The secret's ID."
+      }
+    ]
+  },
+  {
+    "operationId": "deleteSecret",
+    "method": "delete",
+    "path": "/secrets/{secret}",
+    "routeKey": "DELETE /secrets/{secret}",
+    "summary": "Delete a secret, with its history.",
+    "description": "Coo can't use it from then on. A payment of the card's waiting in Approvals goes with it.",
+    "signIn": true,
+    "command": [
+      "secrets",
+      "delete"
+    ],
+    "options": [
+      {
+        "name": "secret",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The secret's ID."
+      }
+    ]
+  },
+  {
+    "operationId": "changeSecret",
+    "method": "patch",
+    "path": "/secrets/{secret}",
+    "routeKey": "PATCH /secrets/{secret}",
+    "summary": "Rename a secret, replace its parts, or set a card's limits.",
+    "description": "Give name to rename it. Give any of its kind's parts to replace them, each as a whole: a part you leave out stays as it was. For a card, give currency, perPayment and perMonth together to set its limits, or null for each to clear them, after which it doesn't pay. A secret's kind stays what it was.",
+    "signIn": true,
+    "command": [
+      "secrets",
+      "change"
+    ],
+    "options": [
+      {
+        "name": "secret",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The secret's ID."
+      },
+      {
+        "name": "name",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "Its new name."
+      },
+      {
+        "name": "username",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": ""
+      },
+      {
+        "name": "password",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": ""
+      },
+      {
+        "name": "totpSeed",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "A login's new one-time-code seed, or null to remove it.",
+        "nullable": true
+      },
+      {
+        "name": "number",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": ""
+      },
+      {
+        "name": "expiry",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": ""
+      },
+      {
+        "name": "cvc",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": ""
+      },
+      {
+        "name": "cardholder",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": ""
+      },
+      {
+        "name": "value",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": ""
+      },
+      {
+        "name": "currency",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "The currency of a card's limits, or null with the others to clear them.",
+        "nullable": true
+      },
+      {
+        "name": "perPayment",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "The most one payment may be, or null with the others to clear the limits.",
+        "nullable": true
+      },
+      {
+        "name": "perMonth",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "The most the card pays in a month, or null with the others to clear the limits.",
+        "nullable": true
+      }
+    ]
+  },
+  {
+    "operationId": "revealSecret",
+    "method": "post",
+    "path": "/secrets/{secret}/reveal",
+    "routeKey": "POST /secrets/{secret}/reveal",
+    "summary": "Reveal a secret's value, after a fresh sign-in code.",
+    "description": "Call it first without code: Duva mails you a sign-in code, as signing in does, and answers where it went. Then call it again with the code within three minutes, and it answers the secret's parts. Each reveal is recorded in the secret's history. Only you can reveal your own secrets.",
+    "signIn": true,
+    "command": [
+      "secrets",
+      "reveal"
+    ],
+    "options": [
+      {
+        "name": "secret",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The secret's ID."
+      },
+      {
+        "name": "code",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "The sign-in code Duva mailed you. Leave it out to have one mailed."
+      }
+    ]
+  },
+  {
+    "operationId": "useSecret",
+    "method": "post",
+    "path": "/secrets/{secret}/use",
+    "routeKey": "POST /secrets/{secret}/use",
+    "summary": "Answer a part of a secret for a browsing run of your human's Coo to type into a page.",
+    "description": "Only a browsing run of a human's own Coo can call it, with its run's token, which never reaches the model: Duva types what it answers into the page, outside the model. Each use is recorded in the secret's history, with the site and the run. A login's code part is the one-time code its seed gives now. A card's parts need the amount and currency of the payment: it pays only within the card's per-payment and per-month limits, while the organization lets mailbox agents pay. Above a limit, the payment waits in its human's Approvals, which is 202, and a fresh run pays once they approve it. A run that already paid on the site with the card, then ran again, is 409, so a retry never pays twice.",
+    "signIn": true,
+    "command": [
+      "secrets",
+      "use"
+    ],
+    "options": [
+      {
+        "name": "secret",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The secret's ID."
+      },
+      {
+        "name": "part",
+        "in": "body",
+        "type": "string",
+        "required": true,
+        "description": "A part of a secret to type into a page. A login's username, password, and code, the one-time code its seed gives at that moment; a card's number, expiry as MM/YY, expiryMonth as MM, expiryYear as YYYY, cvc and cardholder; another value's value."
+      },
+      {
+        "name": "site",
+        "in": "body",
+        "type": "string",
+        "required": true,
+        "description": "The site of the page it goes into, as example.com."
+      },
+      {
+        "name": "amount",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "For a card, what the payment is."
+      },
+      {
+        "name": "currency",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "For a card, the payment's currency."
+      },
+      {
+        "name": "for",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "For a card, what the payment is for, in a few words."
+      }
+    ]
+  },
+  {
     "operationId": "getScreener",
     "method": "get",
     "path": "/mailboxes/{mailbox}/screener",
@@ -4476,6 +4843,64 @@ export const operations = [
         "type": "string",
         "required": true,
         "description": "The approval's ID."
+      }
+    ]
+  },
+  {
+    "operationId": "listPayments",
+    "method": "get",
+    "path": "/payments",
+    "routeKey": "GET /payments",
+    "summary": "List your Coo's payments, newest first, those waiting for your approval among them.",
+    "description": "Coo pays with one of your cards on its own only within the limits you set on it. A payment above them waits here, with its site, amount, card and what it is for, until you approve or decline it. Paid ones show with when, and approved ones until a run pays them. Only you see your Coo's payments.",
+    "signIn": true,
+    "command": [
+      "payments",
+      "list"
+    ],
+    "options": []
+  },
+  {
+    "operationId": "approvePayment",
+    "method": "post",
+    "path": "/payments/{payment}/approve",
+    "routeKey": "POST /payments/{payment}/approve",
+    "summary": "Approve a payment waiting for you, so Coo's next run on the site pays it.",
+    "description": "The next browsing run that pays its amount on the site with the card pays it, outside the card's limits, once: ask Coo again for that. It still counts toward the card's month. Recorded in the mailbox's change feed under you.",
+    "signIn": true,
+    "command": [
+      "payments",
+      "approve"
+    ],
+    "options": [
+      {
+        "name": "payment",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The payment's ID."
+      }
+    ]
+  },
+  {
+    "operationId": "declinePayment",
+    "method": "post",
+    "path": "/payments/{payment}/decline",
+    "routeKey": "POST /payments/{payment}/decline",
+    "summary": "Decline a payment waiting for you, so it isn't paid.",
+    "description": "Recorded in the mailbox's change feed under you.",
+    "signIn": true,
+    "command": [
+      "payments",
+      "decline"
+    ],
+    "options": [
+      {
+        "name": "payment",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The payment's ID."
       }
     ]
   }

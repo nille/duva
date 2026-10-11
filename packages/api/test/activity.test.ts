@@ -410,7 +410,7 @@ test("reading the events of an agent there is none of gets 404, and so does an e
 });
 
 test.each([
-  ["a kind there is none of", { kinds: ["mail"] }, '"mail" isn\'t a kind of event. Give kinds from conversations, tasks, draftsAndSends, approvals, organizing, screening, unsubscribes, pausesAndLimits, alerts, setup.'],
+  ["a kind there is none of", { kinds: ["mail"] }, '"mail" isn\'t a kind of event. Give kinds from conversations, tasks, draftsAndSends, approvals, payments, organizing, screening, unsubscribes, pausesAndLimits, alerts, setup.'],
   ["a limit Duva doesn't take", { limit: 0 }, '"0" isn\'t a limit Duva takes. Give limit as a whole number from 1 to 100.'],
   ["an after no page gave", { after: "somewhere" }, '"somewhere" isn\'t where a page starts. Give after as the next of the page before, or leave it out for the first page.'],
 ])("listing events with %s gets 400", async (_, query, message) => {

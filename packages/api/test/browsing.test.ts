@@ -187,8 +187,8 @@ test("a browsing run stops at a payment step, before the model reads it, or as i
   await ask("Order the coffee in my cart at the shop.");
   await ask("And the tea at the other.");
 
-  expect(lastResult(coo()[1]!.messages)).toBe("Not done: It stopped at a payment step on example.org, since Coo never pays.");
-  expect(lastResult(coo()[3]!.messages)).toBe("Not done: It stopped at a payment step on example.net, since Coo never pays.");
+  expect(lastResult(coo()[1]!.messages)).toBe("Not done: It stopped at a payment step on example.org, since it was given no card to pay with.");
+  expect(lastResult(coo()[3]!.messages)).toBe("Not done: It stopped at a payment step on example.net, since it was given no card to pay with.");
   // Each run read its cart once: the checkout's card field ended the first before a second model call.
   expect(pages()).toHaveLength(2);
   expect(JSON.stringify(pages())).not.toContain("Card number");
@@ -212,8 +212,8 @@ test("a payment provider's card fields in a frame are a payment step too, and so
   await ask("Order the beans.");
   await ask("Order the tea.");
 
-  expect(lastResult(coo()[1]!.messages)).toBe("Not done: It stopped at a payment step on example.org, since Coo never pays.");
-  expect(lastResult(coo()[3]!.messages)).toBe("Not done: It stopped at a payment step on example.net, since Coo never pays.");
+  expect(lastResult(coo()[1]!.messages)).toBe("Not done: It stopped at a payment step on example.org, since it was given no card to pay with.");
+  expect(lastResult(coo()[3]!.messages)).toBe("Not done: It stopped at a payment step on example.net, since it was given no card to pay with.");
   // The frame ended the first run before the model read the page; the second typed the name, and submitting it stopped.
   expect(pages()).toHaveLength(2);
   expect(tea.map(({ method }) => method)).toEqual(["GET"]);

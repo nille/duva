@@ -99,6 +99,11 @@ export function standInBrowser(network: Network) {
         control(index).value = value;
         return viewOf(page!);
       },
+      // Keys typed land in the field as a script's value does here, since the stand-in runs no scripts.
+      async typeIn(index, value) {
+        control(index).value = value;
+        return viewOf(page!);
+      },
       async choose(index, option) {
         const chosen = control(index);
         if (chosen.kind === "checkbox") chosen.checked = !chosen.checked;

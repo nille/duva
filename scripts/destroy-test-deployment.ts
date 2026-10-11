@@ -3,7 +3,7 @@
 //   AWS_PROFILE=... AWS_REGION=eu-west-3 node scripts/destroy-test-deployment.ts --yes [--bootstrap]
 //
 // Deactivates Duva's receipt rule set, which SES can't delete while it's active, then deletes
-// the Duva stack, then the table, buckets and user pool it keeps on deletion, all their data
+// the Duva stack, then the table, buckets, user pool and secrets key it keeps on deletion, all their data
 // included, and the SES identity deploy made for the first admin's address. With --bootstrap, it
 // also deletes the CDK bootstrap stack and its staging bucket, but only when the same duva deploy
 // created both stacks. For test deployments only.
@@ -18,6 +18,7 @@ import {
 } from "@aws-sdk/client-cloudformation";
 import { CognitoIdentityProviderClient, DeleteUserPoolCommand } from "@aws-sdk/client-cognito-identity-provider";
 import { DeleteTableCommand, DynamoDBClient, waitUntilTableNotExists } from "@aws-sdk/client-dynamodb";
+import { KMSClient, ScheduleKeyDeletionCommand } from "@aws-sdk/client-kms";
 import { DescribeActiveReceiptRuleSetCommand, SESClient, SetActiveReceiptRuleSetCommand } from "@aws-sdk/client-ses";
 import { DeleteBucketCommand, DeleteObjectsCommand, ListObjectVersionsCommand, S3Client } from "@aws-sdk/client-s3";
 import { DeleteEmailIdentityCommand, NotFoundException, SESv2Client } from "@aws-sdk/client-sesv2";
@@ -109,6 +110,10 @@ async function deleteKept(type: string, id: string) {
     case "AWS::DynamoDB::Table":
       await dynamodb.send(new DeleteTableCommand({ TableName: id }));
       await waitUntilTableNotExists({ client: dynamodb, maxWaitTime: 300 }, { TableName: id });
+      return;
+    case "AWS::KMS::Key":
+      // KMS deletes a key only after a waiting period, seven days at least.
+      await new KMSClient({ region }).send(new ScheduleKeyDeletionCommand({ KeyId: id, PendingWindowInDays: 7 }));
       return;
     default:
       throw new Error(`Don't know how to delete the kept ${type} ${id}. Delete it by hand.`);

@@ -91,6 +91,12 @@ export async function devToolsSession(endpoint: string, headers: Record<string, 
       return settled();
     },
     fill: (index, value) => act(`(${fill})(${index}, ${JSON.stringify(value)})`),
+    async typeIn(index, value) {
+      // The field is emptied and focused by script, and the value goes as typed text, never in a script.
+      await evaluate(`(${fill})(${index}, "")`);
+      await cdp.send("Input.insertText", { text: value }, page);
+      return act(`(${changed})(${index})`);
+    },
     choose: (index, option) => act(`(${choose})(${index}, ${JSON.stringify(option ?? null)})`),
     click: (index) => act(`(${click})(${index})`),
     submit: (index) => act(`(${submit})(${index})`),
@@ -224,6 +230,10 @@ const fill = `(index, value) => {
   Object.getOwnPropertyDescriptor(prototype, "value").set.call(element, value);
   element.dispatchEvent(new Event("input", { bubbles: true }));
   element.dispatchEvent(new Event("change", { bubbles: true }));
+}`;
+
+const changed = `(index) => {
+  document.querySelector('[data-duva-element="' + index + '"]').dispatchEvent(new Event("change", { bubbles: true }));
 }`;
 
 const choose = `(index, option) => {

@@ -94,6 +94,10 @@ export const environmentVariables = {
   apiUrlParameter: "API_URL_PARAMETER",
   /** The URL of managed login, whose authorize and token endpoints MCP clients sign humans in at. */
   signInUrl: "SIGN_IN_URL",
+  /** The app client the API mails humans sign-in codes through, as for revealing a secret (ADR-0039). */
+  signInClientId: "SIGN_IN_CLIENT_ID",
+  /** The ARN of the stack's KMS key, which seals the humans' secrets (ADR-0039). */
+  secretsKey: "SECRETS_KEY",
   /** The user pool's app client MCP clients sign in through. */
   mcpClientId: "MCP_CLIENT_ID",
   /** The conversation Lambda, which the MCP Lambda invokes to run each turn it prepares. */
