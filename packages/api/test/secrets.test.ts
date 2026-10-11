@@ -50,7 +50,19 @@ const membership = { kind: "other" as const, name: "Membership", value: "SJ-4471
 const visa = { kind: "card" as const, name: "Visa", number: "4242 4242 4242 4242", expiry: "12/29", cvc: "123", cardholder: "Linus Torvalds" };
 const limits = { currency: "SEK", perPayment: "100.00", perMonth: "150.00" };
 /** Every value of the secrets above, none of which may reach a model, a turn, a change or a log. */
-const values = [login.username, login.password, "GEZDGNBVGY3TQOJQ", seedsCode, membership.value, "4242424242424242", "4242 4242 4242 4242", "12/29", "Linus Torvalds"];
+const values = [login.username, login.password, "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ", seedsCode, membership.value, "4242424242424242", "4242 4242 4242 4242", "12/29", "123", "Linus Torvalds"];
+
+/**
+ * Whether the text holds the value as a value of its own, never as part of a longer run of
+ * letters, digits and hyphens. Every segment of a UUID and every number in an ISO date lies in
+ * such a run, as 049123 in an ID or .123Z in a time, so neither can hold a value, however short.
+ */
+const holds = (text: string, value: string) => new RegExp(`(?<![A-Za-z0-9-])${value.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")}(?![A-Za-z0-9-])`).test(text);
+
+/** Expects none of the values in any of the texts. */
+const holdsNone = (texts: Record<string, string>, among = values) => {
+  for (const [where, text] of Object.entries(texts)) expect(among.filter((value) => holds(text, value)), where).toEqual([]);
+};
 
 /** What was logged, as CloudWatch Logs keeps the Lambdas' and the runtime's lines. */
 const logged: string[] = [];
@@ -125,7 +137,7 @@ test("a human keeps logins, cards and other values, and listing them shows names
     { name: "Visa", kind: "card", lastFour: "4242", oneTimeCodes: undefined, limits: undefined },
   ]);
   expect(read).toMatchObject({ name: "Visa", uses: [] });
-  for (const value of ["correct horse", "SJ-4471", "12/29", "GEZDGNBV"]) expect(JSON.stringify([listed, read])).not.toContain(value);
+  holdsNone({ listed: JSON.stringify([listed, read]) });
   // An admin and another human list only their own, and Linus's are none of theirs.
   for (const other of [ada, grace]) {
     expect((await other.GET("/secrets")).data!.secrets).toEqual([]);
@@ -228,12 +240,7 @@ test("Coo logs in with a stored login and its one-time code, and fills a stored 
   expect(lastResult(pages()[2]!.messages)).toContain(`[2] field (password) "Password", holding "[Example Shop password]"`);
   expect(lastResult(pages()[7]!.messages)).toContain("Your membership number is [Membership value].");
   const kept_ = await everythingKept(shop);
-  for (const value of values) {
-    expect(JSON.stringify(modelRequests)).not.toContain(value);
-    expect(JSON.stringify(events)).not.toContain(value);
-    expect(kept_).not.toContain(value);
-    expect(logged.join("\n")).not.toContain(value);
-  }
+  holdsNone({ "model requests": JSON.stringify(modelRequests), "the turn's events": JSON.stringify(events), "what Duva kept": kept_, logs: logged.join("\n") });
   const run = { turn: (await linus.GET("/mailbox-agent")).data!.turns.find(({ from }) => from === "human")!.id };
   expect((await linus.GET("/secrets/{secret}", { params: { path: { secret: kept.id } } })).data!.uses).toEqual([
     { at: expect.any(String), kind: "filled", site: "example.net", part: "code", run },
@@ -292,11 +299,7 @@ test("a card pays within its limits: Duva types it into the checkout, the month 
     { kind: "paid", part: "number", amount: "49.90" },
   ]);
   const kept = await everythingKept(shop);
-  for (const value of ["4242424242424242", "12/29", "123\"", "Linus Torvalds"]) {
-    expect(JSON.stringify(modelRequests)).not.toContain(value);
-    expect(kept).not.toContain(value);
-    expect(logged.join("\n")).not.toContain(value);
-  }
+  holdsNone({ "model requests": JSON.stringify(modelRequests), "what Duva kept": kept, logs: logged.join("\n") });
 });
 
 test("a payment above the card's limits stops the run and waits in Approvals with its site, amount, card and what it is for, and once approved, a fresh run pays it", async () => {
@@ -371,7 +374,7 @@ test("a run of the same turn again, as Think harder, never pays twice, and a run
 
   expect(posts(requests)).toHaveLength(1);
   expect(lastResult(coo()[3]!.messages)).toMatch(/^Not done: /);
-  expect(JSON.stringify(coo()[3]!.messages)).not.toContain("4242");
+  holdsNone({ "Coo's messages": JSON.stringify(coo()[3]!.messages) });
   expect(lastResult(coo()[5]!.messages)).toBe("Not done: It stopped at a payment step on example.net, since it was given no card to pay with.");
 });
 
