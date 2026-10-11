@@ -195,12 +195,46 @@ export function changeSaid(change: Change, { who, agent, you }: Named, message?:
     case "taskStarted":
       return `${who} started a task.`;
     case "conversationTurn": {
-      // A turn names the human who asked, then what they asked. How it went follows unless it simply answered.
-      const asked = change.asked === undefined ? `${who} asked ${agent} something` : `${who} asked ${agent} “${change.asked}”`;
+      // A turn names the human who asked, or who mailed it, then what they asked. How it went follows unless it simply answered.
+      const asking = change.byMail === undefined ? `${who} asked ${agent}` : `${change.byMail} mailed ${agent}`;
+      const asked = change.asked === undefined ? `${asking} something` : `${asking} “${change.asked}”`;
       if (change.outcome === "failed") return `${asked}, and it couldn't answer.`;
       if (change.outcome === "capReached") return `${asked}, and it stopped at the spend cap.`;
       if (change.drafts.length > 0) return `${asked}, and it wrote ${change.drafts.length === 1 ? "a draft" : `${change.drafts.length} drafts`}.`;
       return change.asked === undefined ? `${asked}.` : asked;
+    }
+    case "mailToCoo": {
+      const from = change.from ?? "someone";
+      switch (change.event) {
+        case "refused":
+          return `${from} mailed ${agent}'s address, but may not ask it, so the mail was dropped.`;
+        case "verifying":
+          return change.codeMailed === true ? `${agent} mailed ${from} a code, to confirm a request was theirs.` : `A request from ${from} waits for the code ${agent} mailed them.`;
+        case "wrongCode":
+          return `${from} replied with another code than ${agent} mailed them, so their request still waits.`;
+        case "lateCode":
+          return `${from} brought ${agent}'s code back more than an hour after it was mailed, so their request wasn't taken.`;
+        case "verified":
+          return `${from} brought ${agent}'s code back, so it took their request.`;
+        case "neverVerified":
+          return `No code came back from ${from} within the hour, so ${agent} dropped their request.`;
+        case "answered":
+          return `${agent} mailed ${from} its answer, with what it did.`;
+        case "followedUp":
+          return `${agent} mailed ${from} that ${
+            {
+              sent: "the send it waited on was sent",
+              rejected: "the send it waited on wasn't approved",
+              failed: "the send it waited on couldn't be sent",
+              approved: "the payment it waited on was approved",
+              declined: "the payment it waited on was declined",
+              paid: "it paid the payment that was approved",
+            }[change.outcome ?? "sent"]
+          }.`;
+        case "replyFailed":
+          return `${agent} couldn't mail ${from}, as SES didn't send it.`;
+      }
+      return `${agent} got mail at its address.`;
     }
     case "agentHandedOver":
       return `${who} handed ${change.task === undefined ? "a turn" : "a task"} to ${models[change.handover.to]}, since ${handoverWhy[change.handover.reason]}.`;

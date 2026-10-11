@@ -479,8 +479,13 @@ async function mailAlert({ table, outbound }: Sender, alert: { sponsor: string; 
     await mailingSettled(table, alert, error instanceof Refused ? "failed" : "unclear");
     return;
   }
-  await mailingSettled(table, alert, "sent", [{ Put: { TableName: table.name, Item: { ...systemMailKey(sesMessageId), [timeToLiveAttribute]: Math.floor(Date.now() / 1000) + systemMailKept } } }]);
+  await mailingSettled(table, alert, "sent", [systemMailRecord(table, sesMessageId)]);
 }
+
+/** The record that Duva sent the message SES gave the ID, as itself or as Coo from its address (ADR-0040), so its arrival is known for Duva's own. */
+export const systemMailRecord = (table: Table, sesMessageId: string): TransactItem => ({
+  Put: { TableName: table.name, Item: { ...systemMailKey(sesMessageId), [timeToLiveAttribute]: Math.floor(Date.now() / 1000) + systemMailKept } },
+});
 
 /** The record that Duva sent the message SES gave the ID from its system address. */
 const systemMailKey = (sesMessageId: string) => ({ [pk]: sesMessagePartition(sesMessageId), [sk]: "system-mail" });

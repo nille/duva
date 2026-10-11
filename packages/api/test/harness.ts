@@ -29,7 +29,8 @@ import type { Humans, SignInSender } from "../src/user-pool.ts";
 import type { SecretKeys } from "../src/secrets.ts";
 import type { RecordType } from "../src/dns-records.ts";
 import { createEraser, eraseBlockedSenders, type Eraser, type EraserEvent } from "../src/erasure.ts";
-import { syncRecipients } from "../src/receiving.ts";
+import { type Receiving, syncRecipients } from "../src/receiving.ts";
+import { createCooMail } from "../src/coo-mail.ts";
 import { eraseAgentsMailboxes } from "../src/removal.ts";
 import { createInbound } from "../src/inbound.ts";
 import { createFeeder, createIndexer, type IndexQueue, indexMailboxes, type QueuedTask } from "../src/indexing.ts";
@@ -143,6 +144,11 @@ export interface DuvaOptions {
    * deploys this one, so its mailbox agents are called Mailbox agent until then.
    */
   beforeCoo?: boolean;
+  /**
+   * Whether the deployment runs a version from before Coo had an address until setUp() deploys
+   * this one, so Coos given until then have none (ADR-0040).
+   */
+  beforeCooAddress?: boolean;
   /**
    * Whether the deployment runs a version from before one mailbox agent per human until setUp()
    * deploys this one, so each mailbox has a mailbox agent of its own until then, and each human a
@@ -359,6 +365,7 @@ export async function startDuva({
   undoWindow = 0,
   beforeMailboxAgents = false,
   beforeCoo = false,
+  beforeCooAddress = false,
   beforeOneCoo = false,
   earlierModelSettings,
   beforeLunaAndSol = false,
@@ -419,6 +426,7 @@ export async function startDuva({
   const taskRunner: TaskRunner = {
     run: async (task) => void handedTasks.push(JSON.parse(JSON.stringify(task)) as TaskRef),
     unsubscribe: async (job) => void handedTasks.push(JSON.parse(JSON.stringify({ unsubscribe: job })) as TaskRunnerEvent),
+    cooMail: async (job) => void handedTasks.push(JSON.parse(JSON.stringify({ cooMail: job })) as TaskRunnerEvent),
   };
   inbound = createInbound({ table, mailBucket, log: (line) => inboundLog.push(line), outbound: sending.outbound, bounces: ses.bounces, logos, unsubscriber, tasks: taskRunner });
   const receiving = { rules: ses.rules, bucket: mailBucketName, inboundFunction, suppressionList: sending.suppressionList };
@@ -514,6 +522,7 @@ export async function startDuva({
     emptyTrash: async (emptyTrash) => void handed.push({ emptyTrash }),
     eraseMailbox: async (eraseMailbox) => void handed.push({ eraseMailbox }),
     eraseSender: async (eraseSender) => void handed.push({ eraseSender }),
+    eraseCooRequests: async (eraseCooRequests) => void handed.push({ eraseCooRequests: JSON.parse(JSON.stringify(eraseCooRequests)) }),
   };
   const gatewayed = gateway(
     createApi({
@@ -560,6 +569,7 @@ export async function startDuva({
   let approvalLogDeployed = !beforeApprovalLog;
   let mailboxAgentsDeployed = !beforeMailboxAgents;
   let cooDeployed = !beforeCoo;
+  let cooAddressDeployed = !beforeCooAddress;
   let oneCooDeployed = !beforeOneCoo;
   let deliveriesDeployed = !beforeDeliveries;
   const api = async (request: Request) => {
@@ -578,6 +588,7 @@ export async function startDuva({
     if (!mailboxAgentsDeployed) await forgetMailboxAgents(table);
     if (!oneCooDeployed) await forgetOneCoo(table);
     if (!cooDeployed) await forgetCoo(table);
+    if (!cooAddressDeployed) await forgetCooAddresses(table, receiving);
     if (!deliveriesDeployed) await forgetDeliveries(table);
     if (!indexingHeld) await index();
     await giveTasks();
@@ -599,9 +610,11 @@ export async function startDuva({
   // The task runner, which Lambda invokes asynchronously with each task handed to it, one at a time.
   const runTask = createTaskRunner({ table, region, apiUrl: inProcess, fetch: api, runtime });
   const unsubscribe = createUnsubscribeRunner({ table, region, apiUrl: inProcess, runtime, bounces: ses.bounces });
+  const cooMail = createCooMail({ table, region, apiUrl: inProcess, runtime, embedder: titan, outbound: sending.outbound, mailBucket });
   const runHandedTasks = async () => {
     for (let task = handedTasks.shift(); task !== undefined; task = handedTasks.shift()) {
       if ("unsubscribe" in task) await unsubscribe(task.unsubscribe);
+      else if ("cooMail" in task) await cooMail(task.cooMail);
       else await runTask(task);
       // What the runner did reaches the sender through the table's stream.
       if (!sendsHeld) await stream.deliver();
@@ -745,8 +758,10 @@ export async function startDuva({
       await setUpScreeners(table);
       mailboxAgentsDeployed = true;
       cooDeployed = true;
+      cooAddressDeployed = true;
       oneCooDeployed = true;
       await giveMailboxAgents(table);
+      await syncRecipients(table, receiving);
       await carryOverModelChoices(table);
       await keepEarlierModels(table);
       approvalLogDeployed = true;
@@ -1068,6 +1083,17 @@ async function forgetCoo(table: Table) {
     }),
   );
   for (const item of Items) await table.client.send(new PutItemCommand({ TableName: table.name, Item: { ...item, name: { S: "Mailbox agent" } } }));
+}
+
+/** Removes what a version from before Coo had an address didn't write: each Coo's address, which SES then refuses mail to. */
+async function forgetCooAddresses(table: Table, receiving: Receiving) {
+  const { Items = [] } = await table.client.send(
+    new ScanCommand({ TableName: table.name, FilterExpression: "attribute_exists(coo) OR #sk = :pointer", ExpressionAttributeNames: { "#sk": tableKey.sortKey }, ExpressionAttributeValues: { ":pointer": { S: "coo-address" } } }),
+  );
+  for (const item of Items) {
+    await table.client.send(new DeleteItemCommand({ TableName: table.name, Key: { [tableKey.partitionKey]: item[tableKey.partitionKey]!, [tableKey.sortKey]: item[tableKey.sortKey]! } }));
+  }
+  if (Items.length > 0) await syncRecipients(table, receiving);
 }
 
 /** Removes what a version from before the approval log didn't write: each decision's listing in its approver's log. */

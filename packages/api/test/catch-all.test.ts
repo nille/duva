@@ -181,7 +181,8 @@ test("while a catch-all is set, the receipt rules list its domain and alias doma
   const whileSet = listed();
   await ada.DELETE("/domains/{domain}/catch-all", { params: { path: { domain: "example.com" } } });
 
-  const addresses = ["grace@example.com", "grace@example.fi", "grace@example.se", "katherine@example.com", "katherine@example.fi", "katherine@example.se"];
+  // Each human's Coo has an address too, which the alias domains mirror as any (ADR-0040).
+  const addresses = ["grace", "grace-coo", "katherine", "katherine-coo"].flatMap((local) => ["com", "fi", "se"].map((tld) => `${local}@example.${tld}`)).sort();
   expect(whileSet).toEqual([...addresses, "example.com", "example.fi", "example.se"].sort());
   expect(listed()).toEqual(addresses);
 });

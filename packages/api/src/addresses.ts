@@ -93,6 +93,7 @@ export const removeAddress: OperationHandler = async (event, deployment, actor) 
   if ((await findGroup(deployment.table, address)) !== undefined) return refusal(409, `${address} is a group's address. Delete the group to remove it.`);
   const notFound = () => refusal(404, `The organization has no address ${JSON.stringify(address)}. List its addresses to find it.`);
   const found = (await allAddresses(deployment.table)).find((each) => each.address === address);
+  if (found?.coo !== undefined) return refusal(409, `${address} is a Coo's address, which goes with its human. Give their Coo another with changeCooAddress instead.`);
   const mailbox = found?.mailbox === undefined ? undefined : await findMailbox(deployment.table, found.mailbox);
   if (mailbox === undefined) {
     // In case SES failed when it was removed.

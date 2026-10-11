@@ -9,6 +9,7 @@ import { listAlerts, markAlertsSeen } from "./alerts.ts";
 import { getAttachment, stopSharing } from "./attachments.ts";
 import { changeAgentSettings, createAgent, getAgentSettings, listAgents, listOrganizationAgents, pauseAgent, pausedRefusal, removeAgent, rotateAgentKey, unpauseAgent } from "./agents.ts";
 import type { AuthorizerContext } from "./authorizer.ts";
+import { changeCooAddress, changeCooSenders, getCooAddress } from "./coo-address.ts";
 import { clearConversation, getMailboxAgent, getMailboxAgentRouting, getMailboxAgentSpend, signCooOut } from "./conversation.ts";
 import { addDomain, changeDomain, clearCatchAll, getDomain, listDomains, removeDomain, setCatchAll } from "./domains.ts";
 import { listOrganizationChanges } from "./changes.ts";
@@ -156,6 +157,9 @@ export const handlers: Record<OperationId, OperationHandler> = {
   deleteSecret,
   revealSecret,
   useSecret,
+  getCooAddress,
+  changeCooSenders,
+  changeCooAddress,
   getScreener,
   switchScreener,
   listSenders,

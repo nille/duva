@@ -85,7 +85,7 @@ test("a mailbox's owner must be a human in the organization", async () => {
   expect(error?.message).toMatch(/no human "nobody"/);
 });
 
-test("creating a mailbox and its address are in the change feed, attributed to the admin, before its mailbox agent", async () => {
+test("creating a mailbox and its address are in the change feed, attributed to the admin, before its mailbox agent and its address", async () => {
   const { ada, graceId } = await withAgent();
   const { data: admin } = await ada.GET("/whoami");
   const { data: before } = await ada.GET("/organization/changes");
@@ -97,6 +97,8 @@ test("creating a mailbox and its address are in the change feed, attributed to t
     { position: before!.position + 1, at: expect.any(String), actor: admin?.id, type: "mailboxAdded", mailbox },
     { position: before!.position + 2, at: expect.any(String), actor: admin?.id, type: "addressAdded", address: "grace@example.com", mailbox: mailbox?.id },
     expect.objectContaining({ type: "actorAdded", added: expect.objectContaining({ kind: "agent", mailboxAgent: true }) }),
+    // Duva gives the mailbox agent its address (ADR-0040).
+    { position: before!.position + 4, at: expect.any(String), actor: "duva", type: "cooAddressChanged", human: graceId, address: "grace-coo@example.com" },
   ]);
 });
 

@@ -638,6 +638,43 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+  /humans/{human}/coo-address:
+    put:
+      operationId: changeCooAddress
+      summary: Give a human's Coo another address.
+      description: >
+        Only admins can change a Coo's address. It is an address of the
+        organization, on one of its standalone domains, that delivers to the
+        human's Coo rather than to a mailbox (ADR-0040). SES refuses mail to
+        the address it had from then on, and takes mail to the new one before
+        the call is answered. The change is recorded in the organization's
+        change feed under you.
+      x-cli-command: humans coo-address
+      parameters:
+        - $ref: "#/components/parameters/Human"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NewCooAddress"
+      responses:
+        "200":
+          description: The Coo's address, with the human whose Coo it delivers to.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Address"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
   /agents:
     post:
       operationId: createAgent
@@ -2937,6 +2974,67 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+  /mailbox-agent/address:
+    get:
+      operationId: getCooAddress
+      summary: Read your Coo's address, and who may mail it to ask your Coo.
+      description: >
+        Your Coo has an address of the organization, by default your default
+        address's local part with -coo, such as ada-coo@example.com, which an
+        admin can change. Mail to it, and to its plus-tagged addresses, asks
+        your Coo, as Ask Coo does, and is never filed in a mailbox. Your own
+        addresses may always mail it, and so may the addresses you list.
+        Mail from anyone else is dropped. Coo takes a request at once when
+        DMARC passed for its sender's domain, or, from the organization's own
+        addresses, when Duva sent it. Otherwise it first mails the sender a
+        code, and takes the request when a reply from that address brings
+        the code back within an hour. Coo answers the From address, never a
+        Reply-To, from its address, saying what it did. Each request is a
+        turn of your conversation, by mail from its sender.
+      x-cli-command: mailbox-agent address
+      responses:
+        "200":
+          description: Your Coo's address and who may mail it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CooAddress"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: changeCooSenders
+      summary: List who may mail your Coo's address, beside your own addresses.
+      description: >
+        Replaces the addresses you listed with those given. Your own
+        addresses may always mail it, so they needn't be listed. Mail from
+        an address that isn't allowed is dropped, and noted in your Coo's
+        activity without what it says.
+      x-cli-command: mailbox-agent senders
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CooSendersChange"
+      responses:
+        "200":
+          description: Your Coo's address and who may mail it, as changed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CooAddress"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /mailboxes/{mailbox}/screener:
     get:
       operationId: getScreener
@@ -5318,7 +5416,7 @@ components:
       type: object
       additionalProperties: false
       required: [address]
-      description: An address on one of the organization's domains, and the mailbox it delivers to, or that it is a group.
+      description: An address on one of the organization's domains, and the mailbox it delivers to, or that it is a group, or a Coo's.
       properties:
         address:
           type: string
@@ -5326,10 +5424,54 @@ components:
         mailbox:
           type: string
           description: The ID of the mailbox it delivers to.
+        coo:
+          type: string
+          description: Present when the address is a Coo's, the ID of the human whose Coo it delivers to, rather than to a mailbox (ADR-0040).
         group:
           type: boolean
           const: true
           description: Present when the address is a group's.
+    CooAddress:
+      type: object
+      additionalProperties: false
+      required: [ownAddresses, allowedSenders]
+      description: A human's Coo's address, and who may mail it to ask their Coo (ADR-0040).
+      properties:
+        address:
+          type: string
+          description: Coo's address. Absent while it has none, as when its domain was removed, until an admin gives it one.
+          examples: ["ada-coo@example.com"]
+        ownAddresses:
+          type: array
+          description: The human's own addresses, their sign-in address and their mailboxes', which may always mail it.
+          items:
+            type: string
+        allowedSenders:
+          type: array
+          description: The other addresses the human listed, which may mail it too, in alphabetical order.
+          items:
+            type: string
+    CooSendersChange:
+      type: object
+      additionalProperties: false
+      required: [allowedSenders]
+      properties:
+        allowedSenders:
+          type: array
+          maxItems: 100
+          description: Every address beside your own that may mail your Coo, replacing those you listed.
+          items:
+            type: string
+            examples: ["assistant@example.org"]
+    NewCooAddress:
+      type: object
+      additionalProperties: false
+      required: [address]
+      properties:
+        address:
+          type: string
+          description: The new address, on one of the organization's standalone domains, without a plus tag.
+          examples: ["ada-coo@example.com"]
     AddressList:
       type: object
       additionalProperties: false
@@ -5921,6 +6063,7 @@ components:
         - $ref: "#/components/schemas/TaskEnded"
         - $ref: "#/components/schemas/AgentHandedOver"
         - $ref: "#/components/schemas/ConversationTurnTaken"
+        - $ref: "#/components/schemas/MailToCoo"
         - $ref: "#/components/schemas/MailboxAgentsMerged"
         - $ref: "#/components/schemas/LinkedFileDownloaded"
         - $ref: "#/components/schemas/SharingStopped"
@@ -5974,6 +6117,7 @@ components:
           taskEnded: "#/components/schemas/TaskEnded"
           agentHandedOver: "#/components/schemas/AgentHandedOver"
           conversationTurn: "#/components/schemas/ConversationTurnTaken"
+          mailToCoo: "#/components/schemas/MailToCoo"
           mailboxAgentsMerged: "#/components/schemas/MailboxAgentsMerged"
           linkedFileDownloaded: "#/components/schemas/LinkedFileDownloaded"
           sharingStopped: "#/components/schemas/SharingStopped"
@@ -6600,6 +6744,9 @@ components:
             harder:
               type: boolean
               description: Whether the human asked the harder model to think harder about their last turn.
+            byMail:
+              type: string
+              description: Present for a turn that came by mail to the human's Coo's address, the address that mailed it (ADR-0040).
             allMailboxes:
               type: boolean
               description: >-
@@ -6614,6 +6761,67 @@ components:
               type: number
               minimum: 0
               description: What the turn's model calls cost, in US cents.
+    MailToCoo:
+      allOf:
+        - $ref: "#/components/schemas/ChangeBase"
+        - type: object
+          required: [type, agent, human, request, event]
+          description: >-
+            Mail came to the human's Coo's address, or Coo mailed about it
+            (ADR-0040), recorded in the feed of the first of the human's
+            mailboxes, naming the mailbox agent. It keeps none of what the
+            mail says.
+          properties:
+            type:
+              type: string
+              const: mailToCoo
+            agent:
+              type: string
+              description: The ID of the mailbox agent.
+            human:
+              type: string
+              description: The ID of the human whose Coo it is.
+            request:
+              type: string
+              description: The ID SES gave the mail, which each event about the same request names.
+            from:
+              type: string
+              description: The address that mailed it, or that Coo mailed.
+            event:
+              type: string
+              enum: [refused, verifying, wrongCode, lateCode, verified, neverVerified, answered, followedUp, replyFailed]
+              description: >-
+                What happened: refused, its sender may not ask Coo, so it was
+                dropped; verifying, its sender wasn't proven, so Coo waits for
+                the code it mailed them; wrongCode, a reply brought another
+                code; lateCode, a reply brought the code more than an hour
+                after it was mailed; verified, the code came back in time, so
+                Coo took the request; neverVerified, no code came back within
+                the hour, so the request was dropped; answered, Coo mailed its
+                answer, with what it did; followedUp, Coo mailed how a send or
+                a payment that waited for the human was decided; replyFailed, SES didn't
+                send Coo's mail.
+            codeMailed:
+              type: boolean
+              description: With verifying, whether Coo mailed a code now, or the request waits for one it mailed the sender within the hour.
+            results:
+              type: array
+              description: With answered and followedUp, what Coo said it did, each action with how it went, as its mail said it.
+              items:
+                type: string
+            draft:
+              type: string
+              description: With followedUp, the ID of the draft whose send waited.
+            payment:
+              type: string
+              description: With followedUp, the ID of the payment that waited.
+            outcome:
+              type: string
+              enum: [sent, rejected, failed, approved, declined, paid]
+              description: >-
+                With followedUp, how what waited was decided: a send sent,
+                rejected, or failed, or a payment approved, declined, or paid
+                once a later run paid it.
     TaskEnded:
       allOf:
         - $ref: "#/components/schemas/ChangeBase"
@@ -8787,6 +8995,7 @@ components:
         - $ref: "#/components/schemas/MailboxHandedOver"
         - $ref: "#/components/schemas/MailboxDeleted"
         - $ref: "#/components/schemas/MailboxAgentsMerged"
+        - $ref: "#/components/schemas/CooAddressChanged"
         - $ref: "#/components/schemas/RetiredChange"
       discriminator:
         propertyName: type
@@ -8813,6 +9022,7 @@ components:
           mailboxHandedOver: "#/components/schemas/MailboxHandedOver"
           mailboxDeleted: "#/components/schemas/MailboxDeleted"
           mailboxAgentsMerged: "#/components/schemas/MailboxAgentsMerged"
+          cooAddressChanged: "#/components/schemas/CooAddressChanged"
           agentAdminChanged: "#/components/schemas/RetiredChange"
           setupAsked: "#/components/schemas/RetiredChange"
           setupApproved: "#/components/schemas/RetiredChange"
@@ -8975,6 +9185,25 @@ components:
             mailbox:
               type: string
               description: The ID of the mailbox it delivers to.
+    CooAddressChanged:
+      allOf:
+        - $ref: "#/components/schemas/ChangeBase"
+        - type: object
+          required: [type, human]
+          description: A human's Coo was given its address, another, or none, as when the human was removed (ADR-0040).
+          properties:
+            type:
+              type: string
+              const: cooAddressChanged
+            human:
+              type: string
+              description: The ID of the human whose Coo it is.
+            address:
+              type: string
+              description: The address it has now. Absent when it has none.
+            before:
+              type: string
+              description: The address it had before, if any.
     MailboxAgentsMerged:
       allOf:
         - $ref: "#/components/schemas/ChangeBase"
@@ -9358,6 +9587,12 @@ components:
         harder:
           type: boolean
           description: Whether the agent's turn is the harder model's answer to the turn before, as you asked it to think harder.
+        byMail:
+          type: string
+          description: >-
+            Present for a turn that came by mail to your Coo's address: the
+            address that mailed it, for yours, and for the agent's, the
+            address it mailed its answer to (ADR-0040).
         firstMemory:
           type: boolean
           description: >-

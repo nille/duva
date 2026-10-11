@@ -372,3 +372,43 @@ test("a turn in which Coo browsed says in a sentence what it did on each site", 
   await page.reload();
   await expect.poll(() => page.getByRole("list", { name: "What it did on web pages" }).getByRole("listitem").count(), wait).toBe(1);
 });
+
+test("a human sees their Coo's address in Settings, lists another sender who may mail it, and removes one", budget, async () => {
+  const { page, signIn, duva, grace } = await withMailbox();
+  await grace.PATCH("/mailbox-agent/address", { body: { allowedSenders: ["old@example.net"] } });
+  await signIn("grace@example.org");
+  await page.getByRole("link", { name: "Settings", exact: true }).click();
+  await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: /^Preferences/ }).click();
+  const sheet = page.getByRole("region", { name: "Coo's address" });
+  await sheet.getByText("grace-coo@example.com").waitFor(wait);
+  expect(await sheet.getByRole("list", { name: "Always allowed" }).getByRole("listitem").allInnerTexts()).toEqual(["grace@example.org", "grace@example.com"]);
+
+  const field = sheet.getByRole("textbox", { name: "Another sender" });
+  await field.fill("grace@example.com");
+  await field.press("Enter");
+  await sheet.getByText("grace@example.com is already allowed.").waitFor(wait);
+  await field.fill("Assistant@Example.org");
+  await field.press("Enter");
+  await sheet.getByRole("button", { name: "Remove old@example.net" }).click();
+  expect(await sheet.getByRole("list", { name: "Also allowed" }).getByRole("listitem").allInnerTexts()).toEqual([expect.stringContaining("assistant@example.org")]);
+  await sheet.getByRole("button", { name: "Save" }).click();
+  await sheet.getByText("Saved. Coo takes mail from these from now on.").waitFor(wait);
+
+  const { data } = await duva.signIn("grace@example.org").GET("/mailbox-agent/address");
+  expect(data!.allowedSenders).toEqual(["assistant@example.org"]);
+});
+
+test("a request mailed to Coo shows in Ask Coo as by mail from its sender, and Coo's answer as mailed to them", budget, async () => {
+  const model = scripted(() => [{ text: "Nothing new." }]);
+  const { page, signIn, duva, grace } = await withMailbox({ model });
+  await grace.PATCH("/mailbox-agent/address", { body: { allowedSenders: ["assistant@example.net"] } });
+  await duva.receive("From: assistant@example.net\r\nTo: grace-coo@example.com\r\nSubject: Anything new?\r\nMessage-ID: <ask-1@example.net>\r\n\r\nFor Grace.\r\n", { to: ["grace-coo@example.com"] });
+  await signIn("grace@example.org");
+
+  await page.getByRole("link", { name: "Ask Coo", exact: true }).click();
+  const turns = page.locator(".ask-turn");
+  await expect.poll(() => turns.count(), wait).toBe(2);
+  expect(await turns.nth(0).locator(".ask-who").innerText()).toMatch(/assistant@example\.net.*by mail/s);
+  expect(await turns.nth(0).locator(".ask-text").innerText()).toBe("Subject: Anything new?\n\nFor Grace.");
+  expect(await turns.nth(1).locator(".ask-who").innerText()).toMatch(/Coo.*mailed to assistant@example\.net/s);
+});

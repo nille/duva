@@ -27,6 +27,7 @@
     "./dns-records": "./src/dns-records.ts",
     "./indexing": "./src/indexing.ts",
     "./mailbox-agents": "./src/mailbox-agents.ts",
+    "./coo-address": "./src/coo-address.ts",
     "./removal": "./src/removal.ts",
     "./suggestions": "./src/suggestions.ts",
     "./tasks": "./src/tasks.ts",

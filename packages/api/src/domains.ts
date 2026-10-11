@@ -31,6 +31,7 @@ import {
 } from "./organization.ts";
 import { forgetDomainLogo } from "./own-logos.ts";
 import { maxAddresses, ruleRecipients, syncRecipients } from "./receiving.ts";
+import { freeCooAddress } from "./coo-address.ts";
 
 type Domain = components["schemas"]["Domain"];
 type DnsRecord = components["schemas"]["DnsRecord"];
@@ -175,7 +176,9 @@ export const removeDomain: OperationHandler = async (event, deployment, actor) =
   // A dry run changes nothing.
   if (jsonBody(event)?.dryRun === true) return removal(false);
   // A group's address goes with its group.
-  const remove = ({ address, group }: Address) => (group ? removeGroup(deployment.table, { address, by: actor!.id }) : removeAddress(deployment.table, { address, by: actor!.id }));
+  // A Coo's address goes, and its Coo has none until an admin gives it another (ADR-0040).
+  const remove = ({ address, group, coo }: Address) =>
+    group ? removeGroup(deployment.table, { address, by: actor!.id }) : coo !== undefined ? freeCooAddress(deployment.table, { human: coo, by: actor!.id }) : removeAddress(deployment.table, { address, by: actor!.id });
   for (const each of own) await remove(each);
   // Mail stays where it is. Without the identities, nothing sends from the domains.
   for (const each of removed) await deployment.identities.delete(each);

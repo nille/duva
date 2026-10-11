@@ -12,6 +12,7 @@
 // sender whose mail goes nowhere (ADR-0025).
 import { DeleteCommand, GetCommand, PutCommand, QueryCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import { taskPrefix } from "./tasks.ts";
+import { type CooRequestsErased, eraseCooRequests, expireCooRequests } from "./coo-requests.ts";
 import { TransactionCanceledException } from "@aws-sdk/client-dynamodb";
 import { InvokeCommand, type LambdaClient } from "@aws-sdk/client-lambda";
 import type { ScheduledEvent } from "aws-lambda";
@@ -74,6 +75,11 @@ export interface Eraser {
   emptyTrash(emptied: TrashEmptied): Promise<void>;
   eraseMailbox(deleted: MailboxDeleted): Promise<void>;
   eraseSender(erased: SenderErased): Promise<void>;
+  /**
+   * Erases the requests mailed to the human's Coo, with their raw messages (ADR-0040), those given
+   * by ID too, as removing the human may delete their partition first.
+   */
+  eraseCooRequests(requests: CooRequestsErased): Promise<void>;
 }
 
 /**
@@ -399,7 +405,7 @@ async function finishErasures(table: Table, { mailBucket, uploads }: Buckets, in
 const receivedAs = (rawKey: string): string[] => (rawKey.startsWith(inboundPrefix) ? [rawKey.slice(inboundPrefix.length)] : []);
 
 /** What invokes the eraser: its daily schedule, emptying a Trash, deleting a mailbox, or sending a sender's mail nowhere. */
-export type EraserEvent = Pick<ScheduledEvent, "time"> | { emptyTrash: TrashEmptied } | { eraseMailbox: MailboxDeleted } | { eraseSender: SenderErased };
+export type EraserEvent = Pick<ScheduledEvent, "time"> | { emptyTrash: TrashEmptied } | { eraseMailbox: MailboxDeleted } | { eraseSender: SenderErased } | { eraseCooRequests: CooRequestsErased };
 
 /**
  * The eraser's handler. Either way it finishes what earlier runs left. The daily run then gives
@@ -409,10 +415,13 @@ export function createEraser({ table, mailBucket, uploads, indexQueue }: { table
   const buckets = { mailBucket, uploads };
   return async (event: EraserEvent): Promise<void> => {
     if ("emptyTrash" in event) return emptyTrash(table, buckets, indexQueue, event.emptyTrash);
+    if ("eraseCooRequests" in event) return eraseCooRequests(table, mailBucket, event.eraseCooRequests.human, event.eraseCooRequests.requests);
     // The deleted mailbox and the sender are listed, so finishing what is listed erases them.
     if ("eraseMailbox" in event || "eraseSender" in event) return finishErasures(table, buckets, indexQueue);
     try {
       await eraseExpired(table, buckets, indexQueue, new Date(event.time));
+      // Requests mailed to a Coo's address whose code never came back go too (ADR-0040).
+      await expireCooRequests(table, mailBucket, new Date(event.time));
     } finally {
       await compactIndexes(table, indexQueue, new Date(event.time));
     }
@@ -428,5 +437,6 @@ export function lambdaEraser(lambda: LambdaClient, functionName: string): Eraser
     emptyTrash: (emptyTrash) => invoke({ emptyTrash }),
     eraseMailbox: (eraseMailbox) => invoke({ eraseMailbox }),
     eraseSender: (eraseSender) => invoke({ eraseSender }),
+    eraseCooRequests: (eraseCooRequests) => invoke({ eraseCooRequests }),
   };
 }

@@ -741,6 +741,35 @@ export const operations = [
     ]
   },
   {
+    "operationId": "changeCooAddress",
+    "method": "put",
+    "path": "/humans/{human}/coo-address",
+    "routeKey": "PUT /humans/{human}/coo-address",
+    "summary": "Give a human's Coo another address.",
+    "description": "Only admins can change a Coo's address. It is an address of the organization, on one of its standalone domains, that delivers to the human's Coo rather than to a mailbox (ADR-0040). SES refuses mail to the address it had from then on, and takes mail to the new one before the call is answered. The change is recorded in the organization's change feed under you.",
+    "signIn": true,
+    "command": [
+      "humans",
+      "coo-address"
+    ],
+    "options": [
+      {
+        "name": "human",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The human's ID."
+      },
+      {
+        "name": "address",
+        "in": "body",
+        "type": "string",
+        "required": true,
+        "description": "The new address, on one of the organization's standalone domains, without a plus tag."
+      }
+    ]
+  },
+  {
     "operationId": "listAgents",
     "method": "get",
     "path": "/agents",
@@ -2990,6 +3019,42 @@ export const operations = [
         "type": "string",
         "required": false,
         "description": "For a card, what the payment is for, in a few words."
+      }
+    ]
+  },
+  {
+    "operationId": "getCooAddress",
+    "method": "get",
+    "path": "/mailbox-agent/address",
+    "routeKey": "GET /mailbox-agent/address",
+    "summary": "Read your Coo's address, and who may mail it to ask your Coo.",
+    "description": "Your Coo has an address of the organization, by default your default address's local part with -coo, such as ada-coo@example.com, which an admin can change. Mail to it, and to its plus-tagged addresses, asks your Coo, as Ask Coo does, and is never filed in a mailbox. Your own addresses may always mail it, and so may the addresses you list. Mail from anyone else is dropped. Coo takes a request at once when DMARC passed for its sender's domain, or, from the organization's own addresses, when Duva sent it. Otherwise it first mails the sender a code, and takes the request when a reply from that address brings the code back within an hour. Coo answers the From address, never a Reply-To, from its address, saying what it did. Each request is a turn of your conversation, by mail from its sender.",
+    "signIn": true,
+    "command": [
+      "mailbox-agent",
+      "address"
+    ],
+    "options": []
+  },
+  {
+    "operationId": "changeCooSenders",
+    "method": "patch",
+    "path": "/mailbox-agent/address",
+    "routeKey": "PATCH /mailbox-agent/address",
+    "summary": "List who may mail your Coo's address, beside your own addresses.",
+    "description": "Replaces the addresses you listed with those given. Your own addresses may always mail it, so they needn't be listed. Mail from an address that isn't allowed is dropped, and noted in your Coo's activity without what it says.",
+    "signIn": true,
+    "command": [
+      "mailbox-agent",
+      "senders"
+    ],
+    "options": [
+      {
+        "name": "allowedSenders",
+        "in": "body",
+        "type": "strings",
+        "required": true,
+        "description": "Every address beside your own that may mail your Coo, replacing those you listed."
       }
     ]
   },

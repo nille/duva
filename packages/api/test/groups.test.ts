@@ -300,8 +300,11 @@ test("an admin lists the groups, and their addresses among the organization's", 
     ],
   });
   expect((await ada.GET("/addresses")).data?.addresses).toEqual([
+    // Each human's Coo has an address of its own (ADR-0040).
+    { address: "alan-coo@example.com", coo: expect.any(String) },
     { address: "alan@example.com", mailbox: alans.path.mailbox },
     { address: "all@example.com", group: true },
+    { address: "grace-coo@example.com", coo: expect.any(String) },
     { address: "grace@example.com", mailbox: graces.path.mailbox },
     { address: "team@example.com", group: true },
   ]);

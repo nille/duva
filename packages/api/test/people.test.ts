@@ -96,7 +96,8 @@ test("a mailbox deleted with its human is erased everywhere Duva keeps its mail,
   expect(keeps(duva, "Hej. Till Grace.")).toBe(false);
   expect(duva.searchObjects().some((file) => file.includes("Till Grace"))).toBe(false);
   expect((await duva.receive(note("Efteråt", "grace@example.com"), { to: ["grace@example.com"] })).refused).toEqual(["grace@example.com"]);
-  expect(duva.receiptRules().flatMap(({ Recipients }) => Recipients)).toEqual(["linus@example.com"]);
+  // Grace's Coo's address went with her.
+  expect(duva.receiptRules().flatMap(({ Recipients }) => Recipients)).toEqual(["linus-coo@example.com", "linus@example.com"]);
   expect((await linus.GET("/mailboxes/{mailbox}", { params: { path: { mailbox: mailbox.id } } })).response.status).toBe(404);
   expect((await linus.GET("/mailboxes")).data).toEqual({ mailboxes: [{ ...kept, groups: [] }] });
 });
@@ -205,7 +206,8 @@ test("each change of a removal is in the organization's feed under the admin, an
   const { data: after } = await ada.GET("/organization/changes", { params: { query: { after: before!.position } } });
   const stamp = { position: expect.any(Number), at: expect.any(String), actor: adaId };
   // Her agents go first, the mailbox agent of her mailbox among them, in no particular order, and the
-  // mailbox handed over gets a mailbox agent its new owner sponsors.
+  // mailbox handed over gets a mailbox agent its new owner sponsors, with an address of its own while
+  // hers is still taken, which then goes with her (ADR-0040).
   const removedAgents = after!.changes.slice(0, 2);
   expect(removedAgents).toEqual(
     expect.arrayContaining([
@@ -216,6 +218,8 @@ test("each change of a removal is in the organization's feed under the admin, an
   expect(after?.changes.slice(2)).toEqual([
     { ...stamp, type: "mailboxHandedOver", mailbox: mailbox.id, from: graceActor.id, to: linusId },
     { ...stamp, actor: linusId, type: "actorAdded", added: expect.objectContaining({ name: "Coo", mailboxAgent: true, sponsor: linusId }) },
+    { ...stamp, actor: "duva", type: "cooAddressChanged", human: linusId, address: "grace-coo2@example.com" },
+    { ...stamp, type: "cooAddressChanged", human: graceActor.id, before: "grace-coo@example.com" },
     { ...stamp, type: "actorRemoved", removed: graceActor },
   ]);
   expect(before?.changes).toContainEqual(expect.objectContaining({ type: "actorAdded", added: graceActor }));

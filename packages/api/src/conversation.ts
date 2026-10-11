@@ -13,6 +13,7 @@ import { actorNamed } from "./alerting.ts";
 import { type OperationHandler, refusal } from "./operation-handler.ts";
 import type { Table } from "./deployment.ts";
 import { recordChanges } from "./feed.ts";
+import { cooRequestsErased } from "./coo-requests.ts";
 import { mailboxAgentIn, mailboxAgentOf, turnKey, turnPrefix } from "./mailbox-agents.ts";
 import { firstMemoryNoted } from "./memories.ts";
 import { type Actor, type Agent, allHumans, type Human, isAdmin, mailboxFeed, organizationSettings, ownedMailboxes } from "./organization.ts";
@@ -30,6 +31,8 @@ const turnsKept = 100;
 const turnsRead = 20;
 // The longest turn a human may ask, in characters.
 const longestWords = 10_000;
+// The most of a request by mail Coo reads, its forwarded mail and attachments included, in characters.
+const longestMail = 30_000;
 
 /** An answer to a turn: a refusal, or the stream of what happens. */
 export type TurnAnswer = { statusCode: number; body: { message: string } } | { statusCode: 200; events: AsyncIterable<ConversationEvent> };
@@ -61,15 +64,32 @@ export interface PreparedTurn {
 }
 
 /**
+ * A request that came by mail to the human's Coo's address (ADR-0040): the address that mailed it,
+ * and what the run reads beside its text, its forwarded mail and attachments.
+ */
+export interface ByMail {
+  from: string;
+  beside: string;
+}
+
+/**
  * Checks that the human may ask their mailbox agent, from the mailbox or All mailboxes, and writes
  * their turn, or refuses with what to do instead. Thinking harder asks from where the turn it answers
- * again was asked. `available` is whether AgentCore runs mailbox agents in the region.
+ * again was asked. `available` is whether AgentCore runs mailbox agents in the region. A request by
+ * mail is a turn from All mailboxes marked with its sender, whose run reads what came beside its text.
  */
-export async function prepareTurn({ table, region, apiUrl, available }: { table: Table; region: string; apiUrl: string; available: boolean }, human: Human, asked: TurnAsked): Promise<PreparedTurn | { statusCode: number; body: { message: string } }> {
+export async function prepareTurn(
+  { table, region, apiUrl, available }: { table: Table; region: string; apiUrl: string; available: boolean },
+  human: Human,
+  asked: TurnAsked,
+  mail?: ByMail,
+): Promise<PreparedTurn | { statusCode: number; body: { message: string } }> {
   if (!available) return refusal(503, runtimeMissing(region));
   const harder = asked.harder === true;
-  const words = typeof asked.words === "string" ? asked.words.trim() : "";
-  if (!harder && (words === "" || words.length > longestWords)) return refusal(400, `Ask Coo something, in at most ${longestWords} characters.`);
+  const given = typeof asked.words === "string" ? asked.words.trim() : "";
+  // A request by mail is read as far as Coo reads one, however long.
+  const words = mail === undefined ? given : given.slice(0, longestMail);
+  if (!harder && (words === "" || words.length > longestWords) && mail === undefined) return refusal(400, `Ask Coo something, in at most ${longestWords} characters.`);
   // Thinking harder answers the human's last turn again, with what came before it.
   const turns = await turnsOf(table, human.id, turnsRead + 2);
   const asking = turns.findLastIndex(({ from }) => from === "human");
@@ -86,14 +106,27 @@ export async function prepareTurn({ table, region, apiUrl, available }: { table:
   if ("refused" in started) return refusal(409, started.refused);
   const { start, month, cap } = started;
   const history = (harder ? turns.slice(0, asking) : turns).slice(-turnsRead);
-  const turn = harder ? turns[asking]! : await addTurn(table, human, { from: "human", ...(mailbox !== undefined && { mailbox: mailbox.id }), text: words, actions: [] });
+  const turn = harder
+    ? turns[asking]!
+    : await addTurn(table, human, { from: "human", ...(mailbox !== undefined && { mailbox: mailbox.id }), text: words, actions: [], ...(mail !== undefined && { byMail: mail.from }) });
   const payload: Omit<RunPayload, "token"> = {
     ...start,
     history: history.map(({ from, text, actions }) => ({ from, text, ...(from === "agent" && actions.length > 0 && { did: actionsRead(actions, "you") }) })),
-    words: turn.text,
+    words: mail === undefined ? turn.text : mailedWords(human, mail, turn.text),
   };
   return { payload, turn, human, agent, month, cap, ...(harder && { harder }) };
 }
+
+/** What the run reads of a request by mail: who sent it, its text and what came beside it, as far as Coo reads one. */
+const mailedWords = (human: Human, { from, beside }: ByMail, text: string) =>
+  [
+    `${from} mailed this to your address${from === human.email ? "" : `, which ${human.email} lets them do`}. Your answer is mailed back to ${from}, with what you did.`,
+    "",
+    text === "" ? "(The mail has no text.)" : text,
+    ...(beside === "" ? [] : ["", beside]),
+  ]
+    .join("\n")
+    .slice(0, longestMail);
 
 /**
  * Runs the prepared turn on the runtime, saying what happens as it goes, and writes the agent's
@@ -115,6 +148,7 @@ export async function* runTurn(table: Table, runtime: AgentRuntime, embedder: Em
     ...(decision && { decision }),
     ...(handover && { handover }),
     ...(harder && { harder }),
+    ...(turn.byMail !== undefined && { byMail: turn.byMail }),
     // Its first memory from mail, kept in this turn or a task before it, is said once (ADR-0036).
     ...((await firstMemoryNoted(table, human.id)) && { firstMemory: true }),
     ...(searches && { searches }),
@@ -122,7 +156,11 @@ export async function* runTurn(table: Table, runtime: AgentRuntime, embedder: Em
   };
   const answered = await addTurn(table, human, answer, turn.at);
   // Recorded before the stream ends, so a reader that stops at done still leaves it in the feed.
-  const change = { ...turnTaken(agent, human, turn.text, next.value, payload.model.model, harder), ...(payload.mailbox === undefined && { allMailboxes: true }) };
+  const change = {
+    ...turnTaken(agent, human, turn.text, next.value, payload.model.model, harder),
+    ...(turn.byMail !== undefined && { byMail: turn.byMail }),
+    ...(payload.mailbox === undefined && { allMailboxes: true }),
+  };
   await recordChanges(table, mailboxFeed(recordingMailbox(payload)), { by: agent.id, changes: [change], items: [] });
   yield { type: "done", turn: answered };
   await keepRouting(table, embedder, human, turn, { month, harder, decision, handover, alone: payload.model.model === payload.model.harder });
@@ -302,7 +340,7 @@ export async function turnsOf(table: Table, human: string, limit: number): Promi
     }),
   );
   return Items.reverse().map(
-    ({ id, at, from, mailbox, text, actions, outcome, model, decision, handover, harder, searches, browsed }) =>
+    ({ id, at, from, mailbox, text, actions, outcome, model, decision, handover, harder, byMail, searches, browsed }) =>
       ({
         id,
         at,
@@ -315,6 +353,7 @@ export async function turnsOf(table: Table, human: string, limit: number): Promi
         ...(decision !== undefined && { decision }),
         ...(handover !== undefined && { handover }),
         ...(harder !== undefined && { harder }),
+        ...(byMail !== undefined && { byMail }),
         ...(searches !== undefined && { searches }),
         ...(browsed !== undefined && { browsed }),
       }) as ConversationTurn,
@@ -355,6 +394,8 @@ export const clearConversation: OperationHandler = async (_event, deployment, ac
     if (Items.length === 0) break;
     await documents(table).send(new BatchWriteCommand({ RequestItems: { [table.name]: Items.map((Key) => ({ DeleteRequest: { Key } })) } }));
   }
+  // The requests mailed to Coo's address, which are turns, go with the conversation, attachments and all (ADR-0040).
+  await deployment.eraser.eraseCooRequests(await cooRequestsErased(table, actor!.id));
   return { statusCode: 200, body: { agent: asked.agent, turns: [] } satisfies components["schemas"]["MailboxAgentConversation"] };
 };
 

@@ -67,7 +67,10 @@ test("an admin lists every address in the organization, with the mailbox it deli
 
   expect(data).toEqual({
     addresses: [
+      // Each human's Coo has an address of its own, which delivers to no mailbox (ADR-0040).
+      { address: "ada-coo@example.com", coo: mailbox.owner },
       { address: "ada@example.com", mailbox: mailbox.id },
+      { address: "grace-coo@example.com", coo: gracesMailbox.owner },
       { address: "grace@example.com", mailbox: gracesMailbox.id },
       { address: "support@example.com", mailbox: gracesMailbox.id },
     ],
@@ -322,11 +325,11 @@ test("choosing the address that is already the default records nothing", async (
 
 test("past 500 addresses, as many as an SES receipt rule takes, Duva's rules share them, and an emptied rule goes", async () => {
   const { duva, ada, grace, mailbox, params, graces } = await withMailboxes();
-  const addresses = Array.from({ length: 499 }, (_, index) => `extra-${index}@example.com`);
+  const addresses = Array.from({ length: 497 }, (_, index) => `extra-${index}@example.com`);
   for (let start = 0; start < addresses.length; start += 5) {
     await Promise.all(addresses.slice(start, start + 5).map((address) => ada.POST("/addresses", { body: { address, mailbox: mailbox.id } })));
   }
-  // With ada@ and grace@, the organization has 501 addresses.
+  // With ada@ and grace@, and their Coos' addresses, the organization has 501 addresses.
   const rules = duva.receiptRules();
   expect(rules.map(({ Recipients = [] }) => Recipients.length).sort()).toEqual([1, 500]);
   expect(new Set(rules.flatMap(({ Recipients = [] }) => Recipients)).size).toBe(501);

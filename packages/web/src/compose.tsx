@@ -54,7 +54,7 @@ export interface InThread {
 const addressesIn = (field: string) => field.split(/[\s,;]+/).filter(Boolean);
 
 /** Whether the text is one email address, as Duva's API checks it. */
-const isEmailAddress = (text: string) => /^[^\s@<>",;]+@[^\s@<>",;]+\.[^\s@<>",;]+$/.test(text);
+export const isEmailAddress = (text: string) => /^[^\s@<>",;]+@[^\s@<>",;]+\.[^\s@<>",;]+$/.test(text);
 
 const fieldsOf = (draft: Draft): Fields => ({
   from: draft.from,

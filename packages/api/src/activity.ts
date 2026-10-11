@@ -36,6 +36,7 @@ const eventsPerPage = 50;
 /** The kind of each change in an agent's activity. A change of a type not listed is setup. */
 const kinds: Partial<Record<Change["type"], Kind>> = {
   conversationTurn: "conversations",
+  mailToCoo: "conversations",
   labelPromptSet: "tasks",
   labelPromptRemoved: "tasks",
   taskGiven: "tasks",
@@ -97,6 +98,8 @@ function failedOf(change: Change): boolean {
       return change.outcome === "failed";
     case "conversationTurn":
       return change.outcome !== "answered";
+    case "mailToCoo":
+      return change.event === "wrongCode" || change.event === "lateCode" || change.event === "neverVerified" || change.event === "replyFailed";
     case "unsubscribeAttempted":
       return change.outcome === "notOffered" || change.outcome === "failed";
     default:
@@ -204,7 +207,7 @@ async function activityAsked(event: Parameters<OperationHandler>[0], table: Tabl
  * isn't the sponsor reads. Any other field is left out, so a field added later stays out until
  * it is listed here.
  */
-const mailFree = new Set(["position", "at", "actor", "type", "task", "thread", "message", "draft", "approval", "payment", "decision", "label", "added", "removed", "spam", "screened", "delivery", "delivered", "agent", "before", "after", "on", "letIn", "outcome", "status", "feedback", "human", "threads", "drafts", "models", "handover", "harder", "cost", "method", "until", "setAsideAt", "allMailboxes", "merged"]);
+const mailFree = new Set(["position", "at", "actor", "type", "task", "thread", "message", "draft", "approval", "payment", "decision", "label", "added", "removed", "spam", "screened", "delivery", "delivered", "agent", "before", "after", "on", "letIn", "outcome", "status", "feedback", "human", "threads", "drafts", "models", "handover", "harder", "cost", "method", "until", "setAsideAt", "allMailboxes", "merged", "request", "event", "codeMailed"]);
 /** The fields of what SES reported about a send that say nothing of its recipients. */
 const feedbackFree = new Set(["kind", "at", "reason"]);
 /** The fields of a handover that say nothing of the mail, as what the everyday model said in asking for help can. */

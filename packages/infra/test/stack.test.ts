@@ -348,7 +348,7 @@ test("only the API and the sender write to the uploads bucket, the sender a forw
   for (const id of ["ApiHandler", "SenderHandler", "EraserHandler"]) expect(onBucket(id)).toContain("s3:AbortMultipartUpload");
 });
 
-test("only search, the indexer, the conversation Lambda, the API and the sender call Bedrock, each to embed with Titan and search also to translate with Nova Lite, in the deployment's region, and the API and the sender to suggest", () => {
+test("only search, the indexer, the conversation Lambda, the API, the sender and the task runner call Bedrock, each to embed with Titan and search also to translate with Nova Lite, in the deployment's region, and the API and the sender to suggest", () => {
   const model = (id: string) => ({ "Fn::Join": ["", ["arn:", { Ref: "AWS::Partition" }, ":bedrock:", { Ref: "AWS::Region" }, `::foundation-model/${id}`]] });
   const onBedrock = (prefix: string) => statements(prefix).filter(({ Action }) => [Action].flat().some((action) => action.startsWith("bedrock:")));
   // Each Bedrock statement invokes models and nothing else, and these are all the models invoked.
@@ -365,9 +365,11 @@ test("only search, the indexer, the conversation Lambda, the API and the sender 
   // The API embeds Coo's memories, and what they are searched for (ADR-0036), and the sender style notes (#156).
   expect(invoked("ApiHandler")).toContainEqual(model(embeddingModel));
   expect(invoked("SenderHandler")).toContainEqual(model(embeddingModel));
+  // The task runner runs requests mailed to Coo's address as turns, keeping their routing as the conversation Lambda does (ADR-0040).
+  expect(invoked("TaskRunnerHandler")).toEqual([model(embeddingModel)]);
   const others = ofType("AWS::Lambda::Function")
     .map(([id]) => id)
-    .filter((id) => !["SearchHandler", "IndexerHandler", "ConversationHandler", "ApiHandler", "SenderHandler"].some((name) => id.startsWith(name)) && onBedrock(id).length > 0);
+    .filter((id) => !["SearchHandler", "IndexerHandler", "ConversationHandler", "ApiHandler", "SenderHandler", "TaskRunnerHandler"].some((name) => id.startsWith(name)) && onBedrock(id).length > 0);
   expect(others).toEqual([]);
 });
 
@@ -1246,13 +1248,19 @@ test("the table's stream hands the task giver each change that may add a label, 
 test("the task runner runs the mailbox agent on its runtime for up to 15 minutes, and Lambda retries none of its runs", () => {
   const [runnerId, { Properties: runner }] = lambda("TaskRunnerHandler");
   expect(runner?.Timeout).toBe(900);
-  expect(Object.keys(runner?.Environment?.Variables ?? {}).sort()).toEqual([environmentVariables.agentRuntime, environmentVariables.apiUrlParameter, "NODE_OPTIONS", environmentVariables.tableName].sort());
+  expect(Object.keys(runner?.Environment?.Variables ?? {}).sort()).toEqual(
+    [environmentVariables.agentRuntime, environmentVariables.apiUrlParameter, environmentVariables.configurationSet, environmentVariables.mailBucket, "NODE_OPTIONS", environmentVariables.tableName].sort(),
+  );
   expect(actions("TaskRunnerHandler", "bedrock-agentcore").sort()).toEqual(["bedrock-agentcore:InvokeAgentRuntime", "bedrock-agentcore:StopRuntimeSession"]);
   expect(actions("TaskRunnerHandler", "ssm")).toEqual(["ssm:GetParameter"]);
   expect(actions("TaskRunnerHandler", "lambda")).toEqual([]);
-  expect(actions("TaskRunnerHandler", "bedrock")).toEqual([]);
-  // It bounces mail it unsubscribes from as a last resort, and sends nothing itself.
-  expect(actions("TaskRunnerHandler", "ses")).toEqual(["ses:SendBounce"]);
+  expect(actions("TaskRunnerHandler", "bedrock")).toEqual(["bedrock:InvokeModel"]);
+  // It bounces mail it unsubscribes from as a last resort, and mails Coo's codes and answers from Coo's address (ADR-0040).
+  expect(actions("TaskRunnerHandler", "ses").sort()).toEqual(["ses:SendBounce", "ses:SendEmail", "ses:SendRawEmail"]);
+  // It reads and erases only the requests mailed to Coo's address in the mail bucket.
+  const mail = JSON.stringify(statements("TaskRunnerHandler").filter(({ Action }) => [Action].flat().some((action) => action.startsWith("s3:"))));
+  expect(mail).toContain('"/coo/*"');
+  expect(mail).not.toContain('"/inbound/*"');
   const configs = ofType("AWS::Lambda::EventInvokeConfig").filter(([, { Properties }]) => JSON.stringify(Properties?.FunctionName).includes(runnerId));
   expect(configs.map(([, { Properties }]) => Properties?.MaximumRetryAttempts)).toEqual([0]);
 });

@@ -126,13 +126,14 @@ export const feederFilter = { eventName: ["INSERT"], dynamodb: { Keys: { [tableK
 
 /**
  * Which of the table stream's records Lambda hands the task giver: each new change in a mailbox's
- * change feed that may add a label to a message (ADR-0029).
+ * change feed that may add a label to a message (ADR-0029), or decide a send or a payment Coo
+ * follows up for a request by mail (ADR-0040).
  */
 export const taskGiverFilter = {
   eventName: ["INSERT"],
   dynamodb: {
     Keys: { [tableKey.partitionKey]: { S: [{ prefix: "mailbox#" }] }, [tableKey.sortKey]: { S: [{ prefix: "change#" }] } },
-    NewImage: { type: { S: ["threadLabelsChanged", "messageReceived"] } },
+    NewImage: { type: { S: ["threadLabelsChanged", "messageReceived", "approvalDecided", "messageSent", "sendFailed", "paymentDecided", "paymentMade"] } },
   },
 };
 
@@ -150,6 +151,12 @@ export const senderRetries = 2;
 
 /** Where in the mail bucket SES stores each message it receives, followed by SES's message ID. */
 export const inboundPrefix = "inbound/";
+
+/**
+ * Where in the mail bucket Duva keeps each request mailed to a Coo's address (ADR-0040), followed by
+ * its human's ID, a slash and the ID SES gave it, until it is erased with the conversation or the human.
+ */
+export const cooRequestsPrefix = "coo/";
 
 /** Where in the mail bucket Duva stores the raw MIME of each message it sends, followed by the message's ID in Duva. */
 export const sentPrefix = "sent/";

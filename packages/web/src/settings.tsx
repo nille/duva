@@ -12,6 +12,7 @@ import { AddressesSheet, type Giving } from "./addresses.tsx";
 import { AgentSettingsSheet } from "./agent-settings.tsx";
 import { agentHref } from "./alerts.tsx";
 import { Choice, ModelName, ModelPlace, outsideContinent, wholeNumber } from "./setting-parts.tsx";
+import { CooAddressSheet } from "./coo-address.tsx";
 import { CopyButton } from "./dns-parts.tsx";
 import { datesFor, type Preferences, PreferencesContext } from "./dates.ts";
 import { DomainsSheet } from "./domains.tsx";
@@ -465,7 +466,7 @@ export function Settings({
 }
 
 /**
- * The You page: the human's preferences, their away message, each mailbox's signature and their own logo, then who is signed in, with Sign out,
+ * The You page: the human's preferences, their away message, each mailbox's signature, Coo's models and address, and their own logo, then who is signed in, with Sign out,
  * and for a human who isn't an admin, the one organization setting that touches their mail, in a sentence.
  */
 function YouPage({
@@ -506,6 +507,7 @@ function YouPage({
         <SignatureSheet key={mailbox.id} client={client} mailbox={mailbox} several={mailboxes.length > 1} onSignedOut={onSignedOut} />
       ))}
       {mailboxes.length > 0 && <CooModelsSheet client={client} onSignedOut={onSignedOut} />}
+      {mailboxes.length > 0 && <CooAddressSheet client={client} onSignedOut={onSignedOut} />}
       <MyLogoSheet client={client} mailboxes={mailboxes} onSignedOut={onSignedOut} />
       {mailboxes.length > 0 && <McpSheet />}
       <div className="settings-aside">

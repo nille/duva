@@ -6,6 +6,7 @@
 // Mail to a group goes to its members, as group-mail.ts has it. Mail to an address the
 // organization doesn't have goes to its domain's catch-all, which SES takes it for, as if to the
 // catch-all's mailbox or group.
+// Mail to a Coo's address asks that human's Coo, as coo-mail.ts has it, and goes to no mailbox.
 // Mail that passed DMARC carries its sender's logo, if their domain publishes one Duva shows
 // (ADR-0023), except mail from an agent, which keeps the agent's mark, and spam. Mail stored in
 // an Inbox while its mailbox's owner is away gets their away message, as away-messages.ts has it.
@@ -18,6 +19,7 @@ import type { MailBucket } from "./mail-bucket.ts";
 import { parseMail } from "./mime.ts";
 import { bounceOnce, type Bounces, type Expanded, expand, type GroupRefusal, isOwnMail, refusalOf, resendToExternalMembers, type Sender, sentByMember } from "./group-mail.ts";
 import { addressTarget, allDomains, type CatchAll, catchAllTarget, type Group } from "./organization.ts";
+import { receiveForCoo } from "./coo-requests.ts";
 import type { Outbound } from "./outbound.ts";
 import { sentByDuva } from "./sending.ts";
 import { receivedByAny } from "./mail.ts";
@@ -74,10 +76,13 @@ export function createInbound({
         }
       };
       const unknown: (Recipient & { address: string })[] = [];
+      // The humans whose Coo's address it came to, which delivers to no mailbox (ADR-0040).
+      const coos = new Set<string>();
       for (const given of ses.receipt.recipients) {
         const { address, ...recipient } = untagged(given);
         const target = await addressTarget(table, address);
         if (target === undefined) unknown.push({ address, ...recipient });
+        else if ("coo" in target) coos.add(target.coo);
         else await take(recipient, target, direct);
       }
       // A catch-all takes the mail as if it were sent to its mailbox or group, after the addresses the organization has.
@@ -97,7 +102,13 @@ export function createInbound({
       if (raw === undefined) throw new Error(`SES stored no message at ${rawKey}.`);
       const parsed = await parseMail(raw);
       const sender: Sender = { from: (parsed.from?.address ?? ses.mail.source).toLowerCase(), dmarc: ses.receipt.dmarcVerdict.status };
-      const spam = ses.receipt.spamVerdict.status === "FAIL" && !(await sentByDuva(table, { ...sender, messageId: parsed.messageId }, domains));
+      const sentByUs = await sentByDuva(table, { ...sender, messageId: parsed.messageId }, domains);
+      const spam = ses.receipt.spamVerdict.status === "FAIL" && !sentByUs;
+      // From the organization's own domains, only Duva's own send proves its sender, and elsewhere DMARC does.
+      const proven = domains.has(domainOf(sender.from)) ? sentByUs : dmarcPassed;
+      for (const human of coos) {
+        await receiveForCoo({ table, mailBucket, tasks }, { human, sesMessageId: ses.mail.messageId, raw, parsed, envelopeSender: ses.mail.source, proven, receivedAt: ses.mail.timestamp });
+      }
       const delivered = new Map<string, Recipient & { group?: string }>(direct);
       const refused: GroupRefusal[] = [];
       const taken: typeof groups = [];
@@ -140,6 +151,8 @@ export function createInbound({
       // Mail that went nowhere is kept nowhere, once no mailbox it was for has it (ADR-0025). An
       // event processed again finds every mailbox dropped or stored it, and erases it all the same.
       if (delivered.size > 0 && !(await receivedByAny(table, [...delivered.keys()], ses.mail.messageId))) await mailBucket.erase(rawKey);
+      // Coo keeps its own copy of a request, so mail only to Coo's addresses is kept nowhere else.
+      if (delivered.size === 0 && groups.length === 0 && coos.size > 0) await mailBucket.erase(rawKey);
       // Spam goes to no one outside, and a bounce of it would most likely reach someone it forged.
       if (!spam) {
         await resendToExternalMembers({ table, outbound, log }, { sesMessageId: ses.mail.messageId, raw, parsed, envelopeSender: ses.mail.source, groups: taken });

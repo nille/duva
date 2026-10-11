@@ -49,6 +49,17 @@ async function storedPayments(table: Table, human: string): Promise<StoredPaymen
   return items.sort((a, b) => b.at.localeCompare(a.at));
 }
 
+/** The payments the human's Coo made or asked for in the run of their turn, newest first, as a request by mail reports them (ADR-0040). */
+export async function paymentsOfTurn(table: Table, human: string, turn: string): Promise<Payment[]> {
+  return (await storedPayments(table, human)).filter(({ run }) => run.turn === turn).map(paymentOf);
+}
+
+/** The human's Coo's payment with the ID, if there is one. */
+export async function findPayment(table: Table, human: string, id: string): Promise<Payment | undefined> {
+  const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: paymentKey(human, id), ConsistentRead: true }));
+  return Item === undefined ? undefined : paymentOf(Item as StoredPayment);
+}
+
 /** The card's payments not yet paid or declined, which go with the card. */
 export async function openPayments(table: Table, card: StoredSecret): Promise<Record<string, unknown>[]> {
   return (await storedPayments(table, card.human)).filter(({ card: of, state }) => of === card.id && (state === "waiting" || state === "approved")).map((payment) => paymentKey(card.human, payment.id));

@@ -221,7 +221,7 @@ export const changeAwayMessage: OperationHandler = async (event, deployment, act
 const unattended = /^(?:no[-_.]?reply|do[-_.]?not[-_.]?reply|mailer[-_.]?daemon|postmaster|bounces?|owner-.+|.+-(?:request|bounces?|owner))(?:[-+._].*)?$/i;
 
 /** Whether the header fields mark the mail automatic or a list's (RFC 3834, section 2, and RFC 2369). */
-function automatic(raw: Uint8Array): boolean {
+export function automatic(raw: Uint8Array): boolean {
   return headerFields(raw).some(({ name, value, decoded }) => {
     const field = name.toLowerCase();
     const text = (decoded ?? value).trim().toLowerCase();

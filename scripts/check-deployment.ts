@@ -50,6 +50,7 @@ import { webSearchRegion } from "@duva/api/web-search";
 import { bedrockSuggester } from "@duva/api/suggestions";
 import { earlierModelSettingsLeft, earlierModelsKept, organizationSettings } from "@duva/api/organization";
 import { mailboxAgentsLeft } from "@duva/api/mailbox-agents";
+import { cooAddressesLeft } from "@duva/api/coo-address";
 import { tasksWorkingSince } from "@duva/api/tasks";
 import { agentsMailboxes } from "@duva/api/removal";
 import { BedrockAgentCoreControlClient, GetAgentRuntimeCommand, GetBrowserCommand, GetGatewayCommand, ListGatewayTargetsCommand } from "@aws-sdk/client-bedrock-agentcore-control";
@@ -382,6 +383,12 @@ await check("every human with a mailbox has one mailbox agent, those of each mai
     ...(unmerged.length === 0 ? [] : [`${unmerged.map(({ addresses, id }) => addresses[0] ?? id).join(", ")} still ${unmerged.length === 1 ? "has its" : "have their"} own`]),
   ];
   return left.length === 0 ? undefined : `${left.join(", and ")}. Run duva deploy again.`;
+});
+await check("every human with a mailbox has Coo's address, which SES takes mail for (ADR-0040)", async () => {
+  const table = await stackTable();
+  if (table === undefined) return "the stack has no table";
+  const left = await cooAddressesLeft(table);
+  return left.length === 0 ? undefined : `${left.map(({ email }) => email).join(", ")} ${left.length === 1 ? "has" : "have"} no Coo's address. Run duva deploy again.`;
 });
 await check("no agent owns a mailbox, since setup erased those they owned (ADR-0030)", async () => {
   const table = await stackTable();

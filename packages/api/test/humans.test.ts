@@ -151,7 +151,8 @@ test("mail to a human's address, plus-tagged too, lands in their Inbox, and they
   await duva.receive(await mail("plus-tagged"), { to: ["Linus+News@example.com"] });
 
   expect(refused).toEqual([]);
-  expect(duva.receiptRules()[0]?.Recipients).toEqual(["linus@example.com"]);
+  // Linus's Coo has an address of its own too (ADR-0040).
+  expect(duva.receiptRules()[0]?.Recipients).toEqual(["linus-coo@example.com", "linus@example.com"]);
   const { data } = await linus.GET("/mailboxes/{mailbox}/threads", { params });
   expect(data?.threads.map(({ subject, labels }) => ({ subject, labels }))).toEqual([
     { subject: "October news", labels: ["inbox"] },

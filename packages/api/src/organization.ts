@@ -63,7 +63,7 @@ const domainsPartition = "organization#domains";
 const domainKey = (domain: string) => ({ [pk]: domainsPartition, [sk]: `domain#${domain}` });
 // Every address is in one partition, so the receipt rules' recipients are one query away.
 const addressesPartition = "organization#addresses";
-const addressKey = (address: string) => ({ [pk]: addressesPartition, [sk]: `address#${address}` });
+export const addressKey = (address: string) => ({ [pk]: addressesPartition, [sk]: `address#${address}` });
 // Each group's members and policies are an item of their own, beside its address in the addresses partition.
 const groupKey = (address: string) => ({ [pk]: `group#${address}`, [sk]: "group" });
 // Every mailbox is listed in one partition, those left with no address too. Mailboxes from before
@@ -945,18 +945,21 @@ export async function allAddresses(table: Table): Promise<Address[]> {
         ExclusiveStartKey: start,
       }),
     );
-    for (const item of page.Items ?? []) addresses.push(item.group === true ? { address: item.address as string, group: true } : { address: item.address as string, mailbox: item.mailbox as string });
+    for (const item of page.Items ?? []) {
+      const address = item.address as string;
+      addresses.push(item.group === true ? { address, group: true } : item.coo !== undefined ? { address, coo: item.coo as string } : { address, mailbox: item.mailbox as string });
+    }
     start = page.LastEvaluatedKey;
   } while (start !== undefined);
   return addresses;
 }
 
 /**
- * What the address is: a mailbox's, by the mailbox's ID, or a group, or undefined if the
- * organization has no such address. An address on an alias domain is what the same local part is
- * on its standalone domain.
+ * What the address is: a mailbox's, by the mailbox's ID, or a group, or a Coo's, by its human's ID
+ * (ADR-0040), or undefined if the organization has no such address. An address on an alias domain
+ * is what the same local part is on its standalone domain.
  */
-export async function addressTarget(table: Table, address: string): Promise<{ mailbox: string } | { group: Group } | undefined> {
+export async function addressTarget(table: Table, address: string): Promise<{ mailbox: string } | { group: Group } | { coo: string } | undefined> {
   const db = documents(table);
   let { Item } = await db.send(new GetCommand({ TableName: table.name, Key: addressKey(address), ConsistentRead: true }));
   const at = address.lastIndexOf("@");
@@ -966,6 +969,7 @@ export async function addressTarget(table: Table, address: string): Promise<{ ma
     ({ Item } = await db.send(new GetCommand({ TableName: table.name, Key: addressKey(`${address.slice(0, at)}@${domain.aliasOf}`), ConsistentRead: true })));
     if (Item === undefined) return undefined;
   }
+  if (Item.coo !== undefined) return { coo: Item.coo as string };
   if (Item.group !== true) return { mailbox: Item.mailbox as string };
   const group = await findGroup(table, Item.address as string);
   return group === undefined ? undefined : { group };

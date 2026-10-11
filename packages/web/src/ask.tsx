@@ -374,11 +374,16 @@ function TurnShown({
     <li className={human ? "ask-turn ask-turn-human" : "ask-turn ask-turn-agent"}>
       <p className="ask-who">
         <ActorMark kind={human ? "human" : "coo"} />
-        <span className="ask-name">{human ? copy.you : copy.agent}</span>
+        {/* A request mailed to Coo's address names who mailed it, who may be someone its human listed (ADR-0040). */}
+        <span className="ask-name">{human ? (turn.byMail ?? copy.you) : copy.agent}</span>
         <time className="ask-time" dateTime={turn.at}>
           {time}
         </time>
-        {human && askedIn !== undefined && <span className="ask-where">{askedIn}</span>}
+        {turn.byMail !== undefined ? (
+          <span className="ask-where">{human ? copy.byMail : copy.mailedTo(turn.byMail)}</span>
+        ) : (
+          human && askedIn !== undefined && <span className="ask-where">{askedIn}</span>
+        )}
       </p>
       {turn.harder === true && turn.model !== undefined && <p className="ask-handover">{copy.thoughtHarder(copy.models[turn.model])}</p>}
       {turn.handover !== undefined && <Handover handover={turn.handover} />}

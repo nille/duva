@@ -45,7 +45,8 @@ test("creating the first address creates Duva's receipt rule: its recipients, sc
 
   const [rule, ...others] = duva.receiptRules();
   expect(others).toEqual([]);
-  expect(rule).toMatchObject({ Enabled: true, ScanEnabled: true, Recipients: ["hermes@example.com"] });
+  // With the address of the mailbox's owner's Coo (ADR-0040).
+  expect(rule).toMatchObject({ Enabled: true, ScanEnabled: true, Recipients: ["hermes-coo@example.com", "hermes@example.com"] });
   expect(rule?.Actions).toEqual([
     { S3Action: { BucketName: "duva-mail", ObjectKeyPrefix: expect.any(String) } },
     { LambdaAction: { FunctionArn: expect.stringContaining(":function:"), InvocationType: "Event" } },

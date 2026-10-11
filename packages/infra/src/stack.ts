@@ -49,6 +49,7 @@ import {
   mcpCallbackPath,
   mcpRoutes,
   tokenHeader,
+  cooRequestsPrefix,
   inboundPrefix,
   receiptRuleName,
   searchIndexesPrefix,
@@ -304,6 +305,12 @@ export class DuvaStack extends Stack {
         }),
       });
 
+    // Erasing raw mail under a prefix, which in a versioned bucket means deleting each version.
+    const erasesUnder = (fn: NodejsFunction, prefix: string) => {
+      fn.addToRolePolicy(new PolicyStatement({ actions: ["s3:DeleteObjectVersion"], resources: [mail.arnForObjects(`${prefix}*`)] }));
+      fn.addToRolePolicy(new PolicyStatement({ actions: ["s3:ListBucketVersions"], resources: [mail.bucketArn], conditions: { StringLike: { "s3:prefix": `${prefix}*` } } }));
+    };
+
     // SES stores each message it accepts in the mail bucket, then invokes the inbound Lambda without
     // waiting. Lambda retries a failed event twice, then leaves it in the failure queue for replay.
     const inboundFailures = new Queue(this, "InboundFailures", {
@@ -326,6 +333,8 @@ export class DuvaStack extends Stack {
     inbound.addToRolePolicy(
       new PolicyStatement({ actions: ["s3:ListBucketVersions"], resources: [mail.bucketArn], conditions: { StringLike: { "s3:prefix": `${inboundPrefix}*` } } }),
     );
+    // It keeps a copy of each request mailed to a Coo's address, for the task runner (ADR-0040).
+    mail.grantPut(inbound, `${cooRequestsPrefix}*`);
 
     // It re-sends a group's mail to external members from the group's address (ADR-0003), and
     // bounces mail a group refuses, both from the identity of one of the organization's domains,
@@ -360,12 +369,8 @@ export class DuvaStack extends Stack {
     // It erases the files uploaded to a deleted mailbox's drafts.
     removesUploads(eraser);
     // It erases raw mail, received and sent, which in a versioned bucket means deleting each version.
-    for (const prefix of [inboundPrefix, sentPrefix]) {
-      eraser.addToRolePolicy(new PolicyStatement({ actions: ["s3:DeleteObjectVersion"], resources: [mail.arnForObjects(`${prefix}*`)] }));
-      eraser.addToRolePolicy(
-        new PolicyStatement({ actions: ["s3:ListBucketVersions"], resources: [mail.bucketArn], conditions: { StringLike: { "s3:prefix": `${prefix}*` } } }),
-      );
-    }
+    // It erases requests mailed to a Coo's address that were never verified too (ADR-0040).
+    for (const prefix of [inboundPrefix, sentPrefix, cooRequestsPrefix]) erasesUnder(eraser, prefix);
     new Rule(this, "EraserSchedule", { description: "Erases Trash and Spam past the retention period", schedule: Schedule.rate(Duration.days(1)), targets: [new LambdaFunction(eraser)] });
     // Download links lead to the web app's domain, under /download/, since a browser follows a link
     // without credentials: the link's ticket is what the download Lambda checks. CloudFront signs
@@ -987,6 +992,15 @@ export class DuvaStack extends Stack {
     // Lambda hand it, and as a last resort bounces the sender's mail, from the identity of the
     // organization's domain it was sent to, as the inbound Lambda bounces mail a group refuses.
     taskRunner.addToRolePolicy(new PolicyStatement({ actions: ["ses:SendBounce"], resources: [identities] }));
+    // It settles and runs requests mailed to a Coo's address, kept in the mail bucket, keeps each
+    // turn's routing with its Titan embedding, as the conversation Lambda does, and mails Coo's
+    // codes and answers from its address, which is on one of the organization's domains (ADR-0040).
+    taskRunner.addEnvironment(environmentVariables.mailBucket, mail.bucketName);
+    taskRunner.addEnvironment(environmentVariables.configurationSet, sending.configurationSetName);
+    mail.grantRead(taskRunner, `${cooRequestsPrefix}*`);
+    erasesUnder(taskRunner, cooRequestsPrefix);
+    taskRunner.addToRolePolicy(embedding);
+    taskRunner.addToRolePolicy(new PolicyStatement({ actions: ["ses:SendEmail", "ses:SendRawEmail"], resources: [identities, configurationSet] }));
     const taskGiver = lambda("TaskGiverHandler", "@duva/api/task-giver-lambda", {
       [environmentVariables.tableName]: table.tableName,
       [environmentVariables.taskRunnerFunction]: taskRunner.functionArn,

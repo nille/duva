@@ -269,6 +269,15 @@ Only admins can remove humans. Run it first with dryRun to see the human's mailb
 - `--handOver` (once for each): The IDs of the mailboxes to hand to the human handTo, with their addresses and mail.
 - `--delete` (once for each): The IDs of the mailboxes to erase, with their mail.
 
+## duva humans coo-address
+
+Give a human's Coo another address.
+
+Only admins can change a Coo's address. It is an address of the organization, on one of its standalone domains, that delivers to the human's Coo rather than to a mailbox (ADR-0040). SES refuses mail to the address it had from then on, and takes mail to the new one before the call is answered. The change is recorded in the organization's change feed under you.
+
+- `--human` (required): The human's ID.
+- `--address` (required): The new address, on one of the organization's standalone domains, without a plus tag.
+
 ## duva agents list
 
 List the agents you sponsor, each with whether it is paused and how many sends it has left this hour.
@@ -935,6 +944,20 @@ Only a browsing run of a human's own Coo can call it, with its run's token, whic
 - `--amount`: For a card, what the payment is.
 - `--currency`: For a card, the payment's currency.
 - `--for`: For a card, what the payment is for, in a few words.
+
+## duva mailbox-agent address
+
+Read your Coo's address, and who may mail it to ask your Coo.
+
+Your Coo has an address of the organization, by default your default address's local part with -coo, such as ada-coo@example.com, which an admin can change. Mail to it, and to its plus-tagged addresses, asks your Coo, as Ask Coo does, and is never filed in a mailbox. Your own addresses may always mail it, and so may the addresses you list. Mail from anyone else is dropped. Coo takes a request at once when DMARC passed for its sender's domain, or, from the organization's own addresses, when Duva sent it. Otherwise it first mails the sender a code, and takes the request when a reply from that address brings the code back within an hour. Coo answers the From address, never a Reply-To, from its address, saying what it did. Each request is a turn of your conversation, by mail from its sender.
+
+## duva mailbox-agent senders
+
+List who may mail your Coo's address, beside your own addresses.
+
+Replaces the addresses you listed with those given. Your own addresses may always mail it, so they needn't be listed. Mail from an address that isn't allowed is dropped, and noted in your Coo's activity without what it says.
+
+- `--allowedSenders` (required) (once for each): Every address beside your own that may mail your Coo, replacing those you listed.
 
 ## duva screener get
 

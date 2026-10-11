@@ -83,7 +83,8 @@ export async function expand(table: Table, group: Group, domains: Set<string>): 
         continue;
       }
       const target = await addressTarget(table, member);
-      if (target === undefined) continue;
+      // A Coo's address is no member's mailbox (ADR-0040).
+      if (target === undefined || "coo" in target) continue;
       if ("mailbox" in target) {
         expanded.mailboxes.add(target.mailbox);
         for (const address of (await findMailbox(table, target.mailbox))?.addresses ?? []) expanded.sendersAllowed.add(address);

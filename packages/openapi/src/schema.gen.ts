@@ -366,6 +366,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/humans/{human}/coo-address": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Give a human's Coo another address.
+         * @description Only admins can change a Coo's address. It is an address of the organization, on one of its standalone domains, that delivers to the human's Coo rather than to a mailbox (ADR-0040). SES refuses mail to the address it had from then on, and takes mail to the new one before the call is answered. The change is recorded in the organization's change feed under you.
+         */
+        put: operations["changeCooAddress"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/agents": {
         parameters: {
             query?: never;
@@ -1453,6 +1473,30 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/mailbox-agent/address": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read your Coo's address, and who may mail it to ask your Coo.
+         * @description Your Coo has an address of the organization, by default your default address's local part with -coo, such as ada-coo@example.com, which an admin can change. Mail to it, and to its plus-tagged addresses, asks your Coo, as Ask Coo does, and is never filed in a mailbox. Your own addresses may always mail it, and so may the addresses you list. Mail from anyone else is dropped. Coo takes a request at once when DMARC passed for its sender's domain, or, from the organization's own addresses, when Duva sent it. Otherwise it first mails the sender a code, and takes the request when a reply from that address brings the code back within an hour. Coo answers the From address, never a Reply-To, from its address, saying what it did. Each request is a turn of your conversation, by mail from its sender.
+         */
+        get: operations["getCooAddress"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * List who may mail your Coo's address, beside your own addresses.
+         * @description Replaces the addresses you listed with those given. Your own addresses may always mail it, so they needn't be listed. Mail from an address that isn't allowed is dropped, and noted in your Coo's activity without what it says.
+         */
+        patch: operations["changeCooSenders"];
         trace?: never;
     };
     "/mailboxes/{mailbox}/screener": {
@@ -2659,17 +2703,42 @@ export interface components {
             /** @description The ID of the mailbox it delivers to. */
             mailbox: string;
         };
-        /** @description An address on one of the organization's domains, and the mailbox it delivers to, or that it is a group. */
+        /** @description An address on one of the organization's domains, and the mailbox it delivers to, or that it is a group, or a Coo's. */
         Address: {
             /** @example support@example.com */
             address: string;
             /** @description The ID of the mailbox it delivers to. */
             mailbox?: string;
+            /** @description Present when the address is a Coo's, the ID of the human whose Coo it delivers to, rather than to a mailbox (ADR-0040). */
+            coo?: string;
             /**
              * @description Present when the address is a group's.
              * @constant
              */
             group?: true;
+        };
+        /** @description A human's Coo's address, and who may mail it to ask their Coo (ADR-0040). */
+        CooAddress: {
+            /**
+             * @description Coo's address. Absent while it has none, as when its domain was removed, until an admin gives it one.
+             * @example ada-coo@example.com
+             */
+            address?: string;
+            /** @description The human's own addresses, their sign-in address and their mailboxes', which may always mail it. */
+            ownAddresses: string[];
+            /** @description The other addresses the human listed, which may mail it too, in alphabetical order. */
+            allowedSenders: string[];
+        };
+        CooSendersChange: {
+            /** @description Every address beside your own that may mail your Coo, replacing those you listed. */
+            allowedSenders: string[];
+        };
+        NewCooAddress: {
+            /**
+             * @description The new address, on one of the organization's standalone domains, without a plus tag.
+             * @example ada-coo@example.com
+             */
+            address: string;
         };
         AddressList: {
             addresses: components["schemas"]["Address"][];
@@ -3027,7 +3096,7 @@ export interface components {
             position: number;
         };
         /** @description A change in a mailbox. */
-        MailboxChange: components["schemas"]["MessageReceived"] | components["schemas"]["DraftWritten"] | components["schemas"]["DraftChanged"] | components["schemas"]["DraftDeleted"] | components["schemas"]["SendAsked"] | components["schemas"]["ApprovalAsked"] | components["schemas"]["ApprovalWithdrawn"] | components["schemas"]["ApprovalDecided"] | components["schemas"]["ApprovalUndone"] | components["schemas"]["MessageSent"] | components["schemas"]["SendWaitingForLimit"] | components["schemas"]["SentNow"] | components["schemas"]["SendFailed"] | components["schemas"]["SendUnclear"] | components["schemas"]["FeedbackReceived"] | components["schemas"]["ThreadRead"] | components["schemas"]["ThreadUnread"] | components["schemas"]["ThreadLabelsChanged"] | components["schemas"]["ReminderSet"] | components["schemas"]["ReminderCancelled"] | components["schemas"]["ThreadBack"] | components["schemas"]["LabelCreated"] | components["schemas"]["LabelRenamed"] | components["schemas"]["LabelDeleted"] | components["schemas"]["ThreadErased"] | components["schemas"]["AgentSettingsChanged"] | components["schemas"]["AgentPaused"] | components["schemas"]["AgentUnpaused"] | components["schemas"]["SenderScreened"] | components["schemas"]["ScreenerSwitched"] | components["schemas"]["ScreenedSenderRemoved"] | components["schemas"]["UnsubscribeAttempted"] | components["schemas"]["SenderDeliverySet"] | components["schemas"]["SenderDeliveryRemoved"] | components["schemas"]["MessageDropped"] | components["schemas"]["LabelPromptSet"] | components["schemas"]["LabelPromptRemoved"] | components["schemas"]["TaskGiven"] | components["schemas"]["TaskStarted"] | components["schemas"]["TaskEnded"] | components["schemas"]["AgentHandedOver"] | components["schemas"]["ConversationTurnTaken"] | components["schemas"]["MailboxAgentsMerged"] | components["schemas"]["LinkedFileDownloaded"] | components["schemas"]["SharingStopped"] | components["schemas"]["AwayMessageSent"] | components["schemas"]["SignatureChanged"] | components["schemas"]["PaymentMade"] | components["schemas"]["PaymentAsked"] | components["schemas"]["PaymentDecided"];
+        MailboxChange: components["schemas"]["MessageReceived"] | components["schemas"]["DraftWritten"] | components["schemas"]["DraftChanged"] | components["schemas"]["DraftDeleted"] | components["schemas"]["SendAsked"] | components["schemas"]["ApprovalAsked"] | components["schemas"]["ApprovalWithdrawn"] | components["schemas"]["ApprovalDecided"] | components["schemas"]["ApprovalUndone"] | components["schemas"]["MessageSent"] | components["schemas"]["SendWaitingForLimit"] | components["schemas"]["SentNow"] | components["schemas"]["SendFailed"] | components["schemas"]["SendUnclear"] | components["schemas"]["FeedbackReceived"] | components["schemas"]["ThreadRead"] | components["schemas"]["ThreadUnread"] | components["schemas"]["ThreadLabelsChanged"] | components["schemas"]["ReminderSet"] | components["schemas"]["ReminderCancelled"] | components["schemas"]["ThreadBack"] | components["schemas"]["LabelCreated"] | components["schemas"]["LabelRenamed"] | components["schemas"]["LabelDeleted"] | components["schemas"]["ThreadErased"] | components["schemas"]["AgentSettingsChanged"] | components["schemas"]["AgentPaused"] | components["schemas"]["AgentUnpaused"] | components["schemas"]["SenderScreened"] | components["schemas"]["ScreenerSwitched"] | components["schemas"]["ScreenedSenderRemoved"] | components["schemas"]["UnsubscribeAttempted"] | components["schemas"]["SenderDeliverySet"] | components["schemas"]["SenderDeliveryRemoved"] | components["schemas"]["MessageDropped"] | components["schemas"]["LabelPromptSet"] | components["schemas"]["LabelPromptRemoved"] | components["schemas"]["TaskGiven"] | components["schemas"]["TaskStarted"] | components["schemas"]["TaskEnded"] | components["schemas"]["AgentHandedOver"] | components["schemas"]["ConversationTurnTaken"] | components["schemas"]["MailToCoo"] | components["schemas"]["MailboxAgentsMerged"] | components["schemas"]["LinkedFileDownloaded"] | components["schemas"]["SharingStopped"] | components["schemas"]["AwayMessageSent"] | components["schemas"]["SignatureChanged"] | components["schemas"]["PaymentMade"] | components["schemas"]["PaymentAsked"] | components["schemas"]["PaymentDecided"];
         /** @description Mail arrived. No actor made this change, so it names none. */
         MessageReceived: {
             /** @description The change's position in the mailbox's feed, counting from 1. */
@@ -3531,6 +3600,8 @@ export interface components {
             handover?: components["schemas"]["Handover"];
             /** @description Whether the human asked the harder model to think harder about their last turn. */
             harder?: boolean;
+            /** @description Present for a turn that came by mail to the human's Coo's address, the address that mailed it (ADR-0040). */
+            byMail?: string;
             /** @description Present, true, for a turn asked from All mailboxes, which the feed of the first of the human's mailboxes the agent works in records. A turn asked from one mailbox is in that one's feed. */
             allMailboxes?: boolean;
             /**
@@ -3546,6 +3617,42 @@ export interface components {
              * @enum {string}
              */
             type: "conversationTurn";
+        };
+        MailToCoo: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "mailToCoo";
+            /** @description The ID of the mailbox agent. */
+            agent: string;
+            /** @description The ID of the human whose Coo it is. */
+            human: string;
+            /** @description The ID SES gave the mail, which each event about the same request names. */
+            request: string;
+            /** @description The address that mailed it, or that Coo mailed. */
+            from?: string;
+            /**
+             * @description What happened: refused, its sender may not ask Coo, so it was dropped; verifying, its sender wasn't proven, so Coo waits for the code it mailed them; wrongCode, a reply brought another code; lateCode, a reply brought the code more than an hour after it was mailed; verified, the code came back in time, so Coo took the request; neverVerified, no code came back within the hour, so the request was dropped; answered, Coo mailed its answer, with what it did; followedUp, Coo mailed how a send or a payment that waited for the human was decided; replyFailed, SES didn't send Coo's mail.
+             * @enum {string}
+             */
+            event: "refused" | "verifying" | "wrongCode" | "lateCode" | "verified" | "neverVerified" | "answered" | "followedUp" | "replyFailed";
+            /** @description With verifying, whether Coo mailed a code now, or the request waits for one it mailed the sender within the hour. */
+            codeMailed?: boolean;
+            /** @description With answered and followedUp, what Coo said it did, each action with how it went, as its mail said it. */
+            results?: string[];
+            /** @description With followedUp, the ID of the draft whose send waited. */
+            draft?: string;
+            /** @description With followedUp, the ID of the payment that waited. */
+            payment?: string;
+            /**
+             * @description With followedUp, how what waited was decided: a send sent, rejected, or failed, or a payment approved, declined, or paid once a later run paid it.
+             * @enum {string}
+             */
+            outcome?: "sent" | "rejected" | "failed" | "approved" | "declined" | "paid";
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "mailToCoo";
         };
         TaskEnded: components["schemas"]["ChangeBase"] & {
             /** @constant */
@@ -4931,7 +5038,7 @@ export interface components {
             position: number;
         };
         /** @description A change to the organization's setup. */
-        OrganizationChange: components["schemas"]["OrganizationAdded"] | components["schemas"]["DomainAdded"] | components["schemas"]["DomainRemoved"] | components["schemas"]["SignInDomainChanged"] | components["schemas"]["CatchAllChanged"] | components["schemas"]["ActorAdded"] | components["schemas"]["AgentKeyRotated"] | components["schemas"]["AgentPaused"] | components["schemas"]["AgentUnpaused"] | components["schemas"]["MailboxAdded"] | components["schemas"]["AddressAdded"] | components["schemas"]["AddressRemoved"] | components["schemas"]["DefaultAddressChanged"] | components["schemas"]["GroupAdded"] | components["schemas"]["GroupChanged"] | components["schemas"]["GroupRemoved"] | components["schemas"]["SettingsChanged"] | components["schemas"]["ActorRemoved"] | components["schemas"]["AdminChanged"] | components["schemas"]["MailboxHandedOver"] | components["schemas"]["MailboxDeleted"] | components["schemas"]["MailboxAgentsMerged"] | components["schemas"]["RetiredChange"];
+        OrganizationChange: components["schemas"]["OrganizationAdded"] | components["schemas"]["DomainAdded"] | components["schemas"]["DomainRemoved"] | components["schemas"]["SignInDomainChanged"] | components["schemas"]["CatchAllChanged"] | components["schemas"]["ActorAdded"] | components["schemas"]["AgentKeyRotated"] | components["schemas"]["AgentPaused"] | components["schemas"]["AgentUnpaused"] | components["schemas"]["MailboxAdded"] | components["schemas"]["AddressAdded"] | components["schemas"]["AddressRemoved"] | components["schemas"]["DefaultAddressChanged"] | components["schemas"]["GroupAdded"] | components["schemas"]["GroupChanged"] | components["schemas"]["GroupRemoved"] | components["schemas"]["SettingsChanged"] | components["schemas"]["ActorRemoved"] | components["schemas"]["AdminChanged"] | components["schemas"]["MailboxHandedOver"] | components["schemas"]["MailboxDeleted"] | components["schemas"]["MailboxAgentsMerged"] | components["schemas"]["CooAddressChanged"] | components["schemas"]["RetiredChange"];
         ChangeBase: {
             /** @description The change's position in the feed, counting from 1. */
             position: number;
@@ -5091,6 +5198,22 @@ export interface components {
              * @enum {string}
              */
             type: "addressAdded";
+        };
+        CooAddressChanged: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "cooAddressChanged";
+            /** @description The ID of the human whose Coo it is. */
+            human: string;
+            /** @description The address it has now. Absent when it has none. */
+            address?: string;
+            /** @description The address it had before, if any. */
+            before?: string;
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "cooAddressChanged";
         };
         MailboxAgentsMerged: components["schemas"]["ChangeBase"] & {
             /** @constant */
@@ -5346,6 +5469,8 @@ export interface components {
             handover?: components["schemas"]["Handover"];
             /** @description Whether the agent's turn is the harder model's answer to the turn before, as you asked it to think harder. */
             harder?: boolean;
+            /** @description Present for a turn that came by mail to your Coo's address: the address that mailed it, for yours, and for the agent's, the address it mailed its answer to (ADR-0040). */
+            byMail?: string;
             /** @description Whether the agent's turn is the first since it kept its first memory from mail, which it says once, with where to see what it remembers (listMemories). */
             firstMemory?: boolean;
             /** @description The agent's web searches in the turn, in order. Absent if it made none. */
@@ -6866,6 +6991,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HumanRemoval"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    changeCooAddress: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The human's ID. */
+                human: components["parameters"]["Human"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewCooAddress"];
+            };
+        };
+        responses: {
+            /** @description The Coo's address, with the human whose Coo it delivers to. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Address"];
                 };
             };
             400: components["responses"]["BadRequest"];
@@ -8967,6 +9124,57 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    getCooAddress: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Your Coo's address and who may mail it. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CooAddress"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    changeCooSenders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CooSendersChange"];
+            };
+        };
+        responses: {
+            /** @description Your Coo's address and who may mail it, as changed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CooAddress"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     getScreener: {

@@ -15,7 +15,7 @@ import { indexMailboxes, sqsIndexQueue } from "./indexing.ts";
 import { timeEarlierLabels } from "./mail.ts";
 import { giveMailboxAgents } from "./mailbox-agents.ts";
 import { carryOverModelChoices, keepEarlierModels, setUpOrganization } from "./organization.ts";
-import { sesReceiptRules } from "./receiving.ts";
+import { sesReceiptRules, syncRecipients } from "./receiving.ts";
 import { eraseAgentsMailboxes } from "./removal.ts";
 import { setUpDeliveries, setUpScreeners } from "./screening.ts";
 import { sesSuppressionList } from "./suppression.ts";
@@ -48,8 +48,10 @@ export const handler = async () => {
   // Humans' mailboxes from before the Screener get it on, with every sender they already have sent to the Inbox.
   await setUpScreeners(table);
   // Each human's mailbox agents from before one per human are merged into one, once (ADR-0033), humans
-  // from before mailbox agents get theirs, and those named before Coo are renamed.
+  // from before mailbox agents get theirs, and those named before Coo are renamed. Each Coo gets its
+  // address (ADR-0040), which SES takes mail for from then on.
   await giveMailboxAgents(table);
+  await syncRecipients(table, receiving);
   // The models admins chose before each human picked their mailbox agent's become the organization's defaults, once (ADR-0035).
   await carryOverModelChoices(table);
   // An organization from before GPT-6 Luna and Sol became the defaults keeps the models it had, once (#158).

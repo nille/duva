@@ -6,6 +6,7 @@ import { GetCommand, QueryCommand, TransactWriteCommand } from "@aws-sdk/lib-dyn
 import { sponsorAccessAllows, sponsorAccessIn } from "./access.ts";
 import { withdrawPendingApprovals } from "./drafting.ts";
 import type { Table } from "./deployment.ts";
+import { giveCooAddress, giveCooAddresses } from "./coo-address.ts";
 import { recordInFeeds } from "./feed.ts";
 import {
   actorKey,
@@ -86,10 +87,16 @@ export async function mergedInto(table: Table, agent: string): Promise<string[]>
 
 /**
  * Gives the human their mailbox agent, which they sponsor, if they have a personal mailbox and none
- * yet, as when an admin creates their first or hands them one. One named before mailbox agents were
- * called Coo is renamed. Giving it again changes nothing.
+ * yet, as when an admin creates their first or hands them one, with its address (ADR-0040), whose
+ * receipt rules are the caller's to follow. One named before mailbox agents were called Coo is
+ * renamed. Giving it again changes nothing.
  */
 export async function giveMailboxAgent(table: Table, human: string): Promise<void> {
+  await giveAgent(table, human);
+  await giveCooAddress(table, human);
+}
+
+async function giveAgent(table: Table, human: string): Promise<void> {
   if ((await findActor(table, human))?.kind !== "human") return;
   const current = await mailboxAgentOf(table, human);
   if (current !== undefined) {
@@ -114,12 +121,14 @@ export async function giveMailboxAgent(table: Table, human: string): Promise<voi
 }
 
 /**
- * Gives every human with a personal mailbox their mailbox agent, as the setup after a deploy does,
- * once the mailbox agents from before one per human are merged. Run again, it finishes what a run left.
+ * Gives every human with a personal mailbox their mailbox agent and its address, as the setup after
+ * a deploy does, once the mailbox agents from before one per human are merged. Run again, it
+ * finishes what a run left. The receipt rules are the caller's to follow.
  */
 export async function giveMailboxAgents(table: Table): Promise<void> {
   await mergeMailboxAgents(table);
-  for (const human of await allHumans(table)) await giveMailboxAgent(table, human.id);
+  for (const human of await allHumans(table)) await giveAgent(table, human.id);
+  await giveCooAddresses(table);
 }
 
 const accessOrder: AgentSettings["sponsorAccess"][] = ["none", "read", "organize", "draft", "send"];

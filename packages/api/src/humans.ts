@@ -20,6 +20,8 @@ import {
   removeHumanFromOrganization,
   sponsoredAgents,
 } from "./organization.ts";
+import { freeCooAddress } from "./coo-address.ts";
+import { cooRequestsErased } from "./coo-requests.ts";
 import { giveMailboxAgent } from "./mailbox-agents.ts";
 import { syncRecipients } from "./receiving.ts";
 import { deleteMailboxes, removeAgentWithApprovals } from "./removal.ts";
@@ -81,6 +83,9 @@ export const removeHuman: OperationHandler = async (event, deployment, actor) =>
     return refusal(409, `${choices.handTo!.email} was removed meanwhile. Run the removal again with another human in handTo.`);
   }
   await deleteMailboxes(deployment, { mailboxes: choices.delete, by: actor!.id });
+  // Their Coo's address is freed, and the requests mailed to it erased, attachments and all (ADR-0040).
+  await freeCooAddress(deployment.table, { human: human.id, by: actor!.id });
+  await deployment.eraser.eraseCooRequests(await cooRequestsErased(deployment.table, human.id));
   await syncRecipients(deployment.table, deployment.receiving);
   try {
     await removeHumanFromOrganization(deployment.table, { human, by: actor!.id });

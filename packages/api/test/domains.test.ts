@@ -153,14 +153,14 @@ test("an alias domain mirrors every address of its standalone domain, later ones
 
   expect(response.status).toBe(201);
   expect(data).toMatchObject({ domain: "example.se", kind: "alias", aliasOf: "example.com", signIn: false });
-  expect(duva.receiptRules().flatMap(({ Recipients = [] }) => Recipients).sort()).toEqual(["grace@example.com", "grace@example.se", "support@example.com", "support@example.se"]);
+  expect(duva.receiptRules().flatMap(({ Recipients = [] }) => Recipients).sort()).toEqual(["grace-coo@example.com", "grace-coo@example.se", "grace@example.com", "grace@example.se", "support@example.com", "support@example.se"]);
   const { refused } = await duva.receive(message("Grace@example.se"), { to: ["Grace@example.se", "support+orders@example.se", "nobody@example.se"] });
   expect(refused).toEqual(["nobody@example.se"]);
   // One copy, for the first of the mailbox's addresses it came to.
   const { data: list } = await grace.GET("/mailboxes/{mailbox}/threads", { params: graces });
   expect(list?.threads).toHaveLength(1);
   // The alias domain's addresses are its standalone domain's, so the organization lists none of its own.
-  expect((await ada.GET("/addresses")).data?.addresses.map(({ address }) => address)).toEqual(["grace@example.com", "support@example.com"]);
+  expect((await ada.GET("/addresses")).data?.addresses.map(({ address }) => address)).toEqual(["grace-coo@example.com", "grace@example.com", "support@example.com"]);
 });
 
 test("an alias domain mirrors a group's address too, and mail to it reaches the group's members", async () => {
@@ -321,7 +321,8 @@ test("removing a standalone domain removes its addresses, its alias domains and 
   expect(data).toMatchObject({ removed: true });
   expect((await ada.GET("/domains")).data?.domains.map(({ domain }) => domain)).toEqual(["example.com"]);
   expect(duva.emailIdentities().map(({ domain }) => domain)).toEqual(["example.com"]);
-  expect(duva.receiptRules().flatMap(({ Recipients = [] }) => Recipients)).toEqual(["grace@example.com"]);
+  // Grace's Coo's address is on example.com, so it stays.
+  expect(duva.receiptRules().flatMap(({ Recipients = [] }) => Recipients).sort()).toEqual(["grace-coo@example.com", "grace@example.com"]);
   expect((await duva.receive(message("grace@example.net", "Later"), { to: ["grace@example.net", "grace@example.nu"] })).refused).toEqual(["grace@example.net", "grace@example.nu"]);
   expect((await grace.GET("/mailboxes/{mailbox}/threads", { params: graces })).data?.threads).toHaveLength(1);
   expect((await grace.GET("/mailboxes/{mailbox}", { params: graces })).data).toMatchObject({ defaultAddress: "grace@example.com", addresses: ["grace@example.com"] });
@@ -333,7 +334,7 @@ test("removing an alias domain removes only what it mirrors", async () => {
 
   const { data } = await ada.POST("/domains/{domain}/remove", { params: { path: { domain: "example.se" } }, body: {} });
 
-  expect(data).toMatchObject({ domains: ["example.se"], addresses: [{ address: "grace@example.se" }], mailboxesLeftWithoutAddress: [], removed: true });
+  expect(data).toMatchObject({ domains: ["example.se"], addresses: [{ address: "grace-coo@example.se" }, { address: "grace@example.se" }], mailboxesLeftWithoutAddress: [], removed: true });
   expect((await duva.receive(message("grace@example.se"), { to: ["grace@example.se", "grace@example.com"] })).refused).toEqual(["grace@example.se"]);
   expect((await grace.GET("/mailboxes/{mailbox}", { params: graces })).data?.addresses).toEqual(["grace@example.com"]);
   expect(duva.emailIdentities().map(({ domain }) => domain)).toEqual(["example.com"]);
@@ -426,10 +427,12 @@ test("adding, choosing and removing domains are in the organization's change fee
     change(1, { type: "domainAdded", domain: "example.net" }),
     change(2, { type: "domainAdded", domain: "example.se", aliasOf: "example.com" }),
     change(3, { type: "signInDomainChanged", domain: "example.net" }),
-    change(4, { type: "addressRemoved", address: "grace@example.com", mailbox: mailbox.id }),
-    change(5, { type: "defaultAddressChanged", mailbox: mailbox.id }),
-    change(6, { type: "domainRemoved", domain: "example.com" }),
-    change(7, { type: "domainRemoved", domain: "example.se" }),
+    // Grace's Coo's address goes with its domain, until an admin gives it another (ADR-0040).
+    change(4, { type: "cooAddressChanged", human: mailbox.owner, before: "grace-coo@example.com" }),
+    change(5, { type: "addressRemoved", address: "grace@example.com", mailbox: mailbox.id }),
+    change(6, { type: "defaultAddressChanged", mailbox: mailbox.id }),
+    change(7, { type: "domainRemoved", domain: "example.com" }),
+    change(8, { type: "domainRemoved", domain: "example.se" }),
   ]);
 });
 

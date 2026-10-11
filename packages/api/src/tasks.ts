@@ -21,6 +21,7 @@ import { mailboxAgentIn, mergedInto } from "./mailbox-agents.ts";
 import { type Agent, allMailboxes, duva, findActor, findMailbox, type Mailbox, mailboxFeed, mailboxKey } from "./organization.ts";
 import { documents, isNew, pk, sk } from "./table.ts";
 import type { UnsubscribeJob } from "./unsubscribing.ts";
+import { type CooMailJob, followUpOf } from "./coo-requests.ts";
 
 export type Task = components["schemas"]["Task"];
 
@@ -33,22 +34,24 @@ export interface TaskRef {
 }
 
 /**
- * Hands the task runner a task, which it runs if it still waits, or what one-click left of
- * unsubscribing from a sender (ADR-0031). The task runner Lambda, invoked asynchronously, or a
+ * Hands the task runner a task, which it runs if it still waits, what one-click left of
+ * unsubscribing from a sender (ADR-0031), or mail to a Coo's address to settle and run, or a send
+ * it waited on to follow up (ADR-0040). The task runner Lambda, invoked asynchronously, or a
  * stand-in in tests.
  */
 export interface TaskRunner {
   run(task: TaskRef): Promise<void>;
   unsubscribe(job: UnsubscribeJob): Promise<void>;
+  cooMail(job: CooMailJob): Promise<void>;
 }
 
-/** What the task runner Lambda is invoked with: a task, or an unsubscribe. */
-export type TaskRunnerEvent = TaskRef | { unsubscribe: UnsubscribeJob };
+/** What the task runner Lambda is invoked with: a task, an unsubscribe, or mail to Coo. */
+export type TaskRunnerEvent = TaskRef | { unsubscribe: UnsubscribeJob } | { cooMail: CooMailJob };
 
 /** The task runner Lambda, invoked asynchronously. Lambda is set to retry none, since a run that started has acted on the mail. */
 export function lambdaTaskRunner(lambda: LambdaClient, functionName: string): TaskRunner {
   const invoke = (event: TaskRunnerEvent) => lambda.send(new InvokeCommand({ FunctionName: functionName, InvocationType: "Event", Payload: JSON.stringify(event) })).then(() => undefined);
-  return { run: invoke, unsubscribe: (job) => invoke({ unsubscribe: job }) };
+  return { run: invoke, unsubscribe: (job) => invoke({ unsubscribe: job }), cooMail: (job) => invoke({ cooMail: job }) };
 }
 
 // A task sorts under its thread, and nothing else in the mailbox starts with its prefix.
@@ -167,10 +170,13 @@ async function labelledBy(table: Table, record: DynamoDBStreamEvent["Records"][n
  * The task giver's handler, which the table's stream invokes with each change that adds a label in
  * a mailbox: each added label with a prompt gives the mailbox's mailbox agent a task, which it hands
  * to the runner. Run again, it gives no task twice, and hands the runner again those that still wait.
+ * It also hands the runner each decided send Coo said it would follow up for a request by mail (ADR-0040).
  */
 export function createTaskGiver({ table, runner }: { table: Table; runner: TaskRunner }) {
   return async (event: DynamoDBStreamEvent): Promise<void> => {
     for (const record of event.Records) {
+      const followUp = await followUpOf(table, record);
+      if (followUp !== undefined) await runner.cooMail({ followUp });
       for (const labelled of await labelledBy(table, record)) {
         const { by, ...ref } = labelled;
         const prompt = await labelPrompt(table, ref.mailbox, ref.label);

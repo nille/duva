@@ -45,9 +45,11 @@ async function membersGiven(deployment: Deployment, group: string, given: unknow
     if (member === group) return refusal(400, `A group can't have itself as a member. Leave ${group} out of its members.`);
     if (domains.includes(domainOf(member))) {
       if (member.split("@")[0]!.includes("+")) return refusal(400, `A member on ${domainOf(member)} can't have a plus tag. Give ${member.split("+")[0]}@${domainOf(member)}.`);
-      if ((await addressTarget(deployment.table, member)) === undefined) {
+      const target = await addressTarget(deployment.table, member);
+      if (target === undefined) {
         return refusal(400, `${member} isn't one of the organization's addresses. Give a mailbox's or a group's address, or add it first.`);
       }
+      if ("coo" in target) return refusal(400, `${member} is a Coo's address, which delivers to no mailbox. Give a mailbox's or a group's address.`);
     }
     if (!members.includes(member)) members.push(member);
   }
