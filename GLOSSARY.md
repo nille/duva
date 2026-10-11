@@ -39,6 +39,10 @@ _Avoid_: knowledge, profile, context
 Coo using a web browser for its work, beyond unsubscribing: opening any link from mail or web search, reading the page, and acting on it on its own, by logging in, clicking and submitting forms, as its human. It logs in only by codes and links mailed to its human, and stays logged in between runs in a browser profile of the human's own. It never pays or enters card details, and never downloads or uploads a file. A browsing run has only the page's tools and one more, to fetch a login code just mailed from that site, so what a page says can't reach the mailbox. Coo says in a sentence what it did. On unless an admin turns it off for the organization, or a human for their own Coo, who can also sign Coo out of every site.
 _Avoid_: scraping, automation, surfing
 
+**Secret**:
+Something a human keeps for Coo to use but never read: a site's username and password, a one-time-code seed, a card, or any other value such as a membership number. Coo fills it into a page where its work needs it, and Duva types it there, outside Coo's model. A card pays on its own only within the per-payment and per-month limits its human set, and above them waits in Approvals. Until limits are set, a card doesn't pay. Every use is listed with the secret, and every payment shows in Coo's activity and its bubble. Only the human sees a value again, after a sign-in code, and secrets go with the human.
+_Avoid_: password, vault, credential
+
 **Web search**:
 Coo looking something up on the web, wherever it helps: in Ask Coo, in a label prompt's task, or while unsubscribing. Its queries may carry anything from the mail that helps, and go to Amazon's own search, in another region where the deployment's has none. A reader with no powers reads the results and hands Coo a short answer with its sources, so what a page says never steers Coo. Coo says when it searched, with the sources. On unless an admin turns it off for the organization, or a human for their own Coo.
 _Avoid_: browsing, googling, research
