@@ -4,7 +4,7 @@ import { AgentCoreRuntime, AgentRuntimeArtifact, BrowserCustom, BrowserNetworkCo
 import { CorsHttpMethod, HttpApi, HttpMethod } from "aws-cdk-lib/aws-apigatewayv2";
 import { HttpLambdaAuthorizer, HttpLambdaResponseType } from "aws-cdk-lib/aws-apigatewayv2-authorizers";
 import { HttpLambdaIntegration } from "aws-cdk-lib/aws-apigatewayv2-integrations";
-import { AllowedMethods, CachePolicy, Distribution, FunctionUrlOriginAccessControl, OriginRequestCookieBehavior, OriginRequestHeaderBehavior, OriginRequestPolicy, OriginRequestQueryStringBehavior, ResponseHeadersPolicy, S3OriginAccessControl, ViewerProtocolPolicy } from "aws-cdk-lib/aws-cloudfront";
+import { AllowedMethods, CachePolicy, type CfnDistribution, Distribution, Function as CloudFrontFunction, FunctionCode, FunctionEventType, FunctionRuntime, FunctionUrlOriginAccessControl, OriginRequestCookieBehavior, OriginRequestHeaderBehavior, OriginRequestPolicy, OriginRequestQueryStringBehavior, ResponseHeadersPolicy, S3OriginAccessControl, ViewerProtocolPolicy } from "aws-cdk-lib/aws-cloudfront";
 import { FunctionUrlOrigin, S3BucketOrigin } from "aws-cdk-lib/aws-cloudfront-origins";
 import {
   AccountRecovery,
@@ -107,6 +107,21 @@ export class DuvaStack extends Stack {
       default: "",
       description: "The first admin's recovery address, outside the first domain, where setup mails their first sign-in link (ADR-0041)",
     }).valueAsString;
+    // The web app's hosts on the organization's domains, the one it's at first, and the certificate
+    // that covers them, which deploy has ACM issue in us-east-1, where CloudFront takes it (#174).
+    // Without any, it's on CloudFront's own domain.
+    const webHosts = new CfnParameter(this, stackParameters.webHosts, {
+      type: "String",
+      default: "",
+      description: "The web app's host, then each it was at before, comma-separated, or empty while it's on CloudFront's own domain",
+    }).valueAsString;
+    const webCertificate = new CfnParameter(this, stackParameters.webCertificate, {
+      type: "String",
+      default: "",
+      description: "The ARN of the certificate in us-east-1 that covers the web app's hosts, or empty while it has none",
+    }).valueAsString;
+    const webHosted = new CfnCondition(this, "WebHostCondition", { expression: Fn.conditionNot(Fn.conditionEquals(webHosts, "")) });
+    const webHost = Fn.select(0, Fn.split(",", webHosts));
     const domainVerified = new CfnCondition(this, "DomainVerifiedCondition", {
       expression: Fn.conditionEquals(
         new CfnParameter(this, stackParameters.domainVerified, {
@@ -163,7 +178,8 @@ export class DuvaStack extends Stack {
       removalPolicy: RemovalPolicy.RETAIN_ON_UPDATE_OR_DELETE,
     });
 
-    // The web app, a single-page app that deploy uploads, on CloudFront's default domain for now.
+    // The web app, a single-page app that deploy uploads, at its host, or on CloudFront's own domain
+    // until it has one.
     const web = new Bucket(this, "Web", {
       encryption: BucketEncryption.S3_MANAGED,
       blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
@@ -172,15 +188,38 @@ export class DuvaStack extends Stack {
     });
     // CloudFront names are global to the account, and each region can have a deployment.
     const webAccess = new S3OriginAccessControl(this, "WebAccess", { originAccessControlName: `Duva-Web-${this.region}` });
+    // At any other host name, CloudFront's own domain or a host it was at, the web app sends the
+    // browser on to its host. The rest of its URL is in the fragment, which the browser keeps, and
+    // the only query it reads, sign-in's, comes back to its host. Download links, logos and Ask
+    // Coo's turns have behaviors of their own, so what was sent to an earlier URL still answers there.
+    const webHostRedirect = new CloudFrontFunction(this, "WebHostRedirect", {
+      functionName: `Duva-WebHost-${this.region}`,
+      comment: "Sends the web app's browsers on to its host",
+      runtime: FunctionRuntime.JS_2_0,
+      code: FunctionCode.fromInline(`var host = "${webHost}";
+function handler(event) {
+  var request = event.request;
+  if (host === "" || request.headers.host.value === host) return request;
+  return { statusCode: 302, statusDescription: "Found", headers: { location: { value: "https://" + host + request.uri } } };
+}`),
+    });
     const distribution = new Distribution(this, "WebDistribution", {
       comment: "Duva's web app",
       defaultBehavior: {
         origin: S3BucketOrigin.withOriginAccessControl(web, { originAccessControl: webAccess }),
         viewerProtocolPolicy: ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+        functionAssociations: [{ function: webHostRedirect, eventType: FunctionEventType.VIEWER_REQUEST }],
       },
       defaultRootObject: "index.html",
     });
-    const webUrl = `https://${distribution.distributionDomainName}`;
+    // A certificate and hosts that are parameters can't go through the construct's props.
+    const distributionConfig = distribution.node.defaultChild as CfnDistribution;
+    distributionConfig.addPropertyOverride("DistributionConfig.Aliases", Fn.conditionIf(webHosted.logicalId, Fn.split(",", webHosts), Aws.NO_VALUE));
+    distributionConfig.addPropertyOverride(
+      "DistributionConfig.ViewerCertificate",
+      Fn.conditionIf(webHosted.logicalId, { AcmCertificateArn: webCertificate, SslSupportMethod: "sni-only", MinimumProtocolVersion: "TLSv1.2_2021" }, Aws.NO_VALUE),
+    );
+    const webUrl = Fn.conditionIf(webHosted.logicalId, `https://${webHost}`, `https://${distribution.distributionDomainName}`).toString();
 
     // The organization's own logos, and the mark certificates attached to them, are public, for
     // receivers that honor BIMI to fetch (ADR-0026). The API puts them in a bucket of their own,
@@ -994,6 +1033,7 @@ export class DuvaStack extends Stack {
       "@duva/api/mcp-lambda",
       {
         [environmentVariables.version]: version,
+        [environmentVariables.webUrl]: webUrl,
         [environmentVariables.tableName]: table.tableName,
         [environmentVariables.userPoolId]: humans.userPoolId,
         [environmentVariables.signInUrl]: signIn.baseUrl(),
@@ -1067,6 +1107,7 @@ export class DuvaStack extends Stack {
     new CfnOutput(this, stackOutputs.conversationFunction, { value: conversation.functionName, description: "The function Ask Coo's turns invoke through CloudFront" });
     new CfnOutput(this, stackOutputs.agentRuntime, { value: Fn.conditionIf(agentsHere.logicalId, agentRuntime.agentRuntimeArn, "").toString(), description: "The mailbox agents' AgentCore Runtime, empty where AgentCore isn't" });
     new CfnOutput(this, stackOutputs.webUrl, { value: webUrl, description: "The URL of Duva's web app" });
+    new CfnOutput(this, stackOutputs.distributionDomain, { value: distribution.distributionDomainName, description: "CloudFront's own domain for the web app, which each of its hosts' CNAME records leads to" });
     new CfnOutput(this, stackOutputs.webBucket, { value: web.bucketName, description: "The bucket the web app is served from" });
     new CfnOutput(this, stackOutputs.signInUrl, { value: signIn.baseUrl(), description: "The URL of managed login" });
     new CfnOutput(this, stackOutputs.userPoolId, { value: humans.userPoolId, description: "The user pool humans sign in with" });

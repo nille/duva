@@ -13,7 +13,17 @@ import {
   StackSelectionStrategy,
   Toolkit,
 } from "@aws-cdk/toolkit-lib";
-import { CloudFormationClient, DescribeStacksCommand } from "@aws-sdk/client-cloudformation";
+import {
+  ACMClient,
+  DeleteCertificateCommand,
+  DescribeCertificateCommand,
+  ListTagsForCertificateCommand,
+  paginateListCertificates,
+  RequestCertificateCommand,
+  ResourceInUseException,
+  ResourceNotFoundException,
+} from "@aws-sdk/client-acm";
+import { CloudFormationClient, DescribeStacksCommand, paginateListStackResources } from "@aws-sdk/client-cloudformation";
 import {
   CognitoIdentityProviderClient,
   DeleteUserPoolCommand,
@@ -21,18 +31,23 @@ import {
   DescribeUserPoolCommand,
   paginateListUserPools,
 } from "@aws-sdk/client-cognito-identity-provider";
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { InvokeCommand, LambdaClient } from "@aws-sdk/client-lambda";
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { DescribeActiveReceiptRuleSetCommand, SESClient, SetActiveReceiptRuleSetCommand } from "@aws-sdk/client-ses";
 import { CreateEmailIdentityCommand, GetAccountCommand, GetEmailIdentityCommand, NotFoundException, SESv2Client } from "@aws-sdk/client-sesv2";
 import { GetParameterCommand, ParameterNotFound, SSMClient } from "@aws-sdk/client-ssm";
-import { stackName, stackParameters } from "@duva/infra/outputs";
-import type { Aws, StackOutputs, StackParameters as DuvaParameters } from "./deployment.ts";
+import { allDomains } from "@duva/api/organization";
+import { deploymentTag, deploymentTagged, projectTag, stackName, stackParameters, webHostsIn, webHostsValue } from "@duva/infra/outputs";
+import { type Aws, sameNames, type StackOutputs, type StackParameters as DuvaParameters } from "./deployment.ts";
 
 export function realAws(region: string): Aws {
   const ses = new SESClient({ region });
   const sesv2 = new SESv2Client({ region });
   const cognito = new CognitoIdentityProviderClient({ region });
+  // CloudFront takes certificates only from ACM in us-east-1 (docs/aws.md).
+  const acm = new ACMClient({ region: "us-east-1" });
+  const requestedHere = async (arn: string) => deploymentTagged((await acm.send(new ListTagsForCertificateCommand({ CertificateArn: arn }))).Tags ?? [], region);
   return {
     region,
 
@@ -46,12 +61,15 @@ export function realAws(region: string): Aws {
         for (const { OutputKey, OutputValue } of stack.Outputs ?? []) if (OutputKey && OutputValue) outputs[OutputKey] = OutputValue;
         const parameter = (key: string) => stack.Parameters?.find(({ ParameterKey }) => ParameterKey === key)?.ParameterValue;
         const domainVerified = parameter(stackParameters.domainVerified);
+        const webHosts = parameter(stackParameters.webHosts);
         return {
           domain: parameter(stackParameters.domain),
           admin: parameter(stackParameters.admin),
           signInDomain: parameter(stackParameters.signInDomain),
           domainVerified: domainVerified === undefined ? undefined : domainVerified === "true",
           recovery: parameter(stackParameters.recovery),
+          webHosts: webHosts === undefined ? undefined : webHostsIn(webHosts),
+          webCertificate: parameter(stackParameters.webCertificate),
           outputs,
         };
       } catch (error) {
@@ -164,6 +182,65 @@ export function realAws(region: string): Aws {
         perSecond: SendQuota?.MaxSendRate ?? 0,
       };
     },
+
+    async organizationDomains() {
+      // The stack has one table, which keeps its name on CloudFormation's resource.
+      for await (const page of paginateListStackResources({ client: new CloudFormationClient({ region }) }, { StackName: stackName })) {
+        const table = page.StackResourceSummaries?.find(({ ResourceType }) => ResourceType === "AWS::DynamoDB::GlobalTable")?.PhysicalResourceId;
+        if (table !== undefined) return (await allDomains({ client: new DynamoDBClient({ region }), name: table })).map(({ domain }) => domain);
+      }
+      return [];
+    },
+
+    async certificate(arn) {
+      try {
+        const { Certificate } = await acm.send(new DescribeCertificateCommand({ CertificateArn: arn }));
+        return {
+          names: [...new Set([Certificate?.DomainName ?? "", ...(Certificate?.SubjectAlternativeNames ?? [])])].filter((name) => name !== ""),
+          status: Certificate?.Status ?? "PENDING_VALIDATION",
+          ...(Certificate?.FailureReason !== undefined && { failure: Certificate.FailureReason }),
+          // ACM names each record as a fully qualified name, ending in a dot.
+          records: (Certificate?.DomainValidationOptions ?? []).flatMap(({ ResourceRecord }) =>
+            ResourceRecord?.Name && ResourceRecord.Value ? [{ name: ResourceRecord.Name.replace(/\.$/, ""), value: ResourceRecord.Value.replace(/\.$/, "") }] : [],
+          ),
+        };
+      } catch (error) {
+        if (error instanceof ResourceNotFoundException) return undefined;
+        throw error;
+      }
+    },
+
+    async findCertificate(names) {
+      for await (const page of paginateListCertificates({ client: acm }, { CertificateStatuses: ["PENDING_VALIDATION", "ISSUED"] })) {
+        for (const { CertificateArn, DomainName, SubjectAlternativeNameSummaries = [] } of page.CertificateSummaryList ?? []) {
+          const covered = [...new Set([DomainName ?? "", ...SubjectAlternativeNameSummaries])];
+          if (CertificateArn !== undefined && sameNames(covered, names) && (await requestedHere(CertificateArn))) return CertificateArn;
+        }
+      }
+      return undefined;
+    },
+
+    async requestCertificate([name, ...others]) {
+      const { CertificateArn } = await acm.send(
+        new RequestCertificateCommand({
+          DomainName: name,
+          ...(others.length > 0 && { SubjectAlternativeNames: others }),
+          ValidationMethod: "DNS",
+          Tags: [projectTag, { Key: deploymentTag, Value: region }],
+        }),
+      );
+      if (CertificateArn === undefined) throw new Error("ACM gave the certificate it was asked for no ARN.");
+      return CertificateArn;
+    },
+
+    async deleteCertificate(arn) {
+      try {
+        if (await requestedHere(arn)) await acm.send(new DeleteCertificateCommand({ CertificateArn: arn }));
+      } catch (error) {
+        // One CloudFront still holds is left, and costs nothing.
+        if (!(error instanceof ResourceInUseException || error instanceof ResourceNotFoundException)) throw error;
+      }
+    },
   };
 }
 
@@ -196,7 +273,7 @@ async function unpackBundle(): Promise<string> {
   return directory;
 }
 
-async function deployBundle(bundle: string, region: string, { domain, admin, signInDomain, domainVerified, recovery }: DuvaParameters) {
+async function deployBundle(bundle: string, region: string, { domain, admin, signInDomain, domainVerified, recovery, webHosts, webCertificate }: DuvaParameters) {
   const toolkit = new Toolkit({
     ioHost: progressOnStderr(new NonInteractiveIoHost({ isCI: false })),
     sdkConfig: { baseCredentials: BaseCredentials.awsCliCompatible({ defaultRegion: region }) },
@@ -220,6 +297,8 @@ async function deployBundle(bundle: string, region: string, { domain, admin, sig
         [stackParameters.signInDomain]: signInDomain,
         [stackParameters.domainVerified]: String(domainVerified),
         [stackParameters.recovery]: recovery,
+        [stackParameters.webHosts]: webHostsValue(webHosts),
+        [stackParameters.webCertificate]: webCertificate,
       }),
     });
     const [deployed] = stacks;

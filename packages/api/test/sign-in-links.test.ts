@@ -193,6 +193,18 @@ test("setup gives the first admin the recovery address deploy names, and mails t
   expect(ada).toMatchObject({ email: "ada@example.com", admin: true, recoveryAddress: "ada@elsewhere.org" });
 });
 
+test("once the web app moves to a host, sign-in links lead there, from setup and when asked for", async () => {
+  // ada was the first admin before recovery addresses, so setup mails her first link once deploy names one.
+  const duva = await startDuva({ domain: "example.com", admin: "ada@example.com" });
+  duva.moveWebApp("duva.example.com");
+
+  await duva.setUp({ admin: "ada@example.com", recovery: "ada@elsewhere.org" });
+  await duva.client.POST("/sign-in-links", { body: { email: "ada@example.com" } });
+
+  const links = await Promise.all(duva.sent().map(async (raw) => (await mailed(raw)).text?.match(/https?:\/\/\S+/)?.[0]));
+  expect(links).toEqual([expect.stringMatching(/^https:\/\/duva\.example\.com\/#\/sign-in\/[\w-]+$/), expect.stringMatching(/^https:\/\/duva\.example\.com\/#\/sign-in\/[\w-]+$/)]);
+});
+
 test("while SES refuses the first admin's first sign-in link, as in the sandbox, setup keeps their recovery address and mails nothing", async () => {
   const duva = await startDuva({ domain: "example.com", admin: "ada@example.com", recovery: "ada@elsewhere.org", sandbox: true });
 

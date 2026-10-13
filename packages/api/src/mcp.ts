@@ -43,6 +43,8 @@ export type VerifyAnyAccessToken = (token: string) => Promise<{ sub: string; cli
 export interface McpDeployment {
   version: string;
   region: string;
+  /** The web app's URL, which the endpoint names as Duva's website (#174). */
+  webUrl: string;
   table: Table;
   /** Where managed login is, which MCP clients sign in at through Duva's endpoints. */
   signInUrl: string;
@@ -225,7 +227,7 @@ export function createMcp(deployment: McpDeployment) {
         return result({
           protocolVersion: typeof asked === "string" && mcpVersions.includes(asked) ? asked : mcpVersions[0],
           capabilities: { tools: {} },
-          serverInfo: { name: "duva", title: "Duva", version },
+          serverInfo: { name: "duva", title: "Duva", version, websiteUrl: deployment.webUrl },
           instructions,
         });
       }

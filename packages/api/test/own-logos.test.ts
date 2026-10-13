@@ -111,6 +111,20 @@ test("the domain's BIMI record shows missing, found while DNS gives another logo
   expect(matches!.record).toEqual({ name: "default._bimi.example.org", value, status: "matches" });
 });
 
+test("once the web app moves to its host, a domain's logo is served there and its record names it there, while it still answers at the URL DNS has", async () => {
+  const { duva, ada, domain } = await withDomain();
+  const earlier = ((await ada.PUT("/domains/{domain}/logo", { ...domain, body: { svg: logo } })).data as DomainLogo).logo!.url;
+  duva.dnsRecord("TXT", "default._bimi.example.org", [`v=BIMI1; l=${earlier};`]);
+
+  duva.moveWebApp("duva.example.org");
+  const { data: moved } = await ada.GET("/domains/{domain}/logo", domain);
+
+  expect(moved!.logo!.url).toBe("https://duva.example.org/bimi/domains/example.org.svg");
+  expect(moved!.record).toEqual({ name: "default._bimi.example.org", value: "v=BIMI1; l=https://duva.example.org/bimi/domains/example.org.svg;", status: "found", found: [`v=BIMI1; l=${earlier};`] });
+  expect(await (await duva.download(earlier)).text()).toBe(logo);
+  expect(await (await duva.download(moved!.logo!.url)).text()).toBe(logo);
+});
+
 test("the domain's logo says whether its DMARC policy enforces DMARC, which BIMI needs", async () => {
   const { duva, ada, domain } = await withDomain();
   const enforced = async () => (await ada.GET("/domains/{domain}/logo", domain)).data!.dmarcEnforced;

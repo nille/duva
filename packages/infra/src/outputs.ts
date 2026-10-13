@@ -5,12 +5,21 @@
 export const stackName = "Duva";
 
 /** The stack's parameters, which deploy sets when it runs. */
-export const stackParameters = { domain: "Domain", admin: "Admin", signInDomain: "SignInDomain", domainVerified: "DomainVerified", recovery: "Recovery" } as const;
+export const stackParameters = {
+  domain: "Domain",
+  admin: "Admin",
+  signInDomain: "SignInDomain",
+  domainVerified: "DomainVerified",
+  recovery: "Recovery",
+  webHosts: "WebHosts",
+  webCertificate: "WebCertificate",
+} as const;
 
 /** The stack's outputs. SES gives a domain identity three DKIM records, numbered 1 to 3. */
 export const stackOutputs = {
   apiUrl: "ApiUrl",
   webUrl: "WebUrl",
+  distributionDomain: "WebDistributionDomain",
   webBucket: "WebBucket",
   signInUrl: "SignInUrl",
   userPoolId: "UserPoolId",
@@ -38,6 +47,19 @@ export const stackOutputs = {
   dkimName: (n: 1 | 2 | 3) => `DkimName${n}`,
   dkimValue: (n: 1 | 2 | 3) => `DkimValue${n}`,
 } as const;
+
+/** The tag on everything of Duva's, which deploy also gives what it creates through the AWS SDK, as the web app's certificate. */
+export const projectTag = { Key: "project", Value: "duva" } as const;
+
+/** The tag that names the region of the deployment a certificate in us-east-1 serves, as one account may have a deployment in each region. */
+export const deploymentTag = "duva-deployment";
+
+/** Whether the tags say the deployment in the region requested what they're on. */
+export const deploymentTagged = (tags: { Key?: string; Value?: string }[], region: string) => tags.some(({ Key, Value }) => Key === deploymentTag && Value === region);
+
+/** The web app's hosts as the WebHosts parameter holds them, comma-separated, and the hosts it holds. */
+export const webHostsValue = (hosts: string[]) => hosts.join(",");
+export const webHostsIn = (value: string) => value.split(",").filter((host) => host !== "");
 
 /**
  * Where managed login sends the CLI back to after sign-in: a loopback address duva login listens

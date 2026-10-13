@@ -4,11 +4,13 @@
 //
 // Deactivates Duva's receipt rule set, which SES can't delete while it's active, then deletes
 // the Duva stack, then the table, buckets, user pool and secrets key it keeps on deletion, all their data
-// included, and the SES identity deploy made for the first admin's address. With --bootstrap, it
+// included, the SES identity deploy made for the first admin's address, and the web app's
+// certificates deploy requested in us-east-1 for the deployment. With --bootstrap, it
 // also deletes the CDK bootstrap stack and its staging bucket, but only when the same duva deploy
 // created both stacks. For test deployments only.
 import { parseArgs } from "node:util";
-import { stackName, stackOutputs, stackParameters } from "@duva/infra/outputs";
+import { ACMClient, DeleteCertificateCommand, ListTagsForCertificateCommand, paginateListCertificates } from "@aws-sdk/client-acm";
+import { deploymentTagged, stackName, stackOutputs, stackParameters } from "@duva/infra/outputs";
 import {
   CloudFormationClient,
   DeleteStackCommand,
@@ -85,6 +87,18 @@ if (admin !== undefined) {
     console.log(`Deleted the SES identity ${admin}`);
   } catch (error) {
     if (!(error instanceof NotFoundException)) throw error;
+  }
+}
+
+// Deploy requests the web app's certificates in us-east-1, outside the stack, and ACM deletes one
+// only once the stack's distribution has let it go.
+const acm = new ACMClient({ region: "us-east-1" });
+for await (const page of paginateListCertificates({ client: acm }, {})) {
+  for (const { CertificateArn, DomainName } of page.CertificateSummaryList ?? []) {
+    const { Tags = [] } = await acm.send(new ListTagsForCertificateCommand({ CertificateArn }));
+    if (!deploymentTagged(Tags, region)) continue;
+    await acm.send(new DeleteCertificateCommand({ CertificateArn }));
+    console.log(`Deleted the certificate for ${DomainName}`);
   }
 }
 

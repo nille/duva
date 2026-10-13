@@ -17,3 +17,4 @@ A mailbox gets a selector with its first logo: the local part of its default add
 - A mark certificate given by URL is taken as given, since only the logo fetcher reaches others' servers. One uploaded as a PEM is served only if it vouches for the domain, or the domain whose DMARC record covers it, and for the very logo Duva serves. Setting another logo removes the certificate.
 - Removing a domain, or deleting a mailbox, stops serving its logo and frees its selector.
 - Duva checks the records when asked and never changes DNS. Only some receivers honor a mailbox's own logo; the others show the domain's.
+- Moving the web app to a host of the organization's moves the logos' URLs with it, so the records Duva lists change, while the URLs DNS already has keep answering (ADR-0042).

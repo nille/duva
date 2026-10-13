@@ -18,6 +18,7 @@ const verifier = CognitoJwtVerifier.create({ userPoolId: required(environmentVar
 const mcp = createMcp({
   version: required(environmentVariables.version),
   region: required("AWS_REGION"),
+  webUrl: required(environmentVariables.webUrl),
   table: { client: new DynamoDBClient({}), name: required(environmentVariables.tableName) },
   signInUrl: required(environmentVariables.signInUrl),
   appClient,

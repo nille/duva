@@ -38,7 +38,10 @@ export interface Deployment {
   humans: Humans;
   /** Where their sign-in codes come from. */
   signInSender: SignInSender;
-  /** The web app's URL, such as https://d123.cloudfront.net, which sign-in links lead to. */
+  /**
+   * The web app's URL, which sign-in links lead to: at its host on the organization's domains once
+   * deploy moved it there, such as https://duva.example.com, on CloudFront's own domain until then (ADR-0042).
+   */
   webUrl: string;
   /** SES's sending, which mails sign-in links to recovery addresses (ADR-0041). */
   outbound: Outbound;

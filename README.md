@@ -66,7 +66,7 @@ Every part is serverless, so an idle deployment costs close to nothing:
 - **The data** is one DynamoDB table, which keeps each mailbox's change feed. Its stream drives the sender, the search indexer and label tasks.
 - **Search** is LanceDB on S3, with an index per mailbox.
 - **Coo** runs on AgentCore Runtime and AgentCore Browser.
-- **The web app** is served from S3 through CloudFront.
+- **The web app** is served from S3 through CloudFront, at CloudFront's own domain or a host on the organization's domains (ADR-0042).
 - **Sign-in** is Cognito managed login, with passkeys, or a code emailed from the organization's domain as a fallback. Sign-in links go to each human's recovery address, outside the organization (ADR-0041).
 
 There's no VPC, and no Lambda anyone in the world can invoke.
@@ -106,13 +106,13 @@ The tests need no AWS. Bedrock's answers are recorded in `packages/api/test/`.
 **Deploying** takes an AWS account with SES, a domain whose DNS you control, and AWS credentials for the account and region:
 
 ```sh
-AWS_REGION=eu-north-1 packages/cli/dist/duva deploy --domain example.org --admin you@example.org
+AWS_REGION=eu-north-1 packages/cli/dist/duva deploy --domain example.org --admin you@example.org --recovery you@gmail.com
 ```
 
-`duva deploy` prints the DNS records to add. Run it again to update the deployment to that build. The CLI can't synthesize the CDK app, so it deploys only what `npm run build` built.
+`duva deploy` prints the DNS records to add. `--web duva.example.org` puts the web app at a host on the organization's domains, instead of CloudFront's own domain. Run it again to update the deployment to that build. The CLI can't synthesize the CDK app, so it deploys only what `npm run build` built.
 
 **Using it**
-- **Humans** sign in to the web app at the CloudFront URL that deploy prints.
+- **Humans** sign in to the web app at the URL that deploy prints.
 - **Agents** run `duva login --agent`, then the rest of the CLI. `duva skill install` installs the skill that teaches them how. Agents can also call the API with a key their sponsor creates.
 - **MCP clients** connect to the MCP endpoint, which they sign in to as a human.
 

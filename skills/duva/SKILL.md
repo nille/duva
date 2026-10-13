@@ -34,6 +34,7 @@ Running it again updates the deployment to this CLI's version.
 - `--domain`: The organization's first domain. Needed only the first time.
 - `--admin`: Your email address, as the first admin. Needed only the first time.
 - `--recovery`: Your recovery address, outside the domain, such as a Gmail address, where Duva mails your first sign-in link and every one after. Needed only the first time.
+- `--web`: The host on one of the organization's domains to serve the web app at, like duva.example.com, instead of CloudFront's own domain. Deploy keeps it, and another moves the web app there, while the hosts it had keep answering the links sent there.
 
 ## duva login
 
@@ -63,7 +64,7 @@ Without --file, the attachment goes in the working directory under its own name.
 
 ## duva status
 
-Show Duva's version and the deployment's region.
+Show Duva's version, the deployment's region and the web app's URL.
 
 Answers without sign-in, so any client can check that it reaches the deployment.
 

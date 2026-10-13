@@ -26,6 +26,8 @@ const payPerUse = new Set([
   "AWS::ApiGatewayV2::Route",
   "AWS::ApiGatewayV2::Stage",
   "AWS::CloudFront::Distribution",
+  // A CloudFront Function is paid per request it runs for, $0.10 a million.
+  "AWS::CloudFront::Function",
   "AWS::CloudFront::OriginAccessControl",
   // A response headers policy costs nothing of its own.
   "AWS::CloudFront::ResponseHeadersPolicy",
@@ -132,6 +134,57 @@ function importsOf(file: string): string[] {
     logLevel: "silent",
   });
   return Object.values(metafile.inputs).flatMap(({ imports }) => imports.map(({ path }) => path));
+}
+
+/** The domain CloudFront gives the web app's distribution, as resolved() takes it. */
+const distributionDomain = "d111111abcdef8.cloudfront.net";
+const certificate = "arn:aws:acm:us-east-1:123456789012:certificate/1";
+/** The parameters of a deployment whose web app is on CloudFront's own domain, and of one moved to a host from another. */
+const onCloudFront = { WebHosts: "", WebCertificate: "" };
+const onHosts = { WebHosts: "duva.example.com,old.example.com", WebCertificate: certificate };
+
+const noValue = Symbol("AWS::NoValue");
+
+/**
+ * The template's value as CloudFormation resolves it with the parameters: each Fn::If by its
+ * condition, the distribution's domain as distributionDomain, and any other Ref or Fn::GetAtt as
+ * the names it gives. What resolves to AWS::NoValue is left out.
+ */
+function resolved(value: unknown, parameters: Record<string, string>): unknown {
+  const pseudo: Record<string, string> = { "AWS::Region": "eu-north-1", "AWS::AccountId": "123456789012", "AWS::StackName": "Duva", "AWS::Partition": "aws", "AWS::URLSuffix": "amazonaws.com" };
+  const condition = (name: string): boolean => {
+    const holds = (expression: any): boolean => {
+      if ("Fn::Equals" in expression) return resolved(expression["Fn::Equals"][0], parameters) === resolved(expression["Fn::Equals"][1], parameters);
+      if ("Fn::Not" in expression) return !holds(expression["Fn::Not"][0]);
+      if ("Fn::Or" in expression) return expression["Fn::Or"].some(holds);
+      if ("Condition" in expression) return condition(expression.Condition);
+      throw new Error(`Can't resolve the condition ${JSON.stringify(expression)}`);
+    };
+    return holds(stack.template.Conditions[name]);
+  };
+  const each = (items: unknown) => (resolved(items, parameters) as unknown[]).filter((item) => item !== noValue);
+  if (Array.isArray(value)) return value.map((item) => resolved(item, parameters)).filter((item) => item !== noValue);
+  if (typeof value !== "object" || value === null) return value;
+  const [[key, argument]] = Object.entries(value) as [[string, any]];
+  switch (Object.keys(value).length === 1 ? key : "") {
+    case "Ref":
+      return argument === "AWS::NoValue" ? noValue : (parameters[argument] ?? pseudo[argument] ?? argument);
+    case "Fn::GetAtt":
+      return stack.template.Resources[argument[0]]?.Type === "AWS::CloudFront::Distribution" && argument[1] === "DomainName" ? distributionDomain : argument.join(".");
+    case "Fn::Join":
+      return each(argument[1]).join(argument[0]);
+    case "Fn::Select":
+      return each(argument[1])[argument[0]];
+    case "Fn::Split":
+      return String(resolved(argument[1], parameters)).split(argument[0]);
+    case "Fn::If":
+      return resolved(condition(argument[0]) ? argument[1] : argument[2], parameters);
+  }
+  return Object.fromEntries(
+    Object.entries(value)
+      .map(([name, item]) => [name, resolved(item, parameters)])
+      .filter(([, item]) => item !== noValue),
+  );
 }
 
 test("the deployment has one table, on demand, with point-in-time recovery", () => {
@@ -325,13 +378,11 @@ test("search may only read the search bucket, and only the indexer may write it"
 
 test("the uploads bucket keeps no versions, gives up an upload not completed after a day, and takes a browser's parts only from the web app's domain", () => {
   const [[, { Properties: bucket }]] = ofType("AWS::S3::Bucket").filter(([id]) => id.startsWith("Uploads")) as [[string, Resource]];
-  const [[distributionId]] = ofType("AWS::CloudFront::Distribution") as [[string, Resource]];
-  const webUrl = { "Fn::Join": ["", ["https://", { "Fn::GetAtt": [distributionId, "DomainName"] }]] };
   // Deleting a draft's file deletes it (ADR-0034), and a versioned bucket would keep it.
   expect(bucket?.VersioningConfiguration).toBeUndefined();
   expect(bucket?.LifecycleConfiguration).toEqual({ Rules: [{ AbortIncompleteMultipartUpload: { DaysAfterInitiation: 1 }, Status: "Enabled" }] });
-  expect(bucket?.CorsConfiguration).toEqual({
-    CorsRules: [{ AllowedOrigins: [webUrl], AllowedMethods: ["PUT"], AllowedHeaders: ["*"], ExposedHeaders: ["ETag"], MaxAge: 3600 }],
+  expect(resolved(bucket?.CorsConfiguration, onCloudFront)).toEqual({
+    CorsRules: [{ AllowedOrigins: [`https://${distributionDomain}`], AllowedMethods: ["PUT"], AllowedHeaders: ["*"], ExposedHeaders: ["ETag"], MaxAge: 3600 }],
   });
 });
 
@@ -890,7 +941,70 @@ test("the web app is served through CloudFront from its bucket, which only Cloud
   const [[, { Properties: distribution }]] = ofType("AWS::CloudFront::Distribution") as [[string, Resource]];
   const [origin] = distribution?.DistributionConfig?.Origins ?? [];
   expect(origin?.OriginAccessControlId).toBeDefined();
-  expect(distribution?.DistributionConfig?.ViewerCertificate).toBeUndefined();
+});
+
+test("the web app's hosts and their certificate are parameters, so deploy names them when it runs, and are empty while the web app is on CloudFront's own domain", () => {
+  expect(stack.template.Parameters).toMatchObject({ WebHosts: { Type: "String", Default: "" }, WebCertificate: { Type: "String", Default: "" } });
+});
+
+test("CloudFront answers at each of the web app's hosts, with their certificate from ACM, and with its own certificate while the web app has none", () => {
+  const [[, { Properties: distribution }]] = ofType("AWS::CloudFront::Distribution") as [[string, Resource]];
+  const config = (parameters: Record<string, string>) => resolved(distribution?.DistributionConfig, parameters) as Record<string, unknown>;
+  expect(config(onCloudFront)).not.toHaveProperty("Aliases");
+  expect(config(onCloudFront)).not.toHaveProperty("ViewerCertificate");
+  expect(config(onHosts)).toMatchObject({
+    Aliases: ["duva.example.com", "old.example.com"],
+    ViewerCertificate: { AcmCertificateArn: certificate, SslSupportMethod: "sni-only", MinimumProtocolVersion: "TLSv1.2_2021" },
+  });
+});
+
+test("everything that names the web app's URL names its host once it has one, and CloudFront's own domain until then", () => {
+  const [, { Properties: webClient }] = resources.find(([id, { Type }]) => Type === "AWS::Cognito::UserPoolClient" && id.startsWith("UserPoolWebClient"))!;
+  const [[, { Properties: api }]] = ofType("AWS::ApiGatewayV2::Api") as [[string, Resource]];
+  const [[, { Properties: uploads }]] = ofType("AWS::S3::Bucket").filter(([id]) => id.startsWith("Uploads")) as [[string, Resource]];
+  const variable = (prefix: string, name: string) => lambda(prefix)[1].Properties?.Environment?.Variables?.[name];
+  const urls = (parameters: Record<string, string>) =>
+    resolved(
+      {
+        output: stack.template.Outputs?.WebUrl?.Value,
+        signIn: [webClient?.CallbackURLs, webClient?.LogoutURLs],
+        cors: [api?.CorsConfiguration?.AllowOrigins, uploads?.CorsConfiguration?.CorsRules?.[0]?.AllowedOrigins],
+        // Status and the MCP endpoint name it, and the API's and setup's sign-in links lead there.
+        webUrl: ["ApiHandler", "McpHandler", "SetupHandler"].map((prefix) => variable(prefix, environmentVariables.webUrl)),
+        downloads: [stack.template.Outputs?.DownloadUrl?.Value, ...["ApiHandler", "InboundHandler", "SenderHandler"].map((prefix) => variable(prefix, environmentVariables.downloadUrl))],
+        logos: [stack.template.Outputs?.LogosUrl?.Value, variable("ApiHandler", environmentVariables.logosUrl)],
+      },
+      parameters,
+    );
+  const at = (url: string) => ({
+    output: url,
+    signIn: [[`${url}/`], [`${url}/`]],
+    cors: [[url], [url]],
+    webUrl: Array(3).fill(url),
+    downloads: Array(4).fill(`${url}/download/`),
+    logos: Array(2).fill(`${url}/bimi/`),
+  });
+  expect(urls(onCloudFront)).toEqual(at(`https://${distributionDomain}`));
+  expect(urls(onHosts)).toEqual(at("https://duva.example.com"));
+});
+
+test("at any other host name, the web app sends the browser on to its host with the path, and links and logos are answered where they were sent", () => {
+  const [[, { Properties: distribution }]] = ofType("AWS::CloudFront::Distribution") as [[string, Resource]];
+  const { DefaultCacheBehavior: web, CacheBehaviors: others } = distribution?.DistributionConfig ?? {};
+  // Only the web app's own behavior runs the function: download links, logos and Ask Coo's turns answer at every host name.
+  expect(others.flatMap(({ FunctionAssociations }: { FunctionAssociations?: unknown[] }) => FunctionAssociations ?? [])).toEqual([]);
+  const [association] = web?.FunctionAssociations ?? [];
+  expect(association?.EventType).toBe("viewer-request");
+  const [, { Properties: fn }] = resources.find(([id]) => id === association?.FunctionARN?.["Fn::GetAtt"]?.[0])!;
+  expect(fn?.FunctionConfig?.Runtime).toBe("cloudfront-js-2.0");
+  const handler = (parameters: Record<string, string>) => new Function(`${resolved(fn?.FunctionCode, parameters)}\nreturn handler;`)() as (event: unknown) => unknown;
+  const request = (host: string, uri: string) => ({ method: "GET", uri, querystring: {}, headers: { host: { value: host } }, cookies: {} });
+  const moved = (location: string) => ({ statusCode: 302, statusDescription: "Found", headers: { location: { value: location } } });
+
+  expect(handler(onHosts)({ request: request(distributionDomain, "/") })).toEqual(moved("https://duva.example.com/"));
+  expect(handler(onHosts)({ request: request("old.example.com", "/assets/index.js") })).toEqual(moved("https://duva.example.com/assets/index.js"));
+  expect(handler(onHosts)({ request: request("duva.example.com", "/") })).toEqual(request("duva.example.com", "/"));
+  expect(handler(onCloudFront)({ request: request(distributionDomain, "/index.html") })).toEqual(request(distributionDomain, "/index.html"));
 });
 
 /**
@@ -970,7 +1084,7 @@ test("download links lead to the web app's domain, where CloudFront signs each r
   const [urlId, { Properties: url }] = functionUrl(downloadId);
   expect(url).toMatchObject({ TargetFunctionArn: { "Fn::GetAtt": [downloadId, "Arn"] }, AuthType: "AWS_IAM", InvokeMode: "RESPONSE_STREAM" });
 
-  const [[distributionId, { Properties: distribution }]] = ofType("AWS::CloudFront::Distribution") as [[string, Resource]];
+  const [[, { Properties: distribution }]] = ofType("AWS::CloudFront::Distribution") as [[string, Resource]];
   const config = distribution?.DistributionConfig;
   const behaviors = (config?.CacheBehaviors ?? []).filter(({ PathPattern }: { PathPattern: string }) => PathPattern === "/download/*");
   expect(behaviors).toHaveLength(1);
@@ -985,9 +1099,7 @@ test("download links lead to the web app's domain, where CloudFront signs each r
   const access = stack.template.Resources[origin?.OriginAccessControlId?.["Fn::GetAtt"]?.[0]];
   expect(access?.Properties?.OriginAccessControlConfig).toMatchObject({ OriginAccessControlOriginType: "lambda", SigningBehavior: "always", SigningProtocol: "sigv4" });
 
-  expect(lambda("ApiHandler")[1].Properties?.Environment?.Variables?.[environmentVariables.downloadUrl]).toEqual({
-    "Fn::Join": ["", ["https://", { "Fn::GetAtt": [distributionId, "DomainName"] }, "/download/"]],
-  });
+  expect(resolved(lambda("ApiHandler")[1].Properties?.Environment?.Variables?.[environmentVariables.downloadUrl], onCloudFront)).toBe(`https://${distributionDomain}/download/`);
 });
 
 test("the organization's own logos are served under /bimi/ on the web app's domain, from a bucket of their own that only the distribution reads, with headers that keep an SVG from running anything", () => {
@@ -1018,9 +1130,7 @@ test("the organization's own logos are served under /bimi/ on the web app's doma
   expect(readers[0]).toMatchObject({ Action: "s3:GetObject", Principal: { Service: "cloudfront.amazonaws.com" } });
   expect(JSON.stringify(readers[0].Condition)).toContain(`distribution/",{"Ref":"${distributionId}"}`);
 
-  expect(lambda("ApiHandler")[1].Properties?.Environment?.Variables?.[environmentVariables.logosUrl]).toEqual({
-    "Fn::Join": ["", ["https://", { "Fn::GetAtt": [distributionId, "DomainName"] }, "/bimi/"]],
-  });
+  expect(resolved(lambda("ApiHandler")[1].Properties?.Environment?.Variables?.[environmentVariables.logosUrl], onCloudFront)).toBe(`https://${distributionDomain}/bimi/`);
 });
 
 // CloudFormation refuses a security header given as a custom one, and the deploy rolls back (docs/aws.md).

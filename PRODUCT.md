@@ -52,7 +52,8 @@ Success means an organization can let agents answer mail on its own domains, eac
 - There is no end-to-end encryption (ADR-0011).
 - The interface is in English for now. All strings live in one place, so Swedish or Danish can be added later without a rewrite.
 - Out of v1: mobile apps, importing old mail, contacts and calendar.
-- Not decided: a custom domain for sign-in and the web app (the first slice uses CloudFront's default domain), and the styling approach.
+- The web app can be at a host on one of the organization's domains, which `duva deploy --web` gives, or else at CloudFront's own domain (ADR-0042).
+- Not decided: a custom domain for sign-in, and the styling approach.
 
 ## Brand Commitments
 

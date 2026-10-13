@@ -50,7 +50,7 @@ test("status reaches the deployment saved in the CLI's config", async () => {
   const result = await machine.duva("status");
 
   expect(result.exitCode).toBe(0);
-  expect(JSON.parse(result.stdout)).toEqual({ version: "2.3.4", region: "eu-west-1", webSearchRegion: "eu-west-1" });
+  expect(JSON.parse(result.stdout)).toEqual({ version: "2.3.4", region: "eu-west-1", webSearchRegion: "eu-west-1", webUrl: server.url });
 });
 
 test("status says to run deploy first when no deployment is saved", async () => {

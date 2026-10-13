@@ -6,7 +6,7 @@ export const operations = [
     "method": "get",
     "path": "/status",
     "routeKey": "GET /status",
-    "summary": "Show Duva's version and the deployment's region.",
+    "summary": "Show Duva's version, the deployment's region and the web app's URL.",
     "description": "Answers without sign-in, so any client can check that it reaches the deployment.",
     "signIn": false,
     "command": [

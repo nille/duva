@@ -78,6 +78,17 @@ const nordic = [
   "--part--",
 ].join("\r\n");
 
+test("once the web app moves to its host, an attachment's link leads there", async () => {
+  const { duva, receive, link } = await withHumansMailbox();
+  const message = await receive(await mail("attachment"));
+
+  duva.moveWebApp("duva.example.com");
+  const { data } = await link(message.id, 0);
+
+  expect(data!.url).toMatch(/^https:\/\/duva\.example\.com\/download\//);
+  expect(await (await duva.download(data!.url)).text()).toBe("Hello, PDF!");
+});
+
 test("an attachment keeps its Swedish and Danish name, and downloads byte for byte", async () => {
   const { duva, receive, link } = await withHumansMailbox();
   const message = await receive(nordic);

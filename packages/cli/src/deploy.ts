@@ -16,6 +16,12 @@ export const deploy: Command = {
       required: false,
       description: "Your recovery address, outside the domain, such as a Gmail address, where Duva mails your first sign-in link and every one after. Needed only the first time.",
     },
+    {
+      name: "web",
+      required: false,
+      description:
+        "The host on one of the organization's domains to serve the web app at, like duva.example.com, instead of CloudFront's own domain. Deploy keeps it, and another moves the web app there, while the hosts it had keep answering the links sent there.",
+    },
   ],
   async run(args) {
     // deploy has no flags or lists, so each option it was given is a string.
@@ -37,7 +43,17 @@ export const deploy: Command = {
       import("@duva/api/dns-records"),
     ]);
     try {
-      const { signIn, ...deployed } = await deployDuva({ aws: realAws(region), dns: realDns, domain: values.domain, admin: values.admin, recovery: values.recovery });
+      const { signIn, ...deployed } = await deployDuva({
+        aws: realAws(region),
+        dns: realDns,
+        // stdout is kept for the command's JSON.
+        say: (line) => void process.stderr.write(`${line}\n`),
+        wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+        domain: values.domain,
+        admin: values.admin,
+        recovery: values.recovery,
+        web: values.web,
+      });
       await saveConfig({ apiUrl: deployed.apiUrl, webUrl: deployed.webUrl, signIn });
       return { version: duva.version, ...deployed };
     } catch (error) {

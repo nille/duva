@@ -308,6 +308,12 @@ export interface Duva {
    */
   download(url: string): Promise<Response>;
   /**
+   * Moves the web app to the host, as a deploy given it with --web does: the web app's URL is
+   * https://<host> from then on, and CloudFront still answers download links and logos at the
+   * URLs it was at before (#174).
+   */
+  moveWebApp(host: string): void;
+  /**
    * Moves Duva to a new user pool, as the deploy of #30 did. No human can sign in there, and every
    * session ends, until setUp() moves the humans.
    */
@@ -492,11 +498,14 @@ export async function startDuva({
   // Agents the API handed the sender in a call, which it invokes once the call is answered.
   const released: string[] = [];
   const tasking = tableStream(database, streamArn, [{ filter: taskGiverFilter, handler: createTaskGiver({ table, runner: taskRunner }), retries: 2, invocations: 1 }]);
+  // The web app's URL, which sign-in links lead to, and which the API's own URL stands for here, or
+  // the URL it listens at, until the web app moves to a host. CloudFront answers at each host it
+  // moved to, as at the API's URL.
+  let webUrl = inProcess;
+  const hostedAt: string[] = [];
   // Download links lead to the web app's domain under /download/, from where CloudFront invokes the
   // download Lambda. Here they lead to the API's own URL, under the same path, once it listens.
   let downloadUrl = `${inProcess}/download/`;
-  // Sign-in links lead to the web app, here at the API's own URL, once it listens.
-  let webUrl = inProcess;
   const downloads = {
     get url() {
       return downloadUrl;
@@ -671,6 +680,9 @@ export async function startDuva({
   const mcp = createMcp({
     version,
     region,
+    get webUrl() {
+      return webUrl;
+    },
     table,
     get signInUrl() {
       return signInUrl;
@@ -776,7 +788,13 @@ export async function startDuva({
     webServer: (hostname, options) => internet.webServer(hostname, options),
     webSearches: () => [...queries],
     browserProfiles: () => [...browser.profiles.keys()],
-    download: (url) => (url.startsWith(inProcess) ? api(new Request(url)) : fetch(url)),
+    download: (url) => ([inProcess, ...hostedAt].some((at) => url.startsWith(`${at}/`)) ? api(new Request(url)) : fetch(url)),
+    moveWebApp(host) {
+      webUrl = `https://${host}`;
+      hostedAt.push(webUrl);
+      downloadUrl = `${webUrl}/download/`;
+      logosUrl = `${webUrl}/${hostedLogosPath}`;
+    },
     setUp: async ({ backfillLost = false, recovery, ...options }) => {
       await setUpFirstAdmin(mailing, await setUp(options), recovery);
       await timeEarlierLabels(table);
@@ -827,8 +845,8 @@ export async function startDuva({
     mcp: (email, options) => connectMcpClient(`${inProcess}/mcp`, email, web, options),
     async listen() {
       const server = await listen(async (request) => (new URL(request.url).pathname.startsWith(`/${conversationPath}`) ? agentTurn(request) : web(request)));
-      downloadUrl = `${server.url}/download/`;
       webUrl = server.url;
+      downloadUrl = `${server.url}/download/`;
       uploadsUrl = `${server.url}/uploads-bucket/`;
       signInUrl = server.url;
       logosUrl = `${server.url}/${hostedLogosPath}`;

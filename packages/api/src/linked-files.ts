@@ -223,12 +223,14 @@ export async function carriedFiles(table: Table, mailbox: string, entries: Linke
 
 /**
  * The page URLs of the forwarded message's linked files that the forward carries, by the file
- * they carry, as its raw text gives them, matched by their tokens' hashes, since Duva keeps no
- * token. A file no longer shared has none.
+ * they carry, with the tokens its raw text gives them, matched by their hashes, since Duva keeps no
+ * token. A link sent while the web app was at another URL is carried at its URL now (#174).
+ * A file no longer shared has none.
  */
 export async function carriedUrls(table: Table, mailbox: string, text: string, downloadUrl: string, carries: Pick<Ticket, "holder" | "draft" | "file">[]): Promise<Map<string, string>> {
   const byHash = new Map<string, string>();
-  for (const [url] of text.matchAll(new RegExp(`${escaped(`${downloadUrl}${pagePath}`)}[\\w-]+`, "g"))) byHash.set(hashOf(url.slice(url.lastIndexOf("/") + 1)), url);
+  const path = escaped(`${new URL(downloadUrl).pathname}${pagePath}`);
+  for (const [, token] of text.matchAll(new RegExp(`https?://[^/\\s]+${path}([\\w-]+)`, "g"))) byHash.set(hashOf(token!), `${downloadUrl}${pagePath}${token}`);
   const urls = new Map<string, string>();
   for (const carried of carries) {
     const shared = await storedLink(table, { ...carried, mailbox });

@@ -518,14 +518,170 @@ test("while setup fails, deploy keeps the old user pool", async () => {
   expect([...world.aws.userPools].sort()).toEqual(["eu-north-1_new", "eu-north-1_old"]);
 });
 
+test("deploy given a web host requests its certificate, prints the records that validate it, and waits until ACM has validated it before deploying", async () => {
+  const world = newWorld();
+  world.onWait = (waits) => {
+    if (waits === 3) world.dns.records.set("CNAME _v.duva.example.com", ["_v.duva-example-com.acm-validations.aws."]);
+  };
+
+  await deployDuva({ ...world, admin, recovery, domain: "example.com", web: "duva.example.com" });
+
+  expect(world.said).toEqual([
+    "Add a CNAME record at _v.duva.example.com with the value _v.duva-example-com.acm-validations.aws, so ACM can validate the web app's certificate for duva.example.com.",
+    "Waiting until ACM has validated the web app's certificate. You can stop, and run duva deploy again, which waits for the same one.",
+    "DNS has the record at _v.duva.example.com.",
+    "ACM has validated the web app's certificate.",
+  ]);
+  expect(world.waits).toHaveLength(3);
+  expect(world.aws.changes.slice(0, 2)).toEqual([
+    "requested a certificate for duva.example.com",
+    `deployed the stack with ${JSON.stringify({ domain: "example.com", admin, signInDomain: "example.com", domainVerified: false, recovery, webHosts: ["duva.example.com"], webCertificate: "arn:aws:acm:us-east-1:123456789012:certificate/1" })}`,
+  ]);
+});
+
+test("deploy says which records the web app needs in DNS: its certificate's, and its host's CNAME to CloudFront", async () => {
+  const world = newWorld();
+  world.dns.records.set("CNAME _v.duva.example.com", ["_v.duva-example-com.acm-validations.aws"]);
+
+  const report = await deployDuva({ ...world, admin, recovery, domain: "example.com", web: "duva.example.com" });
+
+  expect(report.web?.records).toEqual([
+    { purpose: "certificate", type: "CNAME", name: "_v.duva.example.com", value: "_v.duva-example-com.acm-validations.aws", status: "live" },
+    { purpose: "web app", type: "CNAME", name: "duva.example.com", value: "d111111abcdef8.cloudfront.net", status: "missing" },
+  ]);
+});
+
+test("the web app on a host is at its URL there, for the CLI, in the config the web app signs in with and for the first sign-in link, once DNS leads the host to CloudFront", async () => {
+  const world = newWorld();
+  world.aws.sandbox = false;
+  world.dns.records.set("CNAME _v.duva.example.com", ["_v.duva-example-com.acm-validations.aws"]);
+
+  const report = await deployDuva({ ...world, admin, recovery, domain: "example.com", web: "Duva.Example.COM" });
+  world.aws.identities.set("example.com", { dkim: "SUCCESS", mailFrom: "SUCCESS", verified: true });
+  world.dns.records.set("CNAME duva.example.com", ["d111111abcdef8.cloudfront.net"]);
+  const again = await deployDuva(world);
+
+  expect(report.webUrl).toBe("https://duva.example.com");
+  expect(world.aws.webApp?.config).toMatchObject({ signIn: { redirectUri: "https://duva.example.com/" } });
+  expect(report.admin.signIn).toMatch(/Until then, sign in at https:\/\/duva\.example\.com once DNS has its CNAME record to d111111abcdef8\.cloudfront\.net, or with duva login,/);
+  expect(again.admin.signIn).toMatch(/^Duva mailed a sign-in link to ada@elsewhere\.example\. Follow it within 30 minutes to sign in at https:\/\/duva\.example\.com, then register a passkey\./);
+});
+
+test("a re-run keeps the web app's host and its certificate, and waits for nothing", async () => {
+  const world = newWorld();
+  world.dns.records.set("CNAME _v.duva.example.com", ["_v.duva-example-com.acm-validations.aws"]);
+  const first = await deployDuva({ ...world, admin, recovery, domain: "example.com", web: "duva.example.com" });
+  const changes = [...world.aws.changes];
+  const said = world.said.length;
+
+  const again = await deployDuva(world);
+
+  const { cooModels: _, ...report } = first;
+  expect(again).toEqual(report);
+  expect(world.aws.changes).toEqual(changes);
+  expect(world.said).toHaveLength(said);
+});
+
+describe("deploy refuses a web host off the organization's domains, or where DNS can't take its CNAME, and changes nothing", () => {
+  test.each([
+    ["duva.example.net", /duva\.example\.net isn't on one of the organization's domains, example\.com\. Give a host on one of them, like duva\.example\.com/],
+    ["duvaexample.com", /duvaexample\.com isn't on one of the organization's domains/],
+    ["example.com", /can't be at example\.com itself.*like duva\.example\.com/],
+    ["mail.example.com", /mail\.example\.com has the MAIL FROM records/],
+    ["not a host", /"not a host" isn't a host name/],
+  ])("%j", async (web, refusal) => {
+    const world = newWorld();
+
+    await expect(deployDuva({ ...world, admin, recovery, domain: "example.com", web })).rejects.toThrow(refusal);
+    expect(world.aws.changes).toEqual([]);
+  });
+});
+
+test("a later deploy takes a web host on a domain an admin added", async () => {
+  const world = newWorld();
+  await deployDuva({ ...world, admin, recovery, domain: "example.com" });
+  world.aws.addedDomains.push("example.net");
+  world.dns.records.set("CNAME _v.duva.example.net", ["_v.duva-example-net.acm-validations.aws"]);
+
+  await deployDuva({ ...world, web: "duva.example.net" });
+
+  expect(world.aws.stack?.webHosts).toEqual(["duva.example.net"]);
+});
+
+test("moving the web app keeps its earlier host for links already sent, with one certificate for both, and deletes the one it replaced", async () => {
+  const world = newWorld();
+  world.dns.records.set("CNAME _v.duva.example.com", ["_v.duva-example-com.acm-validations.aws"]);
+  await deployDuva({ ...world, admin, recovery, domain: "example.com", web: "duva.example.com" });
+  world.said.length = 0;
+  world.onWait = () => world.dns.records.set("CNAME _v.web.example.com", ["_v.web-example-com.acm-validations.aws"]);
+
+  const report = await deployDuva({ ...world, web: "web.example.com" });
+
+  expect(world.aws.stack).toMatchObject({ webHosts: ["web.example.com", "duva.example.com"], webCertificate: "arn:aws:acm:us-east-1:123456789012:certificate/2" });
+  expect([...world.aws.certificates.keys()]).toEqual(["arn:aws:acm:us-east-1:123456789012:certificate/2"]);
+  expect(world.aws.certificates.get("arn:aws:acm:us-east-1:123456789012:certificate/2")?.names).toEqual(["web.example.com", "duva.example.com"]);
+  // The new host can point at CloudFront while ACM validates, so the web app opens there once it moves.
+  expect(world.said.slice(0, 3)).toEqual([
+    "Add a CNAME record at web.example.com with the value d111111abcdef8.cloudfront.net, where the web app moves once deploy is done.",
+    "Add a CNAME record at _v.web.example.com with the value _v.web-example-com.acm-validations.aws, so ACM can validate the web app's certificate for web.example.com and duva.example.com.",
+    "Waiting until ACM has validated the web app's certificate. You can stop, and run duva deploy again, which waits for the same one.",
+  ]);
+  expect(report.webUrl).toBe("https://web.example.com");
+  expect(report.web?.records.filter(({ purpose }) => purpose === "web app").map(({ name }) => name)).toEqual(["web.example.com", "duva.example.com"]);
+});
+
+test("deploy stops waiting for the certificate after an hour, and a re-run waits for the same one", async () => {
+  const world = newWorld();
+
+  await expect(deployDuva({ ...world, admin, recovery, domain: "example.com", web: "duva.example.com" })).rejects.toThrow(
+    "ACM hasn't validated the web app's certificate in an hour. Add the records above to DNS, and run duva deploy again, which waits for the same certificate.",
+  );
+  expect(world.waits.reduce((total, wait) => total + wait, 0)).toBe(3_600_000);
+  expect(world.aws.changes).toEqual(["requested a certificate for duva.example.com"]);
+
+  world.dns.records.set("CNAME _v.duva.example.com", ["_v.duva-example-com.acm-validations.aws"]);
+  await deployDuva({ ...world, admin, recovery, domain: "example.com", web: "duva.example.com" });
+  expect(world.aws.certificates.size).toBe(1);
+  expect(world.aws.stack?.webCertificate).toBe("arn:aws:acm:us-east-1:123456789012:certificate/1");
+});
+
+test("when ACM can't validate the certificate, deploy says why, and a re-run requests another", async () => {
+  const world = newWorld();
+  world.aws.certificateFailure = "CAA_ERROR";
+
+  await expect(deployDuva({ ...world, admin, recovery, domain: "example.com", web: "duva.example.com" })).rejects.toThrow(
+    "ACM couldn't validate the web app's certificate for duva.example.com: CAA_ERROR. Fix what stopped it, and run duva deploy again for another.",
+  );
+  expect(world.aws.changes).toEqual(["requested a certificate for duva.example.com"]);
+
+  world.aws.certificateFailure = undefined;
+  world.dns.records.set("CNAME _v.duva.example.com", ["_v.duva-example-com.acm-validations.aws"]);
+  await deployDuva({ ...world, admin, recovery, domain: "example.com", web: "duva.example.com" });
+  expect(world.aws.stack?.webCertificate).toBe("arn:aws:acm:us-east-1:123456789012:certificate/2");
+});
+
 /**
  * An AWS account and region with nothing of Duva's in it, and DNS with no records. SES gives a new
- * domain identity the DKIM tokens tok1, tok2 and tok3.
+ * domain identity the DKIM tokens tok1, tok2 and tok3, and ACM validates a name by a CNAME at _v.
+ * before it. Deploy's waits take no time, and what it says is kept.
  */
 function newWorld() {
-  const aws = new InMemoryAws();
   const dns = new InMemoryDns();
-  return { aws, dns };
+  const aws = new InMemoryAws(dns);
+  const world = {
+    aws,
+    dns,
+    said: [] as string[],
+    say: (line: string) => void world.said.push(line),
+    waits: [] as number[],
+    /** What changes while deploy waits, given how many times it has. */
+    onWait: (_waits: number) => {},
+    async wait(ms: number) {
+      world.waits.push(ms);
+      world.onWait(world.waits.length);
+    },
+  };
+  return world;
 }
 
 interface Identity {
@@ -540,9 +696,19 @@ interface Parameters {
   signInDomain: string;
   domainVerified: boolean;
   recovery: string;
+  webHosts: string[];
+  webCertificate: string;
 }
 
+/** The record ACM validates the name by. */
+const validation = (name: string) => ({ name: `_v.${name}`, value: `_v.${name.replaceAll(".", "-")}.acm-validations.aws` });
+
 class InMemoryAws implements Aws {
+  /** The DNS ACM looks its validation records up in. */
+  readonly dns: Dns;
+  constructor(dns: Dns) {
+    this.dns = dns;
+  }
   region = "eu-north-1";
   account = "123456789012";
   stack?: Partial<Parameters> & { outputs: StackOutputs };
@@ -571,6 +737,12 @@ class InMemoryAws implements Aws {
   setupFails = false;
   /** The domain each user pool sends sign-in codes from, once one does: the stack's sign-in domain, or one the API chose since. */
   poolSenders = new Map<string, string>();
+  /** The domains admins added to the organization after the first. */
+  addedDomains: string[] = [];
+  /** ACM's certificates in us-east-1, by ARN, with the region of the deployment that requested each. */
+  certificates = new Map<string, { names: string[]; status: string; failure?: string; deployment: string }>();
+  /** Why ACM fails to validate the certificates it is asked for, if it does. */
+  certificateFailure?: string;
 
   async duvaStack() {
     return this.stack;
@@ -586,8 +758,13 @@ class InMemoryAws implements Aws {
       this.stack.signInDomain !== signInDomain ||
       this.stack.domainVerified !== domainVerified ||
       this.stack.recovery !== recovery ||
+      JSON.stringify(this.stack.webHosts) !== JSON.stringify(parameters.webHosts) ||
+      this.stack.webCertificate !== parameters.webCertificate ||
       this.stack.outputs.UserPoolId !== userPool
     ) {
+      // CloudFront takes only a certificate ACM issued for every host.
+      const certificate = this.certificates.get(parameters.webCertificate);
+      if (parameters.webHosts.length > 0 && (certificate?.status !== "ISSUED" || certificate.names.join() !== parameters.webHosts.join())) throw new Error("CloudFront refused the certificate");
       const dkim = Object.fromEntries(
         [1, 2, 3].flatMap((n) => [
           [`DkimName${n}`, `tok${n}._domainkey.${domain}`],
@@ -597,7 +774,8 @@ class InMemoryAws implements Aws {
       const outputs = {
         ApiUrl: "https://api.example",
         ReceiptRuleSet: "Duva-Receiving",
-        WebUrl: "https://web.example",
+        WebUrl: parameters.webHosts.length > 0 ? `https://${parameters.webHosts[0]}` : "https://web.example",
+        WebDistributionDomain: "d111111abcdef8.cloudfront.net",
         WebBucket: "duva-web",
         UserPoolId: userPool,
         SignInUrl: signInUrl,
@@ -684,6 +862,45 @@ class InMemoryAws implements Aws {
   async sending() {
     return { sandbox: this.sandbox, perDay: this.perDay, perSecond: this.perSecond };
   }
+
+  async organizationDomains() {
+    return this.organization === undefined ? [] : [this.organization.domain, ...this.addedDomains];
+  }
+
+  async certificate(arn: string) {
+    const certificate = this.certificates.get(arn);
+    if (certificate === undefined) return undefined;
+    const records = certificate.names.map(validation);
+    if (certificate.status === "PENDING_VALIDATION" && this.certificateFailure !== undefined) Object.assign(certificate, { status: "FAILED", failure: this.certificateFailure });
+    // ACM validates a certificate once DNS has the record for each of its names.
+    const found = await Promise.all(records.map(async ({ name, value }) => (await this.dns.resolve("CNAME", name)).some((each) => each.replace(/\.$/, "") === value)));
+    if (certificate.status === "PENDING_VALIDATION" && found.every(Boolean)) certificate.status = "ISSUED";
+    return { names: certificate.names, status: certificate.status, ...(certificate.failure !== undefined && { failure: certificate.failure }), records };
+  }
+
+  async findCertificate(names: string[]) {
+    const sameNames = (each: string[]) => each.length === names.length && each.every((name) => names.includes(name));
+    for (const [arn, { names: covered, status, deployment }] of this.certificates) {
+      if (deployment === this.region && sameNames(covered) && ["PENDING_VALIDATION", "ISSUED"].includes(status)) return arn;
+    }
+    return undefined;
+  }
+
+  async requestCertificate(names: string[]) {
+    const arn = `arn:aws:acm:us-east-1:${this.account}:certificate/${++this.certificatesRequested}`;
+    this.certificates.set(arn, { names, status: "PENDING_VALIDATION", deployment: this.region });
+    this.changes.push(`requested a certificate for ${names.join(", ")}`);
+    return arn;
+  }
+
+  async deleteCertificate(arn: string) {
+    const certificate = this.certificates.get(arn);
+    if (certificate?.deployment !== this.region) return;
+    this.certificates.delete(arn);
+    this.changes.push(`deleted the certificate for ${certificate.names.join(", ")}`);
+  }
+
+  private certificatesRequested = 0;
 }
 
 class InMemoryDns implements Dns {

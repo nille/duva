@@ -17,7 +17,7 @@ paths:
   /status:
     get:
       operationId: getStatus
-      summary: Show Duva's version and the deployment's region.
+      summary: Show Duva's version, the deployment's region and the web app's URL.
       description: Answers without sign-in, so any client can check that it reaches the deployment.
       x-cli-command: status
       security: []
@@ -11057,7 +11057,7 @@ components:
     Status:
       type: object
       additionalProperties: false
-      required: [version, region, webSearchRegion]
+      required: [version, region, webSearchRegion, webUrl]
       properties:
         version:
           type: string
@@ -11076,6 +11076,14 @@ components:
             Ireland, from the EU, us-east-1, Virginia, from the US, and the
             nearest of those and ap-northeast-1, Tokyo, from anywhere else.
           examples: ["eu-west-1"]
+        webUrl:
+          type: string
+          format: uri
+          description: >-
+            The web app's URL: at its host on one of the organization's
+            domains, once duva deploy --web moved it there, or CloudFront's
+            own domain until then.
+          examples: ["https://duva.example.com"]
     SecretKind:
       type: string
       enum: [login, card, other]

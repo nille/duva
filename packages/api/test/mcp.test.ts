@@ -54,6 +54,15 @@ test("an MCP client signs in with the human's Duva account through the deploymen
   }
 });
 
+test("the MCP endpoint names the web app as Duva's website, at its host once it moves there", async () => {
+  const { duva } = await withMailbox();
+  duva.moveWebApp("duva.example.com");
+
+  const { client } = await duva.mcp("linus@example.org");
+
+  expect(client.getServerVersion()).toMatchObject({ name: "duva", websiteUrl: "https://duva.example.com" });
+});
+
 test("the endpoint answers a call without a session with 401, naming where to find how to sign in, and Duva as the server that registers MCP clients and signs them in", async () => {
   const { duva } = await withMailbox();
   const { url, close } = await duva.listen();

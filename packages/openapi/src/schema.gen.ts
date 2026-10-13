@@ -9,7 +9,7 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Show Duva's version and the deployment's region.
+         * Show Duva's version, the deployment's region and the web app's URL.
          * @description Answers without sign-in, so any client can check that it reaches the deployment.
          */
         get: operations["getStatus"];
@@ -6283,6 +6283,12 @@ export interface components {
              * @enum {string}
              */
             webSearchRegion: "eu-west-1" | "us-east-1" | "ap-northeast-1";
+            /**
+             * Format: uri
+             * @description The web app's URL: at its host on one of the organization's domains, once duva deploy --web moved it there, or CloudFront's own domain until then.
+             * @example https://duva.example.com
+             */
+            webUrl: string;
         };
         /**
          * @description What a secret is. login, a site's username and password, with a one-time-code seed if the site asks for codes; card, a payment card; other, any other value, such as a membership number.

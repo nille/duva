@@ -35,9 +35,9 @@ export const realDns: Dns = {
   },
 };
 
-export interface DnsRecord {
-  /** What SES needs the record for. */
-  purpose: "receiving" | "DKIM" | "MAIL FROM" | "DMARC";
+export interface DnsRecord<Purpose extends string = "receiving" | "DKIM" | "MAIL FROM" | "DMARC"> {
+  /** What the record is for: what SES needs it for, unless deploy checks it for the web app (#174). */
+  purpose: Purpose;
   type: RecordType;
   name: string;
   value: string;
@@ -47,7 +47,7 @@ export interface DnsRecord {
   error?: string;
 }
 
-export type WantedRecord = Omit<DnsRecord, "status" | "found" | "error">;
+export type WantedRecord<Purpose extends string = DnsRecord["purpose"]> = Omit<DnsRecord<Purpose>, "status" | "found" | "error">;
 
 /** The MAIL FROM subdomain's label: mail from Duva bounces to mail.<domain>. */
 const mailFromLabel = "mail";
@@ -69,17 +69,17 @@ export async function domainRecords(dns: Dns, { region, domain, dkim }: { region
     { purpose: "MAIL FROM", type: "MX", name: mailFromDomain(domain), value: `10 feedback-smtp.${region}.amazonses.com` },
     { purpose: "MAIL FROM", type: "TXT", name: mailFromDomain(domain), value: "v=spf1 include:amazonses.com ~all" },
   ];
-  const records = await Promise.all(wanted.map((record) => check(dns, record)));
+  const records = await Promise.all(wanted.map((record) => checkRecord(dns, record)));
 
   // The domain needs a DMARC record of its own only if none covers it from a parent domain.
-  const dmarc = await check(dns, { purpose: "DMARC", type: "TXT", name: `_dmarc.${domain}`, value: "v=DMARC1; p=none;" });
+  const dmarc = await checkRecord(dns, { purpose: "DMARC", type: "TXT", name: `_dmarc.${domain}`, value: "v=DMARC1; p=none;" });
   const coveredBy = dmarc.status === "missing" ? await parentDmarc(dns, domain) : undefined;
   if (coveredBy === undefined) records.push(dmarc);
   return { records, coveredBy };
 }
 
 /** The record with whether DNS answers with it. */
-async function check(dns: Dns, record: WantedRecord): Promise<DnsRecord> {
+export async function checkRecord<Purpose extends string>(dns: Dns, record: WantedRecord<Purpose>): Promise<DnsRecord<Purpose>> {
   let found: string[];
   try {
     found = await dns.resolve(record.type, record.name);

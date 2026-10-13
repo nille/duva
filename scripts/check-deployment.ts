@@ -8,7 +8,8 @@
 // no versions, gives up an upload after a day and takes a browser's parts only from the web app's domain; the organization's own logos are served to
 // anyone there, as SVG or PEM, from a bucket only CloudFront reads; nothing but IAM may invoke the
 // unsubscriber and the logo fetcher, which refuse addresses that aren't public; the web app is served with the config
-// deploy published; the user pool takes sign-in names in any case, sends its codes from a domain
+// deploy published, and once it's at a host, its certificate is issued for its hosts and tagged as Duva's, CloudFront's own
+// domain and its earlier hosts send it on there, and CloudFront's own domain still answers download links and logos; the user pool takes sign-in names in any case, sends its codes from a domain
 // SES has verified, and still offers emailed codes, beside passkeys bound to its prefix domain, only
 // it may invoke the sign-in link triggers, only the web app's client answers their challenge, and
 // asking for a link says nothing of who is a human in Duva; and no pool the stack retired is left; once an address exists, SES's receipt rules list each address, and each domain with a catch-all, once, and none is on SES's
@@ -23,6 +24,7 @@
 // DUVA_TEST_HUMAN_CODES_KEY, All mailboxes answers for the test human's agent as its mailboxes do. Signing in stays
 // with a human. Then prints how many
 // messages Duva dropped on arrival each day of the last 7, by reason. Exits 1 if any check fails.
+import { ACMClient, DescribeCertificateCommand, ListTagsForCertificateCommand } from "@aws-sdk/client-acm";
 import { CloudFormationClient, DescribeStacksCommand, paginateListStackResources } from "@aws-sdk/client-cloudformation";
 import { CloudWatchClient, GetMetricDataCommand } from "@aws-sdk/client-cloudwatch";
 import { CognitoIdentityProviderClient, DescribeUserPoolClientCommand, DescribeUserPoolCommand, GetUserPoolMfaConfigCommand, paginateListUserPools } from "@aws-sdk/client-cognito-identity-provider";
@@ -60,7 +62,7 @@ import { BedrockRuntimeClient, ConverseCommand } from "@aws-sdk/client-bedrock-r
 import { createHash } from "node:crypto";
 import { sesSuppressionList } from "@duva/api/suppression";
 import { novaTranslator } from "@duva/api/translation";
-import { stackName, stackOutputs, stackParameters } from "@duva/infra/outputs";
+import { deploymentTagged, projectTag, stackName, stackOutputs, stackParameters, webHostsIn } from "@duva/infra/outputs";
 import { managedLoginReached } from "@duva/api/mcp-sign-in";
 
 const region = process.env.AWS_REGION;
@@ -124,10 +126,10 @@ const stackTable = async () => {
   return name === undefined ? undefined : { client: new DynamoDBClient({ region }), name };
 };
 
-await check("status answers without sign-in, for the region and the region web searches go to", async () => {
+await check("status answers without sign-in, for the region, the region web searches go to and the web app's URL", async () => {
   const response = await fetch(`${apiUrl}/status`);
-  const body = (await response.json()) as { region?: string; webSearchRegion?: string };
-  return response.ok && body.region === region && body.webSearchRegion === webSearchRegion(region) ? undefined : `answered ${response.status} ${JSON.stringify(body)}`;
+  const body = (await response.json()) as { region?: string; webSearchRegion?: string; webUrl?: string };
+  return response.ok && body.region === region && body.webSearchRegion === webSearchRegion(region) && body.webUrl === webUrl ? undefined : `answered ${response.status} ${JSON.stringify(body)}`;
 });
 await check("whoami without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/whoami`), 401));
 await check("whoami with a forged token answers 401", async () =>
@@ -882,6 +884,35 @@ await check("the web app's config names this deployment's API and sign-in", asyn
   const wanted = { apiUrl, signIn: { url: output(stackOutputs.signInUrl), clientId: output(stackOutputs.webClientId), redirectUri: `${webUrl}/` } };
   return JSON.stringify(config) === JSON.stringify(wanted) ? undefined : `is ${JSON.stringify(config)}`;
 });
+// The web app's hosts, the one it's at first, once deploy moved it to one (#174).
+const parameter = (name: string) => stack?.Parameters?.find(({ ParameterKey }) => ParameterKey === name)?.ParameterValue ?? "";
+const webHosts = webHostsIn(parameter(stackParameters.webHosts));
+if (webHosts.length > 0) {
+  const ownDomain = `https://${output(stackOutputs.distributionDomain)}`;
+  await check("the web app's certificate in us-east-1 is issued for exactly its hosts, and tagged as this deployment's", async () => {
+    const acm = new ACMClient({ region: "us-east-1" });
+    const CertificateArn = parameter(stackParameters.webCertificate);
+    const { Certificate } = await acm.send(new DescribeCertificateCommand({ CertificateArn }));
+    const { Tags = [] } = await acm.send(new ListTagsForCertificateCommand({ CertificateArn }));
+    const names = [...new Set([Certificate?.DomainName, ...(Certificate?.SubjectAlternativeNames ?? [])])];
+    const tagged = deploymentTagged(Tags, region) && Tags.some(({ Key, Value }) => Key === projectTag.Key && Value === projectTag.Value);
+    const covers = names.length === webHosts.length && webHosts.every((host) => names.includes(host));
+    return Certificate?.Status === "ISSUED" && covers && tagged ? undefined : `is ${Certificate?.Status} for ${names.join(", ")}, tagged ${JSON.stringify(Tags)}`;
+  });
+  // CloudFront's own domain, and each host the web app was at, send its browsers on, keeping the path.
+  for (const earlier of [ownDomain, ...webHosts.slice(1).map((host) => `https://${host}`)]) {
+    await check(`${earlier} sends the web app on to ${webUrl}`, async () => {
+      const response = await fetch(`${earlier}/index.html`, { redirect: "manual" });
+      return response.status === 302 && response.headers.get("location") === `${webUrl}/index.html` ? undefined : `answered ${response.status} to ${response.headers.get("location")}`;
+    });
+  }
+  await check("CloudFront's own domain still answers the download links and logos sent there", async () => {
+    const link = await fetch(`${ownDomain}/download/${"A".repeat(43)}`);
+    // Without s3:ListBucket, a logo that isn't there answers 403.
+    const logo = await fetch(`${ownDomain}/${hostedLogosPath}domains/check-deployment.invalid.svg`);
+    return link.status === 404 && logo.status === 403 ? undefined : `a made-up link answered ${link.status} and a missing logo ${logo.status}`;
+  });
+}
 await check("the API lets the web app call it with a session", async () => {
   const response = await fetch(`${apiUrl}/whoami`, {
     method: "OPTIONS",

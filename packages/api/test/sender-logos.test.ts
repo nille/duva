@@ -182,6 +182,19 @@ test("the BIMI-Selector header picks which of the domain's logos shows", async (
   expect(requests.map(({ url }) => url)).toEqual(["https://logos.example.net/logo.svg", "https://logos.example.net/other.svg"]);
 });
 
+test("once the web app moves to its host, mail shows its sender's logo there, and a logo shown before still answers at its URL", async () => {
+  const { duva, receive, publish } = await withMailbox({ "/logo.svg": logo });
+  publish("lists.example.org", { dmarc: "v=DMARC1; p=reject;", bimi: "v=BIMI1; l=https://logos.example.net/logo.svg" });
+  const before = (await receive(newsletter("news@lists.example.org", { subject: "Before" }))).message.logo!;
+
+  duva.moveWebApp("duva.example.com");
+  const after = (await receive(newsletter("news@lists.example.org", { subject: "After" }))).message.logo!;
+
+  expect(new URL(before.url).host).not.toBe("duva.example.com");
+  expect(after.url).toMatch(/^https:\/\/duva\.example\.com\/download\/logos\/[0-9a-f-]{36}$/);
+  for (const { url } of [before, after]) expect(await (await duva.download(url)).text()).toBe(written);
+});
+
 test("a domain's logo is looked up once a day, and the same logo from two domains is stored once", async () => {
   const { duva, requests, receive, publish } = await withMailbox({ "/logo.svg": logo });
   const bimi = "v=BIMI1; l=https://logos.example.net/logo.svg";

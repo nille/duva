@@ -66,7 +66,12 @@ export async function senderLogo(table: Table, logos: SenderLogos, { domain, sel
   const selector = named !== undefined && /^[a-z0-9_-]+(\.[a-z0-9_-]+)*$/i.test(named) ? named.toLowerCase() : defaultSelector;
   try {
     const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: lookupKey(domain, selector) }));
-    if (Item !== undefined && Date.parse(Item.expiresAt as string) > Date.now()) return Item.logo as SenderLogo | undefined;
+    // A lookup kept from before the web app moved gives the logo where Duva serves it now (#174).
+    if (Item !== undefined && Date.parse(Item.expiresAt as string) > Date.now()) {
+      const kept = Item.logo as SenderLogo | undefined;
+      const id = kept === undefined ? undefined : logoAt(new URL(kept.url).pathname);
+      return kept === undefined || id === undefined ? kept : { ...kept, url: logos.url(id) };
+    }
     let found: { logo?: SenderLogo; failed?: boolean } = {};
     try {
       found = await lookUp(table, logos, domain, selector);

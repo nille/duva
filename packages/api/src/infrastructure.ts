@@ -66,7 +66,10 @@ export const environmentVariables = {
   configurationSet: "CONFIGURATION_SET",
   /** The URL of the download Lambda, which download links and senders' logos lead to. */
   downloadUrl: "DOWNLOAD_URL",
-  /** The web app's URL, which sign-in links lead to (ADR-0041). */
+  /**
+   * The web app's URL, which sign-in links lead to (ADR-0041): at its host on the organization's
+   * domains once deploy moved it there, on CloudFront's own domain until then (ADR-0042).
+   */
   webUrl: "WEB_URL",
   /** The bucket the organization's own logos are in, which CloudFront serves at the URL below. */
   logosBucket: "LOGOS_BUCKET",

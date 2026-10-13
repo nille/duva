@@ -25,6 +25,7 @@
     "end-to-end": "npm run build && node scripts/end-to-end.ts"
   },
   "devDependencies": {
+    "@aws-sdk/client-acm": "^3.1150.0",
     "@aws-sdk/client-bedrock-agentcore-control": "^3.1147.0",
     "@aws-sdk/client-bedrock-runtime": "^3.1147.0",
     "@aws-sdk/client-cloudformation": "^3.1146.0",

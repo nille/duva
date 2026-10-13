@@ -274,6 +274,42 @@ test("forwarding a sent mail with linked files carries the same links, with thei
   expect((await sentMessage(ada, mailbox.id)).linkedFiles).toEqual([{ id: forward.attachments![0]!.id, name: "film.mov", type: "application/octet-stream", size: mebibytes(11), until: thirtyDaysOn, state: "sharing", downloads: 1 }]);
 });
 
+test("once the web app moves to its host, mail links its files there, and a file linked before still opens at its link", async () => {
+  const { duva, ada, draft, at, attach } = await withMailbox();
+  const before = await draft();
+  await attach(ada, before.id, { name: "film.mov", content: new Uint8Array(mebibytes(11)) });
+  await ada.POST("/mailboxes/{mailbox}/drafts/{draft}/send", at(before.id));
+  const [earlier] = pagesIn((await PostalMime.parse(duva.sent().at(-1)!)).text!);
+
+  duva.moveWebApp("duva.example.com");
+  const after = await draft();
+  await attach(ada, after.id, { name: "stills.zip", content: new Uint8Array(mebibytes(11)) });
+  await ada.POST("/mailboxes/{mailbox}/drafts/{draft}/send", at(after.id));
+  const [moved] = pagesIn((await PostalMime.parse(duva.sent().at(-1)!)).text!);
+
+  expect(new URL(earlier!).host).not.toBe("duva.example.com");
+  expect(moved).toMatch(/^https:\/\/duva\.example\.com\/download\/files\/[\w-]+$/);
+  expect((await downloadFrom(duva, earlier!)).status).toBe(200);
+  expect((await downloadFrom(duva, moved!)).status).toBe(200);
+});
+
+test("forwarding mail sent before the web app moved carries its linked files, linked at its host", async () => {
+  const { duva, ada, mailbox, draft, at, attach } = await withMailbox();
+  const { id } = await draft();
+  await attach(ada, id, { name: "film.mov", content: new Uint8Array(mebibytes(11)) });
+  await ada.POST("/mailboxes/{mailbox}/drafts/{draft}/send", at(id));
+  const [page] = pagesIn((await PostalMime.parse(duva.sent().at(-1)!)).text!);
+  const original = await sentMessage(ada, mailbox.id);
+
+  duva.moveWebApp("duva.example.com");
+  const forward = await draft(ada, { forwards: original.id, to: ["linus@example.com"] });
+  await ada.POST("/mailboxes/{mailbox}/drafts/{draft}/send", at(forward.id));
+  const [carried] = pagesIn((await PostalMime.parse(duva.sent().at(-1)!)).text!);
+
+  expect(carried).toBe(`https://duva.example.com/download/files/${page!.split("/").at(-1)}`);
+  expect((await downloadFrom(duva, carried!)).status).toBe(200);
+});
+
 test("a made-up link's page answers 404", async () => {
   const { duva, ada, draft, at, attach } = await withMailbox();
   const { id } = await draft();
