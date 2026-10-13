@@ -80,6 +80,35 @@ const payPerUse = new Set([
   "AWS::CloudFront::OriginRequestPolicy",
 ]);
 
+/**
+ * Resource types CloudFormation can't tag, as its resource reference gives none a tag property.
+ * docs/aws.md lists them, with what Duva makes at run time that takes no tags. Add a type only once
+ * you know that holds for it.
+ */
+const untaggable = new Set([
+  "AWS::ApiGatewayV2::Authorizer",
+  "AWS::ApiGatewayV2::Integration",
+  "AWS::ApiGatewayV2::Route",
+  "AWS::CloudFront::OriginAccessControl",
+  "AWS::CloudFront::OriginRequestPolicy",
+  "AWS::CloudFront::ResponseHeadersPolicy",
+  "AWS::Cognito::ManagedLoginBranding",
+  "AWS::Cognito::UserPoolClient",
+  "AWS::Cognito::UserPoolDomain",
+  // IAM tags a managed policy through its own API, but CloudFormation's resource takes no tags.
+  "AWS::IAM::ManagedPolicy",
+  "AWS::IAM::Policy",
+  "AWS::Lambda::EventInvokeConfig",
+  "AWS::Lambda::Permission",
+  "AWS::Lambda::Url",
+  "AWS::S3::BucketPolicy",
+  "AWS::SES::ConfigurationSetEventDestination",
+  "AWS::SES::ReceiptRuleSet",
+  "AWS::SNS::Subscription",
+  "AWS::SNS::TopicPolicy",
+  "AWS::SQS::QueuePolicy",
+]);
+
 const outdir = mkdtempSync(join(tmpdir(), "duva-assembly-"));
 // The assembly holds LanceDB's native module, some 200 MB.
 afterAll(() => rmSync(outdir, { recursive: true, force: true }));
@@ -91,6 +120,22 @@ const ofType = (type: string) => resources.filter(([, resource]) => resource.Typ
 test("an idle deployment pays for nothing beyond storage", () => {
   const types = new Set(resources.map(([, resource]) => resource.Type));
   expect([...types].filter((type) => !payPerUse.has(type))).toEqual([]);
+});
+
+/**
+ * The tags of what CloudFormation makes for the resource, as a map: those in its Tags, as a list or
+ * a map, or in a user pool's UserPoolTags, or each of a global table's replicas'. A custom
+ * resource's Tags are those its function gives what it makes.
+ */
+const tagsOf = ({ Type, Properties = {} }: Resource): Record<string, unknown>[] =>
+  (Type === "AWS::DynamoDB::GlobalTable" ? (Properties.Replicas ?? [{}]).map(({ Tags }: { Tags?: unknown }) => Tags) : [Properties.Tags ?? Properties.UserPoolTags]).map((tags: unknown) =>
+    Array.isArray(tags) ? Object.fromEntries(tags.map(({ Key, Value }: { Key: string; Value: string }) => [Key, Value])) : ((tags ?? {}) as Record<string, unknown>),
+  );
+
+test("the stack, and every resource of it CloudFormation can tag, carry project: duva", () => {
+  const untagged = resources.filter(([, resource]) => !untaggable.has(resource.Type) && !tagsOf(resource).every((tags) => tags.project === "duva"));
+  expect(untagged.map(([id, { Type }]) => `${id} (${Type})`)).toEqual([]);
+  expect(stack.tags).toEqual({ project: "duva" });
 });
 
 // LanceDB's native module fits a zip only on x64 (ADR-0007).
@@ -648,7 +693,7 @@ test("the API and setup mail sign-in links through SES under Duva's configuratio
   }
 });
 
-test("the API manages receipt rules in Duva's rule set, the domains' identities in this account and region, and the suppression list, and may take no other SES action but sending", () => {
+test("the API manages receipt rules in Duva's rule set, the domains' identities in this account and region, which it tags as Duva's, and the suppression list, and may take no other SES action but sending", () => {
   expect(actions("ApiHandler", "ses").filter((action) => !action.startsWith("ses:Send")).sort()).toEqual([
     "ses:CreateEmailIdentity",
     "ses:CreateEmailIdentity",
@@ -660,6 +705,7 @@ test("the API manages receipt rules in Duva's rule set, the domains' identities 
     "ses:GetEmailIdentity",
     "ses:ListSuppressedDestinations",
     "ses:PutEmailIdentityMailFromAttributes",
+    "ses:TagResource",
     "ses:UpdateReceiptRule",
   ]);
   const [[setId]] = ofType("AWS::SES::ConfigurationSet") as [[string, Resource]];
@@ -676,6 +722,9 @@ test("the API manages receipt rules in Duva's rule set, the domains' identities 
       expect(resources).toBe(JSON.stringify(identitiesHere));
     }
   }
+  // It tags an identity only as the project's.
+  const tagging = (statements("ApiHandler") as { Action: string | string[]; Condition?: unknown }[]).filter(({ Action }) => [Action].flat().includes("ses:TagResource"));
+  expect(tagging.map(({ Action, Condition }) => [Action, Condition])).toEqual([["ses:TagResource", { StringEquals: { "aws:RequestTag/project": "duva" }, "ForAllValues:StringEquals": { "aws:TagKeys": ["project"] } }]]);
   expect(lambda("ApiHandler")[1].Properties?.Environment?.Variables?.[environmentVariables.configurationSet]).toEqual({ Ref: setId });
   const variables = lambda("ApiHandler")[1].Properties?.Environment?.Variables;
   expect(variables?.[environmentVariables.receiptRuleSet]).toEqual({ Ref: ruleSetId });
@@ -1233,7 +1282,8 @@ test("each human's browser profile is Duva's, which the runtime creates tagged, 
       .filter(({ profiles }) => profiles !== "")
       .sort((a, b) => a.action.localeCompare(b.action));
   // CreateBrowserProfile and ListBrowserProfiles name no profile: IAM asks for them on browser-profile/* (docs/aws.md).
-  const tagged = { StringEquals: { "aws:RequestTag/duva": "browser-profile" }, "ForAllValues:StringEquals": { "aws:TagKeys": ["duva"] } };
+  // Each is tagged as a browser profile and as Duva's, with no other tag (#176).
+  const tagged = { StringEquals: { "aws:RequestTag/duva": "browser-profile", "aws:RequestTag/project": "duva" }, "ForAllValues:StringEquals": { "aws:TagKeys": ["duva", "project"] } };
   expect(onProfiles(runtimeStatements)).toEqual([
     { action: "bedrock-agentcore:CreateBrowserProfile", profiles: ":browser-profile/*", condition: tagged },
     { action: "bedrock-agentcore:ListBrowserProfiles", profiles: ":browser-profile/*", condition: undefined },
@@ -1274,6 +1324,15 @@ test("the mailbox agents search the web through a gateway the stack's custom res
     .map(([, { Properties }]) => [Properties?.Roles.map((role: { Ref: string }) => role.Ref), Properties?.PolicyDocument.Statement.find(({ Action }: { Action: string }) => Action === "bedrock-agentcore:InvokeGateway").Resource]);
   const role = (runtime[1].Properties?.RoleArn as { "Fn::GetAtt": string[] })["Fn::GetAtt"][0]!;
   expect(callers).toEqual([[[role], { "Fn::GetAtt": [gatewayId, "Arn"] }]]);
+});
+
+test("the gateway's custom resource is given project: duva, which its function may tag gateways and their workload identities with, and only that", () => {
+  const [[, gateway]] = ofType("Custom::WebSearchGateway") as [[string, Resource]];
+  expect(gateway.Properties?.Tags).toEqual({ project: "duva" });
+  const tagging = (statements("WebSearchGatewayHandler") as { Action: string | string[]; Resource: unknown; Condition?: unknown }[]).filter(({ Action }) => [Action].flat().includes("bedrock-agentcore:TagResource"));
+  expect(tagging.map(({ Action, Resource, Condition }) => [Action, JSON.stringify(Resource).match(/:(gateway|workload-identity-directory)\/[^"]*/g), Condition])).toEqual([
+    ["bedrock-agentcore:TagResource", [":gateway/*", ":workload-identity-directory/*"], { StringEquals: { "aws:RequestTag/project": "duva" }, "ForAllValues:StringEquals": { "aws:TagKeys": ["project"] } }],
+  ]);
 });
 
 test("the gateway searches with a role of its own, which AgentCore assumes for this account, and which may only invoke Web Search", () => {

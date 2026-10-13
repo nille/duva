@@ -20,13 +20,15 @@
 // erased mail for more than a day, and no indexer task waits in its failure queue; nothing but IAM
 // may invoke the sender, and no schedule for sends that wait for an agent's limits, or for threads set aside in Remind me, is overdue; Ask your agent's
 // turns reach the conversation Lambda only through the web app's domain, the mailbox agents' AgentCore Runtime is ready and takes only IAM calls, their unsubscribe browser is ready on the public network and records nothing, the inbound Lambda is given the task runner, only IAM invokes the task runner, which retries no run, and no task is stuck working, every
-// human's mailbox has its mailbox agent, no agent owns a mailbox, a first admin signing in on the organization's domains has a mailbox there, the humans' secrets are sealed with the stack's own rotating key the mailbox agents' role can't use, and Claude answers from eu-central-1 through the eu profile; and with
+// human's mailbox has its mailbox agent, no agent owns a mailbox, a first admin signing in on the organization's domains has a mailbox there, the humans' secrets are sealed with the stack's own rotating key the mailbox agents' role can't use, and Claude answers from eu-central-1 through the eu profile;
+// the stack, what Resource Groups Tagging finds of it, the humans' browser profiles, the domains' identities, the runtime's log group and the gateway to Web Search carry project=duva; and with
 // DUVA_TEST_HUMAN_CODES_KEY, All mailboxes answers for the test human's agent as its mailboxes do. Signing in stays
 // with a human. Then prints how many
 // messages Duva dropped on arrival each day of the last 7, by reason. Exits 1 if any check fails.
 import { ACMClient, DescribeCertificateCommand, ListTagsForCertificateCommand } from "@aws-sdk/client-acm";
 import { CloudFormationClient, DescribeStacksCommand, paginateListStackResources } from "@aws-sdk/client-cloudformation";
 import { CloudWatchClient, GetMetricDataCommand } from "@aws-sdk/client-cloudwatch";
+import { CloudWatchLogsClient, ListTagsForResourceCommand as ListLogTagsCommand } from "@aws-sdk/client-cloudwatch-logs";
 import { CognitoIdentityProviderClient, DescribeUserPoolClientCommand, DescribeUserPoolCommand, GetUserPoolMfaConfigCommand, paginateListUserPools } from "@aws-sdk/client-cognito-identity-provider";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DescribeKeyCommand, GetKeyRotationStatusCommand, KMSClient } from "@aws-sdk/client-kms";
@@ -43,26 +45,27 @@ import {
 } from "@aws-sdk/client-lambda";
 import { paginateListSchedules, SchedulerClient } from "@aws-sdk/client-scheduler";
 import { DescribeReceiptRuleSetCommand, SESClient } from "@aws-sdk/client-ses";
-import { GetConfigurationSetEventDestinationsCommand, GetEmailIdentityCommand, SESv2Client } from "@aws-sdk/client-sesv2";
+import { GetConfigurationSetEventDestinationsCommand, GetEmailIdentityCommand, ListTagsForResourceCommand as ListSesTagsCommand, NotFoundException, SESv2Client } from "@aws-sdk/client-sesv2";
+import { paginateGetResources, ResourceGroupsTaggingAPIClient } from "@aws-sdk/client-resource-groups-tagging-api";
 import { GetQueueAttributesCommand, SQSClient } from "@aws-sdk/client-sqs";
 import { GetBucketCorsCommand, GetBucketLifecycleConfigurationCommand, GetBucketVersioningCommand, GetPublicAccessBlockCommand, paginateListObjectsV2, S3Client } from "@aws-sdk/client-s3";
 import { indexedMailboxes, uncompactedSince } from "@duva/api/indexing";
-import { alertMailFilter, authorizationServerPath, browserProfileTagged, conversationPath, taskGiverFilter, mcpAuthorizePath, mcpPath, mcpRegistrationPath, mcpTokenPath, protectedResourcePaths, tokenHeader, dropMetric, dropReasons, environmentVariables, hostedLogoHeaders, hostedLogosPath, inboundPrefix, receiptRuleNumber, recipientsPerRule, senderFilter, signInFrom } from "@duva/api/infrastructure";
+import { alertMailFilter, authorizationServerPath, browserProfileTag, browserProfileTagged, projectTag, conversationPath, taskGiverFilter, mcpAuthorizePath, mcpPath, mcpRegistrationPath, mcpTokenPath, protectedResourcePaths, tokenHeader, dropMetric, dropReasons, environmentVariables, hostedLogoHeaders, hostedLogosPath, inboundPrefix, receiptRuleNumber, recipientsPerRule, senderFilter, signInFrom } from "@duva/api/infrastructure";
 import { rulesTake } from "@duva/api/receiving";
 import { callOf, defaultHarderModel, defaultMailboxAgentModel, inferenceProfileId } from "@duva/api/agent-models";
 import { webSearchRegion } from "@duva/api/web-search";
 import { bedrockSuggester } from "@duva/api/suggestions";
-import { earlierModelSettingsLeft, earlierModelsKept, firstAdminAddressMissing, organizationSettings } from "@duva/api/organization";
+import { allDomains, earlierModelSettingsLeft, earlierModelsKept, firstAdminAddressMissing, organizationSettings } from "@duva/api/organization";
 import { mailboxAgentsLeft } from "@duva/api/mailbox-agents";
 import { cooAddressesLeft } from "@duva/api/coo-address";
 import { tasksWorkingSince } from "@duva/api/tasks";
 import { agentsMailboxes } from "@duva/api/removal";
-import { BedrockAgentCoreControlClient, GetAgentRuntimeCommand, GetBrowserCommand, GetGatewayCommand, ListGatewayTargetsCommand } from "@aws-sdk/client-bedrock-agentcore-control";
+import { BedrockAgentCoreControlClient, GetAgentRuntimeCommand, GetBrowserCommand, GetGatewayCommand, ListGatewayTargetsCommand, ListTagsForResourceCommand } from "@aws-sdk/client-bedrock-agentcore-control";
 import { BedrockRuntimeClient, ConverseCommand } from "@aws-sdk/client-bedrock-runtime";
 import { createHash } from "node:crypto";
 import { sesSuppressionList } from "@duva/api/suppression";
 import { novaTranslator } from "@duva/api/translation";
-import { deploymentTagged, projectTag, stackName, stackOutputs, stackParameters, webHostsIn } from "@duva/infra/outputs";
+import { deploymentTagged, stackName, stackOutputs, stackParameters, webHostsIn } from "@duva/infra/outputs";
 import { managedLoginReached } from "@duva/api/mcp-sign-in";
 
 const region = process.env.AWS_REGION;
@@ -91,6 +94,9 @@ async function check(name: string, run: () => Promise<string | undefined>) {
   if (problem !== undefined) failed = true;
   console.log(problem === undefined ? `ok    ${name}` : `FAIL  ${name}: ${problem}`);
 }
+/** Whether the tags, as a list or a map as the service gives them, carry project=duva (#176). */
+const projectTagged = (tags: { Key?: string; Value?: string }[] | Record<string, string> = []) =>
+  Array.isArray(tags) ? tags.some(({ Key, Value }) => Key === projectTag.Key && Value === projectTag.Value) : tags[projectTag.Key] === projectTag.Value;
 const expectStatus = async (response: Response, status: number) =>
   response.status === status ? undefined : `answered ${response.status}: ${(await response.text()).slice(0, 200)}`;
 
@@ -360,7 +366,7 @@ await check("the humans' secrets are sealed with the stack's own key, enabled an
   const decrypting = (await roleStatements(runtime.roleArn!)).filter(({ Effect, Action }) => Effect === "Allow" && [Action].flat().some((action) => action.startsWith("kms:") || action === "*"));
   return decrypting.length === 0 ? undefined : `the mailbox agents' role may use KMS: ${JSON.stringify(decrypting)}`;
 });
-await check("the mailbox agents search the web through a gateway in the search region, taking only IAM calls, with the Web Search target alone (ADR-0037)", async () => {
+await check("the mailbox agents search the web through a gateway in the search region, taking only IAM calls, with the Web Search target alone, tagged project=duva with its workload identity (ADR-0037, #176)", async () => {
   if (agentRuntime === "") return `AgentCore isn't in ${region}, so mailbox agents don't search the web here`;
   const runtime = await new BedrockAgentCoreControlClient({ region }).send(new GetAgentRuntimeCommand({ agentRuntimeId: agentRuntime.split("/").at(-1)! }));
   const url = runtime.environmentVariables?.[environmentVariables.webSearchGateway];
@@ -375,6 +381,11 @@ await check("the mailbox agents search the web through a gateway in the search r
   if (gateway.authorizerType !== "AWS_IAM") return `takes ${gateway.authorizerType} calls`;
   const unsigned = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
   if (unsigned.status !== 401) return `answered an unsigned call ${unsigned.status}`;
+  // The stack's custom resource tags it and its workload identity, as CloudFormation tags no custom resource's.
+  for (const resourceArn of [gateway.gatewayArn, gateway.workloadIdentityDetails?.workloadIdentityArn]) {
+    const { tags } = await control.send(new ListTagsForResourceCommand({ resourceArn }));
+    if (!projectTagged(tags)) return `${resourceArn} is tagged ${JSON.stringify(tags)}`;
+  }
   const { items: targets = [] } = await control.send(new ListGatewayTargetsCommand({ gatewayIdentifier }));
   return targets.length === 1 && targets[0]!.name === "web-search" && targets[0]!.status === "READY" ? undefined : `has the targets ${JSON.stringify(targets.map(({ name, status }) => ({ name, status })))}`;
 });
@@ -901,7 +912,7 @@ if (webHosts.length > 0) {
     const { Certificate } = await acm.send(new DescribeCertificateCommand({ CertificateArn }));
     const { Tags = [] } = await acm.send(new ListTagsForCertificateCommand({ CertificateArn }));
     const names = [...new Set([Certificate?.DomainName, ...(Certificate?.SubjectAlternativeNames ?? [])])];
-    const tagged = deploymentTagged(Tags, region) && Tags.some(({ Key, Value }) => Key === projectTag.Key && Value === projectTag.Value);
+    const tagged = deploymentTagged(Tags, region) && projectTagged(Tags);
     const covers = names.length === webHosts.length && webHosts.every((host) => names.includes(host));
     return Certificate?.Status === "ISSUED" && covers && tagged ? undefined : `is ${Certificate?.Status} for ${names.join(", ")}, tagged ${JSON.stringify(Tags)}`;
   });
@@ -927,6 +938,46 @@ await check("the API lets the web app call it with a session", async () => {
   const origin = response.headers.get("access-control-allow-origin");
   const headers = response.headers.get("access-control-allow-headers") ?? "";
   return origin === webUrl && headers.includes("authorization") ? undefined : `allows origin ${origin} and headers ${headers}`;
+});
+// Resource Groups Tagging finds what CloudFormation made by the tags CloudFormation gives it, which
+// it gives only some types, so the distribution, the queues, the key, the roles and the table aren't
+// among them (docs/aws.md). It lists only what has a tag, so the domains' identities the API made,
+// and the runtime's log group, are read one by one (#176).
+await check("the stack, each of its resources Resource Groups Tagging finds, each human's browser profile, each of the organization's domains' identities and the runtime's log group carry project=duva (#176)", async () => {
+  const stackId = stack!.StackId!;
+  const untagged = new Set<string>();
+  if (!projectTagged(stack!.Tags)) untagged.add(`the stack ${stackId}`);
+  const tagging = new ResourceGroupsTaggingAPIClient({ region });
+  const find = async (TagFilters: { Key: string; Values: string[] }[]) => {
+    for await (const { ResourceTagMappingList = [] } of paginateGetResources({ client: tagging }, { TagFilters })) {
+      for (const { ResourceARN, Tags } of ResourceTagMappingList) if (!projectTagged(Tags)) untagged.add(ResourceARN!);
+    }
+  };
+  await find([{ Key: "aws:cloudformation:stack-id", Values: [stackId] }]);
+  await find([{ Key: browserProfileTag.Key, Values: [browserProfileTag.Value] }]);
+  const table = await stackTable();
+  if (table === undefined) return "the stack has no table";
+  const sesv2 = new SESv2Client({ region });
+  // The stack's ARN names the partition and the account the identities are in.
+  const [, partition, , , account] = stackId.split(":");
+  for (const { domain } of await allDomains(table)) {
+    const ResourceArn = `arn:${partition}:ses:${region}:${account}:identity/${domain}`;
+    // An admin's removal of a domain deletes its identity.
+    const tags = await sesv2.send(new ListSesTagsCommand({ ResourceArn })).then(
+      ({ Tags }) => Tags,
+      (error: unknown) => {
+        if (error instanceof NotFoundException) return undefined;
+        throw error;
+      },
+    );
+    if (tags !== undefined && !projectTagged(tags)) untagged.add(ResourceArn);
+  }
+  // AgentCore makes the runtime's log group, and deploy tags it.
+  if (agentRuntime !== "") {
+    const resourceArn = `arn:${partition}:logs:${region}:${account}:log-group:/aws/bedrock-agentcore/runtimes/${agentRuntime.split("/").at(-1)}-DEFAULT`;
+    if (!projectTagged((await new CloudWatchLogsClient({ region }).send(new ListLogTagsCommand({ resourceArn }))).tags)) untagged.add(resourceArn);
+  }
+  return untagged.size === 0 ? undefined : `lack it: ${[...untagged].join(", ")}`;
 });
 // The CloudWatch console shows the same metric for any period.
 const days = 7;

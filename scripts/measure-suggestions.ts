@@ -1,8 +1,9 @@
 // Measures the suggestion models (#156) from a Lambda in eu-north-1, as the API calls them: each
 // model on the drafts in suggestion-drafts.json, built into prompts by the API's own code, several
 // times over, for the latency, how often the suggestion is what the writer went on to write, and
-// the cost. It creates a throwaway role and Lambda, and deletes them before it ends. The results go
-// to docs/research/suggestion-measurements.json, which docs/research/suggestions.md reads.
+// the cost. It creates a throwaway role and Lambda, tagged as the project's (#176), and deletes them
+// before it ends. The results go to docs/research/suggestion-measurements.json, which
+// docs/research/suggestions.md reads.
 //
 //   AWS_REGION=eu-north-1 AWS_PROFILE=... node scripts/measure-suggestions.ts [runs]
 import { readFileSync, writeFileSync } from "node:fs";
@@ -11,6 +12,7 @@ import { CreateRoleCommand, DeleteRoleCommand, DeleteRolePolicyCommand, IAMClien
 import { CreateFunctionCommand, DeleteFunctionCommand, InvokeCommand, LambdaClient, waitUntilFunctionActiveV2 } from "@aws-sdk/client-lambda";
 import { zipSync } from "fflate";
 import { type SuggestionModel, suggestionCost, suggestionModels } from "@duva/api/agent-models";
+import { projectTag } from "@duva/api/infrastructure";
 import { restOf, suggestionPrompt, suggestionTokens } from "@duva/api/suggestions";
 
 const region = "eu-north-1";
@@ -90,6 +92,7 @@ try {
   const { Role } = await iam.send(
     new CreateRoleCommand({
       RoleName: name,
+      Tags: [projectTag],
       AssumeRolePolicyDocument: JSON.stringify({ Version: "2012-10-17", Statement: [{ Effect: "Allow", Principal: { Service: "lambda.amazonaws.com" }, Action: "sts:AssumeRole" }] }),
     }),
   );
@@ -101,7 +104,7 @@ try {
   for (let attempt = 1; !functionMade; attempt++) {
     try {
       await lambda.send(
-        new CreateFunctionCommand({ FunctionName: name, Runtime: "nodejs22.x", Handler: "index.handler", Role: Role!.Arn!, Code: { ZipFile: zipped(handler) }, MemorySize: 1024, Timeout: 600 }),
+        new CreateFunctionCommand({ FunctionName: name, Runtime: "nodejs22.x", Handler: "index.handler", Role: Role!.Arn!, Code: { ZipFile: zipped(handler) }, MemorySize: 1024, Timeout: 600, Tags: { [projectTag.Key]: projectTag.Value } }),
       );
       functionMade = true;
     } catch (error) {

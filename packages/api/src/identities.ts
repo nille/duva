@@ -1,6 +1,6 @@
 // The SES identities of the domains admins add at run time (ADR-0018). Each is made as the stack
-// makes the first domain's: Easy DKIM, sending through Duva's configuration set, and mail.<domain>
-// as its MAIL FROM domain.
+// makes the first domain's: Easy DKIM, sending through Duva's configuration set, mail.<domain>
+// as its MAIL FROM domain, and tagged as the project's (#176).
 import {
   AlreadyExistsException,
   CreateEmailIdentityCommand,
@@ -11,6 +11,7 @@ import {
   type SESv2Client,
 } from "@aws-sdk/client-sesv2";
 import { mailFromDomain } from "./dns-records.ts";
+import { projectTag } from "./infrastructure.ts";
 
 /** What SES has verified of a domain's identity, with its statuses as SES names them, like PENDING or SUCCESS. */
 export interface DomainIdentity {
@@ -35,7 +36,7 @@ export interface EmailIdentities {
 export function sesIdentities(ses: SESv2Client, configurationSet: string): EmailIdentities {
   return {
     async create(domain) {
-      await ses.send(new CreateEmailIdentityCommand({ EmailIdentity: domain, ConfigurationSetName: configurationSet })).catch((error: unknown) => {
+      await ses.send(new CreateEmailIdentityCommand({ EmailIdentity: domain, ConfigurationSetName: configurationSet, Tags: [projectTag] })).catch((error: unknown) => {
         if (!(error instanceof AlreadyExistsException)) throw error;
       });
       // Bounces go to mail.<domain> unless its MX record is missing, and then to SES's own domain.

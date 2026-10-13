@@ -4,7 +4,7 @@
 // the runtime creates it on the human's first browsing run. Signing Coo out of every site deletes
 // it, and so does removing the human.
 import { BedrockAgentCoreControlClient, ConflictException, CreateBrowserProfileCommand, DeleteBrowserProfileCommand, ListBrowserProfilesCommand, ResourceNotFoundException } from "@aws-sdk/client-bedrock-agentcore-control";
-import { browserProfileTag } from "./infrastructure.ts";
+import { browserProfileTag, projectTag } from "./infrastructure.ts";
 
 /** The name of the human's profile: letters, digits and underscores, as AgentCore takes them. */
 export const profileName = (human: string) => `duva_${human.replaceAll("-", "")}`;
@@ -32,7 +32,7 @@ export async function profileFor(control: BedrockAgentCoreControlClient, name: s
   const found = await profileNamed(control, name);
   if (found !== undefined) return found;
   try {
-    return (await control.send(new CreateBrowserProfileCommand({ name, description: "A Duva human's Coo's logins", tags: { [browserProfileTag.key]: browserProfileTag.value } }))).profileId!;
+    return (await control.send(new CreateBrowserProfileCommand({ name, description: "A Duva human's Coo's logins", tags: { [browserProfileTag.Key]: browserProfileTag.Value, [projectTag.Key]: projectTag.Value } }))).profileId!;
   } catch (error) {
     if (!(error instanceof ConflictException)) throw error;
     const made = await profileNamed(control, name);

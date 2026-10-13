@@ -48,6 +48,8 @@ import {
   hostedLogoHeaders,
   hostedLogosPath,
   conversationPath,
+  projectTag,
+  projectTagged,
   mcpCallbackPath,
   mcpRoutes,
   tokenHeader,
@@ -642,13 +644,15 @@ function handler(event) {
     // giving every setting the pool has.
     humans.grant(handler, "cognito-idp:DescribeUserPool", "cognito-idp:UpdateUserPool");
     // Admins add and remove domains at run time, each an SES identity in this account and region
-    // (ADR-0018). A new identity sends through the configuration set by default.
+    // (ADR-0018). A new identity sends through the configuration set by default. It is tagged as the
+    // project's as it's created, which may take ses:TagResource too, as AgentCore's tags on a create do (#176).
     handler.addToRolePolicy(
       new PolicyStatement({
         actions: ["ses:CreateEmailIdentity", "ses:GetEmailIdentity", "ses:DeleteEmailIdentity", "ses:PutEmailIdentityMailFromAttributes"],
         resources: [identities],
       }),
     );
+    handler.addToRolePolicy(new PolicyStatement({ actions: ["ses:TagResource"], resources: [identities], conditions: projectTagged }));
     handler.addToRolePolicy(new PolicyStatement({ actions: ["ses:CreateEmailIdentity"], resources: [configurationSet] }));
     // Adding and removing addresses changes the receipt rules' recipients. IAM has no resource type
     // for receipt rules, so these actions can't be limited to Duva's rule set.
@@ -866,23 +870,38 @@ function handler(event) {
     const gateways = this.formatArn({ service: "bedrock-agentcore", region: "*", resource: "gateway", resourceName: "*" });
     gatewayMaker.addToRolePolicy(
       new PolicyStatement({
-        actions: ["bedrock-agentcore:CreateGateway", "bedrock-agentcore:GetGateway", "bedrock-agentcore:UpdateGateway", "bedrock-agentcore:DeleteGateway", "bedrock-agentcore:CreateGatewayTarget", "bedrock-agentcore:GetGatewayTarget", "bedrock-agentcore:DeleteGatewayTarget", "bedrock-agentcore:ListGatewayTargets"],
+        actions: [
+          "bedrock-agentcore:CreateGateway",
+          "bedrock-agentcore:GetGateway",
+          "bedrock-agentcore:UpdateGateway",
+          "bedrock-agentcore:DeleteGateway",
+          "bedrock-agentcore:CreateGatewayTarget",
+          "bedrock-agentcore:GetGatewayTarget",
+          "bedrock-agentcore:DeleteGatewayTarget",
+          "bedrock-agentcore:ListGatewayTargets",
+        ],
         resources: [gateways, `${gateways}/*`],
       }),
     );
     // Listing gateways names no resource, and a gateway's creation gives it a workload identity.
     gatewayMaker.addToRolePolicy(new PolicyStatement({ actions: ["bedrock-agentcore:ListGateways"], resources: ["*"] }));
+    const workloadIdentities = this.formatArn({ service: "bedrock-agentcore", region: "*", resource: "workload-identity-directory", resourceName: "*" });
     gatewayMaker.addToRolePolicy(
       new PolicyStatement({
         actions: ["bedrock-agentcore:CreateWorkloadIdentity", "bedrock-agentcore:GetWorkloadIdentity", "bedrock-agentcore:DeleteWorkloadIdentity"],
-        resources: [this.formatArn({ service: "bedrock-agentcore", region: "*", resource: "workload-identity-directory", resourceName: "*" })],
+        resources: [workloadIdentities],
       }),
     );
+    // It tags the gateway as the project's, a gateway from before the stack tagged them too, and the
+    // workload identity, which takes none of the gateway's tags. A create with tags may take
+    // TagResource as well, as a browser profile's does (docs/aws.md).
+    gatewayMaker.addToRolePolicy(new PolicyStatement({ actions: ["bedrock-agentcore:TagResource"], resources: [gateways, workloadIdentities], conditions: projectTagged }));
     searchRole.grantPassRole(gatewayMaker.role!);
     const searchGateway = new CustomResource(this, "WebSearchGateway", {
       serviceToken: gatewayMaker.functionArn,
       resourceType: "Custom::WebSearchGateway",
-      properties: { Name: `${Aws.STACK_NAME}-${Aws.REGION}-web-search`, Role: searchRole.roleArn },
+      // CloudFormation tags no custom resource's, so the function tags the gateway with these.
+      properties: { Name: `${Aws.STACK_NAME}-${Aws.REGION}-web-search`, Role: searchRole.roleArn, Tags: { [projectTag.Key]: projectTag.Value } },
     });
     const agentRuntime = new AgentRuntime(this, "MailboxAgents", {
       description: "Duva's mailbox agents",

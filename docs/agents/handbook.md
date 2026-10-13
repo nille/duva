@@ -152,6 +152,7 @@ A new feature usually touches four of these, in this order:
 - **Every handler and stream consumer is idempotent.** Use conditional puts (`isNew` in `table.ts`), claims recorded before acting (a bounce, a feedback report, a task), and steps conditional on the last. Events are delivered more than once, and Lambda retries.
 - **Writes and their change go in one transaction,** with the change attributed to exactly one actor, or to nobody for mail that simply arrived.
 - **A Lambda bundles everything it imports,** the AWS SDK included. Where a lost answer would repeat an action, give the SDK one attempt per call.
+- **Everything Duva makes in AWS carries `project: duva`,** `projectTag` in `@duva/api/infrastructure` (#176). The CDK app tags the stack's resources, and the cloud assembly's tests fail on one CloudFormation could tag that lacks it. What the API, deploy or a script creates through the SDK gives the tag itself, and its role may need the service's TagResource for that. `docs/aws.md` lists what takes no tags.
 - **Refusals say what to do next,** in the product's voice: plain, direct and short, with no em dash (`npm run check:text` fails on one), no spaced hyphen as a dash, and no "not X but Y".
 - **Copy is the glossary's.** The web app's strings live in `strings.ts`. The CLI's help comes from the contract's descriptions, which also become the skill.
 - **Commits:**

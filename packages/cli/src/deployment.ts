@@ -52,7 +52,11 @@ export interface Aws {
   readonly region: string;
   /** The Duva stack in the region, with the parameters it was given, or undefined if there is none. */
   duvaStack(): Promise<(Partial<StackParameters> & { outputs: StackOutputs }) | undefined>;
-  /** Deploys the Duva stack. Deploying what's already deployed changes nothing. */
+  /**
+   * Deploys the Duva stack. Where CDK isn't bootstrapped in the region, it bootstraps it first, with
+   * the bootstrap stack tagged project=duva, and it tags the log group AgentCore makes with the
+   * mailbox agents' runtime. Deploying what's already deployed changes nothing.
+   */
   deployStack(parameters: StackParameters): Promise<{ account: string; outputs: StackOutputs }>;
   /**
    * Runs the stack's setup function, which sets up the organization with the stack's domain and
@@ -79,7 +83,7 @@ export interface Aws {
   emailIdentity(domain: string): Promise<{ dkimStatus: string; mailFromStatus: string; verified: boolean } | undefined>;
   /** Whether SES has verified the email address, or undefined if SES has no identity for it. */
   emailAddressVerified(address: string): Promise<boolean | undefined>;
-  /** Asks SES to verify the email address, which SES does by mailing it a link. */
+  /** Asks SES to verify the email address, which SES does by mailing it a link, with an identity tagged project=duva. */
   verifyEmailAddress(address: string): Promise<void>;
   /** Whether the account is in the SES sandbox in the region, and how much SES lets it send. */
   sending(): Promise<{ sandbox: boolean; perDay: number; perSecond: number }>;

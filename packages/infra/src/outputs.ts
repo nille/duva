@@ -48,9 +48,6 @@ export const stackOutputs = {
   dkimValue: (n: 1 | 2 | 3) => `DkimValue${n}`,
 } as const;
 
-/** The tag on everything of Duva's, which deploy also gives what it creates through the AWS SDK, as the web app's certificate. */
-export const projectTag = { Key: "project", Value: "duva" } as const;
-
 /** The tag that names the region of the deployment a certificate in us-east-1 serves, as one account may have a deployment in each region. */
 export const deploymentTag = "duva-deployment";
 

@@ -1,5 +1,6 @@
 // The real AWS behind deployment.ts: the CDK Toolkit Library deploys the cloud assembly this CLI
-// version bundles, and the AWS SDK does what CloudFormation can't.
+// version bundles, and the AWS SDK does what CloudFormation can't, tagging what it makes as the
+// project's, as the stack's resources are (#176).
 import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { extname, join, relative } from "node:path";
@@ -24,6 +25,7 @@ import {
   ResourceNotFoundException,
 } from "@aws-sdk/client-acm";
 import { CloudFormationClient, DescribeStacksCommand, paginateListStackResources } from "@aws-sdk/client-cloudformation";
+import { CloudWatchLogsClient, ResourceNotFoundException as NoLogGroup, TagResourceCommand } from "@aws-sdk/client-cloudwatch-logs";
 import {
   CognitoIdentityProviderClient,
   DeleteUserPoolCommand,
@@ -37,8 +39,9 @@ import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { DescribeActiveReceiptRuleSetCommand, SESClient, SetActiveReceiptRuleSetCommand } from "@aws-sdk/client-ses";
 import { CreateEmailIdentityCommand, GetAccountCommand, GetEmailIdentityCommand, NotFoundException, SESv2Client } from "@aws-sdk/client-sesv2";
 import { GetParameterCommand, ParameterNotFound, SSMClient } from "@aws-sdk/client-ssm";
+import { projectTag } from "@duva/api/infrastructure";
 import { allDomains } from "@duva/api/organization";
-import { deploymentTag, deploymentTagged, projectTag, stackName, stackParameters, webHostsIn, webHostsValue } from "@duva/infra/outputs";
+import { deploymentTag, deploymentTagged, stackName, stackOutputs, stackParameters, webHostsIn, webHostsValue } from "@duva/infra/outputs";
 import { type Aws, sameNames, type StackOutputs, type StackParameters as DuvaParameters } from "./deployment.ts";
 
 export function realAws(region: string): Aws {
@@ -81,7 +84,9 @@ export function realAws(region: string): Aws {
     async deployStack(parameters) {
       const bundle = await unpackBundle();
       try {
-        return await deployBundle(bundle, region, parameters);
+        const deployed = await deployBundle(bundle, region, parameters);
+        await tagRuntimeLogs(deployed.outputs[stackOutputs.agentRuntime] ?? "");
+        return deployed;
       } finally {
         await rm(bundle, { recursive: true, force: true });
       }
@@ -171,7 +176,7 @@ export function realAws(region: string): Aws {
     },
 
     async verifyEmailAddress(address) {
-      await sesv2.send(new CreateEmailIdentityCommand({ EmailIdentity: address }));
+      await sesv2.send(new CreateEmailIdentityCommand({ EmailIdentity: address, Tags: [projectTag] }));
     },
 
     async sending() {
@@ -284,8 +289,10 @@ async function deployBundle(bundle: string, region: string, { domain, admin, sig
     const { requiresBootstrapStackVersion: required, bootstrapStackVersionSsmParameter: parameter } = stack ?? {};
     if (required === undefined || parameter === undefined) throw new Error("The cloud assembly names no bootstrap version.");
     if ((await bootstrapVersion(region, parameter)) < required) {
+      // CloudFormation gives the bootstrap stack's tags to everything in it (#176).
       await toolkit.bootstrap(BootstrapEnvironments.fromCloudAssemblySource(assembly), {
         source: BootstrapSource.customTemplate(join(bundle, "bootstrap-template.yaml")),
+        tags: [projectTag],
       });
     }
 
@@ -308,6 +315,20 @@ async function deployBundle(bundle: string, region: string, { domain, admin, sig
   } finally {
     await assembly.dispose();
   }
+}
+
+/**
+ * Tags the log group of the mailbox agents' runtime, given its ARN, as the project's. AgentCore
+ * creates it with the runtime, so the stack can't, and gives it none of the runtime's tags
+ * (docs/aws.md). Where AgentCore isn't, the stack has no runtime and gives its ARN as empty.
+ */
+async function tagRuntimeLogs(runtime: string) {
+  if (runtime === "") return;
+  const [, partition, , region, account, resource] = runtime.split(":");
+  const resourceArn = `arn:${partition}:logs:${region}:${account}:log-group:/aws/bedrock-agentcore/runtimes/${resource!.split("/")[1]}-DEFAULT`;
+  await new CloudWatchLogsClient({ region }).send(new TagResourceCommand({ resourceArn, tags: { [projectTag.Key]: projectTag.Value } })).catch((error: unknown) => {
+    if (!(error instanceof NoLogGroup)) throw error;
+  });
 }
 
 /** Keeps stdout for the command's JSON: the toolkit's progress, results included, goes to stderr. */

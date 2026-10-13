@@ -3,8 +3,9 @@
 // Web Search runs only in three (docs/aws.md). CloudFormation invokes it with its own credentials,
 // as it does any custom resource's function. It creates the gateway, which takes only SigV4 calls,
 // with the Web Search target, and deletes both with the stack. A create or update finds a gateway
-// of its name already there, as a retried create leaves one, and makes sure it has the stack's role
-// and the target. It gives up in time to tell CloudFormation, which otherwise waits an hour.
+// of its name already there, as a retried create leaves one, and makes sure it has the stack's role,
+// the target and the stack's tags, as CloudFormation tags what it makes (#176). It gives up in time
+// to tell CloudFormation, which otherwise waits an hour.
 import {
   BedrockAgentCoreControlClient,
   CreateGatewayCommand,
@@ -16,6 +17,7 @@ import {
   ListGatewayTargetsCommand,
   paginateListGateways,
   ResourceNotFoundException,
+  TagResourceCommand,
   UpdateGatewayCommand,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import { webSearchRegion } from "./web-search.ts";
@@ -27,8 +29,11 @@ interface Event {
   RequestId: string;
   LogicalResourceId: string;
   PhysicalResourceId?: string;
-  /** The gateway's name, unique to the stack and its region, and the role it searches with. */
-  ResourceProperties: { Name: string; Role: string };
+  /**
+   * The gateway's name, unique to the stack and its region, the role it searches with, and its tags,
+   * which a rollback to a stack from before #176 gives none.
+   */
+  ResourceProperties: { Name: string; Role: string; Tags?: Record<string, string> };
 }
 
 /** The target's name, which names its tool, web-search___WebSearch (agentcore-web-search.ts). */
@@ -52,11 +57,11 @@ async function ready(status: () => Promise<{ status?: string; statusReasons?: st
 }
 
 /** The gateway with the name, with the Web Search target, created if there isn't one. */
-async function gateway({ Name, Role }: Event["ResourceProperties"]) {
+async function gateway({ Name, Role, Tags }: Event["ResourceProperties"]) {
   let found: string | undefined;
   for await (const page of paginateListGateways({ client: control }, {})) found ??= page.items?.find(({ name }) => name === Name)?.gatewayId;
   const settings = { name: Name, roleArn: Role, protocolType: "MCP", authorizerType: "AWS_IAM", description: "Duva's mailbox agents search the web through it" } as const;
-  const gatewayIdentifier = found ?? (await control.send(new CreateGatewayCommand(settings))).gatewayId!;
+  const gatewayIdentifier = found ?? (await control.send(new CreateGatewayCommand({ ...settings, tags: Tags }))).gatewayId!;
   await ready(() => control.send(new GetGatewayCommand({ gatewayIdentifier })));
   // A role the stack replaced is the gateway's from then on.
   if (found !== undefined && (await control.send(new GetGatewayCommand({ gatewayIdentifier }))).roleArn !== Role) {
@@ -77,7 +82,12 @@ async function gateway({ Name, Role }: Event["ResourceProperties"]) {
       )
     ).targetId!;
   await ready(() => control.send(new GetGatewayTargetCommand({ gatewayIdentifier, targetId })));
-  const { gatewayArn, gatewayUrl } = await control.send(new GetGatewayCommand({ gatewayIdentifier }));
+  const { gatewayArn, gatewayUrl, workloadIdentityDetails } = await control.send(new GetGatewayCommand({ gatewayIdentifier }));
+  // One made before the stack gave it tags gets them too, and so does the workload identity AgentCore
+  // made with it, which takes none of the gateway's (docs/aws.md).
+  for (const resourceArn of [gatewayArn, workloadIdentityDetails?.workloadIdentityArn]) {
+    if (resourceArn !== undefined && Tags !== undefined) await control.send(new TagResourceCommand({ resourceArn, tags: Tags }));
+  }
   return { id: gatewayIdentifier, data: { Arn: gatewayArn!, Url: gatewayUrl! } };
 }
 

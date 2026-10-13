@@ -23,15 +23,28 @@ export const hostedLogosPath = "bimi/";
 export const hostedLogoHeaders = { "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox", "x-content-type-options": "nosniff" } as const;
 
 /**
- * The tag each human's browser profile is created with (ADR-0038). Creating one names no profile, so
- * the runtime may create only profiles tagged so (docs/aws.md).
+ * The tag on everything Duva makes in AWS (#176): the CDK app tags the stack and each resource of it,
+ * and deploy and the API tag what they make through the AWS SDK, as the web app's certificate.
+ * docs/aws.md lists what takes no tags.
  */
-export const browserProfileTag = { key: "duva", value: "browser-profile" } as const;
+export const projectTag = { Key: "project", Value: "duva" } as const;
 
-/** The IAM condition that allows creating, and tagging, only a profile tagged so and with no other tag. */
+/** The IAM condition that allows tagging only with the project's tag. */
+export const projectTagged = {
+  StringEquals: { [`aws:RequestTag/${projectTag.Key}`]: projectTag.Value },
+  "ForAllValues:StringEquals": { "aws:TagKeys": [projectTag.Key] },
+};
+
+/**
+ * The tag each human's browser profile is created with (ADR-0038), beside the project's. Creating one
+ * names no profile, so the runtime may create only profiles tagged so (docs/aws.md).
+ */
+export const browserProfileTag = { Key: "duva", Value: "browser-profile" } as const;
+
+/** The IAM condition that allows creating, and tagging, only a profile tagged so and as the project's, and with no other tag. */
 export const browserProfileTagged = {
-  StringEquals: { [`aws:RequestTag/${browserProfileTag.key}`]: browserProfileTag.value },
-  "ForAllValues:StringEquals": { "aws:TagKeys": [browserProfileTag.key] },
+  StringEquals: { [`aws:RequestTag/${browserProfileTag.Key}`]: browserProfileTag.Value, [`aws:RequestTag/${projectTag.Key}`]: projectTag.Value },
+  "ForAllValues:StringEquals": { "aws:TagKeys": [browserProfileTag.Key, projectTag.Key] },
 };
 
 /** The environment variables the CDK app gives the API's Lambdas. Each Lambda gets those it reads. */
