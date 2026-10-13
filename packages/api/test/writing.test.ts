@@ -7,11 +7,11 @@ import { type DuvaOptions, startDuva } from "./harness.ts";
  * personal mailbox at linus@example.com. Grace is another human.
  */
 async function withHumansMailbox(options: DuvaOptions = {}) {
-  const duva = await startDuva({ domain: "example.com", admin: "ada@example.org", humans: ["grace@example.org"], ...options });
+  const duva = await startDuva({ domain: "example.com", admin: "ada@example.org", humans: ["grace@example.org", "linus@example.org"], ...options });
   const ada = duva.signIn("ada@example.org");
-  const { data: human } = await ada.POST("/humans", { body: { email: "linus@example.org" } });
-  const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: human!.id, address: "linus@example.com" } });
   const linus = duva.signIn("linus@example.org");
+  const { data: human } = await linus.GET("/whoami");
+  const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: human!.id, address: "linus@example.com" } });
   const params = { path: { mailbox: mailbox!.id } };
   // Mail from first-time senders would wait in the Screener, which these tests leave out.
   await linus.PATCH("/mailboxes/{mailbox}/screener", { params, body: { on: false } });

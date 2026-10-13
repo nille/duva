@@ -517,10 +517,14 @@ paths:
       operationId: addHuman
       summary: Add a human to the organization by their email address, so they can sign in.
       description: >
-        Only admins can add humans. The human signs in with a code emailed to
-        the address, and has no mailbox until an admin creates one for them.
-        Adding a human is a change to the organization's setup, recorded in
-        its change feed.
+        Only admins can add humans. Each gives a recovery address outside the
+        organization's domains, where Duva mails their first sign-in link now,
+        from no-reply@ the sign-in domain. It signs them in once, within 30
+        minutes, and asks them to register a passkey. After that they sign in
+        with their passkeys, or with a code emailed to their sign-in address.
+        The human has no mailbox until an admin creates one for them. Adding
+        a human is a change to the organization's setup, recorded in its
+        change feed.
       x-cli-command: humans add
       requestBody:
         required: true
@@ -530,11 +534,11 @@ paths:
               $ref: "#/components/schemas/NewHuman"
       responses:
         "201":
-          description: The human.
+          description: The human, and where their first sign-in link went.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Human"
+                $ref: "#/components/schemas/HumanAdded"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -675,6 +679,198 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+  /humans/{human}/sign-in-link:
+    post:
+      operationId: sendSignInLink
+      summary: Mail a human a sign-in link at their recovery address.
+      description: >
+        Only admins can send a human a sign-in link, as for a human who has
+        lost their passkeys or whose first link expired. Duva mails it from
+        no-reply@ the sign-in domain to the human's recovery address only,
+        never to their sign-in address. It signs them in once, within 30
+        minutes, and asks them to register a passkey. A human with no recovery
+        address gets none: they add one in Settings.
+      x-cli-command: humans send-sign-in-link
+      parameters:
+        - $ref: "#/components/parameters/Human"
+      responses:
+        "200":
+          description: Where the link went, and when it stops working.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LinkMailed"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /sign-in-links:
+    post:
+      operationId: askForSignInLink
+      summary: Ask for a sign-in link, mailed to the recovery address of the human who signs in with the address given.
+      description: >
+        Answers without sign-in, for a human who has lost their passkeys, as
+        the web app's sign-in page asks. It answers the same whether or not
+        the address signs in to Duva, and whether or not its human has a
+        recovery address, so it says nothing about who is a human in Duva. Duva
+        mails the link only to the human's recovery address, from no-reply@
+        the sign-in domain. It signs them in once, within 30 minutes. A human
+        gets at most 3 links in 10 minutes this way, and an address asks for
+        at most 10.
+      x-cli-command: sign-in-links ask
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SignInLinkAsked"
+      responses:
+        "202":
+          description: What happens next, the same for every address.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /sign-in-links/follow:
+    post:
+      operationId: followSignInLink
+      summary: Sign in with the token of a sign-in link, as following it in the web app does.
+      description: >
+        Answers without sign-in, and gives a session for the web app's app
+        client, which renews at managed login as any of its sessions does. A
+        link works once, and for 30 minutes after Duva mailed it. Duva keeps
+        only its hash.
+      x-cli-command: sign-in-links follow
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SignInLinkFollowed"
+      responses:
+        "200":
+          description: The human's new session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignInSession"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /recovery-address:
+    put:
+      operationId: changeRecoveryAddress
+      summary: Change your recovery address, once you follow the link Duva mails to the new one.
+      description: >
+        Only humans have a recovery address, outside the organization's
+        domains, and each changes only their own. Duva mails a link to the new
+        address, from no-reply@ the sign-in domain, and the address changes
+        only once someone follows it, within 30 minutes. Until then the old
+        one, if any, stays.
+      x-cli-command: recovery-address change
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecoveryAddressGiven"
+      responses:
+        "202":
+          description: The address waiting for its link, and when the link stops working.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LinkMailed"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /recovery-address/confirm:
+    post:
+      operationId: confirmRecoveryAddress
+      summary: Confirm a new recovery address with the token of the link mailed to it.
+      description: >
+        Answers without sign-in, as following the link does in the web app
+        on any device. The link works once, for 30 minutes.
+      x-cli-command: recovery-address confirm
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecoveryAddressConfirmed"
+      responses:
+        "200":
+          description: The human's recovery address now.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecoveryAddress"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /passkeys:
+    get:
+      operationId: listPasskeys
+      summary: List your passkeys, newest first.
+      description: >
+        Only humans have passkeys, and each lists only their own. A human
+        registers one in managed login, at /passkeys/add on the sign-in
+        domain, as Settings in the web app sends them to. A session from
+        before passkeys can't list them: sign in again.
+      x-cli-command: passkeys list
+      responses:
+        "200":
+          description: Your passkeys.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PasskeyList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /passkeys/{passkey}:
+    delete:
+      operationId: removePasskey
+      summary: Remove one of your passkeys, so it no longer signs you in.
+      description: >
+        Only humans have passkeys, and each removes only their own. A code
+        emailed to your sign-in address, and your other passkeys, still sign
+        you in.
+      x-cli-command: passkeys remove
+      parameters:
+        - $ref: "#/components/parameters/Passkey"
+      responses:
+        "200":
+          description: The passkeys you have left.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PasskeyList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /agents:
     post:
       operationId: createAgent
@@ -4973,6 +5169,13 @@ components:
       description: The human's ID.
       schema:
         type: string
+    Passkey:
+      name: passkey
+      in: path
+      required: true
+      description: The passkey's ID.
+      schema:
+        type: string
     Group:
       name: group
       in: path
@@ -5104,7 +5307,54 @@ components:
             How many bytes of linked files the human has linked now, their agents'
             included, which counts toward the organization's linkedFilesCapGb.
             Only admins see it, when they list the humans.
+        recoveryAddress:
+          type: string
+          description: >-
+            The human's address outside the organization's domains, which their
+            sign-in links go to. Only the human and admins see it. Humans added
+            before recovery addresses have none until they add one.
+          examples: ["grace@gmail.com"]
     NewHuman:
+      type: object
+      additionalProperties: false
+      required: [email, recoveryAddress]
+      properties:
+        email:
+          type: string
+          description: The address the human signs in with.
+          examples: ["grace@example.com"]
+        recoveryAddress:
+          type: string
+          description: >-
+            An address of the human's outside the organization's domains, such
+            as a Gmail address, which Duva mails their first sign-in link to now,
+            and every sign-in link after.
+          examples: ["grace@gmail.com"]
+    HumanAdded:
+      allOf:
+        - $ref: "#/components/schemas/Human"
+        - type: object
+          properties:
+            signInLink:
+              $ref: "#/components/schemas/LinkMailed"
+              description: >-
+                The human's first sign-in link, unless SES refused to mail it, as
+                in the SES sandbox to an address SES hasn't verified. Then send
+                another once it can.
+    LinkMailed:
+      type: object
+      additionalProperties: false
+      required: [to, expiresAt]
+      description: A sign-in link, or the link that confirms a new recovery address, as Duva mailed it.
+      properties:
+        to:
+          type: string
+          description: The address Duva mailed the link to.
+        expiresAt:
+          type: string
+          format: date-time
+          description: When the link stops working, 30 minutes after Duva mailed it.
+    SignInLinkAsked:
       type: object
       additionalProperties: false
       required: [email]
@@ -5113,6 +5363,77 @@ components:
           type: string
           description: The address the human signs in with.
           examples: ["grace@example.com"]
+    SignInLinkFollowed:
+      type: object
+      additionalProperties: false
+      required: [token]
+      properties:
+        token:
+          type: string
+          description: "The token at the end of the link, after #/sign-in/."
+    SignInSession:
+      type: object
+      additionalProperties: false
+      required: [accessToken, refreshToken, expiresIn]
+      properties:
+        accessToken:
+          type: string
+          description: The access token, which calls Duva as the human.
+        refreshToken:
+          type: string
+          description: Renews the session at managed login's token endpoint, with the web app's app client.
+        expiresIn:
+          type: integer
+          description: How many seconds the access token works.
+    RecoveryAddressGiven:
+      type: object
+      additionalProperties: false
+      required: [address]
+      properties:
+        address:
+          type: string
+          description: Your new recovery address, outside the organization's domains.
+          examples: ["grace@gmail.com"]
+    RecoveryAddressConfirmed:
+      type: object
+      additionalProperties: false
+      required: [token]
+      properties:
+        token:
+          type: string
+          description: "The token at the end of the link, after #/recovery/."
+    RecoveryAddress:
+      type: object
+      additionalProperties: false
+      required: [address]
+      properties:
+        address:
+          type: string
+          description: The human's recovery address.
+    Passkey:
+      type: object
+      additionalProperties: false
+      required: [id, createdAt]
+      properties:
+        id:
+          type: string
+          description: The passkey's ID.
+        name:
+          type: string
+          description: What the device or password manager that keeps it calls it, if it says.
+        createdAt:
+          type: string
+          format: date-time
+          description: When the human registered it.
+    PasskeyList:
+      type: object
+      additionalProperties: false
+      required: [passkeys]
+      properties:
+        passkeys:
+          type: array
+          items:
+            $ref: "#/components/schemas/Passkey"
     HumanList:
       type: object
       additionalProperties: false

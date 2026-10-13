@@ -10,11 +10,13 @@ import {
   AccountRecovery,
   CfnManagedLoginBranding,
   type CfnUserPool,
+  ClientAttributes,
   FeaturePlan,
   ManagedLoginVersion,
   OAuthScope,
   UserPool,
   UserPoolClientIdentityProvider,
+  UserPoolOperation,
 } from "aws-cdk-lib/aws-cognito";
 import { AttributeType, Billing, StreamViewType, TableV2 } from "aws-cdk-lib/aws-dynamodb";
 import { Rule, Schedule } from "aws-cdk-lib/aws-events";
@@ -57,6 +59,7 @@ import {
   senderRetries,
   sentPrefix,
   signInFrom,
+  signInLinkPrefix,
   tableKey,
   tableStreamView,
   timeToLiveAttribute,
@@ -98,6 +101,11 @@ export class DuvaStack extends Stack {
     const admin = new CfnParameter(this, stackParameters.admin, {
       type: "String",
       description: "The first admin's email address",
+    }).valueAsString;
+    const recovery = new CfnParameter(this, stackParameters.recovery, {
+      type: "String",
+      default: "",
+      description: "The first admin's recovery address, outside the first domain, where setup mails their first sign-in link (ADR-0041)",
     }).valueAsString;
     const domainVerified = new CfnCondition(this, "DomainVerifiedCondition", {
       expression: Fn.conditionEquals(
@@ -221,17 +229,20 @@ export class DuvaStack extends Stack {
       grantee.addToRolePolicy(new PolicyStatement({ actions: ["s3:AbortMultipartUpload"], resources: [uploads.arnForObjects("*")] }));
     };
 
-    // Humans sign in through managed login with a code emailed to them. Only Duva adds humans, and
-    // without a password. Cognito requires PASSWORD among the first factors, so it is listed, but
-    // nobody has one. The pool outlives the stack. It replaced the "Humans" pool, whose sign-in
-    // names were case-sensitive, which a pool can't change (#30). The stack kept that one when it
-    // was removed, and deploy deletes it once setup has moved every human here.
+    // Humans sign in through managed login with their passkeys, or a code emailed to them as a
+    // fallback (ADR-0041). Only Duva adds humans, and without a password. Cognito requires PASSWORD
+    // among the first factors, so it is listed, but nobody has one. The stack names no relying party
+    // for passkeys, so they belong to the pool's prefix domain, which a stack that creates the pool
+    // can't name before the domain exists (docs/aws.md). The pool outlives the stack. It replaced
+    // the "Humans" pool, whose sign-in names were case-sensitive, which a pool can't change (#30).
+    // The stack kept that one when it was removed, and deploy deletes it once setup has moved every
+    // human here.
     const humans = new UserPool(this, "UserPool", {
       featurePlan: FeaturePlan.ESSENTIALS,
       selfSignUpEnabled: false,
       signInAliases: { email: true },
       signInCaseSensitive: false,
-      signInPolicy: { allowedFirstAuthFactors: { password: true, emailOtp: true } },
+      signInPolicy: { allowedFirstAuthFactors: { password: true, emailOtp: true, passkey: true } },
       accountRecovery: AccountRecovery.NONE,
       removalPolicy: RemovalPolicy.RETAIN_ON_UPDATE_OR_DELETE,
     });
@@ -260,11 +271,15 @@ export class DuvaStack extends Stack {
     });
     // Both clients are public: the web app and the CLI keep no secret, so they sign in with PKCE.
     // An address that isn't a human in the organization gets no code and no hint that it was unknown.
-    const client = (id: string, callbackUrls: string[], logoutUrls: string[]) => {
+    // Their sessions list and remove the human's passkeys, which takes Cognito's own scope, whose
+    // tokens may change the human's attributes. A client that names none may change any, the email
+    // they sign in with included, so each names one Duva never reads (docs/aws.md).
+    const client = (id: string, callbackUrls: string[], logoutUrls: string[], { passkeys = false, signInLinks = false } = {}) => {
       const appClient = humans.addClient(id, {
         generateSecret: false,
-        authFlows: { user: true },
-        oAuth: { flows: { authorizationCodeGrant: true }, scopes: [OAuthScope.OPENID, OAuthScope.EMAIL], callbackUrls, logoutUrls },
+        authFlows: { user: true, custom: signInLinks },
+        oAuth: { flows: { authorizationCodeGrant: true }, scopes: [OAuthScope.OPENID, OAuthScope.EMAIL, ...(passkeys ? [OAuthScope.COGNITO_ADMIN] : [])], callbackUrls, logoutUrls },
+        writeAttributes: new ClientAttributes().withStandardAttributes({ locale: true }),
         preventUserExistenceErrors: true,
         supportedIdentityProviders: [UserPoolClientIdentityProvider.COGNITO],
       });
@@ -275,8 +290,9 @@ export class DuvaStack extends Stack {
       });
       return appClient;
     };
-    const webClient = client("WebClient", [`${webUrl}/`], [`${webUrl}/`]);
-    const cliClient = client("CliClient", [cliRedirectUri], []);
+    // The API signs a sign-in link's human in for the web app with a custom challenge (ADR-0041).
+    const webClient = client("WebClient", [`${webUrl}/`], [`${webUrl}/`], { passkeys: true, signInLinks: true });
+    const cliClient = client("CliClient", [cliRedirectUri], [], { passkeys: true });
 
     const lambda = (id: string, entry: string, environment: Record<string, string>, { memorySize = 512, timeout = Duration.seconds(10) } = {}) =>
       new NodejsFunction(this, id, {
@@ -552,6 +568,7 @@ export class DuvaStack extends Stack {
       [environmentVariables.uploadsBucket]: uploads.bucketName,
       [environmentVariables.signInClientId]: webClient.userPoolClientId,
       [environmentVariables.secretsKey]: secretsKey.keyArn,
+      [environmentVariables.webUrl]: webUrl,
     });
     table.grantReadWriteData(handler);
     // Only the API seals and opens the humans' secrets; a browsing run gets a part through it (ADR-0039).
@@ -577,8 +594,11 @@ export class DuvaStack extends Stack {
     unsubscriber.grantInvoke(handler);
     // Admins add humans, who can then sign in, and remove them, who then can't.
     humans.grant(handler, "cognito-idp:AdminCreateUser", "cognito-idp:AdminGetUser", "cognito-idp:AdminDeleteUser");
-    // Revealing a secret mails the human a sign-in code and checks it, as signing in does (ADR-0039).
+    // Revealing a secret mails the human a sign-in code and checks it, as signing in does (ADR-0039),
+    // and following a sign-in link answers the pool's custom challenge (ADR-0041).
     humans.grant(handler, "cognito-idp:AdminInitiateAuth", "cognito-idp:AdminRespondToAuthChallenge");
+    // It mails sign-in links, from the domain sign-in codes come from, which admins may choose.
+    handler.addToRolePolicy(new PolicyStatement({ actions: ["ses:SendEmail", "ses:SendRawEmail"], resources: [identities, configurationSet] }));
     // Choosing the sign-in domain changes the pool's sender, which UpdateUserPool can do only by
     // giving every setting the pool has.
     humans.grant(handler, "cognito-idp:DescribeUserPool", "cognito-idp:UpdateUserPool");
@@ -712,10 +732,16 @@ export class DuvaStack extends Stack {
         [environmentVariables.mailBucket]: mail.bucketName,
         [environmentVariables.receiptRuleSet]: receiving.receiptRuleSetName,
         [environmentVariables.inboundFunction]: inbound.functionArn,
+        [environmentVariables.recovery]: recovery,
+        [environmentVariables.webUrl]: webUrl,
+        [environmentVariables.configurationSet]: sending.configurationSetName,
       },
       { timeout: Duration.minutes(5) },
     );
     table.grantReadWriteData(setup);
+    // It mails the first admin their first sign-in link, from the domain sign-in codes come from (ADR-0041).
+    humans.grant(setup, "cognito-idp:DescribeUserPool");
+    setup.addToRolePolicy(new PolicyStatement({ actions: ["ses:SendEmail", "ses:SendRawEmail"], resources: [identities, configurationSet] }));
     // It starts each mailbox's backfill.
     indexQueue.grantSendMessages(setup);
     humans.grant(setup, "cognito-idp:AdminCreateUser", "cognito-idp:AdminGetUser");
@@ -729,6 +755,21 @@ export class DuvaStack extends Stack {
         resources: ["*"],
       }),
     );
+
+    // A sign-in link is the user pool's custom challenge, whose three triggers are one Lambda only
+    // the pool may invoke, as CDK's permission for each names the pool (ADR-0041). It deletes the
+    // link it checks, and may touch nothing else in the table.
+    const signInLinks = lambda("SignInLinksHandler", "@duva/api/sign-in-links-lambda", { [environmentVariables.tableName]: table.tableName });
+    signInLinks.addToRolePolicy(
+      new PolicyStatement({
+        actions: ["dynamodb:DeleteItem"],
+        resources: [table.tableArn],
+        conditions: { "ForAllValues:StringLike": { "dynamodb:LeadingKeys": [`${signInLinkPrefix}*`] } },
+      }),
+    );
+    for (const operation of [UserPoolOperation.DEFINE_AUTH_CHALLENGE, UserPoolOperation.CREATE_AUTH_CHALLENGE, UserPoolOperation.VERIFY_AUTH_CHALLENGE_RESPONSE]) {
+      humans.addTrigger(operation, signInLinks);
+    }
 
     // With no identity sources, API Gateway runs the authorizer on every call and answers 401
     // when it fails with "Unauthorized". It caches nothing, so a session ends when its token does.

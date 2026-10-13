@@ -1,5 +1,6 @@
 // Signing a human in through managed login, with the authorization code flow and PKCE, and
-// renewing their session. The web app and the CLI both sign in this way. Runs in browsers, Bun and Node.
+// renewing their session. The web app and the CLI both sign in this way, the web app also with a
+// sign-in link, whose session renews here too (ADR-0041). Runs in browsers, Bun and Node.
 
 /** Where and how a client signs in: the managed login domain, the client's ID and where to come back to. */
 export interface SignInConfig {
@@ -8,6 +9,9 @@ export interface SignInConfig {
   clientId: string;
   redirectUri: string;
 }
+
+/** The scopes a sign-in asks managed login for. Cognito's own lets the session list and remove the human's passkeys. */
+export const signInScope = "openid email aws.cognito.signin.user.admin";
 
 /** A signed-in human's session. */
 export interface Session {
@@ -43,7 +47,7 @@ export async function startSignIn(config: SignInConfig): Promise<PendingSignIn> 
     response_type: "code",
     client_id: config.clientId,
     redirect_uri: config.redirectUri,
-    scope: "openid email",
+    scope: signInScope,
     state,
     code_challenge: challenge,
     code_challenge_method: "S256",
@@ -83,6 +87,22 @@ export async function renewed(config: SignInConfig, current: Session): Promise<S
   // Managed login keeps the refresh token, so a renewed session has the same one.
   const tokens = await token(config, { grant_type: "refresh_token", refresh_token: current.refreshToken });
   return session(config, tokens, tokens.refresh_token ?? current.refreshToken);
+}
+
+/** The session a sign-in link gave, through the API, for the app client of `config`. */
+export function linkSession(config: SignInConfig, given: { accessToken: string; refreshToken: string; expiresIn: number }): Session {
+  return session(config, { access_token: given.accessToken, expires_in: given.expiresIn }, given.refreshToken);
+}
+
+/**
+ * Where to send a human signed in to managed login to register a passkey, coming back to the
+ * client's redirect URI with ?result=success, or ?result=invalid_session if managed login has no
+ * session of theirs, as after a sign-in link (docs/aws.md).
+ */
+export function addPasskeyUrl(config: SignInConfig): string {
+  const url = new URL("/passkeys/add", config.url);
+  url.search = new URLSearchParams({ client_id: config.clientId, redirect_uri: config.redirectUri }).toString();
+  return url.href;
 }
 
 /** Where to send the human to sign out of managed login, coming back to `returnTo`. */

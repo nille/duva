@@ -138,7 +138,7 @@ test("giving a setting the value it has records no change", async () => {
 
 test("a change to an agent's settings is refused when its sponsor has no mailbox to record it in", async () => {
   const { duva, ada } = await withSponsor();
-  await ada.POST("/humans", { body: { email: "ken@example.org" } });
+  await ada.POST("/humans", { body: { email: "ken@example.org", recoveryAddress: "recovery@elsewhere.example" } });
   const ken = duva.signIn("ken@example.org");
   const { data: created } = await ken.POST("/agents", { body: { name: "Hugin" } });
   const settings = { params: { path: { agent: created!.agent.id } } };

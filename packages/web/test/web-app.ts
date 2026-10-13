@@ -3,9 +3,10 @@
 // what's on screen.
 //
 // One local server plays CloudFront and the deployment's other origins at once. It serves the
-// build and the config.json duva deploy publishes beside it, and passes /api, /oauth2 and /agent on to the
-// harness, so the page reaches the API and managed login without CORS. The browser is Chromium
-// from the system, found at CHROMIUM or a usual path.
+// build and the config.json duva deploy publishes beside it, and passes /api, /oauth2, /passkeys and
+// /agent on to the harness, so the page reaches the API and managed login without CORS. It is at
+// localhost, a host name, since WebAuthn takes no IP address as a relying party. The browser is
+// Chromium from the system, found at CHROMIUM or a usual path.
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
@@ -53,6 +54,11 @@ export interface WebApp {
   url: string;
   /** Opens the web app and signs in on managed login as the human at `email`, as they would with the code they were emailed. */
   signIn(email: string): Promise<void>;
+  /**
+   * Gives the browser a device that keeps passkeys, as Chrome's virtual authenticator, which makes
+   * and signs with them when a page asks, as if the human confirmed it.
+   */
+  passkeyDevice(): Promise<void>;
   /** Hides the page's tab, as the browser says through the Page Visibility API when the human switches to another tab. */
   hide(): Promise<void>;
   /** Shows the hidden tab again, as when the human switches back to it. */
@@ -86,6 +92,13 @@ export async function startWebApp(options: DuvaOptions & { viewport?: { width: n
       await page.getByRole("button", { name: "Sign in" }).click();
       await page.locator("input[name=email]").fill(email);
       await page.getByRole("button", { name: "Sign in" }).click();
+    },
+    async passkeyDevice() {
+      const cdp = await context.newCDPSession(page);
+      await cdp.send("WebAuthn.enable");
+      await cdp.send("WebAuthn.addVirtualAuthenticator", {
+        options: { protocol: "ctap2", transport: "internal", hasResidentKey: true, hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true },
+      });
     },
     hide: () => setVisibility(page, false),
     show: () => setVisibility(page, true),
@@ -155,7 +168,7 @@ async function serve(root: string, harness: { url: string; signIn: { clientId: s
   const answer = async (incoming: IncomingMessage, outgoing: ServerResponse) => {
     const url = new URL(incoming.url ?? "/", origin);
     // CloudFront passes /agent/ on to the conversation Lambda, which streams its answer.
-    const passed = url.pathname.startsWith("/api/") ? url.pathname.slice("/api".length) : url.pathname.startsWith("/oauth2/") || url.pathname.startsWith("/agent/") ? url.pathname : undefined;
+    const passed = url.pathname.startsWith("/api/") ? url.pathname.slice("/api".length) : ["/oauth2/", "/passkeys/", "/agent/"].some((path) => url.pathname.startsWith(path)) ? url.pathname : undefined;
     if (passed !== undefined) {
       const chunks: Buffer[] = [];
       for await (const chunk of incoming) chunks.push(chunk);
@@ -192,7 +205,7 @@ async function serve(root: string, harness: { url: string; signIn: { clientId: s
     void answered.finally(() => answering.delete(answered));
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const origin = `http://localhost:${(server.address() as AddressInfo).port}`;
   return {
     url: `${origin}/`,
     close: async () => {

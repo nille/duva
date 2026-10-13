@@ -11,6 +11,11 @@ export const deploy: Command = {
   options: [
     { name: "domain", required: false, description: "The organization's first domain. Needed only the first time." },
     { name: "admin", required: false, description: "Your email address, as the first admin. Needed only the first time." },
+    {
+      name: "recovery",
+      required: false,
+      description: "Your recovery address, outside the domain, such as a Gmail address, where Duva mails your first sign-in link and every one after. Needed only the first time.",
+    },
   ],
   async run(args) {
     // deploy has no flags or lists, so each option it was given is a string.
@@ -32,7 +37,7 @@ export const deploy: Command = {
       import("@duva/api/dns-records"),
     ]);
     try {
-      const { signIn, ...deployed } = await deployDuva({ aws: realAws(region), dns: realDns, domain: values.domain, admin: values.admin });
+      const { signIn, ...deployed } = await deployDuva({ aws: realAws(region), dns: realDns, domain: values.domain, admin: values.admin, recovery: values.recovery });
       await saveConfig({ apiUrl: deployed.apiUrl, webUrl: deployed.webUrl, signIn });
       return { version: duva.version, ...deployed };
     } catch (error) {

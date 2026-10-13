@@ -67,7 +67,7 @@ Every part is serverless, so an idle deployment costs close to nothing:
 - **Search** is LanceDB on S3, with an index per mailbox.
 - **Coo** runs on AgentCore Runtime and AgentCore Browser.
 - **The web app** is served from S3 through CloudFront.
-- **Sign-in** is Cognito managed login, with a code emailed from the organization's domain.
+- **Sign-in** is Cognito managed login, with passkeys, or a code emailed from the organization's domain as a fallback. Sign-in links go to each human's recovery address, outside the organization (ADR-0041).
 
 There's no VPC, and no Lambda anyone in the world can invoke.
 

@@ -16,6 +16,7 @@ import type { ReceiptRule } from "@aws-sdk/client-ses";
 import type { SESEvent, SNSEvent } from "aws-lambda";
 import PostalMime from "postal-mime";
 import { createDuvaClient, type DuvaClient } from "@duva/client";
+import type { components } from "@duva/openapi";
 import { DeleteCommand, GetCommand, PutCommand, ScanCommand as ScanDocuments, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { inject, onTestFinished, vi } from "vitest";
 import { createApi } from "../src/api.ts";
@@ -25,7 +26,8 @@ import { documents } from "../src/table.ts";
 import { createFeedback } from "../src/feedback.ts";
 import { createDownloads, downloadLinkLifetime as linkLifetime } from "../src/attachments.ts";
 import { createAuthorizer } from "../src/authorizer.ts";
-import type { Humans, SignInSender } from "../src/user-pool.ts";
+import { type Humans, NoPasskeyAccess, type SignInSender } from "../src/user-pool.ts";
+import { type ChallengeEvent, setUpFirstAdmin, signInLinkTriggers } from "../src/sign-in-links.ts";
 import type { SecretKeys } from "../src/secrets.ts";
 import type { RecordType } from "../src/dns-records.ts";
 import { createEraser, eraseBlockedSenders, type Eraser, type EraserEvent } from "../src/erasure.ts";
@@ -70,9 +72,12 @@ import { type Bounce, type Envelope, memoryDns, type PublishOptions, type Receiv
 import { tableStream } from "./streams.ts";
 import { recordedNova } from "./nova.ts";
 import { recordedTitan } from "./titan.ts";
-import { TestTokenIssuer } from "./token-issuer.ts";
+import { TestTokenIssuer, userAdminScope } from "./token-issuer.ts";
 import { memoryUploadsBucket } from "./uploads-bucket.ts";
 import { type ReceivedRequest, standInInternet, type WebServerOptions } from "./web.ts";
+
+type Passkey = components["schemas"]["Passkey"];
+type SignInSession = components["schemas"]["SignInSession"];
 
 /** The root of the tests' own Mark Verifying Authority, whose mark certificates verify logos. */
 const testMarkRoot = new X509Certificate(readFileSync(new URL("marks/root.pem", import.meta.url)));
@@ -90,7 +95,9 @@ export interface DuvaOptions {
   domain?: string;
   /** The first admin's email address. */
   admin?: string;
-  /** The email addresses of other humans in the organization, who aren't admins. The first admin added them. */
+  /** The first admin's recovery address, as duva deploy gave it, where setup mails their first sign-in link. */
+  recovery?: string;
+  /** The email addresses of other humans in the organization, who aren't admins. The first admin added them, before recovery addresses. */
   humans?: string[];
   /** How many seconds the access tokens of human sessions last. */
   accessTokenLifetime?: number;
@@ -309,7 +316,7 @@ export interface Duva {
    * Sets the organization up again, as a re-run of duva deploy does. With `backfillLost`, the
    * indexer's queue loses each backfill's next step, as when Lambda gives up on it.
    */
-  setUp(options: { admin: string; backfillLost?: boolean }): Promise<void>;
+  setUp(options: { admin: string; recovery?: string; backfillLost?: boolean }): Promise<void>;
   /**
    * Gives the agent a mailbox of its own at the address, with mail to it accepted, as an admin
    * could before agents owned none (ADR-0030), so a test sees what the setup after the deploy
@@ -349,6 +356,7 @@ export async function startDuva({
   region = "eu-north-1",
   domain = "example.com",
   admin = "ada@example.com",
+  recovery,
   humans: others = [],
   accessTokenLifetime = 3600,
   othersIdentities = [],
@@ -377,8 +385,8 @@ export async function startDuva({
   suggester = standInSuggester,
 }: DuvaOptions = {}): Promise<Duva> {
   const { table, streamArn, database } = await createTable();
-  const humans = memoryHumans();
   const issuer = new TestTokenIssuer();
+  const humans = memoryHumans({ triggers: signInLinkTriggers(table), verify: issuer.verify });
   const setUp = (options: { admin: string }) => setUpOrganization({ table, humans }, { domain, ...options });
   const firstAdmin = await setUp({ admin });
   for (const email of others) await addHumanToOrganization({ table, humans }, { email, by: firstAdmin.id });
@@ -487,6 +495,8 @@ export async function startDuva({
   // Download links lead to the web app's domain under /download/, from where CloudFront invokes the
   // download Lambda. Here they lead to the API's own URL, under the same path, once it listens.
   let downloadUrl = `${inProcess}/download/`;
+  // Sign-in links lead to the web app, here at the API's own URL, once it listens.
+  let webUrl = inProcess;
   const downloads = {
     get url() {
       return downloadUrl;
@@ -533,6 +543,10 @@ export async function startDuva({
       table,
       humans,
       signInSender,
+      get webUrl() {
+        return webUrl;
+      },
+      outbound: sending.outbound,
       identities: identities.service,
       dns,
       mailBucket,
@@ -646,7 +660,9 @@ export async function startDuva({
       { headers: { "content-type": "application/x-ndjson" } },
     );
   };
-  const login = managedLogin({ ids: humans.ids, issuer, accessTokenLifetime });
+  const login = managedLogin({ ids: humans.ids, passkeys: humans.registered, issuer, accessTokenLifetime });
+  // Cognito signs a link's human in for the web app's app client, whose sessions renew at managed login.
+  humans.sessions = (id) => login.session(id, managedLoginClientId);
   // The MCP Lambda invokes the conversation Lambda without waiting, with the turn it prepared, which
   // goes through JSON. The turns still running when the generated client calls finish first.
   const runs: Promise<void>[] = [];
@@ -672,6 +688,16 @@ export async function startDuva({
     // Shorter than a deployment's, so a test of an answer that takes longer is quick.
     askWait: 2_000,
   });
+  // What setup mails the first admin's first sign-in link with, as the setup Lambda does after each deploy.
+  const mailing = {
+    table,
+    signInSender,
+    outbound: sending.outbound,
+    get webUrl() {
+      return webUrl;
+    },
+  };
+  await setUpFirstAdmin(mailing, firstAdmin, recovery);
   const isMcp = (request: Request) => mcpRoutes.some(({ path, methods }) => new URL(request.url).pathname === path && (methods as string[]).includes(request.method));
   // The deployment's URLs as the internet reaches them: managed login, the MCP endpoint and the API.
   const web = async (request: Request) => (await uploads.handle(request)) ?? (await login.handle(request)) ?? (isMcp(request) ? mcp(request) : api(request));
@@ -693,6 +719,7 @@ export async function startDuva({
     endSessions: () => login.endSessions(),
     replaceUserPool() {
       humans.ids.clear();
+      humans.registered.clear();
       issuer.replaceKeys();
       login.endSessions();
     },
@@ -750,8 +777,8 @@ export async function startDuva({
     webSearches: () => [...queries],
     browserProfiles: () => [...browser.profiles.keys()],
     download: (url) => (url.startsWith(inProcess) ? api(new Request(url)) : fetch(url)),
-    setUp: async ({ backfillLost = false, ...options }) => {
-      await setUp(options);
+    setUp: async ({ backfillLost = false, recovery, ...options }) => {
+      await setUpFirstAdmin(mailing, await setUp(options), recovery);
       await timeEarlierLabels(table);
       await eraseAgentsMailboxes({ table, eraser: apiEraser, receiving });
       for (let each = handed.shift(); each !== undefined; each = handed.shift()) if (!eraserRunsLost) await eraser(each);
@@ -801,6 +828,7 @@ export async function startDuva({
     async listen() {
       const server = await listen(async (request) => (new URL(request.url).pathname.startsWith(`/${conversationPath}`) ? agentTurn(request) : web(request)));
       downloadUrl = `${server.url}/download/`;
+      webUrl = server.url;
       uploadsUrl = `${server.url}/uploads-bucket/`;
       signInUrl = server.url;
       logosUrl = `${server.url}/${hostedLogosPath}`;
@@ -894,9 +922,17 @@ function memorySignInSender(domain: string, verified: (domain: string) => Promis
 
 /**
  * Humans who can sign in, by email address, with the IDs their sign-ins carry. As in Duva's user
- * pool, an address is the same sign-in name in any case.
+ * pool, an address is the same sign-in name in any case. A sign-in link signs in through the custom
+ * challenge, whose triggers are Duva's own, invoked as Cognito invokes them, and gets a session
+ * from `sessions`. Each human's passkeys, newest first, are listed and removed with their own
+ * access token, which `verify` checks, as Cognito does, for the scope it needs.
  */
-function memoryHumans(): Humans & { ids: Map<string, string>; codes: Map<string, string> } {
+function memoryHumans({ triggers, verify }: { triggers: ReturnType<typeof signInLinkTriggers>; verify: TestTokenIssuer["verify"] }): Humans & {
+  ids: Map<string, string>;
+  codes: Map<string, string>;
+  registered: Map<string, Passkey[]>;
+  sessions?: (id: string) => SignInSession;
+} {
   const ids = new (class extends Map<string, string> {
     override get(email: string) {
       return super.get(email.toLowerCase());
@@ -911,13 +947,26 @@ function memoryHumans(): Humans & { ids: Map<string, string>; codes: Map<string,
       return super.delete(email.toLowerCase());
     }
   })();
+  // The address each human was added with, as Cognito keeps it in their email attribute.
+  const emails = new Map<string, string>();
   // The code each session mailed, and the last code each address got.
   const sessions = new Map<string, { email: string; code: string }>();
   const codes = new Map<string, string>();
-  return {
+  const registered = new Map<string, Passkey[]>();
+  // Cognito passes what the triggers give and take through JSON.
+  const invoke = async (triggerSource: string, sub: string, request: Record<string, unknown>) =>
+    JSON.parse(JSON.stringify(await triggers(JSON.parse(JSON.stringify({ triggerSource, request: { userAttributes: { sub, email: emails.get(sub)! }, ...request }, response: {} }))))) as ChallengeEvent;
+  const passkeysOf = async (token: string) => {
+    const { sub, scopes } = await verify(token);
+    if (!scopes.includes(userAdminScope)) throw new NoPasskeyAccess("Access Token does not have required scopes");
+    return sub;
+  };
+  const humans = {
     ids,
     codes,
-    async sendSignInCode(email) {
+    registered,
+    sessions: undefined as ((id: string) => SignInSession) | undefined,
+    async sendSignInCode(email: string) {
       if (!ids.has(email)) throw new Error(`${email} can't sign in.`);
       const code = String(randomInt(0, 100_000_000)).padStart(8, "0");
       const session = randomUUID();
@@ -925,22 +974,47 @@ function memoryHumans(): Humans & { ids: Map<string, string>; codes: Map<string,
       codes.set(email.toLowerCase(), code);
       return session;
     },
-    async checkSignInCode(email, session, code) {
+    async checkSignInCode(email: string, session: string, code: string) {
       const mailed = sessions.get(session);
       sessions.delete(session);
       return mailed !== undefined && mailed.email === email.toLowerCase() && mailed.code === code && ids.has(email);
     },
-    async add(email) {
+    async signInWithLink(email: string, token: string) {
+      const sub = ids.get(email);
+      if (sub === undefined) return undefined;
+      const started = await invoke("DefineAuthChallenge_Authentication", sub, { session: [] });
+      if (started.response.challengeName !== "CUSTOM_CHALLENGE" || started.response.failAuthentication === true) return undefined;
+      const { response: challenge } = await invoke("CreateAuthChallenge_Authentication", sub, { challengeName: "CUSTOM_CHALLENGE", session: [] });
+      // Cognito refuses every answer to a challenge with no private parameters.
+      if (Object.keys((challenge.privateChallengeParameters as object | undefined) ?? {}).length === 0) return undefined;
+      const { response: verified } = await invoke("VerifyAuthChallengeResponse_Authentication", sub, { challengeAnswer: token, privateChallengeParameters: challenge.privateChallengeParameters, session: [] });
+      const session = [{ challengeName: "CUSTOM_CHALLENGE", challengeResult: verified.answerCorrect === true, challengeMetadata: challenge.challengeMetadata }];
+      const { response: decided } = await invoke("DefineAuthChallenge_Authentication", sub, { session });
+      return decided.issueTokens === true && decided.failAuthentication !== true ? humans.sessions!(sub) : undefined;
+    },
+    async passkeys(token: string) {
+      return [...(registered.get(await passkeysOf(token)) ?? [])];
+    },
+    async removePasskey(token: string, id: string) {
+      const sub = await passkeysOf(token);
+      const kept = registered.get(sub) ?? [];
+      registered.set(sub, kept.filter((passkey) => passkey.id !== id));
+      return kept.some((passkey) => passkey.id === id);
+    },
+    async add(email: string) {
       const id = ids.get(email) ?? randomUUID();
       ids.set(email, id);
+      if (!emails.has(id)) emails.set(id, email);
       return id;
     },
-    async remove(email) {
+    async remove(email: string) {
       const id = ids.get(email);
       ids.delete(email);
+      if (id !== undefined) registered.delete(id);
       return id;
     },
   };
+  return humans;
 }
 
 /** Stands in for the stack's KMS key: AES-256-GCM with a key of its own, the context as its additional data. */

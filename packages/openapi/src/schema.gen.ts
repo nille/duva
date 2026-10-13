@@ -317,7 +317,7 @@ export interface paths {
         put?: never;
         /**
          * Add a human to the organization by their email address, so they can sign in.
-         * @description Only admins can add humans. The human signs in with a code emailed to the address, and has no mailbox until an admin creates one for them. Adding a human is a change to the organization's setup, recorded in its change feed.
+         * @description Only admins can add humans. Each gives a recovery address outside the organization's domains, where Duva mails their first sign-in link now, from no-reply@ the sign-in domain. It signs them in once, within 30 minutes, and asks them to register a passkey. After that they sign in with their passkeys, or with a code emailed to their sign-in address. The human has no mailbox until an admin creates one for them. Adding a human is a change to the organization's setup, recorded in its change feed.
          */
         post: operations["addHuman"];
         delete?: never;
@@ -381,6 +381,146 @@ export interface paths {
         put: operations["changeCooAddress"];
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/humans/{human}/sign-in-link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mail a human a sign-in link at their recovery address.
+         * @description Only admins can send a human a sign-in link, as for a human who has lost their passkeys or whose first link expired. Duva mails it from no-reply@ the sign-in domain to the human's recovery address only, never to their sign-in address. It signs them in once, within 30 minutes, and asks them to register a passkey. A human with no recovery address gets none: they add one in Settings.
+         */
+        post: operations["sendSignInLink"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sign-in-links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask for a sign-in link, mailed to the recovery address of the human who signs in with the address given.
+         * @description Answers without sign-in, for a human who has lost their passkeys, as the web app's sign-in page asks. It answers the same whether or not the address signs in to Duva, and whether or not its human has a recovery address, so it says nothing about who is a human in Duva. Duva mails the link only to the human's recovery address, from no-reply@ the sign-in domain. It signs them in once, within 30 minutes. A human gets at most 3 links in 10 minutes this way, and an address asks for at most 10.
+         */
+        post: operations["askForSignInLink"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sign-in-links/follow": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sign in with the token of a sign-in link, as following it in the web app does.
+         * @description Answers without sign-in, and gives a session for the web app's app client, which renews at managed login as any of its sessions does. A link works once, and for 30 minutes after Duva mailed it. Duva keeps only its hash.
+         */
+        post: operations["followSignInLink"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/recovery-address": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Change your recovery address, once you follow the link Duva mails to the new one.
+         * @description Only humans have a recovery address, outside the organization's domains, and each changes only their own. Duva mails a link to the new address, from no-reply@ the sign-in domain, and the address changes only once someone follows it, within 30 minutes. Until then the old one, if any, stays.
+         */
+        put: operations["changeRecoveryAddress"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/recovery-address/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm a new recovery address with the token of the link mailed to it.
+         * @description Answers without sign-in, as following the link does in the web app on any device. The link works once, for 30 minutes.
+         */
+        post: operations["confirmRecoveryAddress"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/passkeys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List your passkeys, newest first.
+         * @description Only humans have passkeys, and each lists only their own. A human registers one in managed login, at /passkeys/add on the sign-in domain, as Settings in the web app sends them to. A session from before passkeys can't list them: sign in again.
+         */
+        get: operations["listPasskeys"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/passkeys/{passkey}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove one of your passkeys, so it no longer signs you in.
+         * @description Only humans have passkeys, and each removes only their own. A code emailed to your sign-in address, and your other passkeys, still sign you in.
+         */
+        delete: operations["removePasskey"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2519,6 +2659,11 @@ export interface components {
             admin: boolean;
             /** @description How many bytes of linked files the human has linked now, their agents' included, which counts toward the organization's linkedFilesCapGb. Only admins see it, when they list the humans. */
             linkedSize?: number;
+            /**
+             * @description The human's address outside the organization's domains, which their sign-in links go to. Only the human and admins see it. Humans added before recovery addresses have none until they add one.
+             * @example grace@gmail.com
+             */
+            recoveryAddress?: string;
         };
         NewHuman: {
             /**
@@ -2526,6 +2671,73 @@ export interface components {
              * @example grace@example.com
              */
             email: string;
+            /**
+             * @description An address of the human's outside the organization's domains, such as a Gmail address, which Duva mails their first sign-in link to now, and every sign-in link after.
+             * @example grace@gmail.com
+             */
+            recoveryAddress: string;
+        };
+        HumanAdded: components["schemas"]["Human"] & {
+            /** @description The human's first sign-in link, unless SES refused to mail it, as in the SES sandbox to an address SES hasn't verified. Then send another once it can. */
+            signInLink?: components["schemas"]["LinkMailed"];
+        };
+        /** @description A sign-in link, or the link that confirms a new recovery address, as Duva mailed it. */
+        LinkMailed: {
+            /** @description The address Duva mailed the link to. */
+            to: string;
+            /**
+             * Format: date-time
+             * @description When the link stops working, 30 minutes after Duva mailed it.
+             */
+            expiresAt: string;
+        };
+        SignInLinkAsked: {
+            /**
+             * @description The address the human signs in with.
+             * @example grace@example.com
+             */
+            email: string;
+        };
+        SignInLinkFollowed: {
+            /** @description The token at the end of the link, after #/sign-in/. */
+            token: string;
+        };
+        SignInSession: {
+            /** @description The access token, which calls Duva as the human. */
+            accessToken: string;
+            /** @description Renews the session at managed login's token endpoint, with the web app's app client. */
+            refreshToken: string;
+            /** @description How many seconds the access token works. */
+            expiresIn: number;
+        };
+        RecoveryAddressGiven: {
+            /**
+             * @description Your new recovery address, outside the organization's domains.
+             * @example grace@gmail.com
+             */
+            address: string;
+        };
+        RecoveryAddressConfirmed: {
+            /** @description The token at the end of the link, after #/recovery/. */
+            token: string;
+        };
+        RecoveryAddress: {
+            /** @description The human's recovery address. */
+            address: string;
+        };
+        Passkey: {
+            /** @description The passkey's ID. */
+            id: string;
+            /** @description What the device or password manager that keeps it calls it, if it says. */
+            name?: string;
+            /**
+             * Format: date-time
+             * @description When the human registered it.
+             */
+            createdAt: string;
+        };
+        PasskeyList: {
+            passkeys: components["schemas"]["Passkey"][];
         };
         HumanList: {
             humans: components["schemas"]["Human"][];
@@ -6490,6 +6702,8 @@ export interface components {
         Agent: string;
         /** @description The human's ID. */
         Human: string;
+        /** @description The passkey's ID. */
+        Passkey: string;
         /** @description The group's address. Case doesn't matter. */
         Group: string;
         /** @description The domain. Case doesn't matter. */
@@ -7028,13 +7242,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description The human. */
+            /** @description The human, and where their first sign-in link went. */
             201: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Human"];
+                    "application/json": components["schemas"]["HumanAdded"];
                 };
             };
             400: components["responses"]["BadRequest"];
@@ -7137,6 +7351,187 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    sendSignInLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The human's ID. */
+                human: components["parameters"]["Human"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Where the link went, and when it stops working. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkMailed"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    askForSignInLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignInLinkAsked"];
+            };
+        };
+        responses: {
+            /** @description What happens next, the same for every address. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    followSignInLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignInLinkFollowed"];
+            };
+        };
+        responses: {
+            /** @description The human's new session. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignInSession"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    changeRecoveryAddress: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecoveryAddressGiven"];
+            };
+        };
+        responses: {
+            /** @description The address waiting for its link, and when the link stops working. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkMailed"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    confirmRecoveryAddress: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecoveryAddressConfirmed"];
+            };
+        };
+        responses: {
+            /** @description The human's recovery address now. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecoveryAddress"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listPasskeys: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Your passkeys. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PasskeyList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    removePasskey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The passkey's ID. */
+                passkey: components["parameters"]["Passkey"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The passkeys you have left. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PasskeyList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     listAgents: {

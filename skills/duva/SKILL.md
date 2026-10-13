@@ -33,6 +33,7 @@ Running it again updates the deployment to this CLI's version.
 
 - `--domain`: The organization's first domain. Needed only the first time.
 - `--admin`: Your email address, as the first admin. Needed only the first time.
+- `--recovery`: Your recovery address, outside the domain, such as a Gmail address, where Duva mails your first sign-in link and every one after. Needed only the first time.
 
 ## duva login
 
@@ -244,9 +245,10 @@ Only admins can list the organization's humans.
 
 Add a human to the organization by their email address, so they can sign in.
 
-Only admins can add humans. The human signs in with a code emailed to the address, and has no mailbox until an admin creates one for them. Adding a human is a change to the organization's setup, recorded in its change feed.
+Only admins can add humans. Each gives a recovery address outside the organization's domains, where Duva mails their first sign-in link now, from no-reply@ the sign-in domain. It signs them in once, within 30 minutes, and asks them to register a passkey. After that they sign in with their passkeys, or with a code emailed to their sign-in address. The human has no mailbox until an admin creates one for them. Adding a human is a change to the organization's setup, recorded in its change feed.
 
 - `--email` (required): The address the human signs in with.
+- `--recoveryAddress` (required): An address of the human's outside the organization's domains, such as a Gmail address, which Duva mails their first sign-in link to now, and every sign-in link after.
 
 ## duva humans change
 
@@ -277,6 +279,60 @@ Only admins can change a Coo's address. It is an address of the organization, on
 
 - `--human` (required): The human's ID.
 - `--address` (required): The new address, on one of the organization's standalone domains, without a plus tag.
+
+## duva humans send-sign-in-link
+
+Mail a human a sign-in link at their recovery address.
+
+Only admins can send a human a sign-in link, as for a human who has lost their passkeys or whose first link expired. Duva mails it from no-reply@ the sign-in domain to the human's recovery address only, never to their sign-in address. It signs them in once, within 30 minutes, and asks them to register a passkey. A human with no recovery address gets none: they add one in Settings.
+
+- `--human` (required): The human's ID.
+
+## duva sign-in-links ask
+
+Ask for a sign-in link, mailed to the recovery address of the human who signs in with the address given.
+
+Answers without sign-in, for a human who has lost their passkeys, as the web app's sign-in page asks. It answers the same whether or not the address signs in to Duva, and whether or not its human has a recovery address, so it says nothing about who is a human in Duva. Duva mails the link only to the human's recovery address, from no-reply@ the sign-in domain. It signs them in once, within 30 minutes. A human gets at most 3 links in 10 minutes this way, and an address asks for at most 10.
+
+- `--email` (required): The address the human signs in with.
+
+## duva sign-in-links follow
+
+Sign in with the token of a sign-in link, as following it in the web app does.
+
+Answers without sign-in, and gives a session for the web app's app client, which renews at managed login as any of its sessions does. A link works once, and for 30 minutes after Duva mailed it. Duva keeps only its hash.
+
+- `--token` (required): The token at the end of the link, after #/sign-in/.
+
+## duva recovery-address change
+
+Change your recovery address, once you follow the link Duva mails to the new one.
+
+Only humans have a recovery address, outside the organization's domains, and each changes only their own. Duva mails a link to the new address, from no-reply@ the sign-in domain, and the address changes only once someone follows it, within 30 minutes. Until then the old one, if any, stays.
+
+- `--address` (required): Your new recovery address, outside the organization's domains.
+
+## duva recovery-address confirm
+
+Confirm a new recovery address with the token of the link mailed to it.
+
+Answers without sign-in, as following the link does in the web app on any device. The link works once, for 30 minutes.
+
+- `--token` (required): The token at the end of the link, after #/recovery/.
+
+## duva passkeys list
+
+List your passkeys, newest first.
+
+Only humans have passkeys, and each lists only their own. A human registers one in managed login, at /passkeys/add on the sign-in domain, as Settings in the web app sends them to. A session from before passkeys can't list them: sign in again.
+
+## duva passkeys remove
+
+Remove one of your passkeys, so it no longer signs you in.
+
+Only humans have passkeys, and each removes only their own. A code emailed to your sign-in address, and your other passkeys, still sign you in.
+
+- `--passkey` (required): The passkey's ID.
 
 ## duva agents list
 

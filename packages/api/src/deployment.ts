@@ -19,6 +19,7 @@ import type { UploadsBucket } from "./uploads-bucket.ts";
 import type { BrowserProfiles } from "./browser-profiles.ts";
 import type { Suggester } from "./suggestions.ts";
 import type { SecretKeys } from "./secrets.ts";
+import type { Outbound } from "./outbound.ts";
 
 /** Duva's one DynamoDB table. */
 export interface Table {
@@ -37,6 +38,10 @@ export interface Deployment {
   humans: Humans;
   /** Where their sign-in codes come from. */
   signInSender: SignInSender;
+  /** The web app's URL, such as https://d123.cloudfront.net, which sign-in links lead to. */
+  webUrl: string;
+  /** SES's sending, which mails sign-in links to recovery addresses (ADR-0041). */
+  outbound: Outbound;
   /** The SES identities of the organization's domains. */
   identities: EmailIdentities;
   /** DNS, where admins add the records the domains need. */

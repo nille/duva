@@ -4,11 +4,13 @@ import { deployDuva, type Aws, type Dns, type StackOutputs } from "../src/deploy
 
 /** The first admin's address, on a domain other than the deployment's. */
 const admin = "ada@example.org";
+/** The first admin's recovery address, outside the deployment's domain. */
+const recovery = "ada@elsewhere.example";
 
 test("the first deploy prints every record the domain needs, none of them live yet", async () => {
   const world = newWorld();
 
-  const report = await deployDuva({ ...world, admin, domain: "duva.example.com" });
+  const report = await deployDuva({ ...world, admin, recovery, domain: "duva.example.com" });
 
   expect(report.domain.records).toEqual([
     { purpose: "receiving", type: "MX", name: "duva.example.com", value: "10 inbound-smtp.eu-north-1.amazonaws.com", status: "missing" },
@@ -24,7 +26,7 @@ test("the first deploy prints every record the domain needs, none of them live y
 test("deploy makes Duva's receipt rule set the active one", async () => {
   const world = newWorld();
 
-  await deployDuva({ ...world, admin, domain: "duva.example.com" });
+  await deployDuva({ ...world, admin, recovery, domain: "duva.example.com" });
 
   expect(world.aws.activeRuleSet).toBe("Duva-Receiving");
 });
@@ -33,7 +35,7 @@ test("deploy refuses, and changes nothing, when another receipt rule set is acti
   const world = newWorld();
   world.aws.activeRuleSet = "someone-elses";
 
-  await expect(deployDuva({ ...world, admin, domain: "duva.example.com" })).rejects.toThrow(/someone-elses/);
+  await expect(deployDuva({ ...world, admin, recovery, domain: "duva.example.com" })).rejects.toThrow(/someone-elses/);
   expect(world.aws.changes).toEqual([]);
 });
 
@@ -46,10 +48,10 @@ test("the first deploy asks for the domain", async () => {
 
 test("re-running with the same domain changes nothing", async () => {
   const world = newWorld();
-  const first = await deployDuva({ ...world, admin, domain: "duva.example.com" });
+  const first = await deployDuva({ ...world, admin, recovery, domain: "duva.example.com" });
   const changes = [...world.aws.changes];
 
-  const again = await deployDuva({ ...world, admin, domain: "duva.example.com" });
+  const again = await deployDuva({ ...world, admin, recovery, domain: "duva.example.com" });
 
   // What Coo's models mean for the mail is said on the first deploy only.
   const { cooModels: _, ...report } = first;
@@ -60,7 +62,7 @@ test("re-running with the same domain changes nothing", async () => {
 test("the first deploy in the EU says once that Coo's models may process the mail outside the EU, and how to keep it there", async () => {
   const world = newWorld();
 
-  const first = await deployDuva({ ...world, admin, domain: "duva.example.com" });
+  const first = await deployDuva({ ...world, admin, recovery, domain: "duva.example.com" });
   const again = await deployDuva(world);
 
   expect(first.cooModels).toBe(
@@ -73,14 +75,14 @@ test("the first deploy in the US says nothing of where Coo's models run, as they
   const world = newWorld();
   world.aws.region = "us-east-1";
 
-  const first = await deployDuva({ ...world, admin, domain: "duva.example.com" });
+  const first = await deployDuva({ ...world, admin, recovery, domain: "duva.example.com" });
 
   expect(first).not.toHaveProperty("cooModels");
 });
 
 test("a re-run without a domain keeps the deployed one", async () => {
   const world = newWorld();
-  await deployDuva({ ...world, admin, domain: "duva.example.com" });
+  await deployDuva({ ...world, admin, recovery, domain: "duva.example.com" });
 
   const report = await deployDuva(world);
 
@@ -89,16 +91,16 @@ test("a re-run without a domain keeps the deployed one", async () => {
 
 test("deploy keeps the first domain, and says admins add every other one", async () => {
   const world = newWorld();
-  await deployDuva({ ...world, admin, domain: "duva.example.com" });
+  await deployDuva({ ...world, admin, recovery, domain: "duva.example.com" });
   const changes = [...world.aws.changes];
 
-  await expect(deployDuva({ ...world, admin, domain: "other.example.com" })).rejects.toThrow(/first domain is duva\.example\.com.*duva domains add/);
+  await expect(deployDuva({ ...world, admin, recovery, domain: "other.example.com" })).rejects.toThrow(/first domain is duva\.example\.com.*duva domains add/);
   expect(world.aws.changes).toEqual(changes);
 });
 
 test("a re-run lists only the first domain's records, whatever domains admins have added since", async () => {
   const world = newWorld();
-  await deployDuva({ ...world, admin, domain: "duva.example.com" });
+  await deployDuva({ ...world, admin, recovery, domain: "duva.example.com" });
   world.aws.identities.set("other.example.com", { dkim: "SUCCESS", mailFrom: "SUCCESS", verified: true });
 
   const report = await deployDuva(world);
@@ -111,7 +113,7 @@ test("a re-run lists only the first domain's records, whatever domains admins ha
 
 test("a re-run keeps the sign-in domain an admin chose, which the user pool sends codes from", async () => {
   const world = newWorld();
-  await deployDuva({ ...world, admin, domain: "duva.example.com" });
+  await deployDuva({ ...world, admin, recovery, domain: "duva.example.com" });
   world.aws.identities.set("other.example.com", { dkim: "SUCCESS", mailFrom: "SUCCESS", verified: true });
   world.aws.poolSenders.set("eu-north-1_old", "other.example.com");
 
@@ -123,7 +125,7 @@ test("a re-run keeps the sign-in domain an admin chose, which the user pool send
 
 test("a re-run after an admin removed the first domain says so, and lists no records for it", async () => {
   const world = newWorld();
-  await deployDuva({ ...world, admin, domain: "duva.example.com" });
+  await deployDuva({ ...world, admin, recovery, domain: "duva.example.com" });
   world.aws.identities.set("other.example.com", { dkim: "SUCCESS", mailFrom: "SUCCESS", verified: true });
   world.aws.poolSenders.set("eu-north-1_old", "other.example.com");
   world.aws.identities.delete("duva.example.com");
@@ -138,7 +140,7 @@ test("deploy refuses a domain whose SES identity Duva didn't create", async () =
   const world = newWorld();
   world.aws.identities.set("duva.example.com", { dkim: "SUCCESS", mailFrom: "SUCCESS", verified: true });
 
-  await expect(deployDuva({ ...world, admin, domain: "duva.example.com" })).rejects.toThrow(/already has an SES identity/);
+  await expect(deployDuva({ ...world, admin, recovery, domain: "duva.example.com" })).rejects.toThrow(/already has an SES identity/);
   expect(world.aws.changes).toEqual([]);
 });
 
@@ -160,7 +162,7 @@ test.each([
 ])("deploy takes %j as %j", async (given, domain) => {
   const world = newWorld();
 
-  const report = await deployDuva({ ...world, admin, domain: given });
+  const report = await deployDuva({ ...world, admin, recovery, domain: given });
 
   expect(report.domain.name).toBe(domain);
   expect(world.aws.stack?.domain).toBe(domain);
@@ -174,7 +176,7 @@ test("a re-run shows which records are live, and what DNS has instead of the oth
   world.dns.records.set("MX mail.duva.example.com", ["10 feedback-smtp.eu-north-1.amazonses.com"]);
   world.dns.records.set("TXT mail.duva.example.com", ["google-site-verification=abc", "v=spf1 -all"]);
 
-  const report = await deployDuva({ ...world, admin, domain: "duva.example.com" });
+  const report = await deployDuva({ ...world, admin, recovery, domain: "duva.example.com" });
 
   expect(report.domain.records.map(({ name, type, status, found }) => ({ name, type, status, found }))).toEqual([
     { type: "MX", name: "duva.example.com", status: "live", found: undefined },
@@ -191,7 +193,7 @@ test("an MX record with other mail servers next to SES's shows as different", as
   const world = newWorld();
   world.dns.records.set("MX duva.example.com", ["10 inbound-smtp.eu-north-1.amazonaws.com", "20 mx.other.example"]);
 
-  const report = await deployDuva({ ...world, admin, domain: "duva.example.com" });
+  const report = await deployDuva({ ...world, admin, recovery, domain: "duva.example.com" });
 
   expect(report.domain.records[0]).toMatchObject({ status: "different", found: ["10 inbound-smtp.eu-north-1.amazonaws.com", "20 mx.other.example"] });
 });
@@ -200,7 +202,7 @@ test("a DMARC record at the domain counts as live, whatever its policy", async (
   const world = newWorld();
   world.dns.records.set("TXT _dmarc.duva.example.com", ["v=DMARC1; p=reject; rua=mailto:d@example.com"]);
 
-  const report = await deployDuva({ ...world, admin, domain: "duva.example.com" });
+  const report = await deployDuva({ ...world, admin, recovery, domain: "duva.example.com" });
 
   expect(report.domain.records.at(-1)).toMatchObject({ purpose: "DMARC", status: "live" });
 });
@@ -209,7 +211,7 @@ test("two DMARC records at the domain show as different, since receivers then ap
   const world = newWorld();
   world.dns.records.set("TXT _dmarc.duva.example.com", ["v=DMARC1; p=none;", "v=DMARC1; p=reject;"]);
 
-  const report = await deployDuva({ ...world, admin, domain: "duva.example.com" });
+  const report = await deployDuva({ ...world, admin, recovery, domain: "duva.example.com" });
 
   expect(report.domain.records.at(-1)).toMatchObject({ status: "different", found: ["v=DMARC1; p=none;", "v=DMARC1; p=reject;"] });
 });
@@ -218,7 +220,7 @@ test("deploy prints no DMARC record when a parent domain's record covers the dom
   const world = newWorld();
   world.dns.records.set("TXT _dmarc.example.com", ["v=DMARC1; p=none;"]);
 
-  const report = await deployDuva({ ...world, admin, domain: "mail.duva.example.com" });
+  const report = await deployDuva({ ...world, admin, recovery, domain: "mail.duva.example.com" });
 
   expect(report.domain.records.map(({ purpose }) => purpose)).not.toContain("DMARC");
   expect(report.domain.dmarc).toBe("Covered by the DMARC record at _dmarc.example.com.");
@@ -228,7 +230,7 @@ test("a record whose lookup fails shows as unchecked, and deploy still finishes"
   const world = newWorld();
   world.dns.records.set("CNAME tok1._domainkey.duva.example.com", new Error("queryCname ESERVFAIL tok1._domainkey.duva.example.com"));
 
-  const report = await deployDuva({ ...world, admin, domain: "duva.example.com" });
+  const report = await deployDuva({ ...world, admin, recovery, domain: "duva.example.com" });
 
   expect(report.domain.records[1]).toMatchObject({ status: "unchecked", error: "queryCname ESERVFAIL tok1._domainkey.duva.example.com" });
   expect(world.aws.activeRuleSet).toBe("Duva-Receiving");
@@ -236,7 +238,7 @@ test("a record whose lookup fails shows as unchecked, and deploy still finishes"
 
 test("deploy shows whether SES has verified the domain's DKIM and MAIL FROM", async () => {
   const world = newWorld();
-  const first = await deployDuva({ ...world, admin, domain: "duva.example.com" });
+  const first = await deployDuva({ ...world, admin, recovery, domain: "duva.example.com" });
   world.aws.identities.set("duva.example.com", { dkim: "SUCCESS", mailFrom: "TEMPORARY_FAILURE", verified: true });
 
   const again = await deployDuva(world);
@@ -250,7 +252,7 @@ test("deploy shows whether SES has verified the domain's DKIM and MAIL FROM", as
 test("in the SES sandbox, deploy says what that means for sending and how to get out", async () => {
   const world = newWorld();
 
-  const { sending } = await deployDuva({ ...world, admin, domain: "duva.example.com" });
+  const { sending } = await deployDuva({ ...world, admin, recovery, domain: "duva.example.com" });
 
   expect(sending.sandbox).toBe(true);
   expect(sending.detail).toMatch(/only to verified addresses/);
@@ -265,7 +267,7 @@ test("with production access, deploy says sending is open", async () => {
   world.aws.perDay = 50000;
   world.aws.perSecond = 14;
 
-  const { sending } = await deployDuva({ ...world, admin, domain: "duva.example.com" });
+  const { sending } = await deployDuva({ ...world, admin, recovery, domain: "duva.example.com" });
 
   expect(sending).toEqual({ sandbox: false, detail: "The account has production access in eu-north-1, so Duva can send to any address. SES lets it send 50000 messages a day, 14 a second.",
   });
@@ -281,15 +283,15 @@ test("the first deploy asks for the first admin's address", async () => {
 test("deploy sets up the organization with the first admin", async () => {
   const world = newWorld();
 
-  const report = await deployDuva({ ...world, domain: "duva.example.com", admin: "ada@example.org" });
+  const report = await deployDuva({ ...world, domain: "duva.example.com", admin: "ada@example.org", recovery });
 
-  expect(world.aws.organization).toEqual({ domain: "duva.example.com", admin: "ada@example.org" });
+  expect(world.aws.organization).toEqual({ domain: "duva.example.com", admin: "ada@example.org", recovery });
   expect(report.admin.email).toBe("ada@example.org");
 });
 
 test("a re-run without an admin keeps the first one", async () => {
   const world = newWorld();
-  await deployDuva({ ...world, domain: "duva.example.com", admin: "ada@example.org" });
+  await deployDuva({ ...world, domain: "duva.example.com", admin: "ada@example.org", recovery });
   const changes = [...world.aws.changes];
 
   const report = await deployDuva(world);
@@ -300,7 +302,7 @@ test("a re-run without an admin keeps the first one", async () => {
 
 test("deploy refuses another first admin, and changes nothing", async () => {
   const world = newWorld();
-  await deployDuva({ ...world, domain: "duva.example.com", admin: "ada@example.org" });
+  await deployDuva({ ...world, domain: "duva.example.com", admin: "ada@example.org", recovery });
   const changes = [...world.aws.changes];
 
   await expect(deployDuva({ ...world, admin: "bo@example.org" })).rejects.toThrow(/ada@example\.org/);
@@ -310,7 +312,7 @@ test("deploy refuses another first admin, and changes nothing", async () => {
 test("deploy takes the admin's address with its domain in lower case", async () => {
   const world = newWorld();
 
-  const report = await deployDuva({ ...world, domain: "duva.example.com", admin: " Ada@Example.ORG " });
+  const report = await deployDuva({ ...world, domain: "duva.example.com", admin: " Ada@Example.ORG ", recovery });
 
   expect(report.admin.email).toBe("Ada@example.org");
 });
@@ -319,22 +321,100 @@ describe("deploy refuses an admin address that isn't one, and changes nothing", 
   test.each(["", "ada", "ada@", "@example.org", "ada@example", "ada@@example.org", "a da@example.org"])("%j", async (address) => {
     const world = newWorld();
 
-    await expect(deployDuva({ ...world, domain: "duva.example.com", admin: address })).rejects.toThrow(/isn't an email address/);
+    await expect(deployDuva({ ...world, domain: "duva.example.com", admin: address, recovery })).rejects.toThrow(/isn't an email address/);
     expect(world.aws.changes).toEqual([]);
   });
 });
 
-test("deploy refuses an admin address on the deployment's domain, where no mail reaches the admin yet", async () => {
+test("the first deploy asks for the first admin's recovery address", async () => {
   const world = newWorld();
 
-  await expect(deployDuva({ ...world, domain: "duva.example.com", admin: "ada@duva.example.com" })).rejects.toThrow(/another domain/);
+  await expect(deployDuva({ ...world, domain: "duva.example.com", admin })).rejects.toThrow(/--recovery/);
   expect(world.aws.changes).toEqual([]);
+});
+
+test("deploy refuses a recovery address on the deployment's domain, and changes nothing", async () => {
+  const world = newWorld();
+
+  await expect(deployDuva({ ...world, domain: "duva.example.com", admin, recovery: "ada@Duva.Example.com" })).rejects.toThrow(/outside duva\.example\.com/);
+  expect(world.aws.changes).toEqual([]);
+});
+
+test("a first admin may sign in with an address on the deployment's domain, since their first sign-in link goes to their recovery address", async () => {
+  const world = newWorld();
+
+  const report = await deployDuva({ ...world, domain: "duva.example.com", admin: "ada@duva.example.com", recovery });
+
+  expect(world.aws.organization).toEqual({ domain: "duva.example.com", admin: "ada@duva.example.com", recovery });
+  expect(report.admin).toMatchObject({ email: "ada@duva.example.com", recoveryAddress: recovery });
+  expect(report.admin.signIn).toMatch(/give yourself a mailbox at ada@duva\.example\.com in Settings/);
+});
+
+test("deploy gives the first admin their recovery address, and setup mails the first sign-in link there once SES has verified the domain, once", async () => {
+  const world = newWorld();
+  world.aws.sandbox = false;
+
+  const first = await deployDuva({ ...world, admin, recovery, domain: "duva.example.com" });
+  world.aws.identities.set("duva.example.com", { dkim: "SUCCESS", mailFrom: "SUCCESS", verified: true });
+  const verified = await deployDuva(world);
+  const again = await deployDuva(world);
+
+  expect(world.aws.stack).toMatchObject({ recovery });
+  expect(first.admin.signIn).toMatch(/Once SES has verified duva\.example\.com, run duva deploy again, and Duva mails a sign-in link to ada@elsewhere\.example/);
+  expect(verified.admin.signIn).toMatch(/Duva mailed a sign-in link to ada@elsewhere\.example\. Follow it within 30 minutes/);
+  expect(again.admin.signIn).toMatch(/with your passkey, or with a code emailed to ada@example\.org from no-reply@duva\.example\.com.*sign-in link.*ada@elsewhere\.example/);
+  expect(world.aws.linksMailed).toEqual([recovery]);
+});
+
+test("deploy keeps the first admin's recovery address, and refuses another", async () => {
+  const world = newWorld();
+  await deployDuva({ ...world, admin, recovery, domain: "duva.example.com" });
+  const changes = [...world.aws.changes];
+
+  await expect(deployDuva({ ...world, recovery: "ada@other.example" })).rejects.toThrow(/already has the first admin's recovery address.*Settings/);
+  expect(world.aws.changes).toEqual(changes);
+  expect((await deployDuva({ ...world, recovery: " ada@Elsewhere.EXAMPLE " })).admin.recoveryAddress).toBe(recovery);
+});
+
+test("a deployment from before recovery addresses deploys again without one, and its first admin signs in with a code", async () => {
+  const world = newWorld();
+  await deployDuva({ ...world, admin, recovery, domain: "duva.example.com" });
+  world.aws.stack = { ...world.aws.stack!, recovery: undefined };
+  world.aws.organization = { ...world.aws.organization!, recovery: undefined };
+
+  const report = await deployDuva(world);
+
+  expect(world.aws.stack).toMatchObject({ recovery: "" });
+  expect(report.admin).not.toHaveProperty("recoveryAddress");
+  expect(report.admin.signIn).toMatch(/with a code emailed to ada@example\.org/);
+});
+
+test("in the SES sandbox, deploy asks SES to verify the recovery address, which the first sign-in link needs", async () => {
+  const world = newWorld();
+  await deployDuva({ ...world, admin, recovery, domain: "duva.example.com" });
+  world.aws.identities.set("duva.example.com", { dkim: "SUCCESS", mailFrom: "SUCCESS", verified: true });
+
+  const report = await deployDuva(world);
+  world.aws.addresses.set(recovery, true);
+  const verified = await deployDuva(world);
+
+  expect(world.aws.changes).toContain("asked SES to verify ada@elsewhere.example");
+  expect(report.admin.signIn).toMatch(/SES sent ada@elsewhere\.example a link to verify it\. Open it, then run duva deploy again/);
+  expect(verified.admin.signIn).toMatch(/Duva mailed a sign-in link to ada@elsewhere\.example/);
+});
+
+test("in the SES sandbox, deploy doesn't ask SES to verify an admin's address on the domain it verified", async () => {
+  const world = newWorld();
+
+  await deployDuva({ ...world, domain: "duva.example.com", admin: "ada@duva.example.com", recovery });
+
+  expect(world.aws.changes).not.toContain("asked SES to verify ada@duva.example.com");
 });
 
 test("deploy publishes the web app with how it reaches the API and signs in", async () => {
   const world = newWorld();
 
-  const report = await deployDuva({ ...world, admin, domain: "duva.example.com" });
+  const report = await deployDuva({ ...world, admin, recovery, domain: "duva.example.com" });
 
   expect(report.webUrl).toBe("https://web.example");
   expect(world.aws.webApp).toEqual({
@@ -349,14 +429,14 @@ test("deploy publishes the web app with how it reaches the API and signs in", as
 test("deploy gives the CLI how it signs in, through a loopback redirect", async () => {
   const world = newWorld();
 
-  const { signIn } = await deployDuva({ ...world, admin, domain: "duva.example.com" });
+  const { signIn } = await deployDuva({ ...world, admin, recovery, domain: "duva.example.com" });
 
   expect(signIn).toEqual({ url: "https://sign-in.example", clientId: "cli-client", redirectUri: "http://127.0.0.1:8976/callback" });
 });
 
 test("in the SES sandbox, deploy asks SES to verify the admin's address and says to confirm it", async () => {
   const world = newWorld();
-  await deployDuva({ ...world, domain: "duva.example.com", admin: "ada@example.org" });
+  await deployDuva({ ...world, domain: "duva.example.com", admin: "ada@example.org", recovery });
   world.aws.identities.set("duva.example.com", { dkim: "SUCCESS", mailFrom: "SUCCESS", verified: true });
 
   const report = await deployDuva(world);
@@ -368,15 +448,16 @@ test("in the SES sandbox, deploy asks SES to verify the admin's address and says
 test("while codes come from Cognito, deploy doesn't ask the admin to verify their address before signing in, since Cognito's sender isn't in the sandbox", async () => {
   const world = newWorld();
 
-  const report = await deployDuva({ ...world, domain: "duva.example.com", admin: "ada@example.org" });
+  const report = await deployDuva({ ...world, domain: "duva.example.com", admin: "ada@example.org", recovery });
 
   expect(report.admin.signIn).not.toMatch(/before you sign in/);
 });
 
 test("a re-run in the sandbox doesn't ask SES to verify the admin's address again", async () => {
   const world = newWorld();
-  await deployDuva({ ...world, domain: "duva.example.com", admin: "ada@example.org" });
+  await deployDuva({ ...world, domain: "duva.example.com", admin: "ada@example.org", recovery });
   world.aws.addresses.set("ada@example.org", true);
+  world.aws.addresses.set(recovery, true);
   const changes = [...world.aws.changes];
 
   const report = await deployDuva(world);
@@ -389,7 +470,7 @@ test("with production access, deploy doesn't ask SES to verify the admin's addre
   const world = newWorld();
   world.aws.sandbox = false;
 
-  await deployDuva({ ...world, domain: "duva.example.com", admin: "ada@example.org" });
+  await deployDuva({ ...world, domain: "duva.example.com", admin: "ada@example.org", recovery });
 
   expect(world.aws.changes).not.toContain("asked SES to verify ada@example.org");
 });
@@ -397,15 +478,15 @@ test("with production access, deploy doesn't ask SES to verify the admin's addre
 test("until SES has verified the domain, the stack sends sign-in codes from Cognito, and deploy says so", async () => {
   const world = newWorld();
 
-  const report = await deployDuva({ ...world, admin, domain: "duva.example.com" });
+  const report = await deployDuva({ ...world, admin, recovery, domain: "duva.example.com" });
 
   expect(world.aws.stack?.domainVerified).toBe(false);
-  expect(report.admin.signIn).toMatch(/no-reply@verificationemail\.com until SES has verified duva\.example\.com.*duva deploy again/);
+  expect(report.admin.signIn).toMatch(/Once SES has verified duva\.example\.com, run duva deploy again.*a code emailed to ada@example\.org from Cognito's no-reply@verificationemail\.com/);
 });
 
 test("once SES has verified the domain, a re-run sends sign-in codes from it", async () => {
   const world = newWorld();
-  await deployDuva({ ...world, admin, domain: "duva.example.com" });
+  await deployDuva({ ...world, admin, recovery, domain: "duva.example.com" });
   world.aws.identities.set("duva.example.com", { dkim: "SUCCESS", mailFrom: "SUCCESS", verified: true });
 
   const report = await deployDuva(world);
@@ -416,7 +497,7 @@ test("once SES has verified the domain, a re-run sends sign-in codes from it", a
 
 test("a deploy that brings a new user pool gives the CLI and the web app its sign-in, and deletes the old pool once setup has moved the humans", async () => {
   const world = newWorld();
-  await deployDuva({ ...world, admin, domain: "duva.example.com" });
+  await deployDuva({ ...world, admin, recovery, domain: "duva.example.com" });
   world.aws.shipped = { userPool: "eu-north-1_new", signInUrl: "https://new-sign-in.example", webClientId: "new-web-client", cliClientId: "new-cli-client" };
 
   const { signIn } = await deployDuva(world);
@@ -429,7 +510,7 @@ test("a deploy that brings a new user pool gives the CLI and the web app its sig
 
 test("while setup fails, deploy keeps the old user pool", async () => {
   const world = newWorld();
-  await deployDuva({ ...world, admin, domain: "duva.example.com" });
+  await deployDuva({ ...world, admin, recovery, domain: "duva.example.com" });
   world.aws.shipped = { ...world.aws.shipped, userPool: "eu-north-1_new" };
   world.aws.setupFails = true;
 
@@ -458,6 +539,7 @@ interface Parameters {
   admin: string;
   signInDomain: string;
   domainVerified: boolean;
+  recovery: string;
 }
 
 class InMemoryAws implements Aws {
@@ -467,8 +549,10 @@ class InMemoryAws implements Aws {
   identities = new Map<string, Identity>();
   /** Whether SES has verified each email address it has an identity for. */
   addresses = new Map<string, boolean>();
-  /** The organization that the stack's setup set up. */
-  organization?: { domain: string; admin: string };
+  /** The organization that the stack's setup set up, with its first admin's recovery address. */
+  organization?: { domain: string; admin: string; recovery?: string };
+  /** The recovery addresses setup mailed the first admin's first sign-in link to, in order. */
+  linksMailed: string[] = [];
   /** What deploy published to the web app's bucket. */
   webApp?: { bucket: string; config: unknown };
   activeRuleSet?: string;
@@ -493,7 +577,7 @@ class InMemoryAws implements Aws {
   }
 
   async deployStack(parameters: Parameters) {
-    const { domain, admin, signInDomain, domainVerified } = parameters;
+    const { domain, admin, signInDomain, domainVerified, recovery } = parameters;
     if (this.stack?.domain !== domain) this.identities.set(domain, { dkim: "PENDING", mailFrom: "PENDING", verified: false });
     const { userPool, signInUrl, webClientId, cliClientId } = this.shipped;
     if (
@@ -501,6 +585,7 @@ class InMemoryAws implements Aws {
       this.stack.admin !== admin ||
       this.stack.signInDomain !== signInDomain ||
       this.stack.domainVerified !== domainVerified ||
+      this.stack.recovery !== recovery ||
       this.stack.outputs.UserPoolId !== userPool
     ) {
       const dkim = Object.fromEntries(
@@ -538,12 +623,21 @@ class InMemoryAws implements Aws {
       this.humansMovedTo = this.shipped.userPool;
       this.changes.push(`moved the humans to ${this.shipped.userPool}`);
     }
+    const recovery = this.stack?.recovery || undefined;
     if (this.organization === undefined) {
-      this.organization = { domain, admin };
+      this.organization = { domain, admin, ...(recovery && { recovery }) };
       this.changes.push(`set up the organization with ${admin}`);
     }
     if (this.organization.admin !== admin) throw new Error(`The organization's first admin is ${this.organization.admin}`);
-    return { id: "ada-id", kind: "human" as const, email: admin, admin: true };
+    // Setup gives the first admin the recovery address deploy names if they have none.
+    this.organization.recovery ??= recovery;
+    const human = { id: "ada-id", kind: "human" as const, email: admin, admin: true, ...(this.organization.recovery && { recoveryAddress: this.organization.recovery }) };
+    // It mails the first sign-in link once, when SES sends from the domain and, in the sandbox, to a verified address.
+    const to = this.organization.recovery;
+    const pool = this.stack?.outputs.UserPoolId ?? "";
+    if (to === undefined || this.linksMailed.includes(to) || !this.poolSenders.has(pool) || (this.sandbox && this.addresses.get(to) !== true)) return human;
+    this.linksMailed.push(to);
+    return { ...human, signInLink: { to, expiresAt: new Date(Date.now() + 30 * 60_000).toISOString() } };
   }
 
   async stackUserPools() {

@@ -10,12 +10,12 @@ type Params = { path: { mailbox: string } };
  * team@example.com has both as members. Grace is a human without a mailbox.
  */
 async function withMailboxes() {
-  const duva = await startDuva({ domain: "example.com", admin: "ada@example.org", humans: ["grace@example.org"] });
+  const duva = await startDuva({ domain: "example.com", admin: "ada@example.org", humans: ["grace@example.org", "linus@example.org", "joan@example.org"] });
   const ada = duva.signIn("ada@example.org");
   const mailboxOf = async (email: string, address: string) => {
-    const { data: human } = await ada.POST("/humans", { body: { email } });
-    const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: human!.id, address } });
     const client = duva.signIn(email);
+    const { data: human } = await client.GET("/whoami");
+    const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: human!.id, address } });
     const params = { path: { mailbox: mailbox!.id } };
     // Mail from first-time senders would wait in the Screener, which these tests leave out.
     await client.PATCH("/mailboxes/{mailbox}/screener", { params, body: { on: false } });

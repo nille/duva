@@ -3,6 +3,7 @@
 // real ones. Every later domain is the API's to add and remove at run time (ADR-0018).
 import { callOf, defaultHarderModel, defaultMailboxAgentModel, mailboxAgentModels } from "@duva/api/agent-models";
 import { asciiDomain, type Dns, type DnsRecord, domainRecords, verification } from "@duva/api/dns-records";
+import { domainOf } from "@duva/api/email-address";
 import { signInSender } from "@duva/api/infrastructure";
 import type { WebAppConfig } from "@duva/client";
 import type { SignInConfig } from "@duva/client/sign-in";
@@ -24,6 +25,8 @@ export interface StackParameters {
   signInDomain: string;
   /** Whether SES has verified the sign-in domain. Cognito can send sign-in codes from it only once SES has. */
   domainVerified: boolean;
+  /** The first admin's recovery address, outside the first domain, or empty for a first admin from before recovery addresses (ADR-0041). */
+  recovery: string;
 }
 
 export interface Aws {
@@ -35,8 +38,9 @@ export interface Aws {
   /**
    * Runs the stack's setup function, which sets up the organization with the stack's domain and
    * first admin, and returns that admin. Setting up again with the same admin changes nothing.
+   * It mails the first admin their first sign-in link once SES can, and says so the time it does.
    */
-  setUpOrganization(functionName: string): Promise<components["schemas"]["Human"]>;
+  setUpOrganization(functionName: string): Promise<components["schemas"]["HumanAdded"]>;
   /** The IDs of the user pools the Duva stack in the region has made, those it no longer has included. */
   stackUserPools(): Promise<string[]>;
   /** The domain the user pool sends sign-in codes from, or undefined while Cognito sends them itself. */
@@ -61,7 +65,7 @@ export interface Aws {
   sending(): Promise<{ sandbox: boolean; perDay: number; perSecond: number }>;
 }
 
-export async function deployDuva({ aws, dns, ...given }: { aws: Aws; dns: Dns; domain?: string; admin?: string }) {
+export async function deployDuva({ aws, dns, ...given }: { aws: Aws; dns: Dns; domain?: string; admin?: string; recovery?: string }) {
   const stack = await aws.duvaStack();
   const domain = given.domain === undefined ? stack?.domain : domainGiven(given.domain);
   if (domain === undefined) throw new Error("Give the organization's first domain, like duva deploy --domain example.com.");
@@ -75,9 +79,18 @@ export async function deployDuva({ aws, dns, ...given }: { aws: Aws; dns: Dns; d
   if (stack?.admin !== undefined && admin !== stack.admin) {
     throw new Error(`This organization's first admin is ${stack.admin}, so it can't be ${admin}. Run duva deploy without --admin.`);
   }
-  // Duva has no mailboxes for humans yet, so mail to an address on the domain reaches nobody.
-  if (admin.endsWith(`@${domain}`)) {
-    throw new Error(`Duva can't deliver mail to ${admin} yet, so its sign-in codes wouldn't reach you. Give an address on another domain.`);
+  // The first sign-in link goes to the recovery address, so the admin's own address may be a mailbox
+  // in Duva that doesn't exist yet. A first admin from before recovery addresses has none.
+  const recovery = given.recovery === undefined ? stack?.recovery || undefined : emailAddress(given.recovery);
+  if (recovery === undefined && stack === undefined) {
+    throw new Error("Give your recovery address, outside the domain, where Duva mails your first sign-in link, like duva deploy --recovery you@gmail.com.");
+  }
+  if (recovery !== undefined && domainOf(recovery) === domain) {
+    throw new Error(`Your recovery address must be outside ${domain}, so a sign-in link reaches you even when you can't sign in to Duva. Give one on another domain, like a Gmail address.`);
+  }
+  // The first admin changes it in Settings from then on, so the stack's may be out of date.
+  if (stack?.recovery && recovery !== stack.recovery) {
+    throw new Error("Duva already has the first admin's recovery address, which they change in Settings. Run duva deploy without --recovery.");
   }
   // CloudFormation can't take over an identity it didn't create, and someone else may send with it.
   if (stack?.domain !== domain && (await aws.emailIdentity(domain)) !== undefined) {
@@ -103,7 +116,7 @@ export async function deployDuva({ aws, dns, ...given }: { aws: Aws; dns: Dns; d
   const userPoolId = stack?.outputs[stackOutputs.userPoolId];
   const signInDomain = (userPoolId !== undefined ? await aws.signInDomain(userPoolId) : undefined) ?? domain;
   const domainVerified = stack?.domain === domain && ((await aws.emailIdentity(signInDomain))?.verified ?? false);
-  const { account, outputs } = await aws.deployStack({ domain, admin, signInDomain, domainVerified });
+  const { account, outputs } = await aws.deployStack({ domain, admin, signInDomain, domainVerified, recovery: recovery ?? "" });
   const ruleSet = output(outputs, stackOutputs.receiptRuleSet);
   if (activeRuleSet !== ruleSet) await aws.activateReceiptRuleSet(ruleSet);
 
@@ -129,22 +142,42 @@ export async function deployDuva({ aws, dns, ...given }: { aws: Aws; dns: Dns; d
   const { records, coveredBy } = identity === undefined ? { records: [] as DnsRecord[], coveredBy: undefined } : await domainRecords(dns, { region: aws.region, domain, dkim });
 
   const sendingReport = await sending(aws);
-  const signIn = [
-    `Sign in at ${webUrl}, or with duva login, with a code emailed to ${firstAdmin.email}`,
-    domainVerified
-      ? ` from ${signInSender(signInDomain)}.`
-      : ` from Cognito's no-reply@verificationemail.com until SES has verified ${signInDomain}. Once it has, run duva deploy again to send codes from ${signInSender(signInDomain)}.`,
-  ];
-  // In the sandbox SES sends only to verified addresses, sign-in codes included.
-  const adminVerified = sendingReport.sandbox ? await aws.emailAddressVerified(firstAdmin.email) : undefined;
-  if (sendingReport.sandbox && adminVerified === undefined) await aws.verifyEmailAddress(firstAdmin.email);
+  const sender = signInSender(signInDomain);
+  const recoveryAddress = firstAdmin.recoveryAddress;
+  const codes = `with a code emailed to ${firstAdmin.email} from ${domainVerified ? sender : "Cognito's no-reply@verificationemail.com"}`;
+  const signIn =
+    recoveryAddress === undefined
+      ? [
+          `Sign in at ${webUrl}, or with duva login, ${codes}`,
+          domainVerified ? "." : ` until SES has verified ${signInDomain}. Once it has, run duva deploy again to send codes from ${sender}.`,
+        ]
+      : firstAdmin.signInLink !== undefined
+        ? [`Duva mailed a sign-in link to ${recoveryAddress}. Follow it within 30 minutes to sign in at ${webUrl}, then register a passkey. After that, sign in with your passkey, or ${codes}.`]
+        : domainVerified
+          ? [`Sign in at ${webUrl}, or with duva login, with your passkey, or ${codes}. Without either, ask for a sign-in link on the sign-in page, which Duva mails to ${recoveryAddress}.`]
+          : [`Once SES has verified ${signInDomain}, run duva deploy again, and Duva mails a sign-in link to ${recoveryAddress} from ${sender}. Until then, sign in at ${webUrl}, or with duva login, ${codes}.`];
+  // In the sandbox SES sends only to verified addresses, sign-in codes and links included. An
+  // address on a domain SES has verified needs no verifying of its own.
+  const unverified = async (address: string) => {
+    if (!sendingReport.sandbox || domainOf(address) === domain) return false;
+    const verified = await aws.emailAddressVerified(address);
+    if (verified === undefined) await aws.verifyEmailAddress(address);
+    return verified !== true;
+  };
   // Cognito's own sender isn't in the sandbox, so the link only matters once codes come from the domain.
-  if (sendingReport.sandbox && !adminVerified) {
+  if (await unverified(firstAdmin.email)) {
     signIn.push(
       domainVerified
         ? ` In the SES sandbox codes reach only addresses SES has verified, so SES sent ${firstAdmin.email} a link to verify it. Open it before you sign in.`
-        : ` SES also sent ${firstAdmin.email} a link to verify it, which codes from ${signInSender(signInDomain)} will need while the account is in the SES sandbox.`,
+        : ` SES also sent ${firstAdmin.email} a link to verify it, which codes from ${sender} will need while the account is in the SES sandbox.`,
     );
+  }
+  // Managed login emails a code before it registers a passkey, which a first admin on the domain gets only in a mailbox of theirs.
+  if (recoveryAddress !== undefined && domainOf(firstAdmin.email) === domain) {
+    signIn.push(` Before you add a passkey, give yourself a mailbox at ${firstAdmin.email} in Settings, under Addresses, since managed login emails a code there first.`);
+  }
+  if (recoveryAddress !== undefined && (await unverified(recoveryAddress))) {
+    signIn.push(` In the SES sandbox Duva mails only addresses SES has verified, so SES sent ${recoveryAddress} a link to verify it. Open it, then run duva deploy again to mail your sign-in link there.`);
   }
 
   return {
@@ -152,7 +185,7 @@ export async function deployDuva({ aws, dns, ...given }: { aws: Aws; dns: Dns; d
     region: aws.region,
     apiUrl,
     webUrl,
-    admin: { email: firstAdmin.email, signIn: signIn.join("") },
+    admin: { email: firstAdmin.email, ...(recoveryAddress !== undefined && { recoveryAddress }), signIn: signIn.join("") },
     domain: {
       name: domain,
       records,

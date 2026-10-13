@@ -523,6 +523,28 @@ kbd {
   letter-spacing: -0.03em;
 }
 
+/* Asking for a sign-in link lies under Sign in, quiet until the human opens it (ADR-0041). */
+.door-lost {
+  margin-left: calc(-1 * var(--space-3));
+}
+
+.door-link {
+  display: grid;
+  gap: var(--space-3);
+  justify-items: start;
+  width: 100%;
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--seam);
+}
+
+.door-link h2 {
+  font: 600 var(--text-lg) / 1.2 var(--grotesk);
+}
+
+.door-link .setting-field {
+  width: 100%;
+}
+
 /*
  * Coo's portrait heads the side column on its own, where the wordmark was: its .75 line on its 32
  * unit grid at 48px, in ink. It opens Ask Coo.
@@ -1229,6 +1251,16 @@ button.selector[aria-expanded="true"] {
 
 .strip-keys:hover {
   color: var(--ink);
+}
+
+/* Asking a human without a recovery address to add one, quietly, until they do. */
+.strip-ask {
+  color: var(--call-ink);
+  text-decoration: none;
+}
+
+.strip-ask:hover {
+  text-decoration: underline;
 }
 
 .strip-settings {
@@ -5753,6 +5785,11 @@ input[aria-invalid="true"] {
 
 .dns-records:has(.copy-button:focus-visible) + .dns-keys {
   display: block;
+}
+
+/* A human's recovery address, as sign-in links go to it. */
+.recovery-address {
+  font: 500 var(--text-sm) / 1.4 var(--mono);
 }
 
 /* What needs an admin's decision before it can work, such as enforcing DMARC for a logo, on the orange wash in ink. */

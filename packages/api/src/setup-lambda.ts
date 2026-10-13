@@ -7,7 +7,9 @@ import { SESClient } from "@aws-sdk/client-ses";
 import { SESv2Client } from "@aws-sdk/client-sesv2";
 import { SQSClient } from "@aws-sdk/client-sqs";
 import { required } from "./environment.ts";
-import { cognitoHumans } from "./user-pool.ts";
+import { cognitoHumans, cognitoSignInSender } from "./user-pool.ts";
+import { sesOutbound } from "./outbound.ts";
+import { setUpFirstAdmin } from "./sign-in-links.ts";
 import { environmentVariables } from "./infrastructure.ts";
 import { listEarlierDecisions } from "./approval-log.ts";
 import { eraseBlockedSenders, lambdaEraser } from "./erasure.ts";
@@ -22,7 +24,8 @@ import { sesSuppressionList } from "./suppression.ts";
 
 const table = { client: new DynamoDBClient({}), name: required(environmentVariables.tableName) };
 // Setup only adds humans, and mails no sign-in codes, so it names no app client for them.
-const humans = cognitoHumans(new CognitoIdentityProviderClient({}), required(environmentVariables.userPoolId), "");
+const cognito = new CognitoIdentityProviderClient({});
+const humans = cognitoHumans(cognito, required(environmentVariables.userPoolId), "");
 const eraser = lambdaEraser(new LambdaClient({}), required(environmentVariables.eraserFunction));
 const receiving = {
   rules: sesReceiptRules(new SESClient({}), required(environmentVariables.receiptRuleSet)),
@@ -31,11 +34,22 @@ const receiving = {
   suppressionList: sesSuppressionList(new SESv2Client({})),
 };
 
-/** Sets up the organization and returns its first admin. */
+// The first admin's first sign-in link goes from the domain the user pool sends codes from (ADR-0041),
+// with one attempt per call, so a lost answer never mails it twice.
+const configurationSet = required(environmentVariables.configurationSet);
+const mailing = {
+  table,
+  webUrl: required(environmentVariables.webUrl),
+  signInSender: cognitoSignInSender(cognito, required(environmentVariables.userPoolId), configurationSet),
+  outbound: sesOutbound(new SESv2Client({ maxAttempts: 1 }), configurationSet),
+};
+
+/** Sets up the organization and returns its first admin, with the first sign-in link it mailed them, if it did now. */
 export const handler = async () => {
-  const admin = await setUpOrganization(
-    { table, humans },
-    { domain: required(environmentVariables.domain), admin: required(environmentVariables.admin) },
+  const admin = await setUpFirstAdmin(
+    mailing,
+    await setUpOrganization({ table, humans }, { domain: required(environmentVariables.domain), admin: required(environmentVariables.admin) }),
+    process.env[environmentVariables.recovery],
   );
   // Threads in Spam and Trash from before erasure existed count their retention period from now.
   await timeEarlierLabels(table);

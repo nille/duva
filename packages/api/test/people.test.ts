@@ -277,9 +277,9 @@ test("an admin makes a human an admin, who can then change the setup, and takes 
   const human = { params: { path: { human: linusId } } };
 
   const { response, data: made } = await ada.PATCH("/humans/{human}", { ...human, body: { admin: true } });
-  const asAdmin = await linus.POST("/humans", { body: { email: "alan@example.org" } });
+  const asAdmin = await linus.POST("/humans", { body: { email: "alan@example.org", recoveryAddress: "recovery@elsewhere.example" } });
   const { data: unmade } = await ada.PATCH("/humans/{human}", { ...human, body: { admin: false } });
-  const asHuman = await linus.POST("/humans", { body: { email: "alonzo@example.org" } });
+  const asHuman = await linus.POST("/humans", { body: { email: "alonzo@example.org", recoveryAddress: "recovery@elsewhere.example" } });
 
   expect(response.status).toBe(200);
   expect(made).toEqual({ id: linusId, kind: "human", email: "linus@example.org", admin: true });
@@ -409,10 +409,11 @@ test("a removed human can be added again, as a new actor with no mailboxes", asy
   const { duva, ada, graceActor, mailbox, remove } = await withGraceAndHermes();
   await remove({ delete: [mailbox.id] });
 
-  const { data: again } = await ada.POST("/humans", { body: { email: "grace@example.org" } });
+  const { data: again } = await ada.POST("/humans", { body: { email: "grace@example.org", recoveryAddress: "recovery@elsewhere.example" } });
 
-  expect(again?.id).not.toBe(graceActor.id);
-  expect((await duva.signIn("grace@example.org").GET("/whoami")).data).toEqual(again);
+  const { signInLink: _, ...human } = again!;
+  expect(human.id).not.toBe(graceActor.id);
+  expect((await duva.signIn("grace@example.org").GET("/whoami")).data).toEqual(human);
   expect((await duva.signIn("grace@example.org").GET("/mailboxes")).data).toEqual({ mailboxes: [] });
 });
 

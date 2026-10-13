@@ -9,7 +9,9 @@
 // anyone there, as SVG or PEM, from a bucket only CloudFront reads; nothing but IAM may invoke the
 // unsubscriber and the logo fetcher, which refuse addresses that aren't public; the web app is served with the config
 // deploy published; the user pool takes sign-in names in any case, sends its codes from a domain
-// SES has verified, and still offers emailed codes, and no pool the stack retired is left; once an address exists, SES's receipt rules list each address, and each domain with a catch-all, once, and none is on SES's
+// SES has verified, and still offers emailed codes, beside passkeys bound to its prefix domain, only
+// it may invoke the sign-in link triggers, only the web app's client answers their challenge, and
+// asking for a link says nothing of who is a human in Duva; and no pool the stack retired is left; once an address exists, SES's receipt rules list each address, and each domain with a catch-all, once, and none is on SES's
 // suppression list, which only warns; and no received mail and no approved send waits in a failure queue; Duva's configuration set publishes only bounces,
 // complaints and rejects, to a topic that only it may invoke the feedback Lambda for, and no event
 // of SES's waits in the feedback Lambda's failure queue; nothing but IAM may invoke search, which runs at 10,240 MB
@@ -23,7 +25,7 @@
 // messages Duva dropped on arrival each day of the last 7, by reason. Exits 1 if any check fails.
 import { CloudFormationClient, DescribeStacksCommand, paginateListStackResources } from "@aws-sdk/client-cloudformation";
 import { CloudWatchClient, GetMetricDataCommand } from "@aws-sdk/client-cloudwatch";
-import { CognitoIdentityProviderClient, DescribeUserPoolCommand, paginateListUserPools } from "@aws-sdk/client-cognito-identity-provider";
+import { CognitoIdentityProviderClient, DescribeUserPoolClientCommand, DescribeUserPoolCommand, GetUserPoolMfaConfigCommand, paginateListUserPools } from "@aws-sdk/client-cognito-identity-provider";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DescribeKeyCommand, GetKeyRotationStatusCommand, KMSClient } from "@aws-sdk/client-kms";
 import { GetPolicyCommand as GetIamPolicyCommand, GetPolicyVersionCommand, GetRolePolicyCommand, IAMClient, paginateListAttachedRolePolicies, paginateListRolePolicies } from "@aws-sdk/client-iam";
@@ -744,6 +746,42 @@ await check("the user pool sends sign-in codes from no-reply@ a domain SES has v
   const identity = await new SESv2Client({ region }).send(new GetEmailIdentityCommand({ EmailIdentity: domain }));
   if (identity.VerifiedForSendingStatus !== true) return `${domain} isn't verified in SES`;
   return From === signInFrom(domain) ? undefined : `sends from ${From}`;
+});
+await check("humans sign in with passkeys bound to the user pool's prefix domain, with emailed codes beside them (ADR-0041)", async () => {
+  const userPoolId = output(stackOutputs.userPoolId);
+  const [{ UserPool }, { WebAuthnConfiguration }] = await Promise.all([
+    cognito.send(new DescribeUserPoolCommand({ UserPoolId: userPoolId })),
+    cognito.send(new GetUserPoolMfaConfigCommand({ UserPoolId: userPoolId })),
+  ]);
+  const factors = UserPool?.Policies?.SignInPolicy?.AllowedFirstAuthFactors ?? [];
+  if (!factors.includes("WEB_AUTHN") || !factors.includes("EMAIL_OTP")) return `offers ${factors.join(", ")}`;
+  // Unset, the relying party is the prefix domain, which the stack can't name (docs/aws.md).
+  const prefix = new URL(output(stackOutputs.signInUrl)).host;
+  return WebAuthnConfiguration?.RelyingPartyId === undefined || WebAuthnConfiguration.RelyingPartyId === prefix ? undefined : `has the relying party ${WebAuthnConfiguration.RelyingPartyId}`;
+});
+await check("only the user pool may invoke the sign-in link triggers, its custom challenge's, which only the web app's client answers (ADR-0041)", async () => {
+  const userPoolId = output(stackOutputs.userPoolId);
+  const { UserPool } = await cognito.send(new DescribeUserPoolCommand({ UserPoolId: userPoolId }));
+  const { DefineAuthChallenge, CreateAuthChallenge, VerifyAuthChallengeResponse } = UserPool?.LambdaConfig ?? {};
+  if (DefineAuthChallenge === undefined || CreateAuthChallenge !== DefineAuthChallenge || VerifyAuthChallengeResponse !== DefineAuthChallenge) return `has the triggers ${JSON.stringify(UserPool?.LambdaConfig)}`;
+  const { Policy } = await lambda.send(new GetPolicyCommand({ FunctionName: DefineAuthChallenge }));
+  const { Statement = [] } = JSON.parse(Policy ?? "{}") as { Statement?: { Principal?: unknown; Condition?: { ArnLike?: Record<string, string> } }[] };
+  const fine = (statement: (typeof Statement)[number]) => JSON.stringify(statement.Principal) === '{"Service":"cognito-idp.amazonaws.com"}' && statement.Condition?.ArnLike?.["AWS:SourceArn"] === UserPool?.Arn;
+  if (Statement.length === 0 || !Statement.every(fine)) return `has ${Policy}`;
+  const custom: string[] = [];
+  for (const clientId of [output(stackOutputs.webClientId), output(stackOutputs.cliClientId)]) {
+    const { UserPoolClient } = await cognito.send(new DescribeUserPoolClientCommand({ UserPoolId: userPoolId, ClientId: clientId }));
+    if (UserPoolClient?.ExplicitAuthFlows?.includes("ALLOW_CUSTOM_AUTH")) custom.push(clientId);
+    // A session that may manage passkeys may change no attribute Duva reads (docs/aws.md).
+    if (JSON.stringify(UserPoolClient?.WriteAttributes) !== '["locale"]') return `${clientId} may write ${JSON.stringify(UserPoolClient?.WriteAttributes)}`;
+  }
+  return JSON.stringify(custom) === JSON.stringify([output(stackOutputs.webClientId)]) ? undefined : `the custom challenge is answered by ${custom.join(", ")}`;
+});
+await check("asking for a sign-in link answers 202 for an address that signs in to nothing, and following a made-up one answers 404 (ADR-0041)", async () => {
+  const post = (path: string, body: unknown) => fetch(`${apiUrl}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  const asked = await post("/sign-in-links", { email: `nobody-${Date.now()}@example.com` });
+  if (asked.status !== 202) return `asking answered ${asked.status}`;
+  return expectStatus(await post("/sign-in-links/follow", { token: "made-up" }), 404);
 });
 await check("the user pool takes sign-in names in any case", async () => {
   const { UserPool } = await cognito.send(new DescribeUserPoolCommand({ UserPoolId: output(stackOutputs.userPoolId) }));

@@ -103,7 +103,7 @@ test("every Lambda runs Node.js 24 outside any VPC, on arm64 but for search and 
 });
 
 // esbuild reads every bundle whole, which takes longer than a test usually may.
-test("every Lambda carries its own AWS SDK, so a CLI version pins all the code it deploys", { timeout: 60_000 }, () => {
+test("every Lambda carries its own AWS SDK, so a CLI version pins all the code it deploys", { timeout: 90_000 }, () => {
   const assets = JSON.parse(readFileSync(join(outdir, `${stack.id}.assets.json`), "utf8")) as {
     files: Record<string, { source: { path: string } }>;
   };
@@ -585,8 +585,20 @@ test("the inbound Lambda re-sends groups' mail through SES under Duva's configur
   }
 });
 
-test("the API manages receipt rules in Duva's rule set, the domains' identities in this account and region, and the suppression list, and may take no other SES action", () => {
-  expect(actions("ApiHandler", "ses").sort()).toEqual([
+test("the API and setup mail sign-in links through SES under Duva's configuration set, only from the organization's domains' identities in this account and region", () => {
+  const [[setId]] = ofType("AWS::SES::ConfigurationSet") as [[string, Resource]];
+  const configurationSet = { "Fn::Join": ["", ["arn:", { Ref: "AWS::Partition" }, ":ses:", { Ref: "AWS::Region" }, ":", { Ref: "AWS::AccountId" }, ":configuration-set/", { Ref: setId }]] };
+  for (const prefix of ["ApiHandler", "SetupHandler"]) {
+    const sends = statements(prefix).filter(({ Action }) => [Action].flat().some((action) => action.startsWith("ses:Send")));
+    expect({ prefix, sends }).toEqual({ prefix, sends: [expect.objectContaining({ Action: ["ses:SendEmail", "ses:SendRawEmail"], Resource: expect.arrayContaining([identitiesHere, configurationSet]) })] });
+    expect(sends[0]?.Resource).toHaveLength(2);
+    expect(lambda(prefix)[1].Properties?.Environment?.Variables?.[environmentVariables.configurationSet]).toEqual({ Ref: setId });
+    expect(lambda(prefix)[1].Properties?.Environment?.Variables?.[environmentVariables.webUrl]).toBeDefined();
+  }
+});
+
+test("the API manages receipt rules in Duva's rule set, the domains' identities in this account and region, and the suppression list, and may take no other SES action but sending", () => {
+  expect(actions("ApiHandler", "ses").filter((action) => !action.startsWith("ses:Send")).sort()).toEqual([
     "ses:CreateEmailIdentity",
     "ses:CreateEmailIdentity",
     "ses:CreateReceiptRule",
@@ -600,7 +612,7 @@ test("the API manages receipt rules in Duva's rule set, the domains' identities 
     "ses:UpdateReceiptRule",
   ]);
   const [[setId]] = ofType("AWS::SES::ConfigurationSet") as [[string, Resource]];
-  for (const { Action, Resource } of statements("ApiHandler").filter(({ Action }) => [Action].flat().some((action) => action.startsWith("ses:")))) {
+  for (const { Action, Resource } of statements("ApiHandler").filter(({ Action }) => [Action].flat().some((action) => action.startsWith("ses:") && !action.startsWith("ses:Send")))) {
     const resources = JSON.stringify(Resource);
     if ([Action].flat().every((action) => action.includes("Receipt") || action.includes("SuppressedDestination"))) {
       // IAM has no resource type for receipt rules, so the rule set is named only in the environment,
@@ -715,8 +727,10 @@ test("receiving starts with an empty rule set, so SES refuses all mail until the
   expect(ofType("AWS::SES::ReceiptRule")).toEqual([]);
 });
 
-test("the domain, the first admin, the sign-in domain and whether SES has verified it are parameters, so deploy names them when it runs", () => {
+test("the domain, the first admin, their recovery address, the sign-in domain and whether SES has verified it are parameters, so deploy names them when it runs", () => {
   expect(stack.template.Parameters?.Admin?.Type).toBe("String");
+  expect(stack.template.Parameters?.Recovery?.Type).toBe("String");
+  expect(lambda("SetupHandler")[1].Properties?.Environment?.Variables?.[environmentVariables.recovery]).toEqual({ Ref: "Recovery" });
   expect(stack.template.Parameters?.SignInDomain?.Type).toBe("String");
   expect(stack.template.Parameters?.DomainVerified?.AllowedValues).toEqual(["true", "false"]);
 });
@@ -734,9 +748,9 @@ test("sign-in names are the same in any case, so a human who types capitals in t
   expect(userPool.Properties?.UsernameConfiguration).toEqual({ CaseSensitive: false });
 });
 
-test("setup adds humans to the user pool, and may take no other Cognito action", () => {
+test("setup adds humans to the user pool and reads its sender, and may take no other Cognito action", () => {
   const [[userPoolId]] = ofType("AWS::Cognito::UserPool") as [[string, Resource]];
-  expect(actions("SetupHandler", "cognito-idp").sort()).toEqual(["cognito-idp:AdminCreateUser", "cognito-idp:AdminGetUser"]);
+  expect(actions("SetupHandler", "cognito-idp").sort()).toEqual(["cognito-idp:AdminCreateUser", "cognito-idp:AdminGetUser", "cognito-idp:DescribeUserPool"]);
   expect(lambda("SetupHandler")[1].Properties?.Environment?.Variables?.[environmentVariables.userPoolId]).toEqual({ Ref: userPoolId });
 });
 
@@ -744,7 +758,7 @@ test("setup erases the mailboxes agents owned before they owned none: it hands t
   const [eraserId] = lambda("EraserHandler");
   const setupRole = lambda("SetupHandler")[1].Properties?.Role?.["Fn::GetAtt"]?.[0];
   expect(invokers(eraserId)).toContain(setupRole);
-  expect(actions("SetupHandler", "ses").sort()).toEqual([
+  expect(actions("SetupHandler", "ses").filter((action) => !action.startsWith("ses:Send")).sort()).toEqual([
     "ses:CreateReceiptRule",
     "ses:DeleteReceiptRule",
     "ses:DeleteSuppressedDestination",
@@ -779,8 +793,36 @@ test("the API adds humans to the user pool, deletes them from it, changes its se
   expect(lambda("ApiHandler")[1].Properties?.Environment?.Variables?.[environmentVariables.userPoolId]).toEqual({ Ref: userPoolId });
 });
 
-test("humans sign in with an emailed code, and the password Cognito requires is offered to nobody", () => {
-  expect(userPool.Properties?.Policies?.SignInPolicy?.AllowedFirstAuthFactors).toEqual(["PASSWORD", "EMAIL_OTP"]);
+test("humans sign in with a passkey, or an emailed code as a fallback, and the password Cognito requires is offered to nobody", () => {
+  expect(userPool.Properties?.Policies?.SignInPolicy?.AllowedFirstAuthFactors).toEqual(["PASSWORD", "EMAIL_OTP", "WEB_AUTHN"]);
+  // Passkeys belong to the prefix domain, which a stack that creates the pool can't name as their relying party.
+  expect(userPool.Properties?.WebAuthnRelyingPartyID).toBeUndefined();
+});
+
+test("only the user pool may invoke the sign-in link triggers, its custom challenge's three, which may delete only sign-in links", () => {
+  const [[userPoolId]] = ofType("AWS::Cognito::UserPool") as [[string, Resource]];
+  const [triggersId] = lambda("SignInLinksHandler");
+  const arn = { "Fn::GetAtt": [triggersId, "Arn"] };
+  expect(userPool.Properties?.LambdaConfig).toEqual({ DefineAuthChallenge: arn, CreateAuthChallenge: arn, VerifyAuthChallengeResponse: arn });
+  const permissions = ofType("AWS::Lambda::Permission").filter(([, { Properties }]) => JSON.stringify(Properties?.FunctionName).includes(`"${triggersId}"`));
+  expect(permissions).toHaveLength(3);
+  for (const [, { Properties }] of permissions) {
+    expect(Properties).toMatchObject({ Action: "lambda:InvokeFunction", Principal: "cognito-idp.amazonaws.com", SourceArn: { "Fn::GetAtt": [userPoolId, "Arn"] } });
+  }
+  for (const type of ["AWS::Lambda::Url", "AWS::Lambda::EventSourceMapping", "AWS::Events::Rule"]) expect({ type, naming: naming(type, triggersId) }).toEqual({ type, naming: [] });
+  const services = new Set(statements("SignInLinksHandler").flatMap(({ Action }) => [Action].flat()).map((action) => action.split(":")[0]));
+  expect(services).toEqual(new Set(["dynamodb"]));
+  expect(statements("SignInLinksHandler")).toEqual([
+    expect.objectContaining({ Action: "dynamodb:DeleteItem", Condition: { "ForAllValues:StringLike": { "dynamodb:LeadingKeys": ["signInLink#*"] } } }),
+  ]);
+});
+
+test("the web app's and the CLI's sessions may list and remove the human's passkeys, and change none of their attributes but locale, which Duva never reads", () => {
+  const clients = ofType("AWS::Cognito::UserPoolClient").map(([, { Properties }]) => Properties);
+  const withPasskeys = clients.filter((client) => client?.AllowedOAuthScopes?.includes("aws.cognito.signin.user.admin"));
+  const [[webClientId]] = ofType("AWS::Cognito::UserPoolClient").filter(([, { Properties }]) => Properties?.ExplicitAuthFlows?.includes("ALLOW_CUSTOM_AUTH")) as [[string, Resource]];
+  expect(withPasskeys.map((client) => client?.CallbackURLs)).toEqual([stack.template.Resources[webClientId].Properties.CallbackURLs, ["http://127.0.0.1:8976/callback"]]);
+  for (const client of clients) expect(client?.WriteAttributes).toEqual(["locale"]);
 });
 
 test("sign-in codes go through SES from the sign-in domain once SES has verified it, and from Cognito until then", () => {
@@ -800,7 +842,7 @@ test("every app client signs in through managed login with PKCE, and gives no hi
   expect(clients).toHaveLength(3);
   for (const [id, { Properties }] of clients) {
     const { GenerateSecret, AllowedOAuthFlows, PreventUserExistenceErrors, ExplicitAuthFlows } = Properties ?? {};
-    expect({ id, secret: GenerateSecret ?? false, AllowedOAuthFlows, PreventUserExistenceErrors, ExplicitAuthFlows }).toEqual({
+    expect({ id, secret: GenerateSecret ?? false, AllowedOAuthFlows, PreventUserExistenceErrors, ExplicitAuthFlows: ExplicitAuthFlows?.filter((flow: string) => flow !== "ALLOW_CUSTOM_AUTH") }).toEqual({
       id,
       secret: false,
       AllowedOAuthFlows: ["code"],
@@ -809,6 +851,13 @@ test("every app client signs in through managed login with PKCE, and gives no hi
     });
   }
   expect(clients.map(([, { Properties }]) => Properties?.CallbackURLs)).toContainEqual(["http://127.0.0.1:8976/callback"]);
+});
+
+test("only the web app's client answers the custom challenge, as the API signs a sign-in link's human in for it", () => {
+  const [webClientId] = ofType("AWS::Cognito::UserPoolClient").find(([, { Properties }]) => Properties?.ExplicitAuthFlows?.includes("ALLOW_CUSTOM_AUTH")) ?? [];
+  const custom = ofType("AWS::Cognito::UserPoolClient").filter(([, { Properties }]) => Properties?.ExplicitAuthFlows?.includes("ALLOW_CUSTOM_AUTH"));
+  expect(custom).toHaveLength(1);
+  expect(lambda("ApiHandler")[1].Properties?.Environment?.Variables?.[environmentVariables.signInClientId]).toEqual({ Ref: webClientId });
 });
 
 test("managed login is the newer one, which offers choice-based sign-in", () => {

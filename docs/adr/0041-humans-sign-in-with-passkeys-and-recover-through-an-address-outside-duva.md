@@ -18,3 +18,7 @@ Humans sign in with passkeys, through Cognito's managed login, which ADR-0010 le
 - **ADR-0010's "passkeys come later" is done,** and the emailed code becomes a fallback.
 - **SES must be out of the sandbox** to mail recovery addresses, since those are outside the organization.
 - **Existing humans get no recovery address.** They can add one in Settings, and the web app asks them to until they do.
+- **Passkeys are bound to the user pool's prefix domain,** Cognito's default relying party, since a stack that creates the pool can't name its domain as one (docs/aws.md). A custom sign-in domain later would need its own passkeys.
+- **Registering a passkey is managed login's own,** and needs a session there. Managed login never offers a custom challenge, so a human signed in by a link signs in to managed login, with the code emailed to their sign-in address, before they register one. For a sign-in address in Duva, that code lands in the mailbox the link opened.
+- **The first admin's first link waits for SES,** which mails it from the sign-in domain once SES has verified it, so a first deploy mails it on the re-run that deploy already asks for.
+- **Sessions that manage passkeys carry Cognito's own scope,** whose tokens may also set the human a password or register a passkey through Cognito's API. Duva's app clients may write no attribute it reads, so no token changes the address a human signs in with.

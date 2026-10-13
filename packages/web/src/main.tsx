@@ -19,8 +19,8 @@ import "@fontsource-variable/familjen-grotesk/wght.css";
 import "./styles.css";
 import { lazy, StrictMode, Suspense, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import type { DuvaClient } from "@duva/client";
-import type { components } from "@duva/openapi";
+import { createDuvaClient, type DuvaClient } from "@duva/client";
+import { type components, recoveryLinkRoute, signInLinkRoute } from "@duva/openapi";
 import { activityHref, AgentEvents, type Filter, filterOf } from "./activity.tsx";
 import { AskAgent } from "./ask.tsx";
 import { Composer } from "./compose.tsx";
@@ -37,7 +37,7 @@ import { readScreener, ScreenedSenders, type ScreenerRead, ScreenerView } from "
 import { SenderLinkContext, SenderSheetView } from "./sender.tsx";
 import { SearchBox, SearchResults } from "./search.tsx";
 import { Shortcuts } from "./shortcuts.tsx";
-import { type Config, loadConfig, signedInClient, signIn, signOut } from "./session.ts";
+import { type Config, confirmRecoveryAddress, followSignInLink, loadConfig, settingsYou, signedInClient, signIn, signOut } from "./session.ts";
 import { strings } from "./strings.ts";
 import type { Done, Label } from "./organize.tsx";
 import { FeedStream } from "./stream.tsx";
@@ -63,8 +63,9 @@ type AllMailboxesLabel = components["schemas"]["AllMailboxesLabel"];
 
 type State =
   | { status: "loading" }
-  | { status: "signedOut"; config: Config; ended?: boolean }
+  | { status: "signedOut"; config: Config; ended?: boolean; linkFailed?: boolean }
   | { status: "signedIn"; config: Config; client: DuvaClient; actor: Human }
+  | { status: "recovery"; address?: string; failed?: string }
   | { status: "failed"; message: string };
 
 function App() {
@@ -73,6 +74,19 @@ function App() {
   useEffect(() => {
     (async () => {
       const config = await loadConfig();
+      // A sign-in link signs its human in, then Settings asks them to register a passkey (ADR-0041).
+      const link = linkToken(signInLinkRoute);
+      if (link !== undefined) {
+        history.replaceState(null, "", `/${settingsYou}`);
+        if (!(await followSignInLink(config, link))) return setState({ status: "signedOut", config, linkFailed: true });
+      }
+      // A link mailed to a new recovery address confirms it, signed in on this device or not.
+      const recovery = linkToken(recoveryLinkRoute);
+      if (recovery !== undefined) {
+        history.replaceState(null, "", "/");
+        const confirmed = await confirmRecoveryAddress(config, recovery);
+        return setState({ status: "recovery", ...("address" in confirmed ? { address: confirmed.address } : { failed: confirmed.failed ?? strings.recovery.unreachable }) });
+      }
       const client = await signedInClient(config);
       const { data: actor, response } = client ? await client.GET("/whoami") : {};
       // Only humans sign in to the web app. Agents call the API with their keys.
@@ -82,6 +96,13 @@ function App() {
   }, []);
 
   const ended = useCallback(() => setState((current) => (current.status === "signedIn" ? { status: "signedOut", config: current.config, ended: true } : current)), []);
+
+  // A sign-in or recovery link opened in a tab where Duva is open loads it afresh, as from the mail.
+  useEffect(() => {
+    const opened = () => [signInLinkRoute, recoveryLinkRoute].some((route) => location.hash.startsWith(route)) && location.reload();
+    addEventListener("hashchange", opened);
+    return () => removeEventListener("hashchange", opened);
+  }, []);
 
   switch (state.status) {
     case "loading":
@@ -98,21 +119,89 @@ function App() {
       );
     case "signedOut": {
       // A link to an access request says what signing in leads to.
-      const copy = state.ended ? strings.sessionEnded : routeOf(location.hash).view === "access" ? strings.signedOutToAccess : strings.signedOut;
+      const copy = state.linkFailed ? strings.linkFailed : state.ended ? strings.sessionEnded : routeOf(location.hash).view === "access" ? strings.signedOutToAccess : strings.signedOut;
       return (
         <main className="door">
           <p className="wordmark">{strings.nav.label}</p>
           <h1>{copy.title}</h1>
           <p>{copy.lead}</p>
-          <button type="button" className="button button-primary" onClick={() => signIn(state.config)}>
+          <button type="button" className="button button-primary" onClick={() => void signIn(state.config)}>
             {strings.signIn}
           </button>
+          <LostPasskey config={state.config} open={state.linkFailed === true} />
         </main>
       );
     }
+    case "recovery":
+      return (
+        <main className="door">
+          <p className="wordmark">{strings.nav.label}</p>
+          <h1>{state.address === undefined ? strings.recovery.failedTitle : strings.recovery.title}</h1>
+          <p>{state.address === undefined ? state.failed : strings.recovery.lead(state.address)}</p>
+          <a className="button button-primary" href="/">
+            {strings.recovery.open}
+          </a>
+        </main>
+      );
     case "signedIn":
       return <SignedIn config={state.config} client={state.client} actor={state.actor} onSignedOut={ended} />;
   }
+}
+
+/** The token of the link the address's hash follows, after `route`, or undefined if it follows none. */
+function linkToken(route: string): string | undefined {
+  const token = location.hash.startsWith(route) ? location.hash.slice(route.length) : "";
+  return /^[\w-]+$/.test(token) ? token : undefined;
+}
+
+/**
+ * Asking for a sign-in link, for a human who has lost their passkeys: Duva mails it to their
+ * recovery address, and says the same whatever the address, so it tells no one who is a human in Duva.
+ */
+function LostPasskey({ config, open }: { config: Config; open: boolean }) {
+  const copy = strings.lostPasskey;
+  const [shown, setShown] = useState(open);
+  const [email, setEmail] = useState("");
+  const [state, setState] = useState<{ status: "idle" | "asking" } | { status: "said"; said: string; alert?: boolean }>({ status: "idle" });
+  const ask = async () => {
+    setState({ status: "asking" });
+    const { data, error } = await createDuvaClient(config.apiUrl)
+      .POST("/sign-in-links", { body: { email: email.trim() } })
+      .catch(() => ({ data: undefined, error: { message: copy.unreachable } }));
+    setState(data !== undefined ? { status: "said", said: data.message } : { status: "said", said: error?.message ?? copy.unreachable, alert: true });
+  };
+  if (!shown) {
+    return (
+      <button type="button" className="button button-quiet door-lost" onClick={() => setShown(true)}>
+        {copy.lost}
+      </button>
+    );
+  }
+  return (
+    <form
+      className="door-link"
+      aria-labelledby="door-link-title"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void ask();
+      }}
+    >
+      <h2 id="door-link-title">{copy.title}</h2>
+      <p>{copy.lead}</p>
+      <label className="setting-field">
+        <span>{copy.email}</span>
+        <input type="email" autoComplete="username" autoCapitalize="none" spellCheck={false} value={email} onChange={(event) => setEmail(event.target.value)} />
+      </label>
+      <button type="submit" className="button" disabled={email.trim() === "" || state.status === "asking"}>
+        {state.status === "asking" ? copy.asking : copy.ask}
+      </button>
+      {state.status === "said" && (
+        <p className={state.alert ? "notice notice-alert" : "setting-note"} role={state.alert ? "alert" : "status"}>
+          {state.said}
+        </p>
+      )}
+    </form>
+  );
 }
 
 /**
@@ -1073,6 +1162,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
                 me={actor.id}
                 admin={actor.admin}
                 email={actor.email}
+                recoveryAddress={actor.recoveryAddress}
                 mailboxes={listed === undefined ? undefined : { mine: first, own }}
                 onPreferences={setPreferences}
                 onAway={setAwayMessage}
@@ -1104,6 +1194,7 @@ function SignedIn({ config, client, actor, onSignedOut }: { config: Config; clie
           onShortcuts={preferences.keyboardShortcuts === "off" ? undefined : () => setShortcutsOpen(true)}
           email={actor.email}
           admin={actor.admin}
+          recoveryAddress={actor.recoveryAddress}
             settings={route.view === "settings"}
           activity={route.view === "activity" ? route.agent : undefined}
           onSignOut={() => signOut(config)}
@@ -1152,6 +1243,7 @@ function Strip({
   onShortcuts,
   email,
   admin,
+  recoveryAddress,
   settings,
   activity,
   onSignOut,
@@ -1162,6 +1254,8 @@ function Strip({
   onShortcuts?: () => void;
   email: string;
   admin: boolean;
+  /** The human's recovery address, which humans added before recovery addresses have none of until they add one. */
+  recoveryAddress: string | undefined;
   /** Whether Settings is open, which its entry then shows. */
   settings: boolean;
   /** The agent whose activity is open, if one is. */
@@ -1208,6 +1302,12 @@ function Strip({
             <kbd aria-hidden="true">?</kbd>
             {strings.strip.shortcuts}
           </button>
+        )}
+        {/* Asked quietly until they add one (ADR-0041). */}
+        {recoveryAddress === undefined && (
+          <a href={settingsYou} className="strip-ask">
+            {strings.strip.addRecoveryAddress}
+          </a>
         )}
         <a href="#/settings" className="strip-settings" aria-current={settings ? "page" : undefined}>
           <SettingsIcon />

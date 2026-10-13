@@ -1,5 +1,8 @@
 import {
   AdminCreateUserCommand,
+  DeleteWebAuthnCredentialCommand,
+  ListWebAuthnCredentialsCommand,
+  ResourceNotFoundException,
   AdminInitiateAuthCommand,
   AdminRespondToAuthChallengeCommand,
   CodeMismatchException,
@@ -16,7 +19,11 @@ import {
   UserNotFoundException,
   UsernameExistsException,
 } from "@aws-sdk/client-cognito-identity-provider";
+import type { components } from "@duva/openapi";
 import { signInFrom } from "./infrastructure.ts";
+
+type Passkey = components["schemas"]["Passkey"];
+type SignInSession = components["schemas"]["SignInSession"];
 
 /** Where humans sign in: Cognito's user pool, or a stand-in in tests. */
 export interface Humans {
@@ -38,7 +45,20 @@ export interface Humans {
   sendSignInCode(email: string): Promise<string>;
   /** Whether the code is the one mailed to the human for the session, which it then ends. */
   checkSignInCode(email: string, session: string, code: string): Promise<boolean>;
+  /**
+   * Signs the human in with the token of a sign-in link, through the pool's custom challenge, whose
+   * trigger checks the token and uses it up, and gives their new session, or undefined if the
+   * trigger refused it (ADR-0041).
+   */
+  signInWithLink(email: string, token: string): Promise<SignInSession | undefined>;
+  /** The passkeys of the human whose access token it is, newest first. Throws NoPasskeyAccess if the token may not list them. */
+  passkeys(accessToken: string): Promise<Passkey[]>;
+  /** Removes one of the passkeys of the human whose access token it is, and says whether they had it. Throws NoPasskeyAccess as passkeys does. */
+  removePasskey(accessToken: string, id: string): Promise<boolean>;
 }
+
+/** The access token lacks the scope managing passkeys takes, as one from before passkeys. */
+export class NoPasskeyAccess extends Error {}
 
 /**
  * The deployment's user pool. Sign-in names are email addresses, in any case, and the ID a human's
@@ -65,6 +85,41 @@ export function cognitoHumans(cognito: CognitoIdentityProviderClient, userPoolId
         return true;
       } catch (error) {
         if (error instanceof CodeMismatchException || error instanceof ExpiredCodeException || error instanceof NotAuthorizedException) return false;
+        throw error;
+      }
+    },
+    async signInWithLink(email, token) {
+      try {
+        const { Session } = await cognito.send(new AdminInitiateAuthCommand({ UserPoolId: userPoolId, ClientId: clientId, AuthFlow: "CUSTOM_AUTH", AuthParameters: { USERNAME: email } }));
+        const { AuthenticationResult: tokens } = await cognito.send(
+          new AdminRespondToAuthChallengeCommand({ UserPoolId: userPoolId, ClientId: clientId, ChallengeName: "CUSTOM_CHALLENGE", Session, ChallengeResponses: { USERNAME: email, ANSWER: token } }),
+        );
+        if (tokens?.AccessToken === undefined || tokens.RefreshToken === undefined || tokens.ExpiresIn === undefined) return undefined;
+        return { accessToken: tokens.AccessToken, refreshToken: tokens.RefreshToken, expiresIn: tokens.ExpiresIn };
+      } catch (error) {
+        // The trigger refused the token, or the human was removed meanwhile.
+        if (error instanceof NotAuthorizedException || error instanceof UserNotFoundException) return undefined;
+        throw error;
+      }
+    },
+    async passkeys(accessToken) {
+      const passkeys: Passkey[] = [];
+      let NextToken: string | undefined;
+      do {
+        const page = await cognito.send(new ListWebAuthnCredentialsCommand({ AccessToken: accessToken, NextToken })).catch(scopeRefused);
+        for (const { CredentialId, FriendlyCredentialName, CreatedAt } of page.Credentials ?? []) {
+          if (CredentialId !== undefined && CreatedAt !== undefined) passkeys.push({ id: CredentialId, ...(FriendlyCredentialName && { name: FriendlyCredentialName }), createdAt: CreatedAt.toISOString() });
+        }
+        NextToken = page.NextToken;
+      } while (NextToken !== undefined);
+      return passkeys;
+    },
+    async removePasskey(accessToken, id) {
+      try {
+        await cognito.send(new DeleteWebAuthnCredentialCommand({ AccessToken: accessToken, CredentialId: id })).catch(scopeRefused);
+        return true;
+      } catch (error) {
+        if (error instanceof ResourceNotFoundException) return false;
         throw error;
       }
     },
@@ -101,6 +156,11 @@ export function cognitoHumans(cognito: CognitoIdentityProviderClient, userPoolId
       }
     },
   };
+}
+
+/** Cognito answers NotAuthorizedException to a token without the aws.cognito.signin.user.admin scope (docs/aws.md). */
+function scopeRefused(error: unknown): never {
+  throw error instanceof NotAuthorizedException ? new NoPasskeyAccess(error.message) : error;
 }
 
 function sub(attributes: AttributeType[] | undefined): string {

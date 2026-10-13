@@ -93,14 +93,15 @@ One organization per deployment (ADR-0002), in its own AWS account. Everything i
 
 ### Sign-in and the web app
 
-- **Humans sign in through Cognito managed login,** with a code emailed from the organization's domain (ADR-0010). PKCE is in `packages/web/src/session.ts`.
+- **Humans sign in through Cognito managed login,** with their passkeys, bound to the user pool's prefix domain, or a code emailed from the organization's domain as a fallback (ADR-0010, ADR-0041). PKCE is in `packages/web/src/session.ts`.
+- **Sign-in links** go to each human's recovery address, outside the organization's domains: when they're added, when they ask on the sign-in page, or when an admin sends one. Each is the user pool's custom challenge, which managed login never offers, so the web app follows it through the API, and the trigger Lambda only the pool may invoke checks its hash and uses it up (`sign-in-links.ts`). Registering a passkey is managed login's own, at `/passkeys/add`, which asks a human signed in by a link to sign in there first (docs/aws.md).
 - **The web app is React and Vite,** served from S3 through one CloudFront distribution. That distribution also fronts the download, conversation and logo paths. Linked files' pages are under the download path, served by the download Lambda, whose Download sends the browser on to S3 (`linked-files.ts`).
 - **Every string it shows is in `packages/web/src/strings.ts`.**
 
 ### Security posture
 
 - **No world-invocable Lambda, ever.** No resource policy with `Principal: "*"`, or any principal without a source condition. No function URL with `AuthType NONE`.
-  - Lambdas are invoked by IAM, or by a service principal scoped by `SourceArn` or `SourceAccount`: API Gateway, SES, SNS, EventBridge, or CloudFront with origin access control.
+  - Lambdas are invoked by IAM, or by a service principal scoped by `SourceArn` or `SourceAccount`: API Gateway, SES, SNS, EventBridge, Cognito for the user pool's triggers, or CloudFront with origin access control.
   - The account's security tooling disables any function that breaks this.
   - The only wildcard principals allowed are Deny statements, such as those refusing requests not sent over TLS.
 - **Admins can't read personal mailboxes.** Agents own none, and work only with sponsor access (ADR-0015, ADR-0030).

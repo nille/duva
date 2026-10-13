@@ -21,6 +21,7 @@ import {
   sponsoredAgents,
 } from "./organization.ts";
 import { freeCooAddress } from "./coo-address.ts";
+import { keepRecoveryAddress, mailSignInLink, recoveryAddressGiven, recoveryAddressOf, unlessRefused } from "./sign-in-links.ts";
 import { cooRequestsErased } from "./coo-requests.ts";
 import { giveMailboxAgent } from "./mailbox-agents.ts";
 import { syncRecipients } from "./receiving.ts";
@@ -36,21 +37,32 @@ export const addHuman: OperationHandler = async (event, deployment, actor) => {
   if (!isEmailAddress(email) || email.length > 254) {
     return refusal(400, `${JSON.stringify(given)} isn't an email address. Give the address the human will sign in with, like grace@example.com.`);
   }
+  const recovery = await recoveryAddressGiven(deployment.table, body?.recoveryAddress);
+  if ("statusCode" in recovery) return recovery;
   const exists = () => refusal(409, `${email} is already a human in the organization. List the humans to find their ID.`);
   if ((await allHumans(deployment.table)).some((human) => human.email === email)) return exists();
+  let human: Human;
   try {
-    const human = await addHumanToOrganization(deployment, { email, by: actor!.id });
-    return { statusCode: 201, body: human satisfies components["schemas"]["Human"] };
+    human = await addHumanToOrganization(deployment, { email, by: actor!.id });
   } catch (error) {
     if (!(error instanceof HumanExists)) throw error;
     return exists();
   }
+  await keepRecoveryAddress(deployment.table, human.id, recovery.address);
+  // The human is added even if SES refuses their first link, as in the sandbox; an admin sends another once it can.
+  const signInLink = await unlessRefused(mailSignInLink(deployment, human, recovery.address));
+  return { statusCode: 201, body: { ...human, recoveryAddress: recovery.address, ...(signInLink && { signInLink }) } satisfies components["schemas"]["HumanAdded"] };
 };
 
 export const listHumans: OperationHandler = async (_event, deployment, actor) => {
   if (!isAdmin(actor)) return refusal(403, "Only admins can list the organization's humans. Ask an admin who has access.");
   // Admins see how much each shares as linked files, toward the organization's cap.
-  const humans = await Promise.all((await allHumans(deployment.table)).map(async (human) => ({ ...human, linkedSize: await linkedSize(deployment.table, human.id) })));
+  const humans = await Promise.all(
+    (await allHumans(deployment.table)).map(async (human) => {
+      const recoveryAddress = await recoveryAddressOf(deployment.table, human.id);
+      return { ...human, linkedSize: await linkedSize(deployment.table, human.id), ...(recoveryAddress !== undefined && { recoveryAddress }) };
+    }),
+  );
   return { statusCode: 200, body: { humans } satisfies components["schemas"]["HumanList"] };
 };
 

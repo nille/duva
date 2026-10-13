@@ -57,7 +57,8 @@ export function PeopleSheet({
   // The humans removed here, each said in place of their line.
   const [gone, setGone] = useState<{ email: string; said: string }[]>([]);
   // The human just added, opened so what was done is said in their line.
-  const [added, setAdded] = useState<string>();
+  // The human just added here, and where their first sign-in link went, if SES mailed it.
+  const [added, setAdded] = useState<{ email: string; linkTo?: string }>();
 
   // Read again after a change, the sheet stays as it is while it does, so open lines stay open.
   const load = useCallback(
@@ -118,7 +119,7 @@ export function PeopleSheet({
                   human={line.human}
                   people={read.people}
                   me={line.email === me}
-                  added={added === line.email}
+                  added={added?.email === line.email ? added : undefined}
                   onChanged={onChange}
                   onGiveMailbox={onGiveMailbox}
                   onRemoved={(said) => {
@@ -135,8 +136,8 @@ export function PeopleSheet({
             )}
             <AddHuman
               client={client}
-              onAdded={(email) => {
-                setAdded(email);
+              onAdded={(email, linkTo) => {
+                setAdded({ email, linkTo });
                 setGone((current) => current.filter((each) => each.email !== email));
                 onChange();
               }}
@@ -164,8 +165,8 @@ function HumanLine({
   human: Human;
   people: People;
   me: boolean;
-  /** Whether the human was just added here, so their line opens and says so. */
-  added: boolean;
+  /** Whether the human was just added here, so their line opens and says so, with where their first sign-in link went. */
+  added: { linkTo?: string } | undefined;
   onChanged: () => void;
   onGiveMailbox: (owner: string) => void;
   /** Hears that the human was removed, and what to say of it. */
@@ -195,10 +196,11 @@ function HumanLine({
       <div className="setting" role="group" aria-labelledby={heading}>
         {added && (
           <p className="setting-note" role="status">
-            {copy.added(human.email)}
+            {added.linkTo === undefined ? copy.addedUnmailed(human.email) : copy.added(human.email, added.linkTo)}
           </p>
         )}
         <AdminPart client={client} human={human} lastAdmin={lastAdmin} onChanged={onChanged} onSignedOut={onSignedOut} />
+        <SignInLinkPart client={client} human={human} onSignedOut={onSignedOut} />
         <div className="setting-part">
           <h4>{copy.mailboxesTitle}</h4>
           {mailboxes.length === 0 ? (
@@ -227,6 +229,44 @@ function HumanLine({
 }
 
 type Acting = { status: "idle" | "busy" } | { status: "failed"; message: string } | { status: "done"; said: string };
+
+/** Mailing the human a sign-in link at their recovery address, as for one who has lost their passkeys (ADR-0041). */
+function SignInLinkPart({ client, human, onSignedOut }: { client: DuvaClient; human: Human; onSignedOut: () => void }) {
+  const [state, setState] = useState<Acting>({ status: "idle" });
+  const heading = useId();
+  const send = async () => {
+    setState({ status: "busy" });
+    const answer = await change(client.POST("/humans/{human}/sign-in-link", { params: { path: { human: human.id } } }), onSignedOut);
+    if (answer === undefined) return;
+    if ("failed" in answer) return setState({ status: "failed", message: answer.failed });
+    setState({ status: "done", said: copy.linkSent(answer.data.to) });
+  };
+  return (
+    <div className="setting-part" role="group" aria-labelledby={heading}>
+      <h4 id={heading}>{copy.signInLink}</h4>
+      {human.recoveryAddress === undefined ? (
+        <p className="setting-lead">{copy.noRecoveryAddress}</p>
+      ) : (
+        <>
+          <p className="setting-lead">{copy.signInLinkLead(human.recoveryAddress)}</p>
+          <div className="setting-foot">
+            <button type="button" className="button button-small" disabled={state.status === "busy"} aria-label={copy.sendLinkWho(human.email)} onClick={() => void send()}>
+              {copy.sendLink}
+            </button>
+            <p role="status" className="setting-saved">
+              {state.status === "done" ? state.said : ""}
+            </p>
+          </div>
+        </>
+      )}
+      {state.status === "failed" && (
+        <p className="notice notice-alert" role="alert">
+          {state.message}
+        </p>
+      )}
+    </div>
+  );
+}
 
 /** Whether the human is an admin, made one or not beside it, except that the last admin stays one. */
 function AdminPart({ client, human, lastAdmin, onChanged, onSignedOut }: { client: DuvaClient; human: Human; lastAdmin: boolean; onChanged: () => void; onSignedOut: () => void }) {
@@ -497,18 +537,26 @@ function RemoveHuman({ client, human, people, onRemoved, onSignedOut }: { client
   );
 }
 
-/** Adding a human by the address they sign in with. Their line opens and says it was done. */
-function AddHuman({ client, onAdded, onSignedOut }: { client: DuvaClient; onAdded: (email: string) => void; onSignedOut: () => void }) {
+/**
+ * Adding a human by the address they sign in with, and their recovery address, where Duva mails
+ * their first sign-in link. Their line opens and says it was done.
+ */
+function AddHuman({ client, onAdded, onSignedOut }: { client: DuvaClient; onAdded: (email: string, linkTo?: string) => void; onSignedOut: () => void }) {
   const [email, setEmail] = useState("");
+  const [recoveryAddress, setRecoveryAddress] = useState("");
   const [state, setState] = useState<{ status: "idle" | "adding" } | { status: "failed"; message: string }>({ status: "idle" });
   const add = async () => {
     setState({ status: "adding" });
-    const answer = await change(client.POST("/humans", { body: { email: email.trim() } }), onSignedOut);
+    const answer = await change(client.POST("/humans", { body: { email: email.trim(), recoveryAddress: recoveryAddress.trim() } }), onSignedOut);
     if (answer === undefined) return;
     if ("failed" in answer) return setState({ status: "failed", message: answer.failed });
     setState({ status: "idle" });
     setEmail("");
-    onAdded(answer.data.email);
+    setRecoveryAddress("");
+    onAdded(answer.data.email, answer.data.signInLink?.to);
+  };
+  const edited = () => {
+    if (state.status === "failed") setState({ status: "idle" });
   };
   return (
     <form
@@ -537,9 +585,30 @@ function AddHuman({ client, onAdded, onSignedOut }: { client: DuvaClient; onAdde
           value={email}
           onChange={(event) => {
             setEmail(event.target.value);
-            if (state.status === "failed") setState({ status: "idle" });
+            edited();
           }}
         />
+      </label>
+      <label className="setting-field">
+        <span>{copy.recoveryAddress}</span>
+        <input
+          type="text"
+          inputMode="email"
+          autoComplete="off"
+          autoCapitalize="none"
+          spellCheck={false}
+          placeholder={copy.recoveryPlaceholder}
+          aria-invalid={state.status === "failed"}
+          aria-describedby={state.status === "failed" ? "add-human-error" : "add-human-recovery-hint"}
+          value={recoveryAddress}
+          onChange={(event) => {
+            setRecoveryAddress(event.target.value);
+            edited();
+          }}
+        />
+        <span className="hint" id="add-human-recovery-hint">
+          {copy.recoveryHint}
+        </span>
       </label>
       {state.status === "failed" && (
         <p id="add-human-error" className="field-error" role="alert">
@@ -547,7 +616,7 @@ function AddHuman({ client, onAdded, onSignedOut }: { client: DuvaClient; onAdde
         </p>
       )}
       <div className="setting-foot">
-        <button type="submit" className="button button-primary" disabled={email.trim() === "" || state.status === "adding"}>
+        <button type="submit" className="button button-primary" disabled={email.trim() === "" || recoveryAddress.trim() === "" || state.status === "adding"}>
           {state.status === "adding" ? copy.adding : copy.addButton}
         </button>
       </div>

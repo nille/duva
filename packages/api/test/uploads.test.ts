@@ -263,7 +263,7 @@ test("a draft that was sent takes no more files and keeps those it has", async (
 test("erasing a deleted mailbox erases the files uploaded to its drafts", async () => {
   const duva = await startDuva({ domain: "example.com", admin: "ada@example.org" });
   const ada = duva.signIn("ada@example.org");
-  const { data: linus } = await ada.POST("/humans", { body: { email: "linus@example.org" } });
+  const { data: linus } = await ada.POST("/humans", { body: { email: "linus@example.org", recoveryAddress: "recovery@elsewhere.example" } });
   const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: linus!.id, address: "linus@example.com" } });
   const asLinus = duva.signIn("linus@example.org");
   const { data: written } = await asLinus.POST("/mailboxes/{mailbox}/drafts", { params: { path: { mailbox: mailbox!.id } }, body: {} });

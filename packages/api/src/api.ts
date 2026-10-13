@@ -56,6 +56,8 @@ import { changeOrganizationSettings, getOrganizationSettings, listMailboxAgentMo
 import { getStatus } from "./status.ts";
 import { changeDraftAttachment, completeUpload, getDraftAttachment, getUpload, removeDraftAttachment, startUpload } from "./uploads.ts";
 import { whoami } from "./whoami.ts";
+import { askForSignInLink, changeRecoveryAddress, confirmRecoveryAddress, followSignInLink, sendSignInLink } from "./sign-in-links.ts";
+import { listPasskeys, removePasskey } from "./passkeys.ts";
 import type { OperationHandler } from "./operation-handler.ts";
 
 export const handlers: Record<OperationId, OperationHandler> = {
@@ -82,6 +84,13 @@ export const handlers: Record<OperationId, OperationHandler> = {
   forgetMemory,
   addHuman,
   listHumans,
+  sendSignInLink,
+  askForSignInLink,
+  followSignInLink,
+  changeRecoveryAddress,
+  confirmRecoveryAddress,
+  listPasskeys,
+  removePasskey,
   changeHuman,
   removeHuman,
   createAgent,

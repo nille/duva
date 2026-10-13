@@ -51,6 +51,7 @@ export function realAws(region: string): Aws {
           admin: parameter(stackParameters.admin),
           signInDomain: parameter(stackParameters.signInDomain),
           domainVerified: domainVerified === undefined ? undefined : domainVerified === "true",
+          recovery: parameter(stackParameters.recovery),
           outputs,
         };
       } catch (error) {
@@ -195,7 +196,7 @@ async function unpackBundle(): Promise<string> {
   return directory;
 }
 
-async function deployBundle(bundle: string, region: string, { domain, admin, signInDomain, domainVerified }: DuvaParameters) {
+async function deployBundle(bundle: string, region: string, { domain, admin, signInDomain, domainVerified, recovery }: DuvaParameters) {
   const toolkit = new Toolkit({
     ioHost: progressOnStderr(new NonInteractiveIoHost({ isCI: false })),
     sdkConfig: { baseCredentials: BaseCredentials.awsCliCompatible({ defaultRegion: region }) },
@@ -218,6 +219,7 @@ async function deployBundle(bundle: string, region: string, { domain, admin, sig
         [stackParameters.admin]: admin,
         [stackParameters.signInDomain]: signInDomain,
         [stackParameters.domainVerified]: String(domainVerified),
+        [stackParameters.recovery]: recovery,
       }),
     });
     const [deployed] = stacks;

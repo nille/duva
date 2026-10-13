@@ -537,7 +537,7 @@ test("removing a human erases their secrets and their Coo's payments with them",
   const before = [(await linus.GET("/secrets")).data!.secrets.length, (await linus.GET("/payments")).data!.payments.length];
 
   await ada.POST("/humans/{human}/remove", { params: { path: { human: linusId } }, body: { delete: [params.path.mailbox] } });
-  await ada.POST("/humans", { body: { email: "linus@example.org" } });
+  await ada.POST("/humans", { body: { email: "linus@example.org", recoveryAddress: "recovery@elsewhere.example" } });
   const again = duva.signIn("linus@example.org");
 
   expect(before).toEqual([1, 1]);

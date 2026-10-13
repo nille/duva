@@ -62,7 +62,8 @@ test("a human an admin adds after the move signs in to the new user pool", async
   duva.replaceUserPool();
   await duva.setUp({ admin: "ada@example.org" });
 
-  const { data: grace } = await duva.signIn("ada@example.org").POST("/humans", { body: { email: "grace@example.org" } });
+  const { data: grace } = await duva.signIn("ada@example.org").POST("/humans", { body: { email: "grace@example.org", recoveryAddress: "recovery@elsewhere.example" } });
 
-  expect((await duva.signIn("grace@example.org").GET("/whoami")).data).toEqual(grace);
+  const { signInLink: _, ...human } = grace!;
+  expect((await duva.signIn("grace@example.org").GET("/whoami")).data).toEqual(human);
 });

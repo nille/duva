@@ -645,7 +645,7 @@ export const operations = [
     "path": "/humans",
     "routeKey": "POST /humans",
     "summary": "Add a human to the organization by their email address, so they can sign in.",
-    "description": "Only admins can add humans. The human signs in with a code emailed to the address, and has no mailbox until an admin creates one for them. Adding a human is a change to the organization's setup, recorded in its change feed.",
+    "description": "Only admins can add humans. Each gives a recovery address outside the organization's domains, where Duva mails their first sign-in link now, from no-reply@ the sign-in domain. It signs them in once, within 30 minutes, and asks them to register a passkey. After that they sign in with their passkeys, or with a code emailed to their sign-in address. The human has no mailbox until an admin creates one for them. Adding a human is a change to the organization's setup, recorded in its change feed.",
     "signIn": true,
     "command": [
       "humans",
@@ -658,6 +658,13 @@ export const operations = [
         "type": "string",
         "required": true,
         "description": "The address the human signs in with."
+      },
+      {
+        "name": "recoveryAddress",
+        "in": "body",
+        "type": "string",
+        "required": true,
+        "description": "An address of the human's outside the organization's domains, such as a Gmail address, which Duva mails their first sign-in link to now, and every sign-in link after."
       }
     ]
   },
@@ -766,6 +773,152 @@ export const operations = [
         "type": "string",
         "required": true,
         "description": "The new address, on one of the organization's standalone domains, without a plus tag."
+      }
+    ]
+  },
+  {
+    "operationId": "sendSignInLink",
+    "method": "post",
+    "path": "/humans/{human}/sign-in-link",
+    "routeKey": "POST /humans/{human}/sign-in-link",
+    "summary": "Mail a human a sign-in link at their recovery address.",
+    "description": "Only admins can send a human a sign-in link, as for a human who has lost their passkeys or whose first link expired. Duva mails it from no-reply@ the sign-in domain to the human's recovery address only, never to their sign-in address. It signs them in once, within 30 minutes, and asks them to register a passkey. A human with no recovery address gets none: they add one in Settings.",
+    "signIn": true,
+    "command": [
+      "humans",
+      "send-sign-in-link"
+    ],
+    "options": [
+      {
+        "name": "human",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The human's ID."
+      }
+    ]
+  },
+  {
+    "operationId": "askForSignInLink",
+    "method": "post",
+    "path": "/sign-in-links",
+    "routeKey": "POST /sign-in-links",
+    "summary": "Ask for a sign-in link, mailed to the recovery address of the human who signs in with the address given.",
+    "description": "Answers without sign-in, for a human who has lost their passkeys, as the web app's sign-in page asks. It answers the same whether or not the address signs in to Duva, and whether or not its human has a recovery address, so it says nothing about who is a human in Duva. Duva mails the link only to the human's recovery address, from no-reply@ the sign-in domain. It signs them in once, within 30 minutes. A human gets at most 3 links in 10 minutes this way, and an address asks for at most 10.",
+    "signIn": false,
+    "command": [
+      "sign-in-links",
+      "ask"
+    ],
+    "options": [
+      {
+        "name": "email",
+        "in": "body",
+        "type": "string",
+        "required": true,
+        "description": "The address the human signs in with."
+      }
+    ]
+  },
+  {
+    "operationId": "followSignInLink",
+    "method": "post",
+    "path": "/sign-in-links/follow",
+    "routeKey": "POST /sign-in-links/follow",
+    "summary": "Sign in with the token of a sign-in link, as following it in the web app does.",
+    "description": "Answers without sign-in, and gives a session for the web app's app client, which renews at managed login as any of its sessions does. A link works once, and for 30 minutes after Duva mailed it. Duva keeps only its hash.",
+    "signIn": false,
+    "command": [
+      "sign-in-links",
+      "follow"
+    ],
+    "options": [
+      {
+        "name": "token",
+        "in": "body",
+        "type": "string",
+        "required": true,
+        "description": "The token at the end of the link, after #/sign-in/."
+      }
+    ]
+  },
+  {
+    "operationId": "changeRecoveryAddress",
+    "method": "put",
+    "path": "/recovery-address",
+    "routeKey": "PUT /recovery-address",
+    "summary": "Change your recovery address, once you follow the link Duva mails to the new one.",
+    "description": "Only humans have a recovery address, outside the organization's domains, and each changes only their own. Duva mails a link to the new address, from no-reply@ the sign-in domain, and the address changes only once someone follows it, within 30 minutes. Until then the old one, if any, stays.",
+    "signIn": true,
+    "command": [
+      "recovery-address",
+      "change"
+    ],
+    "options": [
+      {
+        "name": "address",
+        "in": "body",
+        "type": "string",
+        "required": true,
+        "description": "Your new recovery address, outside the organization's domains."
+      }
+    ]
+  },
+  {
+    "operationId": "confirmRecoveryAddress",
+    "method": "post",
+    "path": "/recovery-address/confirm",
+    "routeKey": "POST /recovery-address/confirm",
+    "summary": "Confirm a new recovery address with the token of the link mailed to it.",
+    "description": "Answers without sign-in, as following the link does in the web app on any device. The link works once, for 30 minutes.",
+    "signIn": false,
+    "command": [
+      "recovery-address",
+      "confirm"
+    ],
+    "options": [
+      {
+        "name": "token",
+        "in": "body",
+        "type": "string",
+        "required": true,
+        "description": "The token at the end of the link, after #/recovery/."
+      }
+    ]
+  },
+  {
+    "operationId": "listPasskeys",
+    "method": "get",
+    "path": "/passkeys",
+    "routeKey": "GET /passkeys",
+    "summary": "List your passkeys, newest first.",
+    "description": "Only humans have passkeys, and each lists only their own. A human registers one in managed login, at /passkeys/add on the sign-in domain, as Settings in the web app sends them to. A session from before passkeys can't list them: sign in again.",
+    "signIn": true,
+    "command": [
+      "passkeys",
+      "list"
+    ],
+    "options": []
+  },
+  {
+    "operationId": "removePasskey",
+    "method": "delete",
+    "path": "/passkeys/{passkey}",
+    "routeKey": "DELETE /passkeys/{passkey}",
+    "summary": "Remove one of your passkeys, so it no longer signs you in.",
+    "description": "Only humans have passkeys, and each removes only their own. A code emailed to your sign-in address, and your other passkeys, still sign you in.",
+    "signIn": true,
+    "command": [
+      "passkeys",
+      "remove"
+    ],
+    "options": [
+      {
+        "name": "passkey",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The passkey's ID."
       }
     ]
   },

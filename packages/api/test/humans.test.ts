@@ -12,7 +12,7 @@ const mail = (name: string) => readFile(new URL(`mail/${name}.eml`, import.meta.
 async function withHumansMailbox() {
   const duva = await startDuva({ domain: "example.com", admin: "ada@example.org", humans: ["grace@example.org"] });
   const ada = duva.signIn("ada@example.org");
-  const { data: human } = await ada.POST("/humans", { body: { email: "linus@example.org" } });
+  const { data: human } = await ada.POST("/humans", { body: { email: "linus@example.org", recoveryAddress: "recovery@elsewhere.example" } });
   const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: human!.id, address: "linus@example.com" } });
   const linus = duva.signIn("linus@example.org");
   const params = { path: { mailbox: mailbox!.id } };
@@ -24,16 +24,18 @@ async function withHumansMailbox() {
 test("an admin adds a human by email address, and the human can sign in", async () => {
   const duva = await startDuva({ admin: "ada@example.org" });
 
-  const { response, data } = await duva.signIn("ada@example.org").POST("/humans", { body: { email: "grace@example.org" } });
+  const { response, data } = await duva.signIn("ada@example.org").POST("/humans", { body: { email: "grace@example.org", recoveryAddress: "recovery@elsewhere.example" } });
 
   expect(response.status).toBe(201);
-  expect(data).toEqual({ id: expect.any(String), kind: "human", email: "grace@example.org", admin: false });
-  expect((await duva.signIn("grace@example.org").GET("/whoami")).data).toEqual(data);
+  const { signInLink, ...human } = data!;
+  expect(human).toEqual({ id: expect.any(String), kind: "human", email: "grace@example.org", admin: false, recoveryAddress: "recovery@elsewhere.example" });
+  expect(signInLink).toMatchObject({ to: "recovery@elsewhere.example" });
+  expect((await duva.signIn("grace@example.org").GET("/whoami")).data).toEqual(human);
 });
 
 test("a new human has no mailbox until an admin creates one", async () => {
   const duva = await startDuva({ admin: "ada@example.org" });
-  await duva.signIn("ada@example.org").POST("/humans", { body: { email: "grace@example.org" } });
+  await duva.signIn("ada@example.org").POST("/humans", { body: { email: "grace@example.org", recoveryAddress: "recovery@elsewhere.example" } });
 
   const { data } = await duva.signIn("grace@example.org").GET("/mailboxes");
 
@@ -43,7 +45,7 @@ test("a new human has no mailbox until an admin creates one", async () => {
 test("a human's email address is kept in lower case", async () => {
   const duva = await startDuva({ admin: "ada@example.org" });
 
-  const { data } = await duva.signIn("ada@example.org").POST("/humans", { body: { email: " Grace@Example.ORG " } });
+  const { data } = await duva.signIn("ada@example.org").POST("/humans", { body: { email: " Grace@Example.ORG ", recoveryAddress: "recovery@elsewhere.example" } });
 
   expect(data).toMatchObject({ email: "grace@example.org" });
 });
@@ -52,8 +54,8 @@ test("only an admin can add a human", async () => {
   const duva = await startDuva({ admin: "ada@example.org", humans: ["grace@example.org"] });
   const { data: agent } = await duva.signIn("ada@example.org").POST("/agents", { body: { name: "Hermes" } });
 
-  const byHuman = await duva.signIn("grace@example.org").POST("/humans", { body: { email: "alan@example.org" } });
-  const byAgent = await duva.withKey(agent!.key).POST("/humans", { body: { email: "alan@example.org" } });
+  const byHuman = await duva.signIn("grace@example.org").POST("/humans", { body: { email: "alan@example.org", recoveryAddress: "recovery@elsewhere.example" } });
+  const byAgent = await duva.withKey(agent!.key).POST("/humans", { body: { email: "alan@example.org", recoveryAddress: "recovery@elsewhere.example" } });
 
   expect(byHuman.response.status).toBe(403);
   expect(byHuman.error?.message).toMatch(/admin/);
@@ -64,8 +66,8 @@ test("adding a human who is already in the organization is refused", async () =>
   const duva = await startDuva({ admin: "ada@example.org", humans: ["grace@example.org"] });
   const ada = duva.signIn("ada@example.org");
 
-  const again = await ada.POST("/humans", { body: { email: "GRACE@example.org" } });
-  const admin = await ada.POST("/humans", { body: { email: "ada@example.org" } });
+  const again = await ada.POST("/humans", { body: { email: "GRACE@example.org", recoveryAddress: "recovery@elsewhere.example" } });
+  const admin = await ada.POST("/humans", { body: { email: "ada@example.org", recoveryAddress: "recovery@elsewhere.example" } });
 
   expect(again.response.status).toBe(409);
   expect(again.error?.message).toMatch(/grace@example.org is already a human/);
@@ -76,7 +78,7 @@ test("adding a human who is already in the organization is refused", async () =>
 test("an address that differs from a human's only in case is refused", async () => {
   const duva = await startDuva({ admin: "Ada@example.org" });
 
-  const { response } = await duva.signIn("Ada@example.org").POST("/humans", { body: { email: "ada@example.org" } });
+  const { response } = await duva.signIn("Ada@example.org").POST("/humans", { body: { email: "ada@example.org", recoveryAddress: "recovery@elsewhere.example" } });
 
   expect(response.status).toBe(409);
 });
@@ -90,7 +92,7 @@ test.each([
 ])("an email address %s is refused", async (_, email) => {
   const duva = await startDuva({ admin: "ada@example.org" });
 
-  const { response, error } = await duva.signIn("ada@example.org").POST("/humans", { body: { email } });
+  const { response, error } = await duva.signIn("ada@example.org").POST("/humans", { body: { email, recoveryAddress: "recovery@elsewhere.example" } });
 
   expect(response.status).toBe(400);
   expect(error?.message).toMatch(/email address/);
@@ -102,24 +104,27 @@ test("adding a human is in the change feed, attributed to the admin", async () =
   const { data: admin } = await ada.GET("/whoami");
   const { data: before } = await ada.GET("/organization/changes");
 
-  const { data: grace } = await ada.POST("/humans", { body: { email: "grace@example.org" } });
+  const { data: grace } = await ada.POST("/humans", { body: { email: "grace@example.org", recoveryAddress: "recovery@elsewhere.example" } });
 
   const { data } = await ada.GET("/organization/changes", { params: { query: { after: before!.position } } });
-  expect(data?.changes).toEqual([{ position: before!.position + 1, at: expect.any(String), actor: admin?.id, type: "actorAdded", added: grace }]);
+  // The recovery address stays out of the organization's change feed.
+  const { recoveryAddress: _, signInLink: __, ...added } = grace!;
+  expect(data?.changes).toEqual([{ position: before!.position + 1, at: expect.any(String), actor: admin?.id, type: "actorAdded", added }]);
 });
 
 test("an admin lists the organization's humans, the first admin included", async () => {
   const duva = await startDuva({ admin: "ada@example.org" });
   const ada = duva.signIn("ada@example.org");
   const { data: admin } = await ada.GET("/whoami");
-  const { data: grace } = await ada.POST("/humans", { body: { email: "grace@example.org" } });
+  const { data: grace } = await ada.POST("/humans", { body: { email: "grace@example.org", recoveryAddress: "recovery@elsewhere.example" } });
   await ada.POST("/agents", { body: { name: "Hermes" } });
 
   const { response, data } = await ada.GET("/humans");
 
   expect(response.status).toBe(200);
   expect(data?.humans).toHaveLength(2);
-  expect(data?.humans).toEqual(expect.arrayContaining([{ ...admin, linkedSize: 0 }, { ...grace, linkedSize: 0 }]));
+  const { signInLink: _, ...listed } = grace!;
+  expect(data?.humans).toEqual(expect.arrayContaining([{ ...admin, linkedSize: 0 }, { ...listed, linkedSize: 0 }]));
 });
 
 test("only an admin can list the organization's humans", async () => {

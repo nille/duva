@@ -76,7 +76,8 @@ test("each line of the index says what its page holds now, as its link's descrip
       .getByRole("link", { name, exact: true })
       .evaluate((link) => document.getElementById(link.getAttribute("aria-describedby") ?? "")?.textContent);
   await expect.poll(() => state("Groups"), wait).toBe("1 group");
-  expect(await state("Preferences")).toBe("Default clock, mail as designed");
+  // Ada, the first admin from before recovery addresses, has none yet.
+  expect(await state("Preferences")).toBe("Default clock, mail as designed, no recovery address yet");
   expect(await state("Screener")).toBe("On");
   expect(await state("Mail and agents")).toBe("Trash and Spam keep mail 30 days");
   expect(await state("Domains")).toBe("example.com, 2 records missing");

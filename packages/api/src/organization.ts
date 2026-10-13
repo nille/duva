@@ -147,7 +147,7 @@ export async function setUpOrganization(
 }
 
 /** The organization's first admin, null if they have been removed, or undefined if the organization isn't set up. */
-async function firstAdmin(table: Table): Promise<Human | null | undefined> {
+export async function firstAdmin(table: Table): Promise<Human | null | undefined> {
   const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: organizationKey }));
   if (Item === undefined) return undefined;
   const actor = await findActor(table, Item.firstAdmin as string);

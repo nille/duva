@@ -54,10 +54,11 @@ test("an admin adds a human, whose line opens with no mailbox, offering to give 
   const { page, ada } = await withPeople();
 
   await sheet(page).getByRole("textbox", { name: "Email address" }).fill("Margaret@Example.org");
+  await sheet(page).getByRole("textbox", { name: "Recovery address" }).fill("margaret@elsewhere.org");
   await sheet(page).getByRole("button", { name: "Add human" }).click();
 
   await expect.poll(() => summary(page, "margaret@example.org"), wait).toBe("No mailbox. No agents.");
-  expect(await line(page, "margaret@example.org").getByRole("status").first().textContent()).toBe("Added margaret@example.org. They sign in with a code emailed there.");
+  expect(await line(page, "margaret@example.org").getByRole("status").first().textContent()).toBe("Added margaret@example.org. Duva mailed their first sign-in link to margaret@elsewhere.org.");
   expect(await line(page, "margaret@example.org").getByRole("button", { name: "Give margaret@example.org a mailbox" }).isVisible()).toBe(true);
   expect(await sheet(page).getByRole("textbox", { name: "Email address" }).inputValue()).toBe("");
   expect((await ada.GET("/humans")).data?.humans.map(({ email }) => email)).toContain("margaret@example.org");
@@ -67,6 +68,7 @@ test("an address Duva refuses for a human says why under the field", budget, asy
   const { page } = await withPeople();
 
   await sheet(page).getByRole("textbox", { name: "Email address" }).fill("grace@example.org");
+  await sheet(page).getByRole("textbox", { name: "Recovery address" }).fill("grace@elsewhere.org");
   await sheet(page).getByRole("button", { name: "Add human" }).click();
 
   await expect.poll(() => sheet(page).getByRole("form", { name: "Add a human" }).getByRole("alert").textContent(), wait).toBe(
@@ -154,6 +156,7 @@ test("on a phone, a human's line and their removal fit the screen", budget, asyn
 test("a human just added is given a mailbox from their line, in the Addresses sheet's form with them chosen, and mail to it reaches them", budget, async () => {
   const { page, duva } = await withPeople();
   await sheet(page).getByRole("textbox", { name: "Email address" }).fill("margaret@example.org");
+  await sheet(page).getByRole("textbox", { name: "Recovery address" }).fill("margaret@elsewhere.org");
   await sheet(page).getByRole("button", { name: "Add human" }).click();
   const margaret = line(page, "margaret@example.org");
   await expect.poll(() => margaret.getByRole("group", { name: "margaret@example.org" }).innerText(), wait).toContain("No mailbox yet.");

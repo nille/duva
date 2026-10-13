@@ -36,7 +36,7 @@ Success means an organization can let agents answer mail on its own domains, eac
 ## Operating Context
 
 - Desktop first. Until the mobile apps exist, the web app must also work well on phones, so a sponsor can approve an agent's reply or screen a sender on the go.
-- Humans sign in with a code emailed from the organization's domain. Passkeys come later (ADR-0010).
+- Humans sign in with passkeys, or a code emailed from the organization's domain as a fallback. Their first sign-in, and every recovery, is a link mailed to a recovery address outside the organization (ADR-0041).
 - Agents with a shell use the CLI and the skill it installs. Cloud agents call the API. Web, CLI and the later mobile apps share one OpenAPI contract, so the web app can do nothing the API can't.
 - Clients learn about changes from the change feed: by polling in the first slice, through a stream later.
 - Mail arrives in any language. Swedish and English mail side by side is expected.

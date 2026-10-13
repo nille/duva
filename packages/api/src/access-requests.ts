@@ -10,6 +10,7 @@ import { jsonBody, type OperationHandler, refusal } from "./operation-handler.ts
 import { nameIn, notSponsorsMailboxes, sponsorAccesses } from "./agents.ts";
 import type { Table } from "./deployment.ts";
 import { timeToLiveAttribute } from "./infrastructure.ts";
+import { countOf, countUp, limitKey } from "./request-limits.ts";
 import {
   addKeylessAgent,
   type AgentSettings,
@@ -31,8 +32,7 @@ const lifetime = 10 * 60_000;
 const collectFor = 60 * 60_000;
 /** How many seconds the agent waits between tries to collect its key. */
 const interval = 5;
-/** The window each limit counts in, and how many each allows in it: requests from an address, and codes a human gives that no request waits with. */
-const limitWindow = 10 * 60_000;
+/** How many each limit allows in its window: requests from an address, and codes a human gives that no request waits with. */
 const asksPerWindow = 10;
 const missesPerWindow = 10;
 
@@ -61,7 +61,6 @@ interface StoredRequest {
 }
 
 const requestKey = (code: string) => ({ [pk]: `accessRequest#${code}`, [sk]: "accessRequest" });
-const limitKey = (limit: string, who: string, now: number) => ({ [pk]: `limit#${limit}#${who}`, [sk]: String(Math.floor(now / limitWindow) * limitWindow) });
 
 const shown = (code: string) => `${code.slice(0, 4)}-${code.slice(4)}`;
 const hashed = (secret: string) => createHash("sha256").update(secret).digest("base64url");
@@ -276,24 +275,4 @@ function moved(table: Table, code: string, from: State, to: State, also: Record<
       },
     },
   };
-}
-
-/** Counts one more against the limit, and returns how many are counted in its window now. */
-async function countUp(table: Table, key: Record<string, string>): Promise<number> {
-  const { Attributes } = await documents(table).send(
-    new UpdateCommand({
-      TableName: table.name,
-      Key: key,
-      UpdateExpression: "ADD #count :one SET #expires = :expires",
-      ExpressionAttributeNames: { "#count": "count", "#expires": timeToLiveAttribute },
-      ExpressionAttributeValues: { ":one": 1, ":expires": Math.ceil((Number(key[sk]) + 2 * limitWindow) / 1000) },
-      ReturnValues: "UPDATED_NEW",
-    }),
-  );
-  return Attributes?.count as number;
-}
-
-async function countOf(table: Table, key: Record<string, string>): Promise<number> {
-  const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: key, ConsistentRead: true }));
-  return (Item?.count as number | undefined) ?? 0;
 }

@@ -13,6 +13,7 @@ import { AgentSettingsSheet } from "./agent-settings.tsx";
 import { agentHref } from "./alerts.tsx";
 import { Choice, ModelName, ModelPlace, outsideContinent, wholeNumber } from "./setting-parts.tsx";
 import { CooAddressSheet } from "./coo-address.tsx";
+import { SignInSheet } from "./sign-in-sheet.tsx";
 import { CopyButton } from "./dns-parts.tsx";
 import { datesFor, type Preferences, PreferencesContext } from "./dates.ts";
 import { DomainsSheet } from "./domains.tsx";
@@ -259,6 +260,7 @@ export function Settings({
   me,
   admin,
   email,
+  recoveryAddress,
   mailboxes,
   agent: agentAsked,
   onPreferences,
@@ -269,6 +271,8 @@ export function Settings({
   me: string;
   admin: boolean;
   email: string;
+  /** The human's recovery address, or none, as for humans added before recovery addresses. */
+  recoveryAddress: string | undefined;
   /** The agent whose line on the Agents page opens first, if the hash doesn't say. */
   agent?: string;
   mailboxes: { mine?: Mailbox; own?: Mailbox[] } | undefined;
@@ -347,7 +351,9 @@ export function Settings({
   const [giving, setGiving] = useState<Giving>();
 
   const copy = strings.settings;
-  const states: Partial<Record<Page, EntryState>> = { you: { text: copy.index.you(preferences) }, ...index.states };
+  // Without a recovery address, a human who loses their passkeys can't get a sign-in link, so You says so in orange.
+  const you: EntryState = { text: copy.index.you(preferences, recoveryAddress !== undefined), ...(recoveryAddress === undefined && { code: "call" as const }) };
+  const states: Partial<Record<Page, EntryState>> = { you, ...index.states };
   // A line is named by its page alone, and says what the page holds now as its description.
   const line = (key: string, href: string, name: string, current: boolean, state?: EntryState, agent?: IndexedAgent) => {
     const stateId = `settings-state-${key}`;
@@ -430,7 +436,7 @@ export function Settings({
             {copy.index.back}
           </a>
         </p>
-        {page === "you" && <YouPage client={client} admin={admin} email={email} mailboxes={own} onPreferences={onPreferences} onAway={onAway} onSignedOut={onSignedOut} />}
+        {page === "you" && <YouPage client={client} admin={admin} email={email} recoveryAddress={recoveryAddress} mailboxes={own} onPreferences={onPreferences} onAway={onAway} onSignedOut={onSignedOut} />}
         {page === "screener" && own.length > 0 && (
           <ScreenerSheet key={own.map(({ id }) => id).join()} client={client} mailboxes={own} onSignedOut={onSignedOut} />
         )}
@@ -473,6 +479,7 @@ function YouPage({
   client,
   admin,
   email,
+  recoveryAddress,
   mailboxes,
   onPreferences,
   onAway,
@@ -481,6 +488,7 @@ function YouPage({
   client: DuvaClient;
   admin: boolean;
   email: string;
+  recoveryAddress: string | undefined;
   /** The human's own mailboxes, whose own logos and away texts they set. */
   mailboxes: Mailbox[];
   onPreferences: (preferences: Preferences) => void;
@@ -501,6 +509,7 @@ function YouPage({
   }, [client, admin]);
   return (
     <>
+      <SignInSheet client={client} email={email} recoveryAddress={recoveryAddress} onSignedOut={onSignedOut} />
       <YouSheet client={client} own={mailboxes} onPreferences={onPreferences} onSignedOut={onSignedOut} />
       {mailboxes.length > 0 && <AwaySheet client={client} onAway={onAway} onSignedOut={onSignedOut} />}
       {mailboxes.map((mailbox) => (

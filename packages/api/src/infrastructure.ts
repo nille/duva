@@ -50,6 +50,8 @@ export const environmentVariables = {
   domain: "DOMAIN",
   /** The first admin's email address. */
   admin: "ADMIN",
+  /** The first admin's recovery address, which deploy gives setup, or empty for one from before recovery addresses. */
+  recovery: "RECOVERY",
   /** Duva's receipt rule set. */
   receiptRuleSet: "RECEIPT_RULE_SET",
   /** The ARN of the Lambda SES invokes for each message it receives. */
@@ -64,6 +66,8 @@ export const environmentVariables = {
   configurationSet: "CONFIGURATION_SET",
   /** The URL of the download Lambda, which download links and senders' logos lead to. */
   downloadUrl: "DOWNLOAD_URL",
+  /** The web app's URL, which sign-in links lead to (ADR-0041). */
+  webUrl: "WEB_URL",
   /** The bucket the organization's own logos are in, which CloudFront serves at the URL below. */
   logosBucket: "LOGOS_BUCKET",
   /** The URL the organization's own logos are served under, on the web app's domain. */
@@ -182,6 +186,9 @@ export const dropMetric = { namespace: "Duva", name: "DroppedMessages", dimensio
 
 /** Why Duva drops a message on arrival, as the drop metric's dimension names it. */
 export const dropReasons = ["virus", "dmarcReject"] as const;
+
+/** What the key of each sign-in link's item starts with, which the trigger Lambda may delete and nothing else (ADR-0041). */
+export const signInLinkPrefix = "signInLink#";
 
 /** Duva's own address on the domain, which mail no actor sent comes from, such as sign-in codes and urgent alerts. */
 export const systemAddress = (domain: string) => `no-reply@${domain}`;

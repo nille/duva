@@ -5,7 +5,7 @@
 export const stackName = "Duva";
 
 /** The stack's parameters, which deploy sets when it runs. */
-export const stackParameters = { domain: "Domain", admin: "Admin", signInDomain: "SignInDomain", domainVerified: "DomainVerified" } as const;
+export const stackParameters = { domain: "Domain", admin: "Admin", signInDomain: "SignInDomain", domainVerified: "DomainVerified", recovery: "Recovery" } as const;
 
 /** The stack's outputs. SES gives a domain identity three DKIM records, numbered 1 to 3. */
 export const stackOutputs = {

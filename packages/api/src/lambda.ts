@@ -33,6 +33,7 @@ import { titanEmbedder } from "./titan.ts";
 import { bedrockSuggester } from "./suggestions.ts";
 import { s3UploadsBucket } from "./uploads-bucket.ts";
 import { kmsSecretKeys } from "./secret-keys.ts";
+import { sesOutbound } from "./outbound.ts";
 
 const mailBucket = required(environmentVariables.mailBucket);
 const lambda = new LambdaClient({});
@@ -53,6 +54,9 @@ export const handler = createApi({
   table: { client: new DynamoDBClient({}), name: required(environmentVariables.tableName) },
   humans: cognitoHumans(cognito, userPoolId, required(environmentVariables.signInClientId)),
   signInSender: cognitoSignInSender(cognito, userPoolId, configurationSet),
+  webUrl: required(environmentVariables.webUrl),
+  // One attempt per call, so a lost answer never mails a sign-in link twice.
+  outbound: sesOutbound(new SESv2Client({ maxAttempts: 1 }), configurationSet),
   identities: sesIdentities(sesV2, configurationSet),
   dns: realDns,
   mailBucket: s3MailBucket(new S3Client({}), mailBucket),
