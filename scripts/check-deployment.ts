@@ -20,7 +20,7 @@
 // erased mail for more than a day, and no indexer task waits in its failure queue; nothing but IAM
 // may invoke the sender, and no schedule for sends that wait for an agent's limits, or for threads set aside in Remind me, is overdue; Ask your agent's
 // turns reach the conversation Lambda only through the web app's domain, the mailbox agents' AgentCore Runtime is ready and takes only IAM calls, their unsubscribe browser is ready on the public network and records nothing, the inbound Lambda is given the task runner, only IAM invokes the task runner, which retries no run, and no task is stuck working, every
-// human's mailbox has its mailbox agent, no agent owns a mailbox, the humans' secrets are sealed with the stack's own rotating key the mailbox agents' role can't use, and Claude answers from eu-central-1 through the eu profile; and with
+// human's mailbox has its mailbox agent, no agent owns a mailbox, a first admin signing in on the organization's domains has a mailbox there, the humans' secrets are sealed with the stack's own rotating key the mailbox agents' role can't use, and Claude answers from eu-central-1 through the eu profile; and with
 // DUVA_TEST_HUMAN_CODES_KEY, All mailboxes answers for the test human's agent as its mailboxes do. Signing in stays
 // with a human. Then prints how many
 // messages Duva dropped on arrival each day of the last 7, by reason. Exits 1 if any check fails.
@@ -52,7 +52,7 @@ import { rulesTake } from "@duva/api/receiving";
 import { callOf, defaultHarderModel, defaultMailboxAgentModel, inferenceProfileId } from "@duva/api/agent-models";
 import { webSearchRegion } from "@duva/api/web-search";
 import { bedrockSuggester } from "@duva/api/suggestions";
-import { earlierModelSettingsLeft, earlierModelsKept, organizationSettings } from "@duva/api/organization";
+import { earlierModelSettingsLeft, earlierModelsKept, firstAdminAddressMissing, organizationSettings } from "@duva/api/organization";
 import { mailboxAgentsLeft } from "@duva/api/mailbox-agents";
 import { cooAddressesLeft } from "@duva/api/coo-address";
 import { tasksWorkingSince } from "@duva/api/tasks";
@@ -399,6 +399,12 @@ await check("no agent owns a mailbox, since setup erased those they owned (ADR-0
   if (table === undefined) return "the stack has no table";
   const owned = await agentsMailboxes(table);
   return owned.length === 0 ? undefined : `${owned.map(({ mailbox, agent }) => `${agent.name}'s ${mailbox.addresses[0] ?? mailbox.id}`).join(", ")} ${owned.length === 1 ? "is" : "are"} left. Run duva deploy again.`;
+});
+await check("a first admin who signs in at an address on the organization's domains has a mailbox there, where managed login emails their codes (#177)", async () => {
+  const table = await stackTable();
+  if (table === undefined) return "the stack has no table";
+  const missing = await firstAdminAddressMissing(table);
+  return missing === undefined ? undefined : `no mailbox or group has ${missing}, so the codes managed login emails the first admin reach nobody. Run duva deploy again, or give them a mailbox there in Settings, under Addresses.`;
 });
 await check("Duva's default models answer where a deployment in this region calls them (#158)", async () => {
   const silent: string[] = [];

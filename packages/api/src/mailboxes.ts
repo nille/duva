@@ -1,11 +1,11 @@
-// Mailboxes and what is done in one: admins create them, and their owners, and the agents their
-// sponsor access lets (ADR-0015), list them and their changes, read, mark and label their threads,
-// keep their labels and empty their Trash.
+// Mailboxes and what is done in one: admins create them, as setup does the first admin's (#177), and
+// their owners, and the agents their sponsor access lets (ADR-0015), list them and their changes,
+// read, mark and label their threads, keep their labels and empty their Trash.
 import type { components } from "@duva/openapi";
 import { jsonBody, type OperationHandler, refusal } from "./operation-handler.ts";
 import { mailboxFor, sponsorAccessIn } from "./access.ts";
 import type { Deployment } from "./deployment.ts";
-import { type Actor, AddressTaken, addMailbox, agentSettings, allMailboxes, findActor, findMailbox, isAdmin, ownedMailboxes } from "./organization.ts";
+import { type Actor, AddressTaken, addMailbox, addressTarget, agentSettings, allMailboxes, findActor, findMailbox, firstAdmin, type Human, isAdmin, type Mailbox, ownedMailboxes } from "./organization.ts";
 import { addressGiven, addressTaken } from "./addresses.ts";
 import { builtInLabels, changeLabelPrompt, createLabel, deleteLabel, hasLabel, labelWithId, listLabels, longestPrompt, NameTaken, promptedBuiltIns, renameLabel } from "./labels.ts";
 import { noMailboxAgent } from "./agent-runs.ts";
@@ -45,15 +45,48 @@ export const createMailbox: OperationHandler = async (event, deployment, actor) 
   const address = await addressGiven(deployment, body?.address);
   if (typeof address !== "string") return address;
   try {
-    const mailbox = await addMailbox(deployment.table, { owner: owner.id, address, by: actor!.id });
-    await giveMailboxAgent(deployment.table, owner.id);
-    await syncRecipients(deployment.table, deployment.receiving);
+    const mailbox = await addMailboxWithItsAgent(deployment, { owner: owner.id, address, by: actor!.id });
     return { statusCode: 201, body: mailbox satisfies components["schemas"]["Mailbox"] };
   } catch (error) {
     if (!(error instanceof AddressTaken)) throw error;
     return addressTaken(deployment, address);
   }
 };
+
+/**
+ * Adds the mailbox as creating one does: its owner gets their mailbox agent if they had none, and
+ * SES takes mail for its address from then on. Throws AddressTaken if another mailbox has it.
+ */
+async function addMailboxWithItsAgent(deployment: Pick<Deployment, "table" | "receiving">, { owner, address, by }: { owner: string; address: string; by: string }): Promise<Mailbox> {
+  const mailbox = await addMailbox(deployment.table, { owner, address, by });
+  await giveMailboxAgent(deployment.table, owner);
+  await syncRecipients(deployment.table, deployment.receiving);
+  return mailbox;
+}
+
+/**
+ * Gives the first admin a personal mailbox at their sign-in address, as creating one does, if a
+ * mailbox can have it and nothing in the organization has it yet, as setup does after each deploy
+ * (#177). Managed login emails a code there before it registers a passkey (ADR-0041). Returns the
+ * mailbox their sign-in address reaches, if it is theirs.
+ */
+export async function giveFirstAdminMailbox(deployment: Pick<Deployment, "table" | "receiving">, admin: Human): Promise<Mailbox | undefined> {
+  const { table } = deployment;
+  // Once the first admin was removed, setup returns another admin, who gets none.
+  if ((await firstAdmin(table))?.id === admin.id) {
+    // Settings' own check, whose refusal means the address can't be a mailbox's, or is taken.
+    const address = await addressGiven(deployment, admin.email);
+    if (typeof address === "string") {
+      await addMailboxWithItsAgent(deployment, { owner: admin.id, address, by: admin.id }).catch((error: unknown) => {
+        // Another setup gave it first.
+        if (!(error instanceof AddressTaken)) throw error;
+      });
+    }
+  }
+  const target = await addressTarget(table, admin.email.toLowerCase());
+  const mailbox = target !== undefined && "mailbox" in target ? await findMailbox(table, target.mailbox) : undefined;
+  return mailbox?.owner === admin.id ? mailbox : undefined;
+}
 
 export const listMailboxes: OperationHandler = async (_event, deployment, actor) => ({
   statusCode: 200,

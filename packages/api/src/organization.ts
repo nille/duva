@@ -8,6 +8,7 @@ import { agentKeyHash, newAgentKey } from "./agent-keys.ts";
 import type { Humans } from "./user-pool.ts";
 import type { Deployment, Table } from "./deployment.ts";
 import { asciiDomain } from "./dns-records.ts";
+import { domainOf } from "./email-address.ts";
 import { type OperationHandler, refusal } from "./operation-handler.ts";
 import { changesAfter, entryKey, type Feed, recordChanges, recordInFeeds } from "./feed.ts";
 import { defaultAllowedModels, defaultHarderModel, defaultMailboxAgentModel, defaultSuggestionModel, earlierDefaultModels, isMeasured, type MailboxAgentModel, measuredModelIds } from "./agent-models.ts";
@@ -148,12 +149,24 @@ export async function setUpOrganization(
 
 /** The organization's first admin, null if they have been removed, or undefined if the organization isn't set up. */
 export async function firstAdmin(table: Table): Promise<Human | null | undefined> {
-  const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: organizationKey }));
+  const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: organizationKey, ConsistentRead: true }));
   if (Item === undefined) return undefined;
   const actor = await findActor(table, Item.firstAdmin as string);
   if (actor === undefined) return null;
   if (actor.kind !== "human") throw new Error("The organization's first admin isn't a human.");
   return actor;
+}
+
+/**
+ * The address the first admin's sign-in address mirrors, if it is on one of the organization's
+ * domains and no mailbox or group has it, so the codes managed login emails them reach nobody (#177).
+ */
+export async function firstAdminAddressMissing(table: Table): Promise<string | undefined> {
+  const admin = await firstAdmin(table);
+  if (!admin) return undefined;
+  const address = mirroredAddress(admin.email, await aliasDomains(table));
+  const onDomains = (await allDomains(table)).some(({ domain }) => domain === domainOf(address));
+  return onDomains && (await addressTarget(table, address)) === undefined ? address : undefined;
 }
 
 /**

@@ -109,7 +109,7 @@ The tests need no AWS. Bedrock's answers are recorded in `packages/api/test/`.
 AWS_REGION=eu-north-1 packages/cli/dist/duva deploy --domain example.org --admin you@example.org --recovery you@gmail.com
 ```
 
-`duva deploy` prints the DNS records to add. `--web duva.example.org` puts the web app at a host on the organization's domains, instead of CloudFront's own domain. Run it again to update the deployment to that build. The CLI can't synthesize the CDK app, so it deploys only what `npm run build` built.
+`duva deploy` prints the DNS records to add. Your first sign-in link goes to the recovery address, outside the domain, and setup gives you a mailbox at you@example.org. `--web duva.example.org` puts the web app at a host on the organization's domains, instead of CloudFront's own domain. Run it again to update the deployment to that build. The CLI can't synthesize the CDK app, so it deploys only what `npm run build` built.
 
 **Using it**
 - **Humans** sign in to the web app at the URL that deploy prints.

@@ -5,10 +5,9 @@
 import { callOf, defaultHarderModel, defaultMailboxAgentModel, mailboxAgentModels } from "@duva/api/agent-models";
 import { asciiDomain, checkRecord, type Dns, type DnsRecord, domainRecords, mailFromDomain, verification } from "@duva/api/dns-records";
 import { domainOf } from "@duva/api/email-address";
-import { signInSender } from "@duva/api/infrastructure";
+import { type SetupAnswer, signInSender } from "@duva/api/infrastructure";
 import type { WebAppConfig } from "@duva/client";
 import type { SignInConfig } from "@duva/client/sign-in";
-import type { components } from "@duva/openapi";
 import { cliRedirectUri, stackOutputs } from "@duva/infra/outputs";
 
 export type { Dns } from "@duva/api/dns-records";
@@ -58,9 +57,10 @@ export interface Aws {
   /**
    * Runs the stack's setup function, which sets up the organization with the stack's domain and
    * first admin, and returns that admin. Setting up again with the same admin changes nothing.
-   * It mails the first admin their first sign-in link once SES can, and says so the time it does.
+   * It mails the first admin their first sign-in link once SES can, and says so the time it does,
+   * and gives them a mailbox at their sign-in address on the organization's domains if none has it.
    */
-  setUpOrganization(functionName: string): Promise<components["schemas"]["HumanAdded"]>;
+  setUpOrganization(functionName: string): Promise<SetupAnswer>;
   /** The IDs of the user pools the Duva stack in the region has made, those it no longer has included. */
   stackUserPools(): Promise<string[]>;
   /** The domain the user pool sends sign-in codes from, or undefined while Cognito sends them itself. */
@@ -244,9 +244,9 @@ export async function deployDuva({ aws, dns, say, wait, ...given }: Deployer & {
         : ` SES also sent ${firstAdmin.email} a link to verify it, which codes from ${sender} will need while the account is in the SES sandbox.`,
     );
   }
-  // Managed login emails a code before it registers a passkey, which a first admin on the domain gets only in a mailbox of theirs.
-  if (recoveryAddress !== undefined && domainOf(firstAdmin.email) === domain) {
-    signIn.push(` Before you add a passkey, give yourself a mailbox at ${firstAdmin.email} in Settings, under Addresses, since managed login emails a code there first.`);
+  // Managed login emails a code before it registers a passkey, which a first admin on the domain reads in the mailbox setup gave them (#177).
+  if (recoveryAddress !== undefined && firstAdmin.mailbox !== undefined) {
+    signIn.push(` Adding a passkey first asks for a code, which managed login emails to your mailbox in Duva at ${firstAdmin.email}.`);
   }
   if (recoveryAddress !== undefined && (await unverified(recoveryAddress))) {
     signIn.push(` In the SES sandbox Duva mails only addresses SES has verified, so SES sent ${recoveryAddress} a link to verify it. Open it, then run duva deploy again to mail your sign-in link there.`);

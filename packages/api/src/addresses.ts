@@ -27,7 +27,7 @@ const onlyAdmins = () => refusal(403, "Only admins can change the organization's
  * room for it, or a refusal that says why not. Addresses are on standalone domains, and each of its alias domains
  * mirrors them.
  */
-export async function addressGiven(deployment: Deployment, given: unknown): Promise<string | ReturnType<typeof refusal>> {
+export async function addressGiven(deployment: Pick<Deployment, "table" | "receiving">, given: unknown): Promise<string | ReturnType<typeof refusal>> {
   const trimmed = typeof given === "string" ? given.trim() : "";
   const domains = await allDomains(deployment.table);
   const standalone = domains.filter(({ aliasOf }) => aliasOf === undefined).map(({ domain }) => domain);
@@ -60,7 +60,7 @@ export async function addressGiven(deployment: Deployment, given: unknown): Prom
 }
 
 /** The refusal of a taken address, after repairing the receipt rules, in case SES failed when it was added. */
-export async function addressTaken(deployment: Deployment, address: string) {
+export async function addressTaken(deployment: Pick<Deployment, "table" | "receiving">, address: string) {
   await syncRecipients(deployment.table, deployment.receiving);
   return refusal(409, `${address} is taken. Give another address.`);
 }

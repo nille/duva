@@ -1,4 +1,5 @@
 // What the API expects of the infrastructure the CDK app builds. The test harness builds the same.
+import type { components } from "@duva/openapi";
 
 /** The key schema of Duva's one DynamoDB table. */
 export const tableKey = {
@@ -231,3 +232,10 @@ export const mcpRoutes: { path: string; methods: ("GET" | "POST")[] }[] = [
   ...protectedResourcePaths.map((path) => ({ path, methods: ["GET" as const] })),
   { path: authorizationServerPath, methods: ["GET"] },
 ];
+
+/**
+ * What the stack's setup function answers duva deploy: the organization's first admin, with the
+ * first sign-in link it mailed them, if it did now, and the mailbox their sign-in address reaches,
+ * if it is theirs (#177).
+ */
+export type SetupAnswer = components["schemas"]["HumanAdded"] & { mailbox?: components["schemas"]["Mailbox"] };

@@ -340,14 +340,22 @@ test("deploy refuses a recovery address on the deployment's domain, and changes 
   expect(world.aws.changes).toEqual([]);
 });
 
-test("a first admin may sign in with an address on the deployment's domain, since their first sign-in link goes to their recovery address", async () => {
+test("a first admin may sign in with an address on the deployment's domain, since their first sign-in link goes to their recovery address, and managed login's code to the mailbox setup gave them", async () => {
   const world = newWorld();
 
   const report = await deployDuva({ ...world, domain: "duva.example.com", admin: "ada@duva.example.com", recovery });
 
   expect(world.aws.organization).toEqual({ domain: "duva.example.com", admin: "ada@duva.example.com", recovery });
   expect(report.admin).toMatchObject({ email: "ada@duva.example.com", recoveryAddress: recovery });
-  expect(report.admin.signIn).toMatch(/give yourself a mailbox at ada@duva\.example\.com in Settings/);
+  expect(report.admin.signIn).toMatch(/Adding a passkey first asks for a code, which managed login emails to your mailbox in Duva at ada@duva\.example\.com\./);
+});
+
+test("deploy names no mailbox for a first admin who signs in outside the deployment's domain", async () => {
+  const world = newWorld();
+
+  const report = await deployDuva({ ...world, domain: "duva.example.com", admin, recovery });
+
+  expect(report.admin.signIn).not.toMatch(/your mailbox in Duva/);
 });
 
 test("deploy gives the first admin their recovery address, and setup mails the first sign-in link there once SES has verified the domain, once", async () => {
@@ -809,7 +817,10 @@ class InMemoryAws implements Aws {
     if (this.organization.admin !== admin) throw new Error(`The organization's first admin is ${this.organization.admin}`);
     // Setup gives the first admin the recovery address deploy names if they have none.
     this.organization.recovery ??= recovery;
-    const human = { id: "ada-id", kind: "human" as const, email: admin, admin: true, ...(this.organization.recovery && { recoveryAddress: this.organization.recovery }) };
+    // It gives a first admin on the domain a mailbox at their sign-in address, and answers with it.
+    const address = admin.toLowerCase();
+    const mailbox = address.endsWith(`@${domain}`) ? { id: "ada-mailbox", kind: "personal" as const, owner: "ada-id", defaultAddress: address, addresses: [address] } : undefined;
+    const human = { id: "ada-id", kind: "human" as const, email: admin, admin: true, ...(this.organization.recovery && { recoveryAddress: this.organization.recovery }), ...(mailbox && { mailbox }) };
     // It mails the first sign-in link once, when SES sends from the domain and, in the sandbox, to a verified address.
     const to = this.organization.recovery;
     const pool = this.stack?.outputs.UserPoolId ?? "";

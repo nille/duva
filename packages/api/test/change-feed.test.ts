@@ -43,6 +43,8 @@ test("the change feed refuses a position that isn't one", async () => {
 test("setting up again with the same admin changes nothing", async () => {
   const duva = await startDuva({ admin: "ada@example.com" });
   const ada = duva.signIn("ada@example.com");
+  // The first gives Ada her mailbox at ada@example.com.
+  await duva.setUp({ admin: "ada@example.com" });
   const { data: before } = await ada.GET("/organization/changes");
 
   await duva.setUp({ admin: "ada@example.com" });

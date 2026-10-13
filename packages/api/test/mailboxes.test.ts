@@ -188,3 +188,118 @@ test("only an admin lists the organization's mailboxes", async () => {
   expect(byHuman.error?.message).toMatch(/admin/);
   expect(byAgent.response.status).toBe(403);
 });
+
+/** A deployment on example.com whose first admin, Ada, signs in at the address, with her recovery address outside, as duva deploy gives them. */
+const withFirstAdmin = (admin: string, options: Parameters<typeof startDuva>[0] = {}) => startDuva({ domain: "example.com", admin, recovery: "ada@elsewhere.org", ...options });
+
+/** The code managed login mails before it registers a passkey, from no-reply@ the sign-in domain, through SES. */
+const signInCodeTo = (address: string) =>
+  `From: Duva <no-reply@example.com>\r\nTo: ${address}\r\nSubject: Your sign-in code\r\nDate: Tue, 13 Oct 2026 09:00:00 +0000\r\nMessage-ID: <code-1@example.com>\r\n\r\nYour code is 123456.\r\n`;
+
+test("setup gives a first admin who signs in at an address on the organization's domain a mailbox there, as creating one does, and answers deploy with it", async () => {
+  const duva = await withFirstAdmin("ada@example.com");
+  const ada = duva.signIn("ada@example.com");
+  const { data: admin } = await ada.GET("/whoami");
+  const { data: before } = await ada.GET("/organization/changes");
+
+  const answer = await duva.setUp({ admin: "ada@example.com" });
+
+  const { data } = await ada.GET("/mailboxes");
+  const mailbox = { id: expect.any(String), kind: "personal", owner: admin!.id, defaultAddress: "ada@example.com", addresses: ["ada@example.com"] };
+  expect(data?.mailboxes).toEqual([{ ...mailbox, groups: [] }]);
+  expect(answer).toMatchObject({ email: "ada@example.com", mailbox: { ...mailbox, id: data!.mailboxes[0]!.id } });
+  const { data: changes } = await ada.GET("/organization/changes", { params: { query: { after: before!.position } } });
+  expect(changes?.changes).toEqual([
+    { position: before!.position + 1, at: expect.any(String), actor: admin!.id, type: "mailboxAdded", mailbox },
+    { position: before!.position + 2, at: expect.any(String), actor: admin!.id, type: "addressAdded", address: "ada@example.com", mailbox: data!.mailboxes[0]!.id },
+    expect.objectContaining({ type: "actorAdded", added: expect.objectContaining({ kind: "agent", mailboxAgent: true }) }),
+    expect.objectContaining({ type: "cooAddressChanged", human: admin!.id, address: "ada-coo@example.com" }),
+  ]);
+});
+
+test("the code managed login mails the first admin before they add a passkey lands in the Inbox of the mailbox setup gave them", async () => {
+  const duva = await withFirstAdmin("ada@example.com");
+  const ada = duva.signIn("ada@example.com");
+  await duva.setUp({ admin: "ada@example.com" });
+  const [mailbox] = (await ada.GET("/mailboxes")).data!.mailboxes;
+
+  const { refused } = await duva.receive(signInCodeTo("ada@example.com"), { to: ["ada@example.com"] });
+
+  expect(refused).toEqual([]);
+  const { data } = await ada.GET("/mailboxes/{mailbox}/threads", { params: { path: { mailbox: mailbox!.id } } });
+  expect(data?.threads.map(({ subject, from }) => ({ subject, from }))).toEqual([{ subject: "Your sign-in code", from: { name: "Duva", address: "no-reply@example.com" } }]);
+});
+
+test("setup gives the first admin a mailbox at their sign-in address on a domain an admin added", async () => {
+  const duva = await withFirstAdmin("ada@example.net");
+  const ada = duva.signIn("ada@example.net");
+  await duva.setUp({ admin: "ada@example.net" });
+  await ada.POST("/domains", { body: { domain: "example.net" } });
+
+  await duva.setUp({ admin: "ada@example.net" });
+
+  expect((await ada.GET("/mailboxes")).data?.mailboxes.map(({ addresses }) => addresses)).toEqual([["ada@example.net"]]);
+});
+
+test("a re-run of setup gives the first admin no other mailbox, and answers deploy with the one they have", async () => {
+  const duva = await withFirstAdmin("ada@example.com");
+  const ada = duva.signIn("ada@example.com");
+  const { mailbox } = await duva.setUp({ admin: "ada@example.com" });
+  const { data: before } = await ada.GET("/organization/changes");
+
+  const again = await duva.setUp({ admin: "ada@example.com" });
+
+  expect((await ada.GET("/organization/changes")).data).toEqual(before);
+  expect(again.mailbox).toEqual(mailbox);
+});
+
+test("once no mailbox has the first admin's sign-in address, the next setup gives them one there again, where their codes go", async () => {
+  const duva = await withFirstAdmin("ada@example.com");
+  const ada = duva.signIn("ada@example.com");
+  await duva.setUp({ admin: "ada@example.com" });
+  await ada.DELETE("/addresses/{address}", { params: { path: { address: "ada@example.com" } } });
+
+  await duva.setUp({ admin: "ada@example.com" });
+
+  expect((await ada.GET("/mailboxes")).data?.mailboxes.map(({ addresses }) => addresses)).toEqual(expect.arrayContaining([[], ["ada@example.com"]]));
+});
+
+test("setup leaves alone the first admin's sign-in address when their own mailbox has it, and answers deploy with it", async () => {
+  const duva = await withFirstAdmin("ada@example.com");
+  const ada = duva.signIn("ada@example.com");
+  const { data: admin } = await ada.GET("/whoami");
+  const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: admin!.id, address: "ada@example.com" } });
+  const { data: before } = await ada.GET("/organization/changes");
+
+  const answer = await duva.setUp({ admin: "ada@example.com" });
+
+  expect((await ada.GET("/organization/changes")).data).toEqual(before);
+  expect((await ada.GET("/organization/mailboxes")).data?.mailboxes).toEqual([mailbox]);
+  expect(answer.mailbox).toEqual(mailbox);
+});
+
+test("setup leaves alone the first admin's sign-in address when another human's mailbox has it, and answers deploy with no mailbox", async () => {
+  const duva = await withFirstAdmin("ada@example.com", { humans: ["grace@example.org"] });
+  const ada = duva.signIn("ada@example.com");
+  const { data: grace } = await duva.signIn("grace@example.org").GET("/whoami");
+  const { data: mailbox } = await ada.POST("/mailboxes", { body: { owner: grace!.id, address: "ada@example.com" } });
+  const { data: before } = await ada.GET("/organization/changes");
+
+  const answer = await duva.setUp({ admin: "ada@example.com" });
+
+  expect((await ada.GET("/organization/changes")).data).toEqual(before);
+  expect((await ada.GET("/organization/mailboxes")).data?.mailboxes).toEqual([mailbox]);
+  expect(answer.mailbox).toBeUndefined();
+});
+
+test("setup gives a first admin who signs in at an address outside the organization's domains no mailbox", async () => {
+  const duva = await withFirstAdmin("ada@example.org");
+  const ada = duva.signIn("ada@example.org");
+  const { data: before } = await ada.GET("/organization/changes");
+
+  const answer = await duva.setUp({ admin: "ada@example.org" });
+
+  expect((await ada.GET("/organization/changes")).data).toEqual(before);
+  expect((await ada.GET("/organization/mailboxes")).data?.mailboxes).toEqual([]);
+  expect(answer.mailbox).toBeUndefined();
+});

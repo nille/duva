@@ -36,7 +36,7 @@ import { createCooMail } from "../src/coo-mail.ts";
 import { eraseAgentsMailboxes } from "../src/removal.ts";
 import { createInbound } from "../src/inbound.ts";
 import { createFeeder, createIndexer, type IndexQueue, indexMailboxes, type QueuedTask } from "../src/indexing.ts";
-import { alertMailFilter, conversationPath, mcpRoutes, tokenHeader, feederFilter, taskGiverFilter, hostedLogoHeaders, hostedLogosPath, senderFilter, senderRetries, tableKey, tableStreamView } from "../src/infrastructure.ts";
+import { alertMailFilter, conversationPath, mcpRoutes, tokenHeader, feederFilter, taskGiverFilter, hostedLogoHeaders, hostedLogosPath, senderFilter, senderRetries, type SetupAnswer, tableKey, tableStreamView } from "../src/infrastructure.ts";
 import { lanceSearch } from "../src/lancedb-search.ts";
 import { createSearcher } from "../src/searching.ts";
 import type { Table } from "../src/deployment.ts";
@@ -56,6 +56,7 @@ import { standInBrowser } from "./browser.ts";
 import { profileName } from "../src/browser-profiles.ts";
 import { createMcp } from "../src/mcp.ts";
 import { giveMailboxAgents, mailboxAgentName, mailboxAgentSettings, turnPrefix } from "../src/mailbox-agents.ts";
+import { giveFirstAdminMailbox } from "../src/mailboxes.ts";
 import type { ReminderDue } from "../src/reminders.ts";
 import type { AwayEnds } from "../src/away-messages.ts";
 import { createSender } from "../src/sending.ts";
@@ -93,7 +94,10 @@ export interface DuvaOptions {
   region?: string;
   /** The organization's first domain. */
   domain?: string;
-  /** The first admin's email address. */
+  /**
+   * The first admin's email address. The deployment was set up before setup gave the first admin a
+   * mailbox there (#177), so one on the domain gets theirs at setUp().
+   */
   admin?: string;
   /** The first admin's recovery address, as duva deploy gave it, where setup mails their first sign-in link. */
   recovery?: string;
@@ -319,10 +323,11 @@ export interface Duva {
    */
   replaceUserPool(): void;
   /**
-   * Sets the organization up again, as a re-run of duva deploy does. With `backfillLost`, the
-   * indexer's queue loses each backfill's next step, as when Lambda gives up on it.
+   * Sets the organization up again, as a re-run of duva deploy does, and gives what the setup
+   * function answers deploy. With `backfillLost`, the indexer's queue loses each backfill's next
+   * step, as when Lambda gives up on it.
    */
-  setUp(options: { admin: string; recovery?: string; backfillLost?: boolean }): Promise<void>;
+  setUp(options: { admin: string; recovery?: string; backfillLost?: boolean }): Promise<SetupAnswer>;
   /**
    * Gives the agent a mailbox of its own at the address, with mail to it accepted, as an admin
    * could before agents owned none (ADR-0030), so a test sees what the setup after the deploy
@@ -796,7 +801,7 @@ export async function startDuva({
       logosUrl = `${webUrl}/${hostedLogosPath}`;
     },
     setUp: async ({ backfillLost = false, recovery, ...options }) => {
-      await setUpFirstAdmin(mailing, await setUp(options), recovery);
+      const admin = await setUpFirstAdmin(mailing, await setUp(options), recovery);
       await timeEarlierLabels(table);
       await eraseAgentsMailboxes({ table, eraser: apiEraser, receiving });
       for (let each = handed.shift(); each !== undefined; each = handed.shift()) if (!eraserRunsLost) await eraser(each);
@@ -811,6 +816,7 @@ export async function startDuva({
       cooAddressDeployed = true;
       oneCooDeployed = true;
       await giveMailboxAgents(table);
+      const mailbox = await giveFirstAdminMailbox({ table, receiving }, admin);
       await syncRecipients(table, receiving);
       await carryOverModelChoices(table);
       await keepEarlierModels(table);
@@ -826,6 +832,7 @@ export async function startDuva({
       } finally {
         if (backfillLost) indexQueue.backfillStepsLost = 0;
       }
+      return { ...admin, ...(mailbox && { mailbox }) };
     },
     async releaseTasks() {
       await tasking.deliver();

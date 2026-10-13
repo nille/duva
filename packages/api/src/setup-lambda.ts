@@ -10,12 +10,13 @@ import { required } from "./environment.ts";
 import { cognitoHumans, cognitoSignInSender } from "./user-pool.ts";
 import { sesOutbound } from "./outbound.ts";
 import { setUpFirstAdmin } from "./sign-in-links.ts";
-import { environmentVariables } from "./infrastructure.ts";
+import { environmentVariables, type SetupAnswer } from "./infrastructure.ts";
 import { listEarlierDecisions } from "./approval-log.ts";
 import { eraseBlockedSenders, lambdaEraser } from "./erasure.ts";
 import { indexMailboxes, sqsIndexQueue } from "./indexing.ts";
 import { timeEarlierLabels } from "./mail.ts";
 import { giveMailboxAgents } from "./mailbox-agents.ts";
+import { giveFirstAdminMailbox } from "./mailboxes.ts";
 import { carryOverModelChoices, keepEarlierModels, setUpOrganization } from "./organization.ts";
 import { sesReceiptRules, syncRecipients } from "./receiving.ts";
 import { eraseAgentsMailboxes } from "./removal.ts";
@@ -44,8 +45,8 @@ const mailing = {
   outbound: sesOutbound(new SESv2Client({ maxAttempts: 1 }), configurationSet),
 };
 
-/** Sets up the organization and returns its first admin, with the first sign-in link it mailed them, if it did now. */
-export const handler = async () => {
+/** Sets up the organization and returns its first admin, with the first sign-in link it mailed them, if it did now, and their mailbox. */
+export const handler = async (): Promise<SetupAnswer> => {
   const admin = await setUpFirstAdmin(
     mailing,
     await setUpOrganization({ table, humans }, { domain: required(environmentVariables.domain), admin: required(environmentVariables.admin) }),
@@ -65,6 +66,9 @@ export const handler = async () => {
   // from before mailbox agents get theirs, and those named before Coo are renamed. Each Coo gets its
   // address (ADR-0040), which SES takes mail for from then on.
   await giveMailboxAgents(table);
+  // The first admin gets a mailbox at their sign-in address on the organization's domains, for the
+  // code managed login emails them before they add a passkey (#177).
+  const mailbox = await giveFirstAdminMailbox({ table, receiving }, admin);
   await syncRecipients(table, receiving);
   // The models admins chose before each human picked their mailbox agent's become the organization's defaults, once (ADR-0035).
   await carryOverModelChoices(table);
@@ -74,5 +78,5 @@ export const handler = async () => {
   await listEarlierDecisions(table);
   // Each mailbox's index is backfilled with the mail it has, or its backfill finished if one stopped.
   await indexMailboxes(table, sqsIndexQueue(new SQSClient({}), required(environmentVariables.indexQueue)));
-  return admin;
+  return { ...admin, ...(mailbox && { mailbox }) };
 };
