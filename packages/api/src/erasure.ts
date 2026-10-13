@@ -7,9 +7,11 @@
 // so turning the setting on doesn't reach back. A thread's messages leave search at once, and the
 // daily run has the indexer compact each mailbox's index, so their text leaves its files within a
 // day (ADR-0007). The links of the files its sent mail linked end with it, and the files are
-// deleted (ADR-0034). A deleted mailbox is erased the same way, thread by thread, and then everything
-// else it holds but its change feed, and its index is dropped (ADR-0020). So are the threads of a
-// sender whose mail goes nowhere (ADR-0025).
+// deleted (ADR-0034). What Coo learned from it goes with it, and so do the turns of Ask Coo that
+// read it, with the turns and requests by mail they answered (ADR-0036). A deleted mailbox is
+// erased the same way, thread by thread, and then everything else it holds but its change feed,
+// and its index is dropped (ADR-0020). So are the threads of a sender whose mail goes nowhere
+// (ADR-0025).
 import { DeleteCommand, GetCommand, PutCommand, QueryCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import { taskPrefix } from "./tasks.ts";
 import { type CooRequestsErased, eraseCooRequests, expireCooRequests } from "./coo-requests.ts";
@@ -29,11 +31,16 @@ import { allItems, documents, pk, sk, type TransactItem } from "./table.ts";
 import { mailboxPrefix, type UploadsBucket } from "./uploads-bucket.ts";
 import { type LinkedEntry, storedLink, unlinkFiles } from "./linked-files.ts";
 import { forgetLearnedFrom, memoriesErasedWith } from "./memories.ts";
+import { eraseTurnsFrom, type RawErasure, turnsErasedWith } from "./turn-sources.ts";
 
 // Each thread being erased is listed until its messages are gone, and each of their raw messages,
 // once per mailbox that erased it, until it is gone or another mailbox still has it.
 const erasingKey = (mailbox: string, thread: string) => ({ [pk]: "erasure#threads", [sk]: `${mailbox}#${thread}` });
 const rawErasureKey = (mailbox: string, rawKey: string) => ({ [pk]: "erasure#raw", [sk]: `${mailbox}#${rawKey}` });
+/** Lists a raw message the mailbox no longer has, as a request mailed to Coo whose turn goes with one of its threads. */
+const rawErasure =
+  (table: Table, mailbox: string): RawErasure =>
+  (rawKey) => ({ Put: { TableName: table.name, Item: { ...rawErasureKey(mailbox, rawKey), rawKey } } });
 // Each linked file whose link erasure ended, until the file is deleted.
 const fileErasureKey = (key: string) => ({ [pk]: "erasure#files", [sk]: key });
 // Each Trash emptied is listed until its threads are erased, so a run that fails is finished by the next.
@@ -245,8 +252,6 @@ async function eraseTrash(table: Table, emptied: TrashEmptied): Promise<void> {
  * thread is kept as an empty item until then, which reads as no thread at all.
  */
 async function eraseThread(table: Table, { mailbox, thread, by, due }: { mailbox: string; thread: string; by: string | undefined; due: (summary: StoredSummary, settings: OrganizationSettings) => boolean }) {
-  // recordChanges gives the items' cancellation reasons after the counter's and the one change's.
-  const threadReason = 2;
   let erasesApprovals: boolean;
   for (let attempt = 1; ; attempt++) {
     const summary = await threadSummary(table, mailbox, thread);
@@ -254,8 +259,11 @@ async function eraseThread(table: Table, { mailbox, thread, by, due }: { mailbox
     if (summary === undefined || !due(summary, settings.settings)) return;
     erasesApprovals = settings.settings.erasureErasesApprovals;
     const listings = listingsOf(summary);
-    // The memories learned from it go with it (ADR-0036), beside its items, the counter and the change.
-    const memories = await memoriesErasedWith(table, mailbox, thread, 5 + listings.length + Object.keys(summary.labelledAt ?? {}).length);
+    // The memories learned from it go with it (ADR-0036), beside its items, the counter and the change,
+    // and so do the turns that read it (#172).
+    const others = 5 + listings.length + Object.keys(summary.labelledAt ?? {}).length;
+    const memories = await memoriesErasedWith(table, mailbox, thread, others);
+    const turns = await turnsErasedWith(table, mailbox, thread, others + memories.length, rawErasure(table, mailbox));
     const items: TransactItem[] = [
       { Put: { TableName: table.name, Item: { ...keys.threadKey(mailbox, thread), erasing: true }, ...asTimed(summary) } },
       ...listings.map((listing) => ({ Delete: { TableName: table.name, Key: keys.entryIn(mailbox, listing, summary) } })),
@@ -264,6 +272,7 @@ async function eraseThread(table: Table, { mailbox, thread, by, due }: { mailbox
       })),
       { Put: { TableName: table.name, Item: { ...erasingKey(mailbox, thread), mailbox, thread, erasesApprovals } } },
       ...memories,
+      ...turns,
       // An admin who changes the settings meanwhile changes them before or after this erasure, never during it.
       settingsUnchanged(table, settings),
     ];
@@ -275,11 +284,12 @@ async function eraseThread(table: Table, { mailbox, thread, by, due }: { mailbox
       });
       break;
     } catch (error) {
-      // Mail joined the thread, it was changed, or the settings were, since they were read, so they are read again.
+      // Mail joined the thread, it was changed, a turn that read it was, or the settings were, since they were read, so they are read again.
       const reasons = error instanceof TransactionCanceledException ? (error.CancellationReasons ?? []) : [];
-      // The settings' check is the last item.
-      const settingsReason = threadReason + items.length - 1;
-      const changed = [threadReason, settingsReason].some((reason) => reasons[reason]?.Code === "ConditionalCheckFailed");
+      // The thread's, the turns' and the settings' writes are those with a condition, and recordChanges
+      // gives the items' cancellation reasons after the counter's and the one change's.
+      const conditional = (item: TransactItem) => Object.values(item).some((write) => (write as { ConditionExpression?: string } | undefined)?.ConditionExpression !== undefined);
+      const changed = items.some((item, at) => conditional(item) && reasons[at + 2]?.Code === "ConditionalCheckFailed");
       if (!changed || attempt === 10) throw error;
     }
   }
@@ -356,8 +366,9 @@ async function eraseMessages(table: Table, mailbox: string, thread: string, eras
     const chunk = tasks.slice(index, index + 100);
     await db.send(new TransactWriteCommand({ TransactItems: chunk.map((task) => ({ Delete: { TableName: table.name, Key: { [pk]: task[pk], [sk]: task[sk] } } })) }));
   }
-  // Memories too many for the thread's transaction, or kept from it as it was being erased.
+  // Memories too many for the thread's transaction, or kept from it as it was being erased, and turns likewise.
   await forgetLearnedFrom(table, mailbox, thread);
+  await eraseTurnsFrom(table, mailbox, thread, rawErasure(table, mailbox));
   await db.send(
     new TransactWriteCommand({
       TransactItems: [

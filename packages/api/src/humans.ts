@@ -25,6 +25,7 @@ import { cooRequestsErased } from "./coo-requests.ts";
 import { giveMailboxAgent } from "./mailbox-agents.ts";
 import { syncRecipients } from "./receiving.ts";
 import { deleteMailboxes, removeAgentWithApprovals } from "./removal.ts";
+import { forgetMailboxTurns } from "./turn-sources.ts";
 
 export const addHuman: OperationHandler = async (event, deployment, actor) => {
   if (!isAdmin(actor)) return refusal(403, "Only admins can add humans. Ask an admin to add them.");
@@ -73,8 +74,10 @@ export const removeHuman: OperationHandler = async (event, deployment, actor) =>
   try {
     for (const mailbox of choices.handOver) {
       await handOverMailbox(deployment.table, { mailbox, to: choices.handTo!.id, by: actor!.id });
-      // What its owner's Coo learned from its mail goes, and what they told it stays with them (ADR-0036).
+      // What its owner's Coo learned from its mail goes, and what they told it stays with them,
+      // and the turns of Ask Coo that read its threads go too (ADR-0036).
       await forgetMailboxMemories(deployment.table, mailbox.id, human.id);
+      await forgetMailboxTurns(deployment.table, mailbox.id, human.id);
       // Its owner's mailbox agent went with them, so the new owner's works in it, given one if they had none.
       await giveMailboxAgent(deployment.table, choices.handTo!.id);
     }

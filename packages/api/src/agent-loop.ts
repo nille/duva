@@ -111,11 +111,13 @@ export interface RunPayload {
 }
 
 /**
- * What a run says as it goes: text as it streams, each action, each web search, each browsing and
- * the seconds its browser ran, the tokens of each model call, an unsubscribe's verdict, and how it ended.
+ * What a run says as it goes: text as it streams, each action, the IDs its tool calls took or
+ * returned and its memories named, each web search, each browsing and the seconds its browser ran,
+ * the tokens of each model call, an unsubscribe's verdict, and how it ended.
  */
 export type RunEvent =
   | { type: "text"; text: string }
+  | { type: "read"; ids: string[] }
   | { type: "searched"; search: WebSearchMade }
   | { type: "browsed"; browsing: Browsing }
   | { type: "browserTime"; seconds: number }
@@ -339,6 +341,9 @@ const handoverWhy = ({ reason, why }: Handover) =>
     answerCheck: "its answer didn't hold up",
   })[reason];
 
+/** The IDs Duva gives threads, messages and the rest that the text names, in lower case. */
+export const idsIn = (text: string): string[] => (text.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi) ?? []).map((id) => id.toLowerCase());
+
 /**
  * Whether an answer holds up: it says something, a conversation turn looked something up first,
  * as Nova otherwise answers that there is no such mail without looking (docs/research/coo-models.md),
@@ -446,6 +451,14 @@ export async function* runAgent(
     yield { type: "decided", decision };
     if (decision.route === "complex" || decision.confidence < confidenceNeeded) yield handTo("decided");
   }
+  // Every ID a tool call took or returned, and those of the memories the run is given, once each,
+  // so its turn goes with the threads and messages among them (#172).
+  const seen = new Set<string>();
+  const read = (...texts: string[]) => {
+    const ids = [...new Set(texts.flatMap((text) => idsIn(text)))].filter((id) => !seen.has(id));
+    for (const id of ids) seen.add(id);
+    if (ids.length > 0) said.push({ type: "read", ids });
+  };
   const run = async (name: string, input: Record<string, unknown>) => {
     if (searching && name === webSearchTool.name) {
       const searched = await searchTheWeb(input, { webSearch: webSearch!, models, model: payload.model.everyday, region, now: payload.now });
@@ -461,6 +474,7 @@ export async function* runAgent(
     }
     const { action, result } = await callOperation({ apiUrl: payload.apiUrl, token: payload.token, mailbox: mailboxOfCall(payload, input) }, name, input, call);
     said.push({ type: "action", action });
+    read(JSON.stringify(input), result);
     if (!action.ok) failures++;
     return { ok: action.ok, result: result.slice(0, maxResult) };
   };
@@ -477,7 +491,11 @@ export async function* runAgent(
     ]),
     tools,
     run,
-    memory: memoryManager(payload, call),
+    memory: memoryManager(payload, async (request) => {
+      const response = await call(request);
+      read(await response.clone().text());
+      return response;
+    }),
   });
   // Each call asks the model the run is on, told why if it took the run over, with ask_for_help while it may hand over.
   agent.addMiddleware(InvokeModelStage.Input, async (context) => ({

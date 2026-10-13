@@ -847,7 +847,7 @@ Erases each thread that is in Trash when you call, with its messages and their r
 
 Read your mailbox agent and your conversation with it.
 
-Every human with a personal mailbox has one mailbox agent, Coo, which Duva hosts and which they sponsor. It works in all their personal mailboxes, with the sponsor access they give it in its settings, and its actions are attributed to it. The web app asks it in "Ask Coo", from one mailbox or from All mailboxes, which streams its answer from the web app's own address, under /agent/. You have one conversation with it, wherever you ask from. Lists the conversation's turns, oldest first, at most the last 100.
+Every human with a personal mailbox has one mailbox agent, Coo, which Duva hosts and which they sponsor. It works in all their personal mailboxes, with the sponsor access they give it in its settings, and its actions are attributed to it. The web app asks it in "Ask Coo", from one mailbox or from All mailboxes, which streams its answer from the web app's own address, under /agent/. You have one conversation with it, wherever you ask from. Lists the conversation's turns, oldest first, at most the last 100. Erasing a thread erases the turns whose runs read it, and the turns they answered, each leaving only an erased mark in its place.
 
 ## duva mailbox-agent clear
 

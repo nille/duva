@@ -1332,7 +1332,7 @@ export interface paths {
         };
         /**
          * Read your mailbox agent and your conversation with it.
-         * @description Every human with a personal mailbox has one mailbox agent, Coo, which Duva hosts and which they sponsor. It works in all their personal mailboxes, with the sponsor access they give it in its settings, and its actions are attributed to it. The web app asks it in "Ask Coo", from one mailbox or from All mailboxes, which streams its answer from the web app's own address, under /agent/. You have one conversation with it, wherever you ask from. Lists the conversation's turns, oldest first, at most the last 100.
+         * @description Every human with a personal mailbox has one mailbox agent, Coo, which Duva hosts and which they sponsor. It works in all their personal mailboxes, with the sponsor access they give it in its settings, and its actions are attributed to it. The web app asks it in "Ask Coo", from one mailbox or from All mailboxes, which streams its answer from the web app's own address, under /agent/. You have one conversation with it, wherever you ask from. Lists the conversation's turns, oldest first, at most the last 100. Erasing a thread erases the turns whose runs read it, and the turns they answered, each leaving only an erased mark in its place.
          */
         get: operations["getMailboxAgent"];
         put?: never;
@@ -5477,6 +5477,8 @@ export interface components {
             searches?: components["schemas"]["WebSearch"][];
             /** @description What the agent's browsing did in the turn, a sentence for each page it worked on, in order. Absent if it browsed nowhere. */
             browsed?: components["schemas"]["Browsing"][];
+            /** @description Present, true, for a turn erased with mail its run read: the agent's turn whose run read a thread that was erased, and your turn it answered (ADR-0036). It keeps only when it was and whose, with no text and no actions, and no run reads it. */
+            erased?: boolean;
         };
         /** @description What the decider, Amazon Nova Micro, made of a turn whose job doesn't settle the model: simple, the everyday model takes it, or complex, the harder model does, as it does when the decider is less than 0.7 sure. */
         RoutingDecision: {
@@ -5491,7 +5493,7 @@ export interface components {
             reason: "decided" | "writing" | "failedCalls" | "stepBudget" | "askedForHelp" | "answerCheck";
             from: components["schemas"]["MailboxAgentModel"];
             to: components["schemas"]["MailboxAgentModel"];
-            /** @description What the everyday model said when it asked for help. */
+            /** @description What the everyday model said when it asked for help. Only the turn and the task keep it, never a change, as it can say what the mail says. */
             why?: string;
         };
         /** @description What the mailbox agent did on a web page, in a browser of its own, on its own: the site, and its sentence. Duva keeps nothing else of it, no steps, screenshots or recording. */

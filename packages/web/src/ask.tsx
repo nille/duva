@@ -6,6 +6,7 @@
 // be asked again of the harder model, to think harder (#132). When Coo searches the web, the turn
 // says what it looked up, with the sources the reader drew on as links (ADR-0037). When Coo browses,
 // the turn says in a sentence what it did on each site, which is all Duva keeps of it (ADR-0038).
+// Turns erased with the mail their runs read show as a quiet line where they were (#172).
 import { type FormEvent, type KeyboardEvent, useCallback, useEffect, useId, useRef, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components, ConversationEvent } from "@duva/openapi";
@@ -126,6 +127,8 @@ export function AskAgent({
       }
       const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
       let pending = "";
+      // The human's turn the run answers, which goes with the answer if a thread it read was erased meanwhile.
+      let asking: Turn | undefined;
       for (;;) {
         const { value, done } = await reader.read();
         if (done) break;
@@ -136,17 +139,20 @@ export function AskAgent({
           // An empty line only keeps the stream going while the agent thinks.
           if (line.trim() === "") continue;
           const event = JSON.parse(line) as ConversationEvent;
-          if (event.type === "turn") add(event.turn);
-          else if (event.type === "text") setRunning((current) => current && { ...current, text: current.text + event.text });
+          if (event.type === "turn") {
+            asking = event.turn;
+            add(event.turn);
+          } else if (event.type === "text") setRunning((current) => current && { ...current, text: current.text + event.text });
           else if (event.type === "action") setRunning((current) => current && { ...current, actions: [...current.actions, event.action] });
           else if (event.type === "searched") setRunning((current) => current && { ...current, searches: [...current.searches, event.search] });
           else if (event.type === "browsed") setRunning((current) => current && { ...current, browsed: [...current.browsed, event.browsing] });
           else if (event.type === "handedOver") setRunning((current) => current && { ...current, handover: event.handover });
           else {
             // The turn as kept takes the running one's place at once, since the stream goes on a moment after it.
+            if (event.turn.erased === true && asking !== undefined) add({ id: asking.id, at: asking.at, from: "human", text: "", actions: [], erased: true });
             add(event.turn);
             setRunning(undefined);
-            setAnnounced(`${copy.answered}: ${event.turn.text}`);
+            setAnnounced(event.turn.erased === true ? copy.erased(2) : `${copy.answered}: ${event.turn.text}`);
           }
         }
       }
@@ -280,17 +286,23 @@ export function AskAgent({
         </section>
       ) : (
         <ol className="ask-turns">
-          {turns.map((turn, index) => (
-            <TurnShown
-              key={turn.id}
-              turn={turn}
-              baseOf={baseOf}
-              askedIn={askedIn(turn)}
-              approval={approval}
-              time={clock(new Date(turn.at))}
-              onHarder={index === turns.length - 1 && turn.from === "agent" && turn.harder !== true && running === undefined ? () => void ask("", { harder: true }) : undefined}
-            />
-          ))}
+          {shownOf(turns).map((shown) =>
+            "erased" in shown ? (
+              <li key={shown.key} className="ask-erased">
+                {copy.erased(shown.erased)}
+              </li>
+            ) : (
+              <TurnShown
+                key={shown.turn.id}
+                turn={shown.turn}
+                baseOf={baseOf}
+                askedIn={askedIn(shown.turn)}
+                approval={approval}
+                time={clock(new Date(shown.turn.at))}
+                onHarder={shown.index === turns.length - 1 && shown.turn.from === "agent" && shown.turn.harder !== true && running === undefined ? () => void ask("", { harder: true }) : undefined}
+              />
+            ),
+          )}
           {running !== undefined && (
             <li className="ask-turn ask-turn-agent ask-turn-running" aria-label={copy.working}>
               <p className="ask-who">
@@ -347,6 +359,21 @@ export function AskAgent({
       </p>
     </main>
   );
+}
+
+/** A turn as shown: one that is kept, by its place, or a run of erased ones, as how many there were. */
+type Shown = { turn: Turn; index: number } | { erased: number; key: string };
+
+/** The turns as shown, each run of erased ones as one. */
+function shownOf(turns: Turn[]): Shown[] {
+  const shown: Shown[] = [];
+  turns.forEach((turn, index) => {
+    const last = shown.at(-1);
+    if (turn.erased !== true) shown.push({ turn, index });
+    else if (last !== undefined && "erased" in last) last.erased++;
+    else shown.push({ erased: 1, key: turn.id });
+  });
+  return shown;
 }
 
 /**

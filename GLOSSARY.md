@@ -70,7 +70,7 @@ _Avoid_: classifier
 Asking the harder model to answer a human's last turn of Ask Coo again. Its answer is a new turn, and the turn's routing is kept as thought harder (ADR-0032).
 
 **Ask Coo**:
-A human's conversation with Coo, their mailbox agent, in the web app's reading pane, asked from one of their mailboxes or from All mailboxes. Each thing they ask, and each answer, is a turn; the agent's turns say what it did, with links to the threads and drafts it touched. The agent reads back the last turns, until the human starts over. A thread of mail is never called a conversation.
+A human's conversation with Coo, their mailbox agent, in the web app's reading pane, asked from one of their mailboxes or from All mailboxes. Each thing they ask, and each answer, is a turn; the agent's turns say what it did, with links to the threads and drafts it touched. The agent reads back the last turns, until the human starts over. Turns go with the threads they read: erasing a thread erases each turn whose run read it, and the turn it answered, leaving a quiet line where they were (ADR-0036). A thread of mail is never called a conversation.
 
 **MCP endpoint**:
 Duva's remote MCP server, one per deployment at `/mcp` on the API's domain, which an MCP client signs in to with a human's Duva account. Its tools reach the human's own mailbox agent: asking it or giving it a task, and Duva's operations in the human's mailboxes, each called as that agent, so they do only what it may, attributed to it, with its sends waiting for approval as its do (ADR-0028).

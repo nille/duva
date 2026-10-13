@@ -412,3 +412,22 @@ test("a request mailed to Coo shows in Ask Coo as by mail from its sender, and C
   expect(await turns.nth(0).locator(".ask-text").innerText()).toBe("Subject: Anything new?\n\nFor Grace.");
   expect(await turns.nth(1).locator(".ask-who").innerText()).toMatch(/Coo.*mailed to assistant@example\.net/s);
 });
+
+test("where turns were erased with the mail their run read, the conversation shows a quiet line saying how many", budget, async () => {
+  const model = scripted(() => [{ text: "Hello." }], () => [use("listThreads")], () => [{ text: "Ada sent the quarterly report." }]);
+  const { page, signIn, duva, grace, mailbox } = await withMailbox({ model });
+  const params = { path: { mailbox: mailbox.id } };
+  await duva.askAgent("grace@example.org", { mailbox: mailbox.id, words: "Hi" });
+  await duva.askAgent("grace@example.org", { mailbox: mailbox.id, words: "What did Ada send?" });
+  const { data } = await grace.GET("/mailboxes/{mailbox}/changes", { params });
+  const thread = (data!.changes as { type: string; thread: string }[]).findLast(({ type }) => type === "messageReceived")!.thread;
+  await grace.POST("/mailboxes/{mailbox}/threads/labels", { params, body: { threads: [thread], add: ["trash"], remove: [] } });
+  await grace.POST("/mailboxes/{mailbox}/trash/empty", { params });
+  await signIn("grace@example.org");
+
+  await page.getByRole("link", { name: "Ask Coo", exact: true }).click();
+
+  await page.getByText("2 turns were erased with the mail they read").waitFor(wait);
+  expect(await page.locator(".ask-turn .ask-text").allInnerTexts()).toEqual(["Hi", "Hello."]);
+  expect(await page.getByRole("button", { name: "Think harder" }).count()).toBe(0);
+});

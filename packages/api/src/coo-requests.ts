@@ -160,6 +160,18 @@ export async function noteMailToCoo(
   }
 }
 
+/** The writes that erase the human's request by mail, and list its raw message for the eraser with `raw`, as its turn goes with a thread it read (#172). */
+export const requestErasure = (table: Table, human: string, id: string, raw: (rawKey: string) => TransactItem): TransactItem[] => [
+  { Delete: { TableName: table.name, Key: requestKey(human, id) } },
+  raw(rawKeyOf(human, id)),
+];
+
+/** Erases the human's request by mail and its raw message, as its turn went with mail its run read while it ran (#172). */
+export async function eraseCooRequest(table: Table, mailBucket: MailBucket, human: string, id: string): Promise<void> {
+  await mailBucket.erase(rawKeyOf(human, id));
+  await documents(table).send(new DeleteCommand({ TableName: table.name, Key: requestKey(human, id) }));
+}
+
 /** The human whose requests by mail are erased, and their IDs as read before, which the eraser is handed. */
 export interface CooRequestsErased {
   human: string;

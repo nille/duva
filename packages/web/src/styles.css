@@ -6564,6 +6564,14 @@ input[aria-invalid="true"] {
   font-weight: 500;
 }
 
+/* Where turns were erased with the mail they read, a quiet line in the small type stands on the seam in their place. */
+.ask-erased {
+  padding: var(--space-3) 0;
+  box-shadow: inset 0 1px 0 var(--seam);
+  color: var(--ink-3);
+  font-size: var(--text-sm);
+}
+
 /* A handover, or a turn thought harder about, is a quiet line above the steps, in the small type. */
 .ask-handover {
   max-width: var(--measure);

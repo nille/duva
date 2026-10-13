@@ -125,6 +125,8 @@ export function capReached(table: Table, agent: Agent, month: string, cap: numbe
  * and how it ended. Each model call's, query's and browser session's cost is counted as it comes,
  * so a run cut off still counts what it spent, and a run that reaches the cap alerts the agent's sponsor.
  * A turn, named by the human's turn it answers, and a task, in `about`, may use its human's secrets.
+ * `read` is given the IDs its tool calls took or returned and its memories named, as they come, so
+ * a turn knows the threads it read before any is erased (#172).
  */
 export async function* runMailboxAgent(
   table: Table,
@@ -136,7 +138,17 @@ export async function* runMailboxAgent(
     cap,
     about = {},
     turn,
-  }: { agent: Agent; payload: Omit<RunPayload, "token">; runtime: AgentRuntime; month: string; cap: number; about?: { task?: string; thread?: string }; turn?: string },
+    read,
+  }: {
+    agent: Agent;
+    payload: Omit<RunPayload, "token">;
+    runtime: AgentRuntime;
+    month: string;
+    cap: number;
+    about?: { task?: string; thread?: string };
+    turn?: string;
+    read?: (ids: string[]) => Promise<void>;
+  },
 ): AsyncGenerator<Extract<RunEvent, { type: "text" | "action" | "searched" | "browsed" | "handedOver" }>, RunEnd> {
   const session = `${agent.id}-${randomUUID()}`;
   // A turn or a task uses its human's secrets, an unsubscribe none (ADR-0039).
@@ -169,6 +181,8 @@ export async function* runMailboxAgent(
       } else if (event.type === "browsed") {
         browsed.push(event.browsing);
         yield event;
+      } else if (event.type === "read") {
+        await read?.(event.ids);
       } else if (event.type === "browserTime") {
         const spent = event.seconds * browserSecondCost;
         cost += spent;
@@ -183,7 +197,7 @@ export async function* runMailboxAgent(
         // Text said before the handover was the everyday model's, set aside with its step.
         handover = event.handover;
         model = handover.to;
-        await recordChanges(table, mailboxFeed(recordingMailbox(payload)), { by: agent.id, changes: [{ type: "agentHandedOver", agent: agent.id, handover, ...about }], items: [] });
+        await recordChanges(table, mailboxFeed(recordingMailbox(payload)), { by: agent.id, changes: [{ type: "agentHandedOver", agent: agent.id, handover: handoverRecorded(handover), ...about }], items: [] });
         yield event;
       } else outcome = event.outcome;
     }
@@ -202,6 +216,12 @@ export async function* runMailboxAgent(
  * from All mailboxes, the first it works in.
  */
 export const recordingMailbox = (payload: Pick<RunPayload, "mailbox" | "mailboxes">) => payload.mailbox ?? payload.mailboxes[0]!.id;
+
+/**
+ * The handover as a change records it: without what the everyday model said in asking for help,
+ * which can say what the mail says, so the feed and Coo's activity keep none of it (#172).
+ */
+export const handoverRecorded = ({ why: _, ...handover }: Handover): Handover => handover;
 
 /**
  * How a run ended: what it said and did, its web searches and browsing, an unsubscribe's verdict,

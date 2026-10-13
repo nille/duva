@@ -28,6 +28,7 @@ import {
   findRequest,
   type CooMailJob,
   type FollowUp,
+  eraseCooRequest,
   humanOf,
   moveRequest,
   noteMailToCoo,
@@ -217,7 +218,9 @@ const undecided = new Set(["waiting", "approved", "waitingForLimit", "sending"])
 
 /**
  * Runs the taken request as a turn of the human's Ask Coo, from All mailboxes, and mails the answer,
- * with what Coo did, to the request's From. A send that waits is followed up once decided.
+ * with what Coo did, to the request's From. A send that waits is followed up once decided. An answer
+ * erased as it was written, as a thread its run read was erased meanwhile, is mailed as only that,
+ * and the request goes with it (#172).
  */
 async function run(runner: CooMailRunner, human: Human, request: CooRequest): Promise<void> {
   const { table, mailBucket } = runner;
@@ -229,14 +232,16 @@ async function run(runner: CooMailRunner, human: Human, request: CooRequest): Pr
     { table, region: runner.region, apiUrl: runner.apiUrl, available: runner.runtime !== undefined },
     human,
     { words },
-    { from: request.from, beside: parsed === undefined ? "" : await besideOf(parsed) },
+    { request: request.id, from: request.from, beside: parsed === undefined ? "" : await besideOf(parsed) },
   );
   let answer: ConversationTurn | undefined;
   if (!("statusCode" in prepared)) for await (const event of runTurn(table, runner.runtime!, runner.embedder, prepared)) if (event.type === "done") answer = event.turn;
   const said =
     "statusCode" in prepared
       ? prepared.body.message
-      : answer === undefined || answer.outcome === "failed"
+      : answer?.erased === true
+        ? "Mail I read for this was erased while I worked on it, so I kept nothing of my answer."
+        : answer === undefined || answer.outcome === "failed"
         ? `${answer?.text.trim() ?? ""}\n\nI couldn't finish this, as the model or the runtime failed partway. Mail me again to try once more.`.trim()
         : answer.outcome === "capReached"
           ? `${answer.text.trim()}\n\n${capRefusal(prepared.cap)}`.trim()
@@ -249,6 +254,7 @@ async function run(runner: CooMailRunner, human: Human, request: CooRequest): Pr
     return;
   }
   await noteMailToCoo(table, human, { request: request.id, from: request.from, event: "answered", results }, { items: [requestMoved(table, request, "running", "answered", { thread: [...request.thread, sent] }), systemMailRecord(table, sesIdOf(sent))] });
+  if (answer?.erased === true) await eraseCooRequest(table, mailBucket, human.id, request.id);
 }
 
 /**

@@ -2687,7 +2687,9 @@ paths:
         from one mailbox or from All mailboxes, which streams its answer from
         the web app's own address, under /agent/. You have one conversation
         with it, wherever you ask from. Lists the conversation's turns, oldest
-        first, at most the last 100.
+        first, at most the last 100. Erasing a thread erases the turns whose
+        runs read it, and the turns they answered, each leaving only an erased
+        mark in its place.
       x-cli-command: mailbox-agent get
       responses:
         "200":
@@ -9609,6 +9611,13 @@ components:
           description: What the agent's browsing did in the turn, a sentence for each page it worked on, in order. Absent if it browsed nowhere.
           items:
             $ref: "#/components/schemas/Browsing"
+        erased:
+          type: boolean
+          description: >-
+            Present, true, for a turn erased with mail its run read: the
+            agent's turn whose run read a thread that was erased, and your
+            turn it answered (ADR-0036). It keeps only when it was and whose,
+            with no text and no actions, and no run reads it.
     RoutingDecision:
       type: object
       additionalProperties: false
@@ -9650,7 +9659,10 @@ components:
           $ref: "#/components/schemas/MailboxAgentModel"
         why:
           type: string
-          description: What the everyday model said when it asked for help.
+          description: >-
+            What the everyday model said when it asked for help. Only the
+            turn and the task keep it, never a change, as it can say what the
+            mail says.
     Browsing:
       type: object
       additionalProperties: false

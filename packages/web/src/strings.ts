@@ -503,6 +503,8 @@ export const strings = {
       correctMemory: "Corrected a memory",
       forgetMemory: "Forgot a memory",
     } as Record<string, string>,
+    /** Where turns were erased with the mail their runs read, each run of them a quiet line (#172). */
+    erased: (count: number) => (count === 1 ? "1 turn was erased with the mail it read" : `${count} turns were erased with the mail they read`),
     /** What Coo says once, the first time it keeps a memory from mail (ADR-0036). */
     firstMemory: "From now on I remember what your mail teaches me, and forget it when the mail is erased.",
     firstMemoryLink: "See what I remember",
