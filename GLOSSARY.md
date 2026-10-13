@@ -115,6 +115,10 @@ A sponsor's record of every decision on their agents' sends, newest first: who d
 **Admin**:
 A human allowed to change the organization's setup: domains, addresses, groups, actors and settings. Admins can't read personal mailboxes. Only humans are admins; no agent is one.
 
+**Recovery address**:
+An address outside the organization's own domains that each human gives when they're added, such as a Gmail address. Duva sends their first sign-in link there, to register a passkey, and every recovery link after, never to a mailbox in Duva, so a human whose sign-in address is their own Duva mailbox can't be locked out of it.
+_Avoid_: backup email, secondary address
+
 **Preference**:
 A choice a human makes for themselves about how Duva shows things to them, such as how times and dates read in the web app, the time zone their agents' activity gives dates and times in, whether mail shows as designed or as plain text, where the web app opens (All mailboxes or one of them), or which address new mail in All mailboxes starts from, and the everyday and harder models their Coo thinks with, from the measured models admins allow. It follows them to every browser, and no one else sees or changes it. An agent has none; its sponsor changes its settings.
 _Avoid_: user setting, profile
